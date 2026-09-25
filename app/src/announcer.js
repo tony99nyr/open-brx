@@ -58,6 +58,14 @@ export const OBJECTIVE = new Set(['hill_captured', 'hill_lost', 'enemy_down']);
  *  meets my kill or medal item on air or queued is VOICE-SILENT: its line is dropped, never held for later, and its
  *  card still shows in its turn. Outside a streak these play as usual. */
 export const STREAK_SILENT = new Set(['lead_taken', 'lead_lost', 'hill_captured', 'hill_lost']);
+/** Tony, 2026-09-25 (F149 / F351 / X4): "your death wins. delaying the death scream would be bad. while you are dead you
+ *  can listen to the queue of KCs and game alerts". While I am dead (`dead()`), every item waits for a SILENT gun (the
+ *  native scream first, never cut: no must-hear or objective flush), in priority order, with no streak silence, and an
+ *  item queued while dead (or waiting at the death) lives this long and keeps its line this long.
+ *  10 s = the scream (the golden take VA3 is 1.27 s; the scream takes run to about 1.5 s) + my kill line with its flash
+ *  (0.76 s) + two medal lines (up to 2.5 s each) + a lead line (2.7 s) = about 10 s: my own kill confirm is still said
+ *  after the longest stack a trade makes. The respawn (5-8 s in the shipped modes) ends the dead rules sooner. */
+export const DEAD_QUEUE_TTL_MS = 10000;
 
 /** The shortest slot each kind holds: its banner's hold in hud.js, so the NEXT item's banner never lands on a
  *  card still showing. The slot is the longer of this and the clip (plus ANNOUNCE_GAP_MS). */
@@ -122,7 +130,24 @@ const rank = kind => { const i = ANNOUNCE_PRIORITY.indexOf(kind); return i < 0 ?
  *   undo what it booked for it (the kill-confirm pairing must never pair with a confirm nobody heard).
  */
 export class Announcer {
-  constructor(now, log = () => {}) { this.now = now; this.log = log; this.current = null; this.queue = []; this.seq = 0; this.gun = null; this.sync = null; }
+  constructor(now, log = () => {}) { this.now = now; this.log = log; this.current = null; this.queue = []; this.seq = 0; this.gun = null; this.sync = null; this.dead = null; }
+
+  _isDead() { return !!(this.dead && this.dead()); }
+
+  /** I just died (the engine calls this in `_death`, after the scream joined the gun model). Everything waiting gets the
+   *  dead-queue TTL. An item whose line is still sounding is cut by the death stop: it goes back in the queue, whole, and
+   *  is said again after the scream (Tony: "your death wins"). Its pending lines check `cut` and do not go out. */
+  death(now = this.now()) {
+    for (const q of this.queue) q.deadQueued = true;
+    const c = this.current;
+    if (c && c.audioMs > 0 && now < c.audioUntil) {
+      c.cut = true;
+      const again = { ...c, at: now, n: ++this.seq, cut: false, deadQueued: true, startedAt: undefined, audioUntil: undefined, until: undefined,
+        muted: false, streakSilent: false, flush: false, forceMute: false };
+      this.queue.push(again); this.current = null;
+      this.log(`announcer: ${c.kind} was sounding at my death: the scream goes first, then it is said again`);
+    }
+  }
 
   clear() { const q = this.queue; this.current = null; this.queue = []; q.forEach(x => this._dropped(x)); }
 
@@ -162,7 +187,9 @@ export class Announcer {
     const now = this.now();
     if (this.sync) this.sync(now);   // the gun model's state as it stands now (the shield loop may have just started)
     const it = { ...item, at: now, n: ++this.seq, rank: rank(item.kind), audioMs: Math.max(0, item.audioMs || 0) };
-    if (STREAK_SILENT.has(it.kind) && it.audioMs > 0 && this.streak(now)) it.streakSilent = true;
+    const dead = this._isDead();
+    if (dead) it.deadQueued = true;
+    if (!dead && STREAK_SILENT.has(it.kind) && it.audioMs > 0 && this.streak(now)) it.streakSilent = true;
     it.slotMs = Math.max(it.audioMs ? it.audioMs + ANNOUNCE_GAP_MS : 0, item.bannerMs != null ? item.bannerMs : (ANNOUNCE_BANNER_MS[item.kind] || 0));
     if (it.key != null) {
       const cur = this.current;
@@ -219,7 +246,10 @@ export class Announcer {
       const next = this._peek(now);
       const handover = next && cur.audioMs > 0 && now >= cur.audioUntil && !OWN_KILL.has(cur.kind) && next.rank <= cur.rank
         && ANNOUNCE_SURFACE[next.kind] && ANNOUNCE_SURFACE[next.kind] === ANNOUNCE_SURFACE[cur.kind];
-      if (now < cur.until && !handover) return null;
+      // Dead: the death screen owns the view, so a card's hold does not pace the queue; the next line may follow as soon
+      // as this one's audio is over (Tony 2026-09-25: listen to the queue while you are dead).
+      const deadNext = this._isDead() && cur.audioMs > 0 && now >= cur.audioUntil;
+      if (now < cur.until && !handover && !deadNext) return null;
       this.current = null;
     }
     const next = this._peek(now);
@@ -228,15 +258,18 @@ export class Announcer {
     // and once it is past ANNOUNCE_AUDIO_LATE_MS (or the shield loop blocks the gun) it shows its card without its line.
     // An OBJECTIVE line is the exception to the loop: it cuts the loop instead (`flush`), so a hill word or "Target down"
     // is still heard with the shield up.
+    // Dead (Tony 2026-09-25): every line waits for a silent gun, must-hear and objective ones too: nothing flushes the scream.
+    if (next.audioMs > 0 && this.gun && this.gun.outstanding(now) > 0 && this._isDead()) return null;
     if (next.audioMs > 0 && !MUST_HEAR.has(next.kind) && this.gun && this.gun.outstanding(now) > 0) {
-      const late = ANNOUNCE_AUDIO_LATE_MS[next.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[next.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
+      const late0 = ANNOUNCE_AUDIO_LATE_MS[next.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[next.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
+      const late = next.deadQueued ? Math.max(late0, DEAD_QUEUE_TTL_MS) : late0;
       if (this.gun.blocked && OBJECTIVE.has(next.kind) && now - next.at <= late) next.flush = true;
       else {
         if (!this.gun.blocked && now - next.at <= late) return null;
         next.forceMute = true;
       }
     }
-    if (STREAK_SILENT.has(next.kind) && next.audioMs > 0 && this.streak(now)) next.streakSilent = true;   // a kill queued ahead of it meanwhile
+    if (STREAK_SILENT.has(next.kind) && next.audioMs > 0 && !this._isDead() && this.streak(now)) next.streakSilent = true;   // a kill queued ahead of it meanwhile
     this.remove(next);
     this._start(next, now, false);
     return next;
@@ -248,7 +281,8 @@ export class Announcer {
       if (!this.queue.length) return null;
       let best = null;
       for (const q of this.queue) if (!best || q.rank < best.rank || (q.rank === best.rank && q.n < best.n)) best = q;
-      const ttl = ANNOUNCE_TTL_MS[best.kind] != null ? ANNOUNCE_TTL_MS[best.kind] : 4000;
+      const ttl0 = ANNOUNCE_TTL_MS[best.kind] != null ? ANNOUNCE_TTL_MS[best.kind] : 4000;
+      const ttl = best.deadQueued ? Math.max(ttl0, DEAD_QUEUE_TTL_MS) : ttl0;
       if (now - best.at > ttl) { this.remove(best); this.log(`announcer: ${best.kind} expired after ${now - best.at} ms in the queue, dropped`); this._dropped(best); continue; }
       if (best.ok && !best.ok()) { this.remove(best); this.log(`announcer: ${best.kind} no longer applies, dropped`); this._dropped(best); continue; }
       return best;
@@ -257,7 +291,8 @@ export class Announcer {
 
   _start(it, now, preempted) {
     const waited = now - it.at;
-    const late = ANNOUNCE_AUDIO_LATE_MS[it.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[it.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
+    const late0 = ANNOUNCE_AUDIO_LATE_MS[it.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[it.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
+    const late = it.deadQueued ? Math.max(late0, DEAD_QUEUE_TTL_MS) : late0;
     // A card that was muted once stays muted: a silent card a kill displaced shows again after it, still without its line.
     const again = !!it.muted;
     const muted = again || (it.audioMs > 0 && (waited > late || !!it.forceMute || !!it.streakSilent));

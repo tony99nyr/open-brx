@@ -145,7 +145,9 @@ const humOf = sc => sc.preset !== 'halo' ? null : sc.humClip === undefined ? 'A1
 
 // ---------- the runner ----------
 function makeCtx(sc, rules) {
-  const ctx = { t: 0, writes: [], dropped: [], timers: [], game: new Game(sc, rules.writeFrameGapMs), sc, notes: [] };
+  const ctx = { t: 0, writes: [], natives: [], dropped: [], timers: [], game: new Game(sc, rules.writeFrameGapMs), sc, notes: [] };
+  /** The gun's own death scream ($PSET t10: VA3 in SPAWN_HEAD's take) enters the FIFO on the killing `$HP,0`. */
+  ctx.scream = () => { ctx.natives.push({ t: ctx.t, id: 'VA3', cue: 'scream' }); };
   ctx.write = (frames, why) => { ctx.writes.push({ t: ctx.t, frames, why }); };
   ctx.delay = (ms, fn) => { ctx.timers.push({ at: ctx.t + ms, fn }); };
   ctx.drop = (cue, eventT, why) => { ctx.dropped.push({ cue, eventT, t: ctx.t, why }); };
@@ -187,7 +189,7 @@ export function runScenario(sc, policyName, rules = GUN_RULES) {
       policy.tick(t);
     }
   }
-  const gun = simulateGun({ writes: ctx.writes, shield: ctx.game.trace, humClip: humOf(sc), horizonMs: sc.horizonMs }, rules);
+  const gun = simulateGun({ writes: ctx.writes, natives: ctx.natives, shield: ctx.game.trace, humClip: humOf(sc), horizonMs: sc.horizonMs }, rules);
   return { scenario: sc.id, policy: policyName, gun, dropped: ctx.dropped, writes: ctx.writes, notes: ctx.notes, mustPendingHeartbeats: policy.mustPendingHeartbeats || 0 };
 }
 
@@ -242,7 +244,7 @@ class PolicyA {
         this.hillMine = false;
         if (this.pendingHurt) this.pendingHurt = false;
         else if (m.hurtFired) c.write([PLAYX], 'death: stop the low-health loop (F149)');
-        c.notes.push(`${t} ms: death, the gun's native scream plays (outside this model)`);
+        c.scream();   // the gun's native scream joins its FIFO on the killing $HP,0
       } else if (m.kind === 'spawn') { c.write(spawnWrite(m.fill, c.line('spawn', t)), 'spawn'); this.loopAt = 0; }
       else if (m.kind === 'shield_charging') { c.write([c.line('shield_charging', t)], 'event cue shield_charging'); }
       else if (m.kind === 'shield_full') { c.write([c.line('shield_online', t)], 'event cue shield_online'); }
@@ -298,6 +300,7 @@ class PolicyB {
     this.logs = [];
     this.ann = new Announcer(() => this.ctx.t, m => { this.logs.push(String(m).replace(/^announcer: /, '')); });
     this.ann.gun = this.model; this.ann.sync = () => this._sync();
+    this.ann.dead = () => !this.ctx.game.alive;   // engine.js: Tony 2026-09-25, my death wins
     this.loopAt = 0; this.lastPainAt = null; this.pendingHurt = false; this.hillMine = false; this.hillTickAt = 0;
     this.irOpen = []; this.mcOpen = [];
     this.mustPendingHeartbeats = 0;   // heartbeats and ticks written while a must-hear line was queued or due within its gaps
@@ -336,12 +339,15 @@ class PolicyB {
    *  line, in one write. */
   _sayMust(line, why) {
     const c = this.ctx; this._sync();
-    const k = Math.min(this.model.outstanding(c.t), MUST_HEAR_MAX_STOPS);
+    let k = Math.min(this.model.outstanding(c.t), MUST_HEAR_MAX_STOPS);
+    const held = k > 0 && !c.game.alive;   // X4: no stop while dead
+    if (held) k = 0;
     c.write([...Array(k).fill(PLAYX), line], k ? `${why} (after ${k} x $PLAYX)` : why);
-    this.model.flushed(c.t, { ms: CLIP_MS[CUE[line.cue]], why });
+    if (held) this.model.add(CLIP_MS[CUE[line.cue]], why, c.t, CUE[line.cue]);
+    else this.model.flushed(c.t, { ms: CLIP_MS[CUE[line.cue]], why });
   }
   /** A must-hear line said `ms` from now (the kill item's flash-to-line gap, the next medal line). */
-  _mustLater(ms, line, why) { this.mustDue++; this.ctx.delay(ms, () => { this.mustDue--; this._sayMust(line, why); }); }
+  _mustLater(ms, line, why, item = null) { this.mustDue++; this.ctx.delay(ms, () => { this.mustDue--; if (!(item && item.cut)) this._sayMust(line, why); }); }
   // ----- the announcer queue: the real one -----
   push(item) {
     const why = k => [...this.logs].reverse().find(l => l.startsWith(k + ' ') || l.startsWith(k + ':')) || 'dropped by the queue';
@@ -363,7 +369,7 @@ class PolicyB {
       play: ({ muted, waited }, self) => {
         if (muted) { this._muted(self, waited); return; }
         this._write(['$SFLASH,*'], why);
-        lines.forEach((l, i) => this._mustLater(at[i], l, `${why}: ${l.cue}`));
+        lines.forEach((l, i) => this._mustLater(at[i], l, `${why}: ${l.cue}`, self));
       } });
   }
   _line(kind, eventT, extra = {}) {
@@ -428,7 +434,7 @@ class PolicyB {
     } else if (ev.type === 'hill') {
       if (!g.alive) return;
       this.hillMine = ev.kind === 'hill_captured';
-      this._line(ev.kind, t, { key: 'hill', preemptKey: true, stopsOwn: true, ok: () => this.ctx.game.alive });
+      this._line(ev.kind, t, { key: 'hill', preemptKey: true, stopsOwn: true });   // engine.js: a queued hill line is said while dead too
     } else if (ev.type === 'enemy_down') {
       if (g.alive) this._line('enemy_down', t, { ok: () => this.ctx.game.alive });
     } else if (ev.type === 'teammate_down') {
@@ -451,11 +457,17 @@ class PolicyB {
         c.delay(HURT_DEBOUNCE_MS, () => { if (!this.pendingHurt) return; this.pendingHurt = false; if (c.game.alive) this._write([c.line('low_health', t), '$HLED,7,4,90,90,10,15,*'], 'low health'); });
       } else if (m.kind === 'death') {
         this.hillMine = false;
-        // engine.js `_death`: the native scream ($PSET t10, VA3 in SPAWN_HEAD's take) joins the phone's model first
-        this.model.add(CLIP_MS.VA3, 'death scream', t, 'VA3');
+        // engine.js `_death`: the native scream ($PSET t10, VA3 in SPAWN_HEAD's take) joins the gun and the phone's model
+        this._sync(); this.model._prune(t);
+        const ahead = this.model.clips.length;
+        c.scream();
         if (this.pendingHurt) this.pendingHurt = false;
-        // F149 (gap B3, waiting on Tony): this stop cuts whatever plays, my own kill line included. See the todo test.
-        else if (m.hurtFired) this._write([PLAYX], 'death: stop the low-health loop (F149)');
+        // Tony 2026-09-25 (F149 / F351 / X4), "your death wins": the stops take off what the gun holds AHEAD of the scream
+        // (the low-health line, my kill line), never the scream; an announcer line cut here is said again after it.
+        this.ann.death(t);
+        const stops = Math.min(ahead, MUST_HEAR_MAX_STOPS);
+        if (stops) this._write(Array(stops).fill(PLAYX), `death: ${stops} stop(s) ahead of the scream${m.hurtFired ? ' (F149)' : ''}`);
+        this.model.add(CLIP_MS.VA3, 'death scream', t, 'VA3');
       } else if (m.kind === 'spawn') {   // engine.js `_spawn`: the T-0 klaxon rides the spawn write, before the fill (X3)
         this._write(spawnWrite(m.fill, c.line('spawn', t), true, this.klaxonSaid ? null : c.line('klaxon', t)), 'spawn'); this.klaxonSaid = true; this.loopAt = 0;
       }
@@ -567,6 +579,20 @@ export const SCENARIOS = [
     title: 'Standard, holding the hill (the possession tick runs): a kill with two medal lines',
     preset: 'standard', horizonMs: 14000,
     events: [{ t: 500, type: 'hill', kind: 'hill_captured' }, ...kill(3000, ['double_kill', 'killing_spree']), { t: 12000, type: 'hill_hold_end' }],
+  },
+  {
+    id: 'death-then-kc',
+    title: 'I die with nothing on the gun; MC\'s kill confirm (a first blood) and a lead change land during the scream',
+    preset: 'standard', horizonMs: 9000,
+    events: [{ t: 1000, type: 'death' }, { t: 1300, type: 'mc_kill', medals: ['first_blood'] }, { t: 1300, type: 'mc_alert', kind: 'lead_lost' }],
+  },
+  {
+    id: 'trade-kill-death',
+    title: 'A trade (Tony 2026-09-25): my kill line plays, I die 300 ms later, then MC\'s medal and a lead change; I respawn, kill again',
+    preset: 'standard', horizonMs: 16000,
+    events: [{ t: 1000, type: 'ir_kill' }, { t: 1300, type: 'death' }, { t: 1500, type: 'mc_kill', medals: ['double_kill'] },
+      { t: 1500, type: 'mc_alert', kind: 'lead_lost' }, { t: 9000, type: 'spawn' },
+      { t: 10000, type: 'ir_kill' }, { t: 10300, type: 'mc_alert', kind: 'lead_taken' }],
   },
 ];
 

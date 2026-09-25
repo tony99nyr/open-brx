@@ -191,12 +191,36 @@ replaced: "takes the lead" then "lost the lead" says only the second, and a newe
 When the state on air comes true again (on air "takes the lead", waiting "lost the lead", then "takes the lead" again),
 the new item is a duplicate and the waiting item is false: both are dropped.
 
+## My death wins (the trade)
+
+**Tony**, 2026-09-25 (F149, F351, X4): "your death wins. delaying the death scream would be bad. while you are dead you
+can listen to the queue of KCs and game alerts".
+
+1. **The scream first, never cut.** At my death (`_death`) the phone sends one `$PLAYX,0,*` for each clip its model says
+   the gun holds AHEAD of the native scream (the low-health line, my own kill line), and none for the scream itself.
+   An ordinary death with a quiet gun sends no stop at all. With no scream id known, F149's one stop for the
+   low-health line stays.
+2. **A line the death stop cut is said again.** An item still sounding at the death (`Announcer.death`) goes back in
+   the queue whole; its pending lines check `cut` and do not go out. It plays after the scream.
+3. **While dead, everything queues.** Every KC, medal, lead and hill line waits for a SILENT gun and plays in priority
+   order. Nothing flushes: no `$PLAYX` goes out for a must-hear or objective line while dead (X4). There is no streak
+   silence. The death screen owns the view, so a card's hold does not pace the queue: the next line follows as soon
+   as the one before it has ended. A hill line already queued is still said (its `ok()` no longer needs me alive).
+4. **A longer life for what waits.** An item queued while dead, or waiting at the death, lives `DEAD_QUEUE_TTL_MS`
+   (10 s), and may start that late with its line: the scream (1.27 s in the golden take, about 1.5 s at most), my kill
+   line with its flash (0.76 s), two medal lines (up to 2.5 s each) and a lead line (2.7 s) come to about 10 s.
+5. **The respawn ends it.** Alive again, the normal rules resume, the streak silence included. The spawn write still
+   opens with its own `$PLAYX,0,*` (the golden `spawn` frames).
+
+"Target down" (`enemy_down`) is not in Tony's list: it is still dropped while I am dead.
+
 ## Pre-emption
 
 1. Nothing cuts an announcer ITEM that is still on air: a kill confirm that arrives during a lower item's slot waits for
    it (up to 3.1 s behind one lower line, and up to about 8 s behind an earlier kill's four-medal stack, where the 6 s
    kill-voice limit then shows its card silently). When it does play, the must-hear flush above clears whatever the gun
-   still holds. F158 (does `$PLAYX,0` also clip the native death scream?) is still open.
+   still holds. At my own death the scream goes first (above). F158 (does `$PLAYX,0` also clip the native death scream?)
+   is still open for the case with a clip ahead of it.
 2. A kill confirm takes over a SILENT lower item at once (a teammate card, a spawn or swap card): there is no sound to
    stop, only a card to replace. The displaced card goes back in the queue and shows again after the kill.
 3. The hill rule is kept: a newer hill word takes over a hill item on air, and sends `$PLAYX,0,*` with it only while

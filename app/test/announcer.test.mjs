@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, IR_CALLOUT } from '../src/engine.js';
-import { Announcer, ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS, CLIP_MS, clipMs } from '../src/announcer.js';
+import { Announcer, GunAudio, ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS, CLIP_MS, clipMs } from '../src/announcer.js';
+import * as ann from '../src/announcer.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const catalog = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/data/sound_catalog.json', import.meta.url))));
@@ -675,4 +676,79 @@ test('one kill, one buzz: MC\'s card names the EXACT IR card it paired with, eve
   h.kill();
   assert.equal(h.eng.state().card.data.ir_paired, true);
   assert.equal(h.eng.state().card.data.ir_at, irAt, 'the pairing names the card the HUD saw');
+});
+
+// ---------- my death wins (Tony 2026-09-25, F149 / F351 / X4) ----------
+// "your death wins. delaying the death scream would be bad. while you are dead you can listen to the queue of KCs and
+// game alerts"
+
+/** An announcer on a gun model, with a switch for "I am dead". */
+function deadRig() {
+  let t = 0, dead = false; const log = [];
+  const gun = new GunAudio(), a = new Announcer(() => t);
+  a.gun = gun; a.dead = () => dead;
+  return { a, gun, log, at: v => { t = v; }, now: () => t, die: on => { dead = on; if (on) a.death(t); },
+    item: (kind, audioMs, extra = {}) => ({ kind, audioMs, ...extra, play: ({ muted, flush }) => log.push([kind, t, muted, !!flush]) }) };
+}
+
+test('death unit: while dead a must-hear line waits for the gun (no flush over the scream), and is still said 7 s on', () => {
+  const r = deadRig();
+  r.gun.add(7000, 'the scream and what the gun still holds', 0);
+  r.die(true);
+  r.a.push(r.item('kill_confirmed', 756));
+  assert.deepEqual(r.log, [], 'not started over the scream');
+  for (let t = 50; t < 9000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.equal(r.log.length, 1);
+  const [, t0, muted] = r.log[0];
+  assert.ok(t0 >= 7000 && !muted, `said once the gun is free (${t0} ms), past the 6 s late limit, with its line`);
+});
+
+test('death unit: an item queued while dead lives DEAD_QUEUE_TTL_MS, so a hill line behind 4 s of scream and kill is kept', () => {
+  const r = deadRig();
+  assert.ok(ann.DEAD_QUEUE_TTL_MS >= 8000, 'long enough for the scream, a kill line and two medal lines');
+  r.gun.add(4000, 'the scream and a kill line', 0);
+  r.die(true);
+  r.a.push(r.item('hill_lost', 2976, { key: 'hill' }));
+  for (let t = 50; t < 9000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.deepEqual(r.log.map(x => [x[0], x[2]]), [['hill_lost', false]], 'kept past its 3 s TTL, and said');
+});
+
+test('death unit: my kill line on air at the death is said again in full after the scream', () => {
+  const r = deadRig();
+  r.a.push(r.item('kill_confirmed', 756));
+  r.gun.add(636, 'the kill line', 120);
+  r.at(300); r.gun.add(1271, 'the scream', 300); r.die(true);
+  for (let t = 350; t < 6000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.equal(r.log.filter(x => x[0] === 'kill_confirmed').length, 2, 'started twice: the second after the scream');
+  assert.ok(r.log[1][1] >= 300 + 1271, `the replay waits out the scream (${r.log[1][1]} ms)`);
+});
+
+test('death unit: after the respawn the normal rules resume (a lead line in my kill streak is voice-silent again)', () => {
+  const r = deadRig();
+  r.die(true); r.a.push(r.item('lead_lost', 2675, { key: 'lead' }));
+  for (let t = 50; t < 4000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.deepEqual(r.log.map(x => [x[0], x[2]]), [['lead_lost', false]], 'dead: said');
+  r.die(false); r.at(5000);
+  r.a.push(r.item('kill_confirmed', 756)); r.a.push(r.item('lead_taken', 1943, { key: 'lead' }));
+  for (let t = 5050; t < 12000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.deepEqual(r.log.slice(1).map(x => [x[0], x[2]]), [['kill_confirmed', false], ['lead_taken', true]]);
+});
+
+test('death: the trade through the engine: the scream first (one stop for my kill line ahead of it, then none), then my kill line again, the lead change, the medal', () => {
+  const h = harness().live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(200);                       // my kill line is on the gun
+  const d0 = h.writes.length, dAt = h.now();
+  h.eng.feedFrame('$HIR,4,0,19,2,60,0,0,*'); h.eng.feedFrame('$HP,0,0,0,*');   // the trade: I am shot dead
+  h.adv(200); h.kill({ medals: ['double_kill'] }); h.alert('lead_lost');
+  h.adv(12000);
+  const after = h.writes.slice(d0);
+  const sp = (after.find(w => w.f.startsWith('$SPAWN')) || { t: Infinity }).t;   // the respawn write opens with its own $PLAYX
+  const stops = after.filter(w => w.f === '$PLAYX,0,*' && w.t < sp);
+  assert.ok(stops.length === 1 && stops[0].t === dAt, 'one stop, at the death, for the kill line ahead of the scream: ' + stops.map(w => w.t - dAt));
+  const scream = CLIP_MS[golden.head.find(f => f.startsWith('$PSET,')).split(',')[10]];
+  const vaa = after.filter(w => w.f.startsWith('$PLAY,') && w.f.split(',')[4] === KILL);
+  const ll = h.plays(LEAD_LOST)[0], dk = h.plays(golden.cues.double_kill.split(',')[4])[0];
+  assert.ok(vaa.length === 1 && vaa[0].t >= dAt + scream, 'my kill line again, after the scream');
+  assert.ok(ll && ll.t >= vaa[0].t + CLIP_MS[KILL], 'then the lead change');
+  assert.ok(dk && dk.t >= ll.t + CLIP_MS[LEAD_LOST], 'then the medal');
 });

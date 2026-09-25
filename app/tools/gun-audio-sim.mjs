@@ -85,6 +85,7 @@ export const CLIP_MS = Object.freeze({
   VB0N: 1924, VB0P: 2976, U100: 114, VB8: 1014,              // hill captured / lost, possession tick, "Target down."
   N101: 2571, N102: 2108, VA6Y: 2026, N74: 1940, VA8C: 1497, // shield down / charging / online / heartbeat / up
   VA86: 1984, VAG: 584, VAE: 1250,                           // low health, pain short / long
+  VA3: 1271,                                                 // the native death scream ($PSET t10 in the golden take)
   A10: 14952, N1A: 44, N89: 45, N87: 48,                     // t23 candidates: the hum, and three near-silent ids
 });
 /** Timed by ear on 2026-09-24, for the doc: VAA "kill" about 0.6 s, VA6Y about 2 s. The catalogue agrees. */
@@ -107,10 +108,13 @@ const isStop = f => typeof f === 'string' && f.startsWith('$PLAYX');
  *        what the phone sent; the frames of one write reach the gun `writeFrameGapMs` apart, in order.
  * @param {Array<[number, number]>} [input.shield] the shield value over time, as steps `[t, value]` (default 0).
  * @param {string|null} [input.humClip] the `$PSET` t23 id; null or '' = no hum (Standard, or t23 left EMPTY).
+ * @param {Array<{t:number, id:string, cue?:string}>} [input.natives] the gun's OWN sounds that enter the same FIFO (the
+ *        native death scream, `$PSET` t10, on the `$HP,0` that kills). ASSUMPTION: the scream queues like a token-4
+ *        clip, behind whatever plays (docs/announcer.md models it the same way; unmeasured).
  * @param {number} input.horizonMs how long to run.
  * @param {object} [rules] GUN_RULES, or a copy with a changed field.
  */
-export function simulateGun({ writes, shield = [], humClip = null, horizonMs }, rules = GUN_RULES) {
+export function simulateGun({ writes, shield = [], humClip = null, natives = [], horizonMs }, rules = GUN_RULES) {
   const clipMs = id => (CLIP_MS[id] != null ? CLIP_MS[id] : 2500);
   const humMs = rules.humClipMs != null ? rules.humClipMs : humClip ? clipMs(humClip) : Infinity;
   const events = [];
@@ -122,8 +126,11 @@ export function simulateGun({ writes, shield = [], humClip = null, horizonMs }, 
     });
   }
   for (const [t, v] of shield) events.push({ t, kind: 'shield', v, n: n++ });
-  // A shield change sorts before a frame at the same instant: the `$HP` echo that moved it came first.
-  events.sort((a, b) => a.t - b.t || (a.kind === b.kind ? a.n - b.n : a.kind === 'shield' ? -1 : 1));
+  for (const x of natives) events.push({ t: x.t, kind: 'native', o: { f: play(x.id), cue: x.cue || x.id }, why: 'the gun\'s own sound', n: n++ });
+  // A shield change, then a native sound, sort before a frame at the same instant: the `$HP` that moved the shield (or
+  // killed, and so screamed) came before the phone's reaction to it.
+  const order = { shield: 0, native: 1, frame: 2 };
+  events.sort((a, b) => a.t - b.t || (a.kind === b.kind ? a.n - b.n : order[a.kind] - order[b.kind]));
 
   const clips = [];    // every clip, in arrival order
   const stops = [];    // every $PLAYX: what it hit
@@ -183,6 +190,11 @@ export function simulateGun({ writes, shield = [], humClip = null, horizonMs }, 
         if (!cur) humAt = e.t + rules.humStartMs;
         else if (!rules.humWaitsForQueue && cur.type === 'clip') { cut(cur.c, e.t, 'the shield hum'); startHum(e.t); }
       }
+      continue;
+    }
+    if (e.kind === 'native') {
+      const c = newClip(clipId(e.o.f), e, 4); c.native = true;
+      if (!cur) startClip(c, e.t); else queue.push(c);
       continue;
     }
     const f = e.o.f;

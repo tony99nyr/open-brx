@@ -54,6 +54,18 @@ def test_killjoy_is_in_medals_as_text_only():
     assert row["count"] == spree["count"], "the Killing Spree threshold"
 
 
+def test_killjoy_keeps_its_gun_flash_like_every_medal():
+    """F361, Tony 2026-09-25: KEEP the Killjoy LED flash. It has no voice line, but it compiles the same green gun
+    flash as every other medal. Guard it against a cleanup that makes KILLJOY text only."""
+    import json
+    from pathlib import Path
+    golden = json.loads((Path(__file__).resolve().parents[1] / "brx_mcp" / "mc" / "golden_bundle.json").read_text())
+    leds = golden["leds"]
+    assert leds.get("killjoy"), "the killjoy LED burst is shipped"
+    assert leds["killjoy"] == leds["killing_spree"], "the same flash as every medal"
+    assert not golden["cues"].get("killjoy"), "and still no voice line"
+
+
 def _spree(sc, n, t=T0 + 10_000):
     """p1 (yellow) kills p0 (blue) n times, 10 s apart, respawning p0 each time: p1's streak is n."""
     for i in range(n):

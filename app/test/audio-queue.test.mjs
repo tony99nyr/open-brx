@@ -28,7 +28,7 @@ const rules = patch => ({ ...GUN_RULES, ...patch });
 const BODY = new Set(['pain_short', 'pain_long']);
 /** The body sounds B writes outside the announcer queue (docs/announcer.md, "Exempt"): the one-outstanding rule is the
  *  queue's, so it is asserted for the queue's lines only. */
-const EXEMPT = new Set([...BODY, 'shield_down', 'low_health', 'spawn', 'klaxon']);   // the klaxon rides the spawn write (X3)
+const EXEMPT = new Set([...BODY, 'shield_down', 'low_health', 'spawn', 'klaxon', 'scream']);   // the klaxon rides the spawn write (X3)
 const A10_MS = CLIP_MS.A10;
 /** A shield armed at 0 ms (the hum starts), then one VAA at `sentAt`. */
 const humTrial = (sentAt, r = GUN_RULES, horizonMs = sentAt + 61000) =>
@@ -319,11 +319,42 @@ test('B8 control: with a hum that cuts the queue (`humWaitsForQueue: false`), th
 test('B death-with-kill-queued: the low-health line never plays after the death', () => {
   for (const c of clipsOf(B['death-with-kill-queued'], 'low_health')) assert.ok(c.end <= 2000);
 });
-// Left `todo` for Tony's choice (F149, finding B3). Option 1: the kill line finishes, and the death stop waits for it (up to
-// about 1 s), then goes out only if the low-health line is still on the gun. Option 2: the death is instant, the stop goes
-// out at once, and my kill line is dropped (this test then asserts the kill clip is dropped, not heard).
-test('B death-with-kill-queued: my kill confirm is not cut by my own death', { todo: 'the F149 death $PLAYX stops whatever plays, here the kill line (finding B3)' }, () => {
-  assert.ok(heardInFull(one(B['death-with-kill-queued'], 'kill')));
+// Tony 2026-09-25 (F149 / F351 / X4, the trade): "your death wins. delaying the death scream would be bad. while you are
+// dead you can listen to the queue of KCs and game alerts". The scream plays first and is never cut; my kill line, cut
+// by the death stop, is said again in full after it.
+const scream = run => run.gun.clips.find(c => c.cue === 'scream');
+const deathAt = id => SCENARIOS.find(x => x.id === id).events.find(e => e.type === 'death').t;
+test('B death-with-kill-queued: the scream plays at once and in full; my kill line is then heard in full (finding B3, Tony)', () => {
+  const b = B['death-with-kill-queued'], sc0 = scream(b), kills = clipsOf(b, 'kill');
+  assert.ok(sc0 && heardInFull(sc0) && sc0.start - deathAt('death-with-kill-queued') <= 50, `the scream: ${sc0 && sc0.status}, ${sc0 && sc0.start}`);
+  const last = kills[kills.length - 1];
+  assert.ok(last && heardInFull(last) && last.start >= sc0.end, 'the kill line, in full, after the scream');
+});
+test('B trade-kill-death: the scream first, never cut; then my kill line, the lead change and the medal, each in full, in priority order', () => {
+  const b = B['trade-kill-death'], sc0 = scream(b);
+  assert.ok(sc0 && heardInFull(sc0) && sc0.start - deathAt('trade-kill-death') <= 50, 'the scream at once, in full');
+  const kills = clipsOf(b, 'kill');
+  const order = [sc0, kills.find(c => c.start >= sc0.end), one(b, 'lead_lost'), one(b, 'double_kill')];
+  order.forEach(c => assert.ok(c && heardInFull(c), c && c.cue));
+  for (let i = 1; i < order.length; i++) assert.ok(order[i].start >= order[i - 1].end, `${order[i - 1].cue} ends before ${order[i].cue} starts`);
+});
+test('B X4: no $PLAYX goes out while I am dead (the death stop itself goes out at the death)', () => {
+  for (const id of ['trade-kill-death', 'death-with-kill-queued', 'death-then-kc']) {
+    const s0 = SCENARIOS.find(x => x.id === id), d = deathAt(id), sp = (s0.events.find(e => e.type === 'spawn' && e.t > d) || { t: Infinity }).t;
+    const late = B[id].writes.filter(w => w.frames.includes(PLAYX) && w.t > d && w.t < sp);
+    assert.deepEqual(late.map(w => `${w.t} ${w.why}`), [], id);
+  }
+});
+test('B death-then-kc: the scream is never cut; the first-blood line and the lead change follow it in full', () => {
+  const b = B['death-then-kc'], sc0 = scream(b), fb = one(b, 'first_blood'), ll = one(b, 'lead_lost');
+  assert.ok(heardInFull(sc0), `the scream: ${sc0.status}${sc0.cutBy ? ' by ' + sc0.cutBy : ''}`);
+  assert.ok(heardInFull(fb) && fb.start >= sc0.end && heardInFull(ll) && ll.start >= fb.end);
+});
+test('B trade-kill-death: after the respawn the normal rules resume (a lead change in my next kill streak is voice-silent)', () => {
+  const b = B['trade-kill-death'];
+  assert.ok(clipsOf(b, 'kill').some(c => c.eventT >= 10000 && heardInFull(c)), 'the next life\'s kill line');
+  assert.equal(clipsOf(b, 'lead_taken').length, 0);
+  assert.ok(b.dropped.some(d => d.cue === 'lead_taken' && /silent: kill streak on air/.test(d.why)));
 });
 
 test('B koth-flap-standard: the kill line is heard in full; neither hill line is said (the stale one is replaced, the newest meets the streak)', () => {
