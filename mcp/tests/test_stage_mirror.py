@@ -916,6 +916,41 @@ def test_a_death_inside_the_debounce_hold_cancels_the_queued_low_health_write():
     asyncio.run(go())
 
 
+def test_f374_a_hit_during_the_hold_restarts_it_and_a_heal_drops_the_line():
+    """F375 (engine.js `_onHp`): the low-health line goes out only after HURT_DEBOUNCE_S with no damaging `$HP`.
+    The sleeps are recorded, so the restart shows as a second wait of exactly the time the hit moved the end."""
+    async def go():
+        st, mgr, clock = mk_gain()
+        sleeps: list[float] = []
+        async def rec(s: float) -> None:
+            sleeps.append(round(s, 3))
+        st.sleep = rec
+        await live(st)
+        clock.advance(1.0)
+        st._on_rx("$HP,45,0,0,*"); await settle(st)
+        clock.advance(1.0)
+        n = mark(mgr); sleeps.clear()
+        st._on_rx("$HP,12,0,0,*")                                    # crosses under 15: held
+        clock.advance(0.3)
+        st._on_rx("$HP,8,0,0,*")                                     # the burst goes on: the hold restarts
+        await settle(st)
+        assert HURT in sleeps and sleeps[sleeps.index(HURT) + 1:][:1] == [0.3], f"the hold, then 0.3 s more for the later hit: {sleeps}"
+        assert st.bundle["cues"]["hurt"] in since(mgr, n), "then the line goes out"
+        # CONTROL: a heal back over the threshold during the hold drops it
+        st2, mgr2, clock2 = mk_gain()
+        await live(st2)
+        clock2.advance(1.0)
+        st2._on_rx("$HP,45,0,0,*"); await settle(st2)
+        clock2.advance(1.0)
+        n2 = mark(mgr2)
+        st2._on_rx("$HP,12,0,0,*")
+        st2._on_rx("$HP,30,0,0,*")                                   # healed before the hold ended
+        await settle(st2)
+        assert st2.bundle["cues"]["hurt"] not in since(mgr2, n2), "no longer critical: no line"
+    HURT = S.HURT_DEBOUNCE_S
+    asyncio.run(go())
+
+
 # ======================================================================================================
 # F15 -- the host-driven stun (EMP), mirrored from engine.js `_stun` / `_stunRestore` / `_onAmmo`
 # ======================================================================================================

@@ -241,6 +241,7 @@ PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain
 LOW_HEALTH_HP = 15             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
 HURT_DEBOUNCE_S = 0.4          # engine.js HURT_DEBOUNCE_MS: hold the low-health write here so a killing hit (or a match
                                 # end/panic/BLE drop) landing in the same window can cancel it before it reaches the gun
+HURT_MAX_WAIT_S = 3.0          # engine.js HURT_MAX_WAIT_MS (F375): the low-health line is dropped past this after the crossing
 RELOAD_NAG_FIRST, RELOAD_NAG_EVERY = 5, 3   # engine.js RELOAD_NAG_FIRST / RELOAD_NAG_EVERY (the RELOAD nag): say RELOAD on the 5th dry pull, then every 3rd
 # S29 the shield recharge (engine.js SHIELD_REGEN_*): quiet since the last damage, the `$LIFE` grant and its
 # cadence, the grant cap, and the period the shield-down heartbeat replays on. SECONDS here, ms on the phone.
@@ -569,6 +570,8 @@ class GunStage:
         self._last_event_led: float | None = None
         self._hurt_fired = False
         self._pending_hurt_write = False   # review 2026-09-19: the low-health alert is sitting in its HURT_DEBOUNCE_S hold
+        self._hurt_quiet_at = 0.0          # F375: the last damaging `$HP` while the alert waits (engine.js `_hurtQuietAt`)
+        self._hurt_gen = 0                 # F375: a hold left over from an earlier life never sends this one (engine.js `_hurtGen`)
         self._last_seq = 0
         self._reacted_seq = 0          # highest rx seq already turned into a reaction -- distinct from
                                         # `_last_seq` (poll's own fetch cursor) so the instant on_frame
@@ -2688,6 +2691,7 @@ class GunStage:
         if is_up is not None and not is_up(self.alias):
             self.connected = False
             self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
+            self._pending_hurt_write = False       # ...the held low-health line too (engine.js `_lightGen` on a drop)
             self._end_reload("dropped")            # engine.js `onBleDropped`: no link, no ammo echo -- the takeover would be fiction
             self.switching = None; self.held = {}   # `_on_button` keeps the FIRST edge, so a press whose release never arrived would read as held forever
             self._hill_reset()                     # …and the hill with it: this path RETURNS, so no expiry would run
@@ -3498,7 +3502,11 @@ class GunStage:
                 # cancel it before it reaches the gun.
                 if fr:
                     self._pending_hurt_write = True
-                    self._spawn_task(self._hurt_debounced(fr, self._level_gen))
+                    self._hurt_quiet_at = self.now()
+                    self._hurt_gen += 1
+                    self._spawn_task(self._hurt_debounced(fr, self._hurt_gen, self._hurt_quiet_at))
+            elif self._pending_hurt_write:
+                self._hurt_quiet_at = self.now()   # F375 (engine.js): a hit while the line waits restarts the quiet time
             # S16: the tick's own echo books no hit at all -- no event, no pain, no headset re-flash (engine.js
             # `_onHp`'s `!dotEcho` gate). The low-health alert just above is NOT gated: a DoT tick crossing the
             # threshold is still news, exactly as engine.js's `hurtNow` block is unguarded by `dotEcho`.
@@ -4461,17 +4469,30 @@ class GunStage:
             self._readout_frame = rest
             await self.write([rest], "readout rest", gap_ms=0)
 
-    async def _hurt_debounced(self, frames: list[str], gen: int) -> None:
+    async def _hurt_debounced(self, frames: list[str], hurt_gen: int, since: float) -> None:
         """HURT_DEBOUNCE_S (review 2026-09-19, mirrors engine.js's HURT_DEBOUNCE_MS): the write sits here
-        for the hold, not on the wire. A death lands first -> `_pending_hurt_write` is already False and
-        this is a no-op (office test 2026-09-19). A match end/panic/BLE drop lands first -> `_level_gen`
-        (this file's `_lightGen`) has moved on, or the gun is no longer `alive`, so the write is dropped
-        even though `_pending_hurt_write` was never explicitly cleared for those paths."""
+        for the hold, not on the wire. A death, a match end, a panic, a BLE drop or a new life clears
+        `_pending_hurt_write` first, and this is a no-op (office test 2026-09-19). `_level_gen` is NOT the
+        check here: this file bumps it on every readout animation, so a second hit in the hold used to
+        drop the line, which engine.js (`_lightGen`, teardown only) never did.
+        F375 (engine.js): the hold ends only after HURT_DEBOUNCE_S with no damaging `$HP` (each hit restarts
+        it), and a heal back to LOW_HEALTH_HP drops the line. engine.js also waits for its gun audio model to
+        go quiet; this file has no audio model, so that half is the phone's alone."""
+        due = since + HURT_DEBOUNCE_S          # from the crossing itself, not from when this task first runs
         await self.sleep(HURT_DEBOUNCE_S)
-        if not self._pending_hurt_write:
+        while self._pending_hurt_write and self._hurt_gen == hurt_gen:
+            want = self._hurt_quiet_at + HURT_DEBOUNCE_S
+            if want <= due:
+                break
+            if want - since > HURT_MAX_WAIT_S:          # engine.js HURT_MAX_WAIT_MS: said this late, it is noise
+                self._pending_hurt_write = False
+                return
+            wait, due = want - due, want       # from the last due time, so a clock that does not move cannot loop
+            await self.sleep(wait)
+        if not self._pending_hurt_write or self._hurt_gen != hurt_gen:
             return                                    # cancelled by a death that landed first
         self._pending_hurt_write = False
-        if self._level_gen != gen or not self.alive:
+        if not self.alive or not 0 < self.hp < LOW_HEALTH_HP:
             return
         self._hs_gen += 1
         await self.write(frames, "low health", gap_ms=0)

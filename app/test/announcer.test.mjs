@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { Engine, IR_CALLOUT } from '../src/engine.js';
 import { Announcer, GunAudio, ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS, CLIP_MS, clipMs } from '../src/announcer.js';
 import * as ann from '../src/announcer.js';
+import { simulateGun, playNow } from '../tools/gun-audio-sim.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const catalog = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/data/sound_catalog.json', import.meta.url))));
@@ -853,4 +854,77 @@ test('M-B: my kill line ending inside the slack is neither stopped nor said agai
   assert.equal(killLines(h).length, 1, 'said once');
   const st = h.writes.slice(n).filter(w => w.f === '$PLAYX,0,*');
   assert.ok(st.length >= 1 && st[0].t >= vaaEnd, `the stop goes after my line ended (${st.length ? st[0].t - vaaEnd : 'none'} ms)`);
+});
+
+// ---------- F375: the "Health Critical" line after the death scream (field 2026-09-24, Tony) ----------
+// "A critical-health sound is useless while the player is down." The engine's writes go through the gun simulator
+// (gun-audio-sim.mjs), with the native scream at the moment the GUN died, which is before the phone hears `$HP,0`.
+const HURT_ID = golden.cues.hurt.split(',')[4];
+/** The writes since `from`, run through the gun simulator. `scream` = when the gun screamed. `interrupt` = F158's other
+ *  case: the scream cuts what plays, like a token-1 clip (UNPROVEN either way; the simulator's default queues it). */
+function gunRun(h, from, scream, { interrupt = false } = {}) {
+  const id = h.eng._psetSounds[10].trim();
+  const writes = h.writes.slice(from).map(w => ({ t: w.t, frames: [w.f] }));
+  if (interrupt) writes.push({ t: scream, frames: [playNow(id)] });
+  writes.sort((a, b) => a.t - b.t);
+  const g = simulateGun({ writes, natives: interrupt ? [] : [{ t: scream, id, cue: 'scream' }], horizonMs: scream + 10000 });
+  return { g, scream: g.clips.find(c => c.id === id), hurt: g.clips.filter(c => c.id === HURT_ID && c.start != null) };
+}
+
+test('F375: under fire, the critical line waits for the shooting to pause, so a death the phone hears late never puts it after the scream', () => {
+  const h = harness().live();
+  const n = h.writes.length, t0 = h.now();
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,12,0,0,*');   // under 15: the critical line is armed
+  h.adv(300); h.eng.feedFrame('$HIR,4,0,19,2,4,0,0,*'); h.eng.feedFrame('$HP,8,0,0,*');   // the burst goes on
+  h.adv(180); die(h);   // the lethal hit reached the gun at t0 + 380 (it screamed then); the phone hears it 100 ms later
+  h.adv(8000);
+  const { scream, hurt } = gunRun(h, n, t0 + 380);
+  assert.deepEqual(hurt.filter(c => c.start >= scream.start).map(c => c.start - t0), [], 'no critical line after the scream');
+  assert.ok(scream.status === 'full', `the scream plays in full (${scream.status}, cut by ${scream.cutBy})`);
+});
+
+test('F375: the critical line never queues behind another clip; it waits for a quiet gun, then plays', () => {
+  const h = harness().live();
+  const t0 = h.now();
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,12,0,0,*');
+  h.kill(); h.adv(600);                                   // my kill line (636 ms) starts 120 ms after the feedback
+  assert.equal(h.plays(HURT_ID).length, 0, 'the kill line still plays: the critical line is not queued behind it');
+  h.adv(1000);
+  const hp = h.plays(HURT_ID);
+  assert.equal(hp.length, 1, 'said once the gun is quiet');
+  assert.ok(hp[0].t >= h.plays(KILL)[0].t + CLIP_MS[KILL], `after the kill line ends (${hp[0].t - t0} ms)`);
+  // A death while it waits: it is never sent, also when the scream cuts in (F158's other case).
+  const k = harness().live(), m = k.writes.length, u0 = k.now();
+  k.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); k.eng.feedFrame('$HP,12,0,0,*');
+  k.kill(); k.adv(600); die(k); k.adv(8000);
+  assert.equal(k.plays(HURT_ID).length, 0, 'a death while it waits cancels it');
+  const { scream, hurt } = gunRun(k, m, u0 + 600, { interrupt: true });
+  assert.ok(scream && !hurt.some(c => c.start >= scream.start), 'nothing critical after the scream');
+});
+
+test('F375: with no scream id known, a death while the line waits sends no F149 stop (nothing went out to stop)', () => {
+  const h = harness().live();
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,12,0,0,*');
+  h.kill(); h.adv(600);                                   // the line waits behind my kill line
+  h.eng._psetSounds[10] = '';                             // the scream id is unknown: `_death` falls back to F149's rule
+  const n = h.writes.length;
+  die(h);
+  assert.deepEqual(stopsIn(h, n, h.now() + 1).map(w => w.t), [], 'no stop: it could only land on the scream');
+});
+
+test('F375: under steady fire the line waits at most HURT_MAX_WAIT_MS, then is dropped, not said late', () => {
+  const h = harness().live();
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,14,0,0,*');
+  for (let hp = 13; hp >= 2; hp--) { h.adv(300); h.eng.feedFrame('$HIR,4,0,19,2,1,0,0,*'); h.eng.feedFrame(`$HP,${hp},0,0,*`); }   // 3.6 s of hits
+  h.adv(3000);
+  assert.equal(h.plays(HURT_ID).length, 0, 'not said 4 s after the news');
+  assert.ok(h.logs.some(l => /low-health line dropped/.test(l)), 'and the log says why');
+});
+
+test('F375: a heal back over 15 HP while the critical line waits drops it', () => {
+  const h = harness().live();
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,12,0,0,*');
+  h.adv(200); h.eng.feedFrame('$HP,30,0,0,*');   // a medkit, before the line went out
+  h.adv(2000);
+  assert.equal(h.plays(HURT_ID).length, 0, 'the player is no longer critical');
 });

@@ -304,6 +304,14 @@ can listen to the queue of KCs and game alerts".
 7. **A hill preempt while dead** goes through `_sayMust`'s guard: no raw `$PLAYX`.
 8. **A hill change while I am dead** is queued too (Tony's "game alerts"), and said after the scream. Before this, a
    control-point handover while down was said on the revive; now it is said while down, once.
+9. **The low-health line never follows the scream** (F375, field 2026-09-24). It is not an item, but it waits: it goes
+   out only after `HURT_DEBOUNCE_MS` (400 ms) with no damaging `$HP` (each hit restarts the wait), and only when the
+   model holds no clip that can still play. So it is never queued behind another clip, and it never goes out while a
+   burst is still landing. A death, a heal back to 15 HP or more, a match end, or a wait past `HURT_MAX_WAIT_MS`
+   (3 s after the crossing) drops it. With no scream id known, F149's death stop goes out only for a line that was sent. The reason:
+   the gun screams on the lethal `$HP,0` before the phone hears it, so a line written in that gap queues behind the
+   scream, and the death stop then cuts the scream instead. A lethal hit after a pause of about 400 ms can still
+   meet that gap (about one BLE delay wide); bench step 11.8 checks it.
 
 "Target down" (`enemy_down`) is not in Tony's list: it is still dropped while I am dead.
 

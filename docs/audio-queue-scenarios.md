@@ -167,8 +167,8 @@ of 2026-09-24 in another form.
 | Cue (event) | A | B |
 |---|---|---|
 | shield down (0.5 s) | cut at 2.0 s by the death stop | cut at 1.6 s by the kill's flush |
-| low health (1.1 s) | 2150 ms, full, AFTER the death | cut after 10 ms by the kill's flush |
-| kill (1.5 s) | 3734 ms, full, after the death | 140 ms, then CUT after 360 of 636 ms by the death stop |
+| low health (1.1 s) | 2150 ms, full, AFTER the death | not sent: it waits for a quiet gun, and the death cancels it (F375) |
+| kill (1.5 s) | 3734 ms, full, after the death | 130 ms, then CUT after 370 of 636 ms by the death stop |
 
 ### 7. Standard: a kill confirm, then the hill captured and lost 300 ms apart
 

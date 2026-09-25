@@ -19,6 +19,7 @@ const FLASH_TO_LINE_MS = 120;      // feedback / IR kill: $SFLASH, then the line
 const MEDAL_GAP_MS = 2000;         // medal lines 120 + i * 2000 ms after the feedback
 const CALLOUT_WINDOW_MS = 3000;    // S57: IR and MC kill confirms pair inside this
 const HURT_DEBOUNCE_MS = 400;      // the low-health line waits this long; a death inside it cancels it
+const HURT_MAX_WAIT_MS = 3000;     // F375: the low-health line is dropped past this after the crossing
 const PAIN_GAP_MS = 600;
 const PAIN_STALE_MS = 500;         // a grunt that would start later than this after its hit is dropped (B)
 const PAIN_LONG_MIN = 40;
@@ -36,7 +37,7 @@ const KILL_CARD_MS = 1800;             // B only: brx4 engine.js, MC's kill card
 const IR_KILL_BANNER_MS = 2000;        // B only: brx4 engine.js, the IR KILL CONFIRMED card
 const MUST_HEAR_MAX_STOPS = 4;         // B only: brx4 engine.js, round 3 H1 (the loop + 3 clips)
 /** The engine numbers the test checks against app/src/engine.js, by name. */
-export const ENGINE_MIRROR = Object.freeze({ PAIN_GAP_MS, PAIN_STALE_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS,
+export const ENGINE_MIRROR = Object.freeze({ PAIN_GAP_MS, PAIN_STALE_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, HURT_MAX_WAIT_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS,
   SHIELD_REGEN_STEP_MS, SPAWN_SHIELD_FULL, SHIELD_FILL_ECHO_MS, SHIELD_LOOP_MS, HILL_TICK_MS, MEDAL_GAP_MS, CALLOUT_WINDOW_MS });
 
 /** The cue each kind plays (golden bundle, first take). */
@@ -462,7 +463,22 @@ class PolicyB {
         this._write([c.line(k, t)], k);
       } else if (m.kind === 'low_health') {
         this.pendingHurt = true; this.lastPainAt = t;
-        c.delay(HURT_DEBOUNCE_MS, () => { if (!this.pendingHurt) return; this.pendingHurt = false; if (c.game.alive) this._write([c.line('low_health', t), '$HLED,7,4,90,90,10,15,*'], 'low health'); });
+        // engine.js F375: the line waits until no hit for HURT_DEBOUNCE_MS (every hit restarts it) and the gun model holds
+        // no clip that can still play, so it never queues behind another clip
+        const gen = this.hurtGen = (this.hurtGen || 0) + 1;
+        let due = t + HURT_DEBOUNCE_MS;
+        const tryHurt = () => {
+          if (!this.pendingHurt || this.hurtGen !== gen) return;
+          if (!c.game.alive || !(c.game.hp < LOW_HEALTH_HP)) { this.pendingHurt = false; return; }
+          this._sync(); const now = c.t, busy = this.model.playingUntil(now);
+          const want = Math.max(c.game.quietAt + HURT_DEBOUNCE_MS, busy > now ? busy : 0);
+          if (want > due && want > now) {
+            if (want - t > HURT_MAX_WAIT_MS) { this.pendingHurt = false; return; }
+            const wait = want - Math.max(due, now); due = want; c.delay(wait, tryHurt); return;
+          }
+          this.pendingHurt = false; this._write([c.line('low_health', t), '$HLED,7,4,90,90,10,15,*'], 'low health');
+        };
+        c.delay(HURT_DEBOUNCE_MS, tryHurt);
       } else if (m.kind === 'death') {
         this.hillMine = false; this.wasDead = true;
         // engine.js `_death`: the native scream ($PSET t10, VA3 in SPAWN_HEAD's take) joins the gun and the phone's model

@@ -94,6 +94,9 @@ const LOW_HEALTH_HP = 15;
 // Office test 2026-09-19: how long the low-health write waits before it actually reaches the gun, so a
 // death that lands inside the window can cancel it outright instead of merely interrupting it (see _onHp).
 const HURT_DEBOUNCE_MS = 400;
+// F375: the low-health line waits for a pause in the hits and a quiet gun, but not for ever: "health critical" said
+// seconds after the news is noise. Past this long after the crossing, the line is dropped (the HUD still shows it).
+const HURT_MAX_WAIT_MS = 3000;
 // THE RELOAD NAG (Tony, bench 2026-09-18). The magazine is empty, the reserve is not, and the
 // player keeps pulling the trigger: say RELOAD on the 5th pull of that dry spell and on every 3rd after it
 // (5, 8, 11 …). Tony's numbers, verbatim, and they are a taste decision, not a measurement: the first four
@@ -936,6 +939,7 @@ export class Engine {
     this._poolRepair = null;        // F341: {life, attempts, dueAt, readAt, wrote} while the node repairs pools above their ceilings
     this.poolWrong = null;          // F341: {life, at, hp, armor, shield} once POOL_REPAIR_TRIES repairs did not hold (pool `pool_wrong`)
     this.hurtFired = false;         // low-health alert already sent this life
+    this._hurtSent = false;         // F375: ...and its line actually written (it may wait, then be dropped)
     this._pendingHurtWrite = false; // ...and whether that alert is still sitting in its debounce window
     this.poison = null;             // S16: {proto, per, tickMs, at, until, nextAt, by:{num,team}, ticks} while a poison stack ticks (spec/node.md §3.17)
     this._dotEcho = null;           // S16: {at, pool, n} of the last tick write, until its `$HP` echo is consumed (DOT_ECHO_MS)
@@ -2817,6 +2821,7 @@ export class Engine {
     this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : []), ...(kx ? [kx] : [])], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + this._lineTag(sp) + (kx ? ' + klaxon' : '') + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
     if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
+    this._hurtSent = false;
     this._pendingHurtWrite = false;
     this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0; this.magBySlot = {}; this.heatBySlot = {}; this._heatAt = {}; this._everHeated = {}; this._heatLock = null; this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._holdAccuracyWrites('spawn');   // the spawn write owns `$AMMO` until the gun has answered it
@@ -3738,7 +3743,7 @@ export class Engine {
     // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
     this._ann.respawn(this.now(), revive.includes(PLAYX));
     this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);   // X3: the line before the fill
-    this.hurtFired = false;
+    this.hurtFired = false; this._hurtSent = false;
     this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
     // operator respawn of a LIVE player skips `_death`, which is the only other place `switching` was cleared, so a
@@ -6515,16 +6520,33 @@ export class Engine {
       // away over BLE by the time the death frame arrived a few tens of ms later. HURT_DEBOUNCE_MS holds the
       // write here instead of sending it at once; `_death` cancels it outright (never sent) when it lands
       // inside the window, and falls back to the existing $PLAYX stop once the debounce has already fired.
+      // F375 (field 2026-09-24, Tony: "health critical" played AFTER the death scream): the hold now ends only when
+      // BOTH are true: no damaging `$HP` for HURT_DEBOUNCE_MS (every hit restarts it: a burst still landing means a
+      // death may be coming), and the gun model holds no clip that can still play (the line never queues behind
+      // another clip, where a scream can overtake it). Why: the gun screams on the lethal `$HP,0` before the phone
+      // hears it, so a line written in that gap queues BEHIND the scream, and `_death`'s stop then cuts the scream.
       if (fr.length) {
-        this._pendingHurtWrite = true;
+        this._pendingHurtWrite = true; this._hurtQuietAt = this.now();
         const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: match end/panic/BLE drop must not let this land late
-        this.delay(HURT_DEBOUNCE_MS, () => {
-          if (!this._pendingHurtWrite) return;   // cancelled by a death that landed first
+        const hg = (this._hurtGen = (this._hurtGen || 0) + 1);   // a timer left over from an earlier life never sends this one
+        const crossedAt = this.now();
+        let due = crossedAt + HURT_DEBOUNCE_MS;
+        const tryHurt = () => {
+          if (!this._pendingHurtWrite || this._hurtGen !== hg) return;   // cancelled by a death that landed first
+          if (this._lightGen !== lg || !this.alive || this.ended || !(this.hp > 0 && this.hp < LOW_HEALTH_HP)) { this._pendingHurtWrite = false; return; }   // match ended/panicked/relinked (review 2026-09-19), or no longer critical
+          const now = this.now(); this._audioSync(now);
+          const busy = this._gun.playingUntil(now), want = Math.max(this._hurtQuietAt + HURT_DEBOUNCE_MS, busy > now ? busy : 0);
+          if (want > due && want > now) {   // `want > due`: a clock that does not move cannot loop; `want > now`: a late timer does not wait again
+            if (want - crossedAt > HURT_MAX_WAIT_MS) { this._pendingHurtWrite = false; this.log(`low-health line dropped: no quiet gun within ${HURT_MAX_WAIT_MS} ms (F375)`, 'lk'); return; }
+            const wait = want - Math.max(due, now); due = want; this.delay(wait, tryHurt); return;
+          }
           this._pendingHurtWrite = false;
-          if (this._lightGen !== lg || !this.alive || this.ended) return;   // match ended/panicked/relinked during the debounce window (review 2026-09-19)
-          this._hsGen = (this._hsGen || 0) + 1; this._write(fr, 'low health');   // cancels a pending hit-flash rest step (polish 2026-09-04)
-        });
+          this._hurtSent = true; this._hsGen = (this._hsGen || 0) + 1; this._write(fr, 'low health');   // cancels a pending hit-flash rest step (polish 2026-09-04)
+        };
+        this.delay(HURT_DEBOUNCE_MS, tryHurt);
       }
+    } else if (this._pendingHurtWrite && dmg > 0) {
+      this._hurtQuietAt = this.now();   // F375: a hit while the line waits restarts the quiet time
     }
     if (this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && dmg > 0 && !this.tutorial && !dotEcho) {
       // A registered hit WIPES the headset: the native flash runs, then it goes dark and our team
@@ -6791,7 +6813,7 @@ export class Engine {
     // can listen to the queue of KCs and game alerts". The death stop takes off every clip the gun holds AHEAD of the
     // scream (the low-health line, my own kill line) and never the scream itself; an announcer line it cut is said again
     // after the scream (`_ann.death`). With no scream known, F149's one stop for the low-health line stays.
-    const stops = screamAhead != null ? Math.min(screamAhead, MUST_HEAR_MAX_STOPS) : (this.hurtFired ? 1 : 0);
+    const stops = screamAhead != null ? Math.min(screamAhead, MUST_HEAR_MAX_STOPS) : (this._hurtSent ? 1 : 0);   // F375: only a line that went out
     // A line on air is cut, and its unsaid rest requeued, only when one of ITS clips is among the stopped ones.
     const cur = this._ann.current, stopped = aheadClips.slice(0, stops);
     this._ann.death(this.now(), stops > 0 && (screamAhead == null || (!!cur && stopped.some(c => c.item === cur))));

@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (D5 closed).
+Updated: 2026-09-25 (F375 filed).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,15 +9,15 @@ Updated: 2026-09-25 (D5 closed).
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 57.** Desk 11 · bench 46 · decision 0.
+**MVP open: 58.** Desk 11 · bench 47 · decision 0.
 
 **MVP DESK (11),** a keyboard is enough:
 - 🟠 **F164** · **B21** · **F372** · **F221** · **F374**
 - 🟡 **F342** · **Q13** · **F333** · **S32** · **F319** · **F161**
 
-**MVP BENCH (46),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (47),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F341** · **F347** · **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10**
-- 🟠 **F349** · **F308** · **F332** · **H9** · **S58** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311**
+- 🟠 **F349** · **F308** · **F332** · **H9** · **S58** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375**
 - 🟡 **F350** · **H8** · **F353** · **F298** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294**
 - 🟢 **F339**
 
@@ -29,7 +29,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F375 · G11 · H10 · K9 · P19 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F376 · G11 · H10 · K9 · P19 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -144,6 +144,8 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 - **F298 🟡 THE SHIELDS PRESET IN A REAL MATCH: NOT YET CLEAN.** Life presets (Standard 45/70/0, Shields 45/0/105, Hardcore 45/0/0) shipped with S45/S29, and until 2026-09-24 the Shields preset's shield-recharge behaviour had run only on the bench, never through Mission Control with two phones. Bench gate: a real match on the Shields preset, confirm the recharge cues and the pool readout on both HUDs. `bench`. **→ 2026-09-24 evening:** the first real Shields match ran (0.4.11, the experiment log's evening entry). It found F348 (every spawn at shield 0, fixed in code), F349 (a chunky fill, fixed in part) and F347 (the shield hum holds the cues, open). The gate stands on a build that carries those fixes (bench steps 4.18 and 4.19).
 
 - **S57 🟠 THE IR CALLOUT BUS: GAME-STATE CALLOUTS GUN TO GUN, WITH NO NETWORK.** Tony 2026-09-23: a priority. When someone dies, a hill is captured, and so on, the phone that knows the event has its gun broadcast one `$IRTX` word (Direction 100, protocol 15, magnitude = event code, player id = who). Every gun in IR range reports it as a silent `$HIR` with no pool change (bench 2026-09-18, magnitudes 1-39), and each receiving phone plays the local callout (ENEMY DOWN, TEAMMATE DOWN, HILL CAPTURED, KILL CONFIRMED for the shooter). A dead gun still forwards a host `$IRTX` through its headset, so the victim's phone can send its own death. Presentation only: scoring stays with the victims' reports and MC (S56's relay). Design first: the event-code table, dedupe (a word can arrive twice), team gating, and how it sits beside the S56 relay. Supersedes B31's BLE-advert design. Firmware question for the dig (brx5): how protocol 15 is handled, and what `VB0Q` "Hill Moved" is. **→ 2026-09-23 (desk, from the 2026-09-18 bench log):** already proven: a dead gun forwards a host `$IRTX` through its headset; magnitudes 1-39 on a `<15,0>` fn 28 row register as a silent `$HIR` with no pool change (player 0, team 3); fn 28 does not register an ally with `$GSET` t1 = 0; and a DEAD receiver ignores fn 28, so a dead player's gun hears no callout on that row. Open, and on `bench-2026-09-24.md`: the sender's own self-report, team gating for field 4 = 0-3, `$HIR` duplicates and their spacing (the 600 ms dedupe), the exact 21-28 frame with a non-zero player, dead-receiver fn 34, and range against a live shot. **→ 2026-09-23: BUILT (A54), deaths and kills only (Tony).** One word per death (A55 added a second, naming the victim, when the killer is known), sent once from the victim's own gun, never relayed (Tony: every event is one word from the gun where it happened; hill 29-32 and flag 33-36 captures are reserved). `DOWN_BY` 21 + victim tid names the killer; `DOWN` 25 + victim tid names the victim. Receivers: KILL CONFIRMED (first to arrive, once, against MC's feedback, paired one-to-one), ENEMY DOWN ("Target down." VB8), TEAMMATE DOWN (chip only, Tony). MC ships the silent `<15,0>` row in every mode and `callout_team`. Do: run the `bench-2026-09-24.md` S57 steps; if team 2 is a true broadcast team, `callout_team` becomes a constant 2; if fn 34 on `<15,0>` keeps a dead gun dead, dead players can hear callouts too. **→ 2026-09-23, objective events:** a grenade hill already follows the rule (its magnitude-50 capture word is the one broadcast); an M5Stick hill now sends that same word once on a flip, so phones need no new code (under `station_source: grenade`; the Stick's value is H8); a phone control point's BLE advert is its one broadcast; 29-36 are reserved for CTF (not built). F312: with friendly fire off the capturing team may not hear its own capture; Block 7 step 8. `bench`. **→ 2026-09-24 evening (bench 7.11):** measured, `$IRTX,100,15,2,0,22,…` ×10 at about 2 m, all received as 22. The victim-name word 26 registered 5/5 alone, but is LOST IN PLAY, because it is sent 186 ms after the 22, inside the headset's 199 ms rate guard; brx4 is fixing it in 0.4.12 (300 ms, measured from the actual send). Tonight's match saw one 22→28 sequence, which stays unexplained. Reading: a collision in play. **→ 2026-09-24, the fix is on main:** `CALLOUT_NAME_GAP_MS` 300 ms after the first word is written, and receivers pair a `DOWN` 250 to 800 ms after its `DOWN_BY` (`docs/ir-callouts.md`, A55). Open: the rest of Block 7 on a build that carries it.
+
+- **F375 🟠 THE "HEALTH CRITICAL" LINE PLAYS AFTER THE DEATH SCREAM.** Field 2026-09-24, Tony, seen several times: the low-health line (VA86) followed the scream. His rule: a critical-health sound is useless while the player is down, so it never plays after a death, and a death that is coming clears it. The same symptom as the closed F149 and post-MVP F214. Two mechanisms, from the code and the gun simulator, neither proven on a gun: (1) on 0.4.11 the line queued behind another clip, and F149's one `$PLAYX` stopped that clip instead (`audio-queue-scenarios.md` scenario 6; X4 on 2026-09-25 counts the clips ahead); (2) the gun screams on the lethal `$HP,0` before the phone hears it, so a line written in that gap queues behind the scream, and the death stop cuts the scream (reproduced in `announcer.test.mjs`). **→ 2026-09-25 fixed in code:** the line now waits until no damaging `$HP` for 400 ms and a quiet gun model (at most 3 s), and a death, a heal or a match end drops it (`engine.js` `_onHp`, mirrored in `stage.py` and `audio-scenarios.mjs`). A lethal hit right after a pause of about 400 ms can still meet the gap (about one BLE delay wide). `bench`: runbook step 11.8 step 6.
 
 - **F3 🟡** empty-mag / reload prompt never appeared on sustained full-auto. Gun and engine are eliminated from captures;
   what is left is the phone transport/render layer. Needs the phone's BLE frame ring (Share log before closing the app). `capture`. **→ 2026-09-25:** a quick check in sitting C (runbook step 11.8) before any capture work.
