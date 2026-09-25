@@ -157,7 +157,7 @@ export const RESPAWN_RSSI_DBM = Object.freeze({ phone: -70, sticks3: -57 });   /
 /** Every other kind on a phone station keeps the 2026-09-04 bench value (about 10 ft at high TX). */
 export const STATION_THRESHOLD_DBM = -74;
 /** A phone station's own default for `kind` (utility.js, when `settings.threshold` is 0). */
-export const POWERUP_RSSI_DBM = Object.freeze({ phone: -55, sticks3: -58 });   // S58: the ~1 ft claim range, placeholders until bench 4.11
+export const POWERUP_RSSI_DBM = Object.freeze({ phone: -55 });   // S58: a phone station's ~1 ft claim range, a placeholder until bench 4.11 (a StickS3 advertises -57)
 export function phoneStationThreshold(kind) { return kind === 'respawn' ? RESPAWN_RSSI_DBM.phone : kind === 'powerup' ? POWERUP_RSSI_DBM.phone : STATION_THRESHOLD_DBM; }
 
 /** utility.js `thr()`: what a phone station advertises and measures by, its override or else its platform default. */

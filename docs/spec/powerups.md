@@ -242,9 +242,11 @@ button, and the gun's buttons play no part.
 2. **Threshold.** RSSI differs by phone and by station hardware, so there are three layers. The player phone
    judges a pickup against the station's byte 14, and falls back to `POWERUP_THRESHOLD_DEFAULT` (-55, `engine.js`, a
    placeholder until the calibration step) only when that byte is 0. MC can override the station's value
-   (`StationAssignment.threshold`, 0 = the station's own default). ⚠ Code read, 2026-09-24: no station advertises 0
-   today. A phone station at threshold 0 advertises its platform default, -74 (`beacon.js STATION_THRESHOLD_DBM`),
-   and a StickS3 advertises -57, so with no MC override the pickup range is the presence range, not about 1 ft (S58). If the calibration shows phones differing by more than 4 dB, the app gains a
+   (`StationAssignment.threshold`, 0 = the station's own default). A powerup PHONE station at threshold 0 advertises
+   its own claim default, -55 (`beacon.js POWERUP_RSSI_DBM.phone`; fixed 2026-09-24, it used to advertise the -74 of
+   other kinds), and MC sends -55 explicitly to a phone app older than 0.4.12. A StickS3 still advertises its one
+   station default, -57, which is close. The HUD's "near" hints (GET CLOSER, TAKEN, the countdown) start
+   `PU_NEAR_DB` (10) under the threshold, so at -55 they show within about 1-2 m. If the calibration shows phones differing by more than 4 dB, the app gains a
    per-model offset table.
 3. **Dwell.** In range continuously for `POWERUP_DWELL_MS` (1000). Leaving range resets it. The HUD shows a
    1 s progress ring and HOLD STILL.
