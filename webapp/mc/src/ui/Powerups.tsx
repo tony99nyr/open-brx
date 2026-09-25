@@ -73,9 +73,9 @@ function ResetItem({ s, item }: { s: StationView; item: StationItem }) {
 }
 
 /** The item, its state and (in play, flag on) RESET ITEM: one row, used by the ITEMS card and the strip. */
-export function ItemStationRow({ s, item, canReset }: { s: StationView; item: StationItem; canReset: boolean }) {
+export function ItemStationRow({ s, item, canReset, inline = false }: { s: StationView; item: StationItem; canReset: boolean; inline?: boolean }) {
   return (
-    <div data-testid="item-station-row" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div data-testid="item-station-row" style={{ display: 'flex', flexDirection: inline ? 'row' : 'column', flexWrap: 'wrap', alignItems: inline ? 'center' : undefined, gap: inline ? 10 : 6 }}>
       <ItemState s={s} item={item} />
       {canReset && <ResetItem s={s} item={item} />}
     </div>
@@ -84,7 +84,7 @@ export function ItemStationRow({ s, item, canReset }: { s: StationView; item: St
 
 /** M3: the compact powerup rows on ARMED and LIVE. Present only when a powerup station holds an item, and
  *  (F331) never when MC says the flag is off: a restored item is inert then, and MC schedules nothing for it. */
-export function PowerupStrip() {
+export function PowerupStrip({ compact = false }: { compact?: boolean }) {
   const { state } = useStore();
   const pu = usePowerups();
   const rows = (state?.stations ?? []).filter(s => s.assigned?.kind === 'powerup' && s.assigned.item);
@@ -92,15 +92,17 @@ export function PowerupStrip() {
   const inPlay = state.phase === 'armed' || state.phase === 'live';
   const enabled = pu.s === 'ok' && pu.v.enabled;
   return (
-    <div data-testid="powerup-strip" style={{ margin: '0 0 14px' }}>
-      <SectionRule label={`POWERUPS // ${rows.length} STATION${rows.length === 1 ? '' : 'S'}`}
-        hint={pu.s === 'old' ? 'THIS MC PREDATES POWERUPS' : pu.s === 'err' ? `COULD NOT READ THE ITEM LIST: ${pu.msg}` : undefined} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 8 }}>
+    <div data-testid="powerup-strip" data-compact={compact ? '1' : undefined} style={{ margin: compact ? '0 0 10px' : '0 0 14px' }}>
+      {/* M7 (visual QA 2026-09-24): on LIVE each station is one row, so the board starts near the top */}
+      {(!compact || pu.s === 'old' || pu.s === 'err') && <SectionRule label={`POWERUPS // ${rows.length} STATION${rows.length === 1 ? '' : 'S'}`}
+        hint={pu.s === 'old' ? 'THIS MC PREDATES POWERUPS' : pu.s === 'err' ? `COULD NOT READ THE ITEM LIST: ${pu.msg}` : undefined} />}
+      <div style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(auto-fill,minmax(min(420px,100%),1fr))' : 'repeat(auto-fill,minmax(260px,1fr))', gap: compact ? 6 : 8 }}>
         {rows.map(s => (
           <div key={s.node_id} data-powerup-row={s.node_id}
-            style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${s.assigned!.item!.color}`, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${s.assigned!.item!.color}`, padding: compact ? '4px 12px' : '10px 12px',
+                     display: 'flex', flexDirection: compact ? 'row' : 'column', flexWrap: 'wrap', alignItems: compact ? 'center' : undefined, gap: compact ? 12 : 6 }}>
             <span style={{ font: F.osw(700, 14), letterSpacing: '.08em' }}>POWERUP {s.assigned!.id}</span>
-            <ItemStationRow s={s} item={s.assigned!.item!} canReset={inPlay && enabled} />
+            <ItemStationRow s={s} item={s.assigned!.item!} canReset={inPlay && enabled} inline={compact} />
           </div>
         ))}
       </div>

@@ -97,6 +97,9 @@ export function clearConsumedPriorUtilityHandoff(transport, storage = defaultSto
   try { storage.removeItem(PRIOR_UTILITY_KEY); return true; } catch (_) { return false; }
 }
 
+/** F346 (a): at most this many MC hosts keep a pending enrol nonce; a new host evicts the oldest. */
+const ENROLL_NONCE_HOSTS_MAX = 8;
+
 /** A60: does this install hold a trust key for its own node_id? The app asks before it chooses a verify
  *  dial over a JOIN row, with no Transport built. Mirrors `Transport#trustKeys`.
  * @param {TransportStorage} [storage] @param {string} [keyPrefix] @returns {boolean} */
@@ -142,6 +145,9 @@ export class Transport {
     this._pubUrl = this._persisted(this._pubUrlKey) || null;        // A28.2: the LAN url this pub/secret pair belongs to
     // A60: the trust keys MC installs have issued to THIS node_id (`welcome.mc_trust.key`), newest first.
     this._trustKeyKey = `${keyPrefix}.mc_trust`;
+    // F346 (a): the random nonce every enrolling hello carries until a trust key arrives, so MC can hand the
+    // same key again to THIS phone (and nobody else) when the welcome that carried it was lost.
+    this._enrollNonceKey = `${keyPrefix}.mc_enroll_nonce`;
     /** @type {((n:number) => Uint8Array)|undefined} */ this.randomBytes = randomBytes;
     /** A60: a `verify` dial (an address the player never named) withholds every secret, sends a fresh
      *  `mc_challenge`, and processes NOTHING until the welcome's `mc_proof` checks out. */
@@ -190,6 +196,7 @@ export class Transport {
     /** @type {Array<(state:TransportState) => void>} */ this._onState = [];
     /** @type {Array<(node:TransportBody|null, welcome:TransportBody) => void>} */ this._onHydrate = [];
     /** @type {WelcomePromise|null} */ this._firstWelcome = null;
+    /** @type {number|null} */ this._welcomeDeadlineAt = null;
   }
 
   // ---------- public API (net.md §6) ----------
@@ -244,10 +251,18 @@ export class Transport {
   _armConnectTimeout(ms) {
     if (this._connectTimer) { this.timers.clearTimeout(this._connectTimer); this._connectTimer = null; }
     if (!this._firstWelcome) return;
+    this._welcomeDeadlineAt = this.now() + ms;
     this._connectTimer = this.timers.setTimeout(() => {
       this._connectTimer = null;
       if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: no welcome within ' + ms + ' ms')); }
     }, ms);
+  }
+  /** F346 (c): true while the pending connect() is inside the deadline actually armed for it: the
+   *  welcome window, or the 4003 reclaim wait plus a full welcome window. The app's user-dial guard reads
+   *  this instead of assuming `welcomeTimeoutMs`. */
+  /** @returns {boolean} */
+  welcomeWindowOpen() {
+    return !!this._firstWelcome && this._welcomeDeadlineAt != null && this.now() < this._welcomeDeadlineAt;
   }
   /** @param {{player_id?:string|null, gun?:TransportGun|null}} [options] */
   bind({ player_id, gun } = {}) {
@@ -442,6 +457,41 @@ export class Transport {
     }
     this._saveTrust(next, provenAt);
   }
+  /** F346 (a): the host this Transport dials (its LAN url's host:port), which keys the enrol nonce.
+   *  @returns {string} */
+  _enrollHost() { return String(((this.url || '').match(/\/\/([^/?#]+)/) || [])[1] || '').toLowerCase(); }
+  /** @returns {{node_id:string, hosts:Record<string, string>}} */
+  _enrollNonces() {
+    try {
+      const v = JSON.parse(this._persisted(this._enrollNonceKey) || 'null');
+      if (v && v.node_id === this.nodeId && v.hosts && typeof v.hosts === 'object') return { node_id: this.nodeId, hosts: { ...v.hosts } };
+    } catch (_) { /* start clean */ }
+    return { node_id: this.nodeId, hosts: {} };
+  }
+  /** F346 (a): this node's enrol nonce FOR THIS MC HOST, minted once per host and kept until that host's
+   *  trust key arrives. Per host, so a hostile host the player names never receives the nonce another
+   *  MC holds, and cannot use it to collect that MC's key. Null when there is no randomness or no host
+   *  (the hello then asks the A60 way, and a lost welcome costs one tap).
+   *  @returns {string|null} */
+  _enrollNonce() {
+    const host = this._enrollHost();
+    if (!host) return null;
+    const v = this._enrollNonces();
+    const have = v.hosts[host];
+    if (typeof have === 'string' && have) return have;
+    let nonce;
+    try { nonce = newChallenge(this.randomBytes); } catch (_) { return null; }
+    const hosts = Object.keys(v.hosts);
+    if (hosts.length >= ENROLL_NONCE_HOSTS_MAX) delete v.hosts[hosts[0]];   // oldest host first
+    v.hosts[host] = nonce;
+    this._store(this._enrollNonceKey, JSON.stringify(v));
+    return nonce;
+  }
+  _clearEnrollNonce() {
+    const v = this._enrollNonces();
+    delete v.hosts[this._enrollHost()];
+    this._store(this._enrollNonceKey, JSON.stringify(v));
+  }
   /** @param {string} key */
   _markProven(key) {
     const { keys, provenAt } = this._trustStore();
@@ -515,7 +565,7 @@ export class Transport {
       // A60: a verify dial asks MC to prove itself; every other phone dial asks for its trust key (MC
       // issues one per node_id, once).
       ...(this.verify && this._challenge ? { mc_challenge: this._challenge } : {}),
-      ...(!this.verify && this.nodeType === 'phone' ? { mc_enroll: true } : {}),
+      ...(!this.verify && this.nodeType === 'phone' ? { mc_enroll: true, ...((n => n ? { mc_enroll_nonce: n } : {})(this._enrollNonce())) } : {}),
       ...(this.secret && this.trusted ? { secret: this.secret } : {}),
       gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
       seq_next: this.ring.seqNext, ...(this.nodeKey && this.trusted ? { node_key: this.nodeKey } : {}),
@@ -742,7 +792,10 @@ export class Transport {
     // proof-verified dial ever reaches this line, so the key comes from a host the phone had reason to trust.
     // ...and only when THIS socket's hello asked for it (`mc_enroll`): a key nobody asked for is ignored.
     const trust = objectBody(body.mc_trust);
-    if (trust && this._enrollSent) this._storeTrustKey(trust.key);
+    if (trust && this._enrollSent && validTrustKey(trust.key)) {
+      this._storeTrustKey(trust.key);
+      this._clearEnrollNonce();   // F346 (a): this host's key arrived; its next enrol mints a fresh nonce
+    }
     if (sessionId) { this._persistedSessionId = sessionId; this._store(this._sessionKey, sessionId); }
     this.sessionId = sessionId;
     this.priorUtilityConsumed = this._priorUtilityOffered && body.prior_utility_consumed === true;

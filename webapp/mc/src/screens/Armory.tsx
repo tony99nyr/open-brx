@@ -5,6 +5,8 @@ import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } fr
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
+import { StationAlerts } from '../ui/StationAlerts';
+import { STATION_CONFLICT, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CountBlock, GhostButton, Micro, OutlineTag, ScreenHeader, SectionRule, Seg, SegBar, Tag } from '../ui';
 import { Items } from './Items';
 import { PlayButton, standDownLocked } from '../ui/Standby';
@@ -132,6 +134,7 @@ export function Armory() {
   // Bench 2026-09-17 (Tony): CONTINUE ▸ became HARDWARE READY ▸, and the label is the status: it names
   // what it waits for. The gate did not move (`derive.armoryGate`).
   const gate = armoryGate(board);
+  const setupNeeds = setupLines(state.config_warnings).filter(w => STATION_CONFLICT.test(w));
 
   return (
     <div className="screen" style={{ maxWidth: 1380, margin: '0 auto' }}>
@@ -187,6 +190,15 @@ export function Armory() {
                   cursor: gate.disabled ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gate.label}</button>
             </div>
             {backhaul.errLine}
+            {/* M11 (visual QA 2026-09-24): the gear can be ready while the game is not. A game that needs a
+                station nobody assigned says so here, beside HARDWARE READY, not only on GAMES. */}
+            {setupNeeds.length > 0 && (
+              <div data-testid="armory-setup" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 460, textAlign: 'right' }}>
+                {setupNeeds.map((w, i) => (
+                  <span key={i} style={{ font: F.chk(600, 12), lineHeight: 1.45, color: T.warn }}>▲ SETUP: {friendlySetupLine(w)}</span>
+                ))}
+              </div>
+            )}
           </div>
         </>
       } />
@@ -197,6 +209,7 @@ export function Armory() {
           {board.length === 0 && <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '20px 4px' }}>NO PLAYERS YET — ADD OPERATORS IN KIT, OR JUST GET PHONES JOINED FIRST ◂</div>}
         </div>
       </div>
+      <StationAlerts unlockOnly />
       <Items />
       {phones.length > 0 && (
         /* `data-nodes` is the count this section BELIEVES it is RENDERING AS CARDS; each card carries

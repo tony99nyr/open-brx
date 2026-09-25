@@ -22,7 +22,15 @@ const digits = n => pad2(Math.min(99, Math.max(0, Math.floor(n)))).split('').map
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad2(s / 60)}:${pad2(s % 60)}`; };
 const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
 /** Polish r2 M2: `max_armor: 0` (Silenced Sniper, the Shields preset) painted `width:NaN%`, which draws FULL. */
-const armorPct = (st, peak = 0) => { const top = Math.max(st.maxArmor || 0, peak); return top > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / top))) : 0; };
+// HUD QA R2-02: the peak stands in only for a game that arms no armour (a granted pool has no max). A game with a max
+// keeps it: a misread 7070 once drew a full 70 as a 1% bar.
+/** F341 x HUD QA R2-02: the gun's pools are not the ones this life armed, and two repairs did not hold. */
+const poolWrong = st => !!(st.poolStale && st.poolStale.why === 'pool_wrong');
+/** The GUN dot: red when the link is down, amber when the link is up but the gun's pools are wrong (R2-02). */
+const gunDot = st => 'dot ' + (!st.bleUp ? 'off' : poolWrong(st) ? 'warn' : '');
+/** The health bar never draws past its track (a misread 4545 of 45 was a 10100% bar). */
+const hpPct = st => (st.maxHp > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.hp / st.maxHp))) : 0);
+const armorPct = (st, peak = 0) => { const top = st.maxArmor > 0 ? st.maxArmor : peak; return top > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / top))) : 0; };
 /** Tony 2026-09-24: "If there is no armor we dont need the 0 or the empty armor bar. If we have armor then the number and
  *  bar show." A game with armour, or armour granted in a game without it (a perk, a pickup). */
 const hasArmor = st => st.maxArmor > 0 || st.armor > 0;
@@ -173,7 +181,11 @@ const mcHost = url => { try { return new URL(url).host; } catch (_) { return Str
 const discoveredRow = d => { if (!d) return '';
   const label = d.source === 'mdns' ? 'FOUND BY BROADCAST' : 'FOUND ON THE NETWORK';
   const text = d.text ? esc(d.text) : `MISSION CONTROL ${label} AT ${esc(mcHost(d.url))} · JOIN`;
-  return `<div class="discoveredrow" data-act="onJoinDiscovered"><span class="unskew">${text}</span></div>`; };
+  // HUD QA R2-06: only an UNVERIFIED host (autojoin.js reason 'unproven': it failed or lacked the proof) is a warning:
+  // amber, with a drawn warning glyph (a font may lack U+26A0). NEW (a first contact) and SEVERAL (a choice) are not.
+  const warn = d.reason === 'unproven';
+  const glyph = warn ? '<svg class="dwarn" viewBox="0 0 16 14" aria-hidden="true"><path d="M8 1 15 13H1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 5.2v3.6M8 10.4v1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>' : '';
+  return `<div class="discoveredrow${warn ? ' warn' : ''}" data-act="onJoinDiscovered" data-reason="${esc(d.reason || 'found')}">${glyph}<span class="unskew">${text}</span></div>`; };
 // Polish-loop pass 1+2: every join control that redials/drops the live MC link needs the armed/live
 // two-tap guard (`_click` below) — `onJoinDiscovered` (an address the player never typed) and
 // `onReconnectMc` (the same teardown, same button row) joined `onSetUrl`/`onScanQr` in pass 2.
@@ -827,7 +839,7 @@ export class Hud {
         ? `<div class="note join">Connecting from the ⓘ panel, top right — it's already open.</div>`
         // Polish-loop pass 2: mDNS no longer auto-joins (app.js review pass 2 — a phone must never hand its
         // takeover key/join secret to whoever answers first), so "it connects by itself" was now FALSE.
-        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="${MC_URL_HINT}" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Scan the host's QR, or type its address and tap CONNECT. On the same Wi-Fi the host can also show up here: tap JOIN.</div>`;
+        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="${MC_URL_HINT}" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Scan the host's QR, or type its address and tap CONNECT. On the same Wi-Fi the host can also show up here: ${this.discovered ? 'tap its row above' : 'tap its row when it appears'}.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'setup') {
       // §4.1: calm, not an error — the host hasn't picked the game yet
@@ -1300,12 +1312,12 @@ export class Hud {
     const staleTag = '<span class="staletag" aria-label="stale value">STALE</span>';
     const puActive = !!(st.powerup && st.powerup.held && st.powerup.held.active);
     const sv = SV.meterShown(st);   // the shield meter: a shield game, or an overshield held
-    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
+    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}${poolWrong(st) && !gunStale ? ' poolwrong' : ''}${st.alive && st.stunned ? ' stunned' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
       <div class="ident" data-act="onBoard" data-arg="player" role="button" aria-label="Player scores"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
-      <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? '' : 'off'}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
+      <div class="topright"><span class="link"><span id="linkdot" class="${gunDot(st)}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
       ${this._gunHealthWarning(st)}
@@ -1315,8 +1327,8 @@ export class Hud {
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>${sv ? SV.meterHtml(st, this._svFx) : ''}
-      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
-        <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
+      <div class="vitals">${poolWrong(st) && !gunStale ? '<div class="pooltag" role="alert">POOLS WRONG</div>' : ''}<div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
+        <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${hpPct(st)}%"></i></div>
         ${hasArmor(st) ? `<div class="bar armor"><i id="shbar" style="width:${armorPct(st, this._armPeak)}%"></i></div>` : ''}</div>
       ${st.powerup ? `<div class="puhint" id="puhint" role="status">${this._puHint(st)}</div>` : ''}
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
@@ -1326,7 +1338,7 @@ export class Hud {
           : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
         <div class="nums">${gunStale ? staleTag : ''}<span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
-        ${belowCharge && st.ammo > 0 ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
+        ${belowCharge && st.ammo > 0 && !overheating ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
         <div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
         ${st.powerup ? `<div class="puheld" id="puheld">${this._puHeld(st)}</div>` : ''}
@@ -1348,7 +1360,8 @@ export class Hud {
       case 'granted': return h.itemKind === 'overshield' ? line(name, 'PICKED UP')
         : line(`${name} ON TRIGGER`, h.charges != null ? `${h.charges} SHOT${h.charges === 1 ? '' : 'S'}` : '');
       case 'approach': return line('GET CLOSER', name);
-      case 'taken_by': return line(h.nextInMs != null ? `TAKEN · ${mss(h.nextInMs)}` : 'TAKEN', `BY ${esc(h.by)}`);
+      // HUD QA R2-16: the line names WHAT was taken, not only who took it
+      case 'taken_by': return line(h.nextInMs != null ? `${name} TAKEN · ${mss(h.nextInMs)}` : `${name} TAKEN`, `BY ${esc(h.by)}`);
       case 'taken': return line(`${name} IN ${mss(h.nextInMs || 0)}`, 'NEXT SPAWN');
       case 'switched_back': return line(`${name} EMPTY`, `BACK TO ${esc(h.to || '')}`);   // the phone put the saved weapon back on the trigger
       default: return '';
@@ -1599,6 +1612,10 @@ export class Hud {
       return `Mission Control turned this phone away${why ? ': ' + why : ''}. Ask the host, then rejoin from the i button, top right.`;
     }
     if (!st.synced && !st.ready) return 'Syncing clock with Mission Control… you can ready up in a moment.';
+    // HUD QA R2-05: READY UP stays live (a headset that never joins must not strand a player out of the match), but
+    // the note says what it costs and what fixes it, beside the button the player is about to tap.
+    if (st.headsetJoin && st.headsetJoin.state === 'not_joined' && mode !== 'over')
+      return '<span class="warnnote">Headset not joined: you cannot be hit until it joins.</span> Power-cycle it, then tap RECONNECT NOW.';
     // NOT "the host cannot start until everyone has": `_all_ready` gates KIT -> LOBBY only, so after a
     // match the host pushes the next one whenever they like. Promising a veto the player does not have is
     // how someone sits out a round waiting to be waited for (review 2026-09-12).
@@ -1623,12 +1640,13 @@ export class Hud {
       if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
-      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); setHtml('res', this._resText(st));
+      set('clock', mmss(st.clockMs));
+      set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); setHtml('res', this._resText(st));
       set('batt', st.battery != null ? st.battery + '%' : '—');
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
       setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
-      const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
+      const hb = q('hpbar'); if (hb) hb.style.width = `${hpPct(st)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${armorPct(st, this._armPeak)}%`;
       SV.patchMeter(this.hudEl, st, this._svFx);   // the shield meter (the overshield drains first, on the same strip)
       if (st.powerup) { const hh = this._puHint(st); setHtml('puhint', hh); setHtml('puheld', this._puHeld(st));
@@ -1642,7 +1660,7 @@ export class Hud {
         const cls = 'heat' + (st.overheatShown ? ' hot' : ''); if (heat.className !== cls) heat.className = cls;   // the DISPLAY window, same as `_heatBar`/`_live`
       }
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
-      const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? '' : 'off'); if (dot.className !== cls) dot.className = cls; }
+      const dot = q('linkdot'); if (dot) { const cls = gunDot(st); if (dot.className !== cls) dot.className = cls; }
       set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
       if (this.board) { set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', this._boardStale(st)); }
       const md = q('mcdot'); if (md) { const cls = 'dot ' + (st.wsState === 'bound' ? '' : 'ws'); if (md.className !== cls) md.className = cls; }
@@ -1771,7 +1789,7 @@ export class Hud {
         this._moment = downKey;
         const title = recoveryDown
           ? '<span class="tt rec"><span class="t">GUN RESTARTED</span><span class="t t2">REDEPLOYING</span></span><span class="kb">REDEPLOYING</span>'
-          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? DS.ICON.drop : DS.ICON.skull}<span class="sr">${kb.dot ? 'POISONED BY' : 'KILLED BY'}</span> <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span><span id="dnlife">${DS.finalHitLine(st)}</span>`;
+          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? DS.ICON.drop : DS.ICON.skull}<span class="sr">${kb.dot ? 'POISONED BY' : 'KILLED BY'}</span> <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span><span id="dnlife">${DS.finalHitLine(st)}</span>${DS.itemLostLine(st)}`;
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
           <div class="c"><div class="dsx"><div class="l2">${title}</div><div class="dslive" id="dslive">${this._dsLive(st)}</div></div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
@@ -1971,7 +1989,7 @@ export class Hud {
     const ps = st.powerupSpawn;
     if (ps && ps.at !== this._coPuAt) {
       this._coPuAt = ps.at;
-      this._co(st, { kind: 'powerup_spawn', src: 'powerup', tone: 'item', tag: 'POWERUP', name: `${ps.name} AVAILABLE`, color: ps.color, sub: '', hold: 2200 });
+      this._co(st, { kind: 'powerup_spawn', src: 'powerup', tone: 'item', tag: 'POWERUP', name: `${ps.name} AVAILABLE`, color: ps.color, sub: ps.station != null ? `AT STATION ${ps.station}` : '', hold: 2200 });   // HUD QA R2-16: which station
     }
     const pg = st.powerupSwap;   // docs/announcer.md: set by the engine's queue when the swap card's turn comes (not at the grant)
     if (pg && pg.at !== this._coPgAt) {
@@ -2059,6 +2077,8 @@ export class Hud {
     const d = (m.data) || {};
     // The shield meter shows every shield gain (a recharge is a dozen of them), so no toast on top of it.
     if (d.pool === 'shield' && SV.meterShown(st)) return;
+    // HUD QA R2-02 (F341): a pool above the armed maximum is a misread `$PSET`, never a pickup. The engine drops it; so does this.
+    if (d.hp > st.maxHp || (st.maxArmor > 0 && d.armor > st.maxArmor)) return;
     const el = document.createElement('div');
     el.className = `mo gain ${esc(d.pool)}`;
     const label = d.pool === 'armor' ? 'ARMOUR' : d.pool === 'shield' ? 'SHIELD' : 'HEALTH';

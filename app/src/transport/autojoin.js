@@ -38,6 +38,15 @@ export function offerText(reason, url) {
   return null;
 }
 
+/** F346 (c): the dial the player named still owns its welcome window. The window is the transport's own
+ *  armed deadline (`welcomeWindowOpen()`), so a 4003 reclaim wait (about 19.5 s) is covered, not only the
+ *  10 s welcome timeout.
+ *  @param {{t:any}|null} dial the dial the player named last  @param {any} current the live transport */
+export function namedDialPending(dial, current) {
+  return !!(dial && current && dial.t === current && !current.closed && current.state !== 'bound'
+    && typeof current.welcomeWindowOpen === 'function' && current.welcomeWindowOpen());
+}
+
 export class McAutoJoin {
   /** @param {{now?: () => number}} [o] */
   constructor({ now = () => Date.now() } = {}) {

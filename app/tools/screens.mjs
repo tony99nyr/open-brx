@@ -896,16 +896,16 @@ for (const view of VIEWS) {
     await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.waitForTimeout(1600);
     const s1 = await pg.evaluate(() => ({ hidden: document.getElementById('cfg').hidden, rows: document.querySelectorAll('#players .row:not(.empty)').length, team: document.getElementById('team').textContent, status: document.getElementById('status').textContent }));
     for (let i = 0; i < 6; i++) await pg.click('#info'); const six = await pg.evaluate(() => document.getElementById('cfg').hidden); await pg.click('#info'); await pg.waitForTimeout(150);
-    const s2 = await pg.evaluate(() => ({ hidden: document.getElementById('cfg').hidden, defaults: document.querySelectorAll('#cfg .def').length, pressed: document.querySelectorAll('.seg button[aria-pressed="true"]').length, rangeLabel: !!document.querySelector('label[for="thrRange"]') }));
+    const s2 = await pg.evaluate(() => ({ hidden: document.getElementById('cfg').hidden, defaults: document.querySelectorAll('#cfg .def').length, pressed: document.querySelectorAll('#cfg .seg button[aria-pressed="true"]').length, rangeLabel: !!document.querySelector('label[for="thrRange"]') }));
     await pg.click('#btnStart'); await pg.waitForTimeout(200); await pg.click('#cfgClose'); await pg.waitForTimeout(150);
     const s3 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
     await pg.reload(); await pg.waitForTimeout(1500); const s4 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
     await pg.screenshot({ path: `${OUT}/${view.name}-utility.png` }); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
-    must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 4 && s1.team === 'BLUE' && s1.status === 'READY', 'status screen: ' + JSON.stringify(s1));   // four fake phones: three for the respawn demo + the opposing team a control point needs (F82 bars tid 2)
+    must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 4 && s1.team === 'BLUE' && s1.status === 'NOT LIVE', 'status screen: ' + JSON.stringify(s1));   // four fake phones: three for the respawn demo + the opposing team a control point needs (F82 bars tid 2)
     must(six, 'six taps opened the settings'); must(!s2.hidden && s2.defaults >= 6 && s2.pressed === 3 && s2.rangeLabel, 'settings: ' + JSON.stringify(s2));
     must(s3.status === 'LIVE' && s3.hidden, 'after START + close: ' + JSON.stringify(s3)); must(s4.status === 'LIVE' && s4.hidden, 'after reload: ' + JSON.stringify(s4));
   });
-  await step(`${view.name} #49 utility phone: a station_config push arms it (MC-ARMED · game, re-keyed advert, live, drawer shut, survives reload)`, async () => {
+  await step(`${view.name} #49 utility phone: a station_config push arms it (MC ✓ GAME n, re-keyed advert, live, drawer shut, survives reload)`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
     await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
     const s1 = await pg.evaluate(() => document.getElementById('armed').textContent);
@@ -915,10 +915,10 @@ for (const view of VIEWS) {
     await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'bomb', team: 'red', id: 4, threshold: -70, game: 3, valid_ids: [4, 7] })); await pg.waitForTimeout(400);
     const s2 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, sid: document.getElementById('sid').textContent, hidden: document.getElementById('cfg').hidden, uuid: window.brxUtility.stationUuid(), ids: document.getElementById('ids').textContent }));
     await pg.reload(); await pg.waitForTimeout(1500); const s3 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, ids: document.getElementById('ids').textContent })); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
-    must(perr.length === 0, perr.join('|')); must(s1 === 'NOT ARMED BY MISSION CONTROL', 'before: ' + s1);
-    must(s2.armed === 'MC-ARMED · GAME 3' && s2.status === 'LIVE' && s2.kind === 'BOMB SITE' && s2.team === 'RED' && s2.sid === 'STATION 4' && s2.hidden && /-0400-/.test(s2.uuid) && s2.ids === 'VALID IDS: 4, 7', 'after push: ' + JSON.stringify(s2));
+    must(perr.length === 0, perr.join('|')); must(s1 === 'WAITING FOR MC TO ARM IT', 'before (linked, not armed, not on the air): ' + s1);
+    must(s2.armed === 'MC ✓ GAME 3' && s2.status === 'LIVE' && s2.kind === 'BOMB SITE' && s2.team === 'RED' && s2.sid === 'STATION 4' && s2.hidden && /-0400-/.test(s2.uuid) && s2.ids === 'VALID IDS: 4, 7', 'after push: ' + JSON.stringify(s2));
     must(s3.ids === 'VALID IDS: 4, 7', 'valid ids survive reload: ' + JSON.stringify(s3));
-    must(s3.armed === 'MC-ARMED · GAME 3' && s3.status === 'LIVE', 'after reload: ' + JSON.stringify(s3));
+    must(s3.armed === 'MC ✓ GAME 3' && s3.status === 'LIVE', 'after reload: ' + JSON.stringify(s3));
   });
   // A41 (field 2026-09-12): the ONLY exit from utility mode was the same undiscoverable ⓘ ×7 gesture as
   // the settings drawer, with ZERO feedback on a single tap, and no MC message could reach a stuck phone
@@ -1030,24 +1030,28 @@ for (const view of VIEWS) {
   // a state rather than sleeping a guessed number of milliseconds — a fixed sleep here read the screen
   // mid-walk and made four of these assertions wrong the first time round.
   const FAR = -95, ON = -50;
+  // Round 3 (2026-09-24): the bar and its sentences are gone; the RING carries the meaning. `painted` is the ring's fill
+  // (--p, which the conic gradient draws), `sweep`/`front`/`rest` are which of its animated layers a person can see.
   const cread = pg => pg.evaluate(() => {
-    const fill = document.getElementById('cfill').getBoundingClientRect(), bar = document.getElementById('cbar').getBoundingClientRect();
+    const aura = document.getElementById('aura'), cs = e => getComputedStyle(e);
+    const layer = sel => { const e = aura.querySelector(sel); const c = cs(e); return { on: parseFloat(c.opacity) > 0.05 && c.display !== 'none', anim: c.animationName, dir: c.animationDirection }; };
+    const pctEl = document.getElementById('cpct');
     return { shown: !document.getElementById('control').hidden, kind: document.getElementById('kind').textContent,
-      team: document.getElementById('team').textContent, owner: document.getElementById('cowner').textContent,
-      pct: document.getElementById('cpct').textContent, net: document.getElementById('cnet').textContent,
-      eta: document.getElementById('ceta').textContent, banner: document.getElementById('cbanner').textContent,
+      team: document.getElementById('team').textContent,
+      pct: pctEl.hidden ? '' : pctEl.textContent,
       warn: document.getElementById('cwarn').textContent, title: document.getElementById('ptitle').textContent,
-      rate: document.getElementById('crate').textContent, tally: document.getElementById('ctally').textContent,
+      tally: document.getElementById('ctally').textContent,
       flash: document.getElementById('cflash').hidden ? '' : document.getElementById('cflash').textContent,
-      arrow: document.getElementById('carrow').hidden ? '' : document.getElementById('carrow').textContent,
-      arrowAt: document.getElementById('carrow').hidden ? null : Math.round(100 * (document.getElementById('carrow').getBoundingClientRect().left - bar.left) / bar.width),
       marks: { claim: document.querySelectorAll('#players .row.claim').length, dead: document.querySelectorAll('#players .row.dead').length, far: document.querySelectorAll('#players .row.far').length },
       // the row of whoever is actually ON the point, and how it is marked — the per-row assertion the
       // totals above cannot make
       onPointRow: (r => r ? { cls: r.className.replace('row ', ''), struck: getComputedStyle(r).textDecorationLine.includes('line-through') } : null)(
         [...document.querySelectorAll('#players .row')].find(r => (r.querySelector('.pres') || {}).textContent === 'ON POINT')),
       cstate: document.documentElement.getAttribute('data-cstate'), dteam: document.documentElement.getAttribute('data-team'),
-      painted: Math.round(100 * fill.width / bar.width), claims: document.querySelectorAll('#players .row.claim').length,
+      painted: Math.round(100 * parseFloat(cs(aura).getPropertyValue('--p'))),
+      hold: aura.style.getPropertyValue('--hold'), rival: aura.style.getPropertyValue('--rival'),
+      sweep: { ...layer('.asweep'), anim: cs(aura.querySelector('.asweep s')).animationName, dir: cs(aura.querySelector('.asweep s')).animationDirection }, front: { ...layer('.afront'), anim: cs(aura.querySelector('.afront b')).animationName }, rest: layer('.arest'), glow2: layer('.aglow2'),
+      claims: document.querySelectorAll('#players .row.claim').length,
       revives: document.getElementById('revives').textContent,
       wire: (h => { const b = i => parseInt(h.slice(i * 2, i * 2 + 2), 16); return { kind: b(8), team: b(9), state: b(10), value: b(11), seq: b(12) }; })(window.brxUtility.stationUuid().replace(/-/g, '')) };
   });
@@ -1070,6 +1074,7 @@ for (const view of VIEWS) {
     await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.station.control'); } catch {} }); await pg.reload();
     await pg.waitForFunction(() => !!window.brxUtilityFake, null, { timeout: 8000 });
     await pinFakes(pg, at); if (mutate) await pg.evaluate(mutate);
+    await pg.click('#btnPlayers');   // the roster is folded away by default (round 3); these steps read it
     for (let i = 0; i < 7; i++) await pg.click('#info');
     await pg.click('[data-kind="control"]'); await pg.click('#btnStart'); await pg.click('#cfgClose'); await pg.waitForTimeout(200);
     return { pg, perr };
@@ -1082,26 +1087,26 @@ for (const view of VIEWS) {
     must(a.shown && a.kind === 'CONTROL POINT' && a.team === 'NEUTRAL' && a.title === 'WHO IS ON THE POINT', 'fresh point: ' + JSON.stringify(a));
     must(a.revives === '', 'a control point does not show a revive tally');
     const mid = await untilC(pg, r => parseInt(r.pct, 10) >= 20 && parseInt(r.pct, 10) <= 70, 12000, 'mid-conversion');
-    must(/BLUE IS TAKING IT/.test(mid.owner) && mid.cstate === 'rising', 'owner + direction: ' + JSON.stringify(mid));
-    must(/BLUE TAKES IT IN \d+ S/.test(mid.eta), 'the eta says how long: ' + mid.eta);
-    must(/^BLU 1 → \+1 BLU$/.test(mid.net), 'net line: ' + mid.net);
-    must(Math.abs(mid.painted - parseInt(mid.pct, 10)) <= 6, `the painted bar matches the number (${mid.painted}% vs ${mid.pct})`);
+    // the word is whose the ring IS (round 3): BLUE at N%, so the word and the % never disagree; the page stays neutral
+    must(mid.team === 'BLUE' && mid.cstate === 'rising' && mid.dteam === 'any', 'the claimant, the direction, and nobody owning it yet: ' + JSON.stringify(mid));
+    must(Math.abs(mid.painted - parseInt(mid.pct, 10)) <= 6, `the ring is filled to the number (${mid.painted}% vs ${mid.pct})`);
+    must(/team-blue/.test(mid.hold), 'in the claimant`s colour: ' + mid.hold);
+    must(mid.sweep.on && mid.sweep.anim === 'aspin' && mid.sweep.dir === 'normal', 'and the sweep runs clockwise, the way it is gaining: ' + JSON.stringify(mid.sweep));
+    must(!mid.front.on, 'no standoff marker while one side is simply winning');
     must(mid.claims === 1, 'exactly one body is converting it, got ' + mid.claims);
-    must(mid.rate === '▶ BLUE ×1', 'the rate reads as a direction and a multiplier: ' + mid.rate);
-    must(mid.arrow === '▶' && Math.abs(mid.arrowAt - parseInt(mid.pct, 10)) <= 6, `the arrow rides the moving edge (at ${mid.arrowAt}% for ${mid.pct})`);
     must(mid.wire.kind === 5 && mid.wire.team === 1 && (mid.wire.state & 1) === 0 && mid.wire.value > 0,
       'mid-conversion the advert says BLUE is at N% and holds NOTHING: ' + JSON.stringify(mid.wire));
-    const held = await untilC(pg, r => r.team === 'BLUE', 14000, 'capture');
-    must(held.pct === '100%' && held.painted >= 96, 'captured: ' + JSON.stringify(held));
-    must(held.owner === 'HELD' && held.cstate === 'held' && held.dteam === 'blue' && held.eta === '', 'held state: ' + JSON.stringify(held));
-    must(held.flash === 'CAPTURED BY BLUE', 'the crossing throws a full-screen word: ' + JSON.stringify(held.flash));
-    must(held.rate === 'STALLED' || /▶ BLUE/.test(held.rate), 'rate line at 100%: ' + held.rate);
+    const held = await untilC(pg, r => (r.wire.state & 1) === 1 && r.wire.team === 1, 14000, 'capture');
+    must(held.painted >= 96, 'captured, the ring full: ' + JSON.stringify(held));
+    must(held.cstate === 'held' && held.dteam === 'blue', 'held state: ' + JSON.stringify(held));
+    must(held.flash === 'CAPTURED' && held.team === 'BLUE', 'the crossing throws its word inside the ring, under the team word: ' + JSON.stringify(held.flash));
     must(held.wire.kind === 5 && held.wire.team === 1 && (held.wire.state & 1) === 1 && held.wire.value === 100 && held.wire.seq > 1,
       'and the advert now says BLUE HOLDS it, at a bumped seq: ' + JSON.stringify(held.wire));
     await pg.screenshot({ path: `${OUT}/${view.name}-control-held.png` });
     // the flash is one-shot: it clears itself, and the possession tally takes over (§5d.4)
     const after = await untilC(pg, r => r.flash === '', 5000, 'the flash clears itself');
-    must(/^HELD · BLU \d+:\d\d$/.test(after.tally), 'and the screen becomes the recap sheet: ' + JSON.stringify(after.tally));
+    must(after.pct === '' && after.painted >= 96, 'a held point needs no % (the full ring says it) once the word goes: ' + JSON.stringify(after));
+    must(/^HELD · BLU \d+:\d\d$/.test(after.tally), 'and the roster panel keeps the recap sheet: ' + JSON.stringify(after.tally));
     await done(pg, perr);
   });
 
@@ -1109,40 +1114,42 @@ for (const view of VIEWS) {
     const { pg, perr } = await utilPage();
     await untilC(pg, r => parseInt(r.pct, 10) >= 15, 12000, 'the push starts');
     await pinFakes(pg, [ON, FAR, FAR, ON]);                       // P31 RED walks onto the point: 1 v 1
-    const c = await untilC(pg, r => r.banner === 'CONTESTED', 8000, 'contested');
-    must(c.cstate === 'contested' && /^(RED 1 · BLU 1|BLU 1 · RED 1) → STALLED$/.test(c.net), 'the net line: ' + JSON.stringify(c.net));
-    must(c.rate === 'STALLED' && c.arrow === '', 'at net 0 the arrow is replaced by STALLED: ' + JSON.stringify(c));
-    must(c.eta === '' && c.claims === 2, 'a stalemate has no eta, and both bodies count: ' + JSON.stringify(c));
+    const c = await untilC(pg, r => r.cstate === 'contested', 8000, 'contested');
+    must(c.front.on && c.front.anim !== 'none' && c.glow2.on, 'the standoff: both colours pulse at the frontier: ' + JSON.stringify({ front: c.front, glow2: c.glow2 }));
+    must(!c.sweep.on, 'and nothing sweeps, because nothing moves: ' + JSON.stringify(c.sweep));
+    must(/team-red/.test(c.rival) && /team-blue/.test(c.hold), `the two colours are the two teams: ${c.hold} v ${c.rival}`);
+    must(c.claims === 2, 'both bodies count: ' + JSON.stringify(c));
     must((c.wire.state & 2) === 2, 'and the contest goes out on the wire (byte 10 bit 1): ' + JSON.stringify(c.wire));
     await pg.screenshot({ path: `${OUT}/${view.name}-control-contested.png` });
     const held = parseInt(c.pct, 10);
     await pg.waitForTimeout(3000);
     const still = await cread(pg);
     must(Math.abs(parseInt(still.pct, 10) - held) <= 2, `1 v 1 nets zero: ${held}% -> ${still.pct} after 3 s`);
-    must(still.banner === 'CONTESTED', 'and it is still contested');
+    must(still.cstate === 'contested', 'and it is still contested');
     // the positive half: RED leaves and the SAME screen starts moving again
     await pinFakes(pg, [ON, FAR, FAR, FAR]);
     const back = await untilC(pg, r => r.cstate === 'rising' && parseInt(r.pct, 10) > held + 8, 8000, 'resumed');
-    must(back.banner === '', 'and the CONTESTED banner clears: ' + JSON.stringify(back));
+    must(!back.front.on && back.sweep.on, 'and the standoff gives way to the sweep again: ' + JSON.stringify({ front: back.front, sweep: back.sweep }));
     await done(pg, perr);
   });
 
   await step(`${view.name} #54 control point: a two-phase steal drains to NEUTRAL on screen before it flips`, async () => {
     // capture_s is the knob (§5d.1); `rate` is a derived getter and assigning it does nothing at all.
     const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtility.settings.captureS = 4; window.brxUtility.point.captureS = 4; });
-    await untilC(pg, r => r.team === 'BLUE', 12000, 'BLUE takes it');
+    await untilC(pg, r => (r.wire.state & 1) === 1 && r.wire.team === 1, 12000, 'BLUE takes it');
     await pinFakes(pg, [FAR, FAR, FAR, ON]);                      // BLUE leaves, RED arrives
     const mid = await untilC(pg, r => r.cstate === 'falling', 8000, 'the drain starts');
-    must(mid.team === 'BLUE' && mid.owner === 'LOSING IT', 'mid-drain it is STILL blue: ' + JSON.stringify(mid));
-    must(/LOST IN \d+ S/.test(mid.eta), 'and the screen says how long: ' + mid.eta);
-    must(parseInt(mid.pct, 10) < 100 && (mid.wire.state & 1) === 1, 'draining, not flipped: ' + JSON.stringify(mid));
+    must(mid.team === 'BLUE', 'mid-drain it is STILL blue: ' + JSON.stringify(mid));
+    must(mid.sweep.on && mid.sweep.dir === 'reverse', 'the sweep runs BACKWARDS, the owner receding: ' + JSON.stringify(mid.sweep));
+    must(mid.rest.on && /team-red/.test(mid.rival), 'and RED creeps into the rest of the ring: ' + JSON.stringify({ rest: mid.rest, rival: mid.rival }));
+    must(mid.painted < 100 && (mid.wire.state & 1) === 1, 'draining, not flipped (the % line may still be showing the capture word): ' + JSON.stringify(mid));
     await pg.screenshot({ path: `${OUT}/${view.name}-control-losing.png` });
-    const neu = await untilC(pg, r => r.team === 'NEUTRAL', 9000, 'it goes neutral');
-    must(/RED IS TAKING IT/.test(neu.owner) && (neu.wire.state & 1) === 0, 'through neutral, nobody holding: ' + JSON.stringify(neu));
+    const neu = await untilC(pg, r => (r.wire.state & 1) === 0 && r.dteam === 'any', 9000, 'it goes neutral');
+    must((neu.wire.state & 1) === 0, 'through neutral, nobody holding: ' + JSON.stringify(neu));
     must(neu.flash === 'NEUTRAL', 'the drain completing throws its own word: ' + JSON.stringify(neu.flash));
-    must(neu.arrow === '▶' && /▶ RED/.test(neu.rate), 'and the arrow already points RED`s way: ' + JSON.stringify(neu));
-    const red = await untilC(pg, r => r.team === 'RED', 9000, 'and only then RED');
-    must(red.dteam === 'red' && red.pct === '100%' && red.wire.team === 0 && (red.wire.state & 1) === 1, 'RED holds it: ' + JSON.stringify(red));
+    must(/team-red/.test(neu.hold) && neu.sweep.dir === 'normal', 'and the ring is already filling RED`s way: ' + JSON.stringify({ hold: neu.hold, sweep: neu.sweep }));
+    const red = await untilC(pg, r => (r.wire.state & 1) === 1 && r.wire.team === 0, 9000, 'and only then RED');
+    must(red.dteam === 'red' && red.painted >= 96 && red.wire.team === 0 && (red.wire.state & 1) === 1, 'RED holds it: ' + JSON.stringify(red));
     await done(pg, perr);
   });
 
@@ -1151,8 +1158,8 @@ for (const view of VIEWS) {
     const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtilityFake[0].alive = false; });
     await pg.waitForTimeout(3500);
     const d = await cread(pg);
-    must(d.pct === '0%' && d.painted <= 2 && d.owner === 'NOBODY HOLDS IT', 'a DOWN body converts nothing: ' + JSON.stringify(d));
-    must(d.claims === 0 && /NOBODY ON THE POINT/.test(d.net), 'and it is not counted: ' + JSON.stringify(d));
+    must(d.pct === '' && d.painted <= 2 && d.team === 'NEUTRAL' && d.cstate === 'idle', 'a DOWN body converts nothing: ' + JSON.stringify(d));
+    must(d.claims === 0, 'and it is not counted: ' + JSON.stringify(d));
     must(await pg.evaluate(() => !!document.querySelector('#players .row .state.down')), 'though it IS on screen, as DOWN');
     must(d.marks.claim === 0, 'nobody is counted: ' + JSON.stringify(d.marks));
     must(d.onPointRow && d.onPointRow.struck && /dead/.test(d.onPointRow.cls) && !/claim/.test(d.onPointRow.cls),
@@ -1165,11 +1172,11 @@ for (const view of VIEWS) {
     await pg.evaluate(() => { window.brxUtilityFake[1].alive = true; });
     await pinFakes(pg, [FAR, ON, FAR, FAR]);
     const y = await untilC(pg, r => /TEAM 2 CAN NEVER HOLD A POINT/.test(r.warn), 8000, 'the F82 warning');
-    must(y.claims === 0 && y.team !== 'YELLOW' && !/YELLOW/.test(y.owner), 'and tid 2 gets nothing: ' + JSON.stringify(y));
+    must(y.claims === 0 && y.team !== 'YELLOW' && !/yellow/.test(y.hold), 'and tid 2 gets nothing: ' + JSON.stringify(y));
     must(y.wire.team !== 2, 'nor can the advert ever name team 2: ' + JSON.stringify(y.wire));
-    const frozen = parseInt(y.pct, 10);
+    const frozen = y.painted;
     await pg.waitForTimeout(3000);
-    must(parseInt((await cread(pg)).pct, 10) === frozen, 'a tid-2 body on the point moves the bar not at all');
+    must((await cread(pg)).painted === frozen, 'a tid-2 body on the point moves the bar not at all');
     // ...and the ROSTER has to agree with the bar. A refused body read exactly like a contributing one --
     // highlighted row, green "ON POINT" -- while two lines above it the net line said NOBODY ON THE POINT.
     // A down body is struck through; a refused one had no mark at all, so the same screen said both things.
@@ -1205,7 +1212,7 @@ for (const view of VIEWS) {
     await pg.waitForTimeout(1200);
     const back = await cread(pg);
     must(back.shown && Math.abs(parseInt(back.pct, 10) - parked) <= 2, `progress survived the restart: ${parked}% -> ${back.pct}`);
-    must(back.painted >= parked - 3, `and the bar is painted to match (${back.painted}% vs ${back.pct})`);
+    must(back.painted >= parked - 3, `and the ring is filled to match (${back.painted}% vs ${back.pct})`);
     must(back.wire.kind === 5 && back.wire.value === parseInt(back.pct, 10), 'and it comes back up advertising it: ' + JSON.stringify(back.wire));
     // every control on the new panel changes something a person can see
     for (let i = 0; i < 7; i++) await pg.click('#info');
@@ -1226,7 +1233,7 @@ for (const view of VIEWS) {
     must(await pg.evaluate(() => !document.getElementById('teamnote').hidden), 'the TEAM panel says it does not apply to a control point');
     await pg.click('#btnPointReset'); await pg.waitForTimeout(500);
     const reset = await cread(pg);
-    must(reset.pct === '0%' && reset.painted <= 3 && reset.team === 'NEUTRAL', 'RESET POINT TO NEUTRAL: ' + JSON.stringify(reset));
+    must(reset.pct === '' && reset.painted <= 3 && reset.team === 'NEUTRAL', 'RESET POINT TO NEUTRAL: ' + JSON.stringify(reset));
     // and switching kind away puts the respawn screen back
     await pg.click('[data-kind="respawn"]'); await pg.waitForTimeout(300);
     const resp = await pg.evaluate(() => ({ hidden: document.getElementById('control').hidden, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, note: document.getElementById('teamnote').hidden, title: document.getElementById('ptitle').textContent }));
@@ -1234,50 +1241,48 @@ for (const view of VIEWS) {
     await done(pg, perr);
   });
 
-  // The crossing flash is the one thing on this screen that can HIDE the screen. §5d.4 asks for a
-  // "full-width flash", and `#cflash` is `position:fixed; inset:0` -- but it lived inside `.hero`, which
-  // is `transform: skewX(-4deg)`, and a transform makes an element the containing block for its fixed
-  // descendants. So `inset:0` resolved to the HERO box: a skewed 323x196 patch sitting exactly on the
-  // capture bar and the `LOST IN n S` countdown, for its full 2.6 s. A capture that is contested a second
-  // later -- the normal case -- covered the one line a defender reads to decide whether to run.
-  // Nothing caught it because every other assertion in this file reads `textContent` and `hidden`, which
-  // are blind to where a box actually is and what it sits on top of.
-  await step(`${view.name} #57 control point: the crossing flash is full-bleed and never covers the bar or the countdown`, async () => {
+  // The crossing is the one moment this screen can hide itself. History: `#cflash` was a fixed full-screen wash with the
+  // word in a top band, and in round 3 (2026-09-24) Tony saw "CAPTURED BY BLUE" printed over CONTROL POINT. Now the light
+  // is a separate full-screen burst (#cburst, light only) and the WORD sits inside the ring, in the % line's place. The
+  // guard: the word overlaps no other text and no bordered box on the screen, at the pop and while the point drains.
+  await step(`${view.name} #57 control point: the crossing burst is full-bleed and its word overlaps nothing`, async () => {
     const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtility.settings.captureS = 4; window.brxUtility.point.captureS = 4; });
-    await untilC(pg, r => r.team === 'BLUE', 14000, 'BLUE takes it');
+    await untilC(pg, r => (r.wire.state & 1) === 1 && r.wire.team === 1, 14000, 'BLUE takes it');
     const up = await pg.evaluate(() => !document.getElementById('cflash').hidden);
     must(up, 'precondition: the capture threw its flash');
-    // `.cflash.go` scales 1.3 -> 1 over the first 8% of 2.6 s, so a getBoundingClientRect sampled during the
-    // pop measures the animation, not the layout. Size and fit are read off the LAYOUT box (offsetWidth /
-    // scrollWidth), which a transform does not touch; the overlap checks wait for the pop to finish.
     const geo = () => pg.evaluate(() => {
-      const r = e => { const b = document.getElementById(e).getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), right: Math.round(b.right), bottom: Math.round(b.bottom) }; };
-      const ov = (a, z) => !(a.right <= z.x || a.x >= z.right || a.bottom <= z.y || a.y >= z.bottom);
-      const wash = document.getElementById('cflash'), w = document.getElementById('cflashw');
-      const word = r('cflashw'), bar = r('cbar'), eta = r('ceta');
-      // a fixed element's containing block is the viewport MINUS classic scrollbars, and this harness runs
-      // with them on (ignoreDefaultArgs --hide-scrollbars), so innerWidth overstates it by 15px
+      const vis = e => { const c = getComputedStyle(e); const r = e.getBoundingClientRect(); return c.display !== 'none' && c.visibility !== 'hidden' && parseFloat(c.opacity) > 0.05 && r.width > 0 && r.height > 0 && !e.closest('[hidden]'); };
+      const w = document.getElementById('cflashw'), burst = document.getElementById('cburst');
+      // the word's LAYOUT box (the pop animates a scale; offset* ignore it), centred where the element sits
+      const wr = w.getBoundingClientRect();
+      const cx = (wr.left + wr.right) / 2, cy = (wr.top + wr.bottom) / 2, hw = w.offsetWidth / 2, hh = w.offsetHeight / 2;
+      const word = { l: cx - hw, r: cx + hw, t: cy - hh, b: cy + hh };
+      const cfg = document.getElementById('cfg');
+      const hits = [];
+      for (const e of document.body.querySelectorAll('*')) {
+        if (!vis(e) || e.closest('#cflash') || e.closest('.aura') || e.contains(w) || cfg.contains(e)) continue;
+        const text = [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+        const c = getComputedStyle(e), boxed = parseFloat(c.borderTopWidth) > 0 && c.borderTopStyle !== 'none';
+        if (!text && !boxed) continue;
+        const r = e.getBoundingClientRect();
+        if (Math.min(word.r, r.right) - Math.max(word.l, r.left) > 1 && Math.min(word.b, r.bottom) - Math.max(word.t, r.top) > 1) hits.push((e.id ? '#' + e.id : e.tagName + '.' + e.className) + ' "' + e.textContent.trim().slice(0, 18) + '"');
+      }
       const de = document.documentElement;
-      return { vp: { w: de.clientWidth, h: de.clientHeight, inner: innerWidth }, layout: { w: wash.offsetWidth, h: wash.offsetHeight }, wash: r('cflash'), word, bar, eta,
-        wordOverBar: ov(word, bar), wordOverEta: ov(word, eta),
-        clipped: w.scrollWidth > w.clientWidth + 1 };   // a word wider than its own box is a word nobody can read
+      return { vp: { w: de.clientWidth, h: de.clientHeight }, burst: { w: burst.offsetWidth, h: burst.offsetHeight }, hits, clipped: w.scrollWidth > w.clientWidth + 1 || word.l < 0 || word.r > innerWidth, word };
     });
-    await pg.waitForTimeout(450);                       // let the pop settle, then measure the screen as it stands
+    await pg.waitForTimeout(450);
     const g = await geo();
-    must(g.layout.w >= g.vp.w - 1 && g.layout.h >= g.vp.h - 1,
-      `the flash is FULL-BLEED, not a patch inside the hero: ${g.layout.w}x${g.layout.h} on a ${g.vp.w}x${g.vp.h} screen`);
-    must(!g.clipped, `the word fits the screen: ${JSON.stringify(g.word)} on ${g.vp.w}px`);
-    must(!g.wordOverBar, `the flash word does not sit on the capture bar: word ${JSON.stringify(g.word)} vs bar ${JSON.stringify(g.bar)}`);
-    // and the live half of it: put an enemy on the point WHILE the flash is up, so the screen is telling
-    // the defender he is losing it at the same moment it is celebrating the capture
+    must(g.burst.w >= g.vp.w - 1 && g.burst.h >= g.vp.h - 1, `the burst is FULL-BLEED: ${g.burst.w}x${g.burst.h} on a ${g.vp.w}x${g.vp.h} screen`);
+    must(!g.clipped, `the word fits: ${JSON.stringify(g.word)}`);
+    must(!g.hits.length, `the flash word overlaps: ${g.hits.join(' ; ')}`);
+    // and while the point is being lost a second later, the normal case
     await pinFakes(pg, [FAR, FAR, FAR, ON]);
-    const losing = await untilC(pg, r => r.cstate === 'falling' && /LOST IN \d+ S/.test(r.eta), 8000, 'the drain starts');
+    await untilC(pg, r => r.cstate === 'falling', 8000, 'the drain starts');
     const g2 = await geo();
     const stillUp = await pg.evaluate(() => !document.getElementById('cflash').hidden);
-    await pg.screenshot({ path: `${OUT}/${view.name}-control-flash-vs-countdown.png` });
-    must(stillUp, 'precondition: the capture flash is STILL up while the point drains (that is the whole bug)');
-    must(!g2.wordOverEta, `"${losing.eta}" is not covered by "${await pg.evaluate(() => document.getElementById('cflashw').textContent)}": eta ${JSON.stringify(g2.eta)} vs word ${JSON.stringify(g2.word)}`);
-    must(!g2.wordOverBar, `nor is the bar: bar ${JSON.stringify(g2.bar)} vs word ${JSON.stringify(g2.word)}`);
+    await pg.screenshot({ path: `${OUT}/${view.name}-control-flash-vs-drain.png` });
+    must(stillUp, 'precondition: the capture flash is STILL up while the point drains');
+    must(!g2.hits.length, `mid-drain, the flash word overlaps: ${g2.hits.join(' ; ')}`);
     await done(pg, perr);
   });
 
@@ -2587,7 +2592,7 @@ await step('polish-2 connected: the pre-join copy no longer claims mDNS auto-joi
   const note = await pg.evaluate(() => (document.querySelector('.lobby .note.join') || {}).textContent || '');
   await pg.close();
   must(!/connects by itself/i.test(note), 'the copy still claims an address connects by itself: ' + note);
-  must(/tap JOIN/i.test(note), 'the copy does not point at the JOIN row: ' + note);
+  must(/tap its row/i.test(note), 'the copy does not point at the JOIN row: ' + note);   // HUD QA R2-19: never "tap JOIN" with no JOIN on screen
 });
 
 // ---------- Polish-loop pass 2: an honest, muted EQUIPPED · UNCONFIRMED after the arming timeout ----------
@@ -3843,13 +3848,13 @@ for (const [kind, team, id] of UTIL_KINDS) {
         const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; };
         const control = document.getElementById('control');
         const isControl = control && !control.hidden;
-        const bar = isControl ? rect(document.getElementById('cbar')) : rect(document.querySelector('.hero .status'));
+        const bar = isControl ? rect(document.getElementById('core')) : rect(document.querySelector('.hero .status'));
         return { docH: document.documentElement.scrollHeight, vh: window.innerHeight, isControl, bar };
       });
       await pg.screenshot({ path: `${OUT}/util-${kind}-${team}-${id}-${view.name}.png` }); await pg.close();
       must(r.docH <= r.vh, `the page scrolls vertically at ${view.name}: document height ${r.docH} > viewport ${r.vh}`);
-      must(r.bar, `no ${r.isControl ? 'capture bar (#cbar)' : 'primary status (.hero .status)'} found on screen`);
-      must(r.bar.top >= 0 && r.bar.bottom <= r.vh, `the ${r.isControl ? 'capture bar' : 'primary status'} is not fully in view at ${view.name}: ${JSON.stringify(r.bar)} (viewport ${r.vh})`);
+      must(r.bar, `no ${r.isControl ? 'capture ring (#core)' : 'primary status (.hero .status)'} found on screen`);
+      must(r.bar.top >= 0 && r.bar.bottom <= r.vh, `the ${r.isControl ? 'capture ring' : 'primary status'} is not fully in view at ${view.name}: ${JSON.stringify(r.bar)} (viewport ${r.vh})`);
     });
   }
 }
@@ -3858,14 +3863,282 @@ await step('utility landscape fit: portrait is unchanged (.side keeps the origin
   const r = await pg.evaluate(() => {
     const side = document.getElementById('side'); const cs = getComputedStyle(side);
     const heroBottom = document.querySelector('.hero').getBoundingClientRect().bottom;
-    const playersTop = document.querySelector('.panel.players').getBoundingClientRect().top;
-    return { display: cs.display, flexDirection: cs.flexDirection, gap: cs.rowGap || cs.gap, heroToPlayers: playersTop - heroBottom };
+    // round 3: the roster is folded away and the exit hold comes first, so measure to whatever sits highest in #side
+    const nextTop = Math.min(...[...side.children].map(e => e.getBoundingClientRect()).filter(r => r.height > 0).map(r => r.top));
+    return { display: cs.display, flexDirection: cs.flexDirection, gap: cs.rowGap || cs.gap, heroToPlayers: nextTop - heroBottom };
   });
   await pg.close();
   must(r.display === 'flex' && r.flexDirection === 'column', `#side must stay a plain flex column outside the landscape gate: ${JSON.stringify(r)}`);
   must(Math.round(parseFloat(r.gap)) === 14, `#side must keep the page's own 14px gap in portrait: ${JSON.stringify(r)}`);
-  must(Math.abs(r.heroToPlayers - 14) <= 1, `hero-to-players gap drifted from the original 14px in portrait: ${r.heroToPlayers}`);
+  must(Math.abs(r.heroToPlayers - 14) <= 1, `hero-to-next-section gap drifted from the original 14px in portrait: ${r.heroToPlayers}`);
 });
+// Utility visual QA (Tony, 0.4.11 on a Pixel 5, 2026-09-24): "some letters are leaning back, some overlapping UI, the
+// angles don't all line up", then "just do regular untilted". Per kind, Pixel 5 portrait and landscape, main screen and
+// drawer: nothing on the utility page is skewed or italic, no bordered box touches or crosses another, the ⓘ tap count
+// sits on screen and clear of the ⓘ border, the player table's columns line up within 2 px, and the linked MC panel
+// is folded to its status line.
+const utilQa = pg => pg.evaluate(() => {
+  const vis = e => { const cs = getComputedStyle(e); const r = e.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0 && !e.closest('[hidden]'); };
+  const nm = e => e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().replace(/\s+/g, '.');
+  const cfgOpen = !document.getElementById('cfg').hidden;
+  const all = [...(cfgOpen ? document.getElementById('cfg') : document.body).querySelectorAll('*')].filter(e => vis(e) && (cfgOpen || !e.closest('#cfg')));
+  const tilt = [];
+  for (const e of all) {
+    const cs = getComputedStyle(e);
+    if (cs.transform !== 'none' && (m => Math.abs(m.a * m.c + m.b * m.d) > 1e-6)(new DOMMatrix(cs.transform))) tilt.push('skewed ' + nm(e));
+    if (cs.fontStyle !== 'normal' && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) tilt.push('italic ' + nm(e));
+  }
+  const boxed = e => { const cs = getComputedStyle(e); return ['Top', 'Right', 'Bottom', 'Left'].every(s => parseFloat(cs['border' + s + 'Width']) > 0 && cs['border' + s + 'Style'] !== 'none'); };
+  const boxes = all.filter(boxed), touch = [];
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const a = boxes[i], b = boxes[j], A = a.getBoundingClientRect(), B = b.getBoundingClientRect();
+    if (a.contains(b) || b.contains(a)) { const [o, n] = a.contains(b) ? [A, B] : [B, A]; const g = Math.min(n.left - o.left, o.right - n.right, n.top - o.top, o.bottom - n.bottom); if (g < 2) touch.push(`${nm(a)} / ${nm(b)} nested gap ${Math.round(g)}`); continue; }
+    if (Math.max(A.left, B.left) - Math.min(A.right, B.right) < 2 && Math.max(A.top, B.top) - Math.min(A.bottom, B.bottom) < 2) touch.push(`${nm(a)} / ${nm(b)}`);
+  }
+  const P = document.getElementById('infoProg').getBoundingClientRect(), I = document.getElementById('info').getBoundingClientRect();
+  const badge = { shown: vis(document.getElementById('infoProg')), onScreen: P.left >= 0 && P.top >= 0 && P.right <= innerWidth && P.bottom <= innerHeight,
+    clear: Math.max(P.left, I.left) - Math.min(P.right, I.right) >= 2 || Math.max(P.top, I.top) - Math.min(P.bottom, I.bottom) >= 2 };
+  const rows = [...document.querySelectorAll('#players .row:not(.empty)')].filter(vis), cols = [];
+  for (let c = 0; c < 5 && rows.length > 1; c++) { const L = rows.map(r => r.children[c].getBoundingClientRect().left); if (Math.max(...L) - Math.min(...L) > 2) cols.push(`column ${c + 1} starts at ${L.map(Math.round).join('/')}`); }
+  const E = rows.map(r => r.querySelector('.rssi small').getBoundingClientRect().right); if (rows.length > 1 && Math.max(...E) - Math.min(...E) > 2) cols.push(`rssi ends at ${E.map(Math.round).join('/')}`);
+  const mj = document.getElementById('mcjoin');
+  return { tilt, touch, badge, rows: rows.length, cols, folded: !!mj && mj.classList.contains('linked') && !vis(document.getElementById('mcUrlMain')) && vis(document.getElementById('btnMcChange')) };
+});
+for (const kind of ['respawn', 'powerup', 'control']) {
+  for (const view of [{ name: 'pixel5-portrait', width: 393, height: 851 }, { name: 'pixel5-landscape', width: 851, height: 393 }]) {
+    await step(`utility untilted: ${kind} @ ${view.name}: no skew or italic, no touching borders, tap count clear of ⓘ, table columns aligned, linked MC panel folded`, async () => {
+      const pg = await openUtility(view, kind, 1, 1);
+      if (kind === 'control') { await pg.evaluate(() => { window.brxUtility.point.capturing = 1; window.brxUtility.point.progress = 50; }); await pg.waitForTimeout(600); }
+      await pg.click('#btnPlayers');   // folded by default; the column check needs the roster on screen
+      for (let i = 0; i < 3; i++) await pg.click('#info');
+      const main = await utilQa(pg);
+      await pg.evaluate(() => window.brxUtilityGate.open()); await pg.waitForTimeout(200);
+      const drawer = await utilQa(pg);
+      await pg.screenshot({ path: `${OUT}/util-untilted-${kind}-${view.name}.png` }); await pg.close();
+      for (const [where, r] of [['main', main], ['drawer', drawer]]) {
+        must(!r.tilt.length, `${where}: tilted: ${r.tilt.join(' ; ')}`);
+        must(!r.touch.length, `${where}: bordered boxes touch or cross: ${r.touch.join(' ; ')}`);
+      }
+      must(main.badge.shown && main.badge.onScreen && main.badge.clear, `the ⓘ tap count must be on screen and clear of the ⓘ border: ${JSON.stringify(main.badge)}`);
+      must(main.rows >= 2 && !main.cols.length, `player table columns misaligned: ${main.cols.join(' ; ')} (${main.rows} rows)`);
+      must(main.folded, 'linked to MC, the main-screen MC panel must fold to its status line and CHANGE');
+    });
+  }
+}
+
+// Round 3 (Tony, 2026-09-24): the roster is optional and folded away by default ("the debug player list taking up half
+// the screen"), the choice sticks per phone, and folded it takes no room at all.
+await step('utility roster: folded by default, SHOW/HIDE PLAYERS toggles it, and the choice survives a reload', async () => {
+  const pg = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
+  const read = () => pg.evaluate(() => { const p = document.getElementById('playersPanel'), b = document.getElementById('btnPlayers'); const r = p.getBoundingClientRect();
+    return { hidden: p.hidden, h: r.height, btn: b.textContent.trim(), expanded: b.getAttribute('aria-expanded'), rows: [...document.querySelectorAll('#players .row')].filter(x => x.getBoundingClientRect().height > 0).length, stored: localStorage.getItem('brx.utility.players') }; });
+  const a = await read();
+  await pg.click('#btnPlayers'); await pg.waitForTimeout(300);
+  const b2 = await read();
+  await pg.reload(); await pg.waitForFunction(() => !!window.brxUtility, null, { timeout: 8000 }); await pg.waitForTimeout(600);
+  const c = await read();
+  await pg.click('#btnPlayers'); await pg.waitForTimeout(200);
+  await pg.reload(); await pg.waitForFunction(() => !!window.brxUtility, null, { timeout: 8000 }); await pg.waitForTimeout(600);
+  const d = await read();
+  await pg.close();
+  must(a.hidden && a.h === 0 && a.rows === 0 && a.btn === 'SHOW PLAYERS' && a.expanded === 'false', 'folded by default, taking no room: ' + JSON.stringify(a));
+  must(!b2.hidden && b2.rows >= 1 && b2.btn === 'HIDE PLAYERS' && b2.expanded === 'true' && b2.stored === '1', 'SHOW PLAYERS unfolds it: ' + JSON.stringify(b2));
+  must(!c.hidden && c.rows >= 1, 'and it stays open across a reload: ' + JSON.stringify(c));
+  must(d.hidden && d.stored === '0', 'HIDE PLAYERS folds it, and that sticks too: ' + JSON.stringify(d));
+});
+// Round 3 (Tony, 2026-09-24): the arming line is quiet when all is well and loud only when players may ignore the station.
+await step('utility arming line: waiting, then SET BY HAND when started without MC arming, a quiet MC OFFLINE after a drop, quiet once armed', async () => {
+  const pg = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
+  const read = () => pg.evaluate(() => { const e = document.getElementById('armed'); return { text: e.textContent, cls: e.className, color: getComputedStyle(e).color, shown: e.getBoundingClientRect().height > 0 }; });
+  const wait = await read();
+  await pg.evaluate(() => window.brxUtility.startAdvert()); await pg.waitForTimeout(300);
+  const hand = await read();
+  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, game: 38, valid_ids: [1] })); await pg.waitForTimeout(300);
+  const armed = await read();
+  await pg.close();
+  const pg2 = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
+  await pg2.evaluate(() => { window.brxUtility.transport.close(); window.brxUtility.startAdvert(); }); await pg2.waitForTimeout(300);
+  const alone = await pg2.evaluate(() => { const e = document.getElementById('armed'); return { text: e.textContent, cls: e.className, shown: e.getBoundingClientRect().height > 0 }; });
+  await pg2.close();
+  must(wait.text === 'WAITING FOR MC TO ARM IT' && !/warn/.test(wait.cls), 'linked, not started: ' + JSON.stringify(wait));
+  must(hand.text === 'SET BY HAND · PLAYERS MAY IGNORE IT' && /warn/.test(hand.cls) && hand.shown, 'linked and on the air without arming: the warning: ' + JSON.stringify(hand));
+  // (the stage always links first, so a never-linked phone cannot be staged; a DROPPED link reads as a quiet note, not a warning)
+  must(alone.text === 'MC OFFLINE' && !/warn/.test(alone.cls), 'after MC drops, a quiet note, never the SET BY HAND warning: ' + JSON.stringify(alone));
+  must(armed.text === 'MC ✓ GAME 38' && !/warn/.test(armed.cls), 'armed: quiet: ' + JSON.stringify(armed));
+});
+// Round 3: RANGE on the main screen (Tony: "i like being able to set the radius and strength right there"), and the dBm edge
+// is typed WITHOUT its minus (Tony: "drop the - ... it just makes it harder to input the number"). 70 means -70 dBm.
+await step('utility range: typing 70 stores -70 dBm, a number out of range is refused, and the controls lock once live', async () => {
+  const pg = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
+  const read = () => pg.evaluate(() => ({ thr: window.brxUtility.settings.threshold, saved: JSON.parse(localStorage.getItem('brx.utility') || '{}').threshold,
+    value: document.getElementById('thrNum').value, invalid: document.getElementById('thrNum').getAttribute('aria-invalid'), mode: document.getElementById('thrNum').inputMode,
+    disabled: document.getElementById('thrNum').disabled, txDisabled: [...document.querySelectorAll('#range [data-tx]')].every(b => b.disabled),
+    visible: document.getElementById('range').getBoundingClientRect().height > 0, lock: document.getElementById('rangeLock').textContent, hint: document.getElementById('rhint').textContent }));
+  const a = await read();
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '70'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
+  const b2 = await read();
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '-62'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
+  const m = await read();
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '12'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
+  const bad = await read();
+  await pg.evaluate(() => document.getElementById('thrNum').blur()); await pg.waitForTimeout(400);
+  const badBlur = await read();
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '66'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
+  const fixed = await read();
+  await pg.click('#range [data-tx="low"]'); await pg.waitForTimeout(200);
+  const tx = await pg.evaluate(() => ({ tx: window.brxUtility.settings.tx, sel: document.querySelector('#range [data-tx="low"]').classList.contains('sel') }));
+  await pg.evaluate(() => window.brxUtility.startAdvert()); await pg.waitForTimeout(400);
+  const live = await read();
+  await pg.close();
+  must(a.visible && a.value === '74' && a.mode === 'numeric' && !a.disabled, 'shown on the main screen, as a positive number on a numeric keypad: ' + JSON.stringify(a));
+  must(b2.thr === -70 && b2.saved === -70 && b2.value === '70' && b2.invalid === 'false', 'typing 70 stores -70 dBm: ' + JSON.stringify(b2));
+  must(m.thr === -62 && m.value === '62', 'a typed minus is dropped, not doubled: ' + JSON.stringify(m));
+  must(bad.thr === -62 && bad.invalid === 'true' && /TYPE 35 TO 95/.test(bad.hint), 'a number out of range (12) is refused and marked: ' + JSON.stringify(bad));
+  must(badBlur.value === '12' && badBlur.invalid === 'true' && badBlur.thr === -62, 'after a blur the refused entry stays shown and marked, never a red old value: ' + JSON.stringify(badBlur));
+  must(fixed.thr === -66 && fixed.invalid === 'false' && /TIGHT/.test(fixed.hint), 'a valid entry clears the error: ' + JSON.stringify(fixed));
+  must(tx.tx === 'low' && tx.sel, 'the STRENGTH buttons set the transmit power: ' + JSON.stringify(tx));
+  must(live.disabled && live.txDisabled && /LOCKED/.test(live.lock), 'on the air, the range is a readout (the anti-cheat rule): ' + JSON.stringify(live));
+});
+
+// ---- Round 3 (2026-09-24): the utility STATE GATE. Every utility state, at Pixel 5 portrait (393x851) and landscape
+// (851x393), driven through the real stage wire, most of them MC-armed as on the field. Each one asserts what a person
+// sees: nothing skewed or italic; no bordered boxes touching; no text clipped, squeezed or overlapping (the capture word
+// included); roster columns aligned when shown; landscape fits; every main-screen control >= 44 CSS px; the station
+// word, the % and the kind legible at arm's length; and HONEST state: LIVE only when on the air, MC ✓ only when armed,
+// LINKED only when the socket is bound. Tony's notes that drove it are in the utility QA gallery of the same date.
+const UG_ITEM = { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' };
+const ugW = ms => new Promise(r => setTimeout(r, ms));
+const ugFakes = (pg, m) => pg.evaluate(m => { for (const f of window.brxUtilityFake) { if (m[f.id] === undefined) continue; const v = m[f.id]; f.rssi = () => (v == null ? -99 : v); } }, m);
+const ugCtl = (pg, st) => pg.evaluate(st => { const p = window.brxUtility.point; Object.assign(p, st); p.at = null; }, st);
+const ugLive = pg => pg.evaluate(() => window.brxUtility.startAdvert());
+const ugPu = async (pg, avail, item = UG_ITEM) => { await pg.evaluate(i => window.brxUtility.mcMessage('station_config', { kind: 'powerup', team: 255, id: 4, game: 38, item: i }), item); await ugW(200);
+  if (avail) { await pg.evaluate(() => window.brxUtility.mcMessage('station_update', { id: 4, available: true, next_spawn_in_ms: 120000 })); await ugW(200); } };
+// [name, [kind, team, id], armed through the wire first?, drive]
+const UG_STATES = [
+  ['respawn-idle', ['respawn', 1, 1], false, async () => {}],
+  ['respawn-offline', ['respawn', 1, 1], false, async pg => { await pg.evaluate(() => window.brxUtility.transport.close()); }],
+  ['respawn-linked-change', ['respawn', 1, 1], false, async pg => { await pg.click('#btnMcChange'); }],
+  ['respawn-players-shown', ['respawn', 1, 1], true, async pg => { await pg.click('#btnPlayers'); }],
+  ['respawn-radius-invalid', ['respawn', 1, 1], false, async pg => { await pg.fill('#thrNum', ''); await pg.type('#thrNum', '12'); await pg.press('#thrNum', 'Enter'); }],
+  ['respawn-hand-set-warning', ['respawn', 1, 1], false, async pg => { await ugLive(pg); }],
+  ['respawn-armed', ['respawn', 1, 1], true, async () => {}],
+  ['respawn-any-team', ['respawn', 255, 2], true, async () => {}],
+  ['extraction', ['extraction', 255, 1], true, async () => {}],
+  ['bomb', ['bomb', 0, 1], true, async () => {}],
+  ['powerup-plain', ['powerup', 2, 1], true, async () => {}],
+  ['powerup-waiting', ['powerup', 255, 4], false, async pg => { await ugPu(pg, false); }],
+  ['powerup-available', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true); }],
+  ['powerup-claiming', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true); await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 16; f.value = 4; }); await ugW(500); }],
+  ['powerup-taken', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true); await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 16; f.value = 4; }); await ugW(600); await pg.evaluate(() => { window.brxUtilityFake[0].bits = 48; }); await ugW(700); }],
+  // C1 (critical review): real catalogue names are long; the word must stay inside the ring on two balanced lines
+  ['powerup-long-name', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true, { ...UG_ITEM, name: 'Rocket Launcher' }); }],
+  ['powerup-long-name-taken', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true, { ...UG_ITEM, name: 'Armor Piercing' }); await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 16; f.value = 4; }); await ugW(600); await pg.evaluate(() => { window.brxUtilityFake[0].bits = 48; }); await ugW(700); }],
+  ['control-neutral', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: null, 19: null, 23: null, 31: null }); }],
+  ['control-gaining', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: null, 31: null }); await ugCtl(pg, { capturing: 1, progress: 40 }); }],
+  ['control-contested', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: null, 31: -55 }); await ugCtl(pg, { capturing: 1, progress: 55 }); }],
+  ['control-held', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: null, 31: null }); await ugCtl(pg, { owner: 1, capturing: null, progress: 100, holdMs: { 1: 83000, 0: 41000 } }); }],
+  ['control-losing', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: null, 19: null, 23: null, 31: -55 }); await ugCtl(pg, { owner: 1, capturing: null, progress: 70, holdMs: { 1: 83000 } }); }],
+  ['control-captured-flash', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: -55, 31: null }); await ugCtl(pg, { capturing: 1, progress: 97 }); await pg.waitForFunction(() => !document.getElementById('cflash').hidden, null, { timeout: 8000 }); await ugW(450); }],
+  ['control-players-warnings', ['control', 255, 1], true, async pg => { await pg.evaluate(() => { const f = window.brxUtilityFake[1]; f.alive = true; f.rssi = () => -55; const u = window.brxUtility; window.__ugTwin = setInterval(() => u.presence.observe([u.encodeUuid({ role: 'station', id: 1, kind: 'control', team: 1, state: 1, value: 0, seq: 0, game: u.settings.game, threshold: -74 })], -60, Date.now()), 250); }); await ugFakes(pg, { 7: null, 23: null, 31: null }); await pg.click('#btnPlayers'); }],
+  ['drawer', ['respawn', 1, 1], false, async pg => { await pg.evaluate(() => window.brxUtilityGate.open()); }],
+];
+const ugRead = pg => pg.evaluate(() => {
+  const vis = e => { const c = getComputedStyle(e); const r = e.getBoundingClientRect(); return c.display !== 'none' && c.visibility !== 'hidden' && parseFloat(c.opacity) > 0.05 && r.width > 0 && r.height > 0 && !e.closest('[hidden]'); };
+  const nm = e => e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().replace(/\s+/g, '.');
+  const cfg = document.getElementById('cfg'), cfgOpen = !cfg.hidden;
+  const all = [...(cfgOpen ? cfg : document.body).querySelectorAll('*')].filter(e => vis(e) && (cfgOpen || !cfg.contains(e)) && !e.closest('.aura'));
+  const texts = all.filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
+  const out = { tilt: [], touch: [], clip: [], overlap: [], cols: [], land: [], taps: [], legible: [], honest: [] };
+  for (const e of all) { const c = getComputedStyle(e); if (c.transform !== 'none' && (m => Math.abs(m.a * m.c + m.b * m.d) > 1e-6)(new DOMMatrix(c.transform))) out.tilt.push('skewed ' + nm(e)); }
+  for (const e of texts) if (getComputedStyle(e).fontStyle !== 'normal') out.tilt.push('italic ' + nm(e));
+  const boxed = e => { const c = getComputedStyle(e); return ['Top', 'Right', 'Bottom', 'Left'].every(k => parseFloat(c['border' + k + 'Width']) > 0 && c['border' + k + 'Style'] !== 'none'); };
+  const boxes = all.filter(boxed);
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const a = boxes[i], b = boxes[j], A = a.getBoundingClientRect(), B = b.getBoundingClientRect();
+    if (a.contains(b) || b.contains(a)) { const [o, n] = a.contains(b) ? [A, B] : [B, A]; if (Math.min(n.left - o.left, o.right - n.right, n.top - o.top, o.bottom - n.bottom) < 2) out.touch.push(`${nm(a)} / ${nm(b)}`); continue; }
+    if (Math.max(A.left, B.left) - Math.min(A.right, B.right) < 2 && Math.max(A.top, B.top) - Math.min(A.bottom, B.bottom) < 2) out.touch.push(`${nm(a)} / ${nm(b)}`);
+  }
+  const vw = innerWidth;
+  for (const e of texts) {
+    const r = e.getBoundingClientRect(), c = getComputedStyle(e);
+    if (r.left < -1 || r.right > vw + 1) out.clip.push(`${nm(e)} off screen`);
+    if (e.scrollWidth > e.clientWidth + 1 && c.overflow !== 'visible') out.clip.push(`${nm(e)} cut: ${e.scrollWidth} > ${e.clientWidth}`);
+    if (c.overflowY === 'visible' && c.display !== 'inline' && e.scrollHeight > r.height + 2 + 0.3 * parseFloat(c.fontSize)) out.clip.push(`${nm(e)} squeezed: ${e.scrollHeight}px of text in ${Math.round(r.height)}px`);
+  }
+  for (let i = 0; i < texts.length; i++) for (let j = i + 1; j < texts.length; j++) {
+    const a = texts[i], b = texts[j]; if (a.contains(b) || b.contains(a)) continue;
+    const A = a.getBoundingClientRect(), B = b.getBoundingClientRect();
+    if (Math.min(A.right, B.right) - Math.max(A.left, B.left) > 2 && Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top) > 2) out.overlap.push(`${nm(a)} "${a.textContent.trim().slice(0, 14)}" x ${nm(b)} "${b.textContent.trim().slice(0, 14)}"`);
+  }
+  const rows = [...document.querySelectorAll('#players .row:not(.empty)')].filter(vis);
+  for (let c = 0; c < 5 && rows.length > 1; c++) { const L = rows.map(r => r.children[c].getBoundingClientRect().left); if (Math.max(...L) - Math.min(...L) > 2) out.cols.push(`column ${c + 1}`); }
+  // H5: the page never scrolls sideways (a glow, a burst or a hit target used to widen it)
+  if (document.documentElement.scrollWidth > innerWidth) out.clip.push(`the page is ${document.documentElement.scrollWidth}px wide on a ${innerWidth}px screen`);
+  if (!cfgOpen) {
+    // the ring sits inside the hero's border, and every line of the big word sits inside the ring's text box
+    const hero = document.querySelector('.hero').getBoundingClientRect(), ring = document.querySelector('.aura .atrack').getBoundingClientRect();
+    if (ring.left < hero.left + 1 || ring.right > hero.right - 1 || ring.top < hero.top + 1 || ring.bottom > hero.bottom - 1) out.touch.push('the ring crosses the hero border');
+    const box = document.querySelector('.coretext').getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(document.getElementById('team'));
+    for (const r of rg.getClientRects()) if (r.left < box.left - 2 || r.right > box.right + 2 || r.top < box.top - 2 || r.bottom > box.bottom + 2) { out.clip.push(`the big word "${document.getElementById('team').textContent}" runs out of the ring`); break; }
+  }
+  if (innerWidth > innerHeight && !cfgOpen) {
+    const side = document.getElementById('side').getBoundingClientRect(), hero = document.querySelector('.hero').getBoundingClientRect();
+    if (hero.right > side.left - 4) out.land.push('the hero runs into the side column');
+    if (document.documentElement.scrollHeight > innerHeight) out.land.push(`the page scrolls: ${document.documentElement.scrollHeight} > ${innerHeight}`);
+    for (const e of document.querySelector('.hero').querySelectorAll('*')) { if (!vis(e) || e.closest('.aura')) continue; const r = e.getBoundingClientRect(); if (r.bottom > hero.bottom + 1 || r.top < hero.top - 1) { out.land.push(`${nm(e)} spills out of the hero`); break; } }
+  }
+  const controls = cfgOpen ? [...cfg.querySelectorAll('button, input')] : ['#btnPlayers', '#btnMcChange', '#thrNum', '#exitHud', '#btnMcMain', '#btnQrMain', '#mcUrlMain'].map(q => document.querySelector(q)).concat([...document.querySelectorAll('#range [data-tx]')]);
+  for (const e of controls) { if (!e || !vis(e)) continue; const r = e.getBoundingClientRect(); if (r.height < 44 - 0.5 || r.width < 44 - 0.5) out.taps.push(`${nm(e)} ${Math.round(r.width)}x${Math.round(r.height)}`); }
+  const portrait = innerHeight > innerWidth;
+  const px = id => { const e = document.getElementById(id); return e && vis(e) ? parseFloat(getComputedStyle(e).fontSize) : null; };
+  if (!cfgOpen) {
+    const team = px('team'), pct = px('cpct'), kind = px('kind');
+    if (team == null || team < (portrait ? 40 : 28)) out.legible.push(`station word ${team}px`);
+    if (pct != null && pct < (portrait ? 28 : 20)) out.legible.push(`% line ${pct}px`);
+    if (kind == null || kind < 15) out.legible.push(`kind ${kind}px`);
+  }
+  const u0 = window.brxUtility;
+  if (!cfgOpen && u0.settings.kind === 'control') {
+    const v = u0.point.advert(), p = u0.point, names = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' }, keys = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
+    const holder = v.team !== 255 && v.value > 0 ? v.team : null, held = (v.state & 1) === 1;
+    const word = document.getElementById('team').textContent, pct = document.getElementById('cpct'), flashing = !document.getElementById('cflash').hidden;
+    const aura = document.getElementById('aura'), cstate = document.documentElement.dataset.cstate;
+    const want = p.contested ? 'contested' : p.dir > 0 ? 'rising' : p.dir < 0 ? 'falling' : held ? 'held' : 'idle';
+    if (word !== (holder == null ? 'NEUTRAL' : names[holder])) out.honest.push(`word "${word}" but the ring is ${holder == null ? 'nobody' : names[holder]}'s`);
+    if (cstate !== want) out.honest.push(`animation "${cstate}" but the point is ${want}`);
+    if (!flashing && v.value > 0 && !(held && v.value >= 100 && !p.dir) && pct.textContent !== v.value + '%') out.honest.push(`% "${pct.textContent}" but the point is at ${v.value}%`);
+    if (holder != null && !aura.style.getPropertyValue('--hold').includes(keys[holder])) out.honest.push(`ring colour ${aura.style.getPropertyValue('--hold')} for ${names[holder]}`);
+    const dir = getComputedStyle(aura.querySelector('.asweep s')).animationDirection;
+    if ((cstate === 'falling') !== (dir === 'reverse') && (cstate === 'rising' || cstate === 'falling')) out.honest.push(`sweep runs ${dir} while ${cstate}`);
+  }
+  if (!cfgOpen && u0.settings.mcArmed && /MISSION CONTROL/.test((document.getElementById('pstate') || {}).textContent || '')) out.honest.push('an armed powerup says it waits for Mission Control');
+  const u = window.brxUtility, status = document.getElementById('status').textContent, armed = document.getElementById('armed').textContent, mc = document.getElementById('mcstateMain').textContent;
+  if ((status === 'LIVE') !== !!u.settings.live) out.honest.push(`status "${status}" but live=${!!u.settings.live}`);
+  if (/MC ✓/.test(armed) !== !!u.settings.mcArmed) out.honest.push(`arming line "${armed}" but armed=${!!u.settings.mcArmed}`);
+  if (/LINKED/.test(mc) !== (u.transport && u.transport.state === 'bound')) out.honest.push(`MC line "${mc}" but socket ${u.transport && u.transport.state}`);
+  return out;
+});
+const UG_VIEWS = [{ name: 'pixel5-portrait', width: 393, height: 851 }, { name: 'pixel5-landscape', width: 851, height: 393 }];
+for (const [st, [kind, team, id], arm, drive] of UG_STATES) {
+  for (const view of UG_VIEWS) {
+    await step(`utility state gate: ${st} @ ${view.name}`, async () => {
+      const ctx = await b.newContext({ viewport: { width: view.width, height: view.height }, deviceScaleFactor: 2.75, isMobile: true, hasTouch: true });
+      const pg = await ctx.newPage(); pg.setDefaultTimeout(8000); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+      try {
+        await pg.addInitScript(s => { try { if (!sessionStorage.getItem('ug')) { sessionStorage.setItem('ug', '1'); localStorage.clear(); localStorage.setItem('brx.utility', JSON.stringify(s)); } } catch {} }, { kind, team, id, tx: 'high', threshold: -74, dwell: 800, game: 0 });
+        await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`);
+        await pg.waitForFunction(() => window.brxUtility && window.brxUtilityFake && window.brxUtility.transport && window.brxUtility.transport.state === 'bound', null, { timeout: 8000 });
+        if (arm) { await pg.evaluate(a => window.brxUtility.mcMessage('station_config', a), { kind, team, id, threshold: -74, game: 38, valid_ids: [1, 2, 4] }); await ugW(250); }
+        await drive(pg);
+        if (!st.includes('flash')) await pg.waitForFunction(() => true, null, { timeout: 100 }).then(() => ugW(st.startsWith('control') || st.startsWith('respawn-players') ? 2600 : 700));
+        const r = await ugRead(pg);
+        await pg.screenshot({ path: `${OUT}/ug-${st}-${view.name}.png` });
+        must(perr.length === 0, 'page errors: ' + perr.join(' | '));
+        for (const [k, why] of [['tilt', 'skewed or italic'], ['touch', 'bordered boxes touch or cross'], ['clip', 'text clipped or squeezed'], ['overlap', 'text overlaps text'], ['cols', 'roster columns misaligned'], ['land', 'landscape does not fit'], ['taps', 'controls under 44 CSS px'], ['legible', 'not legible at arm`s length'], ['honest', 'the screen claims a state it is not in']]) must(!r[k].length, `${why}: ${r[k].join(' ; ')}`);
+      } finally { await ctx.close(); }
+    });
+  }
+}
 
 // QA lane C (2026-09-23)
 // QA-05: one callout card for every "someone went down" and "the hill changed hands" moment, whichever path it
@@ -4498,7 +4771,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: another player won it: TAKEN BY VIPER, with the countdown to the next spawn`, async () => {
     const pg = await open(view, 'live-pu-taken-by', N, 3300); const r = await puWait(pg, r => r.hint && r.hint.kind === 'taken_by', 2000); await shot(pg, 'taken-by'); await puClose(pg, night);
-    must(r.hint && /^TAKEN · 1:5\d$/.test(r.hint.act) && r.hint.lab === 'BY VIPER', `the countdown is in the action line: ${JSON.stringify(r.hint)}`);
+    must(r.hint && /^ROCKETS TAKEN · 1:5\d$/.test(r.hint.act) && r.hint.lab === 'BY VIPER', `the countdown is in the action line: ${JSON.stringify(r.hint)}`);
     must(r.hint.actPx >= 14 && r.hint.labPx >= 11, `type floors: ${r.hint.actPx}/${r.hint.labPx}`);
     must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `a long line wraps, it never reaches the vitals: ${JSON.stringify(r.hint.box)} vitals ${JSON.stringify(r.vitals)}`);
   });
@@ -4572,7 +4845,7 @@ for (const view of UTIL_VIEWS) {
     await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 48; });   // past the phone's own dwell: claim_ready
     await pg.waitForTimeout(700);
     const taken = await puStation(pg); await pg.screenshot({ path: `${OUT}/util-a56-taken-${view.name}.png` }); await pg.close();
-    must(before.name === 'ROCKETS' && before.pup && before.state === 'WAITING FOR MISSION CONTROL', `before MC's first update: ${JSON.stringify(before)}`);
+    must(before.name === 'ROCKETS' && before.pup && before.state === 'FIRST DROP AT 2:00', `before MC's first update: ${JSON.stringify(before)}`);
     must(before.advert.state === 0 && before.advert.value === 0 && before.advert.taker === 0, `the unknown advert pair: ${JSON.stringify(before.advert)}`);
     must(avail.state === 'AVAILABLE' && avail.advert.state === 1, `available: ${JSON.stringify(avail)}`);
     must(claiming.state === 'HOLD STILL' && claiming.ring > 0, `the ring from the first claiming advert: ${JSON.stringify(claiming)}`);
@@ -4839,6 +5112,350 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(!night || px.bad === 0, `night: green, teal or blue paint on the meter: ${JSON.stringify(px)}`);
   });
 }
+
+
+// HUD visual QA round 2 (2026-09-24, qa-shots/hud2/FINDINGS.md) ---------- R2-02 .. R2-21, the gates it listed as missing ----------
+// Every check reads what a person sees on screen: rects after the #frame scale, computed colours, hit-testing.
+const r2 = {
+  /** The on-screen box, font px AFTER the frame scale, colour and whether it shows, for every match of `sel`. */
+  looks: (pg, sel) => pg.evaluate(sel => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+    return [...document.querySelectorAll(sel)].map(e => { const c = getComputedStyle(e), r = e.getBoundingClientRect(); let shown = r.width > 0 && r.height > 0;
+      for (let n = e; n && n !== f; n = n.parentElement) { const cs = getComputedStyle(n); if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) shown = false; }
+      return { text: (e.innerText || e.textContent || '').replace(/\s+/g, ' ').trim(), px: Math.round(parseFloat(c.fontSize) * k * 10) / 10, color: c.color, bg: c.backgroundColor,
+        l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height, shown }; }); }, sel),
+  rgb: css => (/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || '') || []).slice(1).map(Number),
+  /** amber: red and green both lit, green clearly under red, blue low (never the green of a healthy dot) */
+  amber: css => { const [R, G, B] = r2.rgb(css); return R > 150 && G > 80 && G < R - 30 && B < G - 20; },
+  green: css => { const [R, G, B] = r2.rgb(css); return G > R + 30 && G > B; },
+};
+for (const view of VIEWS) for (const night of [false, true]) {
+  const skin = night ? 'night' : 'day', N = night ? '&night' : '';
+  await step(`${view.name} R2-02 F341 pool_wrong ${skin}: the vitals say POOLS WRONG, the GUN dot is amber, no gain float`, async () => {
+    const pg = await open(view, 'live-pool-wrong', N, 1500);
+    await pg.evaluate(() => { window.__gains = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches('.mo.gain')) window.__gains.push(n.textContent.replace(/\s+/g, ' ').trim()); })
+      .observe(document.getElementById('overlay') || document.body, { childList: true, subtree: true }); });
+    let tag = []; for (let t = 0; t < 9000 && !(tag = await r2.looks(pg, '.vitals .pooltag')).length; t += 200) await pg.waitForTimeout(200);
+    const r = { tag: tag[0] || null, dot: (await r2.looks(pg, '#linkdot'))[0], gains: await pg.evaluate(() => window.__gains), why: await pg.evaluate(() => (window.brx.engine.state().poolStale || {}).why) };
+    await pg.screenshot({ path: `${OUT}/${view.name}-r2-02-pool-wrong-${skin}.png` });
+    const bad = await invariants(pg); await pg.close();
+    must(r.why === 'pool_wrong', `pre-condition: the REAL engine reached its verdict: ${r.why}`);
+    must(r.tag && r.tag.shown && r.tag.text === 'POOLS WRONG' && r.tag.px >= 11, `the vitals must say POOLS WRONG (MC's LIVE row word) at >= 11 px on screen: ${JSON.stringify(r.tag)}`);
+    must(r.dot && r2.amber(r.dot.bg), `the GUN dot must be amber: ${r.dot && r.dot.bg}`);
+    must(r.gains.length === 0, `a gain above the armed maximum floated: ${JSON.stringify(r.gains)}`);
+    must(bad.length === 0, bad.join(' ; '));
+  });
+}
+
+
+for (const view of VIEWS) for (const night of [false, true]) {
+  const skin = night ? 'night' : 'day', N = night ? '&night' : '';
+  await step(`${view.name} R2-04 shield delay ${skin}: the creep never reads as a pool (<= 30% of the track while the shield is 0)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3000);
+    const seen = []; for (let t = 0; t < 7000; t += 150) { const r = await svRead(pg); if (r.m && r.wait && r.shield === 0 && r.parts[0]) seen.push(r.dly / ((r.parts[0].r - r.parts[0].l) / r.k)); await pg.waitForTimeout(150); }
+    await pg.close();
+    must(seen.length > 5, `pre-condition: the delay ran on an empty shield (${seen.length} samples)`);
+    const top = Math.max(...seen);
+    must(top <= 0.31, `the delay creep drew ${Math.round(top * 100)}% of the track on an empty shield`);
+    must(top >= 0.15, `CONTROL: the creep still moves (${Math.round(top * 100)}%)`);
+  });
+}
+
+
+/** R2-05/R2-09: the 44 px square centred on a control, hit-tested on screen: which of its four edge midpoints miss it. */
+r2.tap44 = (pg, sel) => pg.evaluate(sel => [...document.querySelectorAll(sel)].filter(c => { const cs = getComputedStyle(c), r = c.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 1 && r.height > 1; }).map(c => {
+  const r = c.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2, fr = document.getElementById('frame').getBoundingClientRect();
+  const miss = [[cx - 21.5, cy], [cx + 21.5, cy], [cx, cy - 21.5], [cx, cy + 21.5]].filter(([x, y]) => y >= fr.top && y <= fr.bottom && x >= fr.left && x <= fr.right)
+    .filter(([x, y]) => { const h = document.elementFromPoint(x, y); return !(h && (h === c || c.contains(h))); });
+  return { name: (c.textContent || c.getAttribute('aria-label') || c.id).trim().slice(0, 24), w: Math.round(r.width), h: Math.round(r.height), miss: miss.map(p => p.map(Math.round)) }; }), sel);
+r2.contrast = (pg, sel) => pg.evaluate(([src, sel]) => { const ratio = eval(src)(); return [...document.querySelectorAll(sel)].map(e => ({ text: e.textContent.trim().slice(0, 30), cr: Math.round(ratio(e) * 100) / 100, anim: getComputedStyle(e).animationName })); }, [qaA.contrastOf.toString(), sel]);
+for (const night of [false, true]) {
+  const skin = night ? 'night' : 'day';
+  await step(`se R2-05 headset not joined ${skin}: RECONNECT NOW takes a 44 px tap at >= 11 px, the warning reads, READY UP says why`, async () => {
+    const pg = await open(VIEWS[1], 'kitted-headset-not-joined', night ? '&night' : '', 3000);
+    const r = { tap: await r2.tap44(pg, '.chipbar [data-act="onReconnectNow"]'), btn: (await r2.looks(pg, '.chipbar [data-act="onReconnectNow"] .unskew'))[0],
+      warn: (await r2.looks(pg, '.chipbar [data-headset="not_joined"] .unskew'))[0], cr: await r2.contrast(pg, '.chipbar [data-headset="not_joined"], .chipbar [data-act="onReconnectNow"]'),
+      note: (await r2.looks(pg, '#readynote'))[0] };
+    await pg.screenshot({ path: `${OUT}/se-r2-05-headset-${skin}.png` }); await pg.close();
+    must(r.tap.length === 1 && r.tap[0].miss.length === 0, `RECONNECT NOW must take a 44 px tap on screen: ${JSON.stringify(r.tap)}`);
+    must(r.btn && r.btn.px >= 11 && r.warn && r.warn.px >= 11, `the chip text must be >= 11 px on screen: ${JSON.stringify([r.btn, r.warn])}`);
+    if (night) must(r.cr.every(c => c.cr >= 4.5 && c.anim === 'none'), `night: the headset chips must read at >= 4.5:1 and hold still: ${JSON.stringify(r.cr)}`);
+    must(r.note && /headset/i.test(r.note.text) && /RECONNECT/i.test(r.note.text), `READY UP must give the reason while the headset is not joined: ${JSON.stringify(r.note)}`);
+  });
+}
+
+
+// R2-06 x A60: the JOIN row, keyed on autojoin.js's reason. Only UNVERIFIED is a warning (amber + a drawn glyph by day, the
+// bright night red at night); NEW and SEVERAL are not. None is green at night, and the text is >= 11 px on screen and fits.
+for (const view of VIEWS) for (const night of [false, true]) for (const reason of ['new', 'unverified', 'several']) {
+  const skin = night ? 'night' : 'day';
+  await step(`${view.name} R2-06 A60 JOIN row ${reason} ${skin}: ${reason === 'unverified' ? 'amber with a warning glyph' : 'no warning'}, >= 11 px, fits`, async () => {
+    const pg = await open(view, `connected-join-${reason}`, night ? '&night' : '', 1500);
+    const r = await pg.evaluate(() => { const e = document.querySelector('.lobby .discoveredrow'); if (!e) return null; const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+      const t = e.querySelector('.unskew'), cs = getComputedStyle(e);
+      return { text: t.textContent, reason: e.dataset.reason, px: parseFloat(getComputedStyle(t).fontSize) * k, color: cs.color, border: cs.borderTopColor, glyph: !!e.querySelector('svg'), fits: e.scrollWidth <= e.clientWidth + 1 }; });
+    const cr = await r2.contrast(pg, '.lobby .discoveredrow .unskew');
+    await pg.screenshot({ path: `${OUT}/${view.name}-r2-06-join-${reason}-${skin}.png` }); await pg.close();
+    must(r, 'no JOIN row on screen');
+    must(r.px >= 11 && r.fits, `the row must be >= 11 px on screen and fit: ${JSON.stringify(r)}`);
+    const warn = reason === 'unverified';
+    must(r.glyph === warn, `${warn ? 'UNVERIFIED needs' : 'only UNVERIFIED gets'} the warning glyph: ${JSON.stringify(r)}`);
+    if (night) {
+      must(!r2.green(r.color) && !r2.green(r.border), `night: the row is green: ${JSON.stringify(r)}`);
+      must(cr[0] && cr[0].cr >= 4.5, `night: the row reads below 4.5:1: ${JSON.stringify(cr)}`);
+      if (warn) { const [R, G] = r2.rgb(r.color); must(R >= 220 && G < 130, `night: UNVERIFIED uses the bright night red: ${r.color}`); }
+    } else {
+      must(r2.amber(r.color) === warn && !(warn && r2.green(r.border)), `day: ${warn ? 'UNVERIFIED is amber' : `${reason.toUpperCase()} is not amber`}: ${JSON.stringify(r)}`);
+    }
+  });
+}
+// R2-19: the copy never says "tap JOIN" with no JOIN control on screen
+for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${stage}: the join copy names a control that is on screen`, async () => {
+  const pg = await open(VIEWS[1], stage, '', 1500);
+  const r = await pg.evaluate(() => ({ note: (document.querySelector('.lobby .note.join') || {}).textContent || '', row: !!document.querySelector('.lobby .discoveredrow') }));
+  await pg.close();
+  must(r.note, 'no join copy');
+  must(!/tap JOIN/i.test(r.note) || r.row, `the copy says "tap JOIN" with no JOIN row on screen: ${r.note}`);
+  must(r.row ? /row above/i.test(r.note) : /when it appears/i.test(r.note), `the copy points at the row where it is: ${JSON.stringify(r)}`);
+});
+
+
+// R2-12: the night SECONDARY tier. Every painted text leaf under 14 px on screen reads at >= 4.5:1 and holds still. Out of
+// scope on purpose: a disabled control and a gun another player holds (dimmed as a state), and the kill/callout card (the
+// alert redesign owns it: R2-01/03/10/11/22).
+const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-pu-taken-by', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected'];
+for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name} R2-12 night secondary tier ${stage}: text under 14 px reads at >= 4.5:1, nothing blinks`, async () => {
+  const pg = await open(view, stage, '&night');
+  const bad = await pg.evaluate(src => { const ratio = eval(src)(); const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
+    for (const e of document.querySelectorAll('#hud *, #chips *, #overlay *')) {
+      if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+      if (e.closest('.tagrow.used, [disabled], [aria-disabled="true"], .co, .sr')) continue;
+      const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
+      let shown = true; for (let n = e; n && n !== f; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden') shown = false; }
+      if (!shown) continue;
+      const px = parseFloat(getComputedStyle(e).fontSize) * k; if (px >= 14) continue;
+      const cr = ratio(e);
+      let blink = null; for (let n = e; n && n !== f; n = n.parentElement) { const a = getComputedStyle(n).animationName; if (a && a !== 'none' && /blink/i.test(a)) blink = a; }
+      if (cr < 4.5 || blink) out.push(`"${e.textContent.trim().slice(0, 28)}" ${px.toFixed(1)}px ${cr.toFixed(2)}:1${blink ? ' ' + blink : ''}`);
+    }
+    return out; }, qaA.contrastOf.toString());
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-12-night-${stage}.png` }); await pg.close();
+  must(bad.length === 0, 'night text under 14 px below 4.5:1 or blinking: ' + bad.join(' ; '));
+});
+
+
+// R2-07 (QA-21 again): the SE type floor is ON SCREEN. Every painted text leaf of the in-game screens is >= 11 px after the
+// SE's 0.79 frame scale (14 frame px). Out of scope: the kill/callout card (the alert redesign owns it) and screen-reader text.
+const R2_TYPE = [['live', ''], ['live', '&night'], ['live-nogun', ''], ['live-pu-rockets', ''], ['live-pu-taken', ''], ['live-pu-taken-by', ''], ['live-shields-os', ''],
+  ['live-hill-captured', ''], ['down-recap', ''], ['down-full', ''], ['down-find', ''], ['down-hill', ''], ['down-pu-held', ''], ['live-pool-wrong', '']];
+for (const [stage, N] of R2_TYPE) await step(`se R2-07 type floor ${stage}${N ? ' night' : ''}: every in-game label is >= 11 px on the SE screen`, async () => {
+  const pg = await open(VIEWS[1], stage, N, stage === 'live-pool-wrong' ? 8000 : undefined);
+  const small = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
+    for (const e of document.querySelectorAll('#hud *, #chips *')) {
+      if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+      if (e.closest('.co, .sr, #diag, .mo')) continue;
+      const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
+      let shown = true; for (let n = e; n && n !== f; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity === 0) shown = false; }
+      if (!shown) continue;
+      const px = parseFloat(getComputedStyle(e).fontSize) * k; if (px < 10.95) out.push(`"${e.textContent.trim().slice(0, 24)}" ${px.toFixed(1)}px`);
+    }
+    return out; });
+  await pg.screenshot({ path: `${OUT}/se-r2-07-${stage}${N ? '-night' : ''}.png` });
+  const bad = await invariants(pg); await pg.close();
+  must(small.length === 0, 'in-game text under 11 px on the SE screen: ' + small.join(' ; '));
+  must(bad.length === 0, bad.join(' ; '));
+});
+// R2-08: the redeploy instruction is 14 px on screen and never olive at night; the hill tile carries the score chips' weight
+for (const [stage, night] of [['down-full', false], ['down-full', true], ['down-recap', false], ['down-recap', true]]) await step(`se R2-08 ${stage} ${night ? 'night' : 'day'}: GET TO SAFE SPACE is >= 14 px on screen${night ? ', the bright night red, still' : ''}`, async () => {
+  const pg = await open(VIEWS[1], stage, night ? '&night' : '');
+  const r = (await r2.looks(pg, '.down .safe span'))[0], anim = await pg.evaluate(() => { const e = document.querySelector('.down .safe'); return e ? [getComputedStyle(e).animationName, getComputedStyle(e.querySelector('span')).animationName] : null; });
+  await pg.close();
+  must(r && r.shown && /SAFE SPACE/.test(r.text) && r.px >= 14, `the instruction must be >= 14 px on screen: ${JSON.stringify(r)}`);
+  if (night) { const [R, G] = r2.rgb(r.color); must(R >= 200 && G < 130 && anim.every(a => a === 'none'), `night: bright red and still, not olive: ${r.color} ${JSON.stringify(anim)}`); }
+});
+for (const night of [false, true]) await step(`se R2-08 down-hill ${night ? 'night' : 'day'}: the hill tile's owner is as big as the score chips' numbers`, async () => {
+  const pg = await open(VIEWS[1], 'down-hill', night ? '&night' : '');
+  const r = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const px = e => e ? parseFloat(getComputedStyle(e).fontSize) * k : 0;
+    const hill = document.querySelector('.down .recap .rc.hill'), chip = document.querySelector('.down .recap .tms .tm b');
+    const own = hill && [...hill.querySelectorAll('*')].filter(e => /[A-Z]{3,}/.test(e.textContent) && ![...e.children].length).pop();
+    return { owner: own ? own.textContent.trim() : null, ownerPx: px(own), chipPx: px(chip) }; });
+  await pg.close();
+  must(r.owner && r.chipPx && r.ownerPx >= r.chipPx - 0.5 && r.ownerPx >= 11, `the hill owner is lighter than the score chips: ${JSON.stringify(r)}`);
+});
+// R2-20: by day the armour number carries its label
+for (const view of VIEWS) await step(`${view.name} R2-20 live day: the armour number is labelled ARMOR, >= 11 px on screen, 4.5:1`, async () => {
+  const pg = await open(view, 'live');
+  const r = { lab: (await r2.looks(pg, '.vitals .armorlabel'))[0], sh: (await r2.looks(pg, '.vitals #sh'))[0], cr: await r2.contrast(pg, '.vitals .armorlabel') };
+  await pg.close();
+  must(r.lab && r.lab.shown && r.lab.text === 'ARMOR' && r.lab.px >= 11, `no visible ARMOR label: ${JSON.stringify(r.lab)}`);
+  must(r.sh && Math.abs(r.lab.l - r.sh.r) < 40 && r.lab.t < r.sh.b && r.lab.b > r.sh.t, `the label sits beside the armour number: ${JSON.stringify(r)}`);
+  must(r.cr[0].cr >= 4.5, `the label reads below 4.5:1: ${JSON.stringify(r.cr)}`);
+});
+// The gate FINDINGS listed as missing, "a persistent KOTH hill state on the live HUD", is OWNED by the three-lane alert
+// redesign: its right-side hill badge (alert lanes, Tony: "the separate alerts on the right"). Its gate lands with it; a
+// second hill indicator here would disagree with it.
+
+
+// R2-09: the controls FINDINGS measured under 44 px on screen. Each takes a 44 px square centred on it, hit-tested.
+const R2_TAPS = [['idle', '[data-act="onDemo"], [data-act="onUtility"], #info, #skin'], ['idle-noisy', '[data-act="onScanOther"]'], ['picker-location-off', '[data-act="onDemo"], [data-act="onUtility"]'],
+  ['connected', '#info, #skin'], ['live', '#info, #skin'], ['diag', '#diag .btns button:not([disabled])'], ['idle-diag', '#diag .btns button:not([disabled])']];
+for (const view of VIEWS) for (const [stage, sel] of R2_TAPS) await step(`${view.name} R2-09 ${stage}: every control FINDINGS named takes a 44 px tap on screen`, async () => {
+  const pg = await open(view, stage);
+  const r = await r2.tap44(pg, sel); await pg.close();
+  must(r.length >= 1, `no control matched ${sel}`);
+  const bad = r.filter(c => c.miss.length);
+  must(bad.length === 0, 'under 44 px on screen: ' + bad.map(c => `${c.name} ${c.w}x${c.h} misses ${JSON.stringify(c.miss)}`).join(' ; '));
+});
+// The corner buttons sit at the frame edge, where a 44 px square centred on the visual runs off the screen. So measure what
+// a finger can actually hit ON the screen: the box of every on-frame point, 1 px apart, that lands on the control.
+for (const view of VIEWS) for (const stage of ['idle', 'live']) await step(`${view.name} R2-09 ${stage}: the corner buttons take 44 x 44 px of the screen`, async () => {
+  const pg = await open(view, stage);
+  const r = await pg.evaluate(() => ['info', 'skin'].map(id => { const c = document.getElementById(id), b = c.getBoundingClientRect(), fr = document.getElementById('frame').getBoundingClientRect();
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (let x = Math.max(fr.left, b.left - 40); x <= Math.min(fr.right - 0.5, b.right + 40); x++) for (let y = Math.max(fr.top, b.top - 40); y <= Math.min(fr.bottom - 0.5, b.bottom + 40); y++) {
+      const h = document.elementFromPoint(x, y); if (h && (h === c || c.contains(h))) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
+    return { id, w: x1 - x0 + 1, h: y1 - y0 + 1 }; }));
+  await pg.close();
+  must(r.every(c => c.w >= 44 && c.h >= 44), `a corner button takes under 44 x 44 px of the screen: ${JSON.stringify(r)}`);
+});
+for (const stage of ['diag', 'idle-diag']) await step(`se R2-09 ${stage}: the 56 px diag buttons still fit their labels at >= 11 px on screen`, async () => {
+  const pg = await open(VIEWS[1], stage);
+  const r = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+    return [...document.querySelectorAll('#diag .btns button')].filter(b => getComputedStyle(b).display !== 'none').map(b => ({ t: b.textContent.trim(), clip: b.scrollWidth > b.clientWidth + 1, px: parseFloat(getComputedStyle(b).fontSize) * k })); });
+  await pg.close();
+  must(r.length && r.every(b => !b.clip && b.px >= 11), `a diag button clips or is under 11 px: ${JSON.stringify(r)}`);
+});
+
+
+/** R2-18: the contrast a person actually sees in a box of the screen: the screenshot's pixels (the overlay's wash included),
+ *  the brightest 4% (the text) against the median (what it sits on). */
+r2.pixelContrast = async (pg, sel) => {
+  const box = await pg.evaluate(sel => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; }, sel);
+  if (!box || !(box.width > 2)) return null;
+  const png = (await pg.screenshot({ clip: box })).toString('base64');
+  return pg.evaluate(async png => { const img = new Image(); img.src = 'data:image/png;base64,' + png; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data, L = [];
+    const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+    for (let i = 0; i < d.length; i += 4) L.push(.2126 * f(d[i]) + .7152 * f(d[i + 1]) + .0722 * f(d[i + 2]));
+    L.sort((a, b) => a - b); const hi = L[Math.floor(L.length * .96)], mid = L[Math.floor(L.length * .5)];
+    return Math.round(((Math.max(hi, mid) + .05) / (Math.min(hi, mid) + .05)) * 100) / 100; }, png);
+};
+for (const view of VIEWS) await step(`${view.name} R2-18 overshield then a hit, day: the pickup card retires, TAKING FIRE reads above the wash`, async () => {
+  const pg = await open(view, 'live-pu-overshield', '', 2600);
+  await pg.waitForSelector('#puhint .pu[data-kind="granted"]', { timeout: 3000 }).catch(() => {});
+  const before = await pg.evaluate(() => !!document.querySelector('#puhint .pu[data-kind="granted"]'));
+  await pg.waitForTimeout(1300);   // past the 1 s protected grant, so the hit lands
+  await pg.evaluate(() => window.brxDemo.hitFrom(19, 9, 40)); await pg.waitForTimeout(300);
+  const r = { card: await pg.evaluate(() => !!document.querySelector('#puhint .pu[data-kind="granted"]')), flash: await pg.evaluate(() => !!document.querySelector('#overlay .mo.hit')),
+    tf: (await r2.looks(pg, '.takingfire .t'))[0], cr: await r2.pixelContrast(pg, '.takingfire .t') };
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-18-os-hit.png` }); await pg.close();
+  must(before, 'pre-condition: the OVERSHIELD PICKED UP card was up');
+  must(r.flash && r.tf && r.tf.shown, `pre-condition: a hit flash with TAKING FIRE: ${JSON.stringify(r)}`);
+  must(!r.card, 'the pickup card must retire on a hit (four items stacked in the bottom centre)');
+  must(r.cr >= 3, `TAKING FIRE under the day flash reads ${r.cr}:1 on screen (the wash covered it)`);
+});
+
+
+// R2-13: at night the overshield must not read as a plain full shield: another hue, thicker rails, hollow between them
+for (const view of VIEWS) await step(`${view.name} R2-13 night overshield: amber, 4 px rails, hollow, unlike a full red shield`, async () => {
+  const pg = await open(view, 'live-shields-os', '&night', 3200);
+  const o = await svWait(pg, r => r.m && r.os, 2500);
+  const r = await pg.evaluate(() => { const os = document.querySelector('#svm .svos'), fl = document.querySelector('#svm .svfl'), c = getComputedStyle(os);
+    return { rail: c.borderTopColor, railW: parseFloat(c.borderTopWidth), mid: c.backgroundColor, fill: getComputedStyle(fl).backgroundImage + ' ' + getComputedStyle(fl).backgroundColor }; });
+  await pg.close();
+  must(o.m && o.os, 'pre-condition: the overshield layer is up');
+  const [R, G, B] = r2.rgb(r.rail), [mr, mg, mb] = r2.rgb(r.mid);
+  must(G / R > 0.55 && B < G, `night: the overshield rail must be amber, not the shield's red: ${r.rail}`);
+  must(r.railW >= 4, `night: the rails must be >= 4 px: ${r.railW}`);
+  must(mr + mg + mb < 60, `night: the overshield must be hollow (dark between the rails): ${r.mid}`);
+});
+// R2-14: during the lockout the ammo block names ONE cause (OVERHEAT), never NOT ENOUGH ENERGY beside it
+for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2-14 overheat ${night ? 'night' : 'day'}: one cause during the lockout; CONTROL: the note is back after it`, async () => {
+  const pg = await open(view, 'live', night ? '&night' : '');
+  await pg.evaluate(() => { const e = window.brx.engine; e.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; e.feedFrame('$ALCD,40,100,0,80,0,*'); e.feedFrame('$ALCD,3,100,0,80,108,*'); });
+  await pg.waitForTimeout(500);
+  const hot = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
+  await pg.evaluate(() => window.brx.engine.feedFrame('$ALCD,3,100,0,80,0,*')); await pg.waitForTimeout(500);
+  const cool = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
+  await pg.close();
+  must(hot.word, `pre-condition: OVERHEAT is up: ${JSON.stringify(hot)}`);
+  must(!hot.enote, `during the lockout the ammo block also says ${hot.enote}: two causes`);
+  must(!cool.word && cool.enote === 'NOT ENOUGH ENERGY', `CONTROL: after the lockout, 3 of a 10-cost cell says NOT ENOUGH ENERGY again: ${JSON.stringify(cool)}`);
+});
+// R2-15: stunned, the rounds step back and the seconds are the biggest thing in the tell
+for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2-15 stunned ${night ? 'night' : 'day'}: the ammo dims, the seconds outsize the word`, async () => {
+  const pg = await open(view, 'live-stunned', night ? '&night' : '', 3000);
+  const r = await pg.evaluate(() => { const op = e => { let o = 1; for (let n = e; n && n.id !== 'frame'; n = n.parentElement) o *= +getComputedStyle(n).opacity; return o; };
+    const t = document.querySelector('#stunleft'), k = document.querySelector('.aimfx.stun .k'), mag = document.getElementById('mag');
+    return t && k ? { secs: parseFloat(getComputedStyle(t).fontSize), word: parseFloat(getComputedStyle(k).fontSize), mag: Math.round(op(mag) * 100) / 100 } : null; });
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-15-stun-${night ? 'night' : 'day'}.png` }); await pg.close();
+  must(r, 'pre-condition: the stun tell is up');
+  must(r.secs > r.word && r.secs >= 36, `the seconds must be the largest element of the tell: ${JSON.stringify(r)}`);
+  must(r.mag <= 0.5, `the ammo must dim while the trigger does nothing: opacity ${r.mag}`);
+});
+// R2-16: the station hints name the item and the station
+await step('se R2-16 taken by VIPER: the line names the item, not only who took it', async () => {
+  const pg = await open(VIEWS[1], 'live-pu-taken-by', '', 2400);
+  let t = ''; for (let i = 0; i < 40 && !/TAKEN/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#puhint .pu') || {}).innerText || ''); }
+  await pg.close();
+  must(/ROCKETS/.test(t) && /TAKEN/.test(t) && /VIPER/.test(t), `the hint must say what VIPER took: ${JSON.stringify(t)}`);
+});
+await step('se R2-16 OVERSHIELD AVAILABLE: the card names the station', async () => {
+  const pg = await open(VIEWS[1], 'live-pu-spawn', '', 1200);
+  let t = ''; for (let i = 0; i < 40 && !/AVAILABLE/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#overlay .mo.co') || {}).innerText || ''); }
+  await pg.close();
+  must(/OVERSHIELD AVAILABLE/.test(t) && /STATION 6/.test(t), `the card must say which station: ${JSON.stringify(t)}`);
+});
+// R2-17: the DOWN screen says the held item was lost
+for (const night of [false, true]) await step(`se R2-17 down with rockets held ${night ? 'night' : 'day'}: the DOWN screen says ROCKETS LOST; CONTROL: a plain down does not`, async () => {
+  let pg = await open(VIEWS[1], 'down-pu-held', night ? '&night' : '', 4600);
+  const r = (await r2.looks(pg, '#dspulost'))[0], cr = await r2.contrast(pg, '#dspulost'); await pg.close();
+  pg = await open(VIEWS[1], 'down', night ? '&night' : ''); const plain = await pg.evaluate(() => !!document.getElementById('dspulost')); await pg.close();
+  must(r && r.shown && r.text === 'ROCKETS LOST' && r.px >= 11, `no ROCKETS LOST on the DOWN screen: ${JSON.stringify(r)}`);
+  must(cr[0].cr >= 4.5, `ROCKETS LOST reads below 4.5:1: ${JSON.stringify(cr)}`);
+  must(!plain, 'CONTROL: a death with nothing held says nothing was lost');
+});
+// R2-21: the overshield grant never floats HEALTH, on the engine path with a gun that holds the armed pools
+for (const view of VIEWS) await step(`${view.name} R2-21 live-pu-overshield-wide: the grant floats no HEALTH`, async () => {
+  const pg = await open(view, 'live-pu-overshield-wide', '', 1200);
+  await pg.evaluate(() => { window.__gains = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches('.mo.gain')) window.__gains.push(n.textContent.replace(/\s+/g, ' ').trim()); })
+    .observe(document.getElementById('overlay'), { childList: true, subtree: true }); });
+  await pg.waitForTimeout(3600);
+  const r = await pg.evaluate(() => ({ gains: window.__gains, os: !!(window.brx.engine.state().powerup || {}).overshield })); await pg.close();
+  must(r.os, 'pre-condition: the overshield was granted');
+  must(!r.gains.some(g => /HEALTH|ARMOUR/.test(g)), `the grant floated a pool it does not touch: ${JSON.stringify(r.gains)}`);
+});
+
+
+// Review C1/H1 (hud-vqa2): the live PATCH (not a full render) moves the vitals. A lone `$HP` must reach #hp and #sh within
+// 300 ms; a stray `//` once swallowed the patch's set('hp')/set('sh')/set('mag')/setHtml('res') calls.
+for (const view of VIEWS) await step(`${view.name} C1 live patch: a lone $HP moves #hp and #sh within 300 ms`, async () => {
+  const pg = await open(view, 'live');
+  await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,61,0,*')); await pg.waitForTimeout(400);
+  await pg.evaluate(() => window.brx.engine.feedFrame('$HP,38,0,0,*'));
+  let r = null; for (let t = 0; t < 300; t += 50) { await pg.waitForTimeout(50);
+    r = await pg.evaluate(() => { const s = window.brx.engine.state(); return { hp: document.getElementById('hp').textContent, sh: document.getElementById('sh').textContent, want: [String(s.hp), String(s.armor)] }; });
+    if (r.hp === r.want[0] && r.sh === r.want[1]) break; }
+  await pg.close();
+  must(r.want[0] === '38' && r.hp === r.want[0] && r.sh === r.want[1], `the vitals lag the engine: ${JSON.stringify(r)}`);
+});
+
+
+// Review (night no-green): the alert lane found green pixels at (170,322) frame px, the anti-alias fringes of the night
+// armour number (#sh) in an amber whose green channel was high. A pixel sample of the whole night live frame: no green.
+for (const view of VIEWS) for (const stage of ['live', 'live-pool-wrong']) await step(`${view.name} night no-green ${stage}: not one green pixel in the frame, #sh included`, async () => {
+  const pg = await open(view, stage, '&night', stage === 'live-pool-wrong' ? 8000 : undefined);
+  const buf = await pg.screenshot();
+  const r = await pg.evaluate(async b64 => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data, f = document.getElementById('frame').getBoundingClientRect(), k = f.width / 844, out = [];
+    for (let i = 0; i < d.length; i += 4) { const p = i / 4, X = p % c.width, Y = Math.floor(p / c.width), R = d[i], G = d[i + 1], B = d[i + 2];
+      if (X < f.left || X >= f.right || Y < f.top || Y >= f.bottom) continue;
+      if ((G >= 70 && G > R + 24) || (G > R + 12 && G > 40)) { const el = document.elementFromPoint(X, Y); out.push(`(${Math.round((X - f.left) / k)},${Math.round((Y - f.top) / k)}) rgb(${R},${G},${B}) ${el ? el.id || el.className : ''}`); } }
+    return { n: out.length, first: out.slice(0, 4) }; }, buf.toString('base64'));
+  await pg.close();
+  must(r.n === 0, `night: ${r.n} green pixels, e.g. ${r.first.join(' ; ')}`);
+});
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;

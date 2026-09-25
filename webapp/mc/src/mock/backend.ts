@@ -110,7 +110,7 @@ export class MockBackend implements Api {
     // field before it ever got the arming push) so `?mock` alone can show OUT OF WI-FI / ARM PENDING on the
     // ITEMS panel without live hardware — the first phone's `online` was hard-coded true for every station,
     // so that pair of states could never be demoed (review 2026-09-11 lane-4).
-    'util-d4e5f6': { assigned: { kind: 'extraction', team: 255, id: 8, threshold: -74, at: now() - 20 * 60 * 1000 },
+    'util-d4e5f6': { assigned: { kind: 'extraction', team: 255, id: 8, threshold: 0, at: now() - 20 * 60 * 1000 },
                      armed: null, arm_pending: true,
                      report: { kind: 'extraction', team: 255, station_id: 8, threshold: -74, live: true, revives: 0, armed: false, battery: 41 },
                      seen: now() - 20 * 60 * 1000, offline: true },
@@ -220,7 +220,7 @@ export class MockBackend implements Api {
     st.armed = { game: this.gameNo, at: now(), kind: st.assigned.kind, team: st.assigned.team, id: st.assigned.id };
     st.arm_pending = false;
     // the demo phone applies it, as utility.js does: it now reports what it was told
-    st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold, armed: true, live: true };
+    st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold || -70, armed: true, live: true };
   }
   async putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number; item_preset?: string }): Promise<StationView> {
     // as `state.py set_station`: no station PUT while the match is armed or live (players already hold
@@ -247,8 +247,9 @@ export class MockBackend implements Api {
     if (!Number.isInteger(a.id) || a.id < 1 || a.id > 65535) throw new Error('id must be an integer 1..65535 (the station id in the advert)');
     const clash = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned?.id === a.id);
     if (clash) throw new Error(`station id ${a.id} is already assigned to ${clash[0]}; ids must be unique on the field`);
-    const threshold = a.threshold ?? -74;
-    if (!Number.isInteger(threshold) || threshold < -100 || threshold > -30) throw new Error('threshold must be an integer dBm in -100..-30 (the presence bubble; -74 ≈ 10 ft at high TX)');
+    // F345, as state.py `set_station`: 0 (and absent) = the station's own platform default
+    const threshold = a.threshold ?? 0;
+    if (!Number.isInteger(threshold) || (threshold !== 0 && (threshold < -100 || threshold > -30))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");
     const st = this.stations[node_id] ?? (this.stations[node_id] = { assigned: null, armed: null, arm_pending: false, report: {}, seen: now() });
     st.assigned = { kind: a.kind, team, id: a.id, threshold, at: now(), ...(item ? { item } : {}) };
     st.takenAt = undefined; st.takenBy = undefined; st.resetAt = undefined;

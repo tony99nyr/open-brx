@@ -121,7 +121,7 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     api.putStation = (async (node_id, a) => { sent.push({ node_id, a }); return orig(node_id, a); }) as Api['putStation'];
     await m.click('ASSIGN + ARM');
     // the draft starts from the phone's own report (kind respawn, team 1, id 1, threshold -74)
-    expect(sent).toEqual([{ node_id: 'util-a1b2c3', a: { kind: 'respawn', team: 1, id: 1, threshold: -74 } }]);
+    expect(sent).toEqual([{ node_id: 'util-a1b2c3', a: { kind: 'respawn', team: 1, id: 1, threshold: 0 } }]);
     await settle();
     const btn = m.find('[data-testid="items-panel"] button').find(b => b.textContent?.trim() === 'ARMED') as HTMLButtonElement | undefined;
     expect(btn, `expected an ARMED button, saw: ${panel().textContent}`).toBeTruthy();
@@ -142,7 +142,7 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     const orig = api.putStation.bind(api);
     api.putStation = (async (node_id, a) => { sent.push(a); return orig(node_id, a); }) as Api['putStation'];
     await m.click('ASSIGN + ARM');
-    expect(sent).toEqual([{ kind: 'control', team: 255, id: 1, threshold: -74 }]);
+    expect(sent).toEqual([{ kind: 'control', team: 255, id: 1, threshold: 0 }]);
     m.unmount();
   });
 

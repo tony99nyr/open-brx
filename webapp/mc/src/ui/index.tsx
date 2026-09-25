@@ -166,7 +166,8 @@ export function Seg<V extends string>({ value, options, onChange, size = 11, pad
             style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, size), letterSpacing: '.08em', padding: pad,
               background: on ? T.panelAlt : 'transparent', color: on ? T.acc : T.micro,
               boxShadow: on ? `inset 0 -2px 0 ${T.acc}` : undefined,
-              cursor: on ? 'default' : 'pointer', minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
+              // M10 (visual QA 2026-09-24): an option label never wraps ("GRENADE · POST-MVP" took three lines)
+              cursor: on ? 'default' : 'pointer', minHeight: 36, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
             {o.label}
           </button>
         );
@@ -225,10 +226,11 @@ export function PrimaryButton({ children, onClick, disabled, clip = CHAMFER.tl10
 }
 
 /** Ghost / outline button. */
-export function GhostButton({ children, onClick, color = T.dim, border = T.line, hoverClass = 'hov-acc', size = 11, pad = '9px 16px', title, disabled }:
-  { children: ReactNode; onClick?: () => void; color?: string; border?: string; hoverClass?: string; size?: number; pad?: string; title?: string; disabled?: boolean }) {
+export function GhostButton({ children, onClick, color = T.dim, border = T.line, hoverClass = 'hov-acc', size = 11, pad = '9px 16px', title, disabled, ...data }:
+  { children: ReactNode; onClick?: () => void; color?: string; border?: string; hoverClass?: string; size?: number; pad?: string; title?: string; disabled?: boolean }
+  & { [k: `data-${string}`]: string | undefined }) {
   return (
-    <button className={disabled ? undefined : hoverClass} onClick={disabled ? undefined : onClick} disabled={disabled} title={title}
+    <button {...data} className={disabled ? undefined : hoverClass} onClick={disabled ? undefined : onClick} disabled={disabled} title={title}
       style={{ font: F.chk(600, size), letterSpacing: '.16em', padding: pad, background: 'transparent', color: disabled ? T.faint : color,
                border: `1px solid ${disabled ? T.line : border}`, cursor: disabled ? 'not-allowed' : 'pointer', minHeight: 44 }}>
       {children}
