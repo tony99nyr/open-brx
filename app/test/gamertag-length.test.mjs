@@ -34,3 +34,15 @@ test('no tag (not yet known) never warns', () => {
   assert.equal(tagTooLong(null), false);
   assert.equal(tagTooLong(undefined), false);
 });
+// H1 (review of d7a132f9): Python's `len()` counts code points, not UTF-16 code units. A surrogate-pair
+// emoji is ONE character to MC's `_check_tag` but TWO to JS's `.length` — counting code units warns on a
+// tag MC would happily store.
+test('9 emoji is MAX_TAG_LEN/2 short of the limit by code points, even though JS .length reads 18', () => {
+  const nineEmoji = '😀'.repeat(9);
+  assert.equal(nineEmoji.length, 18, 'each emoji here is a surrogate pair — fixture check');
+  assert.equal(tagTooLong(nineEmoji), false);
+});
+test('17 emoji is one code point over the limit', () => {
+  const seventeenEmoji = '😀'.repeat(17);
+  assert.equal(tagTooLong(seventeenEmoji), true);
+});

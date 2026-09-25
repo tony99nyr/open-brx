@@ -61,7 +61,10 @@ const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDEC
  *  then a plain character count against the generated MAX_TAG_LEN. A tag this long only reaches the phone at
  *  all because it was stored before F366 (MC refuses a NEW/EDITED tag over the limit, but an older stored one
  *  up to 24 characters still plays) — so this is never a phone-side validation, only a "go ask the host" nudge. */
-export const tagTooLong = raw => String(raw || '').trim().toUpperCase().length > MAX_TAG_LEN;
+// H1 (review of d7a132f9): MC's `_check_tag` counts with Python `len()` — code points, not UTF-16 code
+// units. `.length` on a surrogate-pair emoji counts 2, so a spread into an array of code points is the
+// one that agrees with MC (`[...s].length`), same as Python's `len()` on the same string.
+export const tagTooLong = raw => [...String(raw || '').trim().toUpperCase()].length > MAX_TAG_LEN;
 // Every medal in MC's ladder (contract.gen MEDALS, generated from types.py; Tony's final list 2026-09-24). A key missing
 // here was filtered out of the kill card, so the map is built from the contract, never hand-kept.
 // The fallback labels the two medals Tony added on 2026-09-24 for an older contract that lacks them: BEAT DOWN (MC's key
@@ -825,9 +828,11 @@ export class Hud {
     const cs = esc(st.callsign || (mode === 'connected' ? (st.wsState === 'bound' ? 'LINKED' : 'GUN SET') : 'OPERATOR'));
     // F366: an older stored tag can run past MAX_TAG_LEN (MC refuses a new/edited one, but a stored longer tag
     // still plays) — the phone cannot rename it, so this is a nudge to ask the host, never a validation error.
-    // `_lobby` is the pre-game/lobby/kit screen only (never live/armed — render() sends those elsewhere), so
-    // there is nothing extra to gate: the note simply never reaches a match.
-    const tagWarn = tagTooLong(st.callsign) ? `<div class="tagwarn">YOUR TAG IS OVER ${MAX_TAG_LEN} LETTERS · ASK THE HOST TO SHORTEN IT</div>` : '';
+    // `_lobby` is the pre-game/lobby/kit screen only (never live/armed — render() sends those elsewhere).
+    // M1 (review of d7a132f9): `mode === 'standby'` is that SAME screen while this player sits benched —
+    // MC refuses to arm/live a benched player, but a match is genuinely running for everyone else, so the
+    // nudge stays off there too.
+    const tagWarn = mode !== 'standby' && tagTooLong(st.callsign) ? `<div class="tagwarn">YOUR TAG IS OVER ${MAX_TAG_LEN} LETTERS · ASK THE HOST TO SHORTEN IT</div>` : '';
     const team = st.teamName ? `<span class="chip"><span class="unskew">${esc(st.teamName)} SQUAD</span></span>` : '';
     const tw = this._tryoutShown(st) ? st.tutorialWeapon : null;
     // MC pushes a WeaponView here (it carries the ranked `bars`), which names the magazine `clip`;

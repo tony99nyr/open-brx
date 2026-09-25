@@ -597,6 +597,9 @@ export function startDemo({ engine, log }) {
       // the lobby screen's rename nudge, and its live counterpart proves the note never reaches a match.
       'lobby-long-tag':    [[0, () => { player.display = 'SUPERCALIFRAGILISTIC'; }], ...lobby],
       'live-long-tag':     [[0, () => { player.display = 'SUPERCALIFRAGILISTIC'; }], ...live],
+      // M1 (review of d7a132f9): a benched player sits on this SAME lobby-shaped screen while the match
+      // runs live for everyone else — the rename nudge must not follow the tag onto it either.
+      'standby-long-tag':  [[0, () => { player.display = 'SUPERCALIFRAGILISTIC'; }], ...lobby, [700, () => ev.bench()]],
       'armed':             [...lobby, [900, () => ev.start(+q.get('tminus') || 30)]],
       'aborted':           [...lobby, [900, () => ev.start(30)], [1600, 'abort']],
       'live':              live,

@@ -2004,6 +2004,14 @@ for (const view of VIEWS) {
       await pg.close();
       must(!has, 'the rename note reached a live match');
     });
+    // M1 (review of d7a132f9): a benched player with a long stored tag, on the SAME screen a live match
+    // shows for everyone else — the rename nudge must not follow it there either.
+    await step(`${view.name} F366 standby-long-tag${skin}: no rename note for a benched player during a live match`, async () => {
+      const pg = await open(view, 'standby-long-tag', skin);
+      const has = await pg.evaluate(() => !!document.querySelector('.tagwarn'));
+      await pg.close();
+      must(!has, 'the rename note reached the SITTING OUT screen');
+    });
   }
   // ---------- A38 x A39 (T2 integration): SITTING OUT, and the READY UP button that must not be on it ----------
   // T2-A gave the LOBBY screen its own READY UP (a player whose kit window closed before they tapped);
