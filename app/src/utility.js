@@ -145,7 +145,7 @@ async function startAdvert(quiet = false) {
   render();
 }
 // ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
-let transport = null, mcState = 'offline';
+let transport = null, mcState = 'offline', mcFormOpen = false, _wasLinked = false;   // mcFormOpen: CHANGE unfolded the linked MC panel
 const TEAM_ID_TO_TID = { blue: 1, yellow: 2, red: 0, green: 3, any: TEAM_ANY, ffa: TEAM_ANY };
 function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } }
 /** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
@@ -201,7 +201,7 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
-  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound' && flushTaken()) savePowerup();
+  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true; if (s === 'bound' && flushTaken()) savePowerup();
     // a discovered MC that drops (a restart on a new IP) is searched for again, not left to mDNS alone
     if (was === 'bound' && s !== 'bound' && settings.mc_auto && isNative()) setTimeout(startUtilityLanSweep, 0); log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url, trusted, pub, secret }).then(() => {
@@ -370,7 +370,7 @@ function tick() {
   // F344: a revive counts on the player being NEAR, not `present` (beacon.js countRevives says why).
   for (const p of countRevives(presence, wasAlive, { team: settings.team })) {
     if (settings.kind !== 'respawn') continue;
-    revives++; log(`player ${p.id} (${TEAM_NAMES[p.team] || p.team}) revived here at ${Math.round(Number.isFinite(p.median) ? p.median : p.rssi)} dBm`, 'lk');
+    revives++; ping(); log(`player ${p.id} (${TEAM_NAMES[p.team] || p.team}) revived here at ${Math.round(Number.isFinite(p.median) ? p.median : p.rssi)} dBm`, 'lk');
   }
   if (settings.kind === 'control') controlTick(now);
   if (settings.kind === 'powerup') powerupTick(now);
@@ -411,9 +411,10 @@ function powerupTick(now) {
   if (!pu.item) return;
   let { changed, events } = pu.tick(presence.players(), now);
   for (const e of events) {
-    if (e.type === 'spawned') { log(`${pu.item.name} SPAWNED`, 'lk'); flash(`${String(pu.item.name).toUpperCase()} AVAILABLE`, 'any'); }
+    // a burst with no word: the ring, AVAILABLE / TAKEN and BY PLAYER n already say what changed
+    if (e.type === 'spawned') { log(`${pu.item.name} SPAWNED`, 'lk'); flash(null, 'item'); }
     else if (e.type === 'taken') {
-      log(`${pu.item.name} TAKEN by player ${e.player_num}`, 'lk'); flash(`TAKEN · P${e.player_num}`, 'any');
+      log(`${pu.item.name} TAKEN by player ${e.player_num}`, 'lk'); flash(null, 'item');
     }
   }
   if (flushTaken()) changed = true;   // polish M1: queued, so a report lost to a dead link goes out on re-bind
@@ -431,7 +432,7 @@ function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
   const { changed, events } = point.update(presence.players(), now);
   for (const e of events) {
-    if (e.type === 'captured') { log(`${TEAM_NAMES[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAMES[e.from]}` : ''}`, 'lk'); flash(`CAPTURED BY ${TEAM_NAMES[e.team]}`, TEAM_KEYS[e.team]); }
+    if (e.type === 'captured') { log(`${TEAM_NAMES[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAMES[e.from]}` : ''}`, 'lk'); flash('CAPTURED', TEAM_KEYS[e.team]); }   // the big word already names the team
     else if (e.type === 'neutralised') { log(`${TEAM_NAMES[e.team]} LOST the point — ${TEAM_NAMES[e.by]} drained it to neutral`, 'lk'); flash('NEUTRAL', 'any'); }
     else if (e.type === 'contested') log(`CONTESTED: ${netLine()}`, 'li');
     else if (e.type === 'uncontested') log('no longer contested', 'li');
@@ -470,10 +471,19 @@ function resetPoint(why) {
 let _flashAt = 0;
 function flash(word, teamKey) {
   const el = $('cflash'); if (!el) return;
-  $('cflashw').textContent = word; el.dataset.fteam = teamKey || 'any'; el.hidden = false;
-  el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');   // restart the animation on a second crossing
+  for (const e of [el, $('cburst'), $('aura')]) if (e) e.dataset.fteam = teamKey || 'any';
+  restart($('cburst')); restart($('aburst'));
+  if (!word) return;   // a burst with no word (a powerup's own screen already names the change)
+  $('cflashw').textContent = word; el.hidden = false;
+  // the word sits inside the ring in place of the % line (nothing else is there), and the burst lights the whole screen
+  restart(el);
+  if ($('cpct')) $('cpct').hidden = true;
   _flashAt = Date.now();
 }
+/** Restart a one-shot CSS animation (.go) on an element, for a second crossing inside the first one's 2.6 s. */
+function restart(e) { if (!e || !e.classList) return; e.classList.remove('go'); void e.offsetWidth; e.classList.add('go'); }
+/** A revive at a respawn station: one soft burst of the ring in the station's colour. */
+function ping() { const a = $('aura'); if (a && a.dataset) delete a.dataset.fteam; restart($('aburst')); }
 /** "RED 2 · BLU 1 → +1 RED" (§5d.4). */
 function netLine() {
   const parts = Object.keys(point.counts).map(Number).sort((a, b) => point.counts[b] - point.counts[a] || a - b)
@@ -501,21 +511,41 @@ function render() {
   document.documentElement.dataset.cstate = !isControl ? 'off'
     : point.contested ? 'contested' : point.dir > 0 ? 'rising' : point.dir < 0 ? 'falling' : (heldBy != null ? 'held' : 'idle');
   $('kind').textContent = KIND_LABEL[settings.kind] || settings.kind.toUpperCase();
-  $('team').textContent = isControl ? (heldBy == null ? 'NEUTRAL' : (TEAM_NAMES[heldBy] || `TEAM ${heldBy}`))
+  // control: the word is whose the ring IS (byte 9: the claimant while it builds, the owner while it drains), so the
+  // word and the % always agree; NEUTRAL only when nobody has any of it
+  const holderT = isControl && v.team !== CONTROL_NEUTRAL && v.value > 0 ? v.team : heldBy;
+  $('team').textContent = isControl ? (holderT == null ? 'NEUTRAL' : (TEAM_NAMES[holderT] || `TEAM ${holderT}`))
     : (TEAM_NAMES[settings.team] || `TEAM ${settings.team}`);
   renderControl(isControl, v, heldBy);
+  fitWord();
+  if ($('team').style) $('team').style.setProperty('--wordc', isControl && holderT != null ? `var(--team-${TEAM_KEYS[holderT] || 'any'})` : '');
   renderPowerup();
+  fitWord();
+  if (_flashAt && Date.now() - _flashAt > 2600) { _flashAt = 0; $('cflash').hidden = true; }
+  if ($('cpct')) $('cpct').hidden = !$('cflash').hidden;
+  const pupEl = $('pup');
+  document.documentElement.dataset.onair = advertising ? '1' : '0';   // off the air, every ring is grey and still (H2)
+  document.documentElement.dataset.aura = isControl ? 'control'
+    : (pupEl && !pupEl.hidden && pupEl.dataset.pstate) ? pupEl.dataset.pstate : (advertising ? 'live' : 'ready');
+  renderPlayersToggle();
+  renderRange();
   $('sid').textContent = `STATION ${settings.id}`; $('sidn').textContent = settings.id;
-  $('status').textContent = advertising ? 'LIVE' : (plugins.beacon && support.advertising ? 'READY' : 'CANNOT ADVERTISE');
+  $('status').textContent = advertising ? 'LIVE' : (plugins.beacon && support.advertising ? 'NOT LIVE' : 'CANNOT ADVERTISE');
   $('status').className = 'status ' + (advertising ? 'on' : 'off');
-  $('revives').textContent = settings.kind === 'respawn' ? `${revives} REVIVED HERE` : '';
+  $('revives').textContent = settings.kind === 'respawn' ? `${revives} REVIVED HERE` : '';   // in the drawer (round 3: not for players)
   $('txhint').textContent = support.txPowerControl ? (TX_HINT[settings.tx] || '') : 'no transmit-power control on this platform · radius = threshold only';
   $('thr').textContent = `${thr()} dBm${settings.threshold ? '' : ' · default'}`; $('thrRange').value = thr();
   $('dwell').textContent = `${(settings.dwell / 1000).toFixed(1)} s`;
-  $('btnStart').textContent = advertising ? 'STOP' : 'START';
+  { const bs = $('btnStart'); ((bs.querySelector && bs.querySelector('.unskew')) || bs).textContent = advertising ? 'STOP' : 'START'; }   // into the .unskew span: replacing it slanted the word with its button
   const armed = settings.mcArmed;
-  $('armed').textContent = armed ? `MC-ARMED · GAME ${armed.game || 0}` : 'NOT ARMED BY MISSION CONTROL';
-  $('armed').className = 'armed ' + (armed ? 'on' : '');
+  // Round 3 (Tony, 2026-09-24): quiet when all is well, loud only when it matters. Armed: a small "MC ✓ GAME n". Linked to an
+  // MC but on the air WITHOUT its arming: player phones check the game byte MC's arming sets, so they may ignore this station,
+  // and the operator must see that. Linked, not armed, not on the air yet: it is simply waiting. No MC at all: a hand-set
+  // station on its own is valid, so nothing to say.
+  const onAir = advertising || !!settings.live;
+  $('armed').textContent = armed ? `MC ✓ GAME ${armed.game || 0}`
+    : mcState !== 'bound' ? (_wasLinked ? 'MC OFFLINE' : '') : onAir ? 'SET BY HAND · PLAYERS MAY IGNORE IT' : 'WAITING FOR MC TO ARM IT';
+  $('armed').className = 'armed ' + (armed ? 'on' : mcState === 'bound' && onAir ? 'warn' : '');
   // A41 / field-safety fix (2026-09-13): the plain exit is for a phone NOBODY has claimed as a field
   // item yet. MC-arming is not the only way that happens -- the seven-tap gate's own drawer has a
   // START button (`btnStart`), and the station warnings promise exactly that: a station can be armed
@@ -539,6 +569,14 @@ function render() {
   const mcText = mcState === 'bound' ? 'MISSION CONTROL ✓ LINKED' : mcState === 'offline' ? (settings.mc ? 'MISSION CONTROL · OFFLINE' : 'MISSION CONTROL · SEARCHING THIS WI-FI') : `MISSION CONTROL · ${mcState.toUpperCase()}…`;
   $('mcstate').textContent = mcText;
   const mainState = $('mcstateMain'); if (mainState) mainState.textContent = mcText;
+  // Linked: fold the main-screen MC panel to its status line plus CHANGE (Tony 2026-09-24); any other state unfolds it
+  // and forgets a CHANGE, so the next link folds it again.
+  const mcj = $('mcjoin');
+  if (mcj) {
+    const linked = mcState === 'bound'; if (!linked) mcFormOpen = false;
+    mcj.classList.toggle('linked', linked && !mcFormOpen);
+    const chg = $('btnMcChange'); if (chg) { chg.hidden = !linked; chg.setAttribute('aria-expanded', String(mcFormOpen)); (chg.firstElementChild || chg).textContent = mcFormOpen ? 'HIDE' : 'CHANGE'; }
+  }
   const mainInput = $('mcUrlMain'); if (mainInput && document.activeElement !== mainInput) mainInput.value = settings.mc || mcUrl() || '';
   if (document.activeElement !== $('mcUrl')) $('mcUrl').value = settings.mc || mcUrl() || '';
   const rows = presence.players().map(p => {
@@ -558,12 +596,67 @@ function render() {
   });
   $('players').innerHTML = rows.join('') || '<div class="row empty">no player phones in range</div>';
   $('ptitle').textContent = isControl ? 'WHO IS ON THE POINT' : 'PLAYER PHONES IN RANGE';
+  if (!isControl) $('ctally').textContent = '';
   $('capS').textContent = `${settings.captureS} S`;
   $('netCap').textContent = `${settings.netCap}`;
   $('teamnote').hidden = !isControl;
   for (const b of document.querySelectorAll('[data-tx]')) b.classList.toggle('sel', b.dataset.tx === settings.tx);
   for (const b of document.querySelectorAll('[data-kind]')) b.classList.toggle('sel', b.dataset.kind === settings.kind);
   for (const b of document.querySelectorAll('[data-team]')) b.classList.toggle('sel', +b.dataset.team === settings.team);
+}
+
+// ---------- the main screen's optional roster and its RANGE controls (round 3, 2026-09-24) ----------
+const PLAYERS_KEY = 'brx.utility.players';
+let showPlayers = (() => { try { return localStorage.getItem(PLAYERS_KEY) === '1'; } catch (_) { return false; } })();
+function renderPlayersToggle() {
+  const panel = $('playersPanel'), btn = $('btnPlayers'); if (!panel || !btn) return;
+  panel.hidden = !showPlayers;
+  btn.textContent = showPlayers ? 'HIDE PLAYERS' : 'SHOW PLAYERS';
+  if (btn.setAttribute) btn.setAttribute('aria-expanded', String(showPlayers));
+}
+/** The `-NN dBm` edge as the operator types it: digits only, no minus (Tony: "drop the - ... it just makes it harder to
+ *  input the number"). 70 means -70 dBm. Returns the negative threshold, or null when it is not a number in range. */
+function parseEdge(text) {
+  const t = String(text == null ? '' : text).trim().replace(/^[-−]/, '');
+  if (!/^\d{1,3}$/.test(t)) return null;
+  const n = -Number(t);
+  return n >= THR_MIN && n <= THR_MAX ? n : null;
+}
+const THR_MIN = -95, THR_MAX = -35;   // the same range the drawer's slider allows
+/** Editable while the station is being set up; a readout once it is armed or on the air (the 2026-09-04 anti-cheat rule). */
+function rangeLocked() { return !!settings.mcArmed || !!settings.live || advertising || advertisingPending > 0; }
+function renderRange() {
+  const box = $('range'); if (!box) return;
+  const locked = rangeLocked();
+  if (locked && _edgeBad) _edgeBad = false;   // a lock ends any half-typed entry
+  const inp = $('thrNum');
+  if (inp && document.activeElement !== inp && !_edgeBad) inp.value = String(-thr());
+  if (inp && inp.setAttribute) inp.setAttribute('aria-invalid', String(_edgeBad));
+  const hint = $('rhint'); if (hint) { hint.textContent = _edgeBad ? `TYPE ${-THR_MAX} TO ${-THR_MIN}` : `${-THR_MAX} = TIGHT · ${-THR_MIN} = WIDE`; if (hint.classList) hint.classList.toggle('bad', _edgeBad); }
+  if (inp) inp.disabled = locked;
+  for (const b of (box.querySelectorAll ? box.querySelectorAll('[data-tx]') : [])) b.disabled = locked;
+  if (box.classList) box.classList.toggle('locked', locked);
+  if ($('rangeLock')) $('rangeLock').textContent = !locked ? '' : settings.mcArmed ? ' · LOCKED: MC-ARMED' : ' · LOCKED WHILE LIVE';
+}
+let _edgeBad = false;   // the last entry was refused: the field keeps the stored value, the hint says the range
+function commitEdge() {
+  const inp = $('thrNum'); if (!inp || rangeLocked()) return false;
+  const n = parseEdge(inp.value);
+  if (n == null) { _edgeBad = true; log(`radius: type a number from ${-THR_MAX} to ${-THR_MIN}`, 'le'); render(); return false; }
+  _edgeBad = false;
+  if (n !== settings.threshold) { settings.threshold = n; save(); log(`radius edge set to ${n} dBm`, 'lk'); }
+  restartIfLive();
+  return true;
+}
+
+/** C1 (critical review 2026-09-24): "ROCKET LAUNCHER" ran out of the ring and off the screen. The word may take two balanced
+ *  lines, and --len (the longest line it needs, in characters) steps its size down so it stays inside the ring. */
+function fitWord() {
+  const el = $('team'); if (!el || !el.style) return;
+  const words = String(el.textContent || '').trim().split(/\s+/);
+  const total = words.join(' ').length, longest = Math.max(1, ...words.map(w => w.length));
+  const len = Math.max(longest, words.length > 1 ? Math.ceil(total / 2) : total, 4);
+  el.style.setProperty('--len', String(len));
 }
 
 /** A56: the powerup station's screen. The item's name in its own colour, AVAILABLE or TAKEN with the countdown, and
@@ -578,7 +671,9 @@ function renderPowerup() {
   document.documentElement.style.setProperty('--item', /^#[0-9a-f]{6}$/i.test(item.color || '') ? item.color : 'var(--glow)');
   $('team').textContent = String(item.name || 'POWERUP').toUpperCase();
   el.dataset.pstate = v.available === true ? (v.ringAt != null ? 'claiming' : 'available') : v.available === false ? 'taken' : 'unknown';
-  $('pstate').textContent = v.available === true ? (v.ringAt != null ? 'HOLD STILL' : 'AVAILABLE') : v.available === false ? 'TAKEN' : 'WAITING FOR MISSION CONTROL';
+  const firstAt = Number(item.first_at_s);
+  $('pstate').textContent = v.available === true ? (v.ringAt != null ? 'HOLD STILL' : 'AVAILABLE') : v.available === false ? 'TAKEN'
+    : Number.isFinite(firstAt) && firstAt > 0 ? `FIRST DROP AT ${mmss(firstAt * 1000)}` : 'NOT SPAWNED YET';
   $('pnext').textContent = v.available === false && v.nextInMs != null ? `NEXT ${mmss(v.nextInMs + 999)}` : '';
   $('ptaker').textContent = v.available === false && v.taker ? `BY PLAYER ${v.taker}` : '';
   const ring = $('pring'); const p = v.ringAt != null ? Math.min(1, (now - v.ringAt) / 1000) : 0;
@@ -587,51 +682,41 @@ function renderPowerup() {
   ring.setAttribute('aria-valuenow', String(Math.round(p * 100)));
 }
 
-/** The animated part: owner, a progress bar with the DIRECTION and speed of change, the net push, and the
- *  one line a defender reads to decide whether to run ("LOST IN 6 S"). CSS does the motion off
- *  `data-cstate` on <html> plus `--cspd`; this only feeds it numbers. */
+/** Kind 5 on screen (round 3, 2026-09-24: "the animation should explain what's happening, less labels and icons"). The ring
+ *  carries it: the HOLDER's colour fills it to the progress (the claimant while it builds, the owner while it drains, which
+ *  is whoever byte 9 names), the RIVAL's colour creeps into the rest, and CSS runs the sweep, the pulse and the standoff off
+ *  `data-cstate` on <html>. Words: the owner (in #team, by render()) and the % line. This only feeds numbers. */
 function renderControl(isControl, v, heldBy) {
   const el = $('control'); el.hidden = !isControl;
-  if (!isControl) { $('cflash').hidden = true; return; }
-  const holder = v.team;                          // whose progress the bar is (255 = nobody)
-  const held = heldBy != null;
+  const aura = $('aura'), core = $('core');
+  if (!isControl) {
+    for (const k of ['--hold', '--rival', '--p', '--cspd']) if (aura && aura.style.removeProperty) aura.style.removeProperty(k);
+    if (core && core.removeAttribute) { core.removeAttribute('role'); core.removeAttribute('aria-valuenow'); core.removeAttribute('aria-valuetext'); }
+    if (_flashAt === 0) $('cpct').textContent = '';
+    return;
+  }
+  const holder = v.team;                          // whose progress the ring is (255 = nobody)
   const hname = holder === CONTROL_NEUTRAL ? null : (TEAM_NAMES[holder] || `TEAM ${holder}`);
-  $('cfill').style.width = `${v.value}%`;
-  // §5d.4: two-toned across the phases — the fill is the OWNER's colour while it drains and the CLAIMANT's
-  // while it builds, which falls out of colouring it by whoever byte 9 names.
-  $('cfill').style.setProperty('--bar', `var(--team-${TEAM_KEYS[holder] || 'any'})`);
-  $('cpct').textContent = `${v.value}%`;
-  $('cbar').setAttribute('aria-valuenow', String(v.value));
-  $('cbar').setAttribute('aria-valuetext', `${v.value}% ${hname == null ? 'neutral' : `for ${hname}`}`);
-  // Speed of change, not just direction: more net players = the stripes move faster. 1.2 s per cycle at
-  // net 1, floored so a six-player stack does not strobe.
-  $('cbar').style.setProperty('--cspd', `${Math.max(0.3, 1.2 / Math.max(1, point.net)).toFixed(2)}s`);
-  // §5d.4: an arrow ON THE MOVING EDGE pointing the way the point is going.
-  const arrow = $('carrow');
-  arrow.hidden = !point.dir;
-  arrow.textContent = point.dir > 0 ? '▶' : '◀';
-  arrow.style.left = `${v.value}%`;
-  $('cowner').textContent = held
-    ? (point.dir < 0 ? 'LOSING IT' : point.dir > 0 ? 'PUSHING BACK' : 'HELD')
-    : hname == null ? 'NOBODY HOLDS IT'
-    : point.dir > 0 ? `${hname} IS TAKING IT`
-    : point.dir < 0 ? `${hname} IS BEING PUSHED OFF`
-    : `${hname} STALLED AT ${v.value}%`;
-  // §5d.4: the rate as a multiplier from the station's OWN net (not the byte it emits), and STALLED in place
-  // of the arrow at net 0.
-  $('crate').textContent = point.net > 0 && point.lead != null
-    ? `${point.dir < 0 ? '◀' : '▶'} ${TEAM_NAMES[point.lead]} ×${point.net}` : 'STALLED';
-  $('cnet').textContent = netLine();
-  const secs = point.timeToChange();
-  // What the number MEANS depends on which way it is going and whose it is. These four are the whole story.
-  $('ceta').textContent = secs == null ? '' : point.dir > 0
-    ? (held ? `SECURE IN ${Math.ceil(secs)} S` : `${hname} TAKES IT IN ${Math.ceil(secs)} S`)
-    : (held ? `LOST IN ${Math.ceil(secs)} S` : `${hname} PUSHED OFF IN ${Math.ceil(secs)} S`);
-  $('cbanner').textContent = point.contested ? 'CONTESTED' : '';
+  const key = t => TEAM_KEYS[t] || 'any';
+  // the rival: the leading team when it is not the holder, else the strongest other team standing there
+  const others = Object.keys(point.counts || {}).map(Number).filter(t => t !== holder && claimable(t)).sort((a, b) => point.counts[b] - point.counts[a]);
+  const rival = point.lead != null && point.lead !== holder ? point.lead : (others.length ? others[0] : null);
+  aura.style.setProperty('--hold', holder === CONTROL_NEUTRAL ? 'var(--team-any)' : `var(--team-${key(holder)})`);
+  aura.style.setProperty('--rival', rival == null ? 'transparent' : `var(--team-${key(rival)})`);
+  aura.style.setProperty('--p', (v.value / 100).toFixed(3));
+  // speed is information: more net players, a faster sweep (1.6 s a turn at net 1, floored so a stack does not strobe)
+  aura.style.setProperty('--cspd', `${Math.max(0.5, 1.6 / Math.max(1, point.net)).toFixed(2)}s`);
+  $('afront').style.transform = `rotate(${(v.value * 3.6).toFixed(1)}deg)`;   // the standoff dots sit where the fill stopped
+  $('cpct').textContent = v.value === 0 || (heldBy != null && v.value >= 100 && !point.dir) ? '' : `${v.value}%`;   // 0% and a held 100% say nothing the ring does not
+  if (core && core.setAttribute) {
+    core.setAttribute('role', 'progressbar'); core.setAttribute('aria-label', 'capture progress');
+    core.setAttribute('aria-valuemin', '0'); core.setAttribute('aria-valuemax', '100'); core.setAttribute('aria-valuenow', String(v.value));
+    core.setAttribute('aria-valuetext', `${v.value}% ${hname == null ? 'neutral' : `for ${hname}`}${point.contested ? ', contested' : ''}`);
+  }
   $('ctally').textContent = tallyLine();
-  $('cwarn').textContent = _twin ? `ANOTHER STATION IS ALSO ON ID ${_twin} — TWO POINTS SHARING AN ID LOOK LIKE ONE POINT TO EVERY PLAYER PHONE. GIVE THEM DIFFERENT IDS.`
-    : point.refusedSeen ? 'A PLAYER ON TEAM 2 IS HERE — TEAM 2 CAN NEVER HOLD A POINT (F82). REASSIGN IN MISSION CONTROL.' : '';
-  if (_flashAt && Date.now() - _flashAt > 2600) { _flashAt = 0; $('cflash').hidden = true; }
+  // short on purpose: two points on one id read as ONE point to every player phone; team 2 is what a neutral point broadcasts (F82)
+  $('cwarn').textContent = _twin ? `ID ${_twin} USED TWICE · CHANGE ONE IN MC`
+    : point.refusedSeen ? 'TEAM 2 CAN NEVER HOLD A POINT · REASSIGN IN MC' : '';
 }
 
 function wire() {
@@ -639,6 +724,14 @@ function wire() {
   $('btnMc').onclick = () => connectTypedMc($('mcUrl').value);
   if ($('btnMcMain')) $('btnMcMain').onclick = () => connectTypedMc($('mcUrlMain').value);
   if ($('btnQrMain')) $('btnQrMain').onclick = () => scanUtilityQr();
+  if ($('btnMcChange')) $('btnMcChange').onclick = () => { mcFormOpen = !mcFormOpen; render(); };
+  if ($('btnPlayers')) $('btnPlayers').onclick = () => { showPlayers = !showPlayers; try { localStorage.setItem(PLAYERS_KEY, showPlayers ? '1' : '0'); } catch (_) { /* ignore */ } render(); };
+  if ($('thrNum')) {
+    const inp = $('thrNum');
+    inp.oninput = () => { const v = String(inp.value).replace(/[^0-9]/g, '').slice(0, 2); if (v !== inp.value) inp.value = v; };
+    inp.onchange = commitEdge;
+    inp.onkeydown = e => { if (e.key === 'Enter' && commitEdge() && inp.blur) inp.blur(); };
+  }
   $('btnHud').onclick = exitToHud;
   for (const b of document.querySelectorAll('[data-kind]')) b.onclick = () => { settings.kind = b.dataset.kind; save(); restartIfLive(); };
   for (const b of document.querySelectorAll('[data-team]')) b.onclick = () => { settings.team = +b.dataset.team; save(); restartIfLive(); };
@@ -687,6 +780,7 @@ function wireExit() {
     if (deadline) clearTimeout(deadline);
     raf = 0; deadline = 0; t0 = 0; activePointer = null; activeKey = '';
     if (fill) fill.style.width = '0%';
+    if (btn.classList) btn.classList.remove('holding');
   };
   const fire = () => {
     if (!t0 || firing) return;
@@ -709,6 +803,7 @@ function wireExit() {
     // orphaning the first timer and allowing a later hold to inherit an early exit.
     if (firing || deployed() || t0) return false;
     t0 = Date.now();
+    if (btn.classList) btn.classList.add('holding');
     deadline = setTimeout(fire, EXIT_HOLD_MS);
     tick();
     return true;
