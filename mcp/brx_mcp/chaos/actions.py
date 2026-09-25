@@ -176,6 +176,20 @@ async def melee_kill(world: World, victim: int, shooter: int) -> None:
     n.emit({"type": "death", "shooter_num": num, "shooter_team": tid, "melee": True})
 
 
+@action("team_credit_kill", pick=_pick_kill)
+async def team_credit_kill(world: World, victim: int, shooter: int) -> None:
+    """A65 (F354): the victim's phone lost the damaging hit, and only the shooter's non-damaging word (smoke, EMP) was
+    fresh, so the death names the shooter's TEAM and no player (`shooter_num` 0, `credit: "team"`). The team score
+    counts it; no player's row, medal, chain, first blood or kill cue does."""
+    n = world.nodes[victim]
+    if not n.alive:
+        return
+    _num, tid = _shooter(world, shooter)
+    n.alive = False
+    n.hp = 0
+    n.emit({"type": "death", "shooter_num": 0, "shooter_team": tid, "credit": "team"})
+
+
 def _pick_unknown_shooter(world: World, rng: random.Random):
     alive = world.alive_nodes()
     if not alive:

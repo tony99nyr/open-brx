@@ -55,7 +55,12 @@ export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FI
   /** Bench 2026-09-17: MC restarted and resumed (or adopted) the match in play. */
   | 'RESUMED'
   /** A note about a match MC did not start (an adopted match): MC records it and ends nothing. */
-  | 'NOTE';
+  | 'NOTE'
+  /** F357: a kill after the whistle (stamped after the end, or a team kill frozen out after a frag cap). Shown,
+   *  and counted in nothing: not the score, the rows, the awards or the medals. */
+  | 'AFTER WHISTLE'
+  /** A65 (F354): a kill credited to a TEAM and no player (the victim's phone lost the damaging hit). */
+  | 'TEAM CREDIT';
 export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed

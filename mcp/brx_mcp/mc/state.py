@@ -5440,6 +5440,15 @@ class Session:
         before = (live.winner(), end_t)
         self._adopt_scorer(live, sc)
         if cap_t < end_t:
+            # F357: a kill the moved end un-scores is now an after-the-whistle kill, and the feed line MC wrote
+            # when it counted cannot say so. Mark each one again, AFTER WHISTLE, as the live path marks a late one.
+            # keyed on the fact's content: a stored body and a live batch body do not both carry `seq`
+            def key(n: str, ev: Event) -> tuple:
+                return (n, ev.get("t"), ev.get("player_id"), ev.get("shooter_num"))
+            was = {key(n, ev) for n, ev, _t in live.post_end}
+            for n, ev, t_recv in sc.post_end:
+                if ev.get("type") == "death" and key(n, ev) not in was:
+                    sc._after_whistle_feed(n, ev, sc.eff_t(n, ev, t_recv))
             moved = (end_t - cap_t) / 1000.0
             self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
                            "text": f"END MOVED BACK {moved:.1f}s — a late flush shows the cap was reached earlier. "
@@ -6846,8 +6855,8 @@ class Session:
         return 1 if ok else 0
 
     def _feedback(self, pid: str, body: dict):
-        if body.get("kind") == "kill" and self.phase == "recap" and self.end_reason == "frag_limit":
-            return      # F357: no kill confirm after a frag-cap whistle (the Scorer gates it on `cap_recv` too)
+        if body.get("kind") == "kill" and self.phase == "recap":
+            return      # F357: no kill confirm after the whistle, any end (the Scorer gates it too: `_before_whistle`)
         p = self.players.get(pid)
         if p and p.get("node_id"):
             cues = (self.bundles.get(pid) or {}).get("cues") or {}

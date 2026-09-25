@@ -6537,7 +6537,7 @@ export class Engine {
         shooter_team: hl.shooter_team, dmg, ir_proto: hl.ir_proto, ir_subtype: hl.ir_subtype,
         sensor: hl.sensor, shot_group, ...(resolved && !resolved.ambiguous && resolved.weapon_id != null ? { weapon_id: resolved.weapon_id } : {}) });
       this._lastHitFact = { at: now, shooter_num: hl.shooter_num, shooter_team: hl.shooter_team, ir_proto: hl.ir_proto,
-        ir_subtype: hl.ir_subtype, crit: hl.crit, dmg, shot_group };
+        ir_subtype: hl.ir_subtype, crit: hl.crit, dmg, shot_group, ...(hl !== dl && this._nonDamaging(hl) ? { noPool: true } : {}) };   // A65: booked to a no-pool word (its damaging word was lost)
       this.lastHitAt = this.now();
       this._lifeBookHit(hl.shooter_num, hl.shooter_team, dmg, shot_group, resolved, { sensor: hl.sensor, crit: hl.crit });   // S56: the per-life "what hit me" ledger
       // F57 (bench 2026-09-09, "the critical sounds are a bit bugged when it was at 1 red"): the hit that CROSSES the
@@ -6698,10 +6698,19 @@ export class Engine {
     const lhFresh = !dk && !dlFresh && !!lh && now - lh.at <= C.DEATH_LATCH_MS;
     const latchFresh = !!this.latch && now - this.latch.at <= C.DEATH_LATCH_MS;
     const blow = dlFresh ? dl : lhFresh ? lh : null;   // the killing blow, when a damaging hit names it (the melee flag reads it)
-    const src = dk ? { shooter_num: dk.num, shooter_team: dk.team } : blow || (latchFresh ? this.latch : null);
+    // A65 (F354, Tony 2026-09-25: "killed by blue makes sense"): the damaging hit was lost and the only fresh word is
+    // a non-damaging one (smoke, EMP). Its shooter did no damage, so the kill goes to that word's TEAM and no player:
+    // `shooter_num` 0 with `credit: "team"`. Our own team's word (and FFA, one $TID for everyone) credits nobody.
+    // The lost hit shows up two ways: the lethal drop booked a `hit_taken` to the no-pool latch (`lh.noPool`), or no hit
+    // was booked at all and only the raw latch is fresh.
+    const noPoolSrc = dk ? null : blow ? (blow.noPool ? blow : null) : (latchFresh && this._nonDamaging(this.latch) ? this.latch : null);
+    const teamOnly = !!noPoolSrc && noPoolSrc.shooter_num !== 0;
+    const rosterTeam = ((this.config && this.config.teams) || []).some(tm => Number(tm.tid) === noPoolSrc?.shooter_team);   // MC credits only a team on this match's roster
+    const teamCredit = teamOnly && rosterTeam && noPoolSrc.shooter_team !== this.teamTid && !(this.config && this.config.mode === 'ffa');
+    const src = teamOnly ? null : dk ? { shooter_num: dk.num, shooter_team: dk.team } : blow || (latchFresh ? this.latch : null);
     const fresh = !!src;
     const shooter_num = src ? src.shooter_num : 0;
-    const shooter_team = src ? src.shooter_team : (this.latch ? this.latch.shooter_team : 0);
+    const shooter_team = src ? src.shooter_team : teamOnly ? noPoolSrc.shooter_team : (this.latch ? this.latch.shooter_team : 0);
     // F81: wire id 0 is "no identity" (A5.1) -- a grenade hill's ambient damage word (F69) or a gun whose `$PSET`
     // never landed (F80). Its team field is the hill's OWNER, so naming that team as the killer told the player a
     // specific lie ("KILLED BY GREEN" when nobody shot them). MC already refuses to credit wire 0; the phone now
@@ -6729,15 +6738,17 @@ export class Engine {
     this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false; this._roBlinkAt = 0; this._roBlinkOn = false;
     this._gunBlankOnDeath();   // F113: ...and then turn the strip OFF, rather than leaving it frozen mid-animation
     this._activeRole = null;   // A16 §3.3: cleared BEFORE the infection check below, which may assign a fresh 'infected' role in the same call
-    this.killedBy = unknown
+    this.killedBy = teamCredit
+      ? { num: 0, team: shooter_team, name: null, teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red', teamOnly: true }   // A65: KILLED BY <TEAM>
+      : unknown
       ? { num: 0, team: null, name: null, teamName: null, teamKey: null, unknown: true }
       : { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
     if (dk) this.killedBy.dot = true;   // S16: the DOWN screen says POISONED BY
     // Tony 2026-09-24: "melee kills should be a medal". The killing blow is the last DAMAGING hit (`_lastHitFact`,
     // stamped only when a hit moved a pool), not the raw latch: a smoke or EMP word landing between the melee blow and
     // the `$HP,0` re-latches without doing damage (the same trap `dk` avoids above). Proto 13 is melee.
-    const melee = !!blow && blow.ir_proto === 13;
-    this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}), ...(dk ? { dot: true } : {}), ...(melee ? { melee: true } : {}) });
+    const melee = !teamOnly && !!blow && blow.ir_proto === 13;
+    this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(teamCredit ? { credit: 'team' } : {}), ...(desync ? { desync: true } : {}), ...(dk ? { dot: true } : {}), ...(melee ? { melee: true } : {}) });
     const flipTable = (this._respawnProfile() && this._respawnProfile().team_flip) || (this.frames && this.frames.team_flip);   // 2026-09-19: the timed-profile bursts
     let irFlip = false;   // S57: true once this death turns out to BE an infection flip, not a real death (see below)
     if (this.config && this.config.mode === 'infection' && flipTable) {
@@ -6768,7 +6779,7 @@ export class Engine {
     if (!irFlip && reason !== 'gun_recovery' && this.phase === 'live' && this.bleUp) {   // a gun-recovery DOWN is a power-cycle, not a kill: announcing it would tell every gun someone was shot
       const myNum = this.player && this.player.player_num, myTid = this.teamTid;
       if (myNum != null && myTid != null) {
-        const selfOrUnknown = this.killedBy.unknown || this.killedBy.num === myNum;
+        const selfOrUnknown = this.killedBy.unknown || this.killedBy.teamOnly || this.killedBy.num === myNum;   // A65: a team credit names no player
         const player = selfOrUnknown ? myNum : this.killedBy.num;
         const magnitude = (selfOrUnknown ? IR_CALLOUT.DOWN : IR_CALLOUT.DOWN_BY) + myTid;
         const calloutTeam = typeof (this.frames && this.frames.callout_team) === 'number' ? this.frames.callout_team : myTid;

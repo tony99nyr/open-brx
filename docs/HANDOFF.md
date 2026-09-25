@@ -62,8 +62,7 @@ APKs 0.4.7-0.4.11 published, each on green CI. On main since 0.4.11: A60 auto-jo
 Down, A63 Killjoy and the AWARDS table, A64 the frag-cap freeze, MC visual QA round 2 (mc-vqa2 gate), and fixes
 F330, F343, F337, F354, F356. Each was polish-looped and test:all --ui green.
 - **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F309, F311 and F312.
-- **Tony decides:** F346 (d) first contact (trust on first use, or one JOIN tap); F354 a lost damaging word (credit
-  the smoke/EMP shooter or only the team); F357 kill confirms after a frag-cap whistle; F361 the KILLJOY gun flash.
+- **Tony decides:** F361 (the KILLJOY gun flash).
 - **Build:** F355 (VQA2 Lows), F360 (F356 edge cases).
 ## Lane: S57, B21, StickS3 (brx4)
 Tony's MVP scope: Stick stations are Bluetooth-only (hill, pickup, respawn); Stick IR receive and the grenade hill

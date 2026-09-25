@@ -2394,3 +2394,39 @@ def test_no_heartbeat_is_written_in_the_same_tick_the_recharge_starts():
         st2._shield_tick(now2); await settle(st2)
         assert c["shield_loop"] in since(mgr2, n2), "control: a heartbeat alone is written"
     asyncio.run(go())
+
+
+# ======================================================================================================
+# A65 (F354) -- a lost damaging hit with only a no-pool word fresh credits that word's TEAM, as engine.js `_death`
+# ======================================================================================================
+def test_a65_a_lost_damaging_hit_credits_the_team_of_the_fresh_no_pool_word():
+    """engine.js `_death` `teamCredit`: no fresh damaging word, and the killing source (the last hit, else the raw
+    latch) is a no-pool word, so the death names that word's team and no player. Controls: a damaging word keeps
+    its player (no team credit), and our own team's no-pool word credits nobody."""
+    emp = "$SIR,8,0,,23,0,0,1,,*"            # compile.py `_with_stun_row`: <8,0> moves no pool
+
+    async def death_after(*frames) -> int | None:
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        st.bundle = {**st.bundle, "head": [*st.bundle["head"], emp],
+                     "sir_pool": [[*take, emp] for take in (st.bundle.get("sir_pool") or [])]}
+        for f in frames:
+            if isinstance(f, float):
+                clock.advance(f)                 # seconds, the stage's unit
+                continue
+            mgr.sessions["stage"].record("rx", f)
+            st.poll(); await settle(st)
+        assert not st.alive, "control: the $HP,0 killed the player"
+        return st.team_credit_tid
+
+    async def go():
+        assert await death_after("$HIR,0,8,5,2,0,0,0,*", "$HP,0,0,0,*") == 2, "the enemy EMP's team gets the kill"
+        assert await death_after("$HIR,0,1,5,2,45,0,0,*", "$HP,0,0,0,*") is None, "a damaging word keeps its player"
+        assert await death_after("$HIR,0,1,5,2,45,0,0,*", "$HIR,0,8,6,2,0,0,0,*", "$HP,0,0,0,*") is None, \
+            "F354: a no-pool word after a fresh damaging one does not take the kill"
+        assert await death_after("$HIR,0,8,5,1,0,0,0,*", "$HP,0,0,0,*") is None, "our own team's EMP credits nobody"
+        # past the 1000 ms hit gate, inside DEATH_LATCH_MS: no hit is booked, and the raw latch alone names the team
+        assert await death_after("$HIR,0,8,5,2,0,0,0,*", 1.5, "$HP,0,0,0,*") == 2, "the raw-latch-only path"
+        assert await death_after("$HIR,0,8,5,2,0,0,0,*", 2.5, "$HP,0,0,0,*") is None, "control: a stale latch credits nobody"
+        assert await death_after("$HIR,0,8,5,3,0,0,0,*", "$HP,0,0,0,*") is None, "a team not on the roster credits nobody"
+    asyncio.run(go())
