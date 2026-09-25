@@ -901,7 +901,7 @@ for (const view of VIEWS) {
     const s3 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
     await pg.reload(); await pg.waitForTimeout(1500); const s4 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
     await pg.screenshot({ path: `${OUT}/${view.name}-utility.png` }); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
-    must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 4 && s1.team === 'BLUE' && s1.status === 'READY', 'status screen: ' + JSON.stringify(s1));   // four fake phones: three for the respawn demo + the opposing team a control point needs (F82 bars tid 2)
+    must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 4 && s1.team === 'BLUE' && s1.status === 'NOT LIVE', 'status screen: ' + JSON.stringify(s1));   // four fake phones: three for the respawn demo + the opposing team a control point needs (F82 bars tid 2)
     must(six, 'six taps opened the settings'); must(!s2.hidden && s2.defaults >= 6 && s2.pressed === 3 && s2.rangeLabel, 'settings: ' + JSON.stringify(s2));
     must(s3.status === 'LIVE' && s3.hidden, 'after START + close: ' + JSON.stringify(s3)); must(s4.status === 'LIVE' && s4.hidden, 'after reload: ' + JSON.stringify(s4));
   });
@@ -1050,7 +1050,7 @@ for (const view of VIEWS) {
       cstate: document.documentElement.getAttribute('data-cstate'), dteam: document.documentElement.getAttribute('data-team'),
       painted: Math.round(100 * parseFloat(cs(aura).getPropertyValue('--p'))),
       hold: aura.style.getPropertyValue('--hold'), rival: aura.style.getPropertyValue('--rival'),
-      sweep: layer('.asweep'), front: { ...layer('.afront'), anim: cs(aura.querySelector('.afront b')).animationName }, rest: layer('.arest'), glow2: layer('.aglow2'),
+      sweep: { ...layer('.asweep'), anim: cs(aura.querySelector('.asweep s')).animationName, dir: cs(aura.querySelector('.asweep s')).animationDirection }, front: { ...layer('.afront'), anim: cs(aura.querySelector('.afront b')).animationName }, rest: layer('.arest'), glow2: layer('.aglow2'),
       claims: document.querySelectorAll('#players .row.claim').length,
       revives: document.getElementById('revives').textContent,
       wire: (h => { const b = i => parseInt(h.slice(i * 2, i * 2 + 2), 16); return { kind: b(8), team: b(9), state: b(10), value: b(11), seq: b(12) }; })(window.brxUtility.stationUuid().replace(/-/g, '')) };
@@ -1099,13 +1099,13 @@ for (const view of VIEWS) {
     const held = await untilC(pg, r => (r.wire.state & 1) === 1 && r.wire.team === 1, 14000, 'capture');
     must(held.painted >= 96, 'captured, the ring full: ' + JSON.stringify(held));
     must(held.cstate === 'held' && held.dteam === 'blue', 'held state: ' + JSON.stringify(held));
-    must(held.flash === 'CAPTURED BY BLUE', 'the crossing throws its word inside the ring: ' + JSON.stringify(held.flash));
+    must(held.flash === 'CAPTURED' && held.team === 'BLUE', 'the crossing throws its word inside the ring, under the team word: ' + JSON.stringify(held.flash));
     must(held.wire.kind === 5 && held.wire.team === 1 && (held.wire.state & 1) === 1 && held.wire.value === 100 && held.wire.seq > 1,
       'and the advert now says BLUE HOLDS it, at a bumped seq: ' + JSON.stringify(held.wire));
     await pg.screenshot({ path: `${OUT}/${view.name}-control-held.png` });
     // the flash is one-shot: it clears itself, and the possession tally takes over (§5d.4)
     const after = await untilC(pg, r => r.flash === '', 5000, 'the flash clears itself');
-    must(after.pct === '100%', 'the % line comes back when the word goes: ' + JSON.stringify(after));
+    must(after.pct === '' && after.painted >= 96, 'a held point needs no % (the full ring says it) once the word goes: ' + JSON.stringify(after));
     must(/^HELD · BLU \d+:\d\d$/.test(after.tally), 'and the roster panel keeps the recap sheet: ' + JSON.stringify(after.tally));
     await done(pg, perr);
   });
@@ -1158,7 +1158,7 @@ for (const view of VIEWS) {
     const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtilityFake[0].alive = false; });
     await pg.waitForTimeout(3500);
     const d = await cread(pg);
-    must(d.pct === '0%' && d.painted <= 2 && d.team === 'NEUTRAL' && d.cstate === 'idle', 'a DOWN body converts nothing: ' + JSON.stringify(d));
+    must(d.pct === '' && d.painted <= 2 && d.team === 'NEUTRAL' && d.cstate === 'idle', 'a DOWN body converts nothing: ' + JSON.stringify(d));
     must(d.claims === 0, 'and it is not counted: ' + JSON.stringify(d));
     must(await pg.evaluate(() => !!document.querySelector('#players .row .state.down')), 'though it IS on screen, as DOWN');
     must(d.marks.claim === 0, 'nobody is counted: ' + JSON.stringify(d.marks));
@@ -1174,9 +1174,9 @@ for (const view of VIEWS) {
     const y = await untilC(pg, r => /TEAM 2 CAN NEVER HOLD A POINT/.test(r.warn), 8000, 'the F82 warning');
     must(y.claims === 0 && y.team !== 'YELLOW' && !/yellow/.test(y.hold), 'and tid 2 gets nothing: ' + JSON.stringify(y));
     must(y.wire.team !== 2, 'nor can the advert ever name team 2: ' + JSON.stringify(y.wire));
-    const frozen = parseInt(y.pct, 10);
+    const frozen = y.painted;
     await pg.waitForTimeout(3000);
-    must(parseInt((await cread(pg)).pct, 10) === frozen, 'a tid-2 body on the point moves the bar not at all');
+    must((await cread(pg)).painted === frozen, 'a tid-2 body on the point moves the bar not at all');
     // ...and the ROSTER has to agree with the bar. A refused body read exactly like a contributing one --
     // highlighted row, green "ON POINT" -- while two lines above it the net line said NOBODY ON THE POINT.
     // A down body is struck through; a refused one had no mark at all, so the same screen said both things.
@@ -1233,7 +1233,7 @@ for (const view of VIEWS) {
     must(await pg.evaluate(() => !document.getElementById('teamnote').hidden), 'the TEAM panel says it does not apply to a control point');
     await pg.click('#btnPointReset'); await pg.waitForTimeout(500);
     const reset = await cread(pg);
-    must(reset.pct === '0%' && reset.painted <= 3 && reset.team === 'NEUTRAL', 'RESET POINT TO NEUTRAL: ' + JSON.stringify(reset));
+    must(reset.pct === '' && reset.painted <= 3 && reset.team === 'NEUTRAL', 'RESET POINT TO NEUTRAL: ' + JSON.stringify(reset));
     // and switching kind away puts the respawn screen back
     await pg.click('[data-kind="respawn"]'); await pg.waitForTimeout(300);
     const resp = await pg.evaluate(() => ({ hidden: document.getElementById('control').hidden, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, note: document.getElementById('teamnote').hidden, title: document.getElementById('ptitle').textContent }));
@@ -3947,7 +3947,7 @@ await step('utility roster: folded by default, SHOW/HIDE PLAYERS toggles it, and
   must(d.hidden && d.stored === '0', 'HIDE PLAYERS folds it, and that sticks too: ' + JSON.stringify(d));
 });
 // Round 3 (Tony, 2026-09-24): the arming line is quiet when all is well and loud only when players may ignore the station.
-await step('utility arming line: waiting, then SET BY HAND when started without MC arming, nothing when there is no MC, quiet once armed', async () => {
+await step('utility arming line: waiting, then SET BY HAND when started without MC arming, a quiet MC OFFLINE after a drop, quiet once armed', async () => {
   const pg = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
   const read = () => pg.evaluate(() => { const e = document.getElementById('armed'); return { text: e.textContent, cls: e.className, color: getComputedStyle(e).color, shown: e.getBoundingClientRect().height > 0 }; });
   const wait = await read();
@@ -3962,7 +3962,8 @@ await step('utility arming line: waiting, then SET BY HAND when started without 
   await pg2.close();
   must(wait.text === 'WAITING FOR MC TO ARM IT' && !/warn/.test(wait.cls), 'linked, not started: ' + JSON.stringify(wait));
   must(hand.text === 'SET BY HAND · PLAYERS MAY IGNORE IT' && /warn/.test(hand.cls) && hand.shown, 'linked and on the air without arming: the warning: ' + JSON.stringify(hand));
-  must(alone.text === '' && !alone.shown, 'no MC at all: a hand-set station is valid, nothing to say: ' + JSON.stringify(alone));
+  // (the stage always links first, so a never-linked phone cannot be staged; a DROPPED link reads as a quiet note, not a warning)
+  must(alone.text === 'MC OFFLINE' && !/warn/.test(alone.cls), 'after MC drops, a quiet note, never the SET BY HAND warning: ' + JSON.stringify(alone));
   must(armed.text === 'MC ✓ GAME 38' && !/warn/.test(armed.cls), 'armed: quiet: ' + JSON.stringify(armed));
 });
 // Round 3: RANGE on the main screen (Tony: "i like being able to set the radius and strength right there"), and the dBm edge
@@ -3980,6 +3981,10 @@ await step('utility range: typing 70 stores -70 dBm, a number out of range is re
   const m = await read();
   await pg.fill('#thrNum', ''); await pg.type('#thrNum', '12'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
   const bad = await read();
+  await pg.evaluate(() => document.getElementById('thrNum').blur()); await pg.waitForTimeout(400);
+  const badBlur = await read();
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '66'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(200);
+  const fixed = await read();
   await pg.click('#range [data-tx="low"]'); await pg.waitForTimeout(200);
   const tx = await pg.evaluate(() => ({ tx: window.brxUtility.settings.tx, sel: document.querySelector('#range [data-tx="low"]').classList.contains('sel') }));
   await pg.evaluate(() => window.brxUtility.startAdvert()); await pg.waitForTimeout(400);
@@ -3989,6 +3994,8 @@ await step('utility range: typing 70 stores -70 dBm, a number out of range is re
   must(b2.thr === -70 && b2.saved === -70 && b2.value === '70' && b2.invalid === 'false', 'typing 70 stores -70 dBm: ' + JSON.stringify(b2));
   must(m.thr === -62 && m.value === '62', 'a typed minus is dropped, not doubled: ' + JSON.stringify(m));
   must(bad.thr === -62 && bad.invalid === 'true' && /TYPE 35 TO 95/.test(bad.hint), 'a number out of range (12) is refused and marked: ' + JSON.stringify(bad));
+  must(badBlur.value === '12' && badBlur.invalid === 'true' && badBlur.thr === -62, 'after a blur the refused entry stays shown and marked, never a red old value: ' + JSON.stringify(badBlur));
+  must(fixed.thr === -66 && fixed.invalid === 'false' && /TIGHT/.test(fixed.hint), 'a valid entry clears the error: ' + JSON.stringify(fixed));
   must(tx.tx === 'low' && tx.sel, 'the STRENGTH buttons set the transmit power: ' + JSON.stringify(tx));
   must(live.disabled && live.txDisabled && /LOCKED/.test(live.lock), 'on the air, the range is a readout (the anti-cheat rule): ' + JSON.stringify(live));
 });
@@ -4004,7 +4011,7 @@ const ugW = ms => new Promise(r => setTimeout(r, ms));
 const ugFakes = (pg, m) => pg.evaluate(m => { for (const f of window.brxUtilityFake) { if (m[f.id] === undefined) continue; const v = m[f.id]; f.rssi = () => (v == null ? -99 : v); } }, m);
 const ugCtl = (pg, st) => pg.evaluate(st => { const p = window.brxUtility.point; Object.assign(p, st); p.at = null; }, st);
 const ugLive = pg => pg.evaluate(() => window.brxUtility.startAdvert());
-const ugPu = async (pg, avail) => { await pg.evaluate(i => window.brxUtility.mcMessage('station_config', { kind: 'powerup', team: 255, id: 4, game: 38, item: i }), UG_ITEM); await ugW(200);
+const ugPu = async (pg, avail, item = UG_ITEM) => { await pg.evaluate(i => window.brxUtility.mcMessage('station_config', { kind: 'powerup', team: 255, id: 4, game: 38, item: i }), item); await ugW(200);
   if (avail) { await pg.evaluate(() => window.brxUtility.mcMessage('station_update', { id: 4, available: true, next_spawn_in_ms: 120000 })); await ugW(200); } };
 // [name, [kind, team, id], armed through the wire first?, drive]
 const UG_STATES = [
@@ -4023,6 +4030,9 @@ const UG_STATES = [
   ['powerup-available', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true); }],
   ['powerup-claiming', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true); await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 16; f.value = 4; }); await ugW(500); }],
   ['powerup-taken', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true); await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 16; f.value = 4; }); await ugW(600); await pg.evaluate(() => { window.brxUtilityFake[0].bits = 48; }); await ugW(700); }],
+  // C1 (critical review): real catalogue names are long; the word must stay inside the ring on two balanced lines
+  ['powerup-long-name', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true, { ...UG_ITEM, name: 'Rocket Launcher' }); }],
+  ['powerup-long-name-taken', ['powerup', 255, 4], false, async pg => { await ugPu(pg, true, { ...UG_ITEM, name: 'Armor Piercing' }); await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 16; f.value = 4; }); await ugW(600); await pg.evaluate(() => { window.brxUtilityFake[0].bits = 48; }); await ugW(700); }],
   ['control-neutral', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: null, 19: null, 23: null, 31: null }); }],
   ['control-gaining', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: null, 31: null }); await ugCtl(pg, { capturing: 1, progress: 40 }); }],
   ['control-contested', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: null, 31: -55 }); await ugCtl(pg, { capturing: 1, progress: 55 }); }],
@@ -4062,6 +4072,15 @@ const ugRead = pg => pg.evaluate(() => {
   }
   const rows = [...document.querySelectorAll('#players .row:not(.empty)')].filter(vis);
   for (let c = 0; c < 5 && rows.length > 1; c++) { const L = rows.map(r => r.children[c].getBoundingClientRect().left); if (Math.max(...L) - Math.min(...L) > 2) out.cols.push(`column ${c + 1}`); }
+  // H5: the page never scrolls sideways (a glow, a burst or a hit target used to widen it)
+  if (document.documentElement.scrollWidth > innerWidth) out.clip.push(`the page is ${document.documentElement.scrollWidth}px wide on a ${innerWidth}px screen`);
+  if (!cfgOpen) {
+    // the ring sits inside the hero's border, and every line of the big word sits inside the ring's text box
+    const hero = document.querySelector('.hero').getBoundingClientRect(), ring = document.querySelector('.aura .atrack').getBoundingClientRect();
+    if (ring.left < hero.left + 1 || ring.right > hero.right - 1 || ring.top < hero.top + 1 || ring.bottom > hero.bottom - 1) out.touch.push('the ring crosses the hero border');
+    const box = document.querySelector('.coretext').getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(document.getElementById('team'));
+    for (const r of rg.getClientRects()) if (r.left < box.left - 2 || r.right > box.right + 2 || r.top < box.top - 2 || r.bottom > box.bottom + 2) { out.clip.push(`the big word "${document.getElementById('team').textContent}" runs out of the ring`); break; }
+  }
   if (innerWidth > innerHeight && !cfgOpen) {
     const side = document.getElementById('side').getBoundingClientRect(), hero = document.querySelector('.hero').getBoundingClientRect();
     if (hero.right > side.left - 4) out.land.push('the hero runs into the side column');
@@ -4078,6 +4097,21 @@ const ugRead = pg => pg.evaluate(() => {
     if (pct != null && pct < (portrait ? 28 : 20)) out.legible.push(`% line ${pct}px`);
     if (kind == null || kind < 15) out.legible.push(`kind ${kind}px`);
   }
+  const u0 = window.brxUtility;
+  if (!cfgOpen && u0.settings.kind === 'control') {
+    const v = u0.point.advert(), p = u0.point, names = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' }, keys = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
+    const holder = v.team !== 255 && v.value > 0 ? v.team : null, held = (v.state & 1) === 1;
+    const word = document.getElementById('team').textContent, pct = document.getElementById('cpct'), flashing = !document.getElementById('cflash').hidden;
+    const aura = document.getElementById('aura'), cstate = document.documentElement.dataset.cstate;
+    const want = p.contested ? 'contested' : p.dir > 0 ? 'rising' : p.dir < 0 ? 'falling' : held ? 'held' : 'idle';
+    if (word !== (holder == null ? 'NEUTRAL' : names[holder])) out.honest.push(`word "${word}" but the ring is ${holder == null ? 'nobody' : names[holder]}'s`);
+    if (cstate !== want) out.honest.push(`animation "${cstate}" but the point is ${want}`);
+    if (!flashing && v.value > 0 && !(held && v.value >= 100 && !p.dir) && pct.textContent !== v.value + '%') out.honest.push(`% "${pct.textContent}" but the point is at ${v.value}%`);
+    if (holder != null && !aura.style.getPropertyValue('--hold').includes(keys[holder])) out.honest.push(`ring colour ${aura.style.getPropertyValue('--hold')} for ${names[holder]}`);
+    const dir = getComputedStyle(aura.querySelector('.asweep s')).animationDirection;
+    if ((cstate === 'falling') !== (dir === 'reverse') && (cstate === 'rising' || cstate === 'falling')) out.honest.push(`sweep runs ${dir} while ${cstate}`);
+  }
+  if (!cfgOpen && u0.settings.mcArmed && /MISSION CONTROL/.test((document.getElementById('pstate') || {}).textContent || '')) out.honest.push('an armed powerup says it waits for Mission Control');
   const u = window.brxUtility, status = document.getElementById('status').textContent, armed = document.getElementById('armed').textContent, mc = document.getElementById('mcstateMain').textContent;
   if ((status === 'LIVE') !== !!u.settings.live) out.honest.push(`status "${status}" but live=${!!u.settings.live}`);
   if (/MC ✓/.test(armed) !== !!u.settings.mcArmed) out.honest.push(`arming line "${armed}" but armed=${!!u.settings.mcArmed}`);
@@ -4811,7 +4845,7 @@ for (const view of UTIL_VIEWS) {
     await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 48; });   // past the phone's own dwell: claim_ready
     await pg.waitForTimeout(700);
     const taken = await puStation(pg); await pg.screenshot({ path: `${OUT}/util-a56-taken-${view.name}.png` }); await pg.close();
-    must(before.name === 'ROCKETS' && before.pup && before.state === 'WAITING FOR MISSION CONTROL', `before MC's first update: ${JSON.stringify(before)}`);
+    must(before.name === 'ROCKETS' && before.pup && before.state === 'FIRST DROP AT 2:00', `before MC's first update: ${JSON.stringify(before)}`);
     must(before.advert.state === 0 && before.advert.value === 0 && before.advert.taker === 0, `the unknown advert pair: ${JSON.stringify(before.advert)}`);
     must(avail.state === 'AVAILABLE' && avail.advert.state === 1, `available: ${JSON.stringify(avail)}`);
     must(claiming.state === 'HOLD STILL' && claiming.ring > 0, `the ring from the first claiming advert: ${JSON.stringify(claiming)}`);

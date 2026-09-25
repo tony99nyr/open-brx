@@ -22,7 +22,7 @@
 [data-team="blue"]{--team:var(--team-blue);--team-ink:#04121e}[data-team="yellow"]{--team:var(--team-yellow);--team-ink:#1a1400}
 [data-team="red"]{--team:var(--team-red);--team-ink:#1a0404}[data-team="green"]{--team:var(--team-green);--team-ink:#041a0c}[data-team="any"]{--team:var(--team-any);--team-ink:#0a0f14}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;min-height:100%;background:#02040a;color:var(--num);font-family:var(--fl);overscroll-behavior:none}
+html,body{margin:0;min-height:100%;background:#02040a;color:var(--num);font-family:var(--fl);overscroll-behavior:none;overflow-x:clip}   /* H1: a glow or a hit target must never pan a propped-up phone sideways */
 body{background:var(--bg);padding:max(14px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;min-height:100vh}
 button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:none;padding:0;user-select:none}
 /* No slant on this page (Tony, 2026-09-24: "just do regular untilted"): every box, button, badge and bar is a plain
@@ -36,7 +36,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .wm small{font-family:var(--fl);font-style:normal;font-size:10px;letter-spacing:.34em;color:var(--mut);margin-left:10px;vertical-align:middle}
 .infobtn{width:40px;height:40px;border:1px solid var(--edge);color:var(--mut);font:600 15px var(--fl);display:flex;align-items:center;justify-content:center;position:relative}
 .infobtn svg{width:20px;height:20px}   /* drawn, not the U+24D8 glyph: a font without it shows an empty box (the HUD's QA-28) */
-.infobtn::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px}   /* the tap target */
+.infobtn::after{content:"";position:absolute;right:0;top:50%;transform:translateY(-50%);width:56px;height:56px}   /* the tap target, grown leftwards so it stays on screen at the right edge */
 /* the ⓘ gesture is 7 taps in 3 s with ZERO feedback on any single tap (field 2026-09-12) -- this is the
    ONLY feedback: a small count that appears on tap 1 and fades on timeout or on the drawer opening. */
 .infoprog{position:absolute;right:calc(100% + 8px);top:50%;transform:translateY(-50%);   /* beside the box, clear of its border */
@@ -53,9 +53,10 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 #exitHud{order:-1}
 .exitbtn .fill{position:absolute;inset:0;left:0;width:0;background:color-mix(in srgb, var(--warn) 34%, transparent)}
 .exitbtn .lbl{position:relative}
+.exitbtn.holding .lbl{color:var(--num)}   /* --mut on the amber fill measured 3.4:1 */
 
 /* ---- the status display ---- */
-.hero{position:relative;border:1px solid var(--team);background:linear-gradient(180deg,color-mix(in srgb,var(--team) 26%,#04070c) 0%,var(--plate2) 100%);padding:22px 18px 18px;text-align:center;box-shadow:0 0 60px -20px var(--team)}
+.hero{position:relative;overflow:clip;border:1px solid var(--team);background:linear-gradient(180deg,color-mix(in srgb,var(--team) 26%,#04070c) 0%,var(--plate2) 100%);padding:22px 18px 18px;text-align:center;box-shadow:0 0 60px -20px var(--team)}
 /* The hero is a plain box, like the panels under it (a skewed hero ran off the 16px gutter and into the landscape side column). */
 .hero .kind{font-family:var(--fd);font-weight:700;font-size:clamp(22px,6vw,34px);letter-spacing:.18em;color:var(--num)}
 .hero .sid{font-family:var(--m);color:var(--mut);letter-spacing:.24em;font-size:13px}
@@ -77,7 +78,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
                point is moving (clockwise gaining, anticlockwise draining, the rival's colour creeping into the rest);
                stalled or contested, the fill freezes and both colours pulse against each other at the frontier;
                neutral is a dim slow turn; held is the full ring, breathing; a capture is a burst over the screen. ---- */
-.core{position:relative;flex:none;width:min(100%,300px);aspect-ratio:1;margin:10px auto 6px;container-type:size}
+.core{position:relative;flex:none;width:min(100%,300px);aspect-ratio:1;margin:16px auto 12px;container-type:size}
 .aura{position:absolute;inset:0;pointer-events:none;--aura-a:var(--team);--hold:var(--aura-a);--rival:transparent;--p:1;--cspd:1.6s}
 [data-kind-item] .aura{--aura-a:var(--item)}
 .aura i{position:absolute;inset:0;border-radius:50%;will-change:transform,opacity}
@@ -91,7 +92,11 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .aura .atrack{background:rgba(255,255,255,.07)}
 .aura .aprog{background:conic-gradient(var(--hold) calc(var(--p) * 1turn),transparent 0);opacity:.55;filter:drop-shadow(0 0 6px var(--hold))}
 .aura .arest{background:conic-gradient(transparent calc(var(--p) * 1turn),var(--rival) 0);opacity:0}
-.aura .asweep{background:conic-gradient(transparent 0 72%,color-mix(in srgb,var(--sweep,var(--hold)) 90%,#fff) 100%);opacity:0}
+.aura .asweep{opacity:0;--arc:conic-gradient(#000 calc(var(--p) * 1turn),transparent 0)}
+[data-cstate="falling"] .aura .asweep{--arc:conic-gradient(transparent calc(var(--p) * 1turn),#000 0)}
+.aura .asweep{-webkit-mask:radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px) calc(100% - 3px),transparent calc(100% - 2px)),var(--arc);-webkit-mask-composite:source-in;
+                      mask:radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px) calc(100% - 3px),transparent calc(100% - 2px)),var(--arc);mask-composite:intersect}
+.aura .asweep s{position:absolute;inset:0;border-radius:50%;background:conic-gradient(transparent 0 72%,color-mix(in srgb,var(--sweep,var(--hold)) 90%,#fff) 100%)}
 .aura .aripple{background:var(--aura-a);opacity:0}
 .aura .aclaim{inset:16px;background:conic-gradient(var(--item,var(--glow)) calc(var(--p,0) * 1turn),rgba(255,255,255,.08) 0)}
 .aura .aburst{inset:-10%;background:radial-gradient(closest-side,color-mix(in srgb,var(--fc,var(--aura-a)) 80%,#fff) 0%,transparent 70%);opacity:0}
@@ -102,12 +107,16 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .aura .afront b + b{background:var(--rival);box-shadow:0 0 16px var(--rival);animation-delay:-.4s}
 @keyframes abreathe{0%,100%{transform:scale(.9);opacity:.3}50%{transform:scale(1.03);opacity:.6}}
 @keyframes apulse{0%,100%{transform:scale(.95);opacity:.5}50%{transform:scale(1.05);opacity:.9}}
-@keyframes aripple{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.22);opacity:0}}
+@keyframes aripple{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.08);opacity:0}}   /* 1.08: the ripple stays clear of the words above and below the ring */
 @keyframes aspin{to{transform:rotate(1turn)}}
 @keyframes aflip{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.15;transform:scale(.7)}}
 @keyframes aheld{0%,100%{opacity:.8}50%{opacity:1}}
 @keyframes aburst{0%{transform:scale(.5);opacity:1}100%{transform:scale(1.7);opacity:0}}
-/* ready / live (respawn, extraction, bomb, a powerup with no item) */
+/* not live (H2): grey and still, so it never reads as "use me" */
+[data-aura="ready"] .aura{--aura-a:var(--team-any);opacity:.45}
+[data-onair="0"] .aura{opacity:.45}[data-onair="0"] .aura i,[data-onair="0"] .aura i s,[data-onair="0"] .aura .afront b{animation:none!important}
+[data-aura="ready"] .aura .aglow{animation:none;opacity:.25}
+/* live (respawn, extraction, bomb, a powerup with no item) */
 [data-aura="live"] .aura .aprog,[data-aura="available"] .aura .aprog,[data-aura="claiming"] .aura .aprog{opacity:.9}
 [data-aura="live"] .aura .aglow,[data-aura="available"] .aura .aglow{animation:apulse 2.4s ease-in-out infinite}
 [data-aura="live"] .aura .aripple,[data-aura="available"] .aura .aripple{animation:aripple 2.4s ease-out infinite}
@@ -116,20 +125,24 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 /* control */
 [data-aura="control"] .aura .aprog{opacity:1}
 [data-cstate="idle"] .aura .aglow{opacity:.25;animation-duration:9s}
-[data-cstate="idle"] .aura .asweep{--sweep:#9aa8b8;opacity:.35;animation:aspin 14s linear infinite}
-[data-cstate="rising"] .aura .asweep,[data-cstate="falling"] .aura .asweep{opacity:1;animation:aspin var(--cspd) linear infinite}
-[data-cstate="falling"] .aura .asweep{--sweep:var(--rival);animation-direction:reverse}
+[data-cstate="idle"] .aura .asweep{--sweep:#9aa8b8;opacity:.35;--arc:conic-gradient(#000 0 1turn)}
+[data-cstate="idle"] .aura .asweep s{animation:aspin 14s linear infinite}
+[data-cstate="rising"] .aura .asweep,[data-cstate="falling"] .aura .asweep{opacity:1}
+[data-cstate="rising"] .aura .asweep s,[data-cstate="falling"] .aura .asweep s{animation:aspin var(--cspd) linear infinite}
+[data-cstate="falling"] .aura .asweep{--sweep:var(--rival)}
+[data-cstate="falling"] .aura .asweep s{animation-direction:reverse}
 [data-cstate="rising"] .aura .aglow,[data-cstate="falling"] .aura .aglow{animation:apulse 2s ease-in-out infinite}
 [data-cstate="falling"] .aura .arest,[data-cstate="contested"] .aura .arest{opacity:.45}
 [data-cstate="contested"] .aura .aglow{animation:aflip 1.6s ease-in-out infinite}
-[data-cstate="contested"] .aura .aglow2{opacity:.45;animation:aflip 1.6s ease-in-out -.8s infinite}
+[data-cstate="contested"] .aura .aglow2{opacity:.25;animation:aflip 1.6s ease-in-out -.8s infinite}
 [data-cstate="contested"] .aura .afront{opacity:1}
 [data-cstate="held"] .aura .aprog{animation:aheld 3s ease-in-out infinite}
 [data-cstate="held"] .aura .aglow{animation:apulse 3s ease-in-out infinite}
-@media (prefers-reduced-motion:reduce){.aura i,.aura .afront b,.cburst,.cflash{animation:none!important}.aura .aglow{opacity:.5}}
+@media (prefers-reduced-motion:reduce){.aura i,.aura i s,.aura .afront b,.cburst,.cflash{animation:none!important}.aura .aglow{opacity:.5}
+  [data-cstate="rising"] .aura .afront,[data-cstate="falling"] .aura .afront{opacity:1}[data-cstate="rising"] .aura .afront b + b,[data-cstate="falling"] .aura .afront b + b{display:none}}
 /* the words inside the ring: ONE big word (owner, team or item) and ONE small line (the %, or the flash word) */
 .coretext{position:absolute;inset:14%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center}
-.hero .team{font-family:var(--fd);font-weight:700;font-size:19cqw;line-height:.95;letter-spacing:.03em;color:var(--wordc,var(--team));text-shadow:0 0 30px color-mix(in srgb,var(--wordc,var(--team)) 60%,transparent);white-space:nowrap;max-width:100%}
+.hero .team{font-family:var(--fd);font-weight:700;font-size:min(19cqw,calc(118cqw / var(--len,4)));line-height:.92;letter-spacing:.03em;color:var(--wordc,var(--team));text-shadow:0 0 30px color-mix(in srgb,var(--wordc,var(--team)) 60%,transparent);white-space:normal;text-wrap:balance;overflow-wrap:anywhere;max-width:100%}
 .cline{display:flex;align-items:center;justify-content:center}
 [data-aura="control"] .cline{min-height:12cqw}   /* the % line keeps its place, so the word above never jumps */
 .cpct{font-family:var(--fd);font-weight:700;font-size:max(20px,11cqw);line-height:1;letter-spacing:.06em;color:var(--num);font-variant-numeric:tabular-nums}
@@ -142,6 +155,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .cflash[data-fteam="green"],.cburst[data-fteam="green"],.aura[data-fteam="green"]{--fc:var(--team-green)}
 .cflash[data-fteam="yellow"],.cburst[data-fteam="yellow"],.aura[data-fteam="yellow"]{--fc:var(--team-yellow)}
 .cflash[data-fteam="any"],.cburst[data-fteam="any"],.aura[data-fteam="any"]{--fc:#cfe3f5}
+.cburst[data-fteam="item"],.aura[data-fteam="item"]{--fc:var(--item,var(--glow))}
 .cflash.go{animation:cflash 2.6s ease-out forwards}
 @keyframes cflash{0%{opacity:0;transform:scale(1.25)}8%{opacity:1;transform:scale(1)}75%{opacity:1}100%{opacity:0}}
 /* §5d.4 the crossing: a burst of the new owner's colour over the WHOLE screen (the across-the-room half; the one
@@ -161,7 +175,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 /* the raw reading is an inline-block so it draws its OWN strike: inherited from the 20px reading, the line landed under
    the 11px text and read as an underline */
 .players .rssi small{display:inline-block}.players .row.dead .rssi small{text-decoration:line-through}
-.players .row.far{opacity:.45}
+.players .row.far{opacity:.62}
 /* F82: present and alive, but its team can never hold a point — not a contributor, and not merely absent */
 .players .row.refused{opacity:.7}
 .players .pres.no{color:var(--bad)}
@@ -196,15 +210,16 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 /* locked: dashed, dimmed, and the chosen power greyed rather than lit in the team colour, so nothing looks editable */
 .range.locked .seg button,.range.locked .thrbox input{opacity:.5;border-style:dashed;cursor:not-allowed;background:transparent}
 .range.locked .seg button.sel{background:rgba(255,255,255,.12);color:var(--num);border-color:var(--mut);border-style:dashed}
-.range.locked .rhint{visibility:hidden}
+.range.locked .rhint{display:none}
 .thrbox{display:inline-flex;align-items:center;gap:4px;font:700 22px var(--fd);color:var(--num)}
 .thrbox .neg{min-width:12px;text-align:right}
 .thrbox input{width:64px;height:44px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:700 22px var(--fd);text-align:center;letter-spacing:.04em;padding:0}
-.thrbox input[aria-invalid="true"]{border-color:var(--bad)}
+.thrbox input:focus-visible{outline:2px solid var(--glow);outline-offset:1px}
+.thrbox input[aria-invalid="true"]{border-color:var(--bad)}.thrbox input[aria-invalid="true"]:focus-visible{outline-color:var(--bad)}
 .thrbox .unit{font:600 12px var(--fl);letter-spacing:.14em;color:var(--mut)}
 .range .rhint{font:700 11px var(--fl);letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}.range .rhint.bad{color:var(--bad)}
 .range .rctl.stack{flex-direction:column;align-items:flex-start;gap:4px}
-.range h3 .rlock{margin-left:8px;color:var(--warn);letter-spacing:.14em}
+.range h3 .rlock{margin-left:8px;color:var(--mut);letter-spacing:.14em}
 .ptoggle{align-self:flex-start;min-height:44px;padding:0 12px;font:700 11px var(--fl);letter-spacing:.2em;color:var(--mut);border:1px solid var(--edge);background:var(--plate2)}
 .players[hidden]{display:none}
 /* the MC panel, folded while linked: one line, the status and CHANGE */
@@ -237,15 +252,15 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
     justify-content:safe center;padding:8px 10px 6px;margin:0}
   /* Type floor (decided): a label is >= 11px, whatever the vertical squeeze -- clamp()s below are bounded
      at 11px, and every fixed size on this list is 11px or more. */
-  .hero .kind{font-size:clamp(11px,4vh,15px);letter-spacing:.1em}
-  .hero .sid{font-size:11px}
-  .hero .status{margin-top:4px;padding:2px 8px;font-size:11px}
+  .hero .kind{font-size:clamp(15px,6vh,24px);letter-spacing:.1em}
+  .hero .sid{font-size:13px}
+  .hero .status{margin-top:4px;padding:3px 10px;font-size:14px}
   .core{width:min(100%,50vh);margin:4px auto 2px}
   /* an operator warning (twin ids, F82) takes room: the ring gives it up, so nothing is pushed out of the column */
-  .hero:has(.cwarn:not(:empty)) .core,.hero:has(.armed.warn) .core{width:min(100%,38vh)}
+  .hero:has(.cwarn:not(:empty)) .core,.hero:has(.armed.warn) .core{width:min(100%,44vh)}
   .hero > *{flex-shrink:0}   /* nothing in the column may be squeezed under its own text; the ring gives up room instead */
   .control .cwarn{font-size:11px;margin-top:3px}
-  .hero .armed{margin-top:4px;font-size:11px}
+  .hero .armed{margin-top:4px;font-size:12px}
   .hero .ids{font-size:11px;min-height:0}
   .hero .ids:empty{margin-top:0}
 
@@ -255,7 +270,8 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
   #exitHud{margin:0;padding:8px 12px;min-height:44px;font-size:11px}
   .side .panel{padding:7px 9px}
   .side .panel h3{font-size:11px;margin-bottom:4px}
-  .range .rrow{flex-direction:row;align-items:center;margin-top:4px}
+  .range .rrow{flex-direction:row;align-items:flex-start;margin-top:4px}
+  .range .rlab{line-height:44px}   /* level with the 44px controls beside it */
   .players .row{grid-template-columns:24px 42px minmax(0,112px) 40px 74px;gap:4px;padding:4px;font-size:11px}
   .players .rssi{font-size:15px}
   /* branding only, no field meaning -- dropped here rather than shrunk under the label floor */
@@ -265,7 +281,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 }
 
 /* ---- the config drawer: hidden until the ⓘ is tapped seven times ---- */
-#cfg{position:fixed;inset:0;z-index:10;background:rgba(2,4,10,.96);overflow:auto;padding:max(14px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+#cfg{position:fixed;inset:0;z-index:10;background:#02040a;overflow:auto;padding:max(14px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
 #cfg[hidden]{display:none}
 .cfghead{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .cfghead .t{font-family:var(--fd);font-weight:700;font-size:24px;letter-spacing:.12em}
@@ -280,7 +296,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .seg button > span{display:inline-block}
 .seg button.sel{background:var(--team);color:var(--team-ink);border-color:var(--team)}
 .seg button.blue.sel{background:var(--team-blue);color:#04121e}.seg button.yellow.sel{background:var(--team-yellow);color:#1a1400}.seg button.red.sel{background:var(--team-red);color:#1a0404}.seg button.green.sel{background:var(--team-green);color:#041a0c}.seg button.any.sel{background:var(--team-any);color:#0a0f14}
-.def{font:600 8px var(--fl);letter-spacing:.2em;color:var(--warn);border:1px solid var(--warn);padding:1px 4px;margin-left:6px;vertical-align:middle}   /* the DEFAULT badge */
+.def{font:600 11px var(--fl);letter-spacing:.2em;color:var(--warn);border:1px solid var(--warn);padding:1px 4px;margin-left:6px;vertical-align:middle}   /* the DEFAULT badge */
 .seg button.sel .def{color:inherit;border-color:currentColor;opacity:.8}
 .rowc{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .hint{font:12px/1.4 var(--fl);color:var(--mut)}
@@ -313,7 +329,7 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:8px 0 0
     <!-- the CORE (round 3, 2026-09-24): the ring says the station is on and what it is doing; ONE big word inside it and
          ONE small line under the word (the capture %, or the flash word while a crossing plays). -->
     <div class="core" id="core">
-      <div class="aura" id="aura" aria-hidden="true"><i class="aglow"></i><i class="aglow2"></i><i class="atrack"></i><i class="arest"></i><i class="aprog"></i><i class="asweep"></i><i class="aripple"></i><i class="aclaim" id="pring" hidden></i><i class="aburst" id="aburst"></i><i class="afront" id="afront"><b></b><b></b></i></div>
+      <div class="aura" id="aura" aria-hidden="true"><i class="aglow"></i><i class="aglow2"></i><i class="atrack"></i><i class="arest"></i><i class="aprog"></i><i class="asweep"><s></s></i><i class="aripple"></i><i class="aclaim" id="pring" hidden></i><i class="aburst" id="aburst"></i><i class="afront" id="afront"><b></b><b></b></i></div>
       <div class="coretext">
         <div class="team" id="team"></div>
         <div class="cline"><span class="cpct" id="cpct"></span><span class="cflash" id="cflash" hidden><span id="cflashw"></span></span></div>
@@ -360,7 +376,7 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:8px 0 0
       <div class="mcform" id="mcform">
       <div class="rowc"><input id="mcUrlMain" placeholder="ws://mission-control-ip:8766/ws" inputmode="url" aria-label="Mission Control address" style="flex:1;min-width:180px;height:44px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px var(--m);padding:0 10px"><button class="btn" id="btnMcMain"><span class="unskew">CONNECT</span></button><button class="btn" id="btnQrMain"><span class="unskew">SCAN QR</span></button></div>
       <div id="qrPanel" hidden><video id="qrVideo" playsinline></video><button class="btn" id="btnQrCancel"><span class="unskew">CANCEL SCAN</span></button></div>
-      <div class="hint">If automatic discovery cannot find MC, enter its address here. Station setup remains available from the info button, top right.</div>
+      <div class="hint">MC not found on this Wi-Fi? Enter its address or scan its QR.</div>
       </div>
     </section>
 

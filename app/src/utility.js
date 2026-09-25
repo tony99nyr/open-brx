@@ -145,7 +145,7 @@ async function startAdvert(quiet = false) {
   render();
 }
 // ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
-let transport = null, mcState = 'offline', mcFormOpen = false;   // mcFormOpen: CHANGE unfolded the linked MC panel
+let transport = null, mcState = 'offline', mcFormOpen = false, _wasLinked = false;   // mcFormOpen: CHANGE unfolded the linked MC panel
 const TEAM_ID_TO_TID = { blue: 1, yellow: 2, red: 0, green: 3, any: TEAM_ANY, ffa: TEAM_ANY };
 function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } }
 /** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
@@ -201,7 +201,7 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
-  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound' && flushTaken()) savePowerup();
+  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true; if (s === 'bound' && flushTaken()) savePowerup();
     // a discovered MC that drops (a restart on a new IP) is searched for again, not left to mDNS alone
     if (was === 'bound' && s !== 'bound' && settings.mc_auto && isNative()) setTimeout(startUtilityLanSweep, 0); log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url, trusted, pub, secret }).then(() => {
@@ -412,9 +412,9 @@ function powerupTick(now) {
   let { changed, events } = pu.tick(presence.players(), now);
   for (const e of events) {
     // a burst with no word: the ring, AVAILABLE / TAKEN and BY PLAYER n already say what changed
-    if (e.type === 'spawned') { log(`${pu.item.name} SPAWNED`, 'lk'); flash(null, 'any'); }
+    if (e.type === 'spawned') { log(`${pu.item.name} SPAWNED`, 'lk'); flash(null, 'item'); }
     else if (e.type === 'taken') {
-      log(`${pu.item.name} TAKEN by player ${e.player_num}`, 'lk'); flash(null, 'any');
+      log(`${pu.item.name} TAKEN by player ${e.player_num}`, 'lk'); flash(null, 'item');
     }
   }
   if (flushTaken()) changed = true;   // polish M1: queued, so a report lost to a dead link goes out on re-bind
@@ -432,7 +432,7 @@ function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
   const { changed, events } = point.update(presence.players(), now);
   for (const e of events) {
-    if (e.type === 'captured') { log(`${TEAM_NAMES[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAMES[e.from]}` : ''}`, 'lk'); flash(`CAPTURED BY ${TEAM_NAMES[e.team]}`, TEAM_KEYS[e.team]); }
+    if (e.type === 'captured') { log(`${TEAM_NAMES[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAMES[e.from]}` : ''}`, 'lk'); flash('CAPTURED', TEAM_KEYS[e.team]); }   // the big word already names the team
     else if (e.type === 'neutralised') { log(`${TEAM_NAMES[e.team]} LOST the point — ${TEAM_NAMES[e.by]} drained it to neutral`, 'lk'); flash('NEUTRAL', 'any'); }
     else if (e.type === 'contested') log(`CONTESTED: ${netLine()}`, 'li');
     else if (e.type === 'uncontested') log('no longer contested', 'li');
@@ -517,17 +517,20 @@ function render() {
   $('team').textContent = isControl ? (holderT == null ? 'NEUTRAL' : (TEAM_NAMES[holderT] || `TEAM ${holderT}`))
     : (TEAM_NAMES[settings.team] || `TEAM ${settings.team}`);
   renderControl(isControl, v, heldBy);
+  fitWord();
   if ($('team').style) $('team').style.setProperty('--wordc', isControl && holderT != null ? `var(--team-${TEAM_KEYS[holderT] || 'any'})` : '');
   renderPowerup();
+  fitWord();
   if (_flashAt && Date.now() - _flashAt > 2600) { _flashAt = 0; $('cflash').hidden = true; }
   if ($('cpct')) $('cpct').hidden = !$('cflash').hidden;
   const pupEl = $('pup');
+  document.documentElement.dataset.onair = advertising ? '1' : '0';   // off the air, every ring is grey and still (H2)
   document.documentElement.dataset.aura = isControl ? 'control'
     : (pupEl && !pupEl.hidden && pupEl.dataset.pstate) ? pupEl.dataset.pstate : (advertising ? 'live' : 'ready');
   renderPlayersToggle();
   renderRange();
   $('sid').textContent = `STATION ${settings.id}`; $('sidn').textContent = settings.id;
-  $('status').textContent = advertising ? 'LIVE' : (plugins.beacon && support.advertising ? 'READY' : 'CANNOT ADVERTISE');
+  $('status').textContent = advertising ? 'LIVE' : (plugins.beacon && support.advertising ? 'NOT LIVE' : 'CANNOT ADVERTISE');
   $('status').className = 'status ' + (advertising ? 'on' : 'off');
   $('revives').textContent = settings.kind === 'respawn' ? `${revives} REVIVED HERE` : '';   // in the drawer (round 3: not for players)
   $('txhint').textContent = support.txPowerControl ? (TX_HINT[settings.tx] || '') : 'no transmit-power control on this platform · radius = threshold only';
@@ -541,7 +544,7 @@ function render() {
   // station on its own is valid, so nothing to say.
   const onAir = advertising || !!settings.live;
   $('armed').textContent = armed ? `MC ✓ GAME ${armed.game || 0}`
-    : mcState !== 'bound' ? '' : onAir ? 'SET BY HAND · PLAYERS MAY IGNORE IT' : 'WAITING FOR MC TO ARM IT';
+    : mcState !== 'bound' ? (_wasLinked ? 'MC OFFLINE' : '') : onAir ? 'SET BY HAND · PLAYERS MAY IGNORE IT' : 'WAITING FOR MC TO ARM IT';
   $('armed').className = 'armed ' + (armed ? 'on' : mcState === 'bound' && onAir ? 'warn' : '');
   // A41 / field-safety fix (2026-09-13): the plain exit is for a phone NOBODY has claimed as a field
   // item yet. MC-arming is not the only way that happens -- the seven-tap gate's own drawer has a
@@ -625,8 +628,9 @@ function rangeLocked() { return !!settings.mcArmed || !!settings.live || adverti
 function renderRange() {
   const box = $('range'); if (!box) return;
   const locked = rangeLocked();
+  if (locked && _edgeBad) _edgeBad = false;   // a lock ends any half-typed entry
   const inp = $('thrNum');
-  if (inp && document.activeElement !== inp) inp.value = String(-thr());
+  if (inp && document.activeElement !== inp && !_edgeBad) inp.value = String(-thr());
   if (inp && inp.setAttribute) inp.setAttribute('aria-invalid', String(_edgeBad));
   const hint = $('rhint'); if (hint) { hint.textContent = _edgeBad ? `TYPE ${-THR_MAX} TO ${-THR_MIN}` : `${-THR_MAX} = TIGHT · ${-THR_MIN} = WIDE`; if (hint.classList) hint.classList.toggle('bad', _edgeBad); }
   if (inp) inp.disabled = locked;
@@ -645,6 +649,16 @@ function commitEdge() {
   return true;
 }
 
+/** C1 (critical review 2026-09-24): "ROCKET LAUNCHER" ran out of the ring and off the screen. The word may take two balanced
+ *  lines, and --len (the longest line it needs, in characters) steps its size down so it stays inside the ring. */
+function fitWord() {
+  const el = $('team'); if (!el || !el.style) return;
+  const words = String(el.textContent || '').trim().split(/\s+/);
+  const total = words.join(' ').length, longest = Math.max(1, ...words.map(w => w.length));
+  const len = Math.max(longest, words.length > 1 ? Math.ceil(total / 2) : total, 4);
+  el.style.setProperty('--len', String(len));
+}
+
 /** A56: the powerup station's screen. The item's name in its own colour, AVAILABLE or TAKEN with the countdown, and
  *  a 1 s ring from the first `claiming` advert it hears. */
 function renderPowerup() {
@@ -657,7 +671,9 @@ function renderPowerup() {
   document.documentElement.style.setProperty('--item', /^#[0-9a-f]{6}$/i.test(item.color || '') ? item.color : 'var(--glow)');
   $('team').textContent = String(item.name || 'POWERUP').toUpperCase();
   el.dataset.pstate = v.available === true ? (v.ringAt != null ? 'claiming' : 'available') : v.available === false ? 'taken' : 'unknown';
-  $('pstate').textContent = v.available === true ? (v.ringAt != null ? 'HOLD STILL' : 'AVAILABLE') : v.available === false ? 'TAKEN' : 'WAITING FOR MISSION CONTROL';
+  const firstAt = Number(item.first_at_s);
+  $('pstate').textContent = v.available === true ? (v.ringAt != null ? 'HOLD STILL' : 'AVAILABLE') : v.available === false ? 'TAKEN'
+    : Number.isFinite(firstAt) && firstAt > 0 ? `FIRST DROP AT ${mmss(firstAt * 1000)}` : 'NOT SPAWNED YET';
   $('pnext').textContent = v.available === false && v.nextInMs != null ? `NEXT ${mmss(v.nextInMs + 999)}` : '';
   $('ptaker').textContent = v.available === false && v.taker ? `BY PLAYER ${v.taker}` : '';
   const ring = $('pring'); const p = v.ringAt != null ? Math.min(1, (now - v.ringAt) / 1000) : 0;
@@ -691,15 +707,16 @@ function renderControl(isControl, v, heldBy) {
   // speed is information: more net players, a faster sweep (1.6 s a turn at net 1, floored so a stack does not strobe)
   aura.style.setProperty('--cspd', `${Math.max(0.5, 1.6 / Math.max(1, point.net)).toFixed(2)}s`);
   $('afront').style.transform = `rotate(${(v.value * 3.6).toFixed(1)}deg)`;   // the standoff dots sit where the fill stopped
-  $('cpct').textContent = `${v.value}%`;
+  $('cpct').textContent = v.value === 0 || (heldBy != null && v.value >= 100 && !point.dir) ? '' : `${v.value}%`;   // 0% and a held 100% say nothing the ring does not
   if (core && core.setAttribute) {
     core.setAttribute('role', 'progressbar'); core.setAttribute('aria-label', 'capture progress');
     core.setAttribute('aria-valuemin', '0'); core.setAttribute('aria-valuemax', '100'); core.setAttribute('aria-valuenow', String(v.value));
     core.setAttribute('aria-valuetext', `${v.value}% ${hname == null ? 'neutral' : `for ${hname}`}${point.contested ? ', contested' : ''}`);
   }
   $('ctally').textContent = tallyLine();
-  $('cwarn').textContent = _twin ? `ANOTHER STATION IS ALSO ON ID ${_twin} — TWO POINTS SHARING AN ID LOOK LIKE ONE POINT TO EVERY PLAYER PHONE. GIVE THEM DIFFERENT IDS.`
-    : point.refusedSeen ? 'A PLAYER ON TEAM 2 IS HERE — TEAM 2 CAN NEVER HOLD A POINT (F82). REASSIGN IN MISSION CONTROL.' : '';
+  // short on purpose: two points on one id read as ONE point to every player phone; team 2 is what a neutral point broadcasts (F82)
+  $('cwarn').textContent = _twin ? `ID ${_twin} USED TWICE · CHANGE ONE IN MC`
+    : point.refusedSeen ? 'TEAM 2 CAN NEVER HOLD A POINT · REASSIGN IN MC' : '';
 }
 
 function wire() {
@@ -763,6 +780,7 @@ function wireExit() {
     if (deadline) clearTimeout(deadline);
     raf = 0; deadline = 0; t0 = 0; activePointer = null; activeKey = '';
     if (fill) fill.style.width = '0%';
+    if (btn.classList) btn.classList.remove('holding');
   };
   const fire = () => {
     if (!t0 || firing) return;
@@ -785,6 +803,7 @@ function wireExit() {
     // orphaning the first timer and allowing a later hold to inherit an early exit.
     if (firing || deployed() || t0) return false;
     t0 = Date.now();
+    if (btn.classList) btn.classList.add('holding');
     deadline = setTimeout(fire, EXIT_HOLD_MS);
     tick();
     return true;
