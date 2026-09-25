@@ -1,148 +1,96 @@
-# Handoff: Open BRX — desk closures through 2026-09-23; remaining work is bench- or decision-gated.
-**State as of 2026-09-23 (desk follow-up).** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
-The bench order and desk-work list live in [`bench-plan.md`](bench-plan.md); update only the lane you worked.
-## State of main (2026-09-23, after the desk closure)
-The 2026-09-23 desk closure (S34 self-hosted fonts) and the 2026-09-20 playtest fixes are committed on `main`
-(opt-in score caps, headset damage for Breacher/Toxin/SMG, grouped dual-emitter hits, LOAD retries, a separate
-shield pool, scanner-station warnings, utility auto-join); `git log` has the detail. The playtest station deaths
-came 2.7-4.2 s after respawn, beyond the 2 s window; the wire profile shows protection was active.
-App **0.4.5 is published as the `app-v0.4.5` GitHub release and pushed on `main`**, with the 0.4.1-0.4.4 fixes:
-flap back-off, picker pacing, the respawn-profile rebuild, the office-test fixes and life presets (Standard
-45/70/0, Shields 45/0/105, Hardcore 45/0/0). **F206 is PROVEN** (levers §1 run f, a real TDM through Mission
-Control). **0.4.3's respawn profiles replace the F121/F209 mechanism** (timed vs station, a separate
-weapon-arming delay, equal go-live at T-3); both rows are closed. **The first field test is the Shields preset in a real match plus the new respawn rules on
-both phones** (Block 4 of [`bench-2026-09-24.md`](bench-2026-09-24.md)). Still open and P0: the BLE link-loop root
-cause (**F293**) and BLE setup-reliability metrics (**F297**); see Block 1.
-**Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
-checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). The facts session 1 proved
-(`$TMP`, `$STOP`, spawn protection, `$BUMP`, `$STUN`, the `$LIFE` probe and revive, the IR kill confirm, `$DPLAY`)
-live in [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
-**APK 0.4.6: one blocker.** brx3 built it release-signed (held in `~/brx3-release`; the B21 key exists). It waits
-only on the go or no-go in step 4.0 of [`bench-2026-09-24.md`](bench-2026-09-24.md); then Tony publishes it. Every
-player uninstalls the debug-signed 0.4.5 once.
+# Handoff: Open BRX, state after the 2026-09-24 bench day and its desk fixes
+**State as of 2026-09-24 (night, after the doc-rot pass).** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
+The bench order lives in [`bench-plan.md`](bench-plan.md) and every open item in [`FOLLOWUPS.md`](FOLLOWUPS.md). Update only the lane you worked.
+## State of main (2026-09-24)
+**App 0.4.11 is published** (`app-v0.4.11`, release-signed; 0.4.6 was the first release-signed build, so every
+player uninstalled the debug build once). Main is ahead of 0.4.11 with: the announcer queue and the gun audio-queue
+model (F351, F347), a Shields spawn at full shield and a lighter recharge (F348, F349), the Android 11 Location gate
+(F340), the pool repair after a lost chunk (F341), the station scan and revive fixes (F342, F344, F345), A60 MC
+auto-join, the A61 medal ladder and the A62 melee medal, the S57 name-word gap, and F308's eased AR ladder.
+**0.4.12 waits on sitting A of [`bench-2026-09-25.md`](bench-2026-09-25.md)**: screamers A4 (F341's `$*` reset
+is a v4.32 code read until it passes) and F347's two answers (the hum's restart delay, and the `$PSET` t23 value
+that stops the hum blocking cues). Still P0: the link loop's new flap under load (**F293**) and BLE setup metrics
+(**F297**). Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; the claim checklist is
+[`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md), and proven facts live in
+[`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: levers and screamers
-Screamers remain P0. Phase A has run A1 and A2. The current order is in
-[`bench-plan.md`](bench-plan.md); the next runbook is [`bench-2026-09-24.md`](bench-2026-09-24.md).
-F269's `raw-bytes` helper is built for A4/A7/A7b/A7c/A8.
-
-- **Next bench task:** the sitting plan at the top of [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST sittings A-C);
-  Block 2 and Block 2b (F320-F322, the R4 readings) come after its stop point. Do not send `$AS,1`.
-- **Next desk task:** prepare F293 GPIO logging and S48 carrier/duty measurement from the
+Screamers remain P0. Phase A has run A1 and A2. F269's `raw-bytes` helper is built for A4/A7/A7b/A7c/A8.
+- **Next bench task:** Block 2 of [`bench-2026-09-24.md`](bench-2026-09-24.md), A4 first (it gates 0.4.12), then
+  Block 2b (F320-F322, the R4 readings). Do not send `$AS,1`.
+- **Next desk task:** prepare F293 GPIO logging and the S48 carrier/duty measurement from the
   [R4 research plan](firmware-image-research-plan.md). R4/T5 read-only research is authorised; flashing remains
   decision first.
-- **Open boundaries:** hosted RAM-table loading and headset routing, protocol-15 magnitude-2 source and receiver,
-  native win checks, F308 ordering, and headset mode-5 effects. See the dated
-  [experiment log](experiment-log/2026-09.md) for evidence and uncertainty.
-
+- **Open boundaries:** hosted RAM-table loading and headset routing, the protocol-15 magnitude-2 source and receiver,
+  native win checks, and headset mode-5 effects; see the [experiment log](experiment-log/2026-09.md).
 ## Lane: playtest and the node cure
-
-The F264 cure SHIPPED: on three unanswered pulls the node probes with `$LIFE,*`, acts only on the reply, and puts
-GUN NOT ANSWERING on the operator's board when it cannot help. **F121 and F209 are CLOSED (2026-09-19)**,
-superseded by 0.4.3's respawn-profile rebuild (a separate weapon-arming delay, no default protection on a timed
-respawn, equal go-live at T-3); the evidence timeline ordering fix (F223) is now shipped.
-Overnight cycle 1 (2026-09-18 night) closed **F261** (a fresh MC now records an orphan match from any
-unbound node) and **F257** (the charge-weapon HUD). Today's stale-node fix (`88ead536`, no open row) answers both
-ghost-node incidents from the office test. **F289 is closed:** MC flags an offline player who may still hold spawn
-protection. **F265 is closed:** status heartbeats now push a changed
-score snapshot, so miss-only shot/accuracy changes reach every bound phone; unchanged heartbeats de-duplicate.
-**F287 is closed:** operator
-RESYNC now proves the gun alive before any re-arm burst. **F288 is closed:** the phone renders `no_fire` and
-`no_answer`, names the host cure, and yields its alert lane to link/reconnect controls. Also open: **F277** (a
-reload that never completes), and the office test's rows **F293**, **F294**, **F296**, **F297** and **F298** (link-loop
-root cause, the MC LAN sweep, the down-pattern LED, BLE setup metrics, a real Shields-preset match). Block 4 of the
-runbook needs a build from `main`: S56 and F309 are newer than 0.4.5.
-
-- **S55 is closed:** recoil now has one t4-only owner, native fn-23 priority and a phone HUD reason. **F274's
-  desk half is complete:** its soak catalog matches the short t4 writer; the row remains open for hardware soaks.
-- **F173 is closed:** the diagnostic route now scans through its own read-only SQLite connection and one stable
-  snapshot; the live store writer never crosses into the executor.
-- **F175 is closed:** rebound nodes retain physical totals plus per-player/null status attribution; no fact is
-  silently assigned to the last binding, and cumulative shot deltas do not inflate the match total.
-- **F174 is closed:** an explicitly named previous match remains diagnosable on the next runway; current/full scans
-  still fail closed in ARMED and every diagnostic remains blocked in LIVE.
-- **F179-F185, F188, F189 and S35 are closed:** UI guards are behavioral, standby truth gates `npm test`, M2 accuracy is
-  deterministic, Designer PLAY loads before KIT, and the KIT e2e finds the main-checkout venv from a worktree.
-- **F285 desk work is complete:** the guarded `$TMP` table marks only t4/t8 absolute and t9 additive; bench fills the unmeasured cells.
-- **Next bench task:** Block 4 of [`bench-2026-09-24.md`](bench-2026-09-24.md) (respawn rules, Shields, the down
-  animation, full screen), then sitting 5: F264 live and the F277 repro.
-- **Blocked:** F274 on its three two-hour hardware soaks; F277's detector on its repro.
+The F264 cure is on main: three unanswered pulls make the node probe with `$LIFE,*`, and GUN NOT ANSWERING reaches
+the operator when it cannot help. F274's desk half is complete; the row stays open for the three hardware soaks.
+F285's `$TMP` table marks t4/t8 absolute and t9 additive; the bench fills the rest. Open office-test rows: **F294**
+(the MC LAN sweep on WSL), **F296** (the down pattern still reads as a hit) and **F298** (the first real Shields match
+ran on 2026-09-24 and found F347-F349; it needs a clean match on a build with those fixes).
+- **Next bench task:** sitting 5 of [`bench-plan.md`](bench-plan.md): F264 in a live match, then the F277 repro.
+- **Blocked:** F274 on its three two-hour soaks; F277's detector on its repro.
 ## Lane: weapons and perks
-
-**S52 is closed (2026-09-22):** the HUD shows `ALT = RELOAD` and warns on conflicting secondary picks; app gates passed.
-
-**Balance rules R1-R10 shipped 2026-09-23** (`ef55b7db..6dae402d`): the one-page table at the top of
-[`weapon-design.md`](weapon-design.md) is the single home of every Tony balance rule; `test_balance_sim.py` gates each rule
-at 65% on Standard, except R7. Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`); F291 closed.
-**F308 polish 2, 2026-09-24** ("too harsh" at bench 4.3): AR `heavy` 40→45, Burst Rifle `t23` gap 550→540ms
-(not the bench's 100/70/55, which broke R3). R7 ~57%, own 55% bar now (`RANGE_BAR_OVERRIDES`); R3/R6 stay 65%.
-
-- **Next desk task:** none open. F310 is closed (Shields bar 60%, heavies decided); every rule lives in the
-  Balance rules table at the top of `weapon-design.md`.
-- **Next bench task:** confirm the eased AR ladder (100/70/45) and the 540ms Burst Rifle gap, then **F292** in
-  [`bench-2026-09-24.md`](bench-2026-09-24.md), sitting 2 steps 1-4, sitting 3 (§26 groups A and B).
-- **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
+The Balance rules table at the top of [`weapon-design.md`](weapon-design.md) is the one home of every balance rule.
+F308 polish round 2 shipped (`70559776`): AR `heavy` 40 to 45 and the Burst Rifle gap 550 to 540 ms, after bench 4.3
+felt too harsh; R7 has its own 55% bar, R3 and R6 hold 65%.
+- **Next bench task:** confirm the eased ladder (100/70/45) and the 540 ms gap, then **F292**, then sittings 2 and 3
+  of [`bench-plan.md`](bench-plan.md).
+- **Next desk task:** none open.
+- **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space.
 ## Lane: BLE reliability (brx2)
-2026-09-24, day sitting: Blocks 0-1, 1.4 (all 5 steps PASS) and 3.1-3.3 of
-[`bench-2026-09-24.md`](bench-2026-09-24.md) done, plus a melee side-run (K4 CLOSED) and F336 (melee `$HIR`
-carries no front/back direction, a design question only). **F297**: laptop control 10/10, median 1.37 s.
-**F308** 3.1-3.2 PASS; 4.3 PASSES too but Tony calls it too harsh, DECISION the AR ladder becomes 100/70/55.
-**S58** 3.3 items 1-8 PASS, `spec/powerups.md` corrected. Evening, Block 4 setup (0.4.11+f366156e,
-`--powerups`): **F293** stays OPEN for a NEW load-triggered flap shape (not the fixed relink-before-join
-shape); follow-up is Block 1 step 1.5 (a second phone's SCAN AGAIN mid-join). **F340** confirmed on the bench.
-**S57** 7.11 PASSES but finds a real collision: the victim-name word is lost inside the headset's 199 ms rate
-guard, brx4 fixing in 0.4.12. **F345**'s tonight decision (-70/-57) does not match the branch's shipped
-defaults (-66/-60), flagged for brx1. **F344**/**F333**: brx4's Stick fixes (fn-15 beacon, advert
-game-byte) make the revive count correct in MC; the Stick's own screen still doesn't update it. **F347**
-filed: the native shield hum blocks the audio FIFO, explaining tonight's late/missing kill and shield cues;
-Tony's decision drops the "Shields Online" callout, brx4's 0.4.12 adds FIFO modelling, and brx2 is building a
-simulator and scenario suite for it. **F341** (unkillable-gun frame corruption) is brx1's, unchanged here.
-- **Next bench task:** Block 1 step 1.5 (the SCAN AGAIN A/B/A), then Block 4 onward of
-  [`bench-2026-09-24.md`](bench-2026-09-24.md); 4.11's RSSI calibration lands there.
-- **Next desk task:** the audio-FIFO simulator and scenario suite for F347.
+2026-09-24: Blocks 0, 1, 1.4 (all five steps), 3.1-3.3, 4.3 and 7.11 ran; the log has each result. **F297**: laptop
+control 10/10, median 1.37 s. **F293** is open for a new flap under load, not the fixed relink-before-join shape.
+The gun audio simulator and its scenarios are built ([`audio-queue-scenarios.md`](audio-queue-scenarios.md)).
+- **Next bench task:** Block 1 step 1.5 (a second phone's SCAN AGAIN mid-join, A/B/A), then Block 10's gun
+  audio-queue steps (F347: the hum's yield model and t23 EMPTY).
+- **Next desk task:** none open.
 - **Blocked:** F270 on A8.
 ## Lane: F341 transport and pool repair
-2026-09-24: F341 (the `$HP,4545,7070,0` unkillable player) fixed on the desk: `$*` before the next frame after a chunk error or a drop, and the node repairs pools above the armed `$PSET`. F342: respawn-only station games scan only while down.
-- **Next bench task:** Block 2 step 4 (A4) then step 6 of [`bench-2026-09-24.md`](bench-2026-09-24.md). ⚠ `$*` is a code read until A4 passes.
-- **Next desk task:** F342's open half (powerup and control-point games still flood).
+F341 is fixed on the desk: brxlink sends `$*` before the next frame after a chunk error or a drop, and the node repairs
+a pool above the armed `$PSET` or shows GUN POOLS WRONG. F342's respawn-only games scan only while down.
+- **Next bench task:** Block 2 step 4 (A4), then step 6 (2.6) of [`bench-2026-09-24.md`](bench-2026-09-24.md).
+- **Next desk task:** F342's open half (a powerup or control-point game still floods the scan).
 ## Lane: Mission Control console honesty
-2026-09-24: APKs 0.4.7-0.4.11 published (each on green CI). On main: A58 station lock, KOTH phone-hill default (F338), utility sweep, the console-port ws guard, the chaos kill-cue invariant, and A60 MC auto-join (Lows and Tony's first-contact decision: F346). **Next:** 0.4.12 cut on brx1's word; bench F309/F311/F312.
-
+APKs 0.4.7-0.4.11 published, each on green CI. On main: A58 station lock, KOTH's phone-hill default (F338), the utility
+sweep, the console-port ws guard, the chaos kill-cue invariant and A60 auto-join.
+- **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F309, F311 and F312. Tony decides F346 (d): trust on first use, or one
+  JOIN tap on first contact. Lows: F337, F343, F346.
 ## Lane: S57, B21, StickS3 (brx4)
-2026-09-24, evening (desk, no bench). Tony's decisions: Stick stations are Bluetooth-only for the
-MVP (hill, pickup, respawn); Stick IR receive and grenade hill support on a Stick are post-MVP.
-`e65aea17` ports the phone's Presence, ControlPoint and revive count into `presence.h` (C++ agrees
-with beacon.js/control.js/utility.js on 6,000 random ticks); one passive scan feeds presence for
-control and respawn plus the pickup ClaimGate; an MC-armed control station uses the BLE point and
-still sends the S57 IR capture word; respawn now advertises state 1 (state 0 read as disabled on
-every phone, a live bug since the station was built); mDNS discovery never worked before this
-commit (`MDNS.begin` was never called, see H8). KOTH now defaults `station_source` to `phone`
-(brx3, `9ac01a5d`), with `a4d2a1ee`'s SETUP warning when a CONTROL station is assigned under a
-grenade or IR-station objective. Found in review, fixed by brx5 in the 0.4.11 hotfix (not this
-lane): MC armed a station by its game_no byte while phones scoped presence by a config_id hash, so
-every MC-armed station was invisible to players.
-**Next:** Block 9 in `bench-2026-09-24.md` (the Stick over BLE, MUST for the MVP), after 0.4.11
-ships. F332 (PM1 side-button registers 0x49/0x4A) and F333 (five station screens unwired) are
-untouched. F314 (Stick IR receive) is post-MVP; do not build toward it.
+Tony's MVP scope: Stick stations are Bluetooth-only (hill, pickup, respawn); Stick IR receive and the grenade hill are
+post-MVP (F338). On main: `presence.h` ports the phone's Presence, ControlPoint and revive count (`e65aea17`); the
+side-button lock writes the M5PM1 registers (F332, `8a8bcae9`); a revive counts from player state bit 6, no RSSI
+(`169157eb`); a pickup claim is awarded at any strength (`e879b9db`); the announcer queue (F351) and the 300 ms S57
+name-word gap. B21's Android half shipped; `webContentsDebuggingEnabled` and iOS remain.
+- **Next bench task:** Blocks 9 and 10 of [`bench-2026-09-24.md`](bench-2026-09-24.md) (the Stick over BLE; the lock,
+  the pickup and the audio queue).
+- **Next desk task:** F333's unwired screens, F353 (advert gaps), F352 (the kill-confirm design pass for Tony).
+- **Blocked:** the Stick's advert-bit revive on the phone half of F344 (brx5).
 ## Lane: powerups and the shield HUD (brx5)
-2026-09-24: S58 reworked to Tony's shapes and pushed behind `--powerups`: the heavy goes straight on the trigger (SELECT toggles, done by the phone), the overshield raises the `$PSET` shield max under 1 s of spawn protection (hits during the grant ignored). F293 and F339 fixed. Next: bench 3.4-3.5, then the flag decision.
+S58 is on main behind MC's `--powerups` flag: the heavy goes straight onto the trigger (SELECT toggles), and the
+overshield raises the `$PSET` shield max under 1 s of spawn protection. F348 and F349 are fixed; S59's Visor meter is built.
+- **Next bench task:** steps 3.4-3.5, 4.11, 4.18 and 4.19 of [`bench-2026-09-24.md`](bench-2026-09-24.md); then Tony
+  decides the flag.
+- **Next desk task:** the phone half of F344 (set state bit 6 for about 5 s after a station revive); S58's pickup
+  threshold (a code read: no station advertises 0, so the -55 default never applies); F350's shield-hit audition.
 
 ## Start here
 
 Use this priority stack; do not spend Tony's bench time on desk work:
 
-1. **Next sitting (now):** [`bench-2026-09-24.md`](bench-2026-09-24.md), on a build from `main` (S56 and F309 are
-   newer than 0.4.5), then sitting 5 for F264/F277. Record evidence and promote/close each row from the result.
-2. **Screamer transport:** the runbook's Block 2, then A8b; capture F269/F270/F272, then F274's three hardware soaks. This unlocks Phase B-E; do not infer numbers from ordinary `send` runs.
-3. **Decisions before more code:** 0.4.6 is published (2026-09-24, `app-v0.4.6`). Defer S50/F281
-   until sitting 2 confirms `$TMP` semantics.
+1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
+   evidence and promote or close each row from the result.
+2. **Screamer transport:** Block 2 (A4 first, it gates 0.4.12), then A8b; capture F269/F270/F272, then F274's soaks.
+3. **Decisions for Tony:** F346 (d) first contact; F351's B3 (the kill line at my own death); F350's shield-hit
+   sound; F352's kill confirm; the powerups flag after 3.4-3.5.
 4. **Only after reliability:** E2/E3/E4, B17, K6 and the remaining feature rows are roadmap work.
 
-If Tony is not at the bench, prepare the decision packet and inspect the exact FOLLOWUPS methods; do not invent a
-new implementation for a bench-gated row. All other open rows are parked in [`FOLLOWUPS.md`](FOLLOWUPS.md) by gate.
+If Tony is not at the bench, prepare the decision packet and read the exact FOLLOWUPS methods; do not invent a new
+implementation for a bench-gated row.
 
 ## Machine state
 
 MC is `mcp/` on 8765/8766 serving `webapp/mc/dist`; rebuild before starting and restart between matches
-(`ss -ltn | grep 876`). Launch with `setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume`.
-Shields recharge only on the Shields preset (armour 0). WSL runs Python/no-hardware MC, Windows drives BLE, and the
-MacBook is the field target. Never modify stock firmware.
+(`ss -ltn | grep 876`). Launch with `setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume`
+(add `--powerups` for S58). Shields recharge only on the Shields preset (armour 0). WSL runs Python/no-hardware MC,
+Windows drives BLE, and the MacBook is the field target. Never modify stock firmware.

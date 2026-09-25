@@ -74,8 +74,9 @@ Rules:
    lines (every other alert, the pool lines) are still muted while the loop blocks. While the loop
    blocks, the model keeps at most one pending clip per sound id, so twenty hits under a shield count as one hit
    sound, not twenty. **The loop resumes on its own after
-   `$PLAYX,0` (bench 2026-09-24, shield still up)**, so every must-hear line in that state gets its own stop. MC's
-   compile is to stop shipping the loop; until then this is what keeps a kill confirm on time.
+   `$PLAYX,0` (bench 2026-09-24, shield still up)**, so every must-hear line in that state gets its own stop. Whether MC
+   stops shipping the loop (t23 EMPTY, `audio-queue-scenarios.md` bench step 2) is open under F347; until then this
+   is what keeps a kill confirm on time.
 
 **Not modelled** (assumed not to use the announcer FIFO, unconfirmed): the gun's own fire, reload, empty-click and
 weapon-swap sounds, and whatever the native `$SPAWN` plays. If any of them do queue there, the flush count is low by

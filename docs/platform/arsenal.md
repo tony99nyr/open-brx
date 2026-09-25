@@ -42,7 +42,7 @@ Every weapon in the list above is one of these, and each one beats something and
 - **Armour piercing.** Goes straight to health and ignores the armour entirely. It has to be priced down to pay for that, so against someone wearing nothing it is strictly worse than the rifle you gave up.
 - **Stripping.** Removes every protective layer and cannot kill. Devastating against a heavily armoured target with a teammate behind you, and literally nothing against a bare one.
 - **Denial.** Drops the target's accuracy to zero for a few seconds. It beats anyone who has to aim and does nothing at all to someone who simply walks away.
-- **Damage over time.** The Toxin Rifle poisons on every hit, and the poison keeps draining the target's pools for a few seconds after the target breaks contact. It is the answer to walking away, and therefore the natural counter to denial.
+- **Damage over time.** The Toxin Rifle poisons on every hit: the target's own phone keeps draining its pools for a few seconds after it breaks contact. It is the answer to walking away, and therefore the natural counter to denial.
 
 ## Limits
 
