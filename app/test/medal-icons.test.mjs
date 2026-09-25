@@ -49,3 +49,15 @@ test('a recap chip as MC writes it parses to its key and count', () => {
   assert.equal(medalChip('BEAT DOWN', ROWS).key, 'melee_kill');
   assert.equal(medalChip('SOMETHING NEW', ROWS).key, null);
 });
+test('IRON MAN is the picked iron heart (I2b), not the placeholder initial, day and night', () => {
+  const lum = hex => { const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  for (const night of [false, true]) {
+    const P = MEDAL_PALETTE[night ? 'night' : 'day'], svg = medalIcon('iron_man', { night });
+    assert.doesNotMatch(svg, /M16 9\.2v13\.6M12\.6 9\.2h6\.8/, 'still the placeholder "I"');
+    assert.match(svg, /data-glyph="iron-heart"/, 'the iron heart glyph');
+    // the heart is the colour on the plate, and the bevel is the plate cut into the heart: the same pair, >= 4.5:1
+    assert.match(svg, new RegExp(`fill="${P.fg}"`)); assert.match(svg, new RegExp(`stroke="${P.bg}"`));
+    assert.ok(ratio(P.fg, P.bg) >= 4.5, `${P.fg} on ${P.bg}`);
+  }
+});

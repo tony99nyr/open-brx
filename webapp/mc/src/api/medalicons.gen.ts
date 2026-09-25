@@ -26,9 +26,10 @@ const ALIAS = { beat_down: 'melee_kill' };
 const r2 = n => Math.round(n * 100) / 100;
 // A glyph is drawn in a 32-unit box centred on (16,16), mostly inside 7..25. `c` is its colour, `a` the accent,
 // `gap` the plate colour (for a cut line that must separate two shapes).
+const HEART = 'M16 25.4C9.4 20.7 7 17.2 7 13.4a4.5 4.5 0 0 1 9-1.8 4.5 4.5 0 0 1 9 1.8c0 3.8-2.4 7.3-9 12z';
 const BOLT = 'M18.2 6.5 10.8 17.4h4.9l-2.1 8.1 7.6-11.2h-4.9z';
 // A placeholder: the key's initial, drawn as strokes (no fonts inside an icon). Used until Tony picks a glyph.
-const INITIAL = { B: 'M12.6 9.2v13.6h4.6a3.3 3.3 0 0 0 0-6.6h-4.6m0 0h4a3.2 3.2 0 0 0 0-6.9h-4', I: 'M16 9.2v13.6M12.6 9.2h6.8M12.6 22.8h6.8' };
+const INITIAL = { B: 'M12.6 9.2v13.6h4.6a3.3 3.3 0 0 0 0-6.6h-4.6m0 0h4a3.2 3.2 0 0 0 0-6.9h-4' };
 const letter = ch => c => `<path d="${INITIAL[ch]}" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`;
 const G = {
   multi: (c, a, gap, n) => {
@@ -57,7 +58,10 @@ const G = {
   best_kd: (c, a) => `<path d="M8 22.5 13 17l3.6 3L23 12.6" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.6 10.6h6.2v6.2z" fill="${a}"/>`,
   sharpshooter: (c, a) => `<circle cx="16" cy="16" r="8.2" fill="none" stroke="${c}" stroke-width="2"/><circle cx="16" cy="16" r="4.4" fill="none" stroke="${c}" stroke-width="2"/><circle cx="16" cy="16" r="1.7" fill="${a}"/>`,
   survivor: (c, a) => `<path d="M10 7.4h12v2.2l-4.6 6.4 4.6 6.4v2.2H10v-2.2l4.6-6.4L10 9.6z" fill="${c}"/><path d="M13.6 22.2 16 19l2.4 3.2z" fill="${a}"/>`,
-  iron_man: letter('I'),       // PLACEHOLDER until Tony picks one of the gallery's fresh options
+  // Tony's pick 2026-09-25 (gallery I2b): a heart plate, an inner bevel cut in the plate colour, an amber highlight
+  iron_man: (c, a, gap) => `<g data-glyph="iron-heart"><path d="${HEART}" fill="${c}"/>`
+    + `<path d="${HEART}" transform="translate(16 16.6) scale(.68) translate(-16 -16.6)" fill="none" stroke="${gap}" stroke-width="1.9"/>`
+    + `<path d="M8.9 13.2c0-2 1.4-3.4 3.2-3.4" fill="none" stroke="${a}" stroke-width="1.6" stroke-linecap="round"/></g>`,
   multikill: (c, a) => [[10.2, c], [15.2, c], [20.2, a]].map(([y, col]) => `<path d="M9 ${y + 3.6} 16 ${y - 1.4}l7 5" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`).join(''),
   wingman: (c, a) => `<path d="M14.6 12.4 6.6 10.2l1.8 3-2.6 1.4 3.6 1.4-1.8 2.6 7 .8z" fill="${c}"/><path d="M17.4 12.4l8-2.2-1.8 3 2.6 1.4-3.6 1.4 1.8 2.6-7 .8z" fill="${c}"/><circle cx="16" cy="15.6" r="1.9" fill="${a}"/>`,
   objective_hero: (c, a) => `<rect x="9.6" y="6.8" width="2" height="18.4" rx=".8" fill="${c}"/><path d="M11.6 7.8H23l-2.8 3.8 2.8 3.8H11.6z" fill="${c}"/><circle cx="10.6" cy="25.4" r="1.6" fill="${a}"/>`,
