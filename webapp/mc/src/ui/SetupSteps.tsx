@@ -20,9 +20,11 @@ const KNOWN_SETUP_LINES: Array<{ test: RegExp; line: string }> = [
   { test: /A CONTROL STATION IS ASSIGNED BUT/i, line: "A control station is assigned, but this game's objective is not a station, so every phone ignores its hill. Set OBJECTIVE SOURCE to PHONE, or clear the CONTROL station in ITEMS." },
   { test: /POWER-CYCLE THE GRENADE/i, line: 'Power-cycle the grenade so it starts neutral, then set it to hill mode and place it. This mode supports one point only.' },
   { test: /IR STATION/i, line: 'Place and power the IR station, and check it reads neutral before the whistle. This source is unproven on our bench; the MVP hill is OBJECTIVE SOURCE PHONE.' },
-  { test: /CONTROL POINT IS A BLUETOOTH STATION/i, line: 'The control point is a Bluetooth station: a phone in the utility role as CONTROL. Confirm it shows MC-armed for this game, keep it awake, and check its battery. Do not power-cycle it once armed.' },
-  { test: /NO CONTROL STATION IS ASSIGNED/i, line: "No control station is assigned. This game's objective is a Bluetooth control point, so assign a utility phone as CONTROL in ITEMS and arm it, or nothing on the field is the hill." },
-  { test: /NO RESPAWN STATION/i, line: 'No respawn station is assigned. Respawn is set to scanner, so a downed player can only come back at a station. Assign a utility phone as RESPAWN in ITEMS and arm it.' },
+  { test: /CONTROL POINT IS A BLUETOOTH STATION/i, line: 'The control point is a Bluetooth station assigned as CONTROL. Confirm it shows MC-armed for this game, keep it awake, and check its battery. Do not power-cycle it once armed.' },
+  // M12 (visual QA 2026-09-24): the server does not say WHICH device will be the station (a phone or a
+  // StickS3), so these say "a station", never "a utility phone".
+  { test: /NO CONTROL STATION IS ASSIGNED/i, line: "No control station is assigned. This game's objective is a Bluetooth control point, so assign a station as CONTROL in ITEMS and arm it, or nothing on the field is the hill." },
+  { test: /NO RESPAWN STATION/i, line: 'No respawn station is assigned. Respawn is set to scanner, so a downed player can only come back at a station. Assign a station as RESPAWN in ITEMS and arm it.' },
   { test: /SCANNER RESPAWN HAS NO STATION FOR\s+(.+?)\s+—/i, line: 'Scanner respawn has no station for $1. Those players use timed AUTO respawn; assign another RESPAWN station if you want station respawn for both teams.' },
 ];
 
@@ -39,6 +41,38 @@ export function friendlySetupLine(raw: string): string {
   // "(F88: ...)", stop shouting, and turn the em dash into a full stop rather than showing it raw.
   const stripped = body.replace(/\s*\([A-Z]\d+:[^)]*\)\s*$/, '').replace(/\s*—\s*/g, '. ');
   return stripped.charAt(0).toUpperCase() + stripped.slice(1).toLowerCase();
+}
+
+/** H2 (visual QA 2026-09-24): the SETUP lines where the game and the ITEMS assignments disagree. They are
+ *  not a field step to remember: the match will not play as set up until one side changes, so LOBBY and
+ *  ARMED show them as an amber conflict block that stays up, and ARMORY names them in its header (M11). */
+export const STATION_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT|NO CONTROL STATION IS ASSIGNED|NO RESPAWN STATION IS ASSIGNED/i;
+/** the conflict the CONTROL station's own card carries on ITEMS */
+export const CONTROL_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT/i;
+export const setupLines = (warnings: string[] | undefined) => (warnings ?? []).filter(w => /^SETUP:/i.test(w));
+
+/** The amber block for `STATION_CONFLICT` lines, inside a `role="status"` region that is ALWAYS mounted: these
+ *  are standing facts, not interruptions, and a region that exists before its first line is the one a screen
+ *  reader announces (polish r1). Titled FIX BEFORE ARM; SETUP CONFLICT only when the CONTROL-under-grenade
+ *  conflict is among the lines, since only that one is the game and ITEMS contradicting each other. */
+export function SetupConflicts({ style }: { style?: React.CSSProperties }) {
+  const { state } = useStore();
+  const lines = setupLines(state?.config_warnings).filter(w => STATION_CONFLICT.test(w));
+  const title = lines.some(w => CONTROL_CONFLICT.test(w)) ? 'SETUP CONFLICT' : 'SETUP: FIX BEFORE ARM';
+  return (
+    <div role="status" data-setup-region="conflict">
+      {lines.length > 0 && (
+        <div data-testid="setup-conflict"
+          style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'rgba(255,176,32,.08)', border: `1px solid ${T.warn}`,
+                   borderLeft: `3px solid ${T.warn}`, padding: '10px 14px', ...style }}>
+          <span style={{ font: F.chk(700, 11), letterSpacing: '.16em', color: T.warn }}>▲ {title}</span>
+          {lines.map((w, i) => (
+            <div key={i} style={{ font: F.chk(600, 12.5), letterSpacing: '.02em', lineHeight: 1.5, color: T.ink }}>{friendlySetupLine(w)}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** The "Match reminders" panel — PHYSICAL field steps (`SETUP: ` warnings) and the A31 "win is
@@ -68,12 +102,16 @@ export function friendlySetupLine(raw: string): string {
  */
 export function SetupSteps({ style }: { style?: React.CSSProperties }) {
   const { state } = useStore();
-  const steps = (state?.config_warnings ?? []).filter(w => /^SETUP:/i.test(w));
+  const steps = setupLines(state?.config_warnings).filter(w => !STATION_CONFLICT.test(w));
   const verifyRaw = state?.notices?.mc_verify;
   const verifyLine = verifyRaw ? friendlyMcVerifyLine(verifyRaw) : null;
-  if (steps.length === 0 && !verifyLine) return null;
+  // polish r1: the same two regions whatever the lines, so a 0 -> N change fills them and never remounts them
   return (
-    <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 6,
+    <>
+    <SetupConflicts style={style} />
+    <div role="status" data-setup-region="reminders">
+    {(steps.length > 0 || verifyLine) && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6,
                                  background: T.panelSoft, border: `1px solid ${T.line}`, padding: '10px 14px', ...style }}>
       <span style={{ font: F.chk(600, 11), letterSpacing: '.16em', textTransform: 'uppercase', color: T.dim }}>Match reminders</span>
       {steps.length > 0 && (
@@ -91,5 +129,8 @@ export function SetupSteps({ style }: { style?: React.CSSProperties }) {
         </div>
       )}
     </div>
+    )}
+    </div>
+    </>
   );
 }

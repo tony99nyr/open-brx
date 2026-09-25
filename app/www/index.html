@@ -25,9 +25,11 @@
    hard to read at all". The answer is WEIGHT, not brightness: night ops is dim red on black on purpose,
    to keep a player's night vision and to stop the screen giving their position away, so lifting the
    luminance would undo the mode. The muted tone was the worst of it (#5a1f1f on black is nearly gone),
-   so it comes up to a readable red, the numbers come up a little, and the thin weights get body below. */
-[data-env="night"]{--num:#c9484a;--glow:transparent;--mut:#8c3636;--plate:transparent;--plate2:transparent;--edge:#2a1010;
-  --health:#8f4545;--armor:#8f6b26;--team:#6b2a2a;--team-ink:#000;--warn:#8f6b26;--bad:#c9484a;--ok:#57802f;--bg:#000}
+   so it comes up to a readable red, the numbers come up a little, and the thin weights get body below.
+   HUD QA R2-12 (2026-09-24): the muted tier measured 2.6:1. Text under 14 px needs 4.5:1, so --mut is #cc4e4e (4.7:1 on a
+   night plate) and --num comes up to #d65454 (5.2:1) to stay the brighter of the two. Hierarchy is size and weight. */
+[data-env="night"]{--num:#d65454;--glow:transparent;--mut:#cc4e4e;--plate:transparent;--plate2:transparent;--edge:#2a1010;
+  --health:#c05c5c;--armor:#a67a2a;--team:#6b2a2a;--team-ink:#f08080;--warn:#a67a2a;--bad:#d65454;--ok:#57802f;--bg:#000}   /* R2-12: every text ink >= 4.5:1 on a night plate */
 /* Thin strokes are what actually fails at low contrast, so nothing under 500 survives the night skin. */
 [data-env="night"] .hud,[data-env="night"] .hud *{font-weight:600}
 [data-env="night"] .tab,[data-env="night"] b,[data-env="night"] .hud .num{font-weight:700}
@@ -35,7 +37,7 @@
 [data-team="yellow"]{--team:var(--team-yellow);--team-ink:#1a1400}
 [data-team="red"]{--team:var(--team-red);--team-ink:#1a0404}
 [data-team="green"]{--team:var(--team-green);--team-ink:#041a0c}
-[data-env="night"][data-team]{--team:#5a2222;--team-ink:#000}
+[data-env="night"][data-team]{--team:#5a2222;--team-ink:#f08080}   /* R2-12: black on the night team fill was 1.7:1 */
 [data-env="night"] .plate{background:#0a0303;border-color:#3a1414}[data-env="night"] .plate.slot .thumb{border-color:#3a1414}   /* the kit stays readable at night (#24) */
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
@@ -88,6 +90,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .topright .dot{width:9px;height:9px;background:var(--ok);border-radius:50%;box-shadow:0 0 8px var(--ok)}
 .topright .dot.off{background:var(--bad);box-shadow:0 0 8px var(--bad);animation:blink .7s infinite}
 .topright .dot.ws{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+.topright .dot.warn{background:var(--warn);box-shadow:0 0 8px var(--warn)}   /* HUD QA R2-02: the link is up, the gun's pools are wrong (F341) */
 .batt{display:flex;align-items:center;gap:5px}
 .batt .shell{width:24px;height:11px;border:1.5px solid var(--mut);border-radius:2px;position:relative;display:inline-block}
 .batt .fill{position:absolute;inset:2px;background:var(--ok)}
@@ -309,6 +312,10 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .staletag{align-self:center;font-family:var(--fl);font-style:normal;font-size:14px;font-weight:700;letter-spacing:.2em;padding:2px 8px;border:1.5px solid var(--bad);color:var(--bad);line-height:1.1;white-space:nowrap}
 .gunstale .vitals .hp,.gunstale .vitals .sh,.gunstale .svm,.gunstale .vitals .bar,.gunstale .ammo .mag,.gunstale .ammo .res,.gunstale .ammo .pips,.gunstale .ammo .heat{opacity:.35;text-shadow:none;filter:grayscale(.6)}
 .mcstale #st-K,.mcstale #st-A,.mcstale #st-ACC{opacity:.45}   /* only what MC feeds: D is this phone's own count (polish round 1) */
+.pooltag{align-self:flex-start;font-family:var(--fl);font-size:14px;font-weight:700;letter-spacing:.14em;padding:3px 9px;border:1.5px solid var(--warn);color:var(--warn);background:rgba(20,12,0,.75);white-space:nowrap}   /* HUD QA R2-02 (F341): the gun cannot be killed; the host must FORCE RESPAWN */
+.poolwrong .vitals .hp,.poolwrong .vitals .sh{color:var(--warn);text-shadow:none}
+[data-env="night"] .pooltag{border-color:#e0663e;color:#e0663e;background:#000}
+[data-env="night"] .poolwrong .vitals .hp,[data-env="night"] .poolwrong .vitals .sh{color:#e0663e}
 .stats .staletag{font-size:11px;padding:1px 6px}
 /* the link-lost bar on the live HUD: solid red, 16 px, steady (hud.js `_chips`, `.gunlost`) */
 .pill.bad.gunlost{animation:none;font-size:16px;letter-spacing:.16em;padding:8px 22px;background:var(--bad);border-color:var(--bad);color:#1a0404;position:relative}
@@ -380,13 +387,13 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .swapping .big{font-size:22px;color:var(--num);text-shadow:none;animation:none}
 [data-env="night"] .swapping .sub,[data-env="night"] .swapping .track{display:none}
 [data-env="night"] .vitals .hp{font-style:normal;font-size:76px;text-shadow:none;animation:none;color:var(--num)}
-[data-env="night"] .vitals .sh{font-size:30px;color:var(--armor);text-shadow:none}   /* QA-22: the armour number stays at night */
+[data-env="night"] .vitals .sh{font-size:30px;color:#d8703c;text-shadow:none}   /* QA-22: the armour number stays at night. A red-leaning amber: the #a67a2a amber's green channel painted green anti-alias fringes at 30 px (review, night no-green) */
 [data-env="night"] .vitals .sh.zero{color:var(--mut)}
 [data-env="night"] .bar{height:5px;transform:none;border:0;padding:0;background:#120505}
 [data-env="night"] .bar > i{background:var(--health);box-shadow:none}
 [data-env="night"] .bar.armor{height:4px;width:70%}[data-env="night"] .bar.armor > i{background:var(--armor)}
 /* A56 at night: the item's colour gives way to the dim red, nothing glows, the ring is flat */
-[data-env="night"] .puhint .pu,[data-env="night"] .puchip{--item:#c9484a!important}
+[data-env="night"] .puhint .pu,[data-env="night"] .puchip{--item:var(--num)!important}   /* R2-12: the station hints read at 4.5:1 */
 [data-env="night"] .puhint .pu{background:#0d0303;border-color:#3a1414}[data-env="night"] .puring{background:conic-gradient(#c9484a calc(var(--p) * 360deg),#2a1010 0)}
 [data-env="night"] .puchip{background:transparent;border-color:#3a1414;box-shadow:none}
 [data-env="night"] .ammo .mag{font-style:normal;font-size:76px;text-shadow:none;color:var(--num)}
@@ -640,6 +647,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .topright .dot{background:#5a2222;box-shadow:none}
 [data-env="night"] .topright .dot.off{background:#ff5a5a;box-shadow:none;animation:none;width:12px;height:12px}
 [data-env="night"] .topright .dot.ws{background:var(--warn);box-shadow:none}
+[data-env="night"] .topright .dot.warn{background:#c98a2e;box-shadow:none;width:12px;height:12px}
 [data-env="night"] .batt .shell{border-color:var(--num)}[data-env="night"] .batt .fill{background:var(--num)}
 /* QA-17: no green on the live HUD at night (WEAPONS HOT, ALT = RELOAD, CONFIRMED BY YOUR GUN) */
 #frame[data-env="night"][data-screen="live"] .chipbar .pill.ok:not(.callout){border-color:var(--num);color:var(--num)}
@@ -811,7 +819,12 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 #frame:has(.lobby.result) .pill.mcr{display:none}
 #frame[data-screen="lo"] .pill,#frame[data-screen="panel"] .pill{font-size:11px;letter-spacing:.14em;padding:5px 12px}
 #frame[data-screen="lobby"] .pill{font-size:11px;letter-spacing:.14em;padding:5px 12px}
-#frame[data-screen="lobby"] button.pill{min-height:0;position:relative}#frame[data-screen="lobby"] button.pill::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:44px}
+#frame[data-screen="lobby"] button.pill{min-height:0;position:relative}#frame[data-screen="lobby"] button.pill::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}   /* HUD QA R2-05: 56 frame px = 44 px on the SE */
+#frame[data-screen="lobby"] button.pill,#frame[data-screen="lobby"] .pill[data-headset]{font-size:14px;letter-spacing:.08em}
+#frame[data-screen="lobby"] .chipbar{align-items:stretch}   /* audit-1: a 14 px button beside an 11 px line still shares one row top */
+#frame[data-screen="lobby"] .chipbar .pill:not(button){display:flex;align-items:center}   /* R2-05/R2-07: 11 px on the SE screen, not 8.7 */
+.lobby .note .warnnote{color:var(--warn);font-weight:700}
+[data-env="night"] .pill.bad[data-headset],[data-env="night"] .chipbar button.pill.warn{animation:none;border-color:#ef6868;color:#ef6868}   /* R2-05: the bright night red, and no blink at night */
 .pill{font-size:11px;letter-spacing:.2em;font-weight:700;padding:4px 14px;transform:skewX(-10deg);background:var(--plate);border:1px solid var(--edge);color:var(--mut)}
 .pill .unskew{display:inline-block;transform:skewX(10deg)}
 /* a pill that is also a control: same look, real tap target (min 44px per the tap audit) */
@@ -876,7 +889,14 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 /* `.foot` is a single-row flex line (mcin/qrbtn/note share it) — a flex ITEM here just squeezes into that
    row and wraps its own text across several narrow lines. Same fix as `.kitlock` right above it: lift it
    out of the flex flow into its own row directly above `.foot`. */
-.lobby .foot .discoveredrow{position:absolute;left:0;right:0;bottom:100%;margin-bottom:10px;font-family:var(--fl);letter-spacing:.14em;white-space:nowrap}
+.lobby .foot .discoveredrow{position:absolute;left:0;right:0;bottom:100%;margin-bottom:10px;font-family:var(--fl);letter-spacing:.04em;white-space:nowrap;font-size:14px}   /* HUD QA R2-06: 11 px on the SE screen, was 8.7 */
+/* HUD QA R2-06: an UNVERIFIED host is a warning, not a trusted row: amber and a drawn glyph by day, the bright night red pair
+   at night. Every row leaves green at night (spec B4). */
+.discoveredrow{gap:8px}
+.discoveredrow .dwarn{flex:0 0 auto;width:16px;height:14px}
+.discoveredrow.warn{background:rgba(255,176,32,.12);border-color:var(--warn);color:var(--warn)}
+[data-env="night"] .discoveredrow{background:#140505;border-color:var(--num);color:var(--num)}
+[data-env="night"] .discoveredrow.warn{background:#2a0c0c;border-color:#ef6868;color:#ef6868}
 
 /* ============ shot-ready cue (bench 2026-09-17) ============
    hud.js `_shotCue`: after a shot from a weapon with >= 400 ms between rounds the frame carries data-cool="on"
@@ -1297,11 +1317,12 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
    night play. Night mode exists so a phone does not give away where its owner is standing, so the
    element itself has to go, not its background. Audited by the `night` step in app/tools/e2e.mjs. */
 [data-env="night"] .wpic,[data-env="night"] .wpicfb{display:none!important}
-[data-env="night"] .lotab.on{background:var(--team);color:#000}
+[data-env="night"] .lotab.on{background:var(--team);color:var(--team-ink)}
 [data-env="night"] .lrow.eq,[data-env="night"] .eqtag{border-color:var(--num)}
 [data-env="night"] .lrow .st,[data-env="night"] .ackchip.ok,[data-env="night"] .eqtag,[data-env="night"] .fch.none.on{color:var(--num)}
 [data-env="night"] .fch.none.on{border-color:var(--num)}
 [data-env="night"] .fch.on{background:var(--mut);color:#000;border-color:var(--mut)}
+[data-env="night"] .fch.none.on{background:#0a0303;color:var(--num)}   /* R2-12: NONE ✓ was red ink on a red fill (1.1:1) */
 [data-env="night"] .lrow.fo{background:#0d0303}
 [data-env="night"] .lo .lodetail .tb i,[data-env="night"] .tryout .tb i{background:#120505;border-color:#1a0a0a}
 [data-env="night"] .lo .lodetail .tb b,[data-env="night"] .tryout .tb b{background:var(--num)}
@@ -1382,6 +1403,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 [data-env="night"] .bf .bfveil{background:#000}
 [data-env="night"] .bf .bfname{text-shadow:none;color:var(--num)}
 [data-env="night"] .bf .bfdesc,[data-env="night"] .bf .bfload,[data-env="night"] .bf .bfrules .v{color:var(--num)}
+[data-env="night"] .bf .bfdesc{opacity:1}   /* R2-12: 4.4:1 at .9 */
 [data-env="night"] .bf .bfload .k,[data-env="night"] .bf .who .num{color:var(--warn)}
 [data-env="night"] .bf .ready.go{background:var(--plate2);color:var(--num);border:1px solid var(--num);box-shadow:none}
 [data-env="night"] .bf .r,[data-env="night"] .bf .bfart{animation:none}
@@ -1391,6 +1413,61 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 /* the player's day/night skin (bench 2026-09-17): its own box under the ⓘ, on every screen, so it is never behind the diag panel */
 #skin{top:66px}#skin svg{display:block;pointer-events:none}
 .result .rbody{padding-right:40px;box-sizing:border-box}   /* the results and history tables clear the day/night switch in the right gutter */
+/* HUD QA R2-12 (2026-09-24): at night, text under 14 px reads at >= 4.5:1 and nothing blinks (spec B4: no strobe). */
+[data-env="night"] .puchip .sel,[data-env="night"] .prompt .pl{opacity:1}
+[data-env="night"] .pill.bad,[data-env="night"] .result .retmc{animation:none}
+
+/* HUD QA R2-07 (2026-09-24, QA-21 again): the in-game labels were 11 frame px, which is 8.7 px on the SE's 0.79 frame. The
+   floor is 11 px ON SCREEN, so 14 frame px: the identity and clock labels, the link cluster, the slot word, the stats, the
+   powerup hint and chip, the death screen's columns and recap, and the live pills. Letter-spacing gives back the width. */
+.clockplate .m,.ident .sq,.ammo .wn .slot,.puchip .sel,.puhint .pul,.topright,.stats,.stats .staletag{font-size:14px}
+.ident .sq,.clockplate .m{letter-spacing:.14em}.ammo .wn .slot{letter-spacing:.14em}.puhint .pul{letter-spacing:.08em}
+.down .co .cl,.down .lab,.down .recap .rl,.down .recap .rv,.down .recap .tm,.down .recap .ld,.down .recap .ag,.down .recap .capwarn{font-size:14px}
+.down .co .cl{letter-spacing:.14em}.down .lab{letter-spacing:.2em}.down .recap .rl{letter-spacing:.16em}
+#frame[data-screen="live"] .chipbar .pill{font-size:14px;letter-spacing:.14em}
+#frame[data-screen="live"] .chipbar .pill.bad.gunlost{font-size:16px;letter-spacing:.16em}   /* QA-02: the link bar stays 16 px */
+[data-env="night"] .hplab,[data-env="night"] .stats,.nightlab{font-size:14px}
+[data-env="night"] .hplab{letter-spacing:.16em}[data-env="night"] .stats{letter-spacing:.16em}
+.down .recap .tm b{font-size:18px}
+/* HUD QA R2-08: the redeploy instruction is 14 px on the SE screen (18 frame px), and at night the bright night red, still */
+.down .safe.w1 span{font-size:18px}
+[data-env="night"] .down .safe span{color:#ef6868}
+[data-env="night"] .down .safe.w2 span,[data-env="night"] .down .safe.w3{animation:none}
+/* HUD QA R2-20: by day the armour number sat unlabelled beside the health number. Its label shows by day too (the HP label
+   stays a night-only aid: the big number is health by its size and colour). */
+.vitals .hplab.armorlabel{display:inline;font-size:14px;letter-spacing:.16em;color:var(--armor);font-weight:700;opacity:.85}
+[data-env="night"] .vitals .hplab.armorlabel{opacity:1;color:var(--mut);font-weight:600}
+/* HUD QA R2-09: every control takes a 44 px tap on the SE screen (56 frame px). The picker's ghost buttons and the OTHER
+   DEVICES fold get a 56 px ::after; the diag panel's buttons are 56 px tall; the corner buttons' areas hang INTO the
+   frame from its right edge, since the frame clips anything past it (they measured 38 wide on screen). */
+.bigbtn.ghost,.othertog{position:relative}
+.bigbtn.ghost::after,.othertog::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}
+.othertog{font-size:14px;letter-spacing:.1em;min-height:56px;padding-top:0;padding-bottom:0}   /* inside the scrolling list, which clips an ::after */
+#diag .btns{gap:4px;padding:3px 10px calc(3px + env(safe-area-inset-bottom,0px))}   /* F122: the row stays <= 56 design px */
+#diag .btns button{min-height:48px;font-size:14px;letter-spacing:0;padding:6px 5px;position:relative}
+#diag .btns button::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:58px}   /* 56 px of the row and the log's last 2 px: 44 on the SE screen */
+.infobtn::after{left:auto;right:-2px;transform:translateY(-50%)}
+#info::after{top:-2px;height:60px;transform:none}   /* 58 px of the frame below its top edge: 46 px on the SE screen */
+#skin{top:70px}   /* its area (60-116) starts where the ⓘ area ends */
+/* HUD QA R2-15: stunned, the trigger does nothing, so the rounds step back and the count to the end is the biggest thing in the
+   tell (it was a small "9 SEC" beside a bright magazine). */
+.alive.stunned .ammo .mag,.alive.stunned .ammo .res,.alive.stunned .ammo .pips{opacity:.35;text-shadow:none}
+.aimfx.stun .t{font-size:46px;line-height:.95}
+.aimfx.stun .k{font-size:24px}.aimfx.stun .s{font-size:14px;letter-spacing:.12em}.aimfx.stun .t small{font-size:14px}
+[data-env="night"] .aimfx.stun .t{font-size:40px}[data-env="night"] .aimfx.stun .k{font-size:20px}
+/* HUD QA R2-17: the held item a death took */
+.down .pulost{display:inline-block;margin-top:6px;font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.14em;color:var(--warn)}
+[data-env="night"] .down .pulost{color:#ef6868}
+/* HUD QA R2-18: under the day hit flash TAKING FIRE fell to about 1.5:1. The flash leaves its band clear, the word holds
+   still while a hit is on screen, and a dark halo keeps it off the wash. */
+.hit .vig{-webkit-mask-image:radial-gradient(ellipse 24% 13% at 50% 45%,transparent 60%,#000 100%);mask-image:radial-gradient(ellipse 24% 13% at 50% 45%,transparent 60%,#000 100%)}
+#frame:has(#overlay .mo.hit) .takingfire .t{animation:none}
+.takingfire .t{text-shadow:0 0 3px rgba(0,0,0,.9),0 0 12px rgba(0,0,0,.75)}
+[data-env="night"] .takingfire .t{text-shadow:none}
+/* HUD QA R2-13: at night the overshield's double rail read almost as a plain full shield. It is amber (night allows red and
+   amber), 4 px rails, and hollow: the dark track shows between the rails, so its shape and colour both differ. */
+[data-env="night"] .svm{--svos:#e0a040}
+[data-env="night"] .svos{background:#0c0303;border-top-width:4px;border-bottom-width:4px}
 </style>
 </head>
 <body>

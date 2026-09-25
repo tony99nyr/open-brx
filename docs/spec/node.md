@@ -188,7 +188,8 @@ resets `prev`. `shots` resets to 0 at `startAt()` and rides `status`; MC diffs i
 `$HIR` token 3 = shooter **`player_num`**, token 4 = shooter **team** — both always present, both
 hardware-verified in both directions (protocol §7q). Latch `{shooter_num, shooter_team, at}` on every
 valid `$HIR` (tok 2 ≠ 15); at death read the latch iff `now − at ≤ DEATH_LATCH_MS`, else report
-`shooter_num: 0`. Attribution is **exact**; there is no team-only fallback and no heuristic. The node still
+`shooter_num: 0`. The death's shooter is the last DAMAGING hit within `DEATH_LATCH_MS`, and the raw latch only when none is (F354): a word
+whose cell in this bundle's `$SIR` table has a no-pool function (`_SIR_NO_POOL`: the fn-23 Haze, or the stun's fn-23 EMP) never takes the kill. Attribution is **exact**; there is no team-only fallback and no heuristic. The node still
 **never computes its own kills** — a kill you score is invisible in your own stream; only the *victim* reports
 it (§3.6). The `roster` turns a number into a name for the HUD; an unknown number is still reported verbatim.
 
@@ -567,7 +568,8 @@ tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/
   - a wrong proof, or none (an older MC): `UNVERIFIED MISSION CONTROL · <ip> · TAP JOIN IF YOURS`.
   A failed proof dial cools that host for 10 minutes. A host that never answered gets no row at once.
 - **The trust key.** A phone dial asks for its key (`hello.mc_enroll`). MC issues it once per node_id
-  per install. A phone that lost its key still redials its remembered address with no tap, but an MC
+  per install. The enrolling hello carries a random nonce, one per MC host, that the phone keeps until that host's key arrives; if
+  the welcome carrying the key is lost, a hello with the same nonce gets it again within 60 s (F346). A phone that lost its key still redials its remembered address with no tap, but an MC
   that moved needs one tap. The phone keeps up to four keys, one per MC install it joined. A new key is
   always kept; it evicts the oldest key that never proved an MC, else the one proven least recently. A utility phone joins untrusted by design and holds no key.
 - **After a demo restart.** `--demo` and `--ephemeral` make a new install secret on every launch, so the

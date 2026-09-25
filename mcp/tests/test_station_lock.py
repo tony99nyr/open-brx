@@ -216,7 +216,7 @@ def test_a_repush_from_kit_sends_the_lobby_lock_not_zero():
     s, clock = _sess(600)
     s.push_config(force=True)
     s.set_phase("kit")
-    assert _lock(s) == 0                                     # leaving LOBBY unlocks
+    assert _lock(s) > 0                                      # F337 (d): leaving LOBBY keeps a pushed game locked
     s.push_config(force=True)                                # the re-push branch
     assert _lock(s) == 600 + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S
 
@@ -253,7 +253,6 @@ def test_kit_auto_advancing_back_to_a_pushed_lobby_locks_again():
     s, clock = _sess(600)
     s.push_config(force=True)
     s.set_phase("kit")
-    assert _lock(s) == 0
     for p in s.players.values():
         p["ready"] = False
     for pid in list(s.players):
@@ -306,3 +305,92 @@ def test_a_reassigned_station_starts_a_fresh_tally_in_the_same_game():
     clock.t += 5_000
     _ctl_beat(s, clock, {"1": 2_000}, station_id=4)
     assert _report(s)["control"]["hold_ms"] == {"1": 2_000}, _report(s)
+
+
+# ---------------- F337: the lock across an MC restart, adopted matches, and KIT ----------------
+
+def _restart(s, clock):
+    """A new MC process reading the old one's session.json (and a store of its own, so it can resume)."""
+    import pathlib
+    import tempfile
+    from brx_mcp.mc.store import Store
+    if s._persist_path is None:
+        s._persist_path = pathlib.Path(tempfile.mkdtemp(prefix="brx-lock-test-")) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock,
+                 store=Store("t2", s._persist_path.parent / "s2.sqlite"))
+    s2._persist_path = s._persist_path
+    s2.restore_snapshot()
+    s2.resume_match()
+    return s2
+
+
+def test_f337a_an_unlock_survives_an_mc_restart_mid_match():
+    s, clock = _sess(600)
+    s.push_config(force=True)
+    s.start(runway_s=30, force=True)
+    s.unlock_stations()
+    clock.t += 60_000
+    s2 = _restart(s, clock)
+    assert s2.phase in ("armed", "live"), s2.phase
+    s2.net.simulate_utility_hello("stick-1")
+    assert _lock(s2) == 0, "the operator's UNLOCK must not re-lock on the first hello after an MC restart"
+
+
+def test_f337a_restarts_counted_before_an_mc_restart_are_kept_and_the_window_holds():
+    s, clock = _sess(600)
+    _beat(s, clock, uptime_s=50, boot_count=4, assoc="held")
+    s.push_config(force=True)
+    s.start(runway_s=30, force=True)
+    clock.t += 60_000
+    _beat(s, clock, uptime_s=3, boot_count=5, assoc="held")      # rebooted once, before MC restarts
+    assert "STATION #3 RESTARTED" in _flags(s)
+    s2 = _restart(s, clock)
+    s2.net.simulate_utility_hello("stick-1")
+    clock.t += 5_000
+    s2.net.simulate_status("stick-1", {"role": "utility", "kind": "respawn", "team": 1, "station_id": 3,
+                                       "uptime_s": 8, "boot_count": 5, "assoc": "held"}, clock.t)
+    assert "STATION #3 RESTARTED" in next(v for v in s2.stations_view() if v["node_id"] == "stick-1")["attention"]
+    clock.t += 5_000
+    s2.net.simulate_status("stick-1", {"role": "utility", "kind": "respawn", "team": 1, "station_id": 3,
+                                       "uptime_s": 1, "boot_count": 6, "assoc": "held"}, clock.t)
+    view = next(v for v in s2.stations_view() if v["node_id"] == "stick-1")
+    assert view["restarts"] == 2, view
+    assert "STATION #3 RESTARTED 2 TIMES" in view["attention"]
+
+
+def test_f337c_an_adopted_match_locks_to_the_cap_not_the_draft_limit():
+    s, clock = _sess(60)                                     # the operator's draft says 60 s
+    s.start_info = {"match_id": "m-orphan", "go_live_t": clock.t, "seq": 1, "countdown_s": 0, "adopted": True}
+    s.phase = "live"
+    s.net.simulate_utility_hello("stick-1")
+    assert _lock(s) == STATION_LOCK_MAX_S, "MC holds no limit for an adopted match: the draft must not unlock early"
+    s.start_info["adopted"] = False                          # the same field, a match MC started
+    s.net.simulate_utility_hello("stick-1")
+    assert _lock(s) == 60 + STATION_LOCK_MARGIN_S
+
+
+def test_f337d_lobby_back_to_kit_keeps_a_pushed_game_locked():
+    s, clock = _sess(600)
+    s.push_config(force=True)
+    locked = 600 + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S
+    assert _lock(s) == locked
+    s.set_phase("kit")
+    assert _lock(s) == locked, "stepping back to KIT sends no unlock"
+    s.net.simulate_utility_hello("stick-1")
+    assert _lock(s) == locked, "a reconnect in KIT with a pushed game is locked too"
+    s.set_phase("build")
+    s.net.simulate_utility_hello("stick-1")
+    assert _lock(s) == locked
+    s.unlock_stations()
+    assert _lock(s) == 0, "the operator's unlock still works outside a match"
+
+
+def test_f337d_an_invalid_edit_that_drops_the_push_unlocks_the_stations():
+    s, clock = _sess(600)
+    s.push_config(force=True)
+    assert _lock(s) > 0
+    res = s.set_config({"time_limit_s": None})               # invalid (A4.8): the push is dropped, not re-sent
+    assert res["ok"] is False and s.lobby_pushed is False, res
+    assert _lock(s) == 0, "no pushed game any more: the stations are told so"

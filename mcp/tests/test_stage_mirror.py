@@ -459,6 +459,30 @@ def test_a_pool_rise_fires_healed_armour_up_or_shield_up_by_the_biggest_gain_lik
     asyncio.run(go())
 
 
+def test_a_rise_above_the_armed_ceiling_is_a_misread_pset_not_a_pickup_and_is_never_voiced():
+    """HUD QA R2-02 x F341: a `$PSET` the gun misread reports `$HP,4545,7070` -- a rise of 4500 health and 7000 armour.
+    The phone neither floats nor voices it (engine.js `_gainOverCeiling`), so the stage must not either. CONTROL: a
+    rise back up TO the ceiling still says armour_up."""
+    async def go():
+        st, mgr, clock = mk_gain()
+        await live(st)
+        cues = rise_cues(st)
+        clock.advance(1.0)
+        st._on_rx("$HP,45,40,0,*"); await settle(st)                  # a 30 armour hit
+        clock.advance(1.0)
+        n = mark(mgr)
+        st._on_rx("$HP,4545,7070,0,*"); await settle(st)              # the misread `$PSET`: above 45/70
+        assert not any(c in since(mgr, n) for c in cues.values()), "a pool above the armed ceiling was voiced as a gain"
+        assert any("above the armed ceiling: no gain event" in l["text"] for l in st.log)
+        clock.advance(1.0)
+        st._on_rx("$HP,45,40,0,*"); await settle(st)                  # back in range (what a repair gives)
+        clock.advance(1.0)
+        n = mark(mgr)
+        st._on_rx("$HP,45,70,0,*"); await settle(st)                  # CONTROL: +30 armour up to the ceiling
+        assert since(mgr, n).count(cues["armour_up"]) == 1
+    asyncio.run(go())
+
+
 def test_a_frame_that_damages_and_grants_in_one_tick_is_a_hit_when_the_total_fell_and_the_gain_is_dropped():
     """F14: engine.js tests `dmg > 0` (the TOTAL went down) before it looks for gains, so a frame that costs
     30 armour and grants 10 shield is a hit with no gain event; a frame that costs 10 and grants 30 is a gain

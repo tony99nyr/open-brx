@@ -321,6 +321,9 @@ def default_config(mode: str = "tdm") -> GameConfig:
     return cfg
 
 
+# F337 (a): the per-station lock bookkeeping the session snapshot carries across an MC restart.
+_STATION_LOCK_KEYS = ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "boot")
+
 class Session:
     def __init__(self, compiler: CompilerPort, net, armory, store=None, now_ms: Callable[[], int] | None = None,
                  lan: dict | None = None, voice_rng: random.Random | None = None):
@@ -629,6 +632,10 @@ class Session:
                     "standby": [{**p, "node_id": None, "ready": False} for p in self.standby.values()],
                     "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
                     "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
+                    # F337 (a): the lock bookkeeping, so a restarted MC keeps an UNLOCK and every restart it counted.
+                    "stations_unlocked": self._stations_unlocked,
+                    "station_locks": {nid: {k: st[k] for k in _STATION_LOCK_KEYS if k in st}
+                                      for nid, st in self.stations.items() if st.get("assigned")},
                     # A28.2: a restore must keep every printed QR valid, so the secret is human work too.
                     "join_secret": self.join_secret,
                     # Bench 2026-09-17: the match IN PLAY, so a restarted MC resumes it (`resume_match`).
@@ -836,10 +843,15 @@ class Session:
                 if not isinstance(a, dict):
                     continue
                 self.stations[nid] = {"node_id": nid, "assigned": a, "report": {}, "armed": None, "arm_pending": True}
+                # F337 (a): the lock window, the restart count and the last boot seen, as the old process left them.
+                kept = (snap.get("station_locks") or {}).get(nid)
+                if isinstance(kept, dict):
+                    self.stations[nid].update({k: kept[k] for k in _STATION_LOCK_KEYS if k in kept})
                 self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
                                             "synced": False, "last_seen_ms": 0})
             self.game_no = snap.get("game_no", self.game_no)
             self._game_no_started = bool(snap.get("game_no_started", False))
+            self._stations_unlocked = snap.get("stations_unlocked") is True   # F337 (a): an UNLOCK survives
             if isinstance(snap.get("join_secret"), str) and snap["join_secret"]:
                 self.join_secret = snap["join_secret"]     # A28.2: the QRs already printed stay valid
                 self._render_join()
@@ -2314,6 +2326,7 @@ class Session:
             else:
                 self.lobby_pushed = False
                 self.acks = {}
+                self.arm_stations(relock=True)   # F337 (d): no pushed game any more, so the LOAD lock goes too
         self._changed()
         return {"ok": res["ok"], "errors": res["errors"], "config": self.config}
 
@@ -3173,18 +3186,25 @@ class Session:
         return True
 
     def _station_lock_s(self) -> int:
-        """A58: the `lock_s` every `station_config` carries now. LOBBY after the push (LOAD) covers the lobby
+        """A58: the `lock_s` every `station_config` carries now. A pushed game before START (LOAD) covers the lobby
         wait and the match, since a muster station hears nothing more; ARMED/LIVE is the exact time left
         (a START re-send, or a station back mid-match); anything else, or the operator's unlock, is 0."""
         if self._stations_unlocked:
             return 0
         tl = self.config.get("time_limit_s")
         if self.phase in ("armed", "live") and self.start_info:
-            if not tl:
+            # F337 (c): MC holds no config for an ADOPTED match (`is_adopted`), so `tl` is the operator's
+            # draft, not the phones' limit. The draft could unlock a station before the phones stop; the cap
+            # cannot. MC never learns the adopted match's own limit, so there is no better number to use.
+            if not tl or self.is_adopted():
                 return STATION_LOCK_MAX_S
             left_ms = self.start_info["go_live_t"] + tl * 1000 - self.now_ms()
             return max(STATION_LOCK_MARGIN_S, min(STATION_LOCK_MAX_S, -(-left_ms // 1000) + STATION_LOCK_MARGIN_S))
-        if self.phase == "lobby" and self.lobby_pushed:
+        # F337 (d): a game that is loaded and pushed keeps its stations locked in every pre-match phase, so
+        # stepping LOBBY back to KIT (or further) does not unlock a held station that stays in the field.
+        # Only END, RECALL, abort, the operator's unlock or a new session send 0 (each clears `lobby_pushed`
+        # or sets `_stations_unlocked`).
+        if self.phase in ("muster", "build", "kit", "lobby") and self.lobby_pushed:
             return min(STATION_LOCK_MAX_S, tl + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S) if tl else STATION_LOCK_MAX_S
         return 0
 
@@ -5450,8 +5470,8 @@ class Session:
         self._roll_forward_from_recap()        # leaving RECAP by the nav is starting the next match too
         was = self.phase
         self.phase = cast(Phase, phase)  # validated against PHASES above
-        if self.lobby_pushed and was != self.phase and "lobby" in (was, self.phase):
-            self.arm_stations(relock=True)     # A58: entering LOBBY locks (the LOAD value), leaving it unlocks
+        # F337 (d): no station re-send here. A pushed game keeps the LOAD lock in every pre-match phase
+        # (`_station_lock_s`), so moving between them changes nothing a station was told.
         self._changed()
         return self.phase
 
@@ -7192,6 +7212,7 @@ class Session:
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None
+        self.lobby_pushed = False              # F337 (d): before the re-send, or a pushed game would keep the lock
         self.arm_stations(relock=True)         # A58: a new session ends any match: lock_s 0
         self.scorer = None
         self.last_recap = None

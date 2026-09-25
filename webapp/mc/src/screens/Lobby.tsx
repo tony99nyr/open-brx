@@ -91,6 +91,14 @@ export function Lobby() {
   // the fraction, carries the warning, so the header and rail step 1 colour the same number alike. Rail step 2 already owns the ack count, so step 1 stays intent only.
   // Absent from an older server.
   const nUpdating = Math.min(lobby.updating ?? 0, nReady);
+  // M9 (visual QA 2026-09-24): WHICH row is updating, by the server's own rule (state.py `_updating`): READY,
+  // a phone bound, and no ack for the pushed head yet or an ok ack for an older config. Only while the
+  // server counts any, so an older server (no `updating`) never gets a chip.
+  const updatingIds = new Set(nUpdating > 0 && lobby.pushed ? players.filter(p => {
+    if (!p.ready || !state.nodes.some(n => n.player_id === p.player_id)) return false;
+    const a = lobby.acks[p.player_id];
+    return !a || (a.ok && a.config_id !== undefined && a.config_id !== state.config.config_id);
+  }).map(p => p.player_id) : []);
   const updatingTitle = 'Ready, but the phone has not taken the pushed config yet. ARM waits for it.';
   // U-1: the stale-ack sentence is computed from the ACKS, independently of the board — a stale ack
   // is always ALSO a red row, so anything that asked "are there faults?" first could never reach it.
@@ -193,6 +201,15 @@ export function Lobby() {
       : '',
   ].filter(Boolean).join('  ·  ');
   const armTitle = armDisabled ? armWhy || 'Not ready to arm yet' : '';
+  // polish r1: the pre-push reason as a count: phones not here yet, else guns no push can clear
+  const nPushRed = Math.max(0, pushBlockedCount - waitRows.length);
+  const prePushShort = !balancedForTeams ? 'ROSTER CANNOT PLAY' : players.length === 0 ? 'NO PLAYERS YET'
+    : waitRows.length ? `${waitRows.length} PHONE${waitRows.length === 1 ? '' : 'S'} NOT ARRIVED${nPushRed ? ` · ${nPushRed} BLOCKED` : ''}`
+    : nPushRed ? `${nPushRed} GUN${nPushRed === 1 ? '' : 'S'} BLOCKED` : '';
+  // M9: when the only thing ARM waits for is phones still taking the config, name them
+  const updatingNames = players.filter(p => updatingIds.has(p.player_id)).map(p => p.display);
+  const updatingWhy = updatingNames.length && !staleCount && !curableNonStale.length && !armGating.length && balancedForTeams
+    ? `ARM waits for ${updatingNames.join(', ')} to take the config` : '';
   // …and the OVERRIDE says what overriding actually costs. `armDisabled` above is true in every state
   // that trips the server's `_refuse_unconfigured_gun` (a player with no phone bound is a `waiting`
   // row, so `blockedCount` covers it), which makes `pushAndArm(true)` the ONLY reachable path past
@@ -267,8 +284,9 @@ export function Lobby() {
           "this win is settled at MC" line, naming the phones with no backhaul — see ui/SetupSteps */}
       <SetupSteps style={{ marginBottom: 12 }} />
       {/* A58: the same lines an ARMED/LIVE operator sees, and where "LOCK EXPIRES MID-MATCH, REJOIN IT"
-          shows. No UNLOCK here: the LOAD lock is the only one a muster station gets, and START re-locks. */}
-      <StationAlerts />
+          shows. M4 (visual QA 2026-09-24): UNLOCK too. The LOAD lock at the push stays (it is the only lock a
+          muster Stick gets), so the way out of it has to be on the screen the host is on. */}
+      <StationAlerts showUnlock />
       {/* F-3/A39: a connected phone with nobody in the roster claiming it — last night's "4 guns
           connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
       <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />
@@ -286,7 +304,7 @@ export function Lobby() {
               <span style={{ font: F.osw(600, 12), ...TAB, color: T.dim }}>{col.members.length} OPERATORS</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${drag ? T.acc : T.line}`, padding: 6, background: T.panelDeep, minHeight: 200 }}>
-              {col.members.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} readOnly={readOnly} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
+              {col.members.map(mb => <MemberRow key={mb.player_id} p={mb} updating={updatingIds.has(mb.player_id)} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} readOnly={readOnly} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
             </div>
           </div>
         ))}
@@ -294,7 +312,7 @@ export function Lobby() {
           <div style={{ flex: '1 1 240px' }}>
             <div style={{ padding: '10px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none', borderTop: `2px solid ${T.warn}`, font: F.chk(700, 13), letterSpacing: '.24em', color: T.warn }}>UNASSIGNED</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${T.line}`, padding: 6, background: T.panelDeep }}>
-              {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} readOnly={readOnly} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
+              {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} updating={updatingIds.has(mb.player_id)} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} readOnly={readOnly} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
             </div>
           </div>
         )}
@@ -360,6 +378,16 @@ export function Lobby() {
           {/* M3 (visual QA 2026-09-23): this control does ONE thing per step, and its label says which.
               Before the push it pushes (ARM is a second, deliberate tap once every gun confirms); after
               it, it arms. It used to read PUSH CONFIG & ARM, and it has never armed on that tap. */}
+          {/* M9 (visual QA 2026-09-24): a greyed ARM with its reason only in a tooltip read as "nothing to do".
+              The reason sits beside the button, in amber. */}
+          {/* polish r1: before the push this is a short count (the rail line below already names the phones),
+              with the whole reason on the tooltip, and no live region re-announcing it on every arrival. */}
+          {armDisabled && armWhy && lobby.pushed && (
+            <span data-arm-why="1" role="status" style={{ font: F.chk(600, 12), lineHeight: 1.45, color: T.warn, maxWidth: 420 }}>▲ {updatingWhy || armWhy}</span>
+          )}
+          {armDisabled && armWhy && !lobby.pushed && prePushShort && (
+            <span data-arm-why="1" title={armWhy} style={{ font: F.chk(700, 11.5), letterSpacing: '.1em', color: T.warn, whiteSpace: 'nowrap', cursor: 'help' }}>▲ {prePushShort}</span>
+          )}
           <span data-lobby-primary={lobby.pushed ? 'arm' : 'push'} style={{ display: 'inline-flex' }}>
             <PrimaryButton onClick={() => pushAndArm()} disabled={armDisabled}
               title={armTitle || (lobby.pushed
@@ -371,7 +399,7 @@ export function Lobby() {
         </div>
 
         <div style={{ padding: '0 20px 14px', font: F.chk(600, 13), lineHeight: 1.5,
-                      color: faults.length ? T.bad : empty || waitRows.length ? T.micro : notReady.length ? T.warn : T.ok }}>
+                      color: faults.length ? T.bad : empty || waitRows.length ? T.micro : notReady.length || armDisabled ? T.warn : T.ok }}>
           {/* U-1 (2026-09-13): `staleAcked` used to be consulted ONLY in the no-faults branch — and a
               stale ack always lands in that row's `blockers` (state.py `readiness()`), which makes the
               row red, which puts it in `faults`. So the generic count always won and the sentence
@@ -493,7 +521,7 @@ export function Lobby() {
   );
 }
 
-function MemberRow({ p, teamIds, reach, noPhone, readOnly, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; readOnly?: boolean; onDragStart: () => void; onMove: (team_id: string) => void }) {
+function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; readOnly?: boolean; updating?: boolean; onDragStart: () => void; onMove: (team_id: string) => void }) {
   // H5: no move chips, no drag and no STAND DOWN while the match is in play (the server refuses them)
   const others = readOnly ? [] : teamIds.filter(t => t !== p.team_id);
   // F-7 (2026-09-13): the wide layout wraps to 3-4 lines at 393 px — name, gun, NO PHONE, reach,
@@ -515,6 +543,7 @@ function MemberRow({ p, teamIds, reach, noPhone, readOnly, onDragStart, onMove }
   // block uses (INTERNET), and the tooltip says what it is a fact ABOUT: the path to MC, never
   // the phone's own radio.
   const statusTags = <>
+    {updating && <span data-updating-chip={p.player_id}><OutlineTag color={T.warn} border={T.warn} title="Ready, but the phone has not taken the pushed config yet. ARM waits for it.">UPDATING</OutlineTag></span>}
     {noPhone && <OutlineTag color={T.micro} border={T.line}>NO PHONE</OutlineTag>}
     {reach && <OutlineTag color={reach === 'backhaul' ? T.acc : T.micro} border={reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(reach)}>{reachLabel(reach)}</OutlineTag>}
   </>;

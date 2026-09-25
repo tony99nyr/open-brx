@@ -19,7 +19,7 @@ import * as E from '../src/transport/envelope.js';
 import { memoryStorage } from '../src/transport/ring.js';
 import { Transport, holdsTrustKey } from '../src/transport/transport.js';
 import { sha256, hmacSha256, b64url, b64urlDecode, mcProof, proofMatches, ctEqual, newChallenge } from '../src/transport/mcproof.js';
-import { McAutoJoin, offerText, VERIFY_COOLDOWN_MS } from '../src/transport/autojoin.js';
+import { McAutoJoin, offerText, VERIFY_COOLDOWN_MS, namedDialPending } from '../src/transport/autojoin.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VECTOR = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'mc-proof-vector.json'), 'utf8'));
@@ -134,7 +134,7 @@ test('A60 transport: a verify dial with the right proof binds, applies config, a
   f.sockets[0].open();
   const hello = helloOf(f.sockets[0]);
   assert.ok(hello.mc_challenge && hello.mc_challenge.length >= 22);
-  for (const k of ['node_key', 'secret', 'prior_utility', 'mc_enroll']) assert.ok(!(k in hello), `hello carried ${k}`);
+  for (const k of ['node_key', 'secret', 'prior_utility', 'mc_enroll', 'mc_enroll_nonce']) assert.ok(!(k in hello), `hello carried ${k}`);
   mc.restart();   // MC restarted and moved: new session_id, same install secret
   f.sockets[0].recv(mc.welcome(hello, { enrol: false, node: NODE }));
   assert.equal(t.state, 'bound');
@@ -320,7 +320,8 @@ test('A60 polish #3: a dial the player named is never overridden inside its welc
   const d = aj.onFound('ws://192.168.1.77:8766/ws', 'mdns', { bound: false, dialling: 'ws://192.168.9.9:8766/ws', verifying: false, hasTrustKey: true, userDialPending: true });
   assert.deepEqual(d, { do: 'ignore' });
   const src = readFileSync(APP_JS, 'utf8');
-  assert.match(src, /userDial = join\.user === true \? \{ t: candidate, until: Date\.now\(\) \+ candidate\.welcomeTimeoutMs \} : null;/);
+  assert.match(src, /userDial = join\.user === true \? \{ t: candidate \} : null;/);
+  assert.match(src, /function userDialPending\(\) \{ return namedDialPending\(userDial, transport\); \}/, 'F346 (c): the window is the transport deadline');
   assert.match(src, /userDialPending: userDialPending\(\)/);
   for (const caller of ["connectMc(j.url, true, { pub: j.pub, secret: j.secret, user: true })", "connectMc(v, true, { user: true })",
                         "connectMc(join.url, true, { pub: join.pub, secret: join.secret, user: true })", "connectMc(d.url, false, { trusted: false, user: true })"]) {
@@ -422,4 +423,59 @@ test('A60 final #4: expired cool-downs are pruned on every decision', () => {
   now += VERIFY_COOLDOWN_MS + 1;
   aj.onFound('ws://10.9.9.9:8766/ws', 'mdns', { bound: true, dialling: null, verifying: false, hasTrustKey: true });
   assert.equal(aj.cooldown.size, 0, 'even a decision that ignores the hit prunes');
+});
+
+test('F346 (c): a named dial stays protected through a 4003 reclaim wait, until the armed deadline', async ctx => {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: url => { const w = new FakeWS(url); sockets.push(w); return w; },
+    gun: { name: 'Tactix-XXXX', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 }, reclaimRetryMs: 40, welcomeTimeoutMs: 30 });
+  ctx.after(() => t.close());
+  const dial = { t };
+  assert.equal(namedDialPending(dial, t), false, 'no connect() yet, no window');
+  t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false }).catch(() => {});
+  assert.equal(namedDialPending(dial, t), true);
+  sockets[0].open(); sockets[0].close(4003, 'in use');       // the reclaim wait re-arms the deadline to 40 + 30
+  await advance(35);
+  assert.equal(namedDialPending(dial, t), true, 'past the 30 ms welcome timeout, still inside the reclaim wait');
+  await advance(34);
+  assert.equal(namedDialPending(dial, t), true, '1 ms before the armed deadline');
+  await advance(1);
+  assert.equal(namedDialPending(dial, t), false, 'the armed deadline passed');
+  assert.equal(namedDialPending({ t: {} }, t), false, 'another transport is not this dial');
+});
+
+test('F346 (a): an enrolling hello carries one persisted nonce until the trust key arrives, then a fresh one', ctx => {
+  const mc = new FakeMc();
+  const storage = memoryStorage();
+  const f = factory();
+  const dial = (url = 'ws://192.168.1.10:8766/ws') => {
+    const t = new Transport({ storage, wsFactory: f.wsFactory, heartbeatMs: 1e9 });
+    ctx.after(() => t.close());
+    t.connect({ url, trusted: false }).catch(() => {});
+    const ws = f.sockets[f.sockets.length - 1];
+    ws.open();
+    return { t, ws, hello: helloOf(ws) };
+  };
+  const a = dial();
+  assert.ok(a.hello.mc_enroll === true && /^[A-Za-z0-9_-]{22,}$/.test(a.hello.mc_enroll_nonce), JSON.stringify(a.hello));
+  a.t.close();                                           // the welcome was lost: no key arrived
+  const rogue = dial('ws://192.168.1.66:8766/ws');       // inside the window the player names another host
+  assert.ok(rogue.hello.mc_enroll_nonce && rogue.hello.mc_enroll_nonce !== a.hello.mc_enroll_nonce,
+    'another host never receives the real MC\'s nonce: it gets one of its own');
+  rogue.t.close();
+  const b = dial();
+  assert.equal(b.hello.mc_enroll_nonce, a.hello.mc_enroll_nonce, 'the SAME nonce, across a new Transport (persisted)');
+  b.ws.recv(mc.welcome(b.hello));
+  assert.ok(holdsTrustKey(storage));
+  b.t.close();
+  const c = dial();
+  assert.ok(c.hello.mc_enroll_nonce && c.hello.mc_enroll_nonce !== a.hello.mc_enroll_nonce, 'a key arrived: the next enrol mints a new nonce');
+  c.t.close();
+  const u = new Transport({ storage: memoryStorage(), wsFactory: f.wsFactory, heartbeatMs: 1e9, node: { node_type: 'utility' }, keyPrefix: 'brxu' });
+  ctx.after(() => u.close());
+  u.connect({ url: 'ws://192.168.1.10:8766/ws', trusted: false }).catch(() => {});
+  f.sockets[f.sockets.length - 1].open();
+  const uh = helloOf(f.sockets[f.sockets.length - 1]);
+  assert.ok(!('mc_enroll' in uh) && !('mc_enroll_nonce' in uh), 'a utility neither enrols nor sends a nonce');
 });

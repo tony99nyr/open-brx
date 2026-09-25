@@ -126,3 +126,17 @@ def test_control_a_real_hit_before_the_read_back_leaves_lower_pools_alone():
         await _adv(st, clock, 4.0)
         assert not any(f.startswith("$LIFE,") and f.endswith(",1,*") for f in _tx(st))
     asyncio.run(run())
+
+
+def test_review_m1_pool_wrong_clears_on_a_later_in_range_report_and_an_over_one_keeps_it():
+    """engine.js `_poolVerify` (review M1): an operator RESYNC GUN, or any later good read, clears POOLS WRONG."""
+    async def run():
+        st, tagger, clock = await _spawned(garble=True, ignore_repairs=True)
+        await _adv(st, clock, st.SPAWN_PROBE_S + (st.POOL_REPAIR_READ_S + 0.6) * (st.POOL_REPAIR_TRIES + 1))
+        assert (st.pool_stale() or {}).get("why") == "pool_wrong"
+        st._on_rx("$HP,4545,7070,0,*"); await settle(st)
+        assert (st.pool_stale() or {}).get("why") == "pool_wrong", "CONTROL: still over, the verdict stands"
+        st._on_rx("$HP,45,70,0,*"); await settle(st)
+        assert st.pool_wrong is None and st.pool_stale() is None
+        assert _has(st, "POOLS WRONG cleared")
+    asyncio.run(run())

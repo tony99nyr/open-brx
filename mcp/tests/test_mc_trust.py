@@ -137,6 +137,7 @@ def test_no_proof_for_a_malformed_challenge_or_a_utility():
 def test_a_full_registry_issues_no_new_keys():
     net = NetServer(trust=TrustRegistry(None, cap=1))
     assert "mc_trust" in _hello(net, node_id="node-n1", mc_enroll=True)
+    net.trust.confirm("node-n1")                        # the cap counts only ids that bound (F346 b)
     assert "mc_trust" not in _hello(net, node_id="node-n2", mc_enroll=True)
 
 
@@ -200,8 +201,12 @@ def test_the_enrolled_list_is_appended_not_rewritten():
         for n in ("node-cc", "node-aa", "node-bb"):
             assert reg.enroll(n)
         lst = root / mcid.ENROLLED_FILE
-        assert lst.read_text(encoding="utf-8") == "node-cc\nnode-aa\nnode-bb\n"
-        assert TrustRegistry(root).enrolled == {"node-cc", "node-aa", "node-bb"}
+        before = lst.read_text(encoding="utf-8")
+        assert [ln.split()[0] for ln in before.splitlines()] == ["node-cc", "node-aa", "node-bb"], before
+        reg.confirm("node-aa")
+        assert lst.read_text(encoding="utf-8") == before + "node-aa b\n", "a bind appends, it does not rewrite"
+        again = TrustRegistry(root)
+        assert again.enrolled == {"node-cc", "node-aa", "node-bb"} and again.bound == {"node-aa"}
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -279,5 +284,123 @@ def test_a_crash_between_creating_the_list_and_the_secret_is_a_clean_new_install
         reg = TrustRegistry(root)
         assert reg.closed_reason is None, reg.closed_reason
         assert reg.enroll("node-dd44"), "the next launch is a clean install that issues keys"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+# ---------------- F346 (a): the same key again, only to the hello that holds the enrol nonce ----------------
+
+class _DroppingWS(_FakeWS):
+    async def send(self, text):
+        raise ConnectionError("the socket dropped before the welcome went out")
+
+
+def _hello_drop(net: NetServer, **body) -> None:
+    b = {"node_id": "node-a", "node_type": "phone", "app_ver": "0.4.11+test", "seq_next": 1, **body}
+
+    async def go():
+        net._loop = asyncio.get_running_loop()
+        try:
+            await net._on_hello(_DroppingWS(), E.make_envelope("hello", b))
+        except ConnectionError:
+            pass
+    asyncio.run(go())
+
+
+def _stale(net: NetServer, nid: str = "node-a") -> None:
+    rec = net.nodes[nid]                                 # the phone redials once its old record is stale
+    rec.ws, rec.last_seen = None, rec.last_seen - 3600
+
+
+NONCE = b64url(bytes(range(16)))
+
+
+def test_a_dropped_enrolling_welcome_is_re_issued_to_the_hello_with_the_same_nonce():
+    net = NetServer()
+    _hello_drop(net, mc_enroll=True, mc_enroll_nonce=NONCE)   # MC recorded the issue; the phone never saw it
+    _stale(net)
+    assert "mc_trust" not in _hello(net, mc_enroll=True, mc_enroll_nonce=b64url(bytes(16))), "a wrong nonce gets nothing"
+    _stale(net)
+    w = _hello(net, mc_enroll=True, mc_enroll_nonce=NONCE)
+    assert w["mc_trust"]["key"] == net.trust.key_for("node-a")
+
+
+def test_a_sent_welcome_is_re_issued_to_the_matching_nonce_too():
+    """The send can reach the socket buffer and still never reach the phone, so `sent` is not `received`."""
+    net = NetServer()
+    w = _hello(net, mc_enroll=True, mc_enroll_nonce=NONCE)
+    assert "mc_trust" in w
+    w2 = _hello(net, mc_enroll=True, mc_enroll_nonce=NONCE, node_key=w["node_key"])
+    assert w2["mc_trust"]["key"] == w["mc_trust"]["key"]
+
+
+def test_with_no_nonce_the_key_is_issued_once_only():
+    net = NetServer()
+    w = _hello(net, mc_enroll=True)                                    # an older phone: no nonce
+    assert "mc_trust" in w
+    assert "mc_trust" not in _hello(net, mc_enroll=True, node_key=w["node_key"])
+    assert "mc_trust" not in _hello(net, mc_enroll=True, mc_enroll_nonce=NONCE, node_key=w["node_key"]), \
+        "a nonce MC never stored opens nothing"
+
+
+def test_the_nonce_re_issue_closes_after_the_window_and_at_a_bind_and_survives_an_mc_restart():
+    root = _tmp()
+    try:
+        wall = [1_000_000.0]
+        reg = TrustRegistry(root, wall=lambda: wall[0])
+        assert reg.enroll("node-r1", "a", NONCE)
+        assert NONCE not in (root / mcid.ENROLLED_FILE).read_text(encoding="utf-8"), "only the nonce's hash is stored"
+        wall[0] += 20
+        again = TrustRegistry(root, wall=lambda: wall[0])              # MC restarted in the gap
+        assert again.enroll("node-r1", "b", NONCE) == again.key_for("node-r1"), "any address, the same nonce"
+        wall[0] += 41
+        assert again.enroll("node-r1", "a", NONCE) is None, "outside the 60 s window"
+        assert again.enroll("node-r2", "a", NONCE)
+        again.confirm("node-r2")
+        assert again.enroll("node-r2", "a", NONCE) is None, "an id that bound never gets a re-issue"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+# ---------------- F346 (b): only ids that bind count toward the cap; a full pool never drops ----------------
+
+def test_a_flood_of_ids_that_never_bind_denies_enrolment_but_never_frees_an_issued_id():
+    wall = [5_000_000.0]
+    reg = TrustRegistry(None, cap=3, pool_cap=4, wall=lambda: wall[0])
+    real_key = reg.enroll("node-real1", "10.0.0.1")
+    assert real_key
+    for i in range(3):                                     # a LAN host sends fake ids
+        assert reg.enroll(f"node-fake{i}", "10.0.0.66")
+    assert reg.enroll("node-late", "10.0.0.2") is None, "a full pool refuses new ids"
+    wall[0] += 10 * 86400
+    assert reg.enroll("node-late", "10.0.0.2") is None, "time never frees a slot"
+    assert "node-real1" in reg.enrolled, "an issued id is never dropped"
+    assert reg.enroll("node-real1", "10.0.0.66") is None, "so the flooder can never collect the real phone's key"
+    # ids that bind move out of the pool and count toward the cap instead
+    for n in ("node-fake1", "node-fake2", "node-real1"):
+        reg.confirm(n)
+    assert reg.bound == {"node-fake1", "node-fake2", "node-real1"}
+    assert reg.enroll("node-more", "10.0.0.3") is None, "three bound = the cap of 3"
+
+
+def test_a_bind_with_a_gun_through_the_real_hello_confirms_the_enrolment():
+    net = NetServer()
+    net.hydrate(lambda body: {"player": {"player_id": "p1"}} if body.get("gun") else None)
+    _hello(net, node_id="node-g0", mc_enroll=True)
+    assert "node-g0" in net.trust.unbound, "no gun, no player: not confirmed"
+    _hello(net, node_id="node-g1", mc_enroll=True, gun={"name": "R0XX-AB12", "tail": "AB12"})
+    assert net.trust.bound == {"node-g1"}
+
+
+def test_the_pool_reads_back_across_a_restart():
+    root = _tmp()
+    try:
+        reg = TrustRegistry(root, pool_cap=2)
+        assert reg.enroll("node-k1", "a", NONCE) and reg.enroll("node-k2", "a")
+        reg.confirm("node-k2")
+        assert reg.enroll("node-k3", "a")
+        again = TrustRegistry(root, pool_cap=2)
+        assert again.bound == {"node-k2"} and list(again.unbound) == ["node-k1", "node-k3"], (again.bound, again.unbound)
+        assert again.enroll("node-k4", "a") is None, "the pool is full after the restart too"
     finally:
         shutil.rmtree(root, ignore_errors=True)

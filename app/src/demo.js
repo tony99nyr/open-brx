@@ -6,6 +6,7 @@ import { DEMO_WEAPONS, DEMO_PERKS } from './demo-catalog.js';   // a COPY of the
 import { GunPicker } from './gunpicker.js';   // F258: the stage drives the picker the phone drives
 import { NUS } from './brxlink.js';
 import { locationCheck } from './location.js';   // F340: the stage runs the phone's own Location check
+import { offerText } from './transport/autojoin.js';   // A60: the JOIN row's text, exactly as app.js `offerMc` builds it
 
 // ?demo            scripted match (kit → arm → live → down → redeploy…)
 // ?demo&kit        stops at KITTED so the LOADOUT browser can be explored (fake MC answers picks after ~300 ms)
@@ -123,6 +124,8 @@ export function startDemo({ engine, log }) {
 
   let hp = 45, armor = 70, mag = 32, reserve = 384;
   let shield = 0;   // A56: only an OVERSHIELD grant fills it on the demo gun (a `$LIFE` mode-2 set past the max); hits take it first
+  let psetPools = null;   // [hp, armour] of the last `$PSET` the demo gun took
+  let misread = false;   // F341 x HUD QA R2-02: the gun misread its `$PSET` (4545/7070) and never takes a repair
   let acc = 100;   // S53: the gun's live accuracy ($ALCD token 2). A smoke holds it at 0 for SMOKE_MS, like the bench gun
   const lcd = () => engine.feedFrame(`$LCD,${hp},${armor},0,0,${mag},${reserve},*`);
   // S54 (2026-09-23): one continuous trigger pull for the whole burst, not a press-shot-release per
@@ -160,7 +163,13 @@ export function startDemo({ engine, log }) {
           engine.feedFrame(`$ALCD,${live.ammo ?? mag},${acc},${engine.activeSlot || slot},${live.reserve ?? reserve},0,*`);
         }, 40);
       }
-      if (f.startsWith('$SPAWN,')) { acc = 100; shield = 0; }   // hardware clears every `$TMP` token on spawn, and the spawn shield is 0
+      // F341: a gun whose parser appended a re-sent `$PSET` to a partial one answers every pool read and every repair with
+      // the doubled pools, so the REAL engine walks its two repairs and reaches its own `pool_wrong` verdict
+      if (misread && (f === '$LIFE,0,0,0,*' || /^\$LIFE,\d+,\d+,\d+,1,\*$/.test(f))) { setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
+      // HUD QA R2-21: the demo gun arms the pools of the last `$PSET` it took (t3 hp, t4 armour), as a real gun does. It kept
+      // 45/70 under a 100/0 preset, so the overshield grant's echo read as a "+55 HEALTH" pickup: a stage artefact.
+      const ps = /^\$PSET,\d+,\d+,(\d+),(\d+),/.exec(f); if (ps) psetPools = [+ps[1], +ps[2]];
+      if (f.startsWith('$SPAWN,')) { acc = 100; shield = 0; if (psetPools && !misread) [hp, armor] = psetPools; }   // hardware clears every `$TMP` token on spawn, and the spawn shield is 0
       // A56: `$LIFE` mode 2 is an ABSOLUTE set with no clamp (the overshield grant); the gun answers `$HP` with the new pools
       const set = /^\$LIFE,(\d+),(\d+),(\d+),2,\*$/.exec(f);
       if (set) { [hp, armor, shield] = set.slice(1).map(Number); setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
@@ -404,6 +413,8 @@ export function startDemo({ engine, log }) {
       respawn: () => { if (engine.alive) return; engine._revive(false); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
       heal: (n = 15) => { hp = Math.min(engine.maxHp, hp + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       armorUp: (n = 30) => { armor = Math.min(engine.maxArmor, armor + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
+      discovered: (reason, url, source) => { const h = hud(); if (!h) return; h.setDiscovered({ url, at: Date.now(), source, reason, text: offerText(reason, url) }); h.render(engine.state()); },
+      poolsDoubled: () => { misread = true; hp = 4545; armor = 7070; engine.feedFrame(`$HP,${hp},${armor},0,*`); },   // F341: the field's `$HP,4545,7070,0`
       lowHp: () => { armor = 0; hp = 8; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       // S16: a Toxin Rifle hit (protocol 11) as the gun reports it, with the game's poison table on the bundle.
       poison: (shooter = 19) => { bundle.dot = DEMO_DOT; if (engine.frames && !engine.frames.dot) engine.frames.dot = DEMO_DOT; if (armor > 0) armor = Math.max(0, armor - 8); else hp = Math.max(0, hp - 8); engine.feedFrame(`$HIR,0,11,${shooter},${foe.tid},8,0,0,*`); engine.feedFrame(hp === 0 ? `$LCD,0,0,0,0,${mag},${reserve},*` : `$HP,${hp},${armor},0,*`); },
@@ -485,6 +496,8 @@ export function startDemo({ engine, log }) {
       // the Shields preset at 3-digit pools with a 175 overshield: the widest vitals row a powerup game can draw
       widePools: () => { config.health = { max_hp: 100, max_armor: 0, max_shield: 100 };
         bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, (_, head) => `${head}100,0,100,`) : f);
+        // HUD QA R2-21: the spawn burst's `$PSET` arms the same pools as the head, as compile ships them (it armed 45/70)
+        if (Array.isArray(bundle.pset_pool)) bundle.pset_pool = bundle.pset_pool.map(f => f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, (_, head) => `${head}100,0,100,`));
         config.stations = config.stations.map(x => x.id === 6 ? { ...x, item: { ...x.item, amount: 175 } } : x); },
       // The shield meter (2026-09-24): the Shields preset exactly as compile.HEALTH_PRESETS ships it (45 HP, 0 armour, 105
       // shield), so the engine's own S29 recharge runs. Everything below feeds frames the gun would send.
@@ -531,6 +544,10 @@ export function startDemo({ engine, log }) {
       'connected-headset-off': [[0, 'linkGun'], [50, () => ev.battery(82)], [400, () => ev.flapGun(2)]],   // the same, before MC binds
       'kitted-headset-joining':    [...kitted, [400, () => ev.headsetJoin('joining')]],      // F293: $VERSION reads ?, the phone waits
       'kitted-headset-not-joined': [...kitted, [400, () => ev.headsetJoin('not_joined')]],   // F293: 60 s of ?, waits for RECONNECT NOW
+      // A60 x HUD QA R2-06: the three JOIN rows, by the reason autojoin.js gives (app.js `offerMc` sets exactly this shape)
+      'connected-join-new':        [[0, 'linkGun'], [50, () => ev.battery(82)], [300, () => ev.discovered('new', 'ws://192.168.1.44:8766/ws', 'mdns')]],
+      'connected-join-unverified': [[0, 'linkGun'], [50, () => ev.battery(82)], [300, () => ev.discovered('unproven', 'ws://192.168.100.144:8766/ws', 'sweep')]],
+      'connected-join-several':    [[0, 'linkGun'], [50, () => ev.battery(82)], [300, () => ev.discovered('several', 'ws://192.168.1.44:8766/ws', 'sweep')]],
       'connected-linked':  [[0, 'linkGun'], [400, 'mcBound']],
       'setup':             [[0, () => { policy.kit_open = false; }], ...kit],
       'briefing':          kit,
@@ -567,6 +584,7 @@ export function startDemo({ engine, log }) {
       'aborted':           [...lobby, [900, () => ev.start(30)], [1600, 'abort']],
       'live':              live,
       'live-gun-no-answer': [...live, [2300, 'gunNoAnswer']],             // F288: phone-visible, actionable health verdict
+      'live-pool-wrong':   [...live, [2300, 'poolsDoubled']],             // F341 x HUD QA R2-02: two repairs do not hold, the engine says pool_wrong
       'live-gun-locked':   [...live, [2300, 'gunLocked']],               // F272: power-cycle takeover + real drop/relink recovery
       'live-fired':        [...live, [2300, () => ev.fire(7)]],
       'live-hit':          [...live, [2300, () => { ev.hit(); ev.hit(); ev.hit(); }]],

@@ -52,6 +52,13 @@ ENROLLED_CAP = 5000          # a hello flood cannot grow the file without bound;
 # whole field enrolling at once must fit: do not go lower than 30 a minute.
 ENROL_PER_PEER = 30
 ENROL_WINDOW_S = 60.0
+# F346 (b): enrolments that never bound a player with a gun live in a separate pool of POOL_CAP. A full
+# pool refuses NEW ids; an issued id is never dropped, because a dropped id could enrol again and collect
+# the same key. Only bound ids count toward ENROLLED_CAP.
+POOL_CAP = 5000
+# F346 (a): the same key goes again to a hello whose `mc_enroll_nonce` matches the first one, inside this window.
+REISSUE_WINDOW_S = 60
+COMPACT_SLACK = 256
 # The node_id the phone mints (`node-` + hex, transport.js `_persistedNodeId`); nothing else is enrolled.
 _NODE_ID = re.compile(r"^node-[A-Za-z0-9]{1,32}$")
 # 16..64 random bytes, base64url without padding (22..86 characters). Anything else earns no proof.
@@ -142,17 +149,40 @@ def read_install_secret(data_dir: Path) -> bytes | None:
 class TrustRegistry:
     """The install secret plus the node_ids that already received their trust key.
 
-    The enrolled list is one node_id per line, appended as keys are issued (no whole-file rewrite). It is
-    created, empty, together with the secret. A secret that exists with the list missing or unreadable
-    means the record of who already has a key is lost, so this run FAILS CLOSED: it issues no keys at
-    all, and says how to reset. Treating it as "nobody enrolled" would let anyone collect any key."""
+    The enrolled list is appended, one record per line (a whole-file rewrite happens only to compact it,
+    atomically). It is created, empty, together with the secret. A secret that exists with the list
+    missing or unreadable means the record of who already has a key is lost, so this run FAILS CLOSED:
+    it issues no keys at all, and says how to reset. Treating it as "nobody enrolled" would let anyone
+    collect any key.
+
+    Record lines (F346): `<id>` = BOUND (the id bound a player with a gun; a pre-F346 bare line reads the
+    same, which is the safe side); `<id> u <epoch> <nonce-hash|->` = issued, not yet bound; `<id> b` = it
+    bound. Anything unparsable after a valid id reads as BOUND, so a damaged line never re-opens an id.
+
+    * **Cap (F346 b).** Only BOUND ids count toward `cap` (5000). An id that never binds sits in a pool of
+      `pool_cap` (5000). A full pool refuses every NEW id (no key) and never drops an issued one: a dropped
+      id could enrol again and collect the same HMAC key. A flood of fake ids is therefore a denial of
+      enrolment (new phones tap JOIN) until MC's data is reset, never key theft.
+    * **Re-issue (F346 a).** The phone sends a random `mc_enroll_nonce` with `mc_enroll`, and keeps it until
+      a trust key arrives. MC stores the nonce's SHA-256 in the `u` record. A later hello for that id gets
+      the same key again only when its nonce matches, within `REISSUE_WINDOW_S` (60 s) of the first issue,
+      and only while the id has not bound. That covers a welcome that never went out, one lost in the
+      socket buffer, and an MC restart in the gap. No nonce, or a wrong one, gets nothing: an older phone
+      keeps the A60 once-only rule.
+    """
 
     def __init__(self, data_dir: Path | None = None, *, install_secret: bytes | None = None,
-                 cap: int = ENROLLED_CAP, now: Callable[[], float] = time.monotonic):
+                 cap: int = ENROLLED_CAP, pool_cap: int = POOL_CAP, now: Callable[[], float] = time.monotonic,
+                 wall: Callable[[], float] = time.time):
         self.data_dir = Path(data_dir) if data_dir is not None else None
         self.now = now
+        self.wall = wall
         self.cap = cap
-        self.enrolled: set[str] = set()
+        self.pool_cap = pool_cap
+        self.bound: set[str] = set()
+        # id -> [issued_epoch, nonce_sha256_hex or "-"]
+        self.unbound: dict[str, list] = {}
+        self._lines = 0
         self.closed_reason: str | None = None
         self._by_peer: dict[str, deque] = {}
         if install_secret is not None:
@@ -183,7 +213,56 @@ class TrustRegistry:
             except Exception as e:
                 self._fail_closed(f"could not repair the last line of {path} ({e})")
                 return
-        self.enrolled = {ln.strip() for ln in text.splitlines() if valid_node_id(ln.strip())}
+        for ln in text.splitlines():
+            self._replay(ln)
+        if self._lines > 2 * (len(self.bound) + len(self.unbound)) + COMPACT_SLACK:
+            self._compact()
+
+    @property
+    def enrolled(self) -> set[str]:
+        """Every id that holds a key MC will not issue again to another peer (bound or not)."""
+        return self.bound | set(self.unbound)
+
+    def _replay(self, line: str) -> None:
+        parts = line.split()
+        if not parts or not valid_node_id(parts[0]):
+            return
+        self._lines += 1
+        nid, rest = parts[0], parts[1:]
+        if rest and rest[0] == "u" and len(rest) == 3 and rest[1].isdigit() and nid not in self.bound:
+            self.unbound[nid] = [int(rest[1]), rest[2]]
+        else:                                      # a bare id, `b`, or anything unparsable: BOUND
+            self.unbound.pop(nid, None)
+            self.bound.add(nid)
+
+    def _append(self, line: str) -> bool:
+        if self.data_dir is None:
+            return True
+        try:
+            with open(self.data_dir / ENROLLED_FILE, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+        except Exception as e:
+            log.warning("could not append to %s (%s)", ENROLLED_FILE, e)
+            return False
+        self._lines += 1
+        if self._lines > 4 * (len(self.bound) + len(self.unbound)) + COMPACT_SLACK:
+            self._compact()
+        return True
+
+    def _compact(self) -> None:
+        """Rewrite the list as its live records only (atomic, mode 600). A failure keeps the long file."""
+        if self.data_dir is None:
+            return
+        out = [*sorted(self.bound)]
+        for nid, (t, nonce_h) in self.unbound.items():
+            out.append(f"{nid} u {t} {nonce_h}")
+        try:
+            _write_private(self.data_dir / ENROLLED_FILE, ("".join(x + "\n" for x in out)).encode("utf-8"))
+            self._lines = len(out)
+        except Exception as e:
+            log.warning("could not compact %s (%s); it stays as it is", ENROLLED_FILE, e)
 
     def _fail_closed(self, why: str) -> None:
         self.cap = 0
@@ -209,30 +288,51 @@ class TrustRegistry:
         q.append(t)
         return True
 
-    def enroll(self, node_id: str, peer: str | None = None) -> str | None:
+    @staticmethod
+    def _nonce_hash(nonce: object) -> str | None:
+        """SHA-256 hex of a well-formed enrol nonce (the challenge shape); None for anything else."""
+        return hashlib.sha256(str(nonce).encode("ascii")).hexdigest() if valid_challenge(nonce) else None
+
+    def enroll(self, node_id: str, peer: str | None = None, nonce: object = None) -> str | None:
         """The key for a node_id that has never had one, recorded as issued; None otherwise.
-        `peer` = the socket's address: at most ENROL_PER_PEER issues per ENROL_WINDOW_S from one address."""
-        if not valid_node_id(node_id) or node_id in self.enrolled:
+        `peer` = the socket's address: at most ENROL_PER_PEER issues per ENROL_WINDOW_S from one address.
+        `nonce` = the hello's `mc_enroll_nonce`; a matching one inside the window gets the key again (F346 a)."""
+        if not valid_node_id(node_id) or self.closed_reason:
             return None
-        if len(self.enrolled) >= self.cap:
-            if not self.closed_reason:
-                log.warning("trust registry full (%d), so node %s gets no trust key", self.cap, node_id)
+        if node_id in self.bound:
+            return None
+        nonce_h = self._nonce_hash(nonce)
+        if node_id in self.unbound:
+            t, first_h = self.unbound[node_id]
+            if (nonce_h is None or first_h == "-" or not hmac.compare_digest(nonce_h, first_h)
+                    or not 0 <= self.wall() - t <= REISSUE_WINDOW_S or not self._rate_ok(peer)):
+                return None
+            log.info("node %s: re-issued its trust key to the hello that holds the enrol nonce", node_id)
+            return self.key_for(node_id)
+        if len(self.bound) >= self.cap:
+            log.warning("trust registry full (%d bound), so node %s gets no trust key", self.cap, node_id)
+            return None
+        if len(self.unbound) >= self.pool_cap:
+            log.warning("trust pool full (%d ids that never bound), so node %s gets no trust key", self.pool_cap, node_id)
             return None
         if not self._rate_ok(peer):
             log.warning("trust key rate limit (%d per %ds) hit for peer %s; node %s gets none",
                         ENROL_PER_PEER, ENROL_WINDOW_S, peer, node_id)
             return None
-        if self.data_dir is not None:
-            try:
-                with open(self.data_dir / ENROLLED_FILE, "a", encoding="utf-8") as f:
-                    f.write(node_id + "\n")
-                    f.flush()
-                    os.fsync(f.fileno())
-            except Exception as e:
-                log.warning("could not append to %s (%s), so node %s gets no trust key", ENROLLED_FILE, e, node_id)
-                return None
-        self.enrolled.add(node_id)
+        t = int(self.wall())
+        if not self._append(f"{node_id} u {t} {nonce_h or '-'}"):
+            log.warning("node %s gets no trust key (the enrolled list could not be written)", node_id)
+            return None
+        self.unbound[node_id] = [t, nonce_h or "-"]
         return self.key_for(node_id)
+
+    def confirm(self, node_id: str) -> None:
+        """The id bound a player with a gun: it now counts toward the cap, not the pool (F346 b)."""
+        if node_id not in self.unbound or self.closed_reason:
+            return
+        if self._append(f"{node_id} b"):
+            del self.unbound[node_id]
+            self.bound.add(node_id)
 
     def secret_values(self, node_ids) -> list[str]:
         """What the bug-report guard must never find: the secret and every trust key it can name."""
