@@ -39,13 +39,19 @@ felt too harsh; R7 has its own 55% bar, R3 and R6 hold 65%.
 - **Next desk task:** none open.
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space.
 ## Lane: BLE reliability (brx2)
-2026-09-24: Blocks 0, 1, 1.4 (all five steps), 3.1-3.3, 4.3 and 7.11 ran; the log has each result. **F297**: laptop
-control 10/10, median 1.37 s. **F293** is open for a new flap under load, not the fixed relink-before-join shape.
-The gun audio simulator and its scenarios are built ([`audio-queue-scenarios.md`](audio-queue-scenarios.md)).
-- **Next bench task:** Block 10's gun audio-queue steps (F347) in sitting A of
-  [`bench-2026-09-25.md`](bench-2026-09-25.md); Block 1 step 1.5 (F293's new flap) is LATER there.
+2026-09-24 bench: Blocks 0, 1, 1.4 (all five steps), 3.1-3.3, 4.3 and 7.11 ran; the log has each result.
+**F297**: laptop control 10/10, median 1.37 s. **F293** stays open for a new flap under load, not the fixed
+relink-before-join shape (Block 1 step 1.5 is its A/B/A). 2026-09-25 overnight (desk, no bench): the gun-audio
+FIFO simulator and its scenario suite are built and pushed for F347 (`acd610ec`, `a1df789c`,
+[`audio-queue-scenarios.md`](audio-queue-scenarios.md)); the utility-screen drawer rebuild (rounds 1-3,
+`982abe49..c665755c`) fixed Tony's 7 notes plus a VQA pass (2C/5H/16M), gated at 23 states × 2 orientations.
+[`bench-2026-09-25.md`](bench-2026-09-25.md) is written and folds in brx4's overnight Stick proofs, with a new
+Block 10 for the gun-audio steps (F347).
+- **Next bench task:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); Block 10
+  step 4 settles F347's `$PSET` t23 value, do not ship a t23 change before it.
 - **Next desk task:** none open.
 - **Blocked:** F270 on A8.
+- **Open decision for Tony:** F358, may a phone drawer override an MC-armed station's radius/strength?
 ## Lane: F341 transport and pool repair
 F341 is fixed on the desk: brxlink sends `$*` before the next frame after a chunk error or a drop, and the node repairs
 a pool above the armed `$PSET` or shows GUN POOLS WRONG. F342's respawn-only games scan only while down.

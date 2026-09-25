@@ -68,8 +68,9 @@ export async function ports() {
 }
 
 /** Start a demo MC. `sessionFile` makes it persist to (and resume from) that file, which is what a
- *  restart test needs; without one it is `--ephemeral`. Returns `{ base, proc, stop, log }`. */
-export async function startMC({ port, wsPort, home, sessionFile }) {
+ *  restart test needs; without one it is `--ephemeral`. `fakeNet: false` gives it a REAL node socket, for a
+ *  suite that drives phone or station stand-ins over the wire (`out.wsUrl`). Returns `{ base, proc, stop, log, wsUrl }`. */
+export async function startMC({ port, wsPort, home, sessionFile, fakeNet = true, extraArgs = [] }) {
   const base = `http://127.0.0.1:${port}`;
   try {
     const r = await fetch(`${base}/api/state`, { signal: AbortSignal.timeout(1200) });
@@ -77,14 +78,23 @@ export async function startMC({ port, wsPort, home, sessionFile }) {
   } catch (e) { if (/ALREADY SERVES/.test(String(e))) throw e; }
   fs.mkdirSync(home, { recursive: true });
   const args = ['-m', 'brx_mcp.mc', '--host', '127.0.0.1', '--port', String(port), '--ws-port', String(wsPort),
-    '--demo', '--fake-net', '--no-auth', ...(sessionFile ? ['--session-file', sessionFile] : ['--ephemeral'])];
+    '--demo', ...(fakeNet ? ['--fake-net'] : []), '--no-auth', ...(sessionFile ? ['--session-file', sessionFile] : ['--ephemeral']), ...extraArgs];
   const proc = spawn(devPython(), args, { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true,
     env: { ...process.env, BRX_MCP_HOME: home } });
   const out = { base, proc, log: '' };
   proc.stdout.on('data', d => { out.log += d; }); proc.stderr.on('data', d => { out.log += d; });
   out.stop = () => killGroup(proc);
   for (let i = 0; i < 300; i++) {
-    try { const r = await fetch(`${base}/api/state`); if (r.ok) { console.log(`  mc: ${base} (pid ${proc.pid})`); return out; } } catch { /* not yet */ }
+    try {
+      const r = await fetch(`${base}/api/state`);
+      if (r.ok) {
+        // a real node socket: prove the process answering is OURS, it advertises this run's ws port
+        const ws = fakeNet ? null : String((await r.json())?.lan?.ws_url || '');
+        if (ws !== null && !ws.includes(`:${wsPort}/`)) { await killGroup(proc); throw new Error(`:${port} is not the MC this run launched (${ws})`); }
+        out.wsUrl = ws;
+        console.log(`  mc: ${base} (pid ${proc.pid})`); return out;
+      }
+    } catch (e) { if (/not the MC this run/.test(String(e))) throw e; /* not yet */ }
     if (proc.exitCode != null) throw new Error(`MC DIED:\n${out.log}`);
     await sleep(100);
   }

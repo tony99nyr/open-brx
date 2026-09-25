@@ -76,6 +76,17 @@ function Acc({ r }: { r: { accuracy: number | null; acc_provisional?: boolean } 
   );
 }
 
+/** M6 (visual QA 2026-09-24): a row whose gun needs the operator now. `pools` = the phone says the gun's
+ *  health/armour pools are wrong (F341; FORCE RESPAWN is the cure); `locked` = the gun stopped answering. */
+export function rowFault(r: LiveRow, ctx: { offline?: boolean; endUnconfirmed?: boolean } = {}): 'pools' | 'locked' | null {
+  // polish r1: the SAME predicate the row renders POOLS WRONG / GUN LOCKED with, so a row never sorts
+  // first with no visible reason. Offline, unconfirmed, never heard or stale: the claim is not current.
+  if (ctx.offline || ctx.endUnconfirmed || r.status === 'stale' || neverHeard(r) || r.sync_age_ms > STALE_AFTER_MS) return null;
+  if (r.pool_stale === 'pool_wrong') return 'pools';
+  return gunLockedLabel(r.gun_locked) ? 'locked' : null;
+}
+export const POOLS_WRONG = 'POOLS WRONG';
+
 /** M7: why END and RECALL are off while MC is offline. */
 const OFFLINE_WHY = 'END and RECALL need MC, and MC is offline. They come back when it reconnects.';
 
@@ -125,7 +136,11 @@ export function Live() {
   const remaining = Math.max(0, lv.ends_t - serverNow()) / 1000;
   const teamIds = state.config.mode === 'ffa' ? [] : state.config.teams.map(t => t.team_id);
   const ranked = [...lv.rows].sort((a, b) => b.kills - a.kills);
-  const { rows, held } = holdOrder(ranked, order.current, menuFor != null || pointerOn);
+  // M6 (visual QA 2026-09-24): the rows the operator has to act on come first; the kill ranking inside each.
+  // `ranked` itself stays the kill ranking: the FFA LEADER reads it.
+  const faultOf = (r: LiveRow) => !!rowFault(r, { offline: !connected, endUnconfirmed: (state.end_delivery?.unconfirmed ?? []).some(u => u.player_id === r.player_id) });
+  const board = [...ranked].sort((a, b) => Number(faultOf(b)) - Number(faultOf(a)));
+  const { rows, held } = holdOrder(board, order.current, menuFor != null || pointerOn);
   order.current = rows.map(r => r.player_id);
   const cap = isKillScored(state.config) ? state.config.scoring.frag_limit : null;
   // H2: an objective match is won on possession, not kills, so that is the headline number
@@ -191,8 +206,9 @@ export function Live() {
         )}
       </div>
       {objective && <HillPanel state={state} lv={lv} teamIds={teamIds} />}
-      <StationAlerts showUnlock />
-      <PowerupStrip />
+      {/* M7 (visual QA 2026-09-24): compact, so the board starts near the top at 1440×900 */}
+      <StationAlerts showUnlock compact />
+      <PowerupStrip compact />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '2 1 560px', minWidth: 0 }}>
           {offline && (
@@ -302,8 +318,10 @@ export function Live() {
                     borderTop: withheld ? `1px dashed ${T.line2}` : undefined,
                     borderBottom: withheld ? `1px dashed ${T.line2}` : undefined }}>
                   <span style={{ font: F.mono(500, 11), color: T.micro }}><Num value={fmtClock(ev.t_match_s)} /></span>
-                  <span style={{ flex: 1, font: F.chk(alert ? 700 : 600, 12), letterSpacing: '.04em', color: withheld ? T.dim : alert ? T.ink : T.body }}>{ev.text}</span>
-                  {ev.tag && ev.kind !== 'sync' && <Tag color={color} ink={withheld ? T.page : undefined} size={11} style={{ letterSpacing: '.14em', padding: '2px 7px' }}>{ev.tag}</Tag>}
+                  {/* M8 (visual QA 2026-09-24): a 24-character name is one unbreakable word, and it pushed the medal
+                      tag past the panel edge. The text may shrink and breaks anywhere; the tag keeps its size. */}
+                  <span data-feed-text="1" style={{ flex: '1 1 auto', minWidth: 0, overflowWrap: 'anywhere', font: F.chk(alert ? 700 : 600, 12), letterSpacing: '.04em', color: withheld ? T.dim : alert ? T.ink : T.body }}>{ev.text}</span>
+                  {ev.tag && ev.kind !== 'sync' && <Tag data-feed-medal="1" color={color} ink={withheld ? T.page : undefined} size={11} style={{ flex: 'none', letterSpacing: '.14em', padding: '2px 7px' }}>{ev.tag}</Tag>}
                 </div>
               );
             })}
@@ -410,12 +428,15 @@ function Row({ r, endUnconfirmed, open, onToggle, offline }: { r: LiveRow; endUn
   const cure = cureLabel(r.cure);                                    // F264: the node's own outcome; no_answer needs a human
   const locked = !syncWarn ? gunLockedLabel(r.gun_locked) : null;     // F272: never render a last-known verdict as current
   const shielded = possiblyProtectedLabel(r);                        // F289: the one flag that is FOR a stale row
+  const fault = rowFault(r, { offline, endUnconfirmed });
+  const poolsWrong = fault === 'pools';
   // longhand sides, not `border` + `borderLeft`: React warns when the shorthand changes on a rerender (A47 opens the row)
   const rim = `1px solid ${endUnconfirmed ? T.bad : open ? T.acc : T.row}`;
   return (
-    <div data-end-unconfirmed={endUnconfirmed ? r.player_id : undefined} data-live-row={r.player_id}
+    <div data-end-unconfirmed={endUnconfirmed ? r.player_id : undefined} data-live-row={r.player_id} data-row-fault={fault ?? undefined}
       onClick={onToggle}
-      style={{ cursor: 'pointer', display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '4px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, borderTop: rim, borderRight: rim, borderBottom: rim, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
+      style={{ cursor: 'pointer', display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '4px 14px',
+        background: poolsWrong ? 'rgba(255,176,32,.09)' : dead ? 'rgba(255,82,82,.05)' : T.panel, borderTop: rim, borderRight: rim, borderBottom: rim, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       <span style={{ font: F.chk(700, 14), letterSpacing: '.1em', minWidth: 0, overflow: 'hidden' }}>
         {/* A47 review: the row is a control, so it has to look like one. M5: 36 px tall at least, the
             console's tap floor (it was 18); the row's own padding went from 10 to 4 px so the board
@@ -459,8 +480,8 @@ function Row({ r, endUnconfirmed, open, onToggle, offline }: { r: LiveRow; endUn
         title={offline ? 'MC is offline: this is the last snapshot, not the current state'
           : endUnconfirmed ? 'This HUD has not confirmed the end — that tagger may still be in the match'
           : never ? 'MC has not heard from this phone since MC started' : undefined}
-        style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: offline ? T.micro : endUnconfirmed ? T.bad : stale ? T.warn : dead ? T.bad : T.ok, ...edge('status') }}>
-        {offline ? 'UNKNOWN' : endUnconfirmed ? 'END NOT CONFIRMED' : never ? 'NOT HEARD' : stale ? 'LAST KNOWN' : dead ? `RESPAWN ${fmtDuration(r.respawn_in_s ?? 0)}` : 'ALIVE'}</span>
+        style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: offline ? T.micro : endUnconfirmed ? T.bad : stale || poolsWrong ? T.warn : dead ? T.bad : T.ok, ...edge('status') }}>
+        {offline ? 'UNKNOWN' : endUnconfirmed ? 'END NOT CONFIRMED' : never ? 'NOT HEARD' : stale ? 'LAST KNOWN' : poolsWrong ? POOLS_WRONG : dead ? `RESPAWN ${fmtDuration(r.respawn_in_s ?? 0)}` : 'ALIVE'}</span>
       <span data-cell="sync" style={{ textAlign: 'right', font: F.mono(500, 11), letterSpacing: '.04em', color: offline ? T.micro : syncWarn ? T.warn : T.faint }}>
         {offline || never ? '—' : <>{fmtAge(r.sync_age_ms)}{stale ? ' AGO' : ''}</>}</span>
     </div>
