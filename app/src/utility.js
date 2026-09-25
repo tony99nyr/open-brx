@@ -213,12 +213,15 @@ function utilityStatusBody() {
   const edits = range.status();
   if (transport && transport.state === 'bound') range.markSent();
   // A67: `threshold` is the dBm applied (thr(): the platform default when the stored value is 0, never 0). No TX power
-  // control (iOS): the phone advertises at its one fixed level, reported as "high" (the full level; TX_HINT), and it
-  // makes no strength claim of its own.
-  if (!support.txPowerControl) { delete edits.tx_power_src; delete edits.tx_power_edit_age_ms; }
-  const txNow = support.txPowerControl ? (TX_TO_WIRE[settings.tx] || 'high') : 'high';
+  // control (iOS): NO strength at all, not a guessed value (brx3: MC's console hides STRENGTH until a station reports
+  // one, and its validator refuses anything outside the enum), and no tx_power entry in the edit list.
+  const txCtl = !!support.txPowerControl;
+  if (!txCtl) {
+    delete edits.tx_power_src; delete edits.tx_power_edit_age_ms;
+    if (edits.range_edits) { edits.range_edits = edits.range_edits.filter(e => e.field !== 'tx_power'); if (!edits.range_edits.length) delete edits.range_edits; }
+  }
   return { role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: thr(), live: advertising, revives, armed: !!settings.mcArmed,
-    tx_power: txNow, ...edits,
+    ...(txCtl ? { tx_power: TX_TO_WIRE[settings.tx] || 'high' } : {}), ...edits,
     app_ver: UTIL_VER, ...(lastBattery != null ? { battery: lastBattery } : {}),   // roadmap A3: the heartbeat, not just the hello, so MC's ITEMS panel stays current without a reconnect
     // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
     // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
@@ -687,7 +690,7 @@ function closeRangeEdit(why) {
 /** "MC", "SET HERE", or "SET HERE · WILL SYNC" while no heartbeat has carried the edit to MC yet. */
 function rangeSrcLabel(field) {
   const src = range.src(field);
-  if (field === 'tx_power' && !support.txPowerControl) return 'FIXED ON THIS PHONE';
+  if (field === 'tx_power' && !support.txPowerControl) return "THIS PHONE CAN'T SET IT";
   if (src === 'mc') return 'MC';
   if (src === 'station') return range.pending(field) ? 'SET HERE · WILL SYNC' : 'SET HERE';
   // nobody has set it yet: the station's own default (0 = the platform radius, HIGH strength), else a pre-A67 value
@@ -696,6 +699,7 @@ function rangeSrcLabel(field) {
 /** One on-station change of radius (`threshold`, a stored value; 0 = the default) or strength (`tx_power`, a settings.tx
  *  name). It applies at once (restartIfLive re-keys the advert: byte 14, and the TX power) and is logged for MC. */
 function stationEdit(field, next) {
+  if (field === 'tx_power' && !support.txPowerControl) return;   // a phone that cannot set its power records no strength edit
   const view = () => (field === 'threshold' ? thr() : (TX_TO_WIRE[settings.tx] || 'high'));
   const before = view();
   if (field === 'threshold') settings.threshold = next; else settings.tx = next;
