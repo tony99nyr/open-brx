@@ -790,3 +790,4 @@ closed in the same pass, each checked against the code, the git log or the exper
   `engine.test.mjs`; `docs/spec/node.md` updated.
 - 2026-09-25 **F161** already fixed by the F258 picker rewrite (2026-09-18): a gun that appears while the list is open
   gets its row at the next paint. `app/test/gunpicker-live.test.mjs` guards it on the real `_idle()` markup.
+- 2026-09-25 **F319** built (`3ba7fb23`, `d79a268e`, polish `d1a6763f`, `cb16c008`): the infected alert reaches survivors only; the extraction alert is silent; the event feed survives an MC restart; MC setup says what each hill source announces; the recap carries `played_s` and `lan.public.was_up` latches. (c) and (f) needed no build.

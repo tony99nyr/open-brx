@@ -40,11 +40,10 @@ already fixed by F258, now guarded by a test; F342 has no phone desk work left a
 - **Next desk task:** none open. R4/T5 read-only research is authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
-APKs 0.4.7-0.4.11 published, each on green CI. The MC halves of A60-A67 are on main, each polish-looped and
-`test:all --ui` green.
-- **Next:** cut 0.4.12 once sitting A passes A4 and F347 (and brx5's t23 fix lands).
-- **Desk (MVP):** Q13 (check compile keeps team damage off everywhere; label it TEAM DAMAGE: OFF), B21 (the WebView
-  debugging toggle, default on; release-sign stays at each cut), F319 (d) and (e), S32 (the KOTH art), the MC half of F372.
+APKs 0.4.7-0.4.11 published, each on green CI. 2026-09-25: F319 built and closed; Q13's desk half built (one
+team-damage rule, `compile.team_damage_on`, which also fixed solo LMS: no hit could register); S32's fallback shipped.
+- **Next:** cut 0.4.12 once sitting A passes A4 and F347 (and brx5's t23 fix lands). Its notes add the infection, extraction and feed fixes, and TEAM DAMAGE: OFF.
+- **Desk (MVP):** F377 (solo LMS picks no winner), the MC half of F372 after sitting C. S32 waits on Tony's two renders.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). On main: F365 on the Stick (`e9e81efc`), the
