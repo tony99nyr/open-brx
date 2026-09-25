@@ -527,6 +527,7 @@ def is_station_kind(value: object) -> TypeGuard[StationKind]:
 # sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP (which clamps 0 to -30 dBm).
 PHONE_RESPAWN_THRESHOLD_DBM = -70
 PHONE_STATION_THRESHOLD_DBM = -74
+PHONE_POWERUP_THRESHOLD_DBM = -55   # S58: a powerup station's ~1 ft claim range (placeholder until bench 4.11)
 PHONE_THRESHOLD_ZERO_APP = (0, 4, 12)
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 

@@ -30,7 +30,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
+from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
                     STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
@@ -3135,7 +3135,9 @@ class Session:
         v = parse_app_ver(st.get("app_ver"))
         if v is not None and v >= PHONE_THRESHOLD_ZERO_APP:
             return 0
-        return PHONE_RESPAWN_THRESHOLD_DBM if a["kind"] == "respawn" else PHONE_STATION_THRESHOLD_DBM
+        if a["kind"] == "respawn":
+            return PHONE_RESPAWN_THRESHOLD_DBM
+        return PHONE_POWERUP_THRESHOLD_DBM if a["kind"] == "powerup" else PHONE_STATION_THRESHOLD_DBM
 
     def _arm_station(self, nid: str, relock: bool = False) -> bool:
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged

@@ -92,6 +92,8 @@ export const SPAWN_KILL_WINDOW_MS = 10000;
  *  sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP (which clamps 0 to -30 dBm). */
 export const PHONE_RESPAWN_THRESHOLD_DBM = -70;
 export const PHONE_STATION_THRESHOLD_DBM = -74;
+/** S58: a powerup station's ~1 ft claim range (placeholder until bench 4.11) */
+export const PHONE_POWERUP_THRESHOLD_DBM = -55;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
 /** net.md §8 size cap */
