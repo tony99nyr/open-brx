@@ -490,9 +490,13 @@ export function startDemo({ engine, log }) {
       if (pr) pr.stations = () => list;   // the app feeds engine.setStations(presence.stations()) every 250 ms
       engine.setStations(list); };
     Object.assign(ev, {
-      // `firstOvershield`: the overshield's first spawn in seconds after go-live (the spawn-card stage uses 1)
-      powerups: (firstOvershield = 60) => { config.stations = [{ id: 4, kind: 'powerup', item: PU.rockets }, { id: 5, kind: 'powerup', item: PU.rail },
-        { id: 6, kind: 'powerup', item: { ...PU.overshield, first_at_s: firstOvershield } }];
+      // `firstOvershield`: the overshield's first spawn in seconds after go-live (the spawn-card stage uses 1). F374: a
+      // phone claims only after its own first spawn, and the stages stand at a station 2 s after go-live, so each item
+      // spawned half an interval BEFORE go-live (stage only; MC sends 0-255): it is there to take, and that spawn is
+      // older than PU_ANNOUNCE_LATE_MS, so no AVAILABLE card joins the other stages.
+      powerups: (firstOvershield = null) => { const past = it => ({ ...it, first_at_s: -it.spawn_every_s / 2 });
+        config.stations = [{ id: 4, kind: 'powerup', item: past(PU.rockets) }, { id: 5, kind: 'powerup', item: past(PU.rail) },
+        { id: 6, kind: 'powerup', item: firstOvershield == null ? past(PU.overshield) : { ...PU.overshield, first_at_s: firstOvershield } }];
         config.powerups = [{ weapon_id: 'rocket_launcher', slot: 2 }, { weapon_id: 'rail_gun', slot: 3 }];
         // compile arms each pickup in its spare slot with its head `$WEAP` (the grant re-sends it verbatim to put the heavy
         // on the trigger) and empties it at every spawn and revive. The rows are `WeaponCatalog.resolve()` output, 2026-09-24.
