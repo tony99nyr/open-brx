@@ -5818,9 +5818,14 @@ export class Engine {
   _poolVerify(hp, armor, shield, solicited) {
     if (this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial || !(hp > 0)) return;
     const life = this._lifeSeq || 0, now = this.now();
-    if (this.poolWrong && this.poolWrong.life === life) return;   // the verdict stands: the operator's FORCE RESPAWN, not a loop
     const c = this._poolCeilings();
     const over = this._poolsOver(hp, armor, shield, c);
+    // review M1: a report back in range (an operator RESYNC GUN, a later good read) clears POOLS WRONG; an over one keeps it
+    if (this.poolWrong && this.poolWrong.life === life) {
+      if (over) return;   // the verdict stands: the operator's FORCE RESPAWN, not a loop
+      this.log(`gun pools back in range (${hp}/${armor}/${shield}): POOLS WRONG cleared (F341)`, 'lk');
+      this.poolWrong = null; this._changed();
+    }
     if (solicited && this._poolCheck && this._poolCheck.life === life) {
       this._poolCheck = null;
       const hit = !!(this.latch && this._spawnAt && this.latch.at >= this._spawnAt);

@@ -225,3 +225,16 @@ test('HUD QA R2-02: a rise ABOVE the armed ceiling is never a gain moment and ne
   assert.equal(h.eng.moment && h.eng.moment.kind, 'gain');
   assert.deepEqual(said, ['armour_up']);
 });
+
+test('review M1: POOLS WRONG clears on a later in-range report (a RESYNC GUN or a repaired gun); CONTROL: an over report keeps it', () => {
+  const h = harness({ garble: true });
+  h.gun.ignoreRepairs = true;
+  h.adv(2600 + (POOL_REPAIR_READ_MS + 600) * (POOL_REPAIR_TRIES + 1));
+  assert.equal(h.eng.poolStale() && h.eng.poolStale().why, 'pool_wrong');
+  h.f('$HP,4545,7070,0,*');
+  assert.equal(h.eng.poolStale() && h.eng.poolStale().why, 'pool_wrong', 'CONTROL: still over, the verdict stands');
+  h.gun.hp = 45; h.gun.armor = 70; h.gun.max = { hp: 45, armor: 70, shield: 0 };
+  h.f('$HP,45,70,0,*');               // the operator's RESYNC GUN (or anything) put the pools back in range
+  assert.equal(h.eng.poolWrong, null);
+  assert.equal(h.eng.poolStale(), null, 'POOLS WRONG must clear once the gun reads in range');
+});

@@ -1904,10 +1904,14 @@ class GunStage:
         if not self.spawned or not self.alive or not hp > 0:
             return
         life, now = self._life, self.now()
-        if self.pool_wrong is not None and self.pool_wrong["life"] == life:
-            return
         c = self._pool_ceilings()
         over = self._pools_over(hp, armor, shield, c)
+        # review M1 (engine.js `_poolVerify`): a report back in range clears the verdict; an over one keeps it
+        if self.pool_wrong is not None and self.pool_wrong["life"] == life:
+            if over:
+                return
+            self._log(f"gun pools back in range ({hp}/{armor}/{shield}): POOLS WRONG cleared (F341)", "info")
+            self.pool_wrong = None
         if solicited and self._pool_check is not None and self._pool_check["life"] == life:
             self._pool_check = None
             hit = self._last_hir_at is not None and self._spawn_at is not None and self._last_hir_at >= self._spawn_at
