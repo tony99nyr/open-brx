@@ -55,20 +55,19 @@ function harness({ num = 7, mode = 'tdm', shieldMax = null } = {}) {
 
 // ---------- the field bug ----------
 
-test('announcer: a kill confirm and a lead change on the same tick play kill first, then the lead, never together', () => {
+test('announcer: a kill confirm and a lead change on the same tick: kill first, then the lead banner, never together; the lead is voice-silent in the streak', () => {
+  // Tony 2026-09-24: "i think that is right. they go silent when kill streaks are showing."
   const h = harness().live();
   h.kill(); const cardAt = h.eng.moment.at;
   h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD');             // MC's own order: the kill's feedback, then its lead alert
   h.adv(200);                                                     // past the 120 ms flash-then-line gap
   assert.equal(h.plays(KILL).length, 1, 'the kill confirm plays at once');
-  assert.equal(h.plays(LEAD).length, 0, 'the lead change waits: it must not play on top of the kill line');
   assert.equal(h.eng.moment.kind, 'kill', 'the kill card owns the screen; the lead banner is not up yet');
-  h.adv(4000);
-  assert.equal(h.plays(LEAD).length, 1, 'then the lead change plays');
-  const killAt = h.plays(KILL)[0].t, leadAt = h.plays(LEAD)[0].t;
-  assert.ok(leadAt - killAt >= CLIP_MS[KILL], `the lead line starts after the kill line has finished (${leadAt - killAt} ms apart)`);
-  assert.ok(leadAt - cardAt >= 1800, `and after the kill card has had its 1.8 s hold, so the two banners never share the screen (${leadAt - cardAt} ms)`);
-  assert.equal(h.eng.moment.kind, 'alert', 'the lead banner went up with its line');
+  let leadCardAt = null;
+  for (let i = 0; i < 80; i++) { h.adv(50); const c = h.eng.state().card; if (leadCardAt == null && c && c.kind === 'alert' && c.data.kind === 'lead_taken') leadCardAt = h.now(); }
+  assert.equal(h.plays(LEAD).length, 0, 'the lead line is dropped, not held for later');
+  assert.ok(leadCardAt != null && leadCardAt - cardAt >= 1800, `the lead banner still shows, after the kill card's 1.8 s hold (${leadCardAt && leadCardAt - cardAt} ms)`);
+  assert.ok(h.logs.some(l => /lead_taken silent: kill streak on air/.test(l)), 'and the log says why');
 });
 
 test('announcer: a higher-priority item jumps the queue whatever order it arrived in', () => {
@@ -94,29 +93,51 @@ test('announcer: a line still playing is never cut, and no $PLAYX is written for
 
 // ---------- expiry and dedupe ----------
 
-test('announcer: a lead change is must-hear: behind 6 s of medal lines it waits and plays, it never expires (gap B1)', () => {
+test('announcer: a lead change with no kill streak waits behind an ordinary line and plays; the newest state wins (gap B1)', () => {
   const h = harness().live();
-  const medals = ['killtacular', 'killing_spree', 'double_kill'];
-  h.kill({ medals });   // ~6 s of medal lines on air (no IR word: this item is the kill confirm)
-  h.alert('lead_taken');
+  h.alert('next_kill_wins');                                       // an ordinary line on air (V115, 2.9 s)
+  h.adv(200); h.alert('lead_taken'); h.adv(200); h.alert('lead_lost');
   h.adv(9000);
   assert.equal(ANNOUNCE_TTL_MS.lead_taken, Infinity);
-  assert.equal(h.plays(LEAD).length, 1, 'the lead change waited out the kill and played');
-  const lastId = golden.cues[medals[2]].split(',')[4], last = h.plays(lastId)[0];
-  assert.ok(h.plays(LEAD)[0].t >= last.t + CLIP_MS[lastId], 'after the last medal line ended');
+  assert.equal(h.plays(LEAD).length, 0, 'the older state is replaced while it waits');
+  assert.equal(h.plays(LEAD_LOST).length, 1, 'the newest lead state plays');
+  assert.ok(h.plays(LEAD_LOST)[0].t >= h.plays('V115')[0].t + CLIP_MS.V115, 'after the ordinary line ended');
 });
 
-test('announcer: IR said my kill, then MC\'s medals and the lead change: the lead change plays before the medal lines', () => {
+test('announcer: a lead change behind 6 s of medal lines is voice-silent (Tony), and its banner shows after them', () => {
+  const h = harness().live();
+  const medals = ['killtacular', 'killing_spree', 'double_kill'];
+  h.kill({ medals }); h.alert('lead_taken');
+  let shown = false;
+  for (let i = 0; i < 180; i++) { h.adv(50); const c = h.eng.state().card; if (c && c.kind === 'alert' && c.data.kind === 'lead_taken') shown = true; }
+  assert.equal(h.plays(LEAD).length, 0);
+  assert.ok(shown, 'the banner shows');
+});
+
+test('announcer: a hill line during my kill streak is voice-silent; its card still shows', () => {
+  const h = harness({ mode: 'koth' }).live();
+  h.eng.feedFrame('$HIR,4,15,0,2,8,0,0,*'); h.adv(50);             // the point, neutral
+  h.kill({ medals: ['double_kill'] }); h.adv(300);
+  h.eng.feedFrame('$HIR,4,15,0,1,50,0,0,*');                       // BLUE (us) captures it, mid-streak
+  let shown = false;
+  for (let i = 0; i < 120; i++) { h.adv(50); if (h.eng.state().hillCallout && h.eng.state().hillCallout.kind === 'hill_captured') shown = true; }
+  assert.equal(h.plays('VB0N').length, 0, 'no Hill Captured line');
+  assert.ok(shown, 'the hill card shows');
+  assert.ok(h.logs.some(l => /hill_captured silent: kill streak on air/.test(l)));
+});
+
+test('announcer: IR said my kill, then MC\'s medals and the lead change: the lead banner shows before the medals, voice-silent', () => {
   const h = harness().live();
   h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(300);                // IR first: the kill line is said
   h.kill({ medals: ['double_kill', 'killing_spree'] });           // MC: two medal lines left to say (a `medal` item)
   h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD');
-  h.adv(12000);
+  let leadAt = null;
+  for (let i = 0; i < 240; i++) { h.adv(50); const c = h.eng.state().card; if (leadAt == null && c && c.kind === 'alert' && c.data.kind === 'lead_taken') leadAt = h.now(); }
   const ids = ['double_kill', 'killing_spree'].map(m => golden.cues[m].split(',')[4]);
-  const lead = h.plays(LEAD)[0], m1 = h.plays(ids[0])[0], m2 = h.plays(ids[1])[0];
-  assert.ok(lead && m1 && m2, 'all three said');
-  assert.ok(killLines(h).length === 1 && killLines(h)[0].t < lead.t, 'the kill line first');
-  assert.ok(lead.t < m1.t && m1.t < m2.t, `then the lead change, then the medals (${lead.t - m1.t} ms)`);
+  const m1 = h.plays(ids[0])[0], m2 = h.plays(ids[1])[0];
+  assert.ok(m1 && m2 && m1.t < m2.t, 'both medal lines said, in order');
+  assert.equal(h.plays(LEAD).length, 0, 'the lead line is voice-silent in the streak (Tony)');
+  assert.ok(leadAt != null && leadAt < m1.t, 'its banner still shows, ahead of the medals (the `medal` rank)');
 });
 
 test('announcer: duplicates collapse, and a newer lead state replaces the queued older one', () => {
@@ -125,7 +146,7 @@ test('announcer: duplicates collapse, and a newer lead state replaces the queued
   h.alert('next_kill_wins'); h.alert('next_kill_wins');            // the same alert twice: one line
   h.adv(5000);
   assert.equal(h.plays('V115').length, 1, 'one NEXT KILL WINS');
-  h.kill();
+  h.alert('next_kill_wins', 'again');                               // an ordinary line on air, no kill streak
   h.alert('lead_taken'); h.alert('lead_lost');                      // the lead changed twice while waiting: only the newest is true
   h.adv(5000);
   assert.equal(h.plays(LEAD).length, 0, 'the stale "takes the lead" is replaced');
@@ -371,7 +392,7 @@ test('C1: a first-blood kill (a medal) with its lead alert, then the IR word: on
   h.adv(8000);
   assert.equal(killLines(h).length, 1, 'the kill is confirmed once: the IR word says it, since MC\'s item said only the medal');
   assert.equal(h.plays(golden.cues.first_blood.split(',')[4]).length, 1, 'and the medal is said');
-  assert.ok(h.plays(KILL_POOL[0].split(',')[4])[0].t < h.plays(LEAD)[0].t, 'the kill line goes ahead of the lead change');
+  assert.equal(h.plays(LEAD).length, 0, 'the lead change is voice-silent in the kill streak (Tony)');
   assert.ok(!h.logs.some(l => /MC already played/.test(l)), 'no false "MC already played the kill cue" log');
 });
 
@@ -389,7 +410,7 @@ test('C3: a non-must-hear line that would start > 2 s after its event shows its 
   h.kill(); h.alert('lead_lost'); h.alert('next_kill_wins');       // NKW waits 1.8 s + 2.8 s
   h.adv(8000);
   assert.equal(h.plays('V115').length, 0, 'NEXT KILL WINS 4.6 s late is not said');
-  assert.equal(h.plays(LEAD_LOST).length, 1, 'the must-hear lead line still is (3 s late is inside its TTL)');
+  assert.equal(h.plays(LEAD_LOST).length, 0, 'the lead line is voice-silent: it met my kill on air (Tony)');
   assert.ok(h.logs.some(l => /next_kill_wins|alert would start/.test(l) && /without its line/.test(l)), 'and the log says why');
 });
 

@@ -142,7 +142,7 @@ start 2.6 s after its hit, past its 500 ms limit (finding B4, fixed). B's heartb
 |---|---|---|
 | hill captured (1.0 s) | 13952 ms (end of the first A10 play) | 10 ms, full (it cuts the hum) |
 | kill (1.3 s) | never | 1830 ms, full (it waits for the hill line on air) |
-| lead taken (1.6 s) | never | 3410 ms, full |
+| lead taken (1.6 s) | never | banner only: silent in the kill streak (Tony) |
 | possession ticks | played over the hum (token 1, assumption `mix`) | not sent (the hum blocks) |
 
 A kill that lands while a lower line still sounds waits for it (`docs/announcer.md`, Pre-emption 1). Before the
@@ -155,7 +155,7 @@ objective rule the hill line was muted, so its card was silent and the kill took
 | spawn line (0 s) | 15032 ms (behind the first A10 play) | stuck, then cut after 10 ms by the kill's flush |
 | kill (12.2 s) | 4618 ms | 140 ms, full |
 | first blood (12.5 s) | 6897 ms | 2880 ms, full |
-| lead taken (12.5 s) | 4954 ms | 510 ms, full (before the medal line: the `medal` rank) |
+| lead taken (12.5 s) | 4954 ms | banner only, before the medal line: silent in the kill streak (Tony) |
 
 The spawn line loses a 20 ms race with the fill (bench step 4). Under B the phone's model marks the line as stuck when
 the shield rises, so the kill's flush spends two stops and the stuck line leaves a 10 ms fragment: the "stuck VAA"
@@ -175,14 +175,14 @@ of 2026-09-24 in another form.
 |---|---|---|
 | kill (0.8 s) | 120 ms, CUT after 380 ms by the hill preempt | 120 ms, full |
 | hill captured (1.0 s) | 300 ms, full (stale: the hill is already lost) | never said (replaced by the newer word) |
-| hill lost (1.3 s) | 1924 ms, full | 1700 ms, full |
+| hill lost (1.3 s) | 1924 ms, full | card only: silent in the kill streak (Tony) |
 
 ### 8. Standard preset (no shield, no hum), control
 
 | Cue (event) | A | B |
 |---|---|---|
 | kill (1.2 s) | 120 ms, full | 120 ms, full |
-| lead taken (1.5 s) | 456 ms, full | 500 ms, full |
+| lead taken (1.5 s) | 456 ms, full | banner only: silent in the kill streak (Tony) |
 | first blood (1.5 s) | 2399 ms, full | folded into the double kill (the spree rule: the newest medal line only) |
 | kill (3.2 s) | 3155 ms, full | not said: the double-kill line replaces it |
 | double kill (3.5 s) | 3491 ms, then CUT after 1009 ms by the possession tick | 870 ms, full |
@@ -211,6 +211,10 @@ enough for the second kill's item to fold it.
 
 Before the gate, the tick (a token-1 clip) went out in the 120 ms flash-to-line gap and in the 150 ms gap between the
 two medal lines, because the gun model was empty there.
+
+**Tony, 2026-09-24:** "i think that is right. they go silent when kill streaks are showing." From then on, a lead
+change or hill line that meets my kill or medal item on air or waiting is voice-silent (`docs/announcer.md`). The B
+cells above that say "silent in the kill streak" follow that rule; the rest of the tables predate it.
 
 ## Findings under A (main)
 

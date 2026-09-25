@@ -287,7 +287,8 @@ const idOf = f => { const t = f.split(','); return (t[4] || t[1] || '').trim(); 
 class PolicyB {
   constructor(ctx) {
     this.ctx = ctx; this.model = new GunAudio();
-    this.ann = new Announcer(() => this.ctx.t, m => { this.lastLog = String(m).replace(/^announcer: /, ''); });
+    this.logs = [];
+    this.ann = new Announcer(() => this.ctx.t, m => { this.logs.push(String(m).replace(/^announcer: /, '')); });
     this.ann.gun = this.model; this.ann.sync = () => this._sync();
     this.loopAt = 0; this.lastPainAt = null; this.pendingHurt = false; this.hillMine = false; this.hillTickAt = 0;
     this.irOpen = []; this.mcOpen = [];
@@ -324,13 +325,14 @@ class PolicyB {
   _mustLater(ms, line, why) { this.mustDue++; this.ctx.delay(ms, () => { this.mustDue--; this._sayMust(line, why); }); }
   // ----- the announcer queue: the real one -----
   push(item) {
-    const it = this.ann.push({ ...item, onDrop: () => this._dropItem(it || item, this.lastLog || 'dropped by the queue') });
+    const why = k => [...this.logs].reverse().find(l => l.startsWith(k + ' ') || l.startsWith(k + ':')) || 'dropped by the queue';
+    const it = this.ann.push({ ...item, onDrop: () => this._dropItem(it || item, why(item.kind)) });
     return it;
   }
   _dropItem(it, why) { if (!it || it.droppedOnce) return; it.droppedOnce = true; (it.lines || []).forEach(l => this.ctx.drop(l.cue, l.eventT, why)); }
   /** A muted start: the queue shows the card and says nothing. */
   _muted(it, waited) {
-    this._dropItem(it, it.forceMute && waited <= lateOf(it.kind) ? 'the shield loop blocks the gun (card only)' : `would start ${waited} ms late (card only)`);
+    this._dropItem(it, it.streakSilent ? 'silent: kill streak on air (card only)' : it.forceMute && waited <= lateOf(it.kind) ? 'the shield loop blocks the gun (card only)' : `would start ${waited} ms late (card only)`);
   }
   /** engine.js `feedback` / `_irKillConfirmed`: the flash, then the lines back to back (each starts ANNOUNCE_GAP_MS after
    *  the one before it ENDS, round 3 M4), each a must-hear line. `bannerMs` null = MC's card, max(KILL_CARD_MS, audio). */
