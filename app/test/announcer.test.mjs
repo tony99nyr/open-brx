@@ -687,7 +687,7 @@ function deadRig() {
   let t = 0, dead = false; const log = [];
   const gun = new GunAudio(), a = new Announcer(() => t);
   a.gun = gun; a.dead = () => dead;
-  return { a, gun, log, at: v => { t = v; }, now: () => t, die: on => { dead = on; if (on) a.death(t); },
+  return { a, gun, log, at: v => { t = v; }, now: () => t, die: (on, stopped = true) => { dead = on; if (on) a.death(t, stopped); },
     item: (kind, audioMs, extra = {}) => ({ kind, audioMs, ...extra, play: ({ muted, flush }) => log.push([kind, t, muted, !!flush]) }) };
 }
 
@@ -751,4 +751,71 @@ test('death: the trade through the engine: the scream first (one stop for my kil
   assert.ok(vaa.length === 1 && vaa[0].t >= dAt + scream, 'my kill line again, after the scream');
   assert.ok(ll && ll.t >= vaa[0].t + CLIP_MS[KILL], 'then the lead change');
   assert.ok(dk && dk.t >= ll.t + CLIP_MS[LEAD_LOST], 'then the medal');
+});
+
+// ---------- review of 7173d400 (death-wins) ----------
+const die = h => { h.eng.feedFrame('$HIR,4,0,19,2,60,0,0,*'); h.eng.feedFrame('$HP,0,0,0,*'); };
+const stopsIn = (h, from, to = Infinity) => h.writes.slice(from).filter(w => w.f === '$PLAYX,0,*' && w.t < to);
+
+test('H1: the lethal hit\'s own $SIR row sound is not counted ahead of the scream: a quiet gun sends no stop at death (F158)', () => {
+  const h = harness().live();
+  h.eng._write(['$SIR,0,0,X13,1,9,0,0,0,*'], 'test: a row with a 1.5 s sound');
+  h.adv(2000); const n = h.writes.length;
+  die(h);
+  assert.deepEqual(stopsIn(h, n, h.now() + 1).map(w => w.t), [], 'no stop: it could land on the scream');
+});
+
+test('H2: a clip that ends within DEATH_STOP_SLACK_MS of the death is not stopped', () => {
+  const h = harness().live();
+  h.eng._write(['$PLAY,,4,6,VAA,,,,*'], 'test: a 636 ms line'); h.adv(550);   // it ends in about 86 ms
+  const n = h.writes.length;
+  die(h);
+  assert.deepEqual(stopsIn(h, n, h.now() + 1).map(w => w.t), []);
+});
+
+test('M1: a death between two medal lines (no stop goes out) never says a line twice', () => {
+  const h = harness().live();
+  const medals = ['double_kill', 'killing_spree'], ids = medals.map(m => golden.cues[m].split(',')[4]);
+  h.kill({ medals });
+  h.adv(120 + CLIP_MS[ids[0]] + 50);                     // line 1 is over, line 2 is due in about 100 ms
+  die(h); h.adv(9000);
+  assert.equal(h.plays(ids[0]).length, 1, 'the first medal once');
+  assert.equal(h.plays(ids[1]).length, 1, 'the second medal once');
+});
+
+test('M1: a death that cuts the second medal line replays only that line, not the lines already said', () => {
+  const h = harness().live();
+  const medals = ['double_kill', 'killing_spree'], ids = medals.map(m => golden.cues[m].split(',')[4]);
+  h.kill({ medals });
+  h.adv(120 + CLIP_MS[ids[0]] + 150 + 600);              // the second line has played about 0.5 s
+  const n = h.writes.length;
+  die(h); h.adv(9000);
+  assert.equal(stopsIn(h, n, h.now()).length >= 1, true, 'setup: the death stopped the second line');
+  assert.equal(h.plays(ids[0]).length, 1, 'the first medal is not said again');
+  assert.equal(h.plays(ids[1]).length, 2, 'the cut line is said again, after the scream');
+});
+
+test('M2: at the respawn the spawn line is never cut, and my kill confirm is not lost', () => {
+  const h = harness().live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(200);
+  die(h); h.adv(100);
+  h.kill({ medals: ['killtacular', 'killing_spree', 'double_kill'] }); h.alert('lead_lost');   // ~8 s of lines while dead
+  h.adv(16000);
+  const sp = h.writes.findIndex(w => w.f.startsWith('$SPAWN'));
+  assert.ok(sp > 0, 'setup: respawned');
+  const spT = h.writes[sp].t;
+  // the spawn line may wait behind a dead-queue line already on the gun (FIFO): give it that line's length too
+  const cut = stopsIn(h, sp + 1).filter(w => w.t < spT + 4500);
+  assert.deepEqual(cut.map(w => w.t - spT), [], 'no stop over the spawn line');
+  assert.ok(killLines(h).some(w => w.t > spT - 16000), 'my kill line was said');
+});
+
+test('M3: a hill change while I am dead is queued and said after the scream', () => {
+  const h = harness({ mode: 'koth' }).live();
+  h.eng.feedFrame('$HIR,4,15,0,2,8,0,0,*'); h.adv(50);
+  die(h); const dAt = h.now(); h.adv(300);
+  h.eng.feedFrame('$HIR,4,15,0,1,50,0,0,*');   // BLUE (us) takes it while I am down
+  h.adv(4000);
+  const hc = h.plays('VB0N')[0];
+  assert.ok(hc && hc.t >= dAt + 1271, 'Hill Captured, after the scream');
 });

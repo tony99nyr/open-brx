@@ -9,7 +9,7 @@
 // bundle's (mcp/brx_mcp/mc/golden_bundle.json), first take of every pool, so a run never depends on a random pick.
 
 import { simulateGun, GUN_RULES, CLIP_MS, PLAYX, play } from './gun-audio-sim.mjs';
-import { Announcer, GunAudio, ANNOUNCE_PRIORITY, ANNOUNCE_AUDIO_LATE_MS, ANNOUNCE_AUDIO_LATE_DEFAULT_MS, ANNOUNCE_GAP_MS, MUST_HEAR, OBJECTIVE }
+import { Announcer, GunAudio, DEATH_STOP_SLACK_MS, ANNOUNCE_PRIORITY, ANNOUNCE_AUDIO_LATE_MS, ANNOUNCE_AUDIO_LATE_DEFAULT_MS, ANNOUNCE_GAP_MS, MUST_HEAR, OBJECTIVE }
   from '../src/announcer.js';
 
 // ---------- engine.js numbers (main), mirrored; audio-queue.test.mjs reads engine.js and checks each one ----------
@@ -362,14 +362,21 @@ class PolicyB {
   /** engine.js `feedback` / `_irKillConfirmed`: the flash, then the lines back to back (each starts ANNOUNCE_GAP_MS after
    *  the one before it ENDS, round 3 M4), each a must-hear line. `bannerMs` null = MC's card, max(KILL_CARD_MS, audio). */
   _killItem(lines, bannerMs, why, kind = 'kill_confirmed', src = null) {
-    const at = []; const lens = lines.map(l => CLIP_MS[CUE[l.cue]]);
-    lens.reduce((t, ms, i) => { at[i] = t; return t + ms + ANNOUNCE_GAP_MS; }, FLASH_TO_LINE_MS);
-    const audioMs = lines.length ? at[lines.length - 1] + lens[lines.length - 1] : 0;
-    return this.push({ kind, src, medals: lines.filter(l => MEDALS.has(l.cue)).map(l => l.cue), lines, audioMs, bannerMs: bannerMs != null ? bannerMs : Math.max(KILL_CARD_MS, audioMs),
+    const lens = lines.map(l => CLIP_MS[CUE[l.cue]]);
+    // engine.js `feedback`: the lines from `from` on, and (cut at my death or respawn) only the lines not yet finished again
+    const timing = from => { const a = []; let t = FLASH_TO_LINE_MS; for (let i = from; i < lines.length; i++) { a.push(t); t += lens[i] + ANNOUNCE_GAP_MS; } return { at: a, audioMs: a.length ? a[a.length - 1] + lens[lines.length - 1] : 0 }; };
+    const resume = (now, it, startedSaid) => {
+      const from0 = it.from || 0, t0 = timing(from0), el = now - it.startedAt;
+      const i = t0.at.findIndex((a, j) => (startedSaid ? a : a + lens[from0 + j]) > el);
+      return i < 0 ? null : { from: from0 + i, audioMs: timing(from0 + i).audioMs, lines: lines.slice(from0 + i) };
+    };
+    const audioMs = timing(0).audioMs;
+    return this.push({ kind, src, medals: lines.filter(l => MEDALS.has(l.cue)).map(l => l.cue), lines, audioMs, resume, bannerMs: bannerMs != null ? bannerMs : Math.max(KILL_CARD_MS, audioMs),
       play: ({ muted, waited }, self) => {
         if (muted) { this._muted(self, waited); return; }
         this._write(['$SFLASH,*'], why);
-        lines.forEach((l, i) => this._mustLater(at[i], l, `${why}: ${l.cue}`, self));
+        const from = self.from || 0, t0 = timing(from);
+        lines.slice(from).forEach((l, i) => this._mustLater(t0.at[i], l, `${why}: ${l.cue}`, self));
       } });
   }
   _line(kind, eventT, extra = {}) {
@@ -431,9 +438,8 @@ class PolicyB {
     } else if (ev.type === 'mc_alert') {
       const lead = ev.kind === 'lead_taken' || ev.kind === 'lead_lost';
       this._line(ev.kind, t, { itemKind: lead ? ev.kind : 'alert', key: lead ? 'lead' : `alert:${ev.kind}` });
-    } else if (ev.type === 'hill') {
-      if (!g.alive) return;
-      this.hillMine = ev.kind === 'hill_captured';
+    } else if (ev.type === 'hill') {   // engine.js: a hill change while I am dead queues too (Tony 2026-09-25)
+      this.hillMine = g.alive && ev.kind === 'hill_captured';
       this._line(ev.kind, t, { key: 'hill', preemptKey: true, stopsOwn: true });   // engine.js: a queued hill line is said while dead too
     } else if (ev.type === 'enemy_down') {
       if (g.alive) this._line('enemy_down', t, { ok: () => this.ctx.game.alive });
@@ -456,19 +462,21 @@ class PolicyB {
         this.pendingHurt = true; this.lastPainAt = t;
         c.delay(HURT_DEBOUNCE_MS, () => { if (!this.pendingHurt) return; this.pendingHurt = false; if (c.game.alive) this._write([c.line('low_health', t), '$HLED,7,4,90,90,10,15,*'], 'low health'); });
       } else if (m.kind === 'death') {
-        this.hillMine = false;
+        this.hillMine = false; this.wasDead = true;
         // engine.js `_death`: the native scream ($PSET t10, VA3 in SPAWN_HEAD's take) joins the gun and the phone's model
         this._sync(); this.model._prune(t);
-        const ahead = this.model.clips.length;
+        const ahead = this.model.clips.filter(x => x.end - t > DEATH_STOP_SLACK_MS).length;   // truly ahead (engine.js)
         c.scream();
         if (this.pendingHurt) this.pendingHurt = false;
         // Tony 2026-09-25 (F149 / F351 / X4), "your death wins": the stops take off what the gun holds AHEAD of the scream
         // (the low-health line, my kill line), never the scream; an announcer line cut here is said again after it.
-        this.ann.death(t);
         const stops = Math.min(ahead, MUST_HEAR_MAX_STOPS);
+        this.ann.death(t, stops > 0);
         if (stops) this._write(Array(stops).fill(PLAYX), `death: ${stops} stop(s) ahead of the scream${m.hurtFired ? ' (F149)' : ''}`);
         this.model.add(CLIP_MS.VA3, 'death scream', t, 'VA3');
       } else if (m.kind === 'spawn') {   // engine.js `_spawn`: the T-0 klaxon rides the spawn write, before the fill (X3)
+        if (this.wasDead) this.ann.respawn(t, true);   // engine.js `_revive`: the dead queue ends; the spawn write opens with $PLAYX
+        this.wasDead = false;
         this._write(spawnWrite(m.fill, c.line('spawn', t), true, this.klaxonSaid ? null : c.line('klaxon', t)), 'spawn'); this.klaxonSaid = true; this.loopAt = 0;
       }
       else if (m.kind === 'shield_charging') {

@@ -795,23 +795,22 @@ test('control point: the transition lines have a repeat floor, so a shared stati
   assert.equal(nWrites(slow, HILL_LOST_F), 1, 'a real second transition is not swallowed by the floor');
 });
 
-test('control point: a handover that happens while you are DOWN is told to you on revive, not swallowed (item C)', () => {
-  // Death is deliberately silent, but a "Hill Lost!" landing then was never replayed — so a player respawned
-  // and "we lost it", "out of range" and "nothing is happening" were all the same silence.
+test('control point: a handover that happens while you are DOWN is told to you while down, after the scream, once (item C)', () => {
+  // Item C: a "Hill Lost!" landing while down used to be swallowed. Tony 2026-09-25 ("while you are dead you can listen to
+  // the queue of KCs and game alerts"): it is queued while I am down and said once the scream has ended; the revive does
+  // not say it again.
   const h = koth();
   control(h, { team: 1, state: HELD, value: 100 });          // we hold it
   runControl(h, 1000, { team: 1, state: HELD, value: 100 });
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');   // killed
   assert.equal(h.eng.alive, false, 'precondition: down');
-  runControl(h, 1000, { team: 255, state: 0, value: 0 });      // it goes neutral while we are down
-  assert.equal(nWrites(h, HILL_LOST_F), 0, 'the DOWN window stays silent — A16 makes it hands-off');
+  runControl(h, 2500, { team: 255, state: 0, value: 0 });      // it goes neutral while we are down
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'said while down, once the scream is over');
   h.adv(8000); h.eng.tick();                                  // revived by the auto respawn (delay_s 8), the real path
   assert.equal(h.eng.alive, true);
   control(h, { team: 255, state: 0, value: 0 });
-  runControl(h, 2500, { team: 255, state: 0, value: 0 });   // docs/announcer.md: it waits out the revive's spawn line on the gun
-  assert.equal(nWrites(h, HILL_LOST_F), 1, 'and the first advert after revive says what happened');
-  control(h, { team: 255, state: 0, value: 0 });
-  assert.equal(nWrites(h, HILL_LOST_F), 1, 'exactly once');
+  runControl(h, 2500, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'and not again after the revive');
 });
 
 test('control point: nothing is owed on revive when the point did not change hands (item C, the other half)', () => {

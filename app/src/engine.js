@@ -14,7 +14,7 @@ import * as W from './transport/envelope.js';   // single source for the contrac
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S } from './transport/contract.gen.js';   // the spawn-kill window (2026-09-19) and the A16.3 readout timings (F52)
 import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
-import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS } from './announcer.js';
+import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, DEATH_STOP_SLACK_MS } from './announcer.js';
 import { LANE_HERO_MS } from './lanes.js';
 import { MEDALS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
@@ -533,6 +533,9 @@ const POSSESSION_REPORT_MS = 10000;
 // scheduler below uses to keep the 0.11 s tick out from under a 1.9-3.0 s callout; a bundle may override a
 // duration through `frames.cue_ms`. Picked BY ID and never by category: `V8Q` is catalogued "Hill Confirmed"
 // and actually says "KILL Confirmed" (rung S), so a by-category pick would announce a kill line on a capture.
+/** docs/announcer.md: an IR kill item cut at my death or respawn. Its one line goes 120 ms after the item starts: with no
+ *  stop, a line already written plays on (nothing is left); otherwise the whole item is said again. */
+const IR_RESUME = (now, it, startedSaid) => (startedSaid && now - it.startedAt >= 120 ? null : {});
 export const HILL_CUES = {
   hill_captured:  { frame: '$PLAY,,4,6,VB0N,,,,*', ms: 1924 },   // VB0N "Hill Captured"  1.924 s
   hill_lost:      { frame: '$PLAY,,4,6,VB0P,,,,*', ms: 2976 },   // VB0P "Hill Lost!"     2.976 s
@@ -726,7 +729,9 @@ export class Engine {
     this._ann = new Announcer(() => this.now(), m => this.log(m, 'li'));   // docs/announcer.md: one line or banner at a time, on this clock
     this._gun = new GunAudio(m => this.log(m, 'li'));   // docs/announcer.md: the ONE model of the gun's audio FIFO
     this._ann.gun = this._gun; this._ann.sync = now => this._audioSync(now);
-    this._ann.dead = () => this.phase === 'live' && this.spawned && !this.alive;   // Tony 2026-09-25: my death wins (docs/announcer.md)
+    // Tony 2026-09-25: my death wins (docs/announcer.md). The rules hold until the scream has ended even if the match ends
+    // inside it, so no must-hear flush of the whistle's lines can land on the scream.
+    this._ann.dead = () => (this.phase === 'live' && this.spawned && !this.alive) || this.now() < (this._screamUntil || 0);
     this._sirSound = {};   // `${proto}:${subtype}` -> the sound id on the `$SIR` row the gun holds (from what we wrote)
     this._psetSounds = null;   // the last `$PSET` written, split: t10 = deathScream, t23 = energyShieldLoop
     this.reset();
@@ -1247,7 +1252,8 @@ export class Engine {
       if (!(this._hitSoundWarned || (this._hitSoundWarned = new Set())).has(key)) { this._hitSoundWarned.add(key); this.log(`audio: a hit on $SIR ${proto},${subtype} has ${id ? `sound ${id}, of unknown length` : 'no row sound'}: counted as 0 ms`, 'li'); }
       return;
     }
-    this._gun.add(ms, `hit sound ${id}`, now, id);   // under the shield loop, hits of one sound collapse to one clip
+    const clip = this._gun.add(ms, `hit sound ${id}`, now, id);   // under the shield loop, hits of one sound collapse to one clip
+    if (clip) this._lastHitClip = clip;   // `_death`: the lethal hit's own row sound is never counted ahead of the scream (F158)
   }
   /** pl3 (2026-09-17): a write the gun must not miss AND that is harmless to repeat -- the stun restore and the
    *  operator resync (both re-send the live counts, `$TID` and `$BMAP`; nothing heals or re-heads). Spawn and
@@ -2993,7 +2999,7 @@ export class Engine {
                   : prevOwner === HILL_NEUTRAL_TEAM };
     if (announce) {
       const kind = this._hillCallout(prevOwner, ownerTeam);
-      if (kind && this._hillAudioOn()) this._hillSay(kind, magnitude === HILL_CAPTURE_MAG
+      if (kind && this._hillAudioOn(true)) this._hillSay(kind, magnitude === HILL_CAPTURE_MAG
         ? `capture word (mag 50): team ${prevOwner == null ? '?' : prevOwner} -> ${ownerTeam}`
         : `owner changed on a plain beacon (the mag-50 word never reached us): team ${prevOwner} -> ${ownerTeam}`);
     }
@@ -3114,7 +3120,7 @@ export class Engine {
       const lg = (this._lightGen = this._lightGen || 0);
       this._write([SFLASH], 'S57 IR kill confirmed');   // the sight flash is the gun's light: at once
       // docs/announcer.md: the line and the KILL CONFIRMED card are one top-priority announcer item
-      it = this._ann.push({ kind: 'kill_confirmed', src: 'ir', audioMs: pick.frame ? 120 + clipMs(pick.frame) : 0, bannerMs: 2000, callout,
+      it = this._ann.push({ kind: 'kill_confirmed', src: 'ir', audioMs: pick.frame ? 120 + clipMs(pick.frame) : 0, bannerMs: 2000, callout, resume: IR_RESUME,
         ok: () => this._lightGen === lg,
         onDrop: () => { this._irKillOpen = this._irKillOpen.filter(x => x !== entry); },   // unheard: MC's twin must speak for itself
         play: ({ muted }, self) => {
@@ -3129,7 +3135,7 @@ export class Engine {
       // MC's card is the kill's one card, so this adds no card and no flash.
       const pick = this._pickCue('kill');
       const lg = (this._lightGen = this._lightGen || 0);
-      if (pick.frame) it = this._ann.push({ kind: 'kill_confirmed', src: 'ir-voice', audioMs: 120 + clipMs(pick.frame), bannerMs: 0,
+      if (pick.frame) it = this._ann.push({ kind: 'kill_confirmed', src: 'ir-voice', audioMs: 120 + clipMs(pick.frame), bannerMs: 0, resume: IR_RESUME,
         ok: () => this._lightGen === lg,
         play: ({ muted }, self) => { if (!muted) this.delay(120, () => { if (this._lightGen === lg && !self.cut) this._sayMust(pick.frame, `S57 IR kill confirmed cue${pick.tag} (MC's item for this kill said no kill line)`); }); } });
       this.log('S57: IR kill confirmed; MC confirmed it too, but wrote no kill line for it, so the IR word says it', 'li');
@@ -3224,7 +3230,7 @@ export class Engine {
     // first advert after revive we say the one line that describes the net change across the death window.
     // The net change, not a replay: the point may have changed hands twice, and the newest word is the true
     // one (the same rule `_hillSay` enforces by preempting).
-    const audio = this._hillAudioOn();
+    const audio = this._hillAudioOn(true);   // Tony 2026-09-25: a hill change while I am dead queues too ("game alerts")
     let said = false;
     const announceFrom = audio && this._hillOwnerWhenSilenced !== undefined && this._hillOwnerWhenSilenced !== prevOwner
       ? this._hillOwnerWhenSilenced : prevOwner;
@@ -3723,6 +3729,9 @@ export class Engine {
     const revive = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
+    // docs/announcer.md: the dead queue ends here. Only my kill confirm and the lead change survive it, and they wait for
+    // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
+    this._ann.respawn(this.now(), revive.includes(PLAYX));
     this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);   // X3: the line before the fill
     this.hurtFired = false;
     this._pendingHurtWrite = false;
@@ -4955,7 +4964,16 @@ export class Engine {
     // medal lines only. They rank `medal`, after a lead change, so the lead MC sent with this kill is not held behind them.
     const killSaid = isKill && medals.length > 0 && irAt != null && !(irMatch && irMatch.item && irMatch.item.muted) && !lines.some(x => x.kill);
     const killF = (lines.find(x => x.kill) || {}).f || null;   // X8: the plain line this item owes, for a later spree fold
-    const item = this._ann.push({ kind: isKill ? (killSaid ? 'medal' : 'kill_confirmed') : 'alert', src: 'mc', key: isKill ? null : `fb:${body.kind}`, audioMs, entry: mcEntry, medals, medalList, killF,
+    /** The lines from `from` on: when each starts after the item does, and the sound they make together. */
+    const timing = from => { const a = []; let t = 120; for (let i = from; i < lines.length; i++) { a.push(t); t += lens[i] + ANNOUNCE_GAP_MS; } return { at: a, audioMs: a.length ? a[a.length - 1] + lens[lines.length - 1] : 0 }; };
+    /** docs/announcer.md: cut by a stop at my death or respawn, only the lines not yet finished are said again. */
+    const resume = (now, it, startedSaid) => {
+      const from0 = it.from || 0, t0 = timing(from0), el = now - it.startedAt;
+      const i = t0.at.findIndex((a, j) => (startedSaid ? a : a + lens[from0 + j]) > el);
+      if (i < 0) return null;
+      return { from: from0 + i, audioMs: timing(from0 + i).audioMs };
+    };
+    const item = this._ann.push({ kind: isKill ? (killSaid ? 'medal' : 'kill_confirmed') : 'alert', src: 'mc', key: isKill ? null : `fb:${body.kind}`, audioMs, entry: mcEntry, medals, medalList, killF, resume,
       bannerMs: isKill ? Math.max(KILL_CARD_MS, audioMs) : 0,
       ok: () => this._lightGen === lg,
       onDrop: () => { if (mcEntry) this._mcKillOpen = this._mcKillOpen.filter(x => x !== mcEntry); },   // unheard: no IR twin may pair with it
@@ -4964,7 +4982,9 @@ export class Engine {
         if (muted && mcEntry) mcEntry.killLine = false;   // said nothing after all: a later IR twin speaks for itself
         // My own kill is must-hear, every line of it (round 3 M3): each medal line goes out after the one before it has
         // ended, so its flush finds nothing of ours to cut, and under the shield loop each gets its own stop.
-        if (!muted) lines.forEach((x, i) => this.delay(at[i], () => { if (this._lightGen === lg && !self.cut) this._sayMust(x.f, x.why); }));   // `cut`: my death stopped it (it is said again after the scream)
+        // `cut`: my death stopped it; `from`: a cut item said again starts at its first line not yet said
+        const from = self.from || 0, t0 = timing(from);
+        if (!muted) lines.slice(from).forEach((x, i) => this.delay(t0.at[i], () => { if (this._lightGen === lg && !self.cut) this._sayMust(x.f, x.why); }));
         if (medals.length) this.medals = medalList;
         this._eventLeds(medals.length ? medals[0].m : body.kind);   // A11.8: the headset's small LED flash (+ any burst) for the top medal
         // `ir_paired` (presentation only): an IR KILL CONFIRMED card already flashed for this kill, so the HUD must not
@@ -6678,7 +6698,10 @@ export class Engine {
     // The scream joins the model below, right after the stops that take off what is ahead of it.
     let screamAhead = null;
     const screamId = this._psetSounds && (this._psetSounds[10] || '').trim();
-    { const now = this.now(); this._audioSync(now); this._gun._prune(now); if (screamId && CLIP_MS[screamId]) screamAhead = this._gun.clips.length; }
+    { const now = this.now(); this._audioSync(now); this._gun._prune(now);
+      // Truly ahead: not the lethal hit's own row sound (the gun may play none on a lethal hit, or the scream may interrupt
+      // it; F158 is unbenched), and not a clip that ends within DEATH_STOP_SLACK_MS (the stop would arrive after it).
+      if (screamId && CLIP_MS[screamId]) screamAhead = this._gun.clips.filter(c => c !== this._lastHitClip && c.end - now > DEATH_STOP_SLACK_MS).length; }
     // 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets louder (never quieter).
     if (this._timedLifeAt != null && this.now() - this._timedLifeAt <= SPAWN_KILL_WINDOW_MS && this._downWarn < DOWN_WARN_MAX) { this._downWarn++; this.log(`killed ${Math.round((this.now() - this._timedLifeAt) / 100) / 10}s after a timed respawn: down warning level ${this._downWarn}`, 'li'); }
     this._timedLifeAt = null;
@@ -6732,10 +6755,10 @@ export class Engine {
     // can listen to the queue of KCs and game alerts". The death stop takes off every clip the gun holds AHEAD of the
     // scream (the low-health line, my own kill line) and never the scream itself; an announcer line it cut is said again
     // after the scream (`_ann.death`). With no scream known, F149's one stop for the low-health line stays.
-    this._ann.death(this.now());
     const stops = screamAhead != null ? Math.min(screamAhead, MUST_HEAR_MAX_STOPS) : (this.hurtFired ? 1 : 0);
+    this._ann.death(this.now(), stops > 0);   // a line on air is cut, and its unsaid rest requeued, only when a stop went out
     if (stops) this._write(Array(stops).fill(PLAYX), `death: ${stops} stop(s) for what the gun held ahead of the scream${this.hurtFired ? ' (the low-health line, F149)' : ''}`);
-    if (screamAhead != null) this._gun.add(CLIP_MS[screamId], `native death scream ${screamId}`, this.now(), screamId);
+    if (screamAhead != null) { this._gun.add(CLIP_MS[screamId], `native death scream ${screamId}`, this.now(), screamId); this._screamUntil = this.now() + CLIP_MS[screamId]; }
     this._stunRestore('died');   // F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
     this._puDeath();             // A56: a weapon item's charges are lost and the overshield is gone
     // A16 §5 (AMENDED 2026-09-11 by F113): death clears the readout AND blanks the strip.
