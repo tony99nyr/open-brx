@@ -210,6 +210,11 @@ test('STATION NOT ANSWERING: claim_ready for 15 s and the advert still says avai
   assert.equal(h.eng.state().powerup.hint.kind, 'claiming');
   h.adv(15_100); h.near(4);
   assert.equal(h.eng.state().powerup.hint.kind, 'no_answer');
+  h.near(4, { state: 0, value: 108, taker: 7 });
+  assert.equal(h.eng.state().powerup.hint.kind, 'granted');
+  assert.ok(h.eng.state().powerup.held);
+  h.away();
+  assert.equal(h.eng.state().powerupClaim, null, 'walking away ends the claim');
 });
 
 test('not there to take: the advert says taken, so the phone does not claim and the hint counts down to the next spawn', () => {
@@ -367,6 +372,35 @@ test('F381: a repeat pickup of the same weapon adds charges without a replacemen
   assert.equal(h.eng.state().powerup.held.left, 3);
   assert.equal(h.eng.state().powerupGrant.replaced, undefined);
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,3,0,1,*']);
+});
+
+test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile keeps the pointer', () => {
+  const h = armed();
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.frame('$ALCD,30,190,0,0,0,*');
+  assert.equal(h.eng._altPtr, 1);
+  assert.ok(h.eng._altEvidencePending);
+  h.eng._endReconcile();
+  assert.equal(h.eng._altPtr, 1);
+});
+
+test('F379: ALT pointer persists across an app restart', () => {
+  const h = armed(); h.eng._altPtr = 1; h.eng._save(); h.restart();
+  assert.equal(h.eng._altPtr, 1);
+});
+
+test('head rewrite resets ALT pointer and pending evidence', () => {
+  const h = armed(); h.eng._altPtr = 1; h.eng._altEvidencePending = 1;
+  h.eng._writeHead('test head');
+  assert.equal(h.eng._altPtr, 0);
+  assert.equal(h.eng._altEvidencePending, false);
+});
+
+test('a weapon grant clears a pending switch-back retry', () => {
+  const h = armed(); h.take(4); h.away(); h.eng._puEnd('empty');
+  assert.ok(h.eng._puBackPending);
+  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now());
+  assert.equal(h.eng._puBackPending, null);
 });
 
 test('F379: a switch-back resend reads the current magazine and reserve', () => {

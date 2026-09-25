@@ -3858,7 +3858,7 @@ class GunStage:
             self._log(f"slot {slot} confirmed the swap {self.last_switch_s:g}s after ALT (incl. reaction)", "info")
         self._prev_ammo[slot] = mag
         self.active_slot = slot
-        if slot < 2 and self._alt_evidence_pending:
+        if slot < 2 and self._alt_evidence_pending and ((prev is not None and mag < prev) or slot == self._alt_evidence_pending):
             self._alt_ptr = slot
             self._alt_evidence_pending = False
         if reserve is not None:
@@ -3935,7 +3935,7 @@ class GunStage:
         source = self._alt_ptr
         target = self._next_alt_slot()
         self._alt_ptr = target
-        self._alt_evidence_pending = True
+        self._alt_evidence_pending = target
         self.switching = {"at": self.now(), "from": source, "to": target}
         self._log(f"swap: ALT pressed on slot {self.active_slot}", "info")
 
@@ -4185,7 +4185,7 @@ class GunStage:
             self._dot_kill = {"at": now, "num": p["by"]["num"], "team": p["by"]["team"]}
         p["ticks"] += 1
         self._spawn_task(self.write([frame], f"poison tick {p['ticks']}: -{n} {pool}" + (" (lethal)" if lethal else "")))
-        if not lethal and now >= self._hill_busy_until:
+        if not lethal and now >= max(self._hill_busy_until, getattr(self, "_gun_busy_until", 0.0)) and not getattr(self, "_ann_queue", []):
             self._event_now("poison_tick")
 
     def _poison_clear(self, why: str) -> None:

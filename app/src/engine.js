@@ -600,7 +600,7 @@ export const PU_NEAR_DB = 10;               // GET CLOSER shows only within this
 export const POWERUP_THRESHOLD_DEFAULT = -55;   // byte 14 = 0: a placeholder for ~1 ft until the bench calibrates it
 export const POWERUP_EXIT_DB = 3;               // out of range = the median below the threshold minus this
 export const POWERUP_DWELL_MS = 1000;           // continuously in range this long = `claim_ready`; leaving range resets it
-export const POWERUP_NO_ANSWER_MS = 15000;      // Stick confirmation took up to 13 s; add 1 s log resolution and a margin. brx4 owns the latency fix.
+export const POWERUP_NO_ANSWER_MS = 15000;      // Bench B: Stick confirmation took up to 13 s; no answer at 15 s still allows a later taker advert.
 export const POWERUP_READY_LATCH_MS = 15000;    // a `taker` advert still counts this long after the phone was last ready
 export const PU_ADVERT_STALE_MS = 8000;     // an advert older than this says nothing about the item
 // Tony 2026-09-24: "in halo if you get hit while you are getting overshield the damage is ignored". The grant is one burst
@@ -1049,7 +1049,7 @@ export class Engine {
         // F164: this life's live counts, per slot the gun has reported: {slot: [mag, reserve]}. Without them a restart
         // mid-match left `_liveAmmo()` on the spawn rows, and the relink's reconcile handed out a full magazine and
         // reserve. A spawn or revive empties the maps, so the next save drops the old life's counts.
-        ammo: this._savedAmmo(),
+        ammo: this._savedAmmo(), altPtr: this._altPtr,
         pu: this._puHeld || this._overshield || this._puReequip || this._puBackPending ? { held: this._puHeld, overshield: this._overshield, seen: this._puSeen, reequip: !!this._puReequip, osProtectUntil: this._osProtectUntil || 0, psetNow: this._psetNow || null, backPending: this._puBackPending || null } : null,
       }));
     } catch (_) { /* ignore */ }
@@ -1066,7 +1066,7 @@ export class Engine {
         endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null, downReason: s.downReason || null,
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
-        probeSent: !!s.probeSent, standby: !!s.standby,
+        probeSent: !!s.probeSent, standby: !!s.standby, _altPtr: Number.isInteger(s.altPtr) ? s.altPtr : 0,
         gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null });
       if (s.phase === 'live' && s.ammo && typeof s.ammo === 'object') this._restoreAmmo(s.ammo);   // F164
       if (s.pu && typeof s.pu === 'object') { this._puHeld = s.pu.held || null; this._overshield = s.pu.overshield || null; this._puSeen = s.pu.seen || {}; this._puReequip = !!s.pu.reequip; this._osProtectUntil = +s.pu.osProtectUntil || 0; this._psetNow = s.pu.psetNow || null; this._puBackPending = s.pu.backPending || null; }   // A56
@@ -5620,6 +5620,7 @@ export class Engine {
     if (!armed || !Number.isFinite(+armed.slot)) { this.log(`powerup: ${item.weapon_id} has no armed slot in this game (config.powerups)`, 'le'); return false; }
     const slot = +armed.slot;
     if (!this._puHeadWeap(slot)) { this.log(`powerup: the head carries no $WEAP for slot ${slot} (${item.weapon_id})`, 'le'); return false; }
+    this._puBackPending = null;
     const row = this.weaponRow(item.weapon_id);
     const charges = Number.isFinite(+item.charges) && +item.charges > 0 ? +item.charges : (row && row.clip > 0 ? row.clip : 1);
     const old = this._puHeld;
@@ -6355,7 +6356,7 @@ export class Engine {
     this._puBackPending = null;
     const from = this._altPtr, to = this._nextAltSlot();
     this._altPtr = to;
-    this._altEvidencePending = true;
+    this._altEvidencePending = to;
     this.switching = { at: this.now(), from, to };
     this._changed();
   }
@@ -6552,7 +6553,9 @@ export class Engine {
       this._recoilArm('swap (confirmed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
     }
     this._prevAmmo[slot] = mag;
-    if (slot < 2 && this._altEvidencePending) { this._altPtr = slot; this._altEvidencePending = false; }
+    if (slot < 2 && this._altEvidencePending && ((prev != null && mag < prev) || slot === this._altEvidencePending)) {
+      this._altPtr = slot; this._altEvidencePending = false;
+    }
     if (puBack != null) {   // A56: the heavy ran dry and the node put the saved weapon back on the trigger: show THAT
       if (reserve != null && !Number.isNaN(reserve)) this._prevReserve[slot] = reserve;
       this._publishAmmo(puBack, this._prevAmmo[puBack], this._prevReserve[puBack]);
@@ -7069,8 +7072,6 @@ export class Engine {
   _endReconcile() {
     const live = (this.reconciling && this.reconciling.ammo) || {};
     this.reconciling = null;
-    this._altPtr = 0;   // the reconcile re-arm starts from the compiled slot-0 state
-    this._altEvidencePending = false;
     if (this.alive) {
       // F164: re-arm each slot to the LIVE count snapshotted when the reconcile began (`_liveAmmo`: the node's
       // magazine account, else that slot's spawn row). The spawn row alone was a free full magazine plus the
@@ -7191,7 +7192,7 @@ export class Engine {
   /** Every head write starts with $CLEAR → the gun is back on weapon slot 0 (so $LCD, which carries no slot, books to slot 0). */
   _writeHead(label) {
     this._armPending = null; this._triggerPending = null;   // F209: a head is fn 28 throughout (and holds the trigger); only a spawn/revive starts a new arm
-    this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0;
+    this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0; this._altPtr = 0; this._altEvidencePending = false;
     this._recoil = null;   // S42: a fresh head is a fresh weapon table -- `_spawn`/`_revive` re-arm it for the life that actually follows
     // B1 guard: the gun's COMBAT team is whatever `$TID` this head carries, and only a config re-push
     // can change it. Remember it so `_assign` can catch a roster re-team that the head never followed.

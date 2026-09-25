@@ -1270,6 +1270,9 @@ def test_f379_alt_target_uses_the_gun_pointer_after_a_trigger_only_equip():
         st.active_slot = 2  # A `$WEAP` pickup equips slot 2 without changing the gun's ALT pointer.
         st._on_rx("$BUT,1,1,*")
         assert st.switching["from"] == 1 and st.switching["to"] == 0
+        st._prev_ammo[1] = 10
+        st._on_rx("$ALCD,10,20,1,0,0,*")  # delayed old-slot report, no round left
+        assert st._alt_ptr == 0 and st._alt_evidence_pending == 0
         clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
         assert st.active_slot == 0 and st._alt_ptr == 0, (st.active_slot, st._alt_ptr)
     asyncio.run(go())
@@ -1282,12 +1285,19 @@ def test_f393_poison_damage_ignores_the_audio_gate_but_its_sound_waits():
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         p = {"per": 4, "by": {"num": 3, "team": 2}, "ticks": 0}
         st._hill_busy_until = clock() + 5
+        st._gun_busy_until = clock() + 5  # an unrelated pending gun cue also owns the speaker
         before = mark(mgr)
         st._poison_strike(p, clock()); await settle(st)
         sent = since(mgr, before)
         assert any(f.startswith("$LIFE,") and "-" in f for f in sent), sent
         assert not any(f.startswith("$PLAY") for f in sent), sent
         st._hill_busy_until = 0
+        st._gun_busy_until = 0
+        st._ann_queue = ["queued announcer"]
+        before = mark(mgr)
+        st._poison_strike(p, clock()); await settle(st)
+        assert not any(f.startswith("$PLAY") for f in since(mgr, before)), "queued announcer audio holds poison sound"
+        st._ann_queue = []
         before = mark(mgr)
         st._poison_strike(p, clock()); await settle(st)
         assert any(f.startswith("$PLAY") for f in since(mgr, before)), since(mgr, before)
