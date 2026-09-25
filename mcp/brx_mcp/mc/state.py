@@ -89,6 +89,11 @@ def release_app_version() -> str | None:
 
 # A28.1: `lan.public` before anything has been started. `available` is overwritten the moment a Tunnel
 # is attached; until then MC honestly says it has not looked.
+# F401: a station's name as the console's recap shows it (`Recap.tsx` STATION_KIND_LABEL), so LOAD's sync warning
+# and the recap row above it name the same station the same way.
+_STATION_KIND_LABEL = {"respawn": "RESPAWN", "powerup": "POWERUP", "extraction": "EXTRACTION",
+                       "bomb": "BOMB SITE", "control": "CONTROL POINT"}
+
 PUBLIC_OFF: LanPublic = {"ws_url": None, "status": "off", "provider": None, "available": False, "was_up": False}
 
 
@@ -1040,6 +1045,8 @@ class Session:
                 at = snap.get("saved_ms")
                 at = int(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
                 self.restored_from = {"at": at, "players": len(self.players)}
+            if self._sync_pending:
+                self._validate()     # F401: LOAD's sync warning shows at once after a restart, not on the next edit
             return len(self.players)
         except Exception:
             import logging; logging.getLogger("brx.mc").exception("session snapshot restore failed — starting clean")
@@ -2838,6 +2845,9 @@ class Session:
         if self._game_no_started:
             self.game_no += 1
             self._game_no_started = False
+            # F401: this new game byte is what resets an unsynced station's tally, so its result is gone and
+            # "BRING IT INTO WI-FI BEFORE YOU LOAD" is no longer true. Stop asking.
+            self._sync_pending = {}
 
     def _station_ids(self) -> list[StationRef]:
         rows: list[StationRef] = []
@@ -7479,7 +7489,7 @@ class Session:
         # say by the time that late fact lands (`_ingest_retired`).
         self._match_stations = self._recap_stations() if self.scorer else None
         self._match_end_t = self.scorer.end_t if self.scorer else None   # F401
-        self._sync_pending = {r["node_id"]: f"{r['kind'].upper()} {r['id']}"
+        self._sync_pending = {r["node_id"]: f"{_STATION_KIND_LABEL.get(r['kind'], r['kind'].upper())} {r['id']}"
                               for r in self._match_stations or [] if r.get("node_id")}
         self.last_recap = self._scorer_recap(self.scorer, self._match_stations) if self.scorer else None
         self._record_ended(self._log_match, self.last_recap, self._match_players)   # A34: what a late phone is told

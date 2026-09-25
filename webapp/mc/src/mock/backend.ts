@@ -771,7 +771,7 @@ export class MockBackend implements Api {
         // has not heard from since that match's whistle. `util-d4e5f6` demos this by default (F106(i):
         // seeded 20 min stale), so `?mock` shows the LOAD warning with no operator action needed.
         ...((this.lastMatchStations ?? []).filter(r => r.synced === false)
-          .map(r => `${r.kind.toUpperCase()} ${r.id} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST`)),
+          .map(r => `${({ bomb: 'BOMB SITE', control: 'CONTROL POINT' } as Record<string, string>)[r.kind] ?? r.kind.toUpperCase()} ${r.id} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST`)),
       ],
       players: clone(this.players), teams: clone(TEAMS),
       standby: clone(this.standby),

@@ -160,10 +160,10 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'STRENGTH EDITED ON STATION', id: 'server-station-range-edited' },
   // one head per `StationKind` (state.py `_station_sync_warnings`: `f"{row['kind'].upper()} {row['id']} …"`)
   { head: 'RESPAWN ', id: 'server-station-not-synced', re: /^RESPAWN \d+ HAS NOT SYNCED THE LAST MATCH/ },
-  { head: 'CONTROL ', id: 'server-station-not-synced', re: /^CONTROL \d+ HAS NOT SYNCED THE LAST MATCH/ },
+  { head: 'CONTROL POINT ', id: 'server-station-not-synced', re: /^CONTROL POINT \d+ HAS NOT SYNCED THE LAST MATCH/ },
   { head: 'POWERUP ', id: 'server-station-not-synced', re: /^POWERUP \d+ HAS NOT SYNCED THE LAST MATCH/ },
   { head: 'EXTRACTION ', id: 'server-station-not-synced', re: /^EXTRACTION \d+ HAS NOT SYNCED THE LAST MATCH/ },
-  { head: 'BOMB ', id: 'server-station-not-synced', re: /^BOMB \d+ HAS NOT SYNCED THE LAST MATCH/ },
+  { head: 'BOMB SITE ', id: 'server-station-not-synced', re: /^BOMB SITE \d+ HAS NOT SYNCED THE LAST MATCH/ },
 ];
 
 const hit = (line: string) => SERVER_LINES.find(r => (r.re ? r.re.test(line) : line.startsWith(r.head)));

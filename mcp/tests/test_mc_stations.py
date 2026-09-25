@@ -1295,11 +1295,28 @@ def test_f401_the_load_warning_survives_an_mc_restart_and_clears_when_the_statio
     assert any("HAS NOT SYNCED THE LAST MATCH" in w for w in s.config_warnings), s.config_warnings
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = tmp; s._persist_last = 0.0; s._persist()
-    assert json.loads(tmp.read_text())["sync_pending"]["nodes"] == {"brxu-live": "CONTROL 3"}
+    assert json.loads(tmp.read_text())["sync_pending"]["nodes"] == {"brxu-live": "CONTROL POINT 3"}
     s2 = _sess(mode="koth", station_source="phone")
     s2._persist_path = tmp
-    s2.restore_snapshot(); s2._validate()
-    assert any(w.startswith("CONTROL 3 HAS NOT SYNCED") for w in s2.config_warnings), s2.config_warnings
+    s2.restore_snapshot()                                             # no hand-run _validate: the restore must show it
+    assert any(w.startswith("CONTROL POINT 3 HAS NOT SYNCED") for w in s2.config_warnings), s2.config_warnings
     s2.net.simulate_status("brxu-live", {**common, "control": {"hold_ms": {"1": 12_000}}}, s2._match_end_t + 5_000)
     assert not any("HAS NOT SYNCED" in w for w in s2.config_warnings), "a heartbeat after the whistle clears it"
     assert "brxu-live" not in s2._sync_pending
+
+
+def test_f401_the_sync_warning_stops_once_a_new_game_byte_has_reset_the_station():
+    """F401 polish: the next cycle's first push bumps the game byte (`_next_game_no`), which resets the station's
+    tally, so "BEFORE YOU LOAD" is stale from then on and the warning goes."""
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    s.net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    s.control("end")
+    s.nodes["brxu-live"]["last_seen_ms"] = s._match_end_t - 1
+    s._validate()
+    assert any("HAS NOT SYNCED" in w for w in s.config_warnings), s.config_warnings
+    s._next_game_no()
+    s._validate()
+    assert not any("HAS NOT SYNCED" in w for w in s.config_warnings), s.config_warnings
+
