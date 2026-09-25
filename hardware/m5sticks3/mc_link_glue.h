@@ -196,6 +196,41 @@ static void mcLoadSavedHill() {
   savedHill.loaded(has, owner, game, id, sid.c_str(), haveHold ? hold : nullptr);
 }
 
+// ---- A68 review 2026-09-25: the duration hill's time left ("hclk_game"/"hclk_id"/"hclk_sid"/"hclk_rem") ----
+// SavedHillClock (station_link.h, host-tested) decides WHEN: at the anchor, then at most every
+// HILL_CLOCK_SAVE_MS, and once as 0 at the whistle. A restart resumes the whistle from it.
+SavedHillClock savedClock;
+
+static void mcLoadSavedClock() {
+  mcPrefs.begin("brxmc", true);
+  bool has = mcPrefs.isKey("hclk_rem");
+  int game = mcPrefs.getUChar("hclk_game", 0);
+  int id = mcPrefs.getUShort("hclk_id", 0);
+  String sid = mcPrefs.getString("hclk_sid", "");
+  int32_t rem = mcPrefs.getInt("hclk_rem", -1);
+  mcPrefs.end();
+  savedClock.loaded(has, game, id, sid.c_str(), rem);
+}
+
+static void mcWriteSavedClock() {
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.putUChar("hclk_game", (uint8_t)savedClock.game());
+  mcPrefs.putUShort("hclk_id", (uint16_t)savedClock.id());
+  mcPrefs.putString("hclk_sid", savedClock.session_id().c_str());
+  mcPrefs.putInt("hclk_rem", savedClock.remaining_ms());
+  mcPrefs.end();
+}
+
+static void mcEraseSavedClock() {
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.remove("hclk_game");
+  mcPrefs.remove("hclk_id");
+  mcPrefs.remove("hclk_sid");
+  mcPrefs.remove("hclk_rem");
+  mcPrefs.end();
+  Serial.println("# saved hill clock erased");
+}
+
 static void mcWriteSavedHill() {
   mcPrefs.begin("brxmc", false);
   mcPrefs.putUChar("hill_owner", (uint8_t)savedHill.owner());
@@ -267,6 +302,7 @@ static void mcRestoreSavedConfig(StationLink& link) {
   savedConfig.loaded(body.c_str(), sid.c_str());
   if (!savedConfig.has()) {
     if (savedHill.clear()) mcEraseSavedHill();  // a hill save with no station to restore is an orphan
+    if (savedClock.clear()) mcEraseSavedClock();
     return;
   }
   // Review round 1: bench mode (no Wi-Fi SSID set) never restores; the saved copy is left alone.
@@ -279,6 +315,7 @@ static void mcRestoreSavedConfig(StationLink& link) {
     Serial.println("# saved station_config does not parse; erasing it");
     if (savedConfig.note_released()) mcEraseSavedConfig();
     if (savedHill.clear()) mcEraseSavedHill();
+    if (savedClock.clear()) mcEraseSavedClock();
     return;
   }
   Serial.printf("RESTORED kind=%s team=%d id=%d game=%d (from flash; lock checked next)\n", a.kind.c_str(), a.team,
@@ -290,6 +327,10 @@ static void mcRestoreSavedConfig(StationLink& link) {
     Serial.printf("RESTORED hill owner=%d (held at 100 if a team)\n", link.hill().owner == HILL_NEUTRAL ? -1 : link.hill().owner);
   }
   link.enforce_restored_hill_freeze();
+  // A68 review: a duration hill resumes its whistle from the saved time left, before any advert.
+  if (savedClock.note_config(a, savedConfig.session_id())) mcEraseSavedClock();
+  const int32_t rem = savedClock.restore_remaining(a, savedConfig.session_id());
+  if (link.resume_hill_clock(rem, millis())) Serial.printf("RESTORED hill clock: %ld ms left\n", (long)rem);
 }
 
 // ---- A58 / F332: the PMIC side-button lock ---------------------------------------------------------
@@ -674,13 +715,14 @@ static void mcTickPlayers(uint32_t now) {
   }
   Sighting sp;
   while (seenPop(sp)) {
-    link.anchor_hill_on_advert(sp.advert, sp.seen_at);  // A68 fallback: first alive advert, independent of RSSI
+    link.anchor_hill_on_advert(sp.advert, sp.seen_at);  // A68 fallback: a heard-down player comes alive, any RSSI
     presence.observe(sp.advert, sp.rssi, now);
   }
   presence.tick(now);
   const uint32_t revivesBefore = link.revives().revives;
   HillUpdate u = link.tick_players(presence, now);
   if (link.has_control_assignment() && savedHill.note_owner(a, savedConfig.session_id(), link.hill())) mcWriteSavedHill();
+  if (savedClock.note(a, savedConfig.session_id(), link.hill_clock_remaining_ms(now), now)) mcWriteSavedClock();
   if (u.captured) {
     pendingCaptureTeam = u.captured_team;
     mcScreenWake = true;
@@ -754,6 +796,7 @@ static void mcHandleFrame(const String& text) {
       if (wasRestored && !link.restored()) Serial.println("STALE restored config (new MC session): UNASSIGNED");
     }
     if (w.ok && savedHill.note_welcome(w.session_id)) mcEraseSavedHill();  // another session's hold
+    if (w.ok && savedClock.note_welcome(w.session_id)) mcEraseSavedClock();
   } else if (kind == "station_config") {
     StationAssignment a = parse_station_config(body);
     if (a.present) {
@@ -782,6 +825,7 @@ static void mcHandleFrame(const String& text) {
       // Only when it differs (lock_s excluded) or the session is new.
       if (savedConfig.note_applied(link.assignment(), link.session_id())) mcWriteSavedConfig();
       if (savedHill.note_config(link.assignment(), savedConfig.session_id())) mcEraseSavedHill();  // new game/id/session
+      if (savedClock.note_config(link.assignment(), savedConfig.session_id())) mcEraseSavedClock();
       mcScreenWake = true;
       Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d lock_s=%d\n", a.kind.c_str(), a.team,
                     a.id, a.game, a.threshold, a.lock_s);
@@ -807,6 +851,7 @@ static void mcHandleFrame(const String& text) {
       mcSaveRangeIfChanged(link);  // A67: the edited values go with the station (the log and its seq stay)
       if (savedConfig.note_released()) mcEraseSavedConfig();  // a released Stick must not come back armed
       if (savedHill.clear()) mcEraseSavedHill();
+      if (savedClock.clear()) mcEraseSavedClock();
       mcScreenWake = true;
       Serial.println("RELEASED (control.release_utility): back to UNASSIGNED");
     }
@@ -1158,6 +1203,7 @@ static void mcSetup() {
   mcLoadPrefs(link);
   mcCountBoot();                   // A58
   mcLoadSavedHill();               // before the restore, which may bring the hill back held
+  mcLoadSavedClock();              // A68 review: ...and resume a duration hill's whistle
   mcRestoreSavedConfig(link);      // restart survival: before WiFi.begin, so the station plays at once
   if (saved_mc_url_usable(savedMcUrl.c_str())) {
     pendingTypedMc = mcParseWsUrl(savedMcUrl);

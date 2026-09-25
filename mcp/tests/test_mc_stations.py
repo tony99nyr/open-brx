@@ -1241,3 +1241,25 @@ def test_f364_polish_a_new_session_without_the_roster_starts_at_1_and_one_with_i
     s.set_config({"mode": "tdm"})
     s.net.simulate_utility_hello("util-y")
     assert s.set_station("util-y", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 1
+
+
+def test_duration_ms_follows_a_time_limit_edited_after_load_and_stops_at_end():
+    """A68 review 2026-09-25: MC sends `duration_ms` from LOAD. An edit in LOBBY re-pushes the NEW limit
+    (`_repush_lobby_config` -> `arm_stations`), clearing the limit drops it, and END's recap push has none."""
+    s = _sess(time_limit_s=600)
+    s.net.simulate_utility_hello("stick-1")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]   # nothing LOADed yet
+    r = s.push_config(force=True)
+    assert s.lobby_pushed, r
+    assert _pushed(s, "station_config", "stick-1")[-1].get("duration_ms") == 600000
+    s.set_config({"time_limit_s": 900})
+    assert s.lobby_pushed
+    assert _pushed(s, "station_config", "stick-1")[-1].get("duration_ms") == 900000
+    s.set_config({"coverage": "full", "time_limit_s": None})
+    assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    s.phase = "recap"
+    s.lobby_pushed = False
+    s._arm_station("stick-1")
+    last = _pushed(s, "station_config", "stick-1")[-1]
+    assert last["ends_in_ms"] == 0 and "duration_ms" not in last

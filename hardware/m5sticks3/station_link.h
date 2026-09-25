@@ -13,6 +13,7 @@
 // the powerup schedule -- and turns the schedule into the two advert bytes every kind already has
 // (state, value); nothing more.
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -665,6 +666,77 @@ class SavedHill {
   bool final_saved_ = false;
 };
 
+// ---- the saved hill clock (A68 review 2026-09-25: an offline restart must not move the whistle) ------
+// A mirror of Preferences "brxmc" hclk_game / hclk_id / hclk_sid / hclk_rem, like SavedHill: no I/O here,
+// and note() answers whether the glue must write now. `remaining` is the ms left to a duration hill's
+// deadline (StationLink::hill_clock_remaining_ms). It is written when a clock first runs, then at most once
+// per HILL_CLOCK_SAVE_MS (at most 241 writes in a 7200 s match), and once as 0 at the whistle. A restart
+// resumes from the last save, so the whistle is late by at most HILL_CLOCK_SAVE_MS plus the time the Stick
+// was off. Tagged like SavedHill: game, station id and MC session.
+constexpr uint32_t HILL_CLOCK_SAVE_MS = 30000;
+class SavedHillClock {
+ public:
+  void loaded(bool has, int game, int id, const std::string& session_id, int32_t remaining_ms) {
+    has_ = has && remaining_ms >= 0;
+    game_ = game;
+    id_ = id;
+    session_id_ = session_id;
+    remaining_ = remaining_ms < 0 ? 0 : remaining_ms;
+    written_at_ = 0;
+  }
+  bool has() const { return has_; }
+  int game() const { return game_; }
+  int id() const { return id_; }
+  const std::string& session_id() const { return session_id_; }
+  int32_t remaining_ms() const { return remaining_; }
+
+  // After every hill tick. `remaining_ms` < 0 = no duration clock running (nothing to say).
+  bool note(const StationAssignment& a, const std::string& session_id, int32_t remaining_ms, uint32_t now_ms) {
+    if (remaining_ms < 0 || session_id.empty()) return false;
+    const bool same = has_ && tag_matches(a, session_id);
+    if (same && remaining_ms == 0 && remaining_ == 0) return false;  // the whistle is already saved
+    if (same && remaining_ms > 0 && (uint32_t)(now_ms - written_at_) < HILL_CLOCK_SAVE_MS) return false;
+    has_ = true;
+    game_ = a.game;
+    id_ = a.id;
+    session_id_ = session_id;
+    remaining_ = remaining_ms;
+    written_at_ = now_ms;
+    return true;
+  }
+  // After every applied or restored station_config: another game, id, kind or session clears it.
+  bool note_config(const StationAssignment& a, const std::string& session_id) {
+    if (!has_ || (a.present && a.kind == "control" && tag_matches(a, session_id))) return false;
+    return clear();
+  }
+  bool note_welcome(const std::string& welcome_session_id) {
+    if (!has_ || welcome_session_id.empty() || welcome_session_id == session_id_) return false;
+    return clear();
+  }
+  bool clear() {
+    if (!has_) return false;
+    has_ = false;
+    remaining_ = 0;
+    return true;
+  }
+  // At boot, after the saved station_config was restored: the ms left, or -1 when the save is not its.
+  int32_t restore_remaining(const StationAssignment& a, const std::string& session_id) const {
+    return has_ && tag_matches(a, session_id) ? remaining_ : -1;
+  }
+
+ private:
+  bool tag_matches(const StationAssignment& a, const std::string& session_id) const {
+    return a.present && a.kind == "control" && game_ == a.game && id_ == a.id && !session_id.empty() &&
+           session_id_ == session_id;
+  }
+  bool has_ = false;
+  int game_ = 0;
+  int id_ = 0;
+  std::string session_id_;
+  int32_t remaining_ = 0;
+  uint32_t written_at_ = 0;
+};
+
 // ---- the advert state byte of a kind with no live state of its own -------------------------------
 // respawn: utility.js advertFields() sends `state: 1` ("ready"), and engine.js _respawnStation() skips
 // any respawn advert whose state is 0 (beacon.js byte 10: 0 = disabled). Before 2026-09-24 a Stick
@@ -1068,7 +1140,9 @@ class StationLink {
       if (starts_known_ && !hill_live_ && (int32_t)(now_ms - hill_starts_ms_) >= 0 && !hill_.frozen) {
         hill_live_ = true;
         hill_.update(players, hill_starts_ms_);
-      } else if (!starts_known_ && !heard_start_ && !hill_live_ && state_ == LinkState::JOINING_WIFI) {
+      } else if (!starts_known_ && !heard_start_ && !hill_live_ && assignment_.duration_ms <= 0 &&
+                 state_ == LinkState::JOINING_WIFI) {
+        // A duration hill waits for its anchor instead (anchor_hill_on_advert): going live here would count the lobby.
         if (!hill_offline_waiting_) { hill_offline_waiting_ = true; hill_offline_since_ms_ = now_ms; }
         if ((uint32_t)(now_ms - hill_offline_since_ms_) >= MUSTER_WAIT_OFFLINE_MS) hill_live_ = true;
       } else if (state_ != LinkState::JOINING_WIFI) {
@@ -1086,10 +1160,20 @@ class StationLink {
     else if (REVIVE_FEEDBACK_ENABLED && has_respawn_assignment()) revives_.update(players, assignment_.id);
     return u;
   }
+  // A68 fallback anchor, fed every player advert the scan hears (any RSSI). Only the alive advert of a player
+  // this Stick has already heard DOWN in this game anchors go-live: engine.js replaces `config` in a welcome
+  // whatever its phase, so a phone still LIVE in the last match (it missed END) advertises alive with the NEW
+  // game byte in the lobby (review 2026-09-25). A lobby phone advertises down with this game's byte, so a
+  // Stick armed at MC hears every lobby player down; one that did not waits for a death and a respawn.
   bool anchor_hill_on_advert(const Advert& d, uint32_t now_ms) {
     if (!has_control_assignment() || assignment_.duration_ms <= 0 || mc_start_known_ || duration_anchor_known_ ||
-        d.role != ROLE_PLAYER || !(d.state & PLAYER_ALIVE) ||
-        d.game != assignment_.game) return false;
+        d.role != ROLE_PLAYER || d.game == 0 || d.game != assignment_.game) return false;
+    const bool heard_down = std::find(heard_down_.begin(), heard_down_.end(), d.id) != heard_down_.end();
+    if (!(d.state & PLAYER_ALIVE)) {
+      if (!heard_down && heard_down_.size() < HEARD_DOWN_MAX) heard_down_.push_back(d.id);
+      return false;
+    }
+    if (!heard_down) return false;
     if (hill_restore_guard_) {
       hill_restore_guard_ = false;
       duration_restore_wait_ = false;
@@ -1101,6 +1185,31 @@ class StationLink {
     hill_starts_ms_ = now_ms;
     deadline_known_ = true;
     hill_deadline_ms_ = now_ms + (uint32_t)assignment_.duration_ms;
+    return true;
+  }
+  // The ms left on a duration hill's running clock, for SavedHillClock: -1 when none runs (no duration, not
+  // yet anchored or live, or a restored hill still waiting), 0 once the hill froze.
+  int32_t hill_clock_remaining_ms(uint32_t now_ms) const {
+    if (!has_control_assignment() || assignment_.duration_ms <= 0 || duration_restore_wait_) return -1;
+    if (hill_.frozen) return 0;
+    if (!deadline_known_ || !hill_live_) return -1;
+    const int32_t left = (int32_t)(hill_deadline_ms_ - now_ms);
+    return left > 0 ? left : 0;
+  }
+  // At boot, after restore_station_config: a restored duration hill resumes from its saved time left at once
+  // (0 = the whistle had gone: MATCH OVER). False when there is no restored duration hill to resume.
+  bool resume_hill_clock(int32_t remaining_ms, uint32_t now_ms) {
+    if (!has_control_assignment() || !duration_restore_wait_ || remaining_ms < 0) return false;
+    duration_restore_wait_ = false;
+    hill_restore_guard_ = false;
+    duration_anchor_known_ = true;
+    if (remaining_ms == 0) { hill_.freeze(); return true; }
+    hill_.frozen = false;
+    starts_known_ = true;
+    hill_live_ = true;
+    hill_starts_ms_ = now_ms;
+    deadline_known_ = true;
+    hill_deadline_ms_ = now_ms + (uint32_t)remaining_ms;
     return true;
   }
   bool hill_ended() const { return has_control_assignment() && hill_.frozen && !duration_restore_wait_; }
@@ -1220,6 +1329,7 @@ class StationLink {
       duration_anchor_known_ = false;
       mc_start_known_ = false;
       duration_restore_wait_ = false;
+      heard_down_.clear();
       epoch_++;
     }
     if (a.kind == "control" && a.starts_known) {
@@ -1374,6 +1484,9 @@ class StationLink {
     hill_offline_waiting_ = false;
     hill_restore_guard_ = a.kind == "control" && a.timed_hill;
     duration_restore_wait_ = hill_restore_guard_ && a.duration_ms > 0;
+    duration_anchor_known_ = false;
+    mc_start_known_ = false;
+    heard_down_.clear();
     assignment_ = a;
     if (a.kind == "control" && a.timed_hill) hill_.freeze();
     // A67: MC's saved values come back as MC's; an on-station edit is restored after this, from its own
@@ -1529,6 +1642,8 @@ class StationLink {
   bool duration_anchor_known_ = false;
   bool mc_start_known_ = false;
   bool duration_restore_wait_ = false;
+  static constexpr size_t HEARD_DOWN_MAX = 64;  // player ids heard down in this game (A68 anchor guard)
+  std::vector<uint16_t> heard_down_;
   bool hill_offline_waiting_ = false;
   uint32_t hill_offline_since_ms_ = 0;
   SyncedSetting threshold_{STICK_DEFAULT_THRESHOLD_DBM};  // A67

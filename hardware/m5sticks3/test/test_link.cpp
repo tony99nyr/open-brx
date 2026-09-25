@@ -2017,11 +2017,14 @@ static void test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi
   CHECK(rebooted.restore_station_config(saved.restore()));
   CHECK(!rebooted.hill_ended());  // saved timed tally stays frozen while the hill shows WAITING
   CHECK(rebooted.hill_waiting(10));
-  CHECK(rebooted.anchor_hill_on_advert(alive, 20));
+  CHECK(!rebooted.anchor_hill_on_advert(alive, 20));  // a reboot forgets who it heard down
+  CHECK(!rebooted.anchor_hill_on_advert(down, 30));
+  CHECK(rebooted.anchor_hill_on_advert(alive, 40));
   CHECK(!rebooted.hill_ended());
 
   StationLink corrected;
   corrected.apply_station_config(a, 0);
+  CHECK(!corrected.anchor_hill_on_advert(down, 900));
   CHECK(corrected.anchor_hill_on_advert(alive, 1000));
   a.starts_known = true; a.starts_in_ms = 2000; a.ends_in_ms = 4000;
   corrected.apply_station_config(a, 1100);  // MC's START clock replaces the advert fallback
@@ -2037,14 +2040,118 @@ static void test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi
   StationAssignment current = control_config(7);
   current.duration_ms = 120000;
   next_game.apply_station_config(current, 0);
+  CHECK(!next_game.anchor_hill_on_advert(down, 900));
   CHECK(next_game.anchor_hill_on_advert(alive, 1000));
   StationAssignment next = control_config(8);
   next.duration_ms = 60000;
   next_game.apply_station_config(next, 2000);
   CHECK(next_game.hill_waiting(2000));
   CHECK(!next_game.anchor_hill_on_advert(alive, 3000));  // old game advert cannot anchor the new game
+  Advert next_down = down; next_down.game = 8;
+  CHECK(!next_game.anchor_hill_on_advert(next_down, 3500));
   Advert next_alive = alive; next_alive.game = 8;
   CHECK(next_game.anchor_hill_on_advert(next_alive, 4000));
+}
+
+// Review 2026-09-25: engine.js welcome replaces `config` whatever the phase, so a phone still LIVE in the
+// last match (it missed END out of Wi-Fi) advertises alive with the NEW game byte in the lobby. Only a
+// player this Stick has heard DOWN in this game may anchor go-live, on its later alive advert.
+static void test_duration_anchor_needs_a_player_heard_down_in_this_game_first() {
+  StationLink link;
+  StationAssignment a = control_config(7);
+  a.duration_ms = 120000;
+  link.apply_station_config(a, 0);
+  Advert stale; stale.role = ROLE_PLAYER; stale.id = 3; stale.game = 7; stale.state = PLAYER_ALIVE;
+  CHECK(!link.anchor_hill_on_advert(stale, 1000));  // never heard down: a stale phone, not a spawn
+  CHECK(link.hill_waiting(1000));
+  Advert down = stale; down.id = 4; down.state = 0;
+  CHECK(!link.anchor_hill_on_advert(down, 2000));  // lobby: down with this game's byte
+  CHECK(!link.anchor_hill_on_advert(stale, 3000));  // the stale phone still cannot anchor
+  Advert spawned = down; spawned.state = PLAYER_ALIVE;
+  CHECK(link.anchor_hill_on_advert(spawned, 4000));  // the 0 -> 1 edge of a player heard down
+  // A new game forgets the old game's down players.
+  StationAssignment b = control_config(8);
+  b.duration_ms = 60000;
+  link.apply_station_config(b, 5000);
+  Advert spawned8 = spawned; spawned8.game = 8;
+  CHECK(!link.anchor_hill_on_advert(spawned8, 6000));
+}
+
+// Review 2026-09-25: a duration hill out of Wi-Fi keeps WAITING (neutral, no accrual) until its anchor;
+// F374's 60 s offline go-live is only for a config without a duration.
+static void test_duration_hill_skips_the_offline_go_live() {
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  StationAssignment a = control_config(7);
+  a.duration_ms = 120000;
+  link.apply_station_config(a, 0);
+  link.wifi_down();
+  PlayerPresence p;
+  link.tick_players(p, 1000);
+  link.tick_players(p, 1000 + MUSTER_WAIT_OFFLINE_MS + 1000);
+  CHECK(link.hill_waiting(1000 + MUSTER_WAIT_OFFLINE_MS + 1000));
+  link.hill().owner = 1; link.hill().progress = 100;
+  link.tick_players(p, 90000);
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+}
+
+// Review 2026-09-25: an offline restart mid-match used to re-anchor at the next alive advert, so the whistle
+// moved later by the whole time already played. The time left is saved (at the anchor, then at most once
+// per HILL_CLOCK_SAVE_MS, and once as 0 at the whistle) and a restart resumes from it at boot.
+static void test_duration_clock_survives_an_offline_restart() {
+  StationLink link;
+  StationAssignment a = control_config(7);
+  a.duration_ms = 120000;
+  link.apply_station_config(a, 0);
+  SavedStationConfig saved;
+  CHECK(saved.note_applied(a, "s1"));
+  SavedHillClock clock;
+  CHECK(!clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(500), 500));  // nothing running yet
+  Advert down; down.role = ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
+  Advert alive = down; alive.state = PLAYER_ALIVE;
+  link.anchor_hill_on_advert(down, 900);
+  CHECK(link.anchor_hill_on_advert(alive, 1000));
+  CHECK(clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(1000), 1000));  // saved at the anchor
+  CHECK_EQ(clock.remaining_ms(), 120000);
+  CHECK(!clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(20000), 20000));  // bounded writes
+  CHECK(clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(31000), 31000));
+  CHECK_EQ(clock.remaining_ms(), 90000);
+
+  // The Stick restarts; its millis() starts again from 0.
+  StationLink rebooted;
+  CHECK(rebooted.restore_station_config(saved.restore()));
+  SavedHillClock loaded;
+  loaded.loaded(true, 7, 9, "s1", 90000);
+  CHECK(!loaded.note_config(rebooted.assignment(), "s1"));
+  CHECK_EQ(loaded.restore_remaining(rebooted.assignment(), "s2"), -1);  // another session's clock
+  CHECK_EQ(rebooted.hill_clock_remaining_ms(50), -1);                   // nothing to overwrite the save with
+  const int32_t rem = loaded.restore_remaining(rebooted.assignment(), "s1");
+  CHECK_EQ(rem, 90000);
+  CHECK(rebooted.resume_hill_clock(rem, 100));
+  CHECK(!rebooted.hill_waiting(100));
+  CHECK(!rebooted.hill_ended());
+  PlayerPresence p;
+  rebooted.hill().owner = 1; rebooted.hill().progress = 100;
+  rebooted.tick_players(p, 100);
+  rebooted.tick_players(p, 1100);
+  CHECK_EQ(rebooted.hill().hold_ms[1], 1000u);
+  rebooted.tick_players(p, 90100);
+  CHECK(rebooted.hill_ended());
+  CHECK_EQ(rebooted.hill().hold_ms[1], 90000u);
+
+  // The whistle writes 0 once; a restart after it shows MATCH OVER, not WAITING.
+  link.tick_players(p, 121000);
+  CHECK(link.hill_ended());
+  CHECK(clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(121000), 121000));
+  CHECK_EQ(clock.remaining_ms(), 0);
+  CHECK(!clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(200000), 200000));
+  StationLink over;
+  CHECK(over.restore_station_config(saved.restore()));
+  CHECK(over.resume_hill_clock(0, 10));
+  CHECK(over.hill_ended());
+  CHECK(!over.hill_waiting(10));
+  // A new game clears the saved clock.
+  CHECK(clock.note_config(control_config(8), "s1"));
 }
 
 static void test_parse_signed_go_live_offset() {
@@ -2532,6 +2639,9 @@ int main(int argc, char** argv) {
   test_hill_stops_accruing_when_deadline_freezes_it();
   test_hill_starts_only_at_config_go_live_and_stops_at_deadline();
   test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi_gate();
+  test_duration_anchor_needs_a_player_heard_down_in_this_game_first();
+  test_duration_hill_skips_the_offline_go_live();
+  test_duration_clock_survives_an_offline_restart();
   test_parse_signed_go_live_offset();
   test_same_game_config_without_times_cancels_a_pending_start();
   test_late_start_discards_offline_fallback_capture();
