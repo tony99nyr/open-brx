@@ -583,7 +583,7 @@ const CALLOUT_WINDOW_MS = 3000;  // kill-confirm first-to-arrive (Tony), and how
 export const PU_RESERVE = 0;                // a weapon item grants its charges as the MAGAZINE and no reserve
 export const PU_LOST_AT_DEATH = true;       // a weapon item's unused charges do not carry into the next life
 export const PU_WEAPON_SWAPS = true;        // lead 2026-09-24: a second WEAPON pickup replaces the first (never refused)
-export const PU_STACK_CAP = Infinity;       // Tony has not set a cap for same-weapon charges
+export const PU_STACK_CAP_X = 2;            // F381 (Tony, 2026-09-25): the same weapon stacks up to this many times the item's own charges
 export const OVERSHIELD_AMOUNT = 75;        // the fallback when an item carries no `amount` (MC normally expands it)
 export const OVERSHIELD_DECAY_PER_S = 0;    // Tony: no decay. Not read yet: a non-zero value needs a decay writer first
 // `charges` falls back to the weapon's own catalogue magazine (`clip`) when the item carries none: the fifth default.
@@ -5629,7 +5629,7 @@ export class Engine {
         const t = this._puLoadoutSlot(old.trig), [mag, res] = this._puCounts(t);
         old.back = { slot: t, mag, res };
       }
-      const stacked = Math.min(PU_STACK_CAP, old.left + (Number.isFinite(+item.charges) && +item.charges > 0 ? +item.charges : (this.weaponRow(item.weapon_id)?.clip || 1)));
+      const stacked = Math.min(PU_STACK_CAP_X * charges, old.left + charges);   // Rockets (2): 1 + 2 = 3; 3 + 2 = 4, capped
       old.left = stacked; old.charges = stacked; old.station = id; old.at = now;
       this._puEquip(old.slot, stacked, PU_RESERVE, `powerup: ${old.name} charges stacked (${stacked})`);
       this.powerupGrant = { kind: 'weapon', name: old.name, color: old.color, charges: stacked, at: now };

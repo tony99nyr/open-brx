@@ -365,13 +365,24 @@ test('F379: after ALT to the secondary and a rocket switch-back, the next ALT fo
 });
 
 test('F381: a repeat pickup of the same weapon adds charges without a replacement card', () => {
-  assert.equal(E.PU_STACK_CAP, Infinity);
+  assert.equal(E.PU_STACK_CAP_X, 2);
   const h = armed(); h.take(4); h.eng._puHeld.left = 1;
   const n = h.mark();
   h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
   assert.equal(h.eng.state().powerup.held.left, 3);
   assert.equal(h.eng.state().powerupGrant.replaced, undefined);
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,3,0,1,*']);
+});
+
+test('F381: a same-weapon stack is capped at twice the item charges (Tony: Rockets at most 4)', () => {
+  const h = armed(); h.take(4); h.eng._puHeld.left = 3;
+  const n = h.mark();
+  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  assert.equal(h.eng.state().powerup.held.left, 4, '3 + 2 caps at 4');
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,4,0,1,*']);
+  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  assert.equal(h.eng.state().powerup.held.left, 4, 'a full stack stays at 4');
+  assert.equal(h.eng.state().powerup.held.charges, 4, 'the HUD denominator is the stacked count');
 });
 
 test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile keeps the pointer', () => {

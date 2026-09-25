@@ -166,7 +166,7 @@ stations with the same weapon share its slot.
 swap and you would only have 1."
 
 - **Weapon pickups** (Rockets, Rail Gun, later the other heavies) share ONE pickup-weapon holding. Taking the same
-  weapon adds its charges to the charges left and puts it back on the trigger, with no replacement card. There is no cap until Tony picks one (`PU_STACK_CAP`).
+  weapon adds its charges to the charges left and puts it back on the trigger, with no replacement card. The stack caps at twice the item's own charges (`PU_STACK_CAP_X`; Tony, 2026-09-25: "double the drop is max"), so Rockets (2) hold at most 4.
   Taking a different weapon SWAPS: the new one replaces the old, which is gone (not dropped for someone else; that is an idea for
   later). On the gun: zero the old slot's `$AMMO`, then the new slot's head `$WEAP` and its `$AMMO` with the charges
   (the mechanism above). The HUD says it on the callout card: RAIL GUN replaces ROCKETS. **Bench 2026-09-24, measured: the
