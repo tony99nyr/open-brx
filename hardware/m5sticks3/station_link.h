@@ -931,7 +931,7 @@ class StationLink {
   HillUpdate tick_players(const PlayerPresence& players, uint32_t now_ms) {
     HillUpdate u;
     if (has_control_assignment()) u = hill_.update(players, now_ms);
-    else if (has_respawn_assignment()) revives_.update(players);
+    else if (has_respawn_assignment()) revives_.update(players, assignment_.id);
     return u;
   }
 

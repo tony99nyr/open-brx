@@ -672,6 +672,12 @@ static void handleLine(String line) {
                   c1, c2, c1 & 1, c2 & 1, (c1 >> 7) & 1, brx_glue::pmicSideButtonLocked ? 1 : 0);
     return;
   }
+  if (line == "REDEPLOY") {  // bench: show the revive flash now, without a revive (the count is not touched)
+    brx_glue::reviveFlashUntilMs = millis() + brx_glue::REVIVE_FLASH_MS;
+    displayDirty = true;
+    Serial.println("REDEPLOY flash (test)");
+    return;
+  }
   if (line == "PLAYERS") { printPlayers(); return; }
   if (line.startsWith("PLAYERS STREAM")) {
     long secs = line.length() > 15 ? line.substring(15).toInt() : 30;

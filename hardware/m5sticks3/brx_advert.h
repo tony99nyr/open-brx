@@ -23,6 +23,10 @@ constexpr uint8_t CONTROL_HELD = 1, CONTROL_CONTESTED = 2, CONTROL_RISING = 4, C
 // while claiming a powerup station. `value` on that same advert is the target station id (1..255);
 // `id` is the player's own number (1..63). The Stick only ever SCANS for these; it never sets them.
 constexpr uint8_t PLAYER_CLAIMING = 16, PLAYER_CLAIM_READY = 32;
+// A player advert's state bit6 (Tony, 2026-09-24; reserved by brx5): "I was just revived at the station whose id
+// is in the value byte", held ~5 s by the phone after a station revive. A station counts a revive on its rising
+// edge with value == its own id: no RSSI, and it works off Wi-Fi (MUSTER).
+constexpr uint8_t PLAYER_REVIVED = 64;
 
 struct Advert {
   uint8_t role = ROLE_STATION;

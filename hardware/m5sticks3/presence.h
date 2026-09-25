@@ -420,7 +420,10 @@ class ReviveCounter {
   uint32_t revives = 0;
 
   // Call after PlayerPresence::tick. Returns how many revives this step counted.
-  uint32_t update(const PlayerPresence& players) {
+  // `station_id` (this station's id, -1 = unknown) enables the explicit signal: a player advert with
+  // PLAYER_REVIVED set and value == station_id counts once per rising edge of that bit. A phone that has ever
+  // shown the bit is counted ONLY that way (no double count); older phones fall back to the F344 near rule.
+  uint32_t update(const PlayerPresence& players, int station_id = -1) {
     uint32_t n = 0;
     bool seen[PRESENCE_MAX_PLAYERS] = {};
     for (size_t i = 0; i < players.capacity(); i++) {
@@ -434,9 +437,20 @@ class ReviveCounter {
       // reached `present` (the Stick missed a real revive at 20:51:00Z on 2026-09-24).
       const bool fresh = p.age_ms <= players.expiry_ms;
       const bool near = fresh && PlayerPresence::median_of(p) >= players.threshold_for(p) - REVIVE_MARGIN_DB;
-      if (k && !k->alive && alive && near) { revives++; n++; }
+      const bool revived_here = station_id >= 0 && (p.state & PLAYER_REVIVED) && p.value == (uint8_t)station_id;
+      const bool uses_bit = (p.state & PLAYER_REVIVED) != 0 || (k && k->uses_bit);
+      if (uses_bit) {
+        if (revived_here && !(k && k->revived)) { revives++; n++; }
+      } else if (k && !k->alive && alive && near) {
+        revives++; n++;
+      }
       if (!k) k = add(p.id);
-      if (k) { k->alive = alive; seen[k - known_] = true; }
+      if (k) {
+        k->alive = alive;
+        k->revived = revived_here;
+        k->uses_bit = uses_bit;
+        seen[k - known_] = true;
+      }
     }
     // utility.js: `for (const id of wasAlive.keys()) if (!seen.has(id)) wasAlive.delete(id)`
     for (size_t i = 0; i < PRESENCE_MAX_PLAYERS; i++) if (known_[i].used && !seen[i]) known_[i] = Known();
@@ -453,6 +467,8 @@ class ReviveCounter {
     bool used = false;
     uint16_t id = 0;
     bool alive = false;
+    bool revived = false;   // PLAYER_REVIVED with our id, last time we saw this player
+    bool uses_bit = false;  // this phone speaks PLAYER_REVIVED: count only on it
   };
   Known* find(uint16_t id) {
     for (auto& k : known_) if (k.used && k.id == id) return &k;
