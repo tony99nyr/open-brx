@@ -323,9 +323,10 @@ export function Recap() {
         {rc.honors.map(h => {
           const c = AWARD_COLOR[h.award] ?? T.acc;
           return (
-            <div key={h.award} style={{ background: T.panel, border: `1px solid ${T.line}`, borderTop: `2px solid ${c}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, clipPath: CHAMFER.br8 }}>
+            <div key={h.award} style={{ background: T.panel, border: `1px solid ${T.line}`, borderTop: `2px solid ${c}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, clipPath: CHAMFER.br8 }}>
               <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: c }}>{h.award}</span>
-              <span style={{ font: F.osw(700, 19), letterSpacing: '.08em' }}>{name(h.player_id)}</span>
+              {/* M8 (visual QA 2026-09-24): the board's long-name rule, so a long name ends in "…", not mid-letter */}
+              <span data-honor-name={h.player_id} title={name(h.player_id)} style={{ font: F.osw(700, 19), letterSpacing: '.08em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name(h.player_id)}</span>
               <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{h.stat}</span>
             </div>
           );
@@ -394,7 +395,8 @@ function Row({ r, mvp }: { r: ScoreRow; mvp: boolean }) {
   const prov = !!r.acc_provisional;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
-      <span style={{ font: F.chk(700, 14), letterSpacing: '.1em' }}>{r.display}</span>
+      {/* M8 (visual QA 2026-09-24): at 900 px a 24-character name ran over the K number */}
+      <span data-recap-name={r.player_id} title={r.display} style={{ font: F.chk(700, 14), letterSpacing: '.1em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.display}</span>
       <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, 17), ...edge('k') }}><Num value={r.kills} /></span>
       <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...edge('d') }}><Num value={r.deaths} /></span>
       <span data-cell="a" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...edge('a') }}><Num value={r.assists} /></span>

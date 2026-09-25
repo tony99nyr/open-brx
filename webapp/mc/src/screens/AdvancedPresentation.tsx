@@ -95,18 +95,18 @@ export function AdvancedPresentation({ draft }: { draft?: { presentation?: Recor
                 ? <>Read only. The draft above uses the <b data-testid="presentation-draft-preset">{draftPreset}</b> profile, and tonight's applied game uses a different one. The server resolves the full table for the applied game only, so it shows here once you play this game.</>
                 : <>Read only. These are the sounds and lights of the draft above, which shares its profile with tonight's applied game. The designer does not change them.</>}
           </div>
-          {loading && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: T.dim }}>LOADING…</div>}
-          {stale && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn }}>▲ THE MC SERVER PREDATES THIS UI — IT HAS NO /api/presentation. RESTART IT: <code>python -m brx_mcp.mc</code></div>}
-          {err && !stale && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn }}>▲ COULD NOT LOAD THE PRESENTATION PROFILE — {err.msg.toUpperCase()}</div>}
+          {loading && <div role="status" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: T.dim }}>LOADING…</div>}
+          {stale && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn }}>▲ THE MC SERVER PREDATES THIS UI — IT HAS NO /api/presentation. RESTART IT: <code>python -m brx_mcp.mc</code></div>}
+          {err && !stale && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn }}>▲ COULD NOT LOAD THE PRESENTATION PROFILE — {err.msg.toUpperCase()}</div>}
           {view && !draftDiffers && (
             <>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-                <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim }}>PRESET</span>
+                <span style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.dim }}>PRESET</span>
                 <span data-testid="presentation-preset" style={{ font: F.osw(700, 15), letterSpacing: '.1em', color: T.ink, textTransform: 'uppercase' }}>{view.summary.preset.replace('_', ' ')}</span>
-                <span style={{ marginLeft: 12, font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim }}>SWITCHES</span>
+                <span style={{ marginLeft: 12, font: F.mono(600, 11), letterSpacing: '.22em', color: T.dim }}>SWITCHES</span>
                 {SWITCHES.map(([k, label]) => {
                   const on = Boolean(view.summary[k]);
-                  return <span key={k} aria-label={`${label} ${on ? 'on' : 'off'}`} style={{ font: F.chk(700, 10.5), letterSpacing: '.1em', padding: '3px 8px', border: `1px solid ${on ? T.acc : T.line}`, color: on ? T.ink : T.faint, textDecoration: on ? 'none' : 'line-through' }}>{label}</span>;
+                  return <span key={k} aria-label={`${label} ${on ? 'on' : 'off'}`} style={{ font: F.chk(700, 11), letterSpacing: '.1em', padding: '3px 8px', border: `1px solid ${on ? T.acc : T.line}`, color: on ? T.ink : T.faint, textDecoration: on ? 'none' : 'line-through' }}>{label}</span>;
                 })}
               </div>
               {view.summary.headset && (() => {
@@ -122,10 +122,10 @@ export function AdvancedPresentation({ draft }: { draft?: { presentation?: Recor
                 const gunText = gunPlay === 'team' ? 'HELD ON TEAM COLOUR (NO BREATHING)' : gunPlay === 'dark' ? 'DARK (EVENTS STILL FLASH)'
                   : gunPlay === 'health' ? 'HEALTH HUE, GREEN → YELLOW → RED' : 'FIRMWARE BREATHING, TEAM COLOUR';
                 return (
-                  <div data-testid="headset-block" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', font: F.mono(500, 10.5), letterSpacing: '.12em' }}>
-                    <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim, width: '100%' }}>HEADSET</span>
+                  <div data-testid="headset-block" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', font: F.mono(500, 11), letterSpacing: '.12em' }}>
+                    <span style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.dim, width: '100%' }}>HEADSET</span>
                     {items.map(([k, v]) => <span key={k}><span style={{ color: T.micro }}>{k} </span><span style={{ color: T.body }}>{v}</span></span>)}
-                    <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim, width: '100%', marginTop: 4 }}>GUN BODY</span>
+                    <span style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.dim, width: '100%', marginTop: 4 }}>GUN BODY</span>
                     <span data-testid="gun-block"><span style={{ color: T.micro }}>IN PLAY </span><span style={{ color: T.body }}>{gunText}</span></span>
                   </div>
                 );
@@ -149,7 +149,7 @@ export function AdvancedPresentation({ draft }: { draft?: { presentation?: Recor
                         ? 'MC CONFIDENT — EVERY HUD CONNECTED, FRESH AND FLUSHED: MC-DRIVEN EVENTS (LEAD, NEXT KILL WINS) WILL BE SENT'
                         : `MC NOT CONFIDENT — MC-DRIVEN GLOBAL EVENTS ARE WITHHELD · OFFLINE: ${who(c.missing)} · STALE: ${who(c.stale)} · UNFLUSHED: ${who(c.unflushed)}`;
                 const colour = (!view.summary.mc_events || !view.summary.mc_confidence || !inMatch) ? T.dim : c.confident ? T.ok : T.warn;
-                return <div role="status" data-testid="mc-confidence" style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: colour, lineHeight: 1.5, textTransform: 'uppercase' }}>{text}</div>;
+                return <div role="status" data-testid="mc-confidence" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: colour, lineHeight: 1.5, textTransform: 'uppercase' }}>{text}</div>;
               })()}
               <div style={{ font: F.chk(500, 12), color: T.micro, lineHeight: 1.45 }}>
                 <b>HUD</b> = {SOURCE_HINT.hud}. <b>MC</b> = {SOURCE_HINT.mc}. A row marked SOUND OFF plays no sound; its lights still fire.
@@ -158,7 +158,7 @@ export function AdvancedPresentation({ draft }: { draft?: { presentation?: Recor
                 <table aria-label="presentation events" style={{ borderCollapse: 'collapse', width: '100%', font: F.mono(500, 11), letterSpacing: '.04em' }}>
                   <thead>
                     <tr style={{ color: T.dim, textAlign: 'left' }}>
-                      {['EVENT', 'SOURCE', 'WHEN', 'SOUND', 'GUN', 'HEADSET', 'HUD TEXT'].map(h => <th key={h} style={{ padding: '6px 8px', borderBottom: `1px solid ${T.line}`, font: F.mono(600, 10), letterSpacing: '.18em' }}>{h}</th>)}
+                      {['EVENT', 'SOURCE', 'WHEN', 'SOUND', 'GUN', 'HEADSET', 'HUD TEXT'].map(h => <th key={h} style={{ padding: '6px 8px', borderBottom: `1px solid ${T.line}`, font: F.mono(600, 11), letterSpacing: '.18em' }}>{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -167,12 +167,12 @@ export function AdvancedPresentation({ draft }: { draft?: { presentation?: Recor
                         style={{ color: r.enabled ? T.body : T.faint, borderBottom: `1px solid ${T.line}` }}>
                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: r.enabled ? T.ink : T.faint }}>{r.event}</td>
                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }} title={SOURCE_HINT[r.source]}>
-                          <span style={{ font: F.chk(700, 10), letterSpacing: '.12em', padding: '2px 6px', border: `1px solid ${r.source === 'hud' ? T.ok : r.source === 'mc' ? T.warn : T.acc}`, color: r.source === 'hud' ? T.ok : r.source === 'mc' ? T.warn : T.acc }}>{SOURCE_LABEL[r.source]}</span>
+                          <span style={{ font: F.chk(700, 11), letterSpacing: '.12em', padding: '2px 6px', border: `1px solid ${r.source === 'hud' ? T.ok : r.source === 'mc' ? T.warn : T.acc}`, color: r.source === 'hud' ? T.ok : r.source === 'mc' ? T.warn : T.acc }}>{SOURCE_LABEL[r.source]}</span>
                         </td>
                         <td style={{ padding: '6px 8px', font: F.chk(500, 12), color: r.enabled ? T.dim : T.faint }}>{r.desc}</td>
                         <td style={{ padding: '6px 8px' }}>
                           {/* chip in T.micro: 5.1:1 on the panel (T.faint was 2.1:1). Never put a // comment between JSX children: it renders as text. */}
-                          {!r.enabled && <span style={{ font: F.chk(700, 10), letterSpacing: '.12em', padding: '2px 6px', marginRight: 8, border: `1px solid ${T.micro}`, color: T.micro }}>SOUND OFF</span>}
+                          {!r.enabled && <span style={{ font: F.chk(700, 11), letterSpacing: '.12em', padding: '2px 6px', marginRight: 8, border: `1px solid ${T.micro}`, color: T.micro }}>SOUND OFF</span>}
                           {r.sound ? <><span style={{ color: r.enabled ? T.ink : T.faint, textDecoration: r.enabled ? 'none' : 'line-through' }}>{r.sound}</span>{r.words ? <span style={{ color: T.dim, textDecoration: r.enabled ? 'none' : 'line-through' }}> · {r.words}</span> : null}</> : <span style={{ color: T.faint }}>—</span>}
                         </td>
                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}><Colour idx={r.gun_led} /></td>

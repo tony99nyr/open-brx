@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { setNotice } from '../notice';
 import type { LiveRow, OperatorCmd } from '../api/types';
 import { useStore } from '../store';
@@ -48,6 +48,10 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
     return () => clearTimeout(id);
   }, [armed]);
   useEffect(() => { setArmed(null); }, [r.status]);
+  // M7 (visual QA 2026-09-24): at 1440×900 a row near the bottom opened its menu below the fold, so the
+  // host tapped and saw nothing change. The menu brings itself into view once, when it opens.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { box.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); }, []);
   const noRespawn = state?.config.respawn?.type === 'none';
   const outcome = operatorOutcome(r);
 
@@ -61,7 +65,7 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
   const offered = ACTIONS.filter(a => live || a.cmd === 'relink');
 
   return (
-    <div id={operatorMenuId(r.player_id)} data-operator-menu={r.player_id} role="group" aria-label={`Operator actions for ${who}`}
+    <div ref={box} id={operatorMenuId(r.player_id)} data-operator-menu={r.player_id} role="group" aria-label={`Operator actions for ${who}`}
       style={{ position: 'sticky', left: 0, maxWidth: 'min(560px, calc(100vw - 48px))', boxSizing: 'border-box',
                margin: '0 0 4px', padding: '10px 12px', background: T.panelDeep, border: `1px solid ${T.line2}`,
                borderLeft: `3px solid ${T.acc}`, display: 'flex', flexDirection: 'column', gap: 8 }}>

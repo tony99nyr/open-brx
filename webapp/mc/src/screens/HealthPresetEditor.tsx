@@ -45,7 +45,7 @@ export function HealthPresetEditor({ health, onChange }: { health: Health; onCha
         )}
       </span>
       <button type="button" data-testid="health-advanced-toggle" onClick={() => setOpen(o => !o)} aria-expanded={open}
-        style={{ ...BTN_RESET, alignSelf: 'flex-start', font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.acc, minHeight: 36, display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+        style={{ ...BTN_RESET, alignSelf: 'flex-start', font: F.mono(600, 11), letterSpacing: '.2em', color: T.acc, minHeight: 36, display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
         {open ? '▾' : '▸'} ADVANCED
       </button>
       {open && (
@@ -53,7 +53,7 @@ export function HealthPresetEditor({ health, onChange }: { health: Health; onCha
           <ValueBox value={health.max_hp} unit="HP" min={1} max={255} label="health" onChange={v => editNumber({ max_hp: v })} />
           <ValueBox value={health.max_armor} unit="AR" min={0} max={255} label="armor" onChange={v => editNumber({ max_armor: v })} />
           <ValueBox value={health.max_shield} unit="SH" min={0} max={255} label="shield" onChange={v => editNumber({ max_shield: v })} />
-          <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro, maxWidth: 340 }}>
+          <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, maxWidth: 340 }}>
             the shield recharges only while armour is 0 · a player's own POOL override (on KIT) still wins over HP/armour
           </span>
         </span>

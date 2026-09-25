@@ -10,7 +10,7 @@ import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, T
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
 import { HealthPresetEditor } from './HealthPresetEditor';
-import { HEALTH_PRESET_COPY, STATION_SOURCES, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, healthPresetOf, isKillScored, objectiveLine, poolEmptyMessage, presetOf, rulesLine, unplayablePick, winLine, withPolicy } from './gameSummary';
+import { HEALTH_PRESET_COPY, STATION_SOURCES, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, healthPresetOf, isKillScored, objectiveLine, poolEmptyMessage, presetOf, rulesLine, sourceBrief, unplayablePick, winLine, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { ModeEmblem } from './ModeEmblem';
 import { CONFIG_EDITABLE_PHASES, MODE_PICK_PHASES, lockedReason } from './Games';
@@ -172,7 +172,7 @@ export function Designer() {
     <div className="screen">
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '14px 28px', marginBottom: 20 }}>
         <div>
-          <div style={{ font: F.mono(600, 10), letterSpacing: '.3em', color: T.acc }}>[ A2b // GAME DESIGNER ]</div>
+          <div style={{ font: F.mono(600, 11), letterSpacing: '.3em', color: T.acc }}>[ A2b // GAME DESIGNER ]</div>
           <div style={{ font: F.osw(700, 30), letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2 }}>{editing ? `Edit ${editing.name}` : 'Create a Game'}</div>
         </div>
         <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
@@ -249,7 +249,7 @@ export function Designer() {
                   (gameSummary.STATION_SOURCES ⇄ types.py), so this is a three-value segmented control and
                   never a text field: a typo used to ship a hill match with nothing emitting a hill. */}
               {stationGated && (
-                <Row label={<>OBJECTIVE SOURCE <Hint>What is on the field emitting the objective</Hint></>}>
+                <Row full label={<>OBJECTIVE SOURCE <Hint>What is on the field emitting the objective</Hint></>}>
                   <Seg label="objective source" value={cfg.station_source ?? 'phone'} pad="5px 11px"
                     options={STATION_SOURCES.map(s => ({ value: s.value, label: s.label }))}
                     titles={Object.fromEntries(STATION_SOURCES.map(s => [s.value, s.hint]))}
@@ -268,16 +268,16 @@ export function Designer() {
           {/* 3 LOADOUT */}
           <section>
             <SectionRule label="3 // LOADOUT — WHO CARRIES WHAT" hint={<span style={{ color: PERK_COLOR }}>{pol.preset === 'custom' ? 'CUSTOM RULES' : TEMPLATES.find(t => t.value === pol.preset)?.label}</span>} style={{ marginBottom: 12 }} />
-            {previewOff && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn, marginBottom: 10 }}>▲ THE MC SERVER PREDATES THIS UI — RULES PREVIEW LOCALLY BUT SAVE / PLAY WILL FAIL UNTIL YOU RESTART IT.</div>}
+            {previewOff && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn, marginBottom: 10 }}>▲ THE MC SERVER PREDATES THIS UI — RULES PREVIEW LOCALLY BUT SAVE / PLAY WILL FAIL UNTIL YOU RESTART IT.</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim }} title="A template replaces every loadout rule below, including the phone-picks switch">START FROM</span>
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.dim }} title="A template replaces every loadout rule below, including the phone-picks switch">START FROM</span>
               <span role="group" aria-label="loadout template" style={{ display: 'flex', gap: 4 }}>
                 {TEMPLATES.map(t => <button key={t.value} type="button" title={t.hint} onClick={() => applyTemplate(t.value)} aria-pressed={pol.preset === t.value} className="hov-acc"
                   style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.12em', padding: '7px 12px', minHeight: 36, cursor: 'pointer', background: pol.preset === t.value ? T.acc : 'transparent', color: pol.preset === t.value ? T.accInk : T.dim, border: `1px solid ${pol.preset === t.value ? T.acc : T.line}` }}>{t.label}</button>)}
               </span>
               <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, font: F.chk(600, 12), letterSpacing: '.1em' }}>PLAYERS PICK ON THEIR PHONE <Toggle on={pol.hud_select} onChange={v => putPol({ hud_select: v })} label="players pick on phone" /></span>
             </div>
-            {!pol.hud_select && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: T.dim, marginBottom: 10 }}>PHONE PICKS ARE OFF — "PLAYER" BELOW MEANS THE HOST KITS THAT SLOT ON THE KIT PAGE; PLAYERS SEE THEIR KIT BUT CANNOT CHANGE IT.</div>}
+            {!pol.hud_select && <div role="status" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: T.dim, marginBottom: 10 }}>PHONE PICKS ARE OFF — "PLAYER" BELOW MEANS THE HOST KITS THAT SLOT ON THE KIT PAGE; PLAYERS SEE THEIR KIT BUT CANNOT CHANGE IT.</div>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))', gap: 12 }}>
               <SlotEditor slot="primary" rule={pol.primary} pool={pool} weapons={weapons} perks={perks} onRule={r => putSlot('primary', r)} />
               <SlotEditor slot="secondary" rule={pol.secondary} pool={pool} weapons={weapons} perks={perks} onRule={r => putSlot('secondary', r)} />
@@ -302,12 +302,12 @@ export function Designer() {
         {/* summary rail */}
         <aside className="designer-rail" style={{ flex: '1 1 300px', maxWidth: 400, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${PERK_COLOR}` }}>
           <div style={{ padding: '14px 18px 0' }}>
-            <div style={{ font: F.mono(600, 10.5), letterSpacing: '.26em', color: PERK_COLOR }}>THE CARD WILL SAY</div>
+            <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: PERK_COLOR }}>THE CARD WILL SAY</div>
             <div style={{ font: F.osw(700, 26), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1, color: name.trim() ? T.ink : T.faint }}>{name.trim() || 'UNNAMED GAME'}</div>
           </div>
           {mode && MODE_ART.has(mode.mode) && <div style={{ margin: '12px 18px 0', aspectRatio: '2816 / 1536', background: `url(assets/modes/${mode.mode}.jpg) center/contain no-repeat, ${T.inset}`, border: `1px solid ${T.line2}` }} />}
           <div style={{ padding: '12px 18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ font: F.mono(500, 10.5), letterSpacing: '.1em', color: T.acc, lineHeight: 1.6 }}>{rulesLine(cfg, weapons, perks)}</div>
+            <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.acc, lineHeight: 1.6 }}>{rulesLine(cfg, weapons, perks)}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4 }}>
               {[['BASE', mode?.name ?? cfg.mode], ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', winLine(cfg, mode)],
                 ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
@@ -318,25 +318,25 @@ export function Designer() {
                 ['SLOT 2', pol.secondary.choice === 'off' ? 'OFF' : pol.secondary.choice === 'fixed' ? 'FIXED' : pool ? `${pool.secondary_weapons.length} ${!pol.secondary.kinds.includes('weapon') && pol.secondary.kinds.includes('sidearm') ? 'SIDEARMS' : 'WEAPONS'}` : '…'],
                 ['PERK', pol.perk.choice === 'off' ? 'OFF' : pol.perk.choice === 'fixed' ? 'FIXED' : pool ? `${pool.perks.length} PERKS` : '…'],
                 ...(objectiveLine(cfg) ? [['OBJECTIVE', objectiveLine(cfg)!]] : [])].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, font: F.mono(500, 10.5), letterSpacing: '.14em' }}>
+                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, font: F.mono(500, 11), letterSpacing: '.14em' }}>
                   <span style={{ color: T.micro }}>{l}</span><span style={{ color: T.body, ...TAB, textAlign: 'right' }}>{v}</span>
                 </div>
               ))}
             </div>
-            <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, minHeight: 18 }}>{desc.trim() || (mode?.brief ?? '')}</div>
+            <div data-designer-brief="1" style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, minHeight: 18 }}>{desc.trim() || sourceBrief(mode?.brief ?? '', stationGated ? (cfg.station_source ?? 'phone') : null)}</div>
             <div style={{ height: 1, background: T.line }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <PrimaryButton onClick={play} disabled={playBlocked || working !== null} title={playBlocked ? playBlockedReason : working === 'play' ? 'Loading this game' : name.trim() ? 'Save, apply, load, and go to KIT' : 'Apply, load, and go to KIT'}>{working === 'play' ? 'LOADING…' : 'PLAY THIS NOW ▸'}</PrimaryButton>
-              {blocked && <div role="alert" style={{ font: F.mono(600, 10.5), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</div>}
-              {!blocked && !name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
+              {blocked && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</div>}
+              {!blocked && !name.trim() && <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
               <div style={{ display: 'flex', gap: 6 }}>
                 <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} disabled={blocked || working !== null} onClick={() => saveOnly(false)} title={blocked ? blockedReason : editing ? `Update "${editing.name}"` : 'Save under the name above'}>{working === 'save' ? 'SAVING…' : editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
                 {editing && <GhostButton size={11} pad="9px 12px" disabled={blocked || working !== null} onClick={() => saveOnly(true)} title={blocked ? blockedReason : 'Keep the original, save this as a new game'}>SAVE AS NEW</GhostButton>}
               </div>
-              {saved && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: saved.startsWith('NAME') ? T.warn : T.ok }}>{saved}</div>}
+              {saved && <div role="status" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: saved.startsWith('NAME') ? T.warn : T.ok }}>{saved}</div>}
               {saved && !saved.startsWith('NAME') && editing && state.active_preset_id === editing.preset_id && gameSig(editing.config) !== gameSig(state.config) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: T.warn }}>▲ TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
+                  <div style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn }}>▲ TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
                   <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} disabled={playBlocked || working !== null} title={playBlocked ? playBlockedReason : undefined}
                     onClick={applyTonight}>{working === 'apply' ? 'APPLYING…' : "APPLY TO TONIGHT'S GAME ▸"}</GhostButton>
                 </div>
@@ -427,7 +427,7 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
     <div role="group" aria-label={`${slot} slot rules`} style={{ background: T.panelDeep, border: `1px solid ${T.line}`, borderTop: `2px solid ${isPerk ? PERK_COLOR : T.acc}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 13), letterSpacing: '.2em' }}>{isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY'}</span>
-        <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: emptyPool ? T.bad : T.acc }}>{summary}</span>
+        <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: emptyPool ? T.bad : T.acc }}>{summary}</span>
       </div>
       {emptyPool && (
         <div role="alert" data-testid={`${slot}-empty-pool`} style={{ font: F.chk(700, 12), letterSpacing: '.04em', color: T.bad, background: 'rgba(255,82,82,.1)', border: `1px solid ${T.bad}`, padding: '8px 10px', lineHeight: 1.5 }}>
@@ -438,7 +438,7 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.micro }} title="Who decides what goes in this slot">WHO PICKS</span>
+        <span style={{ font: F.mono(600, 11), letterSpacing: '.2em', color: T.micro }} title="Who decides what goes in this slot">WHO PICKS</span>
         <Seg value={rule.choice} pad="5px 11px" options={[{ value: 'player', label: 'PLAYER' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(sec || isPerk ? [{ value: 'off' as SlotChoice, label: 'OFF' }] : [])]}
           onChange={(v: SlotChoice) => onRule({ choice: v, fixed_id: v === 'fixed' ? (rule.fixed_id ?? (isPerk ? (allowedK[0] ?? perks[0]?.perk_id ?? 'body_armor') : (allowedW[0] ?? 'assault_rifle'))) : rule.fixed_id })} />
       </div>
@@ -469,7 +469,7 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
           <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, lineHeight: 1.5, maxWidth: '68ch' }}>A chip switches a whole class. Tap a weapon to switch just that one. A partial chip (1/5) means some of its weapons are off, and a weapon in two classes is off when either chip is off.</div>
         </>
       )}
-      {showWeapons && fixed && <div style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: T.acc }}>TAP THE WEAPON EVERYONE GETS</div>}
+      {showWeapons && fixed && <div style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: T.acc }}>TAP THE WEAPON EVERYONE GETS</div>}
       {showWeapons && (
         // A TABLE, alphabetical. This was 36 image tiles in a 3-wide grid, each with its class
         // printed in a saturated colour — Tony, 2026-09-02: "too loud, its difficult to quickly scan
@@ -515,7 +515,7 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
                     weapon can carry several — the AMR is support AND sniper, the Ion Sniper is heavy
                     AND sniper — so a row labelled only SUPPORT was being switched off by the SNIPER
                     chip with nothing on screen explaining why (Tony, 2026-09-02). */}
-                <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro, whiteSpace: 'nowrap' }}>
+                <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, whiteSpace: 'nowrap' }}>
                   {(TAGS.filter(t => (w.tags ?? []).includes(t.tag)).map(t => t.label).join(' · ')) || role.label}
                 </span>
               </button>
@@ -523,7 +523,7 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
           })}
         </div>
       )}
-      {showPerks && fixed && <div style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: PERK_COLOR }}>TAP THE PERK EVERYONE GETS</div>}
+      {showPerks && fixed && <div style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: PERK_COLOR }}>TAP THE PERK EVERYONE GETS</div>}
       {showPerks && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 6 }}>
           {perks.map(k => {

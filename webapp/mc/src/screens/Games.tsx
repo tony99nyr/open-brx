@@ -1,3 +1,4 @@
+import { StationAlerts } from '../ui/StationAlerts';
 // GAMES — two states on one tab (docs/spec/loadout.md §5).
 //
 // BEFORE a config has been sent to the guns it is "pick tonight's game": two rows of cards (YOUR
@@ -27,6 +28,7 @@
 // if it navigates away. CONTINUE TO KIT ▸ is the way on, one tap, on the active state.
 //
 // Defining a game happens in the DESIGNER (opened from here) — this page has no forms.
+import { friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { useCallback, useEffect, useState } from 'react';
 import { STALE_ACK_FAULT, pushGate, sentenceCase, splitBlocker } from '../api/derive';
 import type { ModeInfo, SavedGame } from '../api/types';
@@ -240,7 +242,13 @@ export function Games() {
           {/* `SETUP: ` = a PHYSICAL step on the field the operator must do before the push (F70: power-cycle
               the grenade so the hill starts NEUTRAL, set hill mode, place it). It is not a technical advisory
               like the $SIR/frag-limit warnings, which stay out of this rail — see mc/API.md. */}
-          {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w) || /^SETUP:/i.test(w)).map((w, i) => <div key={i} style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {w.toUpperCase()}</div>)}
+          {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w)).map((w, i) => <div key={i} style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {w.toUpperCase()}</div>)}
+          {/* M12 (visual QA 2026-09-24): a SETUP line is a sentence to read at the field, so it is the same
+              sentence-case line LOBBY shows (`friendlySetupLine`), not a shouted all-caps block. */}
+          {setupLines(state.config_warnings).map((w, i) => (
+            <div key={`setup-${i}`} data-games-setup="1" style={{ font: F.chk(600, 12.5), letterSpacing: '.02em', lineHeight: 1.45, color: T.ink,
+              background: 'rgba(255,176,32,.08)', borderLeft: `3px solid ${T.warn}`, padding: '6px 10px' }}>▲ {friendlySetupLine(w)}</div>
+          ))}
         </div>
       )}
       {/* Review finding, 2026-09-19: a friendly heads-up, never a blocker -- a mixed fleet plays fine,
@@ -349,6 +357,7 @@ export function Games() {
 
   return (
     <div className="screen">
+      <StationAlerts unlockOnly />
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '14px 28px', marginBottom: 20 }}>
         <div>
           <div style={{ font: F.mono(600, 10), letterSpacing: '.3em', color: T.acc }}>[ A2 // GAMES ]</div>
