@@ -640,6 +640,9 @@ export function startDemo({ engine, log }) {
       'live-charge-low':   [[0, 'chargeRifle'], ...live, [2300, () => ev.chargeAmmo(9)]],
       'live-charge-ok':    [[0, 'chargeRifle'], ...live, [2300, () => ev.chargeAmmo(10)]],
       'live-kill':         [...live, [2300, () => ev.killConfirm()]],
+      // one kill confirmed twice, in each order: the HERO row's source tag reads `MC · IR` or `IR · MC` (docs/announcer.md)
+      'live-kill-mc-ir':   [...live, [2300, () => ev.killConfirm()], [2500, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],
+      'live-kill-ir-mc':   [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)], [2500, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
       'down-recap':        [...live, [2100, () => { ev.hit(); ev.dealt(18); ev.dealt(9); }], [2300, () => ev.score(3, 1, 1)], [2350, 'die']],   // S56: TAKEN and DEALT on the down screen
       // The death screen's states (deathscreen.js). Each is a real life through the engine; see `fullLife` above.
@@ -675,10 +678,11 @@ export function startDemo({ engine, log }) {
       // then the release, and the tell clears on the engine's own settle clock ("release to steady").
       'live-recoil-kill':  [...live, [2300, () => ev.holdFire(22, 100)],
         [3300, () => ev.killMedals(['first_blood'], 'VIPER')], [3900, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')]],
+      // SMOKED and STUNNED also take a hit after the kills: the hit number moves under the tell (review M1)
       'live-smoke-kill':   [...live, [2300, 'smoke'],
-        [2800, () => ev.killMedals(['first_blood'], 'VIPER')], [3400, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')]],
+        [2800, () => ev.killMedals(['first_blood'], 'VIPER')], [3400, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')], [4000, () => ev.hit()]],
       'live-stun-kill':    [[0, () => { config.stun = { duration_s: 10 }; }], ...live, [2300, 'stun'],
-        [2800, () => ev.killMedals(['first_blood'], 'VIPER')], [3400, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')]],
+        [2800, () => ev.killMedals(['first_blood'], 'VIPER')], [3400, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')], [4000, () => ev.hit()]],
       // OVERHEAT on an energy weapon (the charge rifle, the gun's own heat past the lockout), then the kills
       'live-overheat-kill': [...live, [2300, 'overheat'],
         [3000, () => ev.killMedals(['first_blood'], 'VIPER')], [3600, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')]],

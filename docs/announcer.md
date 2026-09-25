@@ -146,7 +146,8 @@ Rules:
 
 - A kill, a lead change and a hill capture at the same moment are all on screen at once.
 - Every item has a small source line: `MC`, `IR` (the S57 word) or `BLE` (a station). An MC confirm and the IR word
-  for the same kill are one HERO row (`IR · MC`), with one flash and one buzz.
+  for the same kill are one HERO row, with one flash and one buzz. Its tag names both in arrival order: `MC · IR` when MC
+  confirmed first, `IR · MC` when the IR word came first.
 - The HERO shows no weapon and no "+1 ELIMINATION" or K count.
 - The medal labels come from `contract.gen` `MEDALS`. BEAT DOWN (`beat_down`, a melee kill) and KILLJOY (`killjoy`, an
   enemy's spree ended) have local labels in `hud.js` `MEDAL_FALLBACK` until MC sends them (TODO: contract). Neither has

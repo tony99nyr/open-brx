@@ -4780,6 +4780,13 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(lnApart(r).length === 0, 'lanes over each other: ' + lnApart(r).join(' | '));
     must(lnBoxes(r).every(([, x]) => x.l >= r.frame.l - 1 && x.r <= r.frame.r + 1 && x.t >= r.frame.t - 1 && x.b <= r.frame.b + 1), 'a lane runs off the frame');
   });
+  await step(`${tag}: one kill confirmed by MC and by the IR word is ONE hero row, its tag in arrival order (MC · IR, IR · MC)`, async () => {
+    for (const [stage, want] of [['live-kill-mc-ir', 'MC · IR'], ['live-kill-ir-mc', 'IR · MC']]) {
+      const pg = await open(view, stage, N, 2400);
+      const r = await lnWait(pg, x => x.hero && x.hero.src === want, 2000); await pg.close();
+      must(r.hero && r.hero.src === want && r.hero.n === 1, `${stage}: ${JSON.stringify(r.hero && { src: r.hero.src, n: r.hero.n })}`);
+    }
+  });
   await step(`${tag}: every source tag says MC, IR or BLE (no protocol number) at 14 frame px, the 11 px on-screen floor (Tony 2026-09-25)`, async () => {
     const pg = await open(view, 'live-spree', N, 2500);
     await lnWait(pg, r => r.hero && r.obj.length === 2 && r.feed.length, 8000);
@@ -4818,7 +4825,7 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [tell, s
       const sc = document.getElementById('frame').getBoundingClientRect().width / 844;   // the #frame is scaled: "on screen" is layout px x scale
       const shown = e => { for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity < .6) return false; } const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
       const els = [...document.querySelectorAll('.alive .aimfx, .alive .heatword')].filter(shown);
-      const texts = els.flatMap(e => e.classList.contains('heatword') ? [e] : [...e.querySelectorAll('.k, .s, .t')]).filter(x => shown(x) && x.textContent.trim());
+      const texts = els.flatMap(e => e.classList.contains('heatword') ? [e] : [...e.querySelectorAll('.k, .s, .t, .t small')]).filter(x => shown(x) && x.textContent.trim());   // review M2: the "SEC" unit too
       return { text: els.map(e => e.innerText.replace(/\s+/g, ' ')).join(' | '), px: texts.map(x => [x.textContent.trim(), +(parseFloat(getComputedStyle(x).fontSize) * sc).toFixed(1)]),
         tight: !!document.querySelector('#lanes .lh.tight'), boxes: els.map(e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; }) };
     });
@@ -4831,6 +4838,23 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [tell, s
     must(under.length === 0, `tell text under 11 px on screen: ${JSON.stringify(under)}`);
     const guard = [...r.env.ammo, ...r.env.vparts];   // the vitals' painted parts (the HP and armour numbers, their bars); the `.vitals` box itself is wider than its ink
     must(t.boxes.every(x => guard.every(g => apart(x, g))), `the tell covers the ammo or the vitals: ${JSON.stringify({ tell: t.boxes, guard })}`);
+  });
+  // review M1: a hit during the tell. The tell owns the centre, so the hit number (and the weapon line under it) moves
+  // clear of it, and still covers neither the ammo, the vitals nor the kill card.
+  await step(`${tag}: a hit during ${tell.toUpperCase()} and a kill card: the hit number and its weapon line sit clear of the tell, the kill card, the ammo and the vitals`, async () => {
+    const pg = await open(view, stage, N, 2400);
+    await lnWait(pg, x => x.hero && x.hero.n >= 2 && x.env.tells.length, 4000);
+    await pg.waitForTimeout(700);   // past the engine's 250 ms guard for the kill moment, and past the stage's own hit
+    await pg.evaluate(() => window.brxDemo.hit()); await pg.waitForTimeout(160);
+    const r = await lnRead(pg);
+    const h = await pg.evaluate(() => { const q = s => [...document.querySelectorAll(s)].filter(e => getComputedStyle(e).display !== 'none').map(e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; });
+      return { hc: q('#overlay .mo.hit .hc'), hw: q('.hitwpn .hw'), tells: q('.alive .aimfx, .alive .heatword') }; });
+    await pg.screenshot({ path: `${OUT}/${view.name}-aimhit-${tell}${night ? '-night' : ''}.png` }); await pg.close();
+    must(h.hc.length === 1 && h.tells.length, `pre-condition: the hit number and the tell are both on screen: ${JSON.stringify(h)}`);
+    const mine = [...h.hc.map(b => ['hit number', b]), ...h.hw.map(b => ['weapon line', b])];
+    const others = [...h.tells.map(b => ['tell', b]), ...(r.hero ? r.hero.parts.map(b => ['kill card', b]) : []), ...r.env.ammo.map(b => ['ammo', b]), ...r.env.vparts.map(b => ['vitals', b])];
+    const clash = mine.flatMap(([n, a]) => others.filter(([, o]) => !apart(a, o)).map(([m, o]) => `${n} ${JSON.stringify(a)} over ${m} ${JSON.stringify(o)}`));
+    must(clash.length === 0, clash.join(' | '));
   });
 }
 // End-of-match AWARDS (A63): MC's honours from the result push, one row per tied holder. Mine first (with a star and
