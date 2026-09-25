@@ -101,7 +101,7 @@ Use this priority stack; do not spend Tony's bench time on desk work:
 1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
    evidence and promote or close each row from the result.
 2. **Screamer transport:** Block 2 (A4 first, it gates 0.4.12), then A8b; capture F269/F270/F272, then F274's soaks.
-3. **Decisions for Tony:** F346 (d) first contact; F351's B3 (the kill line at my own death); F350's shield-hit
+3. **Decisions for Tony:** F351's B3 (the kill line at my own death); F350's shield-hit
    sound; F352's kill confirm; the powerups flag after 3.4-3.5.
 4. **Only after reliability:** E2/E3/E4, B17, K6 and the remaining feature rows are roadmap work.
 

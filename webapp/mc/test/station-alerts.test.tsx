@@ -258,18 +258,18 @@ describe('ITEMS — the ASSIGN + ARM form (Block 9, brx4)', () => {
     assigned: null, armed: null, platform: 'esp32',
     report: { kind: 'respawn', team: 255, station_id: 0, threshold: -74, live: false, armed: false }, ...over });
 
-  it('a station reporting id 0 pre-fills the next free id, never 0 (the API refuses 0)', async () => {
-    const sent: number[] = [];
+  it('a station reporting id 0 can ASSIGN + ARM: the console sends no id and MC assigns one (F364)', async () => {
+    const sent: { id?: number }[] = [];
     const { m } = await itemsWith([
       station('taken', { assigned: { kind: 'respawn', team: 255, id: 1, threshold: -74, at: 0 } }),
       unarmed('stick-1'),
-    ], { putStation: async (_n: string, a: { id: number }) => { sent.push(a.id); return station('stick-1'); } } as unknown as Partial<Api>);
-    const box = m.find('input[aria-label="station id for stick-1"]')[0] as HTMLInputElement;
-    expect(box.value).toBe('2');
+    ], { putStation: async (_n: string, a: { id?: number }) => { sent.push(a); return station('stick-1'); } } as unknown as Partial<Api>);
+    expect(m.find('input[aria-label="station id for stick-1"]'), 'no id input').toHaveLength(0);
     const card = m.find('[data-station-card="stick-1"]')[0] as HTMLElement;
     const btn = [...card.querySelectorAll('button')].find(b => b.textContent === 'ASSIGN + ARM') as HTMLButtonElement;
     await act(async () => { btn.click(); });
-    expect(sent).toEqual([2]);
+    expect(sent.length).toBe(1);
+    expect(sent[0].id).toBeUndefined();
     m.unmount();
   });
 

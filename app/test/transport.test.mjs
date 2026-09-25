@@ -154,7 +154,7 @@ test('F184: a trusted HUD hello carries the prior utility identity proof and rec
   const sockets = []; const handoffStore = memoryStorage();
   handoffStore.setItem('brx.prior_utility', JSON.stringify({ node_id: 'brxu-old', node_key: 'utility-key' }));
   const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
-    priorUtility: { node_id: 'brxu-old', node_key: 'utility-key' } });
+    priorUtility: { node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://x/ws' } });
   ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();
   assert.deepEqual(sockets[0].sent[0].body.prior_utility, { node_id: 'brxu-old', node_key: 'utility-key' });
