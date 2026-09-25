@@ -1,9 +1,9 @@
 {
-  "taken": "2026-09-25T13:52:11.558Z",
-  "mc_src": "85c522969b5234b838186b110352d991c7aa2a13",
-  "hud_src": "79017cb25f7ab4946de5754741a4b8eb057956f4",
+  "taken": "2026-09-25T14:52:52.396Z",
+  "mc_src": "365276a0fd02a206c10020eade5bd9c94359f128",
+  "hud_src": "d4ed238773a03cee90f0dc2fe33347f16f0b0bcd",
   "mc_shell": "9ea5c65bbafd244cb934229dd67dd1de33c5c2a6",
-  "hud_shell": "7a29f77a39cb8db8f77fdcf0edd02a9480e1c859",
+  "hud_shell": "6a9d3e7c490ef6f57b7734364718ae73de605430",
   "files": {
     "mc-armory.jpg": {
       "w": 1280,
@@ -13,12 +13,12 @@
     "mc-games.jpg": {
       "w": 1280,
       "h": 800,
-      "bytes": 341877
+      "bytes": 336644
     },
     "mc-kit.jpg": {
       "w": 1280,
       "h": 800,
-      "bytes": 245281
+      "bytes": 245227
     },
     "mc-lobby.jpg": {
       "w": 1280,
