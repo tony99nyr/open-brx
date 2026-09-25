@@ -582,3 +582,34 @@ def test_pl4_phones_ended_counts_only_fresh_heartbeats():
     assert "phones_ended" not in s.snapshot()["live"], "a stale claim is not news"
     _status(net, clock, 0, "live", "m-other")
     assert s.snapshot()["live"]["phones_ended"] is True, "control: the same claim, fresh"
+
+
+def test_a_restart_from_a_live_snapshot_keeps_a_late_team_kill_frozen_out():
+    """F356 round 3: the cap fired and a late team kill (stamped before the capping kill) was stored, but
+    the post-whistle snapshot write was lost (`_persist` swallows a failed write), so the new process reads
+    the LIVE snapshot from before the cap. `resume_match` replays the stored facts in `t` order, which
+    scored the team kill BEFORE the capping kill: the cap vanished and MC resumed a match the field had
+    heard end. The whistle's moment is an arrival fact, so the resume derives it from the stored facts in
+    arrival order and freezes the same team kill the live scorer froze.
+    """
+    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    good = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = good
+    t0 = clock["t"]
+    kill(s, net, clock, ps, 0, 1, info, seq=1)          # team A 1, at t0+1000
+    s._persist_last = 0.0
+    s._persist()                                        # the last snapshot that reached the disk: LIVE
+    s._persist_path = good.parent / "gone" / "session.json"     # every later write fails
+    kill(s, net, clock, ps, 2, 3, info, seq=2)          # team A 2: the cap, at t0+2000
+    assert s.phase == "recap"
+    team_a = s.scorer.stats[ps[0]["player_id"]].team_id
+    net.simulate_event("node2", {"type": "death", "t": t0 + 1200, "match_id": info["match_id"],
+                                 "player_id": ps[2]["player_id"], "shooter_num": ps[0]["player_num"],
+                                 "shooter_team": 1}, clock["t"] + 300, seq=10)     # P0 team-kills P2, late
+    assert s.scorer.team_scores()[team_a] == 2, "control: the live scorer froze the late team kill out"
+    s._persist_path = good
+    clock["t"] += 5_000
+    s2, _net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "recap", "the resumed facts still reach the cap the field heard"
+    assert s2.scorer.team_scores()[team_a] == 2, f"the restart lowered the board: {s2.scorer.team_scores()}"
+    assert s2.last_recap["winner"]["team_id"] == team_a

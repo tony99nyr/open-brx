@@ -662,6 +662,9 @@ class Session:
                 # A63: who hot-joined after go-live, and when. The stored facts cannot say it, and IRON MAN
                 # and SURVIVOR both read it, so a resumed scorer must be handed it.
                 "joined_t": dict(self.scorer.joined_t),
+                # F356: when the frag cap's whistle blew, an arrival fact (`Scorer.cap_recv`). None in every
+                # LIVE snapshot today (`_finish` rewrites the snapshot without the match), carried anyway.
+                "cap_recv": self.scorer.cap_recv,
                 # An accepted LIVE release removes the active row, but its frozen tally still belongs
                 # to this match and must survive an MC restart before the whistle.
                 "departed_stations": [dict(row) for row in sorted(
@@ -4337,7 +4340,8 @@ class Session:
     # carries the running match and the new process picks it up (`resume_match`). With no snapshot the
     # phones' heartbeats are the only record, and the operator decides (`orphan_match_view`).
     def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
-                      joined_t: dict[str, int] | None = None) -> Scorer:
+                      joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
+                      derive_cap: bool = False) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
@@ -4348,7 +4352,14 @@ class Session:
                     self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
                     frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"))
         sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
-        for r in self._match_facts(match_id):
+        facts = self._match_facts(match_id)
+        # F356: the replay runs in `t` order, but "did this team kill arrive after the whistle" is an ARRIVAL
+        # fact. The snapshot's `cap_recv` wins (keep the first); else, when the snapshot predates the whistle
+        # (its post-whistle write was lost), find it the way the live scorer did, in arrival order.
+        sc.cap_recv = cap_recv
+        if sc.cap_recv is None and derive_cap:
+            sc.cap_recv = self._arrival_cap_recv(sc, facts)
+        for r in facts:
             body: Event = r["body"]
             sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
         sc.node_player = self.node_player
@@ -4456,7 +4467,10 @@ class Session:
         self._end_delivery, self._end_delivery_told = {}, None
         joined = {p: t for p, t in (m.get("joined_t") or {}).items()
                   if isinstance(p, str) and isinstance(t, int) and not isinstance(t, bool)}
-        self.scorer = self._build_scorer(mid, go, node_player, joined)
+        cap_recv = m.get("cap_recv")
+        cap_recv = cap_recv if isinstance(cap_recv, int) and not isinstance(cap_recv, bool) else None
+        self.scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
+                                         derive_cap=not m.get("adopted"))
         if self.store:
             try:
                 snap = dict(self.config)
@@ -5231,6 +5245,22 @@ class Session:
             return t if (t is not None and self.synced_at_lobby.get(r.get("node_id"), False)) else tr
         return sorted(facts, key=eff)
 
+    def _arrival_cap_recv(self, like: Scorer, facts: list[dict]) -> int | None:
+        """F356: the `t_recv` at which these facts, taken in the order MC RECEIVED them, first reach the
+        frag cap -- the moment the live scorer's whistle blew. None when they never do (or no cap is set).
+        A scratch scorer with no callbacks, so nothing is cued, fed or ended."""
+        if not like.frag_limit or like.win_by != "kills":
+            return None
+        probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
+                       list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
+                       win_by=like.win_by, frag_limit=like.frag_limit)
+        probe.joined_t = dict(like.joined_t)
+        for r in sorted(facts, key=lambda r: r.get("t_recv") or 0):
+            probe.ingest(r["node_id"], cast(Event, dict(r["body"])), r.get("t_recv") or 0, seq=r.get("seq"))
+            if probe.limit_reached_t is not None:
+                return r.get("t_recv") or 0
+        return None
+
     def _replay(self, old: Scorer, facts: list[dict], freeze_at: int | None = None) -> Scorer:
         """Re-derive a Scorer for THIS match from stored facts. Pure: no feedback, no alerts, no feed,
         no cap callback — a replay must never re-fire a cue at a player standing in the debrief.
@@ -5253,6 +5283,7 @@ class Session:
         if freeze_at is not None:
             sc.set_end(freeze_at)
         sc.joined_t = dict(old.joined_t)         # A63: a hot join is not a fact the replay can re-derive
+        sc.cap_recv = old.cap_recv               # F356: when the field heard the whistle is an arrival fact
         for r in facts:
             body: Event = r["body"]
             sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
@@ -6740,6 +6771,8 @@ class Session:
         return 1 if ok else 0
 
     def _feedback(self, pid: str, body: dict):
+        if body.get("kind") == "kill" and self.phase == "recap" and self.end_reason == "frag_limit":
+            return      # F357: no kill confirm after a frag-cap whistle (the Scorer gates it on `cap_recv` too)
         p = self.players.get(pid)
         if p and p.get("node_id"):
             cues = (self.bundles.get(pid) or {}).get("cues") or {}
@@ -6939,6 +6972,8 @@ class Session:
         reached = self._broadcast_control("end")
         bound = sum(1 for p in self.players.values() if p.get("node_id"))
         self.scorer.set_end(t)
+        if self.scorer.cap_recv is None:     # F356: the whistle's arrival moment; keep the first
+            self.scorer.cap_recv = self.now_ms()
         self.end_reason = "frag_limit"       # A24/M2: THE one end a later fact can move (an earlier cap kill)
         self._finish()
         # One line, after the fact, saying what actually happened — the same honesty rule `control`

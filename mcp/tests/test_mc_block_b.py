@@ -144,6 +144,70 @@ def test_in_a_team_mode_the_cap_is_the_TEAM_score_not_one_player_s():
     assert s.recap()["winner"]["team_id"] == ps[0]["team_id"]
 
 
+def test_a_late_team_kill_before_the_capping_kill_cannot_take_the_winner_below_the_cap():
+    """F356 (chaos, tdm-frag-race seed 10057): a team kill from a node that was out of coverage lands
+    AFTER the whistle, stamped BEFORE the kill that reached the cap. Its -1 used to be credited (its
+    `t` is inside the window), so MC ended on the frag limit 2 with a winning score of 1.
+
+    Contracts §4 lets the end move earlier only, and the field has already heard the result, so that
+    fact stays an after-the-whistle fact. A late ENEMY kill inside the window still scores.
+    """
+    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    team_a = ps[0]["team_id"]
+    t1 = clock["t"]
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    kill(s, net, clock, ps, 2, 3, info, seq=2)      # team A reaches the cap
+    assert s.phase == "recap" and s.scorer.team_scores()[team_a] == 2
+    late = {"match_id": info["match_id"], "type": "death", "shooter_team": 1}
+    # the out-of-coverage nodes flush: an enemy kill (1 -> 0) and a team kill (0 -> 2), both pre-whistle
+    net.simulate_event("node0", {**late, "t": t1 + 1200, "player_id": ps[0]["player_id"],
+                                 "shooter_num": ps[1]["player_num"]}, clock["t"] + 5000, seq=3)
+    net.simulate_event("node2", {**late, "t": t1 + 1500, "player_id": ps[2]["player_id"],
+                                 "shooter_num": ps[0]["player_num"]}, clock["t"] + 5000, seq=4)
+    scores = s.scorer.team_scores()
+    assert scores[team_a] == 2, f"the late team kill took the winner below the cap it won on: {scores}"
+    assert scores[ps[1]["team_id"]] == 1, f"a late enemy kill inside the window still scores: {scores}"
+    r = s.recap()
+    assert r["winner"]["team_id"] == team_a and r["post_end"] == 1, r
+
+
+def test_a_kill_flushed_after_the_whistle_scores_but_gets_no_kill_confirm():
+    """F357 (chaos, tdm-frag-race seeds 10095 and 20162; Tony's "phantom kill confirm"): a phone that was
+    out of coverage flushes a kill stamped before the frag cap, a moment after the whistle. It still
+    counts in the recap, but MC sends no kill confirm: the match is over, and a later flush can move a
+    frag-cap end earlier and park that kill, and a cue cannot be taken back.
+    """
+    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    kill(s, net, clock, ps, 2, 3, info, seq=2)      # team A reaches the cap
+    assert s.phase == "recap"
+    cues_before = len([p for p in net.pushes("feedback", ps[1]["node_id"]) if p[2].get("kind") == "kill"])
+    # node0 was out of coverage: it flushes P1's kill on P0, stamped 500 ms before the cap, 200 ms after it
+    net.simulate_event("node0", {"type": "death", "t": clock["t"] - 500, "match_id": info["match_id"],
+                                 "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"],
+                                 "shooter_team": 1}, clock["t"] + 200, seq=3)
+    assert s.scorer.team_scores()[ps[1]["team_id"]] == 1, "a kill before the whistle still scores"
+    cues = [p for p in net.pushes("feedback", ps[1]["node_id"]) if p[2].get("kind") == "kill"]
+    assert len(cues) == cues_before, f"MC sent a kill confirm after the whistle: {cues[cues_before:]}"
+
+
+def test_a_kill_just_after_a_timed_buzzer_keeps_its_kill_confirm():
+    """F357 round 3: the mute is for a FRAG-CAP end only, where a later flush can move the end. A timed
+    end never moves, and the freshness gate (FEEDBACK_MAX_AGE_MS) already drops a stale confirm, so a kill
+    stamped just before the buzzer and landing just after it is still confirmed."""
+    s, net, clock, ps, info = go_live(2, "tdm", {"time_limit_s": 10})
+    go = info["go_live_t"]
+    clock["t"] = go + 10_500                # past the buzzer, inside MC's 5 s grace before the recap
+    s.tick()
+    assert s.scorer.end_t is not None and clock["t"] > s.scorer.end_t, "control: the time limit has passed"
+    net.simulate_event("node1", {"type": "death", "t": go + 9_800, "match_id": info["match_id"],
+                                 "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
+                                 "shooter_team": 1}, clock["t"] + 100, seq=1)
+    assert s.scorer.rows()[0]["kills"] + s.scorer.rows()[1]["kills"] == 1, "the kill is inside the window"
+    cues = [p for p in net.pushes("feedback", ps[0]["node_id"]) if p[2].get("kind") == "kill"]
+    assert len(cues) == 1, f"a kill just before a timed buzzer lost its confirm: {cues}"
+
+
 def test_the_cap_never_ends_a_match_that_is_not_won_on_kills():
     """A `win_by` of objective or survival is settled by possession or by the last player standing. A
     kill cap means nothing there and MC must not invent an ending from one.
