@@ -7,6 +7,7 @@
 //   * the F203 regression (field 2026-09-24): a remembered url dialled while MC is down for longer than
 //     the first welcome window keeps redialling and binds when MC comes back with a new session_id.
 //   * autojoin.js: one candidate + a trust key joins; two candidates, no key or a failed proof ask.
+//   * F346 (d): a never-joined phone that sees ONE MC joins it untrusted and enrols; several still ask.
 //
 // Fake sockets and the mocked clock of node:test only: no network, no real waiting.
 import { test } from 'node:test';
@@ -19,7 +20,7 @@ import * as E from '../src/transport/envelope.js';
 import { memoryStorage } from '../src/transport/ring.js';
 import { Transport, holdsTrustKey } from '../src/transport/transport.js';
 import { sha256, hmacSha256, b64url, b64urlDecode, mcProof, proofMatches, ctEqual, newChallenge } from '../src/transport/mcproof.js';
-import { McAutoJoin, offerText, VERIFY_COOLDOWN_MS, namedDialPending } from '../src/transport/autojoin.js';
+import { McAutoJoin, offerText, VERIFY_COOLDOWN_MS, FIRST_CONTACT_SETTLE_MS, namedDialPending } from '../src/transport/autojoin.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VECTOR = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'mc-proof-vector.json'), 'utf8'));
@@ -279,7 +280,8 @@ test('A60 autojoin: a key proof-dials (the proof breaks ties); no key asks; a fa
   assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'mdns', ctxOf()), { do: 'verify' }, 'two hosts and a key: the proof decides');
   assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'mdns', ctxOf({ hasTrustKey: false })), { do: 'offer', reason: 'several' }, 'two hosts, no key: ask');
   now += 3 * 60000;   // both forgotten
-  assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'sweep', ctxOf({ hasTrustKey: false })), { do: 'offer', reason: 'new' });
+  assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'sweep', ctxOf({ hasTrustKey: false, remembered: 'ws://10.0.0.1:8766/ws' })), { do: 'offer', reason: 'new' },
+    'no key but a remembered address: not a first contact, so ask (F346 d)');
   assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'sweep', ctxOf({ bound: true })), { do: 'ignore' });
   assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws/', 'sweep', ctxOf({ dialling: 'WS://10.0.0.6:8766/ws' })), { do: 'kick' }, 'the remembered MC is kicked, not proof-dialled');
   assert.equal(aj.onVerifyFailed('ws://10.0.0.6:8766/ws', true), 'unproven');
@@ -335,7 +337,7 @@ test('A60 polish #4: a proof dial never becomes RECONNECT MC\'s target', () => {
   const body = src.slice(i, src.indexOf('\n}\n', i));
   const writes = [...body.matchAll(/lastMcUrl = [^\n]*/g)].map(m => m[0]);
   assert.deepEqual(writes, ['lastMcUrl = url;']);
-  assert.match(body, /if \(join\.verify !== true\) lastMcUrl = url;/);
+  assert.match(body, /if \(join\.verify !== true && join\.firstContact !== true\) lastMcUrl = url;/, 'nor does a first-contact dial (F346 d)');
   assert.equal([...src.matchAll(/(?<!let )lastMcUrl = /g)].length, 1, 'no other writer');
 });
 
@@ -478,4 +480,164 @@ test('F346 (a): an enrolling hello carries one persisted nonce until the trust k
   f.sockets[f.sockets.length - 1].open();
   const uh = helloOf(f.sockets[f.sockets.length - 1]);
   assert.ok(!('mc_enroll' in uh) && !('mc_enroll_nonce' in uh), 'a utility neither enrols nor sends a nonce');
+});
+
+// ---------------------------------------------------------------- F346 (d): auto-join on first contact
+const FRESH = { bound: false, dialling: null, verifying: false, hasTrustKey: false, remembered: null, userDialPending: false };
+
+test('F346 (d): a keyless phone with one MC in view waits out the discovery window, then joins; mDNS + sweep of one host is one MC', () => {
+  let now = 9_000_000;
+  const aj = new McAutoJoin({ now: () => now });
+  const d0 = aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', FRESH);
+  assert.deepEqual(d0, { do: 'wait', ms: FIRST_CONTACT_SETTLE_MS }, 'the first packet never joins by itself');
+  now += 1000;
+  assert.deepEqual(aj.onFound('ws://192.168.1.20:8766/ws/', 'sweep', FRESH), { do: 'wait', ms: FIRST_CONTACT_SETTLE_MS - 1000 }, 'the window runs from the FIRST sighting');
+  now += FIRST_CONTACT_SETTLE_MS;
+  assert.deepEqual(aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', FRESH), { do: 'join' });
+  assert.deepEqual(aj.onFound('WS://192.168.1.20:8766/other', 'sweep', FRESH), { do: 'join' }, 'another path on the same host:port is the same MC');
+  // an automatic dial in flight is never replaced
+  assert.deepEqual(aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', { ...FRESH, dialling: 'ws://192.168.1.20:8766/ws', verifying: true }), { do: 'ignore' });
+  assert.deepEqual(aj.onFound('ws://192.168.1.21:8766/ws', 'mdns', { ...FRESH, dialling: 'ws://192.168.1.20:8766/ws', verifying: true }), { do: 'ignore' });
+  // a dial the player named still wins
+  assert.deepEqual(aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', { ...FRESH, userDialPending: true }), { do: 'ignore' });
+});
+
+test('F346 (d): two MCs in the discovery window give the several row, never a join', () => {
+  let now = 9_000_000;
+  const aj = new McAutoJoin({ now: () => now });
+  assert.equal(aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', FRESH).do, 'wait');
+  now += 500;
+  assert.deepEqual(aj.onFound('ws://192.168.1.30:8766/ws', 'mdns', FRESH), { do: 'offer', reason: 'several' });
+  now += FIRST_CONTACT_SETTLE_MS;
+  assert.deepEqual(aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', FRESH), { do: 'offer', reason: 'several' }, 'the settle re-check sees both');
+  assert.equal(offerText('several', 'ws://192.168.1.20:8766/ws'), 'SEVERAL MISSION CONTROLS · TAP YOURS');
+});
+
+test('F346 (d): a first contact that got no welcome cools the host and asks with the NEW row', () => {
+  let now = 9_000_000;
+  const aj = new McAutoJoin({ now: () => now });
+  aj.onFound('ws://192.168.1.20:8766/ws', 'sweep', FRESH);
+  now += FIRST_CONTACT_SETTLE_MS;
+  assert.equal(aj.onFound('ws://192.168.1.20:8766/ws', 'sweep', FRESH).do, 'join');
+  assert.equal(aj.onFirstContactFailed('ws://192.168.1.20:8766/ws'), 'new');
+  now += 60000;
+  assert.deepEqual(aj.onFound('ws://192.168.1.20:8766/ws', 'sweep', FRESH), { do: 'offer', reason: 'new' }, 'not redialled inside the cool-down');
+  now += VERIFY_COOLDOWN_MS;
+  assert.equal(aj.onFound('ws://192.168.1.20:8766/ws', 'sweep', FRESH).do, 'wait', 'cool-down over and the old sighting expired: a new window');
+  now += FIRST_CONTACT_SETTLE_MS;
+  assert.equal(aj.onFound('ws://192.168.1.20:8766/ws', 'sweep', FRESH).do, 'join');
+});
+
+test('F346 (d): the first-contact hello is untrusted and enrols: no node_key, no secret, no prior_utility; the welcome binds and stores the key', ctx => {
+  const mc = new FakeMc();
+  const storage = memoryStorage();
+  storage.setItem('brx.node_key', 'nk-old'); storage.setItem('brx.secret', 'sec-old');   // left over from an older MC
+  const f = factory();
+  const t = new Transport({ storage, wsFactory: f.wsFactory, heartbeatMs: 1e9, gun: { name: 'Tactix-AB12', tail: 'AB12' },
+                            priorUtility: { node_id: 'node-util1', node_key: 'uk-secret' } });
+  ctx.after(() => t.close());
+  assert.equal(holdsTrustKey(storage), false, 'a never-joined phone');
+  const p = t.connect({ url: 'ws://192.168.1.20:8766/ws', trusted: false });
+  f.sockets[0].open();
+  const hello = helloOf(f.sockets[0]);
+  for (const k of ['node_key', 'secret', 'prior_utility', 'mc_challenge']) assert.ok(!(k in hello), `the first-contact hello carried ${k}`);
+  assert.equal(hello.mc_enroll, true);
+  assert.match(hello.mc_enroll_nonce, /^[A-Za-z0-9_-]{22,}$/);
+  f.sockets[0].recv(mc.welcome(hello, { node: NODE }));
+  assert.equal(t.state, 'bound');
+  assert.ok(f.sockets[0].sent.some(e => e.kind === 'bind'));
+  assert.deepEqual(JSON.parse(storage.getItem('brx.mc_trust')).keys, [mc.keyFor(t.nodeId)], 'that MC is now the known MC');
+  return settledOr(p).then(r => assert.ok(r.ok, 'connect() resolved'));
+});
+
+test('F346 (d): a phone keyed by one MC that first-contacts ANOTHER MC proof-dials it and shows UNVERIFIED', async ctx => {
+  const mcA = new FakeMc(), mcB = new FakeMc();
+  const { storage } = enrolledPhone(ctx, mcA);
+  assert.ok(holdsTrustKey(storage));
+  const aj = new McAutoJoin();
+  const d = aj.onFound('ws://192.168.1.99:8766/ws', 'mdns', { ...FRESH, hasTrustKey: holdsTrustKey(storage), remembered: null });
+  assert.deepEqual(d, { do: 'verify' }, 'a known phone never first-contacts: the other MC must prove itself');
+  const f = factory();
+  const t = new Transport({ storage, wsFactory: f.wsFactory, heartbeatMs: 1e9 });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://192.168.1.99:8766/ws', verify: true });
+  f.sockets[0].open();
+  const hello = helloOf(f.sockets[0]);
+  for (const k of ['node_key', 'secret', 'prior_utility', 'mc_enroll', 'mc_enroll_nonce']) assert.ok(!(k in hello), `the proof hello carried ${k}`);
+  f.sockets[0].recv(mcB.welcome(hello, { enrol: false, node: NODE }));   // B signs with its own install secret
+  assert.notEqual(t.state, 'bound');
+  assert.equal(t.verifyFailed, 'bad_proof');
+  const r = await settledOr(p);
+  assert.equal(r.err && r.err.code, 'mc_unproven');
+  const reason = aj.onVerifyFailed('ws://192.168.1.99:8766/ws', true);
+  assert.equal(offerText(reason, 'ws://192.168.1.99:8766/ws'), 'UNVERIFIED MISSION CONTROL · 192.168.1.99:8766 · TAP JOIN IF YOURS');
+});
+
+test('F346 (d) guard: app.js makes the first-contact dial untrusted, enrolling, and never RECONNECT MC\'s target', () => {
+  const src = readFileSync(APP_JS, 'utf8');
+  const i = src.indexOf('function suggestMc(');
+  const body = src.slice(i, src.indexOf('\n}\n', i));
+  assert.match(body, /hasTrustKey: holdsTrustKey\(\)/);
+  assert.match(body, /remembered: settings\.mcUrl \|\| null/, 'a remembered address is never a first contact');
+  assert.match(body, /if \(d\.do === 'join'\) \{[\s\S]*?connectMc\(url, false, \{ trusted: false, firstContact: true, source \}\);/);
+  assert.match(body, /if \(d\.do === 'wait'\) \{[\s\S]*?setTimeout\(/, 'the window re-check');
+  const c = src.indexOf('function connectMc(');
+  const connect = src.slice(c, src.indexOf('\n}\n', c));
+  assert.match(connect, /if \(join\.verify !== true && join\.firstContact !== true\) lastMcUrl = url;/);
+  assert.match(connect, /if \(join\.firstContact === true\) \{ onFirstContactFailed\(/);
+  const j = src.indexOf('function onFirstContactFailed(');
+  const fail = src.slice(j, src.indexOf('\n}\n', j));
+  assert.match(fail, /if \(transport !== candidate\) return;/);
+  assert.match(fail, /offerMc\(url, source, autoJoin\.onFirstContactFailed\(url\)\)/);
+  assert.doesNotMatch(fail, /settings\.mcUrl\s*=[^=]|lastMcUrl\s*=/);
+});
+
+// ---------------------------------------------------------------- F346 (d) polish r1: the utility proof is url-bound
+const UTIL = { node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://192.168.1.10:8766/ws' };
+const puOf = (f, i) => (helloOf(f.sockets[i]) || {}).prior_utility;
+test('F346 (d) r1: prior_utility goes only to the MC url it came from, as {node_id,node_key}', ctx => {
+  const f = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory: f.wsFactory, heartbeatMs: 1e9, priorUtility: UTIL });
+  ctx.after(() => t.close());
+  t.connect({ url: 'WS://192.168.1.10:8766/ws/' }).catch(() => {}); f.sockets[0].open();
+  assert.deepEqual(puOf(f, 0), { node_id: 'brxu-old', node_key: 'utility-key' }, 'the same MC (cosmetic url difference), and no mc_url on the wire');
+  t.connect({ url: 'ws://192.168.1.77:8766/ws' }).catch(() => {}); f.sockets[1].open();
+  assert.equal(puOf(f, 1), undefined, 'a trusted dial to ANOTHER MC never gets it');
+  const old = new Transport({ storage: memoryStorage(), wsFactory: f.wsFactory, heartbeatMs: 1e9, priorUtility: { node_id: 'brxu-old', node_key: 'utility-key' } });
+  ctx.after(() => old.close());
+  old.connect({ url: 'ws://192.168.1.10:8766/ws' }).catch(() => {}); f.sockets[2].open();
+  assert.equal(puOf(f, 2), undefined, 'a handoff with no url goes nowhere');
+});
+
+test('F346 (d) r1: a first-contact host never gets prior_utility, not even after its welcome at the same url', ctx => {
+  const mc = new FakeMc();
+  const f = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory: f.wsFactory, heartbeatMs: 1e9, priorUtility: UTIL, backoff: { baseMs: 1, capMs: 1, jitter: 0 } });
+  ctx.after(() => t.close());
+  t.connect({ url: UTIL.mc_url, trusted: false, firstContact: true }).catch(() => {}); f.sockets[0].open();
+  assert.equal(puOf(f, 0), undefined);
+  f.sockets[0].recv(mc.welcome(helloOf(f.sockets[0])));
+  assert.equal(t.state, 'bound');
+  assert.equal(t.trusted, true);
+  assert.equal(t._priorUtilityHello(), undefined, 'trusted now, but a first-contact session still withholds it');
+});
+
+test('F346 (d) r1 guard: BACK TO HUD stores the MC url with the utility proof; app.js tells the transport about first contact', () => {
+  const u = readFileSync(path.resolve(HERE, '../src/utility.js'), 'utf8');
+  assert.match(u, /JSON\.stringify\(\{ node_id: transport\.nodeId, node_key: transport\.nodeKey, mc_url: transport\.url \}\)/);
+  const src = readFileSync(APP_JS, 'utf8');
+  assert.match(src, /transport\.connect\(\{ url, pub: join\.pub, secret: join\.secret, trusted: join\.trusted !== false, verify, firstContact: join\.firstContact === true \}\)/);
+});
+
+test('F346 (d) r1: a first contact that fails after discovery saw a second host gives SEVERAL, not NEW', () => {
+  let now = 9_000_000;
+  const aj = new McAutoJoin({ now: () => now });
+  aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', FRESH);
+  now += FIRST_CONTACT_SETTLE_MS;
+  assert.equal(aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', FRESH).do, 'join');
+  const dialling = { ...FRESH, dialling: 'ws://192.168.1.20:8766/ws', verifying: true };
+  assert.deepEqual(aj.onFound('ws://192.168.1.30:8766/ws', 'mdns', dialling), { do: 'ignore' }, 'seen during the dial');
+  assert.equal(aj.onFirstContactFailed('ws://192.168.1.20:8766/ws'), 'several');
+  const src = readFileSync(APP_JS, 'utf8');
+  assert.match(src, /offerMc\(url, source, autoJoin\.onFirstContactFailed\(url\)\)/, 'app.js shows the row the policy returns');
 });
