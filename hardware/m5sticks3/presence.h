@@ -79,12 +79,16 @@ inline bool station_needs_player_scan(const std::string& kind, bool powerup_avai
   return false;
 }
 
-// The scan window per kind, in 0.625 ms units of a 100-unit interval. Only the hill needs a heavy scan
-// (its capture rate depends on seeing every player); a respawn only has to catch an alive bit flip.
+// The scan window per kind, in 0.625 ms units of a 100-unit interval. The hill needs a heavy scan
+// for capture, and a pickup needs one while available so a ready claim reaches the next batch.
+// A respawn only has to catch an alive bit flip.
 constexpr uint16_t SCAN_WINDOW_HILL_UNITS = 50;
+constexpr uint16_t SCAN_WINDOW_CLAIM_UNITS = 50;
 constexpr uint16_t SCAN_WINDOW_LIGHT_UNITS = 15;
 inline uint16_t scan_window_units(const std::string& kind) {
-  return kind == "control" ? SCAN_WINDOW_HILL_UNITS : SCAN_WINDOW_LIGHT_UNITS;
+  if (kind == "control") return SCAN_WINDOW_HILL_UNITS;
+  if (kind == "powerup") return SCAN_WINDOW_CLAIM_UNITS;
+  return SCAN_WINDOW_LIGHT_UNITS;
 }
 
 // ---- PlayerPresence (beacon.js Presence, players only) -------------------------------------------

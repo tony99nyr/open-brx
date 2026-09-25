@@ -56,8 +56,8 @@ below); the pickup claim has no RSSI floor at all (see CLAIM below). A hill's ow
 progress tick), tagged with the game and station id, so a Stick restarted from its restored config
 comes back held by that owner with the possession tally saved at that change (F332). The save is
 tagged with the MC session too, so a new session, a new game, another id, `release_utility` or the
-operator's point RESET clears it. The hill's player scan runs at 50% duty (window 50 of interval 100,
-`SCAN_WINDOW_HILL_UNITS`), down from the claim scan's 99; bench to confirm it still hears every phone. A
+operator's point RESET clears it. The hill and available pickup scans run at 50% duty (window 50 of interval 100);
+bench to confirm they still hear every phone. A
 respawn Stick runs no player scan at all while revive feedback is off (the default, `presence.h`).
 mDNS discovery is asynchronous, so the hill never waits on it.
 
@@ -310,14 +310,14 @@ limit:** a Stick that leaves Wi-Fi before START, or restarts offline mid-match, 
 `first_at_s`, because it has no anchor.
 
 **CLAIM** (`ClaimGate`) scans for a player phone's own advert (role 2, state bit 4 `claiming`, bit 5
-`claim_ready`, `value` = the target station id, `id` = the claimant's player_num) and awards the
-first `claim_ready` heard for its own id, at any signal strength (no floor since 2026-09-24: the Stick hears phones weakly), ties going to the lower player_num
--- the Stick counts no dwell of its own, only the phone's. The advert then carries `state 0` (taken),
+`claim_ready`, `value` = the target station id, `id` = the claimant's player_num). A ready claim
+can arrive at any signal strength. The Stick waits 100 ms after the first ready advert, then awards
+the lowest player_num heard in that window. The phone counts the player's dwell. The advert then
+carries `state 0` (taken),
 `value` = seconds to the next spawn (capped 255), and the new byte 15 `taker` (the winner's
 player_num, 0 = none); `state 1` (available) is always `value 0`. A won claim is reported
 best-effort as `station_action {id, action:"taken", player_num, t}` -- **proposed to brx5, not a
-final contract** -- but polish round 2 found the award was being reported straight from the BLE
-scan-complete callback, which must never touch the WebSocket. The callback now only enqueues
+final contract**. The BLE callback only records claim candidates. The loop awards after the short window and enqueues
 (`PendingActionQueue`, bounded at 8, the newest report per spawn instant replacing any older one for
 the same instant); `mcLoop` is the only place anything is ever sent, draining the queue once per
 tick while a socket is live (still gated by `ACTIONS`, below).
@@ -354,12 +354,15 @@ medians were -43 touching, -64 at arm's length, -77/-81 at about 5 m (two phones
 hall, still present at -80. Since -80 reached past 7 m, -78 is a first guess for the 5-7 m edge. Walk-test
 at 3, 5 and 7 m. MC's nonzero value overrides the Stick default. A defaulted control hill still advertises
 -57 in byte 14 because phones measure the Stick about 25 dB louder than it measures them.
+An explicit MC threshold or the first on-station RADIUS edit also sets byte 14 to that threshold.
+The separate -57 advert value applies only while the hill uses its unedited default.
 
 **Bench to confirm, all of it:** the mDNS query actually resolving MC on the field router; the
 WebSocket surviving a reconnect (and the library's own retry not fighting the association-mode
 policy above it); Wi-Fi 4 + BLE 5 coexistence jitter on the advert while `HELD` (§5g.4's whole
 reason for existing); the CLAIM scan actually catching a phone advertising every ~100-250 ms while
 claiming (`SCAN_PERIOD_MS`/`SCAN_WINDOW_S`/`SCAN_WINDOW_UNITS` in `mc_link_glue.h` are guesses); the
+claim-ready-to-grant time after the new 100 ms arbitration (F399 target about 1 s);
 `ROLE_PLAYER` advert layout this firmware assumes (id = player_num, value = target station id) --
 FYI'd by brx5, never seen on our own bench; the button timing
 (2 s hold, 5 s confirm timeout) at arm's length; the operator screen's legibility on the real
@@ -731,4 +734,4 @@ the register map is not in the installed M5Unified source, so the firmware does 
   and the M5Unified port mapping disagree; see "Hardware and pins" above.
 
 
-**Match end:** MC sends `ends_in_ms` for a timed match. A Bluetooth hill freezes its owner and possession tally at that deadline and shows MATCH OVER. Under MUSTER the hill keeps Wi-Fi until START sends the deadline-bearing config; without a deadline, a hill carried out before START cannot stop at the whistle. An early end reaches only a Stick still in Wi-Fi.
+**Match end:** MC sends `ends_in_ms` for a timed match. A Bluetooth hill freezes its owner and possession tally at that deadline and shows MATCH OVER. RESET after the whistle cannot restart the tally. The hill stays neutral through LOAD and ARMED. MC sends a `station_update` at go-live to start it; under MUSTER, the Stick keeps Wi-Fi until that marker arrives. If Wi-Fi is lost, the 60 s fallback starts the hill and drops Wi-Fi. A restored timed hill stays frozen until MC sends a fresh deadline and live marker because `millis()` cannot measure time while powered off. Without a deadline, a hill carried out before START cannot stop at the whistle. An early end reaches only a Stick still in Wi-Fi.

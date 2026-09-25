@@ -381,7 +381,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     spec.hint = RESET_CONFIRM_HINT;
     return spec;
   }
-  if (s.reset_outcome_active) {
+  if (s.reset_outcome_active && (!s.reset_outcome_locked || s.locked)) {
     if (s.reset_outcome_locked) {
       spec.kind = ScreenKind::SCR_RESET_LOCKED;
       spec.lock_remaining = format_mmss(s.lock_remaining_s);

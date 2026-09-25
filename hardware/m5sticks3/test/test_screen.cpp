@@ -429,6 +429,7 @@ static void test_a_locked_reset_shows_locked_and_the_strip_shows_the_padlock() {
   CHECK(refused.kind == ScreenKind::SCR_RESET_LOCKED);
   CHECK_EQ(refused.lock_remaining, std::string("2:05"));
   s.locked = false;
+  CHECK(compute_screen(s).kind != ScreenKind::SCR_RESET_LOCKED);  // lock expired before transient timer
   s.reset_outcome_active = false;
   CHECK(!compute_screen(s).strip.locked);
 }

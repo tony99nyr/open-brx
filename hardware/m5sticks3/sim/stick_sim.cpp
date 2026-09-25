@@ -157,15 +157,22 @@ struct SimStick {
     } else if (kind == "station_config") {
       StationAssignment a = parse_station_config(body);
       if (a.present) {
+        link.discard_claim_batch();  // the hardware pauses the BLE claim feed at a config boundary
         link.apply_station_config(a, now);
-        saved.note_applied(a, link.session_id());
+        saved.note_applied(link.assignment(), link.session_id());
         if (link.take_muster_drop(now)) muster_drop();
       }
     } else if (kind == "station_update") {
       StationUpdateMsg u = parse_station_update(body);
+      if (u.present && link.has_powerup_assignment() && u.id == link.assignment().id)
+        link.discard_claim_batch();
       if (link.apply_station_update(u, now) && link.take_muster_drop(now)) muster_drop();
     } else if (kind == "control") {
-      if (parse_control_cmd(body) == "release_utility") {
+      if (parse_control_cmd(body) == "abort_start") {
+        link.cancel_hill_deadline();
+        if (link.has_control_assignment()) saved.note_applied(link.assignment(), link.session_id());
+      } else if (parse_control_cmd(body) == "release_utility") {
+        link.discard_claim_batch();
         link.apply_release();
         saved.note_released();
       }
@@ -383,6 +390,9 @@ static std::string cfg(const std::string& kind, int team, int id, const std::str
 static std::string spawn_update(int id) {
   return "{\"id\":" + std::to_string(id) + ",\"available\":true}";
 }
+static void start_hill(SimStick& s) {
+  s.frame("station_update", R"({"id":3,"available":false})");
+}
 static const char* ROCKETS = R"(,"item":{"kind":"weapon","weapon_id":"rockets","spawn_every_s":90,"first_at_s":0,"name":"Rockets","color":"#ff7a1a"})";
 static const char* SHIELD = R"(,"item":{"kind":"overshield","amount":50,"spawn_every_s":60,"first_at_s":0,"name":"Overshield","color":""})";
 static const char* LONGNAME = R"(,"item":{"kind":"weapon","weapon_id":"plasma","spawn_every_s":45,"first_at_s":0,"name":"Plasma Rifle","color":"#b35cff"})";
@@ -532,50 +542,61 @@ static std::vector<Scenario> scenarios() {
   }});
   v.push_back({"hill_capturing_blue", "hill", "One blue player on the point for 5 s.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
+    start_hill(s);
     s.arrive(11, 1); s.advance(5000);
   }});
   v.push_back({"hill_stalled_blue", "hill", "Blue built part of the bar and walked off.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
+    start_hill(s);
     s.arrive(11, 1); s.advance(5000);
     s.leave(11); s.advance(9000);
   }});
   v.push_back({"hill_held_red", "hill", "Red captured it 15 s ago.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
+    start_hill(s);
     s.arrive(3, 0); s.advance(26000);
   }});
   v.push_back({"hill_match_over_red", "hill", "Red holds the hill after the whistle.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"ends_in_ms\":12000"));
+    start_hill(s);
     s.arrive(3, 0); s.advance(14000);
   }});
   v.push_back({"hill_match_over_red", "hill", "Red holds the hill after the whistle.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"ends_in_ms\":12000"));
+    start_hill(s);
     s.arrive(3, 0); s.advance(14000);
   }});
   v.push_back({"hill_held_blue", "hill", "Blue captured it 15 s ago.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
+    start_hill(s);
     s.arrive(11, 1); s.advance(26000);
   }});
   v.push_back({"hill_held_green", "hill", "Green (tid 3) captured it 15 s ago.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
+    start_hill(s);
     s.arrive(21, 3); s.advance(26000);
   }});
   v.push_back({"hill_yellow_refused", "hill", "A yellow (tid 2) player on the point: F82, never claims.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
+    start_hill(s);
     s.arrive(15, 2); s.advance(12000);
   }});
   v.push_back({"hill_contested", "hill", "Blue holds; a red player joins the blue one.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
+    start_hill(s);
     s.arrive(11, 1); s.advance(12000);
     s.arrive(3, 0); s.advance(2000);
   }});
   v.push_back({"hill_losing_blue", "hill", "Blue holds; blue leaves and red drains the bar.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
+    start_hill(s);
     s.arrive(11, 1); s.advance(12000);
     s.leave(11); s.advance(9000);
     s.arrive(3, 0); s.advance(3000);
   }});
   v.push_back({"hill_locked", "hill", "Red holds, MC locked the operator controls for 10 min.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"lock_s\":600"));
+    start_hill(s);
     s.arrive(3, 0); s.advance(14000);
   }});
   v.push_back({"hill_restored", "hill", "Restarted mid-match: red's saved hold restored, MC not yet back.", [](SimStick& s) {

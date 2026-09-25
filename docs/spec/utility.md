@@ -244,7 +244,7 @@ Stick cannot know the edit's time, so it reports a large age and MC's value wins
 change: they read the station's advert. Each new edit is a feed line and an attention line on the ITEMS card.
 
 
-**Match end deadline (A68, Stick hill).** When the match has a time limit, MC sends `ends_in_ms` in ARMED/LIVE station configs: time remaining until `go_live_t + time_limit_s * 1000`, floored at 0. Adopted matches and matches without a time limit omit the field. After the match ends, MC sends `ends_in_ms: 0`. A Stick turns this duration into a local `millis()` deadline. The Bluetooth hill then keeps its owner, bar and possession tally unchanged and shows MATCH OVER. The Stick's MUSTER hill keeps Wi-Fi until START's deadline-bearing `station_config`; MC out of reach first or 60 s without Wi-Fi triggers F374's drop fallback. Without a deadline, a carried-out hill cannot stop at the whistle. An early score cap or operator END reaches only a Stick still in Wi-Fi.
+**Match end deadline (A68, Stick hill).** When the match has a time limit, MC sends `ends_in_ms` in ARMED/LIVE station configs: time remaining until `go_live_t + time_limit_s * 1000`, floored at 0. Adopted matches and matches without a time limit omit the field. At the match end, RECALL or PANIC, MC sends `ends_in_ms: 0` to connected stations and on reconnect. MC sends `control.abort_start` before the same-game config after an aborted countdown, which clears the local deadline. A Stick turns the duration into a local `millis()` deadline. The Bluetooth hill then keeps its owner, bar and possession tally unchanged and shows MATCH OVER. A hill stays neutral through LOAD and ARMED. At go-live, MC sends `station_update{id, available:false}` to an ESP32 control station, including after a LIVE reconnect or direct adoption. That marker starts counting and lets a MUSTER hill drop Wi-Fi. After 60 s without Wi-Fi, the fallback starts the hill and drops Wi-Fi. Without a deadline, a carried-out hill cannot stop at the whistle. An early score cap or operator END reaches only a Stick still in Wi-Fi.
 
 **One game byte per match (A59, F339).** `game` is MC's match counter (1..255, bumped by the first push after a
 match has started). Every player `config` MC sends carries the same number as `config.game_byte`, so a player
@@ -580,6 +580,7 @@ writes a gun head, and owns no store-and-forward ring — MC already refuses a l
 | → MC | `hello` | `{node_id, node_type:"utility", app_ver, platform:"esp32", seq_next:0}`. `node_id` is stable across reboots (Preferences), or MC sees a new item every power cycle |
 | ← MC | `welcome` | keep `node_key` and present it on the next `hello` (A8.2) or a re-claim of a still-live id is refused `4003 in_use` |
 | ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?, lock_s?, ends_in_ms?}` → advert and screen; persist the assignment; `ends_in_ms` freezes a hill at the deadline (A68) |
+| ← MC | `station_update` | `{id, available:false}` at go-live starts a Bluetooth hill; a matching LIVE reconnect repeats it. A pickup receives its own schedule updates (A56). |
 | → MC | `status` | every `STATUS_HEARTBEAT_MS` (2000 ms) while connected; stale at `STALE_AFTER_MS` (8000 ms). Live-only, never queued, no `seq` |
 
 `seq_next: 0` forever is honest: a station emits no persisted facts, so there is no seq to advance and nothing
@@ -589,7 +590,9 @@ For a Stick `control` station, threshold 0 or absent selects the separate -78 dB
 (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN, pending a 3, 5 and 7 m walk test). Other Stick kinds keep
 -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A defaulted hill advertises -57 in byte 14 for phone-side presence:
 the phone hears the Stick about 25 dB louder than the Stick hears the phone. An explicit MC threshold
-overrides the relevant Stick measurement threshold.
+overrides the relevant Stick measurement threshold and also sets byte 14. The first on-station RADIUS
+edit also sets byte 14 to the edited threshold. The -57 advert exception applies only to an unedited,
+defaulted hill.
 
 The `status` body mirrors what `utility.js` already reports (`{role:"utility", kind, team, station_id,
 threshold, live, armed, ...}`) so `_station_view()`'s `report` block and its attention lines

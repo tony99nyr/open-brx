@@ -547,6 +547,7 @@ static void test_which_kinds_scan_for_players() {
   CHECK_EQ(station_needs_player_scan("respawn", false), REVIVE_FEEDBACK_ENABLED);
   CHECK_EQ((int)scan_window_units("respawn"), 15);  // Block 9 S7: light, so it cannot starve the advert
   CHECK_EQ((int)scan_window_units("control"), 50);
+  CHECK_EQ((int)scan_window_units("powerup"), 50);  // ready claim must reach the next 1 s scan batch
   CHECK(station_needs_player_scan("powerup", true));
   CHECK(!station_needs_player_scan("powerup", false));  // unchanged: no claim scan while taken
   CHECK(!station_needs_player_scan("extraction", true));
