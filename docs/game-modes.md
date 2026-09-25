@@ -121,6 +121,7 @@ hosted gun ignores the grenade's station words (2026-09-04); a dead gun still re
 | **VIP escort (A→B)** | 1 | 1 extraction station + **VIP player role** | VIP = special low-HP loadout (General-style role); escorts protect; VIP triggers the extraction station on arrival |
 | **Hostage rescue + extract** | 1 | extraction station + hostage role | hostage = neutral/downed player freed by a teammate via IR (revive-style), then escorted to the extraction station |
 | **Counter-Strike (plant/defuse)** | 1 | bomb-site **stations** (a utility phone, roadmap K4), **the grenade as the bomb**, or an IR box | attacker plants (present + hold the trigger) → the site runs the plant timer; defender defuses the same way → round ends on detonate / defuse / elimination; blast = each phone in radius applies `$BHIT` to its own gun |
+| **Gun Game** (post-MVP, S60) | 0 | nothing: the phone rewrites the loadout per life | each spawn hands you a NEW gun (the next in a set, no repeats); you must get a kill with every gun in the set to win; the first player to complete the set wins. The gun has a voice line for it: VA8O "GUN GAME!" |
 
 **Key insight:** almost all of these are the **same objective-station primitive** (presence + a local
 timer/owner state) with different rules — build that node once and CS bomb-sites, hills, flags, extraction
