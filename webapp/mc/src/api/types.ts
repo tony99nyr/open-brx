@@ -23,11 +23,12 @@ export type {
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
   NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
   TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell,
+  RangeEdit, StationRange,
   StationItem, PowerupSlot, StationUpdate, StationAction, PowerupPreset, PowerupsView,   // A56 (S58)
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, HealthPreset, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, OperatorCmd, PersistedEventType, Phase,
-  SlotChoice, StationKind, StationSourceId, WinBy, TimedProtectS, WeaponDelayMs, StationProtectS, StationItemKind,
+  SlotChoice, StationKind, StationSourceId, TxPower, RangeSrc, RangeField, WinBy, TimedProtectS, WeaponDelayMs, StationProtectS, StationItemKind,
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS,
@@ -35,7 +36,7 @@ export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STAT
   GAME_VOLUME_MIN, GAME_VOLUME_MAX, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from './contract.gen';
 
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
-  PerkView, ScanRow, StationKind, StationView, VoiceList, PhaseRefusalBody, ModeInfo,
+  PerkView, ScanRow, StationKind, StationView, TxPower, VoiceList, PhaseRefusalBody, ModeInfo,
   WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
   OperatorActionResult, OperatorCmd, PowerupsView } from './contract.gen';
 
@@ -124,7 +125,9 @@ export interface Api {
    *  F364: MC assigns the station id when `id` is absent (this console never sends one); an explicit id is still validated. */
   putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number;
     /** A56: a `powerup` station's item, one of `getPowerups().presets[].preset`. Refused when MC's powerups flag is off. */
-    item_preset?: string }): Promise<StationView>;
+    item_preset?: string;
+    /** A67 (F365): the station's advert strength. Absent = keep what MC holds. A range-only PUT is allowed in any phase. */
+    tx_power?: TxPower }): Promise<StationView>;
   /** A56: `GET /api/powerups` -- MC's powerups flag and the item presets. Rejects with status 404 on an MC that predates powerups. */
   getPowerups(): Promise<PowerupsView>;
   /** A56 round 2: `POST /api/stations/{node_id}/reset` -- a powerup station's item is available NOW, off its

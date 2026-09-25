@@ -688,26 +688,29 @@ sits at `t42` (extra-headset range), present on the Rocket, Shotgun and Plasma S
 | Burst Rifle | 70 | mid | On the shelf |
 | Suppressor | 55 | mid | On the shelf |
 | Energy Rifle | 55 | mid | On the shelf |
-| SMG | 30 | close | **Real guess**, sits at the shelf edge. This is the gun word's carrier; the headset word (2 damage since 2026-09-23, R5) uses the known-good 100 carrier so it actually emits reliably |
-| Shotgun | 30 | close | **Moved onto the flat shelf 2026-09-18, then corrected 2026-09-23** (Tony, R4/R5): 100 (full distance) let the gun word out-reach the game it is played at; set to match the SMG's own 30 so the two close-range weapons share one outdoor reach. See §7's dual-emitter write-up: the Shotgun's real close/far shape lives in `wire.headset_dmg`'s reach (`t13`/`t42`), which stays at 100 — the headset word's own real range is unmeasured, F275 |
-| Rocket Launcher | 22 | close | **Real guess.** A pickup-only one-shot heavy is meant to be earned at close range, not to out-reach the arsenal it out-damages (Tony, 2026-09-17). Same transition-band caveat as the Shotgun used to carry |
-| Rail Gun | 22 | close | Same reasoning and caveat as the Rocket Launcher |
+| SMG | 40 | close | **Tony's F231 decision, 2026-09-25: "SMG and rockets should be like 40%."** Moved off the 13-26 transition band, just short of the pass-band. This is the gun word's carrier; the headset word (2 damage since 2026-09-23, R5) uses the known-good 100 carrier so it actually emits reliably |
+| Shotgun | 30 | close | **Moved onto the flat shelf 2026-09-18, then corrected 2026-09-23** (Tony, R4/R5): 100 (full distance) let the gun word out-reach the game it is played at; set to match the SMG's OLD value of 30 so the two close-range weapons shared one outdoor reach. Left at 30 by the 2026-09-25 F231 decision (the SMG moved to 40, the Shotgun did not). See §7's dual-emitter write-up: the Shotgun's real close/far shape lives in `wire.headset_dmg`'s reach (`t13`/`t42`), which stays at 100 — the headset word's own real range is unmeasured, F275 |
+| Rocket Launcher | 40 | close | **Tony's F231 decision, 2026-09-25: "and rockets should be like 40%."** A pickup-only one-shot heavy is meant to be earned at close range, not to out-reach the arsenal it out-damages (Tony, 2026-09-17); the 40 replaces the old close-range guess (22) with the same reach as the SMG |
+| Rail Gun | 100 | close | **Tony's F231 decision, 2026-09-25: "railgun 100."** Moved onto the flat shelf, matching the Sniper Rifle; `range_band` stays `close` (declared catalogue copy, never wired) pending a re-pick, but the wire carrier is now full reach |
 
-Every value from 55 up sits on the flat shelf the garden test found (roughly 31 to 100): they are
-expected to behave alike until the shelf itself is mapped, so the ranking above the shelf is a design
-intent, not yet a measured difference. **Only the SMG, Rocket Launcher and Rail Gun values are real
-guesses** sitting at or inside the 13-26 transition band, where the method could not separate values
-cleanly (F232's first-two-shots effect and the 8-shot groups); they are pending **S49**, the portable
-IR receiver, which lets one person map the transition band properly (several fixed receivers at once,
-full mags, first two shots discarded, dome shaded). The Shotgun moved off that band 2026-09-18; its own
-open range question is now `t13`/`t42` (F275), not `t2`.
+Every value from 40 up sits on or near the flat shelf the garden test found (roughly 31 to 100): they
+are expected to behave alike until the shelf itself is mapped, so the ranking above the shelf is a
+design intent, not yet a measured difference. **Only the SMG and Rocket Launcher values are real
+guesses**, both moved by Tony's 2026-09-25 F231 decision to just above the 13-26 transition band
+(previously they sat inside it); they are pending **S49**, the portable IR receiver, which lets one
+person map the transition band properly (several fixed receivers at once, full mags, first two shots
+discarded, dome shaded). The Shotgun moved off that band 2026-09-18; its own open range question is
+now `t13`/`t42` (F275), not `t2`. The Rail Gun moved onto the shelf by the same 2026-09-25 decision, so
+it no longer carries the transition-band caveat.
 
 ⚠️ **The 2026-09-18 carrier-frequency reading puts the whole table in question, and the call is
-Tony's: [ir-effects §6.5](ir-effects-design.md) converts every row above into kHz and works through it.** In short, the seven weapons
-at 55 and up all sit inside the receiver's pass-band and probably play alike, and the six at 30 and
-22 sit on the knee, where the effect is not "shorter range" but "the receiver drops words". Keep the
-numbers until S49 measures the receiver's response curve; do not read this table as a calibrated
-metre ladder.
+Tony's: [ir-effects §6.5](ir-effects-design.md) converts every row above into kHz and works through it.** In short, the nine weapons
+at 55 and up (now including the Rail Gun) all sit inside the receiver's pass-band and probably play
+alike; the Shotgun (30) sits on the knee, where the effect is not "shorter range" but "the receiver
+drops words"; and the SMG and Rocket Launcher (both 40, since 2026-09-25) sit just above the knee,
+unmeasured at that value. Keep the numbers until S49 measures the receiver's response curve; do not
+read this table as a calibrated metre ladder. **The real reach at 40/100 outdoors is still unmeasured
+(bench Block 5, F231 open).**
 
 A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms, melee) keeps its
 captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.

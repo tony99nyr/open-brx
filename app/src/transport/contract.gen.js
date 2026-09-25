@@ -101,6 +101,13 @@ export const PHONE_STATION_THRESHOLD_DBM = -74;
 export const PHONE_POWERUP_THRESHOLD_DBM = -55;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
+/** A67: an edit age at or above this is "the station restarted since, the time is lost". A Stick has no clock
+ *  across a reboot, so it reports a LARGE age; MC's value then wins on the next `station_config`. */
+export const STATION_EDIT_AGE_UNKNOWN_MS = 86400000;
+/** A67 polish: MC dates an adopted station edit `t_recv - age`, later than the true edit by the uplink latency. While a
+ *  field's source is "station", MC adds this to the age it sends, so the station's own edit is always the younger one
+ *  and it keeps src "station" through every re-send (A58's START/END locks). */
+export const ADOPT_SLACK_MS = 10000;
 /** net.md §8 size cap */
 export const MAX_ENVELOPE_BYTES = 65536;
 /** log_data chunk cap (fits under the envelope cap) */

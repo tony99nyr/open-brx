@@ -225,6 +225,17 @@ The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. 
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
 
+**Range edited on the station, last edit wins (A67, F365).** An operator can change a station's RANGE (threshold)
+and STRENGTH (`tx_power`: `ultra_low`, `low`, `medium`, `high`) on the station itself behind a long hold, during
+play. The station applies it at once and reports it on every heartbeat: `threshold`/`tx_power` (applied now),
+`<field>_src` (`station` or `mc`), `<field>_edit_age_ms` (src station only) and `range_edits` (the last 8 edits,
+`seq` persisted across a reboot). MC keeps who set each value and when. A station edit newer than MC's value is
+adopted; an operator edit in the ITEMS card after it wins and re-arms the station. `station_config` carries
+`threshold_age_ms` (and `tx_power` with `tx_power_age_ms` once MC holds one): the station keeps its own edit only
+when that edit is younger. An edit made out of Wi-Fi syncs when the station returns. After a StickS3 reboot the
+Stick cannot know the edit's time, so it reports a large age and MC's value wins at the next arm. Players need no
+change: they read the station's advert. Each new edit is a feed line and an attention line on the ITEMS card.
+
 **One game byte per match (A59, F339).** `game` is MC's match counter (1..255, bumped by the first push after a
 match has started). Every player `config` MC sends carries the same number as `config.game_byte`, so a player
 phone scopes presence and its own advert by the byte its stations advertise (`beacon.js configGameByte`). A
