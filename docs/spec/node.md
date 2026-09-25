@@ -227,7 +227,7 @@ detect that *it* killed someone. MC knows *exactly* who the killer is (victim's 
 
 ```
 feedback(kind):  $SFLASH,*  →  write cues[kind] verbatim (a pre-composed $PLAY frame, A6.3)
-                 + leds[kind] (A11.3); medals play back to back 2 s apart INSTEAD of the kill line (A11.4)
+                 + leds[kind] (A11.3); medals play back to back INSTEAD of the kill line (A11.4, A61; docs/announcer.md)
 ```
 
 The hook is **best-effort**: no local game logic ever depends on receiving it. The node **ignores a
