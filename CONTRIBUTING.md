@@ -43,6 +43,9 @@ suite on its own.
 names match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free
 ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
 
+**After you edit `app/src/hud/medalicons.js`** (the recap medal icons), run `cd app && npm run gen:medalicons`. It
+rewrites MC's copy, `webapp/mc/src/api/medalicons.gen.ts`, and `webapp/mc/test/medalicons-gen.test.ts` fails until you do.
+
 When you add or change a test, follow the parallel-safety rules in `CLAUDE.md` → *When you add or change a test*: free
 ports, an output folder of its own, no fixed sleeps, cleanup that survives a failed assertion. A new browser gate goes into
 JOBS in `scripts/test-all.mjs`; `mcp/tests/test_suite_registry.py` fails until it does.

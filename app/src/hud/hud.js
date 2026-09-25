@@ -68,11 +68,17 @@ export const MEDAL_LABEL = Object.freeze(Object.fromEntries(MEDAL_ROWS.map(m => 
 // (title) and in the accessible label, and a legend teaches the icons. The in-game lanes keep their words, no icons.
 const RECAP_ROWS = [...MEDAL_ROWS, ...AWARDS];
 // 31 css px is 24 px on screen on the smallest gate frame (iPhone SE, 667×375 scales the 844-wide frame by 0.79).
-// The PLAYERS tab hides the stat tiles to make room once the board is up: my own row carries the same numbers.
+// The PLAYERS tab hides the stat tiles when my own board row carries the same numbers (recapTilesHidden).
 export const RECAP_ICON_PX = 31;
 const recapIcon = (key, px, night, label) => medalIcon(key, { size: px, night, label: label || (RECAP_ROWS.find(r => r.key === key) || {}).label || key });
-const recapLegend = (keys, night) => keys.length ? `<div class="mleg" role="list" aria-label="MEDAL LEGEND">${keys.map(k => { const l = (RECAP_ROWS.find(r => r.key === k) || {}).label || k;
-  return `<span class="mlg" role="listitem" data-medal="${k}">${recapIcon(k, RECAP_ICON_PX, night, l)}<em>${String(l).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])}</em></span>`; }).join('')}</div>` : '';
+export const recapLegend = (keys, night) => keys.length ? `<div class="mleg" role="list" aria-label="MEDAL LEGEND">${keys.map(k => { const l = (RECAP_ROWS.find(r => r.key === k) || {}).label || k;
+  return `<span class="mlg" role="listitem" data-medal="${esc(k)}">${recapIcon(k, RECAP_ICON_PX, night, l)}<em>${esc(l)}</em></span>`; }).join('')}</div>` : '';
+/** Review of medal-icons (M1): the stat tiles repeat my own board row, so PLAYERS hides them only when that row is
+ *  there (MC may send no rows, or none for me). AWARDS always hides them. */
+export const recapTilesHidden = (tab, rows, myId) => tab === 'awards' || (tab === 'player' && !!myId && rows.some(r => r && r.player_id === myId));
+/** SHOTS is the one tile no board column carries; with the tiles hidden it goes on the meta line. When the tiles
+ *  showed YOUR TEAM HELD instead (a mode with a point), HELD has its own strip and SHOTS was not shown either. */
+export const recapShotsNote = (st, hold) => (hold && st.teamKey && hold[st.teamKey] != null) || num(st.shots) == null ? null : `${st.shots} SHOTS`;
 /** App 0.4.2: the words of the picker's "Connecting to <gun>" block, from `hud.connecting`. */
 export function connectingText(conn) {
   const nm = String((conn && conn.name) || 'your gun');
@@ -1174,9 +1180,11 @@ export class Hud {
       ? `<span class="rh1 w ${esc(String(R.outcome || 'undecided'))}"><span class="unskew">${word}</span></span>`
       : `<span class="rh1 p"><span class="unskew">${wait === 'unreached' ? 'MC NOT REACHED · SEE MISSION CONTROL' : 'RESULT PENDING · CONFIRM AT MISSION CONTROL'}</span></span>`;
     const modeName = String((R && R.mode) || st.mode || '').toUpperCase().replace(/_/g, ' ');
+    const tilesHidden = recapTilesHidden(tab, rows, myId);
     const meta = [modeName || null,
       (R && R.win_by) ? 'WIN BY ' + String(R.win_by).toUpperCase().replace(/_/g, ' ') : null,
-      (R && R.provisional) ? 'PROVISIONAL · SCORES STILL ARRIVING' : null].filter(Boolean).join(' · ');
+      (R && R.provisional) ? 'PROVISIONAL · SCORES STILL ARRIVING' : null,
+      tilesHidden && tab === 'player' ? recapShotsNote(st, hold) : null].filter(Boolean).join(' · ');
     const sgb = (k, label) => `<button class="sg ${tab === k ? 'on' : ''}" aria-pressed="${tab === k}" data-act="onResultTab" data-arg="${k}"><span class="unskew">${label}</span></button>`;
     const seg = hasTeam || awards.length ? `<div class="rseg" role="group">
       ${hasTeam ? sgb('team', 'TEAMS') : ''}${sgb('player', 'PLAYERS')}${awards.length ? sgb('awards', 'AWARDS') : ''}</div>` : '';
@@ -1266,7 +1274,7 @@ export class Hud {
       <div class="rhead"><span class="rkick">FINAL RESULTS</span>${head}<span class="rmeta">${esc(meta)}</span>${seg}</div>
       <div class="rbody">${body}</div>
       ${tab === 'awards' ? '' : holdStrip + honorStrip + afterStrip}
-      <div class="rstats"${tab === 'awards' || (tab === 'player' && R) ? ' hidden' : ''} style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
+      <div class="rstats"${tilesHidden ? ' hidden' : ''} style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
       <div class="rfoot foot"><div class="fl">${ret}${mcv}${syncShown}${sess}</div>
         <button class="ready ${reopened ? 'ghost' : ''}" data-act="${reopened ? 'onCloseView' : 'onEndOk'}"><span class="unskew">${reopened ? 'CLOSE' : 'OK'}</span></button></div></div>`;
   }

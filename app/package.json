@@ -11,6 +11,7 @@
     "test:standby-screen": "npm run build && npm run test:standby-screen:prebuilt",
     "test:standby-screen:prebuilt": "node tools/screens.mjs --only A38 --shards 1 --expect-steps 6",
     "typecheck": "tsc --noEmit",
+    "gen:medalicons": "node scripts/gen-medalicons.mjs",
     "sync": "npm run build && npx cap sync",
     "ios:setup": "npm run build && ./scripts/ios-setup.sh",
     "ios:open": "npx cap open ios",

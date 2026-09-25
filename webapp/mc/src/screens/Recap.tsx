@@ -39,7 +39,8 @@ const AWARD_KEY: Record<string, string> = { MVP: 'mvp', 'FIRST BLOOD': 'first_bl
 const RECAP_ROWS = [...MEDALS, ...AWARDS];
 const labelOf = (k: string) => RECAP_ROWS.find(r => r.key === k)?.label ?? k.replace(/_/g, ' ').toUpperCase();
 function MedalIcon({ k, label, size = 24 }: { k: string; label: string; size?: number }) {
-  return <span data-medal-icon={k} title={label} style={{ display: 'inline-flex', flex: 'none', width: size, height: size }}
+  // decorative: MC prints the name beside every icon (the chip, the honour card, the legend)
+  return <span data-medal-icon={k} title={label} aria-hidden="true" style={{ display: 'inline-flex', flex: 'none', width: size, height: size }}
     dangerouslySetInnerHTML={{ __html: medalIcon(k, { size, label }) }} />;
 }
 /** The keys the recap shows an icon for: every honour, then every medal chip on the board. */

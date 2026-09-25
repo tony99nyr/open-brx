@@ -31,6 +31,8 @@ describe('RECAP medal icons', () => {
       expect(mine.length, `${r.key} icon`).toBeGreaterThan(0);
       expect(mine[0].querySelector('svg[role="img"]')?.getAttribute('aria-label'), r.key).toMatch(new RegExp(`^${r.label.replace(/[/]/g, '.')}`));
     }
+    // MC shows the words beside every icon, so a screen reader must not read the name twice
+    expect(icons.filter(e => e.getAttribute('aria-hidden') !== 'true').map(e => e.dataset.medalIcon), 'icons not aria-hidden').toEqual([]);
     const chips = m.find('[data-cell="medals"]')[0].textContent ?? '';
     expect(chips, 'the words stay beside the icons').toContain(MEDALS[0].label);
     expect(m.find('[data-medal-chip=""]').map(e => e.textContent), 'an unknown chip keeps its words, with no icon').toEqual(['SOMETHING NEW']);
