@@ -325,6 +325,17 @@ def default_config(mode: str = "tdm") -> GameConfig:
 _STATION_LOCK_KEYS = ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "boot",
                       "tally")   # integration review (Low): the self-authoritative count only grows within a game
 
+def _tally_ok(t) -> bool:
+    """A station tally from a snapshot has the shape `_keep_station_tally` writes: a key list, `hold_ms` as team id to
+    non-negative int ms, and `revives` an int or None."""
+    if not isinstance(t, dict) or not isinstance(t.get("key"), list) or not isinstance(t.get("hold_ms"), dict):
+        return False
+    if not all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v >= 0 for k, v in t["hold_ms"].items()):
+        return False
+    r = t.get("revives")
+    return r is None or (isinstance(r, int) and not isinstance(r, bool))
+
+
 class Session:
     def __init__(self, compiler: CompilerPort, net, armory, store=None, now_ms: Callable[[], int] | None = None,
                  lan: dict | None = None, voice_rng: random.Random | None = None):
@@ -851,6 +862,8 @@ class Session:
                 kept = (snap.get("station_locks") or {}).get(nid)
                 if isinstance(kept, dict):
                     self.stations[nid].update({k: kept[k] for k in _STATION_LOCK_KEYS if k in kept})
+                    if not _tally_ok(self.stations[nid].get("tally")):   # polish r1: a bad tally must not raise per beat
+                        self.stations[nid].pop("tally", None)
                 self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
                                             "synced": False, "last_seen_ms": 0})
             self.game_no = snap.get("game_no", self.game_no)
@@ -5262,7 +5275,7 @@ class Session:
 
         Integration review 2026-09-25 (A63): the live path judges streak medals and KILLJOY in ARRIVAL order,
         this replay in `t` order (the cap move needs it), so a re-scored recap can differ from the medals
-        heard live. A63's text says so; replaying in arrival order would move the frag-cap end.
+        heard live, the multi-kill chain included (in `t` order no kill is late). A63's text says so; replaying in arrival order would move the frag-cap end.
         """
         if not self.store:
             return []

@@ -444,9 +444,9 @@ def medal_stream(world: World, entries: list[dict]) -> list[tuple[str, str, int,
     ("scored" or not) is taken as given: dedup, the stale-match park and the end freeze are the other
     invariants' business. The rules, from scoring.py and types.MEDALS:
 
-    * the chain: an enemy kill 0 to MULTI_KILL_MS AFTER the killer's newest enemy kill so far (by the scored
+    * the chain: an enemy kill -CLOCK_TIE_MS to MULTI_KILL_MS after the killer's newest enemy kill so far (by the scored
       time) extends it; a bigger gap starts a new chain of 1. A LATE kill (a flush or a reorder whose t is
-      before the newest kill) is a chain of 1 on its own: it never joins the running chain and never moves
+      more than CLOCK_TIE_MS before the newest kill; inside that band a swapped pair still chains) is a chain of 1 on its own: it never joins the running chain and never moves
       the newest-kill time back, and the running chain goes on (integration review 1, 2026-09-25). The
       killer's own death does NOT reset the chain (only the streak).
     * A5.7 suppression (the VICTIM's node never synced, or its batch was re-based): the kill scores
@@ -491,9 +491,9 @@ def medal_stream(world: World, entries: list[dict]) -> list[tuple[str, str, int,
         multi = 1
         if not suppressed:
             gap = t - last_t[killer] if killer in last_t else None
-            if gap is not None and gap < 0:
+            if gap is not None and gap < -CLOCK_TIE_MS:
                 pass                        # a late kill: a chain of 1, the running chain untouched
-            elif gap is not None and gap <= MULTI_KILL_MS:
+            elif gap is not None and gap <= MULTI_KILL_MS:   # inside the clock band a swapped pair still chains
                 chain[killer] = chain.get(killer, 1) + 1
                 multi = chain[killer]
             else:
@@ -602,7 +602,7 @@ def frozen_team_kill_keeps_victim_death(world: World) -> None:
 @invariant("multi_chain_monotonic")
 def multi_chain_monotonic(world: World) -> None:
     """Integration review 1 (2026-09-25): a multi-kill chain only moves forward in time. A kill that
-    carries a chain count of 2 or more is 0 to MULTI_KILL_MS after the killer's newest earlier enemy kill,
+    carries a chain count of 2 or more is -CLOCK_TIE_MS to MULTI_KILL_MS after the killer's newest earlier enemy kill,
     and extends the chain by one. A late kill (a flush whose t is older than that newest kill) is never
     part of a chain, however old it is. Read off MC's own kill list, in the order MC took the kills."""
     sc = world.session.scorer
@@ -616,11 +616,11 @@ def multi_chain_monotonic(world: World) -> None:
         t, multi = int(k["t"]), int(k.get("multi", 1))
         if multi >= 2:
             last = newest.get(killer)
-            if last is None or not 0 <= t - last <= MULTI_KILL_MS:
+            if last is None or not -CLOCK_TIE_MS <= t - last <= MULTI_KILL_MS:
                 _fail("multi_chain_monotonic",
                       f"kill #{i + 1} ({killer} on {k['victim']} at t={t}) carries chain {multi}, but the killer's "
                       f"newest earlier kill is at {last} (gap {None if last is None else t - last} ms, "
-                      f"window 0..{MULTI_KILL_MS})")
+                      f"window -{CLOCK_TIE_MS}..{MULTI_KILL_MS})")
         newest[killer] = t if killer not in newest else max(newest[killer], t)
 
 

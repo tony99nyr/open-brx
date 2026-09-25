@@ -139,12 +139,23 @@ def test_review1_a_late_flushed_kill_never_counts_as_a_multi_kill():
     kill(sc, 0, 1, T0 + 100_000)
     kill(sc, 0, 2, T0 + 10_000)                           # flushed late: 90 s older than the newest kill
     assert "double_kill" not in sc.kills[-1]["medals"], sc.kills[-1]
-    kill(sc, 0, 3, T0 + 99_000)                           # late by 1 s, inside the window: still no chain
+    kill(sc, 0, 3, T0 + 98_500)                           # late by 1.5 s (past CLOCK_TIE_MS), inside the window: no chain
     assert "double_kill" not in sc.kills[-1]["medals"], sc.kills[-1]
     assert sc.stats["p0"].last_kill_t == T0 + 100_000, "the chain clock never moves back"
     kill(sc, 0, 4, T0 + 101_000)                          # a fresh kill 1 s after the newest: a double
     assert sc.kills[-1]["medals"] == ["double_kill"], sc.kills[-1]
     assert sc.stats["p0"].multi_best == 2
+
+
+def test_polish_two_kills_a_moment_apart_that_arrive_swapped_still_make_a_double():
+    """Polish r1: phones report independently and their clocks agree only to under 1 s (contracts §7), so two
+    kills 200 ms apart often arrive swapped. Inside CLOCK_TIE_MS that is still a double, in either order."""
+    for order in ((10_200, 10_000), (10_000, 10_200)):
+        sc = mk(n=6, mode="ffa")
+        kill(sc, 0, 1, T0 + order[0])
+        kill(sc, 0, 2, T0 + order[1])
+        assert sc.kills[-1]["medals"] == ["double_kill"], (order, sc.kills[-1])
+        assert sc.stats["p0"].last_kill_t == T0 + 10_200
 
 
 def test_review2_a_frozen_team_kill_keeps_the_victims_death():

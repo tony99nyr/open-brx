@@ -8,7 +8,7 @@ import csv
 import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
-from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, AWARDS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
+from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, AWARDS, CLOCK_TIE_MS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
                     NEVER_SEEN_MS, OBJECTIVE_MODES, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
 
@@ -496,13 +496,14 @@ class Scorer:
                 # is a COUNT of consecutive kills and first blood is an ORDERING — neither reads a
                 # timestamp, so neither has any business being decided by the victim's clock.
                 if not suppress:
-                    # Integration review 1: a kill flushed late (`t` before the killer's newest kill) never joins
-                    # a chain, however close it is, and never moves the chain clock back. It is a chain of one,
-                    # kept BEHIND the running chain so the next fresh kill still extends the right one.
-                    late = ks.last_kill_t is not None and t < ks.last_kill_t
+                    # Integration review 1: a kill flushed late (`t` more than CLOCK_TIE_MS before the killer's
+                    # newest kill) never joins a chain and never moves the chain clock back. It is a chain of one,
+                    # kept BEHIND the running chain so the next fresh kill still extends the right one. Inside the
+                    # clock band (two kills a moment apart that arrive swapped, contracts §7) it still chains.
+                    late = ks.last_kill_t is not None and ks.last_kill_t - t > CLOCK_TIE_MS
                     if late:
                         ks.multis.insert(max(0, len(ks.multis) - 1), 1)
-                    elif ks.last_kill_t is not None and 0 <= t - ks.last_kill_t <= MULTI_KILL_MS:
+                    elif ks.last_kill_t is not None and -CLOCK_TIE_MS <= t - ks.last_kill_t <= MULTI_KILL_MS:
                         if ks.multis:
                             ks.multis[-1] += 1
                         else:

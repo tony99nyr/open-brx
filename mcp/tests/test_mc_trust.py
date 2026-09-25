@@ -383,6 +383,23 @@ def test_the_nonce_re_issue_closes_after_the_window_and_survives_a_bind_and_an_m
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_polish_a_compaction_keeps_a_bound_ids_open_re_issue_window():
+    """Polish r1 (2026-09-25): the compacted file wrote a bare bound line ahead of the `u` + `b` pair, so a restart
+    after a compaction lost the window and the phone with the right nonce got no key."""
+    root = _tmp()
+    try:
+        wall = [1_000_000.0]
+        reg = TrustRegistry(root, wall=lambda: wall[0])
+        assert reg.enroll("node-c1", "a", NONCE)
+        reg.confirm("node-c1")
+        reg._compact()
+        wall[0] += 5
+        again = TrustRegistry(root, wall=lambda: wall[0])
+        assert again.enroll("node-c1", "a", NONCE) == again.key_for("node-c1"), "the window survives a compaction"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 # ---------------- F346 (b): only ids that bind count toward the cap; a full pool never drops ----------------
 
 def test_a_flood_of_ids_that_never_bind_denies_enrolment_but_never_frees_an_issued_id():

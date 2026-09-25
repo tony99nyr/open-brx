@@ -269,9 +269,12 @@ class TrustRegistry:
         """Rewrite the list as its live records only (atomic, mode 600). A failure keeps the long file."""
         if self.data_dir is None:
             return
-        out = [*sorted(self.bound)]
+        # polish r1: an id with an open re-issue window is written ONLY as its `u` + `b` pair. A bare line ahead of
+        # it would mark it bound first, and `_replay` would then drop the `u` line and the window with it.
+        windowed = {nid for nid, (t, _h) in self.bound_issue.items() if nid in self.bound and self._in_window(t)}
+        out = [*sorted(self.bound - windowed)]
         for nid, (t, nonce_h) in self.bound_issue.items():
-            if nid in self.bound and self._in_window(t):   # keep a bound id's open re-issue window
+            if nid in windowed:   # keep a bound id's open re-issue window
                 out += [f"{nid} u {t} {nonce_h}", f"{nid} b"]
         for nid, (t, nonce_h) in self.unbound.items():
             out.append(f"{nid} u {t} {nonce_h}")
