@@ -509,6 +509,8 @@ const HILL_PRESENCE_MS = 12000;
 // (`Presence` itself keeps an entry for up to 8 s after the last advert, so without this a point nobody was
 // hearing would go on owning the field.)
 const CONTROL_STALE_MS = 4000;
+// Keep a point owner across a short reconnect, but do not turn a long absence into old handover news.
+export const CONTROL_RECONNECT_MS = 30000;
 // §5d.5: "a floor between repeats of the same line (proposed 10 s for contested, which can otherwise
 // oscillate at net 0)". Unlike the IR path (F75) this is a MEASURED state, so it may play at all -- but a
 // station at 2 v 2 crosses the line repeatedly and the clip is 2.078 s.
@@ -3317,7 +3319,14 @@ export class Engine {
     // an enemy's used to fire "Hill Lost!" for a point nobody had taken. A different site (or the other
     // source's state) is adopted SILENTLY, exactly as walking back into range is (`_onHillBeacon`).
     const sameSite = !!prev && prev.source === 'station' && prev.site === e.id;
-    const prevOwner = sameSite ? prev.owner : this._controlLastOwner?.site === e.id ? this._controlLastOwner.owner : null;
+    const remembered = this._controlLastOwner;
+    const rememberedFresh = remembered?.site === e.id && now - remembered.at <= CONTROL_RECONNECT_MS;
+    if (sameSite && !rememberedFresh) {
+      if (this._controlSpokenOwner?.site === e.id) this._controlSpokenOwner = null;
+      if (this._hillPendingCallout?.site === e.id) this._hillPendingCallout = null;
+      this._hillOwnerWhenSilenced = undefined;
+    }
+    const prevOwner = sameSite ? (rememberedFresh ? prev.owner : null) : rememberedFresh ? remembered.owner : null;
     if (!sameSite && prev && prev.site !== e.id) {
       this.log(`control point ${e.id} is a different point from ${prev.source === 'station' ? prev.site : 'the grenade hill'} — adopting its owner silently`, 'li');
       this._hillWasContested = false; this._hillOwnerWhenSilenced = undefined;
@@ -3372,7 +3381,8 @@ export class Engine {
     } else if (!netChange && this._hillPendingCallout?.site === e.id) {
       this._hillPendingCallout = null;
     }
-    this._controlLastOwner = { site: e.id, owner };
+    const advertAge = Number.isFinite(e.ageMs) ? Math.max(0, e.ageMs) : 0;
+    this._controlLastOwner = { site: e.id, owner, at: now - advertAge };
     // Track the owner we last heard with audio ON, so the line above can be owed across a death window.
     this._hillOwnerWhenSilenced = audio ? undefined : (this._hillOwnerWhenSilenced === undefined ? prevOwner : this._hillOwnerWhenSilenced);
     // Contested, on the rising edge only. A capture callout in the same advert wins outright: `_hillSay`

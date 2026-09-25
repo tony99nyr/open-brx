@@ -69,6 +69,7 @@ JUDGED = {
     "BEACON_PERIOD_S": "the period itself",
     "HILL_PRESENCE_S": "the stage's mirror of engine.js HILL_PRESENCE_MS -- the same two-missed-beacons rule",
     "HILL_CONTESTED_MIN_S": "the stage's mirror of engine.js HILL_CONTESTED_MIN_MS: a floor BETWEEN repeats of one line on the phone-station path; a beacon cannot reach it (F102)",
+    "CONTROL_RECONNECT_S": "the stage's station-owner reconnect window; only a station advert refreshes this memory, and an IR hill beacon cannot refresh it",
     "_STUN_DEFAULT_S": "F15: the EMP disarm length when config.stun names none; started by a proto-8 $HIR only, and the <15,0> beacon row (fn 28) never reaches the <8,0> cell",
     "_STUN_MAX_S": "F15: the validator's ceiling on config.stun.duration_s, not a timer that runs",
     "STUN_DEFAULT_S": "the stage's mirror of engine.js STUN_DEFAULT_S: same proto-8-only start as _STUN_DEFAULT_S; a beacon is proto 15 and cannot extend it",

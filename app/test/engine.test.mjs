@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS } from '../src/engine.js';
 import { BrxLink } from '../src/brxlink.js';
 import { Hud } from '../src/hud/hud.js';
 import * as W from '../src/transport/envelope.js';
@@ -518,6 +518,22 @@ test('control point: the FIRST advert adopts the owner silently, and a real hand
   assert.equal(nWrites(h, HILL_LOST_F), 0, 'RED losing THEIR point is not our callout');
   control(h, { team: 1, state: HELD, value: 100 });
   assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'BLUE taking it says Hill Captured, once');
+});
+
+test('control point: remembered owner expires 30 s after the last advert', () => {
+  assert.equal(CONTROL_RECONNECT_MS, 30000);
+  const inside = koth();
+  control(inside, { team: 1, state: HELD, value: 100 });
+  inside.adv(12000); inside.eng.setStations([]); inside.eng.tick();
+  control(inside, { team: 0, state: HELD, value: 100 });
+  assert.equal(nWrites(inside, HILL_LOST_F), 1, 'a different owner inside the reconnect window announces');
+
+  const outside = koth();
+  control(outside, { team: 1, state: HELD, value: 100 });
+  outside.adv(31000); outside.eng.setStations([]);
+  const before = outside.writes.length;
+  control(outside, { team: 0, state: HELD, value: 100 });
+  assert.deepEqual(outside.writes.slice(before), [], 'a different owner after the reconnect window is adopted silently');
 });
 
 test('control point: an unchanged owner first seen while armed is not announced at go-live', () => {

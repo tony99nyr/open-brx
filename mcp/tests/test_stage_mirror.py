@@ -332,6 +332,56 @@ def test_a_control_point_transition_inside_the_floor_is_deferred_until_the_floor
     asyncio.run(go())
 
 
+def test_station_owner_memory_expires_30_seconds_after_the_last_advert():
+    assert S.CONTROL_RECONNECT_S == 30.0
+    async def go():
+        inside, im, ic = mk_point(tid=1)
+        await in_play(inside)
+        await adv(inside, id=1, team=1, held=True, value=100)
+        await stop(inside, id=1)
+        await ticks(inside, ic, 2 * S.CONTROL_STALE_S + 0.2)
+        assert inside.hill is None
+        n = mark(im)
+        await adv(inside, id=1, team=0, held=True, value=100)
+        assert audio(im, n) == [LOST], "a different owner inside 30 s is announced"
+
+        outside, om, oc = mk_point(tid=1)
+        await in_play(outside)
+        await adv(outside, id=1, team=1, held=True, value=100)
+        await stop(outside, id=1)
+        oc.advance(31.0)
+        n = mark(om)
+        await adv(outside, id=1, team=0, held=True, value=100)
+        assert audio(om, n) == [], "a different owner after 30 s is adopted silently"
+    asyncio.run(go())
+
+
+def test_hill_loss_waits_until_the_death_scream_ends_without_playx():
+    async def go():
+        st, mgr, clock = mk_point(tid=1)
+        await in_play(st)
+        scream = st.scream_this_life
+        scream_s = float(S._snd._catalog()[scream]["duration_s"])
+        assert scream and scream_s > 0, "spawn selected a measured death scream"
+        prior = tx(mgr)
+        assert any(f.startswith("$PSET,") and scream in f for f in prior), "the scream take was written before death"
+        await adv(st, id=1, team=1, held=True, value=100)
+        mgr.sessions["stage"].record("rx", "$HP,0,0,0,*")
+        st.poll()
+        await settle(st)
+        assert not st.alive
+
+        n = mark(mgr)
+        await adv(st, id=1, team=0, held=True, value=100)
+        assert audio(mgr, n) == [], "the hill line waits while the native scream plays"
+        await ticks(st, clock, max(0.1, scream_s - 0.3))
+        assert audio(mgr, n) == [], "no hill PLAYX or line reaches the gun during the scream"
+        await ticks(st, clock, 0.5)
+        assert audio(mgr, n) == [LOST], ("the scream finishes before the hill line is written", audio(mgr, n),
+                                         clock.t, st._hill_scream_until)
+    asyncio.run(go())
+
+
 def test_an_unchanged_station_owner_first_seen_while_armed_is_not_announced_after_spawn():
     async def go():
         st, mgr, clock = mk_point(tid=1)
