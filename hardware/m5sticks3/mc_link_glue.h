@@ -33,6 +33,7 @@
 #include "presence.h"
 #include "station_link.h"
 #include "station_ui.h"
+#include "station_persistence.h"
 
 namespace brx_glue {
 
@@ -61,12 +62,15 @@ constexpr uint16_t SCAN_WINDOW_UNITS = 50;
 // ---- persisted state (Preferences, namespace "brxmc" -- separate from "brx"'s bench settings) --
 Preferences mcPrefs;
 String wifiSsid, wifiPass;
+String savedMcUrl;
+uint32_t lockLastSavedMs = 0;
+uint32_t lockLastSavedSeconds = 0;
 String stationAppVer = "h8-0.1";  // bumped by hand; no build-time git sha injection in this sketch yet
 bool actionsEnabled = false;      // mirrors link.actions_enabled(); persisted so ACTIONS survives a reboot
 uint32_t bootCount = 0;           // A58: incremented once per boot in mcSetup(); rides on every status
 
 // A58: count this boot. MC reads `boot_count` (with `uptime_s`) off the status heartbeat to notice
-// that a Stick restarted mid-match -- the one event that silently drops its RAM-only match lock.
+// that a Stick restarted during a match.
 static void mcCountBoot() {
   mcPrefs.begin("brxmc", false);
   bootCount = mcPrefs.getUInt("boots", 0) + 1;
@@ -78,6 +82,7 @@ static void mcLoadPrefs(StationLink& link) {
   mcPrefs.begin("brxmc", true);
   wifiSsid = mcPrefs.getString("ssid", "");
   wifiPass = mcPrefs.getString("pass", "");
+  savedMcUrl = mcPrefs.getString("mc_url", "");
   String nodeId = mcPrefs.getString("node_id", "");
   String nodeKey = mcPrefs.getString("node_key", "");
   uint8_t assoc = mcPrefs.getUChar("assoc", (uint8_t)AssocMode::MUSTER);
@@ -121,6 +126,16 @@ static void mcSaveWifi(const String& ssid, const String& pass) {
   wifiSsid = ssid;
   wifiPass = pass;
 }
+
+static void mcSaveTypedMcUrl(const String& url) {
+  std::string clean = normalise_saved_mc_url(url.c_str());
+  if (!saved_mc_url_usable(clean)) return;
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.putString("mc_url", clean.c_str());
+  mcPrefs.end();
+  savedMcUrl = clean.c_str();
+}
+
 
 static void mcSaveNodeKey(const String& key) {
   mcPrefs.begin("brxmc", false);
@@ -304,7 +319,7 @@ SideButtonLockSync pmicLock;
 
 static bool pm1ReadReg(uint8_t reg, uint8_t& v) { return M5.In_I2C.readRegister(PM1_ADDR, reg, &v, 1, PM1_I2C_HZ); }
 
-static bool pm1WriteBit0(uint8_t reg, bool on) {
+static bool pm1WriteBit0(uint8_t reg, bool on, const char* reason) {
   uint8_t v = 0;
   if (!pm1ReadReg(reg, v)) {
     Serial.printf("ERR PMIC read 0x%02x failed\n", reg);
@@ -315,19 +330,23 @@ static bool pm1WriteBit0(uint8_t reg, bool on) {
     Serial.printf("ERR PMIC 0x%02x reads %02x (bit7 set): refusing to write\n", reg, v);
     return false;
   }
-  return out == v || M5.In_I2C.writeRegister8(PM1_ADDR, reg, out, PM1_I2C_HZ);
+  if (out == v) return true;
+  bool wrote = M5.In_I2C.writeRegister8(PM1_ADDR, reg, out, PM1_I2C_HZ);
+  Serial.printf("# PMIC write reg=0x%02x value=0x%02x reason=%s result=%s\n", reg, out, reason,
+                wrote ? "ok" : "failed");
+  return wrote;
 }
 
 // Call every loop() (and once first thing in setup()) with the wanted lock state.
-static void pmicSync(bool locked, uint32_t now) {
+static void pmicSync(bool locked, uint32_t now, const char* reason = "loop state reconciliation") {
   if (!pmicLock.due(locked, now)) return;
   if (M5.getBoard() != m5::board_t::board_M5StickS3) {
     pmicLock.attempted(true, now);  // nothing to lock on this board: settled, so this never repeats
     Serial.println("# PMIC side-button lock skipped: not a StickS3");
     return;
   }
-  const bool w1 = pm1WriteBit0(PM1_BTN_CFG_1, locked);  // both attempted, whatever the first did
-  const bool w2 = pm1WriteBit0(PM1_BTN_CFG_2, locked);
+  const bool w1 = pm1WriteBit0(PM1_BTN_CFG_1, locked, reason);  // both attempted, whatever the first did
+  const bool w2 = pm1WriteBit0(PM1_BTN_CFG_2, locked, reason);
   uint8_t r1 = 0, r2 = 0;
   const bool rd1 = pm1ReadReg(PM1_BTN_CFG_1, r1);
   const bool rd2 = pm1ReadReg(PM1_BTN_CFG_2, r2);
@@ -412,12 +431,30 @@ static WsAddress mcParseWsUrl(String url) {
 StationLink link;
 StationButtons buttons;
 WebSocketsClient ws;
-WsAddress pendingTypedMc;    // set by `MC <url>`; consumed once and then forgotten (never persisted)
+WsAddress pendingTypedMc;    // set by `MC <url>` or restored from Preferences
 bool haveTypedMc = false;
 uint32_t lastMdnsTryMs = 0;
 uint32_t lastHeartbeatMs = 0;
 uint32_t lastScanMs = 0;
 bool wsWantOpen = false;     // true once we have picked an address and should be socket-connected
+bool linkOff = false;         // explicit LINK OFF; only WIFI, MC or LINK RECONNECT clears it
+
+static void mcClearSavedLock() {
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.remove("lock_s");
+  mcPrefs.end();
+  lockLastSavedSeconds = 0;
+}
+
+static void mcSaveLockIfDue(uint32_t now) {
+  uint32_t remaining = link.lock().remaining_s(now);
+  if (!lock_save_due(remaining, lockLastSavedMs, now) || remaining == lockLastSavedSeconds) return;
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.putUInt("lock_s", lock_snapshot_seconds(remaining));
+  mcPrefs.end();
+  lockLastSavedMs = now;
+  lockLastSavedSeconds = remaining;
+}
 // Polish round 1: `status.live` must say whether the BLE advert is actually up, not merely that MC
 // armed us -- an advert can fail to start (ERR advert start, m5sticks3.ino publishAdvert()) or a
 // BRIDGE can withdraw it (no live beacon) while still fully ASSIGNED. The .ino calls mcSetLive()
@@ -697,6 +734,13 @@ static void mcHandleFrame(const String& text) {
       // radio action the glue owns; the decision itself is pure and tested in station_link.h.
       uint32_t rx = millis();
       link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
+      if (a.lock_s > 0) {
+        mcPrefs.begin("brxmc", false);
+        mcPrefs.putUInt("lock_s", lock_snapshot_seconds((uint32_t)a.lock_s));
+        mcPrefs.end();
+        lockLastSavedMs = rx;
+        lockLastSavedSeconds = (uint32_t)a.lock_s;
+      } else mcClearSavedLock();
       if (preserveClaim) mcResumeClaimFeed(wasFeeding);
       mcSaveRangeIfChanged(link);            // A67: MC's value may have replaced an on-station edit
       // Only when it differs (lock_s excluded) or the session is new.
@@ -723,6 +767,7 @@ static void mcHandleFrame(const String& text) {
     if (cmd == "release_utility") {
       mcPauseClaimFeed();
       link.apply_release();
+      mcClearSavedLock();
       mcSaveRangeIfChanged(link);  // A67: the edited values go with the station (the log and its seq stay)
       if (savedConfig.note_released()) mcEraseSavedConfig();  // a released Stick must not come back armed
       if (savedHill.clear()) mcEraseSavedHill();
@@ -834,8 +879,15 @@ static void mcLoop(uint32_t now) {
   // the whole match) and auto-unlocks at zero. The PMIC follows the lock on every edge: a start, a
   // replacement by a later config, lock_s 0, a release, or the countdown running out.
   if (link.poll_lock(now)) {
+    mcClearSavedLock();
     mcScreenWake = true;
     Serial.println("UNLOCKED (match lock ran out)");
+  }
+  mcSaveLockIfDue(now);
+  if (link.automatic_rejoin_due(now)) {
+    link.clear_dropped_for_match();
+    linkOff = false;
+    Serial.println("MUSTER: match deadline or lock expired; rejoining MC");
   }
   const bool wantPmicLock = link.lock().locked(now);
   pmicSync(wantPmicLock, now);  // retries every second until the PMIC reads back what we want
@@ -855,6 +907,11 @@ static void mcLoop(uint32_t now) {
     mcScreenWake = true;
     return;
   }
+  if (link.dropped_for_match() && !link.muster_drop_pending()) {
+    ws.disconnect();
+    wsWantOpen = false;
+    haveTypedMc = false;
+  }
   // Any link state change (Wi-Fi lost, MC found, joined, closed) is an event the operator should see.
   static LinkState lastLinkState = link.state();
   if (link.state() != lastLinkState) { lastLinkState = link.state(); mcScreenWake = true; }
@@ -864,7 +921,7 @@ static void mcLoop(uint32_t now) {
     // very next tick's kick re-associated Wi-Fi immediately, undoing the drop `mcHandleFrame` just
     // performed -- the whole point of MUSTER. `LINK RECONNECT` (below) is the only way past it. A drop that is
     // latched but not yet taken (F374: a powerup waiting for START) still rejoins.
-    if (!link.radio_down_for_match() && link.state() == LinkState::JOINING_WIFI && wifiSsid.length() &&
+    if (!linkOff && !link.radio_down_for_match() && link.state() == LinkState::JOINING_WIFI && wifiSsid.length() &&
         WiFi.status() != WL_IDLE_STATUS && now - lastWifiKickMs >= WIFI_KICK_MS) {
       // Not cheap: while the driver is still connecting, each call is refused ("sta is connecting,
       // cannot set config") and logged, hundreds of times a second (bench 2026-09-24). Kick at most
@@ -876,7 +933,7 @@ static void mcLoop(uint32_t now) {
   }
 
   // Address discovery: a typed `MC <url>` wins immediately; otherwise browse mDNS periodically.
-  if (link.state() == LinkState::LOOKING_FOR_MC) {
+  if (link.state() == LinkState::LOOKING_FOR_MC && mc_dial_allowed(wifiUp, link.dropped_for_match(), linkOff)) {
     if (haveTypedMc) {
       link.mc_address_known();
       ws.begin(pendingTypedMc.host.c_str(), pendingTypedMc.port, pendingTypedMc.path.c_str());
@@ -892,7 +949,7 @@ static void mcLoop(uint32_t now) {
     }
   }
 
-  if (wsWantOpen) ws.loop();
+  if (wsWantOpen && mc_dial_allowed(wifiUp, link.dropped_for_match(), linkOff)) ws.loop();
 
   // A `held` reconnect after a drop needs nothing extra here: `ws_closed()` already put the link
   // back at LOOKING_FOR_MC, and the discovery block above re-dials as soon as an address is found
@@ -967,11 +1024,22 @@ static void mcLoop(uint32_t now) {
 static bool mcHandleLine(const String& lineIn) {
   String line = lineIn;
   line.trim();
+  if (line == "WIFI CLEAR") {
+    mcPrefs.begin("brxmc", false);
+    mcPrefs.remove("ssid"); mcPrefs.remove("pass"); mcPrefs.remove("mc_url");
+    mcPrefs.end();
+    wifiSsid = ""; wifiPass = ""; savedMcUrl = "";
+    ws.disconnect(); WiFi.disconnect(true); wsWantOpen = false; haveTypedMc = false; linkOff = true;
+    link.wifi_cleared();
+    Serial.println("WIFI and typed MC address cleared");
+    return true;
+  }
   if (line.startsWith("WIFI ")) {
     int sp = line.indexOf(' ', 5);
     String ssid = sp > 0 ? line.substring(5, sp) : line.substring(5);
     String pass = sp > 0 ? line.substring(sp + 1) : "";
     mcSaveWifi(ssid, pass);
+    linkOff = false;
     link.wifi_configured();
     WiFi.begin(ssid.c_str(), pass.c_str());
     Serial.printf("WIFI %s (joining)\n", ssid.c_str());
@@ -981,8 +1049,10 @@ static bool mcHandleLine(const String& lineIn) {
     WsAddress a = mcParseWsUrl(line.substring(3));
     if (!a.valid) { Serial.println("ERR MC ws://host:port/path"); return true; }
     pendingTypedMc = a;
+    linkOff = false;
     haveTypedMc = true;
-    Serial.printf("MC %s:%u%s (typed; not persisted)\n", a.host.c_str(), a.port, a.path.c_str());
+    mcSaveTypedMcUrl(line.substring(3));
+    Serial.printf("MC %s:%u%s (typed and saved)\n", a.host.c_str(), a.port, a.path.c_str());
     return true;
   }
   if (line == "LINK MUSTER" || line == "LINK HELD") {
@@ -997,6 +1067,7 @@ static bool mcHandleLine(const String& lineIn) {
     WiFi.disconnect(true);
     wsWantOpen = false;
     haveTypedMc = false;
+    linkOff = true;
     Serial.println("LINK OFF");
     return true;
   }
@@ -1005,6 +1076,7 @@ static bool mcHandleLine(const String& lineIn) {
     // "bring the Stick back to the table between matches". Without this the station can never
     // receive the NEXT muster's station_config at all: it has no other way back onto Wi-Fi.
     link.clear_dropped_for_match();
+    linkOff = false;
     Serial.println("LINK RECONNECT (will rejoin Wi-Fi)");
     return true;
   }
@@ -1038,8 +1110,17 @@ static void mcSetup() {
   mcCountBoot();                   // A58
   mcLoadSavedHill();               // before the restore, which may bring the hill back held
   mcRestoreSavedConfig(link);      // restart survival: before WiFi.begin, so the station plays at once
+  if (saved_mc_url_usable(savedMcUrl.c_str())) {
+    pendingTypedMc = mcParseWsUrl(savedMcUrl);
+    haveTypedMc = pendingTypedMc.valid;
+  }
+  mcPrefs.begin("brxmc", true);
+  uint32_t restoredLock = lock_restore_remaining_s(mcPrefs.getUInt("lock_s", 0));
+  mcPrefs.end();
+  link.restore_lock(restoredLock, millis());
+  lockLastSavedSeconds = restoredLock;
   mcLoadRange(link);                   // F365: an on-station range edit and the edit log's seq, after the config
-  // A58: every boot starts unlocked, the PMIC included: setup() already cleared it, first thing (F332).
+  // A58: setup clears PMIC bits first, then mcLoop reapplies a restored active lock.
   bootRandomPrefix = esp_random();  // the fixed half of every station_action envelope id this boot
   WiFi.mode(WIFI_STA);
   if (wifiSsid.length()) WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());

@@ -23,6 +23,9 @@
 
 namespace brx {
 
+// F398: keep the countdown ring clear of the NEXT SPAWN label below it.
+constexpr int PICKUP_COUNTDOWN_INDICATOR_Y = 76;
+
 // ---------------------------------------------------------------------------------------------
 // Home navigation (Tony, 2026-09-24, added after render.py): the operator must always be able to
 // get back to the station's home (live gameplay) screen without a restart, without either gesture

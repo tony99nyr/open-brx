@@ -461,6 +461,7 @@ static void test_force_restart_countdown_beats_everything() {
 }
 
 int main() {
+  CHECK_EQ(PICKUP_COUNTDOWN_INDICATOR_Y, 76);
   test_format_mmss();
   test_pickup_ready_vs_taken();
   test_pickup_unknown_then_taken_without_a_taker();

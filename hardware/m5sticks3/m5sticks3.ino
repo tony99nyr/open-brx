@@ -137,6 +137,7 @@ bool resetOutcomeActive = false;  // a RESET was just confirmed; show its outcom
 bool resetOutcomeOk = false;      // true = sent to MC; false = RESET NEEDS MISSION CONTROL
 bool resetOutcomeLocked = false;  // A58: the RESET was refused by the match lock (shows LOCKED)
 ForceRestart forceRestart;        // A58: A + B held 7 s restarts the Stick, locked or not
+RejoinGesture rejoinGesture;      // F390: three B clicks force a MUSTER rejoin
 BootHeldButtons bootHeld;         // a button still down from before this boot is ignored until released
 uint32_t lastRestartCountdown = 0;
 uint32_t resetOutcomeAtMs = 0;
@@ -810,6 +811,7 @@ static void pollButtons() {
   if (bReleased) Serial.println("BTN B up");
   if (forceRestart.update(bootHeld.a_down(), bootHeld.b_down(), now)) {
     Serial.println("FORCE RESTART (A + B held 7 s)");
+    brx_glue::mcClearSavedLock();
     Serial.flush();
     ESP.restart();
   }
@@ -887,6 +889,13 @@ static void pollButtons() {
     if (homeNav.poll_idle(now)) displayDirty = true;
     displayDirty = true;
     return;  // B's RESET is not reachable from RANGE
+  }
+  if (bClicked && stationLocked) Serial.println("REJOIN refused: station locked");
+  if (bClicked && rejoinGesture.click(now, stationLocked) && link.dropped_for_match()) {
+    link.clear_dropped_for_match();
+    brx_glue::linkOff = false;
+    Serial.println("REJOIN: operator gesture (B clicked three times)");
+    WiFi.begin(brx_glue::wifiSsid.c_str(), brx_glue::wifiPass.c_str());
   }
   if (aEvent == AHoldEvent::RANGE) {
     if (stationLocked) {

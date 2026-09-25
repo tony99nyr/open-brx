@@ -19,6 +19,23 @@ namespace brx {
 constexpr uint32_t LONG_PRESS_MS = 2000;              // the knock-safety rule: 2 s, never a tap
 constexpr uint32_t RESET_CONFIRM_TIMEOUT_MS = 5000;   // an open confirm prompt cancels itself
 
+// F390: three quick B clicks force a rejoin. B clicks do not collide with A navigation,
+// B's long-hold reset, or the A+B force restart.
+class RejoinGesture {
+ public:
+  bool click(uint32_t now_ms, bool locked) {
+    if (locked) { count_ = 0; return false; }
+    if (count_ && (uint32_t)(now_ms - last_ms_) > 1800) count_ = 0;
+    last_ms_ = now_ms;
+    if (++count_ < 3) return false;
+    count_ = 0;
+    return true;
+  }
+ private:
+  uint32_t last_ms_ = 0;
+  uint8_t count_ = 0;
+};
+
 // `station_action` (proposed to brx5, NOT a final contract -- kept in these two small functions so
 // a rename is a one-line change). MC has no reply kind for it yet; for a powerup, the Stick reads
 // the effect off the `station_update` that follows, same as it would from anywhere else.

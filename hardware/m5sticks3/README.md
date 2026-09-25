@@ -251,10 +251,7 @@ Preferences) is `mc_link_glue.h`.
 
 **Discovery.** mDNS (`_openbrx._tcp`, an async query polled each loop so the station's play never waits;
 `MDNS.begin` once Wi-Fi is up, stopped when Wi-Fi drops; bench to confirm on a real Stick) is the intended path; the
-mandatory floor is the serial console, since a Stick has no camera to scan MC's QR (§5g.3). The MC
-address, from either path, is **never persisted across reboots** -- only the Wi-Fi SSID/password are
-(Preferences), so every power-on starts at LOOKING FOR MC and either hears mDNS or needs a fresh
-`MC <ws-url>`. **Both paths are LAN-only**: mDNS never crosses a router, and a typed `MC <ws-url>`
+mandatory floor is the serial console, since a Stick has no camera to scan MC's QR (§5g.3). A typed MC address is saved beside the Wi-Fi credentials in Preferences and is retried after reboot. mDNS remains the discovery path when no typed address is saved. **Both paths are LAN-only**: mDNS never crosses a router, and a typed `MC <ws-url>`
 means the MC's LAN address (`ws://<lan-ip>:<port>/ws`, from the console or the QR). Pointing it at
 A28's public backhaul URL will not work: that tunnel enforces a join secret
 (`envelope.py`'s `via`/`secret`, contracts.md §5), and this firmware never sends one -- it only ever
@@ -265,7 +262,8 @@ dials the plain LAN socket a phone on the same Wi-Fi would use.
 | command | does |
 |---|---|
 | `WIFI <ssid> <pass>` | join and persist the Wi-Fi credentials |
-| `MC <ws://lan-ip:port/path>` | the typed floor, MC's LAN address; a one-off dial, never persisted |
+| `MC <ws://lan-ip:port/path>` | save and dial the typed MC LAN address |
+| `WIFI CLEAR` | erase the saved Wi-Fi credentials and typed MC address |
 | `LINK MUSTER` \| `LINK HELD` | the association mode (§5g.4), persisted. `MUSTER` (default) drops Wi-Fi for the match once armed; `HELD` stays linked and reconnects |
 | `LINK OFF` | drop the socket and Wi-Fi association now |
 | `LINK RECONNECT` | clear the MUSTER drop's latch (below) and rejoin Wi-Fi -- the operator action that brings a Stick back to the table between matches |
@@ -278,9 +276,7 @@ decides, on every game-byte edge under `MUSTER` -- **including the very first ar
 0 -> N counts as a new match exactly like N -> N+1 does). The decision LATCHES as
 `dropped_for_match()`: the glue drops the socket once, and its own Wi-Fi reconnect kick then
 refuses to re-associate while the latch holds (polish round 2 fixed a real bug here -- the kick
-used to undo the drop on the very next `loop()` tick). Nothing clears the latch automatically,
-since a station has no wire signal for "the match is over" (§5g.2: no facts, no ring, nothing
-routed to it) -- `LINK RECONNECT` is the one documented way back. `HELD` never sets the latch at
+used to undo the drop on the very next `loop()` tick). A known A68 hill deadline or a known A58 lock expiry clears the latch and rejoins automatically. If neither is known, the Stick stays offline after its fallback ends; `LINK RECONNECT` or three quick B clicks can force a rejoin. `HELD` never sets the latch at
 all. Neither mode ever discards `node_key` or the current assignment on a drop.
 
 **The powerup station (A56, `docs/spec/powerups.md`).** `station_config.item`
@@ -342,10 +338,8 @@ local confirm flow and a CLAIM's local award (the advert's `taker` byte) still w
 
 **Getting the legacy toggle back.** With the buttons repurposed, `MODE BRIDGE|HILL` over serial still
 works exactly as before (it is not gated on the link at all) -- that is the only way to reach it once
-any `WIFI` command has ever been given, since Wi-Fi credentials persist across reboots and there is
-no serial command yet to erase them and fall back to the pre-H8 NOT-CONFIGURED state (`LINK OFF`
-only drops the current socket and association; it does not forget the saved SSID). A "forget Wi-Fi"
-command, if one is ever added, would be the other way back to the button toggle.
+any `WIFI` command has ever been given, since Wi-Fi credentials persist across reboots and the `WIFI CLEAR` serial command erases them and returns the Stick to the pre-H8 NOT-CONFIGURED
+state. `LINK OFF` only drops the current socket and association.
 
 **THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means the Stick default for that kind.
 Every kind except `control` uses -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A `control` hill uses
@@ -553,7 +547,8 @@ RESET / MODE toggle) documented there.
 | A | hold 1-5 s, then release | HOME, on the release: back to the live gameplay screen from anywhere, cancelling an open RESET confirm on the way. Changes no station state (`station_screen.h`'s `HomeNav`, host-tested) |
 | A | hold 5 s on STATS | RANGE (F365, below). From 1 s the hint bar fills with "HOLD FOR RANGE"; letting go before 5 s is HOME |
 | B | hold 2 s, then hold again within 5 s | RESET: the second hold sends `station_action{action:"reset"}` to Mission Control. Only with a station assigned: an unassigned Stick has nothing to reset, so the hold does nothing and the hint bar shows only `A: STATS` |
-| A + B | hold together 7 s | FORCE RESTART, locked or not (see "Match lock" below) |
+| A + B | hold together 7 s | FORCE RESTART, locked or not (clears the saved lock) |
+| B | three quick clicks | force a rejoin after a MUSTER drop; refused while locked |
 | small side button | single click | power on, or restart if the Stick is already on |
 | small side button | double click | POWER OFF (**bench to confirm:** whether this fires while the Stick is on USB power, as it always is at the bench) |
 | small side button | held while plugging in USB | download mode (first flash over factory firmware only): the screen stays dark and the internal green LED flashes, matching our own bring-up |
@@ -647,16 +642,15 @@ unlocks itself at zero. While it is on, a padlock shows in the status strip and:
 releasing either button cancels. It works whether the Stick is locked or not, and the joint hold
 never also triggers A's home or B's RESET.
 
-The lock lives in RAM only, so every boot starts unlocked and a crash can never leave a station
-locked. MC detects a restart from the status heartbeat: `uptime_s` goes back to near zero and
+The lock remaining seconds are saved to NVS when a lock starts and at most once per minute. A boot restores that saved value without increasing it. An ordinary restart keeps the lock. MC detects a restart from the status heartbeat: `uptime_s` goes back to near zero and
 `boot_count` goes up. The heartbeat also carries `assoc` (`muster` or `held`) and `lock_s`, the
 seconds left on the lock.
 
 **What survives a restart.** Saved in flash: the Wi-Fi credentials, the node id and key, the LINK mode
 (MUSTER or HELD), ACTIONS, and the last station config MC sent (without its `lock_s`, and written only
-when it changes). Not saved: the lock, the spawn timer and the taker. So a Stick that restarts
-mid-match comes back as the same station at once, unlocked, with a fresh schedule, and `STATUS` shows
-`restored=1` until MC sends a config again. A restored Stick does not know whether the match is still
+when it changes). The match lock remaining time is also saved. The spawn timer and taker are not saved. A Stick that
+restarts mid-match comes back as the same station at once, with its saved lock and a fresh schedule,
+and `STATUS` shows `restored=1` until MC sends a config again. A restored Stick does not know whether the match is still
 running, so even under MUSTER it tries to rejoin Wi-Fi. If MC answers, MC's current config replaces
 the restored one (with the remaining lock, once MC sends `lock_s` (A58)), and the MUSTER drop waits
 for MC's next `station_update` so the schedule is re-anchored first: at most 2 s, or for a powerup
@@ -667,9 +661,7 @@ it. With no Wi-Fi SSID set (bench mode) the Stick never restores. A button
 still held when the Stick boots (hands still on A+B after a force restart) is ignored until it is
 released.
 
-The side button still restarts or powers off a locked Stick. The M5PM1 PMIC can disable both, but
-the register map is not in the installed M5Unified source, so the firmware does not write it yet
-(the TODO is in `mc_link_glue.h`, `pmicSetSideButtonLock`).
+The PMIC side-button lock is restored at boot when the saved match lock is active. Each PMIC write logs its register, value and reason. A+B held for 7 s clears the saved lock before `ESP.restart()`; MC `lock_s: 0` also clears it.
 
 ## Diagnostics
 
@@ -737,3 +729,13 @@ the register map is not in the installed M5Unified source, so the firmware does 
 **Hill timing (A68):** MC sends `starts_in_ms` and `ends_in_ms` in the same `station_config` whenever it knows the times. Both are relative to MC send time; the start can be negative after go-live. A future start keeps the hill neutral, waiting, and accrual-free. A same-game config in LOBBY without a start also keeps it waiting. The MUSTER wait ends on any config with `starts_in_ms`, including an untimed START. The hill counts only from its local go-live to its local deadline, then freezes its owner and possession tally and shows MATCH OVER. A same-game config with neither time means no match is running and the hill waits. MC sends no `station_update` for a hill. A restored timed hill stays frozen until a fresh config provides timing, because `millis()` cannot measure time while powered off. After an abort, the same-game config omits both times and returns the hill to waiting. An early end reaches only a Stick still in Wi-Fi.
 
 **Offline limit:** F374's 60 s MUSTER fallback still starts the hill if the Stick loses Wi-Fi before hearing START, then drops Wi-Fi. That hill counts as before because it has no go-live or deadline. An adopted match pushes nothing to stations, so an adopted match gives a Stick hill no go-live or deadline and it counts as before.
+
+
+## Bench checks for F389-F398
+
+1. **F389:** Connect by typed MC URL. Send `LINK MUSTER`, push a new lobby game, then confirm STATUS shows the drop and MC shows no socket. Repeat with `LINK OFF`; confirm neither typed nor mDNS reconnects until `LINK RECONNECT`.
+2. **F390:** On a MUSTER hill with `ends_in_ms`, confirm it rejoins after the deadline. Repeat with a lock and confirm rejoin at lock expiry. Check B three-click rejoin while unlocked, then confirm the same gesture is refused while locked.
+3. **F391:** Lock a Stick, power-cycle it, and confirm `STATUS lock_s` remains nonzero and the PMIC side button stays locked. Hold A+B for 7 s and confirm the next boot is unlocked. Then send MC `lock_s: 0` and confirm the lock clears.
+4. **F392:** Reproduce `LINK OFF`, `LINK HELD`, `LINK RECONNECT` while Wi-Fi is joining. Compare each PMIC write log and reason with PMIC readback; click the side button once and confirm restart. Record whether a join delays PMIC sync or changes either register.
+5. **F397:** Type an MC URL, restart the Stick, and confirm it dials the saved URL without serial input. Send `WIFI CLEAR`, restart, and confirm both Wi-Fi credentials and the typed URL are gone.
+6. **F398:** Render the countdown screen on the Stick and confirm the loading ring clears `NEXT SPAWN` with visible space.

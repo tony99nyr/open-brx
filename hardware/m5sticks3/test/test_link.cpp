@@ -13,6 +13,7 @@
 
 #include "json_lite.h"
 #include "station_link.h"
+#include "station_persistence.h"
 
 static int failures = 0;
 #define CHECK(cond)                                                    \
@@ -33,6 +34,34 @@ static int failures = 0;
   } while (0)
 
 using namespace brx;
+
+static void test_f389_every_dial_path_respects_link_stops() {
+  CHECK(!mc_dial_allowed(false, true, true));
+  CHECK(!mc_dial_allowed(true, false, true));
+  CHECK(!mc_dial_allowed(true, true, false));
+  CHECK(mc_dial_allowed(true, false, false));
+}
+
+static void test_f390_rejoin_waits_for_a_known_deadline() {
+  CHECK(!muster_rejoin_due(true, false, -1, 0));
+  CHECK(!muster_rejoin_due(false, true, 0, 0));
+  CHECK(muster_rejoin_due(true, false, 0, 45));
+  CHECK(muster_rejoin_due(true, true, -1, 0));
+}
+
+static void test_f391_lock_snapshot_never_grows_and_saves_once_a_minute() {
+  CHECK_EQ(lock_restore_remaining_s(90), 90u);
+  CHECK_EQ(lock_restore_remaining_s(8000), 7200u);
+  CHECK(!lock_save_due(30, 1000, 60999));
+  CHECK(lock_save_due(30, 1000, 61000));
+  CHECK(!lock_save_due(0, 1000, 61000));
+}
+
+static void test_f397_typed_mc_url_storage_policy() {
+  CHECK(saved_mc_url_usable("ws://192.168.1.5:8766/ws"));
+  CHECK(!saved_mc_url_usable("http://192.168.1.5:8766/ws"));
+  CHECK(normalise_saved_mc_url(std::string(193, 'x')).empty());
+}
 
 // --- json_lite ------------------------------------------------------------------------------
 
@@ -2210,6 +2239,10 @@ static void test_assignment_epoch_moves_on_a_new_station_only() {
 }
 
 int main(int argc, char** argv) {
+  test_f389_every_dial_path_respects_link_stops();
+  test_f390_rejoin_waits_for_a_known_deadline();
+  test_f391_lock_snapshot_never_grows_and_saves_once_a_minute();
+  test_f397_typed_mc_url_storage_policy();
   if (argc > 1) {
     // Golden-dump mode for mcp/tests/test_utility_esp32.py: write the exact envelope strings this
     // header builds, so the MC-side test drives Session with what the firmware would actually send.
