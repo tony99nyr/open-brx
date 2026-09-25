@@ -739,3 +739,5 @@ block's *internal* statuses were true when it closed and may since have been sup
   `docs/announcer.md`.
 - 2026-09-25 **F361** decided (Tony): KILLJOY keeps the green gun flash, like every medal;
   `test_mc_awards.py::test_killjoy_keeps_its_gun_flash_like_every_medal` guards it.
+- 2026-09-25 **F367** decided and built (Tony): BEAT DOWN is B6, the fist and impact, and IRON MAN is I2b, the
+  bevelled iron heart, in `app/src/hud/medalicons.js` (style B); `app/test/medal-icons.test.mjs` fails on either placeholder.

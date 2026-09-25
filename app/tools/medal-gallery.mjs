@@ -1,6 +1,6 @@
 // The medal icon gallery (Tony 2026-09-25): style B (the roundel), Tony's pick, day and night at 24, 32 and 48 px; the
-// multi-kill escalation strip; the round 3 "pick one" options for BEAT DOWN, which draws a placeholder initial until
-// he picks (IRON MAN is picked); and the real HUD's recap (AWARDS and PLAYERS tabs) with the icons in.
+// multi-kill escalation strip; Beat Down round 3 with Tony's pick marked (B6; IRON MAN is I2b); and the real HUD's
+// recap (AWARDS and PLAYERS tabs) with the icons in.
 // It asserts nothing (app/tools/screens.mjs is the gate). Run from app/ after `npm run build`:
 //   node tools/medal-gallery.mjs [out-dir]
 // The default out-dir is C:\Users\Tony\brx-medals (WSL: /mnt/c/Users/Tony/brx-medals). Nothing here goes in the repo.
@@ -40,13 +40,13 @@ const fist = (c, a, gap, { tips = 'solid', band = true } = {}) =>
   + `<rect x="8" y="15.4" width="11.4" height="3.8" rx="1.9" fill="${c}" stroke="${gap}" stroke-width="1.5" paint-order="stroke"/>`
   + `<path d="M11 21.4h10v4.2H11z" fill="${c}"/>` + (band ? `<rect x="10.6" y="22" width="10.8" height="2" rx=".6" fill="${a}"/>` : '');
 const PICK = {
-  melee_kill: { title: 'Beat Down, round 3: pick one', opts: [
+  melee_kill: { title: 'Beat Down, round 3: picked: B6', opts: [
     ['B3c · Glove, mid-punch (round 2, the reference)', 'the laced glove turned side-on: closest so far, but it reads oddly', B3C],
     ['B4 · Bare fist', 'a clenched fist from the front: four knuckles, the thumb folded across, an amber wrist wrap', (c, a, gap) => fist(c, a, gap)],
     ['B5 · Gauntlet', 'an armoured fist: a knuckle plate, a finger plate and a flared cuff, with bolts', (c, a, gap) =>
       `<path d="M9 10.2 11.8 7h8.4l2.8 3.2v3.2H9z" fill="${c}"/>` + [12.2, 16, 19.8].map(x => `<circle cx="${x}" cy="10.4" r="1.1" fill="${gap}"/>`).join('')
       + `<path d="M9 14.6h14v3.6l-2 1.8H11l-2-1.8z" fill="${c}"/><path d="M10.8 21.2h10.4l2 4.8H8.8z" fill="${c}"/><rect x="10.8" y="21.2" width="10.4" height="1.3" fill="${a}"/>`],
-    ['B6 · Fist and impact', 'the bare fist, smaller, with an amber impact burst at its knuckles', (c, a, gap) =>
+    ['B6 · Fist and impact · PICKED', 'Tony\'s pick, now the BEAT DOWN icon: the bare fist, smaller, with an amber impact burst at its knuckles', (c, a, gap) =>
       `<g transform="translate(-2.2 2.4) scale(.84) translate(3 3)">${fist(c, a, gap, { band: false })}</g>`
       + `<path d="M21.6 8.6l2.4-2.6M23.2 11.4l3.2-.8M19.6 7.2l.4-3.2" stroke="${a}" stroke-width="1.8" stroke-linecap="round"/>`],
     ['B7 · Fingerless glove', 'a tactical glove on a fist: bare fingertips drawn open, the padded glove below, an amber strap', (c, a, gap) => fist(c, a, gap, { tips: 'open' })],
@@ -79,7 +79,7 @@ for (const m of MOCKS) for (const view of VIEWS) for (const skin of SKINS) {
 await b.close(); srv.close();
 
 // ---- the page ----
-const cell = (k, skin) => `<div class="cell"><div class="row">${SIZES.map(s => icon(k, skin, s)).join('')}</div><div class="k">${esc(LABEL[k] || k)}<small>${esc(k)}${k === 'melee_kill' ? ' · placeholder' : ''}</small></div></div>`;
+const cell = (k, skin) => `<div class="cell"><div class="row">${SIZES.map(s => icon(k, skin, s)).join('')}</div><div class="k">${esc(LABEL[k] || k)}<small>${esc(k)}</small></div></div>`;
 const grid = (keys, skin) => `<div class="grid">${keys.map(k => cell(k, skin)).join('')}</div>`;
 const pick = key => { const p = PICK[key];
   return `<div class="pick"><h3>${esc(p.title)}</h3><div class="opts">${p.opts.map(([name, what, g]) => `<div class="opt"><b>${esc(name)}</b><span>${esc(what)}</span>
@@ -100,8 +100,8 @@ figure{margin:10px 0}figure img{max-width:100%;height:auto;border:1px solid #223
 <h1>Open BRX medal and award icons: style B (roundel)</h1>
 <p class="legal">Original designs, not Halo's art. No shape, layout or colour scheme is copied from Bungie's medals. Every icon is inline SVG with no fonts or external files.</p>
 <p>Only the recap uses the icons: the phone's AWARDS and PLAYERS tabs, and Mission Control's recap (with its words kept beside them). The in-game kill card and alerts keep their words.</p>
-<p class="q">IRON MAN is picked (I2b, the bevelled iron heart). Pick one BEAT DOWN (for example "B5"). Until then it draws a placeholder initial.</p></header>
-<section id="pick"><h2>Pick one</h2>${pick('melee_kill')}</section>
+<p class="q">Both are picked and built: BEAT DOWN is B6 (the fist and impact), IRON MAN is I2b (the bevelled iron heart).</p></header>
+<section id="pick"><h2>Beat Down, round 3: picked: B6</h2>${pick('melee_kill')}</section>
 <section id="set"><h2>The set</h2>
 ${SKINS.map(skin => `<div class="plate ${skin}"><h3>${skin === 'day' ? 'Day' : 'Night (red and amber only, on #120505)'}</h3>
   <h4>Escalation strip: double kill to killionaire</h4>

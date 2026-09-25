@@ -61,3 +61,11 @@ test('IRON MAN is the picked iron heart (I2b), not the placeholder initial, day 
     assert.ok(ratio(P.fg, P.bg) >= 4.5, `${P.fg} on ${P.bg}`);
   }
 });
+test('BEAT DOWN is the picked fist and impact (B6), not the placeholder initial, day and night', () => {
+  for (const key of ['melee_kill', 'beat_down']) for (const night of [false, true]) {
+    const P = MEDAL_PALETTE[night ? 'night' : 'day'], svg = medalIcon(key, { night });
+    assert.doesNotMatch(svg, /M12\.6 9\.2v13\.6h4\.6/, `${key}: still the placeholder "B"`);
+    assert.match(svg, /data-glyph="fist-impact"/, `${key}: the fist and impact glyph`);
+    assert.match(svg, new RegExp(`fill="${P.fg}"`)); assert.match(svg, new RegExp(`stroke="${P.accent}"`), 'the amber impact burst');
+  }
+});

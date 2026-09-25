@@ -28,9 +28,6 @@ const r2 = n => Math.round(n * 100) / 100;
 // `gap` the plate colour (for a cut line that must separate two shapes).
 const HEART = 'M16 25.4C9.4 20.7 7 17.2 7 13.4a4.5 4.5 0 0 1 9-1.8 4.5 4.5 0 0 1 9 1.8c0 3.8-2.4 7.3-9 12z';
 const BOLT = 'M18.2 6.5 10.8 17.4h4.9l-2.1 8.1 7.6-11.2h-4.9z';
-// A placeholder: the key's initial, drawn as strokes (no fonts inside an icon). Used until Tony picks a glyph.
-const INITIAL = { B: 'M12.6 9.2v13.6h4.6a3.3 3.3 0 0 0 0-6.6h-4.6m0 0h4a3.2 3.2 0 0 0 0-6.9h-4' };
-const letter = ch => c => `<path d="${INITIAL[ch]}" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`;
 const G = {
   multi: (c, a, gap, n) => {
     let s = '';
@@ -49,7 +46,13 @@ const G = {
   first_blood: c => `<path d="M16 6.5C13.2 10.6 10 14.6 10 18.6a6 6 0 0 0 12 0c0-4-3.2-8-6-12.1z" fill="${c}"/>`,
   killing_spree: c => `<path d="${BOLT}" fill="${c}"/>`,
   unstoppable: (c, a) => `<g transform="translate(-4.2 0)"><path d="${BOLT}" fill="${c}"/></g><g transform="translate(4.2 0)"><path d="${BOLT}" fill="${a}"/></g>`,
-  melee_kill: letter('B'),     // PLACEHOLDER until Tony picks one of the gallery's fresh options
+  // Tony's pick 2026-09-25 (gallery B6): a clenched fist from the front (four knuckles, the thumb folded across, the
+  // wrist below), drawn smaller, with an amber impact burst at its knuckles
+  melee_kill: (c, a, gap) => `<g data-glyph="fist-impact"><g transform="translate(-2.2 2.4) scale(.84) translate(3 3)">`
+    + `<rect x="8.6" y="12" width="14.8" height="9.4" rx="2.4" fill="${c}"/>`
+    + [8.4, 12.2, 16, 19.8].map(x => `<rect x="${x}" y="7" width="3.8" height="8.6" rx="1.9" fill="${c}" stroke="${gap}" stroke-width="1.1" paint-order="stroke"/>`).join('')
+    + `<rect x="8" y="15.4" width="11.4" height="3.8" rx="1.9" fill="${c}" stroke="${gap}" stroke-width="1.5" paint-order="stroke"/><path d="M11 21.4h10v4.2H11z" fill="${c}"/></g>`
+    + `<path d="M21.6 8.6l2.4-2.6M23.2 11.4l3.2-.8M19.6 7.2l.4-3.2" stroke="${a}" stroke-width="1.8" stroke-linecap="round"/></g>`,
   killjoy: (c, a, gap) => `<path d="${BOLT}" fill="${c}"/><line x1="8.4" y1="23.8" x2="23.6" y2="8.2" stroke="${gap}" stroke-width="4.4"/>`
     + `<line x1="8.4" y1="23.8" x2="23.6" y2="8.2" stroke="${a}" stroke-width="2.2" stroke-linecap="round"/>`,
   mvp: (c, a) => `<path d="M8.6 20.6 7.8 10.6l4.6 4.2L16 8.4l3.6 6.4 4.6-4.2-.8 10z" fill="${c}"/><rect x="8.6" y="21.8" width="14.8" height="2.6" rx="1" fill="${c}"/><circle cx="16" cy="16.6" r="1.6" fill="${a}"/>`,
