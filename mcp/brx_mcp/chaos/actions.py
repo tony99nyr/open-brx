@@ -121,7 +121,7 @@ async def timed_kill(world: World, victim: int, shooter: int, at_ms: int) -> Non
     n.die_at(num, tid, world.timeline_t0 + at_ms)
 
 
-LATE_FLUSH_AGES_MS = (5_000, 9_000, 20_000)
+LATE_FLUSH_AGES_MS = (300, 900, 5_000, 9_000, 20_000)   # polish r2: 300 and 900 ms are inside CLOCK_TIE_MS
 
 
 def _recent_killers(world: World) -> list[int]:

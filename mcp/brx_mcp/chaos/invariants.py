@@ -602,9 +602,9 @@ def frozen_team_kill_keeps_victim_death(world: World) -> None:
 @invariant("multi_chain_monotonic")
 def multi_chain_monotonic(world: World) -> None:
     """Integration review 1 (2026-09-25): a multi-kill chain only moves forward in time. A kill that
-    carries a chain count of 2 or more is -CLOCK_TIE_MS to MULTI_KILL_MS after the killer's newest earlier enemy kill,
-    and extends the chain by one. A late kill (a flush whose t is older than that newest kill) is never
-    part of a chain, however old it is. Read off MC's own kill list, in the order MC took the kills."""
+    carries a chain count of 2 or more is -CLOCK_TIE_MS to MULTI_KILL_MS after the killer's newest earlier enemy
+    kill. A late kill (a flush whose t is more than CLOCK_TIE_MS older than that newest kill) is never part of a
+    chain, however old it is. Read off MC's own kill list, in the order MC took the kills."""
     sc = world.session.scorer
     if sc is None:
         return

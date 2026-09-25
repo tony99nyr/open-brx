@@ -261,9 +261,12 @@ class TrustRegistry:
             log.warning("could not append to %s (%s)", ENROLLED_FILE, e)
             return False
         self._lines += 1
+        return True
+
+    def _maybe_compact(self) -> None:
+        """Polish r2: compact only AFTER the in-memory change the appended line records, or the rewrite drops it."""
         if self._lines > 4 * (len(self.bound) + len(self.unbound)) + COMPACT_SLACK:
             self._compact()
-        return True
 
     def _compact(self) -> None:
         """Rewrite the list as its live records only (atomic, mode 600). A failure keeps the long file."""
@@ -378,6 +381,7 @@ class TrustRegistry:
             log.warning("node %s gets no trust key (the enrolled list could not be written)", node_id)
             return None
         self.unbound[node_id] = [t, nonce_h or "-"]
+        self._maybe_compact()
         return self.key_for(node_id)
 
     def confirm(self, node_id: str) -> None:
@@ -390,6 +394,7 @@ class TrustRegistry:
             self._prune_bound_issue()
             if issue[1] != "-" and self._in_window(issue[0]):
                 self.bound_issue[node_id] = issue
+            self._maybe_compact()
 
     def secret_values(self, node_ids) -> list[str]:
         """What the bug-report guard must never find: the secret and every trust key it can name."""
