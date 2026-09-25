@@ -51,15 +51,12 @@ team-damage rule, `compile.team_damage_on`, which also fixed solo LMS: no hit co
 - **Next:** cut 0.4.12 once sitting A passes A4 and brx5's t23 fix is on main. Its notes add the infection, extraction and feed fixes, and TEAM DAMAGE: OFF.
 - **Desk (MVP):** F377 (solo LMS picks no winner), the MC half of F372 after sitting C. S32 waits on Tony's two renders.
 ## Lane: brx4, the StickS3
-2026-09-25 desk review on `brx4/stick-sitting-b`: A68 now freezes timed hills at the whistle and on MC END, RECALL or PANIC. A `station_config.starts_in_ms` offset starts hills after the runway; MUSTER waits for that config, with a 60 s offline fallback. The Stick protects a restored timed hill until MC supplies a fresh clock, and RESET cannot restart a finished tally. F399 now uses a 100 ms claim tie window. The requested host suites and simulator are green. Bench work remains for F383's -78 dBm radius, F386-F388 and F399 latency. F382's phone tick remains open under the `app/src` restriction. See `experiment-log/2026-09.md` for the desk evidence.
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
-counting and the SETTINGS screen are post-MVP (F338, F314, F344). On main: F365 on the Stick (`e9e81efc`), the
-side-button lock (F332), a pickup claim at any strength (`e879b9db`), `presence.h`, the host screen simulator,
-`hardware/player-sim`, and (2026-09-25) F374: a pickup Stick waits for START's `station_update` before it offers its
-item, with the phone guard in `_puClaimable`. F333's desk half is closed: every MVP screen is wired and gated.
-- **Next bench task:** sitting B ran 2026-09-25: F332, F333 and H9 closed (see brx2's lane above and
-  `experiment-log/2026-09.md`). Left: F374's carry-out-of-Wi-Fi A/B/A, F353's phone-side log, and F365's phone-station
-  half (11.4); the Stick half of F365 found F387/F388, new bugs. Sitting C is next.
+counting and the SETTINGS screen are post-MVP (F338, F314, F344). 2026-09-25: sitting B's Stick rows are built on main
+(A68: the hill counts from go-live to the whistle; a locked Stick refuses RANGE; the hill tally pauses while contested;
+a -78 dBm UNPROVEN hill default; the RANGE hold timer; a faster pickup award). The Stick is flashed from main, unlocked.
+- **Next bench task:** sitting C or later: F386, F387 (serial log on, read `RANGE opened after <N> ms`), F388, the F383
+  walk at 3, 5 and 7 m, and F399's nine-claim latency re-run.
 - **Next desk task:** F342 (a powerup or control-point game still floods the scan: a slower advert or a native filter).
 - **Resume:** a fresh worktree off `origin/main` (the old `/home/tony/brx4-l3` and `/home/tony/brx4-f333` are
   disposable). Native Windows MC for mDNS:
