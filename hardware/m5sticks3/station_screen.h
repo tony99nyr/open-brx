@@ -222,6 +222,7 @@ struct ScreenSpec {
   // F365: SCR_RANGE. The radius (dBm, its rough distance, where it came from) and the strength (level),
   // and which one A/B edit. On SCR_STATS, range_cue_pct >= 0 draws the "HOLD FOR RANGE" bar.
   int range_threshold_dbm = STICK_DEFAULT_THRESHOLD_DBM;
+  bool range_threshold_hill = false;
   bool range_threshold_edited = false;
   int range_tx_level = TX_POWER_DEFAULT;
   bool range_tx_edited = false;
@@ -326,6 +327,7 @@ struct StickState {
   bool range_active = false;
   bool range_edit_strength = false;
   int range_threshold_dbm = STICK_DEFAULT_THRESHOLD_DBM;
+  bool range_threshold_hill = false;
   bool range_threshold_edited = false;
   int range_tx_level = TX_POWER_DEFAULT;
   bool range_tx_edited = false;
@@ -393,6 +395,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
   if (s.range_active && s.assignment_present) {
     spec.kind = ScreenKind::SCR_RANGE;
     spec.range_threshold_dbm = s.range_threshold_dbm;
+    spec.range_threshold_hill = s.range_threshold_hill;
     spec.range_threshold_edited = s.range_threshold_edited;
     spec.range_tx_level = s.range_tx_level;
     spec.range_tx_edited = s.range_tx_edited;

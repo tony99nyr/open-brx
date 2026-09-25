@@ -439,7 +439,9 @@ inline void drawRangePanel(M5Canvas& c, int x0, int x1, bool active, const char*
 
 inline void drawRange(M5Canvas& c, const ScreenSpec& s) {
   drawKicker(c, "RANGE   HOLD B: DONE   ~ = ROUGH");
-  std::string radiusDetail = "dBm  " + std::string(range_distance_label(s.range_threshold_dbm));
+  std::string radiusDetail = s.range_threshold_hill
+      ? std::string(range_distance_label(s.range_threshold_dbm, true))
+      : "dBm  " + std::string(range_distance_label(s.range_threshold_dbm));
   int txDbm = tx_power_dbm(s.range_tx_level);
   std::string txDetail = (txDbm > 0 ? "+" : "") + std::to_string(txDbm) + " dBm";
   std::string txName = tx_power_name(s.range_tx_level);

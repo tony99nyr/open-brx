@@ -570,7 +570,7 @@ static void mcTickPlayers(uint32_t now) {
   const StationAssignment& a = link.assignment();
   // utility.js: `presence.defaultThreshold = settings.threshold; presence.game = settings.game`, every
   // tick. The threshold is MC's, or the Stick's own -57 default (STICK_DEFAULT_THRESHOLD_DBM) when MC sent none.
-  presence.default_threshold = link.threshold_dbm();  // MC's (0 = the Stick's -57) or a younger on-station edit (A67)
+  presence.default_threshold = link.threshold_dbm();  // MC's threshold or this kind's Stick default (A67)
   presence.game = (uint8_t)a.game;
   // A different station now (new kind/id/game, a restore, a release): the old station's sightings and
   // presence belong to it, not to this one.

@@ -510,12 +510,13 @@ inline uint8_t station_kind_byte(const std::string& kind) {
 
 // ---- the presence threshold (hill + respawn) -------------------------------------------------------
 // The threshold a Bluetooth station measures PLAYERS against. MC's value when it sent one; when it sent
-// 0/absent, the StickS3's own platform default (-57 dBm, Tony), measured and advertised alike.
-// The advertised byte 14 is the same -57
-// (STICK_DEFAULT_THRESHOLD_DBM). The pickup claim has no RSSI floor at all (ClaimGate): the phone's own
+// 0/absent, the StickS3's own default for that kind (-78 dBm for control, -57 otherwise). A defaulted
+// control advert keeps byte 14 at -57 for phone-side presence because the radio paths are asymmetric.
+// The pickup claim has no RSSI floor at all (ClaimGate): the phone's own
 // claim_ready already proves the player stood at the station.
 inline int presence_threshold_dbm(const StationAssignment& a) {
-  return a.threshold_defaulted ? STICK_DEFAULT_THRESHOLD_DBM : a.threshold;
+  return a.threshold_defaulted ? (a.kind == "control" ? STICK_HILL_DEFAULT_THRESHOLD_DBM : STICK_DEFAULT_THRESHOLD_DBM)
+                               : a.threshold;
 }
 
 // ---- the saved hill owner (F332: a restart must not wipe an enemy hold) ----------------------------
@@ -1005,6 +1006,13 @@ class StationLink {
 
   // ---- F365 / A67: the station's range, as applied NOW (MC's value, or a younger on-station edit) ----
   int threshold_dbm() const { return threshold_.applied(); }
+  // Byte 14 drives the phone's own presence decision. Keep the prior value for an unedited hill
+  // default because the Stick receives phones about 25 dB more weakly than phones receive it.
+  int threshold_advertised_dbm() const {
+    return assignment_.present && assignment_.kind == "control" && assignment_.threshold_defaulted &&
+                   !threshold_.from_station()
+               ? STICK_DEFAULT_THRESHOLD_DBM : threshold_.applied();
+  }
   int tx_power_level() const { return tx_power_.applied(); }
   const SyncedSetting& threshold_setting() const { return threshold_; }
   const SyncedSetting& tx_power_setting() const { return tx_power_; }
@@ -1110,7 +1118,7 @@ class StationLink {
     assignment_ = a;
     state_ = LinkState::ASSIGNED;
     // A67: MC's range values, each through the keep-the-younger-edit rule (station_range.h).
-    threshold_.apply_mc(a.threshold, a.threshold_age_ms, received_at_ms);
+      threshold_.apply_mc(presence_threshold_dbm(a), a.threshold_age_ms, received_at_ms);
     if (a.tx_power >= 0) tx_power_.apply_mc(a.tx_power, a.tx_power_age_ms, received_at_ms);
     if (a.kind == "powerup") {
       powerup_.apply_item(a.item);
@@ -1211,7 +1219,7 @@ class StationLink {
     // NVS copy (restore_range), with its age unknown.
     threshold_.reset();
     tx_power_.reset();
-    threshold_.set_mc(a.threshold);
+      threshold_.set_mc(presence_threshold_dbm(a));
     if (a.tx_power >= 0) tx_power_.set_mc(a.tx_power);
     if (a.kind == "powerup") {
       powerup_.apply_item(a.item);

@@ -7,6 +7,8 @@
 //                    by smoothed RSSI against a threshold, with dwell, hysteresis and expiry.
 //   BleControlPoint  app/src/control.js `ControlPoint`: the kind-5 hill, driven by the living,
 //                    present players of each team. Its three advert bytes are what every HUD reads.
+//                    F382: the Stick pauses the hold tally while contested; app/src/control.js:187
+//                    still accrues it and needs the same change.
 //   ReviveCounter    app/src/utility.js tick(): a respawn station counts a present player's alive bit
 //                    going 0 -> 1 as a revive that happened here.
 //
@@ -360,7 +362,8 @@ class BleControlPoint {
     }
 
     // Possession time, on the unclamped clock.
-    if (owner != HILL_NEUTRAL && elapsed) hold_ms[owner] += elapsed;
+    // F382: the team tick pauses while contested, even though it keeps ownership.
+    if (owner != HILL_NEUTRAL && !contested && elapsed) hold_ms[owner] += elapsed;
 
     // The two phases. A step that runs out of bar carries its remaining work into the next phase
     // (control.js: the tick that crossed zero used to render "RED STALLED AT 0%").

@@ -405,6 +405,37 @@ static void test_claim_gate_awards_the_first_ready_advert_for_its_own_id() {
   CHECK_EQ(w.player_num, (uint8_t)5);
 }
 
+static void test_claim_award_is_visible_to_the_next_advert_decision() {
+  constexpr uint32_t ready_at_ms = 1234;
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  link.apply_station_config(a);
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = true;
+  link.apply_station_update(u, ready_at_ms);
+  link.claims().configure(8, 0);
+  link.claims().observe(7, 8, 0, true, true, true, -80);
+  ClaimWinner winner = link.claims().resolve_batch();
+  CHECK(winner.won);
+  CHECK(link.award_claim(winner, ready_at_ms));
+  PowerupAdvertView pickup = link.powerup().view(ready_at_ms);
+  CHECK_EQ(pickup.taker, (uint8_t)7);
+  AdvertPolicy policy;
+  AdvertView v;
+  v.kind = KIND_POWERUP;
+  v.id = 8;
+  v.taker = pickup.taker;
+  CHECK(std::string(policy.due(v, ready_at_ms)) == "first");
+  policy.published(v, ready_at_ms);
+  v.taker = 0;
+  CHECK(std::string(policy.due(v, ready_at_ms + 1)) == "state");
+}
+
 static void test_claim_gate_ties_in_one_batch_go_to_the_lower_player_num() {
   ClaimGate g;
   g.configure(8, 0);
@@ -1708,9 +1739,9 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   StationAssignment a = parse_station_config(v);
   CHECK(a.threshold_defaulted);
   CHECK_EQ(a.threshold, STICK_DEFAULT_THRESHOLD_DBM);  // the advertised byte keeps the Stick's own
-  CHECK_EQ(presence_threshold_dbm(a), -57);            // players are measured like a phone station does
+  CHECK_EQ(presence_threshold_dbm(a), -78);            // hill radius default
   v = json::parse(R"({"kind":"control","team":255,"id":9})", &ok);
-  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -57);
+  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -78);
   v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":-66})", &ok);
   StationAssignment m = parse_station_config(v);
   CHECK(!m.threshold_defaulted);
@@ -1720,11 +1751,30 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   CHECK(saved.note_applied(a, "s1"));
   StationAssignment r = saved.restore();
   CHECK(r.threshold_defaulted);
-  CHECK_EQ(presence_threshold_dbm(r), -57);
+  CHECK_EQ(presence_threshold_dbm(r), -78);
   SavedStationConfig saved2;
   saved2.note_applied(m, "s1");
   CHECK_EQ(presence_threshold_dbm(saved2.restore()), -66);
   CHECK(saved2.stored().find("threshold_default") == std::string::npos);  // additive: absent unless defaulted
+}
+
+static void test_hill_default_threshold_separates_measurement_from_phone_advert() {
+  StationLink hill;
+  bool ok = false;
+  StationAssignment a = parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9})", &ok));
+  hill.apply_station_config(a);
+  CHECK_EQ(hill.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(hill.threshold_advertised_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
+  StationLink respawn;
+  StationAssignment r = parse_station_config(json::parse(R"({"kind":"respawn","team":1,"id":2})", &ok));
+  respawn.apply_station_config(r);
+  CHECK_EQ(respawn.threshold_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(respawn.threshold_advertised_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
+  StationAssignment explicit_hill = parse_station_config(json::parse(
+      R"({"kind":"control","team":255,"id":9,"threshold":-75})", &ok));
+  hill.apply_station_config(explicit_hill);
+  CHECK_EQ(hill.threshold_dbm(), -75);
+  CHECK_EQ(hill.threshold_advertised_dbm(), -75);
 }
 
 static BleControlPoint held_by(int owner, uint32_t hold0 = 0, uint32_t hold3 = 0) {
@@ -1920,6 +1970,7 @@ int main(int argc, char** argv) {
   test_mc_available_true_clears_the_taker();
   test_item_configures_the_schedules_spawn_period();
   test_claim_gate_awards_the_first_ready_advert_for_its_own_id();
+  test_claim_award_is_visible_to_the_next_advert_decision();
   test_claim_gate_ties_in_one_batch_go_to_the_lower_player_num();
   test_claim_gate_a_batch_with_no_ready_advert_awards_nothing();
   test_claim_gate_ignores_a_dead_claimant_and_player_zero();
@@ -1987,6 +2038,7 @@ int main(int argc, char** argv) {
     test_status_carries_revives_and_hold_ms_additively();
     test_hill_stops_accruing_when_deadline_freezes_it();
   test_presence_threshold_is_the_phone_default_when_mc_sends_none();
+  test_hill_default_threshold_separates_measurement_from_phone_advert();
   test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold();
   test_saved_hill_writes_only_on_an_owner_change();
   test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears();

@@ -281,6 +281,7 @@ enum class AHoldEvent : uint8_t { NONE, CLICK, HOME, RANGE };
 class AHoldGesture {
  public:
   AHoldEvent update(bool a_down, uint32_t now_ms, bool range_allowed, bool station_locked = false) {
+    const bool range_became_allowed = range_allowed && !range_allowed_;
     now_ms_ = now_ms;
     range_allowed_ = range_allowed;
     station_locked_ = station_locked;
@@ -291,7 +292,12 @@ class AHoldGesture {
       return AHoldEvent::NONE;
     }
     if (a_down) {
-      if (range_allowed && !range_fired_ && now_ms - since_ms_ >= RANGE_ENTER_HOLD_MS) {
+      if (range_became_allowed) {
+        since_ms_ = now_ms;
+        range_fired_ = false;
+        return AHoldEvent::NONE;
+      }
+      if (range_allowed && !cancelled_ && !range_fired_ && now_ms - since_ms_ >= RANGE_ENTER_HOLD_MS) {
         range_fired_ = true;
         return AHoldEvent::RANGE;
       }
@@ -316,6 +322,7 @@ class AHoldGesture {
     if (held < A_HOME_HOLD_MS) return -1;
     return (int)((held - A_HOME_HOLD_MS) * 100 / (RANGE_ENTER_HOLD_MS - A_HOME_HOLD_MS));
   }
+  uint32_t held_ms() const { return down_ ? now_ms_ - since_ms_ : 0; }
 
  private:
   bool down_ = false;

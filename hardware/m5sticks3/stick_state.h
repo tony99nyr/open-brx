@@ -167,6 +167,7 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
   st.range_edit_strength = in.range_edit_strength;
   st.range_cue_pct = in.range_cue_pct;
   st.range_threshold_dbm = link.threshold_dbm();
+  st.range_threshold_hill = link.assignment().present && link.assignment().kind == "control";
   st.range_threshold_edited = link.threshold_setting().from_station();
   st.range_tx_level = link.tx_power_level();
   st.range_tx_edited = link.tx_power_setting().from_station();

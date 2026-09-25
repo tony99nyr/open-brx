@@ -347,9 +347,13 @@ no serial command yet to erase them and fall back to the pre-H8 NOT-CONFIGURED s
 only drops the current socket and association; it does not forget the saved SSID). A "forget Wi-Fi"
 command, if one is ever added, would be the other way back to the button toggle.
 
-**THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means "use the Stick's own
-default", **-57 dBm**, the StickS3's default (`STICK_DEFAULT_THRESHOLD_DBM`, Tony 2026-09-24; a phone station uses -70), which is also what the Stick advertises; any other value from
-MC overrides it. Not yet bench-measured against a real player phone.
+**THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means the Stick default for that kind.
+Every kind except `control` uses -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A `control` hill uses
+-78 dBm (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN): sitting B, 2026-09-25, Stick-side PLAYERS STREAM
+medians were -43 touching, -64 at arm's length, -77/-81 at about 5 m (two phones), and -78 to -87 down the
+hall, still present at -80. Since -80 reached past 7 m, -78 is a first guess for the 5-7 m edge. Walk-test
+at 3, 5 and 7 m. MC's nonzero value overrides the Stick default. A defaulted control hill still advertises
+-57 in byte 14 because phones measure the Stick about 25 dB louder than it measures them.
 
 **Bench to confirm, all of it:** the mDNS query actually resolving MC on the field router; the
 WebSocket surviving a reconnect (and the library's own retry not fighting the association-mode
@@ -578,14 +582,16 @@ to edit it. if within wifi range sync with MC on the change." Two decisions of h
   applies at once: presence (hill, respawn) uses it on the next tick, byte 14 of the advert
   republishes at once, and a new power restarts the advert at it.
 - **Distances are rough**, and the screen says so: `station_range.h RANGE_DISTANCE_TABLE`, anchored on
-  Tony's measurement (-57 dBm is about 3 m from a Stick), 6 dB per doubling of distance from there.
+  Tony's measurement (-57 dBm is about 3 m from a Stick), 6 dB per doubling of distance from there. The
+  control hill uses its separate, unproven label table: -78 dBm is about 5-7 m.
 - **Sync (A67).** Every status beat carries `threshold` (applied now), `threshold_src` ("station" |
   "mc") and, only while "station", `threshold_edit_age_ms`; the same three for `tx_power`; and
   `range_edits`, the last 8 edits (seq, field, from, to, locked, age_ms), restated every beat (MC
   dedupes by seq). MC's `station_config` carries `threshold` and `threshold_age_ms` (and optionally
   `tx_power` with `tx_power_age_ms`). Per field: an on-station edit YOUNGER than MC's age stays;
   otherwise MC's value applies and the edit goes. No age = an older MC, whose value applies. No
-  `tx_power` = keep the Stick's. `threshold` 0 = the Stick's -57, and the status reports -57 (never 0).
+  `tx_power` = keep the Stick's. `threshold` 0 selects the kind's Stick default. The status reports the
+  threshold used by the Stick, never 0. A defaulted control advert keeps byte 14 at -57 for phone-side presence.
   With no age (an MC before A67), MC's value applies only when it CHANGED: MC re-sends the same
   config as the lock carrier and on every reconnect, and that must not undo the operator's edit. A new
   station (kind or id) starts from MC's values. A new game alone (arming the next match) keeps the

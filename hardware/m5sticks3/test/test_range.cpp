@@ -29,7 +29,12 @@ static int failures = 0;
 using namespace brx;
 
 static StationAssignment cfg(const std::string& json) {
-  return parse_station_config(json::parse(json));
+  std::string body = json;
+  if (body.find("\"threshold\"") == std::string::npos) {
+    const size_t end = body.rfind('}');
+    if (end != std::string::npos) body.insert(end, ",\"threshold\":-57");
+  }
+  return parse_station_config(json::parse(body));
 }
 
 static StationLink armed_hill(uint32_t at_ms = 0) {
@@ -341,6 +346,13 @@ static AHoldEvent hold_for(AHoldGesture& g, uint32_t ms, bool range_allowed, boo
 }
 
 static void test_a_hold_timing() {
+  {  // A held before STATS must earn the full five seconds after RANGE becomes allowed.
+    AHoldGesture g;
+    CHECK(g.update(true, 1000, false) == AHoldEvent::NONE);
+    CHECK(g.update(true, 4000, true) == AHoldEvent::NONE);
+    CHECK(g.update(true, 8999, true) == AHoldEvent::NONE);
+    CHECK(g.update(true, 9000, true) == AHoldEvent::RANGE);
+  }
   {
     AHoldGesture g;
     CHECK(hold_for(g, 500, true) == AHoldEvent::CLICK);  // 0.5 s: a click
@@ -393,6 +405,32 @@ static void test_a_hold_timing() {
     CHECK(g.update(false, 2500, true) == AHoldEvent::NONE);
     CHECK(hold_for(g, 300, true) == AHoldEvent::CLICK);  // and the next press is normal again
   }
+  {  // Loop jitter and a single one-poll bounce must not shorten continuous-hold time.
+    for (uint32_t seed = 2; seed <= 60; seed++) {
+      AHoldGesture g;
+      uint32_t now = 1000;
+      CHECK(g.update(true, now, true) == AHoldEvent::NONE);
+      bool fired = false;
+      uint32_t n = seed;
+      while (now < 7000) {
+        n = (n * 17 + 13) % 59 + 2;
+        now += n;
+        const AHoldEvent event = g.update(true, now, true);
+        if (event == AHoldEvent::RANGE) {
+          fired = true;
+          CHECK(now - 1000 >= RANGE_ENTER_HOLD_MS);
+          break;
+        }
+      }
+      CHECK(fired);
+    }
+    AHoldGesture bounce;
+    bounce.update(true, 0, true);
+    bounce.update(false, 2400, true);
+    bounce.update(true, 2402, true);
+    CHECK(bounce.update(true, 7401, true) == AHoldEvent::NONE);
+    CHECK(bounce.update(true, 7402, true) == AHoldEvent::RANGE);
+  }
 }
 
 static void test_range_editor_idle_exit_and_field_switch() {
@@ -431,6 +469,7 @@ static void test_distance_labels_are_anchored_at_minus_57_is_3_m() {
   CHECK_EQ(std::string(range_distance_label(-60)), std::string("~5 M"));
   CHECK_EQ(std::string(range_distance_label(-40)), std::string("UNDER 1 M"));
   CHECK_EQ(std::string(range_distance_label(-90)), std::string("OVER 20 M"));
+  CHECK_EQ(std::string(range_distance_label(-78, true)), std::string("5-7 M"));
 }
 
 int main() {

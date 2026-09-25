@@ -636,7 +636,7 @@ static std::vector<Scenario> scenarios() {
     linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"lock_s\":600"));
     s.a_click(); s.press_a(3000, false);
   }});
-  v.push_back({"range_radius_default", "range", "A held 5 s on STATS: RANGE, radius at MC's default -57.", [](SimStick& s) {
+  v.push_back({"range_radius_default", "range", "A held 5 s on STATS: hill RANGE uses its unproven -78 dBm default.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
     s.a_click(); s.press_a(5200);
   }});
