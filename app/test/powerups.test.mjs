@@ -724,3 +724,17 @@ test('r3 M2: a protection-off that failed every retry books the life as write-lo
   for (let i = 0; i < 12; i++) { h.adv(250); await settle(); }
   assert.equal(h.eng._writeLost, h.eng._lifeSeq);
 });
+
+// HUD QA R2-21: the overshield grant floated "+55 HEALTH" on the stage (its demo gun held other pools than the node). The
+// grant's echo carries the pools the grant wrote: a health or armour rise in it is never a pickup, on any path.
+test('R2-21: a health rise in the overshield grant echo is no gain moment; CONTROL: a heal after the echo window is', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.frame('$HP,40,55,0,*'); h.take(6);
+  h.eng.moment = null;
+  h.frame('$HP,45,55,75,*');   // the echo: health 40 -> 45 alongside the grant
+  assert.ok(!(h.eng.moment && h.eng.moment.kind === 'gain' && h.eng.moment.data.pool !== 'shield'), `no HEALTH float in the grant echo: ${JSON.stringify(h.eng.moment)}`);
+  h.adv(E.OVERSHIELD_ECHO_MS + 500); h.frame('$HP,40,55,75,*'); h.eng.moment = null;
+  h.frame('$HP,45,55,75,*');   // CONTROL: later, a real heal
+  assert.equal(h.eng.moment && h.eng.moment.kind, 'gain');
+  assert.equal(h.eng.moment.data.pool, 'health');
+});

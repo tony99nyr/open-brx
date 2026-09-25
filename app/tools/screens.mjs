@@ -5064,6 +5064,107 @@ for (const stage of ['diag', 'idle-diag']) await step(`se R2-09 ${stage}: the 56
   must(r.length && r.every(b => !b.clip && b.px >= 11), `a diag button clips or is under 11 px: ${JSON.stringify(r)}`);
 });
 
+
+/** R2-18: the contrast a person actually sees in a box of the screen: the screenshot's pixels (the overlay's wash included),
+ *  the brightest 4% (the text) against the median (what it sits on). */
+r2.pixelContrast = async (pg, sel) => {
+  const box = await pg.evaluate(sel => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; }, sel);
+  if (!box || !(box.width > 2)) return null;
+  const png = (await pg.screenshot({ clip: box })).toString('base64');
+  return pg.evaluate(async png => { const img = new Image(); img.src = 'data:image/png;base64,' + png; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data, L = [];
+    const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+    for (let i = 0; i < d.length; i += 4) L.push(.2126 * f(d[i]) + .7152 * f(d[i + 1]) + .0722 * f(d[i + 2]));
+    L.sort((a, b) => a - b); const hi = L[Math.floor(L.length * .96)], mid = L[Math.floor(L.length * .5)];
+    return Math.round(((Math.max(hi, mid) + .05) / (Math.min(hi, mid) + .05)) * 100) / 100; }, png);
+};
+for (const view of VIEWS) await step(`${view.name} R2-18 overshield then a hit, day: the pickup card retires, TAKING FIRE reads above the wash`, async () => {
+  const pg = await open(view, 'live-pu-overshield', '', 2600);
+  await pg.waitForSelector('#puhint .pu[data-kind="granted"]', { timeout: 3000 }).catch(() => {});
+  const before = await pg.evaluate(() => !!document.querySelector('#puhint .pu[data-kind="granted"]'));
+  await pg.waitForTimeout(1300);   // past the 1 s protected grant, so the hit lands
+  await pg.evaluate(() => window.brxDemo.hitFrom(19, 9, 40)); await pg.waitForTimeout(300);
+  const r = { card: await pg.evaluate(() => !!document.querySelector('#puhint .pu[data-kind="granted"]')), flash: await pg.evaluate(() => !!document.querySelector('#overlay .mo.hit')),
+    tf: (await r2.looks(pg, '.takingfire .t'))[0], cr: await r2.pixelContrast(pg, '.takingfire .t') };
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-18-os-hit.png` }); await pg.close();
+  must(before, 'pre-condition: the OVERSHIELD PICKED UP card was up');
+  must(r.flash && r.tf && r.tf.shown, `pre-condition: a hit flash with TAKING FIRE: ${JSON.stringify(r)}`);
+  must(!r.card, 'the pickup card must retire on a hit (four items stacked in the bottom centre)');
+  must(r.cr >= 3, `TAKING FIRE under the day flash reads ${r.cr}:1 on screen (the wash covered it)`);
+});
+
+
+// R2-13: at night the overshield must not read as a plain full shield: another hue, thicker rails, hollow between them
+for (const view of VIEWS) await step(`${view.name} R2-13 night overshield: amber, 4 px rails, hollow, unlike a full red shield`, async () => {
+  const pg = await open(view, 'live-shields-os', '&night', 3200);
+  const o = await svWait(pg, r => r.m && r.os, 2500);
+  const r = await pg.evaluate(() => { const os = document.querySelector('#svm .svos'), fl = document.querySelector('#svm .svfl'), c = getComputedStyle(os);
+    return { rail: c.borderTopColor, railW: parseFloat(c.borderTopWidth), mid: c.backgroundColor, fill: getComputedStyle(fl).backgroundImage + ' ' + getComputedStyle(fl).backgroundColor }; });
+  await pg.close();
+  must(o.m && o.os, 'pre-condition: the overshield layer is up');
+  const [R, G, B] = r2.rgb(r.rail), [mr, mg, mb] = r2.rgb(r.mid);
+  must(G / R > 0.55 && B < G, `night: the overshield rail must be amber, not the shield's red: ${r.rail}`);
+  must(r.railW >= 4, `night: the rails must be >= 4 px: ${r.railW}`);
+  must(mr + mg + mb < 60, `night: the overshield must be hollow (dark between the rails): ${r.mid}`);
+});
+// R2-14: during the lockout the ammo block names ONE cause (OVERHEAT), never NOT ENOUGH ENERGY beside it
+for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2-14 overheat ${night ? 'night' : 'day'}: one cause during the lockout; CONTROL: the note is back after it`, async () => {
+  const pg = await open(view, 'live', night ? '&night' : '');
+  await pg.evaluate(() => { const e = window.brx.engine; e.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; e.feedFrame('$ALCD,40,100,0,80,0,*'); e.feedFrame('$ALCD,3,100,0,80,108,*'); });
+  await pg.waitForTimeout(500);
+  const hot = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
+  await pg.evaluate(() => window.brx.engine.feedFrame('$ALCD,3,100,0,80,0,*')); await pg.waitForTimeout(500);
+  const cool = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
+  await pg.close();
+  must(hot.word, `pre-condition: OVERHEAT is up: ${JSON.stringify(hot)}`);
+  must(!hot.enote, `during the lockout the ammo block also says ${hot.enote}: two causes`);
+  must(!cool.word && cool.enote === 'NOT ENOUGH ENERGY', `CONTROL: after the lockout, 3 of a 10-cost cell says NOT ENOUGH ENERGY again: ${JSON.stringify(cool)}`);
+});
+// R2-15: stunned, the rounds step back and the seconds are the biggest thing in the tell
+for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2-15 stunned ${night ? 'night' : 'day'}: the ammo dims, the seconds outsize the word`, async () => {
+  const pg = await open(view, 'live-stunned', night ? '&night' : '', 3000);
+  const r = await pg.evaluate(() => { const op = e => { let o = 1; for (let n = e; n && n.id !== 'frame'; n = n.parentElement) o *= +getComputedStyle(n).opacity; return o; };
+    const t = document.querySelector('#stunleft'), k = document.querySelector('.aimfx.stun .k'), mag = document.getElementById('mag');
+    return t && k ? { secs: parseFloat(getComputedStyle(t).fontSize), word: parseFloat(getComputedStyle(k).fontSize), mag: Math.round(op(mag) * 100) / 100 } : null; });
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-15-stun-${night ? 'night' : 'day'}.png` }); await pg.close();
+  must(r, 'pre-condition: the stun tell is up');
+  must(r.secs > r.word && r.secs >= 36, `the seconds must be the largest element of the tell: ${JSON.stringify(r)}`);
+  must(r.mag <= 0.5, `the ammo must dim while the trigger does nothing: opacity ${r.mag}`);
+});
+// R2-16: the station hints name the item and the station
+await step('se R2-16 taken by VIPER: the line names the item, not only who took it', async () => {
+  const pg = await open(VIEWS[1], 'live-pu-taken-by', '', 2400);
+  let t = ''; for (let i = 0; i < 40 && !/TAKEN/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#puhint .pu') || {}).innerText || ''); }
+  await pg.close();
+  must(/ROCKETS/.test(t) && /TAKEN/.test(t) && /VIPER/.test(t), `the hint must say what VIPER took: ${JSON.stringify(t)}`);
+});
+await step('se R2-16 OVERSHIELD AVAILABLE: the card names the station', async () => {
+  const pg = await open(VIEWS[1], 'live-pu-spawn', '', 1200);
+  let t = ''; for (let i = 0; i < 40 && !/AVAILABLE/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#overlay .mo.co') || {}).innerText || ''); }
+  await pg.close();
+  must(/OVERSHIELD AVAILABLE/.test(t) && /STATION 6/.test(t), `the card must say which station: ${JSON.stringify(t)}`);
+});
+// R2-17: the DOWN screen says the held item was lost
+for (const night of [false, true]) await step(`se R2-17 down with rockets held ${night ? 'night' : 'day'}: the DOWN screen says ROCKETS LOST; CONTROL: a plain down does not`, async () => {
+  let pg = await open(VIEWS[1], 'down-pu-held', night ? '&night' : '', 4600);
+  const r = (await r2.looks(pg, '#dspulost'))[0], cr = await r2.contrast(pg, '#dspulost'); await pg.close();
+  pg = await open(VIEWS[1], 'down', night ? '&night' : ''); const plain = await pg.evaluate(() => !!document.getElementById('dspulost')); await pg.close();
+  must(r && r.shown && r.text === 'ROCKETS LOST' && r.px >= 11, `no ROCKETS LOST on the DOWN screen: ${JSON.stringify(r)}`);
+  must(cr[0].cr >= 4.5, `ROCKETS LOST reads below 4.5:1: ${JSON.stringify(cr)}`);
+  must(!plain, 'CONTROL: a death with nothing held says nothing was lost');
+});
+// R2-21: the overshield grant never floats HEALTH, on the engine path with a gun that holds the armed pools
+for (const view of VIEWS) await step(`${view.name} R2-21 live-pu-overshield-wide: the grant floats no HEALTH`, async () => {
+  const pg = await open(view, 'live-pu-overshield-wide', '', 1200);
+  await pg.evaluate(() => { window.__gains = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches('.mo.gain')) window.__gains.push(n.textContent.replace(/\s+/g, ' ').trim()); })
+    .observe(document.getElementById('overlay'), { childList: true, subtree: true }); });
+  await pg.waitForTimeout(3600);
+  const r = await pg.evaluate(() => ({ gains: window.__gains, os: !!(window.brx.engine.state().powerup || {}).overshield })); await pg.close();
+  must(r.os, 'pre-condition: the overshield was granted');
+  must(!r.gains.some(g => /HEALTH|ARMOUR/.test(g)), `the grant floated a pool it does not touch: ${JSON.stringify(r.gains)}`);
+});
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }

@@ -124,6 +124,7 @@ export function startDemo({ engine, log }) {
 
   let hp = 45, armor = 70, mag = 32, reserve = 384;
   let shield = 0;   // A56: only an OVERSHIELD grant fills it on the demo gun (a `$LIFE` mode-2 set past the max); hits take it first
+  let psetPools = null;   // [hp, armour] of the last `$PSET` the demo gun took
   let misread = false;   // F341 x HUD QA R2-02: the gun misread its `$PSET` (4545/7070) and never takes a repair
   let acc = 100;   // S53: the gun's live accuracy ($ALCD token 2). A smoke holds it at 0 for SMOKE_MS, like the bench gun
   const lcd = () => engine.feedFrame(`$LCD,${hp},${armor},0,0,${mag},${reserve},*`);
@@ -165,7 +166,10 @@ export function startDemo({ engine, log }) {
       // F341: a gun whose parser appended a re-sent `$PSET` to a partial one answers every pool read and every repair with
       // the doubled pools, so the REAL engine walks its two repairs and reaches its own `pool_wrong` verdict
       if (misread && (f === '$LIFE,0,0,0,*' || /^\$LIFE,\d+,\d+,\d+,1,\*$/.test(f))) { setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
-      if (f.startsWith('$SPAWN,')) { acc = 100; shield = 0; }   // hardware clears every `$TMP` token on spawn, and the spawn shield is 0
+      // HUD QA R2-21: the demo gun arms the pools of the last `$PSET` it took (t3 hp, t4 armour), as a real gun does. It kept
+      // 45/70 under a 100/0 preset, so the overshield grant's echo read as a "+55 HEALTH" pickup: a stage artefact.
+      const ps = /^\$PSET,\d+,\d+,(\d+),(\d+),/.exec(f); if (ps) psetPools = [+ps[1], +ps[2]];
+      if (f.startsWith('$SPAWN,')) { acc = 100; shield = 0; if (psetPools && !misread) [hp, armor] = psetPools; }   // hardware clears every `$TMP` token on spawn, and the spawn shield is 0
       // A56: `$LIFE` mode 2 is an ABSOLUTE set with no clamp (the overshield grant); the gun answers `$HP` with the new pools
       const set = /^\$LIFE,(\d+),(\d+),(\d+),2,\*$/.exec(f);
       if (set) { [hp, armor, shield] = set.slice(1).map(Number); setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
@@ -478,6 +482,8 @@ export function startDemo({ engine, log }) {
       // the Shields preset at 3-digit pools with a 175 overshield: the widest vitals row a powerup game can draw
       widePools: () => { config.health = { max_hp: 100, max_armor: 0, max_shield: 100 };
         bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, (_, head) => `${head}100,0,100,`) : f);
+        // HUD QA R2-21: the spawn burst's `$PSET` arms the same pools as the head, as compile ships them (it armed 45/70)
+        if (Array.isArray(bundle.pset_pool)) bundle.pset_pool = bundle.pset_pool.map(f => f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, (_, head) => `${head}100,0,100,`));
         config.stations = config.stations.map(x => x.id === 6 ? { ...x, item: { ...x.item, amount: 175 } } : x); },
       // The shield meter (2026-09-24): the Shields preset exactly as compile.HEALTH_PRESETS ships it (45 HP, 0 armour, 105
       // shield), so the engine's own S29 recharge runs. Everything below feeds frames the gun would send.

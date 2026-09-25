@@ -1312,7 +1312,7 @@ export class Hud {
     const staleTag = '<span class="staletag" aria-label="stale value">STALE</span>';
     const puActive = !!(st.powerup && st.powerup.held && st.powerup.held.active);
     const sv = SV.meterShown(st);   // the shield meter: a shield game, or an overshield held
-    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}${poolWrong(st) && !gunStale ? ' poolwrong' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
+    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}${poolWrong(st) && !gunStale ? ' poolwrong' : ''}${st.alive && st.stunned ? ' stunned' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span>${DS.hillOf(st) ? `<span class="hillnow" id="hillnow" data-owner="${esc((DS.hillOf(st).key) || 'none')}" role="status" aria-label="hill">${DS.hillChip(st)}</span>` : ''}</div></div>
@@ -1338,7 +1338,7 @@ export class Hud {
           : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
         <div class="nums">${gunStale ? staleTag : ''}<span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
-        ${belowCharge && st.ammo > 0 ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
+        ${belowCharge && st.ammo > 0 && !overheating ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
         <div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
         ${st.powerup ? `<div class="puheld" id="puheld">${this._puHeld(st)}</div>` : ''}
@@ -1360,7 +1360,8 @@ export class Hud {
       case 'granted': return h.itemKind === 'overshield' ? line(name, 'PICKED UP')
         : line(`${name} ON TRIGGER`, h.charges != null ? `${h.charges} SHOT${h.charges === 1 ? '' : 'S'}` : '');
       case 'approach': return line('GET CLOSER', name);
-      case 'taken_by': return line(h.nextInMs != null ? `TAKEN · ${mss(h.nextInMs)}` : 'TAKEN', `BY ${esc(h.by)}`);
+      // HUD QA R2-16: the line names WHAT was taken, not only who took it
+      case 'taken_by': return line(h.nextInMs != null ? `${name} TAKEN · ${mss(h.nextInMs)}` : `${name} TAKEN`, `BY ${esc(h.by)}`);
       case 'taken': return line(`${name} IN ${mss(h.nextInMs || 0)}`, 'NEXT SPAWN');
       case 'switched_back': return line(`${name} EMPTY`, `BACK TO ${esc(h.to || '')}`);   // the phone put the saved weapon back on the trigger
       default: return '';
@@ -1788,7 +1789,7 @@ export class Hud {
         this._moment = downKey;
         const title = recoveryDown
           ? '<span class="tt rec"><span class="t">GUN RESTARTED</span><span class="t t2">REDEPLOYING</span></span><span class="kb">REDEPLOYING</span>'
-          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? DS.ICON.drop : DS.ICON.skull}<span class="sr">${kb.dot ? 'POISONED BY' : 'KILLED BY'}</span> <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span><span id="dnlife">${DS.finalHitLine(st)}</span>`;
+          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? DS.ICON.drop : DS.ICON.skull}<span class="sr">${kb.dot ? 'POISONED BY' : 'KILLED BY'}</span> <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span><span id="dnlife">${DS.finalHitLine(st)}</span>${DS.itemLostLine(st)}`;
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
           <div class="c"><div class="dsx"><div class="l2">${title}</div><div class="dslive" id="dslive">${this._dsLive(st)}</div></div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
@@ -1988,7 +1989,7 @@ export class Hud {
     const ps = st.powerupSpawn;
     if (ps && ps.at !== this._coPuAt) {
       this._coPuAt = ps.at;
-      this._co(st, { kind: 'powerup_spawn', src: 'powerup', tone: 'item', tag: 'POWERUP', name: `${ps.name} AVAILABLE`, color: ps.color, sub: '', hold: 2200 });
+      this._co(st, { kind: 'powerup_spawn', src: 'powerup', tone: 'item', tag: 'POWERUP', name: `${ps.name} AVAILABLE`, color: ps.color, sub: ps.station != null ? `AT STATION ${ps.station}` : '', hold: 2200 });   // HUD QA R2-16: which station
     }
     const pg = st.powerupSwap;   // docs/announcer.md: set by the engine's queue when the swap card's turn comes (not at the grant)
     if (pg && pg.at !== this._coPgAt) {

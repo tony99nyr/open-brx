@@ -44,6 +44,11 @@ export function weaponLabel(w) {
  *  for a lethal tick). No damage number: Tony 2026-09-23. The killing hit's damage is capped by what you had left, so
  *  it reads small and says little. Shown only when the booked final hit belongs to the named killer (an unknown
  *  killer means a stale latch). Empty when the phone booked no hit this life (a gun restart, a desync, a restart). */
+/** HUD QA R2-17: a death takes a held weapon item with it (powerups.md). The DOWN screen says so, once, beside the kill. */
+export function itemLostLine(st) {
+  const l = st.puLost; if (!l || !l.name) return '';
+  return `<span class="pulost" id="dspulost" role="status">${up(l.name)} LOST</span>`;
+}
 export function finalHitLine(st) {
   const life = st.lastLife, kb = st.killedBy || {}, fh = life && life.finalHit;
   if (!fh) return '';

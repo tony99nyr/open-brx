@@ -1410,6 +1410,25 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .infobtn::after{left:auto;right:-2px;transform:translateY(-50%)}
 #info::after{top:-2px;height:60px;transform:none}   /* 58 px of the frame below its top edge: 46 px on the SE screen */
 #skin{top:70px}   /* its area (60-116) starts where the ⓘ area ends */
+/* HUD QA R2-15: stunned, the trigger does nothing, so the rounds step back and the count to the end is the biggest thing in the
+   tell (it was a small "9 SEC" beside a bright magazine). */
+.alive.stunned .ammo .mag,.alive.stunned .ammo .res,.alive.stunned .ammo .pips{opacity:.35;text-shadow:none}
+.aimfx.stun .t{font-size:46px;line-height:.95}
+.aimfx.stun .k{font-size:24px}.aimfx.stun .s{font-size:14px;letter-spacing:.12em}.aimfx.stun .t small{font-size:14px}
+[data-env="night"] .aimfx.stun .t{font-size:40px}[data-env="night"] .aimfx.stun .k{font-size:20px}
+/* HUD QA R2-17: the held item a death took */
+.down .pulost{display:inline-block;margin-top:6px;font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.14em;color:var(--warn)}
+[data-env="night"] .down .pulost{color:#ef6868}
+/* HUD QA R2-18: under the day hit flash TAKING FIRE fell to about 1.5:1. The flash leaves its band clear, the word holds
+   still while a hit is on screen, and a dark halo keeps it off the wash. */
+.hit .vig{-webkit-mask-image:radial-gradient(ellipse 24% 13% at 50% 45%,transparent 60%,#000 100%);mask-image:radial-gradient(ellipse 24% 13% at 50% 45%,transparent 60%,#000 100%)}
+#frame:has(#overlay .mo.hit) .takingfire .t{animation:none}
+.takingfire .t{text-shadow:0 0 3px rgba(0,0,0,.9),0 0 12px rgba(0,0,0,.75)}
+[data-env="night"] .takingfire .t{text-shadow:none}
+/* HUD QA R2-13: at night the overshield's double rail read almost as a plain full shield. It is amber (night allows red and
+   amber), 4 px rails, and hollow: the dark track shows between the rails, so its shape and colour both differ. */
+[data-env="night"] .svm{--svos:#e0a040}
+[data-env="night"] .svos{background:#0c0303;border-top-width:4px;border-bottom-width:4px}
 </style>
 </head>
 <body>
