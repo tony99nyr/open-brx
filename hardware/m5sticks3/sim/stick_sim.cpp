@@ -192,7 +192,11 @@ struct SimStick {
       buttons.poll_timeout(now);
       home.poll_idle(now);
       force.update(false, false, now);
-      if (range.active() && range_must_close(link.assignment().present, battery_override)) range.close();
+      if (range.active() && link.lock().locked(now)) {
+        range.close(); ro_active = true; ro_locked = true; ro_ok = false; ro_at = now;
+      } else if (range.active() && range_must_close(link.assignment().present, battery_override)) {
+        range.close();
+      }
       range.poll_idle(now);
       if (ro_active && now - ro_at >= 2500) ro_active = false;  // RESET_OUTCOME_SHOW_MS
       if (now % 250 == 0) state();  // loop() repaints at least every 250 ms; the paint runs the HELD clock
@@ -241,6 +245,13 @@ struct SimStick {
            buttons.phase() == ButtonPhase::NORMAL;
   }
   void on_a_event(AHoldEvent ev) {
+    if (range.active() && link.lock().locked(now)) {
+      range.close();
+      ro_active = true;
+      ro_locked = true;
+      ro_ok = false;
+      ro_at = now;
+    }
     if (range.active()) {  // in RANGE: A click steps (closer / weaker), an A hold switches the field
       if (ev == AHoldEvent::CLICK) range_step(true);
       else if (ev == AHoldEvent::HOME) range.switch_field(now);
@@ -248,7 +259,14 @@ struct SimStick {
       return;
     }
     if (ev == AHoldEvent::RANGE) {
-      range.open(now);
+      if (link.lock().locked(now)) {
+        ro_active = true;
+        ro_locked = true;
+        ro_ok = false;
+        ro_at = now;
+      } else {
+        range.open(now);
+      }
       home.note_activity(now);
     } else if (ev == AHoldEvent::CLICK) {
       ButtonPhase before = buttons.phase();
@@ -261,12 +279,12 @@ struct SimStick {
   }
   // Press A for `ms`; with release=false it is left held (the cue shows in the next state()).
   void press_a(uint32_t ms, bool release = true) {
-    on_a_event(ahold.update(true, now, range_allowed()));
+    on_a_event(ahold.update(true, now, range_allowed(), link.lock().locked(now)));
     for (uint32_t t = 0; t < ms; t += 50) {
       now += 50;
-      on_a_event(ahold.update(true, now, range_allowed()));
+      on_a_event(ahold.update(true, now, range_allowed(), link.lock().locked(now)));
     }
-    if (release) on_a_event(ahold.update(false, now, range_allowed()));
+    if (release) on_a_event(ahold.update(false, now, range_allowed(), link.lock().locked(now)));
   }
   void range_step(bool a_click) {
     int step = RangeEditor::step_for(range.field(), a_click);
@@ -525,6 +543,14 @@ static std::vector<Scenario> scenarios() {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
     s.arrive(3, 0); s.advance(26000);
   }});
+  v.push_back({"hill_match_over_red", "hill", "Red holds the hill after the whistle.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"ends_in_ms\":12000"));
+    s.arrive(3, 0); s.advance(14000);
+  }});
+  v.push_back({"hill_match_over_red", "hill", "Red holds the hill after the whistle.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"ends_in_ms\":12000"));
+    s.arrive(3, 0); s.advance(14000);
+  }});
   v.push_back({"hill_held_blue", "hill", "Blue captured it 15 s ago.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
     s.arrive(11, 1); s.advance(26000);
@@ -602,6 +628,14 @@ static std::vector<Scenario> scenarios() {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
     s.a_click(); s.press_a(3000, false);
   }});
+  v.push_back({"stats_range_cue_locked", "range", "Hill #3 STATS page under lock: the RANGE cue stays hidden.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"lock_s\":600"));
+    s.a_click(); s.press_a(3000, false);
+  }});
+  v.push_back({"stats_range_cue_locked", "range", "Hill #3 STATS page under lock: the RANGE cue stays hidden.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"lock_s\":600"));
+    s.a_click(); s.press_a(3000, false);
+  }});
   v.push_back({"range_radius_default", "range", "A held 5 s on STATS: RANGE, radius at MC's default -57.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
     s.a_click(); s.press_a(5200);
@@ -622,9 +656,9 @@ static std::vector<Scenario> scenarios() {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
     s.a_click(); s.press_a(5200); s.press_a(1500); s.press_a(100); s.press_a(100); s.press_a(100);
   }});
-  v.push_back({"range_locked", "range", "Hill under the A58 match lock: RANGE still opens and edits (padlock shown).", [](SimStick& s) {
+  v.push_back({"range_locked", "range", "Hill under the A58 match lock: the 5 s RANGE hold is refused.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"lock_s\":600"));
-    s.a_click(); s.press_a(5200); s.b_click();
+    s.a_click(); s.press_a(5200);
   }});
   v.push_back({"range_mc_value", "range", "MC set -66 and TX low; RANGE shows MC's values.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"threshold\":-66,\"tx_power\":\"low\""));

@@ -1,5 +1,5 @@
 // station_range.h - F365 (contract A67 and its two addenda): an operator edits a station's RANGE on
-// the Stick during play, and the edit syncs to Mission Control. Pure C++17, no Arduino: host-tested in
+// the Stick during play while unlocked, and the edit syncs to Mission Control. Pure C++17, no Arduino: host-tested in
 // test/test_range.cpp, owned by StationLink (station_link.h), driven by the glue and the buttons.
 //
 // Two settings sync the same way, each on its own:

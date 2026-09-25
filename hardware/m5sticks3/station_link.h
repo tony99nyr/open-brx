@@ -78,6 +78,7 @@ struct StationAssignment {
   std::vector<int> valid_ids;
   StationItem item;  // A56, additive: absent on an older MC or a non-powerup kind
   int lock_s = 0;    // A58, additive: seconds to lock the operator controls from receipt; 0/absent = unlocked
+  int64_t ends_in_ms = -1; // A68: -1 unknown; otherwise local hill deadline duration from receipt
   // A67 (additive): how long ago MC's threshold was last set (-1 = absent, an older MC: apply as today),
   // and MC's advertising power for this station (-1 = absent: keep the Stick's own) with its age.
   int64_t threshold_age_ms = -1;
@@ -359,6 +360,11 @@ inline StationAssignment parse_station_config(const json::Value& body) {
     for (const auto& x : ids.arr) a.valid_ids.push_back((int)x.as_int());
   }
   a.item = parse_item(body.get("item"));
+  if (body.has("ends_in_ms")) {
+    const json::Value& end = body.get("ends_in_ms");
+    const double d = end.type == json::Value::Type::Number ? end.num : -1.0;
+    a.ends_in_ms = d < 0 ? -1 : (d > 2147483647.0 ? 2147483647 : (int64_t)d);
+  }
   // A67: ages are relative to receipt, so they are never saved (station_config_storage_body leaves them out).
   if (body.has("threshold_age_ms")) a.threshold_age_ms = body.get("threshold_age_ms").as_int64(-1);
   a.tx_power = parse_tx_power(body.get("tx_power").as_string());
@@ -982,10 +988,20 @@ class StationLink {
   // caller acts on the returned edges (the IR capture word, the screen); nothing here does I/O.
   HillUpdate tick_players(const PlayerPresence& players, uint32_t now_ms) {
     HillUpdate u;
-    if (has_control_assignment()) u = hill_.update(players, now_ms);
+    if (has_control_assignment()) {
+      if (deadline_known_ && (int32_t)(now_ms - hill_deadline_ms_) >= 0) {
+        if (!hill_.frozen) {
+          u = hill_.update(players, hill_deadline_ms_);
+          hill_.freeze();
+        }
+      } else {
+        u = hill_.update(players, now_ms);
+      }
+    }
     else if (REVIVE_FEEDBACK_ENABLED && has_respawn_assignment()) revives_.update(players, assignment_.id);
     return u;
   }
+  bool hill_ended() const { return has_control_assignment() && hill_.frozen; }
 
   // ---- F365 / A67: the station's range, as applied NOW (MC's value, or a younger on-station edit) ----
   int threshold_dbm() const { return threshold_.applied(); }
@@ -994,12 +1010,11 @@ class StationLink {
   const SyncedSetting& tx_power_setting() const { return tx_power_; }
   const RangeEditLog& range_edits() const { return edits_; }
 
-  // The operator's edits on the RANGE screen: allowed during play and under the A58 lock (the lock
-  // guards reassign/reset, not range), but only with a station assigned. Each step applies at once (the
+  // The operator's edits on the RANGE screen: allowed during play only while the A58 lock is unlocked, but only with a station assigned. Each step applies at once (the
   // glue re-reads threshold_dbm()/tx_power_level() for presence, byte 14 and the radio) and is logged
   // for MC. False when nothing changed (no station, or already at the clamp).
   bool edit_threshold(int delta_db, uint32_t now_ms) {
-    if (!assignment_.present) return false;
+    if (!assignment_.present || lock_.locked(now_ms)) return false;
     const int from = threshold_.applied();
     const int to = clamp_threshold_dbm(from + delta_db);
     if (to == from) return false;
@@ -1008,7 +1023,7 @@ class StationLink {
     return true;
   }
   bool edit_tx_power(int delta_levels, uint32_t now_ms) {
-    if (!assignment_.present) return false;
+    if (!assignment_.present || lock_.locked(now_ms)) return false;
     const int from = tx_power_.applied();
     const int to = clamp_tx_power(from + delta_levels);
     if (to == from) return false;
@@ -1080,6 +1095,9 @@ class StationLink {
       revives_.reset();
       epoch_++;
     }
+    deadline_known_ = a.ends_in_ms >= 0;
+    hill_deadline_ms_ = received_at_ms + (uint32_t)std::max<int64_t>(0, a.ends_in_ms);
+    if (a.ends_in_ms == 0) hill_.freeze();
     // F365: a new station (kind or id) starts from MC's values (the log stays). A new GAME alone is the
     // same station in the same place for the next match: apply_mc below decides (the age rule, or the
     // ageless changed-value guard), so a pre-match edit survives arming.
@@ -1120,11 +1138,16 @@ class StationLink {
       // update is the only go-live anchor a MUSTER Stick ever gets; without it the Stick would offer its item from
       // arming, not at first_at_s. After a restore too: a reboot in LOBBY must not skip START's anchor. Once MC is
       // out of reach, take_muster_drop's offline rule below takes over.
-      drop_wait_for_update_ = a.kind == "powerup";
+      drop_wait_for_update_ = a.kind == "powerup" || a.kind == "control";
       wait_offline_ = false;
       drop_latched_at_ms_ = received_at_ms;
     }
-    if (a.kind != "powerup") drop_wait_for_update_ = false;  // re-armed as another kind: nothing to wait for
+    if (a.kind == "control" && a.ends_in_ms >= 0) {
+      drop_wait_for_update_ = false;  // START's deadline-bearing config is the hill's go-live anchor
+      wait_offline_ = false;
+    } else if (a.kind != "powerup" && a.kind != "control") {
+      drop_wait_for_update_ = false;
+    }
     return changed;
   }
 
@@ -1315,6 +1338,8 @@ class StationLink {
   bool actions_enabled_ = true;   // MC accepts station_action since A56 landed (f3fe3cf6); `ACTIONS OFF` for an older MC
   bool dropped_for_match_ = false;
   MatchLock lock_;  // A58, RAM only
+  bool deadline_known_ = false;
+  uint32_t hill_deadline_ms_ = 0;
   SyncedSetting threshold_{STICK_DEFAULT_THRESHOLD_DBM};  // A67
   SyncedSetting tx_power_{TX_POWER_DEFAULT};              // A67 addendum 1
   RangeEditLog edits_;                                    // A67 addendum 2

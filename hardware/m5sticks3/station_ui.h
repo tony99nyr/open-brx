@@ -280,9 +280,10 @@ enum class AHoldEvent : uint8_t { NONE, CLICK, HOME, RANGE };
 
 class AHoldGesture {
  public:
-  AHoldEvent update(bool a_down, uint32_t now_ms, bool range_allowed) {
+  AHoldEvent update(bool a_down, uint32_t now_ms, bool range_allowed, bool station_locked = false) {
     now_ms_ = now_ms;
     range_allowed_ = range_allowed;
+    station_locked_ = station_locked;
     if (a_down && !down_) {
       down_ = true;
       since_ms_ = now_ms;
@@ -310,7 +311,7 @@ class AHoldGesture {
   }
   // 0..100 while the "HOLD FOR RANGE" cue shows (A held 1 s or more where RANGE is allowed), else -1.
   int range_cue_pct() const {
-    if (!down_ || range_fired_ || cancelled_ || !range_allowed_) return -1;
+    if (!down_ || range_fired_ || cancelled_ || !range_allowed_ || station_locked_) return -1;
     const uint32_t held = now_ms_ - since_ms_;
     if (held < A_HOME_HOLD_MS) return -1;
     return (int)((held - A_HOME_HOLD_MS) * 100 / (RANGE_ENTER_HOLD_MS - A_HOME_HOLD_MS));
@@ -321,6 +322,7 @@ class AHoldGesture {
   bool range_fired_ = false;
   bool cancelled_ = false;
   bool range_allowed_ = false;
+  bool station_locked_ = false;
   uint32_t since_ms_ = 0;
   uint32_t now_ms_ = 0;
 };

@@ -221,32 +221,29 @@ static void test_status_fields_edit_age_only_when_src_is_station() {
   CHECK(build_status_body(old).find("threshold_src") == std::string::npos);
 }
 
-static void test_edit_log_formats_locked_flag_and_cap() {
+static void test_locked_range_edits_are_refused_and_unlocked_edits_are_logged() {
   StationLink link;
-  StationAssignment a = cfg(R"({"kind":"control","team":255,"id":3,"game":7,"lock_s":600})");
-  link.apply_station_config(a, 0);
+  link.apply_station_config(cfg(R"({"kind":"control","team":255,"id":3,"game":7,"lock_s":600})"), 0);
   CHECK(link.lock().locked(10));
-  CHECK(link.edit_threshold(-3, 10));  // allowed under the A58 lock, and flagged
-  CHECK(link.edit_tx_power(-1, 20));
+  CHECK(!link.edit_threshold(-3, 10));
+  CHECK(!link.edit_tx_power(-1, 20));
+  CHECK_EQ(link.range_edits().edits().size(), (size_t)0);
+  link.apply_station_config(cfg(R"({"kind":"control","team":255,"id":3,"game":7,"lock_s":0})"), 30);
+  CHECK(link.edit_threshold(-3, 40));
+  CHECK(link.edit_tx_power(-1, 50));
   const auto& e = link.range_edits().edits();
   CHECK_EQ(e.size(), (size_t)2);
-  CHECK(e[0].locked);
-  std::string j = link.range_edits().status_json(30);
-  CHECK(j.find("\"field\":\"tx_power\",\"from\":\"high\",\"to\":\"medium\",\"locked\":true") != std::string::npos);
-  CHECK(j.find("\"field\":\"threshold\",\"from\":-57,\"to\":-60,\"locked\":true") != std::string::npos);
-  // The cap: the last 8, oldest first, seq still rising.
+  CHECK(!e[0].locked);
+  std::string j = link.range_edits().status_json(60);
+  CHECK(j.find("\"field\":\"tx_power\",\"from\":\"high\",\"to\":\"medium\",\"locked\":false") != std::string::npos);
+  CHECK(j.find("\"field\":\"threshold\",\"from\":-57,\"to\":-60,\"locked\":false") != std::string::npos);
   for (int i = 0; i < 10; i++) link.edit_threshold(i % 2 ? +3 : -3, 100 + i);
   CHECK_EQ(link.range_edits().edits().size(), RANGE_EDIT_LOG_MAX);
-  CHECK_EQ(link.range_edits().edits().front().seq, 5u);  // 12 edits made: seq 5..12 remain
+  CHECK_EQ(link.range_edits().edits().front().seq, 5u);
   CHECK_EQ(link.range_edits().edits().back().seq, 12u);
   CHECK_EQ(link.range_edits().next_seq(), 13u);
-  // Unlocked edits say so.
-  link.apply_station_config(cfg(R"({"kind":"control","team":255,"id":3,"game":7,"lock_s":0})"), 200);
-  link.edit_threshold(-3, 300);
-  CHECK(!link.range_edits().edits().back().locked);
 }
 
-// ---- after a reboot: the value and the seq come back, the age is unknown ------------------------------
 static void test_reboot_restores_value_seq_and_an_unknown_age() {
   StationLink before = armed_hill(0);
   before.edit_threshold(-3, 1000);
@@ -448,7 +445,7 @@ int main() {
   test_tx_power_mapping_and_parse();
   test_tx_power_absent_keeps_the_sticks_own_and_fields_are_independent();
   test_status_fields_edit_age_only_when_src_is_station();
-  test_edit_log_formats_locked_flag_and_cap();
+  test_locked_range_edits_are_refused_and_unlocked_edits_are_logged();
   test_reboot_restores_value_seq_and_an_unknown_age();
   test_release_drops_the_edit_but_keeps_the_log();
   test_status_threshold_is_never_zero();

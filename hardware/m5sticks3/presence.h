@@ -265,6 +265,7 @@ class BleControlPoint {
   int counts[4] = {0, 0, 0, 0};
   bool refused_seen = false;
   uint32_t captures = 0;      // every `captured` edge, for STATUS
+  bool frozen = false;        // the whistle freezes the hill and its recap tally
 
   double rate() const { return 100.0 / capture_s; }
 
@@ -275,6 +276,8 @@ class BleControlPoint {
     capture_s = cs;
     net_cap = nc;
   }
+
+  void freeze() { frozen = true; }
 
   // Restart survival (F332: the side button can still restart a locked Stick, and a restart must not
   // wipe an enemy's hold). Brings the point back HELD by `tid` at 100 with the possession tally saved at
@@ -307,6 +310,7 @@ class BleControlPoint {
   // control.js update(), step for step.
   HillUpdate update(const PlayerPresence& players, uint32_t now) {
     HillUpdate out;
+    if (frozen) return out;
     // F103: `elapsed` is real time and feeds possession; `dt` is clamped and feeds conversion only.
     // control.js: `Math.max(0, now - this.at)`; the signed cast gives the same 0 for a clock that
     // stepped backwards.

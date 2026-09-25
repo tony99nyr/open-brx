@@ -221,6 +221,42 @@ def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list(
     s.set_station("util-2", {"kind": "control", "team": "any", "id": 9})
     assert _pushed(s, "station_config", "util-1")[-1]["valid_ids"] == [3, 9]
     assert _pushed(s, "station_config", "util-2")[-1]["valid_ids"] == [3, 9]
+    for b in _pushed(s, "station_config"):
+        E.validate(E.make_envelope("station_config", b), direction="mc")
+
+
+def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end():
+    s = _sess()
+    s.net.simulate_utility_hello("stick-1")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.phase = "live"
+    s.start_info = {"go_live_t": s.now_ms() - 1000}
+    s.config["time_limit_s"] = 600
+    s._arm_station("stick-1")
+    assert _pushed(s, "station_config", "stick-1")[-1].get("ends_in_ms") == 599000
+    s.phase = "recap"
+    s._arm_station("stick-1")
+    assert _pushed(s, "station_config", "stick-1")[-1]["ends_in_ms"] == 0
+    s.phase = "live"
+    s.start_info["adopted"] = True
+    s._arm_station("stick-1")
+    assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    s.start_info["adopted"] = False
+    s.config["time_limit_s"] = None
+    s._arm_station("stick-1")
+    assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+
+
+def test_station_config_carries_match_end_deadline_when_known():
+    s = _sess()
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
+    s.phase = "live"
+    s.start_info = {"go_live_t": s.now_ms() - 1000}
+    s.config["time_limit_s"] = 600
+    s._arm_station("util-1")
+    body = _pushed(s, "station_config", "util-1")[-1]
+    assert body.get("ends_in_ms") == 599000, body
     # and the envelope validator accepts what we send (the 2026-09-07 `alert` lesson, pinned)
     for b in _pushed(s, "station_config"):
         E.validate(E.make_envelope("station_config", b), direction="mc")

@@ -269,6 +269,7 @@ struct StickState {
   // carry what it measures and the IR hill cannot. control_owner/control_progress_pct above are its
   // owner and its progress then.
   bool control_ble = false;
+  bool control_ended = false;
   int control_bar_team = -1;  // advert byte 9 when not 255: the owner while held, else the team building it
   bool control_contested = false;
   int control_dir = 0;        // +1 rising, -1 falling, 0 static
@@ -388,8 +389,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     return spec;
   }
 
-  // F365: the RANGE editor (entered from STATS; a station must be assigned). It edits during play and
-  // under the A58 lock, so the padlock and the lock stay as they are.
+  // F365: the RANGE editor (entered from STATS; a station must be assigned). It edits during play only while the A58 lock is unlocked, so the padlock and the lock stay as they are.
   if (s.range_active && s.assignment_present) {
     spec.kind = ScreenKind::SCR_RANGE;
     spec.range_threshold_dbm = s.range_threshold_dbm;
@@ -441,6 +441,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
       spec.kind = ScreenKind::HILL_HELD;
       spec.hill_team = (int)s.control_owner;
       spec.hold_time = s.control_hold_time;
+      if (s.control_ended) spec.hill_note = "MATCH OVER";
     } else if (s.control_bar_team >= 0 && s.control_bar_team <= 3) {
       spec.kind = ScreenKind::HILL_CAPTURING;
       spec.hill_team = s.control_bar_team;

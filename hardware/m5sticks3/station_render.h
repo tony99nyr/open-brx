@@ -296,7 +296,8 @@ inline void drawHill(M5Canvas& c, const ScreenSpec& s) {
     c.drawString(s.hill_kicker.c_str(), 10, MAIN_TOP + 4);
     std::string label = std::string(TEAM_LETTER[s.hill_team >= 0 && s.hill_team <= 3 ? s.hill_team : 0]) + " HOLDS";
     fitCenterText(c, SCREEN_W / 2, 60, label, TEXT_MAX_W, {&fonts::FreeSansBold18pt7b, &fonts::FreeSansBold12pt7b}, ink);
-    fitCenterText(c, SCREEN_W / 2, 104, "HELD " + s.hold_time, TEXT_MAX_W, {&fonts::FreeSansBold12pt7b}, ink);
+    fitCenterText(c, SCREEN_W / 2, 104, s.hill_note.empty() ? "HELD " + s.hold_time : s.hill_note,
+                  TEXT_MAX_W, {&fonts::FreeSansBold12pt7b}, ink);
   } else if (s.kind == ScreenKind::HILL_CAPTURING) {
     drawKicker(c, s.hill_kicker);
     uint16_t tc = teamColor(s.hill_team);

@@ -227,14 +227,13 @@ passive beacon: it needs **no** MC contact for the rest of the game (same island
 **"phone" here is the first client, not a requirement.** A non-phone utility node (the M5StickS3) takes the
 same message over the same wire with no amendment: **§5g**.
 
-`{ kind, team, id, threshold?, game?, valid_ids? }` — MC → the utility node at muster (and on any re-arm).
+`{ kind, team, id, threshold?, game?, valid_ids?, lock_s?, ends_in_ms? }` — MC → the utility node at muster (and on any re-arm).
 The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. `valid_ids` (optional) is
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
 
 **Range edited on the station, last edit wins (A67, F365).** An operator can change a station's RANGE (threshold)
-and STRENGTH (`tx_power`: `ultra_low`, `low`, `medium`, `high`) on the station itself behind a long hold, during
-play. The station applies it at once and reports it on every heartbeat: `threshold`/`tx_power` (applied now; a phone
+and STRENGTH (`tx_power`: `ultra_low`, `low`, `medium`, `high`) on the Stick itself behind a long hold, only while its station lock is unlocked. A phone station keeps its existing behaviour. The station applies it at once and reports it on every heartbeat: `threshold`/`tx_power` (applied now; a phone
 that cannot set its power, iOS, sends no `tx_power` and records no STRENGTH edit),
 `<field>_src` (`station` or `mc`), `<field>_edit_age_ms` (src station only) and `range_edits` (the last 8 edits,
 `seq` persisted across a reboot). MC keeps who set each value and when. A station edit newer than MC's value is
@@ -243,6 +242,9 @@ adopted; an operator edit in the ITEMS card after it wins and re-arms the statio
 when that edit is younger. An edit made out of Wi-Fi syncs when the station returns. After a StickS3 reboot the
 Stick cannot know the edit's time, so it reports a large age and MC's value wins at the next arm. Players need no
 change: they read the station's advert. Each new edit is a feed line and an attention line on the ITEMS card.
+
+
+**Match end deadline (A68, Stick hill).** When the match has a time limit, MC sends `ends_in_ms` in ARMED/LIVE station configs: time remaining until `go_live_t + time_limit_s * 1000`, floored at 0. Adopted matches and matches without a time limit omit the field. After the match ends, MC sends `ends_in_ms: 0`. A Stick turns this duration into a local `millis()` deadline. The Bluetooth hill then keeps its owner, bar and possession tally unchanged and shows MATCH OVER. The Stick's MUSTER hill keeps Wi-Fi until START's deadline-bearing `station_config`; MC out of reach first or 60 s without Wi-Fi triggers F374's drop fallback. Without a deadline, a carried-out hill cannot stop at the whistle. An early score cap or operator END reaches only a Stick still in Wi-Fi.
 
 **One game byte per match (A59, F339).** `game` is MC's match counter (1..255, bumped by the first push after a
 match has started). Every player `config` MC sends carries the same number as `config.game_byte`, so a player
@@ -577,7 +579,7 @@ writes a gun head, and owns no store-and-forward ring — MC already refuses a l
 |---|---|---|
 | → MC | `hello` | `{node_id, node_type:"utility", app_ver, platform:"esp32", seq_next:0}`. `node_id` is stable across reboots (Preferences), or MC sees a new item every power cycle |
 | ← MC | `welcome` | keep `node_key` and present it on the next `hello` (A8.2) or a re-claim of a still-live id is refused `4003 in_use` |
-| ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?}` → the advert, persisted, screen shows MC ✓ GAME N |
+| ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?, lock_s?, ends_in_ms?}` → advert and screen; persist the assignment; `ends_in_ms` freezes a hill at the deadline (A68) |
 | → MC | `status` | every `STATUS_HEARTBEAT_MS` (2000 ms) while connected; stale at `STALE_AFTER_MS` (8000 ms). Live-only, never queued, no `seq` |
 
 `seq_next: 0` forever is honest: a station emits no persisted facts, so there is no seq to advance and nothing

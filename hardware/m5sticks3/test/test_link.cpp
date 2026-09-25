@@ -1517,6 +1517,30 @@ static void test_muster_fresh_non_powerup_arm_drops_at_once() {
   CHECK(link.take_muster_drop(100));  // no schedule to wait on: due at once, as any non-powerup arm
 }
 
+static void test_muster_hill_waits_for_start_deadline_or_offline_timeout() {
+  StationLink link;
+  StationAssignment c;
+  c.present = true; c.kind = "control"; c.id = 9; c.game = 7;
+  link.set_mode(AssocMode::MUSTER);
+  link.apply_station_config(c, 1000);
+  CHECK(link.muster_drop_pending());
+  CHECK(!link.take_muster_drop(1001));
+  c.ends_in_ms = 30000;
+  link.apply_station_config(c, 30000);  // START's same-game config anchors the hill deadline
+  CHECK(link.take_muster_drop(30000));
+
+  StationLink offline;
+  offline.set_mode(AssocMode::MUSTER);
+  c.game = 8;
+  c.ends_in_ms = -1;
+  offline.apply_station_config(c, 0);
+  CHECK(!offline.take_muster_drop(0));
+  offline.wifi_down();
+  CHECK(!offline.take_muster_drop(0));
+  CHECK(!offline.take_muster_drop(MUSTER_WAIT_OFFLINE_MS - 1));
+  CHECK(offline.take_muster_drop(MUSTER_WAIT_OFFLINE_MS));
+}
+
 static void test_muster_powerup_rearmed_as_respawn_before_the_update_drops_at_once() {
   StationLink link;  // MUSTER is the default
   StationAssignment p;
@@ -1660,6 +1684,21 @@ static void test_status_carries_revives_and_hold_ms_additively() {
   c.control_hold_ms[0] = 0;
   c.control_hold_ms[3] = 0;
   CHECK(build_status_body(c).find("\"hold_ms\":{}") != std::string::npos);  // nobody has held it yet
+}
+
+static void test_hill_stops_accruing_when_deadline_freezes_it() {
+  BleControlPoint h;
+  h.owner = 1;
+  h.progress = 100;
+  PlayerPresence p;
+  h.update(p, 1000);
+  h.update(p, 2000);
+  const uint32_t whistle_tally = h.hold_ms[1];
+  h.freeze();
+  h.update(p, 12000);
+  CHECK_EQ(h.owner, 1);
+  CHECK_EQ(h.hold_ms[1], whistle_tally);
+  CHECK_EQ(h.progress, 100);
 }
 
 // ---- the presence threshold default and the saved hill owner (F332) ------------------------------
@@ -1940,11 +1979,13 @@ int main(int argc, char** argv) {
   test_an_mc_restart_in_lobby_keeps_waiting_while_wi_fi_is_up();
   test_a_held_powerup_that_cannot_reach_mc_falls_back_to_available();
   test_muster_fresh_non_powerup_arm_drops_at_once();
+  test_muster_hill_waits_for_start_deadline_or_offline_timeout();
   test_muster_powerup_rearmed_as_respawn_before_the_update_drops_at_once();
   test_restore_of_a_saved_powerup_config_is_known_and_available_at_once();
   test_a_new_game_resets_the_hill_and_a_same_game_repush_keeps_it();
   test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them();
-  test_status_carries_revives_and_hold_ms_additively();
+    test_status_carries_revives_and_hold_ms_additively();
+    test_hill_stops_accruing_when_deadline_freezes_it();
   test_presence_threshold_is_the_phone_default_when_mc_sends_none();
   test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold();
   test_saved_hill_writes_only_on_an_owner_change();

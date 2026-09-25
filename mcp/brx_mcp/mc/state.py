@@ -3483,6 +3483,10 @@ class Session:
         if item := self._active_item(a):
             body["item"] = item                    # A56: an older Stick ignores it
         body["lock_s"] = lock = self._station_lock_s()   # A58: a phone station ignores it
+        if self.phase == "recap":
+            body["ends_in_ms"] = 0
+        elif self.phase in ("armed", "live") and self.start_info and self.config.get("time_limit_s") and not self.is_adopted():
+            body["ends_in_ms"] = max(0, self.start_info["go_live_t"] + self.config["time_limit_s"] * 1000 - now)
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
             st["unlocked_at"] = self.now_ms()  # the window closes at the unlock, heard or not
         elif lock > 0 and st.get("lock_game") == body["game"]:

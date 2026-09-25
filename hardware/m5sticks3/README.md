@@ -560,12 +560,11 @@ logo key, BtnB the larger side key -- since this firmware's button code has neve
 Tony, 2026-09-25: "if operator notices the range is too wide during gameplay, to long hold and be able
 to edit it. if within wifi range sync with MC on the change." Two decisions of his shape the gesture:
 **enter RANGE by holding A for 5 s on the STATS page** (the home page's B hold stays RESET), and
-**RANGE works during play and under the match lock**: the lock guards reassign and reset, the range
-sits behind the stronger 5 s gesture, and every edit is reported to MC.
+**RANGE works during play only while the station lock is unlocked**. Every edit is reported to MC.
 
 - **Gesture.** A is read as one gesture (`station_ui.h AHoldGesture`, host-tested): released under 1 s it
   is a click, released between 1 s and 5 s it is HOME, and reaching 5 s on STATS (with a station
-  assigned) opens RANGE with nothing else firing. From 1 s the hint bar fills with "HOLD FOR RANGE".
+  assigned and unlocked) opens RANGE with nothing else firing. From 1 s the hint bar fills with "HOLD FOR RANGE" only while unlocked.
 - **RANGE screen.** Two fields: RADIUS (the presence threshold in dBm, with a rough distance) and
   STRENGTH (the advertising power: ULTRA LOW -18 dBm, LOW -9, MEDIUM 0, HIGH +9, the default). The lit
   panel is the one being edited; each says EDITED (an on-station value) or MC. A click = CLOSER (radius
@@ -614,8 +613,7 @@ sits behind the stronger 5 s gesture, and every edit is reported to MC.
 
 ### Match lock (A58)
 
-While the lock is on, A still opens RANGE (the 5 s hold on STATS, above) and range edits are allowed,
-each reported to MC with `locked: true`; in RANGE a B hold leaves, it never reaches RESET.
+While the lock is on, a 5 s A hold on STATS shows LOCKED. It does not open RANGE. An open RANGE screen closes if the lock arrives. MC still accepts `locked: true` edits from older firmware; in RANGE a B hold leaves, it never reaches RESET.
 
 Mission Control can lock the operator controls for a match: `station_config.lock_s` (0 to 7200 s,
 absent means 0) locks them for that many seconds from receipt. A later `station_config` replaces the
@@ -725,3 +723,6 @@ the register map is not in the installed M5Unified source, so the firmware does 
   `mcBuildStationActionTaken` in `mc_link_glue.h`) so a rename is a one-line change.
 - **Which Grove pin (G9 or G10) the yellow wire drives on this unit**, given M5's own pinout page
   and the M5Unified port mapping disagree; see "Hardware and pins" above.
+
+
+**Match end:** MC sends `ends_in_ms` for a timed match. A Bluetooth hill freezes its owner and possession tally at that deadline and shows MATCH OVER. Under MUSTER the hill keeps Wi-Fi until START sends the deadline-bearing config; without a deadline, a hill carried out before START cannot stop at the whistle. An early end reaches only a Stick still in Wi-Fi.
