@@ -13,8 +13,8 @@ there before digging through `reference/`/`protocol/`, and promote new confirmed
 (`docs/manual/README.md` → *How a fact gets in*). It is **plain markdown**, one file per page (the platform pages live in
 `docs/platform/`); the format contract is `docs/site/FORMAT.md`. There is no block syntax, no provenance badge and no
 per-sentence `src:` line: confidence lives in `docs/experiment-log/` and `docs/FOLLOWUPS.md`. Before any hardware/protocol
-work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (every open item,
-incl. **Needs Tony at the bench**), and the current month under `docs/experiment-log/` (lab notebook).
+work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (open MVP work:
+desk, bench, decision; the roadmap is `docs/post-mvp.md`), and the current month under `docs/experiment-log/` (lab notebook).
 **Session close is three writes:** one log entry, one FOLLOWUPS diff (strike or add rows, no prose), one
 HANDOFF update (overwrite your own lane section, never another lane's, never stack). A closed item becomes one dated line in
 `docs/archive/followups-closed.md`; ids are never renumbered or reused. `docs/archive/` is history:
