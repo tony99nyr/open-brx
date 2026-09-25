@@ -10,8 +10,8 @@
 // with a correct age. The age is measured on a monotonic clock while the app runs, and on the wall clock (clamped
 // to >= 0) after a restart, when the monotonic anchor is gone.
 //
-// Wire (A67, brx3). These fields are not yet in mcp/brx_mcp/mc/types.py, so contract.gen.js does not carry them;
-// regenerate it (mcp/tools/gen_contract.py) once brx3 adds them, and do not hand-edit the generated file.
+// Wire (A67, brx3). The shapes live in mcp/brx_mcp/mc/types.py (`StationReport`, `StationAssignment`, `RangeEdit`), so the
+// generated contract.gen.d.ts carries them; regenerate it with mcp/tools/gen_contract.py, never by hand.
 //   status (station -> MC, every beat):  threshold, threshold_src?, threshold_edit_age_ms?,
 //                                        tx_power, tx_power_src?, tx_power_edit_age_ms?, range_edits?
 //   station_config (MC -> station):      threshold, threshold_age_ms?, tx_power?, tx_power_age_ms?
