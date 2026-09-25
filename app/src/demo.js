@@ -138,6 +138,19 @@ export function startDemo({ engine, log }) {
     for (let i = 0; i < n && mag > 0; i++) { mag--; engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); }
     engine.feedFrame('$BUT,0,0,*');
   };
+  // Aim tells x lanes (docs/announcer.md "Aim tells and the lanes"): the same ONE held pull as `fire`, but paced in
+  // time (a round every `gapMs`, released after the last), so a kill can land MID-burst while RECOIL is up and the
+  // release is a real `$BUT,0,0` later on. The recoil model, its writes and the settle clock are the engine's own.
+  const holdFire = (n = 20, gapMs = 100) => {
+    if (n <= 0 || mag <= 0) return;
+    engine.feedFrame('$BUT,0,1,*');
+    let i = 0;
+    const round = () => {
+      if (i >= n || mag <= 0) { engine.feedFrame('$BUT,0,0,*'); return; }
+      i++; mag--; engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); setTimeout(round, gapMs);
+    };
+    round();
+  };
   const reload = () => { const need = 32 - mag; const take = Math.min(need, reserve); reserve -= take; mag += take; engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); };
   // S16: the demo gun answers the node's own poison ticks the way the bench measured (2026-09-09): a negative `$LIFE`
   // is per pool with no spill and floors at 0, a non-lethal one self-emits `$HP`, and a lethal one answers `$LCD`
@@ -407,7 +420,7 @@ export function startDemo({ engine, log }) {
       dealt: (dmg = 9, victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'hit', t: Date.now(), victim: 'p-' + String(victim).toLowerCase(), victim_num: 19, victim_display: victim, dmg, weapon_id: 'assault_rifle' } }),   // S56
       killConfirm: (victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim: 'p-' + String(victim).toLowerCase(), victim_display: victim } }),
       // the gun (what the tagger would report)
-      fire: n => fire(n == null ? 1 : n), reload, hit: d => hit(d == null ? 9 : d),
+      fire: n => fire(n == null ? 1 : n), holdFire, reload, hit: d => hit(d == null ? 9 : d),
       spawnEcho: () => { hp = engine.maxHp; armor = engine.maxArmor; mag = 32; reserve = 384; lcd(); },
       die: () => { armor = 0; hp = 0; shield = 0; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
       respawn: () => { if (engine.alive) return; engine._revive(false); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
@@ -627,6 +640,16 @@ export function startDemo({ engine, log }) {
       'live-charge-low':   [[0, 'chargeRifle'], ...live, [2300, () => ev.chargeAmmo(9)]],
       'live-charge-ok':    [[0, 'chargeRifle'], ...live, [2300, () => ev.chargeAmmo(10)]],
       'live-kill':         [...live, [2300, () => ev.killConfirm()]],
+      // docs/announcer.md "Layering (PROPOSED)": today's clashes between the kill card and the system warnings and takeovers.
+      // Each is the REAL engine: MC's kill feedback plus the link, the MC socket, the reload lever or the headset state.
+      'clash-kc-gunlost':  [...live, [2300, () => ev.killMedals(['first_blood'], 'VIPER')], [2700, 'dropGun']],                 // GUN LINK LOST fires under a kill card
+      'clash-medals-mc':   [...live, [2300, () => ev.killMedals(['first_blood'], 'VIPER')], [2900, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')], [3100, 'mcLost']],
+      'clash-kc-reload':   [...live, [2200, () => ev.fire(12)], [2400, 'reloadCycle'], [2700, () => ev.killMedals(['first_blood'], 'VIPER')]],
+      'clash-kc-stale':    [...live, [2300, 'dropGun'], [3300, () => ev.killMedals(['first_blood'], 'VIPER')]],                 // the vitals already STALE
+      'clash-kc-headset':  [...live, [2300, () => ev.headsetJoin('not_joined')], [3300, () => ev.killMedals(['first_blood'], 'VIPER')]],
+      // one kill confirmed twice, in each order: the HERO row's source tag reads `MC · IR` or `IR · MC` (docs/announcer.md)
+      'live-kill-mc-ir':   [...live, [2300, () => ev.killConfirm()], [2500, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],
+      'live-kill-ir-mc':   [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)], [2500, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
       'down-recap':        [...live, [2100, () => { ev.hit(); ev.dealt(18); ev.dealt(9); }], [2300, () => ev.score(3, 1, 1)], [2350, 'die']],   // S56: TAKEN and DEALT on the down screen
       // The death screen's states (deathscreen.js). Each is a real life through the engine; see `fullLife` above.
@@ -656,6 +679,20 @@ export function startDemo({ engine, log }) {
       'live-shield':       [...live, [2300, 'die'], [2800, 'stationRespawn']],
       'live-stunned':      [[0, () => { config.stun = { duration_s: 10 }; }], ...live, [2300, 'stun']],
       'live-overheat':     [...live, [2300, 'overheat']],
+      // docs/announcer.md "Aim tells and the lanes" (Tony 2026-09-25: "what about recoil screen in the alerts?"). A centre
+      // tell is up, then my kill and a second kill with its medal chain land on top of it. All four drive the REAL engine.
+      // RECOIL: one held pull on the Assault Rifle, 22 rounds 100 ms apart (RECOIL from round 6), two kills mid-burst,
+      // then the release, and the tell clears on the engine's own settle clock ("release to steady").
+      'live-recoil-kill':  [...live, [2300, () => ev.holdFire(22, 100)],
+        [3300, () => ev.killMedals(['first_blood'], 'VIPER')], [3900, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')]],
+      // SMOKED and STUNNED also take a hit after the kills: the hit number moves under the tell (review M1)
+      'live-smoke-kill':   [...live, [2300, 'smoke'],
+        [2800, () => ev.killMedals(['first_blood'], 'VIPER')], [3400, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')], [4000, () => ev.hit()]],
+      'live-stun-kill':    [[0, () => { config.stun = { duration_s: 10 }; }], ...live, [2300, 'stun'],
+        [2800, () => ev.killMedals(['first_blood'], 'VIPER')], [3400, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')], [4000, () => ev.hit()]],
+      // OVERHEAT on an energy weapon (the charge rifle, the gun's own heat past the lockout), then the kills
+      'live-overheat-kill': [...live, [2300, 'overheat'],
+        [3000, () => ev.killMedals(['first_blood'], 'VIPER')], [3600, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')]],
       'redeploy':          [...live, [2300, 'die'], [2800, 'respawn']],
       'live-nogun':        [...live, [2300, 'dropGun']],
       'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],   // a live rejoin → the 3 s RECONCILING takeover (S7.1)

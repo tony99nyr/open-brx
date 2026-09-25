@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "ADOPT_SLACK_MS": "A67 polish (2026-09-25): added to the age MC sends for a range value it adopted from a station, so\n"
+                      "the station's own edit stays the younger one. It is an age offset, not a timer; no beacon reaches it",
     "LATE_FLUSH_AGES_MS": "Integration review (2026-09-25): the chaos harness's `late_flush` action back-dates a kill\n"
                           "fact by this much. It is a test input, not a timer; no beacon reaches the harness",
     "REFUSAL_LOG_EVERY_S": "Integration review (2026-09-25): the enrolment refusal log line is written at most this\n"

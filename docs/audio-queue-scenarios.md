@@ -242,8 +242,10 @@ three hum models. The gaps the first B run found, and what became of them (2026-
 - Finding B2, FIXED for the objective lines: with the shield up, no line that is not must-hear was said. Hill captured,
   hill lost and "Target down" are now OBJECTIVE lines: while the hum blocks, each cuts it with a stop and plays
   (scenarios 4 and 9). The ambient lines ("next kill wins", the clock warnings, the pool lines) stay muted.
-- Finding B3, OPEN (Tony's choice, F149): my own death cuts my kill line (scenario 6). Option 1: the kill line
-  finishes, and the death stop waits up to about 1 s. Option 2: the death is instant, and the kill line is dropped.
+- Finding B3, FIXED (Tony 2026-09-25, "your death wins"): the death stop cuts only what is ahead of the gun's native
+  scream (now in the simulator as a gun-own clip, ASSUMED to queue like a token-4 clip). The scream plays at once and
+  in full; my kill line, cut by the stop, is said again after it; while dead nothing flushes (X4) and every KC, medal
+  and game alert plays in priority order (scenarios 6, `trade-kill-death`, `death-then-kc`; `docs/announcer.md`).
 - Finding B4, FIXED: a pain grunt queued 2.6 s behind the shield-break line of the same hit. A grunt that would start
   more than 500 ms after its hit (`PAIN_STALE_MS`) is now dropped (scenarios 2, 3, 6).
 - Finding B5, FIXED with B4: "Target down" was lost behind the break line and the grunts behind it (scenario 3).

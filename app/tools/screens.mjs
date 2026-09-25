@@ -3996,6 +3996,70 @@ await step('utility range: typing 70 stores -70 dBm, a number out of range is re
   must(live.disabled && live.txDisabled && /LOCKED/.test(live.lock), 'on the air, the range is a readout (the anti-cheat rule): ' + JSON.stringify(live));
 });
 
+// F365 / A67 (Tony 2026-09-25): on the field the RANGE panel is locked until a knock-safe HOLD opens it (1.5 s; 5 s while an
+// MC tamper lock runs). A tap, a short press or a slide off does nothing; DONE or 10 s idle locks it again; each value says
+// who set it (MC, SET HERE, SET HERE · WILL SYNC). Every check reads the screen, one control at a time.
+const rangeHold = async (pg, ms, { release = true, slideOff = false } = {}) => {
+  const h = pg.locator('#rangeHold'); await h.scrollIntoViewIfNeeded(); const bb = await h.boundingBox();
+  await pg.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await pg.mouse.down();
+  if (slideOff) { await pg.waitForTimeout(200); await pg.mouse.move(bb.x + bb.width / 2, bb.y - 60); }
+  await pg.waitForTimeout(ms); if (release) await pg.mouse.up();
+};
+const rangeScreen = pg => pg.evaluate(() => { const $ = id => document.getElementById(id); const shown = e => !!e && !e.hidden && e.getBoundingClientRect().height > 0;
+  return { editing: window.brxUtility.rangeEditing, inputOn: !$('thrNum').disabled, chipsOn: [...document.querySelectorAll('#range [data-tx]')].every(b => !b.disabled),
+    hold: shown($('rangeHold')), holdText: $('rangeHoldLbl').textContent, a58: $('rangeHold').classList.contains('a58'), done: shown($('rangeDone')), lock: $('rangeLock').textContent,
+    thrSrc: $('thrSrc').textContent, txSrc: $('txSrc').textContent, fill: parseFloat($('rangeHoldFill').style.width) || 0, tx: window.brxUtility.settings.tx, thr: window.brxUtility.settings.threshold }; });
+await step('utility range hold (F365): a tap, a short press or a slide off does nothing; 1.5 s opens it; DONE and 10 s idle lock it', async () => {
+  const pg = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
+  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, threshold: -74, threshold_age_ms: 5000, game: 38, valid_ids: [1] })); await pg.waitForTimeout(300);
+  const armed = await rangeScreen(pg);
+  await pg.locator('#rangeHold').click(); await pg.waitForTimeout(1800); const tapped = await rangeScreen(pg);
+  await rangeHold(pg, 700); await pg.waitForTimeout(1200); const short = await rangeScreen(pg);
+  await rangeHold(pg, 1700, { slideOff: true }); await pg.mouse.up(); const slid = await rangeScreen(pg);
+  await pg.locator('#range [data-tx="low"]').click({ force: true }); await pg.waitForTimeout(200); const chipLocked = await rangeScreen(pg);
+  await rangeHold(pg, 1800); const open = await rangeScreen(pg);
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '66'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(150);
+  const edited = await rangeScreen(pg);
+  const adv = await pg.evaluate(() => ({ thr: (b => (b > 127 ? b - 256 : b))(parseInt(window.brxUtility.stationUuid().replace(/-/g, '').slice(28, 30), 16)) }));
+  await pg.waitForFunction(() => document.getElementById('thrSrc').textContent === 'SET HERE', null, { timeout: 8000 }).catch(() => {});
+  const synced = await rangeScreen(pg);
+  await pg.click('#range [data-tx="medium"]'); await pg.waitForTimeout(150); const chip = await rangeScreen(pg);
+  await pg.click('#rangeDone'); await pg.waitForTimeout(200); const done = await rangeScreen(pg);
+  await pg.evaluate(() => window.brxUtility.setRangeIdleMs(1200)); await rangeHold(pg, 1800); const reopened = await rangeScreen(pg);
+  await pg.waitForTimeout(1800); const idle = await rangeScreen(pg);
+  const edits = await pg.evaluate(() => window.brxUtility.statusBody().range_edits);
+  await pg.close();
+  must(armed.hold && !armed.inputOn && !armed.chipsOn && armed.thrSrc === 'MC' && /LOCKED/.test(armed.lock) && !armed.done, 'armed: a readout, MC-set, with the hold shown: ' + JSON.stringify(armed));
+  must(!tapped.editing && !tapped.inputOn && tapped.fill === 0, 'a tap does nothing: ' + JSON.stringify(tapped));
+  must(!short.editing && !short.inputOn && short.fill === 0, 'a 0.7 s press does nothing, and the bar empties: ' + JSON.stringify(short));
+  must(!slid.editing && !slid.inputOn, 'sliding off the button cancels the hold: ' + JSON.stringify(slid));
+  must(chipLocked.tx === 'high', 'a locked strength chip does nothing: ' + JSON.stringify(chipLocked));
+  must(open.editing && open.inputOn && open.chipsOn && !open.hold && open.done && /EDITING/.test(open.lock), 'a 1.5 s hold opens editing: ' + JSON.stringify(open));
+  must(edited.thr === -66 && adv.thr === -66, 'typing 66 applies -66 dBm at once, in the advert too: ' + JSON.stringify({ edited, adv }));
+  must(/^SET HERE/.test(edited.thrSrc) && edited.txSrc === 'DEFAULT', 'the radius now says SET HERE; the strength is still the default: ' + JSON.stringify(edited));
+  must(synced.thrSrc === 'SET HERE', 'once a beat carried it to MC, SET HERE without WILL SYNC: ' + JSON.stringify(synced));
+  must(chip.tx === 'medium' && /^SET HERE/.test(chip.txSrc), 'a strength chip applies while editing and says SET HERE: ' + JSON.stringify(chip));
+  must(!done.editing && done.hold && !done.inputOn && !done.done, 'DONE locks it again: ' + JSON.stringify(done));
+  must(reopened.editing && !idle.editing && idle.hold && !idle.inputOn, 'idle past the limit locks it again: ' + JSON.stringify({ reopened, idle }));
+  must(edits && edits.some(e => e.field === 'threshold' && e.to === -66 && e.locked === false) && edits.some(e => e.field === 'tx_power' && e.to === 'medium'), 'both edits are in the report for MC: ' + JSON.stringify(edits));
+});
+await step('utility range hold (F365): under an MC lock the cue changes, the 1.5 s hold does NOT open it, the 5 s hold does', async () => {
+  const pg = await openUtility({ width: 393, height: 851 }, 'respawn', 1, 1);
+  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, threshold: -74, game: 38, valid_ids: [1], lock_s: 3000 })); await pg.waitForTimeout(300);
+  const cue = await rangeScreen(pg);
+  await rangeHold(pg, 1900); const normal = await rangeScreen(pg);
+  await rangeHold(pg, 2600, { release: false }); const mid = await rangeScreen(pg); await pg.mouse.up(); await pg.waitForTimeout(100);
+  await rangeHold(pg, 5400); const over = await rangeScreen(pg);
+  await pg.fill('#thrNum', ''); await pg.type('#thrNum', '60'); await pg.press('#thrNum', 'Enter'); await pg.waitForTimeout(150);
+  const last = await pg.evaluate(() => window.brxUtility.statusBody().range_edits.at(-1));
+  await pg.close();
+  must(cue.hold && cue.a58 && cue.holdText === 'LOCKED BY MC · HOLD 5 S TO OVERRIDE' && /LOCKED BY MC/.test(cue.lock), 'the locked cue: ' + JSON.stringify(cue));
+  must(!normal.editing && !normal.inputOn, 'the normal 1.5 s hold must not open a locked station: ' + JSON.stringify(normal));
+  must(!mid.editing && mid.fill > 35 && mid.fill < 70, 'half way through the 5 s hold, the bar shows it: ' + JSON.stringify(mid));
+  must(over.editing && over.inputOn, 'the 5 s hold overrides the lock: ' + JSON.stringify(over));
+  must(last && last.to === -60 && last.locked === true, 'the edit is reported as made under the lock: ' + JSON.stringify(last));
+});
+
 // ---- Round 3 (2026-09-24): the utility STATE GATE. Every utility state, at Pixel 5 portrait (393x851) and landscape
 // (851x393), driven through the real stage wire, most of them MC-armed as on the field. Each one asserts what a person
 // sees: nothing skewed or italic; no bordered boxes touching; no text clipped, squeezed or overlapping (the capture word
@@ -4037,6 +4101,15 @@ const UG_STATES = [
   ['control-captured-flash', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: -55, 31: null }); await ugCtl(pg, { capturing: 1, progress: 97 }); await pg.waitForFunction(() => !document.getElementById('cflash').hidden, null, { timeout: 8000 }); await ugW(450); }],
   ['control-players-warnings', ['control', 255, 1], true, async pg => { await pg.evaluate(() => { const f = window.brxUtilityFake[1]; f.alive = true; f.rssi = () => -55; const u = window.brxUtility; window.__ugTwin = setInterval(() => u.presence.observe([u.encodeUuid({ role: 'station', id: 1, kind: 'control', team: 1, state: 1, value: 0, seq: 0, game: u.settings.game, threshold: -74 })], -60, Date.now()), 250); }); await ugFakes(pg, { 7: null, 23: null, 31: null }); await pg.click('#btnPlayers'); }],
   ['drawer', ['respawn', 1, 1], false, async pg => { await pg.evaluate(() => window.brxUtilityGate.open()); }],
+  // F365 / A67: the on-station range edit. Locked showing MC or SET HERE, the hold in progress, editing, waiting to sync,
+  // and the stronger hold under an MC tamper lock.
+  ['range-locked-mc', ['respawn', 1, 1], true, async () => {}],
+  ['range-locked-set-here', ['respawn', 1, 1], true, async pg => { await pg.evaluate(() => window.brxUtility.stationEdit('threshold', -66)); await pg.waitForFunction(() => !window.brxUtility.range.pending('threshold'), null, { timeout: 8000 }); }],
+  ['range-hold', ['respawn', 1, 1], true, async pg => { await rangeHold(pg, 600, { release: false }); }],
+  ['range-editing', ['respawn', 1, 1], true, async pg => { await rangeHold(pg, 1800); }],
+  ['range-will-sync', ['respawn', 1, 1], true, async pg => { await pg.evaluate(() => { window.brxUtility.transport.close(); window.brxUtility.stationEdit('threshold', -62); window.brxUtility.stationEdit('tx_power', 'low'); }); }],
+  ['range-locked-by-mc', ['respawn', 1, 1], true, async pg => { await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, threshold: -74, game: 38, valid_ids: [1, 2, 4], lock_s: 3000 })); await ugW(200); }],
+  ['range-override-hold', ['respawn', 1, 1], true, async pg => { await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 1, id: 1, threshold: -74, game: 38, valid_ids: [1, 2, 4], lock_s: 3000 })); await ugW(200); await rangeHold(pg, 2500, { release: false }); }],
 ];
 const ugRead = pg => pg.evaluate(() => {
   const vis = e => { const c = getComputedStyle(e); const r = e.getBoundingClientRect(); return c.display !== 'none' && c.visibility !== 'hidden' && parseFloat(c.opacity) > 0.05 && r.width > 0 && r.height > 0 && !e.closest('[hidden]'); };
@@ -4083,7 +4156,7 @@ const ugRead = pg => pg.evaluate(() => {
     if (document.documentElement.scrollHeight > innerHeight) out.land.push(`the page scrolls: ${document.documentElement.scrollHeight} > ${innerHeight}`);
     for (const e of document.querySelector('.hero').querySelectorAll('*')) { if (!vis(e) || e.closest('.aura')) continue; const r = e.getBoundingClientRect(); if (r.bottom > hero.bottom + 1 || r.top < hero.top - 1) { out.land.push(`${nm(e)} spills out of the hero`); break; } }
   }
-  const controls = cfgOpen ? [...cfg.querySelectorAll('button, input')] : ['#btnPlayers', '#btnMcChange', '#thrNum', '#exitHud', '#btnMcMain', '#btnQrMain', '#mcUrlMain'].map(q => document.querySelector(q)).concat([...document.querySelectorAll('#range [data-tx]')]);
+  const controls = cfgOpen ? [...cfg.querySelectorAll('button, input')] : ['#btnPlayers', '#btnMcChange', '#thrNum', '#exitHud', '#btnMcMain', '#btnQrMain', '#mcUrlMain', '#rangeHold', '#rangeDone'].map(q => document.querySelector(q)).concat([...document.querySelectorAll('#range [data-tx]')]);
   for (const e of controls) { if (!e || !vis(e)) continue; const r = e.getBoundingClientRect(); if (r.height < 44 - 0.5 || r.width < 44 - 0.5) out.taps.push(`${nm(e)} ${Math.round(r.width)}x${Math.round(r.height)}`); }
   const portrait = innerHeight > innerWidth;
   const px = id => { const e = document.getElementById(id); return e && vis(e) ? parseFloat(getComputedStyle(e).fontSize) : null; };
@@ -4108,6 +4181,22 @@ const ugRead = pg => pg.evaluate(() => {
     if ((cstate === 'falling') !== (dir === 'reverse') && (cstate === 'rising' || cstate === 'falling')) out.honest.push(`sweep runs ${dir} while ${cstate}`);
   }
   if (!cfgOpen && u0.settings.mcArmed && /MISSION CONTROL/.test((document.getElementById('pstate') || {}).textContent || '')) out.honest.push('an armed powerup says it waits for Mission Control');
+  // F365 / A67: the RANGE panel says who set each value and whether it waits to sync; the hold, the lock and editing agree
+  if (!cfgOpen) {
+    const U = window.brxUtility, R = U.range, $ = id => document.getElementById(id);
+    for (const [id, f] of [['thrSrc', 'threshold'], ['txSrc', 'tx_power']]) {
+      const want = f === 'tx_power' && !U.support.txPowerControl ? 'FIXED ON THIS PHONE' : R.src(f) === 'mc' ? 'MC' : R.src(f) === 'station' ? (R.pending(f) ? 'SET HERE · WILL SYNC' : 'SET HERE') : ((f === 'threshold' ? !U.settings.threshold : U.settings.tx === 'high') ? 'DEFAULT' : '');
+      if ($(id).textContent !== want) out.honest.push(`${f} source "${$(id).textContent}" but the model says "${want}"`);
+    }
+    const onField = !!U.settings.mcArmed || !!U.settings.live, hold = $('rangeHold'), holdShown = vis(hold), editing = U.rangeEditing;
+    if (onField && holdShown === editing) out.honest.push(`hold shown=${holdShown} while editing=${editing}`);
+    if ($('thrNum').disabled !== (onField && !editing)) out.honest.push(`radius input disabled=${$('thrNum').disabled} while editing=${editing}`);
+    if (editing && !vis($('rangeDone'))) out.honest.push('editing without a visible DONE');
+    if (holdShown && (U.a58Locked() !== hold.classList.contains('a58') || U.a58Locked() !== /LOCKED BY MC/.test($('rangeHoldLbl').textContent))) out.honest.push(`the hold cue "${$('rangeHoldLbl').textContent}" but a58=${U.a58Locked()}`);
+    const w = parseFloat($('rangeHoldFill').style.width) || 0;
+    if (hold.classList.contains('holding') !== (w > 0)) out.honest.push(`hold fill ${w}% while holding=${hold.classList.contains('holding')}`);
+    if (w >= 100) out.honest.push('the hold bar is full but editing did not open');
+  }
   const u = window.brxUtility, status = document.getElementById('status').textContent, armed = document.getElementById('armed').textContent, mc = document.getElementById('mcstateMain').textContent;
   if ((status === 'LIVE') !== !!u.settings.live) out.honest.push(`status "${status}" but live=${!!u.settings.live}`);
   if (/MC ✓/.test(armed) !== !!u.settings.mcArmed) out.honest.push(`arming line "${armed}" but armed=${!!u.settings.mcArmed}`);
@@ -4126,9 +4215,9 @@ for (const [st, [kind, team, id], arm, drive] of UG_STATES) {
         await pg.waitForFunction(() => window.brxUtility && window.brxUtilityFake && window.brxUtility.transport && window.brxUtility.transport.state === 'bound', null, { timeout: 8000 });
         if (arm) { await pg.evaluate(a => window.brxUtility.mcMessage('station_config', a), { kind, team, id, threshold: -74, game: 38, valid_ids: [1, 2, 4] }); await ugW(250); }
         await drive(pg);
-        if (!st.includes('flash')) await pg.waitForFunction(() => true, null, { timeout: 100 }).then(() => ugW(st.startsWith('control') || st.startsWith('respawn-players') ? 2600 : 700));
+        if (!st.includes('flash') && !st.includes('hold')) await pg.waitForFunction(() => true, null, { timeout: 100 }).then(() => ugW(st.startsWith('control') || st.startsWith('respawn-players') ? 2600 : 700));
         const r = await ugRead(pg);
-        await pg.screenshot({ path: `${OUT}/ug-${st}-${view.name}.png` });
+        await pg.screenshot({ path: `${OUT}/ug-${st}-${view.name}.png`, fullPage: st.startsWith('range') && !st.includes('hold') });   // F365: the RANGE panel sits below the fold in portrait
         must(perr.length === 0, 'page errors: ' + perr.join(' | '));
         for (const [k, why] of [['tilt', 'skewed or italic'], ['touch', 'bordered boxes touch or cross'], ['clip', 'text clipped or squeezed'], ['overlap', 'text overlaps text'], ['cols', 'roster columns misaligned'], ['land', 'landscape does not fit'], ['taps', 'controls under 44 CSS px'], ['legible', 'not legible at arm`s length'], ['honest', 'the screen claims a state it is not in']]) must(!r[k].length, `${why}: ${r[k].join(' ; ')}`);
       } finally { await ctx.close(); }
@@ -4679,7 +4768,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const r = await lnWait(pg, r => r.hero && r.hero.name === 'VIPER', 2500); await shot(pg, 'hero'); await pg.close();
     must(r.hero, 'no hero on screen for my kill');
     must(r.hero.name === 'VIPER' && r.hero.kill === 'KILL' && !r.hero.count && !r.hero.medal, `the hero: ${JSON.stringify(r.hero)}`);
-    must(r.hero.src === 'MC' && r.hero.srcPx >= 11, `the source line (MC / IR 15 / BLE, >= 11 px): ${JSON.stringify([r.hero.src, r.hero.srcPx])}`);
+    must(r.hero.src === 'MC' && r.hero.srcPx >= 11, `the source line (MC / IR / BLE, >= 11 px): ${JSON.stringify([r.hero.src, r.hero.srcPx])}`);
     must(r.weapon && !r.hero.text.includes(r.weapon.toUpperCase()) && !/\+1|ELIMINATION|\bK ?\d/.test(r.hero.text), `no weapon (${r.weapon}), no "+1 ELIMINATION", no K: ${JSON.stringify(r.hero.text)}`);
     must(r.hero.mid > .45 && r.hero.mid < .55 && r.hero.namePx >= 30, `centred, the name >= 30 px: ${JSON.stringify([r.hero.mid, r.hero.namePx])}`);
     must(!/gradient|rgba?\((?!0, 0, 0, 0\))/.test(r.scrim), `the whole HUD is not dimmed behind it: ${r.scrim}`);
@@ -4715,7 +4804,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     await pg.waitForTimeout(6000); const h2 = await lnRead(pg);
     await pg.evaluate(() => window.brxDemo.hillTaken(window.brx.engine.teamTid === 2 ? 1 : 2)); const h3 = await lnWait(pg, r => r.obj.some(o => o.kind === 'hill_lost'), 2000); await shot(pg, 'hill'); await pg.close();
     const hb = h.obj.find(o => o.key === 'hill');
-    must(hb && hb.text === 'HILL CAPTURED' && hb.src === 'IR 15' && hb.x >= .7, `the hill badge: ${JSON.stringify(hb)}`);
+    must(hb && hb.text === 'HILL CAPTURED' && hb.src === 'IR' && hb.x >= .7, `the hill badge: ${JSON.stringify(hb)}`);
     must(h2.obj.some(o => o.kind === 'hill_captured'), `the hill badge must still be up 6 s later: ${JSON.stringify(h2.obj)}`);
     must(h3.obj.filter(o => o.key === 'hill').length === 1 && h3.obj.find(o => o.key === 'hill').text === 'HILL LOST', `replaced by HILL LOST: ${JSON.stringify(h3.obj)}`);
   });
@@ -4733,7 +4822,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const t0 = r.now; const at3 = await lnWait(pg, x => x.now - t0 >= 3000, 3500);
     const gone = await lnWait(pg, x => !x.feed.some(f => f.kind === 'teammate_down'), 3000); await pg.close();
     const f = r.feed.find(x => x.kind === 'teammate_down');
-    must(f && f.text === 'MAVERICK DOWN' && /IR 15/.test(f.sub), `the row: ${JSON.stringify(f)}`);
+    must(f && f.text === 'MAVERICK DOWN' && /IR/.test(f.sub) && !/IR \d/.test(f.sub), `the row: ${JSON.stringify(f)}`);
     must(f.x <= .35 && f.px >= 15 && f.subPx >= 11 && f.lines === 1, `left, small, one line, type floors: ${JSON.stringify(f)}`);
     must(at3.feed.some(x => x.kind === 'teammate_down'), 'the row must still be up 3 s later');
     must(!gone.feed.some(x => x.kind === 'teammate_down') && gone.now - t0 <= 4300 + 400, `the row must leave by about 4.3 s: ${Math.round(gone.now - t0)} ms`);
@@ -4780,6 +4869,25 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(lnApart(r).length === 0, 'lanes over each other: ' + lnApart(r).join(' | '));
     must(lnBoxes(r).every(([, x]) => x.l >= r.frame.l - 1 && x.r <= r.frame.r + 1 && x.t >= r.frame.t - 1 && x.b <= r.frame.b + 1), 'a lane runs off the frame');
   });
+  await step(`${tag}: one kill confirmed by MC and by the IR word is ONE hero row, its tag in arrival order (MC · IR, IR · MC)`, async () => {
+    for (const [stage, want] of [['live-kill-mc-ir', 'MC · IR'], ['live-kill-ir-mc', 'IR · MC']]) {
+      const pg = await open(view, stage, N, 2400);
+      const r = await lnWait(pg, x => x.hero && x.hero.src === want, 2000); await pg.close();
+      must(r.hero && r.hero.src === want && r.hero.n === 1, `${stage}: ${JSON.stringify(r.hero && { src: r.hero.src, n: r.hero.n })}`);
+    }
+  });
+  await step(`${tag}: every source tag says MC, IR or BLE (no protocol number) at 14 frame px, the 11 px on-screen floor (Tony 2026-09-25)`, async () => {
+    const pg = await open(view, 'live-spree', N, 2500);
+    await lnWait(pg, r => r.hero && r.obj.length === 2 && r.feed.length, 8000);
+    const t = await pg.evaluate(() => { const sc = document.getElementById('frame').getBoundingClientRect().width / 844;
+      return [...document.querySelectorAll('#lanes .lsrc')].filter(e => getComputedStyle(e).display !== 'none').map(e => ({ lane: e.closest('.lh') ? 'hero' : e.closest('.lo') ? 'objective' : 'feed',
+        text: e.textContent.trim(), px: parseFloat(getComputedStyle(e).fontSize), screen: +(parseFloat(getComputedStyle(e).fontSize) * sc).toFixed(2) })); });
+    await pg.close();
+    must(['hero', 'objective', 'feed'].every(l => t.some(x => x.lane === l)), `a tag in every lane: ${JSON.stringify(t)}`);
+    const bad = t.filter(x => /\bIR\s*\d/.test(x.text) || !/\b(MC|IR|BLE)\b/.test(x.text));
+    must(bad.length === 0, `a tag names a protocol number or no source: ${JSON.stringify(bad)}`);
+    must(t.every(x => x.px === 14 && x.screen >= 11), `every tag at 14 frame px and >= 11 px on screen: ${JSON.stringify(t)}`);
+  });
   if (night) await step(`${tag}: red and amber only: nothing white, green or blue, no flash, no motion`, async () => {
     const pg = await open(view, 'live-spree', N, 2500);
     const r = await lnWait(pg, r => r.hero && r.hero.n >= 5 && r.feed.length && r.obj.length === 2, 8000);
@@ -4789,6 +4897,53 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(bad.length === 0, 'night paints outside red/amber: ' + JSON.stringify(bad.slice(0, 4)));
     must(px.bad === 0, `night pixels green, blue or white in the lanes: ${px.bad} (first ${JSON.stringify(px.at)})`);
     must(r.anims === 0 && !r.whiteout, `night: no motion, no flash: ${r.anims} running, whiteout ${r.whiteout}`);
+  });
+}
+// docs/announcer.md "Aim tells and the lanes" (Tony 2026-09-25: "what about recoil screen in the alerts? ... That might
+// overlap"). The aim tell owns the centre; a kill card during it is ONE row above it; nothing covers the ammo or the
+// vitals. Each stage drives the REAL engine: a held burst (RECOIL), a Haze word (SMOKED), an EMP word (STUNNED) or the
+// charge rifle's own heat (OVERHEAT), then two kills with a medal chain on top of it.
+const AIM_KILL = [['recoil', 'live-recoil-kill', /RECOIL/, /RELEASE TO STEADY/], ['smoke', 'live-smoke-kill', /SMOKED/, /MISS/],
+  ['stun', 'live-stun-kill', /STUNNED/, /DISARMED/], ['overheat', 'live-overheat-kill', /OVERHEAT/, null]];
+for (const view of VIEWS) for (const night of [false, true]) for (const [tell, stage, word, sub] of AIM_KILL) {
+  const N = night ? '&night' : '', tag = `${view.name} aim tells ${night ? 'night' : 'day'}`;
+  await step(`${tag}: a kill card during ${tell.toUpperCase()} rides one row above the tell, which stays legible (>= 11 px on screen); nothing covers the ammo or vitals`, async () => {
+    const pg = await open(view, stage, N, 2400);
+    const r = await lnWait(pg, x => x.hero && x.hero.n >= 2 && x.env.tells.length, 4000);
+    const t = await pg.evaluate(() => {
+      const sc = document.getElementById('frame').getBoundingClientRect().width / 844;   // the #frame is scaled: "on screen" is layout px x scale
+      const shown = e => { for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity < .6) return false; } const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
+      const els = [...document.querySelectorAll('.alive .aimfx, .alive .heatword')].filter(shown);
+      const texts = els.flatMap(e => e.classList.contains('heatword') ? [e] : [...e.querySelectorAll('.k, .s, .t, .t small')]).filter(x => shown(x) && x.textContent.trim());   // review M2: the "SEC" unit too
+      return { text: els.map(e => e.innerText.replace(/\s+/g, ' ')).join(' | '), px: texts.map(x => [x.textContent.trim(), +(parseFloat(getComputedStyle(x).fontSize) * sc).toFixed(1)]),
+        tight: !!document.querySelector('#lanes .lh.tight'), boxes: els.map(e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; }) };
+    });
+    await pg.screenshot({ path: `${OUT}/${view.name}-aimkill-${tell}${night ? '-night' : ''}.png` }); await pg.close();
+    must(r && r.hero && r.hero.n >= 2 && r.env.tells.length, `pre-condition: two kills on screen while the tell is up: ${JSON.stringify({ hero: r && r.hero, tells: r && r.env.tells })}`);
+    must(word.test(t.text) && (!sub || sub.test(t.text)), `the tell says what it is${sub ? ' and what to do' : ''}: ${JSON.stringify(t.text)}`);
+    must(t.tight && r.hero.medal === 'KILLING SPREE', `the hero is one row (KILL x2, the newest medal): ${JSON.stringify({ tight: t.tight, medal: r.hero.medal })}`);
+    must(lnCovers(r).length === 0, lnCovers(r).join(' | '));   // the hero vs the tells, the ammo, the vitals and the top bar
+    const under = t.px.filter(([, v]) => v < 11);
+    must(under.length === 0, `tell text under 11 px on screen: ${JSON.stringify(under)}`);
+    const guard = [...r.env.ammo, ...r.env.vparts];   // the vitals' painted parts (the HP and armour numbers, their bars); the `.vitals` box itself is wider than its ink
+    must(t.boxes.every(x => guard.every(g => apart(x, g))), `the tell covers the ammo or the vitals: ${JSON.stringify({ tell: t.boxes, guard })}`);
+  });
+  // review M1: a hit during the tell. The tell owns the centre, so the hit number (and the weapon line under it) moves
+  // clear of it, and still covers neither the ammo, the vitals nor the kill card.
+  await step(`${tag}: a hit during ${tell.toUpperCase()} and a kill card: the hit number and its weapon line sit clear of the tell, the kill card, the ammo and the vitals`, async () => {
+    const pg = await open(view, stage, N, 2400);
+    await lnWait(pg, x => x.hero && x.hero.n >= 2 && x.env.tells.length, 4000);
+    await pg.waitForTimeout(700);   // past the engine's 250 ms guard for the kill moment, and past the stage's own hit
+    await pg.evaluate(() => window.brxDemo.hit()); await pg.waitForTimeout(160);
+    const r = await lnRead(pg);
+    const h = await pg.evaluate(() => { const q = s => [...document.querySelectorAll(s)].filter(e => getComputedStyle(e).display !== 'none').map(e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; });
+      return { hc: q('#overlay .mo.hit .hc'), hw: q('.hitwpn .hw'), tells: q('.alive .aimfx, .alive .heatword') }; });
+    await pg.screenshot({ path: `${OUT}/${view.name}-aimhit-${tell}${night ? '-night' : ''}.png` }); await pg.close();
+    must(h.hc.length === 1 && h.tells.length, `pre-condition: the hit number and the tell are both on screen: ${JSON.stringify(h)}`);
+    const mine = [...h.hc.map(b => ['hit number', b]), ...h.hw.map(b => ['weapon line', b])];
+    const others = [...h.tells.map(b => ['tell', b]), ...(r.hero ? r.hero.parts.map(b => ['kill card', b]) : []), ...r.env.ammo.map(b => ['ammo', b]), ...r.env.vparts.map(b => ['vitals', b])];
+    const clash = mine.flatMap(([n, a]) => others.filter(([, o]) => !apart(a, o)).map(([m, o]) => `${n} ${JSON.stringify(a)} over ${m} ${JSON.stringify(o)}`));
+    must(clash.length === 0, clash.join(' | '));
   });
 }
 // End-of-match AWARDS (A63): MC's honours from the result push, one row per tied holder. Mine first (with a star and

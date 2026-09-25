@@ -474,8 +474,9 @@ receiver, not the firmware.**
 
 | band | carrier | weapons | what it means |
 |---|---|---|---|
-| 32.4 to 38 kHz | inside the pass-band | Sniper 100, AMR and Charge 85, AR, Burst and Toxin 70, Suppressor and Energy Rifle 55 | **eight weapons, all inside the receiver's window.** "Sniper 100 versus Suppressor 55" is probably not a difference a player can feel |
-| 28.25 to 29.25 kHz | on the knee | SMG, Shotgun, Breacher and Haze 30, Rocket Launcher and Rail Gun 22 | **six weapons in the steep region**, where sunlight, angle and reflection dominate and behaviour is unstable |
+| 32.4 to 38 kHz | inside the pass-band | Sniper 100, AMR and Charge 85, AR, Burst and Toxin 70, Suppressor and Energy Rifle 55, Rail Gun 100 | **nine weapons, all inside the receiver's window.** "Sniper 100 versus Suppressor 55" is probably not a difference a player can feel |
+| 30.5 kHz | just above the knee | SMG and Rocket Launcher 40 | **two weapons, moved here by Tony's F231 decision (2026-09-25: "SMG and rockets should be like 40%")**, up from inside the transition band (28.25 kHz). Still below the pass-band, and unmeasured at this value (bench Block 5) |
+| 29.25 kHz | on the knee | Shotgun, Breacher and Haze 30 | **three weapons in the steep region**, where sunlight, angle and reflection dominate and behaviour is unstable |
 
 That is the worst of both: the long weapons are undifferentiated and the short ones are erratic. It also
 means **range may not be a usable balance axis in the direction we assumed** — you can make a weapon

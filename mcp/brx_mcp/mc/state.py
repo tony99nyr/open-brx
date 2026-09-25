@@ -32,13 +32,13 @@ from ..modes.registry import default_params as _default_params, params_schema_js
 from .tunnel import TunnelError
 from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
-                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
-                    STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
+                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, ADOPT_SLACK_MS, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
+                    STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, TX_POWERS, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
-                    SnapshotFeedRow, SlotRule, State, StationAssignment, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationReport,
+                    SnapshotFeedRow, SlotRule, State, StationAssignment, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
                     StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
                     StartNodeView, StartView, Stun, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
@@ -325,6 +325,34 @@ def default_config(mode: str = "tdm") -> GameConfig:
 _STATION_LOCK_KEYS = ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "boot",
                       "tally")   # integration review (Low): the self-authoritative count only grows within a game
 
+def _range_edit_ok(e: dict) -> bool:
+    """A67: one well-formed `range_edits` row (the station's wire shape)."""
+    def _int(v):
+        return isinstance(v, int) and not isinstance(v, bool)
+    if not (_int(e.get("seq")) and e["seq"] >= 0 and _int(e.get("age_ms")) and e["age_ms"] >= 0
+            and isinstance(e.get("locked"), bool)):
+        return False
+    if e.get("field") == "threshold":
+        return _int(e.get("from")) and _int(e.get("to"))
+    return e.get("field") == "tx_power" and e.get("from") in TX_POWERS and e.get("to") in TX_POWERS
+
+
+def _range_word(v) -> str:
+    """A67: a range value in the operator's voice: a dBm number as is, a strength as a word ("ultra_low" → "ULTRA LOW")."""
+    return str(v) if isinstance(v, int) else str(v).replace("_", " ").upper()
+
+
+def _ago(ms: int) -> str:
+    s = ms // 1000
+    if s < 10:
+        return "JUST NOW"
+    if s < 60:
+        return f"{s}s AGO"
+    if s < 3600:
+        return f"{s // 60} MIN AGO"
+    return f"{s // 3600} H AGO"
+
+
 def _tally_ok(t) -> bool:
     """A station tally from a snapshot has the shape `_keep_station_tally` writes: a key list, `hold_ms` as team id to
     non-negative int ms, and `revives` an int or None."""
@@ -363,6 +391,10 @@ class Session:
         # never pruned while it holds an assignment (the operator set it up; a 10-minute silence is a phone
         # propped on a hill, not a phantom).
         self.stations: dict[str, dict] = {}
+        # F364 (Tony 2026-09-25): the station id MC handed each node_id this session, kept after a clear or a
+        # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
+        # an MC restart. `_auto_station_id` reads it; the operator never types an id.
+        self._station_id_of: dict[str, int] = {}
         # A56 (S58): `--powerups`. Off (the default), MC refuses an item preset, compiles no spare slot, sends no
         # `item` and runs no spawn schedule; a stored item (a restored snapshot) is inert. `__main__` sets it.
         self.powerups_enabled = False
@@ -377,6 +409,7 @@ class Session:
         # that reset is the ONLY between-match reset a station gets (F104 consequence c).
         self.game_no = 1
         self._game_no_started = False
+        self._range_epoch = 0                  # A67: STARTs so far; a range-edit line lives for its match
         self.synced_at_lobby: dict[str, bool] = {}
         self.scan_rows: list[ScanRow] = []
         self.lan: LanView = cast(LanView, lan or {"mode": "unknown", "ip": "0.0.0.0", "port": 0, "ws_url": "", "qr": ""})
@@ -644,10 +677,16 @@ class Session:
                     "standby": [{**p, "node_id": None, "ready": False} for p in self.standby.values()],
                     "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
                     "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
+                    # F364: every id MC handed out, so a restarted MC gives a cleared station its old number back.
+                    "station_ids": dict(self._station_id_of),
                     # F337 (a): the lock bookkeeping, so a restarted MC keeps an UNLOCK and every restart it counted.
                     "stations_unlocked": self._stations_unlocked,
                     "station_locks": {nid: {k: st[k] for k in _STATION_LOCK_KEYS if k in st}
                                       for nid, st in self.stations.items() if st.get("assigned")},
+                    # A67: the on-station range edits already announced, so a restarted MC does not repeat them.
+                    "station_range_seen": {nid: st["range_seen"] for nid, st in self.stations.items()
+                                           if st.get("assigned") and st.get("range_seen")},
+                    "range_epoch": self._range_epoch,
                     # A28.2: a restore must keep every printed QR valid, so the secret is human work too.
                     "join_secret": self.join_secret,
                     # Bench 2026-09-17: the match IN PLAY, so a restarted MC resumes it (`resume_match`).
@@ -867,10 +906,24 @@ class Session:
                     self.stations[nid].update({k: kept[k] for k in _STATION_LOCK_KEYS if k in kept})
                     if not _tally_ok(self.stations[nid].get("tally")):   # polish r1: a bad tally must not raise per beat
                         self.stations[nid].pop("tally", None)
+                seen = (snap.get("station_range_seen") or {}).get(nid)   # A67
+                if isinstance(seen, dict) and isinstance(seen.get("max"), int) and isinstance(seen.get("edits"), list):
+                    self.stations[nid]["range_seen"] = {"max": seen["max"],
+                                                        "edits": [e for e in seen["edits"] if isinstance(e, dict) and _range_edit_ok(
+                                                            {**e, "age_ms": 0})][-8:]}
                 self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
                                             "synced": False, "last_seen_ms": 0})
+            # F364: the ids MC handed out, then each restored assignment's own id (it wins over a stale entry).
+            for nid, sid in (snap.get("station_ids") or {}).items():
+                if isinstance(nid, str) and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535:
+                    self._station_id_of[nid] = sid
+            for nid, st in self.stations.items():
+                if isinstance(sid := (st.get("assigned") or {}).get("id"), int):
+                    self._station_id_of[nid] = sid
             self.game_no = snap.get("game_no", self.game_no)
             self._game_no_started = bool(snap.get("game_no_started", False))
+            if isinstance(snap.get("range_epoch"), int):
+                self._range_epoch = snap["range_epoch"]   # A67
             self._stations_unlocked = snap.get("stations_unlocked") is True   # F337 (a): an UNLOCK survives
             if isinstance(snap.get("join_secret"), str) and snap["join_secret"]:
                 self.join_secret = snap["join_secret"]     # A28.2: the QRs already printed stay valid
@@ -2986,6 +3039,8 @@ class Session:
         the same voice as `set_config`, stored, and pushed as `station_config` at once (utility.md §5b.1)."""
         if not isinstance(a, dict):
             raise ValueError("assignment must be an object")
+        if (view := self._set_station_range_only(nid, a)) is not None:
+            return view                        # A67: a RANGE/STRENGTH-only edit, allowed in any phase
         self._refuse_station_change_in_play()
         kind = a.get("kind")
         if not is_station_kind(kind):
@@ -3010,9 +3065,12 @@ class Session:
                              "a station on it would serve nobody -- pick a team in the game, or 'any'")
         if kind == "control" and team != STATION_TEAM_ANY:
             raise ValueError("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'")
+        # F364: MC assigns the id. An explicit `id` (an older console) is still accepted and validated below.
         sid = a.get("id")
+        if sid is None:
+            sid = self._auto_station_id(nid)
         if not (isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535):
-            raise ValueError("id must be an integer 1..65535 (the station id in the advert)")
+            raise ValueError("id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one")
         clash = next((n for n, st in self.stations.items() if n != nid and (st.get("assigned") or {}).get("id") == sid), None)
         if clash:
             raise ValueError(f"station id {sid} is already assigned to {clash}; ids must be unique on the field")
@@ -3052,18 +3110,42 @@ class Session:
             raise ValueError(f"{nid!r} has not been heard from recently (its link has gone stale); it cannot be "
                              "assigned until it reconnects -- if this phone reopened elsewhere, its NEW node_id "
                              "is the one to assign instead")
+        prev_a = (self.stations.get(nid) or {}).get("assigned")
+        if prev_a and prev_a["kind"] != kind and thr == prev_a["threshold"]:
+            thr = 0                            # A67: a new kind starts at its own default, not the old kind's range
+        rng = self._range_fields(prev_a, thr, a)   # A67: validates tx_power
         slots_before = self._powerup_slots()
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
         assignment: StationAssignment = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self.now_ms()}
+        assignment.update(rng)
         if item is not None:
             assignment["item"] = item
         st["assigned"] = assignment
+        self._station_id_of[nid] = sid
         self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
         self._after_station_change(slots_before)
         self._validate()
         self._changed()
         return self._station_view(nid)
+
+    def _auto_station_id(self, nid: str) -> int:
+        """F364: the id MC gives a station assigned with no `id`. A station keeps the id it already holds, then the
+        one it was handed earlier this session (a clear, a restart or a relink never renumbers it), unless another
+        station now holds that number. A new station takes the lowest id no station holds or was handed, so a
+        phone and a Stick share one sequence: 1, 2, 3."""
+        used = {a["id"] for n, st in self.stations.items() if n != nid and (a := st.get("assigned"))}
+        own = ((self.stations.get(nid) or {}).get("assigned") or {}).get("id")
+        for cand in (own, self._station_id_of.get(nid)):
+            if isinstance(cand, int) and 1 <= cand <= 65535 and cand not in used:
+                return cand
+        taken = used | {i for n, i in self._station_id_of.items() if n != nid}
+        sid = 1
+        while sid in taken:
+            sid += 1
+        if sid > 65535:
+            raise ValueError("no free station id is left (1..65535)")
+        return sid
 
     def clear_station(self, nid: str) -> bool:
         st = self.stations.get(nid)
@@ -3176,6 +3258,168 @@ class Session:
             return PHONE_RESPAWN_THRESHOLD_DBM
         return PHONE_POWERUP_THRESHOLD_DBM if a["kind"] == "powerup" else PHONE_STATION_THRESHOLD_DBM
 
+    def _range_fields(self, prev: StationAssignment | None, thr: int, a: dict) -> dict:
+        """A67 (F365): the range bookkeeping for an operator's assignment. A value that CHANGED (or a new
+        assignment) is the operator's edit: source "mc", set now. An unchanged value keeps who set it and when,
+        so re-arming with the same numbers does not beat a newer on-station edit. `tx_power` absent from the
+        body keeps the assignment's; MC sends none until one is set."""
+        now = self.now_ms()
+        out: dict = {}
+        if "tx_power" in a and a["tx_power"] is not None:
+            if a["tx_power"] not in TX_POWERS:
+                raise ValueError("tx_power must be one of " + ", ".join(TX_POWERS))
+            tx = a["tx_power"]
+        else:
+            tx = (prev or {}).get("tx_power")
+        for f, value in (("threshold", thr), ("tx_power", tx)):
+            if value is None:
+                continue
+            out[f] = value
+            if prev and prev.get(f) == value:
+                out[f + "_set_at"] = prev.get(f + "_set_at", prev.get("at", 0))
+                out[f + "_src"] = prev.get(f + "_src", "mc")
+            else:
+                out[f + "_set_at"], out[f + "_src"] = now, "mc"
+        out.pop("threshold", None)             # the caller already holds the validated threshold
+        return out
+
+    def _set_station_range_only(self, nid: str, a: dict) -> StationView | None:
+        """A67 (F365): a PUT that changes only RANGE (threshold) and/or STRENGTH (tx_power) of an assigned station.
+        The allow-list and every player's config are unchanged, so it re-arms THIS station only and is allowed in
+        every phase, LIVE included (a station re-armed mid-match keeps its game byte: the same as a reconnect).
+        None = not a range-only change; `set_station` goes on as before."""
+        st = self.stations.get(nid)
+        prev = (st or {}).get("assigned")
+        if not prev or a.get("kind") != prev["kind"] or ("id" in a and a["id"] != prev["id"]):
+            return None
+        team = a.get("team", STATION_TEAM_ANY)
+        if team in ("any", "ffa"):
+            team = STATION_TEAM_ANY
+        if team != prev["team"]:
+            return None
+        if "item" in a:
+            return None
+        preset = a.get("item_preset")
+        if preset is not None:
+            try:
+                if _pu.expand(preset, getattr(self.compiler, "catalog", None)) != prev.get("item"):
+                    return None
+            except (ValueError, KeyError, TypeError):
+                return None
+        thr = a.get("threshold", 0)
+        if not (isinstance(thr, int) and not isinstance(thr, bool) and (thr == 0 or -100 <= thr <= -30)):
+            raise ValueError("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)")
+        rng = self._range_fields(prev, thr, a)
+        if thr == prev["threshold"] and rng.get("tx_power") == prev.get("tx_power"):
+            # nothing moved. In play that is not a refusal (the card re-sent what it shows): the view as it is.
+            # Outside play the full path runs as before (it re-arms every station).
+            return self._station_view(nid) if self.in_play() else None
+        new = cast(StationAssignment, {**prev, "threshold": thr, **rng, "at": self.now_ms()})
+        assert st is not None                  # `prev` came from it
+        st["assigned"] = new
+        self._arm_station(nid)
+        self._changed()
+        return self._station_view(nid)
+
+    def _note_station_range(self, nid: str, st: dict, body: dict, t_recv: int) -> None:
+        """A67 (F365): last edit wins, per field. A station that reports `<field>_src: "station"` with an edit age
+        dates that edit on MC's clock (t_recv - age). When it is newer than MC's own `<field>_set_at`, MC ADOPTS
+        the station's value into the assignment (no re-arm: the station already has it). A Stick that rebooted
+        reports a LARGE age, so its edit is older than anything MC set and MC's value wins on the next arm."""
+        edit_ats = st["range_edit_at"] = {}   # the report's own edit time per field (MC clock), for the view
+        for f in ("threshold", "tx_power"):
+            age = body.get(f + "_edit_age_ms")
+            if body.get(f + "_src") == "station" and isinstance(age, int) and not isinstance(age, bool) and age >= 0:
+                edit_ats[f] = t_recv - age
+        a = st.get("assigned")
+        if a:
+            for f in ("threshold", "tx_power"):
+                value, src, age = body.get(f), body.get(f + "_src"), body.get(f + "_edit_age_ms")
+                if src != "station" or not (isinstance(age, int) and not isinstance(age, bool) and age >= 0):
+                    continue
+                ok = (isinstance(value, int) and not isinstance(value, bool) and -100 <= value <= -30) if f == "threshold" \
+                    else value in TX_POWERS
+                if not ok:
+                    continue
+                edit_at = t_recv - age
+                if edit_at <= a.get(f + "_set_at", a.get("at", 0)):
+                    continue                   # MC's value is newer: the station applies it on the next arm
+                if a.get(f) == value and a.get(f + "_src") == "station":
+                    continue                   # already adopted (a beat's latency jitter is not a new edit)
+                a[f], a[f + "_src"], a[f + "_set_at"] = value, "station", edit_at
+                self._log(nid, "range_adopted", {"field": f, "value": value, "edit_at": edit_at}, t_recv)
+        self._note_range_edits(st, body.get("range_edits"), t_recv)
+
+    def _note_range_edits(self, st: dict, edits: object, t_recv: int) -> None:
+        """A67: each new on-station edit, once: a feed line and a card attention line for this game. Deduped by
+        `seq`, which rises per edit and survives a reboot; the high-water mark is persisted (`station_range_seen`)
+        so an MC restart does not announce them again. A list whose highest seq is BELOW the mark is a station
+        whose count restarted (a reinstall wiped its storage): the mark starts again from 0."""
+        if not isinstance(edits, list):
+            return
+        rows = [e for e in edits if isinstance(e, dict) and _range_edit_ok(e)]
+        if not rows:
+            return
+        seen = st.setdefault("range_seen", {"max": 0, "edits": []})
+        if max(e["seq"] for e in rows) < seen["max"]:
+            seen["max"] = 0
+        a = st.get("assigned") or {}
+        sid = a.get("id") or (st.get("report") or {}).get("station_id") or "?"
+        for e in sorted(rows, key=lambda e: e["seq"]):
+            if e["seq"] <= seen["max"]:
+                continue
+            seen["max"] = e["seq"]
+            known = e["age_ms"] < STATION_EDIT_AGE_UNKNOWN_MS
+            row = {"seq": e["seq"], "field": e["field"], "from": e["from"], "to": e["to"], "locked": e["locked"],
+                   "at": t_recv - e["age_ms"] if known else None, "match": self._range_edit_match()}
+            seen["edits"] = [*seen["edits"], row][-8:]
+            what = "RANGE" if e["field"] == "threshold" else "STRENGTH"
+            text = (f"STATION #{sid} {what} CHANGED {_range_word(e['from'])} → {_range_word(e['to'])}"
+                    + (" (LOCKED)" if e["locked"] else "") + " · " + (_ago(e["age_ms"]) if known else "BEFORE A RESTART"))
+            self._on_feed({"t_match_s": self._operator_t_match(t_recv), "tag": "STATION", "kind": "info", "text": text})
+
+    def _range_edit_match(self) -> int:
+        """A67 polish: the match an on-station edit belongs to, for its attention line. In play or in RECAP it is the
+        match that started last; before a START (muster to lobby) it is the match about to start. A line shows while
+        its match is the current one, so it clears at the START after its match."""
+        return self._range_epoch if self.phase in ("armed", "live", "recap") else self._range_epoch + 1
+
+    def _station_range_view(self, st: dict, rep: StationReport, now: int) -> tuple[StationRange, list[RangeEdit], list[str]]:
+        """A67: `StationView.range`, `.range_edits` and the attention lines for this game's on-station edits."""
+        a = st.get("assigned") or {}
+        rng: dict = {}                         # a StationRange, built key by key
+        for f in ("threshold", "tx_power"):
+            # STRENGTH is only ever what the station REPORTS (a phone that cannot set power reports its real value);
+            # RANGE falls back to the assignment until the first beat.
+            value = rep.get(f) if rep.get(f) is not None or f == "tx_power" else a.get(f)
+            if value is None:
+                continue
+            rng[f] = value
+            if rep.get(f) is not None and a.get(f) is not None and rep.get(f) != a.get(f):
+                # the station applies something other than MC's record: say what the STATION says about it
+                src, at = rep.get(f + "_src"), (st.get("range_edit_at") or {}).get(f)
+            else:
+                src, at = a.get(f + "_src") or rep.get(f + "_src"), a.get(f + "_set_at")
+            if src in ("station", "mc"):
+                rng[f + "_src"] = src
+            if src == "station" and isinstance(at, int) and now - at < STATION_EDIT_AGE_UNKNOWN_MS:
+                rng[f + "_edit_age_ms"] = max(0, now - at)
+        edits: list[RangeEdit] = []
+        lines: list[str] = []
+        epoch = self._range_epoch
+        last: dict[str, dict] = {}
+        for e in (st.get("range_seen") or {}).get("edits") or []:
+            age = now - e["at"] if isinstance(e.get("at"), int) else STATION_EDIT_AGE_UNKNOWN_MS
+            edits.append(cast(RangeEdit, {"seq": e["seq"], "field": e["field"], "from": e["from"], "to": e["to"],
+                                          "locked": e["locked"], "age_ms": max(0, age)}))
+            if isinstance(e.get("match"), int) and e["match"] >= epoch:
+                last[e["field"]] = e           # this match's edit: shown until the next START
+        for f, e in last.items():
+            what = "RANGE" if f == "threshold" else "STRENGTH"
+            lines.append(f"{what} EDITED ON STATION {_range_word(e['from'])} → {_range_word(e['to'])}"
+                         + (" (LOCKED)" if e["locked"] else ""))
+        return cast(StationRange, rng), edits, lines
+
     def _arm_station(self, nid: str, relock: bool = False) -> bool:
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
         `arm_pending` (roadmap A4 "bring back to re-arm") and armed on its next hello, never retried on a timer."""
@@ -3187,6 +3431,15 @@ class Session:
             return False
         body = {"kind": a["kind"], "team": a["team"], "id": a["id"], "threshold": self._wire_threshold(nid, st, a),
                 "game": self._game_byte(), "valid_ids": [x["id"] for x in self._station_ids()]}
+        # A67 (F365): how old MC's range values are. The station keeps its own edit when that edit is YOUNGER.
+        now = self.now_ms()
+        # An ADOPTED edit (src station) carries ADOPT_SLACK_MS more, so the station's own edit stays the younger one.
+        def _age(f: str) -> int:
+            return max(0, now - a.get(f + "_set_at", a.get("at", now))) + (ADOPT_SLACK_MS if a.get(f + "_src") == "station" else 0)
+        body["threshold_age_ms"] = _age("threshold")
+        if a.get("tx_power") in TX_POWERS:
+            body["tx_power"] = a["tx_power"]
+            body["tx_power_age_ms"] = _age("tx_power")
         if item := self._active_item(a):
             body["item"] = item                    # A56: an older Stick ignores it
         body["lock_s"] = lock = self._station_lock_s()   # A58: a phone station ignores it
@@ -3337,6 +3590,12 @@ class Session:
                 report[key] = value
         if (assoc := rep.get("assoc")) in ("muster", "held"):
             report["assoc"] = assoc
+        if rep.get("tx_power") in TX_POWERS:          # A67
+            report["tx_power"] = rep["tx_power"]
+        if (src := rep.get("threshold_src")) in ("station", "mc"):
+            report["threshold_src"] = src
+        if (src := rep.get("tx_power_src")) in ("station", "mc"):
+            report["tx_power_src"] = src
         for key in ("live", "armed"):
             value = rep.get(key)
             if isinstance(value, bool):
@@ -3382,6 +3641,13 @@ class Session:
             view["lock_until_ms"] = lock["at"] + lock["s"] * 1000
         if restarts:
             view["restarts"] = restarts
+        rng, edits, lines = self._station_range_view(st, report, now)   # A67
+        if rng:
+            view["range"] = rng
+        if edits:
+            view["range_edits"] = edits
+        if a:
+            attention.extend(lines)
         pu = self._pu_update_body(nid) if self.phase in ("armed", "live") else None
         if pu is not None:                         # A56: only while a schedule runs for the match in play
             row = self._pu_sched["st"][nid]
@@ -3784,6 +4050,7 @@ class Session:
         # session. Bounded by the ladder, but a delivery fact about a node that no longer exists is not a
         # fact at all.
         self._end_delivery.pop(nid, None)
+        self._station_id_of.pop(nid, None)     # F364: an evicted node (a reinstall) frees its number; a CLEAR keeps it
         if (self.stations.pop(nid, None) or {}).get("assigned"):
             # An assigned station left with its id still in every other station's `valid_ids` and every
             # HUD's `config.stations` (polish review 2026-09-11): shrink both, as `clear_station` does.
@@ -3804,6 +4071,7 @@ class Session:
             if now - self.nodes[nid].get("last_seen_ms", 0) > 600_000:
                 self.nodes.pop(nid, None)
                 self.stations.pop(nid, None)
+                self._station_id_of.pop(nid, None)   # F364: a pruned row releases its reserved id
                 self._app_blocked_alerted.pop(nid, None)   # F121: a re-hello after this can say WITHHELD again
                 self._plan_blocked_alerted.pop(nid, None)
 
@@ -3896,6 +4164,7 @@ class Session:
                 self._departed_match_stations[prior_nid] = rec
         if prior_station:
             self.stations.pop(prior_nid, None)
+            self._station_id_of.pop(prior_nid, None)   # F364: a station that became a HUD frees its number
             if prior_nid != nid:
                 # NetServer consumed the old authenticated identity too. Do not leave its utility node
                 # ghost on ARMORY or in per-node bookkeeping after ITEMS has accepted the role handoff.
@@ -4074,8 +4343,10 @@ class Session:
             # player whitelist above dropped every one of these fields, so nothing MC showed came from a station.
             st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
             st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
-                                                     "armed", "control", "battery", "uptime_s", "boot_count", "assoc")
+                                                     "armed", "control", "battery", "uptime_s", "boot_count", "assoc",
+                                                     "threshold_src", "tx_power", "tx_power_src")
                             if k in body}
+            self._note_station_range(nid, st, body, t_recv)   # A67: last edit wins; new on-station edits announced
             self._note_station_boot(st, body, t_recv)   # A58: before last_seen moves, a restart is judged on this beat
             self._keep_station_tally(st, t_recv)
             st["last_seen_ms"] = t_recv
@@ -4664,6 +4935,7 @@ class Session:
             gb = max(set(bytes_seen), key=lambda b: (bytes_seen.count(b), b))
             self.game_no += (gb - self._game_byte()) % 255
         self._game_no_started = True
+        self._range_epoch += 1                 # A67: an adopted match is a START too
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
         self._end_delivery, self._end_delivery_told = {}, None
@@ -5440,6 +5712,15 @@ class Session:
         before = (live.winner(), end_t)
         self._adopt_scorer(live, sc)
         if cap_t < end_t:
+            # F357: a kill the moved end un-scores is now an after-the-whistle kill, and the feed line MC wrote
+            # when it counted cannot say so. Mark each one again, AFTER WHISTLE, as the live path marks a late one.
+            # keyed on the fact's content: a stored body and a live batch body do not both carry `seq`
+            def key(n: str, ev: Event) -> tuple:
+                return (n, ev.get("t"), ev.get("player_id"), ev.get("shooter_num"))
+            was = {key(n, ev) for n, ev, _t in live.post_end}
+            for n, ev, t_recv in sc.post_end:
+                if ev.get("type") == "death" and key(n, ev) not in was:
+                    sc._after_whistle_feed(n, ev, sc.eff_t(n, ev, t_recv))
             moved = (end_t - cap_t) / 1000.0
             self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
                            "text": f"END MOVED BACK {moved:.1f}s — a late flush shows the cap was reached earlier. "
@@ -6589,6 +6870,7 @@ class Session:
     def _schedule(self, runway_s: int) -> dict:
         self.start_seq += 1
         self._game_no_started = True           # the next muster push is a NEW match to every station
+        self._range_epoch += 1                 # A67: the last match's range-edit lines clear at this START
         now = self.now_ms()
         # A42: whether the LAST match's end reached every HUD is not a fact about THIS one. The operator
         # has moved on, and a straggler line left standing over a live board would be read as this match's.
@@ -6846,8 +7128,8 @@ class Session:
         return 1 if ok else 0
 
     def _feedback(self, pid: str, body: dict):
-        if body.get("kind") == "kill" and self.phase == "recap" and self.end_reason == "frag_limit":
-            return      # F357: no kill confirm after a frag-cap whistle (the Scorer gates it on `cap_recv` too)
+        if body.get("kind") == "kill" and self.phase == "recap":
+            return      # F357: no kill confirm after the whistle, any end (the Scorer gates it too: `_before_whistle`)
         p = self.players.get(pid)
         if p and p.get("node_id"):
             cues = (self.bundles.get(pid) or {}).get("cues") or {}
@@ -7366,6 +7648,8 @@ class Session:
             for nv in self.nodes.values():
                 nv.pop("player_id", None)
             self.restored_from = None      # F142: FRESH SESSION is the answer to the restore notice
+            # F364: a fresh session hands ids out from 1 again; a station still assigned keeps its own.
+            self._station_id_of = {n: a["id"] for n, st in self.stations.items() if (a := st.get("assigned"))}
         self._changed()
         if keep_roster:
             self.persist_now()                       # roster survives a crash right after NEW MATCH

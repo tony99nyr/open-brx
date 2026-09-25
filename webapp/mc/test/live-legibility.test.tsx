@@ -140,6 +140,19 @@ describe('S24 · the LIVE board is readable', () => {
     expect(m.text()).toContain('WITHHELD');
     m.unmount();
   });
+
+  it('F357: an AFTER WHISTLE kill is tagged, drawn dashed, and explained as counting for nothing', async () => {
+    const m = await liveScreen([row()], [
+      { t_match_s: 600, text: 'REAPER eliminated VIPER', kind: 'kill', tag: 'AFTER WHISTLE' },
+      { t_match_s: 590, text: 'VIPER eliminated REAPER', kind: 'kill' },
+    ]);
+    const late = m.find('[data-feed-tag="AFTER WHISTLE"]')[0] as HTMLElement;
+    expect(late, 'the after-whistle line is in the feed').toBeTruthy();
+    expect(late.textContent).toContain('AFTER WHISTLE');
+    expect(late.style.borderTop).toContain('dashed');
+    expect(m.find('[data-testid="feed-after-whistle-note"]')[0]?.textContent).toMatch(/NOT IN THE SCORE/);
+    m.unmount();
+  });
 });
 
 describe('the digit cell', () => {

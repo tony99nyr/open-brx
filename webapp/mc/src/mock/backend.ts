@@ -2,7 +2,7 @@
 import type {
   Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, Player,
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
-  StationView, TunnelProvider, TunnelStatus, WeaponView,
+  StationView, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import { withPolicy } from '../screens/gameSummary';
@@ -161,7 +161,12 @@ export class MockBackend implements Api {
       attention.push(...(st.attention ?? []));   // A58 demo/test seed: STATION #N ... lines
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
         last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo,
-        ...(st.lockUntil ? { lock_until_ms: st.lockUntil } : {}), ...this.itemState(st) };
+        ...(st.lockUntil ? { lock_until_ms: st.lockUntil } : {}), ...this.itemState(st),
+        // A67: the range as the station applies it, with who set it (the mock's stations only ever take MC's)
+        // (STRENGTH only as the station reports it, as `state.py _station_range_view`)
+        ...(a && (rep.threshold != null || rep.tx_power) ? { range: {
+          ...(rep.threshold != null ? { threshold: rep.threshold, threshold_src: a.threshold_src ?? 'mc' } : {}),
+          ...(rep.tx_power ? { tx_power: rep.tx_power, tx_power_src: a.tx_power_src ?? 'mc' } : {}) } } : {}) };
     });
   }
   /** The demo's config-proof fault for this gun, or undefined — only under `?mock&faults=1`.
@@ -222,10 +227,37 @@ export class MockBackend implements Api {
     // the demo phone applies it, as utility.js does: it now reports what it was told
     st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold || -70, armed: true, live: true };
   }
-  async putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number; item_preset?: string }): Promise<StationView> {
+  /** F364, as state.py `_auto_station_id`: a station keeps its id, then the one it was handed, else the lowest free. */
+  private stationIdOf: Record<string, number> = {};
+  private autoStationId(node_id: string): number {
+    const used = new Set(Object.entries(this.stations).flatMap(([n, s]) => n !== node_id && s.assigned ? [s.assigned.id] : []));
+    for (const c of [this.stations[node_id]?.assigned?.id, this.stationIdOf[node_id]]) if (c != null && !used.has(c)) return c;
+    for (const [n, i] of Object.entries(this.stationIdOf)) if (n !== node_id) used.add(i);
+    let id = 1; while (used.has(id)) id += 1;
+    return id;
+  }
+  async putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number; item_preset?: string; tx_power?: TxPower }): Promise<StationView> {
+    // A67, as `state.py _set_station_range_only`: a RANGE/STRENGTH-only change of an assigned station, any phase
+    const prev = this.stations[node_id]?.assigned;
+    const inPlay = this.phase === 'armed' || this.phase === 'live';
+    if (prev && prev.kind === a.kind && (a.id == null || prev.id === a.id) && prev.team === a.team) {
+      const thr = a.threshold ?? 0;
+      if (!Number.isInteger(thr) || (thr !== 0 && (thr < -100 || thr > -30))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");
+      const moved = thr !== prev.threshold || (a.tx_power != null && a.tx_power !== prev.tx_power);
+      // nothing moved: in play that is the view as it is, not a refusal; outside play the full path runs
+      if (!moved && inPlay) return this.stationViews().find(v => v.node_id === node_id)!;
+    }
+    if (prev && prev.kind === a.kind && (a.id == null || prev.id === a.id) && prev.team === a.team
+        && ((a.threshold ?? 0) !== prev.threshold || (a.tx_power != null && a.tx_power !== prev.tx_power))) {
+      if (a.tx_power != null && !['ultra_low', 'low', 'medium', 'high'].includes(a.tx_power)) throw new Error('tx_power must be one of ultra_low, low, medium, high');
+      this.stations[node_id].assigned = { ...prev, threshold: a.threshold ?? 0, threshold_src: 'mc', at: now(),
+        ...(a.tx_power != null ? { tx_power: a.tx_power, tx_power_src: 'mc' as const } : {}) };
+      this.armStation(node_id); this.emit();
+      return this.stationViews().find(v => v.node_id === node_id)!;
+    }
     // as `state.py set_station`: no station PUT while the match is armed or live (players already hold
     // `config.stations`, and A56's items are locked for the match)
-    if (this.phase === 'armed' || this.phase === 'live') {
+    if (inPlay) {
       throw Object.assign(new Error(`the match is ${this.phase.toUpperCase()}: stations and their items are locked for the match -- RECALL or END it first`), { status: 400 });
     }
     if (!STATION_KINDS.includes(a.kind)) throw new Error(`kind must be one of ${STATION_KINDS.join(', ')}`);
@@ -244,14 +276,16 @@ export class MockBackend implements Api {
     } else team = a.team;
     if (!([0, 1, 2, 3].includes(team) || team === 255)) throw new Error("team must be a $TID 0-3, a team_id, or 'any' (255)");
     if (a.kind === 'control' && team !== 255) throw new Error("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'");
-    if (!Number.isInteger(a.id) || a.id < 1 || a.id > 65535) throw new Error('id must be an integer 1..65535 (the station id in the advert)');
-    const clash = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned?.id === a.id);
-    if (clash) throw new Error(`station id ${a.id} is already assigned to ${clash[0]}; ids must be unique on the field`);
+    const id = a.id ?? this.autoStationId(node_id);
+    if (!Number.isInteger(id) || id < 1 || id > 65535) throw new Error('id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one');
+    const clash = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned?.id === id);
+    if (clash) throw new Error(`station id ${id} is already assigned to ${clash[0]}; ids must be unique on the field`);
     // F345, as state.py `set_station`: 0 (and absent) = the station's own platform default
     const threshold = a.threshold ?? 0;
     if (!Number.isInteger(threshold) || (threshold !== 0 && (threshold < -100 || threshold > -30))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");
     const st = this.stations[node_id] ?? (this.stations[node_id] = { assigned: null, armed: null, arm_pending: false, report: {}, seen: now() });
-    st.assigned = { kind: a.kind, team, id: a.id, threshold, at: now(), ...(item ? { item } : {}) };
+    this.stationIdOf[node_id] = id;
+    st.assigned = { kind: a.kind, team, id, threshold, at: now(), ...(item ? { item } : {}), ...(a.tx_power ? { tx_power: a.tx_power } : {}) };
     st.takenAt = undefined; st.takenBy = undefined; st.resetAt = undefined;
     for (const n of Object.keys(this.stations)) this.armStation(n);
     this.emit();

@@ -291,7 +291,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    A grey haze plate, never a bright flash: the S53 row names it SMOKE, not a flashbang. */
 .aimfx{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 18px 9px;background:rgba(150,160,170,.28);border:1px solid rgba(220,228,236,.55);pointer-events:none;white-space:nowrap}
 .aimfx .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:30px;letter-spacing:.3em;text-indent:.3em;color:#eef3f7;line-height:1}
-.aimfx .s{font-size:12px;letter-spacing:.2em;font-weight:700;color:#d6dde3}
+.aimfx .s{font-size:14px;letter-spacing:.12em;font-weight:700;color:#d6dde3}   /* aim tells x lanes (2026-09-25): 14 px, so the remedy line ("RELEASE TO STEADY") is >= 11 px on the SE screen (scale ~0.79); it was 12 (9.5 on screen) */
 .aimfx .t{font-family:var(--fd);font-weight:700;font-size:20px;color:#eef3f7}
 /* `.tight`: hud.js adds this alongside the reticle-slot tell whenever OVERHEAT is also showing (`_live()`'s
    `overheating`). The two full-screen takeovers share the same vertical lane, so the sub-line goes (the
@@ -301,6 +301,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .aimfx.tight{gap:2px;padding:5px 18px 6px}
 .aimfx.tight .s{display:none}
 .fx.poison .t small,.aimfx .t small{font-size:11px;letter-spacing:.14em;margin-left:4px;font-weight:700}
+.aimfx .t small{font-size:14px}   /* aim tells review M2: the SEC unit was 11 px (8.7 on the SE screen); 14 is the 11 px on-screen floor */
 .aimfx .clr{display:block;width:160px;height:4px;background:rgba(238,243,247,.2)}
 .aimfx .clr b{display:block;height:100%;background:#eef3f7}
 /* (S21, 2026-09-12: the camera look-through is gone — the #cam layer, the `cam-on`/`#frame.cam` rules and
@@ -601,6 +602,16 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .hit{pointer-events:none}
 .hit .vig{position:absolute;inset:0;box-shadow:inset 0 0 200px -20px rgba(255,40,40,.85);background:radial-gradient(ellipse 130% 100% at 50% 50%,transparent 45%,rgba(120,0,0,.35) 100%);animation:hitin .12s ease-out}
 .hit .hc{position:absolute;top:212px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px}   /* QA-03: 12 px under TAKING FIRE */
+/* docs/announcer.md "Aim tells and the lanes", review M1: the aim tell OWNS the centre. The accuracy pill (.aimfx) spans
+   about y 138-252 and the OVERHEAT word (.heatword) about 257-320, so the stack above (212-291) landed on both. While a
+   tell is up the hit is ONE row (the number beside HIT) in the free band: under the pill, or between TAKING FIRE (ends
+   200) and the OVERHEAT word. The weapon line follows it, above the vitals' bars (top 328). */
+#frame:has(.alive .aimfx) .hit .hc,#frame:has(.alive .heatword) .hit .hc{flex-direction:row;gap:10px}
+#frame:has(.alive .aimfx) .hit .dmg,#frame:has(.alive .heatword) .hit .dmg{font-size:44px}
+#frame:has(.alive .aimfx) .hit .hc{top:258px}
+#frame:has(.alive .aimfx) .hitwpn .hw{top:298px}
+#frame:has(.alive .heatword):not(:has(.alive .aimfx)) .hit .hc{top:206px}
+#frame:has(.alive .heatword):not(:has(.alive .aimfx)) .hitwpn .hw{top:236px;font-size:14px}
 /* S56 x QA-04: the weapon that hit you, in its own overlay (hud.js `_hitWpn`) under the hit stack: 16 px for 1.5 s, then
    a small LAST HIT line until 5 s. The hit flash itself is gone in 700 ms. */
 .hitwpn{pointer-events:none}

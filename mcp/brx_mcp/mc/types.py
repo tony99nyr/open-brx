@@ -561,6 +561,20 @@ PHONE_POWERUP_THRESHOLD_DBM = -55   # S58: a powerup station's ~1 ft claim range
 PHONE_THRESHOLD_ZERO_APP = (0, 4, 12)
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 
+# A67 (F365): a station's advert strength and where its range value came from. "station" = the operator's long-hold
+# edit on the station itself; "mc" = the value MC sent in `station_config`.
+TxPower = Literal["ultra_low", "low", "medium", "high"]
+TX_POWERS = get_args(TxPower)
+RangeSrc = Literal["station", "mc"]
+RangeField = Literal["threshold", "tx_power"]
+# A67: an edit age at or above this is "the station restarted since, the time is lost". A Stick has no clock
+# across a reboot, so it reports a LARGE age; MC's value then wins on the next `station_config`.
+STATION_EDIT_AGE_UNKNOWN_MS = 24 * 3600 * 1000
+# A67 polish: MC dates an adopted station edit `t_recv - age`, later than the true edit by the uplink latency. While a
+# field's source is "station", MC adds this to the age it sends, so the station's own edit is always the younger one
+# and it keeps src "station" through every re-send (A58's START/END locks).
+ADOPT_SLACK_MS = 10_000
+
 
 StationItemKind = Literal["weapon", "overshield"]
 
@@ -958,6 +972,10 @@ class Event(TypedDict, total=False):
     dot: bool
     # Tony 2026-09-24 (death): the killing $HIR was the melee proto (13) -- the melee medal. Absent on an older phone.
     melee: bool
+    # A65 (F354, death): the victim's phone lost the damaging hit and only a non-damaging word (smoke, EMP) was fresh,
+    # so it credits that word's TEAM (`shooter_team`) and no player (`shooter_num` 0). The team score counts the kill;
+    # no player gets the K, a medal, a chain, first blood or an assist. Absent on an older phone.
+    credit: Literal["team"]
     # S56 (hit_taken): the weapon the victim's phone resolved from the shooter's roster loadout; absent = unresolved or ambiguous.
     weapon_id: str
     # respawn
@@ -1176,6 +1194,13 @@ class StationAssignment(TypedDict):
     id: int
     threshold: int
     at: NotRequired[int]
+    # A67 (F365): who last set each range value and when (MC clock). Absent on an assignment from before A67:
+    # read `threshold_set_at` with a fallback to `at`. `tx_power` is absent until an operator or a station sets one.
+    threshold_set_at: NotRequired[int]
+    threshold_src: NotRequired[RangeSrc]
+    tx_power: NotRequired[TxPower]
+    tx_power_set_at: NotRequired[int]
+    tx_power_src: NotRequired[RangeSrc]
     item: NotRequired[StationItem]   # A56 (S58): a powerup station's item and spawn schedule
 
 
@@ -1207,11 +1232,44 @@ class StationControl(TypedDict):
     hold_ms: NotRequired[dict[str, int]]
 
 
+# `from` and `to` are Python keywords, so the two fields live on a functional base (gen_contract flattens it).
+_RangeEditValues = TypedDict("_RangeEditValues", {"from": int | TxPower, "to": int | TxPower})
+
+
+class RangeEdit(_RangeEditValues):
+    """A67 (F365): one on-station range edit, as the station reports it in `status.range_edits` (the last up to 8,
+    oldest first) and as MC serves it in `StationView.range_edits`. `seq` rises per edit and survives a reboot;
+    `locked` = the edit was made while the station held a tamper lock. `age_ms` is ms since the edit (on the wire,
+    the station's count; in a StationView, MC's). After a Stick reboot the age is LARGE (no clock)."""
+    seq: int
+    field: RangeField
+    locked: bool
+    age_ms: int
+
+
+class StationRange(TypedDict):
+    """A67: a station's range as MC sees it. The values are what the station APPLIES now (its report); the source
+    and the edit age are MC's record on the assignment (who set the value last). `*_edit_age_ms` is present only
+    when the source is "station" and the edit time is known (not lost to a restart)."""
+    threshold: NotRequired[int]
+    threshold_src: NotRequired[RangeSrc]
+    threshold_edit_age_ms: NotRequired[int]
+    tx_power: NotRequired[TxPower]
+    tx_power_src: NotRequired[RangeSrc]
+    tx_power_edit_age_ms: NotRequired[int]
+
+
 class StationReport(TypedDict):
     kind: NotRequired[StationKind]
     team: NotRequired[int]
     station_id: NotRequired[int]
-    threshold: NotRequired[int]
+    threshold: NotRequired[int]                      # A67: the value the station applies NOW (dBm)
+    threshold_src: NotRequired[RangeSrc]             # A67: who set it
+    threshold_edit_age_ms: NotRequired[int]          # A67: ms since the on-station edit; only when src is "station"
+    tx_power: NotRequired[TxPower]                   # A67: the advert strength applied now
+    tx_power_src: NotRequired[RangeSrc]
+    tx_power_edit_age_ms: NotRequired[int]
+    range_edits: NotRequired[list[RangeEdit]]        # A67: the last up to 8 on-station edits, oldest first
     live: NotRequired[bool]
     revives: NotRequired[int]
     armed: NotRequired[bool]
@@ -1251,6 +1309,10 @@ class StationView(TypedDict):
     # MC counted inside this game's lock window.
     lock_until_ms: NotRequired[int]
     restarts: NotRequired[int]
+    # A67 (F365): the station's current range with its source and edit age, and the on-station edits MC has
+    # heard (oldest first, the last 8; `age_ms` is MC's count at this snapshot).
+    range: NotRequired[StationRange]
+    range_edits: NotRequired[list[RangeEdit]]
 
 
 class RecapStationRow(TypedDict):

@@ -189,7 +189,7 @@ resets `prev`. `shots` resets to 0 at `startAt()` and rides `status`; MC diffs i
 hardware-verified in both directions (protocol §7q). Latch `{shooter_num, shooter_team, at}` on every
 valid `$HIR` (tok 2 ≠ 15); at death read the latch iff `now − at ≤ DEATH_LATCH_MS`, else report
 `shooter_num: 0`. The death's shooter is the last DAMAGING hit within `DEATH_LATCH_MS`, and the raw latch only when none is (F354): a word
-whose cell in this bundle's `$SIR` table has a no-pool function (`_SIR_NO_POOL`: the fn-23 Haze, or the stun's fn-23 EMP) never takes the kill. Attribution is **exact**; there is no team-only fallback and no heuristic. The node still
+whose cell in this bundle's `$SIR` table has a no-pool function (`_SIR_NO_POOL`: the fn-23 Haze, or the stun's fn-23 EMP) never takes the kill. **[A65] Team-only credit (F354, Tony 2026-09-25):** when the damaging hit was lost and the killing source is a no-pool word (the lethal drop's `hit_taken` was booked to it, or no hit was booked and only that raw latch is fresh), the death names that word's TEAM and no player: `shooter_num: 0`, `shooter_team` = the word's team, `credit: "team"`. The DOWN screen reads KILLED BY <TEAM> (`killedBy` = `{num: 0, team, name: null, teamName, teamKey, teamOnly: true}`), and the S57 callout is a bare DOWN. A word from our own team, from a tid that is not on this match's roster (`config.teams`), or any word in FFA, credits nobody (`shooter_num: 0`, no `credit`, KILLED BY UNKNOWN). Otherwise attribution is **exact**, with no heuristic. The node still
 **never computes its own kills** — a kill you score is invisible in your own stream; only the *victim* reports
 it (§3.6). The `roster` turns a number into a name for the HUD; an unknown number is still reported verbatim.
 

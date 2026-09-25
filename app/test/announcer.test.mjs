@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, IR_CALLOUT } from '../src/engine.js';
-import { Announcer, ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS, CLIP_MS, clipMs } from '../src/announcer.js';
+import { Announcer, GunAudio, ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS, CLIP_MS, clipMs } from '../src/announcer.js';
+import * as ann from '../src/announcer.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const catalog = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/data/sound_catalog.json', import.meta.url))));
@@ -675,4 +676,181 @@ test('one kill, one buzz: MC\'s card names the EXACT IR card it paired with, eve
   h.kill();
   assert.equal(h.eng.state().card.data.ir_paired, true);
   assert.equal(h.eng.state().card.data.ir_at, irAt, 'the pairing names the card the HUD saw');
+});
+
+// ---------- my death wins (Tony 2026-09-25, F149 / F351 / X4) ----------
+// "your death wins. delaying the death scream would be bad. while you are dead you can listen to the queue of KCs and
+// game alerts"
+
+/** An announcer on a gun model, with a switch for "I am dead". */
+function deadRig() {
+  let t = 0, dead = false; const log = [];
+  const gun = new GunAudio(), a = new Announcer(() => t);
+  a.gun = gun; a.dead = () => dead;
+  return { a, gun, log, at: v => { t = v; }, now: () => t, die: (on, stopped = true) => { dead = on; if (on) a.death(t, stopped); },
+    item: (kind, audioMs, extra = {}) => ({ kind, audioMs, ...extra, play: ({ muted, flush }) => log.push([kind, t, muted, !!flush]) }) };
+}
+
+test('death unit: while dead a must-hear line waits for the gun (no flush over the scream), and is still said 7 s on', () => {
+  const r = deadRig();
+  r.gun.add(7000, 'the scream and what the gun still holds', 0);
+  r.die(true);
+  r.a.push(r.item('kill_confirmed', 756));
+  assert.deepEqual(r.log, [], 'not started over the scream');
+  for (let t = 50; t < 9000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.equal(r.log.length, 1);
+  const [, t0, muted] = r.log[0];
+  assert.ok(t0 >= 7000 && !muted, `said once the gun is free (${t0} ms), past the 6 s late limit, with its line`);
+});
+
+test('death unit: an item queued while dead lives DEAD_QUEUE_TTL_MS, so a hill line behind 4 s of scream and kill is kept', () => {
+  const r = deadRig();
+  assert.ok(ann.DEAD_QUEUE_TTL_MS >= 8000, 'long enough for the scream, a kill line and two medal lines');
+  r.gun.add(4000, 'the scream and a kill line', 0);
+  r.die(true);
+  r.a.push(r.item('hill_lost', 2976, { key: 'hill' }));
+  for (let t = 50; t < 9000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.deepEqual(r.log.map(x => [x[0], x[2]]), [['hill_lost', false]], 'kept past its 3 s TTL, and said');
+});
+
+test('death unit: my kill line on air at the death is said again in full after the scream', () => {
+  const r = deadRig();
+  r.a.push(r.item('kill_confirmed', 756));
+  r.gun.add(636, 'the kill line', 120);
+  r.at(300); r.gun.add(1271, 'the scream', 300); r.die(true);
+  for (let t = 350; t < 6000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.equal(r.log.filter(x => x[0] === 'kill_confirmed').length, 2, 'started twice: the second after the scream');
+  assert.ok(r.log[1][1] >= 300 + 1271, `the replay waits out the scream (${r.log[1][1]} ms)`);
+});
+
+test('death unit: after the respawn the normal rules resume (a lead line in my kill streak is voice-silent again)', () => {
+  const r = deadRig();
+  r.die(true); r.a.push(r.item('lead_lost', 2675, { key: 'lead' }));
+  for (let t = 50; t < 4000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.deepEqual(r.log.map(x => [x[0], x[2]]), [['lead_lost', false]], 'dead: said');
+  r.die(false); r.at(5000);
+  r.a.push(r.item('kill_confirmed', 756)); r.a.push(r.item('lead_taken', 1943, { key: 'lead' }));
+  for (let t = 5050; t < 12000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.deepEqual(r.log.slice(1).map(x => [x[0], x[2]]), [['kill_confirmed', false], ['lead_taken', true]]);
+});
+
+test('death: the trade through the engine: the scream first (one stop for my kill line ahead of it, then none), then my kill line again, the lead change, the medal', () => {
+  const h = harness().live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(200);                       // my kill line is on the gun
+  const d0 = h.writes.length, dAt = h.now();
+  h.eng.feedFrame('$HIR,4,0,19,2,60,0,0,*'); h.eng.feedFrame('$HP,0,0,0,*');   // the trade: I am shot dead
+  h.adv(200); h.kill({ medals: ['double_kill'] }); h.alert('lead_lost');
+  h.adv(12000);
+  const after = h.writes.slice(d0);
+  const sp = (after.find(w => w.f.startsWith('$SPAWN')) || { t: Infinity }).t;   // the respawn write opens with its own $PLAYX
+  const stops = after.filter(w => w.f === '$PLAYX,0,*' && w.t < sp);
+  assert.ok(stops.length === 1 && stops[0].t === dAt, 'one stop, at the death, for the kill line ahead of the scream: ' + stops.map(w => w.t - dAt));
+  const scream = CLIP_MS[golden.head.find(f => f.startsWith('$PSET,')).split(',')[10]];
+  const vaa = after.filter(w => w.f.startsWith('$PLAY,') && w.f.split(',')[4] === KILL);
+  const ll = h.plays(LEAD_LOST)[0], dk = h.plays(golden.cues.double_kill.split(',')[4])[0];
+  assert.ok(vaa.length === 1 && vaa[0].t >= dAt + scream, 'my kill line again, after the scream');
+  assert.ok(ll && ll.t >= vaa[0].t + CLIP_MS[KILL], 'then the lead change');
+  assert.ok(dk && dk.t >= ll.t + CLIP_MS[LEAD_LOST], 'then the medal');
+});
+
+// ---------- review of 7173d400 (death-wins) ----------
+const die = h => { h.eng.feedFrame('$HIR,4,0,19,2,60,0,0,*'); h.eng.feedFrame('$HP,0,0,0,*'); };
+const stopsIn = (h, from, to = Infinity) => h.writes.slice(from).filter(w => w.f === '$PLAYX,0,*' && w.t < to);
+
+test('H1: the lethal hit\'s own $SIR row sound is not counted ahead of the scream: a quiet gun sends no stop at death (F158)', () => {
+  const h = harness().live();
+  h.eng._write(['$SIR,0,0,X13,1,9,0,0,0,*'], 'test: a row with a 1.5 s sound');
+  h.adv(2000); const n = h.writes.length;
+  die(h);
+  assert.deepEqual(stopsIn(h, n, h.now() + 1).map(w => w.t), [], 'no stop: it could land on the scream');
+});
+
+test('H2: a clip that ends within DEATH_STOP_SLACK_MS of the death is not stopped', () => {
+  const h = harness().live();
+  h.eng._write(['$PLAY,,4,6,VAA,,,,*'], 'test: a 636 ms line'); h.adv(550);   // it ends in about 86 ms
+  const n = h.writes.length;
+  die(h);
+  assert.deepEqual(stopsIn(h, n, h.now() + 1).map(w => w.t), []);
+});
+
+test('M1: a death between two medal lines (no stop goes out) never says a line twice', () => {
+  const h = harness().live();
+  const medals = ['double_kill', 'killing_spree'], ids = medals.map(m => golden.cues[m].split(',')[4]);
+  h.kill({ medals });
+  h.adv(120 + CLIP_MS[ids[0]] + 50);                     // line 1 is over, line 2 is due in about 100 ms
+  die(h); h.adv(9000);
+  assert.equal(h.plays(ids[0]).length, 1, 'the first medal once');
+  assert.equal(h.plays(ids[1]).length, 1, 'the second medal once');
+});
+
+test('M1: a death that cuts the second medal line replays only that line, not the lines already said', () => {
+  const h = harness().live();
+  const medals = ['double_kill', 'killing_spree'], ids = medals.map(m => golden.cues[m].split(',')[4]);
+  h.kill({ medals });
+  h.adv(120 + CLIP_MS[ids[0]] + 150 + 600);              // the second line has played about 0.5 s
+  const n = h.writes.length;
+  die(h); h.adv(9000);
+  assert.equal(stopsIn(h, n, h.now()).length >= 1, true, 'setup: the death stopped the second line');
+  assert.equal(h.plays(ids[0]).length, 1, 'the first medal is not said again');
+  assert.equal(h.plays(ids[1]).length, 2, 'the cut line is said again, after the scream');
+});
+
+test('M2: at the respawn the spawn line is never cut, and my kill confirm is not lost', () => {
+  const h = harness().live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(200);
+  die(h); h.adv(100);
+  h.kill({ medals: ['killtacular', 'killing_spree', 'double_kill'] }); h.alert('lead_lost');   // ~8 s of lines while dead
+  h.adv(16000);
+  const sp = h.writes.findIndex(w => w.f.startsWith('$SPAWN'));
+  assert.ok(sp > 0, 'setup: respawned');
+  const spT = h.writes[sp].t;
+  // the spawn line may wait behind a dead-queue line already on the gun (FIFO): give it that line's length too
+  const cut = stopsIn(h, sp + 1).filter(w => w.t < spT + 4500);
+  assert.deepEqual(cut.map(w => w.t - spT), [], 'no stop over the spawn line');
+  assert.ok(killLines(h).some(w => w.t > spT - 16000), 'my kill line was said');
+});
+
+test('M3: a hill change while I am dead is queued and said after the scream', () => {
+  const h = harness({ mode: 'koth' }).live();
+  h.eng.feedFrame('$HIR,4,15,0,2,8,0,0,*'); h.adv(50);
+  die(h); const dAt = h.now(); h.adv(300);
+  h.eng.feedFrame('$HIR,4,15,0,1,50,0,0,*');   // BLUE (us) takes it while I am down
+  h.adv(4000);
+  const hc = h.plays('VB0N')[0];
+  assert.ok(hc && hc.t >= dAt + 1271, 'Hill Captured, after the scream');
+});
+
+// ---------- round 2 review of death-wins ----------
+test('H-A unit: after the respawn my kept KC waits only for real clips, not for the shield loop (F348: a life starts at full shield)', () => {
+  const r = deadRig();
+  r.gun.add(7000, 'the scream and a long line', 0);
+  r.die(true); r.a.push(r.item('kill_confirmed', 756));
+  r.at(5000); r.die(false); r.a.respawn(5000, false);
+  r.gun.clips = []; r.gun.setBlocked(true, 5000);           // the new life's shield loop, nothing else on the gun
+  for (let t = 5050; t < 6000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.deepEqual(r.log.map(x => x[0]), ['kill_confirmed'], 'said: the loop is cut by its own must-hear flush');
+});
+
+test('M-A: a medal stack cut at my death, then folded into my next kill, never says first blood twice', () => {
+  const h = harness().live();
+  const ids = ['first_blood', 'double_kill'].map(m => golden.cues[m].split(',')[4]);
+  h.kill({ medals: ['first_blood', 'double_kill'] });
+  h.adv(120 + CLIP_MS[ids[0]] + 150 + 500);                 // double kill is playing
+  die(h); h.adv(200);
+  h.kill({ medals: ['triple_kill'], victim: 'p4', victim_display: 'SABLE' });   // my next kill lands while the cut rest waits
+  h.adv(12000);
+  assert.equal(h.plays(ids[0]).length, 1, 'first blood once');
+});
+
+test('M-B: my kill line ending inside the slack is neither stopped nor said again; the stop waits for it and takes the clip behind', () => {
+  const h = harness().live();
+  h.kill(); h.adv(120);                                     // VAA from +120
+  h.eng._write(['$PLAY,,4,6,VA7,,,,*'], 'test: a 2.1 s clip behind my kill line');
+  const vaaEnd = h.plays(KILL)[0].t + CLIP_MS[KILL];
+  h.adv(CLIP_MS[KILL] - 80);                                // my line ends in about 80 ms
+  const n = h.writes.length;
+  die(h); h.adv(9000);
+  assert.equal(killLines(h).length, 1, 'said once');
+  const st = h.writes.slice(n).filter(w => w.f === '$PLAYX,0,*');
+  assert.ok(st.length >= 1 && st[0].t >= vaaEnd, `the stop goes after my line ended (${st.length ? st[0].t - vaaEnd : 'none'} ms)`);
 });

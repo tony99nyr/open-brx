@@ -43,6 +43,10 @@ struct StickInputs {
   bool reset_outcome_locked = false;
   uint32_t force_restart_countdown_s = 0;
   bool at_home = true;
+  // F365: the RANGE editor and the A hold's cue (station_ui.h)
+  bool range_active = false;
+  bool range_edit_strength = false;
+  int range_cue_pct = -1;
 };
 
 // Times "HELD m:ss": the owner the last paint saw, and when it took the point. The one piece of
@@ -157,6 +161,13 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
   st.lock_remaining_s = link.lock().remaining_s(now);
   st.force_restart_countdown_s = in.force_restart_countdown_s;
   st.at_home = in.at_home;
+  st.range_active = in.range_active;
+  st.range_edit_strength = in.range_edit_strength;
+  st.range_cue_pct = in.range_cue_pct;
+  st.range_threshold_dbm = link.threshold_dbm();
+  st.range_threshold_edited = link.threshold_setting().from_station();
+  st.range_tx_level = link.tx_power_level();
+  st.range_tx_edited = link.tx_power_setting().from_station();
   return st;
 }
 

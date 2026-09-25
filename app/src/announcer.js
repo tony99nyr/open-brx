@@ -58,6 +58,20 @@ export const OBJECTIVE = new Set(['hill_captured', 'hill_lost', 'enemy_down']);
  *  meets my kill or medal item on air or queued is VOICE-SILENT: its line is dropped, never held for later, and its
  *  card still shows in its turn. Outside a streak these play as usual. */
 export const STREAK_SILENT = new Set(['lead_taken', 'lead_lost', 'hill_captured', 'hill_lost']);
+/** Tony, 2026-09-25 (F149 / F351 / X4): "your death wins. delaying the death scream would be bad. while you are dead you
+ *  can listen to the queue of KCs and game alerts". While I am dead (`dead()`), every item waits for a SILENT gun (the
+ *  native scream first, never cut: no must-hear or objective flush), in priority order, with no streak silence, and an
+ *  item queued while dead (or waiting at the death) lives this long and keeps its line this long.
+ *  10 s = the scream (the golden take VA3 is 1.27 s; the scream takes run to about 1.5 s) + my kill line with its flash
+ *  (0.76 s) + two medal lines (up to 2.5 s each) + a lead line (2.7 s) = about 10 s: my own kill confirm is still said
+ *  after the longest stack a trade makes. The respawn (5-8 s in the shipped modes) ends the dead rules sooner. */
+export const DEAD_QUEUE_TTL_MS = 10000;
+/** At my death, a clip the model says ends within this long is left alone: the model's clock is an estimate, and a stop
+ *  that arrives after the clip has ended lands on the scream (review of 7173d400, H2). */
+export const DEATH_STOP_SLACK_MS = 150;
+/** What survives my respawn from the dead queue: my kill confirm and the lead change. The medal and hill lines left are
+ *  dropped, so nothing waits to flush over the spawn line (review of 7173d400, M2). */
+export const KEEP_AT_RESPAWN = new Set(['kill_confirmed', 'lead_taken', 'lead_lost']);
 
 /** The shortest slot each kind holds: its banner's hold in hud.js, so the NEXT item's banner never lands on a
  *  card still showing. The slot is the longer of this and the clip (plus ANNOUNCE_GAP_MS). */
@@ -122,7 +136,50 @@ const rank = kind => { const i = ANNOUNCE_PRIORITY.indexOf(kind); return i < 0 ?
  *   undo what it booked for it (the kill-confirm pairing must never pair with a confirm nobody heard).
  */
 export class Announcer {
-  constructor(now, log = () => {}) { this.now = now; this.log = log; this.current = null; this.queue = []; this.seq = 0; this.gun = null; this.sync = null; }
+  constructor(now, log = () => {}) { this.now = now; this.log = log; this.current = null; this.queue = []; this.seq = 0; this.gun = null; this.sync = null; this.dead = null; }
+
+  _isDead() { return !!(this.dead && this.dead()); }
+
+  /** I just died (the engine calls this in `_death`, after the scream joined the gun model). Everything waiting gets the
+   *  dead-queue TTL. An item whose line is still sounding is cut by the death stop: it goes back in the queue, whole, and
+   *  is said again after the scream (Tony: "your death wins"). Its pending lines check `cut` and do not go out. */
+  death(now = this.now(), stopped = false) {
+    for (const q of this.queue) q.deadQueued = true;
+    const again = this._cutOnAir(now, stopped, 'my death: the scream goes first');
+    if (again) { again.deadQueued = true; this.queue.push(again); }
+  }
+
+  /** My respawn. The dead-queue rules end: what is left of the dead queue keeps only my kill confirm and the lead change
+   *  (`KEEP_AT_RESPAWN`), with normal TTLs from now, and each waits for a silent gun, so it never flushes the spawn line.
+   *  `stopped` = the revive write carries a `$PLAYX`, which cuts the line on air. */
+  respawn(now = this.now(), stopped = false) {
+    // Whatever is on air is cut at the respawn, stopped or not: its pending lines would flush over the spawn line.
+    const again = this._cutOnAir(now, stopped, 'my respawn', true);
+    if (again && KEEP_AT_RESPAWN.has(again.kind)) this.queue.push(again);
+    this.queue = this.queue.filter(q => {
+      if (!q.deadQueued) return true;
+      if (KEEP_AT_RESPAWN.has(q.kind)) { q.deadQueued = false; q.waitQuiet = true; q.at = now; return true; }
+      this.log(`announcer: ${q.kind} dropped at my respawn (only my kill confirm and the lead change are kept)`); this._dropped(q); return false;
+    });
+    if (again && !KEEP_AT_RESPAWN.has(again.kind)) this._dropped(again);
+  }
+
+  /** The item on air, cut by a stop that went out (`stopped`) while its audio was still due: marked `cut` (its pending
+   *  lines do not go out) and returned as a fresh copy holding only what was not said. An item may say what is left
+   *  with `resume(now, item, startedSaid)`: `{...fields}` for the copy, or null when nothing is left. With no stop
+   *  (`force`), a line already started plays on, so it counts as said (`startedSaid`). */
+  _cutOnAir(now, stopped, why, force = false) {
+    const c = this.current;
+    if (!(stopped || force) || !c || !(c.audioMs > 0) || !(now < c.audioUntil)) return null;
+    c.cut = true; this.current = null;
+    const rest = c.resume ? c.resume(now, c, !stopped) : stopped ? {} : null;
+    if (rest === null) { this.log(`announcer: ${c.kind} cut at ${why}; nothing of it was left to say`); return null; }
+    this.log(`announcer: ${c.kind} cut at ${why}; what was not said goes back in the queue`);
+    const again = { ...c, ...rest, at: now, n: ++this.seq, cut: false, startedAt: undefined, audioUntil: undefined, until: undefined,
+      muted: false, streakSilent: false, flush: false, forceMute: false };
+    again.slotMs = Math.max(again.audioMs ? again.audioMs + ANNOUNCE_GAP_MS : 0, again.bannerMs != null ? again.bannerMs : (ANNOUNCE_BANNER_MS[again.kind] || 0));
+    return again;
+  }
 
   clear() { const q = this.queue; this.current = null; this.queue = []; q.forEach(x => this._dropped(x)); }
 
@@ -162,7 +219,9 @@ export class Announcer {
     const now = this.now();
     if (this.sync) this.sync(now);   // the gun model's state as it stands now (the shield loop may have just started)
     const it = { ...item, at: now, n: ++this.seq, rank: rank(item.kind), audioMs: Math.max(0, item.audioMs || 0) };
-    if (STREAK_SILENT.has(it.kind) && it.audioMs > 0 && this.streak(now)) it.streakSilent = true;
+    const dead = this._isDead();
+    if (dead) it.deadQueued = true;
+    if (!dead && STREAK_SILENT.has(it.kind) && it.audioMs > 0 && this.streak(now)) it.streakSilent = true;
     it.slotMs = Math.max(it.audioMs ? it.audioMs + ANNOUNCE_GAP_MS : 0, item.bannerMs != null ? item.bannerMs : (ANNOUNCE_BANNER_MS[item.kind] || 0));
     if (it.key != null) {
       const cur = this.current;
@@ -219,7 +278,10 @@ export class Announcer {
       const next = this._peek(now);
       const handover = next && cur.audioMs > 0 && now >= cur.audioUntil && !OWN_KILL.has(cur.kind) && next.rank <= cur.rank
         && ANNOUNCE_SURFACE[next.kind] && ANNOUNCE_SURFACE[next.kind] === ANNOUNCE_SURFACE[cur.kind];
-      if (now < cur.until && !handover) return null;
+      // Dead: the death screen owns the view, so a card's hold does not pace the queue; the next line may follow as soon
+      // as this one's audio is over (Tony 2026-09-25: listen to the queue while you are dead).
+      const deadNext = this._isDead() && cur.audioMs > 0 && now >= cur.audioUntil;
+      if (now < cur.until && !handover && !deadNext) return null;
       this.current = null;
     }
     const next = this._peek(now);
@@ -228,15 +290,20 @@ export class Announcer {
     // and once it is past ANNOUNCE_AUDIO_LATE_MS (or the shield loop blocks the gun) it shows its card without its line.
     // An OBJECTIVE line is the exception to the loop: it cuts the loop instead (`flush`), so a hill word or "Target down"
     // is still heard with the shield up.
+    // Dead (Tony 2026-09-25): every line waits for a silent gun, must-hear and objective ones too: nothing flushes the scream.
+    // Kept past the respawn (`waitQuiet`): it waits for real clips only. The new life's shield loop is not one (F348 starts a
+    // Shields life at full shield); the must-hear flush cuts the loop as usual.
+    if (next.audioMs > 0 && this.gun && ((this._isDead() && this.gun.outstanding(now) > 0) || (next.waitQuiet && this.gun.playingUntil(now) > now))) return null;
     if (next.audioMs > 0 && !MUST_HEAR.has(next.kind) && this.gun && this.gun.outstanding(now) > 0) {
-      const late = ANNOUNCE_AUDIO_LATE_MS[next.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[next.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
+      const late0 = ANNOUNCE_AUDIO_LATE_MS[next.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[next.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
+      const late = next.deadQueued ? Math.max(late0, DEAD_QUEUE_TTL_MS) : late0;
       if (this.gun.blocked && OBJECTIVE.has(next.kind) && now - next.at <= late) next.flush = true;
       else {
         if (!this.gun.blocked && now - next.at <= late) return null;
         next.forceMute = true;
       }
     }
-    if (STREAK_SILENT.has(next.kind) && next.audioMs > 0 && this.streak(now)) next.streakSilent = true;   // a kill queued ahead of it meanwhile
+    if (STREAK_SILENT.has(next.kind) && next.audioMs > 0 && !this._isDead() && this.streak(now)) next.streakSilent = true;   // a kill queued ahead of it meanwhile
     this.remove(next);
     this._start(next, now, false);
     return next;
@@ -248,7 +315,8 @@ export class Announcer {
       if (!this.queue.length) return null;
       let best = null;
       for (const q of this.queue) if (!best || q.rank < best.rank || (q.rank === best.rank && q.n < best.n)) best = q;
-      const ttl = ANNOUNCE_TTL_MS[best.kind] != null ? ANNOUNCE_TTL_MS[best.kind] : 4000;
+      const ttl0 = ANNOUNCE_TTL_MS[best.kind] != null ? ANNOUNCE_TTL_MS[best.kind] : 4000;
+      const ttl = best.deadQueued ? Math.max(ttl0, DEAD_QUEUE_TTL_MS) : ttl0;
       if (now - best.at > ttl) { this.remove(best); this.log(`announcer: ${best.kind} expired after ${now - best.at} ms in the queue, dropped`); this._dropped(best); continue; }
       if (best.ok && !best.ok()) { this.remove(best); this.log(`announcer: ${best.kind} no longer applies, dropped`); this._dropped(best); continue; }
       return best;
@@ -257,7 +325,8 @@ export class Announcer {
 
   _start(it, now, preempted) {
     const waited = now - it.at;
-    const late = ANNOUNCE_AUDIO_LATE_MS[it.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[it.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
+    const late0 = ANNOUNCE_AUDIO_LATE_MS[it.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[it.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
+    const late = it.deadQueued ? Math.max(late0, DEAD_QUEUE_TTL_MS) : late0;
     // A card that was muted once stays muted: a silent card a kill displaced shows again after it, still without its line.
     const again = !!it.muted;
     const muted = again || (it.audioMs > 0 && (waited > late || !!it.forceMute || !!it.streakSilent));
@@ -290,8 +359,10 @@ export class Announcer {
  *
  * Every sound-bearing write the phone makes (and every sound the gun makes on its own that the phone can see: a hit's
  * `$SIR` row sound, the native death scream) goes in with its length, so "the gun's FIFO holds these clips until T"
- * is one question with one answer. It over-counts rather than under-counts: an extra stop is harmless, a missing one
- * leaves a must-hear line late.
+ * is one question with one answer. It over-counts rather than under-counts before a must-hear line: an extra stop
+ * there costs a fragment, and a missing one leaves the line late. An extra stop is NOT harmless everywhere: at my death
+ * it lands on the native scream, so `_death` counts only clips truly ahead of it (`DEATH_STOP_SLACK_MS`, and never the
+ * lethal hit's own row sound).
  */
 export class GunAudio {
   constructor(log = () => {}) { this.log = log; this.clips = []; this.blocked = false; this.blockedAt = 0; }
@@ -305,7 +376,9 @@ export class GunAudio {
     if (this.blocked && id && this.clips.some(c => c.id === id && c.start === Infinity)) return;
     const tail = this.clips.length ? this.clips[this.clips.length - 1].end : now;
     const start = this.blocked ? Infinity : Math.max(now, tail);
-    this.clips.push({ ms, why, start, end: start + ms, id });
+    const c = { ms, why, start, end: start + ms, id, at: now };
+    this.clips.push(c);
+    return c;
   }
   /** When the last clip the gun can actually play ends (clips stuck behind the loop do not count). */
   playingUntil(now) { this._prune(now); return this.clips.reduce((t, c) => (Number.isFinite(c.end) ? Math.max(t, c.end) : t), now); }
@@ -335,7 +408,10 @@ export class GunAudio {
    *  written right behind the stops: that line plays, and anything after it is stuck again. */
   flushed(now, line) {
     this.clips = [];
-    if (line) this.clips.push({ ms: line.ms, why: line.why, start: now, end: now + line.ms });
+    if (!line) return null;
+    const c = { ms: line.ms, why: line.why, start: now, end: now + line.ms, at: now };
+    this.clips.push(c);
+    return c;
   }
   _prune(now) { this.clips = this.clips.filter(c => c.end > now); }
 }

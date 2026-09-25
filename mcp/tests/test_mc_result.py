@@ -222,6 +222,9 @@ def test_the_unscored_kills_survive_as_an_after_the_whistle_block():
     rows = {r["player_id"]: r for r in s.recap()["rows"]}
     assert rows[ps[0]["player_id"]]["after_end_kills"] == 2 and rows[ps[0]["player_id"]]["kills"] == 0
     assert rows[ps[2]["player_id"]]["after_end_deaths"] == 2
+    # F357: the feed marks each un-scored kill AFTER WHISTLE, once, under the lines MC wrote when it counted
+    marked = [e for e in s.feed if e.get("tag") == "AFTER WHISTLE"]
+    assert len(marked) == 2 and all(e["kind"] == "kill" for e in marked), s.feed[:8]
 
 
 def test_the_field_is_re_told_the_result_when_the_replay_changes_it():

@@ -62,7 +62,7 @@ FILE_TIMEOUT_S = float(os.environ.get("RUN_TESTS_TIMEOUT_S", "300"))
 SPLIT = {"test_mc_e2e": 5, "test_mc_polish": 6, "test_stage": 3, "test_stage_server": 2, "test_mc_net": 3,
          "test_balance_sim": 4, "test_chaos_fuzz": 9, "test_chaos_gun": 3,
          "test_sticks3_screens": 3,  # ~8 s a build, only when a header changed: default and revive-on in parallel
-         "test_sticks3_core": 3}  # the host tests, built once with revive feedback off and once on
+         "test_sticks3_core": 4}  # the host tests, built once with revive feedback off and once on
 
 
 def run_file(stem: str, chunk: tuple[int, int] | None = None) -> dict:
