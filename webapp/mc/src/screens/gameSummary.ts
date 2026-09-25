@@ -349,8 +349,9 @@ export function splitLine(players: { player_num: number; team_id: string | null 
   return `${players.length} PLAYER${players.length === 1 ? '' : 'S'} → ${newTeams.map(t => `${t.team_id.toUpperCase()} ${counts[t.team_id] ?? 0}`).join(' / ')}`;
 }
 
-/** Q13: a game of two or more teams, where compile keeps team damage OFF (compile.py `friendly_fire`). A
- *  one-team game (FFA, solo LMS: both declare the single `ffa` team) has no teammates, so no TEAM DAMAGE row. */
-export function hasTeams(cfg: Pick<GameConfig, 'teams'>): boolean {
-  return new Set((cfg.teams ?? []).map(t => t.tid)).size >= 2;
+/** Q13: true where compile keeps team damage OFF, the mirror of compile.py `team_damage_on`. Only a
+ *  one-team game in a solo mode (FFA, solo LMS or extraction) turns it on, and shows no TEAM DAMAGE row. */
+const SOLO_MODES = new Set(['ffa', 'lms', 'extraction']);
+export function teamDamageOff(cfg: Pick<GameConfig, 'mode' | 'teams'>): boolean {
+  return !(SOLO_MODES.has(cfg.mode) && new Set((cfg.teams ?? []).map(t => t.tid)).size < 2);
 }

@@ -13,7 +13,7 @@
 // `LABEL / value` markup — because `test/e2e/koth.mjs` reads those rows by label and a relabelled row
 // is an invisible break.
 import type { GameConfig, ModeInfo, PerkView, Player, WeaponView } from '../api/types';
-import { hasTeams, isKillScored, objectiveLine, rulesLine, winLine } from '../screens/gameSummary';
+import { teamDamageOff, isKillScored, objectiveLine, rulesLine, winLine } from '../screens/gameSummary';
 import { F, T, TAB } from '../tokens';
 import { GLYPH, colourOf } from '../alerts';
 import { Blink } from './index';
@@ -36,7 +36,7 @@ export function gameSettingRows(
 ): SettingRow[] {
   const rows: SettingRow[] = [
     ['TEAMS', mode?.teams_text ?? cfg.teams.map(t => t.team_id.toUpperCase()).join(' V ') ?? '—'],
-    ...(hasTeams(cfg) ? [['TEAM DAMAGE', 'OFF'] as SettingRow] : []),
+    ...(teamDamageOff(cfg) ? [['TEAM DAMAGE', 'OFF'] as SettingRow] : []),
     ['WIN', winLine(cfg, mode)],
     ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF · LIVES' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
     ['TIME', cfg.time_limit_s ? `${Math.round(cfg.time_limit_s / 60)} MIN` : '—'],

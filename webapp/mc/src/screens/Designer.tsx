@@ -12,7 +12,7 @@ import { GLYPH, MC_OLDER, MC_RESTART_CMD, colourOf } from '../alerts';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
 import { HealthPresetEditor } from './HealthPresetEditor';
-import { HEALTH_PRESET_COPY, STATION_SOURCES, hasTeams, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, healthPresetOf, isKillScored, objectiveLine, poolEmptyMessage, presetOf, rulesLine, sourceBrief, unplayablePick, winLine, withPolicy } from './gameSummary';
+import { HEALTH_PRESET_COPY, STATION_SOURCES, teamDamageOff, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, healthPresetOf, isKillScored, objectiveLine, poolEmptyMessage, presetOf, rulesLine, sourceBrief, unplayablePick, winLine, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { ModeEmblem } from './ModeEmblem';
 import { CONFIG_EDITABLE_PHASES, MODE_PICK_PHASES, lockedReason } from './Games';
@@ -315,7 +315,7 @@ export function Designer() {
           <div style={{ padding: '12px 18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.acc, lineHeight: 1.6 }}>{rulesLine(cfg, weapons, perks)}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4 }}>
-              {[['BASE', mode?.name ?? cfg.mode], ...(hasTeams(cfg) ? [['TEAM DAMAGE', 'OFF']] : []), ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', winLine(cfg, mode)],
+              {[['BASE', mode?.name ?? cfg.mode], ...(teamDamageOff(cfg) ? [['TEAM DAMAGE', 'OFF']] : []), ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', winLine(cfg, mode)],
                 ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
                 ['LIFE', healthPresetOf(cfg.health) === 'custom'
                   ? `HP ${cfg.health.max_hp} · AR ${cfg.health.max_armor}${cfg.health.max_shield ? ` · SH ${cfg.health.max_shield}` : ''}`

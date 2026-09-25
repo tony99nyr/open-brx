@@ -179,6 +179,10 @@ def test_q13_a_one_team_game_lets_players_hit_each_other_and_a_team_game_never_d
         cfg = default_config(mode)
         p = _player(); p["team_id"] = cfg["teams"][0]["team_id"]
         gset = next(f for f in C.compile(cfg, p, cfg["teams"])["head"] if f.startswith("$GSET"))
-        one_team = len({t["tid"] for t in cfg["teams"]}) < 2
-        assert gset.startswith("$GSET,1," if one_team else "$GSET,0,"), (mode, cfg["teams"], gset)
+        solo = mode in ("ffa", "lms")      # the defaults: FFA and LMS declare the single `ffa` team
+        assert gset.startswith("$GSET,1," if solo else "$GSET,0,"), (mode, cfg["teams"], gset)
     assert len(default_config("lms")["teams"]) == 1, "CONTROL: default LMS really is one team"
+    # polish round 3: a TEAM mode configured with one team keeps team damage OFF (a dead game, never a team kill)
+    one_team_tdm = {**default_config("tdm"), "teams": default_config("tdm")["teams"][:1]}
+    assert mcc.team_damage_on(one_team_tdm) is False
+    assert mcc.team_damage_on({**default_config("extraction"), "teams": default_config("extraction")["teams"][:1]}) is True

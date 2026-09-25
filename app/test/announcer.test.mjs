@@ -18,9 +18,9 @@ const KILL = 'VAA', LEAD = 'VA6D', LEAD_LOST = 'VA6E', ENEMY_DOWN = 'VB8';
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 // Me: p1, player_num 7, BLUE (tid 1). VIPER: 19, YELLOW (tid 2).
-function harness({ num = 7, mode = 'tdm', shieldMax = null } = {}) {
+function harness({ num = 7, mode = 'tdm', shieldMax = null, teams: teamsIn = null } = {}) {
   const writes = [], logs = []; let clock = 1_000_000; const timers = [];
-  const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
+  const teams = teamsIn || [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode, environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: 'auto', delay_s: 5 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
   const player = { player_id: 'p1', player_num: num, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
@@ -927,4 +927,14 @@ test('F375: a heal back over 15 HP while the critical line waits drops it', () =
   h.adv(200); h.eng.feedFrame('$HP,30,0,0,*');   // a medkit, before the line went out
   h.adv(2000);
   assert.equal(h.plays(HURT_ID).length, 0, 'the player is no longer critical');
+});
+
+test('Q13: in solo LMS everyone shares one $TID, so a death on it is ENEMY DOWN, never TEAMMATE DOWN', () => {
+  const solo = harness({ mode: 'lms', teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }] }).live();
+  solo.irWord(19, IR_CALLOUT.DOWN_BY + 1);
+  assert.equal(solo.eng.state().callout.kind, 'enemy_down');
+  // CONTROL: the same word in a two-team game is a teammate
+  const squads = harness().live();
+  squads.irWord(19, IR_CALLOUT.DOWN_BY + 1);
+  assert.equal(squads.eng.state().callout.kind, 'teammate_down');
 });

@@ -1498,9 +1498,9 @@ class Session:
             "time_limit_s": cfg.get("time_limit_s"), "respawn": cfg.get("respawn"), "health": cfg.get("health"),
             "environment": cfg.get("environment"), "night": bool(cfg.get("night")),
             "loadout_line": ", ".join(parts) + ".", "ruleset": preset_lbl, "hud_select": bool(pol.get("hud_select")),
-            # Q13: present ONLY in a game of two or more teams, where compile keeps team damage off; a one-team
-            # game (FFA, solo LMS) has no teammates, so the briefing shows no row.
-            **({"team_damage": "off"} if len({t.get("tid") for t in cfg.get("teams") or []}) >= 2 else {}),
+            # Q13: present ONLY where compile keeps team damage off (`compile.team_damage_on`); a solo game
+            # (FFA, solo LMS) has no teammates, so the briefing shows no row.
+            **({"team_damage": "off"} if not _compile.team_damage_on(cfg) else {}),
             # A31: present ONLY when this match needs it, so a node can treat presence as the rule.
             **({"mc_verify": mcv} if (mcv := self._mc_verify_player_line()) else {}),
         }

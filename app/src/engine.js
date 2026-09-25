@@ -2939,6 +2939,12 @@ export class Engine {
    *  and tell the player something untrue about the objective. Silence is the honest answer until F75's
    *  probe (deliberately miss a grenade in a NATIVE game and see whether native still says "contested")
    *  settles whether native infers it too or there is a word we have not captured. */
+  /** Q13: a solo game (FFA, or LMS/extraction played with one team) shares one `$TID`, so nobody on it is a
+   *  teammate. The mirror of compile.py `team_damage_on`. */
+  _oneTeamGame() {
+    const c = this.config;
+    return !!c && ['ffa', 'lms', 'extraction'].includes(c.mode) && new Set((c.teams || []).map(t => Number(t.tid))).size < 2;
+  }
   _hillCallout(prevOwner, owner) {
     const mine = this.teamTid;
     if (mine == null) return null;
@@ -3096,8 +3102,8 @@ export class Engine {
     }
     if (isDownBy && player === myNum) { entry.item = this._irKillConfirmed(victimTeam, now, entry); return; }   // row 1: I made this kill
     if (!isDownBy && player === myNum) { this.log(`S57: DOWN naming me, magnitude ${magnitude}, ignored`, 'li'); return; }   // row 4: my own DOWN (my own phone already knows); logged, so a mis-decoded or mis-sent word is visible (field 2026-09-24: 28 where 22 was expected)
-    // FFA: `$TID` equality never means friendly (A5.2/contracts.md), so a bare team match is always ENEMY DOWN there.
-    const teammate = this.config && this.config.mode !== 'ffa' && this.teamTid != null && victimTeam === this.teamTid;
+    // FFA and any solo game: `$TID` equality never means friendly (A5.2/contracts.md), so a bare team match is ENEMY DOWN.
+    const teammate = this.config && !this._oneTeamGame() && this.teamTid != null && victimTeam === this.teamTid;
     // QA-05: a DOWN_BY word names the KILLER, never the victim, so `by` carries that name for the HUD card
     // ("YELLOW DOWN · BY GHOST"). Read-only presentation, present only when the word named a killer.
     const by = isDownBy ? this.nameOf(player) : null;

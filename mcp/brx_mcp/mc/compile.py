@@ -68,6 +68,19 @@ VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the
 BENCH_VOLUME_DEFAULT = 55
 
 
+# Q13 (Tony 2026-09-25): "you should not be able to hit or damage your teammates or yourself". Team damage is
+# OFF in every game, with one exception: a ONE-team game in a mode designed to be played solo (FFA; LMS and
+# extraction are "SOLO OR SQUADS"), where every gun shares one $TID and the gun must register same-$TID hits
+# or nobody can hit anybody. A team mode configured with one team keeps it OFF: a dead game, never a team kill.
+SOLO_MODES = frozenset({"ffa", "lms", "extraction"})
+
+
+def team_damage_on(config) -> bool:
+    """Whether $GSET turns friendly fire on for this config. Mirrored in the console (`gameSummary.ts`
+    `teamDamageOff`) and the phone engine (`engine.js` `_oneTeamGame`)."""
+    return config.get("mode") in SOLO_MODES and len({t.get("tid") for t in config.get("teams") or []}) < 2
+
+
 def check_volume(value) -> int:
     """A $VOL level: an integer 0-100. Raises ValueError otherwise."""
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
@@ -1875,9 +1888,7 @@ class Compiler:
             volume=self.head_volume(config),
             outdoor=config["environment"] == "outdoor",
             leds=(led.get("mode", "team") != "off") and not blackout,
-            # Q13: a ONE-team game (FFA, solo LMS: both declare the single `ffa` team) needs the gun to
-            # register same-$TID hits, or nobody can hit anybody. Two or more teams: TEAM DAMAGE OFF, always.
-            friendly_fire=len({t["tid"] for t in config.get("teams") or []}) < 2,
+            friendly_fire=team_damage_on(config),     # Q13: see `team_damage_on`
             hp=hp,
             # S50 (docs/perk-design.md §2): body_armor / quick_switch's `max_armor_add` (`_MAX_ARMOR_
             # ADD`), capped at the wire's 255 and floored at 0 — NOTE: 255 is OUR POLICY CEILING, not
