@@ -44,7 +44,7 @@ export const CUE = Object.freeze({
   kill: 'VAA', first_blood: 'VA7H', double_kill: 'VA7E', triple_kill: 'VA7Q', killtacular: 'V124', killing_spree: 'VA7K',
   unstoppable: 'VX0U', lead_taken: 'VA6D', lead_lost: 'VA6E', next_kill_wins: 'V115', hill_captured: 'VB0N', hill_lost: 'VB0P',
   hill_tick: 'U100', enemy_down: 'VB8', shield_down: 'N101', shield_charging: 'N102', shield_online: 'VA6Y', shield_loop: 'N74',
-  low_health: 'VA86', pain_short: 'VAG', pain_long: 'VAE', spawn: 'VAI',
+  low_health: 'VA86', pain_short: 'VAG', pain_long: 'VAE', spawn: 'VAI', klaxon: 'U16',
 });
 /** engine.js `_spawn`'s write ahead of the fill, the flash and the line: the life's `$PSET` scream take (it carries
  *  t23 = A10), then the golden bundle's `spawn` frames, which START WITH `$PLAYX,0,*` (the test checks both). */
@@ -52,11 +52,11 @@ export const SPAWN_HEAD = Object.freeze(['$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,
   '$PLAYX,0,*', '$SPAWN,,*', '$TMP,,,,,,,,-100,,,,*', '$TID,1,*', '$AMMO,0,32,192,1,*', '$AMMO,1,6,24,1,*', '$BMAP,0,0,,,,,*']);
 /** The whole spawn write. A (the app that Tony heard): head, F348's fill (Shields only), the flash, the spawn line.
  *  B (engine.js since X3): head, the flash, the spawn line, then the fill LAST, so the line is on the FIFO ahead of the hum. */
-const spawnWrite = (fill, line, fillLast = false) => fillLast
-  ? [...SPAWN_HEAD, '$SFLASH,*', line, ...(fill ? [`$LIFE,0,0,${fill},*`] : [])]
+const spawnWrite = (fill, line, fillLast = false, klaxon = null) => fillLast
+  ? [...SPAWN_HEAD, '$SFLASH,*', line, ...(klaxon ? [klaxon] : []), ...(fill ? [`$LIFE,0,0,${fill},*`] : [])]
   : [...SPAWN_HEAD, ...(fill ? [`$LIFE,0,0,${fill},*`] : []), '$SFLASH,*', line];
 /** The frames ahead of the fill in B's spawn write (the gun parses them one frame gap apart). */
-const FILL_AT_B = SPAWN_HEAD.length + 2;
+const FILL_AT_B = SPAWN_HEAD.length + 3;   // the flash, the line, the klaxon
 const MEDALS = new Set(['first_blood', 'double_kill', 'triple_kill', 'killtacular', 'killing_spree', 'unstoppable']);
 const cueFrame = kind => kind === 'hill_tick' ? `$PLAY,${CUE.hill_tick},4,6,,,,,*` : play(CUE[kind]);
 
@@ -66,7 +66,7 @@ export const WANT = Object.freeze({
   kill: 'must', first_blood: 'must', double_kill: 'must', triple_kill: 'must', killtacular: 'must', killing_spree: 'must',
   unstoppable: 'must', lead_taken: 'must', lead_lost: 'must',
   hill_captured: 'want', hill_lost: 'want', enemy_down: 'want', shield_down: 'want', low_health: 'want', next_kill_wins: 'want',
-  shield_charging: 'want', shield_online: 'want', spawn: 'want',
+  shield_charging: 'want', shield_online: 'want', spawn: 'want', klaxon: 'want',
   shield_loop: 'filler', hill_tick: 'filler', pain_short: 'filler', pain_long: 'filler',
 });
 
@@ -456,7 +456,9 @@ class PolicyB {
         if (this.pendingHurt) this.pendingHurt = false;
         // F149 (gap B3, waiting on Tony): this stop cuts whatever plays, my own kill line included. See the todo test.
         else if (m.hurtFired) this._write([PLAYX], 'death: stop the low-health loop (F149)');
-      } else if (m.kind === 'spawn') { this._write(spawnWrite(m.fill, c.line('spawn', t), true), 'spawn'); this.loopAt = 0; }
+      } else if (m.kind === 'spawn') {   // engine.js `_spawn`: the T-0 klaxon rides the spawn write, before the fill (X3)
+        this._write(spawnWrite(m.fill, c.line('spawn', t), true, this.klaxonSaid ? null : c.line('klaxon', t)), 'spawn'); this.klaxonSaid = true; this.loopAt = 0;
+      }
       else if (m.kind === 'shield_charging') {
         if (m.refillMs > SHIELD_CHARGING_MIN_MS) this._line('shield_charging', t, { itemKind: 'status', key: 'status', preemptKey: true });
       }
@@ -528,6 +530,12 @@ export const SCENARIOS = [
     title: 'Match start (a Shields spawn at full shield, F348): first blood, lead taken and the kill confirm at once',
     preset: 'halo', startShield: 0, horizonMs: 25000,
     events: [{ t: 0, type: 'spawn' }, ...kill(12000, ['first_blood'], ['lead_taken'])],
+  },
+  {
+    id: 'spawn-kill-early',
+    title: 'X3: a kill confirm 800 ms into a Shields spawn, while the spawn line and the klaxon still play',
+    preset: 'halo', startShield: 0, horizonMs: 12000,
+    events: [{ t: 0, type: 'spawn' }, ...kill(800)],
   },
   {
     id: 'death-with-kill-queued',

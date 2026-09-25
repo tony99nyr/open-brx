@@ -82,6 +82,7 @@ Rules:
    revive writes, after the spawn line and the klaxon. The model blocks at the fill, not at its echo, and lets the lines
    already queued play first (`setBlocked(…, queueFirst)`, an assumption for bench Block 10 step 4). `$SPAWN` in a write
    stops the loop, and the end teardown sets the shield to 0, so the whistle line is written (X1).
+   A must-hear line in the first seconds of a Shields life flushes the spawn line and the klaxon too (F362 (e)).
 
 **Not modelled** (assumed not to use the announcer FIFO, unconfirmed): the gun's own fire, reload, empty-click and
 weapon-swap sounds, and whatever the native `$SPAWN` plays. If any of them do queue there, the flush count is low by

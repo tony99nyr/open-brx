@@ -4622,7 +4622,7 @@ export class Engine {
   _writeTeardown(kind, why) {
     this._armPending = null; this._triggerPending = null;   // F209
     this._pendingHurtWrite = false;   // review 2026-09-19: panic/end teardown must cancel a queued low-health alert too
-    if (kind === 'panic') { if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
+    if (kind === 'panic') { this._shieldFillAt = 0; if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
     if (this.frames) {
       this._write(this.frames.end, `end (${why})`);
       // X1: the end frames (`$SPAWN`, `$CLEAR`) stop the shield loop on the gun. The phase is still live and the model's
@@ -6587,7 +6587,8 @@ export class Engine {
         // F348: the gun's answer to the spawn fill. The life started full; this is not a pickup or a recharge.
         const fillEcho = gains.length && gains[0][0] === 'shield' && this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS;
         if (fillEcho) {
-          if (shield >= this.maxShield) { this._shieldFillAt = 0; this._shieldCharged(); }
+          this._shieldFillAt = 0;   // polish r1: the gun answered the fill; from here `this.shield` says whether the loop runs
+          if (shield >= this.maxShield) this._shieldCharged();
           this.log(`spawn shield fill: ${shield}/${this.maxShield}`, 'li');
         } else if (gains.length && gains.some(g => g[0] !== 'shield') && this._overshield && this.now() - this._overshield.at <= OVERSHIELD_ECHO_MS
                    && hp === this._overshield.hp && armor === this._overshield.armor) {

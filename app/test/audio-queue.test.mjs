@@ -28,7 +28,7 @@ const rules = patch => ({ ...GUN_RULES, ...patch });
 const BODY = new Set(['pain_short', 'pain_long']);
 /** The body sounds B writes outside the announcer queue (docs/announcer.md, "Exempt"): the one-outstanding rule is the
  *  queue's, so it is asserted for the queue's lines only. */
-const EXEMPT = new Set([...BODY, 'shield_down', 'low_health', 'spawn']);
+const EXEMPT = new Set([...BODY, 'shield_down', 'low_health', 'spawn', 'klaxon']);   // the klaxon rides the spawn write (X3)
 const A10_MS = CLIP_MS.A10;
 /** A shield armed at 0 ms (the hum starts), then one VAA at `sentAt`. */
 const humTrial = (sentAt, r = GUN_RULES, horizonMs = sentAt + 61000) =>

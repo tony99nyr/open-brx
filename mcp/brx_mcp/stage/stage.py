@@ -3522,8 +3522,8 @@ class GunStage:
             elif (gains and gains[0][0] == "shield" and self._shield_fill_at
                   and now - self._shield_fill_at <= SHIELD_FILL_ECHO_S):
                 # F348 (engine.js `_onHp` `fillEcho`): the gun's answer to the spawn fill. The life started full.
+                self._shield_fill_at = 0.0                        # engine.js polish r1: any answer ends the fill window
                 if shield >= self.max_shield:
-                    self._shield_fill_at = 0.0
                     self._shield_charged()
                 self._log(f"spawn shield fill: {shield}/{self.max_shield}", "info")
             elif before > 0 and gains and self._gain_over_ceiling(hp, armor, shield, self._pool_ceilings()):
