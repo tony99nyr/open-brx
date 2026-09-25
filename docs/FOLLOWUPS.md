@@ -9,10 +9,10 @@ Updated: 2026-09-25 (F384 and F385 built, bench checks left; F382 Stick half, F3
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 74.** Desk 4 · bench 67 · decision 3.
+**MVP open: 75.** Desk 5 · bench 67 · decision 3.
 
-**MVP DESK (4),** a keyboard is enough:
-- 🟠 **B21** · **F372** · **F400**
+**MVP DESK (5),** a keyboard is enough:
+- 🟠 **B21** · **F372** · **F400** · **F401**
 - 🟡 **F377**
 
 **MVP BENCH (67),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F401 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F402 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -52,6 +52,8 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 ## MVP DESK
 
 A keyboard is enough. Highest value first.
+
+- **F401 🟠 MC SHOWS WHICH STICKS HAVE NOT SYNCED SINCE THE MATCH.** Tony 2026-09-25 (via brx2): a HELD Stick can end a timed game on its own clock out of Wi-Fi (F386), so its result reaches MC only when it is brought back. The results page lists every station that has not synced since the match ("STICK 1 NEEDS SYNC: BRING IT INTO WI-FI"), and LOAD warns while one is unsynced, so the operator can send someone to fetch it. Stub: brx3 builds it after F382. `build`.
 
 - **F377 🟡 SOLO LMS NEVER PICKS A WINNER.** Found by the Q13 polish (Codex Sol, 2026-09-25): solo LMS now registers hits and credits kills, but survival scoring (`scoring.py` ~974) decides by team, so a one-team match ends `undecided` even with one player alive. Decide the last survivor by player in a one-team game. Predates Q13; LMS is still `proven: False`. `build`.
 
