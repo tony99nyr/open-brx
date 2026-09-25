@@ -5146,6 +5146,7 @@ export class Engine {
   // UNLOCKED here with small mid-life writes -- never a config re-push, which would clear `spawned` (utility.md §5g.6).
   /** Every powerup state field back to empty: a new match, a new config, a reset. */
   _puReset() {
+    this.puLost = null;         // HUD QA R2-17: {name, color, at} the weapon item a death took; cleared by the next life
     this._puHeld = null;        // the weapon item: {station, weapon_id, slot, charges, left, name, color, at, back: {slot, mag, res}, trig}
     this._overshield = null;    // {station, base, amount, name, color, at}: the shield at the grant is `base`
     this._puClaim = null;       // {station, since, readyAt}: standing in range of a station whose item is there
@@ -5416,7 +5417,7 @@ export class Engine {
     this.shield = to; this._prevShield = to;
     this._shieldRegen = null;   // S29: no refill may be in flight under it
     const name = String(item.name || 'OVERSHIELD').toUpperCase();
-    this._overshield = { station: id, base, amount: to - base, name, color: item.color || null, at: now, max };
+    this._overshield = { station: id, base, amount: to - base, name, color: item.color || null, at: now, max, hp: this.hp, armor: this.armor };   // hp/armor: the pools the grant wrote (R2-21: its echo is no pickup)
     this.powerupGrant = { kind: 'overshield', name, color: item.color || null, at: now };
     return true;
   }
@@ -5489,7 +5490,7 @@ export class Engine {
   _puEnd(why) {
     const h = this._puHeld; if (!h) return;
     this._puHeld = null;
-    if (why === 'death' && PU_LOST_AT_DEATH) { this._puReequip = true; this.log(`powerup: ${h.name} lost at the death`, 'li'); this._save(); return; }
+    if (why === 'death' && PU_LOST_AT_DEATH) { this._puReequip = true; this.puLost = { name: h.name, color: h.color, at: this.now() }; this.log(`powerup: ${h.name} lost at the death`, 'li'); this._save(); return; }   // HUD QA R2-17: the DOWN screen says so
     const b = h.back || { slot: 0, mag: this._puCounts(0)[0], res: this._puCounts(0)[1] };
     this._puEquip(b.slot, b.mag, b.res, `powerup: ${h.name} over (${why}), slot ${b.slot} back on the trigger at ${b.mag}/${b.res}`);
     this._puBackPending = { slot: b.slot, mag: b.mag, res: b.res, at: this.now(), tries: 0 };   // polish M3: until the gun answers for that slot
@@ -5508,6 +5509,7 @@ export class Engine {
   /** `_revive`, after its burst: an item still held (an operator respawn of a LIVE player skips `_death`) is lost the same
    *  way, and slot 0 is re-equipped with its head `$WEAP` and the burst's own `$AMMO,0,…` (a safe re-equip). */
   _puRevive(burst) {
+    this.puLost = null;   // HUD QA R2-17: the DOWN screen's ITEM LOST line belongs to the life that ended
     if (this._puHeld) { this._puHeld = null; this._puReequip = true; }
     if (!this._puReequip) return;
     this._puReequip = false;
@@ -5543,7 +5545,8 @@ export class Engine {
       const nameOf = item => String(item.name || '').toUpperCase();
       const b = this._puBack;
       if (b && now - b.at < PU_READY_MS) hint = { kind: 'switched_back', name: b.name, to: b.to, color: null };
-      else if (g && now - g.at < PU_READY_MS) hint = { kind: 'granted', name: g.name, color: g.color, itemKind: g.kind, ...(g.charges != null ? { charges: g.charges } : {}), ...(g.replaced ? { replaced: g.replaced } : {}) };
+      else if (g && now - g.at < PU_READY_MS && !(this.lastHitAt > g.at)) hint = { kind: 'granted',   // HUD QA R2-18: a hit retires the pickup card: the hit stack owns the centre
+        name: g.name, color: g.color, itemKind: g.kind, ...(g.charges != null ? { charges: g.charges } : {}), ...(g.replaced ? { replaced: g.replaced } : {}) };
       else if (cl && items[cl.station]) {
         const item = items[cl.station], base = { name: nameOf(item), color: item.color || null, station: cl.station };
         hint = cl.readyAt != null && now - cl.readyAt >= POWERUP_NO_ANSWER_MS ? { kind: 'no_answer', ...base }
@@ -5833,6 +5836,11 @@ export class Engine {
   _poolsOver(hp, armor, shield, c = this._poolCeilings()) {
     return hp > c.hp || (c.armor > 0 && armor > c.armor) || shield > c.shield;
   }
+  /** HUD QA R2-02: is a RISE above what this life armed? `_poolsOver`, except a shield counts only in a game that arms
+   *  one: a shield grant in a no-shield game is a state the HUD shows (an IR or host grant), not a misread `$PSET`. PURE. */
+  _gainOverCeiling(hp, armor, shield, c = this._poolCeilings()) {
+    return hp > c.hp || (c.armor > 0 && armor > c.armor) || (c.shield > 0 && shield > c.shield);
+  }
   /** F341: does a pool report fit what this life armed? Called with every `$HP` and `$LCD` in a live life.
    *  - A pool ABOVE its ceiling is always wrong: the gun clamps every grant at its `$PSET`, so only a `$PSET` the gun
    *    misread gets one there. That starts a repair (`_poolRepair`), and only that does.
@@ -5844,9 +5852,14 @@ export class Engine {
   _poolVerify(hp, armor, shield, solicited) {
     if (this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial || !(hp > 0)) return;
     const life = this._lifeSeq || 0, now = this.now();
-    if (this.poolWrong && this.poolWrong.life === life) return;   // the verdict stands: the operator's FORCE RESPAWN, not a loop
     const c = this._poolCeilings();
     const over = this._poolsOver(hp, armor, shield, c);
+    // review M1: a report back in range (an operator RESYNC GUN, a later good read) clears POOLS WRONG; an over one keeps it
+    if (this.poolWrong && this.poolWrong.life === life) {
+      if (over) return;   // the verdict stands: the operator's FORCE RESPAWN, not a loop
+      this.log(`gun pools back in range (${hp}/${armor}/${shield}): POOLS WRONG cleared (F341)`, 'lk');
+      this.poolWrong = null; this._changed();
+    }
     if (solicited && this._poolCheck && this._poolCheck.life === life) {
       this._poolCheck = null;
       const hit = !!(this.latch && this._spawnAt && this.latch.at >= this._spawnAt);
@@ -6488,6 +6501,16 @@ export class Engine {
         if (fillEcho) {
           if (shield >= this.maxShield) { this._shieldFillAt = 0; this._shieldCharged(); }
           this.log(`spawn shield fill: ${shield}/${this.maxShield}`, 'li');
+        } else if (gains.length && gains.some(g => g[0] !== 'shield') && this._overshield && this.now() - this._overshield.at <= OVERSHIELD_ECHO_MS
+                   && hp === this._overshield.hp && armor === this._overshield.armor) {
+          // HUD QA R2-21: the overshield grant's echo carries the pools the grant wrote. A rise TO exactly those pools is the
+          // gun catching up with the node's own numbers, never a pickup: no "+55 HEALTH" float. Any other rise (a real heal
+          // inside the echo window) still floats.
+          this.log(`pool rise to ${hp}/${armor}/${shield} in the overshield grant's echo: no gain moment`, 'li');
+        } else if (gains.length && this._gainOverCeiling(hp, armor, shield)) {
+          // F341 x HUD QA R2-02: a pool ABOVE the armed ceiling is a misread `$PSET` (`$HP,4545,7070`), never a pickup.
+          // No "+7000 ARMOUR" float and no "armour up" line: `_poolVerify` repairs it, and the HUD marks the vitals.
+          this.log(`pool rise to ${hp}/${armor}/${shield} is above the armed ceiling: no gain moment, no voice line (F341)`, 'li');
         } else if (gains.length) {
           gains.sort((a, b) => b[1] - a[1]);
           this.moment = { kind: 'gain', at: this.now(),
@@ -6952,7 +6975,7 @@ export class Engine {
       // A56 (docs/spec/powerups.md): null unless the config carries powerup items. `powerup` = {hint, held, overshield};
       // `powerupSpawn` = {name, color, at} for the "<ITEM> AVAILABLE" card; `powerupGrant` = {name, color, kind, at, replaced?};
       // `powerupSwap` = {name, color, replaced, at} for the swap card. The two cards are set by the announcer queue (docs/announcer.md).
-      powerup: this.powerupView(now), powerupSpawn: this.powerupSpawn || null, powerupGrant: this.powerupGrant || null, powerupSwap: this.powerupSwap || null,
+      powerup: this.powerupView(now), puLost: this.puLost || null, powerupSpawn: this.powerupSpawn || null, powerupGrant: this.powerupGrant || null, powerupSwap: this.powerupSwap || null,
       // A56 claim: {station, claiming, ready, progress} while this phone stands in range of an item that is there. app.js
       // turns it into the player advert's `claiming` / `claim_ready` bits with the station id in `value`.
       powerupClaim: this._puClaim && this._puItems() ? { station: this._puClaim.station, claiming: true, ready: this._puClaim.readyAt != null,

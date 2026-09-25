@@ -44,6 +44,11 @@ export function weaponLabel(w) {
  *  for a lethal tick). No damage number: Tony 2026-09-23. The killing hit's damage is capped by what you had left, so
  *  it reads small and says little. Shown only when the booked final hit belongs to the named killer (an unknown
  *  killer means a stale latch). Empty when the phone booked no hit this life (a gun restart, a desync, a restart). */
+/** HUD QA R2-17: a death takes a held weapon item with it (powerups.md). The DOWN screen says so, once, beside the kill. */
+export function itemLostLine(st) {
+  const l = st.puLost; if (!l || !l.name) return '';
+  return `<span class="pulost" id="dspulost" role="status">${up(l.name)} LOST</span>`;
+}
 export function finalHitLine(st) {
   const life = st.lastLife, kb = st.killedBy || {}, fh = life && life.finalHit;
   if (!fh) return '';
@@ -76,6 +81,15 @@ export function callouts(st) {
 
 /** The game strip: the clock, the race for the mode (team chips out of the cap, or your FFA place), the hill, and
  *  your kills and deaths. An old board keeps its numbers with a short age tag, never passing as current. */
+/** Who holds the hill: `{key}` a team, `{label: 'NEUTRAL'}` nobody, `{label: '–', stale}` a KOTH game with no beacon heard,
+ *  null when the game has no hill. The DOWN strip's reading. PURE. */
+export function hillOf(st) {
+  if (st.hill && num(st.hill.owner) != null) {
+    const o = st.hill.owner, k = TID_KEY[o];
+    return o === HILL_NEUTRAL_TID || !k ? { key: null, label: 'NEUTRAL' } : { key: k, label: up(k) };
+  }
+  return st.mode === 'KOTH' ? { key: null, label: '–', stale: true } : null;
+}
 export function gameNow(st, { stale, age, resultRows }) {
   const tile = (val, cls = '', said = '') => `<span class="rc ${cls}"${said ? ` role="img" aria-label="${esc(said)}"` : ''}><span class="rv">${val}</span></span>`;
   const ageTag = stale ? `<i class="ag">${esc(String(age).replace(/^AS OF /, ''))}</i>` : '';
@@ -96,10 +110,10 @@ export function gameNow(st, { stale, age, resultRows }) {
       return `<span class="tm ${mine ? 'mine' : ''}" style="background:${TEAM_COLOR[k] || 'var(--plate)'};color:${TEAM_INK[k] || 'var(--num)'}"><span class="unskew">${up(t.name || k)} <b>${esc(t.score != null ? t.score : '—')}</b></span></span>`; }).join('');
     out.push(tile(`<span class="tms">${chips}</span>${capTag}${ageTag}`, stale ? 'stale' : ''));
   } else if (cap != null) out.push(tile(`<span class="cap">FIRST TO ${cap}</span>`));
-  if (st.hill && num(st.hill.owner) != null) {
-    const o = st.hill.owner, k = TID_KEY[o];
-    out.push(tile(o === HILL_NEUTRAL_TID || !k ? `${ICON.flag}<b>NEUTRAL</b>` : `<span class="tm" style="background:${TEAM_COLOR[k]};color:${TEAM_INK[k]}"><span class="unskew">${ICON.flag} ${up(k)}</span></span>`, 'hill', 'hill held by ' + (o === HILL_NEUTRAL_TID || !k ? 'nobody' : k)));
-  } else if (st.mode === 'KOTH') out.push(tile(`${ICON.flag}<b>–</b>`, 'hill stale', 'hill out of range'));
+  const h = hillOf(st);
+  // HUD QA R2-08: the owner is a <b>, so the hill tile has the weight of the score chips beside it (it was about 8 px)
+  if (h && h.key) out.push(tile(`<span class="tm" style="background:${TEAM_COLOR[h.key]};color:${TEAM_INK[h.key]}"><span class="unskew">${ICON.flag} <b>${up(h.key)}</b></span></span>`, 'hill', 'hill held by ' + h.key));
+  else if (h) out.push(tile(`${ICON.flag}<b>${h.label}</b>`, h.stale ? 'hill stale' : 'hill', h.stale ? 'hill out of range' : 'hill held by nobody'));
   const mcKills = st.kills != null && !!st.scoreAt;
   const me = `${mcKills ? `${ICON.kill}<b class="tab">${st.kills}</b>` : ''}${ICON.skull}<b class="tab">${st.deaths}</b>${mcKills ? ageTag : ''}`;
   out.push(tile(me, mcKills && stale ? 'stale' : '', `your match: ${mcKills ? `${st.kills} ${st.kills === 1 ? 'kill' : 'kills'}, ` : ''}${st.deaths} ${st.deaths === 1 ? 'death' : 'deaths'}`));

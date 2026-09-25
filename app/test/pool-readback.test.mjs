@@ -205,3 +205,36 @@ test('F341 polish: a reconcile inside the repair read-back window asks again aft
   h.adv(POOL_REPAIR_READ_MS + 1000);
   assert.equal(h.log(/pool repair held/).length, 1, 'asked again after the reconcile, and it held');
 });
+
+test('HUD QA R2-02: a rise ABOVE the armed ceiling is never a gain moment and never voiced; CONTROL: a rise to the ceiling is', () => {
+  const h = harness();
+  h.adv(4000);                        // past the read-back, clean
+  const said = []; const say = h.eng._announceStatus.bind(h.eng);
+  h.eng._announceStatus = k => { said.push(k); return say(k); };
+  h.gun.armor = 40; h.f('$HIR,0,0,19,2,30,0,0,*').f('$HP,45,40,0,*');   // a 30 armour hit
+  h.adv(1000);
+  h.eng.moment = null;
+  h.gun.hp = 4545; h.gun.armor = 7070; h.gun.max = { hp: 4545, armor: 7070, shield: 0 };
+  h.f('$HP,4545,7070,0,*');           // the misread `$PSET`, reported unasked
+  assert.ok(!(h.eng.moment && h.eng.moment.kind === 'gain'), `no "+7000 ARMOUR" float: ${JSON.stringify(h.eng.moment)}`);
+  assert.deepEqual(said, [], 'no "armour up" line for a pool the gun cannot hold');
+  h.adv(POOL_REPAIR_READ_MS + 1000);  // the repair puts 45/70 back
+  h.gun.armor = 40; h.f('$HIR,0,0,19,2,30,0,0,*').f('$HP,45,40,0,*');
+  h.adv(1000); said.length = 0; h.eng.moment = null;
+  h.gun.armor = 70; h.f('$HP,45,70,0,*');   // CONTROL: back up TO the ceiling is a real pickup
+  assert.equal(h.eng.moment && h.eng.moment.kind, 'gain');
+  assert.deepEqual(said, ['armour_up']);
+});
+
+test('review M1: POOLS WRONG clears on a later in-range report (a RESYNC GUN or a repaired gun); CONTROL: an over report keeps it', () => {
+  const h = harness({ garble: true });
+  h.gun.ignoreRepairs = true;
+  h.adv(2600 + (POOL_REPAIR_READ_MS + 600) * (POOL_REPAIR_TRIES + 1));
+  assert.equal(h.eng.poolStale() && h.eng.poolStale().why, 'pool_wrong');
+  h.f('$HP,4545,7070,0,*');
+  assert.equal(h.eng.poolStale() && h.eng.poolStale().why, 'pool_wrong', 'CONTROL: still over, the verdict stands');
+  h.gun.hp = 45; h.gun.armor = 70; h.gun.max = { hp: 45, armor: 70, shield: 0 };
+  h.f('$HP,45,70,0,*');               // the operator's RESYNC GUN (or anything) put the pools back in range
+  assert.equal(h.eng.poolWrong, null);
+  assert.equal(h.eng.poolStale(), null, 'POOLS WRONG must clear once the gun reads in range');
+});

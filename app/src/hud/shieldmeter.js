@@ -19,6 +19,9 @@
 //   to full, and never more than one grant ahead of the pool the gun reported. By day it moves at frame rate
 //   (`requestAnimationFrame`); at night and under reduced motion it moves only with the HUD's own patch.
 const clamp01 = x => (x > 1 ? 1 : x > 0 ? x : 0);
+/** HUD QA R2-04: the delay creep is a hint that the refill is coming, never a pool. Drawn across the whole track it
+ *  reached 93% on an empty shield and read "nearly full, then empty", so it stops at this share of the track. */
+export const DELAY_CREEP_MAX = 0.3;
 const osOf = st => (st.powerup && st.powerup.overshield) || null;
 
 /** Does the live screen draw the meter? A shield game, or any game while an overshield is held. */
@@ -38,7 +41,7 @@ export function meterModel(st, now = Date.now()) {
   // `paused`: the engine's refill stands down (stunned, resyncing, the link down...), so the creep must not fill and hold
   const waiting = !!(sr && sr.on && !sr.charging && !sr.gaveUp && !sr.paused && !os && alive && base < max);
   const elapsed = waiting ? Math.max(0, now - (sr.quietAt || 0)) : 0;
-  const delayPct = waiting ? clamp01(elapsed / sr.delayMs) : 0;
+  const delayPct = waiting ? DELAY_CREEP_MAX * clamp01(elapsed / sr.delayMs) : 0;
   // the refill stands down (a stun, a resync): the creep holds where it was, not empty and not still filling
   const frozen = !!(sr && sr.paused && sr.on && !sr.charging && !sr.gaveUp && !os && alive && base < max);
   const pct = max > 0 ? clamp01(base / max) : 0;

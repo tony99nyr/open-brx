@@ -1894,6 +1894,12 @@ class GunStage:
         """engine.js `_poolsOver` (F341): above the armed ceilings; armour counts only in a game that arms some. PURE."""
         return hp > c["hp"] or (c["armor"] > 0 and armor > c["armor"]) or shield > c["shield"]
 
+    @staticmethod
+    def _gain_over_ceiling(hp: int, armor: int, shield: int, c: dict) -> bool:
+        """engine.js `_gainOverCeiling` (HUD QA R2-02): a RISE above the armed ceilings; armour and shield count only in
+        a game that arms some (a shield grant in a no-shield game is shown, not a misread `$PSET`). PURE."""
+        return hp > c["hp"] or (c["armor"] > 0 and armor > c["armor"]) or (c["shield"] > 0 and shield > c["shield"])
+
     def _pool_verify(self, hp: int, armor: int, shield: int, solicited: bool) -> None:
         """engine.js `_poolVerify` (F341): a pool ABOVE its ceiling starts a repair, and only that does. The spawn
         read-back's answer below the spawn pools with no `$HIR` since the spawn is logged, never written (grenade and
@@ -1901,10 +1907,14 @@ class GunStage:
         if not self.spawned or not self.alive or not hp > 0:
             return
         life, now = self._life, self.now()
-        if self.pool_wrong is not None and self.pool_wrong["life"] == life:
-            return
         c = self._pool_ceilings()
         over = self._pools_over(hp, armor, shield, c)
+        # review M1 (engine.js `_poolVerify`): a report back in range clears the verdict; an over one keeps it
+        if self.pool_wrong is not None and self.pool_wrong["life"] == life:
+            if over:
+                return
+            self._log(f"gun pools back in range ({hp}/{armor}/{shield}): POOLS WRONG cleared (F341)", "info")
+            self.pool_wrong = None
         if solicited and self._pool_check is not None and self._pool_check["life"] == life:
             self._pool_check = None
             hit = self._last_hir_at is not None and self._spawn_at is not None and self._last_hir_at >= self._spawn_at
@@ -3503,6 +3513,10 @@ class GunStage:
                     self._shield_fill_at = 0.0
                     self._shield_charged()
                 self._log(f"spawn shield fill: {shield}/{self.max_shield}", "info")
+            elif before > 0 and gains and self._gain_over_ceiling(hp, armor, shield, self._pool_ceilings()):
+                # F341 x HUD QA R2-02 (engine.js `_onHp`): a rise ABOVE the armed ceiling is a misread `$PSET`, not a
+                # pickup. No gain event and no voice line; `_pool_verify` repairs it.
+                self._log(f"pool rise to {hp}/{armor}/{shield} is above the armed ceiling: no gain event (F341)", "info")
             elif before > 0 and gains:
                 pool, amount = gains[0]
                 # S45 (engine.js `_onHp`): the grant that FILLS the shield says SHIELDS ONLINE instead of

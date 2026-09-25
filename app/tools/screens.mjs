@@ -2592,7 +2592,7 @@ await step('polish-2 connected: the pre-join copy no longer claims mDNS auto-joi
   const note = await pg.evaluate(() => (document.querySelector('.lobby .note.join') || {}).textContent || '');
   await pg.close();
   must(!/connects by itself/i.test(note), 'the copy still claims an address connects by itself: ' + note);
-  must(/tap JOIN/i.test(note), 'the copy does not point at the JOIN row: ' + note);
+  must(/tap its row/i.test(note), 'the copy does not point at the JOIN row: ' + note);   // HUD QA R2-19: never "tap JOIN" with no JOIN on screen
 });
 
 // ---------- Polish-loop pass 2: an honest, muted EQUIPPED · UNCONFIRMED after the arming timeout ----------
@@ -4771,7 +4771,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: another player won it: TAKEN BY VIPER, with the countdown to the next spawn`, async () => {
     const pg = await open(view, 'live-pu-taken-by', N, 3300); const r = await puWait(pg, r => r.hint && r.hint.kind === 'taken_by', 2000); await shot(pg, 'taken-by'); await puClose(pg, night);
-    must(r.hint && /^TAKEN · 1:5\d$/.test(r.hint.act) && r.hint.lab === 'BY VIPER', `the countdown is in the action line: ${JSON.stringify(r.hint)}`);
+    must(r.hint && /^ROCKETS TAKEN · 1:5\d$/.test(r.hint.act) && r.hint.lab === 'BY VIPER', `the countdown is in the action line: ${JSON.stringify(r.hint)}`);
     must(r.hint.actPx >= 14 && r.hint.labPx >= 11, `type floors: ${r.hint.actPx}/${r.hint.labPx}`);
     must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `a long line wraps, it never reaches the vitals: ${JSON.stringify(r.hint.box)} vitals ${JSON.stringify(r.vitals)}`);
   });
@@ -5112,6 +5112,350 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(!night || px.bad === 0, `night: green, teal or blue paint on the meter: ${JSON.stringify(px)}`);
   });
 }
+
+
+// HUD visual QA round 2 (2026-09-24, qa-shots/hud2/FINDINGS.md) ---------- R2-02 .. R2-21, the gates it listed as missing ----------
+// Every check reads what a person sees on screen: rects after the #frame scale, computed colours, hit-testing.
+const r2 = {
+  /** The on-screen box, font px AFTER the frame scale, colour and whether it shows, for every match of `sel`. */
+  looks: (pg, sel) => pg.evaluate(sel => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+    return [...document.querySelectorAll(sel)].map(e => { const c = getComputedStyle(e), r = e.getBoundingClientRect(); let shown = r.width > 0 && r.height > 0;
+      for (let n = e; n && n !== f; n = n.parentElement) { const cs = getComputedStyle(n); if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) shown = false; }
+      return { text: (e.innerText || e.textContent || '').replace(/\s+/g, ' ').trim(), px: Math.round(parseFloat(c.fontSize) * k * 10) / 10, color: c.color, bg: c.backgroundColor,
+        l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height, shown }; }); }, sel),
+  rgb: css => (/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || '') || []).slice(1).map(Number),
+  /** amber: red and green both lit, green clearly under red, blue low (never the green of a healthy dot) */
+  amber: css => { const [R, G, B] = r2.rgb(css); return R > 150 && G > 80 && G < R - 30 && B < G - 20; },
+  green: css => { const [R, G, B] = r2.rgb(css); return G > R + 30 && G > B; },
+};
+for (const view of VIEWS) for (const night of [false, true]) {
+  const skin = night ? 'night' : 'day', N = night ? '&night' : '';
+  await step(`${view.name} R2-02 F341 pool_wrong ${skin}: the vitals say POOLS WRONG, the GUN dot is amber, no gain float`, async () => {
+    const pg = await open(view, 'live-pool-wrong', N, 1500);
+    await pg.evaluate(() => { window.__gains = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches('.mo.gain')) window.__gains.push(n.textContent.replace(/\s+/g, ' ').trim()); })
+      .observe(document.getElementById('overlay') || document.body, { childList: true, subtree: true }); });
+    let tag = []; for (let t = 0; t < 9000 && !(tag = await r2.looks(pg, '.vitals .pooltag')).length; t += 200) await pg.waitForTimeout(200);
+    const r = { tag: tag[0] || null, dot: (await r2.looks(pg, '#linkdot'))[0], gains: await pg.evaluate(() => window.__gains), why: await pg.evaluate(() => (window.brx.engine.state().poolStale || {}).why) };
+    await pg.screenshot({ path: `${OUT}/${view.name}-r2-02-pool-wrong-${skin}.png` });
+    const bad = await invariants(pg); await pg.close();
+    must(r.why === 'pool_wrong', `pre-condition: the REAL engine reached its verdict: ${r.why}`);
+    must(r.tag && r.tag.shown && r.tag.text === 'POOLS WRONG' && r.tag.px >= 11, `the vitals must say POOLS WRONG (MC's LIVE row word) at >= 11 px on screen: ${JSON.stringify(r.tag)}`);
+    must(r.dot && r2.amber(r.dot.bg), `the GUN dot must be amber: ${r.dot && r.dot.bg}`);
+    must(r.gains.length === 0, `a gain above the armed maximum floated: ${JSON.stringify(r.gains)}`);
+    must(bad.length === 0, bad.join(' ; '));
+  });
+}
+
+
+for (const view of VIEWS) for (const night of [false, true]) {
+  const skin = night ? 'night' : 'day', N = night ? '&night' : '';
+  await step(`${view.name} R2-04 shield delay ${skin}: the creep never reads as a pool (<= 30% of the track while the shield is 0)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3000);
+    const seen = []; for (let t = 0; t < 7000; t += 150) { const r = await svRead(pg); if (r.m && r.wait && r.shield === 0 && r.parts[0]) seen.push(r.dly / ((r.parts[0].r - r.parts[0].l) / r.k)); await pg.waitForTimeout(150); }
+    await pg.close();
+    must(seen.length > 5, `pre-condition: the delay ran on an empty shield (${seen.length} samples)`);
+    const top = Math.max(...seen);
+    must(top <= 0.31, `the delay creep drew ${Math.round(top * 100)}% of the track on an empty shield`);
+    must(top >= 0.15, `CONTROL: the creep still moves (${Math.round(top * 100)}%)`);
+  });
+}
+
+
+/** R2-05/R2-09: the 44 px square centred on a control, hit-tested on screen: which of its four edge midpoints miss it. */
+r2.tap44 = (pg, sel) => pg.evaluate(sel => [...document.querySelectorAll(sel)].filter(c => { const cs = getComputedStyle(c), r = c.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 1 && r.height > 1; }).map(c => {
+  const r = c.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2, fr = document.getElementById('frame').getBoundingClientRect();
+  const miss = [[cx - 21.5, cy], [cx + 21.5, cy], [cx, cy - 21.5], [cx, cy + 21.5]].filter(([x, y]) => y >= fr.top && y <= fr.bottom && x >= fr.left && x <= fr.right)
+    .filter(([x, y]) => { const h = document.elementFromPoint(x, y); return !(h && (h === c || c.contains(h))); });
+  return { name: (c.textContent || c.getAttribute('aria-label') || c.id).trim().slice(0, 24), w: Math.round(r.width), h: Math.round(r.height), miss: miss.map(p => p.map(Math.round)) }; }), sel);
+r2.contrast = (pg, sel) => pg.evaluate(([src, sel]) => { const ratio = eval(src)(); return [...document.querySelectorAll(sel)].map(e => ({ text: e.textContent.trim().slice(0, 30), cr: Math.round(ratio(e) * 100) / 100, anim: getComputedStyle(e).animationName })); }, [qaA.contrastOf.toString(), sel]);
+for (const night of [false, true]) {
+  const skin = night ? 'night' : 'day';
+  await step(`se R2-05 headset not joined ${skin}: RECONNECT NOW takes a 44 px tap at >= 11 px, the warning reads, READY UP says why`, async () => {
+    const pg = await open(VIEWS[1], 'kitted-headset-not-joined', night ? '&night' : '', 3000);
+    const r = { tap: await r2.tap44(pg, '.chipbar [data-act="onReconnectNow"]'), btn: (await r2.looks(pg, '.chipbar [data-act="onReconnectNow"] .unskew'))[0],
+      warn: (await r2.looks(pg, '.chipbar [data-headset="not_joined"] .unskew'))[0], cr: await r2.contrast(pg, '.chipbar [data-headset="not_joined"], .chipbar [data-act="onReconnectNow"]'),
+      note: (await r2.looks(pg, '#readynote'))[0] };
+    await pg.screenshot({ path: `${OUT}/se-r2-05-headset-${skin}.png` }); await pg.close();
+    must(r.tap.length === 1 && r.tap[0].miss.length === 0, `RECONNECT NOW must take a 44 px tap on screen: ${JSON.stringify(r.tap)}`);
+    must(r.btn && r.btn.px >= 11 && r.warn && r.warn.px >= 11, `the chip text must be >= 11 px on screen: ${JSON.stringify([r.btn, r.warn])}`);
+    if (night) must(r.cr.every(c => c.cr >= 4.5 && c.anim === 'none'), `night: the headset chips must read at >= 4.5:1 and hold still: ${JSON.stringify(r.cr)}`);
+    must(r.note && /headset/i.test(r.note.text) && /RECONNECT/i.test(r.note.text), `READY UP must give the reason while the headset is not joined: ${JSON.stringify(r.note)}`);
+  });
+}
+
+
+// R2-06 x A60: the JOIN row, keyed on autojoin.js's reason. Only UNVERIFIED is a warning (amber + a drawn glyph by day, the
+// bright night red at night); NEW and SEVERAL are not. None is green at night, and the text is >= 11 px on screen and fits.
+for (const view of VIEWS) for (const night of [false, true]) for (const reason of ['new', 'unverified', 'several']) {
+  const skin = night ? 'night' : 'day';
+  await step(`${view.name} R2-06 A60 JOIN row ${reason} ${skin}: ${reason === 'unverified' ? 'amber with a warning glyph' : 'no warning'}, >= 11 px, fits`, async () => {
+    const pg = await open(view, `connected-join-${reason}`, night ? '&night' : '', 1500);
+    const r = await pg.evaluate(() => { const e = document.querySelector('.lobby .discoveredrow'); if (!e) return null; const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+      const t = e.querySelector('.unskew'), cs = getComputedStyle(e);
+      return { text: t.textContent, reason: e.dataset.reason, px: parseFloat(getComputedStyle(t).fontSize) * k, color: cs.color, border: cs.borderTopColor, glyph: !!e.querySelector('svg'), fits: e.scrollWidth <= e.clientWidth + 1 }; });
+    const cr = await r2.contrast(pg, '.lobby .discoveredrow .unskew');
+    await pg.screenshot({ path: `${OUT}/${view.name}-r2-06-join-${reason}-${skin}.png` }); await pg.close();
+    must(r, 'no JOIN row on screen');
+    must(r.px >= 11 && r.fits, `the row must be >= 11 px on screen and fit: ${JSON.stringify(r)}`);
+    const warn = reason === 'unverified';
+    must(r.glyph === warn, `${warn ? 'UNVERIFIED needs' : 'only UNVERIFIED gets'} the warning glyph: ${JSON.stringify(r)}`);
+    if (night) {
+      must(!r2.green(r.color) && !r2.green(r.border), `night: the row is green: ${JSON.stringify(r)}`);
+      must(cr[0] && cr[0].cr >= 4.5, `night: the row reads below 4.5:1: ${JSON.stringify(cr)}`);
+      if (warn) { const [R, G] = r2.rgb(r.color); must(R >= 220 && G < 130, `night: UNVERIFIED uses the bright night red: ${r.color}`); }
+    } else {
+      must(r2.amber(r.color) === warn && !(warn && r2.green(r.border)), `day: ${warn ? 'UNVERIFIED is amber' : `${reason.toUpperCase()} is not amber`}: ${JSON.stringify(r)}`);
+    }
+  });
+}
+// R2-19: the copy never says "tap JOIN" with no JOIN control on screen
+for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${stage}: the join copy names a control that is on screen`, async () => {
+  const pg = await open(VIEWS[1], stage, '', 1500);
+  const r = await pg.evaluate(() => ({ note: (document.querySelector('.lobby .note.join') || {}).textContent || '', row: !!document.querySelector('.lobby .discoveredrow') }));
+  await pg.close();
+  must(r.note, 'no join copy');
+  must(!/tap JOIN/i.test(r.note) || r.row, `the copy says "tap JOIN" with no JOIN row on screen: ${r.note}`);
+  must(r.row ? /row above/i.test(r.note) : /when it appears/i.test(r.note), `the copy points at the row where it is: ${JSON.stringify(r)}`);
+});
+
+
+// R2-12: the night SECONDARY tier. Every painted text leaf under 14 px on screen reads at >= 4.5:1 and holds still. Out of
+// scope on purpose: a disabled control and a gun another player holds (dimmed as a state), and the kill/callout card (the
+// alert redesign owns it: R2-01/03/10/11/22).
+const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-pu-taken-by', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected'];
+for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name} R2-12 night secondary tier ${stage}: text under 14 px reads at >= 4.5:1, nothing blinks`, async () => {
+  const pg = await open(view, stage, '&night');
+  const bad = await pg.evaluate(src => { const ratio = eval(src)(); const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
+    for (const e of document.querySelectorAll('#hud *, #chips *, #overlay *')) {
+      if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+      if (e.closest('.tagrow.used, [disabled], [aria-disabled="true"], .co, .sr')) continue;
+      const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
+      let shown = true; for (let n = e; n && n !== f; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden') shown = false; }
+      if (!shown) continue;
+      const px = parseFloat(getComputedStyle(e).fontSize) * k; if (px >= 14) continue;
+      const cr = ratio(e);
+      let blink = null; for (let n = e; n && n !== f; n = n.parentElement) { const a = getComputedStyle(n).animationName; if (a && a !== 'none' && /blink/i.test(a)) blink = a; }
+      if (cr < 4.5 || blink) out.push(`"${e.textContent.trim().slice(0, 28)}" ${px.toFixed(1)}px ${cr.toFixed(2)}:1${blink ? ' ' + blink : ''}`);
+    }
+    return out; }, qaA.contrastOf.toString());
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-12-night-${stage}.png` }); await pg.close();
+  must(bad.length === 0, 'night text under 14 px below 4.5:1 or blinking: ' + bad.join(' ; '));
+});
+
+
+// R2-07 (QA-21 again): the SE type floor is ON SCREEN. Every painted text leaf of the in-game screens is >= 11 px after the
+// SE's 0.79 frame scale (14 frame px). Out of scope: the kill/callout card (the alert redesign owns it) and screen-reader text.
+const R2_TYPE = [['live', ''], ['live', '&night'], ['live-nogun', ''], ['live-pu-rockets', ''], ['live-pu-taken', ''], ['live-pu-taken-by', ''], ['live-shields-os', ''],
+  ['live-hill-captured', ''], ['down-recap', ''], ['down-full', ''], ['down-find', ''], ['down-hill', ''], ['down-pu-held', ''], ['live-pool-wrong', '']];
+for (const [stage, N] of R2_TYPE) await step(`se R2-07 type floor ${stage}${N ? ' night' : ''}: every in-game label is >= 11 px on the SE screen`, async () => {
+  const pg = await open(VIEWS[1], stage, N, stage === 'live-pool-wrong' ? 8000 : undefined);
+  const small = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
+    for (const e of document.querySelectorAll('#hud *, #chips *')) {
+      if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+      if (e.closest('.co, .sr, #diag, .mo')) continue;
+      const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
+      let shown = true; for (let n = e; n && n !== f; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity === 0) shown = false; }
+      if (!shown) continue;
+      const px = parseFloat(getComputedStyle(e).fontSize) * k; if (px < 10.95) out.push(`"${e.textContent.trim().slice(0, 24)}" ${px.toFixed(1)}px`);
+    }
+    return out; });
+  await pg.screenshot({ path: `${OUT}/se-r2-07-${stage}${N ? '-night' : ''}.png` });
+  const bad = await invariants(pg); await pg.close();
+  must(small.length === 0, 'in-game text under 11 px on the SE screen: ' + small.join(' ; '));
+  must(bad.length === 0, bad.join(' ; '));
+});
+// R2-08: the redeploy instruction is 14 px on screen and never olive at night; the hill tile carries the score chips' weight
+for (const [stage, night] of [['down-full', false], ['down-full', true], ['down-recap', false], ['down-recap', true]]) await step(`se R2-08 ${stage} ${night ? 'night' : 'day'}: GET TO SAFE SPACE is >= 14 px on screen${night ? ', the bright night red, still' : ''}`, async () => {
+  const pg = await open(VIEWS[1], stage, night ? '&night' : '');
+  const r = (await r2.looks(pg, '.down .safe span'))[0], anim = await pg.evaluate(() => { const e = document.querySelector('.down .safe'); return e ? [getComputedStyle(e).animationName, getComputedStyle(e.querySelector('span')).animationName] : null; });
+  await pg.close();
+  must(r && r.shown && /SAFE SPACE/.test(r.text) && r.px >= 14, `the instruction must be >= 14 px on screen: ${JSON.stringify(r)}`);
+  if (night) { const [R, G] = r2.rgb(r.color); must(R >= 200 && G < 130 && anim.every(a => a === 'none'), `night: bright red and still, not olive: ${r.color} ${JSON.stringify(anim)}`); }
+});
+for (const night of [false, true]) await step(`se R2-08 down-hill ${night ? 'night' : 'day'}: the hill tile's owner is as big as the score chips' numbers`, async () => {
+  const pg = await open(VIEWS[1], 'down-hill', night ? '&night' : '');
+  const r = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const px = e => e ? parseFloat(getComputedStyle(e).fontSize) * k : 0;
+    const hill = document.querySelector('.down .recap .rc.hill'), chip = document.querySelector('.down .recap .tms .tm b');
+    const own = hill && [...hill.querySelectorAll('*')].filter(e => /[A-Z]{3,}/.test(e.textContent) && ![...e.children].length).pop();
+    return { owner: own ? own.textContent.trim() : null, ownerPx: px(own), chipPx: px(chip) }; });
+  await pg.close();
+  must(r.owner && r.chipPx && r.ownerPx >= r.chipPx - 0.5 && r.ownerPx >= 11, `the hill owner is lighter than the score chips: ${JSON.stringify(r)}`);
+});
+// R2-20: by day the armour number carries its label
+for (const view of VIEWS) await step(`${view.name} R2-20 live day: the armour number is labelled ARMOR, >= 11 px on screen, 4.5:1`, async () => {
+  const pg = await open(view, 'live');
+  const r = { lab: (await r2.looks(pg, '.vitals .armorlabel'))[0], sh: (await r2.looks(pg, '.vitals #sh'))[0], cr: await r2.contrast(pg, '.vitals .armorlabel') };
+  await pg.close();
+  must(r.lab && r.lab.shown && r.lab.text === 'ARMOR' && r.lab.px >= 11, `no visible ARMOR label: ${JSON.stringify(r.lab)}`);
+  must(r.sh && Math.abs(r.lab.l - r.sh.r) < 40 && r.lab.t < r.sh.b && r.lab.b > r.sh.t, `the label sits beside the armour number: ${JSON.stringify(r)}`);
+  must(r.cr[0].cr >= 4.5, `the label reads below 4.5:1: ${JSON.stringify(r.cr)}`);
+});
+// The gate FINDINGS listed as missing, "a persistent KOTH hill state on the live HUD", is OWNED by the three-lane alert
+// redesign: its right-side hill badge (alert lanes, Tony: "the separate alerts on the right"). Its gate lands with it; a
+// second hill indicator here would disagree with it.
+
+
+// R2-09: the controls FINDINGS measured under 44 px on screen. Each takes a 44 px square centred on it, hit-tested.
+const R2_TAPS = [['idle', '[data-act="onDemo"], [data-act="onUtility"], #info, #skin'], ['idle-noisy', '[data-act="onScanOther"]'], ['picker-location-off', '[data-act="onDemo"], [data-act="onUtility"]'],
+  ['connected', '#info, #skin'], ['live', '#info, #skin'], ['diag', '#diag .btns button:not([disabled])'], ['idle-diag', '#diag .btns button:not([disabled])']];
+for (const view of VIEWS) for (const [stage, sel] of R2_TAPS) await step(`${view.name} R2-09 ${stage}: every control FINDINGS named takes a 44 px tap on screen`, async () => {
+  const pg = await open(view, stage);
+  const r = await r2.tap44(pg, sel); await pg.close();
+  must(r.length >= 1, `no control matched ${sel}`);
+  const bad = r.filter(c => c.miss.length);
+  must(bad.length === 0, 'under 44 px on screen: ' + bad.map(c => `${c.name} ${c.w}x${c.h} misses ${JSON.stringify(c.miss)}`).join(' ; '));
+});
+// The corner buttons sit at the frame edge, where a 44 px square centred on the visual runs off the screen. So measure what
+// a finger can actually hit ON the screen: the box of every on-frame point, 1 px apart, that lands on the control.
+for (const view of VIEWS) for (const stage of ['idle', 'live']) await step(`${view.name} R2-09 ${stage}: the corner buttons take 44 x 44 px of the screen`, async () => {
+  const pg = await open(view, stage);
+  const r = await pg.evaluate(() => ['info', 'skin'].map(id => { const c = document.getElementById(id), b = c.getBoundingClientRect(), fr = document.getElementById('frame').getBoundingClientRect();
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (let x = Math.max(fr.left, b.left - 40); x <= Math.min(fr.right - 0.5, b.right + 40); x++) for (let y = Math.max(fr.top, b.top - 40); y <= Math.min(fr.bottom - 0.5, b.bottom + 40); y++) {
+      const h = document.elementFromPoint(x, y); if (h && (h === c || c.contains(h))) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
+    return { id, w: x1 - x0 + 1, h: y1 - y0 + 1 }; }));
+  await pg.close();
+  must(r.every(c => c.w >= 44 && c.h >= 44), `a corner button takes under 44 x 44 px of the screen: ${JSON.stringify(r)}`);
+});
+for (const stage of ['diag', 'idle-diag']) await step(`se R2-09 ${stage}: the 56 px diag buttons still fit their labels at >= 11 px on screen`, async () => {
+  const pg = await open(VIEWS[1], stage);
+  const r = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+    return [...document.querySelectorAll('#diag .btns button')].filter(b => getComputedStyle(b).display !== 'none').map(b => ({ t: b.textContent.trim(), clip: b.scrollWidth > b.clientWidth + 1, px: parseFloat(getComputedStyle(b).fontSize) * k })); });
+  await pg.close();
+  must(r.length && r.every(b => !b.clip && b.px >= 11), `a diag button clips or is under 11 px: ${JSON.stringify(r)}`);
+});
+
+
+/** R2-18: the contrast a person actually sees in a box of the screen: the screenshot's pixels (the overlay's wash included),
+ *  the brightest 4% (the text) against the median (what it sits on). */
+r2.pixelContrast = async (pg, sel) => {
+  const box = await pg.evaluate(sel => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; }, sel);
+  if (!box || !(box.width > 2)) return null;
+  const png = (await pg.screenshot({ clip: box })).toString('base64');
+  return pg.evaluate(async png => { const img = new Image(); img.src = 'data:image/png;base64,' + png; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data, L = [];
+    const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+    for (let i = 0; i < d.length; i += 4) L.push(.2126 * f(d[i]) + .7152 * f(d[i + 1]) + .0722 * f(d[i + 2]));
+    L.sort((a, b) => a - b); const hi = L[Math.floor(L.length * .96)], mid = L[Math.floor(L.length * .5)];
+    return Math.round(((Math.max(hi, mid) + .05) / (Math.min(hi, mid) + .05)) * 100) / 100; }, png);
+};
+for (const view of VIEWS) await step(`${view.name} R2-18 overshield then a hit, day: the pickup card retires, TAKING FIRE reads above the wash`, async () => {
+  const pg = await open(view, 'live-pu-overshield', '', 2600);
+  await pg.waitForSelector('#puhint .pu[data-kind="granted"]', { timeout: 3000 }).catch(() => {});
+  const before = await pg.evaluate(() => !!document.querySelector('#puhint .pu[data-kind="granted"]'));
+  await pg.waitForTimeout(1300);   // past the 1 s protected grant, so the hit lands
+  await pg.evaluate(() => window.brxDemo.hitFrom(19, 9, 40)); await pg.waitForTimeout(300);
+  const r = { card: await pg.evaluate(() => !!document.querySelector('#puhint .pu[data-kind="granted"]')), flash: await pg.evaluate(() => !!document.querySelector('#overlay .mo.hit')),
+    tf: (await r2.looks(pg, '.takingfire .t'))[0], cr: await r2.pixelContrast(pg, '.takingfire .t') };
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-18-os-hit.png` }); await pg.close();
+  must(before, 'pre-condition: the OVERSHIELD PICKED UP card was up');
+  must(r.flash && r.tf && r.tf.shown, `pre-condition: a hit flash with TAKING FIRE: ${JSON.stringify(r)}`);
+  must(!r.card, 'the pickup card must retire on a hit (four items stacked in the bottom centre)');
+  must(r.cr >= 3, `TAKING FIRE under the day flash reads ${r.cr}:1 on screen (the wash covered it)`);
+});
+
+
+// R2-13: at night the overshield must not read as a plain full shield: another hue, thicker rails, hollow between them
+for (const view of VIEWS) await step(`${view.name} R2-13 night overshield: amber, 4 px rails, hollow, unlike a full red shield`, async () => {
+  const pg = await open(view, 'live-shields-os', '&night', 3200);
+  const o = await svWait(pg, r => r.m && r.os, 2500);
+  const r = await pg.evaluate(() => { const os = document.querySelector('#svm .svos'), fl = document.querySelector('#svm .svfl'), c = getComputedStyle(os);
+    return { rail: c.borderTopColor, railW: parseFloat(c.borderTopWidth), mid: c.backgroundColor, fill: getComputedStyle(fl).backgroundImage + ' ' + getComputedStyle(fl).backgroundColor }; });
+  await pg.close();
+  must(o.m && o.os, 'pre-condition: the overshield layer is up');
+  const [R, G, B] = r2.rgb(r.rail), [mr, mg, mb] = r2.rgb(r.mid);
+  must(G / R > 0.55 && B < G, `night: the overshield rail must be amber, not the shield's red: ${r.rail}`);
+  must(r.railW >= 4, `night: the rails must be >= 4 px: ${r.railW}`);
+  must(mr + mg + mb < 60, `night: the overshield must be hollow (dark between the rails): ${r.mid}`);
+});
+// R2-14: during the lockout the ammo block names ONE cause (OVERHEAT), never NOT ENOUGH ENERGY beside it
+for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2-14 overheat ${night ? 'night' : 'day'}: one cause during the lockout; CONTROL: the note is back after it`, async () => {
+  const pg = await open(view, 'live', night ? '&night' : '');
+  await pg.evaluate(() => { const e = window.brx.engine; e.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; e.feedFrame('$ALCD,40,100,0,80,0,*'); e.feedFrame('$ALCD,3,100,0,80,108,*'); });
+  await pg.waitForTimeout(500);
+  const hot = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
+  await pg.evaluate(() => window.brx.engine.feedFrame('$ALCD,3,100,0,80,0,*')); await pg.waitForTimeout(500);
+  const cool = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
+  await pg.close();
+  must(hot.word, `pre-condition: OVERHEAT is up: ${JSON.stringify(hot)}`);
+  must(!hot.enote, `during the lockout the ammo block also says ${hot.enote}: two causes`);
+  must(!cool.word && cool.enote === 'NOT ENOUGH ENERGY', `CONTROL: after the lockout, 3 of a 10-cost cell says NOT ENOUGH ENERGY again: ${JSON.stringify(cool)}`);
+});
+// R2-15: stunned, the rounds step back and the seconds are the biggest thing in the tell
+for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2-15 stunned ${night ? 'night' : 'day'}: the ammo dims, the seconds outsize the word`, async () => {
+  const pg = await open(view, 'live-stunned', night ? '&night' : '', 3000);
+  const r = await pg.evaluate(() => { const op = e => { let o = 1; for (let n = e; n && n.id !== 'frame'; n = n.parentElement) o *= +getComputedStyle(n).opacity; return o; };
+    const t = document.querySelector('#stunleft'), k = document.querySelector('.aimfx.stun .k'), mag = document.getElementById('mag');
+    return t && k ? { secs: parseFloat(getComputedStyle(t).fontSize), word: parseFloat(getComputedStyle(k).fontSize), mag: Math.round(op(mag) * 100) / 100 } : null; });
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-15-stun-${night ? 'night' : 'day'}.png` }); await pg.close();
+  must(r, 'pre-condition: the stun tell is up');
+  must(r.secs > r.word && r.secs >= 36, `the seconds must be the largest element of the tell: ${JSON.stringify(r)}`);
+  must(r.mag <= 0.5, `the ammo must dim while the trigger does nothing: opacity ${r.mag}`);
+});
+// R2-16: the station hints name the item and the station
+await step('se R2-16 taken by VIPER: the line names the item, not only who took it', async () => {
+  const pg = await open(VIEWS[1], 'live-pu-taken-by', '', 2400);
+  let t = ''; for (let i = 0; i < 40 && !/TAKEN/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#puhint .pu') || {}).innerText || ''); }
+  await pg.close();
+  must(/ROCKETS/.test(t) && /TAKEN/.test(t) && /VIPER/.test(t), `the hint must say what VIPER took: ${JSON.stringify(t)}`);
+});
+await step('se R2-16 OVERSHIELD AVAILABLE: the card names the station', async () => {
+  const pg = await open(VIEWS[1], 'live-pu-spawn', '', 1200);
+  let t = ''; for (let i = 0; i < 40 && !/AVAILABLE/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#overlay .mo.co') || {}).innerText || ''); }
+  await pg.close();
+  must(/OVERSHIELD AVAILABLE/.test(t) && /STATION 6/.test(t), `the card must say which station: ${JSON.stringify(t)}`);
+});
+// R2-17: the DOWN screen says the held item was lost
+for (const night of [false, true]) await step(`se R2-17 down with rockets held ${night ? 'night' : 'day'}: the DOWN screen says ROCKETS LOST; CONTROL: a plain down does not`, async () => {
+  let pg = await open(VIEWS[1], 'down-pu-held', night ? '&night' : '', 4600);
+  const r = (await r2.looks(pg, '#dspulost'))[0], cr = await r2.contrast(pg, '#dspulost'); await pg.close();
+  pg = await open(VIEWS[1], 'down', night ? '&night' : ''); const plain = await pg.evaluate(() => !!document.getElementById('dspulost')); await pg.close();
+  must(r && r.shown && r.text === 'ROCKETS LOST' && r.px >= 11, `no ROCKETS LOST on the DOWN screen: ${JSON.stringify(r)}`);
+  must(cr[0].cr >= 4.5, `ROCKETS LOST reads below 4.5:1: ${JSON.stringify(cr)}`);
+  must(!plain, 'CONTROL: a death with nothing held says nothing was lost');
+});
+// R2-21: the overshield grant never floats HEALTH, on the engine path with a gun that holds the armed pools
+for (const view of VIEWS) await step(`${view.name} R2-21 live-pu-overshield-wide: the grant floats no HEALTH`, async () => {
+  const pg = await open(view, 'live-pu-overshield-wide', '', 1200);
+  await pg.evaluate(() => { window.__gains = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches('.mo.gain')) window.__gains.push(n.textContent.replace(/\s+/g, ' ').trim()); })
+    .observe(document.getElementById('overlay'), { childList: true, subtree: true }); });
+  await pg.waitForTimeout(3600);
+  const r = await pg.evaluate(() => ({ gains: window.__gains, os: !!(window.brx.engine.state().powerup || {}).overshield })); await pg.close();
+  must(r.os, 'pre-condition: the overshield was granted');
+  must(!r.gains.some(g => /HEALTH|ARMOUR/.test(g)), `the grant floated a pool it does not touch: ${JSON.stringify(r.gains)}`);
+});
+
+
+// Review C1/H1 (hud-vqa2): the live PATCH (not a full render) moves the vitals. A lone `$HP` must reach #hp and #sh within
+// 300 ms; a stray `//` once swallowed the patch's set('hp')/set('sh')/set('mag')/setHtml('res') calls.
+for (const view of VIEWS) await step(`${view.name} C1 live patch: a lone $HP moves #hp and #sh within 300 ms`, async () => {
+  const pg = await open(view, 'live');
+  await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,61,0,*')); await pg.waitForTimeout(400);
+  await pg.evaluate(() => window.brx.engine.feedFrame('$HP,38,0,0,*'));
+  let r = null; for (let t = 0; t < 300; t += 50) { await pg.waitForTimeout(50);
+    r = await pg.evaluate(() => { const s = window.brx.engine.state(); return { hp: document.getElementById('hp').textContent, sh: document.getElementById('sh').textContent, want: [String(s.hp), String(s.armor)] }; });
+    if (r.hp === r.want[0] && r.sh === r.want[1]) break; }
+  await pg.close();
+  must(r.want[0] === '38' && r.hp === r.want[0] && r.sh === r.want[1], `the vitals lag the engine: ${JSON.stringify(r)}`);
+});
+
+
+// Review (night no-green): the alert lane found green pixels at (170,322) frame px, the anti-alias fringes of the night
+// armour number (#sh) in an amber whose green channel was high. A pixel sample of the whole night live frame: no green.
+for (const view of VIEWS) for (const stage of ['live', 'live-pool-wrong']) await step(`${view.name} night no-green ${stage}: not one green pixel in the frame, #sh included`, async () => {
+  const pg = await open(view, stage, '&night', stage === 'live-pool-wrong' ? 8000 : undefined);
+  const buf = await pg.screenshot();
+  const r = await pg.evaluate(async b64 => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data, f = document.getElementById('frame').getBoundingClientRect(), k = f.width / 844, out = [];
+    for (let i = 0; i < d.length; i += 4) { const p = i / 4, X = p % c.width, Y = Math.floor(p / c.width), R = d[i], G = d[i + 1], B = d[i + 2];
+      if (X < f.left || X >= f.right || Y < f.top || Y >= f.bottom) continue;
+      if ((G >= 70 && G > R + 24) || (G > R + 12 && G > 40)) { const el = document.elementFromPoint(X, Y); out.push(`(${Math.round((X - f.left) / k)},${Math.round((Y - f.top) / k)}) rgb(${R},${G},${B}) ${el ? el.id || el.className : ''}`); } }
+    return { n: out.length, first: out.slice(0, 4) }; }, buf.toString('base64'));
+  await pg.close();
+  must(r.n === 0, `night: ${r.n} green pixels, e.g. ${r.first.join(' ; ')}`);
+});
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
