@@ -665,6 +665,8 @@ class GunStage:
         # through `decode_advert_uuid` exactly as the phone's scanner would decode the air.
         self.stations: dict[str, StationEntry] = {}  # 'station:<id>' -> the presence entry (beacon.js `Presence` shape + seen_at/advertising)
         self._control_site: int | None = None      # the point we are latched to, so walking between two does not read as a capture
+        self._control_last_owner: dict | None = None  # the last owner across presence expiry
+        self._hill_pending_callout: dict | None = None  # a transition inside the 3 s floor, replaced by a newer owner edge
         self._control_sig = ""                     # last published advert signature (a change is worth a log line)
         self._hill_said_at = 0.0                   # when a captured/lost line last played, for HILL_CALLOUT_MIN_S
         self._hill_contested_at = 0.0              # when "Hill Contested" last played, so a flapping bit cannot repeat it
@@ -3272,9 +3274,19 @@ class GunStage:
         if now - h["at"] >= window:            # out of range or off the point. NOT a "lost" -- nobody took it from us
             self.hill = None
             self._hill_tick_at = 0.0
+            if self._hill_pending_callout and self._hill_pending_callout["site"] == h.get("site"):
+                self._hill_pending_callout = None
             self._control_sig = ""; self._hill_was_contested = False   # K1: walking back into range must be able to re-announce
             self._log(f"hill presence expired ({round(now - h['at'])}s since its last beacon)", "info")
             return
+        pending = self._hill_pending_callout
+        if pending:
+            if h.get("source") != "station" or h.get("site") != pending["site"] or h["owner"] != pending["to"]:
+                self._hill_pending_callout = None
+            elif now - self._hill_said_at >= HILL_CALLOUT_MIN_S and self._hill_audio_on():
+                self._hill_pending_callout = None
+                self._hill_said_at = now
+                self._hill_say(pending["kind"], f"control point {pending['site']}: team {pending['from']} -> {pending['to']} (deferred by callout floor)")
         if not self._hill_audio_on() or not self._hill_mine():
             return
         if now < self._hill_busy_until:
@@ -3299,14 +3311,15 @@ class GunStage:
         self._hill_tick_at = 0.0
         self._hill_busy_until = 0.0
         self._last_beacon_key = None
-        self._control_sig = ""; self._hill_was_contested = False
+        self._control_sig = ""; self._hill_was_contested = False; self._hill_pending_callout = None
 
     def _reset_hill(self) -> None:
         """engine.js `_resetHill`: a new match (ARM here) must not inherit the last one's point or its
         once-per-game warnings (F82, the refused-source line). The injected station adverts stay -- they
         are the operator's field, not the game's state."""
         self.hill = None; self._hill_tick_at = 0.0; self._hill_busy_until = 0.0
-        self._control_site = None; self._control_sig = ""; self._hill_said_at = 0.0
+        self._control_site = None; self._control_last_owner = None; self._hill_pending_callout = None
+        self._control_sig = ""; self._hill_said_at = 0.0
         self._hill_was_contested = False; self._hill_contested_at = 0.0; self._hill_owner_when_silenced = _UNSET
         self._hill_team2_warned = False; self._hill_source_warned = ""
 
@@ -3362,11 +3375,14 @@ class GunStage:
         # A: two points are two different objectives. A point we were not reading before tells us NOTHING
         # about a change of hands -- a different site (or the other source's state) is adopted SILENTLY.
         same_site = prev is not None and prev.get("source") == "station" and prev.get("site") == e["id"]
-        prev_owner = prev["owner"] if prev is not None and same_site else None
+        prev_owner = (prev["owner"] if prev is not None and same_site else
+                      self._control_last_owner["owner"] if self._control_last_owner and self._control_last_owner["site"] == e["id"] else None)
         if not same_site and prev and prev.get("site") != e["id"]:
             self._log(f"control point {e['id']} is a different point from "
                       f"{prev.get('site') if prev.get('source') == 'station' else 'the grenade hill'} -- adopting its owner silently", "info")
             self._hill_was_contested = False; self._hill_owner_when_silenced = _UNSET
+        if self._hill_pending_callout and self._hill_pending_callout["site"] != e["id"]:
+            self._hill_pending_callout = None
         self._control_site = e["id"]
         self.hill = {"owner": owner, "at": now,
                      "from_neutral": prev_owner == HILL_NEUTRAL_TEAM,   # a station capture ALWAYS passes through neutral
@@ -3381,13 +3397,22 @@ class GunStage:
         said = False
         silenced = self._hill_owner_when_silenced
         announce_from = silenced if (audio and silenced is not _UNSET and silenced != prev_owner) else prev_owner
-        if audio and announce_from is not None and announce_from != owner:
-            kind = self._hill_callout(announce_from, owner)
-            if kind and now - self._hill_said_at >= HILL_CALLOUT_MIN_S:   # 2: a floor on the transition lines
-                self._hill_said_at = now
-                self._hill_say(kind, f"control point {e['id']}: team {prev_owner} -> {owner}" if announce_from == prev_owner
-                               else f"control point {e['id']}: it changed hands while we were down (team {announce_from} -> {owner})")
-                said = True
+        owner_changed = prev_owner is not None and prev_owner != owner
+        owed_change = audio and silenced is not _UNSET and silenced != owner
+        if owner_changed or owed_change:
+            kind = self._hill_callout(announce_from, owner) if audio else None
+            if audio and kind:
+                if now - self._hill_said_at >= HILL_CALLOUT_MIN_S:
+                    self._hill_pending_callout = None
+                    self._hill_said_at = now
+                    self._hill_say(kind, f"control point {e['id']}: team {prev_owner} -> {owner}" if announce_from == prev_owner
+                                   else f"control point {e['id']}: it changed hands while we were down (team {announce_from} -> {owner})")
+                    said = True
+                else:
+                    self._hill_pending_callout = {"site": e["id"], "from": announce_from, "to": owner, "kind": kind}
+            elif self._hill_pending_callout and self._hill_pending_callout["site"] == e["id"]:
+                self._hill_pending_callout = None
+        self._control_last_owner = {"site": e["id"], "owner": owner}
         self._hill_owner_when_silenced = _UNSET if audio else (prev_owner if silenced is _UNSET else silenced)
         # Contested, on the RISING EDGE only, floored at HILL_CONTESTED_MIN_S, and only to players the fight
         # belongs to (on the point, or the owning team). A capture callout in the same advert wins outright.

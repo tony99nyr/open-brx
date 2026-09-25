@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, IR_CALLOUT } from '../src/engine.js';
-import { LANE_HERO_MS } from '../src/lanes.js';
+import { LANE_HERO_MS, LANE_HILL_CLEAR_MS } from '../src/lanes.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
@@ -81,6 +81,17 @@ test('lanes: the lead badge stays until the next lead alert replaces it', () => 
   assert.equal(h.eng.state().lanes.obj.lead.kind, 'lead_taken', 'still up 30 s later');
   h.alert('lead_lost', 'YOUR TEAM LOST THE LEAD');
   assert.equal(h.eng.state().lanes.obj.lead.kind, 'lead_lost');
+});
+
+test('lanes: the hill badge clears after its hold, while the lead badge stays', () => {
+  const h = harness().live();
+  h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); h.alert('hill_captured', 'HILL CAPTURED');
+  h.adv(LANE_HILL_CLEAR_MS - 1);
+  assert.ok(h.eng.state().lanes.obj.hill, 'the hill badge remains before the clear time');
+  assert.ok(h.eng.state().lanes.obj.lead, 'the lead badge remains before the clear time');
+  h.adv(2);
+  assert.equal(h.eng.state().lanes.obj.hill, undefined, 'the hill badge is removed after the clear time');
+  assert.ok(h.eng.state().lanes.obj.lead, 'the lead badge keeps its stay-until-replaced behaviour');
 });
 
 test('lanes: the IR word and MC confirm for one kill are ONE hero row, named by MC', () => {

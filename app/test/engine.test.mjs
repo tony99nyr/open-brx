@@ -796,6 +796,42 @@ test('control point: the transition lines have a repeat floor, so a shared stati
   assert.equal(nWrites(slow, HILL_LOST_F), 1, 'a real second transition is not swallowed by the floor');
 });
 
+test('control point: a transition inside the floor waits, and a newer owner replaces the pending truth', () => {
+  const recapture = koth();
+  control(recapture, { team: 1, state: HELD, value: 100 });
+  control(recapture, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(recapture, HILL_LOST_F), 1, 'the loss plays');
+  control(recapture, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(recapture, HILL_CAPTURED_F), 0, 'the recapture waits inside the floor');
+  runControl(recapture, 3000, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(recapture, HILL_CAPTURED_F), 1, 'the pending recapture plays when the floor ends');
+  assert.equal(recapture.eng.state().lanes.obj.hill.kind, 'hill_captured', 'the HUD lane receives the recapture');
+
+  const replaced = koth();
+  control(replaced, { team: 1, state: HELD, value: 100 });
+  control(replaced, { team: 255, state: 0, value: 0 });
+  control(replaced, { team: 1, state: HELD, value: 100 });
+  control(replaced, { team: 0, state: HELD, value: 100 });
+  assert.equal(nWrites(replaced, HILL_CAPTURED_F), 0, 'the obsolete recapture does not play');
+  runControl(replaced, 3000, { team: 0, state: HELD, value: 100 });
+  assert.equal(nWrites(replaced, HILL_CAPTURED_F), 0, 'the pending line follows the current owner');
+  assert.equal(nWrites(replaced, HILL_LOST_F), 2, 'the current loss replaces the pending capture');
+});
+
+test('control point: after expiry, a different owner is an edge but the same owner is not', () => {
+  const changed = koth();
+  control(changed, { team: 1, state: HELD, value: 100 });
+  changed.adv(5000); changed.eng.tick();
+  control(changed, { team: 0, state: HELD, value: 100 });
+  assert.equal(nWrites(changed, HILL_LOST_F), 1, 'the returning different owner announces the loss');
+
+  const same = koth();
+  control(same, { team: 1, state: HELD, value: 100 });
+  same.adv(5000); same.eng.tick();
+  control(same, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(same, HILL_CAPTURED_F) + nWrites(same, HILL_LOST_F), 0, 'the same owner does not invent a capture');
+});
+
 test('control point: a handover that happens while you are DOWN is told to you while down, after the scream, once (item C)', () => {
   // Item C: a "Hill Lost!" landing while down used to be swallowed. Tony 2026-09-25 ("while you are dead you can listen to
   // the queue of KCs and game alerts"): it is queued while I am down and said once the scream has ended; the revive does

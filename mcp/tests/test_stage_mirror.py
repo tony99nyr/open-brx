@@ -296,6 +296,42 @@ def test_lost_lands_on_the_drain_to_neutral_captured_on_the_rebuild_and_the_3s_f
     asyncio.run(go())
 
 
+def test_a_control_point_transition_inside_the_floor_is_deferred_until_the_floor_ends():
+    """A suppressed engine.js transition stays pending; expiry keeps the last owner for a returning edge."""
+    async def go():
+        st, mgr, clock = mk_point(tid=1)
+        await in_play(st)
+        await adv(st, id=1, team=1, held=True, value=100)
+        n = mark(mgr)
+        await adv(st, id=1, team=None, value=0)
+        assert audio(mgr, n) == [LOST]
+        await adv(st, id=1, team=1, held=True, value=100)
+        assert audio(mgr, n) == [LOST], "the recapture waits inside the floor"
+        clock.advance(S.HILL_CALLOUT_MIN_S)
+        await ticks(st, clock, 0.2)
+        assert audio(mgr, n) == [LOST, CAPTURED], audio(mgr, n)
+
+        changed, cm, cc = mk_point(tid=1)
+        await in_play(changed)
+        await adv(changed, id=1, team=1, held=True, value=100)
+        await stop(changed, id=1)
+        await ticks(changed, cc, 2 * S.CONTROL_STALE_S + 0.2)
+        assert changed.hill is None
+        n = mark(cm)
+        await adv(changed, id=1, team=0, held=True, value=100)
+        assert audio(cm, n) == [LOST], "a returning different owner is announced"
+
+        same, sm, sc = mk_point(tid=1)
+        await in_play(same)
+        await adv(same, id=1, team=1, held=True, value=100)
+        await stop(same, id=1)
+        await ticks(same, sc, 2 * S.CONTROL_STALE_S + 0.2)
+        n = mark(sm)
+        await adv(same, id=1, team=1, held=True, value=100)
+        assert audio(sm, n) == [], "a returning same owner is not an invented capture"
+    asyncio.run(go())
+
+
 def test_a_transition_while_down_is_owed_and_said_once_on_revive():
     """C (engine.js): a change of hands that lands while we are DOWN is remembered, not swallowed -- the
     first advert after revive says the ONE line for the NET change across the death window. CONTROL: no
