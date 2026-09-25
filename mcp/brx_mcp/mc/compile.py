@@ -77,7 +77,7 @@ SOLO_MODES = frozenset({"ffa", "lms", "extraction"})
 
 def team_damage_on(config) -> bool:
     """Whether $GSET turns friendly fire on for this config. Mirrored in the console (`gameSummary.ts`
-    `teamDamageOff`) and the phone engine (`engine.js` `_oneTeamGame`)."""
+    `teamDamageOff`) and the phone engine (`engine.js`, the S57 DOWN receiver's `solo`)."""
     return config.get("mode") in SOLO_MODES and len({t.get("tid") for t in config.get("teams") or []}) < 2
 
 
