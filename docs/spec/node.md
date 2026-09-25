@@ -459,27 +459,13 @@ is replaced outright by the rounds-and-calibre derivation (F280). The Burst Rifl
 is a one-press burst trigger and cannot be held in full auto, so it ships flat (`ceiling == floor == 100`,
 `per_shot 0`), the same as every other weapon that cannot degrade.
 
-**The Assault Rifle is its own explicit exception (Tony, 2026-09-23, F291), deeper still than the other
-reference-calibre weapons** — `docs/weapon-design.md`'s Balance rules table, row 3, has the rule and the duel
-that forced it. It declares `degraded: 70, heavy: 45` and an explicit `after_heavy` (not derived):
-`after_shots` still derives to 6 from the reference damage, so a controlled burst (at most 5 rounds) still
-never degrades at all, but full auto now goes heavy sooner than the derived round 9. **Tightened again the
-same day (R7, `docs/weapon-design.md`'s Balance rules table, row 11, F308):** `after_heavy` 8 → 7, so heavy
-now starts on round 7 (degraded is round 6 alone) — a full-auto AR earns its own penalty one round sooner,
-so the Burst Rifle (weakened for R6 the same session) still beats it most of the time.
-**Eased the following day (Tony, 2026-09-24, F308, bench 4.3, "full auto point blank … too harsh"):**
-`heavy` 40 → 45, `after_shots`/`after_heavy`/`settle_ms` unchanged; R7 now holds more often than not
-rather than most of the time (its own 55% bar, row 11), with R3/R6 unaffected at 65%.
-`test_ttk_band_and_no_strictly_dominant_weapon` (`mcp/tests/test_mc_compile.py`) still passes unchanged -- the
-AR still leads its family on every felt axis (ttk/kpc/pk/sust), so no exemption was needed there.
-
-**The Suppressor is its own explicit exception the other way (Tony, 2026-09-23, R10, `docs/weapon-design.md`'s
-Balance rules table, row 3)** -- "it should be weaker since its silent but not too weak." It declares
-`heavy: 70` (not derived; the 60 floor every other reference-calibre weapon ships): `degraded` still
-derives between `crisp` and the new `heavy`, landing at 85, not 80. `after_shots`/`after_heavy` are
-unaffected (they derive off the row's own `dmg`, not `heavy`). This is a steadier heavy frame, not a
-looser trigger: the Suppressor still trails every other primary against a bursting AR (R10(b),
-`docs/weapon-design.md`'s Balance rules table, row 12).
+**The Assault Rifle and the Suppressor are the two explicit exceptions.** The rules, the dates and the duels
+that forced them live in ONE place, `docs/weapon-design.md`'s Balance rules table (rows 3, 11 and 12); this
+section holds only what the engine does with them. The Assault Rifle declares `degraded: 70`, `heavy: 45` and
+an explicit `after_heavy: 7`. `after_shots` still derives to 6 from the reference damage, so a controlled burst
+of at most 5 rounds never degrades, and full auto goes heavy on round 7, not the derived round 9. The
+Suppressor declares `heavy: 70` (not the 60 floor); `degraded` derives between `crisp` and that `heavy`, to 85,
+and `after_shots`/`after_heavy` derive off its own `dmg` as usual.
 
 | weapon | crisp | degraded | heavy | after_shots | after_heavy | settle_ms |
 |---|---|---|---|---|---|---|
