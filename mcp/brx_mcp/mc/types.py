@@ -105,6 +105,10 @@ HEADSET_LINK_PROOF_MS = 10_000
 LATE_ARM_GRACE_MS = 8000
 CONFIG_TTL_MS = 1_800_000
 MAX_PLAYERS = 63          # wire ids 1..63; 0 reserved (tutorial / unknown shooter)
+# F366 (Tony 2026-09-25): a gamertag is at most MAX_TAG_LEN characters after trim + upper-case; MC refuses a
+# longer one (never a silent cut). Past SOFT_TAG_LEN the console warns that the phone HUD may shorten it.
+MAX_TAG_LEN = 16
+SOFT_TAG_LEN = 12
 DEATH_LATCH_MS = 2000
 # A34: a phone still LIVE in a match MC has retired is told `control{end}` from its status heartbeat; this
 # is how long MC waits before telling the SAME phone about the SAME match again (the first end normally lands).

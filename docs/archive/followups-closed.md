@@ -739,3 +739,4 @@ block's *internal* statuses were true when it closed and may since have been sup
   `docs/announcer.md`.
 - 2026-09-25 **F361** decided (Tony): KILLJOY keeps the green gun flash, like every medal;
   `test_mc_awards.py::test_killjoy_keeps_its_gun_flash_like_every_medal` guards it.
+- 2026-09-25 **F366** decided and built (Tony: "366 sounds good", brx3): a gamertag is at most 16 characters (`MAX_TAG_LEN`), and MC refuses a longer one with a 400 instead of cutting it at 24. From 13 to 16 (`SOFT_TAG_LEN` 12) the ARMORY claim and the KIT add and rename fields warn that the phone HUD may shorten it. Both numbers are in the generated contract. A stored longer tag keeps working and shows the refusal on its rename field.

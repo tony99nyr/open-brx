@@ -8,6 +8,8 @@ import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CountBlock, GhostButton, Micro, OutlineTag, ScreenHeader, SectionRule, Seg, SegBar, Tag } from '../ui';
+import { TagHint } from '../ui/TagHint';
+import { TAG_INPUT_MAX, tagError } from '../api/tag';
 import { Items } from './Items';
 import { PlayButton, standDownLocked } from '../ui/Standby';
 
@@ -569,9 +571,10 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
   // swap stays a LOBBY job. `claimErr` shows a refusal ON THIS CARD, not only in the shared strip --
   // the inner try/catch grabs the message before `run` swallows it into the shared error state.
   const [claimErr, setClaimErr] = useState<string | null>(null);
+  const claimable = !!name.trim() && !tagError(name);   // F366: a tag over the limit is refused here, as on the server
   const claim = async () => {
     const display = name.trim();
-    if (!display || !gunId || claiming) return;
+    if (!display || !gunId || claiming || tagError(display)) return;
     setClaiming(true);
     setClaimErr(null);
     try {
@@ -628,10 +631,11 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
       {!stale && hasGun && !n.player_id && !gunClaimed && !parkedHolder && (
         <form onSubmit={e => { e.preventDefault(); claim(); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
           <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHO CARRIES THIS?</div>
-          <input value={name} onChange={e => { setName(e.target.value); setClaimErr(null); }} placeholder="GAMERTAG" maxLength={24} aria-label={`gamertag for ${n.gun_name}`}
+          <input value={name} onChange={e => { setName(e.target.value); setClaimErr(null); }} placeholder="GAMERTAG" maxLength={TAG_INPUT_MAX} aria-label={`gamertag for ${n.gun_name}`}
             style={{ background: T.panelDeep, border: `1px solid ${T.line2}`, color: T.ink, font: F.osw(600, 15), letterSpacing: '.06em', padding: '9px 12px', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
-          <button type="submit" disabled={!name.trim() || claiming}
-            style={{ padding: '10px 0', background: T.panelDeep, color: name.trim() ? T.acc : T.micro, border: `1px solid ${name.trim() ? T.acc : T.line2}`, font: F.chk(700, 11), letterSpacing: '.2em', cursor: name.trim() ? 'pointer' : 'default' }}>
+          <TagHint value={name} testId="claim-tag-hint" />
+          <button type="submit" disabled={!claimable || claiming}
+            style={{ padding: '10px 0', background: T.panelDeep, color: claimable ? T.acc : T.micro, border: `1px solid ${claimable ? T.acc : T.line2}`, font: F.chk(700, 11), letterSpacing: '.2em', cursor: claimable ? 'pointer' : 'default' }}>
             {claiming ? 'SETTING…' : 'SET GAMERTAG'}
           </button>
           {/* the operator's team stays a LOBBY decision; the server auto-balances a new claim */}

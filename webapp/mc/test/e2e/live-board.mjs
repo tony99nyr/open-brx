@@ -5,7 +5,7 @@
 //   stale     a node that goes quiet and comes back, and rows MC has never heard, which read
 //             "LAST KNOWN · 11d13h AGO" (H3)
 //   order     rows re-sorted under the pointer on every update (M6)
-//   names     a 24-character name ran under K and D (M8); the row toggle was 18 px tall (M5)
+//   names     a 16-character name (F366 MAX_TAG_LEN; M8 was found with 24) ran under K and D; the row toggle was 18 px tall (M5)
 //   offline   MC offline: rows read ALIVE, END and RECALL stayed enabled (M7)
 //   old-server  the same board with `live.possession` stripped from REST AND the socket
 //
@@ -43,7 +43,7 @@ const VITE_PORT = Number(process.env.VITE_PORT || await freePort());
 const ONLY = process.env.ONLY || '';
 // A test run never writes into the operator's real `~/.brx-mcp`: one temp home per run, removed at the end.
 const MC_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-live-board-home-'));
-const LONG = 'CAPTAINTHUNDERSTRIKE9000';   // 24 characters (the most the server allows) and no break point
+const LONG = 'WMWMWMWMWMWMWMWM';   // 16 characters (F366 MAX_TAG_LEN, the most the server allows), the widest glyphs, no break point
 
 let failures = [], step = '';
 const expect = (cond, what) => { if (cond) { console.log(`    ✓ ${what}`); return true; } failures.push(`${step}: ${what}`); console.log(`    ✗ ${what}`); return false; };
@@ -322,7 +322,7 @@ try {
   });
 
   await runStep('names', async () => {
-    console.log(`\n[${step}] a 24-character name stays in its column; every toggle is a 36 px target`);
+    console.log(`\n[${step}] a 16-character name stays in its column; every toggle is a 36 px target`);
     for (const width of [1440, 1280, 900]) {
       const pg = await newPage(browser, { width, height: 800 });
       expect(await openLive(pg), `the LIVE board renders at ${width}`);

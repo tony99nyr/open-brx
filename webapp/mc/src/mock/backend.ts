@@ -10,6 +10,7 @@ import { GUN_FLAPPING_LINE, curedByPush } from '../api/derive';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
+import { storedTag, tagError } from '../api/tag';
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -1258,6 +1259,7 @@ export class MockBackend implements Api {
     return { ok: errors.length === 0, errors, config: clone(this.config) };
   }
   async addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player> {
+    { const e = tagError(p.display); if (e) throw new Error(e); }   // F366, as state.py `_check_tag`
     const parked = p.gun_id && this.standby.find(x => (x.gun_id || '').toUpperCase() === p.gun_id!.toUpperCase());
     if (parked) throw new Error(`gun ${p.gun_id} is on standby with ${parked.display} - PLAY puts them back`);
     const teams = this.config.teams ?? [];
@@ -1272,7 +1274,7 @@ export class MockBackend implements Api {
     }
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
-    const pl: Player = { player_id: uid('p'), player_num: n, display: p.display.toUpperCase(), team_id: teamId, node_id: null,
+    const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id: null,
       gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), PERKS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
@@ -1289,6 +1291,11 @@ export class MockBackend implements Api {
         const msg = `the match is ${this.phase.toUpperCase()}: changing a player's TEAM now moves the beacon, LEDs and scoring but NOT the gun's $TID -- combat would still resolve on the old team and same-team shots would do no damage. RECALL to return the field to KIT, change teams there, and re-push`;
         throw Object.assign(new Error(msg), { status: 409, body: { error: msg } });
       }
+    }
+    if (patch.display != null) {             // F366, as state.py `_check_tag`: refused, never cut
+      const e = tagError(patch.display); if (e) throw new Error(e);
+      if (!storedTag(patch.display)) throw new Error('display must not be empty');
+      patch = { ...patch, display: storedTag(patch.display) };
     }
     if (patch.player_num != null) {
       if (patch.player_num < 1 || patch.player_num > 63) throw new Error('player_num must be 1–63');

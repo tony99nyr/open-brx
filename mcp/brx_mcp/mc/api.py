@@ -309,7 +309,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def post_player(req):
         b = await body(req)
         try:
-            p = s.add_player(str(b.get("display", ""))[:24], b.get("team_id"), b.get("gun_id"),
+            p = s.add_player(str(b.get("display", "")), b.get("team_id"), b.get("gun_id"),
                              str(b.get("voice", "male"))[:16], b.get("loadout") if isinstance(b.get("loadout"), dict) else None,
                              voice_slots=b.get("voice_slots") if isinstance(b.get("voice_slots"), dict) else None)
         except (ValueError, TypeError) as e:

@@ -7,6 +7,8 @@ import { StandbySection, guardedOnce, standDownLocked } from '../ui/Standby';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
 import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, ScrollX, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
+import { TagHint } from '../ui/TagHint';
+import { TAG_INPUT_MAX, tagError } from '../api/tag';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
@@ -248,6 +250,8 @@ export function Kit() {
   const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => { api.getVoices().then(v => setVoices(v.voices)).catch(() => setVoices([])); }, [api]);
   const [newName, setNewName] = useState('');
+  // F366: the rename field's draft, for its length hint (a stored tag over the limit shows the refusal until renamed)
+  const [nameDraft, setNameDraft] = useState<{ pid: string; v: string } | null>(null);
   const [slot, setSlot] = useState<Slot>('primary');
   // A14 two-tap confirm: Easy Reload takes the ALT button, so picking it beside a second weapon (or a second weapon
   // beside it) drops the other one. The first tap says so on the tile; the second tap sends. Expires on its own.
@@ -308,6 +312,8 @@ export function Kit() {
   // from the option would silently display "— NO GUN —" (review 2026-08-31).
   const selectedGun = gunOptions.find(o => o.gun_id.toUpperCase() === (sp?.gun_id ?? '').toUpperCase())?.gun_id ?? '';
   const patch = (p: Partial<Player>) => sp && run(() => api.patchPlayer(sp.player_id, p));
+  // F366: the rename field grows with, and its hint reads, what is being typed (not only the committed name)
+  const shownName = sp ? (nameDraft?.pid === sp.player_id ? nameDraft.v : sp.display) : '';
 
   const wById = (id?: string | null) => weapons.find(w => w.weapon_id === id);
   const kById = (id?: string | null) => perks.find(k => k.perk_id === id);
@@ -530,11 +536,14 @@ export function Kit() {
                 </div>
               );
             })}
-            {!locked && <form onSubmit={e => { e.preventDefault(); if (newName.trim()) { run(() => api.addPlayer({ display: newName.trim() })); setNewName(''); } }}
-              style={{ display: 'flex', gap: 6, padding: '6px 4px 2px' }}>
-              <input className="textbox" value={newName} onChange={e => setNewName(e.target.value)} placeholder="+ ADD OPERATOR" aria-label="new operator callsign"
-                style={{ flex: 1, font: F.chk(600, 12), letterSpacing: '.1em', borderBottomColor: T.line, minHeight: 44 }} />
-              <GhostButton size={11} pad="4px 10px">ADD</GhostButton>
+            {!locked && <form onSubmit={e => { e.preventDefault(); if (newName.trim() && !tagError(newName)) { run(() => api.addPlayer({ display: newName.trim() })); setNewName(''); } }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 4px 2px' }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input className="textbox" value={newName} onChange={e => setNewName(e.target.value)} placeholder="+ ADD OPERATOR" aria-label="new operator callsign" maxLength={TAG_INPUT_MAX}
+                  style={{ flex: 1, font: F.chk(600, 12), letterSpacing: '.1em', borderBottomColor: T.line, minHeight: 44 }} />
+                <GhostButton size={11} pad="4px 10px" disabled={!!tagError(newName)}>ADD</GhostButton>
+              </div>
+              <TagHint value={newName} testId="add-tag-hint" />
             </form>}
           </div>
           </ScrollX>
@@ -554,7 +563,9 @@ export function Kit() {
                     <span style={{ marginLeft: 10, color: T.acc }}>#<PlayerNum key={sp.player_id} value={sp.player_num} disabled={locked} onCommit={n => patch({ player_num: n })} /></span>
                   </div>
                   <DraftText key={sp.player_id} value={sp.display} ariaLabel="operator callsign" transform={s => s.toUpperCase()} onCommit={v => patch({ display: v })}
-                    style={{ font: F.osw(700, 32), letterSpacing: '.1em', width: `${Math.max(6, sp.display.length + 1)}ch`, minHeight: 44 }} />
+                    maxLength={TAG_INPUT_MAX} canCommit={v => !tagError(v)} onDraft={v => setNameDraft({ pid: sp.player_id, v })}
+                    style={{ font: F.osw(700, 32), letterSpacing: '.1em', width: `${Math.max(6, shownName.length + 1)}ch`, minHeight: 44 }} />
+                  <TagHint value={shownName} testId="rename-tag-hint" />
                 </div>
               </div>
               {/* STANDBY (2026-09-12): pull this operator out of the lobby without losing what was just typed.
