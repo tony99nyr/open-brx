@@ -28,6 +28,10 @@ MEDALS = [
     {"key": "killionaire",   "kind": "multi",  "count": 8,  "label": "KILLIONAIRE",   "clip": "VA7L", "clip_ms": 1924},
     {"key": "killing_spree", "kind": "streak", "count": 5,  "label": "KILLING SPREE", "clip": "VA7K", "clip_ms": 1924},
     {"key": "unstoppable",   "kind": "streak", "count": 10, "label": "UNSTOPPABLE",   "clip": "VX0U", "clip_ms": 1175},
+    # Tony 2026-09-24: "melee kills should be a medal". Awarded when the victim's phone flags the death `melee`
+    # (the killing $HIR was the melee proto, 13), and it stacks with the chain medal. Label BEAT DOWN (Halo's name;
+    # the bank has no such line) over VA7F "Fatality", Tony's pick 2026-09-24 ("ha that works").
+    {"key": "melee_kill",    "kind": "melee",  "count": 1,  "label": "BEAT DOWN",     "clip": "VA7F", "clip_ms": 1924},
 ]
 FEEDBACK_MAX_AGE_MS = 3000
 STATUS_HEARTBEAT_MS = 2000
@@ -921,6 +925,8 @@ class Event(TypedDict, total=False):
     # S16: the death came from the node's own poison tick (a `$LIFE` write), not from a hit. `shooter_num` and
     # `shooter_team` then name the player who last applied the poison, which is who gets the kill.
     dot: bool
+    # Tony 2026-09-24 (death): the killing $HIR was the melee proto (13) -- the melee medal. Absent on an older phone.
+    melee: bool
     # S56 (hit_taken): the weapon the victim's phone resolved from the shooter's roster loadout; absent = unresolved or ambiguous.
     weapon_id: str
     # respawn

@@ -358,3 +358,20 @@ def test_f154_a_tied_ffa_tells_every_phone_it_was_a_draw():
     assert s._outcome_for(winner, b) == "draw"
     c = s.add_player("CHARLIE", gun_id="GUN-C")
     assert s._outcome_for(winner, c) == "lose", "a player outside the tie did not draw"
+
+
+def test_a_melee_kill_is_a_medal_that_stacks_with_the_chain():
+    """Tony 2026-09-24: "melee kills should be a medal". The victim's phone flags a death whose killing $HIR was
+    the melee proto (13) as `melee: true`; MC awards `melee_kill` for it, beside the multi-kill medal."""
+    from brx_mcp.mc.types import MEDALS
+    row = next(m for m in MEDALS if m["key"] == "melee_kill")
+    assert row["kind"] == "melee" and row["label"] and row["clip"], row
+    sc, fb, feed, alerts = mk_alerts()
+    death(sc, "n1", "p1", 1, T0 + 1000)                               # a gun kill: no melee medal
+    assert "melee_kill" not in fb[-1][1]["medals"], fb[-1][1]
+    death(sc, "n3", "p3", 1, T0 + 1500, melee=True)                   # a melee kill that is also a double
+    assert fb[-1][1]["medals"] == ["double_kill", "melee_kill"], fb[-1][1]
+    death(sc, "n1", "p1", 1, T0 + 9000, melee=True)                   # a lone melee kill, no chain
+    assert fb[-1][1]["medals"] == ["melee_kill"], fb[-1][1]
+    death(sc, "n3", "p3", 1, T0 + 9500, melee=False)
+    assert "melee_kill" not in fb[-1][1]["medals"], fb[-1][1]

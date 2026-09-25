@@ -430,6 +430,8 @@ def expected_medals(world: World, entries: list[dict]) -> list[tuple[str, str, i
             medals.append(_FIRST_KEY)
         if (m := multi_medal_for(multi)) is not None:
             medals.append(m)
+        if ev.get("melee") is True:            # A62: the melee medal, from the death fact's own flag
+            medals.append("melee_kill")
         if (m := _STREAK_COUNTS.get(streak[killer])) is not None:
             medals.append(m)
         last_t[killer] = t
