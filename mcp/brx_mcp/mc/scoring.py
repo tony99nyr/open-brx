@@ -194,6 +194,37 @@ class Scorer:
         # A63 SURVIVOR: players with a scored fact from a node MC never saw synced. Such a fact is timed by
         # when MC RECEIVED it (`_eff_t`), so a life measured from it is a guess, and SURVIVOR skips them.
         self.unsynced_pids: set[str] = set()
+        # A65 (F354): team_id -> kills credited to a TEAM and to no player. The victim's phone lost the damaging
+        # hit and only a non-damaging word (smoke, EMP) was fresh at the death, so it names the team only
+        # (`death.credit == "team"`, `shooter_num` 0). The team score counts them; no row, medal or honor does.
+        self.team_credit: dict[str, int] = {}
+
+    def _credit_team(self, ev: Event, victim: str) -> str | None:
+        """A65 (F354): the team_id a team-only death credits, or None. Only a `credit: "team"` death with no
+        player behind it (`shooter_num` 0), in a team mode, naming a rostered team that is not the victim's own
+        (a teammate's smoke is no kill for anyone)."""
+        if ev.get("credit") != "team" or self.mode == "ffa" or int(ev.get("shooter_num", 0) or 0) != 0:
+            return None
+        try:
+            tid = int(ev.get("shooter_team", -1))
+        except (TypeError, ValueError):
+            return None
+        team_id = next((k for k, t in self.teams.items() if t.get("tid") == tid), None)
+        vt = self.stats[victim].team_id if victim in self.stats else None
+        return team_id if team_id is not None and team_id != vt else None
+
+    def _before_whistle(self) -> bool:
+        """F357 (Tony 2026-09-25): may a kill processed NOW still be cued? Not after the whistle, whatever
+        ended the match: a frag cap that froze it (`end_t` at `limit_reached_t`, or its arrival `cap_recv`), a host END (`set_end`)
+        or the clock (`end_t` from the time limit). A kill that lands after the end still counts when it
+        is stamped before it; it just gets no confirm and no medal cue."""
+        if self.cap_recv is not None:
+            return False
+        # The cap is a whistle only when it froze the match there (`set_end` at the capping kill, applied at once,
+        # even mid-batch). An ADOPTED match reaches the operator's draft cap and plays on (polish r1).
+        if self.limit_reached_t is not None and self.end_t is not None and self.end_t <= self.limit_reached_t:
+            return False
+        return self.end_t is None or self.now_ms() <= self.end_t
 
     def set_end(self, end_t: int) -> None:
         """Freeze scoring at end_t (control{end}); later facts park as post_end (A6.1)."""
@@ -252,6 +283,7 @@ class Scorer:
         if not self.frag_limit or self.limit_reached_t is None or self.end_t is None:
             return None
         kills = {pid: st.kills for pid, st in self.stats.items()}
+        credit = dict(self.team_credit)
         for node_id, ev, t_recv in self.post_end:
             if ev.get("type") != "death":
                 continue
@@ -259,13 +291,16 @@ class Scorer:
             if eff > self.end_t + tol_ms or eff <= self.end_t:
                 continue    # F356: a pre-whistle team kill frozen out by `_frozen_out` is not in the band
             victim, killer = self._kill_pair(node_id, ev)
+            if victim is not None and not killer and (ct := self._credit_team(ev, victim)) is not None:
+                credit[ct] = credit.get(ct, 0) + 1       # A65: a team-only kill in the band
+                continue
             if victim is None or not killer:
                 continue
             kills[killer] += -1 if self._friendly(killer, victim) else 1
         if self.mode == "ffa":
             scores = kills
         else:
-            scores = {tid: 0 for tid in self.teams}
+            scores = {tid: credit.get(tid, 0) for tid in self.teams}
             for pid, k in kills.items():
                 tid = self.stats[pid].team_id
                 if tid in scores:
@@ -412,10 +447,13 @@ class Scorer:
         kind = ev.get("type")
         if self.end_t is not None and t > self.end_t:
             self.post_end.append((node_id, ev, t_recv))
+            if kind == "death":
+                self._after_whistle_feed(node_id, ev, t)
             return "post_end"
         if kind in ("hit_taken", "death", "respawn", "team_change") and not self.synced_at_lobby.get(node_id, False):
             self.unsynced_pids.add(pid)
-        if kind in self.wire0 and int(ev.get("shooter_num", 0) or 0) == 0:
+        if kind in self.wire0 and int(ev.get("shooter_num", 0) or 0) == 0 \
+                and not (kind == "death" and ev.get("credit")):   # A65: a phone that sent a team credit knew who it was
             self.wire0[kind] += 1
         if kind == "hit_taken":
             shooter = self.num_to_pid.get(int(ev.get("shooter_num", 0) or 0))
@@ -458,6 +496,25 @@ class Scorer:
             return "scored"
         return "ignored"
 
+    AFTER_WHISTLE = "AFTER WHISTLE"
+
+    def _after_whistle_feed(self, node_id: str, ev: Event, t: int) -> None:
+        """F357: a death stamped after the end (A6.1 `post_end`) is shown, marked AFTER WHISTLE, and counts for
+        nothing. The feed line is the operator's only live sight of it; the recap's `after_end` block is the other."""
+        victim, killer = self._kill_pair(node_id, ev)
+        if victim is None:
+            return
+        if killer:
+            text = f"{self._name(killer)} {'team-killed' if self._friendly(killer, victim) else 'eliminated'} {self._name(victim)}"
+        elif (ct := self._credit_team(ev, victim)) is not None:
+            text = f"{self._team_name(ct)} eliminated {self._name(victim)}"
+        else:
+            text = f"{self._name(victim)} went down"
+        self._push_feed(t, text, self.AFTER_WHISTLE, "kill")
+
+    def _team_name(self, team_id: str) -> str:
+        return str((self.teams.get(team_id) or {}).get("name") or team_id).replace(" TEAM", "")
+
     def _death(self, victim: str, ev: Event, t: int, suppress: bool,
                src: tuple[str, int | None] = ("", None), freeze_killer: bool = False) -> str:
         vs = self.stats[victim]
@@ -474,9 +531,17 @@ class Scorer:
                 "team": vs.team_id, "friendly": friendly, "multi": 1, "desync": bool(ev.get("desync"))}
         if freeze_killer:
             kill["frozen"] = True           # review 2: the killer's -1 is frozen out (F356); the death stands
+        credit = self._credit_team(ev, victim) if killer is None else None
+        if credit is not None:
+            # A65 (F354): the TEAM scores the kill and no player does: no K, streak, chain, first blood,
+            # medal, assist or kill confirm. Nobody on that team fired the damaging word the phone lost.
+            self.team_credit[credit] = self.team_credit.get(credit, 0) + 1
+            kill["team_credit"] = credit
         tag = None
-        if killer and freeze_killer:
-            tag = "TEAM KILL (after the whistle)"
+        if credit is not None:
+            tag = "TEAM CREDIT"
+        elif killer and freeze_killer:
+            tag = self.AFTER_WHISTLE          # F357: one tag for every kill that counts for nothing after the end
         elif killer:
             ks = self.stats[killer]
             if friendly:
@@ -550,12 +615,11 @@ class Scorer:
                     self.stats[a].assists += 1
                 if assisters:
                     kill["assists"] = assisters
-                # feedback to the killer only if fresh, and never after a FRAG-CAP whistle (F357): a kill
-                # flushed after it still scores, but a later flush can move that end earlier and park it,
-                # and a cue cannot be taken back. A timed or host end never moves, so a fresh kill landing
-                # just after one keeps its confirm. The capping kill itself is cued: its whistle
-                # (`cap_recv`) is set by the Session after `_check_frag_limit` below.
-                if self.now_ms() - t <= FEEDBACK_MAX_AGE_MS and not suppress and self.cap_recv is None:
+                # feedback to the killer only if fresh, and never after the whistle (F357, Tony 2026-09-25:
+                # "MC shouldn't push KCs" after it), whatever ended the match (`_before_whistle`). A kill
+                # flushed after the end, stamped before it, still scores; it gets no confirm and no medal
+                # cue. The capping kill itself is cued: `limit_reached_t` is set by `_check_frag_limit` below.
+                if self.now_ms() - t <= FEEDBACK_MAX_AGE_MS and not suppress and self._before_whistle():
                     # kind stays "kill" (older nodes play their kill line); `medals` is the A11.4 stack,
                     # which a current node plays INSTEAD of the plain line, one after another.
                     # `victim` is a player_id (for matching); `victim_display` is what the kill banner shows
@@ -572,6 +636,8 @@ class Scorer:
         if killer:
             verb = "team-killed" if friendly else "eliminated"
             text = f"{self._name(killer)} {verb} {self._name(victim)}"
+        elif credit is not None:
+            text = f"{self._team_name(credit)} eliminated {self._name(victim)}"
         else:
             text = f"{self._name(victim)} went down"
         if tag == "FIRST BLOOD":
@@ -874,7 +940,7 @@ class Scorer:
                 "of_s": self.time_limit_s}
 
     def team_scores(self) -> dict[str, int]:
-        scores = {tid: 0 for tid in self.teams}
+        scores = {tid: self.team_credit.get(tid, 0) for tid in self.teams}   # A65: team-only kills first
         for st in self.stats.values():
             if st.team_id in scores:
                 scores[st.team_id] += st.kills

@@ -11,6 +11,7 @@
 #pragma once
 #include <cstdint>
 #include <algorithm>
+#include <cctype>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -407,6 +408,59 @@ inline void drawKvRows(M5Canvas& c, const std::vector<std::pair<std::string, std
   }
 }
 
+// ---- F365: the RANGE editor -----------------------------------------------------------------------
+// Two panels side by side: RADIUS (the threshold in dBm, with its rough distance) and STRENGTH (the
+// advertising power, by name and dBm). The panel A/B edit is lit; each says EDITED (an on-station value
+// MC has not overridden) or MC. The distances are rough (station_range.h RANGE_DISTANCE_TABLE), and the
+// kicker says so.
+inline void drawRangePanel(M5Canvas& c, int x0, int x1, bool active, const char* label, bool edited,
+                           const std::string& value, const std::string& detail) {
+  const int y0 = MAIN_TOP + 14, y1 = MAIN_BOTTOM - 3;
+  if (active) {
+    c.fillRect(x0, y0, x1 - x0, y1 - y0, COL_PLATE);
+    c.drawRect(x0, y0, x1 - x0, y1 - y0, COL_GLOW);
+    c.drawRect(x0 + 1, y0 + 1, x1 - x0 - 2, y1 - y0 - 2, COL_GLOW);
+  } else {
+    c.drawRect(x0, y0, x1 - x0, y1 - y0, COL_EDGE);
+  }
+  c.setFont(&fonts::Font0);
+  c.setTextDatum(textdatum_t::top_left);
+  c.setTextColor(active ? COL_GLOW : COL_MUT);
+  c.drawString(label, x0 + 6, y0 + 6);
+  c.setTextDatum(textdatum_t::top_right);
+  c.setTextColor(edited ? COL_WARN : COL_MUT);
+  c.drawString(edited ? "EDITED" : "MC", x1 - 6, y0 + 6);
+  const int cx = (x0 + x1) / 2, w = x1 - x0 - 12;
+  fitCenterText(c, cx, y0 + 42, value, w, {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b},
+                active ? COL_NUM : COL_MUT, 40);
+  fitCenterText(c, cx, y0 + 76, detail, w, {&fonts::FreeSansBold9pt7b}, active ? COL_NUM : COL_MUT);
+}
+
+inline void drawRange(M5Canvas& c, const ScreenSpec& s) {
+  drawKicker(c, "RANGE   HOLD B: DONE   ~ = ROUGH");
+  std::string radiusDetail = "dBm  " + std::string(range_distance_label(s.range_threshold_dbm));
+  int txDbm = tx_power_dbm(s.range_tx_level);
+  std::string txDetail = (txDbm > 0 ? "+" : "") + std::to_string(txDbm) + " dBm";
+  std::string txName = tx_power_name(s.range_tx_level);
+  for (auto& ch : txName) ch = ch == '_' ? ' ' : (char)toupper((unsigned char)ch);
+  drawRangePanel(c, 6, SCREEN_W / 2 - 3, !s.range_edit_strength, "RADIUS", s.range_threshold_edited,
+                 std::to_string(s.range_threshold_dbm), radiusDetail);
+  drawRangePanel(c, SCREEN_W / 2 + 3, SCREEN_W - 6, s.range_edit_strength, "STRENGTH", s.range_tx_edited, txName,
+                 txDetail);
+}
+
+// The STATS page's "HOLD FOR RANGE" cue: the hint bar fills as A is held from 1 s towards 5 s.
+// Amber fill over a light grey-blue track, dark text on both: readable at arm's length on the panel.
+inline void drawRangeCue(M5Canvas& c, int pct) {
+  const int y0 = SCREEN_H - HINT_H + 1;
+  c.fillRect(0, y0, SCREEN_W, HINT_H - 1, COL_MUT);
+  c.fillRect(0, y0, SCREEN_W * pct / 100, HINT_H - 1, COL_WARN);
+  c.setFont(&fonts::Font0);
+  c.setTextDatum(textdatum_t::middle_center);
+  c.setTextColor(COL_BG);
+  c.drawString(RANGE_CUE_HINT, SCREEN_W / 2, SCREEN_H - HINT_H / 2);
+}
+
 inline void drawSystem(M5Canvas& c, const ScreenSpec& s) {
   switch (s.kind) {
     case ScreenKind::SCR_DIAGNOSTICS: {
@@ -517,6 +571,9 @@ inline void drawSystem(M5Canvas& c, const ScreenSpec& s) {
       fitCenterText(c, SCREEN_W / 2, 100, "UNLOCKS IN " + s.lock_remaining, TEXT_MAX_W, {&fonts::FreeSansBold9pt7b}, COL_MUT);
       break;
     }
+    case ScreenKind::SCR_RANGE:
+      drawRange(c, s);
+      break;
     case ScreenKind::SCR_FORCE_RESTART: {
       drawKicker(c, "SYSTEM");
       fitCenterText(c, SCREEN_W / 2, 56, "RESTART IN " + std::to_string(s.restart_in_s), TEXT_MAX_W,
@@ -574,7 +631,8 @@ inline void renderScreen(M5Canvas& canvas, const ScreenSpec& spec) {
       break;
   }
   drawStatusStrip(canvas, spec.strip);
-  drawHintBar(canvas, spec.hint);
+  if (spec.range_cue_pct >= 0) drawRangeCue(canvas, spec.range_cue_pct);
+  else drawHintBar(canvas, spec.hint);
 }
 
 }  // namespace brx_render

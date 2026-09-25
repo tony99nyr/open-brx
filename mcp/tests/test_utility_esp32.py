@@ -122,8 +122,10 @@ def test_mc_arms_the_esp32_station_exactly_like_a_phone():
     _hydrate_utility_hello(s, node_id, body)
     v = s.set_station(node_id, {"kind": "respawn", "team": "blue", "id": 3, "threshold": -70})
     pushed = [b for n, k, b in s.net.pushed if k == "station_config" and n == node_id]
-    assert pushed and pushed[-1] == {"kind": "respawn", "team": 1, "id": 3, "threshold": -70,
-                                      "game": 1, "valid_ids": [3], "lock_s": 0}, pushed
+    # A67: `threshold_age_ms` is how old MC's value is on a real clock; checked apart from the rest
+    assert pushed and isinstance(pushed[-1].get("threshold_age_ms"), int) and pushed[-1]["threshold_age_ms"] >= 0, pushed
+    assert pushed and {k: v for k, v in pushed[-1].items() if k != "threshold_age_ms"} == {
+        "kind": "respawn", "team": 1, "id": 3, "threshold": -70, "game": 1, "valid_ids": [3], "lock_s": 0}, pushed
     assert v["armed"]["game"] == 1 and v["attention"] == []
     # And what MC just sent is itself a wire-valid station_config (the 2026-09-07 `alert` lesson).
     E.validate(E.make_envelope("station_config", pushed[-1]), direction="mc")

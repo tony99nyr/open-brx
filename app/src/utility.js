@@ -15,6 +15,8 @@ import jsQR from 'jsqr';
 import { parseMcJoin } from './mcurl.js';
 import { startUtilitySweep, resolveTypedMc } from './transport/utility-join.js';   // bench 2026-09-24: the LAN sweep fallback + typed-address parsing
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
+import { RangeEdits, RANGE_KEY, TX_TO_WIRE, txFromWire, rangeHoldMs, RANGE_IDLE_MS } from './rangeedit.js';   // F365 / A67: the on-station range edit, synced to MC
+import { createTapHoldGate } from './tapgate.js';   // F365: the RANGE hold reuses the hidden door's knock-safe hold
 
 // A29 (2026-09-12): "utility phones report the same way" -- the same "<version>+<sha>[-dirty]" a player
 // node sends, so MC's muster rollup can compare a station phone with the field. It was 'utility-0.2', a
@@ -49,6 +51,15 @@ const settings = (() => { try { return migrateThreshold({ ...DEFAULTS, ...JSON.p
 /** The threshold this station advertises (byte 14) and measures players by: the override, else the platform default. */
 const thr = () => stationThreshold(settings);
 function save() { try { localStorage.setItem('brx.utility', JSON.stringify(settings)); } catch (_) { /* ignore */ } }
+// F365 / A67: who set the radius and the strength last (this station or MC), when, and the edit log MC is told about.
+// Its own key: RESET TO DEFAULTS forgets `brx.utility`, but the edit `seq` must keep rising or MC would drop new edits.
+const range = new RangeEdits({
+  load: () => { try { return JSON.parse(localStorage.getItem(RANGE_KEY) || 'null'); } catch (_) { return null; } },
+  save: st => { try { localStorage.setItem(RANGE_KEY, JSON.stringify(st)); } catch (_) { /* ignore */ } },
+});
+/** A58: an MC tamper lock is running (`station_config.lock_s`, from receipt). A phone station keeps working either way;
+ *  the lock only makes the on-station RANGE override need the stronger hold (F365) and marks the edit `locked`. */
+const a58Locked = () => Number.isFinite(+settings.lockUntil) && +settings.lockUntil > Date.now();
 
 // ---------- plugins ----------
 const plugins = {};
@@ -154,13 +165,25 @@ async function applyStationConfig(body) {
   // F337 (b): MC re-sends a same-game station_config at START, END and RECALL to move the A58 lock, which a
   // phone ignores. An arming that changes nothing a phone uses must not restart the advert or close the
   // seven-tap drawer; a real change (another game, kind, team, id, threshold, item or allow-list) re-arms.
-  const armKey = () => JSON.stringify([settings.kind, settings.team, settings.id, settings.threshold, settings.game,
+  const armKey = () => JSON.stringify([settings.kind, settings.team, settings.id, settings.threshold, settings.tx, settings.game,
     settings.item, settings.mcArmed && settings.mcArmed.valid_ids]);
   const wasArmed = !!settings.mcArmed, before = armKey();
   if (body.kind && KIND_LABEL[body.kind]) settings.kind = body.kind;
   if (body.team != null) settings.team = typeof body.team === 'number' ? body.team : (TEAM_ID_TO_TID[String(body.team).toLowerCase()] ?? settings.team);
   if (Number.isFinite(+body.id) && +body.id >= 1) settings.id = Math.min(65535, Math.round(+body.id));
-  settings.threshold = applyThreshold(body.threshold, settings.threshold);   // F345: 0 = this platform's own default
+  // F365 / A67: the last edit wins, per field. An on-station edit younger than MC's value (`*_age_ms`) is kept; an
+  // older one, or any value from an MC that sends no age, is replaced by MC's. MC sends `tx_power` only once it holds
+  // one: absent keeps the station's own. A threshold of 0 = this platform's own default (F345).
+  if (body.threshold != null && body.threshold !== '' && Number.isFinite(+body.threshold)) {
+    const mcThr = applyThreshold(body.threshold, settings.threshold);
+    if (range.mcDecides('threshold', mcThr, body.threshold_age_ms)) settings.threshold = mcThr;
+  }
+  // A phone that cannot set its advert power (iOS) ignores MC's tx_power and reports what it really sends (below).
+  const mcTx = txFromWire(body.tx_power);
+  if (mcTx && support.txPowerControl && range.mcDecides('tx_power', body.tx_power, body.tx_power_age_ms)) settings.tx = mcTx;
+  // A58: the tamper lock, seconds from receipt (0-7200); absent or 0 = unlocked, and every station_config replaces it.
+  const lockS = Number.isFinite(+body.lock_s) ? Math.max(0, Math.min(7200, +body.lock_s)) : 0;
+  settings.lockUntil = lockS > 0 ? Date.now() + lockS * 1000 : 0;
   const wasGame = settings.game;
   settings.game = Number.isFinite(+body.game) ? (+body.game & 0xff) : 0;   // absent = 0 (any game), v1
   // A NEW game must not resume the last one's owner with the last one's possession seconds in the tally.
@@ -177,6 +200,7 @@ async function applyStationConfig(body) {
   if (wasArmed && armKey() === before) {
     log(`MC re-sent the same arming (game ${settings.game}): advert and drawer left as they are`, 'li');
     if (!advertising) await startAdvert();   // not a restart: nothing was on air
+    else render();   // the lock may have moved: the RANGE hold's cue follows it
     return;
   }
   log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAMES[settings.team] || settings.team} · station ${settings.id} · threshold ${thr()} dBm · game ${settings.game}`, 'lk');
@@ -184,7 +208,17 @@ async function applyStationConfig(body) {
   await startAdvert();
 }
 function utilityStatusBody() {
+  // F365 / A67: the applied radius and strength, who set each and how long ago, and the last on-station edits,
+  // restated on every beat. The transport only asks while bound, so this beat carries any edit made offline.
+  const edits = range.status();
+  if (transport && transport.state === 'bound') range.markSent();
+  // A67: `threshold` is the dBm applied (thr(): the platform default when the stored value is 0, never 0). No TX power
+  // control (iOS): the phone advertises at its one fixed level, reported as "high" (the full level; TX_HINT), and it
+  // makes no strength claim of its own.
+  if (!support.txPowerControl) { delete edits.tx_power_src; delete edits.tx_power_edit_age_ms; }
+  const txNow = support.txPowerControl ? (TX_TO_WIRE[settings.tx] || 'high') : 'high';
   return { role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: thr(), live: advertising, revives, armed: !!settings.mcArmed,
+    tx_power: txNow, ...edits,
     app_ver: UTIL_VER, ...(lastBattery != null ? { battery: lastBattery } : {}),   // roadmap A3: the heartbeat, not just the hello, so MC's ITEMS panel stays current without a reconnect
     // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
     // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
@@ -331,7 +365,7 @@ async function exitToHud() {
     // its takeover key to the HUD so MC can authenticate the physical role transition, consume the old
     // ITEMS row, then acknowledge that consumption. A node that was never welcomed has no proof to hand on.
     if (transport && transport.nodeId && transport.nodeKey) {
-      localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify({ node_id: transport.nodeId, node_key: transport.nodeKey }));
+      localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify({ node_id: transport.nodeId, node_key: transport.nodeKey, mc_url: transport.url }));
     }
     localStorage.setItem('brx.role', 'hud');
   } catch (_) { /* ignore */ }
@@ -635,30 +669,148 @@ function parseEdge(text) {
   return n >= THR_MIN && n <= THR_MAX ? n : null;
 }
 const THR_MIN = -95, THR_MAX = -35;   // the same range the drawer's slider allows
-/** Editable while the station is being set up; a readout once it is armed or on the air (the 2026-09-04 anti-cheat rule). */
-function rangeLocked() { return !!settings.mcArmed || !!settings.live || advertising || advertisingPending > 0; }
+/** On the field: MC-armed, or on the air. The RANGE panel is then a readout until the operator holds to edit it (F365). */
+function playLocked() { return !!settings.mcArmed || !!settings.live || advertising || advertisingPending > 0; }
+// F365 (Tony 2026-09-25): "if operator notices the range is too wide during gameplay, to long hold and be able to edit it".
+// Setting up, the panel is editable as before. On the field it is locked until a knock-safe hold opens it (1.5 s, or the
+// stronger 5 s while an MC tamper lock runs, A58), then it locks itself again after 10 s idle or on DONE.
+let _editOpen = false, _editIdleAt = 0, _rangeIdleMs = RANGE_IDLE_MS;
+function rangeLocked() { return playLocked() && !_editOpen; }
+function rangeTouched() { if (_editOpen) _editIdleAt = Date.now(); }
+function closeRangeEdit(why) {
+  if (!_editOpen) return;
+  _editOpen = false; _edgeBad = false;
+  const inp = $('thrNum'); if (inp && document.activeElement === inp && inp.blur) inp.blur();
+  log(`range editing locked again (${why})`, 'li');
+  render();
+}
+/** "MC", "SET HERE", or "SET HERE · WILL SYNC" while no heartbeat has carried the edit to MC yet. */
+function rangeSrcLabel(field) {
+  const src = range.src(field);
+  if (field === 'tx_power' && !support.txPowerControl) return 'FIXED ON THIS PHONE';
+  if (src === 'mc') return 'MC';
+  if (src === 'station') return range.pending(field) ? 'SET HERE · WILL SYNC' : 'SET HERE';
+  // nobody has set it yet: the station's own default (0 = the platform radius, HIGH strength), else a pre-A67 value
+  return (field === 'threshold' ? !settings.threshold : settings.tx === 'high') ? 'DEFAULT' : '';
+}
+/** One on-station change of radius (`threshold`, a stored value; 0 = the default) or strength (`tx_power`, a settings.tx
+ *  name). It applies at once (restartIfLive re-keys the advert: byte 14, and the TX power) and is logged for MC. */
+function stationEdit(field, next) {
+  const view = () => (field === 'threshold' ? thr() : (TX_TO_WIRE[settings.tx] || 'high'));
+  const before = view();
+  if (field === 'threshold') settings.threshold = next; else settings.tx = next;
+  save();
+  const after = view();
+  if (after !== before) {
+    const e = range.edit(field, before, after, { locked: a58Locked() });
+    log(`${field === 'threshold' ? 'radius' : 'strength'} set here: ${before} → ${after}${e.locked ? ' (while MC-locked)' : ''} · edit #${e.seq}`, 'lk');
+  }
+  restartIfLive();
+}
 function renderRange() {
   const box = $('range'); if (!box) return;
-  const locked = rangeLocked();
+  if (_editOpen && (!playLocked() || Date.now() - _editIdleAt > _rangeIdleMs)) {
+    const idle = playLocked();
+    _editOpen = false; _edgeBad = false;
+    const i0 = $('thrNum'); if (i0 && i0.blur && document.activeElement === i0) i0.blur();
+    if (idle) log('range editing locked again (10 s idle)', 'li');
+  }
+  const locked = rangeLocked(), onField = playLocked(), mcLock = a58Locked();
   if (locked && _edgeBad) _edgeBad = false;   // a lock ends any half-typed entry
   const inp = $('thrNum');
   if (inp && document.activeElement !== inp && !_edgeBad) inp.value = String(-thr());
   if (inp && inp.setAttribute) inp.setAttribute('aria-invalid', String(_edgeBad));
   const hint = $('rhint'); if (hint) { hint.textContent = _edgeBad ? `TYPE ${-THR_MAX} TO ${-THR_MIN}` : `${-THR_MAX} = TIGHT · ${-THR_MIN} = WIDE`; if (hint.classList) hint.classList.toggle('bad', _edgeBad); }
   if (inp) inp.disabled = locked;
-  for (const b of (box.querySelectorAll ? box.querySelectorAll('[data-tx]') : [])) b.disabled = locked;
-  if (box.classList) box.classList.toggle('locked', locked);
-  if ($('rangeLock')) $('rangeLock').textContent = !locked ? '' : settings.mcArmed ? ' · LOCKED: MC-ARMED' : ' · LOCKED WHILE LIVE';
+  for (const b of (box.querySelectorAll ? box.querySelectorAll('[data-tx]') : [])) b.disabled = locked || !support.txPowerControl;
+  if (box.classList) { box.classList.toggle('locked', locked); box.classList.toggle('editing', onField && !locked); }
+  if ($('rangeLock')) $('rangeLock').textContent = !onField ? '' : !locked ? ' · EDITING' : mcLock ? ' · LOCKED BY MC' : ' · LOCKED';
+  for (const [id, field] of [['thrSrc', 'threshold'], ['txSrc', 'tx_power']]) {
+    const el = $(id); if (!el) continue;
+    el.textContent = rangeSrcLabel(field);
+    if (el.classList) { el.classList.toggle('here', range.src(field) === 'station'); el.classList.toggle('wait', range.pending(field)); }
+  }
+  const hold = $('rangeHold');
+  if (hold) {
+    hold.hidden = !locked;
+    if (hold.classList) hold.classList.toggle('a58', mcLock);
+    const lbl = $('rangeHoldLbl'); if (lbl) lbl.textContent = mcLock ? 'LOCKED BY MC · HOLD 5 S TO OVERRIDE' : 'HOLD TO EDIT RANGE';
+    if (hold.setAttribute) hold.setAttribute('aria-label', mcLock ? 'locked by Mission Control: hold five seconds to override and edit the range' : 'hold about one and a half seconds to edit the range');
+  }
+  const done = $('rangeDone'); if (done) done.hidden = !(onField && !locked);
 }
 let _edgeBad = false;   // the last entry was refused: the field keeps the stored value, the hint says the range
 function commitEdge() {
   const inp = $('thrNum'); if (!inp || rangeLocked()) return false;
+  rangeTouched();
   const n = parseEdge(inp.value);
   if (n == null) { _edgeBad = true; log(`radius: type a number from ${-THR_MAX} to ${-THR_MIN}`, 'le'); render(); return false; }
   _edgeBad = false;
-  if (n !== settings.threshold) { settings.threshold = n; save(); log(`radius edge set to ${n} dBm`, 'lk'); }
-  restartIfLive();
+  if (n !== settings.threshold) stationEdit('threshold', n); else render();
   return true;
+}
+/** F365: the RANGE hold. The same knock-safe hold as the hidden door (tapgate.js: one contact held, cancelled by a lift,
+ *  a slide off the button or a lost pointer), with a visible fill. 1.5 s opens editing; under an A58 lock only the 5 s
+ *  hold does, and the need is read live, so a lock arriving mid-hold cannot be crossed by the shorter one. */
+function wireRangeHold() {
+  const btn = $('rangeHold'), fill = $('rangeHoldFill');
+  if (!btn) return;
+  /** @type {any} */ let gate = null;
+  let t0 = 0, raf = 0, timer = 0, activePointer = null, activeKey = '';
+  const need = () => rangeHoldMs(a58Locked());
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf);
+    if (timer) clearTimeout(timer);
+    raf = 0; timer = 0; t0 = 0; activePointer = null; activeKey = ''; if (gate) gate.cancel(); gate = null;
+    if (fill) fill.style.width = '0%';
+    if (btn.classList) btn.classList.remove('holding');
+  };
+  const check = () => {
+    if (!t0 || !gate) return false;
+    const now = Date.now();
+    if (now - t0 < need() || !gate.held(now)) return false;
+    stop();
+    if (!rangeLocked()) return true;   // already open, or no longer on the field: nothing to unlock
+    _editOpen = true; _editIdleAt = Date.now();
+    log(`range editing unlocked on the station${a58Locked() ? ' (MC lock overridden)' : ''}`, 'lk');
+    render();
+    return true;
+  };
+  const tick = () => {
+    raf = 0;
+    if (!t0) return;
+    const p = Math.min(1, (Date.now() - t0) / need());
+    if (fill) fill.style.width = `${Math.round(p * 100)}%`;
+    if (check()) return;
+    raf = requestAnimationFrame(tick);
+  };
+  const start = () => {
+    if (t0 || !rangeLocked()) return false;
+    t0 = Date.now(); gate = createTapHoldGate({ taps: 1, holdMs: need() }); gate.down(t0);
+    if (btn.classList) btn.classList.add('holding');
+    // a timer as well as the frames: rAF pauses in a background tab, and the hold must still resolve
+    const arm = () => { timer = setTimeout(() => { timer = 0; if (t0 && !check()) arm(); }, Math.max(50, need() - (Date.now() - t0))); };
+    arm();
+    tick();
+    return true;
+  };
+  btn.addEventListener('pointerdown', e => { e.preventDefault(); if (start()) activePointer = e.pointerId; });
+  btn.addEventListener('pointermove', e => {
+    if (activePointer !== e.pointerId) return;
+    const r = btn.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) stop();
+  });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, e => { if (activePointer === e.pointerId) stop(); });
+  btn.addEventListener('keydown', e => {
+    if ((e.key !== ' ' && e.key !== 'Enter') || e.repeat) return;
+    e.preventDefault();
+    if (start()) activeKey = e.key;
+  });
+  btn.addEventListener('keyup', e => { if (e.key !== activeKey) return; e.preventDefault(); stop(); });
+  btn.addEventListener('blur', stop);
+  // No click path, on purpose: a click (a tap, a knock, a synthesised activation) never opens the range. Unlike the
+  // exit hold, this unlocks a live station's settings, so the only way in is a held contact or a held key. A screen
+  // reader user still has a click-only path: the seven-tap drawer's RADIUS controls, which record the same edit.
 }
 
 /** C1 (critical review 2026-09-24): "ROCKET LAUNCHER" ran out of the ring and off the screen. The word may take two balanced
@@ -740,18 +892,29 @@ function wire() {
   if ($('btnPlayers')) $('btnPlayers').onclick = () => { showPlayers = !showPlayers; try { localStorage.setItem(PLAYERS_KEY, showPlayers ? '1' : '0'); } catch (_) { /* ignore */ } render(); };
   if ($('thrNum')) {
     const inp = $('thrNum');
-    inp.oninput = () => { const v = String(inp.value).replace(/[^0-9]/g, '').slice(0, 2); if (v !== inp.value) inp.value = v; };
+    inp.oninput = () => { rangeTouched(); const v = String(inp.value).replace(/[^0-9]/g, '').slice(0, 2); if (v !== inp.value) inp.value = v; };
     inp.onchange = commitEdge;
     inp.onkeydown = e => { if (e.key === 'Enter' && commitEdge() && inp.blur) inp.blur(); };
   }
   $('btnHud').onclick = exitToHud;
   for (const b of document.querySelectorAll('[data-kind]')) b.onclick = () => { settings.kind = b.dataset.kind; save(); restartIfLive(); };
   for (const b of document.querySelectorAll('[data-team]')) b.onclick = () => { settings.team = +b.dataset.team; save(); restartIfLive(); };
-  for (const b of document.querySelectorAll('[data-tx]')) b.onclick = () => { settings.tx = b.dataset.tx; save(); restartIfLive(); };
+  // the main screen's chips obey the RANGE lock (F365); the drawer's sit behind the seven-tap gate. Both count as edits.
+  for (const b of document.querySelectorAll('[data-tx]')) b.onclick = () => {
+    if (b.closest && b.closest('#range') && rangeLocked()) return;
+    rangeTouched();
+    if (!support.txPowerControl) { log('this phone cannot set its transmit power: strength is fixed', 'le'); return; }
+    if (TX_TO_WIRE[b.dataset.tx]) stationEdit('tx_power', b.dataset.tx);
+  };
+  if ($('range') && $('range').addEventListener) $('range').addEventListener('pointerdown', rangeTouched);
+  if ($('rangeDone')) $('rangeDone').onclick = () => closeRangeEdit('DONE');
+  wireRangeHold();
   $('idMinus').onclick = () => { settings.id = Math.max(1, settings.id - 1); save(); restartIfLive(); };
   $('idPlus').onclick = () => { settings.id = Math.min(65535, settings.id + 1); save(); restartIfLive(); };
-  $('thrRange').oninput = e => { settings.threshold = +e.target.value; save(); render(); };
-  $('thrRange').onchange = () => restartIfLive();
+  // the slider previews while it moves and records ONE edit on release, from where the drag began
+  let sliderFrom = null;
+  $('thrRange').oninput = e => { if (sliderFrom == null) sliderFrom = settings.threshold; settings.threshold = +e.target.value; save(); render(); };
+  $('thrRange').onchange = e => { const to = +e.target.value; if (sliderFrom != null) settings.threshold = sliderFrom; sliderFrom = null; stationEdit('threshold', to); };
   $('capMinus').onclick = () => { settings.captureS = Math.max(2, settings.captureS - 1); point.captureS = settings.captureS; save(); render(); };
   $('capPlus').onclick = () => { settings.captureS = Math.min(120, settings.captureS + 1); point.captureS = settings.captureS; save(); render(); };
   $('capMinus2').onclick = () => { settings.netCap = Math.max(1, settings.netCap - 1); point.netCap = settings.netCap; save(); render(); };
@@ -765,9 +928,9 @@ function wire() {
   $('btnSet').onclick = () => {
     const p = presence.players()[0];
     if (!p) { log('SET: no player phone in range to read', 'le'); return; }
-    settings.threshold = Math.max(-100, Math.min(-30, Math.round(p.rssi) - 3)); save();
-    log(`threshold set from player ${p.id}: ${Math.round(p.rssi)} dBm → ${settings.threshold} dBm`, 'lk');
-    restartIfLive();
+    const to = Math.max(-100, Math.min(-30, Math.round(p.rssi) - 3));
+    log(`threshold set from player ${p.id}: ${Math.round(p.rssi)} dBm → ${to} dBm`, 'lk');
+    stationEdit('threshold', to);
   };
   wireExit();
 }
@@ -878,7 +1041,11 @@ function wireExit() {
   if (DEMO) seedDemo();
   window.brxUtility = { settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; },
     // test seam (app/test/utility-join-wiring): `startLanSweep(over)` spreads `over` into the sweep options unchecked
-    startLanSweep: startUtilityLanSweep, get sweeper() { return _sweeper; } };
+    startLanSweep: startUtilityLanSweep, get sweeper() { return _sweeper; },
+    // F365 / A67 test seams: the edit model, one on-station edit, the status body a heartbeat sends, the hold's need
+    range, stationEdit, statusBody: utilityStatusBody, a58Locked, holdMs: () => rangeHoldMs(a58Locked()),
+    get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
+    get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); } };
   window.brxUtil = window.brxUtility;
 })();
 

@@ -192,7 +192,9 @@ bits) — no connection.
 passive beacon: it needs **no** MC contact for the rest of the game (same island rule as a player node).
 
 1. **Assign at muster (WiFi).** MC's KIT/muster gains an **ITEMS** panel beside the roster: the operator
-   sets each utility phone's **kind / team / station id / threshold**. MC pushes **`station_config`** to the
+   sets each utility phone's **kind / team / threshold**, and MC gives it a **station id** (A66: the next free id,
+   unique across phones and Sticks, kept for that node_id across its restart, a relink and an MC restart; the
+   console shows it read-only). MC pushes **`station_config`** to the
    phone (M-NET, §5c); the phone applies it, shows **MC ✓ GAME N**, and **locks its controls**
    (the on-device 7-tap gate stays only as a no-WiFi/field-fix fallback). The game bundle carries
    `config.stations` = the allow-list of ids MC handed out, so a player phone only honours those ids.
@@ -222,6 +224,17 @@ same message over the same wire with no amendment: **§5g**.
 The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. `valid_ids` (optional) is
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
+
+**Range edited on the station, last edit wins (A67, F365).** An operator can change a station's RANGE (threshold)
+and STRENGTH (`tx_power`: `ultra_low`, `low`, `medium`, `high`) on the station itself behind a long hold, during
+play. The station applies it at once and reports it on every heartbeat: `threshold`/`tx_power` (applied now),
+`<field>_src` (`station` or `mc`), `<field>_edit_age_ms` (src station only) and `range_edits` (the last 8 edits,
+`seq` persisted across a reboot). MC keeps who set each value and when. A station edit newer than MC's value is
+adopted; an operator edit in the ITEMS card after it wins and re-arms the station. `station_config` carries
+`threshold_age_ms` (and `tx_power` with `tx_power_age_ms` once MC holds one): the station keeps its own edit only
+when that edit is younger. An edit made out of Wi-Fi syncs when the station returns. After a StickS3 reboot the
+Stick cannot know the edit's time, so it reports a large age and MC's value wins at the next arm. Players need no
+change: they read the station's advert. Each new edit is a feed line and an attention line on the ITEMS card.
 
 **One game byte per match (A59, F339).** `game` is MC's match counter (1..255, bumped by the first push after a
 match has started). Every player `config` MC sends carries the same number as `config.game_byte`, so a player

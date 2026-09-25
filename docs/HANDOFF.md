@@ -51,39 +51,40 @@ Block 10 for the gun-audio steps (F347).
   step 4 settles F347's `$PSET` t23 value, do not ship a t23 change before it.
 - **Next desk task:** none open.
 - **Blocked:** F270 on A8.
-- **Open decision for Tony:** F358, may a phone drawer override an MC-armed station's radius/strength?
+- **F365 (A67) landed:** the on-station range edit (1.5 s hold, 5 s under an A58 lock), synced to MC; phone `c980a681`, MC `1420057b`. The iOS no-tx_power follow-up is in progress.
 ## Lane: F341 transport and pool repair
 F341 is fixed on the desk: brxlink sends `$*` before the next frame after a chunk error or a drop, and the node repairs
 a pool above the armed `$PSET` or shows GUN POOLS WRONG. F342's respawn-only games scan only while down.
 - **Next bench task:** Block 2 step 4 (A4), then step 6 (2.6) of [`bench-2026-09-24.md`](bench-2026-09-24.md).
 - **Next desk task:** F342's open half (a powerup or control-point game still floods the scan).
 ## Lane: Mission Control console honesty
-APKs 0.4.7-0.4.11 published, each on green CI. On main since 0.4.11: A60 auto-join, A61 multi-kill ladder, A62 Beat
-Down, A63 Killjoy and the AWARDS table, A64 the frag-cap freeze, MC visual QA round 2 (mc-vqa2 gate), and fixes
-F330, F343, F337, F354, F356. Each was polish-looped and test:all --ui green.
-- **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F309, F311 and F312.
-- **Tony decides:** F346 (d) first contact (trust on first use, or one JOIN tap); F354 a lost damaging word (credit
-  the smoke/EMP shooter or only the team); F357 kill confirms after a frag-cap whistle; F361 the KILLJOY gun flash.
+APKs 0.4.7-0.4.11 published, each on green CI. On main since 0.4.11: A60 auto-join (with first-contact join, F346 d),
+A61-A63 the medals and awards, A64/A65 no kill cue after any whistle and team-only credit, A66 MC-assigned station
+ids, A67 the MC half of the station range sync, and MC visual QA round 2. Each was polish-looped and test:all --ui green.
+- **Next:** cut 0.4.12 once Tony's bench passes A4 and F347; bench F365 (all three halves built), F309, F311, F312.
+- **Tony decides:** the MAX_TAG_LEN number (brx5 asks, brx3 builds the MC refusal).
 - **Build:** F355 (VQA2 Lows), F360 (F356 edge cases).
-## Lane: S57, B21, StickS3 (brx4)
+## Lane: S57, B21, StickS3, F365 (brx4)
 Tony's MVP scope: Stick stations are Bluetooth-only (hill, pickup, respawn); Stick IR receive and the grenade hill
-stay post-MVP (F338). Revive counting and the REDEPLOY animation are also post-MVP: `REVIVE_FEEDBACK_ENABLED` is
-off, a respawn Stick only advertises, and the phone's bit6 signal sits parked on branch `revive-bit`. On main:
-`presence.h` ports the phone's Presence, ControlPoint and revive logic (`e65aea17`); the side-button lock writes the
-M5PM1 registers (F332, `8a8bcae9`, `e17efa66`); a revive counts from player state bit 6, no RSSI (`169157eb`); a
-pickup claim is awarded at any strength (`e879b9db`); a host screen simulator (`edef75c9`, `e17efa66`) drives
-`station_render.h` through 46 scenarios and found 14 wrong screens, all fixed; `hardware/player-sim` (`03c21273`)
-simulates a player advert for bench-free proof. Overnight, unattended: mDNS discovery, status reporting, the A58
-lock round trip on real PM1 registers, and an offline pickup award (with a dead player's claim refused), all against
-a simulated player. F353's desk half is done: the Stick's own advert gaps are fine (median 106 ms, max under 1 s);
-the phones' "left" flips are phone-side, and a laptop Wi-Fi scanner cannot measure BLE advert timing. B21's Android
-half shipped; `webContentsDebuggingEnabled` and iOS remain.
-- **Next bench task:** sitting B of [`bench-2026-09-25.md`](bench-2026-09-25.md): a real-phone pickup and hill are
-  still unproven over the air (H9); also the physical side-button click test while locked.
+stay post-MVP (F338, F314). Revive counting and the REDEPLOY animation are also post-MVP: `REVIVE_FEEDBACK_ENABLED`
+is off, a respawn Stick only advertises, and the phone's bit6 signal sits parked on branch `revive-bit`. On main
+(`e9e81efc`): F365/A67, an operator edits a station's RADIUS and advertising STRENGTH on the Stick (hold A 5 s on
+STATS), during play and under the A58 lock, synced to MC via `range_edits`; machine-verified overnight, MC's
+threshold -60 reached the Stick. Also on main: `presence.h` ports the phone's Presence/ControlPoint/revive logic;
+the side-button lock writes the M5PM1 registers (F332); a revive counts from player state bit 6, no RSSI; a pickup
+claim is awarded at any strength; a host screen simulator drives `station_render.h` through 46 scenarios, all
+fixed; `hardware/player-sim` simulates a player advert for bench-free proof. B21's Android half shipped;
+`webContentsDebuggingEnabled` and iOS remain.
+- **Next bench task:** sitting B of [`bench-2026-09-25.md`](bench-2026-09-25.md): F365's RANGE gesture and screens
+  plus a strength A/B, a real-phone pickup and hill (H9), and the physical side-button click test while locked
+  (F332).
 - **Next desk task:** F333's remaining unwired screens (hill capturing/contested, an empty pickup, settings); F353's
   phone-side half (a phone log of Stick advert arrivals); F352 (the kill-confirm design pass for Tony).
 - **Blocked:** none.
-- **Resume:** worktree `/home/tony/brx4-l3` on `main`; tools are `stick.py`/`sim.py`/`stick_sim.py`. Windows MC:
+- **Resume:** worktree `/home/tony/brx4-l3` on `main` at `e9e81efc`. The Stick has Wi-Fi set and is linked to a
+  throwaway MC that will be stopped; once stopped it looks for MC again by mDNS; it is unlocked with its PM1 bits
+  clear. The rig receiver is on `ir_capture` (restored and verified 2026-09-24). Tools: `stick.py`,
+  `sim/stick_sim.py`, `hardware/player-sim`. Native Windows MC:
   `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785 --ws-port
   8786 --ephemeral --powerups`.
 ## Lane: powerups, shields, HUD and alerts (brx5)
@@ -102,7 +103,7 @@ Use this priority stack; do not spend Tony's bench time on desk work:
 1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
    evidence and promote or close each row from the result.
 2. **Screamer transport:** Block 2 (A4 first, it gates 0.4.12), then A8b; capture F269/F270/F272, then F274's soaks.
-3. **Decisions for Tony:** F346 (d) first contact; F351's B3 (the kill line at my own death); F350's shield-hit
+3. **Decisions for Tony:** F351's B3 (the kill line at my own death); F350's shield-hit
    sound; F352's kill confirm; the powerups flag after 3.4-3.5.
 4. **Only after reliability:** E2/E3/E4, B17, K6 and the remaining feature rows are roadmap work.
 

@@ -1,13 +1,13 @@
 // ITEMS — the utility phones (stations) on the net, and the operator's arming of them (A13.5 / F104).
 //
-// spec/utility.md §5b: at muster the operator sets each utility phone's kind / team / station id /
-// threshold; MC pushes `station_config`; the phone shows MC-ARMED · game N and locks its drawer. This
+// spec/utility.md §5b: at muster the operator sets each utility phone's kind / team / threshold, and MC gives it a
+// station id (F364); MC pushes `station_config`; the phone shows MC-ARMED · game N and locks its drawer. This
 // panel is that row. Everything shown comes from the server's `StationView` (`GET /api/stations`, on
 // every snapshot as `stations`): what was ASSIGNED, what the phone was last ARMED with, what the phone
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PowerupPreset, StationItem, StationKind, StationView } from '../api/types';
+import { useEffect, useState } from 'react';
+import type { PowerupPreset, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
 import { useStore } from '../store';
@@ -32,16 +32,14 @@ export function bubbleDefault(kind: StationKind, stick: boolean): { label: strin
     : { label: `DEFAULT (${phone}, phone)`, start: phone };
 }
 const STICK_RESPAWN_DBM = -57;
+/** A67 (F365): the station's advert strength, weakest first. A stronger advert is heard farther, so it moves the range too. */
+const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: 'LOW', medium: 'MEDIUM', high: 'HIGH' };
+const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));
 
 export function Items() {
   const { state } = useStore();
   const stations = state?.stations ?? [];
   const pu = usePowerups();   // A56
-  const handed = useRef<Map<string, number>>(new Map());   // F343(a): the ids already handed out, kept stable
-  // derived in useMemo (recomputed only when the stations change) and committed to the ref in an effect, so a
-  // render React throws away can never leave a half-applied hand-out behind
-  const ids = useMemo(() => draftIds(stations, handed.current), [stations]);
-  useEffect(() => { handed.current = ids; }, [ids]);
   if (!state || !stations.length) return null;
   // M2 (visual QA 2026-09-24): ARMED is what each card's status says (MC-ARMED), counted apart from the
   // stations with an attention line. A BATTERY LOW used to drop an armed station out of the count, so
@@ -58,9 +56,8 @@ export function Items() {
             hello) or changes on a phone reboot, and either would remount the card mid-edit, throwing away
             the operator's draft and `busy` (F104 follow-up). So an unassigned card mounted at hello keeps
             the default draft even after the report fills in: PHONE SAYS shows the phone's own state on the
-            same card, and the operator has to assign anyway. (The ID box is the exception: until the host
-            edits it, it follows `draftIds`, F343.) */}
-        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu} freeId={ids.get(s.node_id) ?? 1} />)}
+            same card, and the operator has to assign anyway. */}
+        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu} stations={stations} />)}
       </div>
     </div>
   );
@@ -75,51 +72,36 @@ const presetOf = (item: StationItem | undefined, presets: PowerupPreset[] | null
 /** What the station IS: a StickS3 says hello with platform `esp32` (hardware/m5sticks3), a phone with its OS. */
 const deviceOf = (s: StationView) => (s.platform === 'esp32' ? 'STICKS3' : 'PHONE');
 
-/** F343(a): the id each station's draft starts from, for the stations with no id of their own (not assigned,
- *  reporting 0). Stable: a station keeps the id it was handed (`prev`) while no other station assigns or
- *  reports it, so a station joining or leaving never moves another card's number. A newcomer takes the
- *  lowest id that no station holds, reports or was handed, in list order. */
-export function draftIds(stations: StationView[], prev: ReadonlyMap<string, number>): Map<string, number> {
-  const own = (o: StationView) => o.assigned?.id ?? ((o.report.station_id ?? 0) >= 1 ? o.report.station_id! : null);
-  const used = new Set<number>();
-  for (const o of stations) {
-    if (o.assigned) used.add(o.assigned.id);
-    if ((o.report.station_id ?? 0) >= 1) used.add(o.report.station_id!);
-  }
-  const needy = stations.filter(o => own(o) == null);
-  const out = new Map<string, number>();
-  for (const o of needy) {
-    const kept = prev.get(o.node_id);
-    if (kept != null && !used.has(kept)) { out.set(o.node_id, kept); used.add(kept); }
-  }
-  for (const o of needy) {
-    if (out.has(o.node_id)) continue;
-    let n = 1; while (used.has(n)) n += 1;
-    out.set(o.node_id, n); used.add(n);
-  }
-  return out;
+/** An MC older than F364 refuses a PUT with no id in exactly these words (a current MC adds "or absent"). */
+const OLD_MC_WANTS_ID = /^id must be an integer 1\.\.65535 \(the station id in the advert\)$/;
+/** The id to send such an MC: the lowest one no other station holds. */
+export function lowestFreeId(stations: StationView[], node_id: string): number {
+  const used = new Set(stations.flatMap(o => o.node_id !== node_id && o.assigned ? [o.assigned.id] : []));
+  let n = 1; while (used.has(n)) n += 1;
+  return n;
 }
 
-function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; freeId: number }) {
+function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; stations: StationView[] }) {
   const { state, run, api, serverNow } = useStore();
   const teams = state?.teams ?? [];
   const a = s.assigned;
   // The draft is the operator's edit in progress; it starts from the assignment (or what the phone reports).
   const [kind, setKind] = useState<StationKind>(a?.kind ?? s.report.kind ?? 'respawn');
   const [team, setTeam] = useState<number>(a?.team ?? s.report.team ?? 255);
-  // Block 9 (brx4): an unarmed station reports station_id 0, and the API refuses 0, so ASSIGN + ARM did nothing.
-  // F343(a): until the host edits it, the draft follows the assignment, the report, or `freeId` (`draftIds`),
-  // so a station that takes this id after the card mounted moves the pre-fill on. The edit is this card's only.
-  const [idEdit, setId] = useState<number | null>(null);
-  const reported = (s.report.station_id ?? 0) >= 1 ? s.report.station_id! : null;
-  const id = idEdit ?? a?.id ?? reported ?? freeId;
+  // F364 (Tony 2026-09-25): MC assigns the station id at ASSIGN + ARM, unique across phones and Sticks and kept
+  // across restarts. The card shows it read-only and the PUT sends no id.
   const [applyErr, setApplyErr] = useState<string | null>(null);   // a refused write, on THIS card (the header may be off-screen)
   useEffect(() => { setApplyErr(null); }, [s.armed?.at]);          // armed since (here or by a server re-arm): the refusal is stale
   // H1 (visual QA 2026-09-24): 0 is "the station's own default" (F345: MC sends a phone respawn station -70, a
   // StickS3 keeps its own). The draft starts there, NOT from the phone's report: its advertised bubble IS
   // that default, and copying it here turned every ASSIGN + ARM into an explicit override. A number is
   // sent only once the host opens the BUBBLE and edits it.
-  const [threshold, setThreshold] = useState<number>(a?.threshold ?? 0);
+  // A67: null = follow the assignment, so an edit made ON THE STATION (adopted by MC) moves the draft with it
+  // instead of reading as a change the operator never made.
+  const [thrEdit, setThreshold] = useState<number | null>(null);
+  const threshold = thrEdit ?? a?.threshold ?? 0;
+  const [txEdit, setTx] = useState<TxPower | null>(null);   // A67: the STRENGTH draft; null = MC's (or none)
+  const tx = txEdit ?? a?.tx_power ?? null;
   const [busy, setBusy] = useState(false);
   const [released, setReleased] = useState<boolean | null>(null);   // A41: last RELEASE result, this card only
   // HIGH (review, 2026-09-13): RELEASE used to fire on a single tap, styled identically to CLEAR right
@@ -166,15 +148,20 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
   // while the match is armed/live (it would re-push config to every HUD), whereas arming touches only the
   // stations and is allowed in any phase — and a station that reboots mid-match is exactly this case.
   const needsRearm = s.arm_pending || s.attention.some(t => t.startsWith('PHONE ') || t.startsWith('ARMED FOR'));
-  const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.id !== id || a.threshold !== threshold
-    || (picking && chosen !== assignedPreset);
+  const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.threshold !== threshold
+    || (tx != null && tx !== a.tx_power) || (picking && chosen !== assignedPreset);
   // a powerup station still waiting for its item pick is not a live button, so it must not look like one
   const lit = (dirty || needsRearm) && !(dirty && needsPick);
   const apply = async () => {
     setBusy(true); setApplyErr(null);
     const keep = <T,>(fn: () => Promise<T>) => async () => { try { return await fn(); } catch (e) { setApplyErr((e as Error).message); throw e; } };
     try {
-      if (dirty) await run(keep(() => api.putStation(s.node_id, { kind, team: control ? 255 : team, id, threshold, ...(picking && chosen ? { item_preset: chosen } : {}) })));
+      const body = { kind, team: control ? 255 : team, threshold, ...(tx ? { tx_power: tx } : {}), ...(picking && chosen ? { item_preset: chosen } : {}) };
+      if (dirty) await run(keep(() => api.putStation(s.node_id, body).catch(e => {
+        // F364 compatibility: an MC process older than this console (rebuilt, not restarted) still requires an id.
+        if (!OLD_MC_WANTS_ID.test((e as Error).message)) throw e;
+        return api.putStation(s.node_id, { ...body, id: a?.id ?? lowestFreeId(stations, s.node_id) });
+      })));
       else await run(keep(() => api.armStations()));
     } finally { setBusy(false); }
   };
@@ -196,6 +183,7 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         <Micro>{deviceOf(s)}</Micro><Val color={T.dim}>{s.node_id.slice(0, 12)}</Val>
+        <Micro>ID</Micro><span data-station-id={s.node_id} style={{ font: F.chk(600, 12), letterSpacing: '.08em', color: a ? T.ink : T.micro }}>{a ? a.id : 'SET BY MC AT ARM'}</span>
         <Micro>LINK</Micro><Val color={!s.online ? T.warn : T.dim}>{age == null ? 'NEVER' : `${fmtAge(age)} AGO`}{!s.online && ' — OUT OF WI-FI'}</Val>
         {/* what the PHONE says it is, so an assignment that never landed shows as the two disagreeing */}
         <Micro>{deviceOf(s)} SAYS</Micro>
@@ -216,6 +204,8 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
           </>)}
         </>)}
         {a?.item && (<><Micro>ITEM</Micro><ItemStationRow s={s} item={a.item} canReset={canReset} /></>)}
+        {s.range?.threshold != null && (<><Micro>RANGE</Micro><Val color={T.dim}><span data-station-range={s.node_id}>{s.range.threshold} dBm{edited(s.range.threshold_src, s.range.threshold_edit_age_ms)}</span></Val></>)}
+        {s.range?.tx_power != null && (<><Micro>STRENGTH</Micro><Val color={T.dim}><span data-station-strength={s.node_id}>{TX_POWER_LABEL[s.range.tx_power]}{edited(s.range.tx_power_src, s.range.tx_power_edit_age_ms)}</span></Val></>)}
         {rep.battery != null && (<><Micro>BATTERY</Micro><Val color={rep.battery < 30 ? T.bad : T.dim}>{rep.battery}%</Val></>)}
       </div>
       {/* a standing fact, so a status region that is always mounted (it announces when the line arrives) */}
@@ -247,7 +237,6 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
           {/* a control point starts NEUTRAL and is taken by presence (§5d): the team control is moot for it */}
           {!control && <Seg label={`team for ${s.node_id}`} value={String(team)} size={11} pad="5px 8px" wrap options={teamOptions} onChange={v => setTeam(Number(v))} />}
           {control && <span style={{ font: F.chk(600, 11), letterSpacing: '.06em', color: T.micro }}>STARTS NEUTRAL — TAKEN BY PRESENCE</span>}
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Micro>ID</Micro><ValueBox value={id} min={1} max={65535} label={`station id for ${s.node_id}`} onChange={setId} /></span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}><Micro>BUBBLE</Micro>
             {threshold === 0
               ? <GhostButton data-bubble-edit={s.node_id} size={11} onClick={() => setThreshold(bubbleDefault(kind, stick).start)}
@@ -258,6 +247,14 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
                 </>}
           </span>
         </div>
+        {/* A67 (F365): STRENGTH is the station's advert power. Stronger is heard farther, so the range a player sees moves too.
+            Shown only once the station REPORTS a strength: a phone that cannot set its power (an iPhone) reports its real
+            value, and a control that changes nothing on it would be a lie. */}
+        {rep.tx_power != null && <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Micro>STRENGTH</Micro>
+          <Seg label={`strength for ${s.node_id}`} value={(tx ?? '') as TxPower} size={11} pad="5px 8px" wrap options={TX_POWER_OPTIONS} onChange={setTx} />
+          <span data-strength-note={s.node_id} style={{ font: F.chk(600, 11), letterSpacing: '.06em', color: T.micro }}>strength changes range too</span>
+        </div>}
         {/* the confirm sits ABOVE the row it guards, same placement `Games.tsx` uses for `SwitchConfirm`
             under a card it's about to switch away from -- read there before it's acted on, not buried
             beside the button that triggers it. */}
@@ -315,6 +312,12 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
       </div>
     </div>
   );
+}
+
+/** A67: " · EDITED ON STATION 2m AGO" when the value came from the station's own long-hold edit. */
+function edited(src: string | undefined, age: number | undefined): string {
+  if (src !== 'station') return '';
+  return age == null ? ' · EDITED ON STATION' : ` · EDITED ON STATION ${fmtAge(age)} AGO`;
 }
 
 function Val({ children, color }: { children: React.ReactNode; color: string }) {

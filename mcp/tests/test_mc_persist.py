@@ -270,7 +270,8 @@ def test_station_assignment_and_game_no_persist_across_a_restart():
     s2.restore_snapshot()
     assert s2.game_no == 2 and s2._game_no_started is True
     st = s2.stations.get("util-1")
-    assert st and st["assigned"] == {"kind": "respawn", "team": 1, "id": 3, "threshold": -70, "at": T0}
+    assert st and st["assigned"] == {"kind": "respawn", "team": 1, "id": 3, "threshold": -70, "at": T0,
+                                         "threshold_set_at": T0, "threshold_src": "mc"}   # A67: who set the range, and when
     # a restored station comes back UNARMED -- the phone remembers nothing about MC across a restart --
     # and is re-armed on its next hello, the same path a first-contact hello already uses.
     assert st["armed"] is None and st["arm_pending"] is True

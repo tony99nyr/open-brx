@@ -113,6 +113,29 @@ for (const [id, label, stage, ready] of CLASH) {
     cells.push({ skin: skin.name, view, today, prop }); await pg.close();
   }
   clashes.push({ id, label, cells }); console.log('clash', id);
+// ---- the death-first sequence (Tony 2026-09-25, F351: "your death wins") ----
+// My kill line starts, I die 300 ms later (the trade), then MC's next kill with a medal and the lead lost land while I
+// am down. The scream goes first; the queue then plays while I am dead. [t s after my kill, label]
+const DEATH_SB = [[0.2, 'My kill: KILL CONFIRMED, its line starts'], [0.5, 'I die 0.3 s later: the scream goes first'],
+  [1.8, 'Down: my kill line again, after the scream'], [3.0, 'Down: the lead lost, then the medal'], [6.0, 'Down: the queue has played']];
+const DEATH_ACT = [[0, "window.brxDemo.killConfirm('VIPER')"], [300, 'window.brxDemo.die()'],
+  [500, "window.brxDemo.killMedals(['double_kill'], 'GHOST'); window.brxDemo.alert('lead_lost', 'YOUR TEAM LOST THE LEAD')"]];
+const deathStory = [];
+for (const skin of SKINS) for (const view of VIEWS) {
+  const pg = await openPg(view, 'live', skin); await pg.waitForTimeout(3000);
+  const t0 = await pg.evaluate(() => Date.now()), frames = [];
+  const steps = [...DEATH_ACT.map(([ms, js]) => ({ at: ms, js })), ...DEATH_SB.map(([t, label]) => ({ at: t * 1000, t, label }))].sort((x, y) => x.at - y.at);
+  for (const st of steps) {
+    const wait = t0 + st.at - (await pg.evaluate(() => Date.now()));
+    if (wait > 0) await pg.waitForTimeout(wait);
+    if (st.js) { await pg.evaluate(st.js); continue; }
+    const f = `death-${skin.name}-${view.name}-${String(st.t).replace('.', '_')}.png`;
+    await pg.screenshot({ path: path.join(OUT, f) }); frames.push({ t: st.t, label: st.label, f });
+  }
+  const voice = await said(pg, t0);
+  if (pg.__err.length) throw new Error(`death ${skin.name} ${view.name}: ${pg.__err.join(' | ')}`);
+  deathStory.push({ skin: skin.name, view, frames, voice }); console.log('death', skin.name, view.name);
+  await pg.close();
 }
 // ---- single moments: [id, label, stage, ms after load, an action to run first] ----
 const ONE = [
@@ -171,6 +194,9 @@ const storyHtml = SKINS.map(skin => VIEWS.map(view => { const s = story.find(x =
     + `<p class="note-s">What the voice said: ${esc(s.voice.join(' · ') || 'nothing')}.</p>`; }).join('')).join('');
 const aimHtml = aimSeqs.map(a => `<section><h3>${esc(a.label)}</h3>${a.runs.map(r => `<h3 class="mut">${r.skin === 'day' ? 'Day' : 'Night'} · ${r.view.label}</h3><div class="strip">${r.frames.map(fr => fig(fr.f, fr.cap)).join('')}</div><p class="note-s">What the voice said: ${esc(r.voice.join(' · ') || 'nothing')}.</p>`).join('')}</section>`).join('');
 const clashHtml = clashes.map(c => `<section><h3>${esc(c.label)}</h3><div class="grid2">${c.cells.map(x => `<div class="pair"><p class="note-s"><b>${x.skin} · ${x.view.label}</b></p><div class="two">${fig(x.today, 'TODAY')}${fig(x.prop, 'PROPOSED (mock)')}</div></div>`).join('')}</div></section>`).join('');
+const deathHtml = SKINS.map(skin => VIEWS.map(view => { const s = deathStory.find(x => x.skin === skin.name && x.view === view);
+  return `<h3>${skin.name === 'day' ? 'Day' : 'Night'} · ${view.label}</h3><div class="strip">${s.frames.map(fr => fig(fr.f, `<b>t ${fr.t} s</b> ${esc(fr.label)}`)).join('')}</div>`
+    + `<p class="note-s">What the voice said: ${esc(s.voice.join(' · ') || 'nothing')}. The native scream is the gun's own sound, so it is not in this list.</p>`; }).join('')).join('');
 const oneHtml = singles.map(s => `<section><h3>${esc(s.label)}</h3><div class="grid">${s.cells.map(c => fig(c.f, `${c.skin} · ${c.view.label}`)).join('')}</div></section>`).join('');
 fs.writeFileSync(path.join(OUT, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HUD alert lanes</title>
 <style>:root{color-scheme:dark;--bg:#0b0e12;--fg:#e8edf2;--mut:#8a96a3;--edge:#262d36}body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
@@ -200,6 +226,9 @@ ${aimHtml}
 <h2>CLASH: the kill card against warnings and takeovers</h2>
 <p class="mut">Today and the PROPOSED layering (docs/announcer.md, for your pick) side by side. TODAY is the real build. PROPOSED is a mock on the same page, not built. It moves the warning pills from the kill card's band to a status rail at the bottom centre, as short headlines. A takeover (RELOADING, SWITCHING, SYNCING, REDEPLOYED, GUN STOPPED) wins the centre, and a kill that lands under it waits and draws after it. The voice is unchanged in both.</p>
 ${clashHtml}
+<h2>Death first: a trade, then the queue while I am down</h2>
+<p class="mut">Tony 2026-09-25: “your death wins. delaying the death scream would be bad. while you are dead you can listen to the queue of KCs and game alerts”. My kill line starts, I die 0.3 s later, then MC's next kill (DOUBLE KILL) and the lead lost arrive.</p>
+${deathHtml}
 <h2>Single moments</h2>
 ${oneHtml}
 </main></body></html>`);

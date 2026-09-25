@@ -135,7 +135,7 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     api.putStation = (async (node_id, a) => { sent.push({ node_id, a }); return orig(node_id, a); }) as Api['putStation'];
     await m.click('ASSIGN + ARM');
     // the draft starts from the phone's own report (kind respawn, team 1, id 1, threshold -74)
-    expect(sent).toEqual([{ node_id: 'util-a1b2c3', a: { kind: 'respawn', team: 1, id: 1, threshold: 0 } }]);
+    expect(sent).toEqual([{ node_id: 'util-a1b2c3', a: { kind: 'respawn', team: 1, threshold: 0 } }]);
     await settle();
     const btn = m.find('[data-testid="items-panel"] button').find(b => b.textContent?.trim() === 'ARMED') as HTMLButtonElement | undefined;
     expect(btn, `expected an ARMED button, saw: ${panel().textContent}`).toBeTruthy();
@@ -156,7 +156,7 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     const orig = api.putStation.bind(api);
     api.putStation = (async (node_id, a) => { sent.push(a); return orig(node_id, a); }) as Api['putStation'];
     await m.click('ASSIGN + ARM');
-    expect(sent).toEqual([{ kind: 'control', team: 255, id: 1, threshold: 0 }]);
+    expect(sent).toEqual([{ kind: 'control', team: 255, threshold: 0 }]);
     m.unmount();
   });
 
@@ -231,21 +231,13 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     const d = new MockBackend();
     const base = await d.getState();
     const render = (state: State) => (<StoreCtx.Provider value={makeStore({ state, view: 'muster' })}><Armory /></StoreCtx.Provider>);
-    const idBox = (m: Awaited<ReturnType<typeof mount>>) => m.find('input[aria-label="station id for util-a1b2c3"]')[0] as HTMLInputElement;
+    const card = (m: Awaited<ReturnType<typeof mount>>) => m.find('[data-station-card="util-a1b2c3"]')[0] as HTMLElement;
     const m = await mount(render({ ...base, stations: [{ ...base.stations![0] }] }));
-    // control: the box starts from the phone's own report (station_id 1), same as the other tests here
-    expect(idBox(m).value).toBe('1');
-    await act(async () => {
-      const el = idBox(m);
-      el.focus();
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '42');
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.blur();
-    });
-    expect(idBox(m).value, 'the operator\'s edit committed').toBe('42');
-    // a new snapshot arrives (the phone's 2s heartbeat) reporting a DIFFERENT id — same node, still unassigned
+    // F364: the id is MC's, so the draft that must survive is the kind pick
+    await act(async () => { ([...card(m).querySelectorAll('button')].find(b => b.textContent === 'CONTROL') as HTMLButtonElement).click(); });
+    expect(card(m).textContent, 'the operator\'s kind pick committed').toMatch(/STARTS NEUTRAL/);
     await m.update(render({ ...base, stations: [{ ...base.stations![0], report: { ...base.stations![0].report, station_id: 2 } }] }));
-    expect(idBox(m).value, 'a report-only change must not remount the card and reset the draft').toBe('42');
+    expect(card(m).textContent, 'a report-only change must not remount the card and reset the draft').toMatch(/STARTS NEUTRAL/);
     m.unmount();
   });
 

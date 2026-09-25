@@ -62,6 +62,7 @@ static const char* kind_name(ScreenKind k) {
     case ScreenKind::SCR_RESET_NEEDS_MC: return "SCR_RESET_NEEDS_MC";
     case ScreenKind::SCR_RESET_LOCKED: return "SCR_RESET_LOCKED";
     case ScreenKind::SCR_FORCE_RESTART: return "SCR_FORCE_RESTART";
+    case ScreenKind::SCR_RANGE: return "SCR_RANGE";
   }
   return "?";
 }
@@ -186,6 +187,8 @@ struct SimStick {
       buttons.poll_timeout(now);
       home.poll_idle(now);
       force.update(false, false, now);
+      if (range.active() && range_must_close(link.assignment().present, battery_override)) range.close();
+      range.poll_idle(now);
       if (ro_active && now - ro_at >= 2500) ro_active = false;  // RESET_OUTCOME_SHOW_MS
       if (now % 250 == 0) state();  // loop() repaints at least every 250 ms; the paint runs the HELD clock
     }
@@ -193,7 +196,7 @@ struct SimStick {
   void tick_players() {  // mcTickPlayers
     if (!link.has_control_assignment() && !(REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment())) return;
     const StationAssignment& a = link.assignment();
-    presence.default_threshold = presence_threshold_dbm(a);
+    presence.default_threshold = link.threshold_dbm();  // as the firmware: MC's value or a younger edit
     presence.game = (uint8_t)a.game;
     if (link.assignment_epoch() != last_epoch) { last_epoch = link.assignment_epoch(); presence.clear(); }
     for (const SimPlayer& p : at_station) {
@@ -225,16 +228,63 @@ struct SimStick {
   }
 
   // ---- buttons (m5sticks3.ino pollButtons, same order) ----
+  // ---- A: one gesture (station_ui.h AHoldGesture), as pollButtons() reads it ----
+  AHoldGesture ahold;
+  RangeEditor range;
+  bool range_allowed() const {
+    return link.state() != LinkState::NOT_CONFIGURED && !home.at_home() && link.assignment().present && !range.active() &&
+           buttons.phase() == ButtonPhase::NORMAL;
+  }
+  void on_a_event(AHoldEvent ev) {
+    if (range.active()) {  // in RANGE: A click steps (closer / weaker), an A hold switches the field
+      if (ev == AHoldEvent::CLICK) range_step(true);
+      else if (ev == AHoldEvent::HOME) range.switch_field(now);
+      home.note_activity(now);
+      return;
+    }
+    if (ev == AHoldEvent::RANGE) {
+      range.open(now);
+      home.note_activity(now);
+    } else if (ev == AHoldEvent::CLICK) {
+      ButtonPhase before = buttons.phase();
+      buttons.on_short_press();
+      if (before == ButtonPhase::CONFIRM_ARMED) home.note_activity(now); else home.leave_home(now);
+    } else if (ev == AHoldEvent::HOME) {
+      if (buttons.phase() == ButtonPhase::CONFIRM_ARMED) buttons.on_short_press();
+      home.go_home(now);
+    }
+  }
+  // Press A for `ms`; with release=false it is left held (the cue shows in the next state()).
+  void press_a(uint32_t ms, bool release = true) {
+    on_a_event(ahold.update(true, now, range_allowed()));
+    for (uint32_t t = 0; t < ms; t += 50) {
+      now += 50;
+      on_a_event(ahold.update(true, now, range_allowed()));
+    }
+    if (release) on_a_event(ahold.update(false, now, range_allowed()));
+  }
+  void range_step(bool a_click) {
+    int step = RangeEditor::step_for(range.field(), a_click);
+    if (range.field() == RangeField::RADIUS) link.edit_threshold(step, now);
+    else link.edit_tx_power(step, now);
+    range.touch(now);
+  }
+  void b_click() {
+    if (range.active()) { range_step(false); home.note_activity(now); }
+  }
   void a_click() {
     if (link.state() == LinkState::NOT_CONFIGURED) {
       if (home.at_home()) home.leave_home(now); else home.go_home(now);
       return;
     }
-    ButtonPhase before = buttons.phase();
-    buttons.on_short_press();
-    if (before == ButtonPhase::CONFIRM_ARMED) home.note_activity(now); else home.leave_home(now);
+    press_a(100);
   }
   void b_hold() {
+    if (range.active()) {  // saves (every step already applied) and exits
+      range.close();
+      home.note_activity(now);
+      return;
+    }
     if (link.state() == LinkState::NOT_CONFIGURED) {
       point.mode = point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL;  // setMode
       point.reset();
@@ -284,6 +334,9 @@ struct SimStick {
     in.reset_outcome_locked = ro_locked;
     in.force_restart_countdown_s = force.countdown_s();
     in.at_home = home.at_home();
+    in.range_active = range.active();
+    in.range_edit_strength = range.field() == RangeField::STRENGTH;
+    in.range_cue_pct = ahold.range_cue_pct();
     StickState st = build_stick_state(in, held);
     if (battery_override >= 0) st.battery_pct = battery_override;
     return st;
@@ -509,6 +562,54 @@ static std::vector<Scenario> scenarios() {
   v.push_back({"hill_stats", "operator", "Armed hill, A pressed: the STATS page.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
     s.a_click();
+  }});
+  // ---------------- F365: the RANGE editor ----------------
+  v.push_back({"stats_range_cue", "range", "Hill #3 STATS page, A held 3 s: the HOLD FOR RANGE cue.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3));
+    s.a_click(); s.press_a(3000, false);
+  }});
+  v.push_back({"range_radius_default", "range", "A held 5 s on STATS: RANGE, radius at MC's default -57.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3));
+    s.a_click(); s.press_a(5200);
+  }});
+  v.push_back({"range_radius_closer", "range", "In RANGE, A clicked once: closer, -54 (edited).", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3));
+    s.a_click(); s.press_a(5200); s.press_a(100);
+  }});
+  v.push_back({"range_radius_farther", "range", "In RANGE, B clicked three times: farther, -66.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("respawn", 1, 2));
+    s.a_click(); s.press_a(5200); s.b_click(); s.b_click(); s.b_click();
+  }});
+  v.push_back({"range_strength", "range", "In RANGE, A held 1.5 s (switch to STRENGTH), then A: weaker, MEDIUM.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3));
+    s.a_click(); s.press_a(5200); s.press_a(1500); s.press_a(100);
+  }});
+  v.push_back({"range_strength_ultra_low", "range", "STRENGTH stepped down to ULTRA LOW.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.a_click(); s.press_a(5200); s.press_a(1500); s.press_a(100); s.press_a(100); s.press_a(100);
+  }});
+  v.push_back({"range_locked", "range", "Hill under the A58 match lock: RANGE still opens and edits (padlock shown).", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"lock_s\":600"));
+    s.a_click(); s.press_a(5200); s.b_click();
+  }});
+  v.push_back({"range_mc_value", "range", "MC set -66 and TX low; RANGE shows MC's values.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3, ",\"threshold\":-66,\"tx_power\":\"low\""));
+    s.a_click(); s.press_a(5200);
+  }});
+  v.push_back({"range_released", "range", "In RANGE, MC sent release_utility: RANGE closes, LINKED.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3));
+    s.a_click(); s.press_a(5200);
+    s.frame("control", R"({"cmd":"release_utility"})");
+    s.advance(100);
+  }});
+  v.push_back({"range_refused_during_confirm", "range", "STATS, B held (RESET confirm open), then A held 5 s: no RANGE; the "
+               "release cancels the confirm and goes home.", [](SimStick& s) {
+    linked(s, true); s.frame("station_config", cfg("control", 255, 3));
+    s.a_click(); s.b_hold(); s.press_a(5200);
+  }});
+  v.push_back({"range_idle_exit", "range", "RANGE left alone for 10 s: saved, back on STATS.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("control", 255, 3));
+    s.a_click(); s.press_a(5200); s.press_a(100); s.advance(10500);
   }});
   v.push_back({"stats_idle_home", "operator", "The STATS page left alone for 20 s returns home.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));

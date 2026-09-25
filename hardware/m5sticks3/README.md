@@ -51,8 +51,8 @@ scan, 1 s windows every 1.2 s, beside its own advert. The rules are ports of the
   seen at the bench. The host tests build both ways.
 - **Pickup**: unchanged.
 
-Hill and respawn presence use MC's threshold, or the Stick's -57 dBm (Tony, 2026-09-24) when MC sends none (the pickup
-claim has no RSSI floor: the phone's claim_ready proves proximity). A hill's owner is saved in NVS on each change of hands (never on a
+Hill and respawn presence use MC's threshold, or the Stick's own default when MC sends none (see THRESHOLD
+below); the pickup claim has no RSSI floor at all (see CLAIM below). A hill's owner is saved in NVS on each change of hands (never on a
 progress tick), tagged with the game and station id, so a Stick restarted from its restored config
 comes back held by that owner with the possession tally saved at that change (F332). The save is
 tagged with the MC session too, so a new session, a new game, another id, `release_utility` or the
@@ -298,7 +298,7 @@ update's own implied next spawn is at least half a `spawn_every_s` interval past
 -- otherwise it is a stale echo of the claim that already happened, and applying it would silently
 un-claim an item a player is legitimately holding.
 
-CLAIM (`ClaimGate`) scans for a player phone's own advert (role 2, state bit 4 `claiming`, bit 5
+**CLAIM** (`ClaimGate`) scans for a player phone's own advert (role 2, state bit 4 `claiming`, bit 5
 `claim_ready`, `value` = the target station id, `id` = the claimant's player_num) and awards the
 first `claim_ready` heard for its own id, at any signal strength (no floor since 2026-09-24: the Stick hears phones weakly), ties going to the lower player_num
 -- the Stick counts no dwell of its own, only the phone's. The advert then carries `state 0` (taken),
@@ -528,7 +528,8 @@ RESET / MODE toggle) documented there.
 | button | gesture | does |
 |---|---|---|
 | A | short press | next page: leaves the home/gameplay screen for STATS (standalone bench mode: toggles DIAGNOSTICS) |
-| A | hold ~1 s | HOME: back to the live gameplay screen from anywhere, cancelling an open RESET confirm on the way. Changes no station state (`station_screen.h`'s `HomeNav`, host-tested) |
+| A | hold 1-5 s, then release | HOME, on the release: back to the live gameplay screen from anywhere, cancelling an open RESET confirm on the way. Changes no station state (`station_screen.h`'s `HomeNav`, host-tested) |
+| A | hold 5 s on STATS | RANGE (F365, below). From 1 s the hint bar fills with "HOLD FOR RANGE"; letting go before 5 s is HOME |
 | B | hold 2 s, then hold again within 5 s | RESET: the second hold sends `station_action{action:"reset"}` to Mission Control. Only with a station assigned: an unassigned Stick has nothing to reset, so the hold does nothing and the hint bar shows only `A: STATS` |
 | A + B | hold together 7 s | FORCE RESTART, locked or not (see "Match lock" below) |
 | small side button | single click | power on, or restart if the Stick is already on |
@@ -539,7 +540,62 @@ Source: docs.m5stack.com/en/core/StickS3, "Button Operation Instructions". **Ben
 mapping assumed above of `M5.BtnA`/`M5.BtnB` to the Stick's two physical keys -- BtnA the front M5
 logo key, BtnB the larger side key -- since this firmware's button code has never been seen lit.
 
+### Range, edited on the station (F365, contract A67)
+
+Tony, 2026-09-25: "if operator notices the range is too wide during gameplay, to long hold and be able
+to edit it. if within wifi range sync with MC on the change." Two decisions of his shape the gesture:
+**enter RANGE by holding A for 5 s on the STATS page** (the home page's B hold stays RESET), and
+**RANGE works during play and under the match lock**: the lock guards reassign and reset, the range
+sits behind the stronger 5 s gesture, and every edit is reported to MC.
+
+- **Gesture.** A is read as one gesture (`station_ui.h AHoldGesture`, host-tested): released under 1 s it
+  is a click, released between 1 s and 5 s it is HOME, and reaching 5 s on STATS (with a station
+  assigned) opens RANGE with nothing else firing. From 1 s the hint bar fills with "HOLD FOR RANGE".
+- **RANGE screen.** Two fields: RADIUS (the presence threshold in dBm, with a rough distance) and
+  STRENGTH (the advertising power: ULTRA LOW -18 dBm, LOW -9, MEDIUM 0, HIGH +9, the default). The lit
+  panel is the one being edited; each says EDITED (an on-station value) or MC. A click = CLOSER (radius
+  +3 dB, e.g. -57 to -54) or WEAKER; B click = FARTHER (-3 dB) or STRONGER; an A hold (1 s) switches
+  the field; a B hold (2 s) or 10 s idle leaves (the kicker says HOLD B: DONE; a held button keeps it
+  open). In RANGE a B hold only leaves, it never arms RESET. RANGE does not open while a RESET confirm
+  is open, and it closes by itself when the station is released or when bench mode takes over. It is
+  also meant to close under the low-battery screen, but that is inert until a battery reading is wired
+  up (none is today).
+  The radius is clamped to -90..-40 dBm. Each step
+  applies at once: presence (hill, respawn) uses it on the next tick, byte 14 of the advert
+  republishes at once, and a new power restarts the advert at it.
+- **Distances are rough**, and the screen says so: `station_range.h RANGE_DISTANCE_TABLE`, anchored on
+  Tony's measurement (-57 dBm is about 3 m from a Stick), 6 dB per doubling of distance from there.
+- **Sync (A67).** Every status beat carries `threshold` (applied now), `threshold_src` ("station" |
+  "mc") and, only while "station", `threshold_edit_age_ms`; the same three for `tx_power`; and
+  `range_edits`, the last 8 edits (seq, field, from, to, locked, age_ms), restated every beat (MC
+  dedupes by seq). MC's `station_config` carries `threshold` and `threshold_age_ms` (and optionally
+  `tx_power` with `tx_power_age_ms`). Per field: an on-station edit YOUNGER than MC's age stays;
+  otherwise MC's value applies and the edit goes. No age = an older MC, whose value applies. No
+  `tx_power` = keep the Stick's. `threshold` 0 = the Stick's -57, and the status reports -57 (never 0).
+  With no age (an MC before A67), MC's value applies only when it CHANGED: MC re-sends the same
+  config as the lock carrier and on every reconnect, and that must not undo the operator's edit. A new
+  station (kind or id) starts from MC's values. A new game alone (arming the next match) keeps the
+  edit unless MC's value changed, since the station and its placement are the same.
+- **Offline and reboots.** The edit lives in RAM and NVS ("brxmc"/"range", written only when it
+  changes), so an offline edit is reported on the first beat after reconnect. After a reboot the
+  edited value comes back (onto the same station id) with its age unknown, reported as
+  2147483647 ms (`EDIT_AGE_UNKNOWN_MS`), so any MC value set since wins; the edit log's seq also
+  survives. A release drops the edited values, not the log. `seq` never goes down: a release, a new
+  session, a new identity or a stale NVS copy cannot lower it. The one reset is an erased NVS (a
+  reinstall); if NVS cannot be opened at boot, or the saved range body is there but does not parse,
+  that boot keeps edits in RAM and never writes the key, so it cannot overwrite a higher seq.
+- **TX power: bench check.** The power is set with `BLEDevice::setPower(level, ESP_BLE_PWR_TYPE_ADV)`.
+  Whether that changes only the advert or the whole controller's power (and so the player scan's
+  own transmissions) on this core is not confirmed: bench it before relying on STRENGTH.
+- **Serial.** `STATUS`'s LINK line adds `threshold_src`, `tx_power`, `tx_src` and `range_edits`
+  (a count); the log prints `RANGE opened (A held 5 s on STATS)`, `RANGE threshold=... tx=... (on-station
+  edit, seq n)`, `RANGE closed (B hold | 10 s idle | no station assigned)`, `RESTORED range ...` at boot
+  and `# advert TX power <name> (<dBm> dBm)` when the power changes.
+
 ### Match lock (A58)
+
+While the lock is on, A still opens RANGE (the 5 s hold on STATS, above) and range edits are allowed,
+each reported to MC with `locked: true`; in RANGE a B hold leaves, it never reaches RESET.
 
 Mission Control can lock the operator controls for a match: `station_config.lock_s` (0 to 7200 s,
 absent means 0) locks them for that many seconds from receipt. A later `station_config` replaces the
