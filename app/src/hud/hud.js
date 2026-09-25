@@ -3,7 +3,8 @@
 // place so CSS animations don't restart every tick. Moments (T-MINUS, KILL, DOWN, REDEPLOY) live in
 // #overlay so they animate independently of the base HUD.
 import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
-import * as SV from './shieldmeter.js';   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
+import * as SV from './shieldmeter.js';
+import { MEDALS } from '../transport/contract.gen.js';   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
 const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
@@ -45,7 +46,9 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
 /** A24: the only four words the results screen may print as an outcome, and it prints one ONLY when MC has
  *  pushed a `result`. There is deliberately no mapping for "no message arrived" — see `_result`. */
 const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
-const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killing_spree: 'KILLING SPREE', unstoppable: 'UNSTOPPABLE' };
+// Every medal in MC's ladder (contract.gen MEDALS, generated from types.py; Tony's final list 2026-09-24). A key missing
+// here was filtered out of the kill card, so the map is built from the contract, never hand-kept.
+export const MEDAL_LABEL = Object.freeze(Object.fromEntries(MEDALS.map(m => [m.key, m.label])));
 /** App 0.4.2: the words of the picker's "Connecting to <gun>" block, from `hud.connecting`. */
 export function connectingText(conn) {
   const nm = String((conn && conn.name) || 'your gun');
