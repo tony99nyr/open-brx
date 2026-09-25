@@ -86,13 +86,14 @@ half shipped; `webContentsDebuggingEnabled` and iOS remain.
 - **Resume:** worktree `/home/tony/brx4-l3` on `main`; tools are `stick.py`/`sim.py`/`stick_sim.py`. Windows MC:
   `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785 --ws-port
   8786 --ephemeral --powerups`.
-## Lane: powerups and the shield HUD (brx5)
-S58 is on main behind MC's `--powerups` flag: the heavy goes straight onto the trigger (SELECT toggles), and the
-overshield raises the `$PSET` shield max under 1 s of spawn protection. F348 is fixed and F349 in part (the cue side waits on F347); S59's Visor meter is built.
-- **Next bench task:** 4.19 parts 1-3 (sitting A), then 3.4, 3.5 and 4.18 (sitting C) of
-  [`bench-2026-09-25.md`](bench-2026-09-25.md); then Tony decides the flag. 4.11 is not scheduled yet.
-- **Next desk task:** the phone half of F344 (set state bit 6 for about 5 s after a station revive); S58's pickup
-  threshold (a code read: no station advertises 0, so the -55 default never applies); F350's shield-hit audition.
+## Lane: powerups, shields, HUD and alerts (brx5)
+On main: S58 powerups behind `--powerups` (heavy on the trigger, SELECT toggles; protected overshield; no claim RSSI
+floor; a phone powerup station advertises -55); S59 Visor; F348/F349; the announcer gaps (lead and hill voice-silent
+during a kill streak); HUD VQA round 2 (POOLS WRONG, F359 Lows); the three-lane alerts (HERO/OBJECTIVE/FEED, medals from
+contract MEDALS, AWARDS tab on A63), gallery `C:\Users\Tony\brx-alerts\index.html`.
+- **Next bench task:** the t23 shield-loop A/B (F347, docs/audio-queue-scenarios.md step 2), then 3.4, 3.5, 4.18, 4.19.
+- **Next desk task:** F347's compile change once the bench picks a silent t23; Beat Down's voice (VA7F or VA7G) and
+  F149 (kill vs death stop) wait on Tony. The revive bit6 is parked on `origin/revive-bit` (post-MVP).
 
 ## Start here
 
