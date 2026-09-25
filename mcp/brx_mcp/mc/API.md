@@ -67,7 +67,7 @@ State {
                                      // never strengthen the wording. null/absent on every non-WSL host (macOS,
                                      // plain Linux never set this -- pinned by test_mc_netinfo.py/test_mc_advertise.py).
          join_secret: string,   // A28.2: 8 url-safe chars, per session, persisted; enforced only on hellos that arrive through the tunnel
-         public: { ws_url: string|null, status: "off"|"starting"|"up"|"error", provider: "cloudflared"|"manual"|null, available: boolean, was_up: boolean, error?: string,
+         public: { ws_url: string|null, status: "off"|"starting"|"up"|"error", provider: "cloudflared"|"manual"|null, available: boolean, was_up?: boolean, error?: string,
                    detail?: string } },  // A28.1; `detail` is F140 (field 2026-09-12): the sub-state under
          // `starting` — `"resolving <host>"` while MC waits for the tunnel hostname to answer at
          // Cloudflare's own resolver, and a warning line under `up` when it never did inside 60 s.
@@ -282,7 +282,7 @@ ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, sho
            after_end_kills: number, after_end_deaths: number
          }
 RecapView { winner: Winner, score: { [team_id]: number }, rows: ScoreRow[],
-            honors: { award: string, player_id: string, stat: string, key?: string }[], provisional: boolean, missing: string[], played_s: number,
+            honors: { award: string, player_id: string, stat: string, key?: string }[], provisional: boolean, missing: string[], played_s?: number,
                                        // A63: `key` = the `types.AWARDS` row (contract.gen `AWARDS`: key, label, rule, tie);
                                        // `award` stays its label. A tie is SHARED: one row per tied player, so key React
                                        // lists by (key, player_id). A recap stored before A63 has no `key`.

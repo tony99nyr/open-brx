@@ -836,11 +836,11 @@ function ReachBlock() {
   };
   const statusColor = status === 'up' ? T.ok : status === 'error' ? T.bad : status === 'starting' ? colourOf('armory-backhaul-starting') : T.micro;
   const statusText = status === 'up' ? `UP ${hostnameOf(pub?.ws_url) || pub?.ws_url}`
-    : status !== 'starting' && pub?.was_up ? 'WAS UP, THEN DROPPED'
     // field 2026-09-12 (ISSUE 7): cloudflared's own "up" line is premature for OTHER people's DNS
     // resolvers — `detail` carries whatever the server is doing while the hostname is still resolving.
     : status === 'starting' ? (pub?.detail || 'STARTING…')
-    : status === 'error' ? `ERROR ${pub?.error ?? ''}`.trim()
+    // F319: a link that came up and then failed says so, and still shows the error the host needs.
+    : status === 'error' ? `${pub?.was_up ? 'DROPPED' : 'ERROR'} ${pub?.error ?? ''}`.trim()
     : 'OFF';
   return (
     <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>

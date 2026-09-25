@@ -97,9 +97,9 @@ describe('Armory REACH panel', () => {
   });
 
   it('says the public link dropped after it was up', async () => {
-    const d = await withPublic({ ws_url: null, status: 'error', provider: 'cloudflared', available: true, was_up: true });
+    const d = await withPublic({ ws_url: null, status: 'error', provider: 'cloudflared', available: true, was_up: true, error: 'cloudflared exited: bad gateway' });
     const m = await mountScreen(<Armory />, d);
-    expect(m.text()).toContain('WAS UP, THEN DROPPED');
+    expect(m.text()).toContain('DROPPED cloudflared exited: bad gateway');
     m.unmount();
   });
 

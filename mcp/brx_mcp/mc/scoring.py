@@ -488,11 +488,17 @@ class Scorer:
             for team in self.teams.values():
                 if team["tid"] == tid:
                     st.team_id = team["team_id"]
-                    self._infected_team = team["team_id"]   # A11.4 last_survivor: who counts as a survivor
+                    if self._infected_team is None:
+                        # A11.4 last_survivor / polish 2026-09-25 (Codex Sol): the infected team is LEARNED once,
+                        # from the first turn, and pinned for the match -- a later team_change (an operator
+                        # respawn/relink that replays this fact) must never flip who counts as a survivor.
+                        self._infected_team = team["team_id"]
             if self.mode == "infection" and not suppress_awards and self.now_ms() - t <= FEEDBACK_MAX_AGE_MS:
-                survivor_team = next((team_id for team_id in self.teams if team_id != self._infected_team), None)
-                if survivor_team is not None:
-                    self.on_alert("infected", survivor_team, {"player_id": pid})
+                # every team the players flip TO is a survivor team; alert all of them, not just the first
+                # (infection can be configured with more than one survivor team).
+                for team_id in self.teams:
+                    if team_id != self._infected_team:
+                        self.on_alert("infected", team_id, {"player_id": pid})
             if self.mode == "infection" and not suppress_awards:
                 self._match_state_alerts(t)                              # a turn is what changes the survivor count
             return "scored"

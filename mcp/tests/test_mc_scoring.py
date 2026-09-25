@@ -249,6 +249,36 @@ def test_last_survivor_and_infected_alerts():
     assert ("infected", "blue", {"player_id": "p2"}) in alerts2, (r, alerts2)
 
 
+def test_infection_alerts_every_survivor_team_and_pins_the_infected_team():
+    """Polish 2026-09-25 (Codex Sol review): with more than two teams, only the FIRST survivor team was
+    alerted, and any later team_change re-learned `_infected_team` from whoever it named -- a replayed
+    or out-of-order fact could flip who counts as infected mid-match. The infected team is learned once,
+    from the first turn, and every OTHER team is a survivor team."""
+    ps = {f"p{i}": {"player_id": f"p{i}", "player_num": i + 1, "display": n, "team_id": t, "node_id": f"n{i}",
+                     "gun_id": None, "loadout": {"weapons": []}, "voice": "male", "ready": True}
+          for i, (n, t) in enumerate([("REAPER", "blue"), ("VIPER", "yellow"), ("NOMAD", "green"), ("GHOST", "blue")])}
+    teams = [{"team_id": "blue", "name": "B", "color": "#00f", "tid": 1},
+             {"team_id": "yellow", "name": "Y", "color": "#ff0", "tid": 2},
+             {"team_id": "green", "name": "G", "color": "#0f0", "tid": 3}]
+    alerts = []
+    sc = Scorer("m1", T0, 600, "infection", ps, teams, {f"n{i}": f"p{i}" for i in range(4)},
+                {f"n{i}": True for i in range(4)}, on_feedback=lambda pid, b: None, on_feed=lambda e: None,
+                now_ms=(lambda: T0 + 2000), win_by="survival",
+                on_alert=lambda kind, scope, extra: alerts.append((kind, scope, extra)))
+    # p0 turns first (to blue, tid 1): blue is now THE infected team, and every other team is a survivor.
+    sc.ingest("n0", {"type": "team_change", "t": T0 + 1000, "match_id": "m1", "node_id": "n0", "player_id": "p0", "tid": 1}, T0 + 1000)
+    assert ("infected", "yellow", {"player_id": "p0"}) in alerts
+    assert ("infected", "green", {"player_id": "p0"}) in alerts
+    assert not any(a[:2] == ("infected", "blue") for a in alerts)
+    # a later team_change naming a DIFFERENT team must not re-learn `_infected_team` -- blue stays infected.
+    alerts.clear()
+    sc.ingest("n1", {"type": "team_change", "t": T0 + 1500, "match_id": "m1", "node_id": "n1", "player_id": "p1", "tid": 3}, T0 + 1500)
+    assert ("infected", "yellow", {"player_id": "p1"}) in alerts        # still alerted as a survivor team
+    assert ("infected", "green", {"player_id": "p1"}) in alerts         # green is a survivor team, not infected
+    assert not any(a[:2] == ("infected", "blue") for a in alerts)       # blue never alerts itself
+    assert sc._infected_team == "blue", "a later team_change must not re-learn the infected team"
+
+
 def test_a_team_kill_that_flips_the_lead_still_announces_it():
     """Polish 2026-09-04: alerts ran only inside the enemy-kill branch, so a team kill (kills -= 1) could
     hand the lead over in silence."""

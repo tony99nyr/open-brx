@@ -50,6 +50,9 @@ def test_recap_reports_played_seconds_from_go_live_to_end():
     assert "played_s" not in s.recap()
     s.phase = "recap"
     assert s.recap()["played_s"] == 754
+    # polish 2026-09-25: a scorer with no whistle time reports no length, never one that keeps growing
+    s.scorer = Scorer("m2", T0, None, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
+    assert "played_s" not in s.recap()
 
 
 def test_team_alert_uses_the_scorers_current_team_after_infection():

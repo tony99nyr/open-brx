@@ -172,8 +172,12 @@ export function Recap() {
   const edUnconfirmed = new Set(edStragglers.map(u => u.player_id));
   const edText = edv ? recapDeliveryText(edv) : null;
   // M23 (visual QA 2026-09-23): the header printed the TIME LIMIT, so a match ended early at 2:13 read
+  // as 10:00. F319: the server now sends the length itself (`played_s`). Without it (an older MC) the
+  // length is read from the server's own clock: `since_end_ms` is `now - scorer.end_t`, `t` is that same
+  // `now`, and `live.go_live_t` is the whistle's start, all on one snapshot. Without those either, the
+  // header says it is the LIMIT rather than pass the limit off as the length.
   const limitS = state.config.time_limit_s ?? 0;
-  const playedS = Number.isFinite(rc.played_s) ? rc.played_s
+  const playedS = typeof rc.played_s === 'number' ? rc.played_s
     : !past && state.live && typeof rc.since_end_ms === 'number' && typeof state.t === 'number'
       ? Math.min(limitS || Infinity, Math.max(0, Math.round((state.t - rc.since_end_ms - state.live.go_live_t) / 1000)))
       : null;
@@ -187,8 +191,7 @@ export function Recap() {
   const objective = !!scoring && isObjectiveScored({ scoring }) && scores.length >= 2;
   const heldBy = objective && rc.possession ? rc.possession.by_team : null;
   const anyTeamKill = rows.some(r => r.kills < 0);
-  const lengthLabel = Number.isFinite(rc.played_s) ? ` · PLAYED ${fmtDuration(playedS ?? 0)}`
-    : past ? ''
+  const lengthLabel = playedS == null && past ? ''
     : playedS == null ? (limitS ? ` · LIMIT ${fmtDuration(limitS)}` : '')
     : limitS && playedS < limitS ? ` · ${fmtDuration(playedS)} OF ${fmtDuration(limitS)}`
     : ` · ${fmtDuration(playedS)}`;

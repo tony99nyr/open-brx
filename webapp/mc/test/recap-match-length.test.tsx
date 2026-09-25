@@ -21,7 +21,7 @@ describe('RECAP — the header states the match length as a duration, not a cloc
     const state: State = { ...d.state, phase: 'recap', recap: RECAP,
       config: { ...d.state!.config, time_limit_s: 300 } };
     const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
-    expect(m.text()).toMatch(/PLAYED 5:00/);
+    expect(m.text()).toMatch(/MATCH COMPLETE.*5:00/);
     expect(m.text()).not.toMatch(/05:00/);
     m.unmount();
   });

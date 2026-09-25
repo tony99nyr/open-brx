@@ -273,12 +273,15 @@ def test_join_is_broadcast_when_the_public_status_changes_and_not_on_a_no_op():
 
 
 def test_public_was_up_latches_after_the_link_drops():
-    s = _sess()
-    up = {"ws_url": "wss://abc.trycloudflare.com/ws", "status": "up", "provider": "cloudflared", "available": True}
-    s._tunnel_changed(up)
-    assert s.lan["public"]["was_up"] is True
-    s._tunnel_changed({"ws_url": None, "status": "error", "provider": "cloudflared", "available": True})
-    assert s.lan["public"]["status"] == "error" and s.lan["public"]["was_up"] is True
+    t = _tunnel(_fake_child(delay_s=0.02, exit_after_s=0.05))
+
+    async def go():
+        assert t.public()["was_up"] is False
+        t.start(8766)
+        assert await _until(lambda: t.status == "up"), t.public()
+        assert await _until(lambda: t.status == "error"), t.public()
+        assert t.public()["was_up"] is True, "a link that came up and then died says so"
+    run(go())
 
 
 def test_join_survives_the_mc_to_node_wire():

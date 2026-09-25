@@ -1190,9 +1190,7 @@ class Session:
 
     def _tunnel_changed(self, pub: LanPublic) -> None:
         was = self._pub_url()
-        previous = self.lan.get("public", {})
-        was_up = bool(previous.get("was_up")) or previous.get("status") == "up" or pub.get("status") == "up"
-        self.lan["public"] = {**pub, "was_up": was_up}
+        self.lan["public"] = pub.copy()
         self._render_join()
         self._refresh_lan_warning()      # a public path makes the LAN-address warning moot (and back again)
         now = self._pub_url()
@@ -3729,10 +3727,10 @@ class Session:
         `self._recap_stations()` always reads the CURRENT stations, which is wrong once a later
         match has started."""
         recap = sc.recap(stations=stations if stations is not None else self._recap_stations())
-        end_t = sc.end_t if sc.end_t is not None else self.now_ms()
-        now = self.now_ms()
-        if self.phase == "recap" or (sc.end_t is not None and sc.end_t <= now):
-            recap["played_s"] = max(0, (end_t - sc.go_live_t) // 1000)
+        # F319: the match length, only once the whistle has a time; without one the console falls back
+        # to its own clock arithmetic rather than show a length that keeps growing.
+        if sc.end_t is not None and sc.go_live_t is not None and (self.phase == "recap" or sc.end_t <= self.now_ms()):
+            recap["played_s"] = max(0, (sc.end_t - sc.go_live_t) // 1000)
         return recap
 
     def _recap_stations(self) -> list[RecapStationRow]:
