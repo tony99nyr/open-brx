@@ -7,7 +7,7 @@
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PowerupPreset, StationItem, StationKind, StationView } from '../api/types';
+import type { PowerupPreset, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
 import { useStore } from '../store';
@@ -32,6 +32,9 @@ export function bubbleDefault(kind: StationKind, stick: boolean): { label: strin
     : { label: `DEFAULT (${phone}, phone)`, start: phone };
 }
 const STICK_RESPAWN_DBM = -57;
+/** A67 (F365): the station's advert strength, weakest first. A stronger advert is heard farther, so it moves the range too. */
+const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: 'LOW', medium: 'MEDIUM', high: 'HIGH' };
+const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));
 
 export function Items() {
   const { state } = useStore();
@@ -119,7 +122,12 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
   // StickS3 keeps its own). The draft starts there, NOT from the phone's report: its advertised bubble IS
   // that default, and copying it here turned every ASSIGN + ARM into an explicit override. A number is
   // sent only once the host opens the BUBBLE and edits it.
-  const [threshold, setThreshold] = useState<number>(a?.threshold ?? 0);
+  // A67: null = follow the assignment, so an edit made ON THE STATION (adopted by MC) moves the draft with it
+  // instead of reading as a change the operator never made.
+  const [thrEdit, setThreshold] = useState<number | null>(null);
+  const threshold = thrEdit ?? a?.threshold ?? 0;
+  const [txEdit, setTx] = useState<TxPower | null>(null);   // A67: the STRENGTH draft; null = MC's (or none)
+  const tx = txEdit ?? a?.tx_power ?? null;
   const [busy, setBusy] = useState(false);
   const [released, setReleased] = useState<boolean | null>(null);   // A41: last RELEASE result, this card only
   // HIGH (review, 2026-09-13): RELEASE used to fire on a single tap, styled identically to CLEAR right
@@ -167,14 +175,14 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
   // stations and is allowed in any phase — and a station that reboots mid-match is exactly this case.
   const needsRearm = s.arm_pending || s.attention.some(t => t.startsWith('PHONE ') || t.startsWith('ARMED FOR'));
   const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.id !== id || a.threshold !== threshold
-    || (picking && chosen !== assignedPreset);
+    || (tx != null && tx !== a.tx_power) || (picking && chosen !== assignedPreset);
   // a powerup station still waiting for its item pick is not a live button, so it must not look like one
   const lit = (dirty || needsRearm) && !(dirty && needsPick);
   const apply = async () => {
     setBusy(true); setApplyErr(null);
     const keep = <T,>(fn: () => Promise<T>) => async () => { try { return await fn(); } catch (e) { setApplyErr((e as Error).message); throw e; } };
     try {
-      if (dirty) await run(keep(() => api.putStation(s.node_id, { kind, team: control ? 255 : team, id, threshold, ...(picking && chosen ? { item_preset: chosen } : {}) })));
+      if (dirty) await run(keep(() => api.putStation(s.node_id, { kind, team: control ? 255 : team, id, threshold, ...(tx ? { tx_power: tx } : {}), ...(picking && chosen ? { item_preset: chosen } : {}) })));
       else await run(keep(() => api.armStations()));
     } finally { setBusy(false); }
   };
@@ -216,6 +224,8 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
           </>)}
         </>)}
         {a?.item && (<><Micro>ITEM</Micro><ItemStationRow s={s} item={a.item} canReset={canReset} /></>)}
+        {s.range?.threshold != null && (<><Micro>RANGE</Micro><Val color={T.dim}><span data-station-range={s.node_id}>{s.range.threshold} dBm{edited(s.range.threshold_src, s.range.threshold_edit_age_ms)}</span></Val></>)}
+        {s.range?.tx_power != null && (<><Micro>STRENGTH</Micro><Val color={T.dim}><span data-station-strength={s.node_id}>{TX_POWER_LABEL[s.range.tx_power]}{edited(s.range.tx_power_src, s.range.tx_power_edit_age_ms)}</span></Val></>)}
         {rep.battery != null && (<><Micro>BATTERY</Micro><Val color={rep.battery < 30 ? T.bad : T.dim}>{rep.battery}%</Val></>)}
       </div>
       {/* a standing fact, so a status region that is always mounted (it announces when the line arrives) */}
@@ -258,6 +268,14 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
                 </>}
           </span>
         </div>
+        {/* A67 (F365): STRENGTH is the station's advert power. Stronger is heard farther, so the range a player sees moves too.
+            Shown only once the station REPORTS a strength: a phone that cannot set its power (an iPhone) reports its real
+            value, and a control that changes nothing on it would be a lie. */}
+        {rep.tx_power != null && <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Micro>STRENGTH</Micro>
+          <Seg label={`strength for ${s.node_id}`} value={(tx ?? '') as TxPower} size={11} pad="5px 8px" wrap options={TX_POWER_OPTIONS} onChange={setTx} />
+          <span data-strength-note={s.node_id} style={{ font: F.chk(600, 11), letterSpacing: '.06em', color: T.micro }}>strength changes range too</span>
+        </div>}
         {/* the confirm sits ABOVE the row it guards, same placement `Games.tsx` uses for `SwitchConfirm`
             under a card it's about to switch away from -- read there before it's acted on, not buried
             beside the button that triggers it. */}
@@ -315,6 +333,12 @@ function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; fre
       </div>
     </div>
   );
+}
+
+/** A67: " · EDITED ON STATION 2m AGO" when the value came from the station's own long-hold edit. */
+function edited(src: string | undefined, age: number | undefined): string {
+  if (src !== 'station') return '';
+  return age == null ? ' · EDITED ON STATION' : ` · EDITED ON STATION ${fmtAge(age)} AGO`;
 }
 
 function Val({ children, color }: { children: React.ReactNode; color: string }) {

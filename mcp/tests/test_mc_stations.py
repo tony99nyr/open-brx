@@ -211,7 +211,10 @@ def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list(
     s.net.simulate_utility_hello("util-1")
     v = s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": -70})
     cfg = _pushed(s, "station_config", "util-1")
-    assert cfg and cfg[-1] == {"kind": "respawn", "team": 1, "id": 3, "threshold": -70, "game": 1, "valid_ids": [3], "lock_s": 0}, cfg
+    body = dict(cfg[-1]) if cfg else {}
+    age = body.pop("threshold_age_ms", None)   # A67: wall-clock ms since MC set the value; tiny, not exactly 0 under load
+    assert isinstance(age, int) and 0 <= age < 1000, cfg
+    assert body == {"kind": "respawn", "team": 1, "id": 3, "threshold": -70, "game": 1, "valid_ids": [3], "lock_s": 0}, cfg
     assert v["armed"]["game"] == 1 and v["attention"] == [], v
     # a second station changes the allow-list EVERY station echoes, so both are re-armed
     s.net.simulate_utility_hello("util-2")

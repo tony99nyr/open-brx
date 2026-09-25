@@ -101,6 +101,13 @@ export const PHONE_STATION_THRESHOLD_DBM = -74;
 export const PHONE_POWERUP_THRESHOLD_DBM = -55;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
+/** A67: an edit age at or above this is "the station restarted since, the time is lost". A Stick has no clock
+ *  across a reboot, so it reports a LARGE age; MC's value then wins on the next `station_config`. */
+export const STATION_EDIT_AGE_UNKNOWN_MS = 86400000;
+/** A67 polish: MC dates an adopted station edit `t_recv - age`, later than the true edit by the uplink latency. While a
+ *  field's source is "station", MC adds this to the age it sends, so the station's own edit is always the younger one
+ *  and it keeps src "station" through every re-send (A58's START/END locks). */
+export const ADOPT_SLACK_MS = 10000;
 /** net.md §8 size cap */
 export const MAX_ENVELOPE_BYTES = 65536;
 /** log_data chunk cap (fits under the envelope cap) */
@@ -143,6 +150,11 @@ export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'need
 /** A13 / spec/utility.md §5: what a utility phone can be. Mirrors `KIND` in `app/src/beacon.js` (the advert
  *  byte 8) and `KIND_LABEL` in `app/src/utility.js`; a `station_config` naming anything else is refused at PUT. */
 export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
+/** A67 (F365): a station's advert strength and where its range value came from. "station" = the operator's long-hold
+ *  edit on the station itself; "mc" = the value MC sent in `station_config`. */
+export type TxPower = 'ultra_low' | 'low' | 'medium' | 'high';
+export type RangeSrc = 'station' | 'mc';
+export type RangeField = 'threshold' | 'tx_power';
 export type StationItemKind = 'weapon' | 'overshield';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
@@ -1211,6 +1223,13 @@ export interface StationAssignment {
   id: number;
   threshold: number;
   at?: number;
+  /** A67 (F365): who last set each range value and when (MC clock). Absent on an assignment from before A67:
+   *  read `threshold_set_at` with a fallback to `at`. `tx_power` is absent until an operator or a station sets one. */
+  threshold_set_at?: number;
+  threshold_src?: RangeSrc;
+  tx_power?: TxPower;
+  tx_power_set_at?: number;
+  tx_power_src?: RangeSrc;
   /** A56 (S58): a powerup station's item and spawn schedule */
   item?: StationItem;
 }
@@ -1245,11 +1264,47 @@ export interface StationControl {
   hold_ms?: Record<string, number>;
 }
 
+/** A67 (F365): one on-station range edit, as the station reports it in `status.range_edits` (the last up to 8,
+ *  oldest first) and as MC serves it in `StationView.range_edits`. `seq` rises per edit and survives a reboot;
+ *  `locked` = the edit was made while the station held a tamper lock. `age_ms` is ms since the edit (on the wire,
+ *  the station's count; in a StationView, MC's). After a Stick reboot the age is LARGE (no clock). */
+export interface RangeEdit {
+  from: number | TxPower;
+  to: number | TxPower;
+  seq: number;
+  field: RangeField;
+  locked: boolean;
+  age_ms: number;
+}
+
+/** A67: a station's range as MC sees it. The values are what the station APPLIES now (its report); the source
+ *  and the edit age are MC's record on the assignment (who set the value last). `*_edit_age_ms` is present only
+ *  when the source is "station" and the edit time is known (not lost to a restart). */
+export interface StationRange {
+  threshold?: number;
+  threshold_src?: RangeSrc;
+  threshold_edit_age_ms?: number;
+  tx_power?: TxPower;
+  tx_power_src?: RangeSrc;
+  tx_power_edit_age_ms?: number;
+}
+
 export interface StationReport {
   kind?: StationKind;
   team?: number;
   station_id?: number;
+  /** A67: the value the station applies NOW (dBm) */
   threshold?: number;
+  /** A67: who set it */
+  threshold_src?: RangeSrc;
+  /** A67: ms since the on-station edit; only when src is "station" */
+  threshold_edit_age_ms?: number;
+  /** A67: the advert strength applied now */
+  tx_power?: TxPower;
+  tx_power_src?: RangeSrc;
+  tx_power_edit_age_ms?: number;
+  /** A67: the last up to 8 on-station edits, oldest first */
+  range_edits?: RangeEdit[];
   live?: boolean;
   revives?: number;
   armed?: boolean;
@@ -1293,6 +1348,10 @@ export interface StationView {
    *  MC counted inside this game's lock window. */
   lock_until_ms?: number;
   restarts?: number;
+  /** A67 (F365): the station's current range with its source and edit age, and the on-station edits MC has
+   *  heard (oldest first, the last 8; `age_ms` is MC's count at this snapshot). */
+  range?: StationRange;
+  range_edits?: RangeEdit[];
 }
 
 /** One assigned utility station's self-authoritative recap heartbeat. */
