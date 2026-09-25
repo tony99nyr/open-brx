@@ -17,7 +17,8 @@ async function mount(honors: Honor[]) {
 }
 
 const labelColour = (m: Awaited<ReturnType<typeof mount>>, label: string) =>
-  m.find('span').filter(s => s.textContent === label).map(s => (s as HTMLElement).style.color);
+  m.find('span').filter(s => s.textContent === label && !s.hasAttribute('data-medal-icon') && !s.closest('[data-testid="medal-legend"]'))
+    .map(s => (s as HTMLElement).style.color);
 
 describe('RECAP honours (A63)', () => {
   it('colours IRON MAN, WINGMAN and OBJECTIVE HERO by key, and an old label-only MVP still by label', async () => {

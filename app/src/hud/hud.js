@@ -5,7 +5,8 @@
 import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
 import * as SV from './shieldmeter.js';
 import { LANE_FEED_MS, LANE_SETTLE_MS } from '../lanes.js';   // docs/announcer.md "The three lanes"
-import { MEDALS, AWARDS } from '../transport/contract.gen.js';   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
+import { MEDALS, AWARDS } from '../transport/contract.gen.js';
+import { medalIcon, medalChip } from './medalicons.js';   // the RECAP icons only (Tony 2026-09-25): never in the in-game lanes   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
 const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
@@ -63,6 +64,15 @@ const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDEC
 export const MEDAL_FALLBACK = Object.freeze([{ key: 'melee_kill', kind: 'melee', label: 'BEAT DOWN' }, { key: 'killjoy', kind: 'killjoy', label: 'KILLJOY' }]);
 const MEDAL_ROWS = [...MEDALS, ...MEDAL_FALLBACK.filter(f => !MEDALS.some(m => m.key === f.key))];
 export const MEDAL_LABEL = Object.freeze(Object.fromEntries(MEDAL_ROWS.map(m => [m.key, m.label])));
+// Tony 2026-09-25: the RECAP (the AWARDS tab and the PLAYERS medal column) is icon-first, the name on a long press
+// (title) and in the accessible label, and a legend teaches the icons. The in-game lanes keep their words, no icons.
+const RECAP_ROWS = [...MEDAL_ROWS, ...AWARDS];
+// 31 css px is 24 px on screen on the smallest gate frame (iPhone SE, 667×375 scales the 844-wide frame by 0.79).
+// The PLAYERS tab hides the stat tiles to make room once the board is up: my own row carries the same numbers.
+export const RECAP_ICON_PX = 31;
+const recapIcon = (key, px, night, label) => medalIcon(key, { size: px, night, label: label || (RECAP_ROWS.find(r => r.key === key) || {}).label || key });
+const recapLegend = (keys, night) => keys.length ? `<div class="mleg" role="list" aria-label="MEDAL LEGEND">${keys.map(k => { const l = (RECAP_ROWS.find(r => r.key === k) || {}).label || k;
+  return `<span class="mlg" role="listitem" data-medal="${k}">${recapIcon(k, RECAP_ICON_PX, night, l)}<em>${String(l).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])}</em></span>`; }).join('')}</div>` : '';
 /** App 0.4.2: the words of the picker's "Connecting to <gun>" block, from `hud.connecting`. */
 export function connectingText(conn) {
   const nm = String((conn && conn.name) || 'your gun');
@@ -1117,13 +1127,14 @@ export class Hud {
    *  Everything else is mode-aware from `result.mode` / `result.win_by` and the fields that are actually present:
    *  the tiles are built from a list (never five hard-coded cells), the TEAM view appears only when MC sent team
    *  totals, and possession / AFTER THE WHISTLE appear only when their fields do. */
-  /** The end-of-match AWARDS (A63), in the three lanes' language: my own awards as HERO medals on the left, then one
-   *  OBJECTIVE-style badge per honour naming its holder. MC computes them (`scoring.py honors()`, one row per tied
-   *  holder, keys in `types.AWARDS` order) and the result push carries them as `honors[] = {medal (the label), key,
-   *  player_id, display, stat}`. Mine first, then grouped by key in AWARDS order; nothing is capped. A pre-A63 row with
-   *  no `key` is placed by its label. Mine carry a star and "YOU", not only a colour; an award with more than one holder says SHARED. MC's stat string
-   *  gets its own line, so a long one never clips the holder's name. */
-  _awards(honors, rows, myId) {
+  /** The end-of-match AWARDS (A63), icon-first (Tony 2026-09-25: "lean just on the icon and drop the verbosity"): my own
+   *  awards as big icons, then one badge per honour with its icon, its holder and MC's stat (the number that earned it).
+   *  The award's name is on a long press (title) and in the accessible label, and the legend below the list teaches the
+   *  icons. MC computes them (`scoring.py honors()`, one row per tied holder, keys in `types.AWARDS` order) and the result
+   *  push carries them as `honors[] = {medal (the label), key, player_id, display, stat}`. Mine first, then grouped by key
+   *  in AWARDS order; nothing is capped. A pre-A63 row with no `key` is placed by its label. Mine carry a star and "YOU",
+   *  not only a colour; an award with more than one holder says SHARED. */
+  _awards(honors, rows, myId, night) {
     const order = k => { const i = AWARDS.findIndex(a => a.key === k); return i < 0 ? AWARDS.length : i; };
     const keyOf = h => h.key || (AWARDS.find(a => a.label === h.medal) || {}).key || null;
     const label = h => String((AWARDS.find(a => a.key === keyOf(h)) || {}).label || h.medal || String(h.key || '').replace(/_/g, ' ')).toUpperCase();
@@ -1132,15 +1143,16 @@ export class Hud {
     const mine = sorted.filter(isMe);
     const who = h => { const r = rows.find(x => x.player_id === h.player_id); return { name: String(h.display || (r && r.display) || h.player_id || '—').toUpperCase(), tk: r && TEAM_COLOR[String(r.team_id || '').toLowerCase()] ? String(r.team_id).toLowerCase() : null }; };
     const me = `<div class="awme"><span class="awh">YOUR AWARDS</span>${mine.length
-      ? `<div class="awm">${mine.map(h => `<span class="medal" data-award="${esc(keyOf(h) || '')}"><span class="unskew">★ ${esc(label(h))}</span></span>`).join('')}</div>`
+      ? `<div class="awm">${mine.map(h => `<span class="awi" data-award="${esc(keyOf(h) || '')}" title="${esc(label(h))}">${recapIcon(keyOf(h), 40, night, label(h))}</span>`).join('')}</div>`
       : '<span class="awnone">NONE THIS MATCH</span>'}<span class="lsrc">MC</span></div>`;
     const holders = k => honors.filter(x => keyOf(x) === k).length;
     const list = sorted.map(h => { const w = who(h), m = isMe(h), shared = holders(keyOf(h)) > 1;
-      return `<div class="aw${m ? ' me' : ''}" data-award="${esc(keyOf(h) || '')}" style="--lc:${w.tk ? TEAM_COLOR[w.tk] : 'var(--glow)'}"><span class="awt"><span class="awk">${m ? '★ ' : ''}${esc(label(h))}${shared ? ' <i>· SHARED</i>' : ''}</span>`
-        + `<span class="awn">${esc(w.name)}${m ? ' <b>· YOU</b>' : ''}</span>${h.stat != null && h.stat !== '' ? `<span class="aws">${esc(String(h.stat))}</span>` : ''}</span></div>`; }).join('');
+      return `<div class="aw${m ? ' me' : ''}" data-award="${esc(keyOf(h) || '')}" title="${esc(label(h))}" style="--lc:${w.tk ? TEAM_COLOR[w.tk] : 'var(--glow)'}">${recapIcon(keyOf(h), RECAP_ICON_PX, night, label(h))}<span class="awt">`
+        + `<span class="awn">${m ? '★ ' : ''}${esc(w.name)}${m ? ' <b>· YOU</b>' : ''}${shared ? ' <i>· SHARED</i>' : ''}</span>${h.stat != null && h.stat !== '' ? `<span class="aws">${esc(String(h.stat))}</span>` : ''}</span></div>`; }).join('');
+    const legend = recapLegend([...new Set(sorted.map(keyOf).filter(Boolean))], night);
     // a list longer than the body scrolls, and says so ("more ↓"), so no honour is silently below the fold
     setTimeout(() => { const l = document.querySelector('.result .awl'), c = document.querySelector('.result .awmore'); if (l && c) c.hidden = !(l.scrollHeight > l.clientHeight + 1 && l.scrollTop + l.clientHeight < l.scrollHeight - 1); }, 0);
-    return `<div class="awards">${me}<div class="awl" onscroll="const c=this.parentNode.querySelector('.awmore'); if (c) c.hidden = this.scrollTop + this.clientHeight >= this.scrollHeight - 1">${list}</div><span class="awmore" hidden>MORE ↓</span></div>`;
+    return `<div class="awards">${me}<div class="awl" onscroll="const c=this.parentNode.querySelector('.awmore'); if (c) c.hidden = this.scrollTop + this.clientHeight >= this.scrollHeight - 1">${list}${legend}</div><span class="awmore" hidden>MORE ↓</span></div>`;
   }
   _result(st) {
     const R = (st.result && typeof st.result === 'object') ? st.result : null;
@@ -1179,7 +1191,7 @@ export class Hud {
         : 'Mission Control decides how the match ended and sends the result here.'}</div>
         <div class="wl dim">The line below is what this phone counted. It is not the result.</div></div>`;
     } else if (tab === 'awards') {
-      body = this._awards(awards, rows, myId);
+      body = this._awards(awards, rows, myId, !!st.night);
     } else if (tab === 'team') {
       body = `<div class="rteams" style="grid-template-columns:repeat(${Math.min(4, teams.length)},minmax(0,1fr))">${teams.map(t => {
         const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
@@ -1204,8 +1216,10 @@ export class Hud {
             <span class="c tab">${num(r.kd) == null ? '—' : Number(r.kd).toFixed(1)}</span>
             <span class="c tab ${r.acc_provisional ? 'prov' : ''}">${num(r.accuracy) == null ? '—' : Math.round(r.accuracy) + '%'}</span>
             <span class="c tab">${num(r.best_streak) == null ? '—' : r.best_streak}</span>
-            <span class="c m">${meds.length ? esc(meds.map(m => MEDAL_LABEL[m] || String(m).toUpperCase().replace(/_/g, ' ')).join(' · ')) : ''}</span></div>`;
-        }).join('') : '<div class="lbnone">MISSION CONTROL SENT NO PLAYER ROWS FOR THIS MATCH</div>'}</div></div>`;
+            <span class="c m">${meds.map(m => { const c = medalChip(m, RECAP_ROWS);
+              return c.key ? `<span class="mc" data-medal="${esc(c.key)}" title="${esc(c.label)}${c.n > 1 ? ' ×' + c.n : ''}">${recapIcon(c.key, RECAP_ICON_PX, !!st.night, `${c.label}${c.n > 1 ? ' ×' + c.n : ''}`)}${c.n > 1 ? `<b class="tab">×${c.n}</b>` : ''}</span>`
+                : `<span class="mt">${esc(String(m).toUpperCase().replace(/_/g, ' '))}</span>`; }).join('')}</span></div>`;
+        }).join('') : '<div class="lbnone">MISSION CONTROL SENT NO PLAYER ROWS FOR THIS MATCH</div>'}</div>${recapLegend([...new Set(rows.flatMap(r => (Array.isArray(r.medals) ? r.medals : []).map(m => medalChip(m, RECAP_ROWS).key)).filter(Boolean))], !!st.night)}</div>`;
     }
 
     // --- strips: possession (player view), the honors roll, and the unofficial post-whistle tally ---
@@ -1252,7 +1266,7 @@ export class Hud {
       <div class="rhead"><span class="rkick">FINAL RESULTS</span>${head}<span class="rmeta">${esc(meta)}</span>${seg}</div>
       <div class="rbody">${body}</div>
       ${tab === 'awards' ? '' : holdStrip + honorStrip + afterStrip}
-      <div class="rstats"${tab === 'awards' ? ' hidden' : ''} style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
+      <div class="rstats"${tab === 'awards' || (tab === 'player' && R) ? ' hidden' : ''} style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
       <div class="rfoot foot"><div class="fl">${ret}${mcv}${syncShown}${sess}</div>
         <button class="ready ${reopened ? 'ghost' : ''}" data-act="${reopened ? 'onCloseView' : 'onEndOk'}"><span class="unskew">${reopened ? 'CLOSE' : 'OK'}</span></button></div></div>`;
   }

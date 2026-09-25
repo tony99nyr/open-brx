@@ -9,6 +9,8 @@ import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isObjectiveScored, objectiveWord } from './objective';
 import { columnEdges, type Column } from './columns';
+import { AWARDS, MEDALS } from '../api/contract.gen';
+import { medalChip, medalIcon } from '../api/medalicons.gen';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
 // split into groups with a hairline between them (game test 2026-09-11, D4).
@@ -32,6 +34,32 @@ const edge = columnEdges(COLUMNS);
 // A63: keyed by the AWARDS `key`; a recap stored before A63 has only the label, so it maps through AWARD_KEY.
 const AWARD_COLOR: Record<string, string> = { mvp: '#ffd23f', first_blood: T.bad, multikill: T.warn, iron_man: T.ink, wingman: T.ok, objective_hero: T.accHover };
 const AWARD_KEY: Record<string, string> = { MVP: 'mvp', 'FIRST BLOOD': 'first_blood', MULTIKILL: 'multikill' };
+// Tony 2026-09-25: the recap draws the medal and award icons (the phone's own set, medalicons.gen.ts). MC keeps its
+// words beside them, and a legend under FULL STATS teaches the icons. The LIVE screens draw none.
+const RECAP_ROWS = [...MEDALS, ...AWARDS];
+const labelOf = (k: string) => RECAP_ROWS.find(r => r.key === k)?.label ?? k.replace(/_/g, ' ').toUpperCase();
+function MedalIcon({ k, label, size = 24 }: { k: string; label: string; size?: number }) {
+  return <span data-medal-icon={k} title={label} style={{ display: 'inline-flex', flex: 'none', width: size, height: size }}
+    dangerouslySetInnerHTML={{ __html: medalIcon(k, { size, label }) }} />;
+}
+/** The keys the recap shows an icon for: every honour, then every medal chip on the board. */
+function recapKeys(rc: RecapView): string[] {
+  const keys = [...rc.honors.map(h => h.key ?? AWARD_KEY[h.award] ?? medalChip(h.award, RECAP_ROWS).key),
+    ...rc.rows.flatMap(r => r.medals.map(m => medalChip(m, RECAP_ROWS).key))];
+  return [...new Set(keys.filter((k): k is string => !!k))];
+}
+function MedalLegend({ keys }: { keys: string[] }) {
+  if (!keys.length) return null;
+  return (
+    <div data-testid="medal-legend" role="list" aria-label="Medal legend" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: 10 }}>
+      {keys.map(k => (
+        <span key={k} role="listitem" data-legend={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim }}>
+          <MedalIcon k={k} label={labelOf(k)} />{labelOf(k)}
+        </span>
+      ))}
+    </div>
+  );
+}
 const STATION_KIND_LABEL: Record<string, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 const STATION_TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
 
@@ -327,7 +355,11 @@ export function Recap() {
           const c = AWARD_COLOR[h.key ?? AWARD_KEY[h.award] ?? ''] ?? T.acc;
           return (
             <div key={`${h.key ?? h.award}:${h.player_id}`} style={{ background: T.panel, border: `1px solid ${T.line}`, borderTop: `2px solid ${c}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, clipPath: CHAMFER.br8 }}>
-              <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: c }}>{h.award}</span>
+              {/* the icon beside the words (the phone's recap leads with the icon alone) */}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                {(() => { const k = h.key ?? AWARD_KEY[h.award] ?? medalChip(h.award, RECAP_ROWS).key; return k ? <MedalIcon k={k} label={h.award} size={28} /> : null; })()}
+                <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: c }}>{h.award}</span>
+              </span>
               {/* M8 (visual QA 2026-09-24): the board's long-name rule, so a long name ends in "…", not mid-letter */}
               <span data-honor-name={h.player_id} title={name(h.player_id)} style={{ font: F.osw(700, 19), letterSpacing: '.08em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name(h.player_id)}</span>
               <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{h.stat}</span>
@@ -383,6 +415,7 @@ export function Recap() {
           </div>
         </div>
       </div>
+      <MedalLegend keys={recapKeys(rc)} />
       {anyTeamKill && (
         <div data-testid="team-kill-note" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.warn, marginTop: 8 }}>
           K BELOW ZERO: {TEAM_KILL_NOTE}
@@ -412,7 +445,10 @@ function Row({ r, mvp }: { r: ScoreRow; mvp: boolean }) {
         {r.accuracy == null ? '—' : <>{prov ? '~' : ''}<Num value={Math.round(r.accuracy)} />%</>}
       </span>
       <span data-cell="stk" style={{ textAlign: 'right', font: F.osw(600, 15), color: T.dim, ...edge('stk') }}><Num value={bestStreak(r)} /></span>
-      <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: '#ffd23f', lineHeight: 1.45, ...edge('medals') }}>{r.medals.length ? r.medals.join(' · ') : '—'}</span>
+      <span data-cell="medals" style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: '#ffd23f', lineHeight: 1.45, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 8px', ...edge('medals') }}>
+        {r.medals.length ? r.medals.map((m, i) => { const c = medalChip(m, RECAP_ROWS);
+          return <span key={`${m}:${i}`} data-medal-chip={c.key ?? ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{c.key && <MedalIcon k={c.key} label={m} size={20} />}{m}</span>; }) : '—'}
+      </span>
     </div>
   );
 }

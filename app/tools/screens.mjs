@@ -1698,14 +1698,14 @@ for (const view of VIEWS) {
     const r = await pg.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('.result .lbr'));
       return { first: rows[0].textContent.replace(/\s+/g, ' ').trim(), me: rows.findIndex(x => x.classList.contains('me')),
-        medals: rows.map(x => x.querySelector('.c.m').textContent.trim()),
+        medals: rows.map(x => [...x.querySelectorAll('.c.m .mc[data-medal]')].map(e => e.dataset.medal).join(' ')),
         prov: rows.filter(x => x.querySelector('.c.prov')).length };
     });
     await pg.close();
     must(/VIPER/.test(r.first) && /13/.test(r.first), 'the top row is not the top scorer: ' + r.first);
     must(/1\.9/.test(r.first) && /43%/.test(r.first) && /\b7\b/.test(r.first), 'kd / acc / best streak missing from the row: ' + r.first);
     must(r.me >= 0, 'this player is not marked on the leaderboard');
-    must(r.medals.some(m => /KILLING SPREE|TRIPLE KILL/.test(m)), 'no medals on any row: ' + JSON.stringify(r.medals));
+    must(r.medals.some(m => /killing_spree|triple_kill/.test(m)), 'no medal icons on any row: ' + JSON.stringify(r.medals));
     must(r.prov === 1, 'a provisional accuracy is not dimmed: ' + r.prov);
   });
   await step(`${view.name} A24 result: a four-player field fits — no row is cut off by the fixed rows around it`, async () => {
@@ -4798,18 +4798,19 @@ for (const view of VIEWS) for (const night of [false, true]) await step(`${view.
   const r = await pg.evaluate(() => { const body = document.querySelector('.result .rbody').getBoundingClientRect(); const vis = e => { const b = e.getBoundingClientRect(); return b.width > 0 && b.top >= body.top - 1 && b.bottom <= body.bottom + 1; };
     const l = document.querySelector('.result .awl'), cue = document.querySelector('.result .awmore');
     const more = { overflow: l.scrollHeight > l.clientHeight + 1, cue: !!cue && !cue.hidden };
-    return { more, tab: (document.querySelector('.rseg .sg.on') || {}).textContent, mine: [...document.querySelectorAll('.awm .medal')].map(e => e.textContent.trim()), strip: !!document.querySelector('.rstrip.hon'),
-      rows: [...document.querySelectorAll('.result .aw')].map(e => ({ k: e.dataset.award, l: e.querySelector('.awk').textContent.trim(), n: e.querySelector('.awn').textContent.trim(), me: e.classList.contains('me'), vis: vis(e),
-        kpx: parseFloat(getComputedStyle(e.querySelector('.awk')).fontSize), clip: [e.querySelector('.awk'), e.querySelector('.awn'), e.querySelector('.aws')].filter(Boolean).some(x => x.scrollWidth > x.clientWidth + 1),
-        stat: (e.querySelector('.aws') || {}).textContent || null, shared: /SHARED/.test(e.querySelector('.awk').textContent),
-        screenPx: Math.min(...[...e.querySelectorAll('.awk, .awn, .aws')].map(x => parseFloat(getComputedStyle(x).fontSize) * document.getElementById('frame').getBoundingClientRect().width / document.getElementById('frame').offsetWidth)),
+    return { more, tab: (document.querySelector('.rseg .sg.on') || {}).textContent, mine: [...document.querySelectorAll('.awm .awi')].map(e => e.title), strip: !!document.querySelector('.rstrip.hon'),
+      rows: [...document.querySelectorAll('.result .aw')].map(e => ({ k: e.dataset.award, l: e.title, n: e.querySelector('.awn').textContent.trim(), me: e.classList.contains('me'), vis: vis(e),
+        icon: (e.querySelector('svg.mi') || { getAttribute: () => null }).getAttribute('aria-label'), clip: [e.querySelector('.awn'), e.querySelector('.aws')].filter(Boolean).some(x => x.scrollWidth > x.clientWidth + 1),
+        stat: (e.querySelector('.aws') || {}).textContent || null, shared: /SHARED/.test(e.querySelector('.awn').textContent),
+        screenPx: Math.min(...[...e.querySelectorAll('.awn, .aws')].map(x => parseFloat(getComputedStyle(x).fontSize) * document.getElementById('frame').getBoundingClientRect().width / document.getElementById('frame').offsetWidth)),
         statOp: e.querySelector('.aws') ? +getComputedStyle(e.querySelector('.aws')).opacity : 1 })) }; });
   const inv = await invariants(pg); await pg.close();
   const ORDER = ['mvp', 'most_kills', 'best_kd', 'sharpshooter', 'survivor', 'iron_man', 'first_blood', 'multikill', 'wingman', 'objective_hero'];
-  must(r.tab && r.tab.trim() === 'AWARDS' && JSON.stringify(r.mine) === '["★ MVP","★ MOST KILLS","★ SURVIVOR"]', `my awards: ${JSON.stringify(r)}`);
-  must(r.rows.length === 11 && r.rows.every(x => x.vis && !x.clip && x.kpx >= 11), `every honour on screen, whole, >= 11 px: ${JSON.stringify(r.rows)}`);
+  must(r.tab && r.tab.trim() === 'AWARDS' && JSON.stringify(r.mine) === '["MVP","MOST KILLS","SURVIVOR"]', `my awards, as icons named by their title: ${JSON.stringify(r)}`);
+  must(r.rows.length === 11 && r.rows.every(x => x.vis && !x.clip), `every honour on screen, whole: ${JSON.stringify(r.rows)}`);
+  must(r.rows.every(x => x.icon && x.icon === x.l), `every honour leads with its icon, named for a screen reader: ${JSON.stringify(r.rows.map(x => [x.k, x.icon, x.l]))}`);
   const firstOther = r.rows.findIndex(x => !x.me);
-  must(r.rows.slice(0, firstOther).length === 3 && r.rows.slice(firstOther).every(x => !x.me) && r.rows.filter(x => x.me).every(x => /^★/.test(x.l) && /YOU/.test(x.n)), `mine first, marked: ${JSON.stringify(r.rows)}`);
+  must(r.rows.slice(0, firstOther).length === 3 && r.rows.slice(firstOther).every(x => !x.me) && r.rows.filter(x => x.me).every(x => /^★/.test(x.n) && /YOU/.test(x.n)), `mine first, marked: ${JSON.stringify(r.rows)}`);
   const rest = r.rows.slice(firstOther).map(x => ORDER.indexOf(x.k));
   must(rest.every((v, i) => i === 0 || v >= rest[i - 1]), `the others grouped in AWARDS order: ${JSON.stringify(r.rows.map(x => x.k))}`);
   must(!r.strip, 'the HONORS strip repeats the AWARDS tab');
@@ -4818,6 +4819,52 @@ for (const view of VIEWS) for (const night of [false, true]) await step(`${view.
   must(r.rows.find(x => x.k === 'mvp').stat === '11 K · 2.8 K/D · ×3 STREAK', `MC's real stat string: ${JSON.stringify(r.rows[0])}`);   // lanes polish r2 H1: nothing clipped with MC's strings
   must(r.rows.filter(x => x.shared).map(x => x.k).join() === 'most_kills,most_kills', `SHARED marks both holders of a shared award: ${JSON.stringify(r.rows.map(x => [x.k, x.shared]))}`);
   must(inv.length === 0, 'invariants: ' + inv.join(' | '));
+});
+// Tony 2026-09-25: the RECAP is icon-first (src/hud/medalicons.js) and the in-game lanes draw no icons. Every MEDALS and
+// AWARDS key renders an icon with an accessible name, a legend names them, every icon is >= 24 px on screen at SE, and
+// night paints them red and amber only.
+const MI = await import('../src/transport/contract.gen.js');
+const miFacts = () => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+  const icons = [...document.querySelectorAll('.result svg.mi')].map(e => ({ key: e.dataset.medal, name: e.getAttribute('aria-label') || '', px: e.getBoundingClientRect().width,
+    inLegend: !!e.closest('.mleg'), cols: (e.outerHTML.match(/#[0-9a-f]{6}/gi) || []) }));
+  return { k, icons, legend: [...document.querySelectorAll('.result .mleg .mlg')].map(e => ({ key: e.dataset.medal, text: (e.querySelector('em') || {}).textContent || '' })),
+    lanes: document.querySelectorAll('#lanes svg.mi, #hud svg.mi, #overlay svg.mi').length }; };
+const miGreen = cols => cols.filter(h => { const [r, g, b] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); return g > r || b > r || (r > 0xe0 && g > 0xe0 && b > 0xe0); });
+for (const view of VIEWS) for (const night of [false, true]) {
+  await step(`${view.name} medal icons ${night ? 'night' : 'day'}: every MEDALS key renders an icon on the PLAYERS board, with a legend`, async () => {
+    const pg = await open(view, 'result-players', night ? '&night' : '', 3000);
+    // every ladder medal on my row, one of them twice (MC writes "LABEL ×N"), through the engine's own result path
+    await pg.evaluate(labels => { const e = window.brx.engine, R = JSON.parse(JSON.stringify(e.state().result));
+      R.rows = R.rows.map((r, i) => i === 0 ? { ...r, medals: labels.map((l, j) => j === 1 ? `${l} ×2` : l) } : r); R.my = R.rows.find(r => r.player_id === (R.my || {}).player_id) || R.my;
+      e.onMcMessage({ kind: 'result', body: R }); }, MI.MEDALS.map(m => m.label));
+    await pg.waitForTimeout(300);
+    const r = await pg.evaluate(miFacts); await pg.close();
+    const board = r.icons.filter(x => !x.inLegend);
+    for (const m of MI.MEDALS) {
+      must(board.some(x => x.key === m.key && x.name.startsWith(m.label)), `${m.key}: no icon on the board named ${m.label}: ${JSON.stringify(board.map(x => [x.key, x.name]))}`);
+      must(r.legend.some(x => x.key === m.key && x.text === m.label), `${m.key}: not in the legend: ${JSON.stringify(r.legend)}`);
+    }
+    must(board.some(x => x.name === `${MI.MEDALS[1].label} ×2`), 'a repeated medal names its count');
+    must(r.icons.every(x => x.px >= 23.9), `every icon >= 24 px on screen: ${JSON.stringify(r.icons.filter(x => x.px < 23.9).map(x => [x.key, x.px.toFixed(1)]))}`);
+    if (night) must(r.icons.every(x => !miGreen(x.cols).length), `night icons red and amber only: ${JSON.stringify(r.icons.map(x => miGreen(x.cols)).flat())}`);
+  });
+  await step(`${view.name} award icons ${night ? 'night' : 'day'}: every AWARDS key renders an icon on the AWARDS tab, with a legend`, async () => {
+    const pg = await open(view, 'result-awards', night ? '&night' : '', 4200);
+    const r = await pg.evaluate(miFacts); await pg.close();
+    for (const a of MI.AWARDS) {
+      must(r.icons.some(x => !x.inLegend && x.key === a.key && x.name === a.label), `${a.key}: no icon named ${a.label}`);
+      must(r.legend.some(x => x.key === a.key && x.text === a.label), `${a.key}: not in the legend: ${JSON.stringify(r.legend)}`);
+    }
+    must(r.icons.every(x => x.px >= 23.9), `every icon >= 24 px on screen: ${JSON.stringify(r.icons.filter(x => x.px < 23.9).map(x => [x.key, x.px.toFixed(1)]))}`);
+    if (night) must(r.icons.every(x => !miGreen(x.cols).length), `night icons red and amber only: ${JSON.stringify(r.icons.map(x => miGreen(x.cols)).flat())}`);
+  });
+}
+for (const view of VIEWS) for (const [stage, ms] of [['live-medals', 3000], ['live-spree', 4300]]) await step(`${view.name} ${stage}: the in-game lanes draw no medal icon (the recap only)`, async () => {
+  const pg = await open(view, stage, '', ms);
+  const r = await pg.evaluate(() => ({ hero: !!document.querySelector('#lanes .lh .lhm .medal'), icons: document.querySelectorAll('#lanes svg.mi, #hud svg.mi, #overlay svg.mi, #chips svg.mi').length }));
+  await pg.close();
+  must(r.hero, 'the kill hero with its medal is not up, so this proves nothing');
+  must(r.icons === 0, `the lanes drew ${r.icons} medal icon(s)`);
 });
 // lanes VQA H1: a kill hero must never hide a centre tell. Each tell is up, then my kill lands (a medal, so the hero has
 // every row it can have): the hero collapses to one row above the tell. Day and night, both widths.
