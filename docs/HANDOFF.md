@@ -60,10 +60,11 @@ lock (F332), a pickup claim at any strength (`e879b9db`), `presence.h`, the host
 ## Lane: brx5, powerups, the HUD and gun audio
 On main: S58 powerups behind `--powerups` (the heavy on the trigger, SELECT toggles, the protected overshield, no
 claim RSSI floor, a phone powerup station advertises -55); S59 Visor; F348/F349; death first (`7173d400`); the
-three-lane alerts and the style B recap icons.
-- **Next desk task:** F347's compile change once sitting A picks a silent t23; BEAT DOWN's B6 icon; F350's clip once Tony picks it;
-  F372 (powerups on by default, after sitting C) with the calibrated claim thresholds.
-- **Next bench task:** sitting C's powerup setup (11.3) and 11.8.
+three-lane alerts and the style B recap icons; B21's Android half, the WebView debugging switch in the ⓘ panel
+(`app/plugins/brx-debug`, default ON, not yet on a phone); today's doc-rot fixes and a conflict-marker guard.
+- **Next desk task:** F347's compile change once sitting A picks a silent t23; F350's clip once Tony picks it;
+  F372 (powerups on by default, after sitting C) with the calibrated claim thresholds; B21's iOS half on the MacBook.
+- **Next bench task:** sitting C's powerup setup (11.3) and 11.8; flip the B21 switch on a Pixel after the next cut.
 
 ## Start here
 
