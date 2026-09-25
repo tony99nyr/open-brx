@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed).
+Updated: 2026-09-25 (F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,10 +9,10 @@ Updated: 2026-09-25 (F383 -75, F386 duration_ms, F389-F392, F397, F398 built at 
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 75.** Desk 5 · bench 67 · decision 3.
+**MVP open: 74.** Desk 4 · bench 67 · decision 3.
 
-**MVP DESK (5),** a keyboard is enough:
-- 🟠 **B21** · **F372** · **F400** · **F401**
+**MVP DESK (4),** a keyboard is enough:
+- 🟠 **B21** · **F372** · **F400**
 - 🟡 **F377**
 
 **MVP BENCH (67),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -52,8 +52,6 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 ## MVP DESK
 
 A keyboard is enough. Highest value first.
-
-- **F401 🟠 MC SHOWS WHICH STICKS HAVE NOT SYNCED SINCE THE MATCH.** Tony 2026-09-25 (via brx2): a HELD Stick can end a timed game on its own clock out of Wi-Fi (F386), so its result reaches MC only when it is brought back. The results page lists every station that has not synced since the match ("STICK 1 NEEDS SYNC: BRING IT INTO WI-FI"), and LOAD warns while one is unsynced, so the operator can send someone to fetch it. Stub: brx3 builds it after F382. `build`.
 
 - **F377 🟡 SOLO LMS NEVER PICKS A WINNER.** Found by the Q13 polish (Codex Sol, 2026-09-25): solo LMS now registers hits and credits kills, but survival scoring (`scoring.py` ~974) decides by team, so a one-team match ends `undecided` even with one player alive. Decide the last survivor by player in a one-team game. Predates Q13; LMS is still `proven: False`. `build`.
 

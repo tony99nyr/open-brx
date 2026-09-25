@@ -811,3 +811,4 @@ closed in the same pass, each checked against the code, the git log or the exper
   the simulated-player parity: 3(a)/(b)/(c) capture, contest and drain with the presence RSSI logged; step 4's
   restart-survival; the 2(a)/2(b) online and offline pickup claims. The hill threshold value itself stays open as
   F383.
+- 2026-09-25 **F401** built (brx3): a station counts as synced once MC hears it after the whistle; RECAP lists each unsynced station (NEEDS SYNC: BRING IT INTO WI-FI) and LOAD warns that loading loses its result, until the next game byte resets it. The list survives an MC restart. No new Stick message.

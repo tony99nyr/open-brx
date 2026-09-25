@@ -46,10 +46,11 @@ Stick lock/link bugs F387-F392, F397; **F390** (MUSTER's no-way-back) to DECISIO
   authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
-APK 0.4.12 published 2026-09-25 (`app-v0.4.12`), release-signed, WebView debugging on. F319 closed, Q13 and S32 moved
-on; the stage flakes fixed; F384 and F385 built (bench checks left).
-- **Next:** the phone half of F382 (the hill tick pauses while contested; 3 s holding, 1.5 s losing), then F377.
-- **Desk (MVP):** the MC half of F372 after sitting C. S32 waits on Tony's two renders.
+APK 0.4.12 published 2026-09-25 (`app-v0.4.12`), release-signed, WebView debugging on. Built on 2026-09-25: F319 and
+F401 closed; F382 (phone half), F384 and F385 on the bench list; the stage flakes fixed.
+- **Next:** one shared drain helper for every stage-mirror test that reads the reserve (the stun test flaked on CI
+  36195523113), then F377.
+- **Desk (MVP):** the MC half of F372 after sitting C. S32 waits on Tony's two renders. Codex needs `codex login` (401).
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
