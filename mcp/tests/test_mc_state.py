@@ -50,6 +50,8 @@ def test_recap_reports_played_seconds_from_go_live_to_end():
     assert "played_s" not in s.recap()
     s.phase = "recap"
     assert s.recap()["played_s"] == 754
+    sc.end_t = T0 + 754_600
+    assert s.recap()["played_s"] == 755, "rounded to the nearest second, as the console shows it"
     # polish 2026-09-25: a scorer with no whistle time reports no length, never one that keeps growing
     s.scorer = Scorer("m2", T0, None, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
     assert "played_s" not in s.recap()
@@ -735,3 +737,12 @@ def test_a_hot_joiner_whose_weapon_the_pinned_plan_never_saw_is_withheld():
     ok = s.add_player("STOCK", gun_id="GUN-D", loadout={"weapons": [{"weapon_id": "assault_rifle"}]})
     assert ok["node_id"] == "node3"
     assert net.pushes("config", node_id="node3") and net.pushes("start", node_id="node3")
+
+
+def test_q13_the_briefing_says_team_damage_off_only_in_a_game_with_teams():
+    """Q13: the phone briefing shows TEAM DAMAGE: OFF from `game.team_damage`, present only with 2+ teams."""
+    from brx_mcp.mc.state import default_config
+    s, net, clock, ps = mk()
+    for mode, want in (("tdm", "off"), ("ffa", None), ("lms", None), ("infection", "off")):
+        s.config = default_config(mode)
+        assert s.game_brief().get("team_damage") == want, (mode, s.game_brief().get("team_damage"))

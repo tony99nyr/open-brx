@@ -963,7 +963,7 @@ export class Hud {
     const rs = g.respawn ? (g.respawn.type === 'none' ? 'NONE · LIVES' : `${g.respawn.type === 'scanner' ? 'AT A SCANNER' : 'AUTO'} · ${g.respawn.delay_s}s`) : (g.respawn_text || '—');
     const hp = g.health ? `${g.health.max_hp} HP${g.health.max_armor > 0 ? ` · ${g.health.max_armor} ARMOR` : ''}${g.health.max_shield > 0 ? ` · ${g.health.max_shield} SHIELD` : ''}` : '—';
     const venue = [g.environment ? String(g.environment).toUpperCase() : null, g.night ? 'NIGHT OPS' : null].filter(Boolean).join(' · ') || '—';
-    const rows = [['TEAMS', g.teams_text || '—'], ...(mode === 'ffa' ? [] : [['TEAM DAMAGE', 'OFF']]), ['WIN', g.win_text || '—'], ['RESPAWN', rs], ['TIME', mins ? `${mins} MIN` : '—'], ['LIFE', hp], ['VENUE', venue]];
+    const rows = [['TEAMS', g.teams_text || '—'], ...(g.team_damage === 'off' ? [['TEAM DAMAGE', 'OFF']] : []), ['WIN', g.win_text || '—'], ['RESPAWN', rs], ['TIME', mins ? `${mins} MIN` : '—'], ['LIFE', hp], ['VENUE', venue]];
     const locked = !st.canPickPrimary && !st.canPickSecondary && !st.canPickPerk;
     const cta = locked ? 'SEE MY KIT ▸' : 'BUILD MY KIT ▸';
     const sub = locked ? 'Your kit is set by the host — take a look.' : 'Pick your weapons when you are ready.';

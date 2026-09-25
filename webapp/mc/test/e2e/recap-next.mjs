@@ -140,7 +140,7 @@ try {
     const strip = st => {
       if (st && typeof st === 'object') {
         delete st.end_delivery;
-        if (st.recap) { delete st.recap.since_end_ms; delete st.recap.settling; delete st.recap.awaiting; }
+        if (st.recap) { delete st.recap.since_end_ms; delete st.recap.settling; delete st.recap.awaiting; delete st.recap.played_s; }
       }
       return st;
     };

@@ -167,3 +167,18 @@ def test_gate_reaches_the_head_when_it_is_turned_on():
         assert head[5].startswith("$PSET,")
     finally:
         mcc.DRIVE_IO_MODE = was
+
+
+def test_q13_a_one_team_game_lets_players_hit_each_other_and_a_team_game_never_does():
+    """Q13 (polish 2026-09-25): LMS declares the single `ffa` team, like FFA, but compile turned friendly
+    fire on for mode `ffa` only. A solo LMS match put every gun on one $TID with same-team hits blocked,
+    so nobody could hit anybody. Friendly fire follows the TEAM COUNT: one team (FFA, solo LMS) needs
+    it; two or more teams never get it (TEAM DAMAGE: OFF, Tony 2026-09-25)."""
+    from brx_mcp.mc.state import default_config
+    for mode in ("ffa", "lms", "tdm", "infection", "extraction", "koth"):
+        cfg = default_config(mode)
+        p = _player(); p["team_id"] = cfg["teams"][0]["team_id"]
+        gset = next(f for f in C.compile(cfg, p, cfg["teams"])["head"] if f.startswith("$GSET"))
+        one_team = len({t["tid"] for t in cfg["teams"]}) < 2
+        assert gset.startswith("$GSET,1," if one_team else "$GSET,0,"), (mode, cfg["teams"], gset)
+    assert len(default_config("lms")["teams"]) == 1, "CONTROL: default LMS really is one team"

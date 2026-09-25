@@ -281,6 +281,9 @@ def test_public_was_up_latches_after_the_link_drops():
         assert await _until(lambda: t.status == "up"), t.public()
         assert await _until(lambda: t.status == "error"), t.public()
         assert t.public()["was_up"] is True, "a link that came up and then died says so"
+        t.start(8766)
+        assert t.public()["was_up"] is False, "a fresh attempt starts clean: failing again is not a drop"
+        await t.stop()
     run(go())
 
 

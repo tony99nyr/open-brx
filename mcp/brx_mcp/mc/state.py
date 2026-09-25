@@ -1498,6 +1498,9 @@ class Session:
             "time_limit_s": cfg.get("time_limit_s"), "respawn": cfg.get("respawn"), "health": cfg.get("health"),
             "environment": cfg.get("environment"), "night": bool(cfg.get("night")),
             "loadout_line": ", ".join(parts) + ".", "ruleset": preset_lbl, "hud_select": bool(pol.get("hud_select")),
+            # Q13: present ONLY in a game of two or more teams, where compile keeps team damage off; a one-team
+            # game (FFA, solo LMS) has no teammates, so the briefing shows no row.
+            **({"team_damage": "off"} if len({t.get("tid") for t in cfg.get("teams") or []}) >= 2 else {}),
             # A31: present ONLY when this match needs it, so a node can treat presence as the rule.
             **({"mc_verify": mcv} if (mcv := self._mc_verify_player_line()) else {}),
         }
@@ -3730,7 +3733,7 @@ class Session:
         # F319: the match length, only once the whistle has a time; without one the console falls back
         # to its own clock arithmetic rather than show a length that keeps growing.
         if sc.end_t is not None and sc.go_live_t is not None and (self.phase == "recap" or sc.end_t <= self.now_ms()):
-            recap["played_s"] = max(0, (sc.end_t - sc.go_live_t) // 1000)
+            recap["played_s"] = max(0, round((sc.end_t - sc.go_live_t) / 1000))   # rounded, as the console always did
         return recap
 
     def _recap_stations(self) -> list[RecapStationRow]:
@@ -7221,6 +7224,7 @@ class Session:
     def _on_feed(self, entry: dict):
         self.feed.insert(0, entry)
         del self.feed[200:]
+        self._persist_dirty = True      # F319 (d): the feed is in the snapshot, so a feed-only change must flush too
         for cb in self._feed_listeners:
             cb(entry)
 

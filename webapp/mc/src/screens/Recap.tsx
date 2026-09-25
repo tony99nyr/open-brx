@@ -176,7 +176,7 @@ export function Recap() {
   // length is read from the server's own clock: `since_end_ms` is `now - scorer.end_t`, `t` is that same
   // `now`, and `live.go_live_t` is the whistle's start, all on one snapshot. Without those either, the
   // header says it is the LIMIT rather than pass the limit off as the length.
-  const limitS = state.config.time_limit_s ?? 0;
+  const limitS = (past ? (past.config?.time_limit_s as number | undefined) : state.config.time_limit_s) ?? 0;   // an archived match keeps its own limit
   const playedS = typeof rc.played_s === 'number' ? rc.played_s
     : !past && state.live && typeof rc.since_end_ms === 'number' && typeof state.t === 'number'
       ? Math.min(limitS || Infinity, Math.max(0, Math.round((state.t - rc.since_end_ms - state.live.go_live_t) / 1000)))

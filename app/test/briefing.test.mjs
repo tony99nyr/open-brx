@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Hud } from '../src/hud/hud.js';
 
-test('briefing labels team damage by behaviour only when the mode has teams', () => {
-  const render = mode => Hud.prototype._briefing.call({ bfMore: false }, { mode, game: { mode, teams_text: 'BLUE V YELLOW' }, canPickPrimary: false, canPickSecondary: false, canPickPerk: false });
-  assert.match(render('tdm'), /TEAM DAMAGE/);
-  assert.match(render('tdm'), />OFF</);
-  assert.doesNotMatch(render('ffa'), /TEAM DAMAGE/);
+test('briefing shows TEAM DAMAGE: OFF only when MC says the game has teams (Q13)', () => {
+  const render = game => Hud.prototype._briefing.call({ bfMore: false }, { mode: game.mode, game, canPickPrimary: false, canPickSecondary: false, canPickPerk: false });
+  assert.match(render({ mode: 'tdm', teams_text: 'BLUE V YELLOW', team_damage: 'off' }), /TEAM DAMAGE<\/span><span class="v">OFF</);
+  assert.doesNotMatch(render({ mode: 'ffa' }), /TEAM DAMAGE/);
+  assert.doesNotMatch(render({ mode: 'lms', teams_text: 'SOLO OR SQUADS' }), /TEAM DAMAGE/, 'solo LMS is one team');
 });
 
 test('briefing mode art has a missing-image fallback', () => {

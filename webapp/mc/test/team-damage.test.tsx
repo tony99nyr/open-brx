@@ -16,21 +16,21 @@ describe('team damage host copy', () => {
   it('shows the setting on loaded game rows for teams and omits it in FFA', async () => {
     const api = new MockBackend();
     const modes = await api.getModes(); const weapons = await api.getWeapons(); const perks = await api.getPerks();
-    for (const mode of ['tdm', 'ffa']) {
+    for (const mode of ['tdm', 'ffa', 'lms']) {
       await api.putConfig({ mode });
       const state = await api.getState();
       const labels = gameSettingRows(state.config, modes.find(m => m.mode === mode), weapons, perks).map(([label]) => label);
-      expect(labels.includes('TEAM DAMAGE'), `${mode} row`).toBe(mode !== 'ffa');
+      expect(labels.includes('TEAM DAMAGE'), `${mode} row`).toBe(mode === 'tdm');
     }
   });
 
   it('shows the setting on the Designer rail for teams and omits it in FFA', async () => {
     const api = new MockBackend(); const modes = await api.getModes();
-    for (const mode of ['tdm', 'ffa']) {
+    for (const mode of ['tdm', 'ffa', 'lms']) {
       await api.putConfig({ mode });
       const state = await api.getState();
       const m = await mount(<StoreCtx.Provider value={makeStore({ state, view: 'build' }, { api, modes })}><Designer /></StoreCtx.Provider>);
-      expect(m.text().includes('TEAM DAMAGE'), `${mode} rail`).toBe(mode !== 'ffa');
+      expect(m.text().includes('TEAM DAMAGE'), `${mode} rail`).toBe(mode === 'tdm');
       m.unmount();
     }
   });

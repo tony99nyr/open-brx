@@ -1059,7 +1059,7 @@ export const MODES: ModeInfo[] = [
   { ...MODE_TEXT.infection, params: [],
     defaults: base('infection', { respawn: { type: 'auto', delay_s: 10 }, scoring: { frag_limit: null, win_by: 'survival' } }) },
   { ...MODE_TEXT.lms, params: LMS_PARAMS,
-    defaults: base('lms', { respawn: { type: 'none', delay_s: 0 }, scoring: { frag_limit: null, win_by: 'survival' }, mode_params: { lives: 3 } }) },
+    defaults: base('lms', { teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }], respawn: { type: 'none', delay_s: 0 }, scoring: { frag_limit: null, win_by: 'survival' }, mode_params: { lives: 3 } }) },
   { ...MODE_TEXT.extraction, params: EXTRACTION_PARAMS,
     defaults: base('extraction', { scoring: { frag_limit: null, win_by: 'objective' },
       mode_params: { channel_s: 45.0, win_target: 0, loot_per_kill: 10, drop_policy: 'ground', extract_removes_player: true } }) },

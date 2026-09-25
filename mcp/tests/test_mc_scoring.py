@@ -442,3 +442,20 @@ def test_assist_falls_back_to_t_when_a_fact_has_no_seq():
         body = {"match_id": "m1", "node_id": "n1", "player_id": "p1", "shooter_team": 1, **ev}
         sc.ingest("n1", body, body["t"])            # no seq at all
     assert {x["player_id"]: x["assists"] for x in sc.rows()}["p3"] == 1
+
+
+def test_q13_a_solo_lms_kill_is_a_kill_not_a_team_kill():
+    """Q13 (polish 2026-09-25): solo LMS puts everyone on the single `ffa` team. `_friendly` exempted
+    mode `ffa` only, so every LMS kill scored -1 as a team kill."""
+    ps = {f"p{i}": {"player_id": f"p{i}", "player_num": i + 1, "display": n, "team_id": "ffa", "node_id": f"n{i}",
+                     "gun_id": None, "loadout": {"weapons": []}, "voice": "male", "ready": True}
+          for i, n in enumerate(["REAPER", "VIPER"])}
+    teams = [{"team_id": "ffa", "name": "FREE-FOR-ALL", "color": "#fff", "tid": 1}]
+    sc = Scorer("m1", T0, 600, "lms", ps, teams, {"n0": "p0", "n1": "p1"}, {"n0": True, "n1": True},
+                now_ms=lambda: T0 + 2000, win_by="survival")
+    assert sc._friendly("p0", "p1") is False
+    # CONTROL: the same pair on one team of a two-team game IS friendly
+    two = teams + [{"team_id": "red", "name": "R", "color": "#f00", "tid": 2}]
+    sc2 = Scorer("m1", T0, 600, "lms", ps, two, {"n0": "p0", "n1": "p1"}, {"n0": True, "n1": True},
+                 now_ms=lambda: T0 + 2000, win_by="survival")
+    assert sc2._friendly("p0", "p1") is True

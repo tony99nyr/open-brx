@@ -373,8 +373,8 @@ class Scorer:
         return victim is not None and killer is not None and self._friendly(killer, victim)
 
     def _friendly(self, killer: str | None, victim: str) -> bool:
-        if not killer or self.mode == "ffa":
-            return False
+        if not killer or self.mode == "ffa" or len(self.teams) < 2:
+            return False        # Q13: a one-team game (FFA, solo LMS) has no teammates to kill
         kt = self.stats[killer].team_id
         vt = self.stats[victim].team_id
         return kt is not None and kt == vt

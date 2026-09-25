@@ -258,6 +258,7 @@ class Tunnel:
         self._stopping = False
         self._last_line = ""
         self._saw_url = False
+        self.was_up = False     # F319: `was_up` is about THIS attempt; a fresh start that fails reads ERROR, not DROPPED
         self._set("starting", None, None, "cloudflared")
         if loop is None:
             try:

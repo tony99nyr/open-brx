@@ -1875,7 +1875,9 @@ class Compiler:
             volume=self.head_volume(config),
             outdoor=config["environment"] == "outdoor",
             leds=(led.get("mode", "team") != "off") and not blackout,
-            friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
+            # Q13: a ONE-team game (FFA, solo LMS: both declare the single `ffa` team) needs the gun to
+            # register same-$TID hits, or nobody can hit anybody. Two or more teams: TEAM DAMAGE OFF, always.
+            friendly_fire=len({t["tid"] for t in config.get("teams") or []}) < 2,
             hp=hp,
             # S50 (docs/perk-design.md §2): body_armor / quick_switch's `max_armor_add` (`_MAX_ARMOR_
             # ADD`), capped at the wire's 255 and floored at 0 — NOTE: 255 is OUR POLICY CEILING, not

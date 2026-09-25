@@ -348,3 +348,9 @@ export function splitLine(players: { player_num: number; team_id: string | null 
   const counts = predictedSplit(players, prevTeams, newTeams);
   return `${players.length} PLAYER${players.length === 1 ? '' : 'S'} → ${newTeams.map(t => `${t.team_id.toUpperCase()} ${counts[t.team_id] ?? 0}`).join(' / ')}`;
 }
+
+/** Q13: a game of two or more teams, where compile keeps team damage OFF (compile.py `friendly_fire`). A
+ *  one-team game (FFA, solo LMS: both declare the single `ffa` team) has no teammates, so no TEAM DAMAGE row. */
+export function hasTeams(cfg: Pick<GameConfig, 'teams'>): boolean {
+  return new Set((cfg.teams ?? []).map(t => t.tid)).size >= 2;
+}

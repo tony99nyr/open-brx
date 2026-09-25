@@ -23,6 +23,21 @@ def test_snapshot_round_trip():
     assert q["node_id"] is None and q["ready"] is False
 
 
+def test_a_feed_only_change_marks_the_snapshot_dirty():
+    """Polish round 2 (F319 d): the feed is in the snapshot, so a new feed row alone must be flushed by
+    `persist_now` (atexit and transitions), or a graceful restart loses it."""
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    s._persist_last = 0.0
+    s._persist()
+    assert not s._persist_dirty
+    s._on_feed({"text": "ROLE DELIVERED", "t_match_s": 0})
+    s.persist_now()
+    saved = json.loads(tmp.read_text())
+    assert saved["feed"][0]["text"] == "ROLE DELIVERED", saved["feed"][:1]
+
+
 def test_snapshot_round_trips_only_dict_feed_rows_and_caps_to_200():
     r = mk(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
