@@ -69,3 +69,26 @@ test('BEAT DOWN is the picked fist and impact (B6), not the placeholder initial,
     assert.match(svg, new RegExp(`fill="${P.fg}"`)); assert.match(svg, new RegExp(`stroke="${P.accent}"`), 'the amber impact burst');
   }
 });
+test('BEAT DOWN: the amber burst keeps a clear gap of 1 unit or more from the fist (amber on the fist is 1.6:1 at night)', () => {
+  const svg = medalIcon('melee_kill', { night: true });
+  const g = /data-glyph="fist-impact"><g transform="translate\(([-\d.]+) ([-\d.]+)\) scale\(([\d.]+)\) translate\(([-\d.]+) ([-\d.]+)\)">(.*?)<\/g>(.*?)<\/g>/.exec(svg);
+  assert.ok(g, 'the fist group and the burst');
+  const [tx, ty, s, ux, uy] = g.slice(1, 6).map(Number), fistSrc = g[6], burstSrc = g[7];
+  const X = x => (x + ux) * s + tx, Y = y => (y + uy) * s + ty;
+  // the fist's painted fg, from its rects and its wrist path (the plate-coloured cut strokes are gaps, not fist)
+  const fist = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  for (const m of fistSrc.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)) {
+    const [x, y, w, h] = m.slice(1).map(Number);
+    fist.x0 = Math.min(fist.x0, X(x)); fist.y0 = Math.min(fist.y0, Y(y)); fist.x1 = Math.max(fist.x1, X(x + w)); fist.y1 = Math.max(fist.y1, Y(y + h));
+  }
+  const path = /<path d="([^"]+)" stroke="[^"]+" stroke-width="([\d.]+)"/.exec(burstSrc);
+  assert.ok(path, 'the burst rays');
+  const half = Number(path[2]) / 2;
+  assert.equal([...path[1].matchAll(/M/g)].length, 3, 'three rays');
+  for (const seg of path[1].matchAll(/M(-?\d*\.?\d+) (-?\d*\.?\d+)l(-?\d*\.?\d+) ?(-?\d*\.?\d+)/g)) {
+    const [x, y, dx, dy] = seg.slice(1).map(Number);
+    const ray = { x0: Math.min(x, x + dx) - half, y0: Math.min(y, y + dy) - half, x1: Math.max(x, x + dx) + half, y1: Math.max(y, y + dy) + half };
+    const gap = Math.max(fist.x0 - ray.x1, ray.x0 - fist.x1, fist.y0 - ray.y1, ray.y0 - fist.y1);
+    assert.ok(gap >= 1, `a ray ${JSON.stringify(ray)} comes within ${gap.toFixed(2)} of the fist ${JSON.stringify(fist)}`);
+  }
+});
