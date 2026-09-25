@@ -2,7 +2,7 @@
 
 2026-09-24. A deterministic simulator of the gun's audio channel, built from the bench, and ten game situations run
 through it twice: (A) the app before the announcer queue (0.4.11 plus F348's spawn at full shield and F349's
-four-grant recharge) and (B) the announcer queue, on main since `2c3ebb68` and first shipped in 0.4.12
+four-grant recharge) and (B) the announcer queue, on main since `2c3ebb68` and due in 0.4.12
 (`docs/announcer.md`). B runs the REAL `Announcer` and `GunAudio` from
 `app/src/announcer.js`, with the engine's glue around them mirrored, so the spec cannot drift from the queue's code.
 
