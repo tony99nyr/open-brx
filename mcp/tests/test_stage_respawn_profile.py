@@ -273,3 +273,37 @@ def test_death_end_panic_and_a_head_clear_both_pendings():
             n = len(tx(mgr)); clock.advance(5); st.poll(); await settle(st)
             assert LIVE not in tx(mgr)[n:] and OFF not in tx(mgr)[n:], f"{how}: nothing written afterwards"
     asyncio.run(run())
+
+
+# ---- utility.md §2 (Tony 2026-09-24): the station-revive bit on the player advert ----------------------------
+
+BEACON_JS = ENGINE_JS.parent / "beacon.js"
+
+
+def test_the_player_advert_decodes_bit6_revived_as_beacon_js_does():
+    """beacon.js `PLAYER_STATE.revived` = 0x40, with the station id in `value`. The stage decodes the same byte."""
+    from brx_mcp.stage.stage import PLAYER_STATE, REVIVE_ADVERT_S, decode_advert_uuid, encode_advert_uuid, player_state_flags
+    js = BEACON_JS.read_text(encoding="utf-8")
+    assert "revived: 64 }" in js and PLAYER_STATE["revived"] == 0x40
+    assert f"REVIVE_ADVERT_MS = {int(REVIVE_ADVERT_S * 1000)};" in js
+    d = decode_advert_uuid(encode_advert_uuid("player", 7, 0, 1, PLAYER_STATE["alive"] | PLAYER_STATE["revived"], 5))
+    assert d is not None and d["value"] == 5
+    assert player_state_flags(d["state"]) == {"alive", "revived"}
+    assert player_state_flags(PLAYER_STATE["alive"]) == {"alive"}, "control: no bit6, no revived"
+
+
+def test_a_station_revive_holds_revive_advert_for_5s_and_a_timed_one_never_sets_it():
+    """engine.js `state().reviveAdvert`: the station id for REVIVE_ADVERT_MS after a STATION revive, else None."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st)
+        assert st.state()["model"]["revive_advert"] is None, "control: nothing before a revive"
+        await _revive(st, clock, station=3)
+        assert st.state()["model"]["revive_advert"] == 3
+        clock.advance(4.75)
+        assert st.state()["model"]["revive_advert"] == 3, "still held inside 5 s"
+        clock.advance(0.25)
+        assert st.state()["model"]["revive_advert"] is None, "cleared at 5 s"
+        await _revive(st, clock)
+        assert st.state()["model"]["revive_advert"] is None, "a timed revive never sets it"
+    asyncio.run(run())

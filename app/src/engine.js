@@ -12,7 +12,7 @@
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S } from './transport/contract.gen.js';   // the spawn-kill window (2026-09-19) and the A16.3 readout timings (F52)
-import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
+import { stationView, TEAM_ANY, REVIVE_ADVERT_MS } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS } from './announcer.js';   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
 export const C = {
@@ -3673,6 +3673,10 @@ export class Engine {
     const protectMs = this._protectOwedMs();   // F289: sent at once, so MC knows of the window even if the phone dies inside it
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}), ...(protectMs ? { protect_ms: protectMs } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     this.moment = { kind: 'redeploy', at: this.now() };
+    // utility.md §2 (Tony 2026-09-24): a STATION revive holds player advert bit6 `revived` with the station id for
+    // REVIVE_ADVERT_MS, so the station counts it from the bit, with no MC relay. Timed, operator and resync revives
+    // never set it; a second station revive restarts the hold with its own id. `state().reviveAdvert` reads it.
+    this._reviveAdvert = stationId != null && !operator && !resync ? { station: stationId, at: this.now() } : null;
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
     if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
@@ -6900,6 +6904,9 @@ export class Engine {
       powerup: this.powerupView(now), powerupSpawn: this.powerupSpawn || null, powerupGrant: this.powerupGrant || null, powerupSwap: this.powerupSwap || null,
       // A56 claim: {station, claiming, ready, progress} while this phone stands in range of an item that is there. app.js
       // turns it into the player advert's `claiming` / `claim_ready` bits with the station id in `value`.
+      // utility.md §2: the station id while a station revive's REVIVE_ADVERT_MS hold runs, else null. A death ends it,
+      // so the next revive at the same station is a fresh rising edge. app.js puts it on the advert (beacon.js playerAdvertFields).
+      reviveAdvert: this._reviveAdvert && this.alive && this.phase === 'live' && now - this._reviveAdvert.at < REVIVE_ADVERT_MS ? this._reviveAdvert.station : null,
       powerupClaim: this._puClaim && this._puItems() ? { station: this._puClaim.station, claiming: true, ready: this._puClaim.readyAt != null,
         progress: Math.min(1, (now - this._puClaim.since) / POWERUP_DWELL_MS) } : null,   // QA-05: {kind: 'hill_captured'|'hill_lost', at}, the transition `_hillSay` just announced; presentation only, cleared in tick()
       // The control point as the hill logic reads it: {owner (2 = neutral), at, from_neutral}, null once

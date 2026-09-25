@@ -314,6 +314,15 @@ def dot_echo_matches(echo: "DotEchoState", before: dict[str, int], after: dict[s
 # so `rising` and `falling` CAN both be set, and that reads as direction UNKNOWN (§5d.3), never as either.
 CONTROL_STATE = {"held": 1, "contested": 2, "rising": 4, "falling": 8}
 STATION_TEAM_ANY = 255         # beacon.js TEAM_ANY: advert byte 9 "neutral / any team"
+# beacon.js `PLAYER_STATE`: the player advert's state byte (utility.md §2). bit6 `revived` rides for REVIVE_ADVERT_S
+# after a STATION revive, with that station's id in `value` (it wins the value byte over a claim).
+PLAYER_STATE = {"alive": 1, "planting": 2, "defusing": 4, "extracting": 8, "claiming": 16, "claim_ready": 32, "revived": 64}
+REVIVE_ADVERT_S = 5.0          # beacon.js REVIVE_ADVERT_MS
+
+
+def player_state_flags(state: int) -> set[str]:
+    """The named bits of a player advert's state byte (beacon.js `PLAYER_STATE`), bit6 `revived` included."""
+    return {k for k, bit in PLAYER_STATE.items() if int(state) & bit}
 # app/src/beacon.js: the 16-byte advert layout the phone's scanner decodes (one 128-bit service UUID).
 ADVERT_MAGIC = (0x4F, 0x42, 0x52, 0x58)
 ADVERT_VERSION = 1
@@ -581,6 +590,7 @@ class GunStage:
         self._trigger_pending: dict | None = None  # {at, due} while a timed spawn/revive holds the trigger
         self._down_warn = 1                        # the down-screen warning level, 1..DOWN_WARN_MAX
         self._timed_life_at: float | None = None   # now() of the last timed revive, for the spawn-kill window
+        self._revive_advert: tuple[int, float] | None = None   # engine.js `_reviveAdvert`: (station id, now()) of the last STATION revive
         self._shield_at = float("-inf")            # the last shield re-assert after a hit
         self._pre_armed = False                    # engine.js `_preArmed`: the T-3 table take is written once per match
         # F121 rebuild (engine.js `_sirLive` / `_sirGen`): is the gun's `$SIR` table the live one? Any write with a
@@ -2236,6 +2246,8 @@ class GunStage:
         if self._arm_pending is not None and self._arm_pending["until"] <= 0 and self.connected:
             self._arm_life("no protection")
         self._moment = ("redeploy", self.now())                       # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
+        # engine.js `_revive` (utility.md §2): a station revive holds advert bit6 `revived` for REVIVE_ADVERT_S; any other clears it
+        self._revive_advert = (int(station), self.now()) if station is not None else None
         self._event_now("respawned", sound=False)                     # the lights; the sound went out with the revive write
         self.carrying = None; self._active_role = None
         if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]):
@@ -4680,6 +4692,12 @@ class GunStage:
                 "hill": 15, "hill_capture": 15, "hill_was_neutral": 15}
         return {k: {"proto": p, "registers": p in protos} for k, p in need.items()}
 
+    def _revive_advert_view(self) -> int | None:
+        """engine.js `state().reviveAdvert`: the station id while a station revive's REVIVE_ADVERT_S hold runs and the
+        player is alive (a death ends it), else None."""
+        r = self._revive_advert
+        return r[0] if r is not None and self.alive and self.now() - r[1] < REVIVE_ADVERT_S else None
+
     def state(self) -> dict:
         hs = self.bundle.get("headset") or {}
         return {
@@ -4701,6 +4719,7 @@ class GunStage:
                       # from_neutral}, null once presence has expired). Derived from `beacon`, not a second source.
                       "beacon": dict(self.beacon) if self.beacon else None,
                       "pool_stale": self.pool_stale(),   # F208 (engine.js `state().poolStale`)
+                      "revive_advert": self._revive_advert_view(),   # engine.js `state().reviveAdvert`: the station id during the hold, else None
                       "cure": dict(self.cure) if self.cure else None,   # F264 (engine.js `state().cure`): null, or {verdict, at}
                       "hill": dict(self.hill) if self.hill else None,
                       # F54: the reload in flight ({at, s, slot}, null when none) and what the gun last REPORTED.

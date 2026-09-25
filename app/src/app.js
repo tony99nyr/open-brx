@@ -14,7 +14,7 @@ import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
 import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
 import { makeWsFactory } from './transport/netsocket.js';
-import { Presence, encodeUuid, stationView, AdvertGate, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
+import { Presence, encodeUuid, stationView, AdvertGate, configGameByte, playerAdvertFields } from './beacon.js';   // utility items (docs/spec/utility.md)
 import { playerClaimAdvert } from './powerup.js';                     // A56: the powerup claim bits on the player advert
 import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
@@ -225,18 +225,20 @@ async function syncPlayerAdvert() {
   // A56 (powerups): while this phone claims a station's item it adds `claiming`, then `claim_ready`, with the station id
   // in `value`, and advertises in low-latency mode so the station hears it inside the 1 s dwell.
   const claim = playerClaimAdvert(st.powerupClaim);
+  // utility.md §2: bit6 `revived` after a station revive; it wins `value` over a claim.
+  const adv = playerAdvertFields({ alive: st.alive, claim, revive: st.reviveAdvert });
   // Only a utility station reads a player advert, so a game with no stations advertises nothing: every
   // other phone's scan would carry it over its own bridge for no reader (bench 2026-09-17 flood).
   const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(engine.config))
-    ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits, value: claim.value, game: configGameByte(engine.config) }) : null;
+    ? encodeUuid({ role: 'player', id: num, team: tid, state: adv.state, value: adv.value, game: configGameByte(engine.config) }) : null;
   const action = playerAdvertGate.due(want, Date.now());
   if (!action) return;
   playerAdvertBusy = true;
   try {
     if (action === 'start') {
-      await plugins.beacon.start({ uuid: want, txPower: 'medium', mode: claim.mode });
+      await plugins.beacon.start({ uuid: want, txPower: 'medium', mode: adv.mode });
       playerAdvertGate.started(want, Date.now());
-      log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}${claim.bits ? ` · ${st.powerupClaim.ready ? 'CLAIM READY' : 'claiming'} station ${claim.value}` : ''}`, 'li');
+      log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}${Number.isFinite(st.reviveAdvert) ? ` · REVIVED at station ${st.reviveAdvert}` : claim.bits ? ` · ${st.powerupClaim.ready ? 'CLAIM READY' : 'claiming'} station ${claim.value}` : ''}`, 'li');
     } else { await plugins.beacon.stop(); playerAdvertGate.stopped(); }
   } catch (e) {
     // ⚠ The gate records nothing for a failed call, so retried after ADVERT_FAIL_BACKOFF_MS. The one that matters is the start that

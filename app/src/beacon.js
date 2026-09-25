@@ -13,9 +13,11 @@
 //   9    team              0..3 = the gun's $TID team, 255 = neutral / any team
 //   10   state             kind-specific (respawn: 1 ready · 0 disabled; bomb: 0 idle 1 planted 2 defused 3 detonated;
 //                           player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting, bit4 claiming,
-//                           bit5 claim_ready (A56 powerups: standing at a powerup station, then past the 1 s dwell);
+//                           bit5 claim_ready (A56 powerups: standing at a powerup station, then past the 1 s dwell),
+//                           bit6 revived (REVIVE_ADVERT_MS after a STATION revive; value = that station's id, and it
+//                           wins the value byte over a claim: playerAdvertFields);
 //                           powerup: 1 available · 0 taken (value = seconds to the next spawn; 0 with value 0 = unknown)
-//   11   value             kind-specific small number (seconds left, cooldown, progress %); a claiming player: the station id
+//   11   value             kind-specific small number (seconds left, cooldown, progress %); a claiming or revived player: the station id
 //   12   seq               bumps on every state change so a scanner can tell a fresh advert from a stale one
 //   13   game              the match's game byte from MC (station_config.game = config.game_byte); 0 = any game (a station from another match is ignored)
 //   14   threshold         the station's own "you are AT me" RSSI in dBm as int8 (0 = use the scanner's default).
@@ -29,7 +31,24 @@ export const ROLE = { station: 1, player: 2 };
 export const KIND = { respawn: 1, powerup: 2, extraction: 3, bomb: 4, control: 5 };
 export const KIND_NAME = Object.fromEntries(Object.entries(KIND).map(([k, v]) => [v, k]));
 export const TEAM_ANY = 255;
-export const PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extracting: 8, claiming: 16, claim_ready: 32 };
+export const PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extracting: 8, claiming: 16, claim_ready: 32, revived: 64 };
+/** How long a STATION revive holds bit6 `revived` on the player advert (utility.md §2, Tony 2026-09-24). */
+export const REVIVE_ADVERT_MS = 5000;
+/**
+ * The player advert's state, value and advertise mode (app.js `syncPlayerAdvert`). PURE.
+ *   alive   the alive bit
+ *   claim   powerup.js `playerClaimAdvert` ({bits, value, mode})
+ *   revive  engine `state().reviveAdvert`: the station id while a station revive's hold runs, else null
+ * The value byte is shared: a revive WINS it for its hold. The claim bits are cleared and value = the revive
+ * station's id, so a powerup station never reads a revive as a claim; the claim resumes when the hold ends.
+ * During the hold the phone advertises in low-latency mode, so the station hears the bit inside its 5 s.
+ */
+export function playerAdvertFields({ alive, claim, revive = null }) {
+  const c = claim || { bits: 0, value: 0, mode: 'balanced' };
+  const a = alive ? PLAYER_STATE.alive : 0;
+  if (Number.isFinite(revive)) return { state: a | PLAYER_STATE.revived, value: revive & 0xff, mode: 'lowLatency' };
+  return { state: a | c.bits, value: c.value, mode: c.mode };
+}
 /** A56: how many raw samples the claim range reads a median over (one wild sample out of three is ignored). */
 export const MEDIAN_SAMPLES = 3;
 /** The median of a short list of RSSI samples (the lower middle for an even count). PURE. */
@@ -190,19 +209,32 @@ export function migrateThreshold(saved) {
  * changes. It outlives Presence's expiry on purpose, so a player who died out of earshot and walked in still
  * counts; REVIVE_MEMORY_MAX bounds it. Returns the players counted on this call.
  * The StickS3 copies the old rule (`hardware/m5sticks3/presence.h` ReviveCounter) and needs the same change.
+ *
+ * The revived bit (utility.md §2, Tony 2026-09-24): with the station's own `id`, a player advert showing bit6
+ * `revived` with `value` == the id's low byte counts ONCE per rising edge, with no RSSI test. A player once seen
+ * with bit6 (any value) runs a phone that sends it, so the RSSI rule is off for them from then on; one revive can
+ * never count twice. The RSSI rule stays as the fallback for an older phone that never sends the bit.
  */
 export const REVIVE_MARGIN_DB = 10;
 export const REVIVE_MEMORY_MAX = 256;
-export function countRevives(presence, memory, { team = TEAM_ANY } = {}) {
+export function countRevives(presence, memory, { team = TEAM_ANY, id = null } = {}) {
   const revived = [];
   for (const p of presence.players()) {
     if (p.ageMs != null && p.ageMs > presence.expiryMs) continue;   // a stale entry says nothing new
     if (team !== TEAM_ANY && p.team !== team) continue;
     const alive = !!(p.state & PLAYER_STATE.alive);
-    const m = memory.get(p.id);
+    const bit6 = !!(p.state & PLAYER_STATE.revived);
+    const here = id != null && bit6 && p.value === (id & 0xff);
+    let m = memory.get(p.id);
     if (!m) {
       if (memory.size >= REVIVE_MEMORY_MAX) memory.delete(memory.keys().next().value);
-      memory.set(p.id, { alive, died: false });
+      memory.set(p.id, m = { alive, died: false, bit6: false, here: false });
+      if (!bit6) continue;   // first heard: the RSSI rule needs a death seen first; the bit is its own evidence
+    }
+    if (bit6) m.bit6 = true;
+    if (m.bit6) {   // this phone sends the bit: it alone decides, once per rising edge at THIS station
+      if (here && !m.here) revived.push(p);
+      m.here = here; m.alive = alive; m.died = false;
       continue;
     }
     if (m.alive && !alive) m.died = true;

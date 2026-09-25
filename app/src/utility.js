@@ -367,10 +367,12 @@ function tick() {
   presence.defaultThreshold = thr();
   presence.game = settings.game;
   presence.tick(now);
-  // F344: a revive counts on the player being NEAR, not `present` (beacon.js countRevives says why).
-  for (const p of countRevives(presence, wasAlive, { team: settings.team })) {
+  // F344: a revive counts on the player advert's bit6 `revived` with this station's id (utility.md §2, once per rising
+  // edge), else, for a phone that never sends the bit, on the player being NEAR (beacon.js countRevives says why).
+  for (const p of countRevives(presence, wasAlive, { team: settings.team, id: settings.id })) {
     if (settings.kind !== 'respawn') continue;
-    revives++; log(`player ${p.id} (${TEAM_NAMES[p.team] || p.team}) revived here at ${Math.round(Number.isFinite(p.median) ? p.median : p.rssi)} dBm`, 'lk');
+    const via = p.state & PLAYER_STATE.revived ? 'revived bit' : 'RSSI';
+    revives++; log(`player ${p.id} (${TEAM_NAMES[p.team] || p.team}) revived here (${via}) at ${Math.round(Number.isFinite(p.median) ? p.median : p.rssi)} dBm`, 'lk');
   }
   if (settings.kind === 'control') controlTick(now);
   if (settings.kind === 'powerup') powerupTick(now);

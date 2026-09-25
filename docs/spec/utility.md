@@ -56,13 +56,35 @@ byte  0-3   4F 42 52 58   'OBRX'
       9     team           0..3 = the gun's $TID team · 255 = neutral / any
       10    state          kind-specific (respawn 1 ready/0 disabled · bomb 0 idle 1 planted 2 defused 3 detonated ·
                             player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting,
-                            bit4 claiming, bit5 claim_ready (A56, powerups.md))
-      11    value          kind-specific small number (seconds left, cooldown, progress %; a claiming player: the station id)
+                            bit4 claiming, bit5 claim_ready (A56, powerups.md), bit6 revived (below))
+      11    value          kind-specific small number (seconds left, cooldown, progress %; a claiming or revived player: the station id)
       12    seq            bumps on every state change (a scanner tells fresh from stale)
       13    game           the match's game byte from MC (station_config.game = config.game_byte, A59) · 0 = any game
       14    threshold      the station's own "you are AT me" RSSI, int8 dBm · 0 = scanner default
       15    taker          a powerup station: the player_num that took the item (A56) · 0 = none / other kinds
 ```
+
+**bit6 `revived` (Tony 2026-09-24).** After a STATION revive (§4.1, a revive with `station: <id>`), the player advert
+sets bit6 (0x40) with `value` = that station's id for `REVIVE_ADVERT_MS` = 5000, then clears it. The signal goes phone
+to station over the air, so it works out of MC's Wi-Fi range; no MC relay carries it. The rule:
+
+- Only a station revive sets it. A timed revive, an operator respawn and a resync revive never do.
+- One rising edge per revive. A second station revive inside the hold restarts it with the new id. A death ends the
+  hold, so the next revive at the same station is a fresh edge.
+- The phone advertises in low-latency mode during the hold. Bit6 changes the state byte, so the restart gate
+  (`AdvertGate`) sends the set and the clear at once; the 1 s throttle holds back a `value`-only change only.
+- **A revive wins the shared `value` byte over a powerup claim.** For the 5 s hold, bits 4/5 are cleared and `value`
+  = the revive station's id. The claim resumes when the hold ends (the claim's 1 s dwell starts again). A powerup
+  station never reads a revive as a claim, because it needs bit4 or bit5.
+- A respawn station counts a revive when a player advert shows bit6 with `value` == its own id's low byte, once per
+  rising edge, with no RSSI test. It counts its own team only, or any team at a neutral station. F344's RSSI rule
+  (`beacon.js countRevives`) stays as the fallback for a phone that never sends the bit. Once a player is seen with
+  bit6, the RSSI rule is off for that player, so one revive never counts twice.
+
+Built in `beacon.js` (`PLAYER_STATE.revived`, `playerAdvertFields`, `countRevives` with `id`), `engine.js`
+(`state().reviveAdvert`) and `utility.js`; the stage mirrors the hold (`GunStage` `revive_advert`). Tests:
+`app/test/revive-advert.test.mjs`, `mcp/tests/test_stage_respawn_profile.py`. The StickS3 side is built against this
+section (`hardware/m5sticks3/`).
 
 Codec: `beacon.js encodeUuid()/decodeUuid()`, pinned by `app/test/beacon.test.mjs` (round trip, case and
 dash tolerance, foreign UUIDs rejected, version-gated). Adverts are non-connectable; the Android advert
