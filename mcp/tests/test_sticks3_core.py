@@ -47,6 +47,6 @@ def test_sticks3_core_host_tests_pass():
 def test_sticks3_headers_have_no_arduino_dependency():
     """The core must stay host-testable: nothing in these headers may pull in Arduino."""
     for name in ("brx_ir.h", "brx_advert.h", "control_point.h", "station_link.h", "json_lite.h",
-                 "station_ui.h", "station_screen.h", "presence.h"):
+                 "station_ui.h", "station_screen.h", "presence.h", "stick_state.h"):
         text = (CORE / name).read_text(encoding="utf-8")
         assert "Arduino.h" not in text and "M5Unified" not in text, f"{name} includes Arduino"

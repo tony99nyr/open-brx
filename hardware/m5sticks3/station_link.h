@@ -701,11 +701,14 @@ class PowerupSchedule {
 // ---- the CLAIM award (A56, confirmed 2026-09-24) -------------------------------------------------
 // A claiming player's OWN advert sets PLAYER_CLAIMING once it is in range, and PLAYER_CLAIM_READY
 // only after ITS OWN 1 s dwell timer -- the Stick counts no dwell of its own; it awards the FIRST
-// `claim_ready` it hears for its id, while available, at CLAIM_RSSI_FLOOR_DBM or stronger. Ties
+// `claim_ready` it hears for its id, while available, at ANY signal strength. Ties
 // inside one scan batch (more than one phone reads ready in the same BLE scan window) go to the
 // lower player_num; the decision is still made once per batch, not per advert, so a batch is
 // resolved only after every advert in it has been observed.
-constexpr int CLAIM_RSSI_FLOOR_DBM = -80;
+// No RSSI floor (Tony, 2026-09-24): the phone's claim_ready already proves it is at the station (its own
+// 1 s dwell on the station's strong advert), while the Stick hears player adverts weakly (bench: -75 to
+// -91 even nearby), so a -80 floor refused real claims. A pickup may sit outside Wi-Fi, so this award
+// and the taker byte in the advert are the whole offline path.
 
 struct ClaimWinner {
   bool won = false;
@@ -725,7 +728,7 @@ class ClaimGate {
     if (!claim_ready) return;
     if (target_station_id != station_id_) return;
     if (game != 0 && game_ != 0 && game != game_) return;
-    if (rssi_dbm < CLAIM_RSSI_FLOOR_DBM) return;
+    (void)rssi_dbm;  // kept in the signature for a future tie-break; no floor
     if (!candidate_seen_ || player_num < candidate_player_num_) {
       candidate_seen_ = true;
       candidate_player_num_ = player_num;
@@ -931,7 +934,7 @@ class StationLink {
   HillUpdate tick_players(const PlayerPresence& players, uint32_t now_ms) {
     HillUpdate u;
     if (has_control_assignment()) u = hill_.update(players, now_ms);
-    else if (has_respawn_assignment()) revives_.update(players);
+    else if (has_respawn_assignment()) revives_.update(players, assignment_.id);
     return u;
   }
 
