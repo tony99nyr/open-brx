@@ -79,7 +79,7 @@ The voice pack has **seventeen wire slots**, `$PSET` tokens 7 through 23, in the
 | hitCrit | Critical hit |
 | emptyUnboundButtonSound | Pressing a button with nothing bound (the "can't do that" chirp) |
 | ammoOrGearPickUp | Ammo / gear pickup |
-| energyShieldLoop | Looping shield hum (e.g. `A10`) |
+| energyShieldLoop | Looping shield hum (e.g. `A10`). Stops only when the shield reaches zero, not on `$PLAYX,0,*` (confirmed 2026-09-25). |
 
 The "Get some" respawn line was traced to this block on the bench.
 

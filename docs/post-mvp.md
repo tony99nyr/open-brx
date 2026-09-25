@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id).
+Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -549,6 +549,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 - **S9 🟠** event sound pass on the gun stage, mostly closed by ear 2026-09-11 (evening) — what is left is the mode-preset sweep. `extraction_closing` = V114 ("10 seconds", Halo voice; VX0R rejected, it is the numbers/menu announcer). `extraction_complete` = VS7 ("Objective complete" with a call sound, Battle Company announcer voice; VQ8 rejected, the Nexus commander is a zombie/creature voice; VR7 is the same words in an Indian-accented male, kept as a note). `unstoppable` = VX0U ("Domination", Halo voice). `killing_spree` stays VA7K (both reads are clean; VA7K keeps the sting and matches the shipped VA7H/VA7E/VA7Q family). **`extraction_tick` = JAS, in the QUEUE slot (token 4)**, replacing the U100 trial: Tony heard JAS (10.7 s) as "a cool extraction sound, intro hype music" and asked for it to loop for extraction — the tick already re-fires every ~10 s, so JAS in slot 4 queues cleanly (F42.1) and never cuts an announcer line. JAQ (11 s, "good extraction sound too, ticking in the background") is the not-yet-assigned candidate for the window-open phase. U100 and U13 are both real ticks (U13 brighter); U100 goes back to being F44's shield-loop trial. `healed`/`armour_up`/`shield_up` now have sound (see F58(a), closed tonight). Wired: `presentation.py` carries a per-event `slot` field now, `presentation.EVENTS` is pinned by `test_presentation.py`, and `extraction_tick` is `JAS` with `slot: "queue"`. Still open: the mode-preset sweep, and assigning JAQ. `ears`.
 
 - **B11 🟢** "Open BRX connected/disconnected" voice: ids are VA99 / VA9A; back up, convert, USB-load. `build`.
+
+- **P19 🟢 DOES THE NATIVE SHIELDS GAME'S HUM BLOCK ITS OWN VOICE LINES TOO?** Filed 2026-09-25 from the bench sitting A F347 finding: our BLE-driven `$PSET` t23 shield hum (A10) blocks the audio queue for as long as the shield is up. Tony, on whether the stock Callsign Shields mode has the same bug: "maybe its bugged in native too who knows." Untested: whether a native (phoneless, on-gun) Shields game plays the same continuous A10-family hum and whether it blocks the gun's own native voice lines the way it blocks our `$PLAY` queue. `bench`.
 
 - **B14 🟡** voice-pack selection: every character voice uses one 22-slot layout (sound catalog), so the per-character
   map is now derivable without P3. `build`.

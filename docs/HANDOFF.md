@@ -27,15 +27,18 @@ switch. Decided and recorded (do not re-ask): everything in the FOLLOWUPS rows, 
 - **Awaiting Tony:** F221 (look at `C:\Users\Tony\brx-mc-alerts\index.html`) and S32 (the koth and melee art).
 - **Parked, not merged:** `pu-select` 1fb1aec9 (brx5, SELECT swap; later powerup work on main likely supersedes it).
 ## Lane: brx2, bench, audio, utility and docs
-2026-09-24 bench: Blocks 0, 1, 1.4, 3.1-3.3, 4.3 and 7.11 ran (F297 laptop control 10/10, median 1.37 s). Built:
-the gun-audio FIFO simulator ([`audio-queue-scenarios.md`](audio-queue-scenarios.md)), the utility-screen rebuild,
-the F365 phone half (`f22ebe66`), this docs pass, and runbook Block 11 (F350, the powerup claim, F365, F364,
-auto-join, death first) plus a rewritten 4.11 (the claim calibration, phone station and Stick).
-- **Next bench task:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); Block 10
-  step 4 settles F347's `$PSET` t23 value, do not ship a t23 change before it. Then the LATER list, by setup:
-  screamers A7/A8 (F269, F270), A1c/A13 (F272, F274), sitting 5 (F264, F277, F237).
-2026-09-25 desk (for brx1): F164 fixed (a reconcile re-arms the live counts, also after an app restart); F161 was
-already fixed by F258, now guarded by a test; F342 has no phone desk work left and moved to bench sitting C.
+2026-09-25 bench: **sitting A done** ([`bench-2026-09-25.md`](bench-2026-09-25.md), gun Tactix-FE30, rig board B on
+COM8). A4 PASSES: `$*` clears the stale-token corruption on v4.32, so F341 may ship (F341 closed, all four
+pool-repair lines PASS). F347's answer is **t23 EMPTY**: `$PLAYX,0` does not stop the A10 hum while the shield is
+up (protocol/brx-protocol.md corrected), only shield 0 does; EMPTY plays every queued clip at once. F350: H22
+(`hitShield`) is a pool with a random rattle tail; Tony picks H21. F349 4.19 parts 1-3: N102 reads as "shields
+full", "Shields Online" should not play. The Burst Rifle gap (3.2) reads 600-691 ms, an upper bound consistent
+with the shipped t23 = 540. Full write-up: `experiment-log/2026-09.md`'s 2026-09-25 bench entry. New rows: F376
+(board B needs a reflash, `ir_emit.ino` misreads `--gap`), F378 (a tight `$PLAY` burst drops a clip and reorders
+the rest; the simulator does not model it), P19 (does the native Shields hum block its own voice lines too).
+**Stop point 1: sitting A's results (A4, F341, F347, F350) sent to brx1.**
+- **Next bench task:** sitting B (the Stick), [`bench-2026-09-25.md`](bench-2026-09-25.md). Then the LATER list, by
+  setup: screamers A7/A8 (F269, F270), A1c/A13 (F272, F274), sitting 5 (F264, F277, F237).
 - **Next desk task:** none open. R4/T5 read-only research is authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control

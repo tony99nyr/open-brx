@@ -791,3 +791,8 @@ closed in the same pass, each checked against the code, the git log or the exper
 - 2026-09-25 **F161** already fixed by the F258 picker rewrite (2026-09-18): a gun that appears while the list is open
   gets its row at the next paint. `app/test/gunpicker-live.test.mjs` guards it on the real `_idle()` markup.
 - 2026-09-25 **F319** built (`3ba7fb23`, `d79a268e`, polish `d1a6763f`, `cb16c008`): the infected alert reaches survivors only; the extraction alert is silent; the event feed survives an MC restart; MC setup says what each hill source announces; the recap carries `played_s` and `lan.public.was_up` latches. (c) and (f) needed no build.
+- 2026-09-25 **F341** closed: bench sitting A, screamers A4, PASSES 3/3 (garbled-then-reset `$AMMO` reads correct;
+  no reset gives a `$ALCD` BAD FRAME), so the `$*` fix may ship. All four F341 pool-repair lines PASS 3/3 on
+  `bench-2026-09-24.md` Block 2 step 6 (the field shape reproduces on line 2, the reset fixes it on line 3, and the
+  node's repair on a 4545/7070 gun holds through one rig hit on line 4). See `experiment-log/2026-09.md`'s
+  2026-09-25 bench entry.
