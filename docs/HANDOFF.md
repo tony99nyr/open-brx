@@ -46,15 +46,17 @@ APKs 0.4.7-0.4.11 published, each on green CI. The MC halves of A60-A67 are on m
 - **Desk (MVP):** Q13 (check compile keeps team damage off everywhere; label it TEAM DAMAGE: OFF), B21 (the WebView
   debugging toggle, default on; release-sign stays at each cut), F319 (d) and (e), S32 (the KOTH art), the MC half of F372.
 ## Lane: brx4, the StickS3
-Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill and revive
-counting are post-MVP (F338, F314, F344). On main: F365 on the Stick (`e9e81efc`, hold A 5 s on STATS), the side-button
-lock (F332), a pickup claim at any strength (`e879b9db`), `presence.h`, the host screen simulator and
-`hardware/player-sim`.
+Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
+counting and the SETTINGS screen are post-MVP (F338, F314, F344). On main: F365 on the Stick (`e9e81efc`), the
+side-button lock (F332), a pickup claim at any strength (`e879b9db`), `presence.h`, the host screen simulator,
+`hardware/player-sim`, and (2026-09-25) F374: a pickup Stick waits for START's `station_update` before it offers its
+item, with the phone guard in `_puClaimable`. F333's desk half is closed: every MVP screen is wired and gated.
 - **Next bench task:** sitting B of [`bench-2026-09-25.md`](bench-2026-09-25.md): F332's physical click, the pickup
-  online and offline, the hill with real phones (H9), F353's phone half, then 11.5 (F365).
-- **Next desk task:** F333's unwired screens (hill capturing or contested, an empty pickup, settings); F342 (a
-  powerup or control-point game still floods the scan: a slower advert or a native filter).
-- **Resume:** worktree `/home/tony/brx4-l3`. Native Windows MC for mDNS:
+  online and offline, F374 (LOBBY to START, then the carry-out A/B/A), F333 (the lit screens), the hill with real
+  phones (H9), F353's phone half, then 11.5 (F365).
+- **Next desk task:** F342 (a powerup or control-point game still floods the scan: a slower advert or a native filter).
+- **Resume:** a fresh worktree off `origin/main` (the old `/home/tony/brx4-l3` and `/home/tony/brx4-f333` are
+  disposable). Native Windows MC for mDNS:
   `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785 --ws-port
   8786 --ephemeral --powerups`.
 ## Lane: brx5, powerups, the HUD and gun audio

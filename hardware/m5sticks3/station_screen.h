@@ -126,7 +126,7 @@ enum class ScreenKind : uint8_t {
   HILL_CONTESTED,
   PICKUP_READY,
   PICKUP_TAKEN,
-  PICKUP_EMPTY,
+  PICKUP_EMPTY,  // F374: armed, no station_update from MC yet (the schedule is unknown)
   RESPAWN_OWNED,
   RESPAWN_IDLE,
   SCR_DIAGNOSTICS,
@@ -282,6 +282,7 @@ struct StickState {
 
   // powerup (A56, station_link.h's PowerupSchedule)
   bool powerup_present = false;
+  bool powerup_known = false;
   bool powerup_available = true;
   uint8_t powerup_taker = 0;
   uint32_t powerup_remaining_s = 0;
@@ -409,7 +410,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     spec.tx_pin = s.tx_pin;
     spec.stats_kind = s.stats_kind_label;
     spec.stats_last_taken = s.stats_last_taken;
-    spec.stats_next_spawn = s.powerup_present ? (s.powerup_available ? std::string("AVAILABLE")
+    spec.stats_next_spawn = s.powerup_present ? (!s.powerup_known ? std::string("-") : s.powerup_available ? std::string("AVAILABLE")
                                                                       : format_mmss(s.powerup_remaining_s))
                                                : std::string("-");
     spec.stats_mc_link = link_state_label(s.link_state);
@@ -472,7 +473,9 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     spec.item_name = s.item_name;
     spec.item_color_hex = s.item_color_hex;
     spec.item_is_special = s.item_is_special;
-    if (s.powerup_available) {
+    if (!s.powerup_known) {
+      spec.kind = ScreenKind::PICKUP_EMPTY;
+    } else if (s.powerup_available) {
       spec.kind = ScreenKind::PICKUP_READY;
     } else {
       spec.kind = ScreenKind::PICKUP_TAKEN;

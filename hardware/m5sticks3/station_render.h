@@ -335,7 +335,7 @@ inline void drawPickup(M5Canvas& c, const ScreenSpec& s) {
     float frac = s.pickup_frac_pct / 100.0f;
     if (frac > 0.0f) c.drawArc(cx, cy, r - 1, r + 1, -90, -90 + 360 * frac, COL_WARN);
     fitCenterText(c, cx, 110, "NEXT SPAWN " + s.next_spawn, TEXT_MAX_W, {&fonts::FreeSansBold9pt7b}, COL_WARN);
-  } else {  // PICKUP_EMPTY (unreached today; see station_screen.h's class comment)
+  } else {  // PICKUP_EMPTY: armed, no schedule from MC yet (F374)
     fitCenterText(c, SCREEN_W / 2, 46, s.item_name, TEXT_MAX_W, {&fonts::FreeSansBold12pt7b}, COL_DIM);
     fitCenterText(c, SCREEN_W / 2, 88, "EMPTY", TEXT_MAX_W, {&fonts::FreeSansBold24pt7b}, COL_DIM);
   }

@@ -298,6 +298,17 @@ update's own implied next spawn is at least half a `spawn_every_s` interval past
 -- otherwise it is a stale echo of the claim that already happened, and applying it would silently
 un-claim an item a player is legitimately holding.
 
+**F374: a powerup arm starts unknown, not available.** Like the phone station (`app/src/powerup.js`), a
+new arm advertises all-zero (state 0, value 0, taker 0), awards no claim and shows PICKUP_EMPTY until
+MC's first `station_update`, which MC sends at START and which anchors `first_at_s`. Under `MUSTER` a
+powerup keeps Wi-Fi up for that update while MC is live, with no timeout (after a restore too, so a
+reboot in LOBBY still hears START). If MC goes out of reach first (a blip, or the operator carries the
+Stick out before START, as the placement flow in `docs/spec/utility.md` does), the Stick falls back to
+available at once. Once Wi-Fi itself is lost it rejoins for `MUSTER_WAIT_OFFLINE_MS` (60 s), then takes
+the drop; with Wi-Fi up it keeps waiting, so a Stick whose MC restarts in LOBBY still hears START. **The
+limit:** a Stick that leaves Wi-Fi before START, or restarts offline mid-match, offers its item before
+`first_at_s`, because it has no anchor.
+
 **CLAIM** (`ClaimGate`) scans for a player phone's own advert (role 2, state bit 4 `claiming`, bit 5
 `claim_ready`, `value` = the target station id, `id` = the claimant's player_num) and awards the
 first `claim_ready` heard for its own id, at any signal strength (no floor since 2026-09-24: the Stick hears phones weakly), ties going to the lower player_num
@@ -362,7 +373,9 @@ refuse/accept rule (polish round 2) -- built from the coordinator's brief alone,
 4. From MC's ITEMS panel, assign the Stick as RESPAWN or CONTROL (POWERUP/EXTRACTION/BOMB arm but
    have no player-side rule yet, §5g.5) and confirm `STATUS` shows `kind=... id=... game=...` and the
    advert UUID changes (`stick.py ble` from another device).
-5. For a POWERUP: arm it with an item, confirm the advert shows state 1 (available) at first, then
+5. For a POWERUP: arm it with an item, confirm the advert reads all-zero (state 0, PICKUP_EMPTY) until
+   MC sends its first `station_update` at START (F374: `available:false` with the countdown to
+   `first_at_s`, so state 0 with a value), then confirm the advert shows state 1 (available) at the spawn, then
    claim it from a player phone and confirm state flips to 0 with a plausible countdown in `value`
    and the taker's player_num in the last byte.
 6. Try `LINK HELD` vs the `LINK MUSTER` default and watch whether the advert stays live at go-live.
@@ -481,8 +494,10 @@ gesture changes any station state -- see "Buttons and power" below.
   and REDEPLOY flash are post-MVP, see "Bluetooth stations"); a station for any team (team 255) shows ANY TEAM in the neutral colour. IDLE is shown only when the advert is down, and says ADVERT DOWN
   rather than render.py's AWAITING ASSIGNMENT. An extraction/bomb assignment shows the generic
   ASSIGNED screen.
-- PICKUP_EMPTY: nothing in `StationItem`/`PowerupSchedule` tracks a globally-exhausted item, only
-  available/taken.
+- PICKUP_EMPTY: not a globally-exhausted item (nothing in `StationItem`/`PowerupSchedule` tracks
+  that). F374: it means the station is armed but MC has never sent a `station_update` for it, so the
+  schedule is UNKNOWN (`PowerupSchedule::known()` false): waiting for MC's first `station_update`,
+  sent at START.
 - SETTINGS: not wired to any button flow yet (`ID`/`GAME`/`TXPIN` stay serial-only); the renderer
   exists, `compute_screen()` never produces it.
 - A welcomed-but-not-yet-armed link (MC found, no `station_config` applied yet) shows LINKED /
@@ -632,7 +647,8 @@ mid-match comes back as the same station at once, unlocked, with a fresh schedul
 `restored=1` until MC sends a config again. A restored Stick does not know whether the match is still
 running, so even under MUSTER it tries to rejoin Wi-Fi. If MC answers, MC's current config replaces
 the restored one (with the remaining lock, once MC sends `lock_s` (A58)), and the MUSTER drop waits
-for MC's next `station_update` (at most 2 s) so the schedule is re-anchored first. If not, the Stick
+for MC's next `station_update` so the schedule is re-anchored first: at most 2 s, or for a powerup
+until START while MC is live (F374). If not, the Stick
 keeps playing the restored station. A WELCOME from a different MC session erases the saved config and
 drops a still-restored assignment back to UNASSIGNED. `control{cmd:"release_utility"}` also erases
 it. With no Wi-Fi SSID set (bench mode) the Stick never restores. A button

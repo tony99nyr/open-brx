@@ -257,13 +257,19 @@ static void test_threshold_zero_or_absent_means_the_sticks_own_default() {
 
 // --- the powerup schedule (state/value/taker, self-spawn, NOT pickup mechanics) ------------------
 
-static void test_powerup_schedule_defaults_to_available_with_no_report_yet() {
+static void test_powerup_schedule_starts_unknown_without_a_report() {
   PowerupSchedule s;
-  CHECK(s.available());
+  CHECK(!s.available());
+  CHECK(!s.known());
+  CHECK(!s.tick(60000));
   PowerupAdvertView v = s.view(5000);
-  CHECK_EQ(v.state, (uint8_t)1);
+  CHECK_EQ(v.state, (uint8_t)0);
   CHECK_EQ(v.value, (uint8_t)0);
   CHECK_EQ(v.taker, (uint8_t)0);
+  StationUpdateMsg u; u.present = true; u.available = true;
+  s.apply_update(u, 60000);
+  CHECK(s.known());
+  CHECK(s.available());
 }
 
 static void test_powerup_schedule_taken_counts_down_locally_from_the_last_update() {
@@ -438,6 +444,11 @@ static void test_claim_gate_ignores_a_dead_claimant_and_player_zero() {
   a.kind = "powerup";
   a.id = 8;
   link.apply_station_config(a, 0);
+  StationUpdateMsg u;  // F374: a fresh arm starts unknown; feed MC's first update so this test still
+  u.present = true;    // checks what it was written for (a no-player win is not an award).
+  u.id = 8;
+  u.available = true;
+  link.apply_station_update(u, 50);
   ClaimWinner zero;
   zero.won = true;  // a winner with no player is not an award
   CHECK(!link.award_claim(zero, 100));
@@ -570,6 +581,11 @@ static void test_switching_away_and_back_to_powerup_resets_the_schedule() {
   p2.kind = "powerup";
   p2.id = 8;
   link.apply_station_config(p2);
+  StationUpdateMsg u2;  // F374: the re-arm starts unknown; MC's first update since the switch back
+  u2.present = true;    // proves the reset, not the first powerup's leftover state.
+  u2.id = 8;
+  u2.available = true;
+  link.apply_station_update(u2, 2000);
   CHECK(link.powerup().available());
   CHECK_EQ(link.powerup().taker(), (uint8_t)0);
 }
@@ -597,6 +613,11 @@ static void test_reassigning_a_powerup_to_a_new_id_resets_the_schedule() {
   p2.kind = "powerup";
   p2.id = 9;  // same kind, different id
   link.apply_station_config(p2);
+  StationUpdateMsg u2;  // F374: the re-arm starts unknown; MC's first update for the new id proves the reset.
+  u2.present = true;
+  u2.id = 9;
+  u2.available = true;
+  link.apply_station_update(u2, 2000);
   CHECK(link.powerup().available());
   CHECK_EQ(link.powerup().taker(), (uint8_t)0);
 }
@@ -694,6 +715,11 @@ static void test_claim_still_awards_after_a_link_drop() {
   a.kind = "powerup";
   a.id = 8;
   link.apply_station_config(a);
+  StationUpdateMsg u;  // F374: a fresh arm starts unknown; MC's first update makes it available to claim.
+  u.present = true;
+  u.id = 8;
+  u.available = true;
+  link.apply_station_update(u, 500);
   link.ws_closed();
   CHECK(link.state() != LinkState::ASSIGNED);
   ClaimWinner w{true, 5};
@@ -816,6 +842,11 @@ static void test_award_claim_enqueues_with_the_station_id_captured_at_award_time
   a.kind = "powerup";
   a.id = 8;
   link.apply_station_config(a);
+  StationUpdateMsg u;  // F374: a fresh arm starts unknown; MC's first update makes it available to claim.
+  u.present = true;
+  u.id = 8;
+  u.available = true;
+  link.apply_station_update(u, 500);
   ClaimWinner w{true, 5};
   CHECK(link.award_claim(w, 1000));
   PendingTakenReport out;
@@ -834,6 +865,11 @@ static void test_a_new_game_clears_unsent_taken_reports() {
   a.id = 8;
   a.game = 1;
   link.apply_station_config(a);
+  StationUpdateMsg u;  // F374: a fresh arm starts unknown; MC's first update makes it available to claim.
+  u.present = true;
+  u.id = 8;
+  u.available = true;
+  link.apply_station_update(u, 500);
   ClaimWinner w{true, 5};
   CHECK(link.award_claim(w, 1000));
   link.apply_station_config(a);            // same game, pushed again
@@ -1271,16 +1307,242 @@ static void test_the_muster_drop_after_a_restore_waits_for_the_re_anchor_or_2_s(
   CHECK(link.apply_station_update(u, t0 + 500));
   CHECK(link.take_muster_drop(t0 + 500));
   CHECK(!link.take_muster_drop(t0 + 600));
-  // No update at all: due after 2 s.
+  // No update at all (a reboot in LOBBY, F374 round 1): a powerup keeps waiting while MC is live, since START's
+  // update is still to come; it drops only once MC has been out of reach for MUSTER_WAIT_OFFLINE_MS.
   StationLink l2;
   l2.restore_station_config(saved.restore());
   l2.apply_station_config(powerup_config(7, 0), t0);
-  CHECK(!l2.take_muster_drop(t0 + 1999));
-  CHECK(l2.take_muster_drop(t0 + 2000));
-  // A drop with no restore is due at once, as before.
+  CHECK(!l2.take_muster_drop(t0 + 2000));
+  CHECK(!l2.take_muster_drop(t0 + 120000));
+  l2.wifi_down();
+  CHECK(!l2.take_muster_drop(t0 + 120000));
+  CHECK(l2.take_muster_drop(t0 + 120000 + MUSTER_WAIT_OFFLINE_MS));
+  // A restored respawn (no schedule to anchor) keeps the 2 s rule.
+  StationLink l4;
+  StationAssignment r = powerup_config(7, 0);
+  r.kind = "respawn";
+  SavedStationConfig saved_r;
+  saved_r.note_applied(r, "s1");
+  l4.restore_station_config(saved_r.restore());
+  l4.apply_station_config(r, t0);
+  CHECK(!l4.take_muster_drop(t0 + 1999));
+  CHECK(l4.take_muster_drop(t0 + 2000));
+  // A drop with no restore, FRESH powerup arm (F374): it waits for MC's first station_update, with no
+  // timeout -- there is no re-anchor to lose, but there is a go-live to wait for.
   StationLink l3;
   l3.apply_station_config(powerup_config(7, 0), 100);
-  CHECK(l3.take_muster_drop(100));
+  CHECK(!l3.take_muster_drop(100));
+  CHECK(!l3.take_muster_drop(60100));  // no timeout: still waiting, however long, for MC's answer
+  StationUpdateMsg u3;
+  u3.present = true;
+  u3.id = 8;
+  u3.available = true;
+  CHECK(l3.apply_station_update(u3, 60200));
+  CHECK(l3.take_muster_drop(60200));
+  CHECK(!l3.take_muster_drop(60300));
+}
+
+// --- F374: the fresh-arm-starts-unknown behaviour, tested end to end -----------------------------
+
+static void test_unknown_schedule_awards_nothing_and_never_self_spawns() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  link.apply_station_config(a, 0);  // a fresh arm: no station_update has ever landed
+  CHECK(!link.powerup().known());
+  ClaimWinner w{true, 5};
+  CHECK(!link.award_claim(w, 1000));  // nothing to win: the station is not known to be available
+  CHECK_EQ(link.powerup().taker(), (uint8_t)0);
+  PowerupAdvertView v = link.powerup().view(1000);
+  CHECK_EQ(v.state, (uint8_t)0);
+  CHECK_EQ(v.value, (uint8_t)0);
+  CHECK_EQ(v.taker, (uint8_t)0);
+  CHECK(!link.tick_powerup(1000000));  // no anchor was ever set: SELF-SPAWN never fires on its own
+  CHECK(!link.powerup().available());
+}
+
+static void test_taken_with_no_anchor_shows_state_zero_not_available() {
+  PowerupSchedule s;
+  StationUpdateMsg u;
+  u.present = true;
+  u.available = false;  // MC gave no next_spawn_in_ms: there is nothing to count down to
+  s.apply_update(u, 5000);
+  CHECK(s.known());
+  CHECK(!s.available());
+  PowerupAdvertView v = s.view(9000);
+  CHECK_EQ(v.state, (uint8_t)0);  // not state 1 ("available"): must not look ready with no anchor
+  CHECK_EQ(v.value, (uint8_t)0);
+  CHECK_EQ(v.taker, s.taker());  // the view faithfully reports the taker, whatever it holds
+}
+
+static void test_muster_fresh_powerup_arm_waits_for_the_first_update_with_no_timeout() {
+  StationLink link;  // MUSTER is the default
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  a.game = 1;
+  link.apply_station_config(a, 0);
+  CHECK(!link.take_muster_drop(100));    // +100 ms: still waiting for MC
+  CHECK(!link.take_muster_drop(60000));  // +60 s: no timeout, still waiting
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = true;
+  CHECK(link.apply_station_update(u, 60050));
+  CHECK(link.take_muster_drop(60050));   // due the instant the update lands
+  CHECK(!link.take_muster_drop(60100));  // and only once
+}
+
+static void test_a_latched_drop_still_rejoins_wi_fi_until_the_radio_actually_drops() {
+  // F374: a powerup Stick waiting for START has latched its drop but is still on Wi-Fi. A Wi-Fi blip then must
+  // not strand it: the glue's rejoin guard reads radio_down_for_match(), which turns true only once the drop is taken.
+  StationLink link;  // MUSTER
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  a.game = 1;
+  link.apply_station_config(a, 0);
+  CHECK(link.dropped_for_match());
+  CHECK(!link.radio_down_for_match());
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = false;
+  u.next_spawn_in_ms = 30000;
+  CHECK(link.apply_station_update(u, 1000));
+  CHECK(link.take_muster_drop(1000));
+  CHECK(link.radio_down_for_match());
+}
+
+static void test_a_waiting_powerup_that_loses_mc_falls_back_to_available_then_drops() {
+  // F374 round 1 (CRITICAL): the spec's flow carries a station out of Wi-Fi BEFORE START. A Stick still waiting
+  // for START's update must not stay unknown (no phone could ever claim it): the moment MC is out of reach it
+  // falls back to available (the pre-F374 behaviour, the documented limit), keeps rejoining for
+  // MUSTER_WAIT_OFFLINE_MS in case it was a blip, then takes the drop.
+  StationLink link;  // MUSTER
+  link.apply_station_config(powerup_config(7, 0), 1000);
+  CHECK(!link.powerup().known());
+  CHECK(!link.take_muster_drop(5000));
+  link.wifi_down();
+  CHECK(!link.take_muster_drop(6000));
+  CHECK(link.powerup().known());
+  CHECK(link.powerup().available());
+  CHECK_EQ(link.powerup().view(6000).state, (uint8_t)1);
+  CHECK(!link.radio_down_for_match());
+  CHECK(!link.take_muster_drop(6000 + MUSTER_WAIT_OFFLINE_MS - 1));
+  CHECK(link.take_muster_drop(6000 + MUSTER_WAIT_OFFLINE_MS));
+  CHECK(link.radio_down_for_match());
+  CHECK(!link.take_muster_drop(6000 + MUSTER_WAIT_OFFLINE_MS + 1));
+}
+
+static void test_a_blip_while_waiting_rejoins_and_start_still_anchors_the_schedule() {
+  StationLink link;  // MUSTER
+  link.apply_station_config(powerup_config(7, 0), 1000);
+  link.wifi_down();
+  CHECK(!link.take_muster_drop(2000));  // offline: the fallback, and the 60 s clock starts
+  // Back: Wi-Fi, MC, welcome, and MC's config again (same game: the schedule is not reset).
+  link.wifi_up();
+  link.mc_address_known();
+  link.ws_open_hello_sent();
+  WelcomeMsg w;
+  w.ok = true;
+  w.session_id = "s1";
+  link.apply_welcome(w);
+  link.apply_station_config(powerup_config(7, 0), 30000);
+  CHECK(!link.take_muster_drop(2000 + MUSTER_WAIT_OFFLINE_MS + 5000));  // live again: still waiting for START
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = false;
+  u.next_spawn_in_ms = 30000;
+  CHECK(link.apply_station_update(u, 100000));
+  CHECK(!link.powerup().available());  // START's anchor beats the fallback
+  CHECK(link.take_muster_drop(100000));
+}
+
+static void test_a_release_while_waiting_for_start_cancels_the_pending_drop() {
+  // F374 round 2: a powerup released before START's update must not keep a pending MUSTER drop that a later loss
+  // of MC would take on an unassigned Stick.
+  StationLink link;  // MUSTER
+  link.apply_station_config(powerup_config(7, 0), 1000);
+  CHECK(link.muster_drop_pending());
+  link.apply_release();
+  CHECK(!link.muster_drop_pending());
+  CHECK(!link.dropped_for_match());
+  link.wifi_down();
+  CHECK(!link.take_muster_drop(2000));
+  CHECK(!link.take_muster_drop(2000 + MUSTER_WAIT_OFFLINE_MS));
+  CHECK(!link.radio_down_for_match());
+}
+
+static void test_an_mc_restart_in_lobby_keeps_waiting_while_wi_fi_is_up() {
+  // F374 round 2: a closed socket with Wi-Fi up (MC restarting, a laptop asleep) is not the field: the Stick falls
+  // back to available, but the offline clock runs only while Wi-Fi itself is down, so START can still anchor it.
+  StationLink link;  // MUSTER
+  link.apply_station_config(powerup_config(7, 0), 1000);
+  link.ws_closed();
+  CHECK(!link.take_muster_drop(2000));
+  CHECK(link.powerup().available());
+  CHECK(!link.take_muster_drop(2000 + 10 * MUSTER_WAIT_OFFLINE_MS));
+  link.wifi_down();  // now Wi-Fi goes too: the clock starts here
+  CHECK(!link.take_muster_drop(700000));
+  CHECK(link.take_muster_drop(700000 + MUSTER_WAIT_OFFLINE_MS));
+}
+
+static void test_a_held_powerup_that_cannot_reach_mc_falls_back_to_available() {
+  // F374 round 3: HELD never drops, but an unknown schedule with MC out of reach must not stay dead either.
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  link.apply_station_config(powerup_config(7, 0), 1000);
+  link.tick_powerup(2000);
+  CHECK(!link.powerup().known());  // MC live: wait for START
+  link.ws_closed();
+  link.tick_powerup(3000);
+  CHECK(link.powerup().known());
+  CHECK(link.powerup().available());
+}
+
+static void test_muster_fresh_non_powerup_arm_drops_at_once() {
+  StationLink link;  // MUSTER is the default
+  StationAssignment a;
+  a.present = true;
+  a.kind = "respawn";
+  a.id = 3;
+  a.game = 1;
+  link.apply_station_config(a, 100);
+  CHECK(link.take_muster_drop(100));  // no schedule to wait on: due at once, as any non-powerup arm
+}
+
+static void test_muster_powerup_rearmed_as_respawn_before_the_update_drops_at_once() {
+  StationLink link;  // MUSTER is the default
+  StationAssignment p;
+  p.present = true;
+  p.kind = "powerup";
+  p.id = 8;
+  p.game = 1;
+  link.apply_station_config(p, 100);
+  CHECK(!link.take_muster_drop(100));  // waiting for MC's first update
+  StationAssignment r;
+  r.present = true;
+  r.kind = "respawn";
+  r.id = 8;
+  r.game = 1;  // the SAME game: re-armed as a different kind before any update ever landed
+  link.apply_station_config(r, 150);
+  CHECK(link.dropped_for_match());
+  CHECK(link.take_muster_drop(150));  // a respawn station has no schedule left to wait for
+}
+
+static void test_restore_of_a_saved_powerup_config_is_known_and_available_at_once() {
+  SavedStationConfig saved;
+  saved.note_applied(powerup_config(7, 900), "s1");
+  StationLink link;
+  CHECK(link.restore_station_config(saved.restore()));
+  CHECK(link.powerup().known());
+  CHECK(link.powerup().available());
 }
 
 // ---- the Bluetooth stations (presence.h), carried by StationLink --------------------------------
@@ -1610,7 +1872,7 @@ int main(int argc, char** argv) {
   test_station_kind_byte_maps_every_kind();
   test_a_respawn_station_advertises_ready_not_disabled();
   test_threshold_zero_or_absent_means_the_sticks_own_default();
-  test_powerup_schedule_defaults_to_available_with_no_report_yet();
+  test_powerup_schedule_starts_unknown_without_a_report();
   test_powerup_schedule_taken_counts_down_locally_from_the_last_update();
   test_powerup_schedule_caps_value_at_255();
   test_powerup_schedule_self_spawns_when_mc_is_unreachable();
@@ -1668,6 +1930,18 @@ int main(int argc, char** argv) {
   test_a_welcome_from_another_session_erases_the_saved_config_and_drops_the_restore();
   test_a_new_session_never_touches_a_config_mc_sent_this_boot();
   test_the_muster_drop_after_a_restore_waits_for_the_re_anchor_or_2_s();
+  test_unknown_schedule_awards_nothing_and_never_self_spawns();
+  test_taken_with_no_anchor_shows_state_zero_not_available();
+  test_muster_fresh_powerup_arm_waits_for_the_first_update_with_no_timeout();
+  test_a_latched_drop_still_rejoins_wi_fi_until_the_radio_actually_drops();
+  test_a_waiting_powerup_that_loses_mc_falls_back_to_available_then_drops();
+  test_a_blip_while_waiting_rejoins_and_start_still_anchors_the_schedule();
+  test_a_release_while_waiting_for_start_cancels_the_pending_drop();
+  test_an_mc_restart_in_lobby_keeps_waiting_while_wi_fi_is_up();
+  test_a_held_powerup_that_cannot_reach_mc_falls_back_to_available();
+  test_muster_fresh_non_powerup_arm_drops_at_once();
+  test_muster_powerup_rearmed_as_respawn_before_the_update_drops_at_once();
+  test_restore_of_a_saved_powerup_config_is_known_and_available_at_once();
   test_a_new_game_resets_the_hill_and_a_same_game_repush_keeps_it();
   test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them();
   test_status_carries_revives_and_hold_ms_additively();

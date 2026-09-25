@@ -78,6 +78,10 @@ EXPECT: dict[str, dict] = {
     "respawn_red": {"kind": "RESPAWN_OWNED", "has": ["RED", "RESPAWN"], "lacks": ["REVIVES"]},
     "respawn_red_player_revived": {"kind": "RESPAWN_OWNED", "lacks": ["REDEPLOY", "REVIVES"], "same_as": "respawn_red"},
     "respawn_advert_down": {"kind": "RESPAWN_IDLE", "has": ["ADVERT DOWN"]},
+    "pickup_armed_waiting": {"kind": "PICKUP_EMPTY", "has": ["ROCKETS", "EMPTY"]},
+    "pickup_carried_out_before_start": {"kind": "PICKUP_READY", "has": ["ROCKETS", "STAND HERE TO TAKE"],
+                                        "same_as": "pickup_ready"},  # the fallback IS the ready state, off MC
+    "pickup_first_spawn_countdown": {"kind": "PICKUP_TAKEN", "has": ["NEXT SPAWN 0:30"], "lacks": ["TAKEN BY"]},
     "pickup_ready": {"kind": "PICKUP_READY", "has": ["ROCKETS", "STAND HERE TO TAKE"]},
     "pickup_ready_shield": {"kind": "PICKUP_READY", "has": ["OVERSHIELD"]},
     "pickup_ready_long_name": {"kind": "PICKUP_READY", "has": ["PLASMA RIFLE"]},

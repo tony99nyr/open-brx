@@ -171,6 +171,10 @@ struct SimStick {
       }
     }
   }
+  void wifi_lost() {  // out of Wi-Fi range: mcLoop sees WiFi.status() drop
+    socket_up = false;
+    link.wifi_down();
+  }
   void muster_drop() {  // mcPerformMusterDrop
     socket_up = false;
     link.wifi_down();
@@ -184,6 +188,7 @@ struct SimStick {
       if (now - last_play_tick >= STATION_TICK_MS) { last_play_tick = now; tick_players(); }
       if (link.has_powerup_assignment()) link.tick_powerup(now);
       link.poll_lock(now);
+      if (link.take_muster_drop(now)) muster_drop();  // mcLoop: a deferred or offline-waiting MUSTER drop
       buttons.poll_timeout(now);
       home.poll_idle(now);
       force.update(false, false, now);
@@ -355,6 +360,11 @@ static std::string cfg(const std::string& kind, int team, int id, const std::str
   return "{\"kind\":\"" + kind + "\",\"team\":" + std::to_string(team) + ",\"id\":" + std::to_string(id) +
          ",\"game\":7" + extra + "}";
 }
+// F374: MC's station_update at a spawn (`_pu_catch_up`): the item is there. At START itself MC sends
+// available:false with the countdown to first_at_s (pickup_first_spawn_countdown).
+static std::string spawn_update(int id) {
+  return "{\"id\":" + std::to_string(id) + ",\"available\":true}";
+}
 static const char* ROCKETS = R"(,"item":{"kind":"weapon","weapon_id":"rockets","spawn_every_s":90,"first_at_s":0,"name":"Rockets","color":"#ff7a1a"})";
 static const char* SHIELD = R"(,"item":{"kind":"overshield","amount":50,"spawn_every_s":60,"first_at_s":0,"name":"Overshield","color":""})";
 static const char* LONGNAME = R"(,"item":{"kind":"weapon","weapon_id":"plasma","spawn_every_s":45,"first_at_s":0,"name":"Plasma Rifle","color":"#b35cff"})";
@@ -438,39 +448,61 @@ static std::vector<Scenario> scenarios() {
     s.advert_fails = true;
   }});
   // ---------------- pickup ----------------
+  v.push_back({"pickup_armed_waiting", "pickup", "Armed pickup, no station_update from MC yet (F374).", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+  }});
+  v.push_back({"pickup_carried_out_before_start", "pickup",
+               "Armed, then carried out of Wi-Fi before START (F374): falls back to available.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.wifi_lost();
+    s.advance(1000);
+  }});
+  v.push_back({"pickup_first_spawn_countdown", "pickup", "MC's first update anchors the first spawn, 30 s out.",
+               [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.frame("station_update", R"({"id":4,"available":false,"next_spawn_in_ms":30000})");
+  }});
   v.push_back({"pickup_ready", "pickup", "Armed pickup, ROCKETS available.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.frame("station_update", spawn_update(4));  // MC's go-live at first_at_s 0
   }});
   v.push_back({"pickup_ready_shield", "pickup", "Armed pickup, OVERSHIELD (no colour from MC).", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 6, SHIELD));
+    s.frame("station_update", spawn_update(6));
   }});
   v.push_back({"pickup_ready_long_name", "pickup", "A 12-character item name (MC's limit).", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 8, LONGNAME));
+    s.frame("station_update", spawn_update(8));
   }});
   v.push_back({"pickup_taken", "pickup", "Player 7 just claimed the ROCKETS.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.frame("station_update", spawn_update(4));
     ClaimWinner w; w.won = true; w.player_num = 7;
     s.link.award_claim(w, s.now);
     s.advance(200);
   }});
   v.push_back({"pickup_countdown", "pickup", "One minute after the claim: 0:30 to the next spawn.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.frame("station_update", spawn_update(4));
     ClaimWinner w; w.won = true; w.player_num = 7;
     s.link.award_claim(w, s.now);
     s.advance(60000);
   }});
   v.push_back({"pickup_respawned", "pickup", "The spawn time passed: available again.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.frame("station_update", spawn_update(4));
     ClaimWinner w; w.won = true; w.player_num = 7;
     s.link.award_claim(w, s.now);
     s.advance(91000);
   }});
   v.push_back({"pickup_stats_long_name", "pickup", "A 12-character item on the STATS page.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 8, LONGNAME));
+    s.frame("station_update", spawn_update(8));
     s.a_click();
   }});
   v.push_back({"pickup_stats", "pickup", "Pickup taken, A pressed: the STATS page.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.frame("station_update", spawn_update(4));
     ClaimWinner w; w.won = true; w.player_num = 7;
     s.link.award_claim(w, s.now);
     s.advance(5000);
@@ -541,6 +573,7 @@ static std::vector<Scenario> scenarios() {
   }});
   v.push_back({"reset_needs_mc", "operator", "Muster pickup (Wi-Fi dropped for the match), B held twice.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.frame("station_update", spawn_update(4));  // MC's go-live: the muster drop can now happen
     s.b_hold(); s.advance(1000); s.b_hold(); s.advance(200);
   }});
   v.push_back({"reset_refused_locked", "operator", "Locked hill, B held: refused.", [](SimStick& s) {
@@ -557,6 +590,7 @@ static std::vector<Scenario> scenarios() {
   }});
   v.push_back({"battery_ok_strip", "operator", "Pickup #4 at 76 % (injected), locked: a full status strip.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, std::string(ROCKETS) + ",\"lock_s\":300"));
+    s.frame("station_update", spawn_update(4));
     s.battery_override = 76;
   }});
   v.push_back({"hill_stats", "operator", "Armed hill, A pressed: the STATS page.", [](SimStick& s) {

@@ -801,8 +801,6 @@ static void mcLoop(uint32_t now) {
     mcScreenWake = true;
     Serial.println("UNLOCKED (match lock ran out)");
   }
-  // A deferred MUSTER drop whose 2 s ran out with no station_update (review round 1).
-  if (link.take_muster_drop(now)) mcPerformMusterDrop();
   const bool wantPmicLock = link.lock().locked(now);
   pmicSync(wantPmicLock, now);  // retries every second until the PMIC reads back what we want
   pmicWatchLoop(wantPmicLock);
@@ -813,6 +811,14 @@ static void mcLoop(uint32_t now) {
     link.wifi_down();
     mcStopMdns();
   }
+  // A deferred MUSTER drop whose 2 s ran out with no station_update (review round 1), or a powerup's
+  // offline wait (F374). After the Wi-Fi refresh above, so a Wi-Fi that just came back is not read as lost;
+  // then return, since `wifiUp` is stale once the radio is dropped (the next loop reads it again).
+  if (link.take_muster_drop(now)) {
+    mcPerformMusterDrop();
+    mcScreenWake = true;
+    return;
+  }
   // Any link state change (Wi-Fi lost, MC found, joined, closed) is an event the operator should see.
   static LinkState lastLinkState = link.state();
   if (link.state() != lastLinkState) { lastLinkState = link.state(); mcScreenWake = true; }
@@ -820,8 +826,9 @@ static void mcLoop(uint32_t now) {
   if (!wifiUp) {
     // Polish round 2 (CRITICAL): a deliberate MUSTER drop must STAY dropped. Without this guard the
     // very next tick's kick re-associated Wi-Fi immediately, undoing the drop `mcHandleFrame` just
-    // performed -- the whole point of MUSTER. `LINK RECONNECT` (below) is the only way past it.
-    if (!link.dropped_for_match() && link.state() == LinkState::JOINING_WIFI && wifiSsid.length() &&
+    // performed -- the whole point of MUSTER. `LINK RECONNECT` (below) is the only way past it. A drop that is
+    // latched but not yet taken (F374: a powerup waiting for START) still rejoins.
+    if (!link.radio_down_for_match() && link.state() == LinkState::JOINING_WIFI && wifiSsid.length() &&
         WiFi.status() != WL_IDLE_STATUS && now - lastWifiKickMs >= WIFI_KICK_MS) {
       // Not cheap: while the driver is still connecting, each call is refused ("sta is connecting,
       // cannot set config") and logged, hundreds of times a second (bench 2026-09-24). Kick at most

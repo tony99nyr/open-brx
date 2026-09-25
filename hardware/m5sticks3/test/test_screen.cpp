@@ -39,6 +39,7 @@ static void test_pickup_ready_vs_taken() {
   StickState s;
   s.at_home = true;
   s.powerup_present = true;
+  s.powerup_known = true;
   s.powerup_available = true;
   s.item_name = "ROCKETS";
   ScreenSpec ready = compute_screen(s);
@@ -64,6 +65,22 @@ static void test_pickup_ready_vs_taken() {
   ScreenSpec anon = compute_screen(s, lookup);
   CHECK(anon.kind == ScreenKind::PICKUP_TAKEN);
   CHECK_EQ(anon.taken_by, std::string(""));
+}
+
+static void test_pickup_unknown_then_taken_without_a_taker() {
+  StickState s;
+  s.powerup_present = true;
+  s.item_name = "ROCKETS";
+  ScreenSpec empty = compute_screen(s);
+  CHECK(empty.kind == ScreenKind::PICKUP_EMPTY);
+  CHECK_EQ(empty.item_name, std::string("ROCKETS"));
+  s.powerup_known = true;
+  s.powerup_available = false;
+  s.powerup_remaining_s = 30;
+  ScreenSpec taken = compute_screen(s);
+  CHECK(taken.kind == ScreenKind::PICKUP_TAKEN);
+  CHECK_EQ(taken.taken_by, std::string(""));
+  CHECK_EQ(taken.next_spawn, std::string("0:30"));
 }
 
 // ---- reset confirm and its draining timeout -------------------------------------------------
@@ -431,6 +448,7 @@ static void test_force_restart_countdown_beats_everything() {
 int main() {
   test_format_mmss();
   test_pickup_ready_vs_taken();
+  test_pickup_unknown_then_taken_without_a_taker();
   test_reset_confirm_timeout_and_hint();
   test_no_reset_offer_without_an_assignment();
   test_joining_says_wifi_connected_only_once_it_is();

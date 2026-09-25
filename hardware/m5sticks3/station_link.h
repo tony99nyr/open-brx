@@ -624,16 +624,21 @@ inline uint8_t station_static_state(const std::string& kind) { return kind == "r
 // announces nothing of its own to players (no LED, no callout) -- they compute "<ITEM> AVAILABLE"
 // from the schedule MC already gave them; this only feeds the advert bytes.
 struct PowerupAdvertView {
-  uint8_t state = 1;
+  uint8_t state = 0;
   uint8_t value = 0;
   uint8_t taker = 0;
 };
 
 class PowerupSchedule {
  public:
+  bool known() const { return known_; }
   bool available() const { return available_; }
   uint8_t taker() const { return taker_; }
   uint32_t anchor_ms() const { return anchor_ms_; }
+  // Restart survival only: a Stick restarted offline mid-match has no anchor, so it offers the item at once.
+  void assume_available() { known_ = true; available_ = true; }
+  // F374 round 1: a Stick that lost MC before START's update falls back the same way; a known schedule is kept.
+  void assume_available_if_unknown() { if (!known_) assume_available(); }
 
   void apply_item(const StationItem& it) {
     if (it.present && it.spawn_every_s > 0) spawn_every_s_ = it.spawn_every_s;
@@ -667,6 +672,7 @@ class PowerupSchedule {
   void apply_update(const StationUpdateMsg& u, uint32_t received_at_ms) {
     if (!u.present) return;
     if (u.available && !should_accept_available(u.reset, u.next_spawn_in_ms, received_at_ms)) return;
+    known_ = true;
     available_ = u.available;
     if (u.next_spawn_in_ms >= 0) {
       anchor_ms_ = received_at_ms + (uint32_t)u.next_spawn_in_ms;
@@ -678,7 +684,7 @@ class PowerupSchedule {
   // The Stick's own local clock (SELF-SPAWN). Call every loop() with the current millis(); returns
   // true the one call that crosses into available, so a caller can log/repaint once.
   bool tick(uint32_t now_ms) {
-    if (available_ || !has_anchor_) return false;
+    if (!known_ || available_ || !has_anchor_) return false;
     if ((int32_t)(now_ms - anchor_ms_) < 0) return false;  // not due yet (wrap-safe signed compare)
     available_ = true;
     taker_ = 0;
@@ -710,7 +716,9 @@ class PowerupSchedule {
 
   PowerupAdvertView view(uint32_t now_ms) const {
     PowerupAdvertView v;
-    if (available_ || !has_anchor_) return v;  // state 1, value 0, taker 0
+    if (!known_) return v;
+    if (available_) { v.state = 1; return v; }
+    if (!has_anchor_) { v.taker = taker_; return v; }
     v.state = 0;
     v.taker = taker_;
     int32_t remaining_ms = (int32_t)(anchor_ms_ - now_ms);
@@ -722,7 +730,8 @@ class PowerupSchedule {
   }
 
  private:
-  bool available_ = true;   // the muster default, before any report has ever arrived
+  bool known_ = false;      // F374: false until MC's first station_update (or a restore), like the phone's null
+  bool available_ = false;
   bool has_anchor_ = false;
   uint32_t anchor_ms_ = 0;
   int spawn_every_s_ = 60;
@@ -862,6 +871,9 @@ class PendingActionQueue {
 
 // How long a MUSTER drop after a restore waits for MC's re-anchoring station_update (review round 1).
 constexpr uint32_t MUSTER_DROP_DEFER_MS = 2000;
+// F374 round 1: how long a powerup Stick still waiting for START's station_update keeps rejoining once MC is out of
+// reach (a blip, or the operator carrying it out to the field), before it takes the MUSTER drop.
+constexpr uint32_t MUSTER_WAIT_OFFLINE_MS = 60000;
 
 // ---- the link state machine ------------------------------------------------------------------
 // Owns no I/O: the .ino drives every transition from a real Wi-Fi/socket event and reads back what
@@ -1098,14 +1110,21 @@ class StationLink {
     // Review round 1 (MEDIUM): after a restore, dropping the radio at once would lose MC's re-anchor
     // (the station_update MC sends right after the config), and under MUSTER nothing else could ever
     // re-anchor the restored schedule. So that one drop is DEFERRED: `take_muster_drop()` answers
-    // true only once the next station_update is applied or MUSTER_DROP_DEFER_MS has passed. Every
-    // other drop is due at once, as before.
+    // true only once the next station_update is applied or MUSTER_DROP_DEFER_MS has passed. A powerup
+    // waits longer (F374, below). Every other drop is due at once, as before.
     if ((game_changed || after_restore) && should_drop_link_at_match_start()) {
       dropped_for_match_ = true;
       drop_pending_ = true;
       drop_deferred_ = after_restore;
+      // F374: a powerup keeps the radio up until MC's first station_update (sent at START) while MC is live. That
+      // update is the only go-live anchor a MUSTER Stick ever gets; without it the Stick would offer its item from
+      // arming, not at first_at_s. After a restore too: a reboot in LOBBY must not skip START's anchor. Once MC is
+      // out of reach, take_muster_drop's offline rule below takes over.
+      drop_wait_for_update_ = a.kind == "powerup";
+      wait_offline_ = false;
       drop_latched_at_ms_ = received_at_ms;
     }
+    if (a.kind != "powerup") drop_wait_for_update_ = false;  // re-armed as another kind: nothing to wait for
     return changed;
   }
 
@@ -1113,9 +1132,28 @@ class StationLink {
   // True exactly once per latched drop, when the radio should actually go down.
   bool take_muster_drop(uint32_t now_ms) {
     if (!drop_pending_ || !dropped_for_match_) return false;
-    if (drop_deferred_ && (uint32_t)(now_ms - drop_latched_at_ms_) < MUSTER_DROP_DEFER_MS) return false;
+    if (drop_wait_for_update_) {
+      // F374 round 1: while MC is live, wait (no timeout). Once it is out of reach (a blip, or the station carried
+      // out before START, as the spec's placement flow does) fall back to available at once, so phones can still
+      // claim, and keep rejoining for MUSTER_WAIT_OFFLINE_MS before the drop. The limit: that item is on offer
+      // before first_at_s.
+      // Round 2: the clock runs only while Wi-Fi itself is down; a closed socket with Wi-Fi up (MC restarting, a
+      // laptop asleep) falls back but keeps waiting, so START can still anchor the schedule.
+      const bool mc_live = state_ == LinkState::WELCOMED || state_ == LinkState::ASSIGNED;
+      if (mc_live) { wait_offline_ = false; return false; }
+      powerup_.assume_available_if_unknown();
+      if (state_ != LinkState::JOINING_WIFI) { wait_offline_ = false; return false; }
+      if (!wait_offline_) {
+        wait_offline_ = true;
+        wait_offline_since_ms_ = now_ms;
+      }
+      if ((uint32_t)(now_ms - wait_offline_since_ms_) < MUSTER_WAIT_OFFLINE_MS) return false;
+    } else if (drop_deferred_ && (uint32_t)(now_ms - drop_latched_at_ms_) < MUSTER_DROP_DEFER_MS) {
+      return false;
+    }
     drop_pending_ = false;
     drop_deferred_ = false;
+    drop_wait_for_update_ = false;
     return true;
   }
   bool muster_drop_pending() const { return drop_pending_ && dropped_for_match_; }
@@ -1123,9 +1161,10 @@ class StationLink {
   // Restart survival (Tony, 2026-09-24): apply the assignment SavedStationConfig kept in flash, at
   // boot, before the link comes up, so the station plays at once. What differs from a live config:
   //   - no lock, ever: the lock is RAM-only and every boot starts unlocked (A58);
-  //   - a fresh schedule (available, no anchor, no taker), as on any new arm; if MC can reach the
-  //     Stick, the station_update it sends after its config re-anchors it (under MUSTER the radio
-  //     stays up for that update, or MUSTER_DROP_DEFER_MS, before it drops: take_muster_drop);
+  //   - a schedule assumed available (no anchor, no taker; F374: a fresh arm starts unknown instead); if
+  //     MC can reach the Stick, the station_update it sends after its config re-anchors it (under
+  //     MUSTER the radio stays up for that update before it drops: MUSTER_DROP_DEFER_MS, or for a
+  //     powerup until START while MC is live; take_muster_drop);
   //   - the link state is left alone: MC has not armed this Stick THIS boot, so status says
   //     armed=false until it does (the screen and the advert read the assignment, not the state);
   //   - it NEVER sets dropped_for_match. A restored muster station cannot know whether the match is
@@ -1153,6 +1192,7 @@ class StationLink {
     if (a.tx_power >= 0) tx_power_.set_mc(a.tx_power);
     if (a.kind == "powerup") {
       powerup_.apply_item(a.item);
+      powerup_.assume_available();
       claims_.configure(a.id, a.game);
     }
     restored_ = true;
@@ -1182,12 +1222,22 @@ class StationLink {
     last_update_at_ms_ = received_at_ms;
     powerup_.apply_update(u, received_at_ms);
     drop_deferred_ = false;  // the re-anchor landed: a deferred MUSTER drop is due now
+    drop_wait_for_update_ = false;
     return true;
   }
 
   // SELF-SPAWN (A56): call every loop() with the current millis(), gated on `has_powerup_assignment()`
   // ONLY -- never on link state. A lost MC link must not freeze the schedule.
-  bool tick_powerup(uint32_t now_ms) { return powerup_.tick(now_ms); }
+  // F374 round 3: in either mode, an unknown schedule with MC out of reach falls back to available (true: repaint),
+  // so a station that cannot hear START is never dead; take_muster_drop does the same for a MUSTER drop.
+  bool tick_powerup(uint32_t now_ms) {
+    const bool mc_live = state_ == LinkState::WELCOMED || state_ == LinkState::ASSIGNED;
+    if (!mc_live && !powerup_.known()) {
+      powerup_.assume_available_if_unknown();
+      return true;
+    }
+    return powerup_.tick(now_ms);
+  }
 
   // A claim batch resolved to a winner (ClaimGate::resolve_batch, called by the .ino after a BLE
   // scan window): take it, if the station is still available, whatever the link state is (the same
@@ -1221,6 +1271,14 @@ class StationLink {
     powerup_ = PowerupSchedule();
     hill_.reset();
     revives_.reset();
+    // F374: a drop still waiting for START's update was never taken; with nothing armed there is nothing to wait
+    // for, so cancel it rather than let a later loss of MC drop an unassigned Stick. A drop already taken stays.
+    if (drop_wait_for_update_ && drop_pending_) {
+      dropped_for_match_ = false;
+      drop_pending_ = false;
+    }
+    drop_wait_for_update_ = false;
+    wait_offline_ = false;
     epoch_++;
     if (state_ == LinkState::ASSIGNED) state_ = LinkState::WELCOMED;
   }
@@ -1235,6 +1293,9 @@ class StationLink {
   // (documented as `LINK RECONNECT`, README "Mission Control link (H8)") -- there is no automatic
   // "match over" signal this station could observe instead.
   bool dropped_for_match() const { return dropped_for_match_; }
+  // F374: the radio is actually down for the match (the latched drop was taken). A latched drop still waiting
+  // for MC's station_update keeps rejoining Wi-Fi after a blip, or it could never hear that update.
+  bool radio_down_for_match() const { return dropped_for_match_ && !drop_pending_; }
   void clear_dropped_for_match() { dropped_for_match_ = false; drop_pending_ = false; }
 
  private:
@@ -1261,6 +1322,9 @@ class StationLink {
   std::string session_id_;  // the last WELCOME's session_id ("" before any)
   bool drop_pending_ = false;   // a latched MUSTER drop the glue has not performed yet
   bool drop_deferred_ = false;  // ...and it waits for the re-anchor (first config after a restore)
+  bool drop_wait_for_update_ = false;  // ...or waits for MC's first station_update while MC is live (F374, a powerup)
+  bool wait_offline_ = false;          // F374 round 1: MC went out of reach during that wait...
+  uint32_t wait_offline_since_ms_ = 0;  // ...at this millis()
   uint32_t drop_latched_at_ms_ = 0;
 };
 

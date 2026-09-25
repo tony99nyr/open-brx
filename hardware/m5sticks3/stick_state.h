@@ -118,6 +118,7 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
   if (a.present && a.kind == "powerup") {
     st.powerup_present = true;
     st.powerup_available = link.powerup().available();
+    st.powerup_known = link.powerup().known();
     st.powerup_taker = link.powerup().taker();
     PowerupAdvertView pv = link.powerup().view(now);
     st.powerup_remaining_s = pv.value;

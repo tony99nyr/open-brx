@@ -207,6 +207,9 @@ passive beacon: it needs **no** MC contact for the rest of the game (same island
    and prop them → back at MC, start the match with the normal runway. **Putting placement inside the
    countdown only creates a race** — a station not yet in place when the match goes live simply revives
    nobody until it arrives. No failure mode, no countdown coupling.
+   **A pickup Stick is the exception (F374, 2026-09-25):** it learns the go-live anchor for `first_at_s` only from
+   MC's `station_update` at START. Keep it in Wi-Fi until START is pressed. One carried out
+   earlier offers its item from go-live, not at `first_at_s`.
 3. **Between games: stations do NOT walk back** unless their role/team changes. Revive counts are
    self-authoritative and report at recap when the phone is next in WiFi range (§5). Re-arm over WiFi
    only when the operator changes something. **Scoping caveat (v1):** the advert `game` byte would let a
