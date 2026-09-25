@@ -567,7 +567,8 @@ tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/
   - a wrong proof, or none (an older MC): `UNVERIFIED MISSION CONTROL · <ip> · TAP JOIN IF YOURS`.
   A failed proof dial cools that host for 10 minutes. A host that never answered gets no row at once.
 - **The trust key.** A phone dial asks for its key (`hello.mc_enroll`). MC issues it once per node_id
-  per install. A phone that lost its key still redials its remembered address with no tap, but an MC
+  per install. The enrolling hello carries a random nonce, one per MC host, that the phone keeps until that host's key arrives; if
+  the welcome carrying the key is lost, a hello with the same nonce gets it again within 60 s (F346). A phone that lost its key still redials its remembered address with no tap, but an MC
   that moved needs one tap. The phone keeps up to four keys, one per MC install it joined. A new key is
   always kept; it evicts the oldest key that never proved an MC, else the one proven least recently. A utility phone joins untrusted by design and holds no key.
 - **After a demo restart.** `--demo` and `--ephemeral` make a new install secret on every launch, so the

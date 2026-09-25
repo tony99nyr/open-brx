@@ -9,7 +9,7 @@ import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
 import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey } from './transport/transport.js';
-import { McAutoJoin, offerText, hostOf, urlKey } from './transport/autojoin.js';   // A60: join with no tap where it is safe
+import { McAutoJoin, offerText, hostOf, urlKey, namedDialPending } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
 import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
@@ -290,10 +290,9 @@ let currentJoinUrl = null;
 /** A60: every address discovery turned up this run, and which of them already failed a proof. */
 const autoJoin = new McAutoJoin();
 /** A60 polish: the dial the player named last, while it waits for its first welcome. */
-let userDial = /** @type {{t:any, until:number}|null} */ (null);
-function userDialPending() {
-  return !!(userDial && userDial.t === transport && !transport.closed && transport.state !== 'bound' && Date.now() < userDial.until);
-}
+let userDial = /** @type {{t:any}|null} */ (null);
+// F346 (c): the window is the transport's armed deadline, which a 4003 reclaim wait extends past 10 s.
+function userDialPending() { return namedDialPending(userDial, transport); }
 function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl = url; }
 /**
  * @param {string} url the LAN join url
@@ -335,7 +334,7 @@ function connectMc(url, remember = true, join = {}) {
   const candidate = transport;
   // A60 polish: a dial the player named (QR, typed, tapped JOIN) owns its welcome window; discovery
   // must not replace it with a proof dial while it is still waiting for its welcome.
-  userDial = join.user === true ? { t: candidate, until: Date.now() + candidate.welcomeTimeoutMs } : null;
+  userDial = join.user === true ? { t: candidate } : null;
   // `log` is this node's own view of the sync (A25: MC shows none|offered|pulling|held per node);
   // app_ver/platform are added by the transport itself so every node type reports them (A29).
   transport.setStatusProvider(() => ({ ...engine.statusBody(preflight), log: logsync.state() }));

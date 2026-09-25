@@ -151,6 +151,12 @@ function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if 
 /** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
 async function applyStationConfig(body) {
   if (!body || typeof body !== 'object') return;
+  // F337 (b): MC re-sends a same-game station_config at START, END and RECALL to move the A58 lock, which a
+  // phone ignores. An arming that changes nothing a phone uses must not restart the advert or close the
+  // seven-tap drawer; a real change (another game, kind, team, id, threshold, item or allow-list) re-arms.
+  const armKey = () => JSON.stringify([settings.kind, settings.team, settings.id, settings.threshold, settings.game,
+    settings.item, settings.mcArmed && settings.mcArmed.valid_ids]);
+  const wasArmed = !!settings.mcArmed, before = armKey();
   if (body.kind && KIND_LABEL[body.kind]) settings.kind = body.kind;
   if (body.team != null) settings.team = typeof body.team === 'number' ? body.team : (TEAM_ID_TO_TID[String(body.team).toLowerCase()] ?? settings.team);
   if (Number.isFinite(+body.id) && +body.id >= 1) settings.id = Math.min(65535, Math.round(+body.id));
@@ -168,6 +174,11 @@ async function applyStationConfig(body) {
   if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
   settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: Array.isArray(body.valid_ids) ? body.valid_ids.slice(0, 32) : null };
   save();
+  if (wasArmed && armKey() === before) {
+    log(`MC re-sent the same arming (game ${settings.game}): advert and drawer left as they are`, 'li');
+    if (!advertising) await startAdvert();   // not a restart: nothing was on air
+    return;
+  }
   log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAMES[settings.team] || settings.team} · station ${settings.id} · threshold ${thr()} dBm · game ${settings.game}`, 'lk');
   if (window.brxUtilityGate) window.brxUtilityGate.close();   // the operator armed it: the drawer has no business being open
   await startAdvert();
