@@ -27,9 +27,15 @@ namespace brx {
 
 // ---- association mode (§5g.4) ------------------------------------------------------------------
 enum class AssocMode : uint8_t {
-  MUSTER = 0,  // default: join at muster, take station_config, drop the association for the match
-  HELD = 1,    // join at muster and stay linked for the whole match, reconnecting per backoff
+  MUSTER = 0,  // join at muster, take station_config, drop the association for the match (`LINK MUSTER`)
+  HELD = 1,    // the boot default (MVP): stay linked for the whole match, reconnecting per backoff
 };
+// The mode a Stick boots in: its saved NVS `assoc` byte when it has one, else HELD (Tony, 2026-09-25: a Stick is
+// armed at MC in Wi-Fi, then carried to the field). An unknown byte also falls back to HELD. A bare StationLink
+// (the host tests) still starts MUSTER; the firmware always calls set_mode(boot_assoc_mode(...)) at boot.
+inline AssocMode boot_assoc_mode(bool saved, uint8_t raw) {
+  return saved && raw == (uint8_t)AssocMode::MUSTER ? AssocMode::MUSTER : AssocMode::HELD;
+}
 
 // ---- link state (§5g.2/§5g.3/§5g.4) ------------------------------------------------------------
 enum class LinkState : uint8_t {
@@ -709,6 +715,13 @@ class SavedHillClock {
     if (!has_ || (a.present && a.kind == "control" && tag_matches(a, session_id))) return false;
     return clear();
   }
+  // After every station_config the link APPLIED (never the boot restore, whose clock resumes after this):
+  // `remaining_ms` < 0 means MC's config left no clock running (a same-game lobby or abort re-send, an untimed
+  // START, END), so the save no longer describes a match and a restart must not resume it.
+  bool note_config_applied(const StationAssignment& a, const std::string& session_id, int32_t remaining_ms) {
+    if (note_config(a, session_id)) return true;
+    return remaining_ms < 0 && clear();
+  }
   bool note_welcome(const std::string& welcome_session_id) {
     if (!has_ || welcome_session_id.empty() || welcome_session_id == session_id_) return false;
     return clear();
@@ -1348,7 +1361,10 @@ class StationLink {
       hill_live_ = false;
       hill_offline_waiting_ = false;
       if (!hill_restore_guard_) hill_.frozen = false;
-    } else if (a.kind == "control" && a.duration_ms > 0 && !duration_anchor_known_) {
+    } else if (a.kind == "control" && a.duration_ms > 0) {
+      // Polish round 2: MC sends a duration without a start only when no match runs (LOBBY, or an abort back to it).
+      // That stops an advert anchor or a resumed clock too; the next START or down -> alive edge anchors again.
+      duration_anchor_known_ = false;
       mc_start_known_ = false;
       starts_known_ = false;
       hill_live_ = false;

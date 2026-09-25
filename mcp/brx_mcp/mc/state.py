@@ -3711,8 +3711,8 @@ class Session:
     def _station_tamper_flags(self, sid: int, assoc: str | None, lock: dict, restarts: int, *, online: bool,
                               now: int) -> list[str]:
         """A58: the tamper flags. A restart inside the lock window; a HELD station gone stale while the match
-        is in play (a muster station is out of Wi-Fi by design); and, in LOBBY, a muster station whose LOAD lock
-        would run out before the match could end, so the operator can send it through muster again."""
+        is in play (a muster station is out of Wi-Fi by design); and, in LOBBY, a muster station (or a HELD one gone
+        offline) whose LOAD lock would run out before the match could end, so the operator can send it through muster again."""
         out: list[str] = []
         if restarts:
             out.append(f"STATION #{sid} RESTARTED" + (f" {restarts} TIMES" if restarts > 1 else "")
@@ -3720,7 +3720,8 @@ class Session:
         if assoc == "held" and not online and self.phase in ("armed", "live"):
             out.append(f"STATION #{sid} OFFLINE: CHECK IT IS ON AND IN RANGE")
         tl = self.config.get("time_limit_s")
-        if (assoc == "muster" and self.phase == "lobby" and tl and lock.get("s")
+        # A HELD Stick carried out of Wi-Fi before START (the A68 field model) cannot hear START's relock either.
+        if ((assoc == "muster" or (assoc == "held" and not online)) and self.phase == "lobby" and tl and lock.get("s")
                 and now + (DEFAULT_RUNWAY_S + tl) * 1000 > lock["at"] + lock["s"] * 1000):
             out.append(f"STATION #{sid} LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER")
         return out

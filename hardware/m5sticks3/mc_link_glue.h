@@ -87,7 +87,8 @@ static void mcLoadPrefs(StationLink& link) {
   savedMcUrl = mcPrefs.getString("mc_url", "");
   String nodeId = mcPrefs.getString("node_id", "");
   String nodeKey = mcPrefs.getString("node_key", "");
-  uint8_t assoc = mcPrefs.getUChar("assoc", (uint8_t)AssocMode::MUSTER);
+  const bool assocSaved = mcPrefs.isKey("assoc");  // polish round 2: no saved mode boots HELD (boot_assoc_mode)
+  uint8_t assoc = mcPrefs.getUChar("assoc", (uint8_t)AssocMode::HELD);
   actionsEnabled = mcPrefs.getBool("actions", true);  // default ON since MC accepts station_action (A56, f3fe3cf6); ACTIONS OFF for an older MC
   mcPrefs.end();
   if (nodeId.length() == 0) {
@@ -107,7 +108,7 @@ static void mcLoadPrefs(StationLink& link) {
   id.app_ver = stationAppVer.c_str();
   id.platform = "esp32";
   link.set_identity(id);
-  link.set_mode(assoc == (uint8_t)AssocMode::HELD ? AssocMode::HELD : AssocMode::MUSTER);
+  link.set_mode(boot_assoc_mode(assocSaved, assoc));
   link.set_actions_enabled(actionsEnabled);
   if (wifiSsid.length()) link.wifi_configured();
 }
@@ -825,7 +826,9 @@ static void mcHandleFrame(const String& text) {
       // Only when it differs (lock_s excluded) or the session is new.
       if (savedConfig.note_applied(link.assignment(), link.session_id())) mcWriteSavedConfig();
       if (savedHill.note_config(link.assignment(), savedConfig.session_id())) mcEraseSavedHill();  // new game/id/session
-      if (savedClock.note_config(link.assignment(), savedConfig.session_id())) mcEraseSavedClock();
+      // A new game/id/session, or no clock left running (a same-game lobby or abort re-send, END): erase.
+      if (savedClock.note_config_applied(link.assignment(), savedConfig.session_id(), link.hill_clock_remaining_ms(rx)))
+        mcEraseSavedClock();
       mcScreenWake = true;
       Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d lock_s=%d\n", a.kind.c_str(), a.team,
                     a.id, a.game, a.threshold, a.lock_s);

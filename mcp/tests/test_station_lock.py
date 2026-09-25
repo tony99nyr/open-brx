@@ -175,6 +175,20 @@ def test_a_long_lobby_warns_that_a_muster_lock_runs_out_mid_match():
     assert warn not in _flags(s)
 
 
+def test_a_long_lobby_warns_for_a_held_station_carried_out_of_wifi():
+    """Polish round 2 (A68): HELD is now the Stick's boot default, and Tony carries a HELD Stick out of Wi-Fi
+    before START. Offline, it cannot hear START's relock, so its LOAD lock runs out mid-match like a muster one."""
+    s, clock = _sess(600)
+    _beat(s, clock, uptime_s=40, boot_count=1, assoc="held")
+    s.push_config(force=True)
+    warn = "STATION #3 LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER"
+    clock.t += (STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S - DEFAULT_RUNWAY_S) * 1000 + 1000
+    _beat(s, clock, uptime_s=41, boot_count=1, assoc="held")
+    assert warn not in _flags(s)                             # in Wi-Fi: START relocks it
+    s.net.simulate_stale("stick-1", 20_000)
+    assert warn in _flags(s)
+
+
 def test_a_muster_station_out_of_wifi_is_not_flagged_for_re_arming_by_a_lock_resend():
     s, clock = _sess(600)
     _beat(s, clock, uptime_s=40, boot_count=1, assoc="muster")

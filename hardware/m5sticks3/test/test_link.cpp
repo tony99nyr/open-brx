@@ -2154,6 +2154,92 @@ static void test_duration_clock_survives_an_offline_restart() {
   CHECK(clock.note_config(control_config(8), "s1"));
 }
 
+// Polish round 2 (Tony's field model): a Stick with no saved mode boots HELD, the MVP mode; a saved mode wins.
+static void test_boot_assoc_mode_defaults_to_held_and_a_saved_mode_wins() {
+  CHECK(boot_assoc_mode(false, 0) == AssocMode::HELD);
+  CHECK(boot_assoc_mode(true, (uint8_t)AssocMode::MUSTER) == AssocMode::MUSTER);
+  CHECK(boot_assoc_mode(true, (uint8_t)AssocMode::HELD) == AssocMode::HELD);
+  CHECK(boot_assoc_mode(true, 7) == AssocMode::HELD);  // an unknown byte falls back to the default
+}
+
+// Polish round 2: SavedHillClock's own rules, pure. The cadence (anchor, then at most every 30 s, 0 once at
+// the whistle), the restore, and what clears it: a game change, another session, and MC saying no clock runs.
+static void test_saved_hill_clock_cadence_restore_and_clears() {
+  StationAssignment a = control_config(7);
+  a.duration_ms = 7200000;
+  SavedHillClock c;
+  c.loaded(true, 7, 9, "s1", -1);  // a corrupt negative save is no save
+  CHECK(!c.has());
+  CHECK(!c.note(a, "", 1000, 0));   // no session: nothing to tag it with
+  // A full 7200 s match ticked every 100 ms: the anchor, then one save per 30 s, then 0 once at the whistle.
+  unsigned writes = 0;
+  for (uint32_t t = 0; t <= 7200000 + 60000; t += 100) {
+    const int32_t left = t >= 7200000 ? 0 : (int32_t)(7200000 - t);
+    if (c.note(a, "s1", left, t)) writes++;
+  }
+  CHECK_EQ(writes, 241u);
+  CHECK_EQ(c.remaining_ms(), 0);
+  CHECK_EQ(c.restore_remaining(a, "s1"), 0);  // a restart after the whistle shows MATCH OVER
+  // The clock wraps: millis() near 2^32 keeps the 30 s cadence.
+  SavedHillClock w;
+  CHECK(w.note(a, "s1", 50000, 0xFFFFF000u));
+  CHECK(!w.note(a, "s1", 40000, 0xFFFFF000u + 10000));
+  CHECK(w.note(a, "s1", 20000, 0xFFFFF000u + 30000));
+  // Another session's welcome, another game or another id clears it; the same session does not.
+  CHECK(!w.note_welcome("s1"));
+  CHECK(!w.note_config(a, "s1"));
+  StationAssignment other_id = a; other_id.id = 10;
+  CHECK(w.note_config(other_id, "s1"));
+  CHECK(w.note(a, "s1", 20000, 0));
+  CHECK(w.note_welcome("s2"));
+  CHECK(w.note(a, "s1", 20000, 0));
+  CHECK(w.note_config(control_config(8), "s1"));
+  // An applied same-game config that leaves no clock running (a lobby or abort re-send, END) clears the save,
+  // or a restart would resume a match MC already stopped.
+  CHECK(w.note(a, "s1", 20000, 0));
+  CHECK(!w.note_config_applied(a, "s1", 15000));
+  CHECK(w.has());
+  CHECK(w.note_config_applied(a, "s1", -1));
+  CHECK(!w.has());
+  CHECK_EQ(w.restore_remaining(a, "s1"), -1);
+}
+
+// Polish round 2: a same-game config without START (MC in LOBBY after an abort, or a time-limit edit) means no
+// match runs. It must stop a hill that anchored on adverts (or resumed a saved clock) while out of Wi-Fi.
+static void test_same_game_lobby_config_stops_an_advert_anchored_hill() {
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  StationAssignment a = control_config(7);
+  a.duration_ms = 120000;
+  link.apply_station_config(a, 0);
+  Advert down; down.role = ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
+  Advert alive = down; alive.state = PLAYER_ALIVE;
+  link.anchor_hill_on_advert(down, 900);
+  CHECK(link.anchor_hill_on_advert(alive, 1000));
+  CHECK(link.hill_clock_remaining_ms(2000) > 0);
+  link.apply_station_config(a, 30000);  // back in Wi-Fi: MC is in LOBBY for the same game (the match was aborted)
+  CHECK(link.hill_waiting(30000));
+  CHECK_EQ(link.hill_clock_remaining_ms(30000), -1);
+  PlayerPresence p;
+  link.hill().owner = 1; link.hill().progress = 100;
+  link.tick_players(p, 31000);
+  link.tick_players(p, 40000);
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+  CHECK(!link.hill_ended());
+  // The next START (or a fresh down -> alive edge) anchors it again.
+  link.anchor_hill_on_advert(down, 41000);
+  CHECK(link.anchor_hill_on_advert(alive, 42000));
+  // The same for a hill that resumed a saved clock at boot.
+  SavedStationConfig saved;
+  CHECK(saved.note_applied(a, "s1"));
+  StationLink rebooted;
+  CHECK(rebooted.restore_station_config(saved.restore()));
+  CHECK(rebooted.resume_hill_clock(60000, 10));
+  rebooted.apply_station_config(a, 100);
+  CHECK(rebooted.hill_waiting(100));
+  CHECK_EQ(rebooted.hill_clock_remaining_ms(100), -1);
+}
+
 static void test_parse_signed_go_live_offset() {
   bool ok = false;
   StationAssignment a = parse_station_config(json::parse(
@@ -2642,6 +2728,9 @@ int main(int argc, char** argv) {
   test_duration_anchor_needs_a_player_heard_down_in_this_game_first();
   test_duration_hill_skips_the_offline_go_live();
   test_duration_clock_survives_an_offline_restart();
+  test_boot_assoc_mode_defaults_to_held_and_a_saved_mode_wins();
+  test_saved_hill_clock_cadence_restore_and_clears();
+  test_same_game_lobby_config_stops_an_advert_anchored_hill();
   test_parse_signed_go_live_offset();
   test_same_game_config_without_times_cancels_a_pending_start();
   test_late_start_discards_offline_fallback_capture();
