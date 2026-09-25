@@ -29,7 +29,12 @@ static int failures = 0;
 using namespace brx;
 
 static StationAssignment cfg(const std::string& json) {
-  return parse_station_config(json::parse(json));
+  std::string body = json;
+  if (body.find("\"threshold\"") == std::string::npos) {
+    const size_t end = body.rfind('}');
+    if (end != std::string::npos) body.insert(end, ",\"threshold\":-57");
+  }
+  return parse_station_config(json::parse(body));
 }
 
 static StationLink armed_hill(uint32_t at_ms = 0) {
@@ -221,32 +226,29 @@ static void test_status_fields_edit_age_only_when_src_is_station() {
   CHECK(build_status_body(old).find("threshold_src") == std::string::npos);
 }
 
-static void test_edit_log_formats_locked_flag_and_cap() {
+static void test_locked_range_edits_are_refused_and_unlocked_edits_are_logged() {
   StationLink link;
-  StationAssignment a = cfg(R"({"kind":"control","team":255,"id":3,"game":7,"lock_s":600})");
-  link.apply_station_config(a, 0);
+  link.apply_station_config(cfg(R"({"kind":"control","team":255,"id":3,"game":7,"lock_s":600})"), 0);
   CHECK(link.lock().locked(10));
-  CHECK(link.edit_threshold(-3, 10));  // allowed under the A58 lock, and flagged
-  CHECK(link.edit_tx_power(-1, 20));
+  CHECK(!link.edit_threshold(-3, 10));
+  CHECK(!link.edit_tx_power(-1, 20));
+  CHECK_EQ(link.range_edits().edits().size(), (size_t)0);
+  link.apply_station_config(cfg(R"({"kind":"control","team":255,"id":3,"game":7,"lock_s":0})"), 30);
+  CHECK(link.edit_threshold(-3, 40));
+  CHECK(link.edit_tx_power(-1, 50));
   const auto& e = link.range_edits().edits();
   CHECK_EQ(e.size(), (size_t)2);
-  CHECK(e[0].locked);
-  std::string j = link.range_edits().status_json(30);
-  CHECK(j.find("\"field\":\"tx_power\",\"from\":\"high\",\"to\":\"medium\",\"locked\":true") != std::string::npos);
-  CHECK(j.find("\"field\":\"threshold\",\"from\":-57,\"to\":-60,\"locked\":true") != std::string::npos);
-  // The cap: the last 8, oldest first, seq still rising.
+  CHECK(!e[0].locked);
+  std::string j = link.range_edits().status_json(60);
+  CHECK(j.find("\"field\":\"tx_power\",\"from\":\"high\",\"to\":\"medium\",\"locked\":false") != std::string::npos);
+  CHECK(j.find("\"field\":\"threshold\",\"from\":-57,\"to\":-60,\"locked\":false") != std::string::npos);
   for (int i = 0; i < 10; i++) link.edit_threshold(i % 2 ? +3 : -3, 100 + i);
   CHECK_EQ(link.range_edits().edits().size(), RANGE_EDIT_LOG_MAX);
-  CHECK_EQ(link.range_edits().edits().front().seq, 5u);  // 12 edits made: seq 5..12 remain
+  CHECK_EQ(link.range_edits().edits().front().seq, 5u);
   CHECK_EQ(link.range_edits().edits().back().seq, 12u);
   CHECK_EQ(link.range_edits().next_seq(), 13u);
-  // Unlocked edits say so.
-  link.apply_station_config(cfg(R"({"kind":"control","team":255,"id":3,"game":7,"lock_s":0})"), 200);
-  link.edit_threshold(-3, 300);
-  CHECK(!link.range_edits().edits().back().locked);
 }
 
-// ---- after a reboot: the value and the seq come back, the age is unknown ------------------------------
 static void test_reboot_restores_value_seq_and_an_unknown_age() {
   StationLink before = armed_hill(0);
   before.edit_threshold(-3, 1000);
@@ -344,6 +346,13 @@ static AHoldEvent hold_for(AHoldGesture& g, uint32_t ms, bool range_allowed, boo
 }
 
 static void test_a_hold_timing() {
+  {  // A held before STATS must earn the full five seconds after RANGE becomes allowed.
+    AHoldGesture g;
+    CHECK(g.update(true, 1000, false) == AHoldEvent::NONE);
+    CHECK(g.update(true, 4000, true) == AHoldEvent::NONE);
+    CHECK(g.update(true, 8999, true) == AHoldEvent::NONE);
+    CHECK(g.update(true, 9000, true) == AHoldEvent::RANGE);
+  }
   {
     AHoldGesture g;
     CHECK(hold_for(g, 500, true) == AHoldEvent::CLICK);  // 0.5 s: a click
@@ -396,6 +405,32 @@ static void test_a_hold_timing() {
     CHECK(g.update(false, 2500, true) == AHoldEvent::NONE);
     CHECK(hold_for(g, 300, true) == AHoldEvent::CLICK);  // and the next press is normal again
   }
+  {  // Loop jitter and a single one-poll bounce must not shorten continuous-hold time.
+    for (uint32_t seed = 2; seed <= 60; seed++) {
+      AHoldGesture g;
+      uint32_t now = 1000;
+      CHECK(g.update(true, now, true) == AHoldEvent::NONE);
+      bool fired = false;
+      uint32_t n = seed;
+      while (now < 7000) {
+        n = (n * 17 + 13) % 59 + 2;
+        now += n;
+        const AHoldEvent event = g.update(true, now, true);
+        if (event == AHoldEvent::RANGE) {
+          fired = true;
+          CHECK(now - 1000 >= RANGE_ENTER_HOLD_MS);
+          break;
+        }
+      }
+      CHECK(fired);
+    }
+    AHoldGesture bounce;
+    bounce.update(true, 0, true);
+    bounce.update(false, 2400, true);
+    bounce.update(true, 2402, true);
+    CHECK(bounce.update(true, 7401, true) == AHoldEvent::NONE);
+    CHECK(bounce.update(true, 7402, true) == AHoldEvent::RANGE);
+  }
 }
 
 static void test_range_editor_idle_exit_and_field_switch() {
@@ -434,6 +469,7 @@ static void test_distance_labels_are_anchored_at_minus_57_is_3_m() {
   CHECK_EQ(std::string(range_distance_label(-60)), std::string("~5 M"));
   CHECK_EQ(std::string(range_distance_label(-40)), std::string("UNDER 1 M"));
   CHECK_EQ(std::string(range_distance_label(-90)), std::string("OVER 20 M"));
+  CHECK_EQ(std::string(range_distance_label(-78, true)), std::string("5-7 M"));
 }
 
 int main() {
@@ -448,7 +484,7 @@ int main() {
   test_tx_power_mapping_and_parse();
   test_tx_power_absent_keeps_the_sticks_own_and_fields_are_independent();
   test_status_fields_edit_age_only_when_src_is_station();
-  test_edit_log_formats_locked_flag_and_cap();
+  test_locked_range_edits_are_refused_and_unlocked_edits_are_logged();
   test_reboot_restores_value_seq_and_an_unknown_age();
   test_release_drops_the_edit_but_keeps_the_log();
   test_status_threshold_is_never_zero();

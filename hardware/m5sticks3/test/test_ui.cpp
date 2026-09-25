@@ -26,6 +26,14 @@ static int failures = 0;
 
 using namespace brx;
 
+static void test_locked_range_hold_hides_cue_and_reports_range_event() {
+  AHoldGesture gesture;
+  CHECK(gesture.update(true, 0, true, true) == AHoldEvent::NONE);
+  CHECK_EQ(gesture.range_cue_pct(), -1);
+  CHECK(gesture.update(true, RANGE_ENTER_HOLD_MS, true, true) == AHoldEvent::RANGE);
+  CHECK_EQ(gesture.range_cue_pct(), -1);
+}
+
 static void test_station_action_body_is_pinned() {
   CHECK_EQ(build_station_action_body(9, "reset", 1700000000000LL),
            std::string("{\"id\":9,\"action\":\"reset\",\"t\":1700000000000}"));
@@ -308,6 +316,7 @@ static void test_side_button_lock_sync_backs_off_after_ten_failures() {
 }
 
 int main() {
+  test_locked_range_hold_hides_cue_and_reports_range_event();
   test_side_button_lock_sync_backs_off_after_ten_failures();
   test_actions_flush_only_when_welcomed_and_synced();
   test_pm1_write_value_sets_bit0_and_never_bit7();

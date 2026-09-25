@@ -296,7 +296,8 @@ inline void drawHill(M5Canvas& c, const ScreenSpec& s) {
     c.drawString(s.hill_kicker.c_str(), 10, MAIN_TOP + 4);
     std::string label = std::string(TEAM_LETTER[s.hill_team >= 0 && s.hill_team <= 3 ? s.hill_team : 0]) + " HOLDS";
     fitCenterText(c, SCREEN_W / 2, 60, label, TEXT_MAX_W, {&fonts::FreeSansBold18pt7b, &fonts::FreeSansBold12pt7b}, ink);
-    fitCenterText(c, SCREEN_W / 2, 104, "HELD " + s.hold_time, TEXT_MAX_W, {&fonts::FreeSansBold12pt7b}, ink);
+    fitCenterText(c, SCREEN_W / 2, 104, s.hill_note.empty() ? "HELD " + s.hold_time : s.hill_note,
+                  TEXT_MAX_W, {&fonts::FreeSansBold12pt7b}, ink);
   } else if (s.kind == ScreenKind::HILL_CAPTURING) {
     drawKicker(c, s.hill_kicker);
     uint16_t tc = teamColor(s.hill_team);
@@ -438,7 +439,9 @@ inline void drawRangePanel(M5Canvas& c, int x0, int x1, bool active, const char*
 
 inline void drawRange(M5Canvas& c, const ScreenSpec& s) {
   drawKicker(c, "RANGE   HOLD B: DONE   ~ = ROUGH");
-  std::string radiusDetail = "dBm  " + std::string(range_distance_label(s.range_threshold_dbm));
+  std::string radiusDetail = s.range_threshold_hill
+      ? std::string(range_distance_label(s.range_threshold_dbm, true))
+      : "dBm  " + std::string(range_distance_label(s.range_threshold_dbm));
   int txDbm = tx_power_dbm(s.range_tx_level);
   std::string txDetail = (txDbm > 0 ? "+" : "") + std::to_string(txDbm) + " dBm";
   std::string txName = tx_power_name(s.range_tx_level);

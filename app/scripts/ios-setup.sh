@@ -52,6 +52,73 @@ echo "==> patching $PLIST"
 # (Tony, 2026-09-04). A rail-mounted game HUD is fullscreen; the web layer also insets by the safe area.
 set_bool UIStatusBarHidden true
 set_bool UIViewControllerBasedStatusBarAppearance false
+# Belt and braces for the moment the bar IS drawn regardless (App Switcher snapshot, the instant
+# before UIStatusBarHidden takes effect): light content reads on our near-black launch/background
+# colour; the system's default dark content would be near-invisible on it. See F395 below.
+set_str UIStatusBarStyle "UIStatusBarStyleLightContent"
+
+# --- Launch screen: a plain fill of the app's own background colour, no logo (F395) -----------
+# Tony's call, matching the Android fix: "Same plain yes." No logo, no bitmap, just the app's own
+# background colour (www/index.html's html,body/#stage background, #030407). Capacitor's stock
+# LaunchScreen.storyboard drew its placeholder Splash image (Assets.xcassets/Splash.imageset,
+# still just Capacitor's unbranded mark, never customised) full-bleed in a scaleAspectFill
+# imageView, backed by systemBackgroundColor (white in light mode) -- the same "never actually
+# branded" placeholder as the Android splash, just without the aspect-ratio stretch bug Android
+# had (scaleAspectFill preserves aspect and crops, it does not warp). ios/ is generated and
+# git-ignored, so this patches the storyboard XML here rather than by hand.
+STORYBOARD="ios/App/App/Base.lproj/LaunchScreen.storyboard"
+BRX_BG_HEX="030407"
+if [ -f "$STORYBOARD" ] && ! grep -q 'customColorSpace="sRGB"' "$STORYBOARD"; then
+  echo "==> patching $STORYBOARD (plain $BRX_BG_HEX fill, no image)"
+  python3 - "$STORYBOARD" "$BRX_BG_HEX" <<'STORYBOARD_PY'
+import sys, re
+
+p, hexcolor = sys.argv[1], sys.argv[2]
+r = int(hexcolor[0:2], 16) / 255
+g = int(hexcolor[2:4], 16) / 255
+b = int(hexcolor[4:6], 16) / 255
+s = open(p, encoding="utf-8").read()
+
+imageview_old = (
+    '<imageView key="view" userInteractionEnabled="NO" contentMode="scaleAspectFill" '
+    'horizontalHuggingPriority="251" verticalHuggingPriority="251" image="Splash" id="snD-IY-ifK">\n'
+    '                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>\n'
+    '                        <autoresizingMask key="autoresizingMask"/>\n'
+    '                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>\n'
+    '                    </imageView>'
+)
+imageview_new = (
+    '<imageView key="view" userInteractionEnabled="NO" contentMode="scaleAspectFill" '
+    'horizontalHuggingPriority="251" verticalHuggingPriority="251" id="snD-IY-ifK">\n'
+    '                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>\n'
+    '                        <autoresizingMask key="autoresizingMask"/>\n'
+    f'                        <color key="backgroundColor" red="{r}" green="{g}" blue="{b}" '
+    'alpha="1" colorSpace="custom" customColorSpace="sRGB"/>\n'
+    '                    </imageView>'
+)
+if imageview_old not in s:
+    print("   LaunchScreen imageView not found in the expected shape - remove image=\"Splash\" and set backgroundColor by hand", file=sys.stderr)
+    sys.exit(1)
+s = s.replace(imageview_old, imageview_new, 1)
+
+resources_old = (
+    '    <resources>\n'
+    '        <image name="Splash" width="1366" height="1366"/>\n'
+    '        <systemColor name="systemBackgroundColor">\n'
+    '            <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>\n'
+    '        </systemColor>\n'
+    '    </resources>'
+)
+resources_new = '    <resources/>'
+if resources_old not in s:
+    print("   LaunchScreen <resources> block not found in the expected shape - drop the unused Splash/systemColor entries by hand", file=sys.stderr)
+    sys.exit(1)
+s = s.replace(resources_old, resources_new, 1)
+
+open(p, "w", encoding="utf-8").write(s)
+print("   ok")
+STORYBOARD_PY
+fi
 
 # --- Bluetooth usage strings -------------------------------------------------
 # iOS TERMINATES an app that touches CoreBluetooth without these. The BLE plugin

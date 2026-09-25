@@ -222,6 +222,7 @@ struct ScreenSpec {
   // F365: SCR_RANGE. The radius (dBm, its rough distance, where it came from) and the strength (level),
   // and which one A/B edit. On SCR_STATS, range_cue_pct >= 0 draws the "HOLD FOR RANGE" bar.
   int range_threshold_dbm = STICK_DEFAULT_THRESHOLD_DBM;
+  bool range_threshold_hill = false;
   bool range_threshold_edited = false;
   int range_tx_level = TX_POWER_DEFAULT;
   bool range_tx_edited = false;
@@ -269,6 +270,8 @@ struct StickState {
   // carry what it measures and the IR hill cannot. control_owner/control_progress_pct above are its
   // owner and its progress then.
   bool control_ble = false;
+  bool control_ended = false;
+  bool control_waiting = false;
   int control_bar_team = -1;  // advert byte 9 when not 255: the owner while held, else the team building it
   bool control_contested = false;
   int control_dir = 0;        // +1 rising, -1 falling, 0 static
@@ -325,6 +328,7 @@ struct StickState {
   bool range_active = false;
   bool range_edit_strength = false;
   int range_threshold_dbm = STICK_DEFAULT_THRESHOLD_DBM;
+  bool range_threshold_hill = false;
   bool range_threshold_edited = false;
   int range_tx_level = TX_POWER_DEFAULT;
   bool range_tx_edited = false;
@@ -378,7 +382,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     spec.hint = RESET_CONFIRM_HINT;
     return spec;
   }
-  if (s.reset_outcome_active) {
+  if (s.reset_outcome_active && (!s.reset_outcome_locked || s.locked)) {
     if (s.reset_outcome_locked) {
       spec.kind = ScreenKind::SCR_RESET_LOCKED;
       spec.lock_remaining = format_mmss(s.lock_remaining_s);
@@ -388,11 +392,11 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     return spec;
   }
 
-  // F365: the RANGE editor (entered from STATS; a station must be assigned). It edits during play and
-  // under the A58 lock, so the padlock and the lock stay as they are.
+  // F365: the RANGE editor (entered from STATS; a station must be assigned). It edits during play only while the A58 lock is unlocked, so the padlock and the lock stay as they are.
   if (s.range_active && s.assignment_present) {
     spec.kind = ScreenKind::SCR_RANGE;
     spec.range_threshold_dbm = s.range_threshold_dbm;
+    spec.range_threshold_hill = s.range_threshold_hill;
     spec.range_threshold_edited = s.range_threshold_edited;
     spec.range_tx_level = s.range_tx_level;
     spec.range_tx_edited = s.range_tx_edited;
@@ -434,13 +438,27 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     // defender needs); then a held point shows HELD unless its bar is draining; a neutral one shows
     // the team building it, or NEUTRAL when nobody is.
     spec.hill_pct = s.control_progress_pct;
-    if (s.control_contested) {
+    if (s.control_waiting) {
+      spec.kind = ScreenKind::HILL_NEUTRAL;
+      spec.hill_pct = 0;
+      spec.hill_note = "WAITING FOR START";
+    } else if (s.control_ended) {
+      if (s.control_owner != TEAM_ANY) {
+        spec.kind = ScreenKind::HILL_HELD;
+        spec.hill_team = (int)s.control_owner;
+        spec.hold_time = s.control_hold_time;
+      } else {
+        spec.kind = ScreenKind::HILL_NEUTRAL;
+      }
+      spec.hill_note = "MATCH OVER";
+    } else if (s.control_contested) {
       spec.kind = ScreenKind::HILL_CONTESTED;
       spec.hill_note = "TEAMS ON THE POINT";
     } else if (s.control_owner != TEAM_ANY && s.control_dir >= 0) {
       spec.kind = ScreenKind::HILL_HELD;
       spec.hill_team = (int)s.control_owner;
       spec.hold_time = s.control_hold_time;
+      if (s.control_ended) spec.hill_note = "MATCH OVER";
     } else if (s.control_bar_team >= 0 && s.control_bar_team <= 3) {
       spec.kind = ScreenKind::HILL_CAPTURING;
       spec.hill_team = s.control_bar_team;

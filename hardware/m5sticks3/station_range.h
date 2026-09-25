@@ -1,10 +1,10 @@
 // station_range.h - F365 (contract A67 and its two addenda): an operator edits a station's RANGE on
-// the Stick during play, and the edit syncs to Mission Control. Pure C++17, no Arduino: host-tested in
+// the Stick during play while unlocked, and the edit syncs to Mission Control. Pure C++17, no Arduino: host-tested in
 // test/test_range.cpp, owned by StationLink (station_link.h), driven by the glue and the buttons.
 //
 // Two settings sync the same way, each on its own:
-//   threshold  the presence radius, in dBm (what a player's advert must reach to count as "here"); it is
-//              also the advert's byte 14, which phones measure the station by.
+//   threshold  the presence radius, in dBm (what a player's advert must reach to count as "here").
+//              Byte 14 uses it except for a defaulted hill, which advertises -57 for phone presence.
 //   tx_power   the Stick's own advertising power: ultra_low -18 dBm, low -9, medium 0, high +9 (default).
 //
 // THE RULE (A67), per setting. MC's `station_config` carries its value and `<field>_age_ms` (how long ago
@@ -28,9 +28,14 @@
 namespace brx {
 
 // The StickS3's platform default presence threshold: -57 dBm (Tony, 2026-09-24, after walking both
-// stations at 3-5 m: "the stick actually works better"; a phone station defaults to -70). It is also
-// what the Stick advertises in byte 14, so it measures by the value it advertises.
+// stations at 3-5 m: "the stick actually works better"; a phone station defaults to -70). Byte 14
+// stays at this value on a defaulted hill, while the Stick measures players at the hill default below.
 constexpr int STICK_DEFAULT_THRESHOLD_DBM = -57;
+// UNPROVEN hill default. Sitting B, 2026-09-25, Stick-side PLAYERS STREAM medians: touching -43,
+// arm's length -64, about 5 m indoors -77/-81 (two phones), down the hall -78 to -87 still present
+// at -80. Since -80 reached past 7 m, -78 is a first guess for the 5-7 m edge. Walk-test at 3, 5,
+// and 7 m before treating this value as settled.
+constexpr int STICK_HILL_DEFAULT_THRESHOLD_DBM = -78;
 
 // The on-station radius edit: 3 dB a click, clamped. Closer = a smaller radius = a higher (less
 // negative) threshold.
@@ -72,6 +77,8 @@ inline int parse_tx_power(const std::string& s) {  // -1 = absent or unknown
 }
 inline int clamp_tx_power(int level) { return level < 0 ? 0 : (level > 3 ? 3 : level); }
 
+inline const char* range_distance_label(int dbm);
+
 // ---- the rough distance a threshold means, for the RANGE screen ----------------------------------
 // ROUGH, and marked so on screen. Anchored on Tony's one measurement (2026-09-24): a phone 3 m from a
 // StickS3 reads -53 to -58 dBm, so -57 dBm ~ 3 m. The other rows follow free-space loss (6 dB per
@@ -88,6 +95,13 @@ inline const char* range_distance_label(int dbm) {
   for (const auto& row : RANGE_DISTANCE_TABLE)
     if (dbm >= row.at_least_dbm) return row.label;
   return "OVER 20 M";
+}
+inline const char* range_distance_label(int dbm, bool hill) {
+  if (!hill) return range_distance_label(dbm);
+  if (dbm >= -66) return "<=3 M";
+  if (dbm >= -78) return "5-7 M";
+  if (dbm >= -84) return "~8-12 M";
+  return "OVER 12 M";
 }
 
 // ---- one synced setting ------------------------------------------------------------------------

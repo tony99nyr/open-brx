@@ -292,29 +292,155 @@ def test_lost_lands_on_the_drain_to_neutral_captured_on_the_rebuild_and_the_3s_f
         assert audio(mgr, n) == [], "a transition inside HILL_CALLOUT_MIN_S of the last line is dropped"
         clock.advance(S.HILL_CALLOUT_MIN_S)
         await adv(st, id=1, team=1, held=True, value=100, present=True)
-        assert audio(mgr, n) == [CAPTURED], "the owner as last announced was us, so a re-take is not a change... unless the model says so"
+        assert audio(mgr, n) == [], "the owner still matches the last spoken line, so no transition is new"
     asyncio.run(go())
 
 
-def test_a_transition_while_down_is_owed_and_said_once_on_revive():
-    """C (engine.js): a change of hands that lands while we are DOWN is remembered, not swallowed -- the
-    first advert after revive says the ONE line for the NET change across the death window. CONTROL: no
-    change while down means nothing is said on revive."""
+def test_a_control_point_transition_inside_the_floor_is_deferred_until_the_floor_ends():
+    """A suppressed engine.js transition stays pending; expiry keeps the last owner for a returning edge."""
+    async def go():
+        st, mgr, clock = mk_point(tid=1)
+        await in_play(st)
+        await adv(st, id=1, team=1, held=True, value=100)
+        n = mark(mgr)
+        await adv(st, id=1, team=None, value=0)
+        assert audio(mgr, n) == [LOST]
+        await adv(st, id=1, team=1, held=True, value=100)
+        assert audio(mgr, n) == [LOST], "the recapture waits inside the floor"
+        clock.advance(S.HILL_CALLOUT_MIN_S)
+        await ticks(st, clock, 0.2)
+        assert audio(mgr, n) == [LOST, CAPTURED], audio(mgr, n)
+
+        changed, cm, cc = mk_point(tid=1)
+        await in_play(changed)
+        await adv(changed, id=1, team=1, held=True, value=100)
+        await stop(changed, id=1)
+        await ticks(changed, cc, 2 * S.CONTROL_STALE_S + 0.2)
+        assert changed.hill is None
+        n = mark(cm)
+        await adv(changed, id=1, team=0, held=True, value=100)
+        assert audio(cm, n) == [LOST], "a returning different owner is announced"
+
+        same, sm, sc = mk_point(tid=1)
+        await in_play(same)
+        await adv(same, id=1, team=1, held=True, value=100)
+        await stop(same, id=1)
+        await ticks(same, sc, 2 * S.CONTROL_STALE_S + 0.2)
+        n = mark(sm)
+        await adv(same, id=1, team=1, held=True, value=100)
+        assert audio(sm, n) == [], "a returning same owner is not an invented capture"
+    asyncio.run(go())
+
+
+def test_station_owner_memory_expires_30_seconds_after_the_last_advert():
+    assert S.CONTROL_RECONNECT_S == 30.0
+    async def go():
+        inside, im, ic = mk_point(tid=1)
+        await in_play(inside)
+        await adv(inside, id=1, team=1, held=True, value=100)
+        await stop(inside, id=1)
+        await ticks(inside, ic, 2 * S.CONTROL_STALE_S + 0.2)
+        assert inside.hill is None
+        n = mark(im)
+        await adv(inside, id=1, team=0, held=True, value=100)
+        assert audio(im, n) == [LOST], "a different owner inside 30 s is announced"
+
+        outside, om, oc = mk_point(tid=1)
+        await in_play(outside)
+        await adv(outside, id=1, team=1, held=True, value=100)
+        await stop(outside, id=1)
+        oc.advance(31.0)
+        n = mark(om)
+        await adv(outside, id=1, team=0, held=True, value=100)
+        assert audio(om, n) == [], "a different owner after 30 s is adopted silently"
+    asyncio.run(go())
+
+
+def test_hill_loss_waits_until_the_death_scream_ends_without_playx():
+    async def go():
+        st, mgr, clock = mk_point(tid=1)
+        await in_play(st)
+        scream = st.scream_this_life
+        scream_s = float(S._snd._catalog()[scream]["duration_s"])
+        assert scream and scream_s > 0, "spawn selected a measured death scream"
+        prior = tx(mgr)
+        assert any(f.startswith("$PSET,") and scream in f for f in prior), "the scream take was written before death"
+        await adv(st, id=1, team=1, held=True, value=100)
+        mgr.sessions["stage"].record("rx", "$HP,0,0,0,*")
+        st.poll()
+        await settle(st)
+        assert not st.alive
+
+        n = mark(mgr)
+        await adv(st, id=1, team=0, held=True, value=100)
+        assert audio(mgr, n) == [], "the hill line waits while the native scream plays"
+        await ticks(st, clock, max(0.1, scream_s - 0.3))
+        assert audio(mgr, n) == [], "no hill PLAYX or line reaches the gun during the scream"
+        await ticks(st, clock, 0.5)
+        assert audio(mgr, n) == [LOST], ("the scream finishes before the hill line is written", audio(mgr, n),
+                                         clock.t, st._hill_scream_until)
+    asyncio.run(go())
+
+
+def test_an_unchanged_station_owner_first_seen_while_armed_is_not_announced_after_spawn():
+    async def go():
+        st, mgr, clock = mk_point(tid=1)
+        await st.connect(GUN)
+        await st.arm()
+        assert not st.spawned, "the station advert arrives before spawn"
+        st.station_advert(id=1, team=1, held=True, value=100, present=True)
+        assert st.hill and st.hill["owner"] == 1
+        assert st._hill_owner_when_silenced is None
+        assert audio(mgr, 0) == [], "the first owner is adopted silently before spawn"
+        await st.spawn()
+        await settle(st)
+        assert st.spawned and st.alive
+        n = mark(mgr)
+        await adv(st, id=1, team=1, held=True, value=100, present=True)
+        await ticks(st, clock, 4.0)
+        assert CAPTURED not in audio(mgr, n), "the unchanged first live advert is not a capture"
+    asyncio.run(go())
+
+
+def test_station_flap_back_to_the_last_spoken_owner_cancels_the_duplicate_pending_line():
+    async def go():
+        st, mgr, clock = mk_point(tid=1)
+        await in_play(st)
+        await adv(st, id=1, team=1, held=True, value=100, present=True)
+        clock.advance(S.HILL_CALLOUT_MIN_S + 0.1)
+        n = mark(mgr)
+        await adv(st, id=1, team=None, value=0, present=True)
+        assert audio(mgr, n) == [LOST], audio(mgr, n)
+        await adv(st, id=1, team=1, held=True, value=100, present=True)
+        await adv(st, id=1, team=None, value=0, present=True)
+        clock.advance(S.HILL_CALLOUT_MIN_S + 0.2)
+        n = mark(mgr)
+        await ticks(st, clock, 0.2)
+        assert audio(mgr, n) == [], "the latest owner matches the last spoken line"
+        assert st._hill_pending_callout is None
+    asyncio.run(go())
+
+
+def test_a_transition_while_down_is_said_and_not_repeated_on_revive():
+    """engine.js allows a queued station transition line while DOWN. The owner is still remembered so revive
+    does not repeat the same line. CONTROL: no change while down means nothing is said on revive."""
     async def go():
         st, mgr, clock = mk_point(tid=1)
         await in_play(st)
         await adv(st, id=1, team=None, value=0, present=True)
         await adv(st, id=1, team=1, held=True, value=100, present=True)
-        clock.advance(S.HILL_CALLOUT_MIN_S)
-        st.alive = False                                                       # down: audio off
+        st.alive = False                                                       # down: transition alerts remain allowed
         n = mark(mgr)
         await adv(st, id=1, team=None, value=0, present=True)
+        assert audio(mgr, n) == [], "the loss waits out the callout floor while down"
+        clock.advance(S.HILL_CALLOUT_MIN_S + 0.1)
+        await ticks(st, clock, 0.2)
+        assert audio(mgr, n) == [LOST], "the pending transition is said while down"
         await adv(st, id=1, team=0, held=True, value=100, present=True)
-        assert audio(mgr, n) == [], "silent while down"
         st.alive = True
         await adv(st, id=1, team=0, held=True, value=100, present=True)    # first advert back on our feet
         assert audio(mgr, n) == [LOST], audio(mgr, n)
-        assert any("changed hands while we were down" in l.get("why", "") for l in st.log), "the write's reason names the owed change"
+        assert any("control point 1: team 1 -> 2" in l.get("why", "") for l in st.log), "the write names the change while down"
         await adv(st, id=1, team=0, held=True, value=100, present=True)
         assert audio(mgr, n) == [LOST], "said once"
         # CONTROL: down and back with the owner unchanged says nothing

@@ -15,7 +15,7 @@ import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_ST
 import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, DEATH_STOP_SLACK_MS, PLAY_GAP_MS } from './announcer.js';
-import { LANE_HERO_MS, redeployOutMs } from './lanes.js';
+import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, redeployOutMs } from './lanes.js';
 import { MEDALS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
 export const C = {
@@ -509,6 +509,8 @@ const HILL_PRESENCE_MS = 12000;
 // (`Presence` itself keeps an entry for up to 8 s after the last advert, so without this a point nobody was
 // hearing would go on owning the field.)
 const CONTROL_STALE_MS = 4000;
+// Keep a point owner across a short reconnect, but do not turn a long absence into old handover news.
+export const CONTROL_RECONNECT_MS = 30000;
 // §5d.5: "a floor between repeats of the same line (proposed 10 s for contested, which can otherwise
 // oscillate at net 0)". Unlike the IR path (F75) this is a MEASURED state, so it may play at all -- but a
 // station at 2 v 2 crosses the line repeatedly and the clip is 2.078 s.
@@ -812,6 +814,9 @@ export class Engine {
     this._hillWasContested = false; // the contested bit we last read off a control point's advert (edge-triggered)
     this._controlSig = '';          // the control-point advert fields that are worth a re-render
     this._controlSite = null;       // the point we are latched to, so walking between two does not read as a capture
+    this._controlLastOwner = null;  // keep the last owner across presence expiry, for a returning point
+    this._controlSpokenOwner = null; // owner represented by the last spoken station hill line
+    this._hillPendingCallout = null; // a transition inside the 3 s floor, replaced by each newer owner edge
     this._hillSaidAt = 0;           // when a captured/lost line last played, for HILL_CALLOUT_MIN_MS
     this._hillOwnerWhenSilenced = undefined;  // C: the owner as we last heard it while audio was ON (undefined = never)
     this._hillSourceWarned = '';    // B: the refused objective source, logged once per game
@@ -3317,11 +3322,19 @@ export class Engine {
     // an enemy's used to fire "Hill Lost!" for a point nobody had taken. A different site (or the other
     // source's state) is adopted SILENTLY, exactly as walking back into range is (`_onHillBeacon`).
     const sameSite = !!prev && prev.source === 'station' && prev.site === e.id;
-    const prevOwner = sameSite ? prev.owner : null;
+    const remembered = this._controlLastOwner;
+    const rememberedFresh = remembered?.site === e.id && now - remembered.at <= CONTROL_RECONNECT_MS;
+    if (sameSite && !rememberedFresh) {
+      if (this._controlSpokenOwner?.site === e.id) this._controlSpokenOwner = null;
+      if (this._hillPendingCallout?.site === e.id) this._hillPendingCallout = null;
+      this._hillOwnerWhenSilenced = undefined;
+    }
+    const prevOwner = sameSite ? (rememberedFresh ? prev.owner : null) : rememberedFresh ? remembered.owner : null;
     if (!sameSite && prev && prev.site !== e.id) {
       this.log(`control point ${e.id} is a different point from ${prev.source === 'station' ? prev.site : 'the grenade hill'} — adopting its owner silently`, 'li');
       this._hillWasContested = false; this._hillOwnerWhenSilenced = undefined;
     }
+    if (this._hillPendingCallout && this._hillPendingCallout.site !== e.id) this._hillPendingCallout = null;
     this._controlSite = e.id;
     this.hill = {
       owner, at: now,
@@ -3345,17 +3358,34 @@ export class Engine {
     let said = false;
     const announceFrom = audio && this._hillOwnerWhenSilenced !== undefined && this._hillOwnerWhenSilenced !== prevOwner
       ? this._hillOwnerWhenSilenced : prevOwner;
-    if (audio && announceFrom != null && announceFrom !== owner) {
-      const kind = this._hillCallout(announceFrom, owner);
-      // 2: a floor on the transition lines too. Two phones sharing the default station id 1 are ONE presence
-      // entry, so the decoded owner can flip several times a second and each line preempted the last.
-      if (kind && now - this._hillSaidAt >= HILL_CALLOUT_MIN_MS) {
-        this._hillSaidAt = now;
-        this._hillSay(kind, announceFrom === prevOwner ? `control point ${e.id}: team ${prevOwner} -> ${owner}`
-          : `control point ${e.id}: it changed hands while we were down (team ${announceFrom} -> ${owner})`);
-        said = true;
+    const spokenOwner = this._controlSpokenOwner?.site === e.id ? this._controlSpokenOwner.owner : prevOwner;
+    const calloutFrom = spokenOwner ?? announceFrom;
+    const ownerChanged = prevOwner != null && prevOwner !== owner;
+    const netChange = spokenOwner != null && spokenOwner !== owner;
+    const owedChange = audio && this._hillOwnerWhenSilenced != null && this._hillOwnerWhenSilenced !== owner;
+    if ((ownerChanged || owedChange) && netChange) {
+      const kind = audio ? this._hillCallout(calloutFrom, owner) : null;
+      if (audio && kind) {
+        // A transition inside the floor stays pending. A later owner edge replaces or cancels it, so the
+        // tick never announces a state that the latest advert has already disproved.
+        if (now - this._hillSaidAt >= HILL_CALLOUT_MIN_MS) {
+          this._hillPendingCallout = null;
+          this._hillSaidAt = now;
+          this._hillSay(kind, calloutFrom === prevOwner ? `control point ${e.id}: team ${prevOwner} -> ${owner}`
+            : `control point ${e.id}: it changed hands while we were down (team ${calloutFrom} -> ${owner})`);
+          this._controlSpokenOwner = { site: e.id, owner };
+          said = true;
+        } else {
+          this._hillPendingCallout = { site: e.id, from: calloutFrom, to: owner, kind };
+        }
+      } else if (this._hillPendingCallout?.site === e.id) {
+        this._hillPendingCallout = null;
       }
+    } else if (!netChange && this._hillPendingCallout?.site === e.id) {
+      this._hillPendingCallout = null;
     }
+    const advertAge = Number.isFinite(e.ageMs) ? Math.max(0, e.ageMs) : 0;
+    this._controlLastOwner = { site: e.id, owner, at: now - advertAge };
     // Track the owner we last heard with audio ON, so the line above can be owed across a death window.
     this._hillOwnerWhenSilenced = audio ? undefined : (this._hillOwnerWhenSilenced === undefined ? prevOwner : this._hillOwnerWhenSilenced);
     // Contested, on the rising edge only. A capture callout in the same advert wins outright: `_hillSay`
@@ -3427,7 +3457,7 @@ export class Engine {
   /** A new match must not inherit the last one's point, its tally, or its once-per-game warnings. */
   _resetHill() {
     this.hill = null; this.hillCallout = null; this._hillTickAt = 0;
-    this._controlSite = null; this._controlSig = ''; this._hillSaidAt = 0;
+    this._controlSite = null; this._controlLastOwner = null; this._controlSpokenOwner = null; this._hillPendingCallout = null; this._controlSig = ''; this._hillSaidAt = 0;
     this._hillWasContested = false; this._hillContestedAt = 0; this._hillOwnerWhenSilenced = undefined;
     this._hillTeam2Warned = false; this._hillSourceWarned = '';
     this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null;
@@ -3437,6 +3467,12 @@ export class Engine {
    *  we hold a fresh one. This is the only place the tick fires from — a beacon arrives once per ~5 s and
    *  could never carry a 1 s cadence, and driving audio per beacon is exactly what F74 forbids. */
   _hillTick(now) {
+    const hillBadge = this._lanes?.obj?.hill;
+    if (hillBadge && now - hillBadge.at >= LANE_HILL_CLEAR_MS) {
+      const { hill: _hill, ...obj } = this._lanes.obj;
+      this._lanes.obj = obj;
+      this._changed();
+    }
     const h = this.hill;
     if (!h) { this._holdAt = 0; return; }   // nothing to hear: the next accrual must not count the gap
     // A grenade point expires on two missed 5 s beacons; a phone control point expires on the §3 presence
@@ -3444,12 +3480,23 @@ export class Engine {
     const window = h.source === 'station' ? CONTROL_STALE_MS : HILL_PRESENCE_MS;
     if (now - h.at >= window) {   // out of range or off the point. NOT a "lost" — nobody took it from us
       this.hill = null; this._hillTickAt = 0; this._holdAt = 0;
+      if (this._hillPendingCallout?.site === h.site) this._hillPendingCallout = null;
       this._controlSig = ''; this._hillWasContested = false;   // K1: walking back into range must be able to re-announce
       this.log(`hill presence expired (${Math.round((now - h.at) / 1000)}s since its last beacon)`, 'li');
       this._changed();
       return;
     }
     this._accrueHold(h, now);   // the CLOCK runs whatever the audio does: possession is a fact about the point
+    const pending = this._hillPendingCallout;
+    if (pending) {
+      if (h.source !== 'station' || h.site !== pending.site || h.owner !== pending.to) this._hillPendingCallout = null;
+      else if (now - this._hillSaidAt >= HILL_CALLOUT_MIN_MS && this._hillAudioOn(true)) {
+        this._hillPendingCallout = null;
+        this._hillSaidAt = now;
+        this._hillSay(pending.kind, `control point ${pending.site}: team ${pending.from} -> ${pending.to} (deferred by callout floor)`);
+        this._controlSpokenOwner = { site: pending.site, owner: pending.to };
+      }
+    }
     if (!this._hillAudioOn() || !this._hillMine()) return;
     // docs/announcer.md: the tick never queues behind a clip on the gun, nor jumps a waiting line, nor sounds while the item on
     // air still has audio due (the gaps inside a kill item: the 120 ms flash-to-line gap, the gap between medal lines). It is
@@ -3734,6 +3781,12 @@ export class Engine {
     }
     if (this.phase === 'live') {
       if (this.endT && now >= this.endT) { this._endLocal('time-expiry'); return; }
+      const hillBadge = this._lanes?.obj?.hill;
+      if (hillBadge && now - hillBadge.at >= LANE_HILL_CLEAR_MS) {
+        const { hill: _hill, ...obj } = this._lanes.obj;
+        this._lanes.obj = obj;
+        this._changed();
+      }
       this._heroUntil(now);   // F368: keeps a kill card that waits behind a takeover open (GUN STOPPED returns below), so a new kill joins it
       // F272 recovery is a hard gameplay stand-down. The model intentionally stays alive until the replacement
       // head is confirmed, but no poison/shield/recoil/poll/death clock may run behind that instruction.

@@ -3483,6 +3483,15 @@ class Session:
         if item := self._active_item(a):
             body["item"] = item                    # A56: an older Stick ignores it
         body["lock_s"] = lock = self._station_lock_s()   # A58: a phone station ignores it
+        # RECALL/PANIC leave the session in KIT with the same game byte. A connected hill
+        # must stop then, and a later hello must not restart its tally by omitting this field.
+        # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
+        if self.phase == "recap" or (not self.in_play() and self._game_no_started and not self.lobby_pushed):
+            body["ends_in_ms"] = 0
+        elif self.phase in ("armed", "live") and self.start_info and not self.is_adopted():
+            body["starts_in_ms"] = self.start_info["go_live_t"] - now
+            if tl_s := self.config.get("time_limit_s"):
+                body["ends_in_ms"] = max(0, self.start_info["go_live_t"] + tl_s * 1000 - now)
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
             st["unlocked_at"] = self.now_ms()  # the window closes at the unlock, heard or not
         elif lock > 0 and st.get("lock_game") == body["game"]:
@@ -7005,8 +7014,7 @@ class Session:
         now = self.now_ms()
         reached = [pid for nid, pid in self.node_player.items() if now - self.nodes.get(nid, {}).get("last_seen_ms", 0) <= STALE_AFTER_MS]
         unreachable = [p["player_id"] for p in self.players.values() if p["player_id"] not in reached]
-        # F106(d): a utility phone never held this start (it is not a player, §5c) and has nothing to
-        # abort; `broadcast()` reached it anyway, on a wire that is supposed to need it no LAN mid-match.
+        # A utility station takes no player start. The same-game station_config clears a Stick hill clock.
         for nid, nv in list(self.nodes.items()):
             if nv.get("node_type") != "utility":
                 self.net.push(nid, "control", {"cmd": "abort_start", "seq": self.start_info["seq"]})

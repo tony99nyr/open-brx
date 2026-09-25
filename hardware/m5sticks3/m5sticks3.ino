@@ -422,7 +422,7 @@ static void publishAdvert(const AdvertView& v, uint32_t now) {
   adv_.value = v.value;
   adv_.seq = seq;
   adv_.game = assigned ? (uint8_t)a.game : settings.game;
-  adv_.threshold = assigned ? link.threshold_dbm() : 0;  // A67: MC's value or a younger on-station edit
+  adv_.threshold = assigned ? link.threshold_advertised_dbm() : 0;  // hill default keeps phone range at the prior value
   adv_.taker = v.taker;
   String uuid = advert_uuid(adv_).c_str();
   if (!adv) { policy.have_last = false; return; }
@@ -485,7 +485,7 @@ static void pollAdvert(uint32_t now) {
     v.kind = a.present ? station_kind_byte(a.kind) : KIND_CONTROL;
     v.id = a.present ? (uint16_t)a.id : settings.id;
     v.game = a.present ? (uint8_t)a.game : settings.game;
-    v.threshold = a.present ? brx_glue::link.threshold_dbm() : 0;  // an edit republishes at once (identity)
+    v.threshold = a.present ? brx_glue::link.threshold_advertised_dbm() : 0;
   }
   {  // A67: a new TX power restarts the advert at once (publishAdvert applies it before adv->start())
     const int wantTx = brx_glue::link.assignment().present ? brx_glue::link.tx_power_level() : TX_POWER_DEFAULT;
@@ -818,10 +818,13 @@ static void pollButtons() {
   // F365: A is read as one gesture from its level (station_ui.h AHoldGesture): a click, HOME on a release
   // between 1 s and 5 s, or RANGE on reaching 5 s on the STATS page. The bench path below keeps its own.
   // Not while a RESET confirm is open: that prompt is the operator's focus until it resolves or times out.
+  const bool stationLocked = link.lock().locked(now);
   const bool rangeAllowed = link.state() != LinkState::NOT_CONFIGURED && !homeNav.at_home() &&
                             link.assignment().present && !rangeEd.active() &&
                             brx_glue::buttons.phase() == ButtonPhase::NORMAL;
-  const AHoldEvent aEvent = aHoldGesture.update(bootHeld.a_down(), now, rangeAllowed);
+  const AHoldEvent aEvent = aHoldGesture.update(bootHeld.a_down(), now, rangeAllowed, stationLocked);
+  if (aEvent == AHoldEvent::RANGE)
+    Serial.printf("RANGE opened after %lu ms (A held on STATS)\n", (unsigned long)aHoldGesture.held_ms());
   const int cue = aHoldGesture.range_cue_pct();
   if (cue != lastRangeCue) { lastRangeCue = cue; displayDirty = true; }
   if (forceRestart.suppress_single()) {
@@ -842,14 +845,22 @@ static void pollButtons() {
     if (homeNav.poll_idle(now)) displayDirty = true;
     return;
   }
-  // F365: the RANGE editor. Allowed during play and under the A58 lock (Tony, 2026-09-25: the lock guards
-  // reassign and reset; range sits behind the stronger 5 s gesture, and every edit is reported to MC).
+  // F365: the RANGE editor is unavailable while the A58 lock is active.
   // Never edit invisibly: no station any more (a release) or the low-battery screen closes RANGE.
   // The battery half is INERT today: no battery reading is wired up (README "Power"; buildStickState
   // reports -1 too). Pass the real reading here once one exists.
   if (rangeEd.active() && range_must_close(link.assignment().present, /*battery_pct=*/-1)) {
     rangeEd.close();
     Serial.println("RANGE closed (no station assigned)");
+    displayDirty = true;
+  }
+  if (rangeEd.active() && stationLocked) {
+    rangeEd.close();
+    resetOutcomeActive = true;
+    resetOutcomeLocked = true;
+    resetOutcomeOk = false;
+    resetOutcomeAtMs = now;
+    Serial.printf("RANGE closed: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
     displayDirty = true;
   }
   if (rangeEd.active()) {
@@ -878,9 +889,17 @@ static void pollButtons() {
     return;  // B's RESET is not reachable from RANGE
   }
   if (aEvent == AHoldEvent::RANGE) {
-    if (brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) brx_glue::buttons.on_short_press();  // belt and braces
-    rangeEd.open(now);
-    Serial.println("RANGE opened (A held 5 s on STATS)");
+    if (stationLocked) {
+      resetOutcomeActive = true;
+      resetOutcomeLocked = true;
+      resetOutcomeOk = false;
+      resetOutcomeAtMs = now;
+      Serial.printf("RANGE refused: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
+    } else {
+      if (brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) brx_glue::buttons.on_short_press();
+      rangeEd.open(now);
+      Serial.println("RANGE opened (A held 5 s on STATS)");
+    }
     homeNav.note_activity(now);
     displayDirty = true;
   } else if (aEvent == AHoldEvent::CLICK) {

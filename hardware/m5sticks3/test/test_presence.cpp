@@ -369,6 +369,22 @@ static void test_a_long_gap_is_clamped_for_conversion_but_not_for_possession() {
   CHECK(cp.progress > 89.99 && cp.progress < 90.01);
 }
 
+static void test_contested_hill_pauses_owner_tally() {
+  Field f;
+  f.add(1, 0);
+  f.settle();
+  BleControlPoint cp;
+  cp.update(f.pr, f.t);
+  run(cp, f, 10000);
+  CHECK_EQ(cp.owner, 0);
+  const uint32_t before = cp.hold_ms[0];
+  f.add(2, 1);
+  f.settle();
+  run(cp, f, 3000);
+  CHECK(cp.contested);
+  CHECK_EQ(cp.hold_ms[0], before);
+}
+
 static void test_progress_republishes_at_most_once_a_second_and_state_at_once() {
   Field f;
   f.add(1, 0);
@@ -531,6 +547,7 @@ static void test_which_kinds_scan_for_players() {
   CHECK_EQ(station_needs_player_scan("respawn", false), REVIVE_FEEDBACK_ENABLED);
   CHECK_EQ((int)scan_window_units("respawn"), 15);  // Block 9 S7: light, so it cannot starve the advert
   CHECK_EQ((int)scan_window_units("control"), 50);
+  CHECK_EQ((int)scan_window_units("powerup"), 50);  // ready claim must reach the next 1 s scan batch
   CHECK(station_needs_player_scan("powerup", true));
   CHECK(!station_needs_player_scan("powerup", false));  // unchanged: no claim scan while taken
   CHECK(!station_needs_player_scan("extraction", true));
@@ -566,6 +583,7 @@ int main() {
   test_a_zero_crossing_carries_the_remaining_work_into_the_build();
   test_a_part_built_bar_with_nobody_on_it_stalls();
   test_a_long_gap_is_clamped_for_conversion_but_not_for_possession();
+  test_contested_hill_pauses_owner_tally();
   test_progress_republishes_at_most_once_a_second_and_state_at_once();
   test_reset_keeps_the_tuning();
   test_revive_counts_on_the_advert_bit_without_rssi();

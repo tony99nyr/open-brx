@@ -91,6 +91,8 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
       const BleControlPoint& h = link.hill();
       const AdvertView hv = h.advert();
       st.control_ble = true;
+      st.control_ended = link.hill_ended();
+      st.control_waiting = link.hill_waiting(now);
       st.control_progress_pct = hv.value;
       st.control_bar_team = hv.team == TEAM_ANY ? -1 : (int)hv.team;
       st.control_contested = h.contested;
@@ -166,6 +168,7 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
   st.range_edit_strength = in.range_edit_strength;
   st.range_cue_pct = in.range_cue_pct;
   st.range_threshold_dbm = link.threshold_dbm();
+  st.range_threshold_hill = link.assignment().present && link.assignment().kind == "control";
   st.range_threshold_edited = link.threshold_setting().from_station();
   st.range_tx_level = link.tx_power_level();
   st.range_tx_edited = link.tx_power_setting().from_station();

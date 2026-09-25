@@ -4823,7 +4823,8 @@ for (const view of VIEWS) for (const skin of ['', '&night']) await step(`${view.
 // right."). HERO (centre): my kill and my newest medal, a spree as a ladder with a ×N count, up 2.5 s after the last
 // kill. OBJECTIVE (right): the lead and hill badges, each up until the next one of its key replaces it. FEED (left):
 // downs, pickups and every other alert. Each shows when its event ARRIVES, so a kill, the lead and the hill at the same
-// moment are all on screen at once. Every step drives the REAL engine through a demo stage and reads what a person sees.
+// moment are all on screen at once. A hill badge dims at 4 s and clears at 8 s; the lead keeps its current lifetime.
+// Every step drives the REAL engine through a demo stage and reads what a person sees.
 for (const view of VIEWS) for (const night of [false, true]) {
   const N = night ? '&night' : '', tag = `${view.name} lanes ${night ? 'night' : 'day'}`;
   const shot = (pg, name) => pg.screenshot({ path: `${OUT}/${view.name}-lanes-${name}${night ? '-night' : ''}.png` });
@@ -4853,7 +4854,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(gone && !gone.hero, 'the hero never left');
     must(lnCovers(five).length === 0 && lnApart(five).length === 0, [...lnCovers(five), ...lnApart(five)].join(' | '));
   });
-  await step(`${tag}: the OBJECTIVE badges sit on the right and stay until the next one of their key replaces them`, async () => {
+  await step(`${tag}: the lead stays, while the hill badge dims and clears after 8 s`, async () => {
     let pg = await open(view, 'live-lead-alone', N, 2500);
     const a = await lnWait(pg, r => r.obj.some(o => o.key === 'lead'), 2000); await shot(pg, 'lead');
     await pg.waitForTimeout(6000); const b2 = await lnRead(pg);
@@ -4866,11 +4867,15 @@ for (const view of VIEWS) for (const night of [false, true]) {
     pg = await open(view, 'live-hill-captured', N, 2600);
     const h = await lnWait(pg, r => r.obj.some(o => o.key === 'hill'), 2000);
     await pg.waitForTimeout(6000); const h2 = await lnRead(pg);
-    await pg.evaluate(() => window.brxDemo.hillTaken(window.brx.engine.teamTid === 2 ? 1 : 2)); const h3 = await lnWait(pg, r => r.obj.some(o => o.kind === 'hill_lost'), 2000); await shot(pg, 'hill'); await pg.close();
+    await pg.evaluate(() => window.brxDemo.hillTaken(window.brx.engine.teamTid === 2 ? 1 : 2)); const h3 = await lnWait(pg, r => r.obj.some(o => o.kind === 'hill_lost'), 2000); await shot(pg, 'hill');
     const hb = h.obj.find(o => o.key === 'hill');
     must(hb && hb.text === 'HILL CAPTURED' && hb.src === 'IR' && hb.x >= .7, `the hill badge: ${JSON.stringify(hb)}`);
     must(h2.obj.some(o => o.kind === 'hill_captured'), `the hill badge must still be up 6 s later: ${JSON.stringify(h2.obj)}`);
     must(h3.obj.filter(o => o.key === 'hill').length === 1 && h3.obj.find(o => o.key === 'hill').text === 'HILL LOST', `replaced by HILL LOST: ${JSON.stringify(h3.obj)}`);
+    await pg.waitForTimeout(8500);
+    const hillCard = await pg.evaluate(() => !!document.querySelector('#lanes .lo[data-key="hill"]'));
+    const h4 = await lnRead(pg); await pg.close();
+    must(!hillCard && !h4.obj.some(o => o.key === 'hill'), `the rendered hill badge must leave the DOM after 8 s: ${JSON.stringify(h4.obj)}`);
   });
   await step(`${tag}: my kill, the lead change and a hill capture at the same moment are all on screen at once, none over another`, async () => {
     const pg = await open(view, 'live-kill-lead-hill', N, 2450);

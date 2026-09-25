@@ -1212,6 +1212,8 @@ class StationAssignment(TypedDict):
     tx_power_set_at: NotRequired[int]
     tx_power_src: NotRequired[RangeSrc]
     item: NotRequired[StationItem]   # A56 (S58): a powerup station's item and spawn schedule
+    ends_in_ms: NotRequired[int]     # A68: station_config match-end duration from receipt; absent means unknown
+    starts_in_ms: NotRequired[int]   # A68: station_config go-live relative to receipt (negative once live); absent = no match running
 
 
 class StationUpdate(TypedDict):

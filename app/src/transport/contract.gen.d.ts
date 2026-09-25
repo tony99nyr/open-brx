@@ -1247,6 +1247,10 @@ export interface StationAssignment {
   tx_power_src?: RangeSrc;
   /** A56 (S58): a powerup station's item and spawn schedule */
   item?: StationItem;
+  /** A68: station_config match-end duration from receipt; absent means unknown */
+  ends_in_ms?: number;
+  /** A68: station_config go-live relative to receipt (negative once live); absent = no match running */
+  starts_in_ms?: number;
 }
 
 /** A56: MC -> a powerup station, on a pickup and at each spawn time. `next_spawn_in_ms` is time REMAINING

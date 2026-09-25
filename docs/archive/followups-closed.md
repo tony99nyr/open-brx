@@ -811,6 +811,3 @@ closed in the same pass, each checked against the code, the git log or the exper
   the simulated-player parity: 3(a)/(b)/(c) capture, contest and drain with the presence RSSI logged; step 4's
   restart-survival; the 2(a)/2(b) online and offline pickup claims. The hill threshold value itself stays open as
   F383.
-- 2026-09-25 **F333** closed: sitting B walked every pickup and hill state on the lit panel at arm's length (EMPTY,
-  countdown, READY, TAKEN, CAPTURING, HELD, CONTESTED, LOSING). The one legibility issue found, the LOBBY
-  countdown's loading indicator overlapping SPAWN, is filed separately as F398.

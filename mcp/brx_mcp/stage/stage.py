@@ -286,6 +286,7 @@ BEACON_DEDUPE_S = 0.150        # engine.js's 150 ms F85 identity window (see `_o
 # window from `hill.source`): a grenade beacons once per ~5 s, so its presence is 12 s / two missed beacons;
 # a BLE station advertises continuously, so its point goes stale on the §3 presence rule, 4 s.
 CONTROL_STALE_S = 4.0          # engine.js CONTROL_STALE_MS 4000
+CONTROL_RECONNECT_S = 30.0     # engine.js CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
 HILL_CONTESTED_MIN_S = 10.0    # engine.js HILL_CONTESTED_MIN_MS: a floor between "Hill Contested" repeats (2 v 2 flaps)
 HILL_CALLOUT_MIN_S = 3.0       # engine.js HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
 HILL_TICK_LOSING_S = 0.5       # engine.js HILL_TICK_LOSING_MS: OUR point draining doubles the possession tick
@@ -658,6 +659,8 @@ class GunStage:
         self._last_beacon_at = 0.0                 # F85: self.now() of that acceptance
         self.hill: HillState | None = None         # {owner, at, from_neutral[, source: 'station', site, progress, …]} -- state from the wire; the cadence below is ours
         self._hill_busy_until = 0.0                # a hill callout owns the announcer until here: the tick waits, it never overlaps
+        self._hill_scream_until = 0.0               # the native death scream owns the gun until this time
+        self._hill_scream_pending: dict | None = None  # no announcer queue here: defer a hill line until the scream ends
         self._hill_tick_at = 0.0                   # when the possession tick last played (0 = not ticking)
         self._hill_team2_warned = False            # F82 is logged once per game, not once per beacon
         # K1 / F102: the phone CONTROL POINT half (engine.js `_onControlAdvert` / `_controlStation`), field for field.
@@ -665,6 +668,9 @@ class GunStage:
         # through `decode_advert_uuid` exactly as the phone's scanner would decode the air.
         self.stations: dict[str, StationEntry] = {}  # 'station:<id>' -> the presence entry (beacon.js `Presence` shape + seen_at/advertising)
         self._control_site: int | None = None      # the point we are latched to, so walking between two does not read as a capture
+        self._control_last_owner: dict | None = None  # the last owner across presence expiry
+        self._control_spoken_owner: dict | None = None  # owner represented by the last spoken station hill line
+        self._hill_pending_callout: dict | None = None  # a transition inside the 3 s floor, replaced by a newer owner edge
         self._control_sig = ""                     # last published advert signature (a change is worth a log line)
         self._hill_said_at = 0.0                   # when a captured/lost line last played, for HILL_CALLOUT_MIN_S
         self._hill_contested_at = 0.0              # when "Hill Contested" last played, so a flapping bit cannot repeat it
@@ -3123,11 +3129,11 @@ class GunStage:
         cue_ms = self.bundle.get("cue_ms") or {}               # engine.js `frames.cue_ms`: a per-bundle override, in ms
         return frame, (float(cue_ms[kind]) / 1000.0 if kind in cue_ms else d["s"])
 
-    def _hill_audio_on(self) -> bool:
+    def _hill_audio_on(self, even_dead: bool = False) -> bool:
         """True while hill audio should be audible at all: in play, on our feet, and not a mode whose points we
-        cannot tell apart. Death is deliberately silent -- A16 makes the DOWN window hands-off and the death
-        scream owns the announcer; a player who respawns learns the owner from the tick within 1 s."""
-        return bool(self.spawned) and bool(self.alive) and self.config.get("mode") not in HILL_AUDIO_EXCLUDED_MODES
+        cannot tell apart. `even_dead` mirrors engine.js `_hillAudioOn(true)`: transition lines queue as game alerts
+        while the death scream plays, but the possession tick stays off until the player revives."""
+        return bool(self.spawned) and (bool(self.alive) or even_dead) and self.config.get("mode") not in HILL_AUDIO_EXCLUDED_MODES
 
     def _hill_source_allowed(self, source: str) -> bool:
         """B/F70 (engine.js `_hillSourceAllowed`): MC names ONE objective source per game
@@ -3195,6 +3201,9 @@ class GunStage:
         if not frame:
             return
         now = self.now()
+        if now < self._hill_scream_until:
+            self._hill_scream_pending = {"kind": kind, "why": why}
+            return
         preempt = now < self._hill_busy_until
         self._hill_busy_until = now + length_s
         self._spawn_task(self.write([PLAYX, frame] if preempt else [frame],
@@ -3265,6 +3274,10 @@ class GunStage:
         """Called from `poll()`: expire a stale point, then play the possession tick on OUR clock while we hold a
         fresh one. This is the only place the tick fires from -- a beacon arrives once per ~5 s and could never
         carry a 1 s cadence, and driving audio per beacon is exactly what F74 forbids."""
+        scream_pending = self._hill_scream_pending
+        if scream_pending and now >= self._hill_scream_until:
+            self._hill_scream_pending = None
+            self._hill_say(scream_pending["kind"], scream_pending["why"])
         h = self.hill
         if not h:
             return
@@ -3274,9 +3287,20 @@ class GunStage:
         if now - h["at"] >= window:            # out of range or off the point. NOT a "lost" -- nobody took it from us
             self.hill = None
             self._hill_tick_at = 0.0
+            if self._hill_pending_callout and self._hill_pending_callout["site"] == h.get("site"):
+                self._hill_pending_callout = None
             self._control_sig = ""; self._hill_was_contested = False   # K1: walking back into range must be able to re-announce
             self._log(f"hill presence expired ({round(now - h['at'])}s since its last beacon)", "info")
             return
+        pending = self._hill_pending_callout
+        if pending:
+            if h.get("source") != "station" or h.get("site") != pending["site"] or h["owner"] != pending["to"]:
+                self._hill_pending_callout = None
+            elif now - self._hill_said_at >= HILL_CALLOUT_MIN_S and self._hill_audio_on(even_dead=True):
+                self._hill_pending_callout = None
+                self._hill_said_at = now
+                self._hill_say(pending["kind"], f"control point {pending['site']}: team {pending['from']} -> {pending['to']} (deferred by callout floor)")
+                self._control_spoken_owner = {"site": pending["site"], "owner": pending["to"]}
         if not self._hill_audio_on() or not self._hill_mine():
             return
         if now < self._hill_busy_until:
@@ -3300,15 +3324,18 @@ class GunStage:
         self.hill = None
         self._hill_tick_at = 0.0
         self._hill_busy_until = 0.0
+        self._hill_scream_pending = None
         self._last_beacon_key = None
-        self._control_sig = ""; self._hill_was_contested = False
+        self._control_sig = ""; self._hill_was_contested = False; self._hill_pending_callout = None
 
     def _reset_hill(self) -> None:
         """engine.js `_resetHill`: a new match (ARM here) must not inherit the last one's point or its
         once-per-game warnings (F82, the refused-source line). The injected station adverts stay -- they
         are the operator's field, not the game's state."""
         self.hill = None; self._hill_tick_at = 0.0; self._hill_busy_until = 0.0
-        self._control_site = None; self._control_sig = ""; self._hill_said_at = 0.0
+        self._hill_scream_pending = None
+        self._control_site = None; self._control_last_owner = None; self._control_spoken_owner = None; self._hill_pending_callout = None
+        self._control_sig = ""; self._hill_said_at = 0.0
         self._hill_was_contested = False; self._hill_contested_at = 0.0; self._hill_owner_when_silenced = _UNSET
         self._hill_team2_warned = False; self._hill_source_warned = ""
 
@@ -3364,11 +3391,24 @@ class GunStage:
         # A: two points are two different objectives. A point we were not reading before tells us NOTHING
         # about a change of hands -- a different site (or the other source's state) is adopted SILENTLY.
         same_site = prev is not None and prev.get("source") == "station" and prev.get("site") == e["id"]
-        prev_owner = prev["owner"] if prev is not None and same_site else None
+        remembered = self._control_last_owner
+        remembered_owner: int | None = None
+        if (remembered is not None and remembered["site"] == e["id"]
+                and now - remembered["at"] <= CONTROL_RECONNECT_S):
+            remembered_owner = remembered["owner"]
+        elif same_site:
+            if self._control_spoken_owner and self._control_spoken_owner["site"] == e["id"]:
+                self._control_spoken_owner = None
+            if self._hill_pending_callout and self._hill_pending_callout["site"] == e["id"]:
+                self._hill_pending_callout = None
+            self._hill_owner_when_silenced = _UNSET
+        prev_owner = remembered_owner
         if not same_site and prev and prev.get("site") != e["id"]:
             self._log(f"control point {e['id']} is a different point from "
                       f"{prev.get('site') if prev.get('source') == 'station' else 'the grenade hill'} -- adopting its owner silently", "info")
             self._hill_was_contested = False; self._hill_owner_when_silenced = _UNSET
+        if self._hill_pending_callout and self._hill_pending_callout["site"] != e["id"]:
+            self._hill_pending_callout = None
         self._control_site = e["id"]
         self.hill = {"owner": owner, "at": now,
                      "from_neutral": prev_owner == HILL_NEUTRAL_TEAM,   # a station capture ALWAYS passes through neutral
@@ -3379,17 +3419,32 @@ class GunStage:
                      "on_point": bool(e.get("present"))}
         # C: a transition that lands while we are DOWN is owed, not swallowed: remember the owner as we last
         # heard it WITH audio on, and on the first advert after revive say the one line for the NET change.
-        audio = self._hill_audio_on()
+        audio = self._hill_audio_on(even_dead=True)
         said = False
         silenced = self._hill_owner_when_silenced
         announce_from = silenced if (audio and silenced is not _UNSET and silenced != prev_owner) else prev_owner
-        if audio and announce_from is not None and announce_from != owner:
-            kind = self._hill_callout(announce_from, owner)
-            if kind and now - self._hill_said_at >= HILL_CALLOUT_MIN_S:   # 2: a floor on the transition lines
-                self._hill_said_at = now
-                self._hill_say(kind, f"control point {e['id']}: team {prev_owner} -> {owner}" if announce_from == prev_owner
-                               else f"control point {e['id']}: it changed hands while we were down (team {announce_from} -> {owner})")
-                said = True
+        spoken_owner = (self._control_spoken_owner["owner"] if self._control_spoken_owner and self._control_spoken_owner["site"] == e["id"] else prev_owner)
+        callout_from = spoken_owner if spoken_owner is not None else announce_from
+        owner_changed = prev_owner is not None and prev_owner != owner
+        net_change = spoken_owner is not None and spoken_owner != owner
+        owed_change = audio and silenced is not _UNSET and silenced is not None and silenced != owner
+        if (owner_changed or owed_change) and net_change:
+            kind = self._hill_callout(callout_from, owner) if audio else None
+            if audio and kind:
+                if now - self._hill_said_at >= HILL_CALLOUT_MIN_S:
+                    self._hill_pending_callout = None
+                    self._hill_said_at = now
+                    self._hill_say(kind, f"control point {e['id']}: team {prev_owner} -> {owner}" if callout_from == prev_owner
+                                   else f"control point {e['id']}: it changed hands while we were down (team {callout_from} -> {owner})")
+                    self._control_spoken_owner = {"site": e["id"], "owner": owner}
+                    said = True
+                else:
+                    self._hill_pending_callout = {"site": e["id"], "from": callout_from, "to": owner, "kind": kind}
+            elif self._hill_pending_callout and self._hill_pending_callout["site"] == e["id"]:
+                self._hill_pending_callout = None
+        elif not net_change and self._hill_pending_callout and self._hill_pending_callout["site"] == e["id"]:
+            self._hill_pending_callout = None
+        self._control_last_owner = {"site": e["id"], "owner": owner, "at": e["seen_at"]}
         self._hill_owner_when_silenced = _UNSET if audio else (prev_owner if silenced is _UNSET else silenced)
         # Contested, on the RISING EDGE only, floored at HILL_CONTESTED_MIN_S, and only to players the fight
         # belongs to (on the point, or the owning team). A capture callout in the same advert wins outright.
@@ -3540,6 +3595,8 @@ class GunStage:
             self._event_now("shield_down")
         if hp == 0 and self.alive:
             self.alive = False
+            scream_ms = float((_snd._catalog().get(self.scream_this_life) or {}).get("duration_s") or 0.0)
+            self._hill_scream_until = self.now() + max(0.0, scream_ms)
             self._cancel_pending_play_writes()
             self._arm_pending = None; self._trigger_pending = None   # F209 (engine.js `_death`): never arm a dead gun
             self._pending_hurt_write = False   # HURT_DEBOUNCE_S (mirrors engine.js `_death`): a death inside the hold cancels the queued alert outright

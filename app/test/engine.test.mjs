@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS } from '../src/engine.js';
 import { BrxLink } from '../src/brxlink.js';
 import { Hud } from '../src/hud/hud.js';
 import * as W from '../src/transport/envelope.js';
@@ -520,6 +520,64 @@ test('control point: the FIRST advert adopts the owner silently, and a real hand
   assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'BLUE taking it says Hill Captured, once');
 });
 
+test('control point: remembered owner expires 30 s after the last advert', () => {
+  assert.equal(CONTROL_RECONNECT_MS, 30000);
+  const inside = koth();
+  control(inside, { team: 1, state: HELD, value: 100 });
+  inside.adv(12000); inside.eng.setStations([]); inside.eng.tick();
+  control(inside, { team: 0, state: HELD, value: 100 });
+  assert.equal(nWrites(inside, HILL_LOST_F), 1, 'a different owner inside the reconnect window announces');
+
+  const outside = koth();
+  control(outside, { team: 1, state: HELD, value: 100 });
+  outside.adv(31000); outside.eng.setStations([]);
+  const before = outside.writes.length;
+  control(outside, { team: 0, state: HELD, value: 100 });
+  assert.deepEqual(outside.writes.slice(before), [], 'a different owner after the reconnect window is adopted silently');
+});
+
+test('control point: an unchanged owner first seen while armed is not announced at go-live', () => {
+  const h = harness({ mode: 'koth' }).kit().config_().echo().start(20000);
+  control(h, { team: 1, state: HELD, value: 100 });             // first seen before LIVE
+  assert.equal(h.eng.phase, 'armed');
+  assert.equal(h.eng.state().hill.owner, 1, 'the armed advert establishes the known owner');
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0);
+  h.adv(20000); h.eng.tick();
+  assert.equal(h.eng.phase, 'live');
+  assert.equal(h.eng.alive, true);
+  assert.equal(h.eng._hillOwnerWhenSilenced, null, 'the armed window retained an unknown spoken owner');
+  assert.equal(h.eng._controlLastOwner?.owner, 1, 'the station owner remains latched across go-live');
+  assert.equal(h.eng._hillAudioOn(true), true);
+  assert.equal(h.eng._hillCallout(null, 1), 'hill_captured');
+  control(h, { team: 1, state: HELD, value: 100 });             // same owner after go-live
+  assert.equal(h.eng.state().hill.owner, 1, 'the live heartbeat still names the same owner');
+  runControl(h, 4000, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0, 'the first live heartbeat is not a capture');
+});
+
+test('control point: a transition back to the last spoken owner cancels the redundant pending line', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });
+  runControl(h, 3000, { team: 1, state: HELD, value: 100 });
+  control(h, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'we say the loss');
+  control(h, { team: 1, state: HELD, value: 100 });
+  control(h, { team: 255, state: 0, value: 0 });
+  runControl(h, 3500, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'the pending duplicate loss is cancelled');
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0, 'the unspoken capture is cancelled too');
+});
+
+test('control point: the hill badge expires while the gun is locked', () => {
+  const h = koth();
+  control(h, { team: 0, state: HELD, value: 100 });
+  control(h, { team: 1, state: HELD, value: 100 });
+  assert.ok(h.eng.state().lanes.obj.hill, 'capture callout creates the badge');
+  h.eng.gunLocked = true;
+  h.adv(8001); h.eng.tick();
+  assert.equal(h.eng.state().lanes.obj.hill, undefined, 'badge expires even during gun recovery');
+});
+
 // Mutation audit 2026-09-11: `_onControlAdvert` restated `claimable()` by hand as `e.team <= 3`, and
 // flipping that literal to `<= 4` left the whole suite green -- so a station advertising tid 4 with `held`
 // set would have installed a real owner and nothing would have said so. tids 4-7 are COLOUR tids, not
@@ -794,6 +852,42 @@ test('control point: the transition lines have a repeat floor, so a shared stati
   slow.adv(200); slow.eng.tick();   // docs/announcer.md: a line never starts under the 0.11 s possession tick; it waits it out
   assert.equal(nWrites(slow, HILL_CAPTURED_F), 1);
   assert.equal(nWrites(slow, HILL_LOST_F), 1, 'a real second transition is not swallowed by the floor');
+});
+
+test('control point: a transition inside the floor waits, and a newer owner replaces the pending truth', () => {
+  const recapture = koth();
+  control(recapture, { team: 1, state: HELD, value: 100 });
+  control(recapture, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(recapture, HILL_LOST_F), 1, 'the loss plays');
+  control(recapture, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(recapture, HILL_CAPTURED_F), 0, 'the recapture waits inside the floor');
+  runControl(recapture, 3000, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(recapture, HILL_CAPTURED_F), 1, 'the pending recapture plays when the floor ends');
+  assert.equal(recapture.eng.state().lanes.obj.hill.kind, 'hill_captured', 'the HUD lane receives the recapture');
+
+  const replaced = koth();
+  control(replaced, { team: 1, state: HELD, value: 100 });
+  control(replaced, { team: 255, state: 0, value: 0 });
+  control(replaced, { team: 1, state: HELD, value: 100 });
+  control(replaced, { team: 0, state: HELD, value: 100 });
+  assert.equal(nWrites(replaced, HILL_CAPTURED_F), 0, 'the obsolete recapture does not play');
+  runControl(replaced, 3000, { team: 0, state: HELD, value: 100 });
+  assert.equal(nWrites(replaced, HILL_CAPTURED_F), 0, 'the pending line follows the current owner');
+  assert.equal(nWrites(replaced, HILL_LOST_F), 1, 'an enemy taking over from the last spoken neutral state adds no loss line');
+});
+
+test('control point: after expiry, a different owner is an edge but the same owner is not', () => {
+  const changed = koth();
+  control(changed, { team: 1, state: HELD, value: 100 });
+  changed.adv(5000); changed.eng.tick();
+  control(changed, { team: 0, state: HELD, value: 100 });
+  assert.equal(nWrites(changed, HILL_LOST_F), 1, 'the returning different owner announces the loss');
+
+  const same = koth();
+  control(same, { team: 1, state: HELD, value: 100 });
+  same.adv(5000); same.eng.tick();
+  control(same, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(same, HILL_CAPTURED_F) + nWrites(same, HILL_LOST_F), 0, 'the same owner does not invent a capture');
 });
 
 test('control point: a handover that happens while you are DOWN is told to you while down, after the scream, once (item C)', () => {

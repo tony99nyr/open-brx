@@ -221,9 +221,165 @@ def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list(
     s.set_station("util-2", {"kind": "control", "team": "any", "id": 9})
     assert _pushed(s, "station_config", "util-1")[-1]["valid_ids"] == [3, 9]
     assert _pushed(s, "station_config", "util-2")[-1]["valid_ids"] == [3, 9]
+    for b in _pushed(s, "station_config"):
+        E.validate(E.make_envelope("station_config", b), direction="mc")
+
+
+def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end():
+    s = _sess()
+    s.net.simulate_utility_hello("stick-1")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.phase = "live"
+    s.start_info = {"go_live_t": s.now_ms() - 1000}
+    s.config["time_limit_s"] = 600
+    s._arm_station("stick-1")
+    assert _pushed(s, "station_config", "stick-1")[-1].get("ends_in_ms") == 599000
+    assert _pushed(s, "station_config", "stick-1")[-1].get("starts_in_ms") == -1000
+    s.phase = "recap"
+    s._arm_station("stick-1")
+    assert _pushed(s, "station_config", "stick-1")[-1]["ends_in_ms"] == 0
+    s.phase = "live"
+    s.start_info["adopted"] = True
+    s._arm_station("stick-1")
+    assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    assert "starts_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    s.start_info["adopted"] = False
+    s.config["time_limit_s"] = None
+    s._arm_station("stick-1")
+    assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+
+
+def test_station_config_carries_match_end_deadline_when_known():
+    s = _sess()
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
+    s.phase = "live"
+    s.start_info = {"go_live_t": s.now_ms() - 1000}
+    s.config["time_limit_s"] = 600
+    s._arm_station("util-1")
+    body = _pushed(s, "station_config", "util-1")[-1]
+    assert body.get("ends_in_ms") == 599000, body
     # and the envelope validator accepts what we send (the 2026-09-07 `alert` lesson, pinned)
     for b in _pushed(s, "station_config"):
         E.validate(E.make_envelope("station_config", b), direction="mc")
+
+
+def test_recall_and_panic_freeze_a_connected_hill():
+    """A held hill needs an explicit stop when MC cancels a live match."""
+    for cmd in ("recall", "panic"):
+        s = _sess()
+        s.net.simulate_utility_hello("stick-1")
+        s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+        s.push_config(force=True)
+        s.start(runway_s=3, force=True)
+        s.phase = "live"
+        s.net.pushed.clear()
+        s.control(cmd, confirm=cmd == "panic")
+        body = _pushed(s, "station_config", "stick-1")[-1]
+        assert body.get("ends_in_ms") == 0, (cmd, body)
+        s.net.simulate_utility_hello("stick-1")
+        assert _pushed(s, "station_config", "stick-1")[-1].get("ends_in_ms") == 0, cmd
+
+
+def test_aborted_start_clears_its_deadline_for_the_same_game():
+    s = _sess()
+    s.net.simulate_utility_hello("stick-1")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    assert _pushed(s, "station_config", "stick-1")[-1].get("ends_in_ms", -1) > 0
+    s.abort_start()
+    assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    s.start(runway_s=3, force=True)
+    assert _pushed(s, "station_config", "stick-1")[-1].get("ends_in_ms", -1) > 0
+
+
+def test_abort_start_resends_a_clockless_config_without_utility_control():
+    s = _sess()
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    s.net.simulate_utility_hello("utility-phone")
+    for nid, sid in (("stick-1", 3), ("utility-phone", 4)):
+        s.set_station(nid, {"kind": "control", "team": "any", "id": sid})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    s.net.pushed.clear()
+
+    s.abort_start()
+
+    stick = [(kind, body) for nid, kind, body in s.net.pushed if nid == "stick-1"]
+    assert [kind for kind, _ in stick] == ["station_config"], stick
+    assert "starts_in_ms" not in stick[0][1]
+    assert "ends_in_ms" not in stick[0][1]
+    assert not _pushed(s, "control", "utility-phone"), "a phone utility never held the start"
+
+
+def test_untimed_hill_gets_a_go_live_time_at_start_and_on_reconnect():
+    s = _sess()
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    s.net.simulate_utility_hello("utility-phone")
+    for nid, sid in (("stick-1", 3), ("utility-phone", 4)):
+        s.set_station(nid, {"kind": "control", "team": "any", "id": sid})
+    s.push_config(force=True)
+    s.config["time_limit_s"] = None
+    s.net.pushed.clear()
+
+    start = s.start(runway_s=30, force=True)
+
+    assert start["go_live_t"] > s.now_ms(), "the config must describe the scheduled go-live"
+    stick = [(kind, body) for nid, kind, body in s.net.pushed if nid == "stick-1"]
+    assert [kind for kind, _ in stick] == ["station_config"], stick
+    assert "ends_in_ms" not in stick[0][1]
+    assert stick[0][1]["starts_in_ms"] > 0
+    s.now_ms = lambda: start["go_live_t"] - 1
+    s.tick()
+    assert not _pushed(s, "station_update", "stick-1")
+    s.now_ms = lambda: start["go_live_t"]
+    s.tick()
+    assert not _pushed(s, "station_update", "stick-1")
+    assert not _pushed(s, "station_update", "utility-phone")
+    s.net.pushed.clear()
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    assert _pushed(s, "station_config", "stick-1")[-1]["starts_in_ms"] == 0
+    assert not _pushed(s, "station_update", "stick-1")
+
+
+def test_timed_hill_gets_a_go_live_time_in_its_deadline_config():
+    s = _sess()
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True)
+    s.net.pushed.clear()
+
+    start = s.start(runway_s=30, force=True)
+
+    assert _pushed(s, "station_config", "stick-1")[-1]["ends_in_ms"] > 30_000
+    assert _pushed(s, "station_config", "stick-1")[-1]["starts_in_ms"] > 0
+    assert not _pushed(s, "station_update", "stick-1"), "a hill must wait through the runway"
+    s.now_ms = lambda: start["go_live_t"]
+    s.tick()
+    assert not _pushed(s, "station_update", "stick-1")
+    s.net.pushed.clear()
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    stick = [(kind, body) for nid, kind, body in s.net.pushed if nid == "stick-1"]
+    assert [kind for kind, _ in stick] == ["station_config"], stick
+    assert stick[0][1]["starts_in_ms"] == 0
+
+
+def test_adopted_live_match_pushes_nothing_to_stations_or_player_phones():
+    s = _joined(_sess())
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.net.simulate_status("phone-0", {"arm_state": "live", "match_id": "other-match",
+                                       "game_byte": s._game_byte(), "synced": True}, s.now_ms())
+    s.net.pushed.clear()
+
+    s.adopt_orphan("other-match")
+
+    assert s.phase == "live"
+    stick = [(kind, body) for nid, kind, body in s.net.pushed if nid == "stick-1"]
+    assert not stick
+    assert not [kind for nid, kind, _ in s.net.pushed if nid.startswith("phone-")], \
+        "adoption must not reconfigure a player phone"
 
 
 def test_threshold_0_or_absent_means_the_stations_own_platform_default():

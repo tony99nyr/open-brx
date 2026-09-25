@@ -405,6 +405,100 @@ static void test_claim_gate_awards_the_first_ready_advert_for_its_own_id() {
   CHECK_EQ(w.player_num, (uint8_t)5);
 }
 
+static void test_ready_claim_resolves_after_short_tie_window() {
+  ClaimGate g;
+  g.configure(8, 3);
+  g.observe(7, 8, 3, true, true, true, -80, 1000);
+  CHECK(!g.ready_due(1099));
+  g.observe(4, 8, 3, true, true, true, -80, 1050);
+  CHECK(g.ready_due(1100));
+  ClaimWinner w = g.resolve_batch();
+  CHECK(w.won);
+  CHECK_EQ(w.player_num, (uint8_t)7);  // the later player cannot take the first ready claim
+  CHECK(!g.ready_due(1200));
+  g.observe(7, 8, 3, true, true, true, -80, 2000);
+  g.observe(4, 8, 3, true, true, true, -80, 2000);
+  CHECK_EQ(g.resolve_batch().player_num, (uint8_t)4);  // equal timestamp: lower player wins
+}
+
+static void test_claim_feed_pause_discards_a_pending_ready_candidate() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true; a.kind = "powerup"; a.id = 8; a.game = 2;
+  link.apply_station_config(a);
+  link.claims().observe(7, 8, 2, true, true, true, -80, 1000);
+  link.discard_claim_batch();  // glue pauses the BLE callback before config, release or a spawn update
+  CHECK(!link.claims().ready_due(1200));
+  a.game = 3;
+  link.apply_station_config(a);
+  link.claims().observe(4, 8, 3, true, true, true, -80, 2000);
+  CHECK(link.claims().ready_due(2100));
+  CHECK_EQ(link.claims().resolve_batch().player_num, (uint8_t)4);
+}
+
+static void test_same_powerup_lock_config_keeps_pending_claim() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true; a.kind = "powerup"; a.id = 8; a.game = 2;
+  a.item.present = true; a.item.kind = "weapon"; a.item.weapon_id = "rocket";
+  a.item.spawn_every_s = 60;
+  link.apply_station_config(a, 1000);
+  link.claims().observe(7, 8, 2, true, true, true, -80, 1000);
+
+  StationAssignment lock_only = a;
+  lock_only.lock_s = 30;
+  CHECK(same_powerup_claim_scope(link.assignment(), lock_only));
+  // Glue pauses the callback but keeps this candidate for a same-scope config.
+  link.apply_station_config(lock_only, 1050);
+  CHECK(link.claims().ready_due(1100));
+  CHECK_EQ(link.claims().resolve_batch().player_num, (uint8_t)7);
+
+  link.claims().observe(7, 8, 2, true, true, true, -80, 2000);
+  StationAssignment changed_item = lock_only;
+  changed_item.item.weapon_id = "rail";
+  CHECK(!same_powerup_claim_scope(link.assignment(), changed_item));
+  link.discard_claim_batch();  // glue discards claims for the prior item
+  link.apply_station_config(changed_item, 2050);
+  CHECK(!link.claims().ready_due(2100));
+  link.claims().observe(4, 8, 2, true, true, true, -80, 2200);
+  CHECK(link.claims().ready_due(2300));
+  CHECK_EQ(link.claims().resolve_batch().player_num, (uint8_t)4);
+}
+
+static void test_claim_award_is_visible_to_the_next_advert_decision() {
+  constexpr uint32_t ready_at_ms = 1234;
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  link.apply_station_config(a);
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = true;
+  link.apply_station_update(u, ready_at_ms);
+  link.claims().configure(8, 0);
+  link.claims().observe(7, 8, 0, true, true, true, -80);
+  link.claims().observe(4, 8, 0, true, true, true, -80, 1);  // the same scan still has one winner
+  ClaimWinner winner = link.claims().resolve_batch();
+  CHECK(winner.won);
+  CHECK(link.award_claim(winner, ready_at_ms));
+  CHECK(!link.claims().resolve_batch().won);
+  CHECK(!link.award_claim(ClaimWinner{true, 4}, ready_at_ms));  // this spawn cannot grant twice
+  PowerupAdvertView pickup = link.powerup().view(ready_at_ms);
+  CHECK_EQ(pickup.taker, (uint8_t)7);
+  AdvertPolicy policy;
+  AdvertView v;
+  v.kind = KIND_POWERUP;
+  v.id = 8;
+  v.taker = pickup.taker;
+  CHECK(std::string(policy.due(v, ready_at_ms)) == "first");
+  policy.published(v, ready_at_ms);
+  v.taker = 0;
+  CHECK(std::string(policy.due(v, ready_at_ms + 1)) == "state");
+}
+
 static void test_claim_gate_ties_in_one_batch_go_to_the_lower_player_num() {
   ClaimGate g;
   g.configure(8, 0);
@@ -1517,6 +1611,86 @@ static void test_muster_fresh_non_powerup_arm_drops_at_once() {
   CHECK(link.take_muster_drop(100));  // no schedule to wait on: due at once, as any non-powerup arm
 }
 
+static void test_muster_hill_waits_for_start_config_or_offline_timeout() {
+  StationLink link;
+  StationAssignment c;
+  c.present = true; c.kind = "control"; c.id = 9; c.game = 7;
+  link.set_mode(AssocMode::MUSTER);
+  link.apply_station_config(c, 1000);
+  CHECK(link.muster_drop_pending());
+  CHECK(!link.take_muster_drop(1001));
+  c.starts_known = true; c.starts_in_ms = 3000; c.ends_in_ms = 30000;
+  link.apply_station_config(c, 30000);
+  CHECK(link.take_muster_drop(30000));
+
+  StationLink offline;
+  offline.set_mode(AssocMode::MUSTER);
+  c.game = 8;
+  c.ends_in_ms = -1;
+  c.starts_known = false;
+  offline.apply_station_config(c, 0);
+  CHECK(!offline.take_muster_drop(0));
+  offline.wifi_down();
+  CHECK(!offline.take_muster_drop(0));
+  CHECK(!offline.take_muster_drop(MUSTER_WAIT_OFFLINE_MS - 1));
+  CHECK(offline.take_muster_drop(MUSTER_WAIT_OFFLINE_MS));
+}
+
+static void test_untimed_hill_start_config_releases_muster_without_changing_hill() {
+  StationLink link;
+  StationAssignment c;
+  c.present = true; c.kind = "control"; c.id = 9; c.game = 7;
+  link.apply_station_config(c, 100);
+  link.hill().owner = 1;
+  link.hill().progress = 100;
+  StationUpdateMsg stray;
+  stray.present = true; stray.id = 9; stray.available = false;
+  CHECK(!link.apply_station_update(stray, 200));
+  CHECK(!link.take_muster_drop(200));
+  c.starts_known = true; c.starts_in_ms = 1000;
+  link.apply_station_config(c, 201);
+  CHECK(link.take_muster_drop(201));
+  CHECK_EQ(link.hill().owner, 1);
+  CHECK_EQ(link.hill().progress, 100);
+  CHECK(!link.hill_ended());
+  CHECK(!link.powerup().known());
+}
+
+static void test_hill_waits_for_go_live_before_capture_or_tally() {
+  StationLink link;
+  StationAssignment c;
+  c.present = true; c.kind = "control"; c.id = 9; c.game = 7; c.ends_in_ms = 60000;
+  c.starts_known = true; c.starts_in_ms = 20000;
+  link.apply_station_config(c, 100);
+  CHECK(link.take_muster_drop(100));
+  PlayerPresence p;
+  link.hill().owner = 1;
+  link.hill().progress = 100;
+  link.tick_players(p, 10100);  // armed, go_live_t is still in the future
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+  link.tick_players(p, 20100);
+  link.tick_players(p, 21100);
+  CHECK_EQ(link.hill().hold_ms[1], 1000u);
+}
+
+static void test_held_hill_starts_after_sixty_seconds_offline_without_start() {
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  StationAssignment c;
+  c.present = true; c.kind = "control"; c.id = 9; c.game = 7;
+  link.apply_station_config(c, 100);
+  link.hill().owner = 1;
+  link.hill().progress = 100;
+  PlayerPresence p;
+  link.wifi_down();
+  link.tick_players(p, 1000);
+  link.tick_players(p, 1000 + MUSTER_WAIT_OFFLINE_MS - 1);
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+  link.tick_players(p, 1000 + MUSTER_WAIT_OFFLINE_MS);
+  link.tick_players(p, 1000 + MUSTER_WAIT_OFFLINE_MS + 1000);
+  CHECK_EQ(link.hill().hold_ms[1], 1000u);
+}
+
 static void test_muster_powerup_rearmed_as_respawn_before_the_update_drops_at_once() {
   StationLink link;  // MUSTER is the default
   StationAssignment p;
@@ -1575,6 +1749,9 @@ static void test_a_new_game_resets_the_hill_and_a_same_game_repush_keeps_it() {
   StationLink link;
   link.apply_station_config(control_config(7), 0);
   CHECK(link.has_control_assignment());
+  StationAssignment started = control_config(7);
+  started.starts_known = true;
+  link.apply_station_config(started, 0);
   PlayerPresence pr = red_on_the_point(0);
   link.tick_players(pr, 0);
   HillUpdate u;
@@ -1587,6 +1764,7 @@ static void test_a_new_game_resets_the_hill_and_a_same_game_repush_keeps_it() {
   CHECK_EQ(link.hill().owner, 0);
   StationAssignment again = control_config(7);
   again.lock_s = 60;  // the lock carrier: same config, a lock added
+  again.starts_known = true; again.starts_in_ms = -10000;
   link.apply_station_config(again, 10000);
   CHECK_EQ(link.hill().owner, 0);
   CHECK(link.hill().progress > 99.99);
@@ -1662,6 +1840,190 @@ static void test_status_carries_revives_and_hold_ms_additively() {
   CHECK(build_status_body(c).find("\"hold_ms\":{}") != std::string::npos);  // nobody has held it yet
 }
 
+static void test_hill_stops_accruing_when_deadline_freezes_it() {
+  BleControlPoint h;
+  h.owner = 1;
+  h.progress = 100;
+  PlayerPresence p;
+  h.update(p, 1000);
+  h.update(p, 2000);
+  const uint32_t whistle_tally = h.hold_ms[1];
+  h.freeze();
+  h.update(p, 12000);
+  CHECK_EQ(h.owner, 1);
+  CHECK_EQ(h.hold_ms[1], whistle_tally);
+  CHECK_EQ(h.progress, 100);
+}
+
+static void test_hill_starts_only_at_config_go_live_and_stops_at_deadline() {
+  StationLink link;
+  StationAssignment a = control_config(7);
+  a.starts_known = true; a.starts_in_ms = 2000; a.ends_in_ms = 4000;
+  link.apply_station_config(a, 100);
+  link.hill().owner = 1; link.hill().progress = 100;
+  PlayerPresence p;
+  link.tick_players(p, 2099);
+  CHECK(link.hill_waiting(2099));
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+  link.tick_players(p, 2100);
+  link.tick_players(p, 3100);
+  CHECK_EQ(link.hill().hold_ms[1], 1000u);
+  link.tick_players(p, 5100);
+  CHECK(link.hill_ended());
+  CHECK_EQ(link.hill().hold_ms[1], 2000u);
+}
+
+static void test_parse_signed_go_live_offset() {
+  bool ok = false;
+  StationAssignment a = parse_station_config(json::parse(
+      R"({"kind":"control","id":9,"game":7,"starts_in_ms":-1500,"ends_in_ms":5000})", &ok));
+  CHECK(ok);
+  CHECK(a.starts_known);
+  CHECK_EQ(a.starts_in_ms, -1500);
+  CHECK_EQ(a.ends_in_ms, 5000);
+  StationAssignment lobby = parse_station_config(json::parse(R"({"kind":"control","id":9})", &ok));
+  CHECK(!lobby.starts_known);
+}
+
+static void test_same_game_config_without_times_cancels_a_pending_start() {
+  StationLink link;
+  StationAssignment a = control_config(7);
+  a.starts_known = true; a.starts_in_ms = 1000; a.ends_in_ms = 2000;
+  link.apply_station_config(a, 100);
+  a.starts_known = false; a.ends_in_ms = -1;
+  link.apply_station_config(a, 200);
+  CHECK(link.hill_waiting(200));
+  PlayerPresence p;
+  link.hill().owner = 1; link.hill().progress = 100;
+  link.tick_players(p, 3100);
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+  CHECK(!link.hill_ended());
+}
+
+static void test_late_start_discards_offline_fallback_capture() {
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  StationAssignment a = control_config(7);
+  link.apply_station_config(a, 0);
+  link.wifi_down();
+  PlayerPresence p;
+  link.tick_players(p, 1000);
+  link.tick_players(p, 1000 + MUSTER_WAIT_OFFLINE_MS);
+  link.hill().owner = 1; link.hill().progress = 100;
+  link.tick_players(p, 62000);
+  CHECK(link.hill().hold_ms[1] > 0u);
+  a.starts_known = true; a.starts_in_ms = 5000;
+  link.apply_station_config(a, 63000);
+  CHECK(link.hill_waiting(63000));
+  CHECK_EQ(link.hill().advert().state, (uint8_t)0);
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+  link.tick_players(p, 67999);
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+  link.tick_players(p, 68000);
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+}
+
+static void test_hill_reset_after_whistle_stays_frozen() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true; a.kind = "control"; a.id = 9; a.game = 2; a.ends_in_ms = 1000; a.starts_known = true;
+  link.apply_station_config(a, 100);
+  PlayerPresence p;
+  link.hill().owner = 1;
+  link.hill().progress = 100;
+  link.tick_players(p, 100);
+  link.tick_players(p, 1100);
+  CHECK(link.hill_ended());
+  const uint32_t recap_tally = link.hill().hold_ms[1];
+  CHECK(!link.reset_hill());
+  CHECK(link.hill_ended());
+  link.tick_players(p, 5100);
+  CHECK_EQ(link.hill().hold_ms[1], recap_tally);
+  CHECK_EQ(link.hill().owner, 1);
+}
+
+static void test_same_game_config_without_times_waits_again() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true; a.kind = "control"; a.id = 9; a.game = 2; a.ends_in_ms = 1000; a.starts_known = true;
+  link.apply_station_config(a, 100);
+  PlayerPresence p;
+  link.hill().owner = 1;
+  link.hill().progress = 100;
+  link.tick_players(p, 100);
+  a.ends_in_ms = -1;
+  a.starts_known = false;
+  link.apply_station_config(a, 500);  // abort sends the same game without either clock
+  link.tick_players(p, 1100);
+  CHECK(link.hill_waiting(1100));
+  CHECK(!link.hill_ended());
+}
+
+static void test_saved_config_restore_discards_an_old_local_deadline() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true; a.kind = "control"; a.id = 9; a.game = 2; a.ends_in_ms = 1000;
+  link.apply_station_config(a, 100);
+  a.game = 3;
+  a.ends_in_ms = -1;
+  CHECK(link.restore_station_config(a));
+  PlayerPresence p;
+  link.tick_players(p, 1100);
+  CHECK(!link.hill_ended());
+}
+
+static void test_abort_explicitly_clears_same_game_deadline() {
+  StationLink link;
+  StationAssignment running;
+  running.present = true; running.kind = "control"; running.id = 9; running.game = 2;
+  running.ends_in_ms = 1000;
+  link.apply_station_config(running, 100);
+  StationAssignment aborted = running;
+  aborted.ends_in_ms = -1;
+  link.apply_station_config(aborted, 500);
+  CHECK(station_config_storage_body(link.assignment()).find("timed_hill") == std::string::npos);
+  PlayerPresence p;
+  link.tick_players(p, 1100);
+  CHECK(!link.hill_ended());
+}
+
+static void test_restored_timed_hill_waits_for_a_fresh_clock() {
+  StationLink original;
+  StationAssignment a;
+  a.present = true; a.kind = "control"; a.id = 9; a.game = 2; a.ends_in_ms = 1000;
+  original.apply_station_config(a, 100);
+  SavedStationConfig saved;
+  CHECK(saved.note_applied(a, "s1"));
+  StationLink rebooted;
+  CHECK(rebooted.restore_station_config(saved.restore()));
+  CHECK(rebooted.hill_ended());
+  uint32_t saved_hold[4] = {0, 1000, 0, 0};
+  rebooted.hill().restore_held(1, saved_hold);  // SavedHill runs after config restore on boot
+  rebooted.enforce_restored_hill_freeze();
+  CHECK(rebooted.hill_ended());
+  a.ends_in_ms = 500;
+  a.starts_known = true;
+  rebooted.apply_station_config(a, 200);
+  CHECK(!rebooted.hill_ended());
+}
+
+static void test_restored_timed_hill_accepts_untimed_start_config() {
+  StationLink link;
+  StationAssignment saved;
+  saved.present = true; saved.kind = "control"; saved.id = 9; saved.game = 2;
+  saved.timed_hill = true;
+  CHECK(link.restore_station_config(saved));
+  CHECK(link.hill_ended());
+  StationAssignment fresh = saved;
+  fresh.timed_hill = false;
+  CHECK(!link.apply_station_config(fresh, 100));
+  CHECK(link.hill_ended());  // a config before go-live cannot clear the safety guard
+  fresh.starts_known = true;
+  fresh.starts_in_ms = -100;
+  link.apply_station_config(fresh, 200);
+  CHECK(!link.hill_ended());
+}
+
 // ---- the presence threshold default and the saved hill owner (F332) ------------------------------
 static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   bool ok = false;
@@ -1669,9 +2031,9 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   StationAssignment a = parse_station_config(v);
   CHECK(a.threshold_defaulted);
   CHECK_EQ(a.threshold, STICK_DEFAULT_THRESHOLD_DBM);  // the advertised byte keeps the Stick's own
-  CHECK_EQ(presence_threshold_dbm(a), -57);            // players are measured like a phone station does
+  CHECK_EQ(presence_threshold_dbm(a), -78);            // hill radius default
   v = json::parse(R"({"kind":"control","team":255,"id":9})", &ok);
-  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -57);
+  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -78);
   v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":-66})", &ok);
   StationAssignment m = parse_station_config(v);
   CHECK(!m.threshold_defaulted);
@@ -1681,11 +2043,30 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   CHECK(saved.note_applied(a, "s1"));
   StationAssignment r = saved.restore();
   CHECK(r.threshold_defaulted);
-  CHECK_EQ(presence_threshold_dbm(r), -57);
+  CHECK_EQ(presence_threshold_dbm(r), -78);
   SavedStationConfig saved2;
   saved2.note_applied(m, "s1");
   CHECK_EQ(presence_threshold_dbm(saved2.restore()), -66);
   CHECK(saved2.stored().find("threshold_default") == std::string::npos);  // additive: absent unless defaulted
+}
+
+static void test_hill_default_threshold_separates_measurement_from_phone_advert() {
+  StationLink hill;
+  bool ok = false;
+  StationAssignment a = parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9})", &ok));
+  hill.apply_station_config(a);
+  CHECK_EQ(hill.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(hill.threshold_advertised_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
+  StationLink respawn;
+  StationAssignment r = parse_station_config(json::parse(R"({"kind":"respawn","team":1,"id":2})", &ok));
+  respawn.apply_station_config(r);
+  CHECK_EQ(respawn.threshold_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(respawn.threshold_advertised_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
+  StationAssignment explicit_hill = parse_station_config(json::parse(
+      R"({"kind":"control","team":255,"id":9,"threshold":-75})", &ok));
+  hill.apply_station_config(explicit_hill);
+  CHECK_EQ(hill.threshold_dbm(), -75);
+  CHECK_EQ(hill.threshold_advertised_dbm(), -75);
 }
 
 static BleControlPoint held_by(int owner, uint32_t hold0 = 0, uint32_t hold3 = 0) {
@@ -1725,6 +2106,7 @@ static void test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold() 
 static void test_saved_hill_writes_only_on_an_owner_change() {
   StationLink link;
   StationAssignment a = control_config(7);
+  a.starts_known = true;
   link.apply_station_config(a, 0);
   SavedHill saved;
   int writes = 0;
@@ -1743,6 +2125,19 @@ static void test_saved_hill_writes_only_on_an_owner_change() {
   CHECK_EQ(untagged.restore_owner(a, ""), (int)HILL_NEUTRAL);  // and it never restores
   CHECK(saved.note_owner(a, "s1", held_by(HILL_NEUTRAL)));  // drained to neutral: written
   CHECK_EQ(saved.restore_owner(a, "s1"), (int)HILL_NEUTRAL);
+}
+
+static void test_saved_hill_flushes_final_tally_once_at_whistle() {
+  StationAssignment a = control_config(7);
+  SavedHill saved;
+  BleControlPoint h = held_by(1);
+  h.hold_ms[1] = 1000;
+  CHECK(saved.note_owner(a, "s1", h));
+  h.hold_ms[1] = 9000;
+  h.freeze();
+  CHECK(saved.note_owner(a, "s1", h));
+  CHECK_EQ(saved.hold_ms()[1], 9000u);
+  CHECK(!saved.note_owner(a, "s1", h));
 }
 
 static void test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears() {
@@ -1881,6 +2276,10 @@ int main(int argc, char** argv) {
   test_mc_available_true_clears_the_taker();
   test_item_configures_the_schedules_spawn_period();
   test_claim_gate_awards_the_first_ready_advert_for_its_own_id();
+  test_ready_claim_resolves_after_short_tie_window();
+  test_claim_feed_pause_discards_a_pending_ready_candidate();
+  test_same_powerup_lock_config_keeps_pending_claim();
+  test_claim_award_is_visible_to_the_next_advert_decision();
   test_claim_gate_ties_in_one_batch_go_to_the_lower_player_num();
   test_claim_gate_a_batch_with_no_ready_advert_awards_nothing();
   test_claim_gate_ignores_a_dead_claimant_and_player_zero();
@@ -1940,14 +2339,31 @@ int main(int argc, char** argv) {
   test_an_mc_restart_in_lobby_keeps_waiting_while_wi_fi_is_up();
   test_a_held_powerup_that_cannot_reach_mc_falls_back_to_available();
   test_muster_fresh_non_powerup_arm_drops_at_once();
+  test_muster_hill_waits_for_start_config_or_offline_timeout();
+  test_untimed_hill_start_config_releases_muster_without_changing_hill();
+  test_hill_waits_for_go_live_before_capture_or_tally();
+  test_held_hill_starts_after_sixty_seconds_offline_without_start();
   test_muster_powerup_rearmed_as_respawn_before_the_update_drops_at_once();
   test_restore_of_a_saved_powerup_config_is_known_and_available_at_once();
   test_a_new_game_resets_the_hill_and_a_same_game_repush_keeps_it();
   test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them();
-  test_status_carries_revives_and_hold_ms_additively();
+    test_status_carries_revives_and_hold_ms_additively();
+  test_hill_stops_accruing_when_deadline_freezes_it();
+  test_hill_starts_only_at_config_go_live_and_stops_at_deadline();
+  test_parse_signed_go_live_offset();
+  test_same_game_config_without_times_cancels_a_pending_start();
+  test_late_start_discards_offline_fallback_capture();
+  test_hill_reset_after_whistle_stays_frozen();
+  test_same_game_config_without_times_waits_again();
+  test_saved_config_restore_discards_an_old_local_deadline();
+  test_abort_explicitly_clears_same_game_deadline();
+  test_restored_timed_hill_waits_for_a_fresh_clock();
+  test_restored_timed_hill_accepts_untimed_start_config();
   test_presence_threshold_is_the_phone_default_when_mc_sends_none();
+  test_hill_default_threshold_separates_measurement_from_phone_advert();
   test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold();
   test_saved_hill_writes_only_on_an_owner_change();
+  test_saved_hill_flushes_final_tally_once_at_whistle();
   test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears();
   test_reset_hill_neutralises_only_an_assigned_control_point();
   test_assignment_epoch_moves_on_a_new_station_only();

@@ -3,9 +3,10 @@
 Updated: 2026-09-25. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**The next sitting (2026-09-25): [`bench-2026-09-25.md`](bench-2026-09-25.md)**, three setups, MUST first, 0.4.12 cut after sitting A;
-sitting C's powerup setup gates powerups on by default (F372). Its LATER list places every other row of the FOLLOWUPS
-**MVP BENCH** group by setup.
+**The next sitting (2026-09-26): [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting C**, the last of three setups.
+Sittings A and B and stop point 2 are DONE (below); sitting C was not run and is next. Sitting C's powerup setup
+gates powerups on by default (F372). Its LATER list places every other row of the FOLLOWUPS **MVP BENCH** group
+by setup.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
@@ -51,11 +52,35 @@ eased `heavy` 40 to 45 and the Burst Rifle gap 550 to 540 ms, F308); Block 7 ste
 lost inside the headset's rate guard, and the wider gap is on main); and the evening audio A/B/A on one gun (F347:
 the native shield hum blocks the gun's audio queue). Off the plan the same day: melee (K4, closed) and F336.
 
+**The 2026-09-25 sitting, [`bench-2026-09-25.md`](bench-2026-09-25.md), sittings A and B and stop point 2.**
+Sitting A closed the 0.4.12 gate: A4, F341, F347 (t23 ships EMPTY, no restart delay needed), and F350 (H21 picked,
+playtest confirmation left to sitting C's 11.1(c)); 4.19 parts 2-3 and the Burst Rifle gap stayed INCONCLUSIVE.
+Sitting B closed F332, the Stick pickup online and offline (S58, found F380 and F381), F333 (reopened by Tony for a deliberate walk; F398 filed),
+and Block 9 steps 3 and 4 (H9, H8, found F383-F386); it left F374's carry-out A/B/A un-run, F353 not logged, and
+F365's Stick half PARTIAL (RADIUS/STRENGTH confirmed, the 5 s gesture REFUTED as F387, F388 filed; the phone
+station half, 11.4, did not run). **Stop point 2 is DONE**: all three Pixels are on app 0.4.12; the grey Pixel
+has not been opened since that install, so 11.7's auto-join must be sitting C's first step; MC runs from `main`
+with `--powerups`.
+
 ## Sittings, in priority order
 
-### Next sitting: [`bench-2026-09-25.md`](bench-2026-09-25.md)
+### Next sitting: [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting C (2026-09-26)
 
-That sheet orders what is left of the 2026-09-24 runbook; do not re-run the runbook's done steps (above).
+Sittings A and B and stop point 2 are done (above); sitting C was not run. Run it in its listed order: 11.7,
+4.0's loop (the 0.4.12 release check), 11.6 (MC-assigned station ids, F364 closed already), 4.18 (**F348**), the
+powerup setup 11.3 in order (**S58**), 11.4 (**F365** on a phone station), the kill-cue A/B/A re-test (F347 closed
+already), the `$PLAY` spacing check, 11.8 (**F158**, **F3**, **F21**, and step 6 for **F375**), then one real
+Shields fight (**F298**) for the announcer and medal audio plus 11.1(c) (F350's clip, closed already) and the
+**S57** magnitude watch.
+
+Carry into sitting C: **F333** (walk every Stick screen at arm's length); **F374**'s carry-out A/B/A; **F353** (log the phone's Stick-advert arrivals during a
+hill); a hill hold of 2+ minutes then a kill, listening for the kill-confirm delay against the hill tick's
+outstanding model (**F382**); capture pickup timings with the phone log on, claim-ready vs the Stick's taker
+advert (**F380**); re-test the RANGE hold with the Stick serial log running (**F387**); a clean 3 m and 7 m
+Stick-hears-phone RSSI reading (**F383**).
+
+Awaiting Tony: whether hill scoring counts in whole ticks or stays continuous (**F382**); whether the editor or
+only the HOLD FOR RANGE bar appeared at about 2 s (**F387**).
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 

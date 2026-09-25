@@ -291,6 +291,20 @@ static void test_ble_hill_picks_neutral_capturing_losing_stalled_contested_and_h
   ScreenSpec n = compute_screen(s);
   CHECK(n.kind == ScreenKind::HILL_NEUTRAL);
   CHECK_EQ(n.hill_note, std::string("STAND HERE TO CAPTURE"));
+  s.control_waiting = true;
+  s.control_owner = 1;
+  s.control_progress_pct = 100;
+  CHECK(compute_screen(s).kind == ScreenKind::HILL_NEUTRAL);
+  CHECK_EQ(compute_screen(s).hill_note, std::string("WAITING FOR START"));
+  CHECK_EQ(compute_screen(s).hill_pct, 0);
+  s.control_waiting = false;
+  s.control_owner = TEAM_ANY;
+  s.control_ended = true;
+  CHECK_EQ(compute_screen(s).hill_note, std::string("MATCH OVER"));
+  s.control_contested = true;
+  CHECK_EQ(compute_screen(s).hill_note, std::string("MATCH OVER"));
+  s.control_contested = false;
+  s.control_ended = false;
 
   s.control_bar_team = 1;  // blue building a neutral point
   s.control_dir = 1;
@@ -429,6 +443,7 @@ static void test_a_locked_reset_shows_locked_and_the_strip_shows_the_padlock() {
   CHECK(refused.kind == ScreenKind::SCR_RESET_LOCKED);
   CHECK_EQ(refused.lock_remaining, std::string("2:05"));
   s.locked = false;
+  CHECK(compute_screen(s).kind != ScreenKind::SCR_RESET_LOCKED);  // lock expired before transient timer
   s.reset_outcome_active = false;
   CHECK(!compute_screen(s).strip.locked);
 }

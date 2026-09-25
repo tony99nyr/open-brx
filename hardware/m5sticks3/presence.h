@@ -7,6 +7,8 @@
 //                    by smoothed RSSI against a threshold, with dwell, hysteresis and expiry.
 //   BleControlPoint  app/src/control.js `ControlPoint`: the kind-5 hill, driven by the living,
 //                    present players of each team. Its three advert bytes are what every HUD reads.
+//                    F382: the Stick pauses the hold tally while contested; app/src/control.js:187
+//                    still accrues it and needs the same change.
 //   ReviveCounter    app/src/utility.js tick(): a respawn station counts a present player's alive bit
 //                    going 0 -> 1 as a revive that happened here.
 //
@@ -77,12 +79,16 @@ inline bool station_needs_player_scan(const std::string& kind, bool powerup_avai
   return false;
 }
 
-// The scan window per kind, in 0.625 ms units of a 100-unit interval. Only the hill needs a heavy scan
-// (its capture rate depends on seeing every player); a respawn only has to catch an alive bit flip.
+// The scan window per kind, in 0.625 ms units of a 100-unit interval. The hill needs a heavy scan
+// for capture, and a pickup needs one while available so a ready claim reaches the next batch.
+// A respawn only has to catch an alive bit flip.
 constexpr uint16_t SCAN_WINDOW_HILL_UNITS = 50;
+constexpr uint16_t SCAN_WINDOW_CLAIM_UNITS = 50;
 constexpr uint16_t SCAN_WINDOW_LIGHT_UNITS = 15;
 inline uint16_t scan_window_units(const std::string& kind) {
-  return kind == "control" ? SCAN_WINDOW_HILL_UNITS : SCAN_WINDOW_LIGHT_UNITS;
+  if (kind == "control") return SCAN_WINDOW_HILL_UNITS;
+  if (kind == "powerup") return SCAN_WINDOW_CLAIM_UNITS;
+  return SCAN_WINDOW_LIGHT_UNITS;
 }
 
 // ---- PlayerPresence (beacon.js Presence, players only) -------------------------------------------
@@ -265,6 +271,7 @@ class BleControlPoint {
   int counts[4] = {0, 0, 0, 0};
   bool refused_seen = false;
   uint32_t captures = 0;      // every `captured` edge, for STATUS
+  bool frozen = false;        // the whistle freezes the hill and its recap tally
 
   double rate() const { return 100.0 / capture_s; }
 
@@ -275,6 +282,8 @@ class BleControlPoint {
     capture_s = cs;
     net_cap = nc;
   }
+
+  void freeze() { frozen = true; }
 
   // Restart survival (F332: the side button can still restart a locked Stick, and a restart must not
   // wipe an enemy's hold). Brings the point back HELD by `tid` at 100 with the possession tally saved at
@@ -307,6 +316,7 @@ class BleControlPoint {
   // control.js update(), step for step.
   HillUpdate update(const PlayerPresence& players, uint32_t now) {
     HillUpdate out;
+    if (frozen) return out;
     // F103: `elapsed` is real time and feeds possession; `dt` is clamped and feeds conversion only.
     // control.js: `Math.max(0, now - this.at)`; the signed cast gives the same 0 for a clock that
     // stepped backwards.
@@ -356,7 +366,8 @@ class BleControlPoint {
     }
 
     // Possession time, on the unclamped clock.
-    if (owner != HILL_NEUTRAL && elapsed) hold_ms[owner] += elapsed;
+    // F382: the team tick pauses while contested, even though it keeps ownership.
+    if (owner != HILL_NEUTRAL && !contested && elapsed) hold_ms[owner] += elapsed;
 
     // The two phases. A step that runs out of bar carries its remaining work into the next phase
     // (control.js: the tick that crossed zero used to render "RED STALLED AT 0%").

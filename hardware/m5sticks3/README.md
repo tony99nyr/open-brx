@@ -56,8 +56,8 @@ below); the pickup claim has no RSSI floor at all (see CLAIM below). A hill's ow
 progress tick), tagged with the game and station id, so a Stick restarted from its restored config
 comes back held by that owner with the possession tally saved at that change (F332). The save is
 tagged with the MC session too, so a new session, a new game, another id, `release_utility` or the
-operator's point RESET clears it. The hill's player scan runs at 50% duty (window 50 of interval 100,
-`SCAN_WINDOW_HILL_UNITS`), down from the claim scan's 99; bench to confirm it still hears every phone. A
+operator's point RESET clears it. The hill and available pickup scans run at 50% duty (window 50 of interval 100);
+bench to confirm they still hear every phone. A
 respawn Stick runs no player scan at all while revive feedback is off (the default, `presence.h`).
 mDNS discovery is asynchronous, so the hill never waits on it.
 
@@ -310,14 +310,14 @@ limit:** a Stick that leaves Wi-Fi before START, or restarts offline mid-match, 
 `first_at_s`, because it has no anchor.
 
 **CLAIM** (`ClaimGate`) scans for a player phone's own advert (role 2, state bit 4 `claiming`, bit 5
-`claim_ready`, `value` = the target station id, `id` = the claimant's player_num) and awards the
-first `claim_ready` heard for its own id, at any signal strength (no floor since 2026-09-24: the Stick hears phones weakly), ties going to the lower player_num
--- the Stick counts no dwell of its own, only the phone's. The advert then carries `state 0` (taken),
+`claim_ready`, `value` = the target station id, `id` = the claimant's player_num). A ready claim
+can arrive at any signal strength. The Stick waits 100 ms after the first ready advert, then awards
+the first ready player it heard. Only adverts received in the same millisecond tie by lower player_num. The phone counts the player's dwell. The advert then
+carries `state 0` (taken),
 `value` = seconds to the next spawn (capped 255), and the new byte 15 `taker` (the winner's
 player_num, 0 = none); `state 1` (available) is always `value 0`. A won claim is reported
 best-effort as `station_action {id, action:"taken", player_num, t}` -- **proposed to brx5, not a
-final contract** -- but polish round 2 found the award was being reported straight from the BLE
-scan-complete callback, which must never touch the WebSocket. The callback now only enqueues
+final contract**. The BLE callback only records claim candidates. The loop awards after the short window and enqueues
 (`PendingActionQueue`, bounded at 8, the newest report per spawn instant replacing any older one for
 the same instant); `mcLoop` is the only place anything is ever sent, draining the queue once per
 tick while a socket is live (still gated by `ACTIONS`, below).
@@ -347,15 +347,22 @@ no serial command yet to erase them and fall back to the pre-H8 NOT-CONFIGURED s
 only drops the current socket and association; it does not forget the saved SSID). A "forget Wi-Fi"
 command, if one is ever added, would be the other way back to the button toggle.
 
-**THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means "use the Stick's own
-default", **-57 dBm**, the StickS3's default (`STICK_DEFAULT_THRESHOLD_DBM`, Tony 2026-09-24; a phone station uses -70), which is also what the Stick advertises; any other value from
-MC overrides it. Not yet bench-measured against a real player phone.
+**THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means the Stick default for that kind.
+Every kind except `control` uses -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A `control` hill uses
+-78 dBm (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN): sitting B, 2026-09-25, Stick-side PLAYERS STREAM
+medians were -43 touching, -64 at arm's length, -77/-81 at about 5 m (two phones), and -78 to -87 down the
+hall, still present at -80. Since -80 reached past 7 m, -78 is a first guess for the 5-7 m edge. Walk-test
+at 3, 5 and 7 m. MC's nonzero value overrides the Stick default. A defaulted control hill still advertises
+-57 in byte 14 because phones measure the Stick about 25 dB louder than it measures them.
+An explicit MC threshold or the first on-station RADIUS edit also sets byte 14 to that threshold.
+The separate -57 advert value applies only while the hill uses its unedited default.
 
 **Bench to confirm, all of it:** the mDNS query actually resolving MC on the field router; the
 WebSocket surviving a reconnect (and the library's own retry not fighting the association-mode
 policy above it); Wi-Fi 4 + BLE 5 coexistence jitter on the advert while `HELD` (§5g.4's whole
 reason for existing); the CLAIM scan actually catching a phone advertising every ~100-250 ms while
 claiming (`SCAN_PERIOD_MS`/`SCAN_WINDOW_S`/`SCAN_WINDOW_UNITS` in `mc_link_glue.h` are guesses); the
+claim-ready-to-grant time after the new 100 ms arbitration (F399 target about 1 s);
 `ROLE_PLAYER` advert layout this firmware assumes (id = player_num, value = target station id) --
 FYI'd by brx5, never seen on our own bench; the button timing
 (2 s hold, 5 s confirm timeout) at arm's length; the operator screen's legibility on the real
@@ -560,12 +567,11 @@ logo key, BtnB the larger side key -- since this firmware's button code has neve
 Tony, 2026-09-25: "if operator notices the range is too wide during gameplay, to long hold and be able
 to edit it. if within wifi range sync with MC on the change." Two decisions of his shape the gesture:
 **enter RANGE by holding A for 5 s on the STATS page** (the home page's B hold stays RESET), and
-**RANGE works during play and under the match lock**: the lock guards reassign and reset, the range
-sits behind the stronger 5 s gesture, and every edit is reported to MC.
+**RANGE works during play only while the station lock is unlocked**. Every edit is reported to MC.
 
 - **Gesture.** A is read as one gesture (`station_ui.h AHoldGesture`, host-tested): released under 1 s it
   is a click, released between 1 s and 5 s it is HOME, and reaching 5 s on STATS (with a station
-  assigned) opens RANGE with nothing else firing. From 1 s the hint bar fills with "HOLD FOR RANGE".
+  assigned and unlocked) opens RANGE with nothing else firing. From 1 s the hint bar fills with "HOLD FOR RANGE" only while unlocked.
 - **RANGE screen.** Two fields: RADIUS (the presence threshold in dBm, with a rough distance) and
   STRENGTH (the advertising power: ULTRA LOW -18 dBm, LOW -9, MEDIUM 0, HIGH +9, the default). The lit
   panel is the one being edited; each says EDITED (an on-station value) or MC. A click = CLOSER (radius
@@ -579,14 +585,16 @@ sits behind the stronger 5 s gesture, and every edit is reported to MC.
   applies at once: presence (hill, respawn) uses it on the next tick, byte 14 of the advert
   republishes at once, and a new power restarts the advert at it.
 - **Distances are rough**, and the screen says so: `station_range.h RANGE_DISTANCE_TABLE`, anchored on
-  Tony's measurement (-57 dBm is about 3 m from a Stick), 6 dB per doubling of distance from there.
+  Tony's measurement (-57 dBm is about 3 m from a Stick), 6 dB per doubling of distance from there. The
+  control hill uses its separate, unproven label table: -78 dBm is about 5-7 m.
 - **Sync (A67).** Every status beat carries `threshold` (applied now), `threshold_src` ("station" |
   "mc") and, only while "station", `threshold_edit_age_ms`; the same three for `tx_power`; and
   `range_edits`, the last 8 edits (seq, field, from, to, locked, age_ms), restated every beat (MC
   dedupes by seq). MC's `station_config` carries `threshold` and `threshold_age_ms` (and optionally
   `tx_power` with `tx_power_age_ms`). Per field: an on-station edit YOUNGER than MC's age stays;
   otherwise MC's value applies and the edit goes. No age = an older MC, whose value applies. No
-  `tx_power` = keep the Stick's. `threshold` 0 = the Stick's -57, and the status reports -57 (never 0).
+  `tx_power` = keep the Stick's. `threshold` 0 selects the kind's Stick default. The status reports the
+  threshold used by the Stick, never 0. A defaulted control advert keeps byte 14 at -57 for phone-side presence.
   With no age (an MC before A67), MC's value applies only when it CHANGED: MC re-sends the same
   config as the lock carrier and on every reconnect, and that must not undo the operator's edit. A new
   station (kind or id) starts from MC's values. A new game alone (arming the next match) keeps the
@@ -614,8 +622,7 @@ sits behind the stronger 5 s gesture, and every edit is reported to MC.
 
 ### Match lock (A58)
 
-While the lock is on, A still opens RANGE (the 5 s hold on STATS, above) and range edits are allowed,
-each reported to MC with `locked: true`; in RANGE a B hold leaves, it never reaches RESET.
+While the lock is on, a 5 s A hold on STATS shows LOCKED. It does not open RANGE. An open RANGE screen closes if the lock arrives. MC still accepts `locked: true` edits from older firmware; in RANGE a B hold leaves, it never reaches RESET.
 
 Mission Control can lock the operator controls for a match: `station_config.lock_s` (0 to 7200 s,
 absent means 0) locks them for that many seconds from receipt. A later `station_config` replaces the
@@ -725,3 +732,8 @@ the register map is not in the installed M5Unified source, so the firmware does 
   `mcBuildStationActionTaken` in `mc_link_glue.h`) so a rename is a one-line change.
 - **Which Grove pin (G9 or G10) the yellow wire drives on this unit**, given M5's own pinout page
   and the M5Unified port mapping disagree; see "Hardware and pins" above.
+
+
+**Hill timing (A68):** MC sends `starts_in_ms` and `ends_in_ms` in the same `station_config` whenever it knows the times. Both are relative to MC send time; the start can be negative after go-live. A future start keeps the hill neutral, waiting, and accrual-free. A same-game config in LOBBY without a start also keeps it waiting. The MUSTER wait ends on any config with `starts_in_ms`, including an untimed START. The hill counts only from its local go-live to its local deadline, then freezes its owner and possession tally and shows MATCH OVER. A same-game config with neither time means no match is running and the hill waits. MC sends no `station_update` for a hill. A restored timed hill stays frozen until a fresh config provides timing, because `millis()` cannot measure time while powered off. After an abort, the same-game config omits both times and returns the hill to waiting. An early end reaches only a Stick still in Wi-Fi.
+
+**Offline limit:** F374's 60 s MUSTER fallback still starts the hill if the Stick loses Wi-Fi before hearing START, then drops Wi-Fi. That hill counts as before because it has no go-live or deadline. An adopted match pushes nothing to stations, so an adopted match gives a Stick hill no go-live or deadline and it counts as before.
