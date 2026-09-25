@@ -252,13 +252,23 @@ class TrustRegistry:
     def _append(self, line: str) -> bool:
         if self.data_dir is None:
             return True
+        path = self.data_dir / ENROLLED_FILE
+        size: int | None = None
         try:
-            with open(self.data_dir / ENROLLED_FILE, "a", encoding="utf-8") as f:
+            size = path.stat().st_size
+            with open(path, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
                 f.flush()
                 os.fsync(f.fileno())
         except Exception as e:
             log.warning("could not append to %s (%s)", ENROLLED_FILE, e)
+            # F362 (m): cut the file back to where it was. A torn line would join the next append onto it,
+            # and a whole line the caller does not apply in memory would leave disk and memory apart.
+            if size is not None:
+                try:
+                    os.truncate(path, size)
+                except Exception as e2:
+                    self._fail_closed(f"could not cut a failed append back off {path} ({e2})")
             return False
         self._lines += 1
         return True

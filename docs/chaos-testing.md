@@ -93,7 +93,9 @@ They are in `invariants.py`. Each one applies to every scenario.
   scorer a replay replaced, because a replay judges streak medals in `t` order (A63).
 - `honors_full_ledger`: MVP, IRON MAN, MULTIKILL and SURVIVOR, computed from the ledger, equal MC's honours.
   The `melee_kill` action makes BEAT DOWN fire.
-- At the end: `ends_exactly_once`, `frag_cap_ends_match` and `recap_equals_board`.
+- At the end: `ends_exactly_once`, `frag_cap_ends_match` and `recap_equals_board`. `frag_cap_ends_match`
+  judges an operator or time end on the facts MC held at that end: a late flush that then lifts the board to
+  the cap does not make it a frag-cap win (F362 l).
 - The runner adds `field_settles`: every connected node has its facts acknowledged after each step.
 
 The expected values come from the `Ledger`, the harness's own record of every fact the field emitted.

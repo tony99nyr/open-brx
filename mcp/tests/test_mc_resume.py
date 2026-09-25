@@ -615,6 +615,29 @@ def test_a_restart_from_a_live_snapshot_keeps_a_late_team_kill_frozen_out():
     assert s2.last_recap["winner"]["team_id"] == team_a
 
 
+def test_a_resume_does_not_tell_the_field_the_lead_and_next_kill_wins_again():
+    """F362 (k): the resume replay runs with no callbacks, and `_match_state_alerts` skips a fact older
+    than FEEDBACK_MAX_AGE_MS, so the replay left `_leader` empty and `next_kill_wins` unannounced. The
+    first fresh kill after the resume then told the leader `lead_taken` and the field `next_kill_wins`
+    a second time."""
+    s, net, clock, ps, info = _persisting_live(2, {"scoring": {"frag_limit": 3, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    kill(s, net, clock, ps, 0, 1, info, seq=2)          # P0 on 2: the lead, and cap - 1
+    told = [b["kind"] for _, k, b in net.pushed if k == "alert"]
+    assert "lead_taken" in told and "next_kill_wins" in told, f"control: the live match told them: {told}"
+    clock["t"] += 20_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    for i in range(2):
+        tail = demo_armory()[i]["ble"]["tail"]
+        net2.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
+        _status(net2, clock, i, "live", info["match_id"])
+    net2.pushed.clear()
+    kill(s2, net2, clock, ps, 1, 0, info, seq=3)       # P1 on 1: the lead does not change
+    again = [b["kind"] for _, k, b in net2.pushed if k == "alert"]
+    assert "lead_taken" not in again and "next_kill_wins" not in again, f"told again after the resume: {again}"
+
+
 # ── X2: an adopted match keeps the phones' game byte ───────────────────────────────────────────────
 # A fresh MC has game_no 1. The phones play under the byte the OLD MC armed (here 42). Before the fix a
 # station re-arm after RESUME MATCH moved every station to byte 1: the stations cleared their tally and

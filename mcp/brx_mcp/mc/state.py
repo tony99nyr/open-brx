@@ -3111,8 +3111,9 @@ class Session:
                     self._departed_match_stations[nid] = rec
             slots_before = self._powerup_slots()
             st["assigned"], st["armed"], st["arm_pending"] = None, None, False
-            for k in ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "tally"):
-                st.pop(k, None)                # A58: a release unlocks the Stick too (utility.md)
+            for k in _STATION_LOCK_KEYS:
+                if k != "boot":                # the last boot seen stays: a restart is judged against it
+                    st.pop(k, None)            # A58: a release unlocks the Stick too (utility.md)
             self._after_station_change(slots_before)   # the survivors' valid_ids shrink
             self._validate()                       # ...and the SETUP warnings tell the truth again
             self._changed()
@@ -4396,6 +4397,15 @@ class Session:
         for r in facts:
             body: Event = r["body"]
             sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
+        if derive_cap and sc.cap_recv is None and sc.limit_reached_t is not None:
+            # F363: the live scorer takes facts in ARRIVAL order, and it never reached the cap (no
+            # `cap_recv` in the snapshot, none from `_arrival_cap_recv`). The `t`-order replay above can pass
+            # the cap for a moment (a clock jump, then a team kill takes it back). That is not a whistle the
+            # field heard, so forget it: the resume must not end the match on it, and a real cap reached
+            # later must still end the match.
+            sc.limit_reached_t = None
+            sc._announced.discard("frag_limit")
+        sc.prime_match_state_alerts()            # F362 (k): the field already heard the lead and cap - 1
         sc.node_player = self.node_player
         sc.on_feed = self._on_feed
         sc.on_alert = self._alert

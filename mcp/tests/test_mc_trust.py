@@ -259,6 +259,32 @@ def test_a_torn_last_line_is_ended_before_the_next_append():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_a_failed_append_is_cut_back_so_disk_and_memory_agree():
+    """F362 (m): a write or an fsync that fails after part of the line reached the file left it there. A
+    torn line then joined the next append onto it, and a whole `b` line left disk and memory apart."""
+    root = _tmp()
+    real_fsync = mcid.os.fsync
+    try:
+        reg = TrustRegistry(root)
+        assert reg.enroll("node-aa")
+        lst = root / mcid.ENROLLED_FILE
+        before = lst.read_text(encoding="utf-8")
+
+        def boom(_fd):
+            raise OSError("disk full")
+        mcid.os.fsync = boom
+        reg.confirm("node-aa")                                # the `b` line is written, then fsync fails
+        assert reg.enroll("node-bb") is None, "no key when the line could not be made durable"
+        mcid.os.fsync = real_fsync
+        assert lst.read_text(encoding="utf-8") == before, "the failed lines were cut back off the list"
+        assert reg.bound == set() and "node-aa" in reg.unbound
+        again = TrustRegistry(root)
+        assert again.bound == reg.bound and set(again.unbound) == set(reg.unbound), "disk and memory agree"
+    finally:
+        mcid.os.fsync = real_fsync
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_a_crash_between_creating_the_list_and_the_secret_is_a_clean_new_install():
     root = _tmp()
     real = mcid._write_private

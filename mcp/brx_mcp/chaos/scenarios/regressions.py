@@ -199,3 +199,61 @@ scenario(Scenario(
     ],
     ci_seeds=(1,),
 ))
+
+scenario(Scenario(
+    name="resume-transient-cap", mode="tdm", nodes=10,
+    doc="F363 (chaos 2026-09-25, frag-cap-team-kills seed 3009): the resume replay runs in `t` order. A clock "
+        "jump lets that replay pass the frag cap for a moment before a team kill takes it back, and the live "
+        "board, scored in arrival order, never reached the cap. The resume ended the match on the cap anyway, "
+        "at 4-3 against a cap of 5. Fixed: a resume forgets a cap the arrival-order check does not reach.",
+    config={"scoring": {"frag_limit": 5, "win_by": "kills"}},
+    script=[
+        {"name": "kill", "params": {"victim": 5, "shooter": 0}},
+        {"name": "trade", "params": {"a": 4, "b": 9}},
+        {"name": "drop", "params": {"node": 4}},
+        {"name": "clock_jump", "params": {"node": 7, "delta_ms": -240000}},
+        {"name": "trade", "params": {"a": 2, "b": 3}},
+        {"name": "hit", "params": {"victim": 1, "shooter": 7, "dmg": 25, "words": 1}},
+        {"name": "respawn", "params": {"node": 0}},
+        {"name": "respawn", "params": {"node": 5}},
+        {"name": "kill", "params": {"victim": 5, "shooter": 4}},
+        {"name": "team_kill", "params": {"victim": 0, "shooter": 4}},
+        {"name": "kill", "params": {"victim": 7, "shooter": 4}},
+        {"name": "drop", "params": {"node": 5}},
+        {"name": "hit", "params": {"victim": 6, "shooter": 4, "dmg": 25, "words": 1}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "end", "params": {}},
+    ],
+    ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="host-end-then-late-cap", mode="tdm", nodes=10,
+    doc="F362 (l) (chaos 2026-09-25, frag-cap-team-kills seeds 14 and 20): the operator ENDs the match below "
+        "the cap, then the dropped nodes flush kills stamped before the END. They are inside the scored window, "
+        "so the board rises to the cap. The operator's END stands: a late flush never re-labels it as a "
+        "frag-cap win (`frag_cap_ends_match` judges a host or time end on the facts MC held at the end).",
+    config={"scoring": {"frag_limit": 5, "win_by": "kills"}},
+    script=[
+        {"name": "kill", "params": {"victim": 6, "shooter": 7}},
+        {"name": "trade", "params": {"a": 2, "b": 9}},
+        {"name": "kill", "params": {"victim": 3, "shooter": 4}},
+        {"name": "kill", "params": {"victim": 5, "shooter": 8}},
+        {"name": "team_kill", "params": {"victim": 4, "shooter": 8}},
+        {"name": "kill", "params": {"victim": 8, "shooter": 7}},
+        {"name": "drop", "params": {"node": 2}},
+        {"name": "hit", "params": {"victim": 0, "shooter": 7, "dmg": 40, "words": 1}},
+        {"name": "drop", "params": {"node": 0}},
+        {"name": "clock_jump", "params": {"node": 4, "delta_ms": -240000}},
+        {"name": "trade", "params": {"a": 7, "b": 0}},
+        {"name": "drop", "params": {"node": 5}},
+        {"name": "respawn", "params": {"node": 4}},
+        {"name": "trade", "params": {"a": 4, "b": 9}},
+        {"name": "respawn", "params": {"node": 6}},
+        {"name": "clock_jump", "params": {"node": 6, "delta_ms": 2000}},
+        {"name": "respawn", "params": {"node": 6}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "end", "params": {}},
+    ],
+    ci_seeds=(1,),
+))

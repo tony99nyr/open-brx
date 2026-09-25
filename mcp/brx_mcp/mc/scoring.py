@@ -608,6 +608,25 @@ class Scorer:
         self.limit_reached_t = t
         self.on_limit(t)
 
+    def prime_match_state_alerts(self) -> None:
+        """F362 (k): after a replay, take the lead and `next_kill_wins` from the board, and tell nobody.
+
+        A replay skips `_match_state_alerts` for every fact older than FEEDBACK_MAX_AGE_MS, so a resumed
+        scorer had no leader and no `next_kill_wins` mark. The first fresh kill then told the field both
+        again. The field already heard them when the facts were fresh."""
+        if self.win_by != "kills":
+            return
+        scores = ({pid: st.kills for pid, st in self.stats.items()} if self.mode == "ffa"
+                  else self.team_scores())
+        if not scores:
+            return
+        best = max(scores.values())
+        tops = [k for k, v in scores.items() if v == best]
+        if len(tops) == 1 and best > 0:
+            self._leader = tops[0]
+        if self.frag_limit and best >= self.frag_limit - 1:
+            self._announced.add("next_kill_wins")
+
     def _match_state_alerts(self, t: int) -> None:
         """A11.4: lead changes, next-kill-wins and the last survivor, to the nodes they concern.
 

@@ -819,7 +819,8 @@ def ends_exactly_once(world: World) -> None:
 @invariant("frag_cap_ends_match", when="end")
 def frag_cap_ends_match(world: World) -> None:
     """A frag cap reached by the credited facts ends the match at the capping kill, and a match whose
-    credited facts never reach the cap is not ended by it."""
+    credited facts never reach the cap is not ended by it. An operator or time end is judged on the facts
+    MC held at that end: a late flush that lifts the board to the cap afterwards does not re-label it."""
     s = world.session
     sc = s.scorer
     cap = (s.config.get("scoring") or {}).get("frag_limit")
@@ -834,6 +835,24 @@ def frag_cap_ends_match(world: World) -> None:
         if top < cap and not sc.cap_tie:
             _fail("frag_cap_ends_match", f"ended on the frag limit {cap} with a top score of {top}")
     elif top >= cap:
+        if reason in ("host", "time") and world.end_delivered is not None:
+            # F362 (l): the operator's END (or the clock) stands. Facts stamped before it can still flush
+            # after it and lift the board to the cap, but a late flush never re-labels the end as a
+            # frag-cap win. Judge the end on the facts MC held at the end, by the ledger's account.
+            _sc, facts = _current(world)
+            held = [f for f in facts if (f[0], f[1]) in world.end_delivered]
+            kills, _d, _h, _p = _expected(world, sc, held)
+            if sc.mode == "ffa":
+                top_then = max(kills.values(), default=0)
+            else:
+                per_team: Counter = Counter()
+                for pid, k in kills.items():
+                    per_team[world.team_of(pid)] += k
+                top_then = max(per_team.values(), default=0)
+            if top_then < cap:
+                return
+            _fail("frag_cap_ends_match", f"the board held at the end reached the cap ({top_then} >= {cap}) "
+                                         f"but the match ended by {reason!r}")
         _fail("frag_cap_ends_match", f"the board reached the cap ({top} >= {cap}) but the match ended by {reason!r}")
 
 
