@@ -1110,7 +1110,8 @@ export class Hud {
    *  OBJECTIVE-style badge per honour naming its holder. MC computes them (`scoring.py honors()`, one row per tied
    *  holder, keys in `types.AWARDS` order) and the result push carries them as `honors[] = {medal (the label), key,
    *  player_id, display, stat}`. Mine first, then grouped by key in AWARDS order; nothing is capped. A pre-A63 row with
-   *  no `key` is placed by its label. Mine carry a star and "YOU", not only a colour. */
+   *  no `key` is placed by its label. Mine carry a star and "YOU", not only a colour; an award with more than one holder says SHARED. MC's stat string
+   *  gets its own line, so a long one never clips the holder's name. */
   _awards(honors, rows, myId) {
     const order = k => { const i = AWARDS.findIndex(a => a.key === k); return i < 0 ? AWARDS.length : i; };
     const keyOf = h => h.key || (AWARDS.find(a => a.label === h.medal) || {}).key || null;
@@ -1122,9 +1123,10 @@ export class Hud {
     const me = `<div class="awme"><span class="awh">YOUR AWARDS</span>${mine.length
       ? `<div class="awm">${mine.map(h => `<span class="medal" data-award="${esc(keyOf(h) || '')}"><span class="unskew">★ ${esc(label(h))}</span></span>`).join('')}</div>`
       : '<span class="awnone">NONE THIS MATCH</span>'}<span class="lsrc">MC</span></div>`;
-    const list = sorted.map(h => { const w = who(h), m = isMe(h);
-      return `<div class="aw${m ? ' me' : ''}" data-award="${esc(keyOf(h) || '')}" style="--lc:${w.tk ? TEAM_COLOR[w.tk] : 'var(--glow)'}"><span class="awt"><span class="awk">${m ? '★ ' : ''}${esc(label(h))}</span>`
-        + `<span class="awr"><span class="awn">${esc(w.name)}${m ? ' <b>· YOU</b>' : ''}</span>${h.stat != null && h.stat !== '' ? `<b class="aws tab">${esc(String(h.stat))}</b>` : ''}</span></span></div>`; }).join('');
+    const holders = k => honors.filter(x => keyOf(x) === k).length;
+    const list = sorted.map(h => { const w = who(h), m = isMe(h), shared = holders(keyOf(h)) > 1;
+      return `<div class="aw${m ? ' me' : ''}" data-award="${esc(keyOf(h) || '')}" style="--lc:${w.tk ? TEAM_COLOR[w.tk] : 'var(--glow)'}"><span class="awt"><span class="awk">${m ? '★ ' : ''}${esc(label(h))}${shared ? ' <i>· SHARED</i>' : ''}</span>`
+        + `<span class="awn">${esc(w.name)}${m ? ' <b>· YOU</b>' : ''}</span>${h.stat != null && h.stat !== '' ? `<span class="aws">${esc(String(h.stat))}</span>` : ''}</span></div>`; }).join('');
     return `<div class="awards">${me}<div class="awl">${list}</div></div>`;
   }
   _result(st) {
@@ -1237,7 +1239,7 @@ export class Hud {
       <div class="rhead"><span class="rkick">FINAL RESULTS</span>${head}<span class="rmeta">${esc(meta)}</span>${seg}</div>
       <div class="rbody">${body}</div>
       ${tab === 'awards' ? '' : holdStrip + honorStrip + afterStrip}
-      <div class="rstats" style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
+      <div class="rstats"${tab === 'awards' ? ' hidden' : ''} style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
       <div class="rfoot foot"><div class="fl">${ret}${mcv}${syncShown}${sess}</div>
         <button class="ready ${reopened ? 'ghost' : ''}" data-act="${reopened ? 'onCloseView' : 'onEndOk'}"><span class="unskew">${reopened ? 'CLOSE' : 'OK'}</span></button></div></div>`;
   }
@@ -1973,10 +1975,10 @@ export class Hud {
       const big = all.length ? all[all.length - 1] : null, ladder = all.slice(0, -1).reverse(), shown = ladder.slice(0, 2), more = ladder.length - shown.length;
       const vk = last.team ? String(last.team).toLowerCase() : null, tk = vk && TEAM_COLOR[vk] ? vk : null;
       const name = last.victim || `${tk ? tk.toUpperCase() : 'ENEMY'} OPERATIVE`;
-      // lanes VQA H1: a centre tell (STUNNED / DISARMED, SMOKED, RECOIL, overheat, TAKING FIRE, a hit's number) is never
+      // lanes VQA H1: a centre tell (STUNNED / DISARMED, SMOKED, RECOIL, the OVERHEAT word, TAKING FIRE, a hit's number) is never
       // hidden. While one is up the hero collapses to ONE row above it: KILL ×N and the newest medal.
       const hit = st.moment && st.moment.kind === 'hit' && now - st.moment.at < 700;
-      const tell = st.stunned || (st.aim && AIM_REASON[st.aim.reason]) || st.underFire || hit;
+      const tell = st.stunned || (st.aim && AIM_REASON[st.aim.reason]) || st.overheatShown || st.underFire || hit;
       if (hit) this._laneTellUntil = st.moment.at + 710;
       hero = `<div class="lh${tell ? ' tight' : ''}${now >= heroUntil ? ' out' : ''}" data-lk="${h.id}" data-id="${h.id}" data-n="${n}"><div class="lhp">`
         + `<div class="lhk">${DS.ICON.kill}<span>KILL</span>${n > 1 ? `<span class="lhx tab">×${n}</span>` : ''}</div>`
@@ -1993,7 +1995,7 @@ export class Hud {
     const obj = ['lead', 'hill'].filter(key => O[key]).map(key => {
       const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost';
       const kick = lead ? (tk ? tk.toUpperCase() : 'YOU') : 'OBJECTIVE', text = lead ? (lost ? 'LOST THE LEAD' : 'TAKES THE LEAD') : (lost ? 'HILL LOST' : 'HILL CAPTURED');
-      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span><span class="low">${esc(text)}</span></span></div>`;
+      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.id || o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span><span class="low">${esc(text)}</span></span></div>`;
     });
     // FEED (an alert's family names its colour and its kicker, as the old banner did)
     const FAM = { objective: ['OBJECTIVE', ours], clock: ['CLOCK', 'var(--warn)'], danger: ['ALERT', 'var(--bad)'], info: ['MATCH', 'var(--glow)'] };
@@ -2002,7 +2004,7 @@ export class Hud {
       const main = down ? `${f.name || `${f.team ? String(f.team).toUpperCase() + ' ' : ''}${mate ? 'TEAMMATE' : 'OPERATIVE'}`} DOWN` : f.text || f.kind;
       const sub = [down && f.by ? `BY ${f.by}` : fam ? fam[0] : f.sub || null, f.src].filter(Boolean).join(' · ');
       const col = mate ? 'var(--warn)' : down ? 'var(--ok)' : fam ? fam[1] : itemColor(f.color);
-      return `<div class="lf${now - f.at >= LANE_FEED_MS ? ' out' : ''}" data-lk="${f.at}:${esc(f.kind)}" data-kind="${esc(f.kind)}"${fam ? ` data-alert="${esc(f.alert)}" data-fam="${esc(ALERT_FAMILY[f.alert] || 'info')}"` : ''} style="--lc:${col}"><i></i><span class="lft"><span class="lfm">${esc(String(main).toUpperCase())}</span>${srcl(String(sub).toUpperCase())}</span></div>`;
+      return `<div class="lf${now - f.at >= LANE_FEED_MS ? ' out' : ''}" data-lk="${f.id || `${f.at}:${esc(f.kind)}`}" data-kind="${esc(f.kind)}"${fam ? ` data-alert="${esc(f.alert)}" data-fam="${esc(ALERT_FAMILY[f.alert] || 'info')}"` : ''} style="--lc:${col}"><i></i><span class="lft"><span class="lfm">${esc(String(main).toUpperCase())}</span>${srcl(String(sub).toUpperCase())}</span></div>`;
     });
     // lanes VQA H2: sync by key (`data-lk`), never a whole innerHTML rewrite. A node that stays keeps its DOM node, so
     // its entrance animation never re-runs; only a NEW item animates in.

@@ -546,7 +546,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 #lanes .lh.out{opacity:0}
 /* lanes VQA H1: a centre tell is up (STUNNED / DISARMED, SMOKED, RECOIL, TAKING FIRE, a hit's number): the hero is ONE row
    above it, KILL ×N and the newest medal, so the player always sees why they cannot shoot */
-#lanes .lh.tight .lhp{flex-direction:row;gap:12px;padding:3px 24px}#lanes .lh.tight .lhn,#lanes .lh.tight .lhl,#lanes .lh.tight>.lsrc{display:none}
+#lanes .lh.tight{top:92px}#lanes .lh.tight .lhp{flex-direction:row;gap:12px;padding:3px 24px}#lanes .lh.tight .lhn,#lanes .lh.tight .lhl,#lanes .lh.tight>.lsrc{display:none}
 #lanes .lh.tight .lhm .medal{font-size:18px}
 #lanes .lhp{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 40px;max-width:400px;background:linear-gradient(90deg,transparent,var(--ln-bg) 14%,var(--ln-bg) 86%,transparent)}
 #lanes .lhk{display:flex;align-items:center;gap:8px;color:var(--lk);font-family:var(--fd);font-weight:700;font-size:26px;line-height:.92;letter-spacing:.16em}
@@ -976,10 +976,10 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rbody{flex:1 1 auto;min-height:0;overflow:hidden}
 /* The end-of-match AWARDS tab (brx5 lead 2026-09-24): the three lanes' language. My awards as HERO medals on the left,
    one OBJECTIVE-style badge per award on the right naming its winner, mine lit. */
-.result .awards{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,10fr);gap:12px;padding-right:40px;height:100%;min-height:0;align-items:start}
-.result .awme{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 6px;background:linear-gradient(90deg,transparent,rgba(4,7,12,.9) 12%,rgba(4,7,12,.9) 88%,transparent)}
+.result .awards{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:6px;padding-right:40px;height:100%;min-height:0;align-items:start}
+.result .awme{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:12px;padding:3px 6px;background:linear-gradient(90deg,transparent,rgba(4,7,12,.9) 12%,rgba(4,7,12,.9) 88%,transparent)}
 .result .awh{font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.2em;color:var(--ok)}
-.result .awm{display:flex;flex-direction:column;align-items:center;gap:6px}
+.result .awm{display:flex;flex-direction:row;align-items:center;gap:8px}
 .result .awm .medal{white-space:nowrap;font-family:var(--fd);font-weight:700;font-size:17px;line-height:1.1;letter-spacing:.14em;padding:2px 18px;transform:skewX(-12deg);background:var(--warn);color:#1a1200}
 .result .awm .medal .unskew{display:inline-block;transform:skewX(12deg)}
 .result .awnone{font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.14em;color:var(--mut)}
@@ -990,7 +990,8 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .awt{display:flex;flex-direction:column;flex:1;min-width:0;line-height:1.1}
 .result .awk{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--fl);font-size:11px;letter-spacing:.2em;color:var(--lc);font-weight:700}
 .result .awn{font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.06em;color:var(--num);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.result .awr{display:flex;align-items:baseline;justify-content:space-between;gap:6px;min-width:0}.result .awn b{color:var(--warn)}.result .aws{font-family:var(--fd);font-weight:700;font-size:14px;color:var(--num);white-space:nowrap}
+.result .awn b{color:var(--warn)}.result .aws{font-family:var(--fl);font-weight:600;font-size:11px;letter-spacing:.08em;color:var(--num);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* MC's own stat string, on its own line */
+.result .awk i{font-style:normal;color:var(--mut)}.result .rstats[hidden]{display:none}
 [data-env="night"] .result .awme{background:#120505}[data-env="night"] .result .awh,[data-env="night"] .result .awn b{color:#b58432}
 [data-env="night"] .result .awm .medal{background:#2a0c0c;color:#b58432;border:1px solid #5a1c1c}
 [data-env="night"] .result .aw{--lc:#c9484a!important;background:#120505}[data-env="night"] .result .aw.me{box-shadow:inset 0 0 0 1px #a8782a}

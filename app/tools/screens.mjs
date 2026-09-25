@@ -3884,7 +3884,7 @@ const lnRead = pg => pg.evaluate(() => {
   const env = { ammo: q('.alive .ammo'), hint: q('#puhint .pu'), chip: q('#puheld .puchip'), vitals: q('.vitals'), vparts: q('.vitals .nums > *, .vitals .bar'), clock: q('.alive .clockplate'), ident: q('.alive .ident'),
     stats: q('.alive .stats'), topright: q('.alive .topright'), svm: q('#svm'),
     // lanes VQA M2: the centre tells a player must always see (STUNNED / DISARMED, SMOKED, RECOIL, overheat, TAKING FIRE, a hit's number)
-    tells: q('.alive .aimfx, .alive .takingfire, #overlay .mo.hit .hc') };
+    tells: q('.alive .aimfx, .alive .heatword, .alive .takingfire, #overlay .mo.hit .hc') };
   const lanes = document.getElementById('lanes');
   const all = lanes ? [lanes, ...lanes.querySelectorAll('*')].filter(e => e === lanes || vis(e)) : [];
   const paints = all.flatMap(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor, c.borderLeftColor, e.closest('svg') ? c.fill : null].filter(Boolean).map(v => [e.getAttribute('class') || e.tagName, v]); });
@@ -4525,7 +4525,8 @@ for (const view of VIEWS) for (const night of [false, true]) await step(`${view.
   const r = await pg.evaluate(() => { const body = document.querySelector('.result .rbody').getBoundingClientRect(); const vis = e => { const b = e.getBoundingClientRect(); return b.width > 0 && b.top >= body.top - 1 && b.bottom <= body.bottom + 1; };
     return { tab: (document.querySelector('.rseg .sg.on') || {}).textContent, mine: [...document.querySelectorAll('.awm .medal')].map(e => e.textContent.trim()), strip: !!document.querySelector('.rstrip.hon'),
       rows: [...document.querySelectorAll('.result .aw')].map(e => ({ k: e.dataset.award, l: e.querySelector('.awk').textContent.trim(), n: e.querySelector('.awn').textContent.trim(), me: e.classList.contains('me'), vis: vis(e),
-        kpx: parseFloat(getComputedStyle(e.querySelector('.awk')).fontSize), clip: [e.querySelector('.awk'), e.querySelector('.awn')].some(x => x.scrollWidth > x.clientWidth + 1) })) }; });
+        kpx: parseFloat(getComputedStyle(e.querySelector('.awk')).fontSize), clip: [e.querySelector('.awk'), e.querySelector('.awn'), e.querySelector('.aws')].filter(Boolean).some(x => x.scrollWidth > x.clientWidth + 1),
+        stat: (e.querySelector('.aws') || {}).textContent || null, shared: /SHARED/.test(e.querySelector('.awk').textContent) })) }; });
   const inv = await invariants(pg); await pg.close();
   const ORDER = ['mvp', 'most_kills', 'best_kd', 'sharpshooter', 'survivor', 'iron_man', 'first_blood', 'multikill', 'wingman', 'objective_hero'];
   must(r.tab && r.tab.trim() === 'AWARDS' && JSON.stringify(r.mine) === '["★ MVP","★ MOST KILLS","★ SURVIVOR"]', `my awards: ${JSON.stringify(r)}`);
@@ -4535,6 +4536,8 @@ for (const view of VIEWS) for (const night of [false, true]) await step(`${view.
   const rest = r.rows.slice(firstOther).map(x => ORDER.indexOf(x.k));
   must(rest.every((v, i) => i === 0 || v >= rest[i - 1]), `the others grouped in AWARDS order: ${JSON.stringify(r.rows.map(x => x.k))}`);
   must(!r.strip, 'the HONORS strip repeats the AWARDS tab');
+  must(r.rows.find(x => x.k === 'mvp').stat === '11 K · 2.8 K/D · ×3 STREAK', `MC's real stat string: ${JSON.stringify(r.rows[0])}`);   // lanes polish r2 H1: nothing clipped with MC's strings
+  must(r.rows.filter(x => x.shared).map(x => x.k).join() === 'most_kills,most_kills', `SHARED marks both holders of a shared award: ${JSON.stringify(r.rows.map(x => [x.k, x.shared]))}`);
   must(inv.length === 0, 'invariants: ' + inv.join(' | '));
 });
 // lanes VQA H1: a kill hero must never hide a centre tell. Each tell is up, then my kill lands (a medal, so the hero has
@@ -4549,6 +4552,8 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [stage, 
     must(r.hero.medal === 'KILLING SPREE' && /KILL/.test(r.hero.kill), `the one row keeps KILL and the medal: ${JSON.stringify(r.hero)}`);
     const bad = lnCovers(r).filter(x => /covers tells/.test(x));
     must(bad.length === 0, bad.join(' | '));
+    const k = (r.frame.r - r.frame.l) / 844, gap = (Math.min(...r.hero.parts.map(p => p.t)) - Math.max(...r.env.clock.map(c => c.b))) / k;
+    must(gap >= 4, `the one-row hero sits ${gap.toFixed(1)} frame px under the clock plate, the floor is 4`);
   });
 }
 // lanes VQA H2: the lanes sync by key. A persistent badge keeps its DOM node (and so never re-runs its entrance) while the
@@ -4567,9 +4572,9 @@ for (const view of VIEWS) await step(`${view.name} lanes day: the lead and hill 
   must(r.leadSame && r.hillSame, `a badge was replaced while the spree ran: ${JSON.stringify(r)}`);
   must(r.added === 1, `only the hill badge may be added after the lead (the one new item): ${JSON.stringify(r)}`);
 });
-// The announcer queue is unchanged (docs/announcer.md): MC's kill feedback and its lead alert on the same tick still SAY the
-// kill first and the lead after it. Only the screen changed: both are drawn at once, from the first frame.
-for (const view of VIEWS) await step(`${view.name} lanes: kill and lead on one tick: both drawn at once, the voice still queues the lead behind the kill`, async () => {
+// docs/announcer.md "Silent during a kill streak" (main 9f0d632b) meets the lanes: MC's kill feedback and its lead alert on
+// the same tick. The lead line is dropped (my kill is on air), and the lead badge is drawn with the kill from the first frame.
+for (const view of VIEWS) await step(`${view.name} lanes: kill and lead on one tick: both drawn at once, the lead line silent (kill streak on air), its badge shown`, async () => {
   const pg = await open(view, 'live-announcer', '', 2150);
   const r = await pg.evaluate(async () => { const wait = ms => new Promise(r => setTimeout(r, ms)); const seen = [];
     for (let i = 0; i < 60; i++) { const h = document.querySelector('#lanes .lh'), l = document.querySelector('#lanes .lo[data-key="lead"]'), a = window.brx.engine.state().announcer || {};
@@ -4579,7 +4584,23 @@ for (const view of VIEWS) await step(`${view.name} lanes: kill and lead on one t
   const first = r.findIndex(x => x.hero || x.lead);
   must(first >= 0, 'nothing drawn: ' + JSON.stringify(r.slice(0, 4)));
   must(r[first].hero && r[first].lead, `the kill and the lead must appear together: ${JSON.stringify(r[first])}`);
-  must(r.some(x => x.on === 'kill_confirmed' && x.q.includes('lead_taken')), 'the voice must still say the kill first, the lead waiting behind it');
+  const log = await (async () => { const p2 = await open(view, 'live-announcer', '', 4500); const l = await p2.evaluate(() => (window.brx.log || []).map(String)); await p2.close(); return l; })();
+  must(log.some(l => /lead_taken silent: kill streak on air/.test(l)), 'the stage log must show the lead line silenced: ' + JSON.stringify(log.filter(l => /announcer/.test(l)).slice(-6)));
+  must(r[r.length - 1].lead, 'the lead badge must still be up');
+});
+// Lanes polish round 2, C1: two feed rows pushed in the SAME ms (the powerup spawn loop does it) must be two nodes with
+// two keys; a repeated key left an orphan node that was never removed, and the column grew over the vitals.
+for (const view of VIEWS) await step(`${view.name} lanes: two feed rows in one ms are two nodes, and old rows leave (no orphan stack over the vitals)`, async () => {
+  const pg = await open(view, 'live', '', 3000);
+  const r = await pg.evaluate(async () => { const wait = ms => new Promise(res => setTimeout(res, ms)); const real = Date.now, d = window.brxDemo;
+    for (let k = 0; k < 6; k++) { const t = real(); Date.now = () => t; try { d.alert('bomb_planted'); d.alert('time_60'); } finally { Date.now = real; } await wait(120); }
+    const peak = document.querySelectorAll('#lanes .lf').length; await wait(300);
+    const v = document.querySelector('.vitals').getBoundingClientRect(), rows = [...document.querySelectorAll('#lanes .lf')].map(e => e.getBoundingClientRect());
+    const keys = [...document.querySelectorAll('#lanes .lf')].map(e => e.dataset.lk);
+    return { peak, n: rows.length, dup: keys.length !== new Set(keys).size, over: rows.some(b => b.bottom > v.top && b.top < v.bottom && b.right > v.left && b.left < v.right) }; });
+  await pg.close();
+  must(r.peak <= 3 && r.n <= 3 && !r.dup, `the feed shows at most three rows, each its own key: ${JSON.stringify(r)}`);
+  must(!r.over, `the feed covers the vitals: ${JSON.stringify(r)}`);
 });
 
 // A56 powerups (docs/spec/powerups.md; the claim is Tony's 2026-09-24 change via the brx5 lead). Every stage drives the

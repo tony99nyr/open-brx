@@ -4313,8 +4313,9 @@ export class Engine {
     if (this._lanes.hero && this._lanes.hero.kills.includes(row)) { if (!row.victim) this._laneUpdate(row, { victim: name }); return; }
     if (this._lanes.feed.includes(row)) { row.name = name; this._lanes.feed = [...this._lanes.feed]; this._changed(); }
   }
-  _laneObj(key, v) { const L = this._lanesOf(); L.obj = { ...L.obj, [key]: { ...v, at: this.now() } }; this._changed(); }
-  _laneFeed(v) { const L = this._lanesOf(), row = { ...v, at: this.now() }; L.feed = [row, ...L.feed].slice(0, LANE_FEED_MAX); this._changed(); return row; }
+  _laneObj(key, v) { const L = this._lanesOf(); L.obj = { ...L.obj, [key]: { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: this.now() } }; this._changed(); }
+  _laneFeed(v) { const L = this._lanesOf(), row = { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: this.now() };   // `id`: the HUD's key (two rows can share a ms)
+    L.feed = [row, ...L.feed].slice(0, LANE_FEED_MAX); this._changed(); return row; }
   /** S42 × A44/A47/F15: stand the accuracy writer down while a write that carries its own `$AMMO` is in
    *  flight (spawn, revive, operator RESYNC GUN, stun disarm, stun restore, reconcile re-arm). Any verify
    *  still open is DROPPED here -- an `$ALCD` answering THAT write proves nothing about ours -- and ONLY

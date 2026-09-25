@@ -96,7 +96,8 @@ const CHANGED = [
   ['10', 'they go silent when kill streaks are showing.', 'merged from main: a lead or hill line during a kill streak is dropped; its badge still shows at once. The voice lines under each storyboard are what this build said.'],
   ['VQA', 'the kill hero hid STUNNED / DISARMED, TAKING FIRE, SMOKED and RECOIL', 'while a centre tell is up the hero is one row above it (KILL ×N and the medal): see "My kill while STUNNED" and "My kill while taking a hit".'],
   ['VQA', 'by day every badge blinked on each redraw', 'the lanes now keep each item\'s node; only a new item fades in.'],
-  ['VQA', 'awards', 'the AWARDS tab shows MC\'s real end-of-match honours (A63): every one, mine first with a star and YOU, then in award order; the HONORS strip is hidden on that tab.'],
+  ['Polish r2', 'the feed stacked over the vitals when two rows landed in one ms', 'each feed row has its own id, so old rows always leave.'],
+  ['VQA', 'awards', 'the AWARDS tab shows MC\'s real end-of-match honours (A63): every one, mine first with a star and YOU, then in award order, SHARED where a tie holds, MC\'s stat on its own line; the HONORS strip is hidden on that tab.'],
 ];
 const fig = (f, cap) => `<figure><img src="${f}" alt="${esc(cap)}" loading="lazy"><figcaption>${cap}</figcaption></figure>`;
 const storyHtml = SKINS.map(skin => VIEWS.map(view => { const s = story.find(x => x.skin === skin.name && x.view === view);

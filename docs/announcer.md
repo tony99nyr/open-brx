@@ -155,7 +155,8 @@ Rules:
 
 The end-of-match AWARDS tab on the results screen uses the same language. It shows MC's A63 honours from the result
 push (`honors[] = {medal, key, player_id, display, stat}`, one row per tied holder): my awards as HERO medals, then
-every honour, mine first (a star and YOU), then in `types.AWARDS` order. Nothing is capped. The HONORS strip is hidden
+every honour, mine first (a star and YOU), then in `types.AWARDS` order, SHARED on an award with more than one
+holder, and MC's stat string on its own line. Nothing is capped. The HONORS strip is hidden
 while the tab is on.
 
 ## Late lines (`ANNOUNCE_AUDIO_LATE_MS`)
