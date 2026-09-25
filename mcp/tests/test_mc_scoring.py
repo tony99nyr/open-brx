@@ -246,7 +246,7 @@ def test_last_survivor_and_infected_alerts():
     assert alerts[-1] == ("last_survivor", "all", {"player_id": "p0"}), alerts
     sc2, fb2, feed2, alerts2 = mk_alerts(mode="infection")
     r = sc2.ingest("n2", {"type": "team_change", "t": T0 + 1000, "match_id": "m1", "node_id": "n2", "player_id": "p2", "tid": 2}, T0 + 1000)
-    assert ("infected", "all", {"player_id": "p2"}) in alerts2, (r, alerts2)   # a turn also re-evaluates last_survivor (polish 2026-09-04)
+    assert ("infected", "blue", {"player_id": "p2"}) in alerts2, (r, alerts2)
 
 
 def test_a_team_kill_that_flips_the_lead_still_announces_it():

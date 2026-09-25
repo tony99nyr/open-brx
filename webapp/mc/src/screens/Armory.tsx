@@ -836,6 +836,7 @@ function ReachBlock() {
   };
   const statusColor = status === 'up' ? T.ok : status === 'error' ? T.bad : status === 'starting' ? colourOf('armory-backhaul-starting') : T.micro;
   const statusText = status === 'up' ? `UP ${hostnameOf(pub?.ws_url) || pub?.ws_url}`
+    : status !== 'starting' && pub?.was_up ? 'WAS UP, THEN DROPPED'
     // field 2026-09-12 (ISSUE 7): cloudflared's own "up" line is premature for OTHER people's DNS
     // resolvers — `detail` carries whatever the server is doing while the hostname is still resolving.
     : status === 'starting' ? (pub?.detail || 'STARTING…')

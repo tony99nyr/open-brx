@@ -342,6 +342,7 @@ export class MockBackend implements Api {
   // so ?mock can walk the whole TURN ON -> STARTING -> UP loop without a real server.
   private joinSecret = 'k7q2m9xz';
   private tunnelStatus: TunnelStatus = 'off';
+  private tunnelWasUp = false;
   private tunnelWsUrl: string | null = null;
   private tunnelProvider: TunnelProvider = 'cloudflared';
   private tunnelAvailable = true;
@@ -672,7 +673,8 @@ export class MockBackend implements Api {
 
   /** A28.1: MC's own view of the tunnel it (may have) started. */
   private publicView(): LanPublic {
-    return { ws_url: this.tunnelWsUrl, status: this.tunnelStatus, provider: this.tunnelProvider, available: this.tunnelAvailable, error: this.tunnelError,
+    return { ws_url: this.tunnelWsUrl, status: this.tunnelStatus, provider: this.tunnelProvider, available: this.tunnelAvailable,
+      was_up: this.tunnelWasUp || this.tunnelStatus === 'up', error: this.tunnelError,
       // field 2026-09-12 (ISSUE 7): cloudflared's own "up" line is premature for OTHER people's DNS —
       // a phone can get ERR_NAME_NOT_RESOLVED for minutes after MC calls it up. The demo's own
       // `starting` phase is instant, so this is aspirational text the real server will earn once it
@@ -1024,7 +1026,8 @@ export class MockBackend implements Api {
       facts: 3,
       by_player: { [late[0].player_id]: { kills: 1, deaths: 0 }, [late[1].player_id]: { kills: 0, deaths: 1 } },
     } : undefined;
-    this.recap_ = { winner: ffa ? { player_id: top.player_id } : { team_id: winnerTeam }, score, rows, honors, provisional: missing.length > 0, missing,
+    this.recap_ = { winner: ffa ? { player_id: top.player_id } : { team_id: winnerTeam }, score, rows, honors,
+                    played_s: Math.max(0, Math.floor((now() - l.go_live_t) / 1000)), provisional: missing.length > 0, missing,
                     ...(after_end ? { after_end, post_end_facts: after_end.facts } : {}),
                     ...(stationRows.length ? { stations: stationRows } : {}) };
     // the demo keeps its own history, exactly as the server's session store does — without it the
@@ -1392,6 +1395,7 @@ export class MockBackend implements Api {
           this.tunnelError = 'cloudflared exited before printing a trycloudflare.com hostname (connect: network is unreachable)';
         } else {
           this.tunnelStatus = 'up';
+          this.tunnelWasUp = true;
           this.tunnelWsUrl = `wss://${Math.random().toString(36).slice(2, 10)}.trycloudflare.com/ws`;
         }
         this.emit();

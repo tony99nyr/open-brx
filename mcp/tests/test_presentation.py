@@ -336,7 +336,7 @@ def test_extraction_preset_follows_the_genre_loop_and_last_stand_has_no_last_sur
     # a Battle Company announcer voice) replaces VQ8 (Nexus commander, "objective complete in the
     # zombie creature voice" -- wrong genre for an extraction win).
     for ev, sid in (("extraction_called", "VA1C"), ("extraction_open", "VA1U"), ("extraction_closing", "V114"),
-                    ("extraction_complete", "VS7"), ("extraction_failed", "VA8X"), ("extraction_alert", "VA1S"),
+                    ("extraction_complete", "VS7"), ("extraction_failed", "VA8X"),
                     ("loot_picked", "VA1Q"), ("raid_ending", "VA3U")):
         assert b["cues"][ev] == f"$PLAY,,4,6,{sid},,,,*", ev
     # extraction_tick: ear-confirmed 2026-09-11 -- Tony: "OH this is a cool extraction sound, its like an
@@ -377,7 +377,8 @@ def test_event_sources_and_the_class_switches():
 def test_table_rows_carry_source_words_and_enabled_for_the_advanced_view():
     rows = {r["event"]: r for r in P.table({"mode": "extraction", "presentation": {"preset": "extraction"}})}
     assert rows["extraction_called"]["words"] == "Black Hawk inbound." and rows["extraction_called"]["source"] == "hud"
-    assert rows["extraction_alert"]["source"] == "mc" and rows["extraction_alert"]["words"] == "enemy chopper detected."
+    assert rows["extraction_alert"]["source"] == "mc" and rows["extraction_alert"]["words"] == ""
+    assert rows["extraction_alert"]["sound"] is None and rows["extraction_alert"]["gun_led"] is None
     assert rows["kill"]["words"] == "the player's own voice: kill line"
     assert all(r["enabled"] for r in rows.values())
     off = {r["event"]: r for r in P.table({"mode": "tdm", "presentation": P.merge(None, {"mc_events": False})})}

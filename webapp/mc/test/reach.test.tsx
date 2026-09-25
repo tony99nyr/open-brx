@@ -96,6 +96,13 @@ describe('Armory REACH panel', () => {
     m.unmount();
   });
 
+  it('says the public link dropped after it was up', async () => {
+    const d = await withPublic({ ws_url: null, status: 'error', provider: 'cloudflared', available: true, was_up: true });
+    const m = await mountScreen(<Armory />, d);
+    expect(m.text()).toContain('WAS UP, THEN DROPPED');
+    m.unmount();
+  });
+
   it('manual: shows the URL and no toggle at all', async () => {
     const d = await withPublic({ ws_url: 'wss://tunnel.example.com/ws', status: 'up', provider: 'manual', available: true });
     const m = await mountScreen(<Armory />, d);

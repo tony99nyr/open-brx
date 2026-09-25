@@ -118,7 +118,6 @@
     "extraction_closing": "$PLAY,,4,6,V114,,,,*",
     "extraction_complete": "$PLAY,,4,6,VS7,,,,*",
     "extraction_failed": "$PLAY,,4,6,VA8X,,,,*",
-    "extraction_alert": "$PLAY,,4,6,VA1S,,,,*",
     "loot_picked": "$PLAY,,4,6,VA1Q,,,,*",
     "raid_ending": "$PLAY,,4,6,VA3U,,,,*",
     "raid_over": "$PLAY,X20,4,6,,,,,*",
@@ -519,32 +518,6 @@
       ],
       [
         "$GLED,0,0,0,0,10,,*",
-        0.08
-      ],
-      [
-        "$GLED,1,1,1,0,1,,*",
-        0.0
-      ]
-    ],
-    "extraction_alert": [
-      [
-        "$GLED,8,8,8,0,10,,*",
-        0.08
-      ],
-      [
-        "$GLED,1,1,1,0,1,,*",
-        0.1
-      ],
-      [
-        "$GLED,8,8,8,0,10,,*",
-        0.08
-      ],
-      [
-        "$GLED,1,1,1,0,1,,*",
-        0.1
-      ],
-      [
-        "$GLED,8,8,8,0,10,,*",
         0.08
       ],
       [

@@ -218,6 +218,7 @@ def test_last_edit_wins_across_an_mc_restart_and_seen_edits_are_not_repeated():
     _put(s, threshold=-60, tx_power="low")               # MC's strength, set after the station's range edit
     tx_at = clock.t
     assert len(_feed(s)) == 1
+    previous_station_feed = _feed(s)
     clock.t += 60_000
     s2 = _restart(s, clock)
     a2 = s2.stations["stick-1"]["assigned"]
@@ -231,11 +232,11 @@ def test_last_edit_wins_across_an_mc_restart_and_seen_edits_are_not_repeated():
     _beat(s2, clock, tx_power="high", tx_power_src="station", tx_power_edit_age_ms=clock.t - tx_at + 1_000,
           range_edits=[{**e1, "age_ms": 66_000}])
     assert s2.stations["stick-1"]["assigned"]["tx_power"] == "low"
-    assert _feed(s2) == [], "an edit announced before the restart is not announced again"
+    assert _feed(s2) == previous_station_feed, "the earlier edit remains in the feed without being announced again"
     # CONTROL: a new seq after the restart IS announced
     _beat(s2, clock, range_edits=[{**e1, "age_ms": 66_000},
                                   {"seq": 8, "field": "threshold", "from": -60, "to": -58, "locked": False, "age_ms": 0}])
-    assert _feed(s2) == ["STATION #3 RANGE CHANGED -60 → -58 · JUST NOW"], _feed(s2)
+    assert _feed(s2) == ["STATION #3 RANGE CHANGED -60 → -58 · JUST NOW", *previous_station_feed], _feed(s2)
 
 
 def test_a_range_only_put_is_allowed_in_play_and_re_arms_that_station_only():

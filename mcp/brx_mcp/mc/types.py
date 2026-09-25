@@ -1374,6 +1374,7 @@ class LanPublic(TypedDict):
     status: TunnelStatus
     provider: TunnelProviderValue | None
     available: bool
+    was_up: NotRequired[bool]
     detail: NotRequired[str]
     error: NotRequired[str]
 
@@ -1471,6 +1472,7 @@ class RecapView(TypedDict):
     rows: list[ScoreRow]
     honors: list[Honor]
     provisional: bool
+    played_s: NotRequired[int]
     missing: list[str]
     warnings: NotRequired[list[str]]
     possession: NotRequired[PossessionView]

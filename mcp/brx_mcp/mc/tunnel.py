@@ -144,6 +144,7 @@ class Tunnel:
         self._dns_task: asyncio.Task | None = None
         self.detail: str | None = None        # F140: the sub-state under `starting` ("resolving <host>")
         self.status: TunnelStatus
+        self.was_up = bool(public_url)
         self.provider: TunnelProviderValue | None
         self.ws_url: str | None
         self.error: str | None
@@ -156,7 +157,7 @@ class Tunnel:
     def public(self) -> LanPublic:
         """`State.lan.public` (A28.1). `error` is present only when there is one."""
         out: LanPublic = {"ws_url": self.ws_url, "status": self.status,
-                          "provider": self.provider, "available": self.available}
+                          "provider": self.provider, "available": self.available, "was_up": self.was_up}
         if self.detail:
             out["detail"] = self.detail      # F140: the sub-state under `starting`, and the DNS warning under `up`
         err = self.error
@@ -217,6 +218,7 @@ class Tunnel:
                                                          self.provider, self.detail):
             return                      # no-op transitions must not re-render the QR or re-broadcast `join`
         self.status, self.ws_url, self.error, self.provider = status, ws_url, error, provider
+        self.was_up = self.was_up or status == "up"
         self.detail = detail
         log.info("tunnel %s%s", status, f" {ws_url}" if ws_url else (f" ({error})" if error else ""))
         self._emit()

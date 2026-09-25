@@ -117,7 +117,7 @@ def test_the_url_regex_matches_a_quick_tunnel_line_and_not_a_lookalike():
 
 def test_tunnel_off_by_default_and_available_reflects_the_binary_on_PATH():
     off = Tunnel(which=lambda _b: None)
-    assert off.public() == {"ws_url": None, "status": "off", "provider": None, "available": False}
+    assert off.public() == {"ws_url": None, "status": "off", "provider": None, "available": False, "was_up": False}
     on_path = Tunnel(which=lambda _b: "/usr/bin/cloudflared")
     assert on_path.public()["available"] is True
     # A28.1: with no binary the control is REFUSED, and the refusal names the install line.
@@ -270,6 +270,15 @@ def test_join_is_broadcast_when_the_public_status_changes_and_not_on_a_no_op():
     n = len(s.net.pushes("join"))
     s._tunnel_changed({"ws_url": None, "status": "starting", "provider": "cloudflared", "available": True})
     assert len(s.net.pushes("join")) == n
+
+
+def test_public_was_up_latches_after_the_link_drops():
+    s = _sess()
+    up = {"ws_url": "wss://abc.trycloudflare.com/ws", "status": "up", "provider": "cloudflared", "available": True}
+    s._tunnel_changed(up)
+    assert s.lan["public"]["was_up"] is True
+    s._tunnel_changed({"ws_url": None, "status": "error", "provider": "cloudflared", "available": True})
+    assert s.lan["public"]["status"] == "error" and s.lan["public"]["was_up"] is True
 
 
 def test_join_survives_the_mc_to_node_wire():
@@ -584,7 +593,7 @@ def test_post_api_tunnel_starts_stops_and_refuses():
     # (a) no binary → 409 naming the install line, and the control is still SHOWN (available:false)
     c, s = _client(which=lambda _b: None)
     assert c.get("/api/state").json()["lan"]["public"] == {
-        "ws_url": None, "status": "off", "provider": None, "available": False}
+        "ws_url": None, "status": "off", "provider": None, "available": False, "was_up": False}
     r = c.post("/api/tunnel", json={"on": True})
     assert r.status_code == 409 and "install" in r.json()["error"].lower()
 

@@ -532,7 +532,8 @@ def test_a_restart_never_finishes_an_adopted_match_on_the_draft_clock():
     assert s2.resume_match() == "live", "an adopted match is never finished by a restart"
     assert s2.last_recap is None and not s2._end_delivery, "no recap, and no end delivery at the phones"
     tags = [(e["tag"], e["text"]) for e in s2.feed]
-    assert len(tags) == 1 and tags[0][0] == "NOTE" and "PRESS END" in tags[0][1], tags
+    assert any(tag == "NOTE" and "PRESS END" in text for tag, text in tags), tags
+    assert any(tag == "RESUMED" for tag, _text in tags), tags
     assert not net2.pushes("control")
 
 

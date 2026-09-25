@@ -2,6 +2,7 @@
 timed-end mirror, hydrate by gun, hot-swap baseline, controls → KITTED."""
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import TEAM_DEFS, Session
+from brx_mcp.mc.scoring import Scorer
 from brx_mcp.mc.types import MAX_PLAYERS
 
 T0 = 5_000_000
@@ -39,6 +40,30 @@ def test_player_num_assignment_unique_zero_reserved():
         except ValueError: pass
     s.remove_player(ps[0]["player_id"])
     assert s.add_player("NEW")["player_num"] == 1     # lowest free slot reused
+
+
+def test_recap_reports_played_seconds_from_go_live_to_end():
+    s, net, clock, ps = mk()
+    sc = Scorer("m1", T0, None, "tdm", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
+    sc.set_end(T0 + 754_000)
+    s.scorer = sc
+    assert "played_s" not in s.recap()
+    s.phase = "recap"
+    assert s.recap()["played_s"] == 754
+
+
+def test_team_alert_uses_the_scorers_current_team_after_infection():
+    s, net, clock, ps = mk(4)
+    for i, p in enumerate(ps):
+        p["node_id"] = f"node{i}"
+        p["team_id"] = "blue"
+    sc = Scorer("m1", T0, 60, "infection", s.players, s.teams, {}, {}, now_ms=lambda: clock["t"])
+    s.scorer = sc
+    turned_id = ps[2]["player_id"]
+    sc.stats[turned_id].team_id = "yellow"
+    s._alert("infected", "blue", {"player_id": turned_id})
+    alerted_nodes = {row[0] for row in net.pushes("alert")}
+    assert alerted_nodes == {"node0", "node1", "node3"}
 
 
 def test_claiming_a_gun_on_armory_never_moves_the_phase():

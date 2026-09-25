@@ -23,6 +23,23 @@ def test_snapshot_round_trip():
     assert q["node_id"] is None and q["ready"] is False
 
 
+def test_snapshot_round_trips_only_dict_feed_rows_and_caps_to_200():
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    s.feed = [{"text": str(i)} for i in range(205)]
+    s._persist_last = 0.0
+    s._persist()
+    saved = json.loads(tmp.read_text())
+    assert len(saved["feed"]) == 200 and saved["feed"][0] == {"text": "0"}
+    saved["feed"].insert(0, "bad")
+    tmp.write_text(json.dumps(saved))
+    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    s2._persist_path = tmp
+    s2.restore_snapshot()
+    assert len(s2.feed) == 200 and s2.feed[0] == {"text": "0"} and all(isinstance(row, dict) for row in s2.feed)
+
+
 def test_a_snapshot_from_before_max_shield_existed_loads_as_custom():
     """S45 (weapon-design.md §7.3): a `session.json` written before `health.max_shield`/`preset`
     existed carries a bare `{max_hp, max_armor}` -- `restore_snapshot()` must fill the gap

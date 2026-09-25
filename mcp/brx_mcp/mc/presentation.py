@@ -158,7 +158,7 @@ EVENTS: dict[str, dict] = {
     "extraction_closing":  dict(source="hud", group="player",    desc="window closing (10 s)",                          sound="V114", gun_led=pg.ORANGE, headset=None),       # ear-confirmed 2026-09-11: Tony -- "10 seconds!" (game-callouts announcer, Halo voice)
     "extraction_complete": dict(source="hud", group="player",    desc="you extracted -- loot banked, you are out safe",  sound=snd.EXTRACTED,  gun_led=pg.WHITE,  headset=None),   # ear-confirmed 2026-09-11: EXTRACTED is now VS7 "Objective Complete!" (Resistance commander, Battle Company announcer voice) -- see sounds.py
     "extraction_failed":   dict(source="hud", group="player",    desc="left the zone or died: extract lost",            sound="VA8X", gun_led=pg.RED,    headset=None),       # "Fail."
-    "extraction_alert":    dict(source="mc", group="objective", desc="someone ELSE called an extract nearby",          sound="VA1S", gun_led=pg.ORANGE, headset=None),       # "enemy chopper detected."
+    "extraction_alert":    dict(source="mc", group="objective", desc="someone ELSE called an extract nearby",          sound=None, gun_led=None, headset=None),
     "loot_picked":         dict(source="hud", group="player",    desc="loot picked up",                                 sound="VA1Q", gun_led=pg.WHITE,  headset=None),       # "Care Package."
     "loot_dropped":        dict(source="hud", group="player",    desc="you died and dropped your loot",                 sound=None,   gun_led=None,      headset=None),
     "raid_ending":         dict(source="hud", group="player",    desc="hard end approaching: extract or die (node clock)", sound="VA3U", gun_led=pg.RED, headset=None),     # "Incoming air raid, find cover."
@@ -468,7 +468,7 @@ PRESETS: dict[str, dict] = {
         "extraction_closing":  {"sound": "V114", "gun_led": pg.ORANGE},   # ear-confirmed 2026-09-11 -- see EVENTS["extraction_closing"]
         "extraction_complete": {"sound": snd.EXTRACTED, "gun_led": pg.WHITE, "headset": pg.WHITE},   # ear-confirmed 2026-09-11 -- see EVENTS["extraction_complete"]
         "extraction_failed":   {"sound": "VA8X", "gun_led": pg.RED},
-        "extraction_alert":    {"sound": "VA1S", "gun_led": pg.ORANGE},
+        "extraction_alert":    {"sound": None, "gun_led": None},
         "loot_picked":         {"sound": "VA1Q", "gun_led": pg.WHITE},
         "raid_ending":         {"sound": "VA3U", "gun_led": pg.RED, "headset": pg.RED},
         "raid_over":           {"sound": "X20", "gun_led": pg.RED, "headset": pg.RED},

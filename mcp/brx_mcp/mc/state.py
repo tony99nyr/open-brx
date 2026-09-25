@@ -89,7 +89,7 @@ def release_app_version() -> str | None:
 
 # A28.1: `lan.public` before anything has been started. `available` is overwritten the moment a Tunnel
 # is attached; until then MC honestly says it has not looked.
-PUBLIC_OFF: LanPublic = {"ws_url": None, "status": "off", "provider": None, "available": False}
+PUBLIC_OFF: LanPublic = {"ws_url": None, "status": "off", "provider": None, "available": False, "was_up": False}
 
 
 class CoverageRequired(ValueError):
@@ -715,6 +715,7 @@ class Session:
                     "standby": [{**p, "node_id": None, "ready": False} for p in self.standby.values()],
                     "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
                     "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
+                    "feed": [dict(row) for row in self.feed[:200] if isinstance(row, dict)],
                     # F364: every id MC handed out, so a restarted MC gives a cleared station its old number back.
                     "station_ids": dict(self._station_id_of),
                     # F337 (a): the lock bookkeeping, so a restarted MC keeps an UNLOCK and every restart it counted.
@@ -902,6 +903,8 @@ class Session:
                     "demo" if self.demo_session else "real", len(snap.get("players") or []))
                 return 0
             self.players = {p["player_id"]: p for p in snap.get("players", [])}
+            rows = snap.get("feed")
+            self.feed = [dict(row) for row in rows if isinstance(row, dict)][:200] if isinstance(rows, list) else []
             # a snapshot from before STANDBY existed has no such list; a hand-edited one may hold junk rows
             parked: dict[str, Player] = {}
             invalid_parked = 0
@@ -1187,7 +1190,9 @@ class Session:
 
     def _tunnel_changed(self, pub: LanPublic) -> None:
         was = self._pub_url()
-        self.lan["public"] = pub.copy()
+        previous = self.lan.get("public", {})
+        was_up = bool(previous.get("was_up")) or previous.get("status") == "up" or pub.get("status") == "up"
+        self.lan["public"] = {**pub, "was_up": was_up}
         self._render_join()
         self._refresh_lan_warning()      # a public path makes the LAN-address warning moot (and back again)
         now = self._pub_url()
@@ -3723,7 +3728,12 @@ class Session:
         `stations` lets a caller pass FROZEN rows for a match that is no longer current (F206) --
         `self._recap_stations()` always reads the CURRENT stations, which is wrong once a later
         match has started."""
-        return sc.recap(stations=stations if stations is not None else self._recap_stations())
+        recap = sc.recap(stations=stations if stations is not None else self._recap_stations())
+        end_t = sc.end_t if sc.end_t is not None else self.now_ms()
+        now = self.now_ms()
+        if self.phase == "recap" or (sc.end_t is not None and sc.end_t <= now):
+            recap["played_s"] = max(0, (end_t - sc.go_live_t) // 1000)
+        return recap
 
     def _recap_stations(self) -> list[RecapStationRow]:
         """Roadmap A6: a stations row for the recap sheet, one per ASSIGNED station, from its own
@@ -7102,8 +7112,12 @@ class Session:
                 return 0
         if scope == "all":
             targets = list(self.players.values())
-        elif scope in {p.get("team_id") for p in self.players.values()}:
-            targets = [p for p in self.players.values() if p.get("team_id") == scope]
+        elif scope in ({p.get("team_id") for p in self.players.values()}
+                       | ({st.team_id for st in self.scorer.stats.values()} if self.scorer else set())):
+            def current_team(p: Player) -> str | None:
+                stat = self.scorer.stats.get(p["player_id"]) if self.scorer else None
+                return stat.team_id if stat else p.get("team_id")
+            targets = [p for p in self.players.values() if current_team(p) == scope]
         else:
             targets = [p for p in self.players.values() if p["player_id"] == scope]
         n = 0

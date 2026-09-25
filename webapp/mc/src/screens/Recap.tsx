@@ -172,14 +172,11 @@ export function Recap() {
   const edUnconfirmed = new Set(edStragglers.map(u => u.player_id));
   const edText = edv ? recapDeliveryText(edv) : null;
   // M23 (visual QA 2026-09-23): the header printed the TIME LIMIT, so a match ended early at 2:13 read
-  // as 10:00. The length is read from the server's own clock: `since_end_ms` is `now - scorer.end_t`
-  // (state.py `settling()`), `t` is that same `now`, and `live.go_live_t` is the whistle's start, all on
-  // one snapshot. Without all three (an older MC, or a recap with no scorer behind it) the header says
-  // it is the LIMIT rather than pass the limit off as the length.
   const limitS = state.config.time_limit_s ?? 0;
-  const playedS = !past && state.live && typeof rc.since_end_ms === 'number' && typeof state.t === 'number'
-    ? Math.min(limitS || Infinity, Math.max(0, Math.round((state.t - rc.since_end_ms - state.live.go_live_t) / 1000)))
-    : null;
+  const playedS = Number.isFinite(rc.played_s) ? rc.played_s
+    : !past && state.live && typeof rc.since_end_ms === 'number' && typeof state.t === 'number'
+      ? Math.min(limitS || Infinity, Math.max(0, Math.round((state.t - rc.since_end_ms - state.live.go_live_t) / 1000)))
+      : null;
   // Polish 2026-09-23: RECAP can be reached by URL while a match is still being played. It said MATCH
   // COMPLETE and offered NEXT MATCH, which the server refuses (409) until the match is over.
   // H2 for RECAP (polish 2026-09-23): a hill match is won on held time, so that is the headline, as on
@@ -190,7 +187,8 @@ export function Recap() {
   const objective = !!scoring && isObjectiveScored({ scoring }) && scores.length >= 2;
   const heldBy = objective && rc.possession ? rc.possession.by_team : null;
   const anyTeamKill = rows.some(r => r.kills < 0);
-  const lengthLabel = past ? ''
+  const lengthLabel = Number.isFinite(rc.played_s) ? ` · PLAYED ${fmtDuration(playedS ?? 0)}`
+    : past ? ''
     : playedS == null ? (limitS ? ` · LIMIT ${fmtDuration(limitS)}` : '')
     : limitS && playedS < limitS ? ` · ${fmtDuration(playedS)} OF ${fmtDuration(limitS)}`
     : ` · ${fmtDuration(playedS)}`;

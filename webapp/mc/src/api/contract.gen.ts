@@ -1414,6 +1414,7 @@ export interface LanPublic {
   status: TunnelStatus;
   provider: TunnelProviderValue | null;
   available: boolean;
+  was_up?: boolean;
   detail?: string;
   error?: string;
 }
@@ -1511,6 +1512,7 @@ export interface RecapView {
   rows: ScoreRow[];
   honors: Honor[];
   provisional: boolean;
+  played_s?: number;
   missing: string[];
   warnings?: string[];
   possession?: PossessionView;

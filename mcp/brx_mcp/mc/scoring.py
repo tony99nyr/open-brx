@@ -490,7 +490,9 @@ class Scorer:
                     st.team_id = team["team_id"]
                     self._infected_team = team["team_id"]   # A11.4 last_survivor: who counts as a survivor
             if self.mode == "infection" and not suppress_awards and self.now_ms() - t <= FEEDBACK_MAX_AGE_MS:
-                self.on_alert("infected", "all", {"player_id": pid})     # A11.4: "The infection is spread."
+                survivor_team = next((team_id for team_id in self.teams if team_id != self._infected_team), None)
+                if survivor_team is not None:
+                    self.on_alert("infected", survivor_team, {"player_id": pid})
             if self.mode == "infection" and not suppress_awards:
                 self._match_state_alerts(t)                              # a turn is what changes the survivor count
             return "scored"
