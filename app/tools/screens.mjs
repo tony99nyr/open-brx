@@ -4796,10 +4796,14 @@ for (const view of VIEWS) for (const night of [false, true]) {
 for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} lanes ${night ? 'night' : 'day'}: the AWARDS tab shows every A63 honour, mine first, clear of the corner buttons`, async () => {
   const pg = await open(view, 'result-awards', night ? '&night' : '', 4200);
   const r = await pg.evaluate(() => { const body = document.querySelector('.result .rbody').getBoundingClientRect(); const vis = e => { const b = e.getBoundingClientRect(); return b.width > 0 && b.top >= body.top - 1 && b.bottom <= body.bottom + 1; };
-    return { tab: (document.querySelector('.rseg .sg.on') || {}).textContent, mine: [...document.querySelectorAll('.awm .medal')].map(e => e.textContent.trim()), strip: !!document.querySelector('.rstrip.hon'),
+    const l = document.querySelector('.result .awl'), cue = document.querySelector('.result .awmore');
+    const more = { overflow: l.scrollHeight > l.clientHeight + 1, cue: !!cue && !cue.hidden };
+    return { more, tab: (document.querySelector('.rseg .sg.on') || {}).textContent, mine: [...document.querySelectorAll('.awm .medal')].map(e => e.textContent.trim()), strip: !!document.querySelector('.rstrip.hon'),
       rows: [...document.querySelectorAll('.result .aw')].map(e => ({ k: e.dataset.award, l: e.querySelector('.awk').textContent.trim(), n: e.querySelector('.awn').textContent.trim(), me: e.classList.contains('me'), vis: vis(e),
         kpx: parseFloat(getComputedStyle(e.querySelector('.awk')).fontSize), clip: [e.querySelector('.awk'), e.querySelector('.awn'), e.querySelector('.aws')].filter(Boolean).some(x => x.scrollWidth > x.clientWidth + 1),
-        stat: (e.querySelector('.aws') || {}).textContent || null, shared: /SHARED/.test(e.querySelector('.awk').textContent) })) }; });
+        stat: (e.querySelector('.aws') || {}).textContent || null, shared: /SHARED/.test(e.querySelector('.awk').textContent),
+        screenPx: Math.min(...[...e.querySelectorAll('.awk, .awn, .aws')].map(x => parseFloat(getComputedStyle(x).fontSize) * document.getElementById('frame').getBoundingClientRect().width / document.getElementById('frame').offsetWidth)),
+        statOp: e.querySelector('.aws') ? +getComputedStyle(e.querySelector('.aws')).opacity : 1 })) }; });
   const inv = await invariants(pg); await pg.close();
   const ORDER = ['mvp', 'most_kills', 'best_kd', 'sharpshooter', 'survivor', 'iron_man', 'first_blood', 'multikill', 'wingman', 'objective_hero'];
   must(r.tab && r.tab.trim() === 'AWARDS' && JSON.stringify(r.mine) === '["★ MVP","★ MOST KILLS","★ SURVIVOR"]', `my awards: ${JSON.stringify(r)}`);
@@ -4809,6 +4813,8 @@ for (const view of VIEWS) for (const night of [false, true]) await step(`${view.
   const rest = r.rows.slice(firstOther).map(x => ORDER.indexOf(x.k));
   must(rest.every((v, i) => i === 0 || v >= rest[i - 1]), `the others grouped in AWARDS order: ${JSON.stringify(r.rows.map(x => x.k))}`);
   must(!r.strip, 'the HONORS strip repeats the AWARDS tab');
+  must(r.more.cue === r.more.overflow, `the "more ↓" cue shows exactly when the list overflows: ${JSON.stringify(r.more)}`);
+  must(r.rows.every(x => x.screenPx >= 10.95 && x.statOp === 1), `round-3 M2/M3: every label, name and stat is >= 11 px on screen, the stat at full opacity: ${JSON.stringify(r.rows.map(x => [x.k, x.screenPx.toFixed(1), x.statOp]))}`);
   must(r.rows.find(x => x.k === 'mvp').stat === '11 K · 2.8 K/D · ×3 STREAK', `MC's real stat string: ${JSON.stringify(r.rows[0])}`);   // lanes polish r2 H1: nothing clipped with MC's strings
   must(r.rows.filter(x => x.shared).map(x => x.k).join() === 'most_kills,most_kills', `SHARED marks both holders of a shared award: ${JSON.stringify(r.rows.map(x => [x.k, x.shared]))}`);
   must(inv.length === 0, 'invariants: ' + inv.join(' | '));
@@ -5445,11 +5451,13 @@ for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${
 // R2-12: the night SECONDARY tier. Every painted text leaf under 14 px on screen reads at >= 4.5:1 and holds still. Out of
 // scope on purpose: a disabled control and a gun another player holds (dimmed as a state), and the kill/callout card (the
 // alert redesign owns it: R2-01/03/10/11/22).
-const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-pu-taken-by', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected'];
+const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-pu-taken-by', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected',
+  'live-kill-lead-hill', 'live-callout-by', 'live-pu-spawn', 'result-awards'];   // the three lanes and the AWARDS tab (round-3 M1, M2)
+const LANE_WAIT = { 'live-kill-lead-hill': 2800, 'live-callout-by': 2600, 'live-pu-spawn': 3600, 'result-awards': 4200 };   // until the lane item is up
 for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name} R2-12 night secondary tier ${stage}: text under 14 px reads at >= 4.5:1, nothing blinks`, async () => {
-  const pg = await open(view, stage, '&night');
+  const pg = await open(view, stage, '&night', LANE_WAIT[stage]);
   const bad = await pg.evaluate(src => { const ratio = eval(src)(); const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
-    for (const e of document.querySelectorAll('#hud *, #chips *, #overlay *')) {
+    for (const e of document.querySelectorAll('#hud *, #chips *, #overlay *, #lanes *')) {
       if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
       if (e.closest('.tagrow.used, [disabled], [aria-disabled="true"], .co, .sr')) continue;
       const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
@@ -5469,11 +5477,12 @@ for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name}
 // R2-07 (QA-21 again): the SE type floor is ON SCREEN. Every painted text leaf of the in-game screens is >= 11 px after the
 // SE's 0.79 frame scale (14 frame px). Out of scope: the kill/callout card (the alert redesign owns it) and screen-reader text.
 const R2_TYPE = [['live', ''], ['live', '&night'], ['live-nogun', ''], ['live-pu-rockets', ''], ['live-pu-taken', ''], ['live-pu-taken-by', ''], ['live-shields-os', ''],
-  ['live-hill-captured', ''], ['down-recap', ''], ['down-full', ''], ['down-find', ''], ['down-hill', ''], ['down-pu-held', ''], ['live-pool-wrong', '']];
+  ['live-hill-captured', ''], ['down-recap', ''], ['down-full', ''], ['down-find', ''], ['down-hill', ''], ['down-pu-held', ''], ['live-pool-wrong', ''],
+  ['live-kill-lead-hill', ''], ['live-kill-lead-hill', '&night'], ['live-callout-by', ''], ['live-pu-spawn', '']];   // the three lanes (round-3 M1); the AWARDS tab's own step gates its type
 for (const [stage, N] of R2_TYPE) await step(`se R2-07 type floor ${stage}${N ? ' night' : ''}: every in-game label is >= 11 px on the SE screen`, async () => {
-  const pg = await open(VIEWS[1], stage, N, stage === 'live-pool-wrong' ? 8000 : undefined);
+  const pg = await open(VIEWS[1], stage, N, stage === 'live-pool-wrong' ? 8000 : LANE_WAIT[stage]);
   const small = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
-    for (const e of document.querySelectorAll('#hud *, #chips *')) {
+    for (const e of document.querySelectorAll('#hud *, #chips *, #lanes *')) {
       if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
       if (e.closest('.co, .sr, #diag, .mo')) continue;
       const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
@@ -5626,7 +5635,10 @@ await step('se R2-16 taken by VIPER: the line names the item, not only who took 
 await step('se R2-16 OVERSHIELD AVAILABLE: the feed row names the station', async () => {   // the three lanes: a spawn is a FEED row
   const pg = await open(VIEWS[1], 'live-pu-spawn', '', 1200);
   let t = ''; for (let i = 0; i < 40 && !/AVAILABLE/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#lanes .lf[data-kind="powerup_spawn"]') || {}).innerText || ''); }
+  const fit = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth, row = document.querySelector('#lanes .lf[data-kind="powerup_spawn"]');
+    return row ? [...row.querySelectorAll('.lfm, .lsrc')].map(e => ({ t: e.textContent, px: +(parseFloat(getComputedStyle(e).fontSize) * k).toFixed(1), clip: e.scrollWidth > e.clientWidth + 1 })) : []; });
   await pg.close();
+  must(fit.length === 2 && fit.every(x => x.px >= 10.95 && !x.clip), `round-3 M3: the row and its station line are whole and >= 11 px on the SE screen: ${JSON.stringify(fit)}`);
   must(/OVERSHIELD AVAILABLE/.test(t) && /STATION 6/.test(t), `the card must say which station: ${JSON.stringify(t)}`);
 });
 // R2-17: the DOWN screen says the held item was lost

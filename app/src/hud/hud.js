@@ -1139,7 +1139,9 @@ export class Hud {
     const list = sorted.map(h => { const w = who(h), m = isMe(h), shared = holders(keyOf(h)) > 1;
       return `<div class="aw${m ? ' me' : ''}" data-award="${esc(keyOf(h) || '')}" style="--lc:${w.tk ? TEAM_COLOR[w.tk] : 'var(--glow)'}"><span class="awt"><span class="awk">${m ? '★ ' : ''}${esc(label(h))}${shared ? ' <i>· SHARED</i>' : ''}</span>`
         + `<span class="awn">${esc(w.name)}${m ? ' <b>· YOU</b>' : ''}</span>${h.stat != null && h.stat !== '' ? `<span class="aws">${esc(String(h.stat))}</span>` : ''}</span></div>`; }).join('');
-    return `<div class="awards">${me}<div class="awl">${list}</div></div>`;
+    // a list longer than the body scrolls, and says so ("more ↓"), so no honour is silently below the fold
+    setTimeout(() => { const l = document.querySelector('.result .awl'), c = document.querySelector('.result .awmore'); if (l && c) c.hidden = !(l.scrollHeight > l.clientHeight + 1 && l.scrollTop + l.clientHeight < l.scrollHeight - 1); }, 0);
+    return `<div class="awards">${me}<div class="awl" onscroll="const c=this.parentNode.querySelector('.awmore'); if (c) c.hidden = this.scrollTop + this.clientHeight >= this.scrollHeight - 1">${list}</div><span class="awmore" hidden>MORE ↓</span></div>`;
   }
   _result(st) {
     const R = (st.result && typeof st.result === 'object') ? st.result : null;
@@ -2038,8 +2040,8 @@ export class Hud {
       if (h.kills.length > seen.n) { seen.n = h.kills.length; this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }
     }
     for (const key of ['lead', 'hill']) {
-      const o = O[key]; if (!o || seen.obj[key] === o.at) continue;
-      seen.obj[key] = o.at;
+      const o = O[key]; if (!o || seen.obj[key] === (o.id || o.at)) continue;
+      seen.obj[key] = o.id || o.at;
       if (now - o.at < 1000) this.h.onHaptic && this.h.onHaptic('tap');
     }
     // draw again at the next change (the hero fading and gone, a feed row leaving, a badge settling or leaving)

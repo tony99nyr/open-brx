@@ -144,9 +144,10 @@ await step('a KILL is not clobbered by a hit landing in the same moment', async 
     e.feedFrame(`$HP,${e.hp},${Math.max(0, e.armor - 1)},0,*`);
     if (e.moment && e.moment.kind !== 'kill') throw new Error('the hit overwrote the kill moment');
   });
-  await page.locator('.mo.kill').first().waitFor({ state: 'visible', timeout: 3000 });
-  must(/CONFIRMED/.test((await page.locator('.mo.kill').first().textContent()) || ''),
-    'the kill overlay was replaced by the hit');
+  // docs/announcer.md "The three lanes": my kill is the HERO lane
+  await page.locator('#lanes .lh').first().waitFor({ state: 'visible', timeout: 3000 });
+  must(/KILL/.test((await page.locator('#lanes .lh').first().textContent()) || ''),
+    'the kill hero was replaced by the hit');
 });
 
 await step('a pool GAIN renders with a + amount and the pool name', async () => {
@@ -165,14 +166,15 @@ await step('a pool GAIN renders with a + amount and the pool name', async () => 
   await shot('gain');
 });
 
-await step('kill confirm renders CONFIRMED and the elimination banner', async () => {
+await step('kill confirm renders the KILL hero, named, with its source (no "+1 ELIMINATION", Tony 2026-09-24)', async () => {
   await page.evaluate(() => window.brx.engine.onMcMessage(
     { kind: 'feedback', body: { kind: 'kill', victim: 'p-bravo', victim_display: 'BRAVO', victim_team: 'yellow', t: Date.now() } }));
-  const el = page.locator('.mo.kill').first();
+  const el = page.locator('#lanes .lh').first();
   await el.waitFor({ state: 'visible', timeout: 3000 });
   const txt = (await el.textContent()) || '';
-  must(/CONFIRMED/.test(txt), 'kill overlay did not say CONFIRMED');
-  must(/ELIMINATION/.test(txt), 'kill overlay did not say ELIMINATION');
+  must(/KILL/.test(txt) && /BRAVO/.test(txt), `the kill hero did not say KILL and name BRAVO: ${JSON.stringify(txt)}`);
+  must(/MC/.test((await page.locator('#lanes .lh > .lsrc').first().textContent()) || ''), 'the kill hero has no source line');
+  must(!/ELIMINATION/.test(txt), 'the hero still says +1 ELIMINATION');
   await shot('kill');
 });
 

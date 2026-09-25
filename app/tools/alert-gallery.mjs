@@ -97,6 +97,7 @@ const CHANGED = [
   ['VQA', 'the kill hero hid STUNNED / DISARMED, TAKING FIRE, SMOKED and RECOIL', 'while a centre tell is up the hero is one row above it (KILL ×N and the medal): see "My kill while STUNNED" and "My kill while taking a hit".'],
   ['VQA', 'by day every badge blinked on each redraw', 'the lanes now keep each item\'s node; only a new item fades in.'],
   ['Polish r2', 'the feed stacked over the vitals when two rows landed in one ms', 'each feed row has its own id, so old rows always leave.'],
+  ['Polish r3', 'lane labels and the awards stat line were under the 11 px SE floor', 'every lane label, source line and awards stat is now 11 px or more on the small screen, at 4.5:1 at night; a long awards list says MORE ↓.'],
   ['VQA', 'awards', 'the AWARDS tab shows MC\'s real end-of-match honours (A63): every one, mine first with a star and YOU, then in award order, SHARED where a tie holds, MC\'s stat on its own line; the HONORS strip is hidden on that tab.'],
 ];
 const fig = (f, cap) => `<figure><img src="${f}" alt="${esc(cap)}" loading="lazy"><figcaption>${cap}</figcaption></figure>`;

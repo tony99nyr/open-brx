@@ -4330,12 +4330,12 @@ export class Engine {
   /** When the hero leaves: LANE_HERO_MS after the last kill, or later while that kill's own announcer slot is on air. */
   _heroUntil(now = this.now()) {
     const h = this._lanes && this._lanes.hero; if (!h) return 0;
-    const a = this._ann.current, onAir = a && now < a.until && (a.kind === 'kill_confirmed' || a.kind === 'medal') && a.startedAt >= h.id ? a.until : 0;
+    const a = this._ann.current, onAir = a && now < a.until && (a.kind === 'kill_confirmed' || a.kind === 'medal') && a.startedAt >= h.t0 ? a.until : 0;
     return Math.max(h.lastAt + LANE_HERO_MS, onAir);
   }
   _laneKill(k) {
     const L = this._lanesOf(), now = this.now();
-    if (!L.hero || now >= this._heroUntil(now)) L.hero = { id: now, kills: [], lastAt: now };
+    if (!L.hero || now >= this._heroUntil(now)) L.hero = { id: (this._laneSeq = (this._laneSeq || 0) + 1), t0: now, kills: [], lastAt: now };   // `id`: the HUD's key
     const row = { victim: k.victim || null, team: k.team || null, medals: (k.medals || []).slice(), src: k.src, at: now };
     L.hero = { ...L.hero, kills: [...L.hero.kills, row], lastAt: now };
     this._changed(); return row;
@@ -5417,7 +5417,7 @@ export class Engine {
     }
     // docs/announcer.md: each spawn is one announcer item (the lowest priority), so two that land together show one at a
     // time, PU_ANNOUNCE_MS each, and never on top of a kill confirm or a lead change.
-    for (const next of batch) this._laneFeed({ kind: 'powerup_spawn', text: `${next.name} AVAILABLE`, sub: next.station != null ? `AT STATION ${next.station}` : null, color: next.color, src: 'PHONE' });   // HUD QA R2-16: name the station   // the FEED lane, at once
+    for (const next of batch) this._laneFeed({ kind: 'powerup_spawn', text: `${next.name} AVAILABLE`, sub: next.station != null ? `AT STATION ${next.station}` : null, color: next.color, src: null });   // no source line: the phone's own schedule; the station names it   // HUD QA R2-16: name the station   // the FEED lane, at once
     for (const next of batch) this._ann.push({ kind: 'powerup_spawn', key: `pu:${next.name}`, bannerMs: PU_ANNOUNCE_MS,
       play: () => { this.powerupSpawn = { ...next, at: this.now() }; this.log(`powerup: ${next.name} AVAILABLE (station ${next.station})`, 'li'); this._changed(); } });
     if (this.powerupSpawn && now - this.powerupSpawn.at > PU_ANNOUNCE_MS + 1000) this.powerupSpawn = null;
@@ -7025,8 +7025,9 @@ export class Engine {
       beacon: this.beacon || null,
       callout: this.callout || null,   // S57: {kind: 'kill_confirmed'|'enemy_down'|'teammate_down', name, team, at, by?, victim?} — `victim` arrives with the paired DOWN word — cleared in tick() above; `by` = the killer a DOWN_BY word named (QA-05)
       hillCallout: this.hillCallout || null,
-      // docs/announcer.md "The three lanes": {hero: {id, kills: [{victim, team, medals, src, at}], lastAt}, heroUntil,
-      // obj: {lead?, hill?: {kind, text?, src, at}}, feed: [{kind, alert?, name?, team?, by?, text?, sub?, color?, src, at}]}
+      // docs/announcer.md "The three lanes": {hero: {id, t0, kills: [{victim, team, medals, src, at}], lastAt}, heroUntil,
+      // obj: {lead?, hill?: {id, kind, text?, src, at}}, feed: [{id, kind, alert?, name?, team?, by?, text?, sub?, color?, src, at}]}
+      // `id` is unique per item (`_laneSeq`), the HUD's key: two items can share a ms
       lanes: this._lanes ? { ...this._lanes, heroUntil: this._heroUntil(now) } : null,
       announcer: this._ann.view(now),   // docs/announcer.md: {kind, at, ms, queued: [kind…]}: what is on air and what waits (null when idle)
       // A56 (docs/spec/powerups.md): null unless the config carries powerup items. `powerup` = {hint, held, overshield};
