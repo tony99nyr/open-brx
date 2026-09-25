@@ -3,6 +3,8 @@
 Updated: 2026-09-24. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
+**The next sitting (2026-09-25): [`bench-2026-09-25.md`](bench-2026-09-25.md)**, three setups, MUST first, 0.4.12 cut after sitting A.
+
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
 
