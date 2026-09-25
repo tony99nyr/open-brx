@@ -277,6 +277,14 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .gunwarn.warn{color:#e0a143;background:rgba(8,3,3,.96)}
 [data-env="night"] .gunwarn.danger{color:#ef6868;background:rgba(8,3,3,.96)}
 #frame[data-gun-health] #chips{display:none}   /* this fault replaces WEAPONS HOT / link pills in their lane */
+/* F368: the fault replaces the pills IN THE RAIL, at the bottom centre, never in the kill card's band. Its headline
+   (<b>) always shows; its instruction hides while a kill card is up. */
+#frame[data-screen="live"] .gunwarn{top:auto;bottom:6px;width:150px;min-width:0;max-width:none;flex-direction:column;gap:3px;padding:4px 6px;white-space:normal;box-sizing:border-box}
+#frame[data-screen="live"] .gunwarn b{font-size:15px;letter-spacing:.08em;line-height:1.1}
+#frame[data-screen="live"] .gunwarn span{font-size:14px;letter-spacing:.04em;line-height:1.1}
+#frame[data-screen="live"][data-hero] .gunwarn span{display:none}
+#frame[data-screen="live"]:has(.gunwarn) .nightlab{display:none!important}
+#frame[data-screen="live"]:has(.gunwarn) .puhint{bottom:104px}
 /* S16: the poison pill sits just above the health it drains. Chartreuse, not the health green, and it names itself in
    words with a glyph, so colour is never the only signal. A plain fade-free fill: no pulse, no flash. */
 .fxbar{position:absolute;left:36px;bottom:150px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none}
@@ -1446,6 +1454,23 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .down .co .cl{letter-spacing:.14em}.down .lab{letter-spacing:.2em}.down .recap .rl{letter-spacing:.16em}
 #frame[data-screen="live"] .chipbar .pill{font-size:14px;letter-spacing:.14em}
 #frame[data-screen="live"] .chipbar .pill.bad.gunlost{font-size:16px;letter-spacing:.16em}   /* QA-02: the link bar stays 16 px */
+/* F368 (Tony 2026-09-25, "ship it"; docs/announcer.md "Layering and priority on the phone HUD"): on the live HUD the pill
+   bar is the STATUS RAIL at the bottom centre, between the vitals (their bars end x 338) and the ammo (x 569), 150 px wide (x 347-497), never in
+   the kill card's band. While a kill card is up (`#frame[data-hero]`) each warning shows its short headline
+   (`data-short`); the full sentence is in the rail otherwise, and always in the ⓘ panel's WARNINGS. */
+#frame[data-screen="live"]:not([data-down]) .chipbar{top:auto;bottom:6px;width:150px;flex-direction:column;gap:4px;white-space:normal}
+#frame[data-screen="live"]:not([data-down]) .chipbar>*{min-height:40px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:14px;line-height:1.1;padding:3px 8px;letter-spacing:.08em;width:100%;box-sizing:border-box}
+#frame[data-screen="live"]:not([data-down]) .chipbar .pill.bad.gunlost{font-size:16px;letter-spacing:.08em;padding:3px 8px}
+#frame[data-screen="live"]:not([data-down]) .chipbar .unskew{white-space:normal}
+#frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .unskew[data-short]{font-size:0;letter-spacing:0}
+#frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .unskew[data-short]::after{content:attr(data-short);font-size:14px;letter-spacing:.08em}
+#frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .gunlost .unskew[data-short]::after{font-size:16px}
+/* the rail's neighbours: the NIGHT label gives way, the powerup hint rides above it */
+#frame[data-screen="live"]:not([data-down]):has(#chips .chipbar > *) .nightlab{bottom:54px}   /* a chip (WEAPONS HOT): the label rides above the rail */
+#frame[data-screen="live"]:not([data-down]):has(#chips .chipbar > :is(.bad, .warn)) .nightlab{display:none!important}   /* a warning: it hides */
+#frame[data-screen="live"]:not([data-down]):has(#chips .chipbar > *) .puhint{bottom:54px}
+#frame[data-screen="live"]:not([data-down]):has(#chips .chipbar > :nth-child(2)) .puhint{bottom:104px}
+#diag .dgwarn{display:flex;flex-direction:column;gap:2px;font-size:13px;letter-spacing:.06em;color:var(--warn);font-weight:700}
 [data-env="night"] .hplab,[data-env="night"] .stats,.nightlab{font-size:14px}
 [data-env="night"] .hplab{letter-spacing:.16em}[data-env="night"] .stats{letter-spacing:.16em}
 .down .recap .tm b{font-size:18px}

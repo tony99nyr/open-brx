@@ -4,7 +4,7 @@
 // #overlay so they animate independently of the base HUD.
 import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
 import * as SV from './shieldmeter.js';
-import { LANE_FEED_MS, LANE_SETTLE_MS } from '../lanes.js';   // docs/announcer.md "The three lanes"
+import { LANE_FEED_MS, LANE_HERO_MS, LANE_SETTLE_MS } from '../lanes.js';   // docs/announcer.md "The three lanes"
 import { MEDALS, AWARDS } from '../transport/contract.gen.js';
 import { medalIcon, medalChip } from './medalicons.js';   // the RECAP icons only (Tony 2026-09-25): never in the in-game lanes   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
@@ -570,6 +570,9 @@ export class Hud {
     this._skinSwitch(st);
     this._chips(st);
     this._moments(st);
+    // F368: after `_moments`, so a takeover opened on this render (RELOADING, SWITCHING, SYNCING, REDEPLOYED, GUN STOPPED)
+    // is already known to the lanes, and a takeover branch that returns early can no longer skip them.
+    this._lanes(st);
     this._fitBriefing();
     this._fitMcLinked();
     this._fitLoDetailName();
@@ -1737,12 +1740,12 @@ export class Hud {
       pills.push('<span class="pill ok easyreload"><span class="unskew">ALT = RELOAD</span></span>');
     }
     if (st.wsState === 'bound') this.mcPill = false;   // the opt-in range pill is per outage, not forever
-    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">ASK THE HOST — COULDN'T JOIN${refusalWords(st.wsReason) ? ' (' + esc(refusalWords(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
+    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew" data-short="ASK THE HOST">ASK THE HOST — COULDN'T JOIN${refusalWords(st.wsReason) ? ' (' + esc(refusalWords(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
     // Playing out of MC range is the NORMAL case mid-match (Tony, review 2026-09-03 #32): live shows it as the amber MC
     // dot only; a tap on the MC label shows the detail pill. Before the match (kitted/lobby) MC is required, so the pill stays.
     // (night hides the header dots, so there the dim pill is the only off-range signal)
     // While DOWN one off the cap, the recap's own A31 line already says MC is out of range: no second pill for it.
-    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && !(down && this._atCapMinusOne(st)) && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn mcr"><span class="unskew">${down ? 'MC OUT OF RANGE' : st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
+    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && !(down && this._atCapMinusOne(st)) && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn mcr"><span class="unskew" data-short="MC OUT OF RANGE">${down ? 'MC OUT OF RANGE' : st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
     // A tappable pill, not just a status: the retry now runs forever, but a player who has just
     // switched the gun on should not have to wait out a backoff — or go hunting in the debug panel,
     // which is where the only reconnect control used to live (Tony, field 2026-09-01).
@@ -1755,17 +1758,23 @@ export class Hud {
     // the headset is still joining the gun and the phone waits; after 60 s it stops and waits for RECONNECT NOW. Both
     // lines show in every phase, in place of the flap lines and GUN LINK LOST (the link is down on purpose).
     const hj = st.headsetJoin && st.headsetJoin.state;
-    if (hj === 'not_joined') pills.push(`<span class="pill bad" data-headset="not_joined"><span class="unskew">${down ? 'HEADSET NOT JOINED' : 'HEADSET NOT JOINED · POWER-CYCLE THE HEADSET'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    if (hj === 'not_joined') pills.push(`<span class="pill bad" data-headset="not_joined"><span class="unskew" data-short="HEADSET NOT JOINED">${down ? 'HEADSET NOT JOINED' : 'HEADSET NOT JOINED · POWER-CYCLE THE HEADSET'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     else if (hj === 'joining' && !st.bleUp) pills.push(`<span class="pill warn" data-headset="joining"><span class="unskew">HEADSET JOINING</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
-    else if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
-    else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">${down ? 'HEADSET OFF? TURN IT ON' : 'HEADSET OFF? TURN THE HEADSET ON.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew" data-short="GUN KEEPS DROPPING">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew" data-short="HEADSET OFF?">${down ? 'HEADSET OFF? TURN IT ON' : 'HEADSET OFF? TURN THE HEADSET ON.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     // QA-02: on the live HUD this is a solid, steady bar (16 px, no blink): the frozen numbers below depend on it.
-    else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
+    else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew" data-short="GUN LINK LOST · TAP">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
     // S57 / QA-05: the IR callouts and the hill transitions are never a pill here: they are lanes (`_lanes`).
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;
     if (this.chips.innerHTML !== html) this.chips.innerHTML = html;
+    // F368 (docs/announcer.md "Layering and priority on the phone HUD"): on the live HUD the pills are the status rail at
+    // the bottom centre. While a kill card is up each shows its short headline (`data-short`, drawn by CSS); the ⓘ
+    // panel's WARNINGS section always has every warning's full sentence.
+    const full = [...html.matchAll(/data-short="[^"]*">([^<]*)</g)].map(x => x[1].trim());   // the full sentences, already escaped (no DOM query: the unit tests fake #chips)
+    const warn = full.length ? full.map(t => `<span>${t}</span>`).join('') : '<span class="mut">NONE</span>';
+    if (this._warnHtml !== warn) { this._warnHtml = warn; const w = this.diag && this.diag.querySelector('#dg-warn'); if (w) w.innerHTML = warn; }
   }
 
   // ---------- moments (overlay) ----------
@@ -1925,7 +1934,7 @@ export class Hud {
     // queue writes, so a hit or a stun landing in the same render cannot swallow them. `st.moment` keeps the rest.
     // docs/announcer.md "The three lanes": the kill, the medals, the lead, the hill, the downs and the pickups. The engine's
     // `st.card` (the announcer queue's own card) still paces the voice; the screen draws each event when it arrives.
-    this._lanes(st);
+    // (`_lanes` runs from `render`, right after this method.)
     const m = st.moment;
     if (m && m.at !== this._momentAt) {
       this._momentAt = m.at;
@@ -2003,14 +2012,24 @@ export class Hud {
     if (!root) { root = document.createElement('div'); root.id = 'lanes'; this.frame.appendChild(root); }
     const L = st.lanes;
     clearTimeout(this._lanesT);
-    if (!L || st.phase !== 'live' || !st.alive) { if (root.firstChild) root.innerHTML = ''; return; }
+    if (!L || st.phase !== 'live' || !st.alive) { if (root.firstChild) root.innerHTML = ''; delete this.frame.dataset.hero; this._heroWait = null; return; }
     const now = Date.now(), FADE = 300;
+    // F368 (docs/announcer.md "Layering and priority on the phone HUD"): a play-blocking takeover wins the centre. While
+    // one is up the kill card is not drawn; a kill that is due WAITS, and draws when the takeover ends with a full
+    // LANE_HERO_MS hold from then. Nothing is lost, and the voice is not touched (the queue says the line on time).
+    const rd = this._overlays && this._overlays.redeploy;
+    const takeover = !!this.frame.dataset.takeover || !!(rd && rd.el.isConnected && !rd.el.classList.contains('out'));
     const srcl = t => t ? `<span class="lsrc">${esc(t)}</span>` : '';
     const kindOf = k => { const m = MEDAL_ROWS.find(x => x.key === k); return m ? m.kind : 'multi'; };
     // HERO
-    const h = L.hero, heroUntil = L.heroUntil || 0;
+    const h = L.hero;
+    const w = this._heroWait && h && this._heroWait.id === h.id ? this._heroWait : null;
+    if (h && h.kills.length && takeover && (w || now < (L.heroUntil || 0))) this._heroWait = { id: h.id, until: 0 };   // due under a takeover: wait
+    else if (w && !takeover && !w.until) w.until = now + LANE_HERO_MS;                                                  // the takeover ended: draw now, full hold
+    const hw = this._heroWait && h && this._heroWait.id === h.id ? this._heroWait : null;
+    const heroUntil = Math.max(L.heroUntil || 0, hw ? hw.until : 0);
     let hero = '';
-    if (h && h.kills.length && now < heroUntil + FADE) {
+    if (h && h.kills.length && !takeover && now < heroUntil + FADE) {
       const last = h.kills[h.kills.length - 1], n = h.kills.length;
       const all = h.kills.flatMap(k => (k.medals || []).filter(m => MEDAL_LABEL[m]));
       const big = all.length ? all[all.length - 1] : null, ladder = all.slice(0, -1).reverse(), shown = ladder.slice(0, 2), more = ladder.length - shown.length;
@@ -2051,14 +2070,17 @@ export class Hud {
     // its entrance animation never re-runs; only a NEW item animates in.
     if (!root.querySelector(':scope > .los')) root.innerHTML = '<div class="lhs"></div><div class="los"></div><div class="lfs"></div>';
     this._laneSync(root.querySelector(':scope > .lhs'), hero ? [hero] : []);
+    if (!!hero !== !!this.frame.dataset.hero) { if (hero) this.frame.dataset.hero = '1'; else delete this.frame.dataset.hero; }   // F368: the rail shows short headlines while a kill card is up
     this._laneSync(root.querySelector(':scope > .los'), obj);
     this._laneSync(root.querySelector(':scope > .lfs'), feed);
     // One flash and one buzz per NEW kill: an MC confirm that names the IR word's row adds no row, so it adds no buzz.
     // A new badge taps, as the banner did.
     const seen = this._laneSeen || (this._laneSeen = { hero: null, n: 0, obj: {} });
+    // F368: the buzz is on time (like the voice); the flash waits for the card, so it never lands on a takeover.
     if (h && h.kills.length && now < heroUntil) {
-      if (seen.hero !== h.id) { seen.hero = h.id; seen.n = 0; }
-      if (h.kills.length > seen.n) { seen.n = h.kills.length; this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }
+      if (seen.hero !== h.id) { seen.hero = h.id; seen.n = 0; seen.flashed = 0; }
+      if (h.kills.length > seen.n) { seen.n = h.kills.length; this.h.onHaptic && this.h.onHaptic('kill'); }
+      if (hero && seen.n > (seen.flashed || 0)) { seen.flashed = seen.n; this._flash(); }
     }
     for (const key of ['lead', 'hill']) {
       const o = O[key]; if (!o || seen.obj[key] === (o.id || o.at)) continue;
@@ -2066,7 +2088,7 @@ export class Hud {
       if (now - o.at < 1000) this.h.onHaptic && this.h.onHaptic('tap');
     }
     // draw again at the next change (the hero fading and gone, a feed row leaving, a badge settling or leaving)
-    const due = [heroUntil, heroUntil + FADE, this._laneTellUntil || 0, ...(L.feed || []).flatMap(f => [f.at + LANE_FEED_MS, f.at + LANE_FEED_MS + FADE]),
+    const due = [heroUntil, heroUntil + FADE, this._laneTellUntil || 0, takeover && this._heroWait ? now + 200 : 0,   // F368: REDEPLOYED ends on a timer, not a state change ...(L.feed || []).flatMap(f => [f.at + LANE_FEED_MS, f.at + LANE_FEED_MS + FADE]),
       ...Object.values(O).map(o => o.at + LANE_SETTLE_MS)].filter(t => t > now);
     if (due.length) this._lanesT = setTimeout(() => this._lanes(this._lastSt || st), Math.min(...due) - now + 10);
   }
@@ -2228,7 +2250,7 @@ export class Hud {
     // QA-24 (2026-09-23): ONE close control. The top ✕ duplicated CLOSE in the action row and cost the join block 30px.
     this.diag.innerHTML = `${mcjoin}
       <div class="dbody" id="dbody">
-        ${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
+        <h3>WARNINGS</h3><div class="dgwarn" id="dg-warn">${this._warnHtml || '<span class="mut">NONE</span>'}</div>${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
       </div>
       <div class="gunhint" id="dg-gunhint" role="status" aria-live="assertive"></div>

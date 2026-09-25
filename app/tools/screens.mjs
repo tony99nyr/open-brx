@@ -3493,9 +3493,10 @@ await step('scores overlay: a hidden pill under the tab row cannot intercept the
     return { overlaps, hitsHead: !!(el && (el === head || head.contains(el))), btnPE: getComputedStyle(btn).pointerEvents,
       chipsPE: getComputedStyle(document.getElementById('chips')).pointerEvents };
   });
-  must(r.overlaps, 'pre-condition: the hidden pill and the panel head must actually overlap for this check to mean anything');
+  // F368: the pill now lives in the bottom-centre status rail, clear of the panel head, so the two may no longer overlap.
+  // The guard that matters in every layout is that the hidden pill takes no taps; where they do overlap, the head wins.
   must(r.btnPE === 'none', `the hidden pill button must not stay tappable while the board is open: ${JSON.stringify(r)}`);
-  must(r.hitsHead, `a tap where the pill overlaps the panel head must reach the panel, not the hidden pill underneath: ${JSON.stringify(r)}`);
+  if (r.overlaps) must(r.hitsHead, `a tap where the pill overlaps the panel head must reach the panel, not the hidden pill underneath: ${JSON.stringify(r)}`);
   await pg.click('.bdseg .sg[data-arg="player"]'); await pg.waitForTimeout(200);
   const s = await boardState(pg); await pg.close();
   must(s.tab === 'PLAYERS', `the tap must actually switch the tab: ${JSON.stringify(s)}`);
@@ -4946,6 +4947,75 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [tell, s
     must(clash.length === 0, clash.join(' | '));
   });
 }
+// F368 (Tony 2026-09-25, "the brx-alerts are very thorough. ship it"): docs/announcer.md "Layering and priority on the
+// phone HUD". The warnings live in a status rail at the bottom centre, never in the kill card's band, as short headlines
+// while a kill card is up; a kill card never draws under a takeover, it waits and draws after it. Each CLASH stage drives
+// the REAL engine (docs/announcer.md; the gallery's CLASH section renders the same five).
+const railRead = pg => pg.evaluate(() => {
+  const fr = document.getElementById('frame').getBoundingClientRect(), sc = fr.width / 844;
+  const shown = e => { for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity < .3) return false; } const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
+  return [...document.querySelectorAll('#chips .chipbar > *')].filter(shown).map(e => { const u = e.querySelector('.unskew') || e, a = getComputedStyle(u, '::after'), b = e.getBoundingClientRect(), cs = getComputedStyle(e);
+    const short = a.content && a.content !== 'none' && a.content !== 'normal' ? a.content.replace(/^"|"$/g, '') : null;
+    return { text: short || u.textContent.trim(), short: !!short, hasShort: u.hasAttribute('data-short'), px: +((short ? parseFloat(a.fontSize) : parseFloat(getComputedStyle(u).fontSize)) * sc).toFixed(2),
+      box: { l: b.left, r: b.right, t: b.top, b: b.bottom }, midY: (b.top + b.height / 2 - fr.top) / fr.height, midX: (b.left + b.width / 2 - fr.left) / fr.width,
+      paints: [cs.color, cs.backgroundColor, cs.borderTopColor, getComputedStyle(u).color, a.color].filter(Boolean), anim: cs.animationName }; });
+});
+const CLASHES = [
+  ['kill + GUN LINK LOST', 'clash-kc-gunlost', () => document.querySelector('#lanes .lh:not(.out)') && /GUN LINK LOST/.test(document.getElementById('chips').textContent), /GUN LINK LOST/],
+  ['medals + MC offline', 'clash-medals-mc', () => { const h = document.querySelector('#lanes .lh:not(.out)'); return h && +h.dataset.n >= 2 && window.brx.engine.state().wsState !== 'bound'; }, null],
+  ['kill while STALE', 'clash-kc-stale', () => document.querySelector('#lanes .lh:not(.out)') && document.querySelector('.alive .staletag'), /GUN LINK LOST/],
+  ['kill while HEADSET NOT JOINED', 'clash-kc-headset', () => document.querySelector('#lanes .lh:not(.out)') && document.querySelector('#chips [data-headset="not_joined"]'), /HEADSET NOT JOINED/],
+];
+for (const view of VIEWS) for (const night of [false, true]) {
+  const N = night ? '&night' : '', tag = `${view.name} layering ${night ? 'night' : 'day'}`;
+  for (const [what, stage, ready, want] of CLASHES) {
+    await step(`${tag}: ${what}: the warning sits in the bottom-centre rail as a short headline, clear of the kill card, the ammo and the vitals`, async () => {
+      const pg = await open(view, stage, N, 2200);
+      await pg.waitForFunction(ready, null, { timeout: 6000 }); await pg.waitForTimeout(250);
+      const r = await lnRead(pg), rail = await railRead(pg);
+      await pg.screenshot({ path: `${OUT}/${view.name}-layering-${stage}${night ? '-night' : ''}.png` }); await pg.close();
+      must(r.hero, 'pre-condition: the kill card is up');
+      if (want || night) must(rail.length > 0, `a warning must be on screen: ${JSON.stringify(rail)}`);   // by day an MC drop is the amber dot only
+      if (want) must(rail.some(x => want.test(x.text)), `the rail names the warning: ${JSON.stringify(rail.map(x => x.text))}`);
+      must(rail.every(x => x.midY > .7 && Math.abs(x.midX - .5) < .05), `every warning sits in the rail at the bottom centre: ${JSON.stringify(rail.map(x => [x.text, x.midX.toFixed(2), x.midY.toFixed(2)]))}`);
+      must(rail.every(x => x.short || !x.hasShort), `a kill card is up, so each warning shows its short headline: ${JSON.stringify(rail.map(x => [x.text, x.short]))}`);
+      must(rail.every(x => x.px >= 11), `rail text under 11 px on screen: ${JSON.stringify(rail.map(x => [x.text, x.px]))}`);
+      const others = [...r.hero.parts.map(b => ['kill card', b]), ...r.env.ammo.map(b => ['ammo', b]), ...r.env.vparts.map(b => ['vitals', b]), ...r.env.tells.map(b => ['tell', b])];
+      const clash = rail.flatMap(x => others.filter(([, o]) => !apart(x.box, o)).map(([n]) => `${x.text} over ${n}`));
+      must(clash.length === 0, clash.join(' | '));
+      must(lnCovers(r).length === 0, lnCovers(r).join(' | '));
+      if (night) {
+        const bad = lnNightBad({ paints: rail.flatMap(x => x.paints.map(v => [x.text, v])) });
+        must(bad.length === 0 && rail.every(x => x.anim === 'none'), `night: red and amber only, no blink: ${JSON.stringify({ bad, anim: rail.map(x => x.anim) })}`);
+      }
+    });
+  }
+  await step(`${tag}: a kill during RELOADING is not drawn under the takeover; it waits and draws when the reload ends`, async () => {
+    const pg = await open(view, 'clash-kc-reload', N, 2200);
+    await pg.waitForFunction(() => window.brx.engine.state().lanes && window.brx.engine.state().lanes.hero && document.getElementById('frame').dataset.takeover === 'reload', null, { timeout: 6000 });
+    await pg.waitForTimeout(150);
+    const during = await lnRead(pg); await pg.screenshot({ path: `${OUT}/${view.name}-layering-reload-during${night ? '-night' : ''}.png` });
+    await pg.waitForFunction(() => !document.getElementById('frame').dataset.takeover, null, { timeout: 6000 });
+    const after = await lnWait(pg, x => x.hero && !x.hero.out, 400); const t0 = after.now;
+    const held = await lnWait(pg, x => x.now - t0 >= 2000, 2400); await pg.close();
+    must(!during.hero, `the kill card drew under RELOADING: ${JSON.stringify(during.hero && during.hero.name)}`);
+    must(after.hero && after.hero.name === 'VIPER' && !after.hero.out, `after the reload the kill card must draw: ${JSON.stringify(after.hero)}`);
+    must(held.hero && !held.hero.out, `it holds about 2.5 s from then: ${JSON.stringify(held.hero)}`);
+    must(lnCovers(after).length === 0, lnCovers(after).join(' | '));
+  });
+}
+await step('F368: the voice says a kill under RELOADING on time (the card waits, the line does not)', async () => {
+  const pg = await open(VIEWS[1], 'clash-kc-reload', '', 2200);
+  const r = await pg.evaluate(async () => { const e = window.brx.engine; for (let i = 0; i < 60; i++) { const c = e._ann.current; if (c && c.kind === 'kill_confirmed') return { said: true, reload: document.getElementById('frame').dataset.takeover === 'reload' }; await new Promise(res => setTimeout(res, 50)); } return { said: false }; });
+  await pg.close();
+  must(r.said && r.reload, `the kill line must start while the reload is still up: ${JSON.stringify(r)}`);
+});
+await step('F368: the diag panel lists every warning in full', async () => {
+  const pg = await open(VIEWS[0], 'clash-kc-headset', '', 3600);
+  await pg.evaluate(() => window.brxDemo.diag(true)); await pg.waitForTimeout(300);
+  const t = await pg.evaluate(() => (document.getElementById('dg-warn') || {}).textContent || ''); await pg.close();
+  must(/HEADSET NOT JOINED · POWER-CYCLE THE HEADSET/.test(t), `the panel's WARNINGS section: ${JSON.stringify(t)}`);
+});
 // End-of-match AWARDS (A63): MC's honours from the result push, one row per tied holder. Mine first (with a star and
 // YOU, not colour alone), then grouped in types.AWARDS order; nothing capped or hidden; no duplicate HONORS strip.
 for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} lanes ${night ? 'night' : 'day'}: the AWARDS tab shows every A63 honour, mine first, clear of the corner buttons`, async () => {

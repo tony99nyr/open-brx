@@ -739,3 +739,10 @@ block's *internal* statuses were true when it closed and may since have been sup
   `docs/announcer.md`.
 - 2026-09-25 **F361** decided (Tony): KILLJOY keeps the green gun flash, like every medal;
   `test_mc_awards.py::test_killjoy_keeps_its_gun_flash_like_every_medal` guards it.
+- 2026-09-25 **F368** decided and built (Tony: "the brx-alerts are very thorough. ship it"): the phone HUD layering
+  model, `docs/announcer.md` "Layering and priority on the phone HUD". Warnings in a bottom-centre status rail, a kill
+  card that waits for a takeover; gates `layering` and `F368` in `app/tools/screens.mjs`.
+- 2026-09-25 **F370** decided as shown (Tony, from the gallery): "Hill Contested" still speaks during a kill streak.
+  Tony can revisit.
+- 2026-09-25 **F371** decided as shown (Tony, from the gallery): the other MC alerts stay in the left FEED lane, not
+  a full-width banner. Tony can revisit.

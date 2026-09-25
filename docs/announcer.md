@@ -109,7 +109,7 @@ log says `<kind> silent: kill streak on air`. An item that was muted stays muted
 newest lead state wins.
 
 "Hill Contested" (`hill_contested`, queued as an `alert`) is not in `STREAK_SILENT`, so it still speaks mid-streak,
-after my kill and medal lines. Whether to silence it too is F370.
+after my kill and medal lines. **Tony**, 2026-09-25 (F370): keep it as shown.
 
 `medal` is its own rank so that the banner of a lead change MC sends with a kill is not held behind that kill's medal
 lines. It
@@ -186,79 +186,49 @@ Stages: `live-recoil-kill` (one held pull, two kills mid-burst, then the release
 and `live-overheat-kill` (the charge rifle). `app/tools/screens.mjs` checks each at both widths, day and night
 (`aim tells` steps).
 
-## Layering and priority on the phone HUD (PROPOSED, for Tony's pick)
+## Layering and priority on the phone HUD
 
-Tony, 2026-09-25: "how do KCs and hud event alerts and any warnings errors work? Does the UI clash? does the errors
-have an overlay on top of the KCs?" Nothing below the *Proposed* heading is built. The gallery's CLASH section shows
-today and the mock side by side.
+Design of record, 2026-09-25 (F368). Tony asked: "how do KCs and hud event alerts and any warnings errors work? Does
+the UI clash? does the errors have an overlay on top of the KCs?" He picked this model from the CLASH storyboard: "the
+brx-alerts are very thorough. ship it". F371 (the other MC alerts stay in the FEED lane) was decided as shown.
 
-### Today (measured on `live`, 2026-09-25)
+Before this, the warning pill bar sat in the kill card's band (top 100, centre), and the lanes drew over the takeovers.
 
-Stacking order in `#frame`, bottom first: `#hud` (the live HUD: vitals, ammo, clock, pills of its own) z 1, `#overlay`
-(takeovers, the hit number, the death screen) z 3, `#chips` (the warning pill bar) z 4, `#lanes` (HERO, OBJECTIVE,
-FEED) z 5, `.gunwarn` z 5.
-
-| Warning or takeover | Where | Persists |
-|---|---|---|
-| NO GUN (link label) | top right | while the gun link is down |
-| GUN LINK LOST, TAP TO RECONNECT | pill bar, top 100, centre | while the link is down |
-| HEADSET NOT JOINED, RECONNECT NOW | pill bar | while the headset reads not joined |
-| HEADSET OFF?, GUN KEEPS DROPPING | pill bar | while the link flaps |
-| MC out of range | the amber MC dot; the pill only after a tap on MC, or at night | per outage. There is no RECONNECTING word on the live HUD |
-| STALE | beside the HP and the ammo (gun link down); beside K and A (MC down) | while the link is down |
-| POOLS WRONG | above the HP number | while the engine says `pool_wrong` |
-| GUN BATT n% · CHARGE SOON | top 96, right | at 15 % or less |
-| GUN NOT ANSWERING, GUN NOT REPORTING SHOTS (`.gunwarn`) | top 100, centre; the pill bar hides | while the verdict holds |
-| GUN STOPPED (`gun_locked`) | whole screen; pills, ⓘ and skin hidden | until the relink re-arms the gun |
-| SYNCING WITH YOUR GUN (reconcile) | centre takeover, 3 s; the pill bar fades | 3 s |
-| RELOADING, SWITCHING | centre takeover; the pill bar fades | the reload or swap time |
-| REDEPLOYED | centre takeover | about 1.7 s |
-| the death screen | whole screen; the lanes clear | until the respawn |
-
-The clashes today:
-
-1. The pill bar (top 100, centre) and the HERO (top 86 to about 255, centre) share one band. A kill card drawn while
-   GUN LINK LOST, HEADSET NOT JOINED or a flap line is up lies across the pill. `.gunwarn` sits in the same band too.
-2. The lanes are above `#overlay`, so a kill card draws OVER RELOADING (the gallery shows it). By the same order it
-   would draw over SWITCHING, SYNCING, REDEPLOYED and GUN STOPPED; the gallery does not show those.
-3. With a kill card up, a new warning pill fades in under it: the player cannot read it until the card leaves.
-4. MC dropping during a medal chain shows only the amber dot by day, so nothing clashes. At night the OUT OF MISSION
-   CONTROL RANGE pill shows, in the HERO band, under the kill card (clash 1).
-5. STALE and POOLS WRONG sit beside the numbers, clear of the HERO: no clash.
-
-No KC is lost today: the voice queue says it on time whatever the screen does.
-
-### Proposed
-
-One order for the centre, highest first. The higher one wins the centre; the lower one waits or moves:
+**The centre**, highest first. The higher one wins the centre; the lower one waits or moves:
 
 1. The death screen: the whole phone.
-2. GUN STOPPED: the whole phone, because play has stopped.
-3. The play-blocking takeovers: SYNCING, REDEPLOYED, RELOADING, SWITCHING.
-4. The aim tells: RECOIL, SMOKED, STUNNED, OVERHEAT, TAKING FIRE, the hit number (built, above).
+2. GUN STOPPED (`gun_locked`): the whole phone, because play has stopped.
+3. The play-blocking takeovers: SYNCING (reconcile), REDEPLOYED, RELOADING, SWITCHING.
+4. The aim tells: RECOIL, SMOKED, STUNNED, OVERHEAT, TAKING FIRE, the hit number (*Aim tells and the lanes*).
 5. The HERO.
 
 Rules:
 
-- **Vitals and ammo are never covered,** except by 1 and 2, where play has stopped. STALE and POOLS WRONG stay
-  beside the numbers they describe; they are part of the vitals.
-- **A takeover wins the centre.** While one is up, the HERO does not draw. A kill that lands during it QUEUES and
-  draws when the takeover ends, with its full hold from then. It is never lost. The voice does not change. The
-  OBJECTIVE and FEED lanes keep drawing at the sides, and the hit number still shows.
-- **An aim tell owns the centre** under a HERO: the HERO is one row above it (built).
-- **System warnings live in a status rail** at the bottom centre, between the vitals and the ammo, never in the HERO
-  band. Each pill is its headline only (GUN LINK LOST · TAP, HEADSET NOT JOINED, MC OUT OF RANGE), at most two, each
-  a 44 px tap target at 14 px type. A warning stays until its cause clears. `.gunwarn` joins the rail.
-- **The top bar keeps its signals:** NO GUN, the MC dot and the low-battery line stay where they are.
+- **Vitals and ammo are never covered,** except by 1 and 2. STALE and POOLS WRONG stay beside the numbers they
+  describe. NO GUN, the MC dot and the low-battery line stay in the top bar.
+- **A kill card never draws under a takeover** (`hud.js` `_lanes`, `_heroWait`). While a takeover is up, the HERO is
+  not drawn. A kill that is due waits, and draws when the takeover ends, with a full `LANE_HERO_MS` hold from then.
+  Nothing is lost. The voice line, the medal lines and the kill buzz stay on time; only the card and its flash wait.
+  The OBJECTIVE and FEED lanes keep drawing at the sides, and the hit number still shows.
+- **The warnings live in a status rail** at the bottom centre, 150 px wide (x 347-497), between the vitals and the
+  ammo, never in the kill card's band: GUN LINK LOST, HEADSET NOT JOINED or JOINING, HEADSET OFF?, GUN KEEPS DROPPING,
+  MC out of range, ASK THE HOST, and the other pill-bar chips (WEAPONS HOT, ALT = RELOAD, RECONNECT NOW). Each stays
+  until its cause clears. A tap target keeps its 56 frame px zone (44 px on the SE screen). The rail's type is 14 px
+  (GUN LINK LOST 16 px), 11 px or more on screen.
+- **Short headline while a kill card is up.** Each warning carries a short headline (`data-short`: GUN LINK LOST · TAP,
+  HEADSET NOT JOINED, MC OUT OF RANGE, and so on). While the HERO is up (`#frame[data-hero]`), the rail shows it.
+  Otherwise the rail shows the full sentence. The ⓘ panel's WARNINGS section always lists every full sentence.
+- **The rail's neighbours:** the NIGHT label hides while the rail holds a pill, and the powerup hint moves up above the
+  rail (to bottom 54 px for one pill, 104 px for two).
 - **The medal chain keeps its voice** in every case.
+- The death screen keeps its own pill band (`#frame[data-down]`), outside the rail.
 
-Open questions for Tony (F368 holds the decision):
+`.gunwarn` (GUN NOT ANSWERING, GUN NOT REPORTING SHOTS) replaces the pills in the rail. Its headline always shows;
+its instruction hides while a kill card is up.
 
-- The rail and the powerup hint (bottom centre, powerup games only) want the same place. Proposal: the hint moves
-  above the rail while a warning is up.
-- The rail hides the NIGHT label while it holds a warning.
-- The full sentence of a warning (for example POWER-CYCLE THE HEADSET): in the rail when no HERO is up, or only in
-  the ⓘ panel?
+Stages: `clash-kc-gunlost`, `clash-medals-mc`, `clash-kc-reload`, `clash-kc-stale`, `clash-kc-headset`.
+`app/tools/screens.mjs` checks each at both widths, day and night (`layering` and `F368` steps), and the gallery's
+CLASH section renders them.
 
 ## Late lines (`ANNOUNCE_AUDIO_LATE_MS`)
 
