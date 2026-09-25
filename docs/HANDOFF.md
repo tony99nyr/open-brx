@@ -51,7 +51,7 @@ Block 10 for the gun-audio steps (F347).
   step 4 settles F347's `$PSET` t23 value, do not ship a t23 change before it.
 - **Next desk task:** none open.
 - **Blocked:** F270 on A8.
-- **Open decision for Tony:** F358, may a phone drawer override an MC-armed station's radius/strength?
+- **F365 (A67) landed:** the on-station range edit (1.5 s hold, 5 s under an A58 lock), synced to MC; phone `c980a681`, MC `1420057b`. The iOS no-tx_power follow-up is in progress.
 ## Lane: F341 transport and pool repair
 F341 is fixed on the desk: brxlink sends `$*` before the next frame after a chunk error or a drop, and the node repairs
 a pool above the armed `$PSET` or shows GUN POOLS WRONG. F342's respawn-only games scan only while down.
