@@ -102,6 +102,9 @@ its turn. The log says `<kind> silent: kill streak on air`. A card that was mute
 and it shows again. Outside a streak these lines play as usual: a lead change waits behind an ordinary line, and the
 newest lead state wins.
 
+Open question for Tony: "Hill Contested" (`hill_contested`, queued as an `alert`) is not in `STREAK_SILENT`, so it
+still speaks mid-streak, after my kill and medal lines.
+
 `medal` is its own rank so that the banner of a lead change MC sends with a kill is not held behind that kill's medal
 lines. It
 applies once the kill line was said (the IR word said it): the medal lines left are a `medal` item. When MC names the

@@ -526,6 +526,40 @@ test('H1: first blood waits behind the lead change, a double kill arrives: first
   assert.ok(h.eng.medals.includes('first_blood'), 'and `medals` holds first blood');
 });
 
+// Tony 2026-09-24, "they go silent when kill streaks are showing": the streak guards, one test each.
+const unitItem = (log, kind, audioMs, extra = {}) => ({ kind, audioMs, ...extra, play: ({ muted }) => log.push([kind, muted]) });
+
+test('streak unit: a lead waiting behind an ordinary line goes silent when a kill with medals lands meanwhile (the start-time check)', () => {
+  let t = 0; const log = [];
+  const a = new Announcer(() => t);
+  a.push(unitItem(log, 'alert', 2000));                    // an ordinary line on air
+  t = 100; a.push(unitItem(log, 'lead_taken', 1900, { key: 'lead' }));   // no streak yet: queued with its voice
+  t = 200; a.push(unitItem(log, 'kill_confirmed', 756)); a.push(unitItem(log, 'medal', 1787));
+  for (t = 300; t < 15000; t += 50) a.tick(t);
+  assert.deepEqual(log.find(x => x[0] === 'lead_taken'), ['lead_taken', true], 'the lead line is silent: the medal was queued when it started');
+});
+
+test('streak unit: CONTROL, a lead pushed right as the kill card\'s slot ends (no tick between) is said', () => {
+  let t = 0; const log = [];
+  const a = new Announcer(() => t);
+  const k = a.push(unitItem(log, 'kill_confirmed', 756, { bannerMs: 1800 }));
+  t = k.until;                                              // the kill's slot is over; `current` is not cleared yet
+  a.push(unitItem(log, 'lead_taken', 1900, { key: 'lead' }));
+  assert.deepEqual(log.find(x => x[0] === 'lead_taken'), ['lead_taken', false], 'no streak on air any more: the line is said');
+});
+
+test('streak unit: a muted lead card that a kill displaces comes back with no line', () => {
+  let t = 0; const log = [];
+  const a = new Announcer(() => t);
+  a.push(unitItem(log, 'kill_confirmed', 756, { bannerMs: 1800 }));
+  t = 100; a.push(unitItem(log, 'lead_taken', 1900, { key: 'lead' }));   // mid-streak: silent
+  for (t = 150; t < 2000; t += 50) a.tick(t);                            // the lead card is up, muted
+  assert.equal(a.current && a.current.kind, 'lead_taken');
+  a.push(unitItem(log, 'kill_confirmed', 756, { bannerMs: 1800 }));      // a second kill takes over the silent card
+  for (; t < 8000; t += 50) a.tick(t);
+  assert.deepEqual(log.filter(x => x[0] === 'lead_taken'), [['lead_taken', true], ['lead_taken', true]], 'shown twice, silent both times');
+});
+
 test('M2 unit: a lead state on air again drops the stale opposite state still queued', () => {
   let t = 0; const played = [];
   const a = new Announcer(() => t);
