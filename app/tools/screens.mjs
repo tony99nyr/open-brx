@@ -2587,7 +2587,7 @@ await step('polish-2 connected: the pre-join copy no longer claims mDNS auto-joi
   const note = await pg.evaluate(() => (document.querySelector('.lobby .note.join') || {}).textContent || '');
   await pg.close();
   must(!/connects by itself/i.test(note), 'the copy still claims an address connects by itself: ' + note);
-  must(/tap JOIN/i.test(note), 'the copy does not point at the JOIN row: ' + note);
+  must(/tap its row/i.test(note), 'the copy does not point at the JOIN row: ' + note);   // HUD QA R2-19: never "tap JOIN" with no JOIN on screen
 });
 
 // ---------- Polish-loop pass 2: an honest, muted EQUIPPED · UNCONFIRMED after the arming timeout ----------
@@ -4857,7 +4857,7 @@ const r2 = {
 };
 for (const view of VIEWS) for (const night of [false, true]) {
   const skin = night ? 'night' : 'day', N = night ? '&night' : '';
-  await step(`${view.name} R2-02 F341 pool_wrong ${skin}: the vitals say GUN POOLS WRONG, the GUN dot is amber, no gain float`, async () => {
+  await step(`${view.name} R2-02 F341 pool_wrong ${skin}: the vitals say POOLS WRONG, the GUN dot is amber, no gain float`, async () => {
     const pg = await open(view, 'live-pool-wrong', N, 1500);
     await pg.evaluate(() => { window.__gains = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches('.mo.gain')) window.__gains.push(n.textContent.replace(/\s+/g, ' ').trim()); })
       .observe(document.getElementById('overlay') || document.body, { childList: true, subtree: true }); });
@@ -4866,7 +4866,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     await pg.screenshot({ path: `${OUT}/${view.name}-r2-02-pool-wrong-${skin}.png` });
     const bad = await invariants(pg); await pg.close();
     must(r.why === 'pool_wrong', `pre-condition: the REAL engine reached its verdict: ${r.why}`);
-    must(r.tag && r.tag.shown && /GUN POOLS WRONG/.test(r.tag.text) && /SEE HOST/.test(r.tag.text) && r.tag.px >= 11, `the vitals must say GUN POOLS WRONG · SEE HOST at >= 11 px on screen: ${JSON.stringify(r.tag)}`);
+    must(r.tag && r.tag.shown && r.tag.text === 'POOLS WRONG' && r.tag.px >= 11, `the vitals must say POOLS WRONG (MC's LIVE row word) at >= 11 px on screen: ${JSON.stringify(r.tag)}`);
     must(r.dot && r2.amber(r.dot.bg), `the GUN dot must be amber: ${r.dot && r.dot.bg}`);
     must(r.gains.length === 0, `a gain above the armed maximum floated: ${JSON.stringify(r.gains)}`);
     must(bad.length === 0, bad.join(' ; '));
@@ -4909,6 +4909,65 @@ for (const night of [false, true]) {
     must(r.note && /headset/i.test(r.note.text) && /RECONNECT/i.test(r.note.text), `READY UP must give the reason while the headset is not joined: ${JSON.stringify(r.note)}`);
   });
 }
+
+
+// R2-06 x A60: the JOIN row, keyed on autojoin.js's reason. Only UNVERIFIED is a warning (amber + a drawn glyph by day, the
+// bright night red at night); NEW and SEVERAL are not. None is green at night, and the text is >= 11 px on screen and fits.
+for (const view of VIEWS) for (const night of [false, true]) for (const reason of ['new', 'unverified', 'several']) {
+  const skin = night ? 'night' : 'day';
+  await step(`${view.name} R2-06 A60 JOIN row ${reason} ${skin}: ${reason === 'unverified' ? 'amber with a warning glyph' : 'no warning'}, >= 11 px, fits`, async () => {
+    const pg = await open(view, `connected-join-${reason}`, night ? '&night' : '', 1500);
+    const r = await pg.evaluate(() => { const e = document.querySelector('.lobby .discoveredrow'); if (!e) return null; const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+      const t = e.querySelector('.unskew'), cs = getComputedStyle(e);
+      return { text: t.textContent, reason: e.dataset.reason, px: parseFloat(getComputedStyle(t).fontSize) * k, color: cs.color, border: cs.borderTopColor, glyph: !!e.querySelector('svg'), fits: e.scrollWidth <= e.clientWidth + 1 }; });
+    const cr = await r2.contrast(pg, '.lobby .discoveredrow .unskew');
+    await pg.screenshot({ path: `${OUT}/${view.name}-r2-06-join-${reason}-${skin}.png` }); await pg.close();
+    must(r, 'no JOIN row on screen');
+    must(r.px >= 11 && r.fits, `the row must be >= 11 px on screen and fit: ${JSON.stringify(r)}`);
+    const warn = reason === 'unverified';
+    must(r.glyph === warn, `${warn ? 'UNVERIFIED needs' : 'only UNVERIFIED gets'} the warning glyph: ${JSON.stringify(r)}`);
+    if (night) {
+      must(!r2.green(r.color) && !r2.green(r.border), `night: the row is green: ${JSON.stringify(r)}`);
+      must(cr[0] && cr[0].cr >= 4.5, `night: the row reads below 4.5:1: ${JSON.stringify(cr)}`);
+      if (warn) { const [R, G] = r2.rgb(r.color); must(R >= 220 && G < 130, `night: UNVERIFIED uses the bright night red: ${r.color}`); }
+    } else {
+      must(r2.amber(r.color) === warn && !(warn && r2.green(r.border)), `day: ${warn ? 'UNVERIFIED is amber' : `${reason.toUpperCase()} is not amber`}: ${JSON.stringify(r)}`);
+    }
+  });
+}
+// R2-19: the copy never says "tap JOIN" with no JOIN control on screen
+for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${stage}: the join copy names a control that is on screen`, async () => {
+  const pg = await open(VIEWS[1], stage, '', 1500);
+  const r = await pg.evaluate(() => ({ note: (document.querySelector('.lobby .note.join') || {}).textContent || '', row: !!document.querySelector('.lobby .discoveredrow') }));
+  await pg.close();
+  must(r.note, 'no join copy');
+  must(!/tap JOIN/i.test(r.note) || r.row, `the copy says "tap JOIN" with no JOIN row on screen: ${r.note}`);
+  must(r.row ? /row above/i.test(r.note) : /when it appears/i.test(r.note), `the copy points at the row where it is: ${JSON.stringify(r)}`);
+});
+
+
+// R2-12: the night SECONDARY tier. Every painted text leaf under 14 px on screen reads at >= 4.5:1 and holds still. Out of
+// scope on purpose: a disabled control and a gun another player holds (dimmed as a state), and the kill/callout card (the
+// alert redesign owns it: R2-01/03/10/11/22).
+const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-pu-taken-by', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected'];
+for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name} R2-12 night secondary tier ${stage}: text under 14 px reads at >= 4.5:1, nothing blinks`, async () => {
+  const pg = await open(view, stage, '&night');
+  const bad = await pg.evaluate(src => { const ratio = eval(src)(); const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
+    for (const e of document.querySelectorAll('#hud *, #chips *, #overlay *')) {
+      if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+      if (e.closest('.tagrow.used, [disabled], [aria-disabled="true"], .co, .sr')) continue;
+      const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
+      let shown = true; for (let n = e; n && n !== f; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden') shown = false; }
+      if (!shown) continue;
+      const px = parseFloat(getComputedStyle(e).fontSize) * k; if (px >= 14) continue;
+      const cr = ratio(e);
+      let blink = null; for (let n = e; n && n !== f; n = n.parentElement) { const a = getComputedStyle(n).animationName; if (a && a !== 'none' && /blink/i.test(a)) blink = a; }
+      if (cr < 4.5 || blink) out.push(`"${e.textContent.trim().slice(0, 28)}" ${px.toFixed(1)}px ${cr.toFixed(2)}:1${blink ? ' ' + blink : ''}`);
+    }
+    return out; }, qaA.contrastOf.toString());
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-12-night-${stage}.png` }); await pg.close();
+  must(bad.length === 0, 'night text under 14 px below 4.5:1 or blinking: ' + bad.join(' ; '));
+});
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;

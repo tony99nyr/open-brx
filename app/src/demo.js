@@ -6,6 +6,7 @@ import { DEMO_WEAPONS, DEMO_PERKS } from './demo-catalog.js';   // a COPY of the
 import { GunPicker } from './gunpicker.js';   // F258: the stage drives the picker the phone drives
 import { NUS } from './brxlink.js';
 import { locationCheck } from './location.js';   // F340: the stage runs the phone's own Location check
+import { offerText } from './transport/autojoin.js';   // A60: the JOIN row's text, exactly as app.js `offerMc` builds it
 
 // ?demo            scripted match (kit → arm → live → down → redeploy…)
 // ?demo&kit        stops at KITTED so the LOADOUT browser can be explored (fake MC answers picks after ~300 ms)
@@ -394,6 +395,7 @@ export function startDemo({ engine, log }) {
       respawn: () => { if (engine.alive) return; engine._revive(false); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
       heal: (n = 15) => { hp = Math.min(engine.maxHp, hp + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       armorUp: (n = 30) => { armor = Math.min(engine.maxArmor, armor + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
+      discovered: (reason, url, source) => { const h = hud(); if (!h) return; h.setDiscovered({ url, at: Date.now(), source, reason, text: offerText(reason, url) }); h.render(engine.state()); },
       poolsDoubled: () => { misread = true; hp = 4545; armor = 7070; engine.feedFrame(`$HP,${hp},${armor},0,*`); },   // F341: the field's `$HP,4545,7070,0`
       lowHp: () => { armor = 0; hp = 8; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       // S16: a Toxin Rifle hit (protocol 11) as the gun reports it, with the game's poison table on the bundle.
@@ -522,6 +524,10 @@ export function startDemo({ engine, log }) {
       'connected-headset-off': [[0, 'linkGun'], [50, () => ev.battery(82)], [400, () => ev.flapGun(2)]],   // the same, before MC binds
       'kitted-headset-joining':    [...kitted, [400, () => ev.headsetJoin('joining')]],      // F293: $VERSION reads ?, the phone waits
       'kitted-headset-not-joined': [...kitted, [400, () => ev.headsetJoin('not_joined')]],   // F293: 60 s of ?, waits for RECONNECT NOW
+      // A60 x HUD QA R2-06: the three JOIN rows, by the reason autojoin.js gives (app.js `offerMc` sets exactly this shape)
+      'connected-join-new':        [[0, 'linkGun'], [50, () => ev.battery(82)], [300, () => ev.discovered('new', 'ws://192.168.1.44:8766/ws', 'mdns')]],
+      'connected-join-unverified': [[0, 'linkGun'], [50, () => ev.battery(82)], [300, () => ev.discovered('unproven', 'ws://192.168.100.144:8766/ws', 'sweep')]],
+      'connected-join-several':    [[0, 'linkGun'], [50, () => ev.battery(82)], [300, () => ev.discovered('several', 'ws://192.168.1.44:8766/ws', 'sweep')]],
       'connected-linked':  [[0, 'linkGun'], [400, 'mcBound']],
       'setup':             [[0, () => { policy.kit_open = false; }], ...kit],
       'briefing':          kit,

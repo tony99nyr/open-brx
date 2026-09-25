@@ -181,7 +181,11 @@ const mcHost = url => { try { return new URL(url).host; } catch (_) { return Str
 const discoveredRow = d => { if (!d) return '';
   const label = d.source === 'mdns' ? 'FOUND BY BROADCAST' : 'FOUND ON THE NETWORK';
   const text = d.text ? esc(d.text) : `MISSION CONTROL ${label} AT ${esc(mcHost(d.url))} · JOIN`;
-  return `<div class="discoveredrow" data-act="onJoinDiscovered"><span class="unskew">${text}</span></div>`; };
+  // HUD QA R2-06: only an UNVERIFIED host (autojoin.js reason 'unproven': it failed or lacked the proof) is a warning:
+  // amber, with a drawn warning glyph (a font may lack U+26A0). NEW (a first contact) and SEVERAL (a choice) are not.
+  const warn = d.reason === 'unproven';
+  const glyph = warn ? '<svg class="dwarn" viewBox="0 0 16 14" aria-hidden="true"><path d="M8 1 15 13H1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 5.2v3.6M8 10.4v1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>' : '';
+  return `<div class="discoveredrow${warn ? ' warn' : ''}" data-act="onJoinDiscovered" data-reason="${esc(d.reason || 'found')}">${glyph}<span class="unskew">${text}</span></div>`; };
 // Polish-loop pass 1+2: every join control that redials/drops the live MC link needs the armed/live
 // two-tap guard (`_click` below) — `onJoinDiscovered` (an address the player never typed) and
 // `onReconnectMc` (the same teardown, same button row) joined `onSetUrl`/`onScanQr` in pass 2.
@@ -835,7 +839,7 @@ export class Hud {
         ? `<div class="note join">Connecting from the ⓘ panel, top right — it's already open.</div>`
         // Polish-loop pass 2: mDNS no longer auto-joins (app.js review pass 2 — a phone must never hand its
         // takeover key/join secret to whoever answers first), so "it connects by itself" was now FALSE.
-        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="${MC_URL_HINT}" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Scan the host's QR, or type its address and tap CONNECT. On the same Wi-Fi the host can also show up here: tap JOIN.</div>`;
+        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="${MC_URL_HINT}" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Scan the host's QR, or type its address and tap CONNECT. On the same Wi-Fi the host can also show up here: ${this.discovered ? 'tap its row above' : 'tap its row when it appears'}.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'setup') {
       // §4.1: calm, not an error — the host hasn't picked the game yet
@@ -1323,7 +1327,7 @@ export class Hud {
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>${sv ? SV.meterHtml(st, this._svFx) : ''}
-      <div class="vitals">${poolWrong(st) && !gunStale ? '<div class="pooltag" role="alert">GUN POOLS WRONG · SEE HOST</div>' : ''}<div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
+      <div class="vitals">${poolWrong(st) && !gunStale ? '<div class="pooltag" role="alert">POOLS WRONG</div>' : ''}<div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${hpPct(st)}%"></i></div>
         ${hasArmor(st) ? `<div class="bar armor"><i id="shbar" style="width:${armorPct(st, this._armPeak)}%"></i></div>` : ''}</div>
       ${st.powerup ? `<div class="puhint" id="puhint" role="status">${this._puHint(st)}</div>` : ''}
