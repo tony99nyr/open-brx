@@ -174,11 +174,13 @@ async function applyStationConfig(body) {
   // F365 / A67: the last edit wins, per field. An on-station edit younger than MC's value (`*_age_ms`) is kept; an
   // older one, or any value from an MC that sends no age, is replaced by MC's. MC sends `tx_power` only once it holds
   // one: absent keeps the station's own. A threshold of 0 = this platform's own default (F345).
-  if (body.threshold != null && body.threshold !== '' && Number.isFinite(+body.threshold) && range.mcDecides('threshold', body.threshold_age_ms)) {
-    settings.threshold = applyThreshold(body.threshold, settings.threshold);
+  if (body.threshold != null && body.threshold !== '' && Number.isFinite(+body.threshold)) {
+    const mcThr = applyThreshold(body.threshold, settings.threshold);
+    if (range.mcDecides('threshold', mcThr, body.threshold_age_ms)) settings.threshold = mcThr;
   }
+  // A phone that cannot set its advert power (iOS) ignores MC's tx_power and reports what it really sends (below).
   const mcTx = txFromWire(body.tx_power);
-  if (mcTx && range.mcDecides('tx_power', body.tx_power_age_ms)) settings.tx = mcTx;
+  if (mcTx && support.txPowerControl && range.mcDecides('tx_power', body.tx_power, body.tx_power_age_ms)) settings.tx = mcTx;
   // A58: the tamper lock, seconds from receipt (0-7200); absent or 0 = unlocked, and every station_config replaces it.
   const lockS = Number.isFinite(+body.lock_s) ? Math.max(0, Math.min(7200, +body.lock_s)) : 0;
   settings.lockUntil = lockS > 0 ? Date.now() + lockS * 1000 : 0;
@@ -210,8 +212,13 @@ function utilityStatusBody() {
   // restated on every beat. The transport only asks while bound, so this beat carries any edit made offline.
   const edits = range.status();
   if (transport && transport.state === 'bound') range.markSent();
+  // A67: `threshold` is the dBm applied (thr(): the platform default when the stored value is 0, never 0). No TX power
+  // control (iOS): the phone advertises at its one fixed level, reported as "high" (the full level; TX_HINT), and it
+  // makes no strength claim of its own.
+  if (!support.txPowerControl) { delete edits.tx_power_src; delete edits.tx_power_edit_age_ms; }
+  const txNow = support.txPowerControl ? (TX_TO_WIRE[settings.tx] || 'high') : 'high';
   return { role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: thr(), live: advertising, revives, armed: !!settings.mcArmed,
-    tx_power: TX_TO_WIRE[settings.tx] || 'high', ...edits,
+    tx_power: txNow, ...edits,
     app_ver: UTIL_VER, ...(lastBattery != null ? { battery: lastBattery } : {}),   // roadmap A3: the heartbeat, not just the hello, so MC's ITEMS panel stays current without a reconnect
     // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
     // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
@@ -680,6 +687,7 @@ function closeRangeEdit(why) {
 /** "MC", "SET HERE", or "SET HERE · WILL SYNC" while no heartbeat has carried the edit to MC yet. */
 function rangeSrcLabel(field) {
   const src = range.src(field);
+  if (field === 'tx_power' && !support.txPowerControl) return 'FIXED ON THIS PHONE';
   if (src === 'mc') return 'MC';
   if (src === 'station') return range.pending(field) ? 'SET HERE · WILL SYNC' : 'SET HERE';
   // nobody has set it yet: the station's own default (0 = the platform radius, HIGH strength), else a pre-A67 value
@@ -714,7 +722,7 @@ function renderRange() {
   if (inp && inp.setAttribute) inp.setAttribute('aria-invalid', String(_edgeBad));
   const hint = $('rhint'); if (hint) { hint.textContent = _edgeBad ? `TYPE ${-THR_MAX} TO ${-THR_MIN}` : `${-THR_MAX} = TIGHT · ${-THR_MIN} = WIDE`; if (hint.classList) hint.classList.toggle('bad', _edgeBad); }
   if (inp) inp.disabled = locked;
-  for (const b of (box.querySelectorAll ? box.querySelectorAll('[data-tx]') : [])) b.disabled = locked;
+  for (const b of (box.querySelectorAll ? box.querySelectorAll('[data-tx]') : [])) b.disabled = locked || !support.txPowerControl;
   if (box.classList) { box.classList.toggle('locked', locked); box.classList.toggle('editing', onField && !locked); }
   if ($('rangeLock')) $('rangeLock').textContent = !onField ? '' : !locked ? ' · EDITING' : mcLock ? ' · LOCKED BY MC' : ' · LOCKED';
   for (const [id, field] of [['thrSrc', 'threshold'], ['txSrc', 'tx_power']]) {
@@ -895,6 +903,7 @@ function wire() {
   for (const b of document.querySelectorAll('[data-tx]')) b.onclick = () => {
     if (b.closest && b.closest('#range') && rangeLocked()) return;
     rangeTouched();
+    if (!support.txPowerControl) { log('this phone cannot set its transmit power: strength is fixed', 'le'); return; }
     if (TX_TO_WIRE[b.dataset.tx]) stationEdit('tx_power', b.dataset.tx);
   };
   if ($('range') && $('range').addEventListener) $('range').addEventListener('pointerdown', rangeTouched);
@@ -1035,7 +1044,8 @@ function wireExit() {
     startLanSweep: startUtilityLanSweep, get sweeper() { return _sweeper; },
     // F365 / A67 test seams: the edit model, one on-station edit, the status body a heartbeat sends, the hold's need
     range, stationEdit, statusBody: utilityStatusBody, a58Locked, holdMs: () => rangeHoldMs(a58Locked()),
-    get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; } };
+    get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
+    get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); } };
   window.brxUtil = window.brxUtility;
 })();
 

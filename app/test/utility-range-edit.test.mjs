@@ -69,6 +69,7 @@ test('A67: MC\'s threshold 0 is the station\'s own default, and MC is the source
   assert.equal(advertThr(), -70, 'a phone respawn station defaults to -70 dBm (F345)');
   assert.equal(src('threshold'), 'mc');
   assert.equal(api.statusBody().threshold_src, 'mc');
+  assert.equal(api.statusBody().threshold, -70, 'the status reports the dBm applied, never 0');
 });
 
 test('A67: an on-station edit newer than MC\'s value is kept; an older one gives way; no age from MC applies as today', async () => {
@@ -84,8 +85,13 @@ test('A67: an on-station edit newer than MC\'s value is kept; an older one gives
   assert.equal('threshold_edit_age_ms' in api.statusBody(), false);
   api.stationEdit('threshold', -66);
   await api.applyStationConfig({ ...arm, threshold: -58 });
-  assert.equal(api.settings.threshold, -58, 'an older MC (no threshold_age_ms) applies its value, as before A67');
+  assert.equal(api.settings.threshold, -58, 'an older MC (no threshold_age_ms) applies a CHANGED value, as before A67');
   assert.equal(src('threshold'), 'mc');
+  api.stationEdit('threshold', -63);
+  await api.applyStationConfig({ ...arm, threshold: -58, lock_s: 300 });
+  assert.equal(api.settings.threshold, -63, 'an ageless plain re-send of the same MC value (START, a lock move) keeps the edit');
+  assert.equal(src('threshold'), 'station');
+  await api.applyStationConfig({ ...arm, threshold: -58, threshold_age_ms: 0 });
 });
 
 test('A67: tx_power: absent keeps the station\'s own; present applies; each field keeps its own edit and source', async () => {
@@ -126,6 +132,22 @@ test('A67: the edit and its log persist (localStorage) for an app restart', () =
   assert.equal(saved.f.threshold.src, 'station');
   assert.equal(saved.seq, api.statusBody().range_edits.at(-1).seq);
   assert.ok(saved.f.threshold.at > 0, 'the edit time is stored, so a restart can compute its age');
+});
+
+test('A67 (brx3): a phone with no TX power control (iOS) ignores MC\'s tx_power and reports what it really sends', async () => {
+  api.stationEdit('tx_power', 'medium');   // a stored strength that is NOT what the phone really sends once control is gone
+  api.setSupport({ txPowerControl: false });
+  try {
+    const tx0 = api.settings.tx;
+    await api.applyStationConfig({ ...arm, threshold: -64, threshold_age_ms: 60_000, tx_power: 'low', tx_power_age_ms: 0 });
+    assert.equal(api.settings.tx, tx0, 'MC\'s tx_power is ignored');
+    const st = api.statusBody();
+    assert.equal(st.tx_power, 'high');
+    assert.equal('tx_power_src' in st, false);
+    assert.equal('tx_power_edit_age_ms' in st, false);
+    const n = api.range.st.seq; api.stationEdit('threshold', -65);
+    assert.equal(api.range.st.seq, n + 1, 'the radius still edits and syncs');
+  } finally { api.setSupport({ txPowerControl: true }); }
 });
 
 /** A fake MC socket: hello -> welcome, and every frame the station sends is kept. */

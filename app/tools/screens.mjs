@@ -4185,7 +4185,7 @@ const ugRead = pg => pg.evaluate(() => {
   if (!cfgOpen) {
     const U = window.brxUtility, R = U.range, $ = id => document.getElementById(id);
     for (const [id, f] of [['thrSrc', 'threshold'], ['txSrc', 'tx_power']]) {
-      const want = R.src(f) === 'mc' ? 'MC' : R.src(f) === 'station' ? (R.pending(f) ? 'SET HERE · WILL SYNC' : 'SET HERE') : ((f === 'threshold' ? !U.settings.threshold : U.settings.tx === 'high') ? 'DEFAULT' : '');
+      const want = f === 'tx_power' && !U.support.txPowerControl ? 'FIXED ON THIS PHONE' : R.src(f) === 'mc' ? 'MC' : R.src(f) === 'station' ? (R.pending(f) ? 'SET HERE · WILL SYNC' : 'SET HERE') : ((f === 'threshold' ? !U.settings.threshold : U.settings.tx === 'high') ? 'DEFAULT' : '');
       if ($(id).textContent !== want) out.honest.push(`${f} source "${$(id).textContent}" but the model says "${want}"`);
     }
     const onField = !!U.settings.mcArmed || !!U.settings.live, hold = $('rangeHold'), holdShown = vis(hold), editing = U.rangeEditing;

@@ -34,7 +34,9 @@ export function wireAge(v) {
 }
 
 const defaultMono = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : null);
-const blank = () => ({ v: 1, seq: 0, sent: 0, f: { threshold: { src: null, seq: 0, at: 0 }, tx_power: { src: null, seq: 0, at: 0 } }, log: [] });
+// per field: `src` who set the applied value, `seq`/`at` the on-station edit, `mc` the last value MC set that was applied
+const blank = () => ({ v: 1, seq: 0, sent: 0, f: { threshold: { src: null, seq: 0, at: 0, mc: null }, tx_power: { src: null, seq: 0, at: 0, mc: null } }, log: [] });
+const mcValue = v => (typeof v === 'number' && Number.isFinite(v)) || typeof v === 'string' ? v : null;
 
 export class RangeEdits {
   /**
@@ -49,12 +51,14 @@ export class RangeEdits {
     let saved = null; try { saved = load(); } catch (_) { saved = null; }
     if (saved && typeof saved === 'object') {
       if (Number.isInteger(saved.seq) && saved.seq >= 0) s.seq = saved.seq;
-      if (Number.isInteger(saved.sent) && saved.sent >= 0) s.sent = Math.min(saved.sent, s.seq);
       for (const k of RANGE_FIELDS) {
         const f = saved.f && saved.f[k];
-        if (f && (f.src === 'station' || f.src === 'mc')) s.f[k] = { src: f.src, seq: Number.isInteger(f.seq) ? f.seq : 0, at: Number.isFinite(f.at) ? f.at : 0 };
+        if (f && (f.src === 'station' || f.src === 'mc')) s.f[k] = { src: f.src, seq: Number.isInteger(f.seq) ? f.seq : 0, at: Number.isFinite(f.at) ? f.at : 0, mc: mcValue(f.mc) };
       }
       if (Array.isArray(saved.log)) s.log = saved.log.filter(e => e && Number.isInteger(e.seq) && RANGE_FIELDS.includes(e.field) && Number.isFinite(e.at)).slice(-RANGE_EDITS_MAX);
+      // A67 (brx3): seq never goes down short of a reinstall. A damaged counter resumes above every seq it already used.
+      s.seq = Math.max(s.seq, ...s.log.map(e => e.seq), ...RANGE_FIELDS.map(k => s.f[k].seq));
+      if (Number.isInteger(saved.sent) && saved.sent >= 0) s.sent = Math.min(saved.sent, s.seq);
     }
     this.st = s;
   }
@@ -76,7 +80,7 @@ export class RangeEdits {
   edit(field, from, to, { locked = false } = {}) {
     const seq = ++this.st.seq, at = this.now(), m = this.mono();
     if (m != null) this._anchor.set(seq, m);
-    this.st.f[field] = { src: 'station', seq, at };
+    this.st.f[field] = { ...this.st.f[field], src: 'station', seq, at };
     const e = { seq, field, from, to, locked: !!locked, at };
     this.st.log.push(e);
     while (this.st.log.length > RANGE_EDITS_MAX) { const old = this.st.log.shift(); if (old) this._anchor.delete(old.seq); }
@@ -84,15 +88,17 @@ export class RangeEdits {
     return e;
   }
   /**
-   * MC's `station_config` names a value for `field` with `mcAgeMs` (ms since MC set it; absent from an older MC).
-   * The A67 rule: keep the on-station edit when it is YOUNGER than MC's value; otherwise MC's value applies, the
-   * edit is dropped and the source becomes 'mc'. No age from MC: MC's value applies, as before A67.
+   * MC's `station_config` names `value` for `field` with `mcAgeMs` (ms since MC set that value; MC sends it on every
+   * station_config, re-sends included, and a re-send does not refresh it). The A67 rule: keep the on-station edit when
+   * it is YOUNGER than MC's value; otherwise MC's value applies, the edit is dropped and the source becomes 'mc'.
+   * No age (an MC older than A67): keep the edit unless MC's value CHANGED from the last MC value applied here, so a
+   * plain re-send (START, END, a lock move) never wipes an edit (the trap brx4 found on the Stick).
    * @returns {boolean} true when the caller must apply MC's value.
    */
-  mcDecides(field, mcAgeMs) {
-    const f = this.st.f[field], mcAge = wireAge(mcAgeMs);
-    if (f.src === 'station' && mcAge != null && this._age(f.seq, f.at) < mcAge) return false;
-    this.st.f[field] = { src: 'mc', seq: 0, at: 0 };
+  mcDecides(field, value, mcAgeMs) {
+    const f = this.st.f[field], mcAge = wireAge(mcAgeMs), v = mcValue(value);
+    if (f.src === 'station' && (mcAge != null ? this._age(f.seq, f.at) < mcAge : v === f.mc)) return false;
+    this.st.f[field] = { src: 'mc', seq: 0, at: 0, mc: v };
     this._persist();
     return true;
   }

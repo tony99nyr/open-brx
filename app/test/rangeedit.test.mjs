@@ -19,7 +19,7 @@ test('A67: an on-station edit YOUNGER than MC\'s value is kept, and src stays "s
   const r = rig(), e = r.make();
   e.edit('threshold', -57, -60);
   r.step(3000);
-  assert.equal(e.mcDecides('threshold', 10_000), false, 'MC set its value 10 s ago; the edit is 3 s old: keep the edit');
+  assert.equal(e.mcDecides('threshold', -55, 10_000), false, 'MC set its value 10 s ago; the edit is 3 s old: keep the edit');
   assert.equal(e.src('threshold'), 'station');
   assert.equal(e.status().threshold_src, 'station');
   assert.equal(e.status().threshold_edit_age_ms, 3000);
@@ -29,7 +29,7 @@ test('A67: an edit OLDER than MC\'s value gives way: MC applies, the edit is dro
   const r = rig(), e = r.make();
   e.edit('threshold', -57, -60);
   r.step(20_000);
-  assert.equal(e.mcDecides('threshold', 5000), true);
+  assert.equal(e.mcDecides('threshold', -55, 5000), true);
   assert.equal(e.src('threshold'), 'mc');
   const st = e.status();
   assert.equal(st.threshold_src, 'mc');
@@ -39,27 +39,38 @@ test('A67: an edit OLDER than MC\'s value gives way: MC applies, the edit is dro
 test('A67: an equal age is not "less": MC applies', () => {
   const r = rig(), e = r.make();
   e.edit('threshold', -57, -60); r.step(4000);
-  assert.equal(e.mcDecides('threshold', 4000), true);
+  assert.equal(e.mcDecides('threshold', -55, 4000), true);
 });
 
-test('A67: an older MC sends no age: its value applies, as before A67', () => {
+test('A67 (brx3): an older MC sends no age: a plain re-send of the same value KEEPS the edit; a changed value applies', () => {
   for (const age of [undefined, null, '', 'soon', -5, true]) {
     const r = rig(), e = r.make();
-    e.edit('threshold', -57, -60); r.step(10);
-    assert.equal(e.mcDecides('threshold', age), true, `age ${JSON.stringify(age)} must apply MC's value`);
+    assert.equal(e.mcDecides('threshold', -55, 1000), true, 'MC\'s first value applies');
+    e.edit('threshold', -55, -60); r.step(10);
+    assert.equal(e.mcDecides('threshold', -55, age), false, `a re-send of -55 with age ${JSON.stringify(age)} must not wipe the edit`);
+    assert.equal(e.src('threshold'), 'station');
+    assert.equal(e.mcDecides('threshold', -52, age), true, `a CHANGED MC value with age ${JSON.stringify(age)} applies`);
+    assert.equal(e.src('threshold'), 'mc');
   }
+  const r = rig(), e = r.make();
+  e.edit('threshold', -57, -60);
+  assert.equal(e.mcDecides('threshold', -55), true, 'no MC value applied here before: an ageless value applies, as before A67');
+  e.edit('tx_power', 'high', 'low');
+  assert.equal(e.mcDecides('tx_power', 'high'), true);
+  e.edit('tx_power', 'high', 'medium');
+  assert.equal(e.mcDecides('tx_power', 'high'), false, 'the same ageless tx_power re-sent keeps the strength edit');
   assert.equal(wireAge('1200'), 1200);
 });
 
 test('A67: per-field independence: a kept radius edit does not keep the strength, and vice versa', () => {
   const r = rig(), e = r.make();
   e.edit('threshold', -57, -60); r.step(1000);
-  assert.equal(e.mcDecides('threshold', 60_000), false, 'the radius edit is newer: kept');
-  assert.equal(e.mcDecides('tx_power', 60_000), true, 'no strength edit here: MC\'s tx_power applies');
+  assert.equal(e.mcDecides('threshold', -55, 60_000), false, 'the radius edit is newer: kept');
+  assert.equal(e.mcDecides('tx_power', 'low', 60_000), true, 'no strength edit here: MC\'s tx_power applies');
   assert.equal(e.src('threshold'), 'station');
   assert.equal(e.src('tx_power'), 'mc');
   e.edit('tx_power', 'high', 'low'); r.step(1000);
-  assert.equal(e.mcDecides('tx_power', 500), true, 'the strength edit is older than MC\'s: MC wins that field only');
+  assert.equal(e.mcDecides('tx_power', 'low', 500), true, 'the strength edit is older than MC\'s: MC wins that field only');
   assert.equal(e.src('threshold'), 'station', 'the radius edit is untouched');
 });
 
@@ -90,6 +101,14 @@ test('A67 addendum 2: seq persists across a restart and keeps rising', () => {
   const n = e2.edit('threshold', -60, -64);
   assert.equal(n.seq, 3);
   assert.equal(JSON.parse(r.stored).seq, 3);
+});
+
+test('A67 (brx3): seq never goes down, even if the stored counter is damaged', () => {
+  const r = rig(), e = r.make();
+  for (let i = 0; i < 4; i++) e.edit('threshold', -50 - i, -51 - i);
+  const st = JSON.parse(r.stored); st.seq = 1;   // a damaged counter below the seqs already used
+  const e2 = new RangeEdits({ load: () => st, save: () => {}, now: () => r.clock.wall, mono: () => null });
+  assert.equal(e2.edit('tx_power', 'high', 'low').seq, 5);
 });
 
 test('A67 addendum 2: the list is capped at 8, oldest dropped, restated whole on every call', () => {
