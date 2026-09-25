@@ -86,6 +86,20 @@ test('presence: the station advertised threshold wins over the default; a neutra
   assert.equal(p.presentStation('bomb', 1), null, 'kind is part of the match');
 });
 
+test('X10: a game byte change drops presence learnt under the old byte at once, not after expiryMs', () => {
+  const p = new Presence({ dwellMs: 0, game: 7 });
+  p.observe(station({ game: 7 }), -40, 0);
+  p.observe(station({ id: 6, game: 0 }), -40, 0);
+  p.tick(0);
+  assert.equal(p.stations().filter(e => e.present).length, 2, 'CONTROL: both stations are present first');
+  p.game = 7;                                         // app.js reassigns the same byte on every render
+  assert.equal(p.stations().length, 2, 'the same byte again drops nothing');
+  p.game = 8;
+  p.tick(1);
+  assert.deepEqual(p.stations().map(e => e.id), [6], 'the old game station is gone; the any-game one stays');
+  assert.equal(p.game, 8);
+});
+
 test('presence: EMA smooths, seq/state changes stamp changedAt, other games are ignored', () => {
   const p = new Presence({ alpha: 0.5, game: 7 });
   p.observe(station({ game: 7 }), -40, 0); p.observe(station({ game: 7 }), -60, 1);

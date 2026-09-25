@@ -83,6 +83,7 @@ describe('ITEMS — utility phones at muster', () => {
     await api.pushLobby(true);                          // muster for match 2
     await settle();
     expect(state().game_no).toBe(2);
+    expect(state().game_byte).toBe(2);
     expect(state().stations?.[0].armed?.game).toBe(2);
     expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/MC-ARMED · GAME 2/);
     m.unmount();
@@ -106,6 +107,19 @@ describe('ITEMS — utility phones at muster', () => {
     const m = await mountScreen(<Armory />, { state: { ...starved(await d.getState()), stations: undefined, game_no: undefined }, view: 'muster' });
     expect(m.find('[data-testid="items-panel"]').length).toBe(0);
     m.unmount();
+  });
+
+  it('X10: the panel reads `game_byte`, and falls back to `game_no` from an older server', async () => {
+    const d = new MockBackend();
+    const base = await d.getState();
+    const panel = async (st: State) => {
+      const m = await mountScreen(<Armory />, { state: st, view: 'muster' });
+      const text = m.find('[data-testid="items-panel"]')[0].textContent;
+      m.unmount();
+      return text;
+    };
+    expect(await panel({ ...base, game_byte: 7, game_no: 3 })).toMatch(/GAME 7/);
+    expect(await panel({ ...base, game_byte: undefined, game_no: 3 })).toMatch(/GAME 3/);
   });
 });
 

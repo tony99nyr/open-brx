@@ -526,6 +526,31 @@ test('H1: first blood waits behind the lead change, a double kill arrives: first
   assert.ok(h.eng.medals.includes('first_blood'), 'and `medals` holds first blood');
 });
 
+test('X8: a spree fold keeps the plain kill line a folded kill still owed', () => {
+  const h = harness().live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(50);                  // kill X (a YELLOW victim): the IR confirm is on air
+  h.kill({ victim_team: 'blue', victim: 'p3', victim_display: 'GHOST' });   // kill A (a BLUE victim, no IR twin): waits, owes its line
+  h.adv(50);
+  h.kill({ medals: ['double_kill'] });                              // kill B pairs with X on air; its medal folds A in
+  h.adv(8000);
+  assert.equal(h.plays(KILL).length, 2, 'X\'s IR line and A\'s own kill line: no kill goes unvoiced');
+  assert.equal(h.plays(golden.cues.double_kill.split(',')[4]).length, 1, 'and the double kill');
+});
+
+test('X9: a silent card a kill displaces shows again without a second LED burst', () => {
+  const h = harness().live();
+  h.alert('killjoy', 'KILLJOY');                                    // a silent card with an LED burst (the golden bundle has no killjoy line)
+  h.adv(100);
+  const bursts = () => h.logs.filter(l => /write event led killjoy/.test(l)).length;
+  assert.ok(bursts() >= 1, 'setup: the killjoy burst fired once');
+  const first = bursts();
+  h.kill();                                                         // my kill takes over the silent card
+  let back = false;
+  for (let i = 0; i < 200; i++) { h.adv(50); const c = h.eng.state().card; if (c && c.kind === 'alert' && c.data.kind === 'killjoy' && h.eng.moment.kind === 'alert') back = true; }
+  assert.ok(back, 'setup: the killjoy card came back after the kill');
+  assert.equal(bursts(), first, 'the card came back, its lights did not fire again');
+});
+
 // Tony 2026-09-24, "they go silent when kill streaks are showing": the streak guards, one test each.
 const unitItem = (log, kind, audioMs, extra = {}) => ({ kind, audioMs, ...extra, play: ({ muted }) => log.push([kind, muted]) });
 

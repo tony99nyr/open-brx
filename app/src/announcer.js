@@ -268,9 +268,11 @@ export class Announcer {
       it.audioMs = 0;
       it.slotMs = it.bannerMs != null ? it.bannerMs : (ANNOUNCE_BANNER_MS[it.kind] || 0);
     }
+    // X9: `replay` = a silent card a kill displaced, shown again: the card only, so a caller must not fire its lights twice
+    const replay = it.startedAt != null;
     it.startedAt = now; it.audioUntil = now + it.audioMs; it.until = now + it.slotMs; it.muted = muted;
     this.current = it;
-    it.play({ preempted, waited, muted, flush: !muted && !!it.flush }, it);
+    it.play({ preempted, waited, muted, flush: !muted && !!it.flush, replay }, it);
   }
 
   /** For `state()`: what is on air, and how many wait behind it. */
@@ -307,15 +309,21 @@ export class GunAudio {
   }
   /** When the last clip the gun can actually play ends (clips stuck behind the loop do not count). */
   playingUntil(now) { this._prune(now); return this.clips.reduce((t, c) => (Number.isFinite(c.end) ? Math.max(t, c.end) : t), now); }
-  /** The shield loop started (shield rose above 0 with a loop armed) or stopped (shield back at 0). */
-  setBlocked(on, now) {
+  /** The shield loop started (shield rose above 0 with a loop armed) or stopped (shield back at 0).
+   *  `queueFirst`: the loop starts BEHIND the clips already queued (they play out, then the loop blocks what comes
+   *  next). The F348 spawn fill uses it: the spawn line and the klaxon are written ahead of the fill (X3), and the gun's
+   *  hum waits for a queue that is already playing (gun-audio-sim.mjs `humWaitsForQueue`, an ASSUMPTION, bench Block 10). */
+  setBlocked(on, now, queueFirst = false) {
     if (on === this.blocked) return;
     this._prune(now);
-    if (on) {   // everything not finished by now is stuck behind the loop, with what is left of it
+    if (on && !queueFirst) {   // everything not finished by now is stuck behind the loop, with what is left of it
       for (const c of this.clips) { c.left = c.end - Math.max(c.start, now); c.start = c.end = Infinity; }
-    } else {    // the FIFO runs again from now, in order
+    } else if (!on) {    // the FIFO runs again from now, in order; a clip that still plays keeps its own end
       let t = now;
-      for (const c of this.clips) { const ms = c.left != null ? c.left : c.ms; c.start = t; c.end = t + ms; t = c.end; delete c.left; }
+      for (const c of this.clips) {
+        if (c.left == null && Number.isFinite(c.end)) { t = Math.max(t, c.end); continue; }
+        const ms = c.left != null ? c.left : c.ms; c.start = t; c.end = t + ms; t = c.end; delete c.left;
+      }
     }
     this.blocked = on; this.blockedAt = now;
   }

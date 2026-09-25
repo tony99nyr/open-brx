@@ -1492,6 +1492,9 @@ KNOWN_UNMIRRORED = {
     # must-hear $PLAYX flush. NOT yet ported: the stage's own writes do not model the FIFO, and its heartbeat does not
     # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.
     "_audioWrite", "_clipLen", "_sayMust", "_audioSync", "_audioHit", "_shieldLoopPeriod",   # the pool voice lines, the same queue; the stage speaks them at once
+    # X3 (2026-09-24): the fill-last write order IS mirrored, inline in `spawn`/`revive`; the helper's other half marks
+    # the audio model blocked at the fill, and the stage has no audio model (see `_audioWrite` above)
+    "_writeSpawnBurst",
     # bench 2026-09-17: the phone's day/night HUD skin and its per-MC-session pick; HUD chrome, no LED or game rule
     "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
     # bench 2026-09-17: the ammo gauge's shot-ready cue ($WEAP token 14 timed from $ALCD); HUD display only, no game rule
@@ -2064,6 +2067,48 @@ def test_f344_every_shields_life_starts_at_full_shield_like_the_phone():
         k = mark(mgr2)
         await st2.spawn(); await settle(st2)
         assert not [f for f in since(mgr2, k) if f.startswith("$LIFE,") and f != PROBE_LIFE], "no pool write without a shield"
+    asyncio.run(go())
+
+
+def test_x3_the_spawn_line_and_the_klaxon_go_before_the_fill_like_the_phone():
+    """X3 (integration review 2026-09-24): engine.js writes the fill LAST in the spawn and revive bursts, after the spawn
+    line and the klaxon, so the shield loop the fill starts cannot bury them. The stage writes the same order."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        fill = f"$LIFE,0,0,{st.max_shield},*"
+        cues = st.bundle["cues"]
+        await st.connect(GUN); await st.arm()
+        cues["countdown"] = ""
+        n = mark(mgr)
+        await st.spawn(); await settle(st)
+        burst = since(mgr, n)
+        plays = [i for i, f in enumerate(burst) if f.startswith("$PLAY,")]
+        assert len(plays) >= 2 and cues["klaxon"] in burst, f"setup: the spawn line and the klaxon went out: {burst}"
+        assert max(plays) < burst.index(fill), burst
+        st._on_rx("$HP,0,0,0,*"); await settle(st)
+        m = mark(mgr)
+        await st.revive(); await settle(st)
+        burst = since(mgr, m)
+        plays = [i for i, f in enumerate(burst) if f.startswith("$PLAY,")]
+        assert plays and max(plays) < burst.index(fill), burst
+    asyncio.run(go())
+
+
+def test_x5_x6_x7_the_pool_repair_keeps_armour_the_fill_and_a_no_shield_grant_like_the_phone():
+    """X5: a no-armour game keeps the armour the gun reports. X6: a repair before the fill echo keeps the full shield.
+    X7: a shield in a no-shield game is not above its ceiling. Mirrors app/test/shield-spawn.test.mjs."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await live(st)
+        st._arm_pending = None
+        st._shield_fill_at = clock()                       # X6: the fill is still in flight
+        st.hp, st.armor, st.shield = 90, 20, 0             # X5: armour 20 in a game that arms none
+        st._pool_repair = {"life": st._life, "attempts": 0, "due_at": 0.0, "read_at": 0.0, "wrote": False}
+        n = mark(mgr)
+        st._pool_repair_tick(clock()); await settle(st)
+        assert "$LIFE,45,20,105,1,*" in since(mgr, n), since(mgr, n)
+        assert not GunStage._pools_over(45, 70, 30, {"hp": 45, "armor": 70, "shield": 0}), "X7: no shield ceiling, no fault"
+        assert GunStage._pools_over(45, 70, 130, {"hp": 45, "armor": 70, "shield": 105}), "control: a shield above its ceiling"
     asyncio.run(go())
 
 

@@ -12,7 +12,7 @@
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S } from './transport/contract.gen.js';   // the spawn-kill window (2026-09-19) and the A16.3 readout timings (F52)
-import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
+import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS } from './announcer.js';
 import { LANE_HERO_MS } from './lanes.js';
@@ -1186,13 +1186,23 @@ export class Engine {
       g._prune(now);
       g.clips.splice(0, g.blocked ? stops - 1 : stops);
     }
-    const plays = frames.filter(f => typeof f === 'string' && f.startsWith('$PLAY,'));
-    if (plays.length && g.blocked) {
-      out = frames.filter(f => !plays.includes(f));
-      if (!this._blockedLogAt || now - this._blockedLogAt > 5000) { this._blockedLogAt = now; this.log(`audio: ${why}: not written, the shield loop blocks the gun's audio (docs/announcer.md)`, 'li'); }
-      return out;
+    // In write order (X3): a `$PLAY` ahead of the spawn fill goes on the FIFO; the fill starts the loop behind it
+    // (`queueFirst`), and a `$PLAY` after the fill, or in a write while the loop blocks, is not written.
+    let dropped = 0;
+    out = [];
+    for (const f of frames) {
+      if (typeof f === 'string' && f.startsWith('$PLAY,')) {
+        if (g.blocked) { dropped++; continue; }
+        g.add(this._clipLen(f), why, now, clipId(f));
+      } else if (f.startsWith && f.startsWith('$SPAWN')) {
+        g.setBlocked(false, now);   // `$SPAWN` empties the shield pool on the gun, and the loop stops with it
+      } else if (f === this._fillFrame) {
+        const loop = this._psetSounds && (this._psetSounds[23] || '').replace('*', '').trim();
+        if (loop) g.setBlocked(true, now, true);
+      }
+      out.push(f);
     }
-    for (const f of plays) g.add(this._clipLen(f), why, now, clipId(f));
+    if (dropped && (!this._blockedLogAt || now - this._blockedLogAt > 5000)) { this._blockedLogAt = now; this.log(`audio: ${why}: not written, the shield loop blocks the gun's audio (docs/announcer.md)`, 'li'); }
     return out;
   }
   /** A cue frame's real length: the bundle's `cue_ms` for the kind that ships this frame, else CLIP_MS. */
@@ -1212,10 +1222,15 @@ export class Engine {
     finally { this._mustWrite = false; }
     this._gun.flushed(now, { ms: this._clipLen(frame), why });
   }
-  /** Is the `$PSET` t23 shield loop playing? It runs while a loop is armed and the shield is above 0. */
+  /** Is the `$PSET` t23 shield loop playing? It runs while a loop is armed and the shield is above 0. A spawn fill the
+   *  gun has not answered yet counts as a full shield (X3): the pool rises on the gun at the fill, not at its echo. */
   _audioSync(now = this.now()) {
     const loop = this._psetSounds && (this._psetSounds[23] || '').replace('*', '').trim();
-    this._gun.setBlocked(!!loop && this.shield > 0 && this.phase === 'live', now);
+    this._gun.setBlocked(!!loop && ((this.shield > 0 && this.phase === 'live') || this._shieldFillPending(now)), now);
+  }
+  /** F348: a spawn fill went out less than SHIELD_FILL_ECHO_MS ago and the gun has not answered it yet. PURE. */
+  _shieldFillPending(now = this.now()) {
+    return !!this._shieldFillAt && now - this._shieldFillAt <= SHIELD_FILL_ECHO_MS;
   }
   /** A hit the gun registered (`$HIR`): the gun plays the `$SIR` row's sound for it, into the same FIFO. */
   _audioHit(proto, subtype, now) {
@@ -2477,8 +2492,8 @@ export class Engine {
     return this._ann.push({ kind, key: kind === 'alert' ? `alert:${evKind}` : 'lead', text: text || evKind, audioMs: clipMs(pick.frame, cm ? cm[evKind] : undefined),
       ...(hud ? {} : { bannerMs: 0 }),
       ok: () => this._lightGen === lg,
-      play: ({ muted }) => {
-        this._event(evKind, muted ? { frame: null, tag: '' } : pick, kind !== 'alert');   // a lead change is must-hear
+      play: ({ muted, replay }) => {
+        if (!replay) this._event(evKind, muted ? { frame: null, tag: '' } : pick, kind !== 'alert');   // a lead change is must-hear; X9: a card shown again fires no second burst
         if (hud) this._card({ kind: 'alert', at: this.now(), data: { kind: evKind, text: text || evKind, player_id: subject } });
         this._changed();
       } });
@@ -2492,7 +2507,7 @@ export class Engine {
     // One key for every pool line, `preemptKey`: the newest pool state takes over a pool line on air at once (no `$PLAYX`:
     // the gun's own queue slot holds it behind the line already playing), as F57's "the rarer cue wins" always had it.
     return this._ann.push({ kind: 'status', key: 'status', preemptKey: true, audioMs: clipMs(pick.frame, cm ? cm[evKind] : undefined),
-      ok: () => this._lightGen === lg, play: ({ muted }) => { this._event(evKind, muted ? { frame: null, tag: '' } : pick); this._changed(); } });
+      ok: () => this._lightGen === lg, play: ({ muted, replay }) => { if (!replay) this._event(evKind, muted ? { frame: null, tag: '' } : pick); this._changed(); } });   // X9: no second burst
   }
   /** A15 (Tony 2026-09-06: "the kill confirm sound and taunts should be selected on single kill at random"):
    *  an event whose sound is a `voice:<role>` with several takes ships them all in `cue_pools[kind]`;
@@ -2756,6 +2771,14 @@ export class Engine {
     if (!SPAWN_SHIELD_FULL || !this.shieldRegenOn) return [];
     return [`$LIFE,0,0,${this.maxShield},*`];
   }
+  /** X3: a spawn or revive burst, with the fill LAST (after the spawn line and the klaxon), so the lines go on the gun's
+   *  FIFO ahead of the shield loop the fill starts. The audio model blocks at the fill (`_audioWrite`), and from here on
+   *  counts the fill as shield up until the gun answers it (`_shieldFillAt`, `_audioSync`). */
+  _writeSpawnBurst(frames, fill, why, life) {
+    this._fillFrame = fill.length ? fill[0] : null;
+    try { this._writeLife([...frames, ...fill], why, life); } finally { this._fillFrame = null; }
+    this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
+  }
   _spawn(withCountdown) {
     if (!this.frames) return;
     if (withCountdown && !this.cuesFired.has('countdown')) this._cue('countdown');
@@ -2774,7 +2797,10 @@ export class Engine {
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
-    this._writeLife([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), ...fill, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''), life);
+    // X3: the klaxon rides the spawn write, after the spawn line and BEFORE the fill, so the shield loop cannot bury it
+    const kx = this.frames.cues && this.frames.cues.klaxon && !this.cuesFired.has('klaxon') ? this.frames.cues.klaxon : null;
+    if (kx) this.cuesFired.add('klaxon');
+    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : []), ...(kx ? [kx] : [])], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + this._lineTag(sp) + (kx ? ' + klaxon' : '') + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
     if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._pendingHurtWrite = false;
@@ -2787,10 +2813,8 @@ export class Engine {
     this._resetLifeLedger();   // S56: nor does the "what hit me" ledger
     this._puReset();           // A56: a new match starts with no item held, taken or announced
     if (ps.frame) this._psetNow = ps.frame;   // A56: the overshield raises THIS frame's shield max, and restores it
-    this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
-    // grant, never a starting pool (bench 2026-08-27).
-    this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
+    // grant, never a starting pool (bench 2026-08-27). `_writeSpawnBurst` set `_shieldFillAt` (F348).
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.downReason = null; this.deadAt = 0; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this.poolSrc = 'model';        // R2-3: those two numbers are config.health, not the gun's answer
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
@@ -3668,7 +3692,7 @@ export class Engine {
   _revive(resync, stationId = null, operator = false) {
     this.reloading = null; this._reloadOutcome = null; this.held = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
-    if (this._overshield || this._puHeld) this._puDeath();   // A56: an operator respawn of a LIVE player skips `_death`; the $PSET restore must precede the $SPAWN
+    if (this._overshield || this._puHeld) this._puDeath(true);   // A56: an operator respawn of a LIVE player skips `_death`; the $PSET restore must precede the $SPAWN
     const down = this.frames.headset && this.frames.headset.down;
     if (down && down.stop) this._write([down.stop], 'down stop');   // §3.2: `$HLOOP,0,0,*` before $SPAWN — belt-and-braces, $SPAWN clears the loop on its own
     this._downRearmSent = false;   // §3.2: fresh rearm gate for the next life
@@ -3693,7 +3717,7 @@ export class Engine {
     const revive = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
-    this._writeLife([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...fill, ...(sp.frame ? [sp.frame] : [])], 'revive' + (flipped ? ' (turned)' : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''), life);
+    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);   // X3: the line before the fill
     this.hurtFired = false;
     this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
@@ -3708,7 +3732,6 @@ export class Engine {
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
     this._resetLifeLedger();   // S56: nor does the "what hit me" ledger
-    this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null; this.downReason = null;
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
@@ -4602,6 +4625,9 @@ export class Engine {
     if (kind === 'panic') { if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
     if (this.frames) {
       this._write(this.frames.end, `end (${why})`);
+      // X1: the end frames (`$SPAWN`, `$CLEAR`) stop the shield loop on the gun. The phase is still live and the model's
+      // shield is still up here, so without this the audio model thinks the loop blocks the gun and drops the whistle.
+      this.shield = 0; this._shieldFillAt = 0; this._gun.setBlocked(false, this.now());
       // A11.4 HUD-driven ending: in infection a survivor whose clock ran out KNOWS it survived -- it never
       // turned -- so it plays "the survivors have held their ground" itself; everyone else gets game_over.
       const c = this.frames.cues || {};
@@ -4886,7 +4912,7 @@ export class Engine {
     if (!plain && !medalCues.length && body.kind !== 'kill') { this._changed(); return; }
     if (cue && !plain && !medalCues.length) this.log('feedback: kill line skipped: the IR confirm for this kill already said it (S57)', 'li');
     const isKill = body.kind === 'kill';
-    let medals = medalCues, medalList = Array.isArray(body.medals) ? body.medals.slice() : [];
+    let medals = medalCues, medalList = Array.isArray(body.medals) ? body.medals.slice() : [], owed = null;
     if (isKill) {
       // Round 2 M1, a spree: older MC kills still WAITING fold into this one item, so the queue never stacks a line per
       // kill. The newest medal line only (a triple supersedes the double), the newest card. FIRST BLOOD is never folded:
@@ -4902,10 +4928,13 @@ export class Engine {
         const all = [...folded, ...medals], newest = kind => all.filter(x => MEDAL_KIND[x.m] === kind).pop();
         medals = [all.find(x => x.m === 'first_blood'), newest('multi'), newest('streak')].filter(Boolean);
         medalList = [...new Set([...waiting.flatMap(q => q.medalList || []), ...medalList])];
+        owed = (waiting.find(q => q.killF) || {}).killF || null;   // X8: a folded item that still owed its plain kill line
         this.log(`announcer: ${waiting.length} waiting kill confirm(s) folded into this one (${medals.length ? medals[0].m : 'the plain line'})`, 'li');
       }
     }
-    const lines = medals.length ? medals.map(x => ({ f: x.f, why: `medal ${x.m}` })) : plain ? [{ f: cue, why: `feedback cue ${body.kind}${pick.tag}`, kill: true }] : [];
+    const lines = medals.length ? medals.map(x => ({ f: x.f, why: `medal ${x.m}`, k: x.m })) : plain ? [{ f: cue, why: `feedback cue ${body.kind}${pick.tag}`, kill: true, k: body.kind }] : [];
+    // X8: a spree fold never loses a kill: when a folded item still owed its plain line and this item says none, it says it first
+    if (owed && !lines.some(x => x.kill)) lines.unshift({ f: owed, why: 'feedback cue kill (folded in a spree)', kill: true, k: 'kill' });
     // C1 (Tony's match 2026-09-24): an IR twin skips its own kill line only when THIS item really says one. A medal
     // replaces MC's plain line, so a medal-only item leaves the confirmation to the IR word.
     if (mcEntry) mcEntry.killLine = lines.some(x => x.kill);
@@ -4913,13 +4942,14 @@ export class Engine {
     // Round 3 M4: each line starts when the one before it has ENDED (plus ANNOUNCE_GAP_MS), never on a fixed 2 s grid: a
     // 2.5 s medal on a 2 s grid queued in the gun past the item's slot, and the next kill's stop cut its tail. So the
     // item's sound is the SUM of its clips and the gaps actually used.
-    const lens = lines.map((x, i) => clipMs(x.f, cm ? cm[medals.length ? medals[i].m : body.kind] : undefined));
+    const lens = lines.map(x => clipMs(x.f, cm ? cm[x.k] : undefined));
     const at = []; lens.reduce((t, ms, i) => { at[i] = t; return t + ms + ANNOUNCE_GAP_MS; }, 120);
     const audioMs = lines.length ? at[lines.length - 1] + lens[lines.length - 1] : 0;
     // docs/announcer.md: once this kill's line was said (its IR twin started and was not muted), what is left to say is
     // medal lines only. They rank `medal`, after a lead change, so the lead MC sent with this kill is not held behind them.
-    const killSaid = isKill && medals.length > 0 && irAt != null && !(irMatch && irMatch.item && irMatch.item.muted);
-    const item = this._ann.push({ kind: isKill ? (killSaid ? 'medal' : 'kill_confirmed') : 'alert', src: 'mc', key: isKill ? null : `fb:${body.kind}`, audioMs, entry: mcEntry, medals, medalList,
+    const killSaid = isKill && medals.length > 0 && irAt != null && !(irMatch && irMatch.item && irMatch.item.muted) && !lines.some(x => x.kill);
+    const killF = (lines.find(x => x.kill) || {}).f || null;   // X8: the plain line this item owes, for a later spree fold
+    const item = this._ann.push({ kind: isKill ? (killSaid ? 'medal' : 'kill_confirmed') : 'alert', src: 'mc', key: isKill ? null : `fb:${body.kind}`, audioMs, entry: mcEntry, medals, medalList, killF,
       bannerMs: isKill ? Math.max(KILL_CARD_MS, audioMs) : 0,
       ok: () => this._lightGen === lg,
       onDrop: () => { if (mcEntry) this._mcKillOpen = this._mcKillOpen.filter(x => x !== mcEntry); },   // unheard: no IR twin may pair with it
@@ -5476,8 +5506,8 @@ export class Engine {
     return true;
   }
   /** The overshield is over: the `$PSET` back at the preset shield max, so no later spawn or refill fills to the raised one. */
-  _osRestore(why) {
-    const pset = this._osPset(this.maxShield), life = this._lifeSeq;
+  _osRestore(why, life = this._lifeSeq) {
+    const pset = this._osPset(this.maxShield);
     if (pset) this._writeMust([pset], `overshield over (${why}): shield max back to ${this.maxShield}`, () => this._lifeSeq === life && !this._overshield, true);   // polish M2 (a `$PSET` carries no counts: safe to repeat after a shot or a hit)
   }
   /** Every `$ALCD` that reached the ordinary path: the slot is the trigger's (melee's slot 4 is not, and an unheld pickup
@@ -5552,12 +5582,13 @@ export class Engine {
     this._save();
   }
   /** Death: a weapon item's charges are lost, and the overshield is gone. */
-  _puDeath() {
+  _puDeath(inRevive = false) {
     if (this._puHeld) this._puEnd('death');
     // The revive burst's pool `$PSET` (A15.3) lands before its `$SPAWN` at the preset max; an older bundle has none, so the
-    // max goes back now, or the `$SPAWN` would refill the shield to the raised one.
+    // max goes back now, or the `$SPAWN` would refill the shield to the raised one. X10: from `_revive` the restore
+    // belongs to the life the revive is about to start, so its one retry is not refused as "the game moved on".
     const pool = this.frames && Array.isArray(this.frames.pset_pool) && this.frames.pset_pool.length;
-    if (this._overshield && !pool) this._osRestore('death');
+    if (this._overshield && !pool) this._osRestore('death', inRevive ? (this._lifeSeq || 0) + 1 : this._lifeSeq);
     this._overshield = null; this._puBack = null; this._osProtectUntil = 0; this._puBackPending = null;
   }
   /** `_revive`, after its burst: an item still held (an operator respawn of a LIVE player skips `_death`) is lost the same
@@ -5885,15 +5916,15 @@ export class Engine {
     const os = this._overshield && Number.isFinite(+this._overshield.max) ? +this._overshield.max : 0;
     return { hp: this.maxHp, armor: this.maxArmor, shield: Math.max(this.maxShield, os) };
   }
-  /** F341: is a pool report ABOVE the armed ceilings? Armour counts only in a game that arms some: armour granted in a
-   *  no-armour game is a state the HUD shows (Visor polish r2 M1), and a doubled `$PSET` doubles the hp anyway. PURE. */
+  /** F341: is a pool report ABOVE the armed ceilings? Armour and shield count only in a game that arms some: armour
+   *  granted in a no-armour game is a state the HUD shows (Visor polish r2 M1), a shield grant in a no-shield game is
+   *  one too (an IR or host grant, X7), and a doubled `$PSET` doubles the hp anyway. PURE. */
   _poolsOver(hp, armor, shield, c = this._poolCeilings()) {
-    return hp > c.hp || (c.armor > 0 && armor > c.armor) || shield > c.shield;
-  }
-  /** HUD QA R2-02: is a RISE above what this life armed? `_poolsOver`, except a shield counts only in a game that arms
-   *  one: a shield grant in a no-shield game is a state the HUD shows (an IR or host grant), not a misread `$PSET`. PURE. */
-  _gainOverCeiling(hp, armor, shield, c = this._poolCeilings()) {
     return hp > c.hp || (c.armor > 0 && armor > c.armor) || (c.shield > 0 && shield > c.shield);
+  }
+  /** HUD QA R2-02: is a RISE above what this life armed? The same test as `_poolsOver` (X7 made them one rule). PURE. */
+  _gainOverCeiling(hp, armor, shield, c = this._poolCeilings()) {
+    return this._poolsOver(hp, armor, shield, c);
   }
   /** F341: does a pool report fit what this life armed? Called with every `$HP` and `$LCD` in a live life.
    *  - A pool ABOVE its ceiling is always wrong: the gun clamps every grant at its `$PSET`, so only a `$PSET` the gun
@@ -5981,7 +6012,10 @@ export class Engine {
     }
     if (rp.attempts >= POOL_REPAIR_TRIES) { verdict(`${POOL_REPAIR_TRIES} repairs did not hold, it reads ${this.hp}/${this.armor}/${this.shield}`); return; }
     rp.attempts++;
-    const t = { hp: Math.min(this.hp, c.hp), armor: Math.min(this.armor, c.armor), shield: Math.min(this.shield, c.shield) };
+    // X5: a no-armour game (ceiling 0) keeps the armour the gun reports, as `_poolsOver` does; X6: a spawn fill still in
+    // flight counts as a full shield, so a repair that starts before its echo does not take the life's shield away.
+    const shieldNow = this._shieldFillPending(now) ? Math.max(this.shield, this.maxShield) : this.shield;
+    const t = { hp: Math.min(this.hp, c.hp), armor: c.armor > 0 ? Math.min(this.armor, c.armor) : this.armor, shield: Math.min(shieldNow, c.shield) };
     const pset = this._osPset(c.shield);
     this._write([PARSER_RESET, ...(pset ? [pset] : []), `$LIFE,${t.hp},${t.armor},${t.shield},1,*`],
       `pool repair ${rp.attempts}/${POOL_REPAIR_TRIES}: ${this.hp}/${this.armor}/${this.shield} above ${c.hp}/${c.armor}/${c.shield} -> ${t.hp}/${t.armor}/${t.shield}`);
@@ -6634,6 +6668,7 @@ export class Engine {
     if (this._timedLifeAt != null && this.now() - this._timedLifeAt <= SPAWN_KILL_WINDOW_MS && this._downWarn < DOWN_WARN_MAX) { this._downWarn++; this.log(`killed ${Math.round((this.now() - this._timedLifeAt) / 100) / 10}s after a timed respawn: down warning level ${this._downWarn}`, 'li'); }
     this._timedLifeAt = null;
     this._shieldRegen = null; this._shieldDown = false;   // S29: a dead gun is not refilled, and the heartbeat stops with the life
+    this._shieldFillAt = 0;   // X3: a dead gun holds no shield, so a fill still unanswered no longer blocks the audio model
     this.reloading = null; this.switching = null; this._reloadOutcome = null; this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
     // S16: a death straight after our own poison tick, with no newer `$HIR` behind it, is the TICK's kill, and the
     // kill goes to the player who last applied the poison (Tony, 2026-09-18). A newer latch means a real hit landed
@@ -6958,6 +6993,7 @@ export class Engine {
       ...(this.phase === 'live' && !this.alive && this.deadAt ? { deadline_s: Math.max(0, Math.ceil((this.respawnDelayMs - (now - this.deadAt)) / 1000)) } : {}),
       ...(this.battery != null ? { battery: this.battery } : {}), ...(this.fw ? { fw: this.fw } : {}),
       arm_state: this.phase, ...(this.phase === 'armed' && this.goLiveT ? { t_minus_ms: Math.max(0, this.goLiveT - now) } : {}),
+      ...(configGameByte(this.config) ? { game_byte: configGameByte(this.config) } : {}),   // X2: a fresh MC that adopts this orphan match keeps its stations on this byte
       synced: this.isSynced(), wsReason: this.wsReason || null, ...(this.matchId ? { match_id: this.matchId } : {}),
       // A36: WHICH HEAD THIS PHONE IS HOLDING, on every heartbeat. `ack_config` says which config a
       // gun took at the moment it took it; this says which one it is still on for the rest of the

@@ -247,7 +247,8 @@ three hum models. The gaps the first B run found, and what became of them (2026-
 - Finding B4, FIXED: a pain grunt queued 2.6 s behind the shield-break line of the same hit. A grunt that would start
   more than 500 ms after its hit (`PAIN_STALE_MS`) is now dropped (scenarios 2, 3, 6).
 - Finding B5, FIXED with B4: "Target down" was lost behind the break line and the grunts behind it (scenario 3).
-- Finding B8, OPEN (bench): on a Shields spawn the spawn line is lost (scenario 5; the same fix as A finding 5).
+- Finding B8, FIXED in the model (X3, 2026-09-24): the spawn write puts the spawn line and the klaxon before F348's fill,
+  so the line is on the FIFO ahead of the hum. The fix rests on the sim's `humWaitsForQueue` assumption (bench Block 10 step 4).
 - A finding 4, FIXED: the possession tick now waits while the item on air still has audio due (scenario 10).
 - B depends on bench step 1 (the hum's restart delay). B writes the stops first and the line last. If the hum
   restarts inside the 10 ms before the line arrives, every must-hear line under the hum sticks (sensitivity test).
@@ -316,7 +317,7 @@ With it and the lead change's TTL at Infinity, B1 is fixed. Also:
 2. **For B3 (open, Tony):** send the F149 death stop only when the model says the low-health line is the clip on air,
    or wait for the kill line (option 1), or drop the kill line (option 2).
 3. **For B4 (done):** a grunt that would start more than 500 ms after its hit is dropped.
-4. **For B8 and A5 (open, bench):** in the spawn write, put the spawn line before F348's `$LIFE` fill.
+4. **For B8 and A5 (done, X3; bench confirms `humWaitsForQueue`):** the spawn write puts the spawn line and the klaxon before F348's `$LIFE` fill.
 5. **For A4 (done):** the possession tick waits on the whole FIFO and on the item on air (`audioBusy`), since it is a
    token-1 clip.
 

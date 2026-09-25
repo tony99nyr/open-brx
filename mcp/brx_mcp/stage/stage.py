@@ -1891,8 +1891,9 @@ class GunStage:
 
     @staticmethod
     def _pools_over(hp: int, armor: int, shield: int, c: dict) -> bool:
-        """engine.js `_poolsOver` (F341): above the armed ceilings; armour counts only in a game that arms some. PURE."""
-        return hp > c["hp"] or (c["armor"] > 0 and armor > c["armor"]) or shield > c["shield"]
+        """engine.js `_poolsOver` (F341): above the armed ceilings; armour and shield count only in a game that arms
+        some (X7). PURE."""
+        return hp > c["hp"] or (c["armor"] > 0 and armor > c["armor"]) or (c["shield"] > 0 and shield > c["shield"])
 
     @staticmethod
     def _gain_over_ceiling(hp: int, armor: int, shield: int, c: dict) -> bool:
@@ -1980,7 +1981,11 @@ class GunStage:
             verdict(f"{self.POOL_REPAIR_TRIES} repairs did not hold, it reads {self.hp}/{self.armor}/{self.shield}")
             return
         rp["attempts"] += 1
-        t = {"hp": min(self.hp, c["hp"]), "armor": min(self.armor, c["armor"]), "shield": min(self.shield, c["shield"])}
+        # engine.js: X5, a no-armour game keeps the armour the gun reports; X6, a spawn fill still in flight counts as
+        # a full shield, so a repair before its echo does not take the life's shield away
+        shield_now = max(self.shield, self.max_shield) if self._shield_fill_pending(now) else self.shield
+        t = {"hp": min(self.hp, c["hp"]), "armor": min(self.armor, c["armor"]) if c["armor"] > 0 else self.armor,
+             "shield": min(shield_now, c["shield"])}
         pset = self._pset_now or next((f for f in (self.bundle.get("head") or [])
                                        if isinstance(f, str) and f.startswith("$PSET,")), None)
         self._spawn_task(self.write([PARSER_RESET, *([pset] if pset else []), f"$LIFE,{t['hp']},{t['armor']},{t['shield']},1,*"],
@@ -2205,15 +2210,17 @@ class GunStage:
             self._arm_after_spawn()                              # F209 (an older bundle): hits stay silent until the gun fires or the cap
         fill = self._spawn_shield_fill()                          # F348: a shields life starts at full shield
         self._shield_fill_start(fill)
-        await self.write(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + fill + [SFLASH] + ([fr] if fr else []),
-                          "spawn" + (f" + hit table {len(late)}r (late)" if late else "")
-                          + (f" + shield pool {self.max_shield}" if fill else "") + ps_why + self._line_tag(fr, tag),
+        # engine.js X3: the spawn line and the klaxon go out BEFORE the fill, so the shield loop cannot bury them
+        kx = cues.get("klaxon", "")
+        await self.write(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
+                          + ([fr] if fr else []) + ([kx] if kx else []) + fill,
+                          "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
+                          + (" + klaxon" if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
                           take=bool(late))
         self._after_spawn()
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):
             self._headset(hs["start"], "headset start")
-        await self.write([cues.get("klaxon", "")], "klaxon cue")
         return self.state()
 
     async def revive(self, station: int | None = None) -> dict:
@@ -2241,8 +2248,8 @@ class GunStage:
         self._timed_life_at = self.now() if kind == "timed" and station is None else None   # 2026-09-19: the spawn-kill window runs from a timed respawn
         fill = self._spawn_shield_fill()                          # F348: a shields life starts at full shield
         self._shield_fill_start(fill)
-        await self.write(([ps] if ps else []) + list(revive) + fill + ([fr] if fr else []),
-                          "revive" + (f" + shield pool {self.max_shield}" if fill else "") + ps_why + self._line_tag(fr, tag))
+        await self.write(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill,   # engine.js X3: the line before the fill
+                          "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else ""))
         self._after_spawn()
         # engine.js `_armAfterSpawn`: an unprotected life arms at once while the phase is live. Here that is
         # after the revive write returns, so the take still follows the revive frames, as on the phone.
@@ -2815,6 +2822,11 @@ class GunStage:
         if not SPAWN_SHIELD_FULL or not self.shield_regen_on:
             return []
         return [f"$LIFE,0,0,{self.max_shield},*"]
+
+    def _shield_fill_pending(self, now: float) -> bool:
+        """engine.js `_shieldFillPending` (X3/X6): a spawn fill went out less than SHIELD_FILL_ECHO_S ago and the gun has
+        not answered it yet. PURE."""
+        return bool(self._shield_fill_at) and now - self._shield_fill_at <= SHIELD_FILL_ECHO_S
 
     def _shield_fill_start(self, fill: list[str]) -> None:
         """F348: before the burst goes out (engine.js sets these synchronously after queueing it): the pool is 0
@@ -3427,6 +3439,7 @@ class GunStage:
                 self._log(f"killed {self.now() - self._timed_life_at:.1f}s after a timed respawn: down warning level {self._down_warn}", "info")
             self._timed_life_at = None
             self._shield_regen = None; self._shield_down = False   # S29: a dead gun is not refilled, and the heartbeat stops with the life
+            self._shield_fill_at = 0.0                                   # engine.js X3: a dead gun holds no shield, so no fill is in flight
             self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
             self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
             # S16 (engine.js `_death`): a death straight after our own poison tick, with no newer DAMAGING hit behind

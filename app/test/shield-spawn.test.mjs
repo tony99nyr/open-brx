@@ -151,3 +151,81 @@ test('F348 control: a shield broken in play still recharges the old way (and, To
   assert.equal(h.cues(n, 'shield_charging'), 1);
   assert.equal(h.cues(n, 'shield_online'), 0, 'the shields-online line is gone (docs/announcer.md)');
 });
+
+// ---------- integration review 2026-09-24 (X1, X3, X5, X6, X7): the fill against the audio model and the pool repair ----------
+const REPAIRS = (h, n) => h.since(n).filter(w => /^\$LIFE,\d+,\d+,\d+,1,\*$/.test(w));
+
+test('X3: the spawn line and the klaxon go out BEFORE the fill, and the audio model counts them played, then blocks', () => {
+  const h = harness();
+  const burst = h.since(h.startAt);
+  const fill = burst.indexOf(FILL), line = burst.indexOf(golden.cues.spawn), klaxon = burst.indexOf(golden.cues.klaxon);
+  assert.ok(line >= 0 && klaxon >= 0 && fill >= 0, `setup: all three went out: ${JSON.stringify(burst)}`);
+  assert.ok(line < fill && klaxon < fill, `the lines are on the FIFO ahead of the loop the fill starts: ${JSON.stringify(burst)}`);
+  const g = h.eng._gun;
+  assert.equal(g.blocked, true, 'the fill started the shield loop in the model');
+  assert.equal(g.clips.length, 2, 'the spawn line and the klaxon are queued');
+  assert.ok(g.clips.every(c => Number.isFinite(c.end)), 'and they PLAY: they are ahead of the loop, not stuck behind it');
+});
+
+test('X3: a revive puts its line before the fill, and the model stays blocked through the fill, not only after its echo', () => {
+  const h = harness();
+  h.adv(5000).die();
+  h.adv(7900);
+  h.gun.seen = Infinity;   // the gun goes quiet: the fill is not answered
+  const n = h.mark();
+  h.adv(300);
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  const burst = h.since(n);
+  assert.ok(burst.indexOf(golden.cues.respawned) < burst.indexOf(FILL), `the line before the fill: ${JSON.stringify(burst)}`);
+  assert.equal(h.eng.shield, 0, 'setup: no echo yet');
+  assert.equal(h.eng._gun.blocked, true, 'the loop blocks from the fill, before the gun answers it');
+});
+
+test('X1: the game_over line is written at the whistle while the shield is up', () => {
+  const h = harness();
+  h.adv(3000);
+  assert.equal(h.eng.shield, 105, 'setup: full shield');
+  assert.equal(h.eng._gun.blocked, true, 'setup: the model has the loop blocking');
+  const n = h.mark();
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.ok(h.since(n).includes('$CLEAR,*'), 'setup: the end frames went out');
+  assert.equal(h.cues(n, 'game_over'), 1, `the whistle line went out: ${JSON.stringify(h.since(n))}`);
+});
+
+test('X6: a pool repair before the fill echo keeps the full shield', () => {
+  const h = harness();
+  h.adv(5000).die();
+  h.adv(7900);
+  h.gun.seen = Infinity;   // the fill is not answered
+  h.adv(300);
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  const n = h.mark();
+  h.eng.feedFrame('$HP,90,0,0,*');   // a misread $PSET: hp above the ceiling, the fill echo not here yet
+  h.adv(1500);
+  const r = REPAIRS(h, n);
+  assert.ok(r.length >= 1, `setup: a repair went out: ${JSON.stringify(h.since(n))}`);
+  assert.equal(r[0], '$LIFE,45,0,105,1,*', 'the repair keeps the shield the fill gave');
+});
+
+test('X5: a pool repair in a no-armour game keeps the armour the gun reports', () => {
+  const h = harness();
+  h.adv(3000);
+  h.gun.seen = Infinity;
+  const n = h.mark();
+  h.eng.feedFrame('$HP,90,20,105,*');   // hp over the ceiling; armour 20 in a game that arms 0 is a state, not an error
+  h.adv(1500);
+  const r = REPAIRS(h, n);
+  assert.ok(r.length >= 1, `setup: a repair went out: ${JSON.stringify(h.since(n))}`);
+  assert.equal(r[0], '$LIFE,45,20,105,1,*');
+});
+
+test('X7: a shield grant in a no-shield game is not a pool fault (no repair)', () => {
+  const h = harness({ health: STANDARD });
+  h.adv(3000);
+  h.gun.seen = Infinity;
+  const n = h.mark();
+  h.eng.feedFrame('$HP,45,70,30,*');
+  h.adv(1500);
+  assert.deepEqual(REPAIRS(h, n), [], 'no repair write');
+  assert.equal(h.eng._poolRepair, null);
+});

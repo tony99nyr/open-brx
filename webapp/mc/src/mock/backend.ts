@@ -715,7 +715,7 @@ export class MockBackend implements Api {
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
       nodes, readiness, config: clone(this.config), config_errors: [...this.cfgErrors],
-      stations: this.stationViews(), game_no: this.gameNo,
+      stations: this.stationViews(), game_byte: this.gameNo, game_no: this.gameNo,
       config_warnings: [
         ...(SETUP_WARNING[this.config.station_source ?? ''] ? [SETUP_WARNING[this.config.station_source ?? '']] : []),
         // mirrors Session._station_warnings(): a station-gated rule with nothing assigned in ITEMS

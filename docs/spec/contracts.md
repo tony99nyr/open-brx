@@ -554,9 +554,11 @@ Event =
  | { type:"operator_result", t, match_id, node_id, player_id, cmd:"resync"|"respawn"|"relink", ok, why? } // A47: what the phone did with an operator action; `why` on a refusal. Never scored
  | { type:"pickup", t, match_id, station_id, item_kind:"weapon"|"overshield", weapon_id? } // A56: this player took a station's item (the grant is on the gun). Never scored; MC dedupes it against the station's `station_action taken`
  | { type:"status",      t, match_id?, node_id, player_id?, hp, armor, ammo, alive, shots, deadline_s?, battery?, fw?,
-                         arm_state, t_minus_ms?, synced, dropped?, preflight?, protected?, transport? }
+                         arm_state, t_minus_ms?, synced, dropped?, preflight?, protected?, transport?, game_byte? }
  |   // protected? [F289]: true only while the phone owes the write that ends spawn protection; absence clears it.
  |   // transport? [F309]: the phone's own connection claim, "wifi"|"cellular"|"none"|"unknown" (§5d has the bind rule).
+ |   // game_byte? [X2]: the advert game byte (1..255) the phone holds from `config.game_byte`. MC takes it when it adopts
+ |   // a match it did not start, so a station re-arm keeps that byte. Absent (an older phone) = MC keeps its own number.
 ```
 - `shooter_num`/`shooter_team` are **always present** (from `$HIR` tokens 3/4). MC maps `shooter_num →
   player_id` via the match roster. `shooter_num = 0` means **unknown / environmental** (no `$HIR` fresher than

@@ -78,6 +78,10 @@ Rules:
    `$PLAYX,0` (bench 2026-09-24, shield still up)**, so every must-hear line in that state gets its own stop. Whether MC
    stops shipping the loop (t23 EMPTY, `audio-queue-scenarios.md` bench step 2) is open under F347; until then this
    is what keeps a kill confirm on time.
+4. **The spawn fill starts the loop behind the spawn lines (X3).** F348's `$LIFE,0,0,<max>,*` goes LAST in the spawn and
+   revive writes, after the spawn line and the klaxon. The model blocks at the fill, not at its echo, and lets the lines
+   already queued play first (`setBlocked(…, queueFirst)`, an assumption for bench Block 10 step 4). `$SPAWN` in a write
+   stops the loop, and the end teardown sets the shield to 0, so the whistle line is written (X1).
 
 **Not modelled** (assumed not to use the announcer FIFO, unconfirmed): the gun's own fire, reload, empty-click and
 weapon-swap sounds, and whatever the native `$SPAWN` plays. If any of them do queue there, the flush count is low by

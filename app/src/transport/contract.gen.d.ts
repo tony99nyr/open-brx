@@ -1006,6 +1006,9 @@ export interface Event {
   fw?: string;
   arm_state?: ArmState;
   t_minus_ms?: number;
+  /** X2: the advert `game` byte (1..255) the phone holds from `config.game_byte`. A fresh MC that adopts an
+   *  orphan match takes it (`Session.adopt_orphan`). An older phone omits it. */
+  game_byte?: number;
   synced?: boolean;
   dropped?: number;
   preflight?: Preflight;
@@ -1743,6 +1746,8 @@ export interface State {
    *  optional on the client so rolling a new console back to an older server remains safe. */
   coverage?: Coverage;
   stations?: StationView[];
+  game_byte?: number;
+  /** X10: the old name for `game_byte` (the same wrapped byte, not a match count). Kept for an older console. */
   game_no?: number;
   config_warnings?: string[];
   standby?: Player[];

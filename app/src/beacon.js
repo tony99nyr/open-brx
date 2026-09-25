@@ -97,8 +97,18 @@ export function configGameByte(config) {
  */
 export class Presence {
   constructor({ dwellMs = 2000, hysteresisDb = 6, expiryMs = 4000, alpha = 0.35, defaultThreshold = -62, game = 0 } = {}) {
-    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game });
     this.entries = new Map();          // key role:id → entry
+    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game });
+  }
+  get game() { return this._game || 0; }
+  /** X10: a new game byte drops every entry learnt under a different non-zero byte at once. Without this, a
+   *  station from the old game stayed present until `expiryMs` ran out. An entry on byte 0 (any game) stays. */
+  set game(b) {
+    const g = b || 0;
+    if (g === this._game) return;
+    this._game = g;
+    if (!g) return;
+    for (const [key, e] of this.entries) if (e.game && e.game !== g) this.entries.delete(key);
   }
   observe(uuids, rssi, now) {
     const d = decodeAdvert(uuids);

@@ -4561,8 +4561,12 @@ class Session:
                 and mid not in self._scheduled_ids and mid not in self._ended
                 and mid != (self.start_info or {}).get("match_id")):
             t_minus = body.get("t_minus_ms")
+            gb = body.get("game_byte")
+            # X2: the advert byte the phone plays this match under. An older phone omits it (None).
             self._orphans[nid] = {"match_id": mid, "arm_state": arm, "t": t_recv,
-                                  "t_minus_ms": t_minus if isinstance(t_minus, int) and t_minus >= 0 else None}
+                                  "t_minus_ms": t_minus if isinstance(t_minus, int) and t_minus >= 0 else None,
+                                  "game_byte": gb if isinstance(gb, int) and not isinstance(gb, bool)
+                                  and 1 <= gb <= 255 else None}
         else:
             self._orphans.pop(nid, None)
 
@@ -4619,6 +4623,13 @@ class Session:
         self.start_info = {"match_id": match_id, "go_live_t": go, "seq": self.start_seq, "countdown_s": 0,
                            "adopted": True}
         self._scheduled_ids.add(match_id)
+        # X2: take the game byte the phones play under, so a station re-arm during this match keeps it.
+        # A fresh MC has game_no 1, and a re-arm on byte 1 cleared every station's tally and schedule. The
+        # step keeps game_no monotonic. No phone reports a byte (older phones): keep today's number.
+        bytes_seen = [o["game_byte"] for o in nids.values() if o.get("game_byte")]
+        if bytes_seen:
+            gb = max(set(bytes_seen), key=lambda b: (bytes_seen.count(b), b))
+            self.game_no += (gb - self._game_byte()) % 255
         self._game_no_started = True
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
@@ -7467,7 +7478,10 @@ class Session:
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
                 "nodes": nodes,
-                "stations": self.stations_view(), "game_no": self._game_byte(),   # A13.5: the ITEMS panel
+                "stations": self.stations_view(), "game_byte": self._game_byte(),   # A13.5: the ITEMS panel
+                # X10: `game_no` is the old name for the same byte (it wraps at 255; the count does not). Kept
+                # for an older console. Remove it once every console reads `game_byte`.
+                "game_no": self._game_byte(),
                 "readiness": self.readiness(), "config": self._snapshot_config(), "config_errors": self.config_errors,
                 "options": self._snapshot_options(),      # A25: session options (log_sync)
                 "versions": self.versions(),        # A29: the muster version header

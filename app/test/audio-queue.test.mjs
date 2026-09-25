@@ -223,11 +223,11 @@ for (const s of SCENARIOS) {
     }
   });
   test(`B ${s.id}: no line that is not must-hear starts more than ${ANNOUNCE_AUDIO_LATE_DEFAULT_MS} ms after its event`, () => {
-    // the spawn line is held out: a Shields spawn buries it under the fill's hum (its own todo test, finding B8)
-    for (const c of B[s.id].gun.clips.filter(x => !x.must && x.start != null && x.cue !== 'shield_loop' && x.cue !== 'hill_tick' && !BODY.has(x.cue) && x.cue !== 'spawn')) {
+    // the spawn line is in: since X3 it goes on the FIFO ahead of the fill that starts the hum (finding B8)
+    for (const c of B[s.id].gun.clips.filter(x => !x.must && x.start != null && x.cue !== 'shield_loop' && x.cue !== 'hill_tick' && !BODY.has(x.cue))) {
       assert.ok(c.latency <= ANNOUNCE_AUDIO_LATE_DEFAULT_MS + 100, `${c.cue} started ${c.latency} ms late`);
     }
-    for (const c of B[s.id].gun.clips.filter(x => !x.must && x.cue !== 'spawn')) assert.notEqual(c.status, 'never', `${c.cue} stuck on the gun`);
+    for (const c of B[s.id].gun.clips.filter(x => !x.must)) assert.notEqual(c.status, 'never', `${c.cue} stuck on the gun`);
   });
   test(`B ${s.id}: a line that is not must-hear goes only to a silent gun (at most one outstanding)`, () => {
     const clips = B[s.id].gun.clips;   // in arrival order
@@ -305,11 +305,15 @@ test('B first-blood-lead: the kill line and the first-blood medal are heard in f
   assert.equal(clipsOf(b, 'lead_taken').length, 0);
   assert.ok(silent(b, 'lead_taken'));
 });
-// Left `todo`: it waits on the bench (bench-2026-09-24.md Block 10 step 1, audio steps 1 and 4.3): how soon the hum starts
-// after the fill, and restarts after a stop, decides whether moving the line ahead of the fill is enough.
-test('B first-blood-lead: the spawn line on a Shields spawn is heard', { todo: 'F348 fills the shield 20 ms ahead of the spawn line in one write; the hum buries it (finding B8)' }, () => {
+// Finding B8, closed in the model by X3 (the fill goes LAST in the spawn write). It rests on the sim's `humWaitsForQueue`
+// ASSUMPTION (a hum that starts while a clip plays waits for it); bench-2026-09-24.md Block 10 step 4 confirms it.
+test('B first-blood-lead: the spawn line on a Shields spawn is heard', () => {
   const sp = one(B['first-blood-lead'], 'spawn');
   assert.ok(heardInFull(sp) && sp.latency <= ANNOUNCE_AUDIO_LATE_DEFAULT_MS, `${sp.status}, ${sp.latency} ms`);
+});
+test('B8 control: with a hum that cuts the queue (`humWaitsForQueue: false`), the spawn line is lost again', () => {
+  const sp = one(runScenario(sc('first-blood-lead'), 'B', rules({ humWaitsForQueue: false })), 'spawn');
+  assert.notEqual(sp.status, 'full', 'the fix depends on that assumption; the bench step decides it');
 });
 
 test('B death-with-kill-queued: the low-health line never plays after the death', () => {

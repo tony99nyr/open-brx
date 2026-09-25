@@ -613,3 +613,50 @@ def test_a_restart_from_a_live_snapshot_keeps_a_late_team_kill_frozen_out():
     assert s2.resume_match() == "recap", "the resumed facts still reach the cap the field heard"
     assert s2.scorer.team_scores()[team_a] == 2, f"the restart lowered the board: {s2.scorer.team_scores()}"
     assert s2.last_recap["winner"]["team_id"] == team_a
+
+
+# ── X2: an adopted match keeps the phones' game byte ───────────────────────────────────────────────
+# A fresh MC has game_no 1. The phones play under the byte the OLD MC armed (here 42). Before the fix a
+# station re-arm after RESUME MATCH moved every station to byte 1: the stations cleared their tally and
+# schedule, and the phones dropped the adverts (beacon.js scopes presence by byte).
+def _stations_game(net, nid):
+    return [b["game"] for n, k, b in net.pushed if n == nid and k == "station_config"]
+
+
+def test_x2_adopting_takes_the_game_byte_the_phones_report_so_a_station_re_arm_keeps_it():
+    s, net, clock, ps = mk(2, "ffa")
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    net.simulate_utility_hello("util-x2")
+    s.set_station("util-x2", {"kind": "respawn", "team": "any", "id": 4})
+    for i in range(2):
+        _status(net, clock, i, "live", "m-old", game_byte=42)
+    s.adopt_orphan("m-old")
+    assert s._game_byte() == 42, f"the adopted match must run on the phones' byte, not {s._game_byte()}"
+    assert s.snapshot()["game_byte"] == 42 and s.snapshot()["game_no"] == 42, "X10: both keys name the byte"
+    net.pushed.clear()
+    s.arm_stations()
+    assert _stations_game(net, "util-x2") == [42], "a re-arm must not move the station to another game"
+
+
+def test_x2_the_game_number_only_moves_forward_when_it_takes_the_phones_byte():
+    s, net, clock, ps = mk(1, "ffa")
+    online(s, net, clock, ps[0], 0)
+    s.game_no = 300                                        # byte 45
+    _status(net, clock, 0, "live", "m-old", game_byte=7)
+    s.adopt_orphan("m-old")
+    assert s._game_byte() == 7 and s.game_no > 300, s.game_no
+
+
+def test_x2_an_older_phone_with_no_game_byte_keeps_todays_behaviour():
+    s, net, clock, ps, _ = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s.adopt_orphan("m-old")
+    assert s.game_no == 1 and s._game_byte() == 1
+
+
+def test_x2_a_malformed_game_byte_is_ignored():
+    s, net, clock, ps = mk(1, "ffa")
+    online(s, net, clock, ps[0], 0)
+    _status(net, clock, 0, "live", "m-old", game_byte=0)   # 0 = "any game", never a match's byte
+    s.adopt_orphan("m-old")
+    assert s._game_byte() == 1

@@ -28,6 +28,7 @@ const SHIELD_REGEN_DELAY_MS = 6500;
 const SHIELD_REGEN_GRANTS = 4;     // F349: a full pool in 4 grants of ceil(max / 4), one a second
 const SHIELD_REGEN_STEP_MS = 1000;
 const SPAWN_SHIELD_FULL = true;    // F348: a Shields life starts at full shield (`$LIFE,0,0,<max>,*` in the spawn write)
+const SHIELD_FILL_ECHO_MS = 5000;  // F348: a spawn fill counts as shield up until its echo, at most this long (X3)
 const SHIELD_LOOP_MS = 1940;       // N74, replayed on its own length
 const HILL_TICK_MS = 1000;
 const SHIELD_CHARGING_MIN_MS = 1000;   // B only: `shield_charging` is said only for a refill longer than this
@@ -36,7 +37,7 @@ const IR_KILL_BANNER_MS = 2000;        // B only: brx4 engine.js, the IR KILL CO
 const MUST_HEAR_MAX_STOPS = 4;         // B only: brx4 engine.js, round 3 H1 (the loop + 3 clips)
 /** The engine numbers the test checks against app/src/engine.js, by name. */
 export const ENGINE_MIRROR = Object.freeze({ PAIN_GAP_MS, PAIN_STALE_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS,
-  SHIELD_REGEN_STEP_MS, SPAWN_SHIELD_FULL, SHIELD_LOOP_MS, HILL_TICK_MS, MEDAL_GAP_MS, CALLOUT_WINDOW_MS });
+  SHIELD_REGEN_STEP_MS, SPAWN_SHIELD_FULL, SHIELD_FILL_ECHO_MS, SHIELD_LOOP_MS, HILL_TICK_MS, MEDAL_GAP_MS, CALLOUT_WINDOW_MS });
 
 /** The cue each kind plays (golden bundle, first take). */
 export const CUE = Object.freeze({
@@ -49,8 +50,13 @@ export const CUE = Object.freeze({
  *  t23 = A10), then the golden bundle's `spawn` frames, which START WITH `$PLAYX,0,*` (the test checks both). */
 export const SPAWN_HEAD = Object.freeze(['$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H22,X49,U15,W71,A10,*',
   '$PLAYX,0,*', '$SPAWN,,*', '$TMP,,,,,,,,-100,,,,*', '$TID,1,*', '$AMMO,0,32,192,1,*', '$AMMO,1,6,24,1,*', '$BMAP,0,0,,,,,*']);
-/** The whole spawn write: head, F348's fill (Shields only), the flash, the spawn line. */
-const spawnWrite = (fill, line) => [...SPAWN_HEAD, ...(fill ? [`$LIFE,0,0,${fill},*`] : []), '$SFLASH,*', line];
+/** The whole spawn write. A (the app that Tony heard): head, F348's fill (Shields only), the flash, the spawn line.
+ *  B (engine.js since X3): head, the flash, the spawn line, then the fill LAST, so the line is on the FIFO ahead of the hum. */
+const spawnWrite = (fill, line, fillLast = false) => fillLast
+  ? [...SPAWN_HEAD, '$SFLASH,*', line, ...(fill ? [`$LIFE,0,0,${fill},*`] : [])]
+  : [...SPAWN_HEAD, ...(fill ? [`$LIFE,0,0,${fill},*`] : []), '$SFLASH,*', line];
+/** The frames ahead of the fill in B's spawn write (the gun parses them one frame gap apart). */
+const FILL_AT_B = SPAWN_HEAD.length + 2;
 const MEDALS = new Set(['first_blood', 'double_kill', 'triple_kill', 'killtacular', 'killing_spree', 'unstoppable']);
 const cueFrame = kind => kind === 'hill_tick' ? `$PLAY,${CUE.hill_tick},4,6,,,,,*` : play(CUE[kind]);
 
@@ -101,12 +107,13 @@ class Game {
     this.alive = false; this.hp = 0; this._set(t, 0); this.regen = null; this.pending = [];
     this.moments.push({ kind: 'death', hurtFired: this.hurtFired });
   }
-  /** engine.js `_spawn`: `$SPAWN` leaves the pool at 0; on a Shields game F348's fill (`$LIFE,0,0,<max>,*`, the second
-   *  frame of the spawn write) lands one frame gap later. The phone learns it from the echo, after the write. */
+  /** engine.js `_spawn`: `$SPAWN` leaves the pool at 0; on a Shields game F348's fill (`$LIFE,0,0,<max>,*`) lands where
+   *  the policy's spawn write puts it (A: right after the head; B: last, after the flash and the line). The phone learns
+   *  it from the echo, after the write. */
   spawn(t) {
     this.alive = true; this.hp = MAX_HP; this._set(t, 0); this.shieldDown = false; this.quietAt = t; this.regen = null; this.hurtFired = false;
     const fill = this.halo && SPAWN_SHIELD_FULL;
-    if (fill) this._later(t + SPAWN_HEAD.length * this.gapMs, this.maxShield);
+    if (fill) this._later(t + (this.fillLast ? FILL_AT_B : SPAWN_HEAD.length) * this.gapMs, this.maxShield);
     this.moments.push({ kind: 'spawn', fill: fill ? this.maxShield : 0 });
   }
   /** engine.js `_shieldTick` on main (F349: four grants of ceil(max / 4), one a second), on the engine's 250 ms tick. */
@@ -150,6 +157,7 @@ function makeCtx(sc, rules) {
 export function runScenario(sc, policyName, rules = GUN_RULES) {
   const ctx = makeCtx(sc, rules);
   const policy = policyName === 'A' ? new PolicyA(ctx) : new PolicyB(ctx);
+  ctx.game.fillLast = policyName !== 'A';   // X3: B writes the spawn fill last
   const events = sc.events.slice().sort((a, b) => a.t - b.t);
   let ei = 0;
   for (let t = 0; t <= sc.horizonMs; t += STEP_MS) {
@@ -296,22 +304,33 @@ class PolicyB {
     this.mustDue = 0;                  // must-hear lines scheduled (`delay`) and not yet written
   }
   // ----- the gun model's inputs -----
-  /** engine.js `_audioSync`: the loop blocks while `$PSET` t23 names a sound and the shield is above 0. */
-  _sync() { const c = this.ctx; this.model.setBlocked(humOf(c.sc) != null && c.game.shield > 0, c.t); }
+  /** engine.js `_audioSync`: the loop blocks while `$PSET` t23 names a sound and the shield is above 0, or a spawn fill
+   *  went out less than SHIELD_FILL_ECHO_MS ago and its echo has not filled the pool yet (X3). */
+  _sync() {
+    const c = this.ctx, g = c.game;
+    if (this.fillAt && (g.shield >= g.maxShield || !g.alive || c.t - this.fillAt > SHIELD_FILL_ECHO_MS)) this.fillAt = 0;
+    this.model.setBlocked(humOf(c.sc) != null && (g.shield > 0 || !!this.fillAt), c.t);
+  }
   /** engine.js `_audioWrite` for every write that is not a must-hear line. */
   _write(frames, why) {
     const c = this.ctx; this._sync();
     const stops = frames.filter(f => f === PLAYX).length;
     if (stops) { this.model._prune(c.t); this.model.clips.splice(0, this.model.blocked ? stops - 1 : stops); }
-    const plays = frames.filter(f => typeof f === 'object');
-    if (plays.length && this.model.blocked) {
-      plays.forEach(p => c.drop(p.cue, p.eventT, 'the shield loop blocks the gun'));
-      const rest = frames.filter(f => typeof f !== 'object');
-      if (rest.length) c.write(rest, why);
-      return;
+    // in write order (engine.js X3): `$SPAWN` stops the loop, a line goes on the FIFO unless the loop blocks, and the
+    // spawn fill starts the loop BEHIND the lines already queued
+    const out = [];
+    for (const f of frames) {
+      if (typeof f === 'object') {
+        if (this.model.blocked) { c.drop(f.cue, f.eventT, 'the shield loop blocks the gun'); continue; }
+        this.model.add(CLIP_MS[idOf(f.f)] || 2500, why, c.t, idOf(f.f));
+      } else if (f === '$SPAWN,,*') this.model.setBlocked(false, c.t);
+      else if (typeof f === 'string' && f.startsWith('$LIFE,0,0,') && why === 'spawn') {
+        this.fillAt = c.t;
+        if (humOf(c.sc) != null) this.model.setBlocked(true, c.t, true);
+      }
+      out.push(f);
     }
-    for (const p of plays) this.model.add(CLIP_MS[idOf(p.f)] || 2500, why, c.t, idOf(p.f));
-    c.write(frames, why);
+    if (out.length) c.write(out, why);
   }
   /** engine.js `_sayMust`: k stops (the hum counts as one while it blocks; at most MUST_HEAR_MAX_STOPS), then the
    *  line, in one write. */
@@ -437,7 +456,7 @@ class PolicyB {
         if (this.pendingHurt) this.pendingHurt = false;
         // F149 (gap B3, waiting on Tony): this stop cuts whatever plays, my own kill line included. See the todo test.
         else if (m.hurtFired) this._write([PLAYX], 'death: stop the low-health loop (F149)');
-      } else if (m.kind === 'spawn') { this._write(spawnWrite(m.fill, c.line('spawn', t)), 'spawn'); this.loopAt = 0; }
+      } else if (m.kind === 'spawn') { this._write(spawnWrite(m.fill, c.line('spawn', t), true), 'spawn'); this.loopAt = 0; }
       else if (m.kind === 'shield_charging') {
         if (m.refillMs > SHIELD_CHARGING_MIN_MS) this._line('shield_charging', t, { itemKind: 'status', key: 'status', preemptKey: true });
       }

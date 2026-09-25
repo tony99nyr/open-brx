@@ -613,6 +613,17 @@ test('low: an operator respawn of a live player with the overshield up restores 
   assert.equal(h.eng.state().powerup.overshield, null);
 });
 
+test('X10: an operator respawn whose overshield restore is lost retries it for the new life', async () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], psetPool: false });
+  h.at(61); h.take(6); h.frame('$HP,45,70,75,*'); h.adv(1500);
+  const n = h.mark();
+  h.failNext(f => f.startsWith('$PSET,') && psetT5(f) === 0);
+  h.eng._revive(false, null, true);
+  await settle();
+  const restores = h.since(n).filter(f => f.startsWith('$PSET,') && psetT5(f) === 0);
+  assert.equal(restores.length, 2, `the lost restore is sent once more: ${JSON.stringify(h.since(n).slice(0, 8))}`);
+});
+
 test('low: a new match clears the $PSET the overshield copies, and the T-0 spawn sets it again', () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
   assert.equal(h.eng._psetNow, golden.pset_pool[0], 'the T-0 spawn\'s pool take, set after the match reset');

@@ -50,7 +50,7 @@ export function Items() {
   return (
     <div style={{ marginTop: 20 }} data-testid="items-panel">
       <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
-        hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: T.warn }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_no ?? '—'} · ASSIGN, THEN PLACE — A STATION NEEDS NO WI-FI ONCE ARMED</>} />
+        hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: T.warn }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? state.game_no ?? '—'} · ASSIGN, THEN PLACE — A STATION NEEDS NO WI-FI ONCE ARMED</>} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
         {/* keyed on the node and the assignment ONLY. The phone's `report` (kind/team/id/threshold/…) is
             deliberately NOT in the key: it starts empty and fills in on the first heartbeat (~2s after
