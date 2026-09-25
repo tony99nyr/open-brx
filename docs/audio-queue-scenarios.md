@@ -1,8 +1,9 @@
-# Audio queue scenarios: what the gun plays, under the app on main and under the 0.4.12 rule
+# Audio queue scenarios: what the gun plays before and after the announcer queue
 
 2026-09-24. A deterministic simulator of the gun's audio channel, built from the bench, and ten game situations run
 through it twice: (A) the app before the announcer queue (0.4.11 plus F348's spawn at full shield and F349's
-four-grant recharge) and (B) the 0.4.12 rule (`docs/announcer.md`). B runs the REAL `Announcer` and `GunAudio` from
+four-grant recharge) and (B) the announcer queue, on main since `2c3ebb68` and first shipped in 0.4.12
+(`docs/announcer.md`). B runs the REAL `Announcer` and `GunAudio` from
 `app/src/announcer.js`, with the engine's glue around them mirrored, so the spec cannot drift from the queue's code.
 
 - Simulator: `app/tools/gun-audio-sim.mjs` (pure; every rule is a named constant in `GUN_RULES`, marked MEASURED
@@ -64,9 +65,9 @@ lines stop the hum and play at once under all three (a test checks this).
 SILENTLY, which is worse than A10. EMPTY is the safe choice if an empty t23 plays no loop at all (bench step 2 checks
 it).
 
-## How the phone sends audio on main (A)
+## How the phone sent audio before the announcer queue (A)
 
-Read against `app/src/engine.js` and `app/src/app.js` on main. The harness checks the mirrored numbers and the spawn
+Read against `app/src/engine.js` and `app/src/app.js` before `2c3ebb68`. The harness checks the mirrored numbers and the spawn
 frames against the source and the golden bundle.
 
 - **The engine tick is 250 ms** (`app.js`). The heartbeat, the hill tick, the recharge and brx4's announcer tick run on
@@ -230,7 +231,7 @@ two medal lines, because the gun model was empty there.
 ## Findings under B
 
 B fixes findings 1 to 4 for every must-hear line: each plays in full, at once, with the hum up or down, and under all
-three hum models. The gaps the first B run found, and what became of them (2026-09-24, branch `audio-gaps`):
+three hum models. The gaps the first B run found, and what became of them (2026-09-24, `2f21877a`, on main):
 
 - Finding B1, FIXED: the lead change expired (4 s TTL) behind two kill items (scenario 8). It is must-hear, so its TTL
   is now Infinity; a newer lead state still replaces it. It also outranks the medal lines now (the `medal` rank).
@@ -285,7 +286,7 @@ the harness does not. (The harness now mirrors the spree fold, 2026-09-24.)
 
 ## Proposed changes
 
-DONE on branch `audio-gaps` (2026-09-24), except items 2 and 4 below. The order of record is `ANNOUNCE_PRIORITY` in
+DONE on main (`2f21877a`, 2026-09-24), except items 2 and 4 below. The order of record is `ANNOUNCE_PRIORITY` in
 `app/src/announcer.js`; the harness imports it. The change to that list:
 
 ```diff
