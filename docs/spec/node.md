@@ -315,7 +315,8 @@ reconnect while `live` the node opens a `reconciling` window of `RECONCILE_MS = 
   deliberate 3 s hold is itself an anti-cheat: restarting to escape or heal is slow and pointless, while a
   genuine app crash costs 3 s (Tony's call, 2026-09-04).
 - **Keep the restored pools** — nothing that changes hp/armor is written.
-- When the window elapses, `_endReconcile` **re-arms to the real spawn `$AMMO` frames only if alive**, and
+- When the window elapses, `_endReconcile` **re-arms only if alive**, to the live counts snapshotted at
+  `_beginReconcile` (the spawn `$AMMO` row only for a slot never counted this life; F164), and
   **never writes `$SPAWN` or `$PSET`** — so a rejoin can never heal. Down → stay disarmed and down, awaiting a
   real respawn on its true `deadAt` timer.
 - **No death is inferred.** A missed death is booked only from POSITIVE evidence: a real `$HP,0` / `$LCD` line
@@ -385,7 +386,7 @@ plain damage**, so the node's rule is gated on the config too — a plain charge
 | extend | a second EMP inside the window pushes `until` out to a full window from now and writes nothing — no second disarm, never a double restore |
 | expiry | `tick()`: `$AMMO,<slot>,<mag>,<reserve>,1,*` per slot from the snapshot, once; `moment stun_over`, hook `stun_over`. A link that is down at expiry gets no write (the relink reconcile re-arms, §3.10) |
 | death | cancels with **no write** — `frames.revive` carries its own `$AMMO`, and `_revive` resets the per-slot counters as always |
-| rejoin | `_beginReconcile` cancels the stun: the reconcile owns the disarm/re-arm from there (coarse: it re-arms with the frame's counts) |
+| rejoin | `_beginReconcile` cancels the stun: the reconcile owns the disarm/re-arm from there (it re-arms to the live counts snapshotted at `_beginReconcile`, the spawn row only for a slot never counted this life; F164) |
 | `$ALCD` while stunned | ignored — a gun that cannot fire has no shot to count, and if the gun echoes our `$AMMO,0` (hardware-UNVERIFIED) that echo must not become the count we restore |
 | state | `state().stunned = {until, leftMs}` (null when not stunned) for a STUNNED takeover; not persisted (a reload during a stun loses the timer; the relink reconcile re-arms the gun) |
 | wire | nothing: a status row moves no pool, so no `hit_taken`; MC does not learn of stuns today (open) |

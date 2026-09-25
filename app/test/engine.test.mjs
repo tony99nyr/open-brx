@@ -1393,6 +1393,77 @@ test('S7.1 rejoin reconcile: a live gun disarms then re-arms, never a heal', () 
   assert.ok(!h.writes.slice(before).some(f => f.startsWith('$SPAWN')), 'never spawns on a rejoin');
 });
 
+test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a slot never counted this life falls back to spawn', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,192,0,*');                          // the life's first slot-0 report seeds the account
+  for (let m = 31; m >= 3; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,192,0,*`); }
+  h.adv(120); h.frame('$ALCD,3,100,0,40,0,*');                // a low magazine AND a spent reserve
+  h.adv(2000); h.eng.tick();
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  assert.ok(h.eng.state().reconciling, 'setup: the relink reconciles');
+  h.frame('$ALCD,0,100,0,0,0,*');                             // a real gun echoes the disarm: that 0 is not the live count
+  const before = h.writes.length, shots = h.eng.shots;
+  h.adv(3000); h.eng.tick();
+  const rearm = h.writes.slice(before).filter(f => f.startsWith('$AMMO,'));
+  assert.ok(rearm.includes('$AMMO,0,3,40,1,*'), `slot 0 re-arms at its live 3/40: ${JSON.stringify(rearm)}`);
+  assert.ok(!rearm.includes('$AMMO,0,32,192,1,*'), 'never the spawn magazine plus the spawn reserve');
+  assert.ok(rearm.includes('$AMMO,1,6,24,1,*'), `slot 1 was never counted this life, so it takes the spawn row: ${JSON.stringify(rearm)}`);
+  // The node's account agrees with the re-arm, so the gun's echo of it is bookkeeping, not a shot or a refill.
+  h.frame('$ALCD,3,100,0,40,0,*');
+  assert.equal(h.eng.state().ammo, 3, 'the HUD shows the re-armed magazine');
+  assert.equal(h.eng.shots, shots, 'the re-arm and its echo booked no shots');
+  assert.deepEqual(h.eng._liveAmmo()[0], [3, 40], 'the account is the re-armed count');
+  h.adv(20000); h.eng.tick();
+  assert.ok(!h.writes.slice(before).some(f => f.startsWith('$AMMO,0,') && f !== '$AMMO,0,3,40,1,*'), 'nothing writes another slot-0 count over the re-arm');
+});
+
+test('F164: an app restart mid-match keeps the live counts, so the reconnect re-arms them, not a spawn magazine; a new life clears them', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,192,0,*');
+  for (let m = 31; m >= 4; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,192,0,*`); }
+  h.adv(120); h.frame('$ALCD,4,100,0,64,0,*');
+  h.adv(2000); h.eng.tick();
+  // The app process dies and relaunches: a fresh engine on the same storage, then the gun relinks.
+  let clock = h.eng.now() + 10000; const w2 = [];
+  const eng2 = new Engine({ writer: f => w2.push(...f), emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: h.eng.storage, log: () => {}, delay: (ms, fn) => fn() });
+  eng2.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.ok(eng2.state().reconciling, 'setup: the relaunch reconciles');
+  eng2.feedFrame('$ALCD,0,100,0,0,0,*');                     // the disarm echo
+  const before = w2.length;
+  clock += 3000; eng2.tick();
+  const rearm = w2.slice(before).filter(f => f.startsWith('$AMMO,'));
+  assert.ok(rearm.includes('$AMMO,0,4,64,1,*'), `slot 0 re-arms at the saved 4/64: ${JSON.stringify(rearm)}`);
+  assert.ok(rearm.includes('$AMMO,1,6,24,1,*'), 'slot 1 was never counted, so it keeps the spawn row');
+  // A new life starts from the spawn frames: the saved counts must not carry across it.
+  eng2.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng2.feedFrame('$HP,0,0,0,*');
+  assert.equal(eng2.alive, false, 'setup: down');
+  clock += 20000; eng2.tick();
+  assert.equal(eng2.alive, true, 'setup: auto-respawned');
+  const saved = JSON.parse(h.eng.storage.getItem('brx.engine'));
+  assert.ok(!saved.ammo || !saved.ammo[0], `a new life saves no old counts: ${JSON.stringify(saved.ammo)}`);
+});
+
+test('F164 follow-up: the gun echoing the reconcile disarm books no shots, no life shots, no shot cue and no recoil', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,192,0,*');
+  for (let m = 31; m >= 20; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,192,0,*`); }
+  h.adv(5000); h.eng.tick();                                  // the burst settles and the shot cue is long over
+  const shots = h.eng.shots, life = h.eng._life && h.eng._life.shots, cue = h.eng.lastShot, burst = h.eng._recoil && h.eng._recoil.burst;
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  assert.ok(h.eng.state().reconciling, 'setup: the relink reconciles');
+  h.frame('$ALCD,0,100,0,0,0,*');                             // the gun echoes `$AMMO,0,0,0,1`: 20 rounds "left", none fired
+  h.frame('$ALCD,0,100,1,0,0,*');                             // ...and the secondary's zero
+  assert.equal(h.eng.shots, shots, 'the disarm echo is not fire');
+  assert.equal(h.eng._life && h.eng._life.shots, life, 'nor this life\'s rounds on the death screen');
+  assert.equal(h.eng.lastShot, cue, 'nor a shot-ready cue');
+  assert.equal(h.eng._recoil && h.eng._recoil.burst, burst, 'nor a recoil burst');
+  h.adv(3000); h.eng.tick();                                  // the re-arm, and its echo
+  h.frame('$ALCD,20,100,0,192,0,*');
+  assert.equal(h.eng.shots, shots, 'the re-arm echo is not fire either');
+  h.adv(120); h.frame('$ALCD,19,100,0,192,0,*');
+  assert.equal(h.eng.shots, shots + 1, 'CONTROL: a real round after the reconcile still counts');
+});
+
 test('node.md §3.10: resume() in LIVE RECONCILES — it never runs the retired trigger-first evidence protocol', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$LCD,29,70,0,0,10,384,*');            // alive at 29 hp — the state a resume must not touch

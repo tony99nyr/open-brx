@@ -547,8 +547,8 @@ test('H1: a reconcile keeps a held heavy: the disarm zeroes its slot, and the re
   const bs = h.batches.slice(b0);
   const disarm = bs.find(b => b.includes('$AMMO,0,0,0,1,*'));
   assert.ok(disarm && disarm.includes('$AMMO,2,0,0,1,*'), `the disarm zeroes the heavy too, or it fires while disarmed: ${JSON.stringify(disarm)}`);
-  const rearm = bs.find(b => b.includes('$AMMO,0,32,192,1,*'));
-  assert.ok(rearm && rearm.includes('$AMMO,2,1,0,1,*') && !rearm.includes('$AMMO,2,0,0,1,*'), `one re-arm write, the heavy's charge in it: ${JSON.stringify(rearm)}`);
+  const rearm = bs.find(b => b.includes('$AMMO,0,30,190,1,*'));   // F164: slot 0's LIVE count (two rounds spent before the take), not the spawn 32/192
+  assert.ok(rearm && rearm.includes('$AMMO,2,1,0,1,*') && !rearm.includes('$AMMO,2,0,0,1,*'), `one re-arm write, the heavy's charge in it: ${JSON.stringify(bs)}`);
   const s = h.eng.state().powerup;
   assert.ok(s.held, 'the item survived the reconcile and its echoes'); assert.equal(s.held.left, 1); assert.equal(s.held.active, true);
 });
@@ -664,7 +664,7 @@ test('r2 M1: a reconcile keeps a pending switch-back (the disarm echo is not its
   assert.ok(h.eng._puBackPending, 'setup: a switch-back pending');
   const b0 = h.batches.length;
   h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.adv(6000);
-  const bs = h.batches.slice(b0), ri = bs.findIndex(b => b.includes('$AMMO,0,32,192,1,*'));
+  const bs = h.batches.slice(b0), ri = bs.findIndex(b => b.includes('$AMMO,1,6,24,1,*'));   // the re-arm (F164: slot 0 at its live 30/190)
   assert.ok(ri >= 0 && bs.slice(ri).some(b => b.includes(WEAP0) && b.includes('$AMMO,0,30,190,1,*')), `re-sent after the re-arm: ${JSON.stringify(bs)}`);
   assert.equal(h.eng._puBackPending, null, 'answered by the real echo afterwards');
 });
