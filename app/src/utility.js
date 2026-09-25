@@ -15,7 +15,7 @@ import jsQR from 'jsqr';
 import { parseMcJoin } from './mcurl.js';
 import { startUtilitySweep, resolveTypedMc } from './transport/utility-join.js';   // bench 2026-09-24: the LAN sweep fallback + typed-address parsing
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
-import { RangeEdits, RANGE_KEY, TX_TO_WIRE, TX_FROM_WIRE, rangeHoldMs, RANGE_IDLE_MS } from './rangeedit.js';   // F365 / A67: the on-station range edit, synced to MC
+import { RangeEdits, RANGE_KEY, TX_TO_WIRE, txFromWire, rangeHoldMs, RANGE_IDLE_MS } from './rangeedit.js';   // F365 / A67: the on-station range edit, synced to MC
 import { createTapHoldGate } from './tapgate.js';   // F365: the RANGE hold reuses the hidden door's knock-safe hold
 
 // A29 (2026-09-12): "utility phones report the same way" -- the same "<version>+<sha>[-dirty]" a player
@@ -177,7 +177,8 @@ async function applyStationConfig(body) {
   if (body.threshold != null && body.threshold !== '' && Number.isFinite(+body.threshold) && range.mcDecides('threshold', body.threshold_age_ms)) {
     settings.threshold = applyThreshold(body.threshold, settings.threshold);
   }
-  if (TX_FROM_WIRE[body.tx_power] && range.mcDecides('tx_power', body.tx_power_age_ms)) settings.tx = TX_FROM_WIRE[body.tx_power];
+  const mcTx = txFromWire(body.tx_power);
+  if (mcTx && range.mcDecides('tx_power', body.tx_power_age_ms)) settings.tx = mcTx;
   // A58: the tamper lock, seconds from receipt (0-7200); absent or 0 = unlocked, and every station_config replaces it.
   const lockS = Number.isFinite(+body.lock_s) ? Math.max(0, Math.min(7200, +body.lock_s)) : 0;
   settings.lockUntil = lockS > 0 ? Date.now() + lockS * 1000 : 0;
@@ -800,7 +801,8 @@ function wireRangeHold() {
   btn.addEventListener('keyup', e => { if (e.key !== activeKey) return; e.preventDefault(); stop(); });
   btn.addEventListener('blur', stop);
   // No click path, on purpose: a click (a tap, a knock, a synthesised activation) never opens the range. Unlike the
-  // exit hold, this unlocks a live station's settings, so the only way in is a held contact or a held key.
+  // exit hold, this unlocks a live station's settings, so the only way in is a held contact or a held key. A screen
+  // reader user still has a click-only path: the seven-tap drawer's RADIUS controls, which record the same edit.
 }
 
 /** C1 (critical review 2026-09-24): "ROCKET LAUNCHER" ran out of the ring and off the screen. The word may take two balanced

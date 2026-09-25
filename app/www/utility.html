@@ -227,6 +227,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 /* the hold: a plain rectangle, 44px+, its fill runs left to right; under an A58 lock it is amber-edged with a striped red fill */
 .rhold{position:relative;overflow:hidden;display:block;width:100%;min-height:48px;margin-top:12px;padding:10px 12px;border:1px solid var(--edge);background:var(--plate2);color:var(--num);font:700 13px var(--fl);letter-spacing:.16em;-webkit-user-select:none;user-select:none;touch-action:none}
 .rhold[hidden]{display:none}
+.rhold:focus-visible{outline:2px solid var(--glow);outline-offset:2px}
 .rhold .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:color-mix(in srgb,var(--glow) 34%,transparent)}
 .rhold .lbl{position:relative}
 .rhold.a58{border-color:var(--warn);color:var(--warn)}
@@ -372,7 +373,7 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:8px 0 0
        flow) or any element id utility.js drives. -->
   <div class="side" id="side">
     <section class="panel range" id="range" aria-label="station range">
-      <h3>RANGE<span class="rlock" id="rangeLock"></span></h3>
+      <h3>RANGE<span class="rlock" id="rangeLock" aria-live="polite"></span></h3>
       <div class="rrow"><span class="rlab">STRENGTH<span class="rsrc" id="txSrc"></span></span><div class="seg rctl" role="group" aria-label="transmit strength"><button data-tx="ultraLow"><span>ULTRA LOW</span></button><button data-tx="low"><span>LOW</span></button><button data-tx="medium"><span>MEDIUM</span></button><button data-tx="high"><span>HIGH</span></button></div></div>
       <div class="rrow"><label class="rlab" for="thrNum">RADIUS<span class="rsrc" id="thrSrc"></span></label><span class="rctl stack"><span class="thrbox"><span class="neg" aria-hidden="true">−</span><input id="thrNum" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off" aria-label="at-the-station edge in minus dBm: type 70 for −70 dBm"><span class="unit">dBm</span></span><span class="rhint" id="rhint" aria-live="polite">35 = TIGHT · 95 = WIDE</span></span></div>
       <!-- F365: on the field the panel is a readout until this is HELD (1.5 s; 5 s under an MC tamper lock). A tap or a knock

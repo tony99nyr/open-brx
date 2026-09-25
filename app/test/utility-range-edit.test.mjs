@@ -92,6 +92,10 @@ test('A67: tx_power: absent keeps the station\'s own; present applies; each fiel
   api.stationEdit('tx_power', 'medium');
   await api.applyStationConfig({ ...arm, threshold: -58 });
   assert.equal(api.settings.tx, 'medium', 'no tx_power from MC: the station keeps its own');
+  for (const junk of ['constructor', 'toString', 'HIGH', 7]) {
+    await api.applyStationConfig({ ...arm, threshold: -58, tx_power: junk, tx_power_age_ms: 0 });
+    assert.equal(api.settings.tx, 'medium', `a junk tx_power (${junk}) is ignored`);
+  }
   assert.equal(api.statusBody().tx_power, 'medium');
   api.stationEdit('threshold', -61);
   await api.applyStationConfig({ ...arm, threshold: -50, threshold_age_ms: 60_000, tx_power: 'ultra_low', tx_power_age_ms: 0 });

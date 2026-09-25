@@ -23,6 +23,8 @@ export const RANGE_EDITS_MAX = 8;
 /** The screen's strength names (utility.js settings.tx) and the wire's (A67: lowercase snake). */
 export const TX_TO_WIRE = Object.freeze({ ultraLow: 'ultra_low', low: 'low', medium: 'medium', high: 'high' });
 export const TX_FROM_WIRE = Object.freeze({ ultra_low: 'ultraLow', low: 'low', medium: 'medium', high: 'high' });
+/** The screen name for a wire strength, or null for anything else (an own key only: "constructor" is not a strength). */
+export const txFromWire = v => (typeof v === 'string' && Object.hasOwn(TX_FROM_WIRE, v) ? TX_FROM_WIRE[v] : null);
 
 /** A non-negative age in ms, or null when absent or not a number (an older MC sends no age). */
 export function wireAge(v) {
@@ -50,9 +52,9 @@ export class RangeEdits {
       if (Number.isInteger(saved.sent) && saved.sent >= 0) s.sent = Math.min(saved.sent, s.seq);
       for (const k of RANGE_FIELDS) {
         const f = saved.f && saved.f[k];
-        if (f && (f.src === 'station' || f.src === 'mc')) s.f[k] = { src: f.src, seq: +f.seq || 0, at: +f.at || 0 };
+        if (f && (f.src === 'station' || f.src === 'mc')) s.f[k] = { src: f.src, seq: Number.isInteger(f.seq) ? f.seq : 0, at: Number.isFinite(f.at) ? f.at : 0 };
       }
-      if (Array.isArray(saved.log)) s.log = saved.log.filter(e => e && Number.isInteger(e.seq) && RANGE_FIELDS.includes(e.field)).slice(-RANGE_EDITS_MAX);
+      if (Array.isArray(saved.log)) s.log = saved.log.filter(e => e && Number.isInteger(e.seq) && RANGE_FIELDS.includes(e.field) && Number.isFinite(e.at)).slice(-RANGE_EDITS_MAX);
     }
     this.st = s;
   }
