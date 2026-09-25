@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed).
+Updated: 2026-09-25 (F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,15 +9,15 @@ Updated: 2026-09-25 (F347, F350 and F378 closed at the desk; F319 closed, Q13 to
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 71.** Desk 3 · bench 65 · decision 3.
+**MVP open: 72.** Desk 3 · bench 66 · decision 3.
 
 **MVP DESK (3),** a keyboard is enough:
 - 🟠 **B21** · **F372**
 - 🟡 **F377**
 
-**MVP BENCH (65),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (66),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
-- 🟠 **F349** · **F308** · **F374** · **S58** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F382** · **F383** · **F384** · **F385** · **F387** · **F388** · **F389** · **F391** · **F393** · **F394**
+- 🟠 **F349** · **F308** · **F374** · **S58** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F382** · **F383** · **F384** · **F385** · **F387** · **F388** · **F389** · **F391** · **F393** · **F394** · **F399**
 - 🟡 **Q13** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F381** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398**
 - 🟢 **F339**
 
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F399 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F400 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -143,6 +143,7 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 
 - **F379 🔴 A ROCKET SHOT LEAVES THE GUN'S ALT POINTER OUT OF SYNC WITH THE PHONE'S ASSUMED WEAPON.** Sitting B, 2026-09-25, reproduced twice: after firing the rocket, ALT animated and showed SHOTGUN on the HUD, but the trigger fired the USP and the gun's own pointer had switched to it; the desync follows a rocket SHOT (the pickup slot's switch-back), not ALT or the reload lever alone. A second repro (match `982ddfaf2c`, no pickup held) showed the same shape from plain ALT-cycling: on the second switch to USP the HUD ammo read wrong until the next trigger pull. Cause, high confidence, refined twice over the sitting: pickup writes (`_puEquip engine.js:5397-5411`, `_puGrantWeapon :5542-5567`, `_puEnd :5644-5654`, `_puBackResend :5634-5639`) write the trigger with raw `$WEAP`+`$AMMO` and never move the gun's own `$BMAP` pointer; `_altPressed`/`_nextAltSlot` (`:6268`, `:5379-5380`) and the tick's assumed swap (`:3729-3734`) assume the active slot mirrors that pointer, so ALT after a rocket assumes SHOTGUN while the gun's pointer has advanced to USP, corrected only on the next shot's `$ALCD` (`_onAmmo ~:6469`). `_puBackTick` (`:3720`, `:5645-5650`) re-sends a stale switch-back every 1.5 s because `_puBackPending` (set `:5652`) clears only on a loadout-slot shot (`_puAmmo :5598-5600`), and can stomp the active slot mid ALT-then-reload; the same one-time back snapshot (`:5554-5556`) replayed by every resend explains a 2-round reload seen the same match. Fix: stop assuming the active slot mirrors `$BMAP` after a raw pickup write, and clear `_puBackPending` on any confirming gun evidence, not only a loadout shot. Bench A/B: ALT onto the secondary with no fire, take the rocket, empty it, ALT once, compare the gun's next `$ALCD` slot against the phone's assumed target. `bench` + `build`.
 
+- **F399 🟠 A STICK POWERUP CLAIM TAKES 2-13 S TO CONFIRM, SO THE PLAYER STANDS AT THE STATION WITH NO ANSWER.** Sitting B, 2026-09-25: the grey Pixel's log (synced to MC's session DB `~/.brx-mcp/mc/session-7b8a251c.sqlite`, `node-b8304e18b5` `log_data`, 1 s resolution) shows "claim ready" to the grant write on 9 claims at station 1 took 9, 13, 10, 4, 9, 2, 9, 8 and 4 s (median 9 s). The phone grants only on a fresh Stick advert naming the taker, so the delay is the Stick's confirm path: its advert interval, its scan window, or when it decides. Separate from F380 (the phone's NOT ANSWERING bound, 15 s). Owner brx4. Target: a confirm within about 1 s of claim ready. `bench` + `build`.
 - **F380 🟠 A POWERUP CLAIM CAN FALSE-REPORT "NOT ANSWERING" WHILE THE GRANT IS STILL COMING.** Sitting B, 2026-09-25, seen 3 times (2 of 4 pickups on one claim, then once more on a later real claim). Cause, high confidence: `engine.js:5717-5719` flips the pickup hint to `no_answer` (`POWERUP_NO_ANSWER_MS`, `:601`, 3000 ms) after the dwell's `readyAt` unless the grant has landed; the grant only arrives from `_puTakerCheck` (`:5493-5511`) on a fresh Stick advert naming the taker, so a confirmation over 3 s behind the dwell reads as a false failure even though the claim succeeds moments later. Fix: widen the window, or show HOLD/CONFIRMING until the advert lands and only say NOT ANSWERING after a real timeout. `bench` + `build`.
 
 - **F381 🟡 PICKING UP THE SAME WEAPON WHILE HOLDING CHARGES SHOULD ADD, NOT RESET.** Tony's decision, sitting B, 2026-09-25: taking the same powerup weapon again while some charges remain should ADD to the held count (1 left + 2 = 3); today it resets to 2. Cap not yet decided. Find the pickup grant's charge-set logic (near `_puGrantWeapon`, engine.js) and change it to add, with a cap once Tony picks one. `bench` + `build`.
