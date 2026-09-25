@@ -1,6 +1,6 @@
 # Followups — open work only
 
-Updated: 2026-09-24 (evening/overnight, brx4 session close). **Everything in this file is open.** Closed items are in
+Updated: 2026-09-25 (integration review X1-X10: F347, F351, F362). **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), ordered by close date with the newest last; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
