@@ -88,7 +88,7 @@ test('lanes: the IR word and MC confirm for one kill are ONE hero row, named by 
   h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(300); h.kill();
   const k = h.eng.state().lanes.hero.kills;
   assert.equal(k.length, 1, 'one kill, one row');
-  assert.deepEqual([k[0].victim, k[0].src], ['VIPER', 'IR 15 · MC']);
+  assert.deepEqual([k[0].victim, k[0].src], ['VIPER', 'IR · MC']);
 });
 
 test('lanes: another alert is a FEED row; downs are FEED rows; a new match clears every lane', () => {

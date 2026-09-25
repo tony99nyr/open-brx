@@ -2919,7 +2919,7 @@ export class Engine {
     // cuts our own hill callout. Behind any other item (a kill confirm, a lead change) it waits like everything else.
     const cue = this._hillCue(kind);
     const card = kind === 'hill_captured' || kind === 'hill_lost';
-    if (card) this._laneObj('hill', { kind, src: /control point/.test(why) ? 'BLE' : 'IR 15' });
+    if (card) this._laneObj('hill', { kind, src: /control point/.test(why) ? 'BLE' : 'IR' });
     if (!cue.frame && !card) return;
     this._ann.push({ kind: card ? kind : 'alert', key: 'hill', preemptKey: true, stopsOwn: true, audioMs: cue.frame ? cue.ms : 0, ...(card ? {} : { bannerMs: 0 }),
       ok: () => this._hillAudioOn(),
@@ -3057,7 +3057,7 @@ export class Engine {
     // ("YELLOW DOWN · BY GHOST"). Read-only presentation, present only when the word named a killer.
     const by = isDownBy ? this.nameOf(player) : null;
     const kind = teammate ? 'teammate_down' : 'enemy_down';
-    const row = this._laneFeed({ kind, name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, by, src: 'IR 15' });
+    const row = this._laneFeed({ kind, name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, by, src: 'IR' });
     if (entry) entry.lane = row;   // the victim's DOWN word names this row when it pairs (below)
     const line = teammate ? null : `$PLAY,,4,6,${IR_CALLOUT.ENEMY_DOWN_CUE},,,,*`;   // row 3: a teammate gets the HUD chip only, no sound
     const it = this._ann.push({ kind, src: 'ir', audioMs: line ? clipMs(line) : 0,
@@ -3098,10 +3098,10 @@ export class Engine {
     const mcAlreadyConfirmed = this._takeKillMatch(this._mcKillOpen, tid, now);
     let it = null;
     // The HERO lane: MC's confirm for this kill already made the row, so the IR word only adds its source to it
-    if (mcAlreadyConfirmed && mcAlreadyConfirmed.lane) this._laneUpdate(mcAlreadyConfirmed.lane, { src: 'MC · IR 15' });
+    if (mcAlreadyConfirmed && mcAlreadyConfirmed.lane) this._laneUpdate(mcAlreadyConfirmed.lane, { src: 'MC · IR' });
     if (pair) pair.lane = mcAlreadyConfirmed ? mcAlreadyConfirmed.lane || null : null;
     if (!mcAlreadyConfirmed) {
-      const entry = { at: now, team: tid, lane: this._laneKill({ victim: null, team: callout.team, src: 'IR 15' }) };
+      const entry = { at: now, team: tid, lane: this._laneKill({ victim: null, team: callout.team, src: 'IR' }) };
       if (pair) pair.lane = entry.lane;
       this._irKillOpen.push(entry);
       const pick = this._pickCue('kill');
@@ -4880,7 +4880,7 @@ export class Engine {
     const irAlreadyConfirmed = !!irMatch;
     let laneRow = null;
     if (body.kind === 'kill') {   // the HERO lane: MC names the IR word's row in place, or makes its own
-      if (irMatch && irMatch.lane) this._laneUpdate(laneRow = irMatch.lane, { victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [], src: 'IR 15 · MC' });
+      if (irMatch && irMatch.lane) this._laneUpdate(laneRow = irMatch.lane, { victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [], src: 'IR · MC' });
       else laneRow = this._laneKill({ victim: this.victimName(body), team: body.victim_team, medals: Array.isArray(body.medals) ? body.medals : [], src: 'MC' });
     }
     let mcEntry = null;

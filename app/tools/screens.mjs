@@ -4679,7 +4679,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const r = await lnWait(pg, r => r.hero && r.hero.name === 'VIPER', 2500); await shot(pg, 'hero'); await pg.close();
     must(r.hero, 'no hero on screen for my kill');
     must(r.hero.name === 'VIPER' && r.hero.kill === 'KILL' && !r.hero.count && !r.hero.medal, `the hero: ${JSON.stringify(r.hero)}`);
-    must(r.hero.src === 'MC' && r.hero.srcPx >= 11, `the source line (MC / IR 15 / BLE, >= 11 px): ${JSON.stringify([r.hero.src, r.hero.srcPx])}`);
+    must(r.hero.src === 'MC' && r.hero.srcPx >= 11, `the source line (MC / IR / BLE, >= 11 px): ${JSON.stringify([r.hero.src, r.hero.srcPx])}`);
     must(r.weapon && !r.hero.text.includes(r.weapon.toUpperCase()) && !/\+1|ELIMINATION|\bK ?\d/.test(r.hero.text), `no weapon (${r.weapon}), no "+1 ELIMINATION", no K: ${JSON.stringify(r.hero.text)}`);
     must(r.hero.mid > .45 && r.hero.mid < .55 && r.hero.namePx >= 30, `centred, the name >= 30 px: ${JSON.stringify([r.hero.mid, r.hero.namePx])}`);
     must(!/gradient|rgba?\((?!0, 0, 0, 0\))/.test(r.scrim), `the whole HUD is not dimmed behind it: ${r.scrim}`);
@@ -4715,7 +4715,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     await pg.waitForTimeout(6000); const h2 = await lnRead(pg);
     await pg.evaluate(() => window.brxDemo.hillTaken(window.brx.engine.teamTid === 2 ? 1 : 2)); const h3 = await lnWait(pg, r => r.obj.some(o => o.kind === 'hill_lost'), 2000); await shot(pg, 'hill'); await pg.close();
     const hb = h.obj.find(o => o.key === 'hill');
-    must(hb && hb.text === 'HILL CAPTURED' && hb.src === 'IR 15' && hb.x >= .7, `the hill badge: ${JSON.stringify(hb)}`);
+    must(hb && hb.text === 'HILL CAPTURED' && hb.src === 'IR' && hb.x >= .7, `the hill badge: ${JSON.stringify(hb)}`);
     must(h2.obj.some(o => o.kind === 'hill_captured'), `the hill badge must still be up 6 s later: ${JSON.stringify(h2.obj)}`);
     must(h3.obj.filter(o => o.key === 'hill').length === 1 && h3.obj.find(o => o.key === 'hill').text === 'HILL LOST', `replaced by HILL LOST: ${JSON.stringify(h3.obj)}`);
   });
@@ -4733,7 +4733,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const t0 = r.now; const at3 = await lnWait(pg, x => x.now - t0 >= 3000, 3500);
     const gone = await lnWait(pg, x => !x.feed.some(f => f.kind === 'teammate_down'), 3000); await pg.close();
     const f = r.feed.find(x => x.kind === 'teammate_down');
-    must(f && f.text === 'MAVERICK DOWN' && /IR 15/.test(f.sub), `the row: ${JSON.stringify(f)}`);
+    must(f && f.text === 'MAVERICK DOWN' && /IR/.test(f.sub) && !/IR \d/.test(f.sub), `the row: ${JSON.stringify(f)}`);
     must(f.x <= .35 && f.px >= 15 && f.subPx >= 11 && f.lines === 1, `left, small, one line, type floors: ${JSON.stringify(f)}`);
     must(at3.feed.some(x => x.kind === 'teammate_down'), 'the row must still be up 3 s later');
     must(!gone.feed.some(x => x.kind === 'teammate_down') && gone.now - t0 <= 4300 + 400, `the row must leave by about 4.3 s: ${Math.round(gone.now - t0)} ms`);
@@ -4779,6 +4779,18 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(lnCovers(r).length === 0, lnCovers(r).join(' | '));
     must(lnApart(r).length === 0, 'lanes over each other: ' + lnApart(r).join(' | '));
     must(lnBoxes(r).every(([, x]) => x.l >= r.frame.l - 1 && x.r <= r.frame.r + 1 && x.t >= r.frame.t - 1 && x.b <= r.frame.b + 1), 'a lane runs off the frame');
+  });
+  await step(`${tag}: every source tag says MC, IR or BLE (no protocol number) at 14 frame px, the 11 px on-screen floor (Tony 2026-09-25)`, async () => {
+    const pg = await open(view, 'live-spree', N, 2500);
+    await lnWait(pg, r => r.hero && r.obj.length === 2 && r.feed.length, 8000);
+    const t = await pg.evaluate(() => { const sc = document.getElementById('frame').getBoundingClientRect().width / 844;
+      return [...document.querySelectorAll('#lanes .lsrc')].filter(e => getComputedStyle(e).display !== 'none').map(e => ({ lane: e.closest('.lh') ? 'hero' : e.closest('.lo') ? 'objective' : 'feed',
+        text: e.textContent.trim(), px: parseFloat(getComputedStyle(e).fontSize), screen: +(parseFloat(getComputedStyle(e).fontSize) * sc).toFixed(2) })); });
+    await pg.close();
+    must(['hero', 'objective', 'feed'].every(l => t.some(x => x.lane === l)), `a tag in every lane: ${JSON.stringify(t)}`);
+    const bad = t.filter(x => /\bIR\s*\d/.test(x.text) || !/\b(MC|IR|BLE)\b/.test(x.text));
+    must(bad.length === 0, `a tag names a protocol number or no source: ${JSON.stringify(bad)}`);
+    must(t.every(x => x.px === 14 && x.screen >= 11), `every tag at 14 frame px and >= 11 px on screen: ${JSON.stringify(t)}`);
   });
   if (night) await step(`${tag}: red and amber only: nothing white, green or blue, no flash, no motion`, async () => {
     const pg = await open(view, 'live-spree', N, 2500);

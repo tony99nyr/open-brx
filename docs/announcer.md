@@ -145,8 +145,8 @@ queue, so the screen can show more than the voice says. The timings are in `app/
 Rules:
 
 - A kill, a lead change and a hill capture at the same moment are all on screen at once.
-- Every item has a small source line: `MC`, `IR 15` (the S57 word) or `BLE` (a station). An MC confirm and the IR word
-  for the same kill are one HERO row (`IR 15 · MC`), with one flash and one buzz.
+- Every item has a small source line: `MC`, `IR` (the S57 word) or `BLE` (a station). An MC confirm and the IR word
+  for the same kill are one HERO row (`IR · MC`), with one flash and one buzz.
 - The HERO shows no weapon and no "+1 ELIMINATION" or K count.
 - The medal labels come from `contract.gen` `MEDALS`. BEAT DOWN (`beat_down`, a melee kill) and KILLJOY (`killjoy`, an
   enemy's spree ended) have local labels in `hud.js` `MEDAL_FALLBACK` until MC sends them (TODO: contract). Neither has

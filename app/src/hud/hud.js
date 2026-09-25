@@ -1956,7 +1956,7 @@ export class Hud {
    *  the newest medal big, the earlier ones as a fading ladder, with a ×N count; up until `heroUntil` (2.5 s after the
    *  last kill, or longer while that kill's own announcer slot is on air). OBJECTIVE, on the right: the lead and the hill,
    *  each up until the next one of its key replaces it. FEED, on the left: downs, pickups and every other alert (BOMB
-   *  PLANTED, ONE MINUTE LEFT), 4 s a row. Each item carries a small source line (MC, IR 15, BLE); no weapon, no "+1". The down screen
+   *  PLANTED, ONE MINUTE LEFT), 4 s a row. Each item carries a small source line (MC, IR, BLE); no weapon, no "+1". The down screen
    *  owns a dead phone, so nothing here draws unless the player is live and alive. */
   /** Keyed sync for one lane: each item is one element's HTML carrying `data-lk`. A kept node takes the new class,
    *  style, data and content in place (so its own entrance animation does not re-run); a new key is inserted; a gone
