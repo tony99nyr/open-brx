@@ -22,6 +22,7 @@ import { APP_VER, platformName } from './build.js';                  // the REAL
 import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
 import { installTapHoldDoor } from './tapgate.js';                   // T2-B: taps AND a hold on the last, for the hidden utility-mode door
+import { WebDebug } from './webdebug.js';                             // B21: the WebView debugging switch
 import { locationCheck, locationTickDue, afterLocationOn } from './location.js';   // F340: Android 11 and older scan nothing with Location off
 
 const $ = id => document.getElementById(id);
@@ -95,6 +96,7 @@ function switchRole(role) { settings.role = role; location.replace(role === 'uti
 
 // ---------- wiring ----------
 const hud = new Hud(document, {});
+const webDebug = new WebDebug();
 try { window.__hud = hud; } catch (_) { /* rig/screen-truth hook */ }
 let transport = null;
 const link = new BrxLink({
@@ -639,6 +641,10 @@ Object.assign(hud.h, {
     if (j) connectMc(j.url, true, { pub: j.pub, secret: j.secret, user: true });
     else connectMc(v, true, { user: true });   // not a recognised join code — let it through as a bare address (the mandatory floor, §5)
   },
+  onToggleWebDebug: () => {
+    webDebug.toggle().then(on => { log(`WebView debugging ${on ? 'ON' : 'OFF'} (stored on this phone)`, 'lk'); scheduleRender(); })
+      .catch(e => log('WebView debugging switch failed: ' + (e && e.message || e), 'le'));
+  },
   onToggleNight: () => { engine.setNight(!engine.night); hud.sig = null; scheduleRender(); },   // the header ☾/☀ and the diag NIGHT button
   onToggleMcPill: () => { hud.mcPill = !hud.mcPill; scheduleRender(); },   // live: show/hide the out-of-range detail (review #32)
   onCloseDiag: () => hud.toggleDiag(),
@@ -749,6 +755,7 @@ function renderNow() {
     timings: { offset_ms: transport ? Math.round(transport.clock.offset || 0) : 0, synced: st.synced, queue: transport ? transport.ring.pending().length : 0, t_minus_ms: st.tMinusMs, clock_ms: st.clockMs },
     frames: link.frames.slice(-14), log: logLines.slice(-30),
     stations: presence.stations().map(stationView),
+    webDebug: webDebug.state,
   });
 }
 setInterval(() => { presenceTick(); engine.tick(); syncPlayerAdvert().catch(() => {}); scheduleRender(); }, 250);
@@ -1038,6 +1045,7 @@ async function sweepForMc() {
       if (!transport || transport.state !== 'bound') sweepForMc().catch(() => {});
     }, 15000);
   }
+  webDebug.load().then(scheduleRender, e => log('WebView debugging state unreadable: ' + (e && e.message || e), 'le'));
   await refreshPreflight(); scheduleRender();
 })();
-window.brx = { engine, link, hud, get transport() { return transport; }, connectMc, log: logLines, C, presence, beaconWatch, switchRole, logsync, logSnapshot, APP_VER };
+window.brx = { engine, link, hud, get transport() { return transport; }, connectMc, log: logLines, C, presence, beaconWatch, switchRole, logsync, logSnapshot, APP_VER, webDebug };

@@ -2313,7 +2313,8 @@ export class Hud {
     // QA-24 (2026-09-23): ONE close control. The top ✕ duplicated CLOSE in the action row and cost the join block 30px.
     this.diag.innerHTML = `${mcjoin}
       <div class="dbody" id="dbody">
-        <h3>WARNINGS</h3><div class="dgwarn" id="dg-warn">${this._warnHtml || '<span class="mut">NONE</span>'}</div>${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
+        <h3>WARNINGS</h3><div class="dgwarn" id="dg-warn">${this._warnHtml || '<span class="mut">NONE</span>'}</div>${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}
+        <div class="dgdev" id="dg-dev" hidden><h3>DEVELOPER</h3><div class="devrow"><span id="dg-webdebug-state"></span><button data-act="onToggleWebDebug" id="dg-webdebug"></button></div></div>${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
       </div>
       <div class="gunhint" id="dg-gunhint" role="status" aria-live="assertive"></div>
@@ -2363,6 +2364,18 @@ export class Hud {
     if (mcInp && document.activeElement !== mcInp && mcInp.value !== (this.mcUrl || '')) mcInp.value = this.mcUrl || '';
     put('dg-pf', kv(pf));
     put('dg-link', kv(d.link || {}));
+    // B21: the WebView debugging switch. `webDebug` is null where there is no switch (iOS, the browser stage), so the
+    // section stays hidden. The button is a permanent node and only its label changes (F122: a rebuilt button eats a tap).
+    const dev = this.diag.querySelector('#dg-dev'), wd = d.webDebug;
+    if (dev) {
+      const show = wd === true || wd === false;
+      if (dev.hidden === show) dev.hidden = !show;
+      if (show) {
+        put('dg-webdebug-state', wd ? 'WEBVIEW DEBUGGING <span class="ok">ON</span>' : 'WEBVIEW DEBUGGING <span class="mut">OFF</span>');
+        const wb = this.diag.querySelector('#dg-webdebug'), label = wd ? 'TURN OFF' : 'TURN ON';
+        if (wb && wb.textContent !== label) wb.textContent = label;
+      }
+    }
     put('dg-eng', kv(d.engine || {}));
     put('dg-tim', kv(d.timings || {}));
     put('dg-frames', esc((d.frames || []).map(f => `${f.dir === 'tx' ? '>>' : '<<'} ${f.f}`).join('\n')));

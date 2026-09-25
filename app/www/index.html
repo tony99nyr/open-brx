@@ -905,6 +905,9 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 [data-env="night"] #diag,[data-env="night"] #diag .btns,[data-env="night"] #diag .gunhint,[data-env="night"] #diag .btns button{background:#000}
 [data-env="night"] #diag h3,[data-env="night"] #diag .mcjoinnote{color:var(--num)}
 #diag .gunhint:empty{display:none}
+#diag .devrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font:11px/1.4 ui-monospace,monospace}   /* B21: the WebView debugging switch */
+#diag .devrow button{font:700 11px var(--fl);letter-spacing:.06em;padding:8px 10px;border:1px solid var(--edge);color:var(--num);min-height:44px;background:rgba(12,28,44,.85)}
+[data-env="night"] #diag .devrow button{background:#000}
 #diag .gunhint .warn{color:var(--warn);font-weight:700}
 #diag .btns button:disabled{opacity:.55}
 /* Polish-loop pass 1: a LAN-sweep hit MC, offered rather than auto-joined — one tap accepts it. Same row

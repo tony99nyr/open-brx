@@ -376,6 +376,10 @@ CoreBluetooth or the camera without the corresponding usage string**, and the cr
 - `npm ci` prints a warning that **esbuild's install script was skipped** (npm 11+ blocks install
   scripts by default). It is harmless — the platform package ships the binary and the build works.
   Verified from a clean `npm ci`.
+- **WebView debugging is a switch on the phone (B21).** The ⓘ diagnostics panel's DEVELOPER row turns
+  Android WebView debugging (chrome://inspect, the CDP forward) on or off. `plugins/brx-debug` stores the choice
+  and applies it when the app starts, so it holds across restarts and in the release build. The default is
+  ON (`DEFAULT_ON` in `BrxDebugPlugin.java`) while MVP features are still being built. iOS has no switch yet.
 - **iOS deployment target is 15.0**, so an iPhone X (which tops out at iOS 16.7) is supported.
 - The app's arm sequence in `src/app.js` mirrors `mcp/brx_mcp/gameconfig.py`. If you change the
   protocol frames, change both — the Python side is the reference implementation and has the tests.

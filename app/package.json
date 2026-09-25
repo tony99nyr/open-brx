@@ -46,6 +46,7 @@
     "capacitor-zeroconf": "^4.0.0",
     "jsqr": "^1.4.0",
     "brx-beacon": "file:plugins/brx-beacon",
+    "brx-debug": "file:plugins/brx-debug",
     "brx-net": "file:plugins/brx-net"
   },
   "devDependencies": {

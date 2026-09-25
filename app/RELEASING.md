@@ -18,6 +18,9 @@ Tony gives the go; nothing below publishes until then. For the next cut, change 
    - Release key: `16d3f5ab…0697e4`. The debug key is `691cb028…b76a7f`. The release APK must show the first.
    - `aapt2 dump badging` must show `versionName='0.4.11'`, `versionCode='411'`.
 
+WebView debugging ships ON by default (B21, `DEFAULT_ON` in `plugins/brx-debug`). Keep it on for tester cuts.
+For a public release, set `DEFAULT_ON = false` first. A player's own stored choice still wins.
+
 ## On the go (Tony)
 
 4. On a tree rebased onto `origin/main`, commit the version bump, `RELEASING.md` and the release notes.

@@ -1423,6 +1423,23 @@ for (const view of VIEWS) {
     must(r.rows === 1, `the action row wraps to ${r.rows} rows — every extra row is taken from the log above it`);
     must(r.footH <= 56, `the action row is ${r.footH.toFixed(1)} design px of a 390px panel`);
   });
+  await step(`${view.name} B21 diag: the WebView debugging switch shows its state and a tap flips it`, async () => {
+    const pg = await open(view, 'diag-live', '', 5200);
+    const read = () => pg.evaluate(() => { const s = document.getElementById('dg-dev'), b = document.getElementById('dg-webdebug');
+      return { shown: !!s && !s.hidden && s.getBoundingClientRect().height > 0, state: (document.getElementById('dg-webdebug-state') || {}).textContent || '', label: b ? b.textContent : null }; });
+    const none = await read();
+    must(!none.shown, 'the stage has no BrxDebug plugin, so the switch must stay hidden: ' + JSON.stringify(none));
+    // Stand in for the Android plugin, so the tap goes through app.js's real handler and the real render loop.
+    await pg.evaluate(() => { const wd = window.brx.webDebug; window.__sets = [];
+      wd.plugin = { get: async () => ({ enabled: true }), set: async ({ enabled }) => { window.__sets.push(enabled); return { enabled }; } }; return wd.load(); });
+    await pg.waitForTimeout(400);   // app.js pushes fresh diag data every 250 ms
+    const on = await read();
+    must(on.shown && /ON$/.test(on.state) && on.label === 'TURN OFF', 'the switch does not show ON: ' + JSON.stringify(on));
+    await pg.locator('#dg-webdebug').scrollIntoViewIfNeeded(); await pg.click('#dg-webdebug'); await pg.waitForTimeout(400);
+    const off = await read(); const sets = await pg.evaluate(() => window.__sets); await pg.close();
+    must(JSON.stringify(sets) === '[false]', 'the tap did not write OFF once: ' + JSON.stringify(sets));
+    must(/OFF$/.test(off.state) && off.label === 'TURN ON', 'the panel still shows the old state: ' + JSON.stringify(off));
+  });
   await step(`${view.name} F122 diag: the reader's scroll position survives the render churn`, async () => {
     const pg = await open(view, 'diag-live', '', 5200);
     await pg.evaluate(() => { const b = document.getElementById('dbody') || document.getElementById('diag'); b.scrollTop = Math.round((b.scrollHeight - b.clientHeight) / 2); window.__st = b.scrollTop; });
