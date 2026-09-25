@@ -9,6 +9,7 @@ import http from 'http'; import fs from 'fs'; import path from 'path'; import os
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DEMO_PERKS, DEMO_WEAPONS } from '../src/demo-catalog.js';
+import { MAX_TAG_LEN } from '../src/transport/contract.gen.js';
 // Derived, never typed: `demo-catalog.js` is the artefact the PHONE reads (generated from weapons.json
 // by mcp/tools/gen_ui_catalog.py), and a row is IN it only when it is not `hidden`. `sidearm` is the
 // same predicate DESIGNER counts PISTOLS with (Designer.tsx SlotEditor); a `pickup_only` sidearm is
@@ -1978,6 +1979,32 @@ for (const view of VIEWS) {
     must(!r.clipped, 'the refusal is cut off: ' + r.txt);
     must(r.plates === 3 && !r.onPlate, 'the refusal line sits on the plates');
   });
+  // ---------- F366: a stored gamertag over MAX_TAG_LEN — the phone cannot rename it, only nudge the player ----------
+  for (const skin of ['', '&night']) {
+    await step(`${view.name} F366 lobby-long-tag${skin}: the rename note shows on the lobby screen, one line, no overlap`, async () => {
+      const pg = await open(view, 'lobby-long-tag', skin);
+      const r = await pg.evaluate(() => {
+        const e = document.querySelector('.tagwarn'); if (!e) return null;
+        const b = e.getBoundingClientRect(), f = document.getElementById('frame').getBoundingClientRect();
+        const hit = (a, c) => c && a.left < c.right - 2 && a.right > c.left + 2 && a.top < c.bottom - 2 && a.bottom > c.top + 2;
+        const plates = document.querySelector('.lobby .plates'), chipbar = document.querySelector('.chipbar');
+        return { txt: e.textContent.trim(), fs: parseFloat(getComputedStyle(e).fontSize), clipped: e.scrollWidth > e.clientWidth + 1,
+                 inFrame: b.left >= f.left - 1 && b.right <= f.right + 1 && b.top >= f.top - 1 && b.bottom <= f.bottom + 1,
+                 onPlates: hit(b, plates && plates.getBoundingClientRect()), onChips: hit(b, chipbar && chipbar.getBoundingClientRect()) };
+      });
+      await pg.close();
+      must(r, 'the lobby screen showed no rename note for a 20-character tag');
+      must(r.txt === `YOUR TAG IS OVER ${MAX_TAG_LEN} LETTERS · ASK THE HOST TO SHORTEN IT`, 'copy: ' + r.txt);
+      must(r.fs >= 11 && !r.clipped && r.inFrame, 'the note is unreadable or off the frame: ' + JSON.stringify(r));
+      must(!r.onPlates && !r.onChips, 'the note overlaps another element: ' + JSON.stringify(r));
+    });
+    await step(`${view.name} F366 live-long-tag${skin}: no rename note reaches a live match`, async () => {
+      const pg = await open(view, 'live-long-tag', skin);
+      const has = await pg.evaluate(() => !!document.querySelector('.tagwarn'));
+      await pg.close();
+      must(!has, 'the rename note reached a live match');
+    });
+  }
   // ---------- A38 x A39 (T2 integration): SITTING OUT, and the READY UP button that must not be on it ----------
   // T2-A gave the LOBBY screen its own READY UP (a player whose kit window closed before they tapped);
   // T2-B gave a benched phone a KITTED-shaped state. Both facts are true, and the screen is the only

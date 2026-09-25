@@ -5,7 +5,7 @@
 import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
 import * as SV from './shieldmeter.js';
 import { LANE_FEED_MS, LANE_SETTLE_MS } from '../lanes.js';   // docs/announcer.md "The three lanes"
-import { MEDALS, AWARDS } from '../transport/contract.gen.js';
+import { MEDALS, AWARDS, MAX_TAG_LEN } from '../transport/contract.gen.js';
 import { medalIcon, medalChip } from './medalicons.js';   // the RECAP icons only (Tony 2026-09-25): never in the in-game lanes   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
@@ -56,6 +56,12 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
 /** A24: the only four words the results screen may print as an outcome, and it prints one ONLY when MC has
  *  pushed a `result`. There is deliberately no mapping for "no message arrived" — see `_result`. */
 const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
+/** F366: the phone cannot rename a gamertag, only the host can (MC's ARMORY/KIT) — this only decides whether to
+ *  show the note. Measured exactly as MC's `_check_tag` does (mcp/brx_mcp/mc/state.py): trimmed, upper-cased,
+ *  then a plain character count against the generated MAX_TAG_LEN. A tag this long only reaches the phone at
+ *  all because it was stored before F366 (MC refuses a NEW/EDITED tag over the limit, but an older stored one
+ *  up to 24 characters still plays) — so this is never a phone-side validation, only a "go ask the host" nudge. */
+export const tagTooLong = raw => String(raw || '').trim().toUpperCase().length > MAX_TAG_LEN;
 // Every medal in MC's ladder (contract.gen MEDALS, generated from types.py; Tony's final list 2026-09-24). A key missing
 // here was filtered out of the kill card, so the map is built from the contract, never hand-kept.
 // The fallback labels the two medals Tony added on 2026-09-24 for an older contract that lacks them: BEAT DOWN (MC's key
@@ -817,6 +823,11 @@ export class Hud {
     const [nm, tail] = splitGun(st.gun);
     // QA-13 (2026-09-23): LINKED read as "joined" beside a CONNECTING… line. Before MC binds, the gun is set and nothing more.
     const cs = esc(st.callsign || (mode === 'connected' ? (st.wsState === 'bound' ? 'LINKED' : 'GUN SET') : 'OPERATOR'));
+    // F366: an older stored tag can run past MAX_TAG_LEN (MC refuses a new/edited one, but a stored longer tag
+    // still plays) — the phone cannot rename it, so this is a nudge to ask the host, never a validation error.
+    // `_lobby` is the pre-game/lobby/kit screen only (never live/armed — render() sends those elsewhere), so
+    // there is nothing extra to gate: the note simply never reaches a match.
+    const tagWarn = tagTooLong(st.callsign) ? `<div class="tagwarn">YOUR TAG IS OVER ${MAX_TAG_LEN} LETTERS · ASK THE HOST TO SHORTEN IT</div>` : '';
     const team = st.teamName ? `<span class="chip"><span class="unskew">${esc(st.teamName)} SQUAD</span></span>` : '';
     const tw = this._tryoutShown(st) ? st.tutorialWeapon : null;
     // MC pushes a WeaponView here (it carries the ranked `bars`), which names the magazine `clip`;
@@ -910,7 +921,7 @@ export class Hud {
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     }
     return `<div class="lobby"><div class="scan"></div><div class="edgeglow"></div>
-      <div class="top"><span class="cs">${cs}</span><span class="row">${team}<span class="gid">${nm}-${tail}</span>${hpar}</span></div>${plates}
+      <div class="top"><span class="cs">${cs}</span><span class="row">${team}<span class="gid">${nm}-${tail}</span>${hpar}</span></div>${tagWarn}${plates}
       <div class="tr">${status}</div><div class="foot">${foot}</div></div>`;
   }
 

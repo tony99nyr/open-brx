@@ -752,6 +752,11 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .lobby .row{display:flex;align-items:center;gap:8px}
 .lobby .chip{font-size:12px;padding:2px 12px}
 .lobby .gid{font-family:ui-monospace,monospace;font-size:12px;color:var(--mut)}
+/* F366: the phone cannot rename a tag, only the host can (MC's ARMORY/KIT) — a nudge under the player's own
+   name, never a validation error. Absolutely positioned (not a 3rd .top flex row) so it can never push the
+   plates below it down past their fixed top:126px; the offset below clears .top's cs+row (measured) with room
+   to spare before them. Left-anchored and capped so it never reaches the centred chipbar. */
+.lobby .tagwarn{position:absolute;top:104px;left:36px;max-width:480px;font-size:13px;letter-spacing:.06em;color:var(--warn);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lobby .plates{position:absolute;top:126px;left:36px;right:36px;display:flex;flex-wrap:wrap;gap:10px}
 .plate{background:var(--plate);border:1px solid var(--edge);padding:10px 18px;transform:skewX(-8deg)}
 .plate .in{transform:skewX(8deg)}
