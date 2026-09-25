@@ -2,7 +2,7 @@
 
 > **Superseded 2026-09-18 as the running order by [`bench-plan.md`](bench-plan.md).** This sheet keeps the method of its unrun rungs.
 
-Updated: 2026-09-11 (2026-09-09, re-checked). **This sheet replaces reading `FOLLOWUPS.md` §9 at the bench.**
+Updated: 2026-09-11 (2026-09-09, re-checked). **This sheet replaced reading the old FOLLOWUPS §9 at the bench** (now the FOLLOWUPS MVP BENCH group and `post-mvp.md` → *Old bench rungs*).
 §9 stays the register (ids are permanent and live there); this is the running order. Every command below exists
 in the repo and was checked against its source. Nothing here is a new script.
 
@@ -232,7 +232,7 @@ found). Commands are already written in [`bench-grenade.md`](bench-grenade.md) �
 
 ## Decisions
 
-The open decisions are in [`FOLLOWUPS.md`](FOLLOWUPS.md) §9 "Decisions". The single-hue 4-state bar is decided
+The open decisions are in [`FOLLOWUPS.md`](FOLLOWUPS.md) (MVP DECISION) and [`post-mvp.md`](post-mvp.md) (*Old bench rungs*, "Decisions"). The single-hue 4-state bar is decided
 (2026-09-09, `led-language.md`): do not re-open it.
 
 ## Answered rungs — kept for the LESSON each one cost, not for re-running
@@ -264,7 +264,7 @@ themselves live in `experiment-log/2026-09.md` and, where they are wire facts, i
 
 - **BQ-B1 ✅ CLOSED 2026-09-11** — **F45** the four never-heard `$PSET` tokens. Run: `sounds ids:H06,U15,W71,H43,H07,H09 <addr> --audit`. All four have picks: `missShotHit` = H06 (already answered 2026-09-09), `emptyUnboundButtonSound` = U15, `ammoOrGearPickUp` = W71, `hitCrit` = **X49** (not H43, rejected: "dropped a gun on the ground"). See `archive/followups-closed.md` → F45
 - **BQ-B2 ✅ CLOSED 2026-09-11** — **F48** heartbeat for `low_health`. Run: `sounds ids:V06,V16,N74,N75,N25 <addr> --audit`. Winner **N74** ("heartbeat, could be looped, I like that more for critical health"); N75/N25 kept as pool/tier candidates, not chosen. Wired in `presentation.EVENTS['low_health']` and pinned by `test_presentation.py`
-- **BQ-B3 ✅ CLOSED 2026-09-11** — the defeat line (not P3 — FOLLOWUPS' P3 stays open, see §9 Ears). Run: `sounds ids:JAY,JAW,JAX <addr> --audit`. Answered negative: JAW and JAX are both a neutral "game ending music climax", no defeat sting either way; the loser cue stays the character's own `voice:defeat_taunt` over a neutral bed
+- **BQ-B3 ✅ CLOSED 2026-09-11** — the defeat line (not P3 — FOLLOWUPS' P3 stays open, see `post-mvp.md` → *Old bench rungs*, Ears). Run: `sounds ids:JAY,JAW,JAX <addr> --audit`. Answered negative: JAW and JAX are both a neutral "game ending music climax", no defeat sting either way; the loser cue stays the character's own `voice:defeat_taunt` over a neutral bed
 - **BQ-B4 ✅ CLOSED 2026-09-11** — **W4a** Energy Launcher fire sound. Run: `sounds ids:O01,O05,O02,O04,O06,O03 <addr> --audit`. Winner **O06** ("shooting a rocket"), O04 runner-up; O01/O02/O05 read as the blast not the launch, O03 is a rifle. Wired: `weapons.json` t27 = O06. The zero-damage question stays separate and open
 - **BQ-B5 ✅ CLOSED 2026-09-11** — **S-A12.1** sidearms (S-A12 as a whole stays open on .2/.3/.5). Run: `sounds ids:P09,Q04,P16,D08,D07,D06,D04,D03,D02 <addr> --audit`. Deagle = **X14** ("heavy rifle shot"), Glock = P16 ("I like the deagle sound for the glock"), USP-S confirmed silenced on Q04; reload chain D08→D07→D06 at 400 ms confirmed working. Wired in `weapons.json`: glock t27 = P16, deagle t27 = X14, usp keeps Q04
 - **BQ-B6a ✅ CLOSED 2026-09-11** — **F58(a)** heal / armour / shield have a sound now (F58 stays open on (d)). Run: `sounds ids:V37,V87,VE7,VA1G,VA16,VA8C,VA6Y <addr> --audit` then the stage: `$LIFE,20,0,0,*` / `$LIFE,0,25,0,*` / `$LIFE,0,0,20,*` on a damaged gun. Promoted from TRIAL to confirmed: `healed` = the character's own slot-7 line (V37 "patched up", V87 "Bleeding stopped"), `armour_up` = VA1G "Body Armor.", `shield_up` = VA8C "Shields online". Wired in `presentation.EVENTS` and pinned by `test_presentation.py`
@@ -290,5 +290,5 @@ deleted, so the guard blind spots they exposed stay on the record.*
   ANSWERED" clause, S10's verified state-by-state list, **S4 (b)** and **2.1 Q15** are deliberately kept:
   each one is a *narrowing* of a still-open item, not a closed item.
 - Not hardware, and misfiled in a bench queue: **F47** and **F53** (`build`), **F43** (a methodology
-  warning, not an experiment), **A10c** (stage harness). Still true; they are in FOLLOWUPS §0's
-  keyboard-only lane.
+  warning, not an experiment), **A10c** (stage harness). F47 and F53 have since closed, and F43 is
+  now a gotcha (2026-09-25).
