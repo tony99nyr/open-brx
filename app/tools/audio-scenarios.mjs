@@ -305,10 +305,10 @@ class PolicyB {
   }
   // ----- the gun model's inputs -----
   /** engine.js `_audioSync`: the loop blocks while `$PSET` t23 names a sound and the shield is above 0, or a spawn fill
-   *  went out less than SHIELD_FILL_ECHO_MS ago and its echo has not filled the pool yet (X3). */
+   *  went out less than SHIELD_FILL_ECHO_MS ago and the gun has not answered it yet (X3; any answer ends the window). */
   _sync() {
     const c = this.ctx, g = c.game;
-    if (this.fillAt && (g.shield >= g.maxShield || !g.alive || c.t - this.fillAt > SHIELD_FILL_ECHO_MS)) this.fillAt = 0;
+    if (this.fillAt && (g.shield > 0 || !g.alive || c.t - this.fillAt > SHIELD_FILL_ECHO_MS)) this.fillAt = 0;
     this.model.setBlocked(humOf(c.sc) != null && (g.shield > 0 || !!this.fillAt), c.t);
   }
   /** engine.js `_audioWrite` for every write that is not a must-hear line. */

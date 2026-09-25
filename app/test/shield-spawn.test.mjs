@@ -181,6 +181,20 @@ test('X3: a revive puts its line before the fill, and the model stays blocked th
   assert.equal(h.eng._gun.blocked, true, 'the loop blocks from the fill, before the gun answers it');
 });
 
+test('polish r2: after a revive the fill echo ends the fill window, so a shield broken at +0.5 s unblocks the audio model', () => {
+  const h = harness();
+  h.adv(5000).die();
+  h.adv(7900);
+  h.adv(300);
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  assert.equal(h.eng.shield, 105, 'setup: the fill was answered');
+  assert.equal(h.eng._shieldFillAt, 0, 'the answer ended the window, even inside the redeploy moment');
+  h.adv(200);
+  h.gun.shield = 0; h.frame('$HIR,4,0,19,2,105,0,3,*'); h.frame('$HP,45,0,0,*');
+  assert.equal(h.eng.shield, 0, 'setup: the shield broke');
+  assert.equal(h.eng._gun.blocked, false, 'no shield, no loop: the model does not block');
+});
+
 test('X1: the game_over line is written at the whistle while the shield is up', () => {
   const h = harness();
   h.adv(3000);

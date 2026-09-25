@@ -6563,6 +6563,11 @@ export class Engine {
       // banner was up would never be told they were hit, and being hit is the one thing they cannot
       // afford to miss.
       const RARE_GUARD_MS = 250;
+      // F348 / polish r2: a shield rise inside the fill window is the gun's answer to the spawn fill. It ends the window
+      // HERE, before the moment gates below, because a revive's `redeploy` moment would otherwise swallow the echo and
+      // leave the audio model blocked (`_shieldFillPending`) after the shield breaks.
+      const fillAnswer = !!this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS && shield > this._prevShield;
+      if (fillAnswer) this._shieldFillAt = 0;
       const m = this.moment;
       const busy = m && ['kill', 'redeploy', 'down', 'match_over'].includes(m.kind)
         && (this.now() - m.at) < RARE_GUARD_MS;
@@ -6585,9 +6590,8 @@ export class Engine {
         const gains = [['health', hp - this._prevHp], ['armor', armor - this._prevArmor],
                        ['shield', shield - this._prevShield]].filter(g => g[1] > 0);
         // F348: the gun's answer to the spawn fill. The life started full; this is not a pickup or a recharge.
-        const fillEcho = gains.length && gains[0][0] === 'shield' && this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS;
-        if (fillEcho) {
-          this._shieldFillAt = 0;   // polish r1: the gun answered the fill; from here `this.shield` says whether the loop runs
+        const fillEcho = gains.length && gains[0][0] === 'shield' && fillAnswer;
+        if (fillEcho) {   // `fillAnswer` ended the window: from here `this.shield` says whether the loop runs
           if (shield >= this.maxShield) this._shieldCharged();
           this.log(`spawn shield fill: ${shield}/${this.maxShield}`, 'li');
         } else if (gains.length && gains.some(g => g[0] !== 'shield') && this._overshield && this.now() - this._overshield.at <= OVERSHIELD_ECHO_MS

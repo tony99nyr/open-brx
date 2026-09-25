@@ -3510,6 +3510,11 @@ class GunStage:
         # biggest rise names the event: healed (health) / armour_up / shield_up.
         if self.alive and self.spawned:
             now = self.now()
+            # engine.js polish r2: a shield rise inside the fill window is the fill's answer; it ends the window before
+            # the moment gates, so a revive's redeploy moment cannot swallow it
+            fill_answer = self._shield_fill_pending(now) and shield > prev_shield
+            if fill_answer:
+                self._shield_fill_at = 0.0
             moment = self._moment
             gains = sorted([(p, d) for p, d in (("health", hp - prev_hp), ("armor", armor - prev_armor),
                                                 ("shield", shield - prev_shield)) if d > 0], key=lambda g: -g[1])
@@ -3519,10 +3524,8 @@ class GunStage:
             elif dmg > 0 and hp > 0:
                 if gains:
                     self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}) in the same frame as {dmg} damage: the HIT wins, no gain event (F14)", "info")
-            elif (gains and gains[0][0] == "shield" and self._shield_fill_at
-                  and now - self._shield_fill_at <= SHIELD_FILL_ECHO_S):
+            elif gains and gains[0][0] == "shield" and fill_answer:
                 # F348 (engine.js `_onHp` `fillEcho`): the gun's answer to the spawn fill. The life started full.
-                self._shield_fill_at = 0.0                        # engine.js polish r1: any answer ends the fill window
                 if shield >= self.max_shield:
                     self._shield_charged()
                 self._log(f"spawn shield fill: {shield}/{self.max_shield}", "info")
