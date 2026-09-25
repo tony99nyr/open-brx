@@ -116,8 +116,9 @@ the level.
 **You see a shield bar only on the Shields health preset** (45 health, no armour, 105 shield). The
 Standard and Hardcore presets grant no shield, so the tagger reports 0 on every life. The pool is
 writable over Bluetooth: on 2026-09-11 the bench filled it with `$LIFE,0,0,20,*` and emptied it
-again with a negative. A painted teal segment has been seen on a spawned tagger, but the Shields
-preset has not yet run in a real match. Everything else on this page has been watched on real
+again with a negative. A painted teal segment has been seen on a spawned tagger. The Shields preset
+first ran in a real match on 2026-09-24, where every spawn started with an empty shield; the fix is
+in the code and has not yet been checked on a tagger. Everything else on this page has been watched on real
 hardware.
 
 Teams paint red (team 0), blue (team 1), yellow (team 2) and purple (team 3). Team 3 fights as green

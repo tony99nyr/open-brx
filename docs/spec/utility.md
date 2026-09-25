@@ -84,10 +84,9 @@ The HUD shows the live reading against the threshold on the DOWN screen (§4.3),
 the advertised threshold overriding the default, neutral admitting every team, other games ignored.
 
 **Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
--63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**, like the powerup
-claim's. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
+-63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
 better"): a phone station **-70 dBm**, a StickS3 **-57 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
-`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, **pending**: it still resolves 0 to -74). The other kinds on a phone station keep the
+`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`). The other kinds on a phone station keep the
 2026-09-04 bench value, -74 dBm at high TX (about 10 ft). MC's `StationAssignment.threshold` still overrides; **0**
 (or absent) means the station's own default, which it resolves and advertises in byte 14. A phone app older than
 0.4.12 clamped 0 to -30, so MC sends such a phone the explicit value (`state.py _wire_threshold`). A player phone falls
@@ -638,8 +637,8 @@ in the operator's voice.** Nothing here asks for that to change.
 - **`STATION_SOURCES` value for a Stick control point: DECIDED (2026-09-24, Tony).** `phone`, with no fourth
   value: a Stick control point uses `station_source: "phone"`, the same as a phone, because the advert and the
   capture rules (presence, §5d) are the same whether the advertiser is a phone or a Stick. Not yet bench-proven:
-  brx4's port of presence capture to a StickS3 lands today but needs a reflash and a hardware run before it
-  counts as working.
+  the StickS3 port of presence capture landed in `e65aea17` and needs a hardware run (H9, Block 9 of
+  `bench-2026-09-24.md`) before it counts as working.
 - **`control{cmd:"release_utility"}` (§5c.1) has no meaning on a Stick.** It exists to free a PHONE stuck in
   utility mode by sending it back to its HUD; a Stick has no HUD to return to. A Stick MUST NOT ignore the
   message silently — the operator pressed a button and deserves an effect — so it should drop to UNASSIGNED

@@ -54,6 +54,10 @@ export const OWN_KILL = new Set(['kill_confirmed', 'medal']);
  *  then the line). Stopping the loop cuts nothing anyone wants to hear, and it resumes by itself. Ambient lines (the
  *  alerts, the pool lines) stay droppable. */
 export const OBJECTIVE = new Set(['hill_captured', 'hill_lost', 'enemy_down']);
+/** Tony, 2026-09-24: "i think that is right. they go silent when kill streaks are showing." A lead or hill line that
+ *  meets my kill or medal item on air or queued is VOICE-SILENT: its line is dropped, never held for later, and its
+ *  card still shows in its turn. Outside a streak these play as usual. */
+export const STREAK_SILENT = new Set(['lead_taken', 'lead_lost', 'hill_captured', 'hill_lost']);
 
 /** The shortest slot each kind holds: its banner's hold in hud.js, so the NEXT item's banner never lands on a
  *  card still showing. The slot is the longer of this and the clip (plus ANNOUNCE_GAP_MS). */
@@ -132,6 +136,11 @@ export class Announcer {
   /** Drop a queued item (not the playing one). */
   remove(item) { const i = this.queue.indexOf(item); if (i >= 0) this.queue.splice(i, 1); return i >= 0; }
   _dropped(item) { try { if (item.onDrop) item.onDrop(); } catch (_) { /* a caller's undo must not break the queue */ } }
+  /** A kill streak: my kill or medal item on air (inside its slot) or waiting. */
+  streak(now = this.now()) {
+    const c = this.current;
+    return !!(c && OWN_KILL.has(c.kind) && now < c.until) || this.queue.some(q => OWN_KILL.has(q.kind));
+  }
   /** True when a must-hear line (my kill confirm, a lead change) is waiting. */
   mustHearQueued() { return this.queue.some(q => MUST_HEAR.has(q.kind)); }
   /** Change a WAITING item's sound length (a line added to it before it plays). */
@@ -153,6 +162,7 @@ export class Announcer {
     const now = this.now();
     if (this.sync) this.sync(now);   // the gun model's state as it stands now (the shield loop may have just started)
     const it = { ...item, at: now, n: ++this.seq, rank: rank(item.kind), audioMs: Math.max(0, item.audioMs || 0) };
+    if (STREAK_SILENT.has(it.kind) && it.audioMs > 0 && this.streak(now)) it.streakSilent = true;
     it.slotMs = Math.max(it.audioMs ? it.audioMs + ANNOUNCE_GAP_MS : 0, item.bannerMs != null ? item.bannerMs : (ANNOUNCE_BANNER_MS[item.kind] || 0));
     if (it.key != null) {
       const cur = this.current;
@@ -226,6 +236,7 @@ export class Announcer {
         next.forceMute = true;
       }
     }
+    if (STREAK_SILENT.has(next.kind) && next.audioMs > 0 && this.streak(now)) next.streakSilent = true;   // a kill queued ahead of it meanwhile
     this.remove(next);
     this._start(next, now, false);
     return next;
@@ -238,8 +249,8 @@ export class Announcer {
       let best = null;
       for (const q of this.queue) if (!best || q.rank < best.rank || (q.rank === best.rank && q.n < best.n)) best = q;
       const ttl = ANNOUNCE_TTL_MS[best.kind] != null ? ANNOUNCE_TTL_MS[best.kind] : 4000;
-      if (now - best.at > ttl) { this.remove(best); this._dropped(best); this.log(`announcer: ${best.kind} expired after ${now - best.at} ms in the queue, dropped`); continue; }
-      if (best.ok && !best.ok()) { this.remove(best); this._dropped(best); this.log(`announcer: ${best.kind} no longer applies, dropped`); continue; }
+      if (now - best.at > ttl) { this.remove(best); this.log(`announcer: ${best.kind} expired after ${now - best.at} ms in the queue, dropped`); this._dropped(best); continue; }
+      if (best.ok && !best.ok()) { this.remove(best); this.log(`announcer: ${best.kind} no longer applies, dropped`); this._dropped(best); continue; }
       return best;
     }
   }
@@ -247,9 +258,12 @@ export class Announcer {
   _start(it, now, preempted) {
     const waited = now - it.at;
     const late = ANNOUNCE_AUDIO_LATE_MS[it.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[it.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
-    const muted = it.audioMs > 0 && (waited > late || !!it.forceMute);
-    if (muted) {   // too late to be worth hearing: the card (if any) still shows, silently, for its own hold
-      this.log(it.forceMute && waited <= late ? `announcer: ${it.kind}: the gun's audio is blocked (the shield loop), shown without its line`
+    // A card that was muted once stays muted: a silent card a kill displaced shows again after it, still without its line.
+    const again = !!it.muted;
+    const muted = again || (it.audioMs > 0 && (waited > late || !!it.forceMute || !!it.streakSilent));
+    if (muted && !again) {   // too late to be worth hearing: the card (if any) still shows, silently, for its own hold
+      this.log(it.streakSilent ? `announcer: ${it.kind} silent: kill streak on air (Tony), shown without its line`
+        : it.forceMute && waited <= late ? `announcer: ${it.kind}: the gun's audio is blocked (the shield loop), shown without its line`
         : `announcer: ${it.kind} would start ${waited} ms after its event, past ${late} ms: shown without its line`);
       it.audioMs = 0;
       it.slotMs = it.bannerMs != null ? it.bannerMs : (ANNOUNCE_BANNER_MS[it.kind] || 0);
