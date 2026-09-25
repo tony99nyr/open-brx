@@ -9,11 +9,11 @@ Updated: 2026-09-25 (the final docs pass: open MVP work only; post-MVP rows move
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 62.** Desk 11 · bench 46 · decision 5.
+**MVP open: 62.** Desk 12 · bench 46 · decision 4.
 
-**MVP DESK (11),** a keyboard is enough:
+**MVP DESK (12),** a keyboard is enough:
 - 🟠 **F164** · **B21** · **F372** · **F221**
-- 🟡 **F342** · **Q13** · **F333** · **S32** · **F319** · **F366** · **F161**
+- 🟡 **F342** · **Q13** · **F333** · **S32** · **F319** · **F366** · **F367** · **F161**
 
 **MVP BENCH (46),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F341** · **F347** · **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10**
@@ -21,8 +21,8 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟡 **F350** · **H8** · **F353** · **F298** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294**
 - 🟢 **F339**
 
-**MVP DECISION (5),** awaiting Tony:
-- 🟡 **F367** · **F368** · **F370** · **F371**
+**MVP DECISION (4),** awaiting Tony:
+- 🟡 **F368** · **F370** · **F371**
 - ⬜ **D5**
 
 The index lists are guarded (`test_docs_hygiene`): every row is listed once, under its own group, with its own
@@ -83,6 +83,8 @@ A keyboard is enough. Highest value first.
  **→ Tony 2026-09-25, decided a RULE instead of row-by-row marks** ("this was sorely needed the amber and red color use is all over the place"): RED = act now, or the game is wrong (MC offline/stale board, GUN POOLS WRONG, the KOTH grenade-vs-control conflict, a gun link lost DURING a match, a tunnel down while phones depend on it, a console crash). AMBER = fix before the next match (battery under 30%, a restored roster, an MC server older than the UI, an older config acked, a phone waiting for its gun, a station attention line, a gun link lost in the LOBBY). NEUTRAL (no colour) = status only (BENCH VOL, SENDING/HOLDING, a -dirty build stamp, the operator-token prompt, a single NO SOCKET). Two-tap hazard buttons and drop-your-draft confirms are not warnings and stay as they are. Build: one severity helper in webapp/mc (a colour by severity, not by caller), re-audit EVERY current amber/red call site against the rule (the 2026-09-16 audit is stale after the VQA passes), apply it, and add a test that pins each warning's severity. `build`. The conventions gallery (`C:\Users\Tony\brx-mc-alerts\index.html`) is the approved source of truth.
 
 - **F366 🟡 DECISION FOR TONY: A GAMERTAG LENGTH LIMIT.** Tony 2026-09-25: "Is there a preferred gamer tag length? ... in the armory we should warn or prevent long gamer tags". Today MC silently cuts `display` at 24 (`mc/api.py` ~312). Measured 2026-09-25 (brx5; widest W/M name · a realistic one like xX_SNIPER_Xx, most characters that fit whole): the phone HERO kill lane 8 · 13, identity block 9 · 14, feed 10 · 16, results rows 14 · 21, awards 15 · 24; MC kit roster chip at 900 px 6 · 8 (the detail card shows the whole name), live board 13 · 17 (900) / 11 · 14 (1280), recap honours 12 · 16 / 9 · 13. No length keeps an all-W/M name whole everywhere, so the ellipsis stays. **Proposal:** a HARD maximum of 16 (MC refuses a new or edited longer tag with a clear 400; stored longer names keep working with a rename warning via a `display_too_long` flag), and a SOFT 12 (past it, "may be shortened on some screens"). One constant (`MAX_TAG_LEN`) in `types.py` through the generated contract. Build owners once Tony says yes: brx3 = the MC side (the constant, the refusal, the tests); brx5 = the ARMORY and player add/edit UI (a live counter, a warning past 12, a block at 16) and the HUD rename warning. Scripts and screenshots: `/tmp/claude-1000/tagmeasure/` (not kept). `decision`.
+
+- **F367 🟡 THE BEAT DOWN AND IRON MAN RECAP ICONS: BOTH PICKED; BEAT DOWN LEFT TO WIRE (brx5).** Filed 2026-09-25 (brx5). The recap icons are style B (`app/src/hud/medalicons.js`); BEAT DOWN (`melee_kill`) and IRON MAN draw a placeholder initial. Tony picks B1 hammer, B2 takedown or B3 glove, and I1 riveted plate, I2 iron heart or I3 endless loop, from the gallery `C:\Users\Tony\brx-medals\index.html`. **→ Tony 2026-09-25:** IRON MAN is I2b, the bevelled iron heart (built, `716e3010`); BEAT DOWN is B6, the impact burst, and brx5 wires it. `build`.
 
 - **F161 🟡** HUD gun picker does not refresh live: a gun powered on while the list is open updates the RSSI bars but never appears until "Set my gun" is tapped again (field 2026-09-12). `build`.
 
@@ -330,8 +332,6 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 ## MVP DECISION: awaiting Tony
 
 Tony's call. Each row says what the answer unblocks.
-
-- **F367 🟡 DECISION FOR TONY: THE BEAT DOWN AND IRON MAN RECAP ICONS.** Filed 2026-09-25 (brx5). The recap icons are style B (`app/src/hud/medalicons.js`); BEAT DOWN (`melee_kill`) and IRON MAN draw a placeholder initial. Tony picks B1 hammer, B2 takedown or B3 glove, and I1 riveted plate, I2 iron heart or I3 endless loop, from the gallery `C:\Users\Tony\brx-medals\index.html`. **→ Tony 2026-09-25:** BEAT DOWN is B6 (the impact burst), and brx5 wires it. Only IRON MAN is open: I2a, I2b or I2c. `decision`.
 
 - **F368 🟡 DECISION FOR TONY: THE PHONE HUD LAYERING MODEL.** Filed 2026-09-25 (brx5). [`announcer.md`](announcer.md) "Layering and priority on the phone HUD (PROPOSED)" is not built. Tony picks the model and answers its three questions: the status rail against the powerup hint; the rail hiding the NIGHT label; a warning's full sentence in the rail or only in the ⓘ panel. The CLASH storyboard is in `C:\Users\Tony\brx-alerts\index.html`. `decision`.
 
