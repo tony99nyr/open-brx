@@ -599,9 +599,14 @@ sits behind the stronger 5 s gesture, and every edit is reported to MC.
   session, a new identity or a stale NVS copy cannot lower it. The one reset is an erased NVS (a
   reinstall); if NVS cannot be opened at boot, or the saved range body is there but does not parse,
   that boot keeps edits in RAM and never writes the key, so it cannot overwrite a higher seq.
-- **TX power: bench check.** The power is set with `BLEDevice::setPower(level, ESP_BLE_PWR_TYPE_ADV)`.
-  Whether that changes only the advert or the whole controller's power (and so the player scan's
-  own transmissions) on this core is not confirmed: bench it before relying on STRENGTH.
+- **TX power: bench-confirmed 2026-09-25.** STRENGTH moves the advert by about 9 dB: an A/B/A at 1 m
+  from a player phone read MEDIUM -47.5, HIGH -39.0, MEDIUM -49.0 dBm (median of 30-50 samples each),
+  consistent with the ±9 dBm spacing above. Whether `BLEDevice::setPower(level, ESP_BLE_PWR_TYPE_ADV)`
+  also moves the player scan's own transmissions on this core is still unconfirmed.
+- **Presence RSSI is asymmetric, bench-measured 2026-09-25.** At 1 m a player phone hears the Stick at
+  about -39 dBm, but the Stick hears the phone at only about -64 dBm at arm's length under the same
+  conditions. Calibrate each side's threshold from its own reading; do not assume the two links are
+  symmetric, or set one side's threshold from the other side's measurement.
 - **Serial.** `STATUS`'s LINK line adds `threshold_src`, `tx_power`, `tx_src` and `range_edits`
   (a count); the log prints `RANGE opened (A held 5 s on STATS)`, `RANGE threshold=... tx=... (on-station
   edit, seq n)`, `RANGE closed (B hold | 10 s idle | no station assigned)`, `RESTORED range ...` at boot

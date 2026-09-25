@@ -803,3 +803,14 @@ closed in the same pass, each checked against the code, the git log or the exper
 - 2026-09-25 **F378** closed at the desk (brx5, with F347): the gun simulator models the burst drop, no write carries
   two `$PLAY` frames, and `$PLAY` writes are `PLAY_GAP_MS` (150 ms, UNPROVEN) apart. Sitting C's spacing check proves
   or moves the gap.
+- 2026-09-25 **F332** closed: sitting B's physical side-button test PASSES A/B/A (unlocked single-click restarts
+  boot 51→53; locked single- and double-click do nothing; A+B held 7 s restarts a locked Stick, boot 54; unlocked
+  restores after relink, boot 55). A separate edge-case bug, a stuck-at-JOINING-WI-FI state where an unlocked click
+  did not restart, is filed as F392.
+- 2026-09-25 **H9** closed: sitting B proved the Stick's Bluetooth hill and pickup against real phones, not only
+  the simulated-player parity: 3(a)/(b)/(c) capture, contest and drain with the presence RSSI logged; step 4's
+  restart-survival; the 2(a)/2(b) online and offline pickup claims. The hill threshold value itself stays open as
+  F383.
+- 2026-09-25 **F333** closed: sitting B walked every pickup and hill state on the lit panel at arm's length (EMPTY,
+  countdown, READY, TAKEN, CAPTURING, HELD, CONTESTED, LOSING). The one legibility issue found, the LOBBY
+  countdown's loading indicator overlapping SPAWN, is filed separately as F398.

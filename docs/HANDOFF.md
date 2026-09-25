@@ -27,19 +27,23 @@ switch. Decided and recorded (do not re-ask): everything in the FOLLOWUPS rows, 
 - **Awaiting Tony:** F221 (look at `C:\Users\Tony\brx-mc-alerts\index.html`) and S32 (the koth and melee art).
 - **Parked, not merged:** `pu-select` 1fb1aec9 (brx5, SELECT swap; later powerup work on main likely supersedes it).
 ## Lane: brx2, bench, audio, utility and docs
-2026-09-25 bench: **sitting A done** ([`bench-2026-09-25.md`](bench-2026-09-25.md), gun Tactix-FE30, rig board B on
-COM8). A4 PASSES: `$*` clears the stale-token corruption on v4.32, so F341 may ship (F341 closed, all four
-pool-repair lines PASS). F347's answer is **t23 EMPTY**: `$PLAYX,0` does not stop the A10 hum while the shield is
-up (protocol/brx-protocol.md corrected), only shield 0 does; EMPTY plays every queued clip at once. F350: H22
-(`hitShield`) is a pool with a random rattle tail; Tony picks H21. F349 4.19 parts 1-3: N102 reads as "shields
-full", "Shields Online" should not play. The Burst Rifle gap (3.2) reads 600-691 ms, an upper bound consistent
-with the shipped t23 = 540. Full write-up: `experiment-log/2026-09.md`'s 2026-09-25 bench entry. New rows: F376
-(board B needs a reflash, `ir_emit.ino` misreads `--gap`), F378 (a tight `$PLAY` burst drops a clip and reorders
-the rest; the simulator does not model it), P19 (does the native Shields hum block its own voice lines too).
-**Stop point 1: sitting A's results (A4, F341, F347, F350) sent to brx1.**
-- **Next bench task:** sitting B (the Stick), [`bench-2026-09-25.md`](bench-2026-09-25.md). Then the LATER list, by
-  setup: screamers A7/A8 (F269, F270), A1c/A13 (F272, F274), sitting 5 (F264, F277, F237).
-- **Next desk task:** none open. R4/T5 read-only research is authorised; flashing stays decision first.
+2026-09-25 bench: **sitting A and sitting B both done** ([`bench-2026-09-25.md`](bench-2026-09-25.md)); **stop point
+2 done** (all three Pixels on app 0.4.12, release `3f9bf7fd`; MC restarted from `main` with `--powerups
+--bench-volume 75`). Sitting A (gun Tactix-FE30, rig board B): A4 PASSES, F341 closed; F347's answer is t23 EMPTY;
+F350 picks H21; full write-up in `experiment-log/2026-09.md`. Sitting B (the Stick, 2 guns, 3 Pixels): F332, H9 and
+F333 closed; F374's LOBBY/countdown half and F365's RADIUS/STRENGTH edit half CONFIRMED, both stay open for their
+other halves; the STRENGTH A/B/A numbers and the presence RSSI asymmetry are promoted to
+`hardware/m5sticks3/README.md`. Filed F379-F398, the biggest being **F379** (a rocket pickup desyncs the gun's ALT
+pointer from the phone, file:line cause found) and its ammo-pips sibling **F394**; hill correctness bugs F382-F386;
+Stick lock/link bugs F387-F392, F397; **F390** (MUSTER's no-way-back) to DECISION. Full write-up:
+`experiment-log/2026-09.md`'s 2026-09-25 sitting B entry.
+**Stop point 2 done; sitting C is next.**
+- **Next bench task:** sitting C (two guns, both phones, powerups, a real fight),
+  [`bench-2026-09-25.md`](bench-2026-09-25.md). Then the LATER list, by setup: screamers A7/A8 (F269, F270), A1c/A13
+  (F272, F274), sitting 5 (F264, F277, F237).
+- **Next desk task:** F379/F394 (the rocket-pickup ALT/ammo desync) and F380 (the false NOT ANSWERING race) are
+  ready to build straight from their file:line causes, no bench needed to start. R4/T5 read-only research is
+  authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
 APKs 0.4.7-0.4.11 published, each on green CI. 2026-09-25: F319 built and closed; Q13's desk half built (one
@@ -52,9 +56,9 @@ counting and the SETTINGS screen are post-MVP (F338, F314, F344). On main: F365 
 side-button lock (F332), a pickup claim at any strength (`e879b9db`), `presence.h`, the host screen simulator,
 `hardware/player-sim`, and (2026-09-25) F374: a pickup Stick waits for START's `station_update` before it offers its
 item, with the phone guard in `_puClaimable`. F333's desk half is closed: every MVP screen is wired and gated.
-- **Next bench task:** sitting B of [`bench-2026-09-25.md`](bench-2026-09-25.md): F332's physical click, the pickup
-  online and offline, F374 (LOBBY to START, then the carry-out A/B/A), F333 (the lit screens), the hill with real
-  phones (H9), F353's phone half, then 11.5 (F365).
+- **Next bench task:** sitting B ran 2026-09-25: F332, F333 and H9 closed (see brx2's lane above and
+  `experiment-log/2026-09.md`). Left: F374's carry-out-of-Wi-Fi A/B/A, F353's phone-side log, and F365's phone-station
+  half (11.4); the Stick half of F365 found F387/F388, new bugs. Sitting C is next.
 - **Next desk task:** F342 (a powerup or control-point game still floods the scan: a slower advert or a native filter).
 - **Resume:** a fresh worktree off `origin/main` (the old `/home/tony/brx4-l3` and `/home/tony/brx4-f333` are
   disposable). Native Windows MC for mDNS:
