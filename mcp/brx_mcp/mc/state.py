@@ -3490,8 +3490,8 @@ class Session:
             body["ends_in_ms"] = 0
         elif self.phase in ("armed", "live") and self.start_info and not self.is_adopted():
             body["starts_in_ms"] = self.start_info["go_live_t"] - now
-            if self.config.get("time_limit_s"):
-                body["ends_in_ms"] = max(0, self.start_info["go_live_t"] + self.config["time_limit_s"] * 1000 - now)
+            if tl_s := self.config.get("time_limit_s"):
+                body["ends_in_ms"] = max(0, self.start_info["go_live_t"] + tl_s * 1000 - now)
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
             st["unlocked_at"] = self.now_ms()  # the window closes at the unlock, heard or not
         elif lock > 0 and st.get("lock_game") == body["game"]:
