@@ -4980,6 +4980,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
       must(r.hero, 'pre-condition: the kill card is up');
       if (want || night) must(rail.length > 0, `a warning must be on screen: ${JSON.stringify(rail)}`);   // by day an MC drop is the amber dot only
       if (want) must(rail.some(x => want.test(x.text)), `the rail names the warning: ${JSON.stringify(rail.map(x => x.text))}`);
+      if (!want && night) must(rail.some(x => /MC OUT OF RANGE/.test(x.text)), `the rail names MC: ${JSON.stringify(rail.map(x => x.text))}`);   // review r2 Low: the specific warning
       must(rail.every(x => x.midY > .7 && Math.abs(x.midX - .5) < .05), `every warning sits in the rail at the bottom centre: ${JSON.stringify(rail.map(x => [x.text, x.midX.toFixed(2), x.midY.toFixed(2)]))}`);
       must(rail.every(x => x.short || !x.hasShort), `a kill card is up, so each warning shows its short headline: ${JSON.stringify(rail.map(x => [x.text, x.short]))}`);
       must(rail.every(x => x.px >= 11), `rail text under 11 px on screen: ${JSON.stringify(rail.map(x => [x.text, x.px]))}`);
@@ -5022,7 +5023,7 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [what, a
     await pg.waitForTimeout(500);
     const r = await lnRead(pg), rail = await railRead(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-rail-hint-${what.replace(/\W+/g, '-')}${kc ? '-kc' : ''}${night ? '-night' : ''}.png` }); await pg.close();
-    must(rail.some(x => want.test(x.text)) || (kc && rail.length), `the warning must be in the rail: ${JSON.stringify(rail.map(x => x.text))}`);
+    must(rail.some(x => want.test(x.text)), `the warning must be in the rail: ${JSON.stringify(rail.map(x => x.text))}`);
     must(r.env.hint.length, 'pre-condition: the powerup hint is on screen');
     const boxes = [...rail.map(x => [x.text, x.box]), ...r.env.hint.map(b => ['powerup hint', b]), ...r.env.chip.map(b => ['held chip', b])];
     const guard = [...r.env.ammo.map(b => ['ammo', b]), ...r.env.vparts.map(b => ['vitals', b]), ...(r.hero ? r.hero.parts.map(b => ['kill card', b]) : [])];
@@ -5052,13 +5053,47 @@ await step('F368 layering clash: the ⓘ WARNINGS section lists every warning in
   must(Object.values(got).every(Boolean), `missing from the panel: ${JSON.stringify(got)}`);
   must(!down.alive && /HEADSET NOT JOINED · POWER-CYCLE THE HEADSET/.test(down.panel), `down: the panel keeps the full sentence: ${JSON.stringify(down)}`);
 });
-// review H2: a takeover longer than LANE_HERO_MS (SYNCING, 3 s) with two kills: the second JOINS the waiting card
+// review r2 M1: nothing crosses a life. Kill, die, a takeover while down, respawn, a new kill: the card shows x1, only the new victim
+await step('F368 layering clash: a kill from the old life never draws after REDEPLOYED and never joins a new-life kill', async () => {
+  const pg = await open(VIEWS[1], 'clash-kc-lives', '', 2200);
+  await pg.waitForFunction(() => !window.brx.engine.state().alive, null, { timeout: 4000 });
+  await pg.waitForFunction(() => window.brx.engine.state().alive, null, { timeout: 8000 });
+  const seen = await pg.evaluate(async () => { const out = []; for (let i = 0; i < 120; i++) { const v = document.querySelector('#lanes .lh .vt'); if (v) out.push(v.textContent.trim()); if (/GHOST/.test(out[out.length - 1] || '')) break; await new Promise(r => setTimeout(r, 50)); } return [...new Set(out)]; });
+  const r = await lnWait(pg, x => x.hero, 1000), L = await pg.evaluate(() => { const h = window.brx.engine.state().lanes.hero; return h && h.kills.map(k => k.victim); }); await pg.close();
+  must(!seen.includes('VIPER'), `the old life's kill drew after the respawn: ${JSON.stringify(seen)}`);
+  must(r.hero && r.hero.n === 1 && r.hero.name === 'GHOST' && JSON.stringify(L) === '["GHOST"]', `the new life's card: ${JSON.stringify({ hero: r.hero && { n: r.hero.n, name: r.hero.name }, kills: L })}`);
+});
+// review r2 M2: a tall rail (two or three warnings, no kill card) with the powerup hint: the hint and the rail stay clear of
+// the centre tells' band (SMOKED stands in for it), the ammo and the vitals
+const TALL = [['MC out of range + GUN LINK LOST', () => { window.brxDemo.dropGun(); }],
+  ['MC out of range + HEADSET NOT JOINED + RECONNECT NOW', () => { window.brxDemo.headsetJoin('not_joined'); }],
+  ['MC out of range + HEADSET JOINING + RECONNECT NOW', () => { window.brxDemo.headsetJoin('joining'); }]];
+const railFullAt = {};
+for (const view of VIEWS) for (const night of [false, true]) for (const [what, act] of TALL) await step(`${view.name} layering clash tall rail ${night ? 'night' : 'day'}: ${what} with the powerup hint and a tell: nothing overlaps`, async () => {
+  const pg = await open(view, 'live-pu-rockets', night ? '&night' : '', 3000);
+  await lnWait(pg, r => r.env.hint.length, 2500);
+  await pg.evaluate(act); await pg.evaluate(() => { window.brxDemo.mcLost(); window.brx.hud.mcPill = true; window.brxDemo.smoke(); });
+  await pg.waitForTimeout(500);
+  const r = await lnRead(pg), rail = await railRead(pg);
+  railFullAt[view.name + what + night] = await pg.evaluate(() => !!document.getElementById('frame').dataset.railfull);
+  await pg.screenshot({ path: `${OUT}/${view.name}-rail-tall-${what.replace(/\W+/g, '-')}${night ? '-night' : ''}.png` }); await pg.close();
+  const yielded = !r.env.hint.length && await Promise.resolve(railFullAt[view.name + what + night]);
+  must(rail.length >= 2 && r.env.tells.length, `pre-condition: two or more pills and the tell: ${JSON.stringify({ rail: rail.map(x => x.text), tells: r.env.tells.length })}`);
+  must(r.env.hint.length || yielded, `the hint must ride above the rail, or yield (hidden) only when there is no room: ${JSON.stringify({ hint: r.env.hint.length, railfull: yielded })}`);
+  must(rail.filter(x => x.hasShort).every(x => x.short), `two or more warnings show headlines only: ${JSON.stringify(rail.map(x => [x.text, x.short]))}`);
+  const boxes = [...rail.map(x => [x.text, x.box]), ...r.env.hint.map(b => ['powerup hint', b])];
+  const guard = [...r.env.tells.map(b => ['the tell', b]), ...r.env.ammo.map(b => ['ammo', b]), ...r.env.vparts.map(b => ['vitals', b])];
+  const clash = boxes.flatMap(([n, a]) => guard.filter(([, g]) => !apart(a, g)).map(([m, g]) => `${n} ${JSON.stringify(a)} over ${m} ${JSON.stringify(g)}`));
+  must(clash.length === 0, clash.join(' | '));
+  must(rail.every(x => x.px >= 11), `rail text under 11 px on screen: ${JSON.stringify(rail.map(x => [x.text, x.px]))}`);
+});
+// review H2: a takeover longer than LANE_HERO_MS (GUN STOPPED, 4 s, stage clash-kc-long-two) with two kills: the second JOINS the waiting card
 await step('F368 layering clash: a second kill during a long takeover joins the waiting card (x2, the first kept)', async () => {
   const pg = await open(VIEWS[1], 'clash-kc-long-two', '', 2200);
   await pg.waitForFunction(() => document.getElementById('frame').dataset.takeover === 'gun_locked', null, { timeout: 5000 });
   await pg.waitForFunction(() => !document.getElementById('frame').dataset.takeover, null, { timeout: 8000 });
   const r = await lnWait(pg, x => x.hero, 500); const L = await pg.evaluate(() => window.brx.engine.state().lanes.hero); await pg.close();
-  must(r.hero && r.hero.n === 2 && r.hero.count === '×2' && L.kills.map(k => k.victim).join(',') === 'VIPER,GHOST', `the card after SYNCING: ${JSON.stringify({ hero: r.hero && { n: r.hero.n, count: r.hero.count, name: r.hero.name }, kills: L && L.kills.map(k => k.victim) })}`);
+  must(r.hero && r.hero.n === 2 && r.hero.count === '×2' && L.kills.map(k => k.victim).join(',') === 'VIPER,GHOST', `the card after GUN STOPPED: ${JSON.stringify({ hero: r.hero && { n: r.hero.n, count: r.hero.count, name: r.hero.name }, kills: L && L.kills.map(k => k.victim) })}`);
 });
 // review M1: the lanes' own timer ends a feed row on time, with no other render to help it
 await step('F368 layering clash: a feed row leaves on time with no other render', async () => {

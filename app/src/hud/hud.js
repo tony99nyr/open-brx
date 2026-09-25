@@ -4,7 +4,7 @@
 // #overlay so they animate independently of the base HUD.
 import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
 import * as SV from './shieldmeter.js';
-import { LANE_FEED_MS, LANE_HERO_MS, LANE_SETTLE_MS } from '../lanes.js';   // docs/announcer.md "The three lanes"
+import { LANE_FEED_MS, LANE_HERO_MS, LANE_SETTLE_MS, redeployOutMs } from '../lanes.js';   // docs/announcer.md "The three lanes"
 import { MEDALS, AWARDS } from '../transport/contract.gen.js';
 import { medalIcon, medalChip } from './medalicons.js';   // the RECAP icons only (Tony 2026-09-25): never in the in-game lanes   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
@@ -183,6 +183,20 @@ const AIM_REASON = {
   smoke: { word: 'SMOKED', sub: 'YOUR SHOTS WILL MISS' },
   recoil: { word: 'RECOIL', sub: 'RELEASE TO STEADY' },
 };
+/** F368 (review r2): every warning's words, ONE source for the rail's pill (`full`, `short` while a kill card is up,
+ *  `down` on the death screen) and the ⓘ panel's WARNINGS (always `full`). */
+const WARN = {
+  mc_live: { full: 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK', short: 'MC OUT OF RANGE', down: 'MC OUT OF RANGE' },
+  mc_pre: { full: 'RECONNECTING TO MISSION CONTROL…', short: 'MC OUT OF RANGE', down: 'MC OUT OF RANGE' },
+  headset_not_joined: { full: 'HEADSET NOT JOINED · POWER-CYCLE THE HEADSET', short: 'HEADSET NOT JOINED', down: 'HEADSET NOT JOINED' },
+  headset_joining: { full: 'HEADSET JOINING', short: 'HEADSET JOINING', down: 'HEADSET JOINING' },
+  flap_quiet: { full: 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.', short: 'GUN KEEPS DROPPING', down: 'POWER-CYCLE THE HEADSET' },
+  flap: { full: 'HEADSET OFF? TURN THE HEADSET ON.', short: 'HEADSET OFF?', down: 'HEADSET OFF? TURN IT ON' },
+  gun_lost: { full: 'GUN LINK LOST — TAP TO RECONNECT', short: 'GUN LINK LOST · TAP', down: 'GUN LINK LOST — TAP TO RECONNECT' },
+  no_answer: { head: 'GUN NOT ANSWERING', sub: 'HOST: FORCE RESPAWN OR RELINK' },
+  no_fire: { head: 'GUN NOT REPORTING SHOTS', sub: 'PULL TRIGGER AGAIN · THEN TELL HOST' },
+};
+const warnFull = w => w.full || `${w.head} · ${w.sub}`;
 const secsLeft = ms => Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
 const pctLeft = (left, total) => Math.max(0, Math.min(100, Math.round(100 * (Number(left) || 0) / (Number(total) || 1))));
 /** The digit beside the gauge: a round count for a bullet weapon or a low-cost energy weapon (the Rail
@@ -1444,10 +1458,10 @@ export class Hud {
   _gunHealthWarning(st) {
     if (!this._gunHealthActive(st)) return '';
     if (st.cure && st.cure.verdict === 'no_answer') {
-      return '<div class="gunwarn danger" role="alert"><b>GUN NOT ANSWERING</b> <span>HOST: FORCE RESPAWN OR RELINK</span></div>';
+      return `<div class="gunwarn danger" role="alert"><b>${WARN.no_answer.head}</b> <span>${WARN.no_answer.sub}</span></div>`;
     }
     if (st.poolStale && st.poolStale.why === 'no_fire') {
-      return '<div class="gunwarn warn" role="status" aria-live="polite"><b>GUN NOT REPORTING SHOTS</b> <span>PULL TRIGGER AGAIN · THEN TELL HOST</span></div>';
+      return `<div class="gunwarn warn" role="status" aria-live="polite"><b>${WARN.no_fire.head}</b> <span>${WARN.no_fire.sub}</span></div>`;
     }
     return '';
   }
@@ -1741,12 +1755,18 @@ export class Hud {
       pills.push('<span class="pill ok easyreload"><span class="unskew">ALT = RELOAD</span></span>');
     }
     if (st.wsState === 'bound') this.mcPill = false;   // the opt-in range pill is per outage, not forever
-    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew" data-short="ASK THE HOST">ASK THE HOST — COULDN'T JOIN${refusalWords(st.wsReason) ? ' (' + esc(refusalWords(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
+    const full = [];   // review M3/r2: every warning's full sentence, for the ⓘ panel, from the same branch as its pill
+    const say = (w, cls, attrs = '') => { full.push(warnFull(w)); return `<span class="${cls}"${attrs}><span class="unskew" data-short="${w.short}">${down ? w.down : w.full}</span></span>`; };
+    if (st.wsState === 'rejected') { const t = `ASK THE HOST — COULDN'T JOIN${refusalWords(st.wsReason) ? ' (' + esc(refusalWords(st.wsReason)).toUpperCase() + ')' : ''}`; full.push(t); pills.push(`<span class="pill bad"><span class="unskew" data-short="ASK THE HOST">${t}</span></span>`); }
     // Playing out of MC range is the NORMAL case mid-match (Tony, review 2026-09-03 #32): live shows it as the amber MC
     // dot only; a tap on the MC label shows the detail pill. Before the match (kitted/lobby) MC is required, so the pill stays.
     // (night hides the header dots, so there the dim pill is the only off-range signal)
     // While DOWN one off the cap, the recap's own A31 line already says MC is out of range: no second pill for it.
-    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && !(down && this._atCapMinusOne(st)) && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn mcr"><span class="unskew" data-short="MC OUT OF RANGE">${down ? 'MC OUT OF RANGE' : st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
+    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound') {
+      const w = st.phase === 'live' ? WARN.mc_live : WARN.mc_pre;
+      if (!(down && this._atCapMinusOne(st)) && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(say(w, 'pill warn mcr'));
+      else full.push(warnFull(w));   // live: the amber dot only, but the panel still names it
+    }
     // A tappable pill, not just a status: the retry now runs forever, but a player who has just
     // switched the gun on should not have to wait out a backoff — or go hunting in the debug panel,
     // which is where the only reconnect control used to live (Tony, field 2026-09-01).
@@ -1759,32 +1779,25 @@ export class Hud {
     // the headset is still joining the gun and the phone waits; after 60 s it stops and waits for RECONNECT NOW. Both
     // lines show in every phase, in place of the flap lines and GUN LINK LOST (the link is down on purpose).
     const hj = st.headsetJoin && st.headsetJoin.state;
-    if (hj === 'not_joined') pills.push(`<span class="pill bad" data-headset="not_joined"><span class="unskew" data-short="HEADSET NOT JOINED">${down ? 'HEADSET NOT JOINED' : 'HEADSET NOT JOINED · POWER-CYCLE THE HEADSET'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
-    else if (hj === 'joining' && !st.bleUp) pills.push(`<span class="pill warn" data-headset="joining"><span class="unskew">HEADSET JOINING</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
-    else if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew" data-short="GUN KEEPS DROPPING">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
-    else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew" data-short="HEADSET OFF?">${down ? 'HEADSET OFF? TURN IT ON' : 'HEADSET OFF? TURN THE HEADSET ON.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    if (hj === 'not_joined') pills.push(say(WARN.headset_not_joined, 'pill bad', ' data-headset="not_joined"') + `<button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (hj === 'joining' && !st.bleUp) { pills.push(say(WARN.headset_joining, 'pill warn', ' data-headset="joining"') + `<button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`); }
+    else if (st.gunFlapping && st.gunFlapping.quiet) pills.push(say(WARN.flap_quiet, 'pill bad', ` data-flap="${st.gunFlapping.count}" data-quiet="1"`) + `<button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (st.phase !== 'idle' && st.gunFlapping) pills.push(say(WARN.flap, 'pill warn', ` data-flap="${st.gunFlapping.count}"`) + `<button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     // QA-02: on the live HUD this is a solid, steady bar (16 px, no blink): the frozen numbers below depend on it.
-    else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew" data-short="GUN LINK LOST · TAP">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
+    else if (st.phase !== 'idle' && !st.bleUp) { full.push(warnFull(WARN.gun_lost)); pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew" data-short="${WARN.gun_lost.short}">${WARN.gun_lost.full}</span></button>`); }
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
     // S57 / QA-05: the IR callouts and the hill transitions are never a pill here: they are lanes (`_lanes`).
-    const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;
+    // review r2 M2: two or more warnings in the rail show headlines only (the full sentences stay in the ⓘ panel)
+    const many = (pills.join('').match(/data-short=/g) || []).length >= 2;
+    const html = `<div class="chipbar${many ? ' many' : ''}">${pills.join('')}</div>${prompt}`;
     if (this.chips.innerHTML !== html) this.chips.innerHTML = html;
     // F368 (docs/announcer.md "Layering and priority on the phone HUD"): on the live HUD the pills are the status rail at
     // the bottom centre. While a kill card is up each shows its short headline (`data-short`, drawn by CSS); the ⓘ
     // panel's WARNINGS section always has every warning's full sentence.
-    // review M3: EVERY warning's full sentence, whatever the rail shows (a pill only on a tap, the down screen's short copy)
-    const full = [];
-    if (st.wsState === 'rejected') full.push(`ASK THE HOST — COULDN'T JOIN${refusalWords(st.wsReason) ? ' (' + String(refusalWords(st.wsReason)).toUpperCase() + ')' : ''}`);
-    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound') full.push(st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…');
-    if (hj === 'not_joined') full.push('HEADSET NOT JOINED · POWER-CYCLE THE HEADSET');
-    else if (hj === 'joining' && !st.bleUp) full.push('HEADSET JOINING · THE PHONE WAITS FOR IT');
-    else if (st.gunFlapping && st.gunFlapping.quiet) full.push('GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.');
-    else if (st.phase !== 'idle' && st.gunFlapping) full.push('HEADSET OFF? TURN THE HEADSET ON.');
-    else if (st.phase !== 'idle' && !st.bleUp) full.push('GUN LINK LOST — TAP TO RECONNECT');
     if (typeof this._gunHealthActive === 'function' && this._gunHealthActive(st)) {
-      if (st.cure && st.cure.verdict === 'no_answer') full.push('GUN NOT ANSWERING · HOST: FORCE RESPAWN OR RELINK');
-      else if (st.poolStale && st.poolStale.why === 'no_fire') full.push('GUN NOT REPORTING SHOTS · PULL TRIGGER AGAIN · THEN TELL HOST');
+      if (st.cure && st.cure.verdict === 'no_answer') full.push(warnFull(WARN.no_answer));
+      else if (st.poolStale && st.poolStale.why === 'no_fire') full.push(warnFull(WARN.no_fire));
     }
     const warn = full.length ? full.map(t => `<span>${esc(t)}</span>`).join('') : '<span class="mut">NONE</span>';
     if (this._warnHtml !== warn) { this._warnHtml = warn; const w = this.diag && this.diag.querySelector('#dg-warn'); if (w) w.innerHTML = warn; }
@@ -2029,6 +2042,13 @@ export class Hud {
     const h = els.length ? Math.max(...els.map(e => e.offsetHeight + (parseFloat(getComputedStyle(e).bottom) || 0))) : 0;
     const v = h ? `${Math.ceil(h)}px` : '';
     if (f.style.getPropertyValue('--rail') !== v) { if (v) f.style.setProperty('--rail', v); else f.style.removeProperty('--rail'); }
+    // review r2 M2: the hint rides 12 px above the rail but never over a centre tell (the accuracy pill, the OVERHEAT word,
+    // TAKING FIRE: their band reaches frame y 252; RAIL_ROOM_PX is the 390 px frame less that and a 6 px margin). While a
+    // tell is up and there is no room, the hint yields: the tell and the rail's warnings outrank it, and the held chip
+    // still shows what the player carries. With no tell up the band is empty and the hint may use it.
+    const hint = f.querySelector('#puhint'), RAIL_ROOM_PX = 390 - 258, tell = !!f.querySelector('.alive .aimfx, .alive .heatword, .alive .takingfire');
+    const full = !!(h && hint && tell && h + 12 + hint.offsetHeight > RAIL_ROOM_PX);
+    if (!!f.dataset.railfull !== full) { if (full) f.dataset.railfull = '1'; else delete f.dataset.railfull; }
   }
   _lanes(st) {
     let root = this.frame.querySelector('#lanes');
@@ -2235,7 +2255,7 @@ export class Hud {
     // 2026-09-19: a timed respawn holds the trigger for the weapon delay (up to 3 s), so the overlay stays until the
     // weapon is live and a beat after; `_redeployTick` swaps the line to WEAPONS HOT the moment it is.
     const arming = Number(st.weaponArming) || 0;
-    const live = this._swap('redeploy', el, Math.max(1700, arming + 400), Math.max(2100, arming + 800));
+    const live = this._swap('redeploy', el, redeployOutMs(arming), Math.max(2100, arming + 800));   // F368: the engine's `_laneTakeover` reads the same end
     // fit the headline to its column: font metrics differ per platform and a fixed size ran off the right edge (review #31)
     const t = live.querySelector('.t'); let fs = 56;
     while (t && t.scrollWidth > t.clientWidth + 1 && fs > 28) { fs -= 2; t.style.fontSize = fs + 'px'; }

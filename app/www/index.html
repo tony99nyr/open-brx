@@ -1465,9 +1465,11 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 #frame[data-screen="live"]:not([data-down]) .chipbar .pill.bad.gunlost{font-size:16px;letter-spacing:.08em;padding:3px 8px}
 #frame[data-screen="live"]:not([data-down]) .chipbar>*,#frame[data-screen="live"]:not([data-down]) .chipbar .unskew{transform:none}   /* a skewed pill of 3-5 lines leans ~18 px wider than its column: the rail keeps them upright */
 #frame[data-screen="live"]:not([data-down]) .chipbar .unskew{white-space:normal}
-#frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .unskew[data-short]{font-size:0;letter-spacing:0}
-#frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .unskew[data-short]::after{content:attr(data-short);font-size:14px;letter-spacing:.08em}
-#frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .gunlost .unskew[data-short]::after{font-size:16px}
+#frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .unskew[data-short],#frame[data-screen="live"]:not([data-down]) .chipbar.many .unskew[data-short]{font-size:0;letter-spacing:0}
+#frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .unskew[data-short]::after,#frame[data-screen="live"]:not([data-down]) .chipbar.many .unskew[data-short]::after{content:attr(data-short);font-size:14px;letter-spacing:.08em}
+#frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .gunlost .unskew[data-short]::after,#frame[data-screen="live"]:not([data-down]) .chipbar.many .gunlost .unskew[data-short]::after{font-size:16px}
+/* review r2 M2: two or more warnings = headlines (above); with no room left above the rail the hint yields (hud.js `_railFit`) */
+#frame[data-screen="live"][data-railfull] .puhint{visibility:hidden}
 /* the rail's neighbours: the NIGHT label gives way, the powerup hint rides above it */
 #frame[data-screen="live"]:not([data-down]):has(#chips .chipbar > :is(.bad, .warn)) .nightlab{display:none!important}   /* a warning: it hides */
 /* review H1: the hint and the label ride above the rail at its REAL height (`--rail`, hud.js `_railFit`: the pills, or

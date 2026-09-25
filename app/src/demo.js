@@ -650,6 +650,10 @@ export function startDemo({ engine, log }) {
       // and one 3.3 s later. The second kill must JOIN the waiting card (x2, the first kept), never open a new one.
       'clash-kc-long-two': [...live, [2300, 'gunLocked'], [2500, () => ev.killMedals(['first_blood'], 'VIPER')], [5800, () => ev.killMedals(['double_kill'], 'GHOST')],
         [6300, () => { engine.gunLocked = null; engine._changed(); }]],
+      // review r2 M1: a kill, a death, a takeover while down (a relink's 3 s SYNCING), the respawn, then a kill in the new
+      // life. The old life's kill must never draw after REDEPLOYED, nor join the new one.
+      'clash-kc-lives':    [...live, [2300, () => ev.killMedals(['first_blood'], 'VIPER')], [2600, 'die'], [2700, 'dropGun'], [3000, 'relinkGun'],
+        [6300, 'respawn'], [7200, () => ev.killConfirm('GHOST')]],
       // review M4: GUN NOT ANSWERING (the rail's most severe fault) under a kill card
       'clash-kc-gunwarn':  [...live, [2300, 'gunNoAnswer'], [2700, () => ev.killMedals(['first_blood'], 'VIPER')]],
       'clash-kc-headset':  [...live, [2300, () => ev.headsetJoin('not_joined')], [3300, () => ev.killMedals(['first_blood'], 'VIPER')]],
