@@ -245,7 +245,7 @@ function startUtilityDiscovery() {
 // Bench 2026-09-24: mDNS alone never found an MC in WSL behind a Windows portproxy (its mDNS never reaches
 // the LAN); the player screen's sweep did. Same sweep here (transport/utility-join.js), same guard as above:
 // only while unbound and with no operator-named URL. A hit auto-joins untrusted, exactly like an mDNS hit.
-function startUtilityLanSweep() {
+function startUtilityLanSweep(over = {}) {   // `over`: the node test's sweep/timer seam (app/test/utility-join-wiring)
   if (_sweeper && !_sweeper.stopped) return;
   let wsFactory; try { wsFactory = makeWsFactory(); } catch (e) { log('MC sweep: ' + (e && e.message || e)); return; }
   _sweeper = startUtilitySweep({
@@ -255,6 +255,7 @@ function startUtilityLanSweep() {
     connect: (url, opts) => { if (mcState === 'connecting' || mcState === 'open') return; if (!transport || transport.url !== url) connectMc(url, opts); },
     log, wsFactory,
     isOnline: () => !(typeof navigator !== 'undefined' && navigator.onLine === false),
+    ...over,
   });
 }
 /** The typed-address buttons: the HUD's parse (join code → url + pub + secret), and a pasted console address
@@ -875,7 +876,9 @@ function wireExit() {
   await startScan();
   setInterval(tick, 250);
   if (DEMO) seedDemo();
-  window.brxUtility = { settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; } };
+  window.brxUtility = { settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; },
+    // test seam (app/test/utility-join-wiring): `startLanSweep(over)` spreads `over` into the sweep options unchecked
+    startLanSweep: startUtilityLanSweep, get sweeper() { return _sweeper; } };
   window.brxUtil = window.brxUtility;
 })();
 

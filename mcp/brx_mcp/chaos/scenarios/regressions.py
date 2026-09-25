@@ -153,10 +153,10 @@ scenario(Scenario(
 
 scenario(Scenario(
     name="frag-cap-team-kill-live", mode="tdm", nodes=12,
-    doc="Chaos 2026-09-24 (delegated agent, tdm-frag-race seed 10057, OPEN, FOLLOWUPS id pending): with a "
-        "team kill in the mix, MC ends the match on the frag cap while the credited top score is still "
-        "one BELOW the cap. No restart involved: the live (non-replay) cap check disagrees with the "
-        "netted score it reports.",
+    doc="F356 (chaos 2026-09-24, tdm-frag-race seed 10057): node 10 drops, and its team kill (stamped "
+        "before the capping kill) flushes after the whistle. MC credited its -1 because its t is inside "
+        "the window, so the match ended on the frag cap with a top score one BELOW it. Fixed: a late "
+        "team kill that would take the capping side below the cap parks as an after-the-whistle fact.",
     config={"scoring": {"frag_limit": 5, "win_by": "kills"}},
     script=[
         {"name": "kill", "params": {"victim": 3, "shooter": 10}},
@@ -167,14 +167,35 @@ scenario(Scenario(
         {"name": "kill", "params": {"victim": 1, "shooter": 2}},
         {"name": "kill", "params": {"victim": 11, "shooter": 4}},
     ],
-    xfail="chaos 2026-09-24 (FOLLOWUPS id pending): frag_cap_ends_match fires on the raw kill-event "
-          "count, one ahead of the team-kill-netted score it reports as the top score",
-    xfail_invariant="frag_cap_ends_match",
     ci_seeds=(1,),
 ))
 
-# NOT pinned: a kill_feedback_matches_credit mismatch also turned up on tdm-frag-race seed 10095 (a kill
-# chain through nodes dropped mid-match and never reconnected), but replaying its minimal trace twice
-# more, under lower machine load, PASSED both times. That points to a wall-clock/timing dependency (the
-# FEEDBACK_MAX_AGE_MS window against real async delay under load), not a seed-deterministic bug, so it is
-# not safe to pin as a fixed CI regression. See the chaos exploration report, 2026-09-24, for the trace.
+scenario(Scenario(
+    name="frag-cap-recap-cue-then-parked", mode="tdm", nodes=12,
+    doc="F357 (chaos 2026-09-24, tdm-frag-race seeds 10095 and 20162): the frag cap ends the match, then two "
+        "dropped nodes flush. Node 6's batch lands first: its pre-whistle kill is credited and CUED in "
+        "RECAP (fresh, well inside FEEDBACK_MAX_AGE_MS). Node 7's batch then moves the cap end earlier "
+        "and parks that kill. The cue cannot be taken back, but `credited_enemy_kills` exempts only kills "
+        "MC held at the whistle (`world.end_delivered`). The runner's aftermath reconnects every dropped "
+        "node at once, so the flush order was a socket race: this script fixes it (7 then 6 passes). "
+        "Fixed: MC sends no kill confirm once the match has ended, so node 6's late kill scores uncued.",
+    config={"scoring": {"frag_limit": 5, "win_by": "kills"}},
+    script=[
+        {"name": "drop", "params": {"node": 7}},
+        {"name": "trade", "params": {"a": 10, "b": 3}},
+        {"name": "respawn", "params": {"node": 3}},
+        {"name": "kill", "params": {"victim": 5, "shooter": 6}},
+        {"name": "drop", "params": {"node": 6}},
+        {"name": "kill", "params": {"victim": 7, "shooter": 4}},
+        {"name": "kill", "params": {"victim": 9, "shooter": 6}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "respawn", "params": {"node": 9}},
+        {"name": "kill", "params": {"victim": 6, "shooter": 9}},
+        {"name": "respawn", "params": {"node": 5}},
+        {"name": "respawn", "params": {"node": 11}},
+        {"name": "kill", "params": {"victim": 5, "shooter": 10}},
+        {"name": "reconnect", "params": {"node": 6}},
+        {"name": "reconnect", "params": {"node": 7}},
+    ],
+    ci_seeds=(1,),
+))

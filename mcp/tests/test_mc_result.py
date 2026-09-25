@@ -558,3 +558,40 @@ def test_a_late_friendly_kill_never_moves_the_whistle_FORWARD():
         f"the whistle moved FORWARD to +{(s.scorer.end_t - g) / 1000:.1f}s — the field had already gone home"
     ae = s.recap().get("after_end") or {}
     assert ae.get("facts"), "the post-whistle kill was promoted into the official tally"
+
+
+def test_late_team_kill_and_late_enemy_kill_give_the_same_board_in_either_arrival_order():
+    """F356 round 2: after the frag cap fires, a late TEAM kill stamped before the end is ALWAYS frozen
+    out (A6.1, the announced winner never mutates), whatever the score is when it lands. A late enemy kill
+    inside the window still scores, and may move the cap end earlier (A24/M2). So the same facts give the
+    same board, end and after-the-whistle count in either arrival order.
+
+    The team kill used to park only while its team sat exactly on the cap, and a replay (in `t` order)
+    scored it: one order ended at the late enemy kill, the other at the original capping kill.
+    """
+    def run(order):
+        s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+        t0 = clock["t"]
+        kill(s, net, clock, ps, 0, 1, info, seq=1)      # team A 1, at t0+1000
+        kill(s, net, clock, ps, 2, 3, info, seq=2)      # team A 2, the cap, at t0+2000
+        assert s.phase == "recap"
+        base = {"match_id": info["match_id"], "type": "death", "shooter_team": 1}
+        late = {
+            "tk": ("node2", {**base, "t": t0 + 1200, "player_id": ps[2]["player_id"],
+                             "shooter_num": ps[0]["player_num"]}, 10),     # P0 team-kills P2
+            "enemy": ("node1", {**base, "t": t0 + 1500, "player_id": ps[1]["player_id"],
+                                "shooter_num": ps[2]["player_num"]}, 11),  # P2 kills P1
+        }
+        for i, key in enumerate(order):
+            nid, ev, seq = late[key]
+            net.simulate_event(nid, ev, clock["t"] + 200 + 100 * i, seq=seq)
+        sc = s.scorer
+        by_pid = {r["player_id"]: (r["kills"], r["deaths"]) for r in sc.rows()}
+        rows = [by_pid[p["player_id"]] for p in ps]        # by roster slot: ids differ per run
+        return sc.team_scores(), rows, sc.end_t - t0, len(sc.post_end)
+
+    a, b = run(("enemy", "tk")), run(("tk", "enemy"))
+    assert a == b, f"the arrival order changed the result:\n enemy first {a}\n team kill first {b}"
+    scores, _rows, end_rel, _post = a
+    assert end_rel == 1500, f"the late enemy kill reached the cap first, so the end moves back to it: {a}"
+    assert max(scores.values()) == 2, a

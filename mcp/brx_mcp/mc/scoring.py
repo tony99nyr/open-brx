@@ -178,6 +178,12 @@ class Scorer:
         # player_ids in FFA). Set by the Session at the finish via `check_cap_tie`; `winner()` reports it
         # as a tie rather than letting MC's arrival order pick between two kills it cannot order.
         self.cap_tie: list[str] | None = None
+        # F356: the MC time (`t_recv` clock) the frag cap's whistle blew (`state._end_on_frag_limit`). A team
+        # kill MC receives after it is frozen out (`_frozen_out`), and no kill is cued after it (F357). It is
+        # a fact about ARRIVAL, which the stored facts keep (`t_recv`): a reconcile replay is handed the live
+        # value, and a resume derives it from the facts in arrival order (`state._build_scorer`). Never set
+        # by the scorer itself, so an adopted match (MC does not end it on the cap) never has one.
+        self.cap_recv: int | None = None
         # A63 IRON MAN: player_id -> ms a HOT JOINER was registered (A5.6), only for a join AFTER go-live.
         # Such a player did not play the whole match, so IRON MAN skips them, and their first life starts
         # here, not at go-live. A replay or a resume carries it over (`state._replay`, the match snapshot),
@@ -249,8 +255,9 @@ class Scorer:
         for node_id, ev, t_recv in self.post_end:
             if ev.get("type") != "death":
                 continue
-            if self._eff_t(node_id, ev, t_recv, None) > self.end_t + tol_ms:
-                continue
+            eff = self._eff_t(node_id, ev, t_recv, None)
+            if eff > self.end_t + tol_ms or eff <= self.end_t:
+                continue    # F356: a pre-whistle team kill frozen out by `_frozen_out` is not in the band
             victim, killer = self._kill_pair(node_id, ev)
             if victim is None or not killer:
                 continue
@@ -313,6 +320,22 @@ class Scorer:
         node → `t_recv`). Public because the Session has to ask the same question of a fact that has not
         been ingested yet — "is this late arrival inside the scored window?" (A24/M2 reconciliation)."""
         return self._eff_t(node_id, ev, t_recv, None)
+
+    def _frozen_out(self, node_id: str, ev: Event, t_recv: int) -> bool:
+        """F356: a TEAM kill MC receives after the frag cap fired is frozen out (contracts §4, A6.1).
+
+        A node out of coverage flushes it after the whistle, stamped before the capping kill, so its `t`
+        is inside the window. Its -1 would lower the capping team's board below the cap the field heard,
+        and A6.1 says the announced winner never mutates, so it parks as `post_end` WHATEVER the score is
+        when it lands: the same facts then give the same board in any arrival order. Judged on `t_recv`,
+        not on "has this scorer's cap fired yet", so a replay (in `t` order) freezes exactly the same
+        facts. An ENEMY kill that lands late still scores (and may move a frag-cap end earlier, A24/M2).
+        FFA has no team kill, so it is never affected.
+        """
+        if self.cap_recv is None or t_recv <= self.cap_recv:
+            return False
+        victim, killer = self._kill_pair(node_id, ev)
+        return victim is not None and killer is not None and self._friendly(killer, victim)
 
     def _friendly(self, killer: str | None, victim: str) -> bool:
         if not killer or self.mode == "ffa":
@@ -386,10 +409,10 @@ class Scorer:
         t = self._eff_t(node_id, ev, t_recv, rebase)
         if not self.synced_at_lobby.get(node_id, False):
             suppress_awards = True                  # A5.7: never-synced node → no window awards on the live path either
-        if self.end_t is not None and t > self.end_t:
+        kind = ev.get("type")
+        if (self.end_t is not None and t > self.end_t) or (kind == "death" and self._frozen_out(node_id, ev, t_recv)):
             self.post_end.append((node_id, ev, t_recv))
             return "post_end"
-        kind = ev.get("type")
         if kind in ("hit_taken", "death", "respawn", "team_change") and not self.synced_at_lobby.get(node_id, False):
             self.unsynced_pids.add(pid)
         if kind in self.wire0 and int(ev.get("shooter_num", 0) or 0) == 0:
@@ -512,8 +535,12 @@ class Scorer:
                     self.stats[a].assists += 1
                 if assisters:
                     kill["assists"] = assisters
-                # feedback to the killer only if fresh
-                if self.now_ms() - t <= FEEDBACK_MAX_AGE_MS and not suppress:
+                # feedback to the killer only if fresh, and never after a FRAG-CAP whistle (F357): a kill
+                # flushed after it still scores, but a later flush can move that end earlier and park it,
+                # and a cue cannot be taken back. A timed or host end never moves, so a fresh kill landing
+                # just after one keeps its confirm. The capping kill itself is cued: its whistle
+                # (`cap_recv`) is set by the Session after `_check_frag_limit` below.
+                if self.now_ms() - t <= FEEDBACK_MAX_AGE_MS and not suppress and self.cap_recv is None:
                     # kind stays "kill" (older nodes play their kill line); `medals` is the A11.4 stack,
                     # which a current node plays INSTEAD of the plain line, one after another.
                     # `victim` is a player_id (for matching); `victim_display` is what the kill banner shows
