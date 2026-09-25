@@ -31,7 +31,7 @@ const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-vqa2-home-'));
 const LONG = 'W'.repeat(16);   // 16 characters (F366 MAX_TAG_LEN, the most the server allows), the widest glyph, no break point
 const STATION = 'util-e2e-vqa2';
 const STATION2 = 'util-e2e-vqa2-pu';   // a second station, for the powerup strip on LIVE
-const AMBER = 'rgb(255, 176, 32)', GREEN = 'rgb(46, 204, 113)';
+const AMBER = 'rgb(255, 176, 32)', GREEN = 'rgb(46, 204, 113)', RED = 'rgb(255, 82, 82)';
 const c = checker();
 const { expect, until } = c;
 const shot = (pg, name) => shotIn(pg, SHOTS, name);
@@ -239,8 +239,10 @@ try {
     await go(pg, 'LOBBY');
     const block = pg.getByTestId('setup-conflict');
     expect(await until(() => block.isVisible(), 6000, 'the conflict block'), 'LOBBY shows a SETUP CONFLICT block');
-    expect(/every phone ignores its hill/.test(await block.innerText().catch(() => '')), 'it says every phone ignores the station\'s hill');
-    expect(await styleOf(block, 'borderLeftColor') === AMBER, `it is amber (${await styleOf(block, 'borderLeftColor')})`);
+    // F221 (Tony's rule, approved 2026-09-25): the line is now UPPER CASE (was sentence case), and a
+    // control station wired to a game whose objective is the grenade is RED (act now), not amber.
+    expect(/EVERY PHONE IGNORES ITS HILL/.test(await block.innerText().catch(() => '')), 'it says every phone ignores the station\'s hill');
+    expect(await styleOf(block, 'borderLeftColor') === RED, `it is red (${await styleOf(block, 'borderLeftColor')})`);
     await shot(pg, 'koth-lobby-1440');
     await go(pg, 'ARMORY');
     const card = pg.locator(`[data-station-card="${STATION}"]`);
@@ -275,7 +277,7 @@ try {
     await pg.context().close();
   });
 
-  await runStep('pools', 'LIVE: GUN POOLS WRONG reads POOLS WRONG, amber, first', async () => {
+  await runStep('pools', 'LIVE: GUN POOLS WRONG reads POOLS WRONG, red, first', async () => {
     await reset();
     await nodes.cmd('set GUN-B pool_stale=pool_wrong');
     const s = await toLive();
@@ -285,7 +287,8 @@ try {
     const status = pg.locator(`[data-live-row="${b.player_id}"] [data-cell="status"]`);
     expect(await until(async () => (await status.innerText().catch(() => '')).trim() === 'POOLS WRONG', 10000, 'POOLS WRONG'),
       `${b.display}'s status reads POOLS WRONG (saw "${(await status.innerText().catch(() => '')).trim()}")`);
-    expect(await styleOf(status, 'color') === AMBER, `in amber (${await styleOf(status, 'color')})`);
+    // F221 (Tony's rule): POOLS WRONG needs the operator NOW, so it is RED (act now), not amber.
+    expect(await styleOf(status, 'color') === RED, `in red (${await styleOf(status, 'color')})`);
     const first = await pg.locator('[data-live-row]').first().getAttribute('data-live-row');
     expect(first === b.player_id, `the faulted row is first on the board (first is ${first})`);
     const bg = await styleOf(pg.locator(`[data-live-row="${b.player_id}"]`), 'backgroundColor');
@@ -312,8 +315,9 @@ try {
     expect(await until(() => alerts.isVisible(), 8000, 'the station alerts'), 'the BATTERY LOW station alert reaches LIVE');
     expect(await until(async () => /RESTARTED/.test(await alerts.innerText().catch(() => '')), 6000, 'RESTARTED'), 'the restart is on the strip');
     const at = await alerts.innerText().catch(() => '');
-    expect(/BATTERY LOW/.test(at) && /swap or charge before the whistle/.test(at), 'BATTERY LOW reaches LIVE, with its next step (M5)');
-    expect(/check the station; it restarted during the lock/.test(at), 'RESTARTED has its next step (M5)');
+    expect(/BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE/.test(at), 'BATTERY LOW reaches LIVE, with its next step (M5)');
+    // F221: `WHAT IS WRONG: WHAT TO DO`, one colon, upper case (catalogue id 'station-attention-restarted').
+    expect(/RESTARTED(?: \d+ TIMES)?: CHECK THE STATION/.test(at), 'RESTARTED has its next step (M5)');
     expect(await pg.getByTestId('hill-panel').isVisible().catch(() => false) && await pg.getByTestId('powerup-strip').isVisible().catch(() => false),
       'control: the hill panel and the powerup strip are on the board too');
     const rows = pg.locator('[data-live-rows]');

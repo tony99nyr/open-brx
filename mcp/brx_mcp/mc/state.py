@@ -244,7 +244,7 @@ KIT_LOCKED = "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE"
 # in LIVE, by which time this game's whistle has already gone.
 _STALE_ACK_FAULT = "ACKED AN OLDER CONFIG"
 # Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off).
-GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK)"
+GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON"
 _ECHO_FAULT = "GUN ECHO ≠ CONFIG"
 _POOL_FAULT = "GUN POOL ≠ CONFIG"
 _GUN_CONFIG_FAULT = "GUN CONFIG ≠ PUSHED HEAD"
@@ -260,6 +260,36 @@ _POOL_ARMOR_ADVISORY = "GUN ARMOR ABOVE CONFIG"
 def cured_by_push(blocker: str) -> bool:
     """Is this readiness blocker one of the four proof prefixes a re-push replaces?"""
     return blocker.startswith(PUSH_CURES)
+
+
+# F221 (Tony, 2026-09-25): every readiness line reads `WHAT IS WRONG: WHAT TO DO`, upper case, one colon.
+# The list a line goes into (`blockers` or `ambers`) is the gate; the console picks the colour from the
+# line's head (`webapp/mc/src/alerts/server.ts` SERVER_LINES). So a line never says "BLOCKS START" or
+# "DOES NOT BLOCK": the list and the colour already say it. `test_mc_alert_wording.py` pins the rule.
+WAITING_FOR_PHONE = "WAITING FOR THE PHONE: OPEN THE APP AND SET THE GUN"
+GUN_LINK_LOST = "GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT"
+CLOCK_NOT_SYNCED = "CLOCK NOT SYNCED: WAIT FOR THE PHONE TO SYNC"
+WRONG_WIFI = "WRONG WI-FI OR MC UNREACHABLE: JOIN THE PHONE TO THE FIELD WI-FI"
+TUNNEL_DOWN_ACT = "TUNNEL DOWN: TURN THE TUNNEL ON IN REACH"
+IDENTITY_REVERTED = "IDENTITY REVERTED: RE-STAMP $NAME"
+GUN_DID_NOT_ANSWER = "GUN DID NOT ANSWER CONFIG: CHECK THE HEADSET IS ON, THEN RE-PUSH"
+BATTERY_UNREAD = "BATTERY UNREAD"
+PHONE_BATTERY_LOW = "PHONE BATTERY LOW: CHARGE THE PHONE"
+SCREEN_OFF = "SCREEN OFF OR APP IN THE BACKGROUND: BRING THE APP TO THE FRONT"
+# A13.5 station attention lines (`_station_view`). The action is the one the ITEMS card offers.
+STATION_REARM = "RE-ARM IT FROM ITEMS ON ARMORY"
+STATION_BRING_BACK = "NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM"
+STATION_ARMED_OLDER = f"ARMED FOR AN OLDER GAME: {STATION_REARM}"
+STATION_NOT_ARMED = f"PHONE SAYS NOT ARMED: {STATION_REARM}"
+STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE"
+# F221 battery rule: under 30 % is AMBER for the gun, the phone and the station alike.
+BATTERY_LOW_PCT = 30
+
+
+def not_reached_line(age: str, tunnel_down: bool) -> str:
+    """F155: a node whose last path to MC was the internet tunnel. ONE sentence shape, which the console's
+    `staleReachReason` (webapp/mc/src/api/derive.ts) writes the same way."""
+    return f"NOT REACHED FOR {age}" + (f", {TUNNEL_DOWN_ACT}" if tunnel_down else "")
 
 
 class ConflictError(ValueError):
@@ -1264,15 +1294,14 @@ class Session:
         if code == "unplayable":
             return None
         if code == "fixed_missing":
-            return (f"LOADOUT RULES: THE PRIMARY IS FIXED TO {rule.get('fixed_id')!r}, WHICH IS NOT A "
-                    "WEAPON IN THIS GAME — pick the fixed primary again in the primary slot, or set "
-                    "the slot back to a player pick")
+            return (f"PRIMARY FIXED TO {rule.get('fixed_id')!r}, WHICH IS NOT A WEAPON IN THIS GAME: "
+                    "PICK THE FIXED PRIMARY AGAIN IN THE PRIMARY SLOT, OR SET THE SLOT BACK TO A PLAYER PICK")
         if code == "only_ids_missing":
-            return ("LOADOUT RULES: THE PRIMARY IS LIMITED TO WEAPONS THIS GAME DOES NOT HAVE "
-                    f"({', '.join(sorted(rule.get('only_ids') or []))}) — clear the primary slot's "
-                    "ALLOW list, or name weapons that are in the catalog")
-        return ("LOADOUT RULES: THE PRIMARY FILTER EXCLUDES EVERY WEAPON — no legal primary weapon is "
-                "left. Clear a class or id exclusion in the primary slot, or pick a preset")
+            return ("PRIMARY LIMITED TO WEAPONS THIS GAME DOES NOT HAVE "
+                    f"({', '.join(sorted(rule.get('only_ids') or []))}): CLEAR THE PRIMARY SLOT'S "
+                    "ALLOW LIST, OR NAME WEAPONS THAT ARE IN THE CATALOGUE")
+        return ("PRIMARY FILTER EXCLUDES EVERY WEAPON (NO LEGAL PRIMARY IS LEFT): CLEAR A CLASS OR ID "
+                "EXCLUSION IN THE PRIMARY SLOT, OR PICK A PRESET")
 
     def _unplayable_primary_notice(self) -> str | None:
         """MERGE-4's other half: the WARNING that replaces the refusal above, naming the weapon.
@@ -1283,9 +1312,8 @@ class Session:
         wid = _policy.unplayable_pick(rule)
         if not wid or self.loadout_pool()["primary"]:
             return None
-        return (f"LOADOUT RULES: {wid.upper().replace('_', ' ')} CANNOT BE PLAYED — ITS HIT ROW DEALS "
-                "NO DAMAGE IN THIS BUILD, so the primary slot fell back to a weapon that can. Pick a "
-                "different primary in the game's rules to choose it yourself")
+        return (f"{wid.upper().replace('_', ' ')} CANNOT BE PLAYED (ITS HIT ROW DEALS NO DAMAGE IN THIS BUILD, "
+                "SO THE PRIMARY SLOT FELL BACK TO A WEAPON THAT CAN): PICK A DIFFERENT PRIMARY IN THE GAME'S RULES")
 
     def health_pool(self, p: Player | None = None) -> int:
         """hp + armour a full-health player carries — what hits-to-kill is quoted against.
@@ -1406,8 +1434,8 @@ class Session:
         off = self._off_grid()
         if self._mc_verify_player_line():
             shown = ", ".join(off[:6]) + (f" +{len(off) - 6} MORE" if len(off) > 6 else "")
-            out["mc_verify"] = (f"WIN IS CONFIRMED AT MC · {len(off)} PHONE{'S' if len(off) != 1 else ''} OFF-GRID "
-                                f"({shown}) · TELL PLAYERS TO RETURN AFTER THE WHISTLE")
+            out["mc_verify"] = (f"WIN IS CONFIRMED AT MC, {len(off)} PHONE{'S' if len(off) != 1 else ''} OFF-GRID "
+                                f"({shown}): TELL PLAYERS TO RETURN AFTER THE WHISTLE")
         return out
 
     def game_brief(self) -> dict:
@@ -3014,19 +3042,17 @@ class Session:
         kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
         src = self.config.get("station_source")
         if src == "phone" and "control" not in kinds:
-            out.append("SETUP: NO CONTROL STATION IS ASSIGNED — this game's objective is a Bluetooth control point "
-                       "(station_source phone); assign a utility phone as CONTROL in ITEMS and arm it, "
-                       "or nothing on the field is the hill")
+            out.append("SETUP: NO CONTROL STATION IS ASSIGNED (THE OBJECTIVE IS A BLUETOOTH CONTROL POINT, SO "
+                       "NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT")
         # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
         # phone drops it unless the source is "phone" (`engine.js _hillSourceAllowed`). Say so; never switch.
         if src in ("grenade", "ir_station") and "control" in kinds:
             what = "THE GRENADE" if src == "grenade" else "AN IR STATION"
-            out.append(f"SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS {what} — every phone "
-                       "ignores the station's hill; set OBJECTIVE SOURCE to PHONE (a phone station), "
-                       "or clear the CONTROL station in ITEMS")
+            out.append(f"SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS {what} (EVERY PHONE "
+                       "IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS")
         if (self.config.get("respawn") or {}).get("type") == "scanner" and "respawn" not in kinds:
-            out.append("SETUP: NO RESPAWN STATION IS ASSIGNED — respawn is SCANNER, so a downed player can only come "
-                       "back at a station; assign a utility phone as RESPAWN in ITEMS and arm it")
+            out.append("SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SCANNER, SO A DOWNED PLAYER CAN ONLY COME "
+                       "BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT")
         if (self.config.get("respawn") or {}).get("type") == "scanner" and "respawn" in kinds:
             teams = self.config.get("teams") or []
             covered = {int(a.get("team")) for st in self.stations.values()
@@ -3038,8 +3064,8 @@ class Session:
                            for t in teams if isinstance(t.get("tid"), int) and t["tid"] not in covered]
                 if missing:
                     out.append("SETUP: SCANNER RESPAWN HAS NO STATION FOR " + ", ".join(missing).upper()
-                               + " — those players use timed AUTO respawn; assign another RESPAWN station if you "
-                               "want station respawn for both teams")
+                               + " (THOSE PLAYERS USE TIMED AUTO RESPAWN): ASSIGN ANOTHER RESPAWN STATION FOR "
+                               "STATION RESPAWN ON BOTH TEAMS")
         return out
 
     def set_station(self, nid: str, a: dict) -> StationView:
@@ -3576,18 +3602,18 @@ class Session:
         rep = st.get("report") or {}
         attention: list[str] = []
         if a and st.get("arm_pending"):
-            attention.append("BRING IT BACK TO RE-ARM")            # assignment changed with the phone out of range
+            attention.append(STATION_BRING_BACK)            # assignment changed with the phone out of range
         if a and armed and armed.get("game") != self._game_byte():
-            attention.append("ARMED FOR AN OLDER GAME")            # it missed the muster push
+            attention.append(STATION_ARMED_OLDER)            # it missed the muster push
         # The phone's own report only contradicts the arming if it arrived AFTER the push -- the heartbeat
         # from before an assignment naturally says "not armed" / the old id (review 2026-09-11).
         fresh = bool(armed) and seen is not None and seen > (armed.get("at") or 0)
         if a and fresh and rep.get("armed") is False:
-            attention.append("PHONE SAYS NOT ARMED")               # the push was sent; the phone never applied it
+            attention.append(STATION_NOT_ARMED)               # the push was sent; the phone never applied it
         if a and fresh and rep.get("station_id") not in (None, a["id"]):
-            attention.append(f"PHONE ADVERTISES ID {rep.get('station_id')}, ASSIGNED {a['id']}")
-        if isinstance(rep.get("battery"), (int, float)) and rep["battery"] < 30:
-            attention.append("BATTERY LOW")
+            attention.append(f"PHONE ADVERTISES ID {rep.get('station_id')}, ASSIGNED {a['id']}: {STATION_REARM}")
+        if isinstance(rep.get("battery"), (int, float)) and rep["battery"] < BATTERY_LOW_PCT:
+            attention.append(STATION_BATTERY_LOW)
         report: StationReport = {}
         kind = rep.get("kind")
         if is_station_kind(kind):
@@ -3672,13 +3698,14 @@ class Session:
         would run out before the match could end, so the operator can send it through muster again."""
         out: list[str] = []
         if restarts:
-            out.append(f"STATION #{sid} RESTARTED" + (f" {restarts} TIMES" if restarts > 1 else ""))
+            out.append(f"STATION #{sid} RESTARTED" + (f" {restarts} TIMES" if restarts > 1 else "")
+                       + ": CHECK THE STATION")
         if assoc == "held" and not online and self.phase in ("armed", "live"):
-            out.append(f"STATION #{sid} OFFLINE")
+            out.append(f"STATION #{sid} OFFLINE: CHECK IT IS ON AND IN RANGE")
         tl = self.config.get("time_limit_s")
         if (assoc == "muster" and self.phase == "lobby" and tl and lock.get("s")
                 and now + (DEFAULT_RUNWAY_S + tl) * 1000 > lock["at"] + lock["s"] * 1000):
-            out.append(f"STATION #{sid} LOCK EXPIRES MID-MATCH, REJOIN IT")
+            out.append(f"STATION #{sid} LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER")
         return out
 
     def stations_view(self) -> list[StationView]:
@@ -4524,12 +4551,12 @@ class Session:
             # blocking -- replaces the head and clears it.
             self._pool_ambers.pop(pid, None)
             self._pool_faults[pid] = (f"{_POOL_FAULT} (REPORTS {got[0]}/{got[1]}, THIS CONFIG GRANTS "
-                                      f"{want[0]}/{want[1]}, hp/armor) — LIKELY ON AN OLDER HEAD; {tail}")
+                                      f"{want[0]}/{want[1]}, HP/ARMOR, LIKELY AN OLDER HEAD): {tail}")
             who = (self.players[pid].get("display") or pid).upper()
             self._on_feed({"t_match_s": max(0, (t_recv - self.scorer.go_live_t) // 1000) if self.scorer else 0,
                            "tag": "CONFIG", "kind": "alert",
-                           "text": f"{who}'S GUN POOL ≠ CONFIG — REPORTS {got[0]}/{got[1]}, THIS CONFIG "
-                                   f"GRANTS {want[0]}/{want[1]} (hp/armor); LIKELY ON AN OLDER HEAD"})
+                           "text": f"{who}'S GUN POOL ≠ CONFIG (REPORTS {got[0]}/{got[1]}, THIS CONFIG "
+                                   f"GRANTS {want[0]}/{want[1]}, HP/ARMOR, LIKELY AN OLDER HEAD): {tail}"})
             return
         # The health is within what this head grants, so nothing here supports the red any more.
         self._pool_faults.pop(pid, None)
@@ -4544,11 +4571,11 @@ class Session:
         amber: str | None = None
         if armor > want[1] and not nv.get("pool_life_hit"):
             amber = (f"{_POOL_ARMOR_ADVISORY} (REPORTS {got[0]}/{got[1]}, THIS CONFIG "
-                     f"GRANTS {want[0]}/{want[1]}, hp/armor) — {tail}")
+                     f"GRANTS {want[0]}/{want[1]}, HP/ARMOR): {tail}")
         elif (nv.get("pool_life_n") == 1 and not nv.get("pool_life_hit")
                 and (hp < want[0] or armor < want[1])):
             amber = (f"{_POOL_BELOW_ADVISORY} (REPORTS {got[0]}/{got[1]}, THIS CONFIG "
-                     f"GRANTS {want[0]}/{want[1]}, hp/armor) — {tail}")
+                     f"GRANTS {want[0]}/{want[1]}, HP/ARMOR): {tail}")
         if amber is not None:
             if nv.get("pool_amber_pending") == list(got):
                 nv["pool_life_judged"] = True
@@ -5998,20 +6025,20 @@ class Session:
         av = nv.get("app_ver")
         ok = compatible(av)
         if ok is None:
-            ambers.append(f"APP VERSION UNKNOWN ({av})" if isinstance(av, str) and av else "APP VERSION UNKNOWN")
+            ambers.append(f"APP VERSION UNKNOWN ({av}): UPDATE THE APP" if isinstance(av, str) and av else "APP VERSION UNKNOWN: UPDATE THE APP")
             return blockers, ambers
         if not ok:
             # `compatible()` answered a bool, so `parse_app_ver` parsed `av`: it is a version STRING.
             shown = av.split("+", 1)[0] if isinstance(av, str) else av
-            blockers.append(f"APP {shown} INCOMPATIBLE WITH MC (NEEDS {app_tier()}) — UPDATE THE APP")
+            blockers.append(f"APP {shown} INCOMPATIBLE WITH MC (NEEDS {app_tier()}): UPDATE THE APP")
             return blockers, ambers
         mine = parse_app_ver(av)
         newest = self._newest_field_version()
         if newest and mine and mine < newest:
-            ambers.append(f"APP OLDER THAN THE FIELD ({'.'.join(str(x) for x in mine)} < {'.'.join(str(x) for x in newest)})")
+            ambers.append(f"APP OLDER THAN THE FIELD ({'.'.join(str(x) for x in mine)} < {'.'.join(str(x) for x in newest)}): UPDATE THE APP")
         rel = parse_app_ver(self.release_version)
         if rel and mine and mine < rel:
-            ambers.append(f"APP OLDER THAN THE RELEASE ({'.'.join(str(x) for x in mine)} < {self.release_version})")
+            ambers.append(f"APP OLDER THAN THE RELEASE ({'.'.join(str(x) for x in mine)} < {self.release_version}): UPDATE THE APP")
         return blockers, ambers
 
     def _respawn_rules_warning(self) -> str | None:
@@ -6027,8 +6054,8 @@ class Session:
                   and compatible(av := nv.get("app_ver")) and (v := parse_app_ver(av)) and v < RESPAWN_PROFILE_MIN_APP]
         if not behind:
             return None
-        return (f"Update to {'.'.join(str(x) for x in RESPAWN_PROFILE_MIN_APP)} for today's respawn rules: "
-                + ", ".join(behind))
+        return (f"APP TOO OLD FOR TODAY'S RESPAWN RULES ({', '.join(behind)}): UPDATE THE APP TO "
+                + ".".join(str(x) for x in RESPAWN_PROFILE_MIN_APP))
 
     def _weapon_app_blockers(self, nv: dict) -> list[str]:
         """Required victim-side engines for weapons anywhere on this roster.
@@ -6052,7 +6079,7 @@ class Session:
             requirement = requirements.get(wid or "")
             if requirement and (minimum := requirement[0]) is not None and have < minimum:
                 _, label = requirement
-                out.append(f"APP CANNOT RUN {str(label).upper()} (NEEDS {'.'.join(str(x) for x in minimum)}) — UPDATE THE APP")
+                out.append(f"APP CANNOT RUN {str(label).upper()} (NEEDS {'.'.join(str(x) for x in minimum)}): UPDATE THE APP")
         return out
 
     # ---------- readiness ----------
@@ -6075,18 +6102,18 @@ class Session:
                 # It still blocks the start (a player with no phone cannot play), but it must not
                 # read as a broken gun — Tony, 2026-09-01: "it makes it look like the guns are
                 # broken. They are simply disconnected."
-                blockers.append("WAITING FOR THE PHONE — OPEN THE APP AND SET THE GUN")
+                blockers.append(WAITING_FOR_PHONE)
             elif nv.get("last_seen_ms") and (now - nv["last_seen_ms"]) > OFFLINE_AFTER_MS:
                 # Gone, not faulty. Say it once instead of listing the four symptoms of it.
                 # Guarded on the key EXISTING: a node that has never reported has no last_seen at all,
-                # and treating the epoch as its timestamp read "OFFLINE — LAST SEEN 20698d16h".
-                blockers.append(f"OFFLINE — LAST SEEN {self._human_age(now - nv['last_seen_ms'])}")
+                # and treating the epoch as its timestamp read "OFFLINE (LAST SEEN 20698D16H)".
+                blockers.append(f"OFFLINE (LAST SEEN {self._human_age(now - nv['last_seen_ms']).upper()}): RECONNECT THE PHONE")
             else:
                 age = now - nv.get("last_seen_ms", 0)
                 if age > STALE_AFTER_MS:
-                    ambers.append(f"STALE LINK ({self._human_age(age)}) — DOES NOT BLOCK")
+                    ambers.append(f"STALE LINK ({self._human_age(age).upper()})")
                 if not nv.get("synced"):
-                    blockers.append("CLOCK NOT SYNCED — BLOCKS START")
+                    blockers.append(CLOCK_NOT_SYNCED)
                 if pf.get("ssid_ok") is False or pf.get("mc_reachable") is False:
                     # A28.3: for a node that is actually TALKING to us over backhaul, the field Wi-Fi is
                     # not the path that matters — §5c gates (d)/(f) become warnings, not reds. Blocking
@@ -6102,11 +6129,9 @@ class Session:
                         # a lie — it is on the network it has always been on and the TUNNEL is what went
                         # away. Say the thing the operator can act on: how long since we heard from it.
                         pub = (self.lan.get("public") or {}).get("status")
-                        secs = max(0, age) // 1000
-                        lead = "TUNNEL DOWN — " if pub == "error" else ""
-                        blockers.append(f"{lead}NOT REACHED FOR {secs} s — BLOCKS START")
+                        blockers.append(not_reached_line(self._human_age(max(0, age)).upper(), pub == "error"))
                     else:
-                        blockers.append("WRONG WI-FI / MC UNREACHABLE — BLOCKS START")
+                        blockers.append(WRONG_WIFI)
                 # Bench 2026-09-17: the config-push ack, read early so the flapping amber below can tell
                 # an UNPROVEN headset from one that already answered THIS push. `self.acks` survives a
                 # link drop (only `_on_status`'s `nv["headset"]` gets popped), so it is the one fact this
@@ -6122,13 +6147,13 @@ class Session:
                     # fault, not a flapping headless gun, so the red returns (F-2026-09-17b).
                     ambers.append(GUN_FLAPPING_LINE)
                 elif pf.get("gun_linked") is False:
-                    blockers.append("GUN LINK LOST — BLOCKS START")
+                    blockers.append(GUN_LINK_LOST)
                 if nv.get("battery") is None:
-                    ambers.append("BATTERY UNREAD — DOES NOT BLOCK")
-                if pf.get("phone_batt") is not None and pf["phone_batt"] < 20:
-                    ambers.append("PHONE BATTERY LOW — DOES NOT BLOCK")
+                    ambers.append(BATTERY_UNREAD)
+                if pf.get("phone_batt") is not None and pf["phone_batt"] < BATTERY_LOW_PCT:
+                    ambers.append(PHONE_BATTERY_LOW)
                 if pf.get("screen_on") is False or pf.get("foreground") is False:
-                    ambers.append("SCREEN OFF / BACKGROUNDED — DOES NOT BLOCK YET")
+                    ambers.append(SCREEN_OFF)
                 # Bench 2026-09-17 (Tony): firmware is often unreadable over BLE and says nothing about health, so an
                 # unread version is not an amber. The card still shows the version when the phone reports one.
                 vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
@@ -6136,10 +6161,10 @@ class Session:
                 ambers.extend(va)
                 blockers.extend(self._weapon_app_blockers(nv))
             if identity in ("reverted", "unknown") and g:
-                blockers.append("IDENTITY REVERTED — RE-STAMP $NAME")
+                blockers.append(IDENTITY_REVERTED)
             ack = self.acks.get(p["player_id"])
             if self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
-                blockers.append("GUN DID NOT ANSWER CONFIG — HEADSET OFF? BLOCKS START")
+                blockers.append(GUN_DID_NOT_ANSWER)
                 headset, headset_proof = "absent", None
             elif nv.get("headset") == "proven":
                 headset, headset_proof = "proven", "echo"     # the gun answered the push: settled
@@ -6158,14 +6183,14 @@ class Session:
                 else:
                     headset, headset_proof = "unknown", None
                     if since is not None and pf.get("gun_flapping") is not True:
-                        ambers.append(f"HEADSET · CONFIRMING (LINK {(now - since) // 1000} s)")
+                        ambers.append(f"HEADSET CONFIRMING (LINK {(now - since) // 1000} S)")
             # A36 — THE THREE PROOFS THAT THE GUN IS RUNNING THE CONFIG WE PUSHED. Kept apart from
             # the headset chain above: that chain answers "did the gun answer AT ALL", these answer
             # "did it answer for THIS game, with THIS weapon, and is it still holding THAT pool".
             # Every one of them compares against the head MC ACTUALLY PUSHED
             # (`self.bundles[pid]["head"]`), never a fresh re-derivation of it.
             if self.lobby_pushed and (older := self._stale_ack_id(p["player_id"])):
-                blockers.append(f"{_STALE_ACK_FAULT} ({older}) — RE-PUSH")
+                blockers.append(f"{_STALE_ACK_FAULT} ({older}): RE-PUSH")
             if self.lobby_pushed and (echo := self._echo_fault(p["player_id"])):
                 blockers.append(echo)
             if self.lobby_pushed and (readback := self._gun_config_fault(p["player_id"])):
@@ -6182,7 +6207,7 @@ class Session:
             if (self.lobby_pushed and nv.get("config_id")
                     and nv["config_id"] != self.config.get("config_id")
                     and not self._ack_is_current(p["player_id"])):
-                ambers.append(f"HOLDING OLDER CONFIG ({nv['config_id']}) — RE-PUSH TO BE SURE")
+                ambers.append(f"HOLDING OLDER CONFIG ({nv['config_id']})")
             # ONE literal, at the end: `ReadinessRow` is total and its docstring is the promise that
             # every path fills every key. Built incrementally that promise was unenforceable; built here
             # the checker holds it.
@@ -6212,16 +6237,15 @@ class Session:
                 "foreground": pf.get("foreground"),
                 "app_ver": nv.get("app_ver"), "platform": nv.get("platform"),   # A29
                 "log": nv.get("log"),                                           # A25
-                # kept APART. Merging them meant the lobby printed "GUN LINK LOST - BLOCKS
-                # START, STALE LINK - DOES NOT BLOCK, SCREEN OFF - DOES NOT BLOCK YET" as one
-                # run-on blocker string, so a real fault read the same as a shrug.
+                # kept APART. Merging them meant the lobby printed every blocker and every advisory
+                # as one run-on blocker string, so a real fault read the same as a shrug.
                 "blockers": blockers, "ambers": ambers,
                 # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
                 # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
                 # the sole complaint — a real problem alongside it still reads red.
                 # `waiting` covers BOTH "no phone yet" and "the phone went away": each blocks
                 # the start, neither is a fault, and both must read as inactive rather than red.
-                "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith("OFFLINE"))
+                "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith(("OFFLINE", WAITING_FOR_PHONE)))
                            else "red") if blockers else ("amber" if ambers else "green")}
             # F272 is additive and positive-only: omit it rather than serializing false/null, so an
             # older console and an older persisted snapshot both keep their existing meaning.
@@ -6442,8 +6466,7 @@ class Session:
         self._compile_and_store(p)
         self._send_config_to(p)
 
-    _ONE_TEAM_REFUSAL = ("ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a "
-                         "hit; move players between teams")
+    _ONE_TEAM_REFUSAL = "ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS"
 
     def populated_tids(self) -> set[int]:
         """The distinct `$TID` values that actually have somebody rostered on them.
@@ -6754,8 +6777,8 @@ class Session:
         got = _frames.alcd_ammo(ack.get("gun_echo"))
         want = _frames.head_spawn_ammo((self.bundles.get(pid) or {}).get("head"))
         assert got is not None and want is not None      # `_echo_state` only says "mismatch" for these
-        return (f"{_ECHO_FAULT} (WEAPON {got[0]}/{got[1]} echoed vs {want[0]}/{want[1]} "
-                f"expected, mag/reserve) — RE-PUSH")
+        return (f"{_ECHO_FAULT} (WEAPON {got[0]}/{got[1]} ECHOED, {want[0]}/{want[1]} "
+                f"EXPECTED, MAG/RESERVE): RE-PUSH")
 
     def _echo_state(self, pid: str) -> Literal["proven", "mismatch", "not_echoed"] | None:
         """A37: `"proven"` / `"mismatch"` / `"not_echoed"`, or None when there is no check to report.
@@ -6792,12 +6815,12 @@ class Session:
         want = _frames.head_gun_config((self.bundles.get(pid) or {}).get("head"))
         if want is None:
             return None
-        differences = [f"{key.upper()} {got.get(key)} read-back vs {want[key]} pushed"
+        differences = [f"{key.upper()} {got.get(key)} READ BACK, {want[key]} PUSHED"
                        for key in ("player_id", "team", "hp", "armor", "shield")
                        if got.get(key) != want[key]]
         if not differences:
             return None
-        return f"{_GUN_CONFIG_FAULT} ({'; '.join(differences)}) — RE-PUSH"
+        return f"{_GUN_CONFIG_FAULT} ({'; '.join(differences)}): RE-PUSH"
 
     def _refuse_gun_config_mismatch(self) -> None:
         bad = [(self.players[pid].get("display") or pid, fault)

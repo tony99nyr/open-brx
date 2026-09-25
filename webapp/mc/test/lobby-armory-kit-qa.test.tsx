@@ -154,9 +154,12 @@ describe('M20 · the empty LOBBY is neither balanced nor ready', () => {
     expect(tag.style.background).not.toBe(rgb(T.ok));
     expect(m.text()).not.toContain('BALANCED');
     expect(m.text()).not.toContain('All nodes ready');
-    const line = Array.from(m.el.querySelectorAll('[data-rail="lobby"] div')).find(e => (e.textContent ?? '').startsWith('Nobody is on the roster')) as HTMLElement;
+    // F221 polish r1: this line is catalogued NEUTRAL (`games-wait-why`), so it is upper case now, like
+    // every other catalogued line, not the sentence-case status prose it used to be.
+    const line = Array.from(m.el.querySelectorAll('[data-rail="lobby"] div')).find(e => (e.textContent ?? '').startsWith('NOBODY IS ON THE ROSTER')) as HTMLElement;
     expect(line, 'the rail says nobody is rostered').toBeTruthy();
-    expect(line.style.color, 'not the green of a ready field').toBe(rgb(T.micro));
+    // F221: this line is now catalogued NEUTRAL (`games-wait-why`), whose one severity colour is T.dim.
+    expect(line.style.color, 'not the green of a ready field').toBe(rgb(T.dim));
     m.unmount();
   });
 });

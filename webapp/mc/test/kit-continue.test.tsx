@@ -55,7 +55,7 @@ const noReadyField = (s: State): State => ({
 /** the button, whatever state it is in */
 const btn = (m: Mounted) => m.find('[data-continue="kit"] button').slice(-1)[0];
 /** the visible consequence line: it must NAME the players and say what the tap costs them */
-const WARN = 'SABLE, DRIFT ARE STILL KITTING AND WILL LOSE THEIR SCREEN — CONTINUE ANYWAY?';
+const WARN = '▲ SABLE, DRIFT ARE STILL KITTING AND WILL LOSE THEIR SCREEN: CONTINUE ANYWAY?';
 /** ready everyone EXCEPT these callsigns */
 const unReadyOnly = (names: string[]) => (s: State): State => ({ ...s, players: s.players.map(p => ({ ...p, ready: !names.includes(p.display.toUpperCase()) })) });
 /** un-ready the two the demo roster starts short of */

@@ -91,14 +91,19 @@ State {
                                                // talking to right now is ready. Render the path as a TAG on the card, never
                                                // as a CHECK; the amber "NOT ON THE FIELD WI-FI — ON BACKHAUL" is gone, and
                                                // amber/red are only for a node MC cannot reach at all.
-                                               // F155: for a node whose `last_reach` was `"backhaul"` the red reads
-                                               // "NOT REACHED FOR <n> s — BLOCKS START" (with a "TUNNEL DOWN — " lead while
-                                               // `lan.public.status` is `"error"`), NEVER "WRONG WI-FI / MC UNREACHABLE" —
-                                               // the phone was on the right network and the tunnel is what went away.
+                                               // F155: for a node whose `last_reach` was `"backhaul"` the blocker reads
+                                               // "NOT REACHED FOR <AGE>" (with ", TUNNEL DOWN: TURN THE TUNNEL ON IN REACH"
+                                               // appended while `lan.public.status` is `"error"`), NEVER "WRONG WI-FI OR MC
+                                               // UNREACHABLE": the phone was on the right network and the tunnel went away.
+                                               // F221 (2026-09-25): every blocker and amber reads `WHAT IS WRONG: WHAT TO DO`,
+                                               // upper case, one colon, and never says BLOCKS START / DOES NOT BLOCK: the list
+                                               // a line is in is the gate, and the console picks its colour from the line's head
+                                               // (webapp/mc/src/alerts/server.ts). PHONE BATTERY LOW is raised under 30 %.
                                                // A25/A29: each row also carries `app_ver`, `platform` and `log` (same shape as
-                                               // NodeView.log). A29 adds one RED blocker — `APP <x.y.z> INCOMPATIBLE WITH MC (NEEDS <tier>) —
-                                               // UPDATE THE APP` — and three ambers: `APP OLDER THAN THE FIELD (<mine> < <newest>)`,
-                                               // `APP OLDER THAN THE RELEASE (<mine> < <release>)` and `APP VERSION UNKNOWN (<raw>)`.
+                                               // NodeView.log). A29 adds one RED blocker, `APP <x.y.z> INCOMPATIBLE WITH MC (NEEDS <tier>):
+                                               // UPDATE THE APP`, and three ambers: `APP OLDER THAN THE FIELD (<mine> < <newest>): UPDATE THE
+                                               // APP`, `APP OLDER THAN THE RELEASE (<mine> < <release>): UPDATE THE APP` and `APP VERSION
+                                               // UNKNOWN (<raw>): UPDATE THE APP`.
                                                // An UNPARSABLE version is amber, NEVER red (A1: amber never blocks — the app shipped a
                                                // hard-coded `hud-0.2` for months). An incompatible build says the ONE thing and is left out
                                                // of `newest`, so one rogue phone cannot amber the whole board. Render the strings verbatim.
@@ -110,7 +115,7 @@ State {
                                                // the link within seconds, again and again (a headset that is off does this). The card shows
                                                // one steady amber HEADSET OFF line instead of GUN LINK LOST cycling with HEADSET CONFIRMING —
                                                // but only while `headset` is unproven; a gun that already answered the config push and then
-                                               // goes dark still reads the red `GUN LINK LOST — BLOCKS START`, flapping or not.
+                                               // goes dark still reads the blocker `GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT`.
                                                // A37: `echo: "proven"|"mismatch"|"not_echoed"|null` is the WEAPON check's own answer,
                                                // beside (not instead of) the red `GUN ECHO ≠ CONFIG` blocker a `mismatch` also produces.
                                                // THREE states because the field has three: protocol.md records the `$WEAP` echo as never
@@ -122,10 +127,10 @@ State {
                                                // (nothing pushed, no ack yet, an ack for another head, or a head with no readable `$WEAP,0`).
                                                // `?mock&faults=1` demos all five config-proof states (webapp/mc/README.md).
                                                // proven. A link that drops sends the row back to `unknown` and the clock restarts. While a
-                                               // link is counting up the row carries the amber `HEADSET · CONFIRMING (LINK <n> s)`, which
+                                               // link is counting up the row carries the amber `HEADSET CONFIRMING (LINK <n> S)`, which
                                                // clears itself at 10 s — the UI renders it through the normal amber path and does NO timing of
-                                               // its own. `absent` is unchanged: the head echoed nothing, and `GUN DID NOT ANSWER CONFIG —
-                                               // HEADSET OFF? BLOCKS START` stays a red blocker that outranks any link evidence
+                                               // its own. `absent` is unchanged: the head echoed nothing, and `GUN DID NOT ANSWER CONFIG:
+                                               // CHECK THE HEADSET IS ON, THEN RE-PUSH` stays a blocker that outranks any link evidence
   options: { log_sync: "auto" | "manual" },    // A25 (GET/PUT /api/options). "auto" = MC asks every player node for its log at
                                                // recap, on each offer, and on the reconnect of a node whose last-match log never
                                                // arrived; "manual" = only the operator's LOGS button ever asks.
@@ -164,7 +169,7 @@ State {
                                               // A36 (2026-09-13): `config_id` is WHICH config that gun answered for.
                                               // An ack naming a previous one is NOT an ack for the game about to
                                               // start -- `all_acked` reads false, the row carries the blocker
-                                              // `ACKED AN OLDER CONFIG (<id>) — RE-PUSH`, and `POST /api/start`
+                                              // `ACKED AN OLDER CONFIG (<id>): RE-PUSH`, and `POST /api/start`
                                               // refuses even with `force`. A re-push mints a FRESH `config_id` (F6),
                                               // so an ack in flight across one is stale and says so.
                                               // (An echo MISMATCH also refuses START, but `force` DOES open that
@@ -205,7 +210,7 @@ State {
                                               // game's end state is MC's call (a frag cap, an objective `win_by`, a
                                               // survival mode) AND `config.coverage != "full"` AND at least one
                                               // rostered phone has no backhaul (A28) — and it NAMES those phones:
-                                              // `WIN IS CONFIRMED AT MC · 3 PHONES OFF-GRID (OP0, OP1, OP2) · TELL
+                                              // `WIN IS CONFIRMED AT MC, 3 PHONES OFF-GRID (OP0, OP1, OP2): TELL
                                               // PLAYERS TO RETURN AFTER THE WHISTLE`. Render it verbatim on LOBBY and
                                               // ARMED. `{}` (no keys) = nothing to say. The PLAYER's half of the same
                                               // decision rides `assign.game.mc_verify` (contracts §3), one line, no
@@ -344,7 +349,7 @@ WeaponView dual-emitter note: `dual_emitter: true` marks a trigger that can prod
 | `POST /api/players/{id}/standby` | → `Player` (parked). **STANDBY (2026-09-12, phone push added A38 2026-09-13):** the player leaves the roster but is not forgotten — the record (callsign, team, gun, loadout, voice, `player_num`) parks under the snapshot's `standby: Player[]` with `node_id: null`, `ready: false`. Their phone is unbound (readiness board, kit/lobby counts and the next push no longer wait on them) and, if it was still connected, gets one `assign{..., standby: true}` so its HUD drops to a SITTING OUT screen with no frames written, instead of keeping whatever it last held. **A40:** the bench fact is also on every later `assign` and on `welcome.node` (`standby: true|false`, never absent), so a phone that reconnects learns it from the welcome — without that, a player benched while their phone was away stayed locally benched after PLAY. A phone that reconnects while still parked is recognised by its gun and answered `standby: true` with no config, frames or start; and the `start` is ADDRESSED to the playing nodes, never broadcast to a benched one. 404 for an unknown id; 400 once the match is `armed`/`live` | ≤ lobby |
 | `DELETE /api/players/{id}/standby` | → `Player` (reinstated). PLAY: back on the roster with the same `player_num` when it is still free (else the next free one), the same team when it still exists (else auto-balanced like a new player), the loadout re-fitted to the current policy, `ready: false`; a connected phone holding that gun is re-bound on the spot and gets a fresh `assign` (+ `config` if the lobby is already pushed). 404 for an id not on standby; 400 for `roster full`, for a gun that is **now assigned to someone else** (named), and once the match is `armed`/`live`. `DELETE /api/players/{id}` on a standby id drops the parked record. A parked player's gun is TAKEN: `POST /api/players` / `PATCH gun_id` naming it is `400 "gun X is on standby with NAME - PLAY puts them back"` (review 2026-09-12: the ARMORY claim form could create the collision PLAY then refused). The console hides STAND DOWN and PLAY in `armed`/`live` (the server refuses both) | ≤ lobby |
 | `POST /api/players/{id}/tryout` | `{weapon_id}` → `{ok}` (pushes `tutorial`); `DELETE` same path ends it | kit |
-| `GET /api/stations` | → `{stations: StationView[], game}` — A13.5 (F104, 2026-09-11): every utility phone that said hello this session (`node_type:"utility"`, never bound to a player, never pruned while assigned), each with the operator's `assigned` `{kind, team, id, threshold, at}` (or null), what it was last `armed` with (`{game, at, kind, team, id}`), `arm_pending` (assignment changed while it was out of Wi-Fi: "bring it back to re-arm"), its own heartbeat as `report` (`kind, team, station_id, threshold, live, revives, armed, battery`, and for a control point `control: {owner, progress, contested, hold_ms, capture_log, …}` — the self-authoritative recap, utility.md §5c), `app_ver` + `platform` (from the phone's hello, kept fresh by its heartbeat too — roadmap A3/A29), `online`, `last_seen_ms` (age) and `attention: string[]` (ARMED FOR AN OLDER GAME · PHONE SAYS NOT ARMED · PHONE ADVERTISES ID x, ASSIGNED y · BATTERY LOW · A58: STATION #N RESTARTED [k TIMES] · STATION #N OFFLINE · STATION #N LOCK EXPIRES MID-MATCH, REJOIN IT). A58: `report` also carries `uptime_s`, `boot_count` and `assoc` (muster|held) when the station sends them; `lock_until_ms` (MC clock) while the last lock sent is running, and `restarts` (reboots inside this game's lock window). A56: while a match is `armed`/`live` with `--powerups`, a station with an item also carries `item_available` (the item is there), `next_spawn_at_ms` (MC-clock ms of the next spawn instant, always) and `taken_by` (the `player_num` that took this spawn's item, cleared at the next spawn); all are absent otherwise. The schedule runs on MC's own tick from `go_live_t`: first at `first_at_s`, then every `spawn_every_s`; an untaken item stays and never stacks; a player's `pickup` fact (stored, never scored) empties it until the next spawn time. MC pushes `station_update {id, available, next_spawn_in_ms}` at arm time, at every spawn time, when the item is taken or reset, and on the station's reconnect; `next_spawn_in_ms` is ALWAYS the time remaining to the next spawn instant, even while the item is there, so the station counts down and spawns on its own. The station reports `station_action {id, action: "reset"|"taken", player_num?, t}` (live only, no seq): `reset` makes the item available now without moving the fixed spawn times (feed: `OPERATOR RESET · STATION #<id>`); `taken` records the winner the station picked. A `taken` and the player's `pickup` fact are deduped by station and spawn: the first marks the item taken and writes `<display> TOOK <ITEM> · STATION #<id>`, the second is a no-op; a fact older than the item's spawn or reset is ignored. The same list rides on every snapshot as `stations`, with the current game byte as `game_byte` (and as `game_no`, its old name) | any |
+| `GET /api/stations` | → `{stations: StationView[], game}` — A13.5 (F104, 2026-09-11): every utility phone that said hello this session (`node_type:"utility"`, never bound to a player, never pruned while assigned), each with the operator's `assigned` `{kind, team, id, threshold, at}` (or null), what it was last `armed` with (`{game, at, kind, team, id}`), `arm_pending` (assignment changed while it was out of Wi-Fi: "bring it back to re-arm"), its own heartbeat as `report` (`kind, team, station_id, threshold, live, revives, armed, battery`, and for a control point `control: {owner, progress, contested, hold_ms, capture_log, …}` — the self-authoritative recap, utility.md §5c), `app_ver` + `platform` (from the phone's hello, kept fresh by its heartbeat too — roadmap A3/A29), `online`, `last_seen_ms` (age) and `attention: string[]` (F221: each reads `WHAT IS WRONG: WHAT TO DO`: `NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM` · `ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY` · `PHONE SAYS NOT ARMED: …` · `PHONE ADVERTISES ID x, ASSIGNED y: …` · `BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE` (under 30 %) · A58: `STATION #N RESTARTED [k TIMES]: CHECK THE STATION` · `STATION #N OFFLINE: CHECK IT IS ON AND IN RANGE` · `STATION #N LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER`). A58: `report` also carries `uptime_s`, `boot_count` and `assoc` (muster|held) when the station sends them; `lock_until_ms` (MC clock) while the last lock sent is running, and `restarts` (reboots inside this game's lock window). A56: while a match is `armed`/`live` with `--powerups`, a station with an item also carries `item_available` (the item is there), `next_spawn_at_ms` (MC-clock ms of the next spawn instant, always) and `taken_by` (the `player_num` that took this spawn's item, cleared at the next spawn); all are absent otherwise. The schedule runs on MC's own tick from `go_live_t`: first at `first_at_s`, then every `spawn_every_s`; an untaken item stays and never stacks; a player's `pickup` fact (stored, never scored) empties it until the next spawn time. MC pushes `station_update {id, available, next_spawn_in_ms}` at arm time, at every spawn time, when the item is taken or reset, and on the station's reconnect; `next_spawn_in_ms` is ALWAYS the time remaining to the next spawn instant, even while the item is there, so the station counts down and spawns on its own. The station reports `station_action {id, action: "reset"|"taken", player_num?, t}` (live only, no seq): `reset` makes the item available now without moving the fixed spawn times (feed: `OPERATOR RESET · STATION #<id>`); `taken` records the winner the station picked. A `taken` and the player's `pickup` fact are deduped by station and spawn: the first marks the item taken and writes `<display> TOOK <ITEM> · STATION #<id>`, the second is a no-op; a fact older than the item's spawn or reset is ignored. The same list rides on every snapshot as `stations`, with the current game byte as `game_byte` (and as `game_no`, its old name) | any |
 | `PUT /api/stations/{node_id}` | `{kind, team, id?, threshold?, tx_power?}` → `StationView`. A66 (F364): omit `id` and MC assigns it (the id this node_id already holds or was handed this session, else the lowest free one; shared by phones and Sticks, kept across a station restart, a relink and an MC restart). The console never sends one; an explicit `id` from an older client is still validated. `kind` ∈ respawn · powerup · extraction · bomb · control; `team` = a `team_id`, a `$TID` 0-3, or `"any"` (255 — required for `control`, which starts NEUTRAL and is taken by presence); an explicit `id` 1..65535, unique on the field; `threshold` dBm −100..−30, or 0 (the default) for the station's own platform default, which it advertises (F345: a respawn station is about 3 m, a phone −70, a StickS3 −57). A phone app older than 0.4.12, or of unknown version, clamped 0 to −30, so MC sends it the explicit value instead (−70 respawn, −74 other kinds; `state.py _wire_threshold`). Pushes `station_config` `{kind, team, id, threshold, game, valid_ids}` to that phone at once and re-arms every other assigned station (the allow-list they echo changed); an offline phone is flagged and armed on its next hello. 400 in the operator's voice, including (polish 2026-09-11): a `team` that is not ANY and not a `$TID` some team in this game is on (such a station serves nobody), and any PUT while the match is `armed` or `live` (players already hold `config.stations`; re-pushing it would re-arm every live gun — RECALL or END first). A PUT in `recap` is accepted and arms against the finished match's game byte; the next lobby push re-arms every station with the new one **A67 (F365):** `tx_power` ∈ `ultra_low` · `low` · `medium` · `high` (absent = keep MC's; a stronger advert is heard farther, so it moves the range too). A value that differs from the assignment is the operator's edit (source `mc`, set now) and goes out with `threshold_age_ms`/`tx_power_age_ms`; an on-station edit that is newer is adopted from the station's heartbeat instead. A PUT that changes ONLY threshold and/or `tx_power` of an assigned station re-arms that station alone and is allowed in every phase, ARMED and LIVE included. `StationView.range` = the applied values, their source and `*_edit_age_ms` (source station only); `StationView.range_edits` = the on-station edits heard (seq, field, from, to, locked, age_ms). After a Stick reboot its edit age is LARGE, so MC's value wins. | any but armed/live (a range-only change: any) |
 | `DELETE /api/stations/{node_id}` | → `{ok}`; drops the assignment (the survivors' `valid_ids` shrink, and players in LOBBY are re-pushed the shorter `config.stations`). 404 for an unknown station; 400 while `armed`/`live`, as for PUT. `DELETE /api/nodes/{node_id}` on an ASSIGNED station does the same shrink | any but armed/live |
 | `GET /api/powerups` | → `PowerupsView {enabled, presets: [{preset, item}]}` — A56 (S58, docs/spec/powerups.md). `enabled` is MC's `--powerups` flag (default OFF until bench steps 3.4, 3.5 and 4.11 pass and Tony decides; the console hides the item picker when false). `presets` are `rockets` (rocket_launcher), `rail_gun` and `overshield`, each `item` a full `StationItem` expanded from `powerups.py`'s named constants: a weapon item's `charges` is that weapon's compiled magazine; heavies spawn every 120 s, first at 120 s; the Overshield grants `amount` 75, every 60 s, first at 60 s. The rules the phone enforces on its own are constants, not item fields: `LOST_AT_DEATH`, `WEAPON_PICKUP_SWAPS` (a second weapon pickup replaces the first; an overshield stacks alongside), `OVERSHIELD_DECAY_PER_S` 0, `OVERSHIELD_REGEN` false | any |
@@ -397,11 +402,11 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   these is compared against the head MC actually pushed that player, so there is no second
   arithmetic to drift, and each is SILENT when it has no evidence (an older app, a stub compiler)
   rather than red:
-  - `ACKED AN OLDER CONFIG (<id>) — RE-PUSH` (red). The ack named a previous `config_id`. It also
+  - `ACKED AN OLDER CONFIG (<id>): RE-PUSH` (a blocker, AMBER on the console). The ack named a previous `config_id`. It also
     makes `lobby.all_acked` false and `POST /api/start` refuse — **`force` does NOT open this one**:
     `force` overrides a readiness judgement the operator can see and accept, and this is the gun
     saying which game it is running. RE-PUSH, or move the player to STANDBY.
-  - `GUN ECHO ≠ CONFIG (WEAPON m/r echoed vs expected)` (red). The slot-0 `$ALCD` the gun answered
+  - `GUN ECHO ≠ CONFIG (WEAPON m/r ECHOED, m/r EXPECTED, MAG/RESERVE): RE-PUSH` (red). The slot-0 `$ALCD` the gun answered
     the head with does not carry the magazine the head's `$WEAP,0` wrote. Only ever asked of a
     CURRENT ack (A37): an ack that answered a previous head carries a previous head's magazine, and
     saying so twice describes one cause twice. No claim when the echo is not an `$ALCD` (`$START`
@@ -410,13 +415,13 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
     CURRENT, so `all_acked` was true and the whistle blew on a gun that had just named another
     loadout. `not_echoed` never refuses: it is the ordinary v4.32 answer, and an absent proof is not
     a fault.
-  - `GUN CONFIG ≠ PUSHED HEAD (… read-back vs … pushed) — RE-PUSH` (red, F271). The optional
+  - `GUN CONFIG ≠ PUSHED HEAD (<FIELD> … READ BACK, … PUSHED): RE-PUSH` (red, F271). The optional
     `$QUERY` read-back's player id, team or HP/armour/shield maximum differs from the effective
     `$PSET`/`$TID` in the head MC actually sent. `POST /api/start` refuses this direct gun fact even
     with `force`. A node that omits `gun_config`, or a gun that does not return a well-formed body,
     makes no claim and remains compatible.
-  - `GUN POOL ≠ CONFIG (REPORTS h/a, THIS CONFIG GRANTS h/a, hp/armor) — LIKELY ON AN OLDER HEAD;
-    RE-PUSH BEFORE THE NEXT GAME` (red) + a `CONFIG` feed alert. The first `status` at least
+  - `GUN POOL ≠ CONFIG (REPORTS h/a, THIS CONFIG GRANTS h/a, HP/ARMOR, LIKELY AN OLDER HEAD): RE-PUSH
+    BEFORE THE NEXT GAME` (red) + a `CONFIG` feed alert. The first `status` at least
     `POOL_CHECK_SETTLE_MS` (2 s) into a life reported MORE **hp** than the `$PSET` MC pushed.
     **Excess only (A37):** a pool at or below the compiled one is damage — the engine emits
     `hit_taken` only for a hit it could attribute, while the pool moves on every `$LCD`/`$HP`, so
@@ -429,18 +434,18 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
     app that omits the field makes no claim either. Judged once per life; cleared by the next push
     (which this row does not block — see the PUSH gate below). The tail says BEFORE THE NEXT GAME
     (R2-7) because this row can only be read in play, where a push is refused.
-  - `GUN ARMOR ABOVE CONFIG (REPORTS h/a, THIS CONFIG GRANTS h/a, hp/armor) — RE-PUSH BEFORE THE NEXT
+  - `GUN ARMOR ABOVE CONFIG (REPORTS h/a, THIS CONFIG GRANTS h/a, HP/ARMOR): RE-PUSH BEFORE THE NEXT
     GAME` (**amber**, R2-6). Armour above the compiled ceiling is a MECHANISM, not proof:
     `compile._SIR_GRANT` (fn 9-22) and the node's `armour_up` add armour mid-life, and the replayed
     field store shows a body-armor node's first life going 70 → 120 at +2.0 s as the baked perk
     arrives. Whether the gun CLAMPS such a grant at the `$PSET` ceiling is unbenched.
-  - `GUN POOL BELOW CONFIG (REPORTS h/a, THIS CONFIG GRANTS h/a, hp/armor) — RE-PUSH BEFORE THE NEXT
+  - `GUN POOL BELOW CONFIG (REPORTS h/a, THIS CONFIG GRANTS h/a, HP/ARMOR): RE-PUSH BEFORE THE NEXT
     GAME` (**amber**, R2-4). Excess-only is blind to the SMALLER stale head, and that is a real shape
     (match 1 grants 45/0, match 2 grants 100/70, and a gun on match 1's head reports 45 ≤ 100
     forever). Raised only on the first gun-sourced settled frame of the FIRST life of a match with no
     `hit_taken` that life; a later life or any hit has an ordinary explanation and makes no claim.
     Both ambers gate nothing (A1) and clear on a frame that reports exactly the compiled pool.
-  - `HOLDING OLDER CONFIG (<id>) — RE-PUSH TO BE SURE` (amber). `status.config_id` — the head the
+  - `HOLDING OLDER CONFIG (<id>)` (an amber, NEUTRAL status on the console). `status.config_id` — the head the
     phone says it is holding right now — is not the current one and the node has not re-acked. Amber,
     not red: the ack is the authority and this is a ~2 s sample that can be one beat behind a push.
 - **RECAP → NEXT MATCH is a deterministic reset (A36).** The roll (`POST /api/match/next`, `POST /api/session/new`,

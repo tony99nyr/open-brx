@@ -362,7 +362,9 @@ try {
     cut = true;
     await pg.route('**/api/**', r => r.abort());
     for (const { ws, s } of sockets) { try { s.close(); } catch { /* */ } try { ws.close(); } catch { /* */ } }
-    expect(await until(() => pg.getByTestId('live-offline').isVisible(), 8000), 'the board says MC is offline');
+    // F221 round 2: the board's own second red banner is gone (the frame already says MC_OFFLINE once).
+    expect(await until(() => pg.locator('[data-alert="frame-mc-offline"]').isVisible(), 8000), 'the frame says MC is offline');
+    expect(await pg.getByTestId('live-offline').count() === 0, 'the board does not repeat it in a second banner');
     const st = await cellText(pg, reaper.player_id, 'status');
     expect(st === 'UNKNOWN', `a row MC was hearing now reads UNKNOWN, not ALIVE (saw "${st}")`);
     expect(await cellText(pg, reaper.player_id, 'sync') === '—', 'and shows no sync age');

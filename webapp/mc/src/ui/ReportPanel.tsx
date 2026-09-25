@@ -4,6 +4,8 @@ import type { ReportResult } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { GhostButton, PrimaryButton } from './index';
+import { Alert } from './Alert';
+import { OPERATOR_TOKEN, colourOf, glyphed } from '../alerts';
 
 type Phase = 'idle' | 'busy' | 'done' | 'error' | 'auth';
 
@@ -95,7 +97,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 16px 20px' }}>
           {phase === 'idle' || phase === 'error' ? (
             <>
-              <p style={{ font: F.chk(600, 13), lineHeight: 1.5, color: T.ink, margin: 0 }}>
+              <p data-alert="frame-report-idle" data-sev="neutral" style={{ font: F.chk(600, 13), lineHeight: 1.5, color: T.ink, margin: 0 }}>
                 This makes a report from this session. Names, tagger ids, IP addresses and the access code are removed.
               </p>
               <p style={{ font: F.chk(600, 13), lineHeight: 1.5, color: T.ink, margin: 0 }}>
@@ -104,25 +106,24 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
               <p style={{ font: F.chk(600, 13), lineHeight: 1.5, color: T.ink, margin: 0 }}>
                 Short names, numbers and text you typed (team and game names) are not changed, so check the file before you post it.
               </p>
-              {phase === 'error' && (
-                <div role="alert" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: T.bad, border: `1px solid ${T.bad}`, background: 'rgba(255,82,82,.1)', padding: '9px 12px' }}>
-                  ▲ {error}
-                </div>
-              )}
+              {/* F221 round 2: was a hand-drawn box (its own border/background, its own glyph via
+                  `glyphed()`). `<Alert>` draws the RED banner Tony's rule gives every failed action,
+                  from the one catalogue id (`frame-report-error`), and adds the glyph itself. */}
+              {phase === 'error' && <Alert id="frame-report-error">{error ?? ''}</Alert>}
               <span>
                 <PrimaryButton onClick={makeReport}>{phase === 'error' ? 'TRY AGAIN' : 'MAKE REPORT'}</PrimaryButton>
               </span>
             </>
           ) : null}
           {phase === 'busy' && (
-            <div role="status" aria-live="polite" style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: T.dim }}>
+            <div role="status" aria-live="polite" data-alert="frame-report-busy" data-sev="neutral" style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: colourOf('frame-report-busy') }}>
               MAKING REPORT… THIS CAN TAKE A FEW SECONDS
             </div>
           )}
           {phase === 'auth' && (
             <>
-              <div role="alert" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: T.warn, border: `1px solid ${T.warn}`, background: 'rgba(255,176,32,.1)', padding: '9px 12px' }}>
-                ▲ Operator token required to make a report. Enter it, then try again.
+              <div role="status" data-alert="frame-token-required-app" data-sev="neutral" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: colourOf('frame-token-required-app'), padding: '9px 12px' }}>
+                {OPERATOR_TOKEN.what}: {OPERATOR_TOKEN.actPre} <code>{OPERATOR_TOKEN.code}</code> {OPERATOR_TOKEN.actPost}, THEN TRY AGAIN TO MAKE THE REPORT.
               </div>
               <span>
                 <PrimaryButton onClick={goToToken}>ENTER OPERATOR TOKEN</PrimaryButton>
@@ -137,8 +138,8 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
                 GitHub issues are public, so open the file and check it before you post it. Short names, numbers and text you typed (team and game names) are not changed.
               </div>
               {result.too_large && (
-                <div role="alert" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: T.warn, border: `1px solid ${T.warn}`, background: 'rgba(255,176,32,.1)', padding: '9px 12px' }}>
-                  ▲ This report is larger than 25 MB, GitHub&#39;s limit for an attachment. Make the issue anyway and say so: a developer will ask for the file another way.
+                <div role="alert" data-alert="frame-report-too-large" data-sev="amber" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: colourOf('frame-report-too-large'), border: `1px solid ${colourOf('frame-report-too-large')}`, background: 'rgba(255,176,32,.1)', padding: '9px 12px' }}>
+                  {glyphed('amber', "This report is larger than 25 MB, GitHub's limit for an attachment. Make the issue anyway and say so: a developer will ask for the file another way.")}
                 </div>
               )}
               {removedList.length > 0 && (
@@ -147,7 +148,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
                 </div>
               )}
               {downloadErr && (
-                <div role="alert" style={{ font: F.chk(700, 12), color: T.bad }}>▲ {downloadErr}</div>
+                <div role="alert" data-alert="frame-report-download-err" data-sev="red" style={{ font: F.chk(700, 12), color: colourOf('frame-report-download-err') }}>{glyphed('red', downloadErr)}</div>
               )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <GhostButton onClick={download}>⬇ DOWNLOAD REPORT</GhostButton>

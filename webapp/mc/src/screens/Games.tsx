@@ -28,14 +28,16 @@ import { StationAlerts } from '../ui/StationAlerts';
 // if it navigates away. CONTINUE TO KIT ▸ is the way on, one tap, on the active state.
 //
 // Defining a game happens in the DESIGNER (opened from here) — this page has no forms.
-import { friendlySetupLine, setupLines } from '../ui/SetupSteps';
+import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { useCallback, useEffect, useState } from 'react';
-import { STALE_ACK_FAULT, pushGate, sentenceCase, splitBlocker } from '../api/derive';
+import { CONFIG_ERRORS_ALERT_ID, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_ID, pushGate , cleanServerLine } from '../api/derive';
 import type { ModeInfo, SavedGame } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, PERK_COLOR, T } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, SwitchConfirm, Tag, Toggle, onKey } from '../ui';
+import { Alert } from '../ui/Alert';
+import { GLYPH, alertWords, colourOf, glyphed, serverLine, sevOf } from '../alerts';
 import { HEALTH_PRESET_COPY, emptyRequiredSlots, gameSig, healthPresetOf, poolEmptyMessage, rulesLine, splitLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { ModeEmblem } from './ModeEmblem';
@@ -58,9 +60,9 @@ export const CONFIG_EDITABLE_PHASES = new Set(['muster', 'build', 'kit', 'lobby'
  *  set, because the server no longer splits a mode pick from any other edit. */
 export const MODE_PICK_PHASES = CONFIG_EDITABLE_PHASES;
 export function lockedReason(phase: string): string {
-  if (phase === 'armed') return 'GAME SETTINGS ARE LOCKED — THE MATCH IS ARMED. ABORT ON THE MATCH TAB RETURNS IT TO THE LOBBY.';
-  if (phase === 'live') return 'GAME SETTINGS ARE LOCKED — THE MATCH IS LIVE. END OR RECALL IT ON THE MATCH TAB TO EDIT THE GAME AGAIN.';
-  return `GAME SETTINGS ARE LOCKED — THE MATCH IS ALREADY IN ${phase.toUpperCase()}.`;
+  if (phase === 'armed') return 'GAME SETTINGS ARE LOCKED: THE MATCH IS ARMED. ABORT ON THE MATCH TAB RETURNS IT TO THE LOBBY.';
+  if (phase === 'live') return 'GAME SETTINGS ARE LOCKED: THE MATCH IS LIVE. END OR RECALL IT ON THE MATCH TAB TO EDIT THE GAME AGAIN.';
+  return `GAME SETTINGS ARE LOCKED: THE MATCH IS ALREADY IN ${phase.toUpperCase()}.`;
 }
 
 export function Games() {
@@ -219,13 +221,15 @@ export function Games() {
           <span style={{ font: F.mono(600, 11), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
           <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => { if (!venueInert) run(() => api.putConfig({ environment: v })); }} pad="9px 14px" />
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => { if (!venueInert) run(() => api.putConfig({ night: v })); }} label="night ops" /></span>
-          {editing && <span data-testid="venue-in-draft" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>IN THE DRAFT BELOW</span>}
+          {/* F221: this tells the operator where the control moved, not that something is wrong — NEUTRAL. */}
+          {editing && <span data-testid="venue-in-draft" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf('games-venue-in-draft') }}>IN THE DRAFT BELOW</span>}
         </div>
       </fieldset>
       {/* Bench 2026-09-17: NIGHT OPS was tapped mid-match and the LEDs did not change, with nothing on screen to
           say why. The venue is part of the config, and a config push to a gun in play clears `spawned`, so it
-          stays locked until the match ends. Kept OUTSIDE the faded fieldset so the reason is readable. */}
-      {locked && <span data-testid="venue-locked" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.dim }}>LOCKED WHILE THE MATCH IS {state.phase.toUpperCase()}</span>}
+          stays locked until the match ends. Kept OUTSIDE the faded fieldset so the reason is readable.
+          F221: a real constraint on a live control the operator is running into right now — AMBER, not dim grey. */}
+      {locked && <span data-testid="venue-locked" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: colourOf('games-venue-locked') }}>{GLYPH} LOCKED WHILE THE MATCH IS {state.phase.toUpperCase()}</span>}
       {/* F162 (revised 2026-09-16): this is a NUMBER MC sends and a PHYSICAL switch on every gun
           that MC cannot reach, so a quiet link to the how-to sits right beside the control that raises
           the question, not a dismissable banner nagging every screen, see ui/VenueModeReminder.
@@ -242,24 +246,41 @@ export function Games() {
           {/* `SETUP: ` = a PHYSICAL step on the field the operator must do before the push (F70: power-cycle
               the grenade so the hill starts NEUTRAL, set hill mode, place it). It is not a technical advisory
               like the $SIR/frag-limit warnings, which stay out of this rail — see mc/API.md. */}
-          {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w)).map((w, i) => <div key={i} style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {w.toUpperCase()}</div>)}
-          {/* M12 (visual QA 2026-09-24): a SETUP line is a sentence to read at the field, so it is the same
-              sentence-case line LOBBY shows (`friendlySetupLine`), not a shouted all-caps block. */}
-          {setupLines(state.config_warnings).map((w, i) => (
-            <div key={`setup-${i}`} data-games-setup="1" style={{ font: F.chk(600, 12.5), letterSpacing: '.02em', lineHeight: 1.45, color: T.ink,
-              background: 'rgba(255,176,32,.08)', borderLeft: `3px solid ${T.warn}`, padding: '6px 10px' }}>▲ {friendlySetupLine(w)}</div>
+          {/* F221: this was a filled amber chip — Tony's AMBER bar is explicit that AMBER is never a
+              filled chip, one line only. */}
+          {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w)).map((w, i) => (
+            <Alert key={i} id="games-loadouts-reset" what={w} style={{ alignSelf: 'flex-start' }} />
+          ))}
+          {/* F221 polish r1: MC's own `SETUP:` lines used to render, unfiltered, as one flat amber
+              chip, so the control-vs-grenade conflict (RED in the catalogue, the game will not play
+              as set up) read exactly like an ordinary "no station assigned yet" reminder. Only the
+              STATION_CONFLICT lines are an alert now (`conflictWords`, the same words LOBBY's
+              SetupConflicts and ITEMS's CONTROL card use); a plain field step (power-cycle the
+              grenade, place the IR station) is not a fault, so it draws NEUTRAL here too, the same
+              look as SetupSteps' own "Match reminders" panel (F221 polish r2). */}
+          {setupLines(state.config_warnings).filter(w => STATION_CONFLICT.test(w)).map((w, i) => {
+            const line = serverLine(w, 'amber');
+            return <Alert key={`setup-conflict-${i}`} id={line.id} sev={line.sev} testid="games-setup-line" style={{ alignSelf: 'flex-start' }}>{conflictWords(w)}</Alert>;
+          })}
+          {setupLines(state.config_warnings).filter(w => !STATION_CONFLICT.test(w)).map((w, i) => (
+            <div key={`setup-step-${i}`} data-testid="games-setup-step" style={{ font: F.chk(500, 12), letterSpacing: '.02em', lineHeight: 1.5, color: T.body }}>
+              {friendlySetupLine(w)}
+            </div>
           ))}
         </div>
       )}
       {/* Review finding, 2026-09-19: a friendly heads-up, never a blocker -- a mixed fleet plays fine,
-          it just keeps the OLD spawn-protection rules until the phone updates. */}
+          it just keeps the OLD spawn-protection rules until the phone updates. F221 polish r1: this was
+          a filled amber chip in sentence case with the glyph typed in by hand; the server now words it
+          fully (`APP TOO OLD FOR TODAY'S RESPAWN RULES (...): UPDATE THE APP TO X`), so it draws through
+          `serverLine` like every other MC-worded line, one line, no fill. */}
       {gate.respawnRulesWarning && (
-        <div role="status" style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {gate.respawnRulesWarning}</div>
+        <Alert {...serverLine(gate.respawnRulesWarning, 'amber')} style={{ alignSelf: 'flex-start' }}>{gate.respawnRulesWarning}</Alert>
       )}
       {/* A refusal is the one thing here the operator MUST be able to read: these are the server's
           validate() errors (a missing/unknown station_source, F82's yellow roster, F88's second
           control point) and they name the fix. */}
-      {state.config_errors.length > 0 && <div role="alert" style={{ font: F.mono(500, 11.5), lineHeight: 1.5, letterSpacing: '.08em', color: T.bad, background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, padding: '7px 10px' }}>▲ {state.config_errors.join(' · ').toUpperCase()}</div>}
+      {state.config_errors.length > 0 && <Alert id={CONFIG_ERRORS_ALERT_ID} what={state.config_errors.join(', ')} size={11.5} />}
     </>
   );
 
@@ -384,21 +405,25 @@ export function Games() {
         </div>
       </div>
       {blocked && (
-        <div role="alert" data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-          background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</span>
+        <Alert id="games-locked-banner" testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ lineHeight: 1.5 }}>{alertWords(blockedReason ?? '')}</span>
+          {/* F221 (RETIRED games-jump-to-match): a navigation button beside the red banner, not
+              itself an alert — its border no longer borrows T.bad. */}
           {(state.phase === 'armed' || state.phase === 'live') && (
-            <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.bad} onClick={() => setView(state.phase)}>JUMP TO MATCH ▸</GhostButton>
+            <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView(state.phase)}>JUMP TO MATCH ▸</GhostButton>
           )}
-        </div>
+        </Alert>
       )}
       {loaded ? (
         <div data-testid="active-game-config" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* WHAT THE GUNS ARE HOLDING — the answer to "did it push?", above everything else. */}
-          <div style={{ background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${state.lobby.pushed && everyoneAcked ? T.ok : T.warn}` }}>
+          {/* F221 polish r2 (Low): "not every gun has acked yet" is the ordinary waiting state, not a
+              fault -- the accent is neutral until it is fully acked, when it turns green. */}
+          <div style={{ background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${state.lobby.pushed && everyoneAcked ? T.ok : T.line2}` }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 20px', padding: '14px 18px' }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // LOADED</div>
+                {/* F221: a status label, not a fault — NEUTRAL, not amber. */}
+                <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: custom ? colourOf('games-tuned-not-saved') : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED: NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // LOADED</div>
                 <div data-testid="playing-title" style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{title}</div>
               </div>
               <span style={{ flex: 1 }} />
@@ -414,12 +439,12 @@ export function Games() {
               {state.game && <GameSentStatus testid="game-load-status" sent={gameSent} total={gameTotal} recent={recentLoad} />}
               {state.lobby.pushed
                 ? <LoadStatus testid="game-gun-status" pushed acked={gate.acked} total={gate.total} recent={false} />
-                : <span data-testid="game-gun-status" style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>GUNS NOT CONFIGURED YET — WEAPONS GO AT THE LOBBY PUSH, AFTER KITTING</span>}
+                : <span data-testid="game-gun-status" style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('games-guns-not-configured') }}>GUNS NOT CONFIGURED YET: WEAPONS GO AT THE LOBBY PUSH, AFTER KITTING</span>}
               {showRePush && (
                 <button type="button" data-repush="1" data-repush-force={gate.pushBlockedCount > 0 ? '1' : undefined}
                   className={busy ? undefined : 'hov-acc-ink hit44'} disabled={busy || !!gate.rosterFault}
                   style={{ ...BTN_RESET, cursor: busy || gate.rosterFault ? 'not-allowed' : 'pointer',
-                           color: busy || gate.rosterFault ? T.micro : gate.pushBlockedCount > 0 ? T.warn : T.acc,
+                           color: busy || gate.rosterFault ? T.micro : gate.pushBlockedCount > 0 ? colourOf('lobby-repush-btn-blocked') : T.acc,
                            font: F.chk(700, 13), letterSpacing: '.06em', minHeight: 44, padding: '0 6px' }}
                   title={gate.rosterFault ?? 'Compiles and sends this config to every gun again. The ack count drops to 0 and climbs as each one answers.'}
                   onClick={() => rePush(gate.pushBlockedCount > 0)}>
@@ -436,9 +461,19 @@ export function Games() {
             </div>
             {/* The same sentence LOBBY's rail carries, from the same derivation: a stale ack names the
                 guns and the cure, a red names what cannot be pushed away, and a clean board says so. */}
-            <div style={{ padding: '0 18px 14px', font: F.chk(600, 13), lineHeight: 1.5,
-                          color: faults.length ? T.bad : gate.waitRows.length ? T.micro : everyoneAcked ? T.ok : T.warn }}>
-              {gate.staleAckLine
+            {/* F221 polish r1: the id and the text now come from ONE ternary, so the colour and the
+                words can never drift onto two different facts (the old colour and text trees checked
+                things in a different order). `lineColorId` is null only for the two positive facts
+                below (everything is on the config) — those stay plain, sentence-case status text; every
+                other branch is a catalogued alert, so it is drawn UPPER CASE with its own glyph. */}
+            {(() => {
+              const lineColorId = gate.staleAckLine ? STALE_ACK_LINE_ALERT_ID
+                : faults.length ? 'lobby-status-line-red'
+                : gate.waitRows.length ? 'games-wait-why'
+                : everyoneAcked ? null
+                : !state.lobby.pushed ? 'games-partial-delivery'
+                : 'games-no-echo';
+              const lineText = gate.staleAckLine
                 || (faults.length ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
                   : gate.waitWhy
                     || (!state.lobby.pushed
@@ -448,30 +483,31 @@ export function Games() {
                         // for as long as a phone takes to answer. The two diverge for real, right after
                         // LOAD, so the claim could sit directly under a counter reading 5 of 8.
                         ? (state.game && gameSent < gameTotal
-                            ? `${gameSent} of ${gameTotal} phone${gameTotal === 1 ? '' : 's'} have the game so far — the rest are not connected. Kitting is next, and the guns are configured at the lobby push.`
+                            ? `${gameSent} of ${gameTotal} phone${gameTotal === 1 ? '' : 's'} have the game so far. The rest are not connected. Kitting is next, and the guns are configured at the lobby push.`
                             : 'The phones have the game. Kitting is next, and the guns are configured at the lobby push.')
-                        : !everyoneAcked ? `No config echo from ${gate.noEcho.join(', ') || 'some guns'} — headset off, or gun asleep?`
+                        : !everyoneAcked ? `No config echo from ${gate.noEcho.join(', ') || 'some guns'}: headset off, or gun asleep?`
                           // F318: under the LOCKED banner there is nothing to adjust, so say what is true.
                           : locked ? 'Every gun is holding this config. The banner above says how to edit it again.'
-                            : 'Every gun is holding this config. Adjust it here and SAVE AND LOAD, or continue to KIT.'))}
-              {gate.staleAckLine && notOnlyStale.length > 0 && (
-                <span style={{ color: T.micro }}>{`  ·  ${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`}</span>
-              )}
-            </div>
+                            : 'Every gun is holding this config. Adjust it here and SAVE AND LOAD, or continue to KIT.'));
+              return (
+                <div style={{ padding: '0 18px 14px', font: F.chk(600, 13), lineHeight: 1.5, color: lineColorId ? colourOf(lineColorId) : T.ok }}>
+                  {lineColorId ? glyphed(sevOf(lineColorId), alertWords(lineText)) : lineText}
+                  {gate.staleAckLine && notOnlyStale.length > 0 && (
+                    <span style={{ color: colourOf('lobby-status-line-red') }}>{`: ${alertWords(`${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`)}`}</span>
+                  )}
+                </div>
+              );
+            })()}
             {faults.length > 0 && (
               <div style={{ borderTop: `1px solid ${T.line}`, padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {faults.map(f => (
                   <div key={f.who} style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap' }}>
                     <span style={{ font: F.osw(700, 15), letterSpacing: '.06em', color: T.ink, minWidth: 130 }}>{f.who}</span>
+                    {/* F221: same server-worded blocker rendering as LOBBY's rail — see the comment there. */}
                     <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                       {f.why.map(w => {
-                        const { head, hint } = splitBlocker(w);
-                        return (
-                          <span key={w} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                            <span style={{ font: F.chk(600, 12), color: T.bad }}>▲ {head}</span>
-                            {hint && <span style={{ font: F.chk(500, 11.5), color: T.micro, textTransform: 'none', paddingLeft: 14 }}>{sentenceCase(hint)}</span>}
-                          </span>
-                        );
+                        const line = serverLine(cleanServerLine(w), 'blocker');
+                        return <Alert key={w} id={line.id} sev={line.sev} variant="row">{cleanServerLine(w)}</Alert>;
                       })}
                     </span>
                   </div>
@@ -505,7 +541,7 @@ export function Games() {
           {/* THE GAME — what the players will get */}
           <div style={{ flex: '1 1 330px', maxWidth: 480, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', gap: 0, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${custom ? T.warn : activeSaved ? PERK_COLOR : T.acc}` }}>
             <div style={{ padding: '14px 18px 0' }}>
-              <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // PLAYING</div>
+              <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: custom ? colourOf('games-tuned-not-saved') : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED: NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // PLAYING</div>
               <div data-testid="playing-title" style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{title}</div>
             </div>
             {mode && MODE_ART.has(mode.mode) && (

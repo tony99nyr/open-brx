@@ -1260,15 +1260,18 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   const live = await pg.evaluate(() => fetch('/api/state').then(r => r.json()));
   expect(live.loadout_policy === undefined, 'REST strip failed');
   await nav(1); await noCrash('GAMES');
-  await until(async () => (await pg.locator('text=PREDATES THIS UI').count()) > 0, 6000, 'the "server predates this UI" banner');
+  await until(async () => (await pg.locator('text=MC SERVER IS OLDER THAN THIS CONSOLE').count()) > 0, 6000, 'the "server predates this UI" banner');
   await shelves(pg);   // GAMES rendered, shelves showing
-  const loadRow = await pg.locator('text=LOADOUT').locator('xpath=..').first().textContent();
+  // F221: the skew banner's own words now include "LOADOUT RULES", so a bare `text=LOADOUT` can match
+  // the banner instead of the summary row — scope to the rail settings grid (LoadedGame.tsx's
+  // `rail-settings`), not the whole page.
+  const loadRow = await pg.locator('[data-testid="rail-settings"] :text("LOADOUT")').locator('xpath=..').first().textContent();
   expect(/—/.test(loadRow), 'GAMES LOADOUT row should read — with no policy: ' + loadRow);
   await pg.click('button[aria-label="create a game"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (create)');
   await until(async () => (await pg.locator('text=RULES PREVIEW LOCALLY').count()) > 0, 6000, 'designer says the server cannot preview');
   // A11 ADVANCED against a server with no /api/presentation: the section still renders, opens, and SAYS why it is empty
   await pg.locator('[data-testid="advanced-presentation"] button[aria-expanded]').click();
-  await until(async () => (await pg.locator('[data-testid="advanced-presentation"] [role="alert"]:has-text("PREDATES THIS UI")').count()) > 0, 6000, 'ADVANCED shows the predates-this-UI line on a 404');
+  await until(async () => (await pg.locator('[data-testid="advanced-presentation"] [role="alert"]:has-text("MC SERVER IS OLDER THAN THIS CONSOLE")').count()) > 0, 6000, 'ADVANCED shows the predates-this-UI line on a 404');
   expect((await pg.locator('[data-testid="pres-row-hit_taken"]').count()) === 0, 'ADVANCED rendered rows from nowhere against a stale server');
   await noCrash('DESIGNER (advanced, stale)');
   await pg.click('button[title="Everyone gets the sniper rifle, no secondary, no perks, no picking"]');   // templates are client-side: must work here too

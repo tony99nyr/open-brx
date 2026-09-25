@@ -102,7 +102,7 @@ describe('ITEMS — the powerup item picker', () => {
     const { m } = await muster({ getPowerups: async () => { throw e404; } });
     await m.click('POWERUP');
     expect(m.find('[data-testid="item-picker"]').length).toBe(0);
-    expect(m.find('[data-testid="item-note"]')[0]?.textContent).toMatch(/PREDATES POWERUPS/);
+    expect(m.find('[data-testid="item-note"]')[0]?.textContent).toMatch(/MC SERVER IS OLDER THAN THIS CONSOLE/);
     m.unmount();
   });
 

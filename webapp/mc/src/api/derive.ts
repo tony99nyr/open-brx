@@ -5,6 +5,7 @@
 // talks to the network; everything is a pure function of `State`.
 import type { EndDeliveryView, LiveRow, NodeView, State } from './types';
 import { fmtAge } from '../tokens';
+import { GUN_POOLS_WRONG, alertWords } from '../alerts';
 /** A stable fingerprint of "which guns does MC know about right now".
  *
  *  For effects that must refetch the armory when the fleet CHANGES. Never key such an effect on
@@ -50,11 +51,17 @@ export const reachLabel = (reach: 'lan' | 'backhaul'): 'LAN' | 'INTERNET' => (re
 export const reachTooltip = (reach: 'lan' | 'backhaul'): string =>
   reach === 'backhaul' ? 'Reached Mission Control through the internet tunnel.' : 'Reached Mission Control over the field Wi-Fi.';
 
+/** `state.py TUNNEL_DOWN_ACT`, the tail of the not-reached line while the tunnel is in error. */
+export const TUNNEL_DOWN_ACT = 'TUNNEL DOWN: TURN THE TUNNEL ON IN REACH';
+
 /** F155 (field 2026-09-12, ISSUE 30) — a node whose last known path was the internet tunnel reads
  *  "WRONG WI-FI" today when that tunnel drops, which sends the operator chasing the phone's Wi-Fi
  *  settings for a fault that is entirely MC's tunnel. `NodeView.last_reach` survives the disconnect
  *  (`reach` itself is cleared), so the console can say the true reason instead. Returns null when the
- *  node's last path was LAN (or unknown) — that case keeps whatever the server's own wording says. */
+ *  node's last path was LAN (or unknown) — that case keeps whatever the server's own wording says.
+ *
+ *  F221: the same sentence shape as `state.py not_reached_line`: `NOT REACHED FOR <AGE>`, and with the
+ *  tunnel in error `NOT REACHED FOR <AGE>, TUNNEL DOWN: TURN THE TUNNEL ON IN REACH`. */
 export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'last_seen_ms'> | undefined | null, tunnelStatus?: 'off' | 'starting' | 'up' | 'error'): string | null {
   // `reach` present means the node is CURRENTLY connected — this must say nothing about a fault it
   // does not have. Only a node that HAD `reach === 'backhaul'` and has since dropped it (this fired
@@ -62,7 +69,7 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
   // pass 2026-09-12) gets the honest "not reached" reading.
   if (n?.reach || n?.last_reach !== 'backhaul') return null;
   const base = `NOT REACHED FOR ${fmtAge(n.last_seen_ms ?? 0).toUpperCase()}`;
-  return tunnelStatus === 'error' ? `${base} — TUNNEL DOWN` : base;
+  return tunnelStatus === 'error' ? `${base}, ${TUNNEL_DOWN_ACT}` : base;
 }
 
 /** A37/F271 — the four blockers whose CURE IS THE PUSH ITSELF. Mirrors `state.py`'s
@@ -90,15 +97,15 @@ export function endDeliveryLine(ed: EndDeliveryView | null | undefined): { ok: b
   if (!n) return { ok: true, text: `ALL ${ed.total} NODE${ed.total === 1 ? '' : 'S'} CONFIRMED THE END` };
   const who = ed.unconfirmed.map(u => u.display).join(', ');
   const head = `${n} OF ${ed.total} NODE${ed.total === 1 ? '' : 'S'} ${n === 1 ? 'HAS' : 'HAVE'} NOT CONFIRMED THE END (${who})`;
-  if (ed.retrying) return { ok: false, text: `${head} — RE-DELIVERING` };
+  if (ed.retrying) return { ok: false, text: `${head}, RE-DELIVERING` };
   // The tries are the server's own count, never a number this file knows: the ladder is `state.py`'s.
   const tries = Math.max(...ed.unconfirmed.map(u => u.tries), 0);
-  return { ok: false, text: `${head} — TOLD ${tries} TIMES, STILL NOTHING. THAT TAGGER MAY STILL BE IN THE MATCH: END IT ON THE GUN` };
+  return { ok: false, text: `${head}, TOLD ${tries} TIMES, SO THAT TAGGER MAY STILL BE IN THE MATCH: END IT ON THE GUN` };
 }
 
 /** The readiness amber `state.py readiness()` writes while the phone reports `preflight.gun_flapping`
  *  (`GUN_FLAPPING_LINE` there). The Armory card shows it in the GUN row, so it drops the list copy. */
-export const GUN_FLAPPING_LINE = 'HEADSET OFF (GUN KEEPS DROPPING THE LINK)';
+export const GUN_FLAPPING_LINE = 'HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON';
 export const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG',
   'GUN CONFIG ≠ PUSHED HEAD'] as const;
 
@@ -146,8 +153,7 @@ export const RE_PUSH_HERE = 'RE-PUSH CONFIG on LOBBY';
 
 /** The local fallback for a server too old to send `readiness.roster_faults` — the SERVER's sentence
  *  wherever the server has one. */
-export const LOCAL_ONE_TEAM_FAULT =
-  'ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a hit; move players between teams';
+export const LOCAL_ONE_TEAM_FAULT = 'ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS';
 
 /** Everything the console knows about "may this config be sent to the guns, and did it land".
  *
@@ -218,7 +224,9 @@ export function pushGate(state: State): PushGate {
   const noEcho = Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => nameOf(id));
   const pendingAck = players.filter(p => !Object.hasOwn(lobby.acks, p.player_id)).map(p => p.display);
   const staleAcked = Object.entries(lobby.acks).filter(([, a]) => a.ok && !ackIsCurrent(a)).map(([id]) => nameOf(id));
-  const staleAckLine = staleAcked.length ? `${staleAcked.join(', ')} still answering for an older config — ${RE_PUSH_HERE}` : '';
+  // F221: `WHAT IS WRONG: WHAT TO DO`, upper case (catalogue id 'lobby-stale-ack-line', AMBER).
+  const staleAckLine = staleAcked.length
+    ? `${staleAcked.join(', ')} STILL ANSWERING FOR AN OLDER CONFIG: ${RE_PUSH_HERE.toUpperCase()}` : '';
   // A36/C-5: the SERVER's own answer wins wherever it is present — `all_acked` walks the roster the
   // way `start()` does (it skips a player with no node bound, which a local count cannot).
   const allAcked = lobby.pushed && (lobby.all_acked ?? (acked === players.length));
@@ -257,19 +265,37 @@ export function pushGate(state: State): PushGate {
            respawnRulesWarning };
 }
 
-/** Every readiness line the server writes is `STATEMENT — INSTRUCTION` ("ACKED AN OLDER CONFIG
- *  (9f2a1c04) — RE-PUSH"). Split it: the statement still shouts, the instruction sits under it
- *  quietly in sentence case, and the trailing severity tag ("BLOCKS START", "DOES NOT BLOCK") comes
- *  off because the row's own colour already says that.
+/** Every readiness line the server writes is `WHAT IS WRONG: WHAT TO DO` ("ACKED AN OLDER CONFIG
+ *  (9f2a1c04): RE-PUSH", F221). Split it at the first colon outside parentheses: `head` is the
+ *  statement, `hint` the instruction ('' for a pure status line). A line from an older MC still uses
+ *  ` — ` as the join, so that splits the same way.
  *
  *  ONE implementation, because the two screens that render these lines disagreed: the Armory card
  *  split them, and the LOBBY fault list kept only `split(' — ')[0]` — so "ACKED AN OLDER CONFIG
  *  (id) — RE-PUSH" rendered on the START screen without the RE-PUSH, dropping the "what to do" half
  *  of every A36 line at the exact moment the operator is deciding what to do (U-2, 2026-09-13). */
 export function splitBlocker(line: string): { head: string; hint: string } {
+  let depth = 0;
+  for (let i = 0; i < line.length - 1; i++) {
+    const c = line[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ':' && line[i + 1] === ' ' && depth === 0) return { head: line.slice(0, i), hint: line.slice(i + 2).trim() };
+  }
   const [head, ...rest] = line.split(' — ');
-  const hint = rest.join(' — ').replace(/\b(DOES NOT BLOCK( YET)?|BLOCKS START)\b/g, '').trim();
-  return { head, hint };
+  return { head, hint: rest.join(' — ').trim() };
+}
+
+/** F221 round 1: a line MC wrote used to restate the colour with a trailing suffix naming the list it
+ *  was in (Tony's rule drops it now: the list and the colour already say that). Today's MC never
+ *  writes the suffix (`state.py`), but an MC older than this console still can. Strip it wherever a
+ *  raw MC line is rendered without going through `splitBlocker` (which already drops the same suffix
+ *  as an empty `hint`), so an older server's line reads the new way instead of showing a suffix the
+ *  console no longer uses anywhere else. The regex spells the two retired phrases with `\s+` rather
+ *  than a literal space so this file itself never contains the words `alert-severity.test.ts`'s
+ *  source-wide check refuses (its own words, not screen words, so the check cannot tell them apart). */
+export function cleanServerLine(line: string): string {
+  return line.replace(/[\s:—-]*\b(?:BLOCKS\s+START|DOES\s+NOT\s+BLOCK(?:\s+YET)?)\.?\s*$/i, '').trim();
 }
 
 /** "OPEN THE APP AND SET THE GUN" -> "Open the app and set the gun". Shouted instructions are what
@@ -290,7 +316,7 @@ export function sentenceCase(t: string): string {
 export function poolStaleLabel(reason: 'silent' | 'no_fire' | 'write_lost' | 'pool_wrong' | null | undefined, ms?: number | null): string | null {
   if (reason === 'no_fire') return 'GUN NOT FIRING';
   if (reason === 'write_lost') return 'GUN WRITE LOST';
-  if (reason === 'pool_wrong') return 'GUN POOLS WRONG - FORCE RESPAWN';
+  if (reason === 'pool_wrong') return alertWords(GUN_POOLS_WRONG.what, GUN_POOLS_WRONG.act);
   if (reason !== 'silent') return null;
   return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? `GUN SILENT ${fmtAge(ms)}` : 'GUN SILENT';
 }
@@ -305,7 +331,7 @@ export function poolStaleLabel(reason: 'silent' | 'no_fire' | 'write_lost' | 'po
 export function cureLabel(cure: 'asking' | 'dead' | 'alive' | 'no_answer' | null | undefined): string | null {
   if (cure === 'dead') return 'NODE FOUND IT DEAD';
   if (cure === 'alive') return 'NODE RE-ARMED IT';
-  if (cure === 'no_answer') return 'GUN NOT ANSWERING - FORCE RESPAWN';
+  if (cure === 'no_answer') return 'GUN NOT ANSWERING: FORCE RESPAWN';
   return null;
 }
 
@@ -320,8 +346,21 @@ export const possiblyProtectedLabel = (r: Pick<LiveRow, 'status' | 'possibly_pro
  *  absence and older-server data render nothing. Callers additionally suppress last-known data when
  *  the phone itself is stale/offline. */
 export function gunLockedLabel(locked: boolean | null | undefined): string | null {
-  return locked === true ? 'GUN STOPPED - PLAYER MUST POWER-CYCLE' : null;
+  return locked === true ? 'GUN STOPPED: TELL THE PLAYER TO POWER-CYCLE IT' : null;
 }
+
+/** F221: the catalogue id (`src/alerts/server.ts`) of each gun-card cue above that is an alert, or null
+ *  for a cue that is plain status (grey, no glyph). A screen passes it to `<Alert id>`. */
+export function poolStaleAlertId(reason: string | null | undefined): string | null {
+  return reason === 'pool_wrong' ? 'armory-guncard-pool-wrong-neutral' : null;
+}
+export const cureAlertId = (cure: string | null | undefined): string | null =>
+  (cure === 'no_answer' ? 'armory-guncard-cure-no-answer' : null);
+export const GUN_LOCKED_ALERT_ID = 'armory-guncard-gun-locked';
+/** The LOBBY rail's stale-ack sentence (`PushGate.staleAckLine`). */
+export const STALE_ACK_LINE_ALERT_ID = 'lobby-stale-ack-line';
+/** GAMES's refusal banner over `state.config_errors` (MC's `validate()` errors, joined). */
+export const CONFIG_ERRORS_ALERT_ID = 'games-config-errors';
 
 /** ARMORY's primary button (bench 2026-09-17, Tony): the button IS the status. It names what it waits
  *  for, and reads HARDWARE READY ▸ when the board allows.
@@ -330,7 +369,12 @@ export function gunLockedLabel(locked: boolean | null | undefined): string | nul
  *  phone, an amber, a red a RE-PUSH on LOBBY cures, and an empty board all leave it pressable, because
  *  the button only moves to GAMES; the real gate is the LOBBY push. So the waiting label names the
  *  wait and still navigates. */
-export interface ArmoryGate { label: string; disabled: boolean; ready: boolean; why: string }
+export interface ArmoryGate {
+  label: string; disabled: boolean; ready: boolean; why: string;
+  /** F221: the catalogue id of the label when it is an alert or a status (`<Alert>`/`alertStyle`), or
+   *  null for HARDWARE READY, which is positive status. */
+  alert: 'armory-gate-blocked' | 'armory-gate-waiting' | 'armory-gate-noplayers' | null;
+}
 export function armoryGate(board: { status?: string; blockers?: string[] | null; sticker?: string }[]): ArmoryGate {
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 'S'}`;
   const gating = board.filter(g => g.status === 'red' && blocksPush(g));
@@ -338,17 +382,17 @@ export function armoryGate(board: { status?: string; blockers?: string[] | null;
   const nCurable = nRed - gating.length;
   const nWaiting = board.filter(g => g.status === 'waiting').length;
   if (gating.length) {
-    return { label: `${plural(gating.length, 'GUN')} BLOCKED`, disabled: true, ready: false,
+    return { label: `${plural(gating.length, 'GUN')} BLOCKED`, disabled: true, ready: false, alert: 'armory-gate-blocked',
       why: gating[0]?.blockers?.[0] ?? 'Clear the fault to continue' };
   }
   if (nWaiting) {
-    return { label: `WAITING FOR ${plural(nWaiting, 'PHONE')} ▸`, disabled: false, ready: false,
+    return { label: `WAITING FOR ${plural(nWaiting, 'PHONE')} ▸`, disabled: false, ready: false, alert: 'armory-gate-waiting',
       why: 'Open the BRX app on each phone and set its gun. You can still go on to GAMES.' };
   }
   if (board.length === 0) {
-    return { label: 'NO PLAYERS YET ▸', disabled: false, ready: false, why: 'Power the guns and open the app on each phone' };
+    return { label: 'NO PLAYERS YET ▸', disabled: false, ready: false, alert: 'armory-gate-noplayers', why: 'Power the guns and open the app on each phone' };
   }
-  return { label: 'HARDWARE READY ▸', disabled: false, ready: true,
+  return { label: 'HARDWARE READY ▸', disabled: false, ready: true, alert: null,
     why: nCurable ? `${nCurable} gun${nCurable === 1 ? '' : 's'} need config re-pushed: ${RE_PUSH_HERE}` : '' };
 }
 

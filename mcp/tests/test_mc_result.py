@@ -324,7 +324,7 @@ def test_mc_verify_is_present_only_when_mc_decides_the_end_off_grid():
     s, _net, _ps = _armed({"scoring": {"frag_limit": 7, "win_by": "kills"}})
     assert s.game_brief()["mc_verify"] == C.MC_VERIFY_PLAYER
     notice = s.snapshot()["notices"]["mc_verify"]
-    assert notice.startswith("WIN IS CONFIRMED AT MC · 2 PHONES OFF-GRID")
+    assert notice.startswith("WIN IS CONFIRMED AT MC, 2 PHONES OFF-GRID")
     assert "OP0" in notice and "OP1" in notice, f"the host's copy names the phones: {notice}"
     # and it rides the kit-out push the phone actually reads
     assert s._assign_body(list(s.players.values())[0])["game"]["mc_verify"] == C.MC_VERIFY_PLAYER

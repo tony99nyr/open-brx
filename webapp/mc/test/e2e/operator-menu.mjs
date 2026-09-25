@@ -222,7 +222,8 @@ try {
     const b = pg.locator('[data-op="relink"]');
     await b.click(); await b.click(); await pg.waitForTimeout(600);
     const strip = (await pg.locator('header [role="alert"]').allInnerTexts()).join(' ');
-    expect(strip.includes('PREDATES THIS UI'), `the error strip says the server is too old ("${strip.slice(0, 80)}")`);
+    // F221 (2026-09-25): the MC_OLDER words, not screen-specific wording — one fact, one sentence.
+    expect(strip.includes('OLDER THAN THIS CONSOLE'), `the error strip says the server is too old ("${strip.slice(0, 80)}")`);
     await pg.context().close();
   }
 

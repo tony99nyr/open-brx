@@ -1382,7 +1382,7 @@ def test_f146_a_primary_filter_that_excludes_every_weapon_is_refused_at_validate
     s._validate()
     said = [e for e in s.config_errors if "PRIMARY FILTER" in e]
     assert said, s.config_errors
-    assert "EXCLUDES EVERY WEAPON" in said[0] and "primary slot" in said[0], said[0]
+    assert "EXCLUDES EVERY WEAPON" in said[0] and "PRIMARY SLOT" in said[0], said[0]
     # and it clears the moment the ruleset is legal again
     s.set_config({"loadout_policy": {"preset": "open"}})
     s._validate()

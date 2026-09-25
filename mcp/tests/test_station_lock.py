@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
-from brx_mcp.mc.state import Session
+from brx_mcp.mc.state import STATION_BRING_BACK, Session
 from brx_mcp.mc.types import (DEFAULT_RUNWAY_S, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
                               STATION_LOCK_MAX_S)
 
@@ -108,7 +108,7 @@ def test_a_reboot_inside_the_lock_window_is_flagged():
     assert not any("RESTARTED" in f for f in _flags(s))
     clock.t += 10_000
     _beat(s, clock, uptime_s=3, boot_count=5, assoc="held")     # rebooted
-    assert "STATION #3 RESTARTED" in _flags(s)
+    assert "STATION #3 RESTARTED: CHECK THE STATION" in _flags(s)
     assert next(v for v in s.stations_view())["restarts"] == 1
 
 
@@ -118,7 +118,7 @@ def test_a_reboot_without_boot_count_is_caught_by_the_boot_instant():
     s.push_config(force=True)
     clock.t += 60_000
     _beat(s, clock, uptime_s=2)                               # boot_count lost (NVS wiped): uptime alone
-    assert "STATION #3 RESTARTED" in _flags(s)
+    assert "STATION #3 RESTARTED: CHECK THE STATION" in _flags(s)
 
 
 def test_a_muster_stations_reboot_shows_when_it_rejoins_after_the_match():
@@ -133,7 +133,7 @@ def test_a_muster_stations_reboot_shows_when_it_rejoins_after_the_match():
     clock.t += 60_000
     s.net.simulate_utility_hello("stick-1")                  # the operator walks it back
     _beat(s, clock, uptime_s=(clock.t - reboot_at) // 1000, boot_count=8, assoc="muster")
-    assert "STATION #3 RESTARTED" in _flags(s)
+    assert "STATION #3 RESTARTED: CHECK THE STATION" in _flags(s)
 
 
 def test_a_reboot_outside_the_window_is_not_flagged():
@@ -155,17 +155,17 @@ def test_only_a_held_station_is_flagged_offline():
     s.push_config(force=True)
     s.start(runway_s=30, force=True)
     s.net.simulate_stale("stick-1", 20_000)
-    assert "STATION #3 OFFLINE" in _flags(s)
+    assert "STATION #3 OFFLINE: CHECK IT IS ON AND IN RANGE" in _flags(s)
     _beat(s, clock, uptime_s=41, boot_count=1, assoc="muster")
     s.net.simulate_stale("stick-1", 20_000)
-    assert "STATION #3 OFFLINE" not in _flags(s)             # a muster station is out of Wi-Fi by design
+    assert "STATION #3 OFFLINE: CHECK IT IS ON AND IN RANGE" not in _flags(s)             # a muster station is out of Wi-Fi by design
 
 
 def test_a_long_lobby_warns_that_a_muster_lock_runs_out_mid_match():
     s, clock = _sess(600)
     _beat(s, clock, uptime_s=40, boot_count=1, assoc="muster")
     s.push_config(force=True)
-    warn = "STATION #3 LOCK EXPIRES MID-MATCH, REJOIN IT"
+    warn = "STATION #3 LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER"
     assert warn not in _flags(s)
     clock.t += (STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S - DEFAULT_RUNWAY_S) * 1000 - 1000
     assert warn not in _flags(s)
@@ -182,9 +182,9 @@ def test_a_muster_station_out_of_wifi_is_not_flagged_for_re_arming_by_a_lock_res
     real_push = s.net.push
     s.net.push = lambda nid, kind, body: False if nid == "stick-1" else real_push(nid, kind, body)
     s.start(runway_s=30, force=True)                         # the START re-send misses it, by design
-    assert "BRING IT BACK TO RE-ARM" not in _flags(s)
+    assert STATION_BRING_BACK not in _flags(s)
     s.control("end")                                         # so does END's unlock...
-    assert "BRING IT BACK TO RE-ARM" not in _flags(s)
+    assert STATION_BRING_BACK not in _flags(s)
     clock.t += 120_000                                       # ...but the window still closes at END
     s.net.push = real_push
     s.net.simulate_utility_hello("stick-1")
@@ -198,7 +198,7 @@ def test_a_release_drops_the_lock_state():
     s.push_config(force=True)
     clock.t += 10_000
     _beat(s, clock, uptime_s=2, boot_count=2)
-    assert "STATION #3 RESTARTED" in _flags(s)
+    assert "STATION #3 RESTARTED: CHECK THE STATION" in _flags(s)
     s.release_station("stick-1")
     st = s.stations.get("stick-1") or {}
     assert not any(k in st for k in ("lock", "locked_since", "restarts")), st
@@ -237,7 +237,7 @@ def test_abort_then_start_reopens_the_window_for_a_muster_station_out_of_wifi():
     s.net.push = real_push
     s.net.simulate_utility_hello("stick-1")
     _beat(s, clock, uptime_s=(clock.t - reboot_at) // 1000, boot_count=2, assoc="muster")
-    assert "STATION #3 RESTARTED" in _flags(s)
+    assert "STATION #3 RESTARTED: CHECK THE STATION" in _flags(s)
 
 
 def test_a_late_heartbeat_with_the_same_boot_count_is_not_a_reboot():
@@ -345,19 +345,19 @@ def test_f337a_restarts_counted_before_an_mc_restart_are_kept_and_the_window_hol
     s.start(runway_s=30, force=True)
     clock.t += 60_000
     _beat(s, clock, uptime_s=3, boot_count=5, assoc="held")      # rebooted once, before MC restarts
-    assert "STATION #3 RESTARTED" in _flags(s)
+    assert "STATION #3 RESTARTED: CHECK THE STATION" in _flags(s)
     s2 = _restart(s, clock)
     s2.net.simulate_utility_hello("stick-1")
     clock.t += 5_000
     s2.net.simulate_status("stick-1", {"role": "utility", "kind": "respawn", "team": 1, "station_id": 3,
                                        "uptime_s": 8, "boot_count": 5, "assoc": "held"}, clock.t)
-    assert "STATION #3 RESTARTED" in next(v for v in s2.stations_view() if v["node_id"] == "stick-1")["attention"]
+    assert "STATION #3 RESTARTED: CHECK THE STATION" in next(v for v in s2.stations_view() if v["node_id"] == "stick-1")["attention"]
     clock.t += 5_000
     s2.net.simulate_status("stick-1", {"role": "utility", "kind": "respawn", "team": 1, "station_id": 3,
                                        "uptime_s": 1, "boot_count": 6, "assoc": "held"}, clock.t)
     view = next(v for v in s2.stations_view() if v["node_id"] == "stick-1")
     assert view["restarts"] == 2, view
-    assert "STATION #3 RESTARTED 2 TIMES" in view["attention"]
+    assert "STATION #3 RESTARTED 2 TIMES: CHECK THE STATION" in view["attention"]
 
 
 def test_f337c_an_adopted_match_locks_to_the_cap_not_the_draft_limit():

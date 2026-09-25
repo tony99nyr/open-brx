@@ -112,12 +112,12 @@ describe('A27 · CONTINUE against a server that guards the phase', () => {
   });
 
   it("does not repeat names the server's own sentence already carries", async () => {
-    // MC words it as "1 of 9 are not READY: ROCCO". Appending "— ROCCO IS NOT READY" after that reads
-    // as two separate facts about two separate things (real server walk, 2026-09-12).
+    // MC words it as "1 of 9 are not READY: ROCCO". F221 polish (2026-09-25): that sentence reshapes
+    // into one colon, upper case, the name in brackets — not a second colon tacked on in mixed case.
     const m = await kitScreen({ error: '1 of 9 are not READY: ROCCO', not_ready: ['ROCCO'] });
     await m.click('CONTINUE');
     const txt = m.find('[data-continue-refusal]')[0].textContent ?? '';
-    expect(txt).toBe('1 of 9 are not READY: ROCCO — CONTINUE ANYWAY?');
+    expect(txt).toBe('▲ 1 OF 9 NOT READY (ROCCO): CONTINUE ANYWAY?');
     expect(txt.match(/ROCCO/g)?.length).toBe(1);
     m.unmount();
   });
@@ -126,7 +126,7 @@ describe('A27 · CONTINUE against a server that guards the phase', () => {
     const m = await kitScreen({ error: '2 PLAYERS ARE NOT READY', not_ready: ['SABLE', 'DRIFT'] });
     await m.click('CONTINUE');
     expect(m.find('[data-continue-refusal]')[0].textContent)
-      .toBe('2 PLAYERS ARE NOT READY — SABLE, DRIFT — CONTINUE ANYWAY?');
+      .toBe('▲ 2 PLAYERS ARE NOT READY, SABLE, DRIFT: CONTINUE ANYWAY?');
     m.unmount();
   });
 

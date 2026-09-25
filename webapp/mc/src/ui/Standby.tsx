@@ -10,6 +10,7 @@
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, teamColor } from '../tokens';
+import { colourOf } from '../alerts';
 import { BTN_RESET, SectionRule } from '.';
 
 /** Once the match is armed/live the server refuses both directions (the kit is locked), so nothing here
@@ -66,7 +67,7 @@ export function StandbySection({ style }: { style?: React.CSSProperties }) {
             <span style={{ width: 4, flex: 'none', alignSelf: 'stretch', background: teamColor(p.team_id) }} />
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em', color: T.dim }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{p.player_num} </span>{p.display}</span>
-              <span style={{ display: 'block', font: F.mono(500, 11), color: T.micro }}>{p.gun_id ?? 'NO GUN'} · SITTING OUT · {lock ? 'LOCKED UNTIL THE MATCH ENDS' : 'PLAY PUTS THEM BACK'}</span>
+              <span style={{ display: 'block', font: F.mono(500, 11), color: colourOf('frame-standby-section') }}>{p.gun_id ?? 'NO GUN'} · SITTING OUT · {lock ? 'LOCKED UNTIL THE MATCH ENDS' : 'PLAY PUTS THEM BACK'}</span>
             </span>
             {lock
               ? <span data-standby-locked style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.micro, border: `1px solid ${T.line}`, padding: '8px 14px', minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>MATCH LIVE</span>

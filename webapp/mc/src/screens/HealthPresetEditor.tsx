@@ -11,6 +11,7 @@ import { useState } from 'react';
 import type { Health, HealthPreset } from '../api/types';
 import { F, T } from '../tokens';
 import { BTN_RESET, ValueBox } from '../ui';
+import { colourOf } from '../alerts';
 import { HEALTH_PRESETS, HEALTH_PRESET_COPY, healthPresetOf } from './gameSummary';
 
 export function HealthPresetEditor({ health, onChange }: { health: Health; onChange: (h: Health) => void }) {
@@ -38,8 +39,10 @@ export function HealthPresetEditor({ health, onChange }: { health: Health; onCha
           </button>
         ))}
         {preset === 'custom' && (
+          // F221: an editorial-choice indicator (a hand-tuned pool), not a warning — the amber fill it
+          // used to share with a genuine warning chip made it read as an alert when it is not one (NOT-ALERT).
           <span data-testid="health-preset-custom" style={{ font: F.chk(700, 11), letterSpacing: '.12em', padding: '7px 12px',
-                   minHeight: 36, display: 'inline-flex', alignItems: 'center', background: T.warn, color: T.ink, border: `1px solid ${T.warn}` }}>
+                   minHeight: 36, display: 'inline-flex', alignItems: 'center', background: 'transparent', color: colourOf('frame-health-preset-custom'), border: `1px solid ${T.line2}` }}>
             CUSTOM
           </span>
         )}

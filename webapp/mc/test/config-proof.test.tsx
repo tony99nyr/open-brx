@@ -17,11 +17,13 @@ import { demo, mountScreen } from './harness';
 
 // Verbatim server strings (state.py `_STALE_ACK_FAULT` / `_ECHO_FAULT` / `_POOL_FAULT`). All three
 // read `<WHAT> ≠ CONFIG` on purpose: one frame of reference for the three proofs.
-const STALE = 'ACKED AN OLDER CONFIG (9f2a1c04) — RE-PUSH';
-const ECHO = 'GUN ECHO ≠ CONFIG (WEAPON 31/192 echoed vs 32/192 expected, mag/reserve) — RE-PUSH';
-const POOL = 'GUN POOL ≠ CONFIG (REPORTS 45/115, THIS CONFIG GRANTS 45/70, hp/armor) — LIKELY ON AN OLDER HEAD; RE-PUSH';
-const READBACK = 'GUN CONFIG ≠ PUSHED HEAD (TEAM 0 read-back vs 1 pushed) — RE-PUSH';
-const HOLDING = 'HOLDING OLDER CONFIG (9f2a1c04) — RE-PUSH TO BE SURE';
+const STALE = 'ACKED AN OLDER CONFIG (9f2a1c04): RE-PUSH';
+const ECHO = 'GUN ECHO ≠ CONFIG (WEAPON 31/192 ECHOED, 32/192 EXPECTED, MAG/RESERVE): RE-PUSH';
+const POOL = 'GUN POOL ≠ CONFIG (REPORTS 45/115, THIS CONFIG GRANTS 45/70, HP/ARMOR, LIKELY AN OLDER HEAD): RE-PUSH BEFORE THE NEXT GAME';
+const READBACK = 'GUN CONFIG ≠ PUSHED HEAD (TEAM 0 READ BACK, 1 PUSHED): RE-PUSH';
+const HOLDING = 'HOLDING OLDER CONFIG (9f2a1c04)';
+/** `WHAT: DO` -> [WHAT, DO] at the first colon (F221: one colon per line). */
+const splitLine = (line: string) => { const i = line.indexOf(': '); return [line.slice(0, i), line.slice(i + 2)] as const; };
 
 /** The demo board with EVERY row forced green, then row 0 replaced — for the gate tests, where any
  *  other red would be the thing blocking HARDWARE READY. */
@@ -47,7 +49,7 @@ describe('ARMORY · the three A36 proofs appear on the gun card', () => {
     it(`${name} renders as a red fault, verbatim`, async () => {
       const { d, state } = await boardWith({ status: 'red', blockers: [blocker], ambers: [] });
       const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
-      expect(m.text()).toContain(blocker.split(' — ')[0]);
+      expect(m.text()).toContain(splitLine(blocker)[0]);
       m.unmount();
     });
   }
@@ -111,7 +113,7 @@ describe('LOBBY · a stale ack is not an ack', () => {
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(m.text(), 'one of the guns is answering for the wrong game').toContain(
       `${state.players.length - 1}/${state.players.length}`);
-    expect(m.text()).toContain(`${p0.display} still answering for an older config`);
+    expect(m.text().toUpperCase()).toContain(`${p0.display.toUpperCase()} STILL ANSWERING FOR AN OLDER CONFIG`);
     const arm = m.find('button').find(b => (b.textContent ?? '').includes('ARM COUNTDOWN'));
     expect(arm, 'the lobby is pushed, so step 3 is the ARM button').toBeTruthy();
     expect((arm as HTMLButtonElement).disabled, 'the server would refuse this START, force or not').toBe(true);
@@ -143,7 +145,7 @@ describe('LOBBY · a stale ack is not an ack', () => {
     const { d, state, p0 } = await staleAsTheServerSendsIt();
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(m.text(), 'the generic "N guns cannot start" count must not swallow the one thing to DO')
-      .toContain(`${p0.display} still answering for an older config`);
+      .toContain(`${p0.display} STILL ANSWERING FOR AN OLDER CONFIG`);
     m.unmount();
   });
 
@@ -157,10 +159,10 @@ describe('LOBBY · a stale ack is not an ack', () => {
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     const txt = m.text();
     for (const line of [STALE, ECHO, POOL]) {
-      const [head, ...rest] = line.split(' — ');
-      expect(txt, `the statement of ${JSON.stringify(head)}`).toContain(head);
+      const [head, act] = splitLine(line);
+      expect(txt.toUpperCase(), `the statement of ${JSON.stringify(head)}`).toContain(head.toUpperCase());
       expect(txt.toLowerCase(), `the INSTRUCTION half of ${JSON.stringify(head)}`)
-        .toContain(rest.join(' — ').toLowerCase());
+        .toContain(act.toLowerCase());
     }
     m.unmount();
   });
@@ -181,7 +183,7 @@ describe('LOBBY · a stale ack is not an ack', () => {
     const state = { ...base, lobby: { ...base.lobby, acks } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(m.text()).toContain(`${state.players.length}/${state.players.length}`);
-    expect(m.text()).not.toContain('still answering for an older config');
+    expect(m.text().toUpperCase()).not.toContain('STILL ANSWERING FOR AN OLDER CONFIG');
     m.unmount();
   });
 
@@ -291,7 +293,7 @@ describe('?mock&faults=1 · all four config-proof states, without a field', () =
 // server's A37 gate had just stopped refusing, so the only route past a stale ack was "Push anyway"
 // — the force override, over a judgement the operator was told to clear, not accept.
 
-const LINK_LOST = 'GUN LINK LOST — BLOCKS START';
+const LINK_LOST = 'GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT';
 
 /** A pushed, otherwise-clean board with `rows` (by index) replaced. */
 async function lobbyWith(rows: Record<number, Partial<ReadinessRow>>, lobbyPatch: Partial<State['lobby']> = {}) {
@@ -425,7 +427,7 @@ describe('R2-8 · the rail states the count once', () => {
       [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' },
       [p1.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain('still answering for an older config');
+    expect(m.text().toUpperCase()).toContain('STILL ANSWERING FOR AN OLDER CONFIG');
     expect(m.text(), 'every red IS the stale ack — saying it twice is not a second fault')
       .not.toContain('cannot start');
     m.unmount();
@@ -438,8 +440,9 @@ describe('R2-8 · the rail states the count once', () => {
     const state = { ...base, lobby: { ...base.lobby, acks: { ...base.lobby.acks,
       [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain('still answering for an older config');
-    expect(m.text()).toContain('cannot start');
+    expect(m.text().toUpperCase()).toContain('STILL ANSWERING FOR AN OLDER CONFIG');
+    // F221 polish r1: this suffix is upper case now, drawn through the same catalogue id as the line above it.
+    expect(m.text().toUpperCase()).toContain('CANNOT START');
     m.unmount();
   });
 });
@@ -476,7 +479,7 @@ describe('F1 · the RE-PUSH is offered whenever a re-push would change something
 
   it('mixed failed and pending acknowledgements name both guns and keep their conditions distinct', async () => {
     const { d, state: base } = await lobbyWith(
-      { 0: { status: 'red', blockers: ['GUN DID NOT ANSWER CONFIG — HEADSET OFF? BLOCKS START'] } },
+      { 0: { status: 'red', blockers: ['GUN DID NOT ANSWER CONFIG: CHECK THE HEADSET IS ON, THEN RE-PUSH'] } },
       { all_acked: false });
     const [failed, pending] = base.players;
     const acks = { ...base.lobby.acks, [failed.player_id]: { ok: false, err: 'no_echo', config_id: base.config.config_id } };
@@ -526,7 +529,7 @@ describe('F1 · the RE-PUSH is offered whenever a re-push would change something
     // RE-PUSH here can only ever throw — and the throw lands in a toast, not on the control.
     const { d, state: base } = await lobbyWith({ 0: { status: 'red', blockers: [STALE] } }, { all_acked: false });
     const state = { ...base, readiness: { ...base.readiness,
-      roster_faults: ['ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a hit; move players between teams'] } } as State;
+      roster_faults: ['ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS'] } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     const repush = btn(m, 'RE-PUSH CONFIG')!;
     expect(repush.disabled).toBe(true);
@@ -602,8 +605,8 @@ describe('F8 · one instruction, one count', () => {
     const state = { ...base, lobby: { ...base.lobby, acks: { ...base.lobby.acks,
       [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain('still answering for an older config');
-    expect(m.text(), 'that gun is also off the net — a re-push alone will not start it').toContain('cannot start');
+    expect(m.text().toUpperCase()).toContain('STILL ANSWERING FOR AN OLDER CONFIG');
+    expect(m.text().toUpperCase(), 'that gun is also off the net: a re-push alone will not start it').toContain('CANNOT START');
     m.unmount();
   });
 

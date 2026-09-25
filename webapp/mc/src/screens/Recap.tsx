@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow, State } from '../api/types';
-import { endDeliveryLine } from '../api/derive';
+import { cleanServerLine, endDeliveryLine } from '../api/derive';
 import { recapDeliveryText, recapDeliveryOkText } from './recapDelivery';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
@@ -11,6 +11,8 @@ import { isObjectiveScored, objectiveWord } from './objective';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
+import { Alert, alertStyle } from '../ui/Alert';
+import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed, serverLine, sevOf } from '../alerts';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
 // split into groups with a hairline between them (game test 2026-09-11, D4).
@@ -32,7 +34,10 @@ const COLUMNS: Column[] = [
  *  (review 2026-09-12). Header and row now read the one lookup. */
 const edge = columnEdges(COLUMNS);
 // A63: keyed by the AWARDS `key`; a recap stored before A63 has only the label, so it maps through AWARD_KEY.
-const AWARD_COLOR: Record<string, string> = { mvp: '#ffd23f', first_blood: T.bad, multikill: T.warn, iron_man: T.ink, wingman: T.ok, objective_hero: T.accHover };
+// F221 round 2: first_blood and multikill were T.bad/T.warn, the ALERT colours, on a medal, not a
+// fault. LIVE's own feed already moved FIRST BLOOD to T.ink and every other medal tag to T.acc
+// (`live-feed-first-blood-tag`/`live-feed-team-kill-tag`, retired as NOT-ALERT); this matches it.
+const AWARD_COLOR: Record<string, string> = { mvp: '#ffd23f', first_blood: T.ink, multikill: T.acc, iron_man: T.ink, wingman: T.ok, objective_hero: T.accHover };
 const AWARD_KEY: Record<string, string> = { MVP: 'mvp', 'FIRST BLOOD': 'first_blood', MULTIKILL: 'multikill' };
 // Tony 2026-09-25: the recap draws the medal and award icons (the phone's own set, medalicons.gen.ts). MC keeps its
 // words beside them, and a legend under FULL STATS teaches the icons. The LIVE screens draw none.
@@ -196,38 +201,48 @@ export function Recap() {
       {picker}
       {(past ?? history.find(h => h.match_id === liveId))?.config && <MatchConfig row={(past ?? history.find(h => h.match_id === liveId))!} />}
       {past && (
-        <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.dim}`, font: F.mono(500, 11), letterSpacing: '.1em', color: T.dim }}>
-          ARCHIVED MATCH{past.ended_t ? ` — ENDED ${new Date(past.ended_t).toLocaleString()}` : ''} · READ ONLY
-        </div>
+        <Alert id="recap-archived-banner" testid="recap-archived" role="status"
+          style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${colourOf('recap-archived-banner')}` }}>
+          ARCHIVED MATCH{past.ended_t ? `: ENDED ${new Date(past.ended_t).toLocaleString()}` : ''} · READ ONLY
+        </Alert>
       )}
+      {/* F221: AMBER is one line, never a banner or a filled chip — fix before the next match, not
+          act now. */}
       {rc.provisional && (
-        <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, background: 'rgba(255,176,32,.08)', font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>
-          ▲ PROVISIONAL — {rc.missing.length} NODE{rc.missing.length === 1 ? ' HAS' : 'S HAVE'} NOT FLUSHED ({rc.missing.map(name).join(', ')}).
+        <Alert id="recap-provisional-banner" testid="recap-provisional" style={{ marginBottom: 12 }}>
+          {rc.missing.length} NODE{rc.missing.length === 1 ? ' HAS' : 'S HAVE'} NOT FLUSHED ({rc.missing.map(name).join(', ')}):
           {/* "bring them into range" is only actionable for the match still in hand */}
           {past ? ' THESE NUMBERS ARE AS RECORDED WHEN THE MATCH WAS ARCHIVED.'
-                : " KILLS LIVE IN VICTIMS' REPORTS; BRING THEM INTO RANGE TO FINALIZE."}
-        </div>
+                : " KILLS LIVE IN VICTIMS' REPORTS. BRING THEM INTO RANGE TO FINALIZE."}
+        </Alert>
       )}
       {/* F77 / F80: after-the-fact detectors from the scorer. A replayed hit cannot be dropped (it looks exactly
           like real fire), so the recap NAMES the pattern; a wire-0 shooter scored for nobody, and the operator
-          should know whether that was a hill or a gun that never got its identity. */}
-      {(rc.warnings ?? []).map(w => (
-        <div key={w} data-testid="recap-warning" style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, background: 'rgba(255,176,32,.08)', font: F.chk(600, 11.5), letterSpacing: '.04em', color: T.warn, textTransform: 'none' }}>
-          ▲ {w}
-        </div>
-      ))}
+          should know whether that was a hill or a gun that never got its identity. MC words the line
+          (mcp scoring.py); `serverLine` decides which catalogue id and severity it carries, so this call site
+          never hard-codes the F74 words or picks a colour of its own. */}
+      {(rc.warnings ?? []).map(w => {
+        const sl = serverLine(w, 'amber');
+        return (
+          <Alert key={w} id={sl.id} sev={sl.sev} testid="recap-warning" role="status"
+            style={{ marginBottom: 12, font: F.chk(600, 11.5), letterSpacing: '.04em', textTransform: 'none' }}>
+            {cleanServerLine(w)}
+          </Alert>
+        );
+      })}
       {/* A8: `settling` means a bound node has not been heard from since the whistle, so the numbers on
           this screen are still moving. `provisional` cannot cover it — a player is marked flushed on
           their FIRST event, so anyone who fired is flushed long before the end (Tony, field 2026-08-30:
           "it kinda was showing the final results as if it was final and then it finally popped up and
           the totals changed"). The server has served this since A8 and nothing rendered it, which for
           an objective mode is the difference between a result and a guess (operator review 2026-09-10). */}
+      {/* F221: AMBER is one line, never a banner. */}
       {!past && rc.settling && (
-        <div data-testid="settling" style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>
-          ▲ STILL SETTLING — {(rc.awaiting ?? []).length} NODE{(rc.awaiting ?? []).length === 1 ? ' HAS' : 'S HAVE'} NOT REPORTED SINCE THE WHISTLE
+        <Alert id="recap-settling-banner" testid="settling">
+          STILL SETTLING: {(rc.awaiting ?? []).length} NODE{(rc.awaiting ?? []).length === 1 ? ' HAS' : 'S HAVE'} NOT REPORTED SINCE THE WHISTLE
           {(rc.awaiting ?? []).length ? ` (${(rc.awaiting ?? []).map(name).join(', ')})` : ''}
           {typeof rc.since_end_ms === 'number' ? ` · ${Math.round(rc.since_end_ms / 1000)}S AGO` : ''}. THESE TOTALS CAN STILL CHANGE.
-        </div>
+        </Alert>
       )}
       {/* A42 (field 2026-09-12, twice: a tagger played on after the operator ended the match). Whether an
           END reached a HUD is a fact about DELIVERY, and it is deliberately stated HERE — above the board,
@@ -240,23 +255,28 @@ export function Recap() {
           row of "SYNCED ✓". It now follows the server's own `retrying`: amber and "NOT CONFIRMED YET"
           while MC is still trying, red and "NEVER" only once the ladder is spent. It also says how many
           phones the END REACHED (the socket took it), because reaching a phone is not a confirmation. */}
-      {!past && edLine && edv && (
-        <div data-testid="end-delivery-recap" data-end-state={edLine.ok ? 'confirmed' : edv.retrying ? 'retrying' : 'spent'}
-          role={edLine.ok ? undefined : edv.retrying ? 'status' : 'alert'}
-          style={{ marginBottom: 12, padding: '8px 14px',
-            border: `1px solid ${edLine.ok ? T.line2 : edv.retrying ? T.warn : T.bad}`,
-            borderLeft: `3px solid ${edLine.ok ? T.ok : edv.retrying ? T.warn : T.bad}`,
-            background: edLine.ok ? undefined : edv.retrying ? 'rgba(255,176,32,.08)' : 'rgba(255,82,82,.07)',
-            font: F.mono(500, 11), letterSpacing: '.1em', color: edLine.ok ? T.dim : edv.retrying ? T.warn : T.bad, lineHeight: 1.5 }}>
-          {edLine.ok ? `✓ ${recapDeliveryOkText(edv)}` : `▲ ${edText}`}
-        </div>
-      )}
+      {!past && edLine && edv && (() => {
+        // F221: RED (spent) is a banner; AMBER (retrying) is one line, never a banner; a clean end is
+        // NOT-ALERT (a positive status, T.ok on the accent only, never T.warn/T.bad, no ▲).
+        const edId = edLine.ok ? null : edv.retrying ? 'recap-end-delivery-retrying' : 'recap-end-delivery-spent';
+        const sev = edId ? sevOf(edId) : null;
+        return (
+          <div data-testid="end-delivery-recap" data-end-state={edLine.ok ? 'confirmed' : edv.retrying ? 'retrying' : 'spent'}
+            data-alert={edId ?? undefined} data-sev={sev ?? undefined}
+            role={edLine.ok ? undefined : edv.retrying ? 'status' : 'alert'}
+            style={edLine.ok
+              ? { marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.ok}`, font: F.mono(500, 11), letterSpacing: '.1em', color: T.dim, lineHeight: 1.5 }
+              : { marginBottom: 12, ...alertStyle(sev!, sev === 'red' ? 'banner' : 'line', 11) }}>
+            {edLine.ok ? `✓ ${recapDeliveryOkText(edv)}` : glyphed(sev!, edText!)}
+          </div>
+        );
+      })()}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting
           now — the header read "MATCH COMPLETE · TDM · 05:00" over a recap of a 3-minute FFA */}
       {/* the match length is a DURATION (a fixed span, over before this screen shows), not a clock still
           counting down, so it prints unpadded like every other span on this screen (fmtClock would pad
           it to "10:00" beside unpadded possession spans such as "7:21") */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status">{inPlay ? 'IN PLAY · PROVISIONAL' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]</div>
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status" style={inPlay ? { color: colourOf('recap-status-inplay') } : undefined}>{inPlay ? 'IN PLAY · PROVISIONAL' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]</div>
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
         <div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
@@ -290,7 +310,9 @@ export function Recap() {
           <span style={{ font: F.osw(700, 44), color: T.ink }}><Num value={rows[0]?.kills ?? 0} /> <span style={{ font: F.chk(600, 12), color: T.micro }}>KILLS</span></span>
         )}
         <span style={{ flex: 1 }} />
-        {csvErr && <span role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.bad }}>▲ {csvErr}</span>}
+        {/* F221: an export failure is fix-before-next, not act-now — amber, never the red a live-safety
+            fault gets, though it used to render red here. */}
+        {csvErr && <span role="alert" data-alert="recap-csv-err" data-sev="amber" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: colourOf('recap-csv-err') }}>{glyphed('amber', csvErr)}</span>}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {/* An <a download> saves whatever comes back, so against an MC that predates the archived
               route the operator gets the 404's JSON body in a file named .csv. `serverOld` only
@@ -307,13 +329,15 @@ export function Recap() {
               let blob: Blob;
               try {
                 const r = await fetch(csv);
-                if (!r.ok) { setCsvErr(r.status === 404 ? 'THIS MC IS TOO OLD TO EXPORT AN ARCHIVED MATCH — UPDATE THE SERVER' : `EXPORT FAILED (${r.status})`); return; }
+                // F221 round 1: both lines re-typed MC_OLDER/MC_OFFLINE in their own words; now the
+                // shared facts (one fact, one sentence: src/alerts).
+                if (!r.ok) { setCsvErr(r.status === 404 ? alertWords(MC_OLDER.what, MC_OLDER.act) : `EXPORT FAILED (${r.status})`); return; }
                 blob = await r.blob();
               } catch {
                 // ONLY the fetch is caught here. A broad try around the save below reported a code
                 // bug (a missing URL.createObjectURL) to the operator as a network fault — a lie
                 // that would have sent them hunting the Wi-Fi (review 2026-09-01).
-                setCsvErr('EXPORT FAILED — MC UNREACHABLE'); return;
+                setCsvErr(`EXPORT FAILED, MC UNREACHABLE: ${MC_OFFLINE.act}`); return;
               }
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
@@ -384,17 +408,23 @@ export function Recap() {
           const quiet = (rc.awaiting ?? []).includes(pl.player_id);
           const fresh = nv && (nv.last_seen_ms ?? 1e9) < 30000;
           const pend = nv?.pending ?? null;
-          const [txt, col] = !missing && quiet ? ['NO REPORT SINCE THE WHISTLE', T.warn]
+          // F221: NO REPORT and OUT OF RANGE are AMBER (fix before the next match — a node still
+          // reachable, just not yet flushed); a phone still SENDING or newly CONNECTED is the
+          // NEUTRAL SENDING/HOLDING family, and a clean sync is NOT-ALERT (T.ok, no glyph).
+          const [txt, col] = !missing && quiet ? [glyphed('amber', 'NO REPORT SINCE THE WHISTLE: BRING IT INTO RANGE'), colourOf('recap-sync-no-report')]
             : !missing ? ['DATA SYNCED ✓', T.ok]
-            : fresh && pend ? [`SENDING · ${pend} LEFT`, T.warn]
-            : fresh ? ['CONNECTED — AWAITING DATA', T.warn]
-            : ['OUT OF RANGE — WILL SYNC ON RETURN', T.bad];
+            : fresh && pend ? [`SENDING: ${pend} LEFT`, colourOf('recap-sync-sending')]
+            : fresh ? ['CONNECTED: AWAITING DATA', colourOf('recap-sync-awaiting')]
+            : [glyphed('amber', 'OUT OF RANGE: WILL SYNC ON RETURN'), colourOf('recap-sync-outofrange')];
           const endOpen = edUnconfirmed.has(pl.player_id);
+          // A42: this suffix mirrors the end-delivery banner's own severity — amber while MC is still
+          // trying, red once the retry ladder is spent (a gun that may still be live is act-now).
+          const endId = edv?.retrying ? 'recap-end-delivery-retrying' : 'recap-end-delivery-spent';
           return (
             <span key={pl.player_id} data-sync-chip={pl.player_id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${endOpen && col === T.ok ? T.warn : col}`, padding: '8px 14px' }}>
               <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{pl.display}</span>
               <span style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: col }}>{txt}</span>
-              {endOpen && <span data-end-open="1" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: edv?.retrying ? T.warn : T.bad }}>· END NOT CONFIRMED</span>}
+              {endOpen && <span data-end-open="1" data-alert={endId} data-sev={sevOf(endId)} style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: colourOf(endId) }}>· END NOT CONFIRMED</span>}
             </span>
           );
         })}
@@ -417,8 +447,10 @@ export function Recap() {
         </div>
       </div>
       <MedalLegend keys={recapKeys(rc)} />
+      {/* F221: identical wording to LIVE/SPECTATE — a status fact, not a fault, so NEUTRAL. */}
       {anyTeamKill && (
-        <div data-testid="team-kill-note" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.warn, marginTop: 8 }}>
+        <div data-testid="team-kill-note" data-alert="recap-team-kill-note" data-sev="neutral"
+          style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('recap-team-kill-note'), marginTop: 8 }}>
           K BELOW ZERO: {TEAM_KILL_NOTE}
         </div>
       )}
@@ -535,10 +567,10 @@ function AfterWhistle({ rc, name }: { rc: RecapView; name: (id: string) => strin
     return (
       <div data-testid="after-end-count" style={{ marginBottom: 18, border: `1px dashed ${T.line2}`, background: T.panelDeep }}>
         <SectionRule label="AFTER THE WHISTLE" hint={lateLine(n)} />
-        <div style={{ padding: '12px 16px', font: F.chk(600, 12), letterSpacing: '.06em', color: T.dim, lineHeight: 1.5 }}>
-          RECORDED, NOT COUNTED — THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.
+        <Alert id="recap-after-whistle-count" role="status" style={{ padding: '12px 16px', font: F.chk(600, 12), letterSpacing: '.06em', lineHeight: 1.5 }}>
+          RECORDED, NOT COUNTED: THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.
           THIS MC SENT THE COUNT WITHOUT THE PER-PLAYER SPLIT, SO THERE IS NONE TO SHOW.
-        </div>
+        </Alert>
       </div>
     );
   }
@@ -558,9 +590,9 @@ function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (
     <div data-testid="after-end" style={{ marginBottom: 18, border: `1px dashed ${T.line2}`, background: T.panelDeep }}>
       <SectionRule label="AFTER THE WHISTLE" hint={lateLine(a.facts)} />
       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: T.dim, lineHeight: 1.5 }}>
-          RECORDED, NOT COUNTED — THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.
-        </div>
+        <Alert id="recap-after-whistle-breakdown" role="status" style={{ font: F.chk(600, 12), letterSpacing: '.06em', lineHeight: 1.5 }}>
+          RECORDED, NOT COUNTED: THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.
+        </Alert>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {rows.map(([pid, v]) => (
             <span key={pid} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, padding: '8px 14px' }}>
@@ -585,7 +617,6 @@ function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (
 function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string }) {
   const held = Object.entries(p.by_team).sort((a, b) => b[1] - a[1]);
   const top = held[0]?.[1] ?? 0;
-  const thin = p.of_s != null && p.observed_s < p.of_s * 0.75;
   return (
     <div data-testid="possession" style={{ marginBottom: 18, border: `1px solid ${T.line}`, background: T.panelDeep }}>
       <SectionRule label="POSSESSION // HOW THE HILL WAS HELD" hint={`${p.sites} POINT${p.sites === 1 ? '' : 'S'} · ${p.reports} NODE${p.reports === 1 ? '' : 'S'} REPORTED`} />
@@ -603,13 +634,15 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
           </div>
         ))}
         {p.neutral_s > 0 && (
-          <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
-            NEUTRAL {fmtDuration(p.neutral_s)} — NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
-          </div>
+          <Alert id="recap-possession-neutral" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.1em' }}>
+            NEUTRAL {fmtDuration(p.neutral_s)}: NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
+          </Alert>
         )}
-        <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: thin ? T.warn : T.micro, lineHeight: 1.5 }}>
-          {thin ? '▲ ' : ''}BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''} — A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
-        </div>
+        {/* F221: a coverage caveat about the MEASUREMENT, not a fault in the match — NEUTRAL, whatever
+            `thin` says, though it used to render amber under 75%. */}
+        <Alert id="recap-possession-thin" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
+          BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
+        </Alert>
       </div>
     </div>
   );
@@ -628,14 +661,16 @@ function Stations({ rows }: { rows: RecapStationRow[] }) {
           <div key={r.node_id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ font: F.chk(700, 12), letterSpacing: '.1em', minWidth: 150 }}>{STATION_KIND_LABEL[r.kind] ?? r.kind} {r.id}</span>
             <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: teamColor((STATION_TID_NAME[r.team] ?? 'any').toLowerCase()) }}>{STATION_TID_NAME[r.team] ?? r.team}</span>
+            {/* F221: a station that never heard from anyone is AMBER (fix before the next match — a
+                field item may be dead); a station that reported is NOT-ALERT, T.ok, no glyph. */}
             {r.kind === 'respawn' && (
-              <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.revives == null ? T.warn : T.ok }}>
-                {r.revives == null ? 'NEVER HEARD FROM' : `${r.revives} REVIVE${r.revives === 1 ? '' : 'S'}`}
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.revives == null ? colourOf('recap-station-never-heard') : T.ok }}>
+                {r.revives == null ? glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.') : `${r.revives} REVIVE${r.revives === 1 ? '' : 'S'}`}
               </span>
             )}
             {r.kind === 'control' && (
-              <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.owner == null ? T.warn : T.ok }}>
-                {r.owner == null ? 'NEVER HEARD FROM' : `HELD BY ${r.owner === 255 ? 'NOBODY' : (STATION_TID_NAME[r.owner] ?? r.owner)}`}
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.owner == null ? colourOf('recap-station-never-heard') : T.ok }}>
+                {r.owner == null ? glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.') : `HELD BY ${r.owner === 255 ? 'NOBODY' : (STATION_TID_NAME[r.owner] ?? r.owner)}`}
                 {r.hold_ms && Object.keys(r.hold_ms).length > 0 && ' · ' + Object.entries(r.hold_ms).map(([tid, ms]) => `${STATION_TID_NAME[Number(tid)] ?? tid} ${Math.round(ms / 1000)}s`).join(' · ')}
               </span>
             )}
@@ -643,8 +678,8 @@ function Stations({ rows }: { rows: RecapStationRow[] }) {
               // F105 (review 2026-09-11): these three kinds have no count of their own -- `heard` is the
               // only thing distinguishing a silent station from a reporting one; without this branch both
               // looked identical (neither rendered anything at all).
-              <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.heard ? T.ok : T.warn }}>
-                {r.heard ? 'REPORTED' : 'NEVER HEARD FROM'}
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.heard ? T.ok : colourOf('recap-station-never-heard') }}>
+                {r.heard ? 'REPORTED' : glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.')}
               </span>
             )}
           </div>

@@ -6,7 +6,8 @@ import type {
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import { withPolicy } from '../screens/gameSummary';
-import { GUN_FLAPPING_LINE, curedByPush } from '../api/derive';
+import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
+import { batteryLow } from '../alerts';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
@@ -53,9 +54,9 @@ const DEMO_LOADOUTS: (() => Loadout)[] = [
 // so the LOBBY / ARMED strip and the GAMES rail show in `?mock` exactly what a real MC sends — including
 // that an `ir_station` game is NOT silent about being a source we have never had on a bench.
 const SETUP_WARNING: Record<string, string> = {
-  grenade: 'SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT — a hill that starts already owned skews the whole match, and only a power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)',
-  ir_station: 'SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it speaks the protocol our nodes read. Use OBJECTIVE SOURCE PHONE for the MVP hill',
-  phone: 'SETUP: THE CONTROL POINT IS A BLUETOOTH STATION — a phone in the UTILITY role, kind CONTROL; confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT power-cycle it), keep it awake on the point, and check its battery. Players must be advertising (the HUD does this) or the point counts nobody',
+  grenade: 'SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT (A HILL THAT STARTS ALREADY OWNED SKEWS THE WHOLE MATCH, AND ONLY A POWER CYCLE GUARANTEES NEUTRAL). ONE POINT ONLY (F88)',
+  ir_station: 'SETUP: THE IR STATION IS UNPROVEN (WE HAVE NEVER HAD ONE ON THE BENCH, SO NOTHING CONFIRMS IT SPEAKS THE PROTOCOL OUR NODES READ): PLACE AND POWER IT, AND CHECK IT READS NEUTRAL BEFORE THE WHISTLE, OR USE OBJECTIVE SOURCE PHONE',
+  phone: 'SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT AWAKE ON THE POINT, AND CHECK ITS BATTERY',
 };
 // The refusal wording, mirroring `STATION_SOURCES` in mcp/brx_mcp/mc/types.py. The IDS are not mirrored:
 // they come from the generated `STATION_SOURCE_IDS`, and the map is keyed by `StationSourceId`, so a source
@@ -83,10 +84,13 @@ const DEMO_FAULT_GUN: Record<string, 'stale' | 'echo' | 'pool' | 'readback' | 'n
   'GUN-A': 'stale', 'GUN-B': 'echo', 'GUN-C': 'pool', 'GUN-G': 'readback', 'GUN-E': 'noecho',
 };
 const DEMO_OLD_CFG = '9f2a1c04';
-const DEMO_STALE_LINE = `ACKED AN OLDER CONFIG (${DEMO_OLD_CFG}) — RE-PUSH`;
-const DEMO_ECHO_LINE = 'GUN ECHO ≠ CONFIG (WEAPON 31/192 echoed vs 32/192 expected, mag/reserve) — RE-PUSH';
-const DEMO_POOL_LINE = 'GUN POOL ≠ CONFIG (REPORTS 45/115, THIS CONFIG GRANTS 45/70, hp/armor) — LIKELY ON AN OLDER HEAD; RE-PUSH';
-const DEMO_READBACK_LINE = 'GUN CONFIG ≠ PUSHED HEAD (TEAM 99 read-back vs 1 pushed) — RE-PUSH';
+const DEMO_STALE_LINE = `ACKED AN OLDER CONFIG (${DEMO_OLD_CFG}): RE-PUSH`;
+const DEMO_ECHO_LINE = 'GUN ECHO ≠ CONFIG (WEAPON 31/192 ECHOED, 32/192 EXPECTED, MAG/RESERVE): RE-PUSH';
+const DEMO_POOL_LINE = 'GUN POOL ≠ CONFIG (REPORTS 45/115, THIS CONFIG GRANTS 45/70, HP/ARMOR, LIKELY AN OLDER HEAD): RE-PUSH BEFORE THE NEXT GAME';
+const DEMO_READBACK_LINE = 'GUN CONFIG ≠ PUSHED HEAD (TEAM 99 READ BACK, 1 PUSHED): RE-PUSH';
+// F221: the readiness and station lines, word for word as `state.py` writes them (`WHAT IS WRONG: WHAT TO DO`).
+const GUN_LINK_LOST = 'GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT';
+const STATION_REARM = 'RE-ARM IT FROM ITEMS ON ARMORY';
 
 type Sub = { snap: (s: State) => void; feed: (e: FeedEntry) => void };
 
@@ -153,12 +157,12 @@ export class MockBackend implements Api {
     return Object.entries(this.stations).map(([node_id, st]) => {
       const attention: string[] = [];
       const a = st.assigned, rep = st.report;
-      if (a && st.arm_pending) attention.push('BRING IT BACK TO RE-ARM');
-      if (a && st.armed && st.armed.game !== this.gameNo) attention.push('ARMED FOR AN OLDER GAME');
+      if (a && st.arm_pending) attention.push('NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM');
+      if (a && st.armed && st.armed.game !== this.gameNo) attention.push(`ARMED FOR AN OLDER GAME: ${STATION_REARM}`);
       const fresh = !!st.armed && st.seen > st.armed.at;   // a report only contradicts an arming it post-dates
-      if (a && fresh && rep.armed === false) attention.push('PHONE SAYS NOT ARMED');
-      if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}`);
-      if (typeof rep.battery === 'number' && rep.battery < 30) attention.push('BATTERY LOW');
+      if (a && fresh && rep.armed === false) attention.push(`PHONE SAYS NOT ARMED: ${STATION_REARM}`);
+      if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
+      if (batteryLow(rep.battery)) attention.push('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
       attention.push(...(st.attention ?? []));   // A58 demo/test seed: STATION #N ... lines
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
         last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo,
@@ -453,7 +457,7 @@ export class MockBackend implements Api {
     if (this.demoStationLock) {
       const st = this.stations['util-d4e5f6'];
       st.lockUntil = now() + 6 * 60 * 1000;
-      st.attention = ['STATION #8 RESTARTED 2 TIMES'];
+      st.attention = ['STATION #8 RESTARTED 2 TIMES: CHECK THE STATION'];
     }
     this.timer = window.setInterval(() => this.tick(), 1000);
   }
@@ -511,9 +515,7 @@ export class MockBackend implements Api {
   }
 
   private rosterFault(): string | null {
-    return this.oneTeamFault()
-      ? 'ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a hit; move players between teams'
-      : null;
+    return this.oneTeamFault() ? LOCAL_ONE_TEAM_FAULT : null;
   }
 
   /** `state.py _reteam_for_config()`, mirrored — round-3 FIELD-1.
@@ -577,7 +579,8 @@ export class MockBackend implements Api {
       const pl = this.players.find(p => p.gun_id === sticker);
       const red = s === 'r', a1 = s === 'a1', a2 = s === 'a2';
       const blockers: string[] = [];
-      if (red) blockers.push('NOT POWERED — BLOCKS START');
+      // A claimed gun that is switched off reads as the server writes it: the phone has lost the gun.
+      if (red) blockers.push(GUN_LINK_LOST);
       // A36/A37/F271 under `?mock&faults=1` — the four reds, exactly as `state.py readiness()` writes them.
       const fault = this.faultOf(sticker);
       if (this.pushed && fault === 'stale') blockers.push(DEMO_STALE_LINE);
@@ -588,13 +591,14 @@ export class MockBackend implements Api {
       // absence of a proof, not a fault, and a row that went amber for it would be amber all night
       // on every gun in the field.
       const proofRed = this.pushed && (fault === 'stale' || fault === 'echo' || fault === 'pool' || fault === 'readback');
-      if (a1) blockers.push('BATTERY UNREAD — DOES NOT BLOCK');
-      if (a2) blockers.push(`STALE LINK (${link}s) — DOES NOT BLOCK`);
       // A29: the version flags are the SERVER's words, amber only (A1: amber never blocks). The demo
       // writes them the way `state.py readiness()` will, so the console can render and never re-derive.
+      // F221: BATTERY UNREAD and STALE LINK are `ambers` on the server, so they are here too.
       const ver = this.appVer(sticker);
       const ambers: string[] = [];
-      if (ver.app_ver.startsWith('0.1.8')) ambers.push('APP OLDER THAN THE FIELD (0.1.8 < 0.1.9) — DOES NOT BLOCK');
+      if (a1) ambers.push('BATTERY UNREAD');
+      if (a2) ambers.push(`STALE LINK (${link}S)`);
+      if (ver.app_ver.startsWith('0.1.8')) ambers.push('APP OLDER THAN THE FIELD (0.1.8 < 0.1.9): UPDATE THE APP');
       // A32: the demo board shows BOTH proofs, because they read differently and the operator has to
       // recognise each. GUN-F's link is still counting up (it is already an amber row for its unread
       // battery, so the extra advisory perturbs no other card's status); every other linked phone has
@@ -602,7 +606,7 @@ export class MockBackend implements Api {
       const flapping = !red && this.demoFlap && sticker === 'GUN-C';
       if (flapping) ambers.push(GUN_FLAPPING_LINE);   // one steady amber, as `state.py readiness()` writes it
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
-      if (confirming) ambers.push('HEADSET · CONFIRMING (LINK 4 s)');
+      if (confirming) ambers.push('HEADSET CONFIRMING (LINK 4 S)');
       const proof = red || confirming || flapping ? null : this.pushed ? 'echo' as const : 'link' as const;
       // F155 pass 1 (2026-09-12): `?mock&laststale=1` puts GUN-F through a node that WAS bound (it
       // reported over the internet path earlier this session — `lastReach` seeded in the constructor)
@@ -755,12 +759,12 @@ export class MockBackend implements Api {
         ...(SETUP_WARNING[this.config.station_source ?? ''] ? [SETUP_WARNING[this.config.station_source ?? '']] : []),
         // mirrors Session._station_warnings(): a station-gated rule with nothing assigned in ITEMS
         ...(this.config.station_source === 'phone' && !Object.values(this.stations).some(s => s.assigned?.kind === 'control')
-          ? ["SETUP: NO CONTROL STATION IS ASSIGNED — this game's objective is a Bluetooth control point (station_source phone); assign a utility phone as CONTROL in ITEMS and arm it, or nothing on the field is the hill"] : []),
+          ? ['SETUP: NO CONTROL STATION IS ASSIGNED (THE OBJECTIVE IS A BLUETOOTH CONTROL POINT, SO NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT'] : []),
         ...((this.config.station_source === 'grenade' || this.config.station_source === 'ir_station')
           && Object.values(this.stations).some(s => s.assigned?.kind === 'control')
-          ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} — every phone ignores the station's hill; set OBJECTIVE SOURCE to PHONE (a phone station), or clear the CONTROL station in ITEMS`] : []),
+          ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} (EVERY PHONE IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS`] : []),
         ...(this.config.respawn.type === 'scanner' && !Object.values(this.stations).some(s => s.assigned?.kind === 'respawn')
-          ? ['SETUP: NO RESPAWN STATION IS ASSIGNED — respawn is SCANNER, so a downed player can only come back at a station; assign a utility phone as RESPAWN in ITEMS and arm it'] : []),
+          ? ['SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SCANNER, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT'] : []),
       ],
       players: clone(this.players), teams: clone(TEAMS),
       standby: clone(this.standby),
@@ -783,7 +787,7 @@ export class MockBackend implements Api {
       // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the
       // only condition under which a phone with no backhaul changes what the players should do.
       notices: (this.config.scoring.frag_limit || this.config.scoring.win_by === 'objective')
-        ? { mc_verify: 'WIN IS CONFIRMED AT MC · 2 PHONES OFF-GRID · TELL PLAYERS TO RETURN AFTER THE WHISTLE (SABLE, DRIFT)' }
+        ? { mc_verify: 'WIN IS CONFIRMED AT MC, 2 PHONES OFF-GRID (SABLE, DRIFT): TELL PLAYERS TO RETURN AFTER THE WHISTLE' }
         : undefined,
       start: this.start_ ? clone(this.start_) : undefined,
       live: this.live_ ? this.liveView() : undefined,
@@ -1219,7 +1223,7 @@ export class MockBackend implements Api {
     const errors: string[] = [];
     if (this.config.time_limit_s == null || this.config.time_limit_s <= 0) errors.push('time_limit_s is required on the phone path');
     if (MODES.find(m => m.mode === this.config.mode)?.defaults.station_source && !this.config.station_source) {
-      errors.push(`mode '${this.config.mode}' needs a station/objective source (Tier 1) — set config.station_source to one of: `
+      errors.push(`mode '${this.config.mode}' needs a station/objective source (Tier 1): set config.station_source to one of: `
         + MOCK_STATION_SOURCES.map(x => `'${x.value}' (${x.desc})`).join(', '));
     }
     if (this.config.mode === 'ffa') { const t = this.config.teams[0]; if (t) for (const p of this.players) p.team_id = t.team_id; }

@@ -183,7 +183,7 @@ async function runReal(browser, viteBase, mcBase, vp, tag) {
   expect(posts === 1, `a double-tap sent exactly ONE request (saw ${posts})`);
   expect((await server(mcBase)).standby.filter(p => p.player_id === target.player_id).length === 1, 'parked once');
   const banner = await strip(pg);
-  expect(!/PREDATES THIS UI/.test(banner), `no false skew banner after a double-tap (strip: ${JSON.stringify(banner)})`);
+  expect(!/MC SERVER IS OLDER THAN THIS CONSOLE/.test(banner), `no false skew banner after a double-tap (strip: ${JSON.stringify(banner)})`);
   await pg.unroute('**/api/players/*/standby');
   await until(() => pg.locator('[data-standby-section]').count().then(n => n === 1), 8000, 'the STANDBY section to appear');
   const s1 = await server(mcBase);
@@ -313,7 +313,7 @@ async function runStale(browser, viteBase, mcBase, vp, tag) {
   await until(() => strip(pg).then(t => t.length > 0), 8000, 'the error strip');
   const t = await strip(pg);
   expect(hits === 1, `exactly one request went out (${hits})`);
-  expect(/PREDATES THIS UI/.test(t), `the strip names the version skew (saw ${JSON.stringify(t)})`);
+  expect(/MC SERVER IS OLDER THAN THIS CONSOLE/.test(t), `the strip names the version skew (saw ${JSON.stringify(t)})`);
   expect(/RESTART/.test(t), 'and tells the operator to restart the server');
   expect((await server(mcBase)).standby.length === 0, 'nothing was parked on the server');
   expect(await pg.locator('[data-standby-section]').count() === 0, 'no section appeared');

@@ -679,7 +679,7 @@ async function runFaults(browser, viteBase) {
   await pg.locator('header nav button:has-text("LOBBY")').first().click();
   await until(() => onLobby(pg), 5000, 'the LOBBY to open from the nav');
   const rail = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
-  expect(/still answering for an older config/.test(rail),
+  expect(/still answering for an older config/i.test(rail),
     `the rail names the stale guns, not just a count (saw ${JSON.stringify(rail.slice(0, 200))})`);
   expect(/Re-push/i.test(rail), 'the fault list keeps the RE-PUSH half of each A36 line');
   const arm = pg.locator('button:has-text("ARM COUNTDOWN")').first();
@@ -688,7 +688,7 @@ async function runFaults(browser, viteBase) {
   expect(/RE-PUSH CONFIG on LOBBY/.test(title ?? ''), `...and names the button that fixes it (saw ${JSON.stringify(title)})`);
   expect(await pg.locator('[data-override="1"]').count() === 0,
     'a force-proof query mismatch never offers HOST OVERRIDE');
-  expect(/CANNOT BE OVERRIDDEN — RE-PUSH CONFIG/.test(rail), 'the rail says why override is absent and names the cure');
+  expect(/CANNOT BE OVERRIDDEN: RE-PUSH CONFIG/.test(rail), 'the rail says why override is absent and names the cure');
   ok(`LOBBY names the stale guns and keeps every instruction   ${await shot(pg, '53-faults-lobby')}`);
   // R2-1 — the button the three fault lines name. Every one of them says RE-PUSH and until now
   // `api.pushLobby` was reachable only while the lobby was UNPUSHED, so the word named nothing.
@@ -708,7 +708,7 @@ async function runFaults(browser, viteBase) {
     return !/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG|GUN CONFIG ≠ PUSHED HEAD/.test(s);
   }, 8000, 'the three curable reds to clear after the re-push');
   const cured = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
-  expect(!/still answering for an older config/.test(cured), 'the rail sentence goes with them');
+  expect(!/still answering for an older config/i.test(cured), 'the rail sentence goes with them');
   // The demo also ships one phone that has never arrived, which still holds the whistle — the point
   // is that the reason has changed from one the operator was told to re-push for to one they have to
   // go and fix. F1: and the disabled ARM says so, rather than carrying an empty title.
@@ -716,7 +716,7 @@ async function runFaults(browser, viteBase) {
   expect(!/older config/i.test(armTitle ?? ''), `the ARM no longer blames a stale head (saw ${JSON.stringify(armTitle)})`);
   expect((armTitle ?? '').trim().length > 0, 'a disabled ARM is never silent about why');
   expect(/no push can clear/i.test(armTitle ?? ''), `...and names what is left (saw ${JSON.stringify(armTitle)})`);
-  expect(/Waiting for 1 phone/.test(cured), 'the one row left is the phone nobody brought');
+  expect(/WAITING FOR 1 PHONE:/.test(cured), 'the one row left is the phone nobody brought');
   ok(`the re-push cured all four reds   ${await shot(pg, '55-faults-cured')}`);
   // …and NOT ECHOED survives it: that row is the v4.32 firmware, not a stale head.
   await onMuster(pg);
@@ -752,7 +752,7 @@ async function runFaults(browser, viteBase) {
   await until(async () => !/GUN CONFIG ≠ PUSHED HEAD/.test((await query.locator('main').innerText()).replace(/\s+/g, ' ')),
     8000, 'the isolated F271 blocker to clear');
   queryText = (await query.locator('main').innerText()).replace(/\s+/g, ' ');
-  expect(!/CANNOT BE OVERRIDDEN — RE-PUSH CONFIG/.test(queryText), 'the no-override reason clears with its fault');
+  expect(!/CANNOT BE OVERRIDDEN: RE-PUSH CONFIG/.test(queryText), 'the no-override reason clears with its fault');
   await query.context().close();
   await pg.context().close();
 }

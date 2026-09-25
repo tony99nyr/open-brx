@@ -350,8 +350,8 @@ def test_a_powered_down_tagger_reads_offline_not_a_wall_of_faults():
     for r in board:
         assert r["status"] == "waiting", "a gone node blocks the start but is not a fault"
         assert len(r["blockers"]) == 1, f"one statement, not a symptom list: {r['blockers']}"
-        assert r["blockers"][0].startswith("OFFLINE — LAST SEEN"), r["blockers"][0]
-        assert "30m" in r["blockers"][0], f"a readable duration, not raw seconds: {r['blockers'][0]}"
+        assert r["blockers"][0].startswith("OFFLINE (LAST SEEN "), r["blockers"][0]
+        assert "30M" in r["blockers"][0], f"a readable duration, not raw seconds: {r['blockers'][0]}"
     assert not s.readiness()["go"], "...and it still gates the start"
 
 

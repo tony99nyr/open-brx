@@ -78,7 +78,8 @@ describe('PRE-ARM CHECK — nothing checked is never something satisfied', () =>
     const v = await lobby(syncOf([row(), away]));
     const line = v.all('[data-testid="pre-arm-row"]').find(r => (r.textContent ?? '').includes('DRIFT'));
     expect(line, 'the absent player has a row').toBeTruthy();
-    expect(line!.textContent).toMatch(/No phone bound/);
+    // F221 polish r1: the todo lines are upper case, WHAT: DO, with a glyph now.
+    expect(line!.textContent).toMatch(/NO PHONE BOUND/);
     expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).not.toMatch(/IN SYNC/);
     v.m.unmount();
   });
@@ -145,7 +146,9 @@ describe('PRE-ARM CHECK — nothing checked is never something satisfied', () =>
     await act(async () => { v.q('[data-testid="pre-arm-toggle"]')?.click(); });
     const line = v.all('[data-testid="pre-arm-row"]')[0];
     expect(line.querySelector('[title*="different weapon"]'), 'a mismatch is reported as one').toBeTruthy();
-    expect(line.textContent, 'and it names the cure').toMatch(/RE-PUSH CONFIG/);
+    // F221 polish r2: this row now says GUN ECHO ≠ CONFIG: RE-PUSH, the same words ARMORY/LOBBY already
+    // show for the same fact (`armory-blocker-echo-mismatch`), not "gun answered with another weapon".
+    expect(line.textContent, 'and it names the fault and the cure').toMatch(/GUN ECHO.*CONFIG.*RE-PUSH/);
     v.m.unmount();
   });
 
@@ -173,7 +176,8 @@ describe('PRE-ARM CHECK — the verdict can never be greener than the rows benea
     const v = await lobby(syncOf([row(), row({ player_id: 'p2', display: 'DRIFT', phone_game: false })]));
     const verdict = v.q('[data-testid="pre-arm-verdict"]')!;
     expect(verdict.textContent, `saw ${JSON.stringify(verdict.textContent)}`).not.toMatch(/IN SYNC/);
-    expect(verdict.textContent).toBe('1 OF 2 PLAYERS NEEDS ACTION: SEE BELOW');
+    // F221 polish r1: the amber verdict now goes through `<Alert>`, so it carries the glyph.
+    expect(verdict.textContent).toBe('▲ 1 OF 2 PLAYERS NEEDS ACTION: SEE BELOW');
     expect(v.all('[data-testid="pre-arm-row"]').length, 'and the row it is about is listed').toBe(1);
     v.m.unmount();
   });
@@ -181,7 +185,9 @@ describe('PRE-ARM CHECK — the verdict can never be greener than the rows benea
   it('…and the panel is not painted green while it is listing somebody', async () => {
     const v = await lobby(syncOf([row(), row({ player_id: 'p2', display: 'DRIFT', phone_game: false })]));
     expect(v.q('[data-testid="pre-arm-verdict"]')!.style.color, 'amber, not the green of an all-clear').toBe(rgb(T.warn));
-    expect(v.q('[data-testid="pre-arm-summary"]')!.style.borderLeftColor, 'including the bar down the side').toBe(rgb(T.warn));
+    // F221 polish r1: AMBER is one line, never a banner border. The panel's own frame stays neutral
+    // whatever the verdict says; only the all-clear green still colours it.
+    expect(v.q('[data-testid="pre-arm-summary"]')!.style.borderLeftColor, 'no amber banner border').toBe(rgb(T.line2));
     v.m.unmount();
   });
 
@@ -336,7 +342,8 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
       const v = await lobby(syncOf(benchRows()), { ...noGame, phase } as Partial<State>);
       const panel = v.q('[data-testid="pre-arm-summary"]')!;
       expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('NO GAME LOADED');
-      expect(v.q('[data-testid="pre-arm-verdict"]')!.style.color).toBe(rgb(T.micro));
+      // F221: NO GAME LOADED is catalogued NEUTRAL (`frame-prearm-no-game`), whose colour is T.dim.
+      expect(v.q('[data-testid="pre-arm-verdict"]')!.style.color).toBe(rgb(T.dim));
       expect(panel.querySelectorAll('[data-mark="fail"]').length, 'no red cross').toBe(0);
       expect(v.all('[data-testid="pre-arm-row"]').length, 'no rows, so no yellow instruction').toBe(0);
       expect(panel.textContent, 'no leftover LOAD instruction').not.toMatch(/LOAD again/);
@@ -364,7 +371,7 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
     const bad = v.q('[data-testid="pre-arm-summary"] [data-col="ack"] [data-mark="fail"]');
     expect(bad, 'the failed ack is a red cross').toBeTruthy();
     expect(bad!.style.color).toBe(rgb(T.bad));
-    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('1 OF 2 PLAYERS NEEDS ACTION: SEE BELOW');
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('▲ 1 OF 2 PLAYERS NEEDS ACTION: SEE BELOW');
     v.m.unmount();
   });
 
@@ -384,7 +391,7 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
   it('the headline never says "not configured" beside a count that says pushed', async () => {
     const v = await lobby(syncOf(benchRows()), { lobby: { ready: 0, total: 2, pushed: false, acks: {} } } as unknown as Partial<State>);
     expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).not.toMatch(/NOT CONFIGURED/);
-    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('2 OF 2 PLAYERS NEED ACTION: SEE BELOW');
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('▲ 2 OF 2 PLAYERS NEED ACTION: SEE BELOW');
     v.m.unmount();
   });
 });

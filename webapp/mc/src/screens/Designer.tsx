@@ -7,6 +7,8 @@ import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEF
 import { useStore } from '../store';
 import { CLASS_TAG, F, PERK_COLOR, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
+import { Alert } from '../ui/Alert';
+import { GLYPH, MC_OLDER, MC_RESTART_CMD, colourOf } from '../alerts';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
 import { HealthPresetEditor } from './HealthPresetEditor';
@@ -261,7 +263,7 @@ export function Designer() {
             {stationGated && (
               <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, marginTop: 8 }}>
                 {STATION_SOURCES.find(s => s.value === cfg.station_source)?.hint
-                  ?? <span style={{ color: T.warn }}>PICK AN OBJECTIVE SOURCE: the server refuses this mode without one.</span>}
+                  ?? <span style={{ color: colourOf('designer-pick-objective') }}>{GLYPH} PICK AN OBJECTIVE SOURCE: THE SERVER REFUSES THIS MODE WITHOUT ONE.</span>}
               </div>
             )}
             <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, marginTop: 8 }}>Venue (indoor / outdoor, night ops) is set on the Games page each time — it is not part of the game.</div>
@@ -270,7 +272,9 @@ export function Designer() {
           {/* 3 LOADOUT */}
           <section>
             <SectionRule label="3 // LOADOUT — WHO CARRIES WHAT" hint={<span style={{ color: PERK_COLOR }}>{pol.preset === 'custom' ? 'CUSTOM RULES' : TEMPLATES.find(t => t.value === pol.preset)?.label}</span>} style={{ marginBottom: 12 }} />
-            {previewOff && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn, marginBottom: 10 }}>▲ THE MC SERVER PREDATES THIS UI — RULES PREVIEW LOCALLY BUT SAVE / PLAY WILL FAIL UNTIL YOU RESTART IT.</div>}
+            {previewOff && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('designer-preview-off'), marginBottom: 10 }}>
+              {GLYPH} {MC_OLDER.what}: {MC_OLDER.act} (<code>{MC_RESTART_CMD}</code>). RULES PREVIEW LOCALLY, BUT SAVE / PLAY WILL FAIL UNTIL THEN.
+            </div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <span style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.dim }} title="A template replaces every loadout rule below, including the phone-picks switch">START FROM</span>
               <span role="group" aria-label="loadout template" style={{ display: 'flex', gap: 4 }}>
@@ -329,16 +333,18 @@ export function Designer() {
             <div style={{ height: 1, background: T.line }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <PrimaryButton onClick={play} disabled={playBlocked || working !== null} title={playBlocked ? playBlockedReason : working === 'play' ? 'Loading this game' : name.trim() ? 'Save, apply, load, and go to KIT' : 'Apply, load, and go to KIT'}>{working === 'play' ? 'LOADING…' : 'PLAY THIS NOW ▸'}</PrimaryButton>
-              {blocked && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</div>}
-              {!blocked && !name.trim() && <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
+              {/* F221 polish r1: was a plain line with the glyph typed in by hand; `<Alert>` draws the
+                  red banner Tony's rule asks for and owns the glyph itself. */}
+              {blocked && <Alert id="designer-blocked-banner" what={blockedReason} style={{ font: F.mono(600, 11), letterSpacing: '.1em', lineHeight: 1.5 }} />}
+              {!blocked && !name.trim() && <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('designer-plays-without-saving') }}>PLAYS TONIGHT WITHOUT SAVING: NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
               <div style={{ display: 'flex', gap: 6 }}>
                 <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} disabled={blocked || working !== null} onClick={() => saveOnly(false)} title={blocked ? blockedReason : editing ? `Update "${editing.name}"` : 'Save under the name above'}>{working === 'save' ? 'SAVING…' : editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
                 {editing && <GhostButton size={11} pad="9px 12px" disabled={blocked || working !== null} onClick={() => saveOnly(true)} title={blocked ? blockedReason : 'Keep the original, save this as a new game'}>SAVE AS NEW</GhostButton>}
               </div>
-              {saved && <div role="status" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: saved.startsWith('NAME') ? T.warn : T.ok }}>{saved}</div>}
+              {saved && <div role="status" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: saved.startsWith('NAME') ? colourOf('designer-name-it-first') : T.ok }}>{saved}</div>}
               {saved && !saved.startsWith('NAME') && editing && state.active_preset_id === editing.preset_id && gameSig(editing.config) !== gameSig(state.config) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn }}>▲ TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
+                  <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('designer-old-version') }}>{GLYPH} TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
                   <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} disabled={playBlocked || working !== null} title={playBlocked ? playBlockedReason : undefined}
                     onClick={applyTonight}>{working === 'apply' ? 'APPLYING…' : "APPLY TO TONIGHT'S GAME ▸"}</GhostButton>
                 </div>
@@ -432,10 +438,10 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
         <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: emptyPool ? T.bad : T.acc }}>{summary}</span>
       </div>
       {emptyPool && (
-        <div role="alert" data-testid={`${slot}-empty-pool`} style={{ font: F.chk(700, 12), letterSpacing: '.04em', color: T.bad, background: 'rgba(255,82,82,.1)', border: `1px solid ${T.bad}`, padding: '8px 10px', lineHeight: 1.5 }}>
+        <div role="alert" data-testid={`${slot}-empty-pool`} style={{ font: F.chk(700, 12), letterSpacing: '.04em', color: colourOf('designer-slot-empty-pool'), background: 'rgba(255,82,82,.1)', border: `1px solid ${T.bad}`, padding: '8px 10px', lineHeight: 1.5 }}>
           {/* round-3 UX-2: the `unplayable` line NAMES the weapon, so the rule's id is resolved to a
               catalogue name here — `unplayablePick` is the one accessor both sides read. */}
-          ▲ {poolEmptyMessage(isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY', emptyCode!,
+          {GLYPH} {poolEmptyMessage(isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY', emptyCode!,
                               weapons.find(w => w.weapon_id === unplayablePick(rule))?.name)}
         </div>
       )}

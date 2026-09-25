@@ -8,7 +8,7 @@ the gun send `$DISCONNECT,*` and drop the same way. So a link that SURVIVES `HEA
 headset, and the board no longer has to wait for the config push to say so.
 """
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
-from brx_mcp.mc.state import Session
+from brx_mcp.mc.state import GUN_DID_NOT_ANSWER, GUN_LINK_LOST, Session
 from brx_mcp.mc.types import HEADSET_LINK_PROOF_MS
 
 T0 = 5_000_000
@@ -51,7 +51,7 @@ def test_a_link_four_seconds_old_is_still_unknown_and_says_it_is_confirming():
     r = row(s)
     assert r["headset"] == "unknown", "4 s is inside the ~6 s a HEADLESS gun can hold a link"
     assert r["headset_proof"] is None
-    assert "HEADSET · CONFIRMING (LINK 4 s)" in r["ambers"]
+    assert "HEADSET CONFIRMING (LINK 4 S)" in r["ambers"]
     assert r["status"] == "amber" and s.readiness()["go"], "confirming is an advisory, never a gate"
     assert not any("HEADSET UNPROVEN" in a for a in r["ambers"]), "A32 retired that amber"
 
@@ -77,7 +77,7 @@ def test_the_link_dropping_un_proves_the_headset():
     r = row(s)
     assert r["headset"] == "unknown" and r["headset_proof"] is None
     assert not any("CONFIRMING" in a for a in r["ambers"]), "nothing is confirming while the link is DOWN"
-    assert "GUN LINK LOST — BLOCKS START" in r["blockers"]
+    assert GUN_LINK_LOST in r["blockers"]
 
 
 def test_a_re_link_has_to_earn_the_proof_again():
@@ -125,7 +125,7 @@ def test_a_head_that_echoed_nothing_is_absent_and_red_unchanged():
                                                       "gun_echo": None}, clock["t"])
     r = row(s)
     assert r["headset"] == "absent" and r["headset_proof"] is None, "a silent head beats any link evidence"
-    assert "GUN DID NOT ANSWER CONFIG — HEADSET OFF? BLOCKS START" in r["blockers"]
+    assert GUN_DID_NOT_ANSWER in r["blockers"]
     assert r["status"] == "red"
 
 
@@ -178,7 +178,7 @@ def test_an_echoed_proof_is_un_proved_by_the_link_dropping_too():
     clock["t"] += 2_000; beat(net, clock, ps[0], gun_linked=False)      # headset switched off
     r = row(s)
     assert r["headset"] == "unknown" and r["headset_proof"] is None, "an old echo outlived the headset"
-    assert "GUN LINK LOST — BLOCKS START" in r["blockers"]
+    assert GUN_LINK_LOST in r["blockers"]
 
     clock["t"] += 2_000; beat(net, clock, ps[0])                        # re-linked: earn it again
     assert row(s)["headset"] == "unknown"
@@ -245,7 +245,7 @@ def test_when_the_phone_stops_reporting_flapping_the_plain_link_rules_return():
     flap_beat(net, clock, ps[0], gun_linked=False, flapping=False)
     r = row(s)
     assert r["gun_flapping"] is False
-    assert "GUN LINK LOST — BLOCKS START" in r["blockers"] and r["status"] == "red"
+    assert GUN_LINK_LOST in r["blockers"] and r["status"] == "red"
     beat(net, clock, ps[0])                        # an older app sends no gun_flapping at all
     assert row(s)["gun_flapping"] is False
 
@@ -265,7 +265,7 @@ def test_a_gun_that_answered_the_push_then_goes_dark_still_blocks_start():
     clock["t"] += 2_000
     flap_beat(net, clock, ps[0], gun_linked=False, flapping=True)
     r = row(s)
-    assert "GUN LINK LOST — BLOCKS START" in r["blockers"], "the push already proved the head; going dark now is a fault"
+    assert GUN_LINK_LOST in r["blockers"], "the push already proved the head; going dark now is a fault"
     assert r["status"] == "red"
     assert GUN_FLAPPING_LINE not in r["ambers"]
 

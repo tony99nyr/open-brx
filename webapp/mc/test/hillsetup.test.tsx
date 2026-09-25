@@ -123,7 +123,9 @@ describe('a possession game reads as possession', () => {
       possession: { by_team: { blue: 30, green: 0 }, neutral_s: 0, sites: 1, reports: 1, observed_s: 60, of_s: 600 },
     }));
     const t = m.find('[data-testid="possession"]')[0].textContent ?? '';
-    expect(t).toMatch(/▲ ?BEST COVERAGE 1:00 OF 10:00/);
+    // F221 (Tony, 2026-09-25): a coverage caveat is a measurement fact, not a fault, so it is NEUTRAL
+    // now — no glyph, whatever the coverage. The line still says it is a floor either way.
+    expect(t).toMatch(/BEST COVERAGE 1:00 OF 10:00/);
     m.unmount();
   });
 

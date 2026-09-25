@@ -174,8 +174,8 @@ describe('M21 · PANIC warns about the re-arm, and its receipt counts and uses a
     expect(clock24(new Date(2026, 8, 23, 21, 36, 7))).toBe('21:36:07');
     expect(clock24(new Date(2026, 8, 23, 9, 5, 0))).toBe('09:05:00');
     const at = new Date(2026, 8, 23, 21, 36, 7);
-    expect(panicReceipt({ ok: true, reached: 8, nodes: 8 }, at).text).toBe('FLEET SAFED · 8 OF 8 NODES (21:36:07) — RE-ARM BEFORE PLAY');
-    expect(panicReceipt({ ok: true }, at).text, 'an older MC sends no count, so none is invented').toBe('FLEET SAFED (21:36:07) — RE-ARM BEFORE PLAY');
+    expect(panicReceipt({ ok: true, reached: 8, nodes: 8 }, at).text).toBe('FLEET SAFED, 8 OF 8 NODES (21:36:07): RE-ARM BEFORE PLAY');
+    expect(panicReceipt({ ok: true }, at).text, 'an older MC sends no count, so none is invented').toBe('FLEET SAFED (21:36:07): RE-ARM BEFORE PLAY');
     expect(panicReceipt(undefined, at).text).toMatch(/PANIC FAILED/);
   });
 

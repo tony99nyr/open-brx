@@ -383,7 +383,9 @@ describe('exporting an archived match', () => {
       await m.click('· FFA');
       await m.click('EXPORT CSV');
       expect(calls).toContain('/api/matches/m7.csv');
-      expect(m.text()).toContain('TOO OLD TO EXPORT');
+      // F221 round 1: this used to be retyped ("THIS MC IS TOO OLD…"); now it is MC_OLDER's own words
+      // (src/alerts), imported rather than restated.
+      expect(m.text()).toContain('MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC');
       m.unmount();
     } finally { globalThis.fetch = orig; }
   });
@@ -507,8 +509,8 @@ describe('the RECAP selection and its export error', () => {
   });
 
   it('clears an export error when the operator selects a different match', async () => {
-    // The error belonged to the SCREEN, not the selection: a failed archived export left
-    // "THIS MC IS TOO OLD…" sitting beside the live export link, which works fine.
+    // The error belonged to the SCREEN, not the selection: a failed archived export left MC_OLDER's
+    // words sitting beside the live export link, which works fine.
     const d = await demo();
     const orig = globalThis.fetch;
     globalThis.fetch = (async () => new Response('{"error":"no"}', { status: 404 })) as typeof fetch;
@@ -519,9 +521,9 @@ describe('the RECAP selection and its export error', () => {
       });
       await m.click('· FFA');
       await m.click('EXPORT CSV');
-      expect(m.text()).toContain('TOO OLD');
+      expect(m.text()).toContain('RESTART MC');
       await m.click('THIS MATCH');
-      expect(m.text(), 'an error about another match must not follow the operator').not.toContain('TOO OLD');
+      expect(m.text(), 'an error about another match must not follow the operator').not.toContain('RESTART MC');
       m.unmount();
     } finally { globalThis.fetch = orig; }
   });

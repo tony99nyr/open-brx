@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
-import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
+import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_ID, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, splitBlocker , cleanServerLine } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, fmtClock, teamColor } from '../tokens';
 import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, coverageColor, useNarrow } from '../ui';
+import { Alert } from '../ui/Alert';
+import { GLYPH, alertWords, colourOf, glyphed, sevOf, serverLine } from '../alerts';
 import { SetupSteps } from '../ui/SetupSteps';
 import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
 import { StandDownChip, StandbySection } from '../ui/Standby';
@@ -24,8 +26,11 @@ const lobbyReadOnly = matchInPlay;
  *  `data-<screen>-goto`) the tests and the e2e walks read. */
 export function InPlayBanner({ screen, phase, headline, why, onGo }:
   { screen: string; phase: 'armed' | 'live'; headline: string; why: string; onGo: () => void }) {
+  // F221: an informational read-only notice, not a fault — NEUTRAL under Tony's rule, so the role
+  // comes off the catalogue rather than a hardcoded guess (`lobby-inplay-banner`).
+  const role = sevOf('lobby-inplay-banner') === 'neutral' ? 'status' : 'alert';
   return (
-    <div role="status" {...{ [`data-${screen}-readonly`]: phase }} style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center',
+    <div role={role} {...{ [`data-${screen}-readonly`]: phase }} style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center',
       background: T.panelAlt, border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.acc}`, padding: '12px 16px' }}>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 320px' }}>
         <span style={{ font: F.chk(700, 13), letterSpacing: '.12em', color: T.ink }}>
@@ -177,7 +182,7 @@ export function Lobby() {
   const staleCount = Math.max(staleAcked.length,
     curableRows.filter(r => (r.blockers ?? []).some(b => b.startsWith(STALE_ACK_FAULT))).length);
   const verificationLines = [
-    noEcho.length ? `No config echo from ${noEcho.join(', ')} — headset off, or gun asleep?` : '',
+    noEcho.length ? `No config echo from ${noEcho.join(', ')}: headset off, or gun asleep?` : '',
     pendingAck.length ? `Waiting for config verification from ${pendingAck.join(', ')}` : '',
   ].filter(Boolean);
   const armGating = readiness.board.filter(r => blocksPush(r, { repush: false }));
@@ -190,10 +195,10 @@ export function Lobby() {
   const armWhy = [
     !balancedForTeams ? rosterFault ?? 'This roster cannot play' : '',
     players.length === 0 ? 'Add someone to the roster first' : '',
-    staleCount ? `${staleCount} gun${staleCount === 1 ? '' : 's'} answered for an older config — ${RE_PUSH_HERE}` : '',
-    curableNonStale.length ? `${curableNonStale.length} gun${curableNonStale.length === 1 ? ' needs' : 's need'} config re-pushed — ${RE_PUSH_HERE}` : '',
+    staleCount ? `${staleCount} gun${staleCount === 1 ? '' : 's'} answered for an older config: ${RE_PUSH_HERE}` : '',
+    curableNonStale.length ? `${curableNonStale.length} gun${curableNonStale.length === 1 ? ' needs' : 's need'} config re-pushed: ${RE_PUSH_HERE}` : '',
     !staleCount && !curableNonStale.length && lobby.pushed && !allAcked
-      ? `${verificationLines.join(' · ') || 'Waiting for every gun to verify the config'} — or ${RE_PUSH_HERE}` : '',
+      ? `${verificationLines.join(' · ') || 'Waiting for every gun to verify the config'}, or ${RE_PUSH_HERE}` : '',
     armGating.length
       ? `${armGating.length} row${armGating.length === 1 ? '' : 's'} no push can clear: ${armGating
           .map(r => `${r.sticker} ${(r.blockers ?? []).filter(b => !curedByPush(b)).map(b => splitBlocker(b).head).join(', ') || 'phone not arrived'}`)
@@ -226,15 +231,17 @@ export function Lobby() {
       <ScreenHeader kicker="[ A5 // LOBBY ]" title="Team Assignment" right={
         <>
           {rosterFault
-            ? <Tag color={T.bad} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — CANNOT PLAY</Tag>
+            ? <Tag color={colourOf('lobby-roster-fault-tag')} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')}: CANNOT PLAY</Tag>
             // M20: an empty roster is not "0 V 0 BALANCED" in green. It is nobody, and says so in grey.
             : empty
-              ? <Tag data-roster-empty="1" color={T.line2} ink={T.dim} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>NO PLAYERS YET</Tag>
-              : <Tag color={balanced ? T.ok : T.warn} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — {balanced ? 'BALANCED' : 'UNBALANCED'}</Tag>}
+              ? <Tag data-roster-empty="1" color={T.line2} ink={colourOf('lobby-no-players-tag')} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>NO PLAYERS YET</Tag>
+              // F221 sweep: BALANCED is a positive ok chip (NOT-ALERT); UNBALANCED is a real fix-before-
+              // the-next-match fact the audit's single green capture missed — now catalogued too.
+              : <Tag color={balanced ? T.ok : colourOf('lobby-balance-tag-unbalanced')} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')}: {balanced ? 'BALANCED' : 'UNBALANCED'}</Tag>}
           {cLine && <Tag color={cColor} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
           <Progress n={nReady} total={players.length} label="READY" color={T.ok} />
           {nUpdating > 0 && (
-            <span data-updating="1" title={updatingTitle} style={{ font: F.osw(700, 20), color: T.warn }}>
+            <span data-updating="1" title={updatingTitle} style={{ font: F.osw(700, 20), color: colourOf('lobby-updating-header') }}>
               · {nUpdating} UPDATING
             </span>
           )}
@@ -270,15 +277,14 @@ export function Lobby() {
           why="Every gun already holds this match's config, and MC refuses a push, a READY change or a team move until the match ends." />
       )}
       {rosterFault && (
-        <div role="alert" data-testid="roster-fault" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6,
-          background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.bad, lineHeight: 1.5 }}>▲ {rosterFault}</span>
+        <Alert id="lobby-roster-fault-tag" testid="roster-fault" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5 }}>{alertWords(rosterFault)}</span>
           {/* F-8 (2026-09-13): HOST OVERRIDE (below, in the rail) never renders while a roster fault
               stands — `one_team_fault` refuses `force` on the server, so there is nothing an override
               tap could do here. It used to just vanish with no reason on screen, which read as a bug
               rather than as "this one isn't optional". */}
-          <span data-no-override-reason style={{ font: F.chk(600, 11), letterSpacing: '.1em', color: T.micro }}>CANNOT BE OVERRIDDEN — FIX THE ROSTER FIRST</span>
-        </div>
+          <span data-no-override-reason style={{ font: F.chk(600, 11), letterSpacing: '.1em', color: colourOf('lobby-roster-no-override') }}>CANNOT BE OVERRIDDEN: FIX THE ROSTER FIRST</span>
+        </Alert>
       )}
       {/* Match reminders: the field steps (power-cycle the grenade, place it) plus A31's standing
           "this win is settled at MC" line, naming the phones with no backhaul — see ui/SetupSteps */}
@@ -310,7 +316,10 @@ export function Lobby() {
         ))}
         {unassigned.length > 0 && (
           <div style={{ flex: '1 1 240px' }}>
-            <div style={{ padding: '10px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none', borderTop: `2px solid ${T.warn}`, font: F.chk(700, 13), letterSpacing: '.24em', color: T.warn }}>UNASSIGNED</div>
+            {/* F221 (RETIRED lobby-unassigned-heading): a column header, not a fact about any one
+                player — it borrowed T.warn for a plain label, which reads as a warning without being
+                one. Plain ink, a neutral rule, like every other column header on this screen. */}
+            <div style={{ padding: '10px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none', borderTop: `2px solid ${T.line2}`, font: F.chk(700, 13), letterSpacing: '.24em', color: T.dim }}>UNASSIGNED</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${T.line}`, padding: 6, background: T.panelDeep }}>
               {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} updating={updatingIds.has(mb.player_id)} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} readOnly={readOnly} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
             </div>
@@ -330,8 +339,11 @@ export function Lobby() {
       <div data-rail="lobby" style={{ marginTop: 16, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}` }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px 28px', padding: '16px 20px' }}>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : empty ? T.micro : T.warn }}>{nReady}/{players.length}</b></>} />
-            <Step n={2} done={allAcked} label={<>Config pushed {lobby.pushed && <b style={{ font: F.osw(700, 16), color: allAcked ? T.ok : T.warn }}>{acked}/{players.length}</b>}</>} />
+            {/* F221 polish r1: these were bare T.warn. A count is data about progress, not an alert
+                (nothing here says WHAT: DO or carries a glyph), so the not-yet state reads as ordinary
+                data, not a fix-before-the-next-match fact. */}
+            <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : empty ? T.micro : T.body }}>{nReady}/{players.length}</b></>} />
+            <Step n={2} done={allAcked} label={<>Config pushed {lobby.pushed && <b style={{ font: F.osw(700, 16), color: allAcked ? T.ok : T.body }}>{acked}/{players.length}</b>}</>} />
             {/* Bench 2026-09-17 (Tony): the countdown length is chosen only when ARM COUNTDOWN is the next
                 action: the lobby is pushed and every gun has acked (in sync). Before that it is plain text. */}
             <Step n={3} done={false} label={
@@ -354,7 +366,7 @@ export function Lobby() {
             <button type="button" data-repush="1" data-repush-force={pushBlockedCount > 0 ? '1' : undefined}
               className={rePushDisabled ? undefined : 'hov-acc-ink hit44'} disabled={rePushDisabled}
               style={{ ...BTN_RESET, cursor: rePushDisabled ? 'not-allowed' : 'pointer',
-                       color: rePushDisabled ? T.micro : pushBlockedCount > 0 ? T.warn : T.acc,
+                       color: rePushDisabled ? T.micro : pushBlockedCount > 0 ? colourOf('lobby-repush-btn-blocked') : T.acc,
                        font: F.chk(700, 13), letterSpacing: '.06em', minHeight: 44, padding: '0 6px' }}
               // A re-push IS a push, so it meets the push gate. When something the push cannot cure is
               // also on the board (a gun that is not powered) the server refuses it unforced — and
@@ -383,10 +395,10 @@ export function Lobby() {
           {/* polish r1: before the push this is a short count (the rail line below already names the phones),
               with the whole reason on the tooltip, and no live region re-announcing it on every arrival. */}
           {armDisabled && armWhy && lobby.pushed && (
-            <span data-arm-why="1" role="status" style={{ font: F.chk(600, 12), lineHeight: 1.45, color: T.warn, maxWidth: 420 }}>▲ {updatingWhy || armWhy}</span>
+            <span data-arm-why="1" role="status" style={{ font: F.chk(600, 12), lineHeight: 1.45, color: colourOf('lobby-arm-why-pushed'), maxWidth: 420 }}>{GLYPH} {updatingWhy || armWhy}</span>
           )}
           {armDisabled && armWhy && !lobby.pushed && prePushShort && (
-            <span data-arm-why="1" title={armWhy} style={{ font: F.chk(700, 11.5), letterSpacing: '.1em', color: T.warn, whiteSpace: 'nowrap', cursor: 'help' }}>▲ {prePushShort}</span>
+            <span data-arm-why="1" title={armWhy} style={{ font: F.chk(700, 11.5), letterSpacing: '.1em', color: colourOf('lobby-prepush-short'), whiteSpace: 'nowrap', cursor: 'help' }}>{GLYPH} {prePushShort}</span>
           )}
           <span data-lobby-primary={lobby.pushed ? 'arm' : 'push'} style={{ display: 'inline-flex' }}>
             <PrimaryButton onClick={() => pushAndArm()} disabled={armDisabled}
@@ -398,15 +410,22 @@ export function Lobby() {
           </span>
         </div>
 
-        <div style={{ padding: '0 20px 14px', font: F.chk(600, 13), lineHeight: 1.5,
-                      color: faults.length ? T.bad : empty || waitRows.length ? T.micro : notReady.length || armDisabled ? T.warn : T.ok }}>
-          {/* U-1 (2026-09-13): `staleAcked` used to be consulted ONLY in the no-faults branch — and a
-              stale ack always lands in that row's `blockers` (state.py `readiness()`), which makes the
-              row red, which puts it in `faults`. So the generic count always won and the sentence
-              naming the guns, and the one thing to DO about them, was unreachable on a real server.
-              It is now asked FIRST, whatever else is red: "3 guns cannot start" is a count, and a
-              count is not an instruction. */}
-          {staleAckLine
+        {/* F221 polish r1: text and colour used to come from two DIFFERENT condition trees (the colour
+            checked `armDisabled`, a fact the text never looked at), so a line could be worded as good
+            news and coloured amber. One `lineColorId` now drives both: null only for the two positive
+            facts at the very end. `lobby-status-line-amber` is the sweep's own catch: the bare
+            `notReady.length || armDisabled` amber the audit missed, so "not ready yet" and "waiting
+            for verification" read as a fix-before-the-next-match line, not grey status text. */}
+        {(() => {
+          const amberWaiting = armDisabled;   // by the time NOT READY has its own branch below, notReady.length is 0
+          const lineColorId = staleAckLine ? STALE_ACK_LINE_ALERT_ID
+            : faults.length ? 'lobby-status-line-red'
+            : (empty || waitRows.length) ? 'games-wait-why'
+            : notReady.length ? 'lobby-status-line-amber'
+            : (lobby.pushed && !allAcked) ? 'lobby-status-line-amber'
+            : amberWaiting ? 'lobby-status-line-amber'
+            : null;
+          const lineText = staleAckLine
             || (faults.length
               ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
               : waitWhy
@@ -427,18 +446,23 @@ export function Lobby() {
                     // M3: say the next step, not both of them
                     : lobby.pushed
                       ? 'Every gun has confirmed this config. Arm the countdown, then walk out.'
-                      : 'Everyone is ready. Push the config to the guns next.'))}
-          {/* R2-8: …and only when there is a fault the sentence above did NOT already account for.
-              With two stale acks and nothing else, every red IS the stale ack, and "2 guns cannot
-              start" beside "REAPER, VIPER still answering for an older config" counts the same two
-              guns twice — which reads as four problems. */}
-          {staleAckLine && notOnlyStale.length > 0 && (
-            <span style={{ color: T.micro }}>{`  ·  ${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`}</span>
-          )}
-          {verificationLines.length > 0 && (faults.length > 0 || !!staleAckLine) && (
-            <div style={{ marginTop: 4, color: T.micro }}>{verificationLines.join(' · ')}</div>
-          )}
-        </div>
+                      : 'Everyone is ready. Push the config to the guns next.'));
+          return (
+            <div style={{ padding: '0 20px 14px', font: F.chk(600, 13), lineHeight: 1.5, color: lineColorId ? colourOf(lineColorId) : T.ok }}>
+              {lineColorId ? glyphed(sevOf(lineColorId), alertWords(lineText)) : lineText}
+              {/* R2-8: …and only when there is a fault the sentence above did NOT already account for.
+                  With two stale acks and nothing else, every red IS the stale ack, and "2 guns cannot
+                  start" beside "REAPER, VIPER still answering for an older config" counts the same two
+                  guns twice — which reads as four problems. */}
+              {staleAckLine && notOnlyStale.length > 0 && (
+                <span style={{ color: colourOf('lobby-status-line-red') }}>{`: ${alertWords(`${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`)}`}</span>
+              )}
+              {verificationLines.length > 0 && (faults.length > 0 || !!staleAckLine) && (
+                <div style={{ marginTop: 4, color: colourOf('lobby-verification-lines') }}>{verificationLines.join(' · ')}</div>
+              )}
+            </div>
+          );
+        })()}
 
         {faults.length > 0 && (
           <div style={{ borderTop: `1px solid ${T.line}`, padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -450,15 +474,14 @@ export function Lobby() {
                     OLDER CONFIG (id) — RE-PUSH" rendered on the START screen as a fault with no fix,
                     and every config-proof line lost the only word that says what to do. Same split the
                     Armory card uses (`derive.splitBlocker`), one implementation. */}
+                {/* F221: the readiness board's per-row blockers are server-worded (state.py), so the
+                    severity comes from `serverLine`, never a hard-coded T.bad — a table the SERVER
+                    lane fills in (`src/alerts/server.ts`) can then re-colour a specific fact without
+                    this render site changing at all. A red blocker is the boxed row, per Tony's rule. */}
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {f.why.map(w => {
-                    const { head, hint } = splitBlocker(w);
-                    return (
-                      <span key={w} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                        <span style={{ font: F.chk(600, 12), color: T.bad }}>▲ {head}</span>
-                        {hint && <span style={{ font: F.chk(500, 11.5), color: T.micro, textTransform: 'none', paddingLeft: 14 }}>{sentenceCase(hint)}</span>}
-                      </span>
-                    );
+                    const line = serverLine(cleanServerLine(w), 'blocker');
+                    return <Alert key={w} id={line.id} sev={line.sev} variant="row">{cleanServerLine(w)}</Alert>;
                   })}
                 </span>
               </div>
@@ -480,7 +503,7 @@ export function Lobby() {
             <div data-testid="override-risk" role="status" style={{ flexBasis: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {override.warn.map(w => (
                 <span key={w.head} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <span style={{ font: F.chk(700, 12), color: T.bad, lineHeight: 1.5 }}>▲ {w.head}</span>
+                  <span style={{ font: F.chk(700, 12), color: colourOf('lobby-override-risk-block'), lineHeight: 1.5 }}>{GLYPH} {w.head}</span>
                   <span style={{ font: F.chk(500, 11.5), color: T.micro, textTransform: 'none', paddingLeft: 14, lineHeight: 1.5 }}>{w.hint}</span>
                 </span>
               ))}
@@ -489,7 +512,7 @@ export function Lobby() {
           {/* F7: 11 px is the console's floor for a word that carries meaning, and this one names the
               whole tray. It sat at 10 and was the only thing in the action rail below the floor. */}
           <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>HOST OVERRIDE</span>
-          <button type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.bad, font: F.chk(700, 13), minHeight: 36 }}
+          <button type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: colourOf('lobby-override-tray'), font: F.chk(700, 13), minHeight: 36 }}
             title={lobby.pushed
               ? override.title
               : 'Compiles and pushes to every bound node anyway. A gun that is not linked will simply not ack.'}
@@ -499,12 +522,12 @@ export function Lobby() {
         </div>
       )}
       {lobby.pushed && forceProofRows.length > 0 && balancedForTeams && (
-        <div data-no-override-reason style={{ marginTop: 10, font: F.chk(600, 11), letterSpacing: '.1em', color: T.micro }}>
-          CANNOT BE OVERRIDDEN — RE-PUSH CONFIG BEFORE THE COUNTDOWN
+        <div data-no-override-reason style={{ marginTop: 10, font: F.chk(600, 11), letterSpacing: '.1em', color: colourOf('lobby-no-override-forceproof') }}>
+          CANNOT BE OVERRIDDEN: RE-PUSH CONFIG BEFORE THE COUNTDOWN
         </div>
       )}
       {!allReady && players.length > 0 && !readyOpen && (
-        <div data-ready-closed={state.phase} style={{ marginTop: 8, font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro, lineHeight: 1.5 }}>
+        <div data-ready-closed={state.phase} style={{ marginTop: 8, font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('lobby-ready-closed-note'), lineHeight: 1.5 }}>
           MARK ALL READY OPENS ONCE THE CONFIG IS PUSHED. MC IS AT {state.phase.toUpperCase()}, NOT LOBBY.
         </div>
       )}
@@ -536,16 +559,16 @@ function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart
   // has to chase, so it is amber and says it in words.
   const readyTag = p.ready
     ? <span data-ready-tag="ready"><OutlineTag color={T.ok} border="rgba(46,204,113,.5)">READY</OutlineTag></span>
-    : <span data-ready-tag="not-ready"><OutlineTag color={T.warn} border={T.warn} title="This player's phone has not said READY yet">NOT READY</OutlineTag></span>;
+    : <span data-ready-tag="not-ready"><OutlineTag color={colourOf('lobby-not-ready-tag')} border={colourOf('lobby-not-ready-tag')} title="This player's phone has not said READY yet">NOT READY</OutlineTag></span>;
   // A28.3: which path this node's live socket is actually on right now — absent until a node
   // connects, never invented for one that hasn't (older server included). S40 (field 2026-09-12):
   // "BACKHAUL" read to an operator as "on cellular" — the word is now the same one the REACH
   // block uses (INTERNET), and the tooltip says what it is a fact ABOUT: the path to MC, never
   // the phone's own radio.
   const statusTags = <>
-    {updating && <span data-updating-chip={p.player_id}><OutlineTag color={T.warn} border={T.warn} title="Ready, but the phone has not taken the pushed config yet. ARM waits for it.">UPDATING</OutlineTag></span>}
-    {noPhone && <OutlineTag color={T.micro} border={T.line}>NO PHONE</OutlineTag>}
-    {reach && <OutlineTag color={reach === 'backhaul' ? T.acc : T.micro} border={reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(reach)}>{reachLabel(reach)}</OutlineTag>}
+    {updating && <span data-updating-chip={p.player_id}><OutlineTag color={colourOf('lobby-updating-header')} border={colourOf('lobby-updating-header')} title="Ready, but the phone has not taken the pushed config yet. ARM waits for it.">UPDATING</OutlineTag></span>}
+    {noPhone && <OutlineTag color={colourOf('lobby-no-phone-chip')} border={T.line}>NO PHONE</OutlineTag>}
+    {reach && <OutlineTag color={reach === 'backhaul' ? T.acc : colourOf('lobby-reach-lan-chip')} border={reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(reach)}>{reachLabel(reach)}</OutlineTag>}
   </>;
   // tap-to-move (tablets have no HTML5 drag): one chip per other team
   const moveChips = (

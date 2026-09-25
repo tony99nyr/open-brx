@@ -15,6 +15,7 @@
 import type { GameConfig, ModeInfo, PerkView, Player, WeaponView } from '../api/types';
 import { isKillScored, objectiveLine, rulesLine, winLine } from '../screens/gameSummary';
 import { F, T, TAB } from '../tokens';
+import { GLYPH, colourOf } from '../alerts';
 import { Blink } from './index';
 import { useContext } from 'react';
 import { StoreCtx } from '../store';
@@ -103,12 +104,13 @@ export function GameSettings({ rows, testid, minCol = 320, style }:
 export function GameSentStatus({ sent, total, recent, testid = 'game-sent-status' }:
   { sent: number; total: number; recent?: boolean; testid?: string }) {
   const everyone = total > 0 && sent >= total;
+  const sev = colourOf('frame-game-sent-nobody');
   return (
-    <span role="status" data-testid={testid} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(700, 11.5), letterSpacing: '.1em', color: everyone ? T.ok : T.warn }}>
-      {recent && !everyone && <Blink color={T.warn} size={7} />}
-      {total === 0 ? 'NOBODY IS ROSTERED YET — NO PHONE HAS THIS GAME'
+    <span role="status" data-testid={testid} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(700, 11.5), letterSpacing: '.1em', color: everyone ? T.ok : sev }}>
+      {recent && !everyone && <Blink color={sev} size={7} />}
+      {total === 0 ? 'NOBODY IS ROSTERED YET: NO PHONE HAS THIS GAME'
         : everyone ? `GAME SENT TO ALL ${total} PHONE${total === 1 ? '' : 'S'}`
-        : `GAME SENT TO ${sent}/${total} PHONES — THE REST ARE NOT CONNECTED`}
+        : `GAME SENT TO ${sent}/${total} PHONES: THE REST ARE NOT CONNECTED`}
     </span>
   );
 }
@@ -124,7 +126,7 @@ export function LoadStatus({ pushed, acked, total, recent, testid = 'game-edit-r
   { pushed: boolean; acked: number; total: number; recent: boolean; testid?: string }) {
   // Visual QA 2026-09-23: "push config in LOBBY" was printed ON LOBBY. Say where the push is from here.
   const onLobby = useContext(StoreCtx)?.view === 'lobby';
-  if (!pushed) return <span data-testid={testid} style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>GUNS NOT CONFIGURED YET — {onLobby ? 'push config below' : 'push config in LOBBY after kitting'}</span>;
+  if (!pushed) return <span data-testid={testid} style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('frame-load-status-not-configured') }}>GUNS NOT CONFIGURED YET: {onLobby ? 'push config below' : 'push config in LOBBY after kitting'}</span>;
   // A CLAIM MUST NEVER OUTRUN THE NUMBER BESIDE IT. This used to be handed the server's `all_acked`,
   // which walks the roster the way `start()` does and SKIPS every player with no node bound -- so with
   // nobody's phone up yet it is vacuously true, and this line read "ALL GUNS ON THIS CONFIG (0/8)"
@@ -134,11 +136,17 @@ export function LoadStatus({ pushed, acked, total, recent, testid = 'game-edit-r
   // remains the SERVER's gate for what may be armed, which is a different question.
   const everyone = total > 0 && acked >= total;
   const repushing = !everyone && recent;
+  // F221: a still-in-flight push is transient status, not a fault — NEUTRAL, not amber; the standing
+  // "N/M confirmed" state (once the transitional window has expired) stays amber, a real fix-before-
+  // the-next-match fact. Polish r1: that standing state was a bare `T.warn`, no id, no glyph, routed
+  // through `frame-load-status-confirmed` like every other catalogued line.
+  const color = everyone ? T.ok : repushing ? colourOf('frame-load-status-repushing') : colourOf('frame-load-status-confirmed');
   return (
-    <span role="status" data-testid={testid} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(700, 11.5), letterSpacing: '.1em', color: everyone ? T.ok : T.warn }}>
-      {repushing && <Blink color={T.warn} size={7} />}
+    <span role="status" data-testid={testid} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(700, 11.5), letterSpacing: '.1em', color }}>
+      {repushing && <Blink color={color} size={7} />}
+      {!everyone && !repushing && <span aria-hidden="true">{GLYPH} </span>}
       {everyone ? `ALL GUNS ON THIS CONFIG (${acked}/${total})`
-        : repushing ? `CONFIG CHANGED — RE-PUSHING TO EVERY GUN… ${acked}/${total} CONFIRMED`
+        : repushing ? `CONFIG CHANGED: RE-PUSHING TO EVERY GUN… ${acked}/${total} CONFIRMED`
         : `${acked}/${total} GUNS CONFIRMED ON THIS CONFIG`}
     </span>
   );

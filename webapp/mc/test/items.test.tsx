@@ -93,12 +93,13 @@ describe('ITEMS — utility phones at muster', () => {
     const d = new MockBackend();
     const base = await d.getState();
     const flagged: State = { ...base, stations: [{ ...base.stations![0], assigned: { kind: 'respawn', team: 1, id: 3, threshold: -74 },
-      armed: { game: 1, at: 0, kind: 'respawn', team: 1, id: 3 }, attention: ['ARMED FOR AN OLDER GAME', 'BATTERY LOW'] }], game_no: 2 };
+      // F221 round 1: MC's real lines carry the action too (`state.py` STATION_ARMED_OLDER / STATION_BATTERY_LOW) -- this used the old, action-less strings.
+      armed: { game: 1, at: 0, kind: 'respawn', team: 1, id: 3 }, attention: ['ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY', 'BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE'] }], game_no: 2 };
     const m = await mountScreen(<Armory />, { state: flagged, view: 'muster' });
     const att = m.find('[data-testid="station-attention"]');
     expect(att.length).toBe(1);
-    expect(att[0].textContent).toMatch(/ARMED FOR AN OLDER GAME/);
-    expect(att[0].textContent).toMatch(/BATTERY LOW/);
+    expect(att[0].textContent).toMatch(/ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY/);
+    expect(att[0].textContent).toMatch(/BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE/);
     m.unmount();
   });
 
@@ -206,7 +207,8 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     const base = await d.getState();
     const flagged: State = { ...base, stations: [{ ...base.stations![0],
       assigned: { kind: 'respawn', team: 1, id: 3, threshold: -74 },
-      armed: { game: 1, at: 0, kind: 'respawn', team: 1, id: 3 }, attention: ['PHONE SAYS NOT ARMED'] }], game_no: 1 };
+      // F221 round 1: the real line carries RE-ARM IT FROM ITEMS ON ARMORY too (state.py STATION_NOT_ARMED).
+      armed: { game: 1, at: 0, kind: 'respawn', team: 1, id: 3 }, attention: ['PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY'] }], game_no: 1 };
     const puts: unknown[] = []; let arms = 0;
     const api: Partial<Api> = {
       putStation: (async (...args: unknown[]) => { puts.push(args); return flagged.stations![0]; }) as Api['putStation'],
@@ -215,7 +217,7 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     const m = await mountScreen(<Armory />, { state: flagged, view: 'muster', api });
     const buttons = m.find('[data-testid="items-panel"] button');
     // control: the flag itself is shown (already covered above) — this test is about the button next to it
-    expect(m.find('[data-testid="station-attention"]')[0].textContent).toMatch(/PHONE SAYS NOT ARMED/);
+    expect(m.find('[data-testid="station-attention"]')[0].textContent).toMatch(/PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY/);
     const btn = buttons.find(b => /^(RE-ARM|ARMED)$/.test(b.textContent?.trim() ?? '')) as HTMLButtonElement | undefined;
     expect(btn?.textContent?.trim(), 'the phone disagrees, so the fix (RE-ARM) must be offered, not a stale ARMED').toBe('RE-ARM');
     expect(btn!.disabled, 'RE-ARM must be clickable').toBe(false);

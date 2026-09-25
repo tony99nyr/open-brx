@@ -132,7 +132,8 @@ describe('A47 · LIVE operator menu', () => {
     await m.rerender(withOp({ cmd: 'resync', state: 'done', why: null, sent_t: 1, result_t: 2 }));
     expect(out()).toBe('RESYNC DONE ON THE PHONE.');
     await m.rerender(withOp({ cmd: 'resync', state: 'refused', why: 'STUNNED', sent_t: 1, result_t: 3 }));
-    expect(out()).toBe('THE PHONE REFUSED RESYNC: STUNNED.');
+    // F221 (2026-09-25): a refusal is AMBER, with the ▲ glyph.
+    expect(out()).toBe('▲ THE PHONE REFUSED RESYNC: STUNNED.');
     m.unmount();
   });
 
@@ -194,18 +195,19 @@ describe('A47 · LIVE operator menu', () => {
     m2.unmount();
   });
 
-  it('the out-of-reach sentence is dim, not a warning', async () => {
+  it('F221 (2026-09-25): the out-of-reach sentence is RED — a gun/phone link lost DURING a match', async () => {
     const m = await board();
     await tap(rowEl(m, 'p2'));
     const el = menu(m, 'p2').querySelector('[data-op-unavailable="reach"]') as HTMLElement;
     const { T } = await import('../src/tokens');
-    expect(el.style.color.replace(/\s/g, '')).toBe(styleColor(T.dim));
+    expect(el.style.color.replace(/\s/g, '')).toBe(styleColor(T.bad));
     m.unmount();
   });
 
   it('an adopted match every phone has ended shows one line on the MATCH screen', async () => {
     const m = await board(undefined, { live: { ...LIVE, phones_ended: true } });
-    expect(m.find('[data-testid="phones-ended"]')[0]?.textContent).toBe('PHONES HAVE ENDED THIS MATCH: PRESS END');
+    // F221 (2026-09-25): AMBER, with the ▲ glyph.
+    expect(m.find('[data-testid="phones-ended"]')[0]?.textContent).toBe('▲ PHONES HAVE ENDED THIS MATCH: PRESS END');
     expect(m.find('[role="dialog"]').length, 'not a popup').toBe(0);
     m.unmount();
     const m2 = await board();

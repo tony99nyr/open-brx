@@ -293,12 +293,12 @@ def test_red_amber_none_across_the_field():
     assert r0["app_ver"] == f"{newest}+aaa" and r0["platform"] == "android"
 
     r1 = rows[ps[1]["player_id"]]
-    assert f"APP OLDER THAN THE FIELD ({behind} < {newest})" in r1["ambers"], r1["ambers"]
-    assert f"APP OLDER THAN THE RELEASE ({behind} < {newest})" in r1["ambers"], r1["ambers"]
+    assert f"APP OLDER THAN THE FIELD ({behind} < {newest}): UPDATE THE APP" in r1["ambers"], r1["ambers"]
+    assert f"APP OLDER THAN THE RELEASE ({behind} < {newest}): UPDATE THE APP" in r1["ambers"], r1["ambers"]
     assert r1["status"] == "amber" and not r1["blockers"], "A1: amber never blocks"
 
     r2 = rows[ps[2]["player_id"]]
-    assert f"APP {wrong} INCOMPATIBLE WITH MC (NEEDS {app_tier()}) — UPDATE THE APP" in r2["blockers"], r2["blockers"]
+    assert f"APP {wrong} INCOMPATIBLE WITH MC (NEEDS {app_tier()}): UPDATE THE APP" in r2["blockers"], r2["blockers"]
     assert r2["status"] == "red" and not s.readiness()["go"]
     # An incompatible build says ONE thing. It is not also "older than the field".
     assert not [a for a in r2["ambers"] if a.startswith("APP ")], r2["ambers"]
@@ -315,7 +315,7 @@ def test_respawn_rules_warning_names_bound_nodes_below_0_4_3_and_never_blocks():
     online(s, net, clock, ps[0], 0, app_ver=current)
     online(s, net, clock, ps[1], 1, app_ver=old)
     r = s.readiness()
-    assert r["respawn_rules_warning"] == f"Update to {current} for today's respawn rules: OP1"
+    assert r["respawn_rules_warning"] == f"APP TOO OLD FOR TODAY'S RESPAWN RULES (OP1): UPDATE THE APP TO {current}"
     row1 = next(row for row in r["board"] if row["player_id"] == ps[1]["player_id"])
     assert row1["status"] != "red", "the warning never turns the row red"
     assert not [b for b in row1["blockers"] if "respawn" in b.lower()], row1["blockers"]
@@ -481,7 +481,7 @@ def test_unparsable_version_is_amber_never_red():
     s, net, clock, ps = mk(1)
     online(s, net, clock, ps[0], 0, app_ver="hud-0.2")
     row = s.readiness()["board"][0]
-    assert "APP VERSION UNKNOWN (hud-0.2)" in row["ambers"], row["ambers"]
+    assert "APP VERSION UNKNOWN (hud-0.2): UPDATE THE APP" in row["ambers"], row["ambers"]
     assert row["status"] == "amber" and not row["blockers"], "the app shipped `hud-0.2` for months"
     assert s.readiness()["go"]
 
@@ -502,7 +502,7 @@ def test_versions_summary_and_a_missing_build_json():
     assert s.versions()["release"] is None
     rows = {r["player_id"]: r for r in s.readiness()["board"]}
     older = rows[ps[2]["player_id"]]["ambers"]
-    assert f"APP OLDER THAN THE FIELD ({v}.8 < {v}.9)" in older
+    assert f"APP OLDER THAN THE FIELD ({v}.8 < {v}.9): UPDATE THE APP" in older
     assert not [a for a in older if "RELEASE" in a], "no build.json means no RELEASE amber, not a crash"
 
 

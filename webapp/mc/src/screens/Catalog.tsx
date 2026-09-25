@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { F, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, ScreenHeader, SectionRule, SegBar, Tag } from '../ui';
+import { Alert, AlertTag } from '../ui/Alert';
+import { colourOf } from '../alerts';
 import { UNPLAYABLE_IDS } from './gameSummary';
 
 // Field 2026-08-31, Tony: "on the kit page is there a way to review the weapons myself without
@@ -63,7 +65,7 @@ export function Catalog() {
   if (!weapons.length) {
     return <div className="screen"><ScreenHeader kicker="[ ARSENAL // REFERENCE ]" title="Arsenal"
       right={<GhostButton onClick={() => setView('kit')}>◂ BACK TO KIT</GhostButton>} />
-      <div style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>NO CATALOG — MISSION CONTROL HAS NOT SENT ONE.</div></div>;
+      <Alert id="frame-catalog-no-catalog" what="NO CATALOG" act="MISSION CONTROL HAS NOT SENT ONE." size={10} /></div>;
   }
 
   return (
@@ -113,16 +115,22 @@ export function Catalog() {
                   <td style={{ padding: '9px 10px', font: F.osw(700, 14), letterSpacing: '.06em', whiteSpace: 'nowrap' }}>
                     {w.name.toUpperCase()}
                     {!w.verified && <span title="Retuned from the captured Callsign frame for balance — not the stock numbers" style={{ font: F.mono(500, 8.5), letterSpacing: '.14em', color: T.micro, marginLeft: 8 }}>TUNED</span>}
-                    {w.caution && <span role="alert" title={w.caution} style={{ font: F.mono(600, 9), color: T.bad, marginLeft: 8 }}>▲</span>}
+                    {/* frame-catalog-caution: AMBER, not red — a per-weapon handling note, not a fault
+                        (F221, Tony 2026-09-25). */}
+                    {w.caution && <span role="alert" title={w.caution} style={{ font: F.mono(600, 9), color: colourOf('frame-catalog-caution'), marginLeft: 8 }}>▲</span>}
                     {/* FIELD-2 (round-3 fix pass, 2026-09-13): a caution triangle was all this row
                         ever said, and KIT/DESIGNER quietly stopped offering the weapon — so the one
                         page that still lists it is the one page that has to say WHY, in words, from
                         the SAME constant the pools read (`policy.UNPLAYABLE_IDS`, mirrored once in
-                        gameSummary.ts). Delete the id there the day the bench fixes its $SIR row. */}
+                        gameSummary.ts). Delete the id there the day the bench fixes its $SIR row.
+                        frame-catalog-not-playable: AMBER, outline tag, never a solid fill (F221,
+                        Tony 2026-09-25) — a content caveat the operator should avoid, not a live fault. */}
                     {UNPLAYABLE_IDS.has(w.weapon_id) && (
-                      <span data-testid="not-playable" title="Its hit row keys a $SIR function that moves no pool, so every hit registers and deals nothing. Excluded from KIT and the DESIGNER until the row is fixed on the bench (docs/ir-effects-design.md §6.2)."
-                        style={{ font: F.mono(700, 8.5), letterSpacing: '.14em', color: T.accInk, background: T.bad, padding: '2px 6px', marginLeft: 8, whiteSpace: 'nowrap' }}>
-                        NOT PLAYABLE · HIT ROW DEALS NO DAMAGE
+                      <span style={{ marginLeft: 8, display: 'inline-block' }}>
+                        <AlertTag id="frame-catalog-not-playable" testid="not-playable"
+                          title="Its hit row keys a $SIR function that moves no pool, so every hit registers and deals nothing. Excluded from KIT and the DESIGNER until the row is fixed on the bench (docs/ir-effects-design.md §6.2).">
+                          NOT PLAYABLE: HIT ROW DEALS NO DAMAGE
+                        </AlertTag>
                       </span>
                     )}
                   </td>

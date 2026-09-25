@@ -6,6 +6,9 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
+import { cleanServerLine } from '../api/derive';
+import { serverLine } from '../alerts';
+import { Alert } from './Alert';
 import { GhostButton, SectionRule } from './index';
 
 const STATION_PREFIX = 'STATION #';
@@ -43,25 +46,15 @@ function UnlockStations() {
         </GhostButton>
         {confirm && <GhostButton size={11} onClick={() => setConfirm(false)} title="back out: nothing was sent">CANCEL</GhostButton>}
       </span>
-      {err && <span data-testid="station-unlock-error" role="alert" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: T.bad }}>▲ UNLOCK REFUSED: {err}</span>}
+      {err && <Alert id="frame-station-unlock-error" testid="station-unlock-error">UNLOCK REFUSED: {err}</Alert>}
     </div>
   );
 }
 
-/** M5 (visual QA 2026-09-24): the next step for each attention line the server sends (state.py
- *  `_station_view` and `_station_tamper_flags`). The server's own string is shown as it is; this is the
- *  line under it. A line not on this list still shows, with the generic step. */
-const NEXT_STEP: Array<[RegExp, string]> = [
-  [/^BATTERY LOW/, 'swap or charge before the whistle'],
-  [/^STATION #\d+ RESTARTED/, 'check the station; it restarted during the lock'],
-  [/^STATION #\d+ OFFLINE/, 'check the station is powered and in range'],
-  [/^STATION #\d+ LOCK EXPIRES MID-MATCH/, 'take it back through muster before the whistle'],
-  [/^BRING IT BACK TO RE-ARM/, 'bring it into Wi-Fi range so MC can arm it'],
-  [/^ARMED FOR AN OLDER GAME/, 're-arm it from ITEMS on ARMORY'],
-  [/^PHONE SAYS NOT ARMED/, 're-arm it from ITEMS on ARMORY'],
-  [/^PHONE ADVERTISES ID/, 're-arm it from ITEMS on ARMORY'],
-];
-export const nextStep = (line: string) => NEXT_STEP.find(([re]) => re.test(line))?.[1] ?? 'check the station on ITEMS (ARMORY)';
+// F221: each attention line MC writes already reads `WHAT IS WRONG: WHAT TO DO` (state.py `_station_view`
+// and `_station_tamper_flags`), so the strip shows the server's line as it is, through `<Alert>`. The
+// catalogue (`src/alerts/server.ts` SERVER_LINES) gives each line its severity; the step that used to sit
+// under each line is now the line's own action.
 
 const KIND_WORD: Record<string, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'CONTROL' };
 
@@ -85,7 +78,7 @@ export function StationAlerts({ showUnlock = false, compact = false, unlockOnly 
       <div role="status" data-unlock-region="1">
         {on && (
           <div data-testid="station-unlock-only" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 14px', margin: '0 0 12px' }}>
-            <span style={{ font: F.chk(700, 11.5), letterSpacing: '.12em', color: T.warn }}>▲ STATIONS LOCKED FOR THE LOADED GAME</span>
+            <Alert id="armory-stations-locked-banner" what="STATIONS LOCKED FOR THE LOADED GAME" size={11.5} style={{ letterSpacing: '.12em' }} />
             <UnlockStations />
           </div>
         )}
@@ -104,14 +97,21 @@ export function StationAlerts({ showUnlock = false, compact = false, unlockOnly 
       {!compact && <SectionRule label="STATION ALERTS" />}
       <div role="status" aria-live="polite" style={{ display: 'flex', flexDirection: compact ? 'row' : 'column', flexWrap: 'wrap', alignItems: compact ? 'center' : undefined, gap: 6 }}>
         {compact && <span style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.dim }}>STATION ALERTS</span>}
-        {lines.map(({ key, t, who }) => (
-          <div key={key} data-station-alert={t} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: compact ? '2px 8px' : '2px 8px',
-            padding: compact ? '4px 10px' : '7px 10px', background: 'rgba(255,176,32,.08)', borderLeft: `2px solid ${T.warn}` }}>
-            <span style={{ font: F.chk(700, 11), color: T.warn }}>▲</span>
-            <span style={{ font: F.chk(700, 11.5), letterSpacing: '.06em', color: T.warn }}>{who ? `${who} · ` : ''}{t}</span>
-            <span data-station-step style={{ font: F.chk(500, 11.5), letterSpacing: '.02em', color: T.body }}>{nextStep(t)}</span>
-          </div>
-        ))}
+        {lines.map(({ key, t, who }) => {
+          let { id, sev } = serverLine(t, 'amber');
+          // F221 round 1: MC's own words cannot tell ARMED from LIVE, but this screen knows the phase.
+          // A held station going offline is RED (act now) only while the match it is held for is LIVE;
+          // in LOBBY or ARMED it is AMBER (fix before the next match), same as every other attention line.
+          if (id === 'station-attention-offline' && state?.phase === 'live') { id = 'frame-station-offline'; sev = 'red'; }
+          return (
+            <div key={key} data-station-alert={t} style={{ padding: compact ? '2px 0' : '3px 0' }}>
+              {/* F221 round 1: an MC older than this console can still send the retired colour-naming
+                  suffix (cleanServerLine, api/derive.ts): matching by `id` above still works on the
+                  raw line, only the words shown are cleaned. */}
+              <Alert id={id} sev={sev} role="status" size={11.5}>{who ? `${who} · ` : ''}{cleanServerLine(t)}</Alert>
+            </div>
+          );
+        })}
         {showUnlock && lockActive && <UnlockStations />}
       </div>
     </div>

@@ -43,6 +43,7 @@ import { ClockSub, Num, ScrollX } from '../ui';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isKillScored } from './gameSummary';
 import { heldSeconds, hillOwner, isObjectiveScored, objectiveWord } from './objective';
+import { MC_OFFLINE, alertWords, colourOf, glyphed } from '../alerts';
 
 /** Type sizes, in px, computed from the viewport the same way `clamp(min, Npx-per-vh, max)` would.
  *  Everything here is deliberately above the console's own scale — this screen is not operated, it is
@@ -101,7 +102,7 @@ export function Spectate() {
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
   const frame = { fit, frozen: !connected, SZ, wanted: wantedView };
   if (!state) {
-    return <Frame {...frame} frozen={false}><Waiting text="CONNECTING TO MISSION CONTROL" SZ={SZ} /></Frame>;
+    return <Frame {...frame} frozen={false}><Waiting text="CONNECTING TO MISSION CONTROL" SZ={SZ} id="spectate-waiting-connecting" /></Frame>;
   }
   // The board follows the PHASE, not the presence of a `live` block. Both MCs keep sending `live`
   // through `recap` — `state.py` builds it for phase in (armed, live, recap), and the mock never
@@ -115,7 +116,7 @@ export function Spectate() {
   if (!lv) {
     return (
       <Frame {...frame}>
-        {rc ? <FinalCard SZ={SZ} fit={fit} /> : <Waiting text={`${(state.config.mode || 'MATCH').toUpperCase()} — WAITING FOR THE HORN`} SZ={SZ} />}
+        {rc ? <FinalCard SZ={SZ} fit={fit} /> : <Waiting text={`${(state.config.mode || 'MATCH').toUpperCase()}: WAITING FOR THE HORN`} SZ={SZ} id="spectate-waiting-horn" />}
       </Frame>
     );
   }
@@ -165,8 +166,11 @@ export function Spectate() {
         // the hill, in one line the back of the room can read: who holds it (when MC knows) and how
         // well the tally is covered. Text only: nothing on this screen is a control.
         <div data-spectate="hill" style={{ ...chk(700, SZ.label), letterSpacing: '.18em', color: T.micro, marginBottom: 18, flex: 'none' }}>
-          {word}: {owner ? <span style={{ color: owner.team_id ? teamColor(owner.team_id) : T.dim }}>{owner.text}{owner.stale ? ' (LAST REPORT)' : ''}</span> : 'OWNER NOT REPORTED LIVE'}
-          {' · '}{lv.possession ? `BEST COVERAGE ${fmtDuration(lv.possession.observed_s)}` : 'NO POSSESSION REPORTED YET'}
+          {word}: {owner ? <span style={{ color: owner.team_id ? teamColor(owner.team_id) : T.dim }}>{owner.text}
+            {owner.stale ? <span data-alert="spectate-hill-last-report" data-sev="neutral"> (LAST REPORT)</span> : ''}</span>
+            : <span data-alert="spectate-hill-owner-none" data-sev="neutral">OWNER NOT REPORTED LIVE</span>}
+          {' · '}{lv.possession ? `BEST COVERAGE ${fmtDuration(lv.possession.observed_s)}`
+            : <span data-alert="spectate-no-possession-yet" data-sev="neutral">NO POSSESSION REPORTED YET</span>}
         </div>
       )}
       <div style={{ display: 'flex', gap: 22, alignItems: 'stretch', flexWrap: 'wrap',
@@ -194,11 +198,13 @@ function Frame({ children, fit, frozen, SZ, wanted }: { children: React.ReactNod
       style={{ ...(fit ? { height: '100vh', overflow: 'hidden' } : { minHeight: '100vh' }),
                display: 'flex', flexDirection: 'column', background: T.page, color: T.ink,
                padding: `${pad}px 34px ${pad + 8}px`, boxSizing: 'border-box' }}>
+      {/* F221: RED, the MC-offline cluster. The words are MC_OFFLINE's, imported, never re-typed —
+          the LIVE offline banner is the model. */}
       {frozen && (
-        <div data-spectate="frozen" role="status"
-          style={{ ...chk(700, SZ.label), letterSpacing: '.26em', color: T.bad, border: `1px solid ${T.bad}`,
+        <div data-spectate="frozen" data-alert="spectate-frozen-tag" data-sev="red" role="alert"
+          style={{ ...chk(700, SZ.label), letterSpacing: '.26em', color: colourOf('spectate-frozen-tag'), border: `1px solid ${colourOf('spectate-frozen-tag')}`,
                    padding: '8px 14px', marginBottom: 14, alignSelf: 'flex-start' }}>
-          FROZEN · MC OFFLINE
+          {glyphed('red', alertWords(MC_OFFLINE.what, MC_OFFLINE.act))}
         </div>
       )}
       {/* the dimming sits INSIDE the frame so the tag above it stays at full strength */}
@@ -213,19 +219,19 @@ function Frame({ children, fit, frozen, SZ, wanted }: { children: React.ReactNod
        *  reload would now honour it (round-2 review 2026-09-12). Text only: no control may exist on
        *  a screen a room can touch. */}
       {wanted && (
-        <div data-spectate="escape" role="status"
-          style={{ ...chk(600, SZ.label), letterSpacing: '.18em', color: T.micro, marginTop: 12, flex: 'none' }}>
-          {wanted.toUpperCase()} IS A CONSOLE SCREEN — THIS TAB IS THE BOARD. RELOAD IT TO OPEN {wanted.toUpperCase()}.
+        <div data-spectate="escape" data-alert="spectate-escape-line" data-sev="neutral" role="status"
+          style={{ ...chk(600, SZ.label), letterSpacing: '.18em', color: colourOf('spectate-escape-line'), marginTop: 12, flex: 'none' }}>
+          {wanted.toUpperCase()} IS A CONSOLE SCREEN: THIS TAB IS THE BOARD. RELOAD IT TO OPEN {wanted.toUpperCase()}.
         </div>
       )}
     </div>
   );
 }
 
-function Waiting({ text, SZ }: { text: string; SZ: SZ }) {
+function Waiting({ text, SZ, id }: { text: string; SZ: SZ; id?: string }) {
   return (
-    <div style={{ minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  ...chk(700, SZ.name), letterSpacing: '.2em', color: T.dim, textAlign: 'center' }}>{text}</div>
+    <div data-alert={id} data-sev={id ? 'neutral' : undefined} style={{ minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  ...chk(700, SZ.name), letterSpacing: '.2em', color: id ? colourOf(id) : T.dim, textAlign: 'center' }}>{text}</div>
   );
 }
 
@@ -247,9 +253,10 @@ function TeamBlock({ name, color, value, side, label, SZ }: { name: string; colo
  *  frame dims the whole board, which is the part a room can actually see from the back. */
 function Clock({ remaining, sub, stale, SZ }: { remaining: number; sub: string; stale?: boolean; SZ: SZ }) {
   return (
-    <div style={{ flex: '0 1 340px', background: T.panel, border: `1px solid ${stale ? T.bad : T.line}`, padding: `${Math.round(SZ.pad * 1.6)}px 26px`,
+    <div data-alert={stale ? 'spectate-clock-frozen' : undefined} data-sev={stale ? 'red' : undefined}
+      style={{ flex: '0 1 340px', background: T.panel, border: `1px solid ${stale ? colourOf('spectate-clock-frozen') : T.line}`, padding: `${Math.round(SZ.pad * 1.6)}px 26px`,
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-      <span style={{ ...chk(700, SZ.label), letterSpacing: '.26em', color: stale ? T.bad : T.micro }}>{stale ? 'CLOCK FROZEN' : 'TIME REMAINING'}</span>
+      <span style={{ ...chk(700, SZ.label), letterSpacing: '.26em', color: stale ? colourOf('spectate-clock-frozen') : T.micro }}>{stale ? glyphed('red', 'CLOCK FROZEN') : 'TIME REMAINING'}</span>
       <span data-spectate="clock" style={{ ...osw(700, SZ.clock), lineHeight: 1 }}><Num value={fmtClock(remaining)} /></span>
       <ClockSub text={sub} style={{ ...chk(600, SZ.label), letterSpacing: '.2em', color: T.micro }} />
     </div>
@@ -342,9 +349,11 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
       style={{ ...(fit ? { overflowY: 'hidden', flex: '1 1 0px', minHeight: 0, display: 'flex', flexDirection: 'column' } : null) }}>
     <div ref={box} data-spectate="board-cols" data-cols={cols} data-pages={pages}
       style={{ minWidth: cols > 1 ? 0 : 540, display: 'flex', flexDirection: 'column', ...(fit ? { flex: '1 1 0px', minHeight: 0 } : null) }}>
+      {/* F221: a wall rotating pages is mechanical, not a fault — NEUTRAL, though it used to render amber. */}
       {pages > 1 && (
-        <div data-spectate="page" style={{ flex: 'none', height: pageH, ...chk(700, SZ.label), lineHeight: `${pageH}px`,
-                                           letterSpacing: '.2em', color: T.warn }}>
+        <div data-spectate="page" data-alert="spectate-page-strip" data-sev="neutral"
+          style={{ flex: 'none', height: pageH, ...chk(700, SZ.label), lineHeight: `${pageH}px`,
+                                           letterSpacing: '.2em', color: colourOf('spectate-page-strip') }}>
           PAGE {page + 1} / {pages} · {rows.length} PLAYERS
         </div>
       )}
@@ -364,7 +373,7 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
           <div data-spectate="rows" style={{ display: 'flex', flexDirection: 'column', gap: ROW_GAP, marginTop: ROW_GAP,
                                              ...(fit ? { flex: '1 1 0px', minHeight: 0, overflow: 'hidden' } : null) }}>
             {c === 0 && rows.length === 0 && (
-              <div style={{ ...chk(600, SZ.label), letterSpacing: '.16em', color: T.micro, padding: '16px 18px' }}>NO SCORES YET.</div>
+              <div data-alert="spectate-no-scores" data-sev="neutral" style={{ ...chk(600, SZ.label), letterSpacing: '.16em', color: colourOf('spectate-no-scores'), padding: '16px 18px' }}>NO SCORES YET.</div>
             )}
             {col.map(r => <BoardRow key={r.player_id} r={r} SZ={sz} fit={fit} grid={grid} />)}
           </div>
@@ -373,8 +382,10 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
       </div>
     </div>
     </ScrollX>
+    {/* F221: identical wording to LIVE/RECAP — a status fact, not a fault, so NEUTRAL. */}
     {rows.some(r => r.kills < 0) && (
-      <div data-spectate="team-kill-note" style={{ ...chk(600, SZ.label), letterSpacing: '.12em', color: T.warn, marginTop: 8, flex: 'none' }}>
+      <div data-spectate="team-kill-note" data-alert="spectate-team-kill-note" data-sev="neutral"
+        style={{ ...chk(600, SZ.label), letterSpacing: '.12em', color: colourOf('spectate-team-kill-note'), marginTop: 8, flex: 'none' }}>
         K BELOW ZERO: {TEAM_KILL_NOTE}
       </div>
     )}
@@ -395,7 +406,8 @@ function BoardRow({ r, SZ, fit, grid }: { r: LiveRow | ScoreRow; SZ: SZ; fit: bo
       <span style={{ textAlign: 'right', ...osw(700, SZ.rowK) }}><Num value={r.kills} /></span>
       <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: T.dim }}><Num value={r.deaths} /></span>
       <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: T.dim }}><Num value={r.assists} /></span>
-      <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: bestStreak(r) >= 3 ? T.warn : T.dim }}><Num value={bestStreak(r)} /></span>
+      {/* F221 round 1: a streak of 3+ is a positive highlight, not a fault -- T.acc, not T.warn. */}
+      <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: bestStreak(r) >= 3 ? T.acc : T.dim }}><Num value={bestStreak(r)} /></span>
     </div>
   );
 }
@@ -410,11 +422,13 @@ function Feed({ entries, SZ, fit }: { entries: { t_match_s: number; text: string
       <div style={{ border: `1px solid ${T.line}`, borderTop: 'none', background: T.panelDeep, padding: 8, display: 'flex', flexDirection: 'column', gap: 3,
                     ...(fit ? { flex: '1 1 0px', minHeight: 0, overflow: 'hidden' } : null) }}>
         {entries.length === 0 && (
-          <div style={{ ...chk(600, SZ.feed), letterSpacing: '.1em', color: T.faint, padding: 10 }}>NOTHING YET.</div>
+          <div data-alert="spectate-feed-nothing-yet" data-sev="neutral" style={{ ...chk(600, SZ.feed), letterSpacing: '.1em', color: T.faint, padding: 10 }}>NOTHING YET.</div>
         )}
         {entries.slice(0, 12).map((ev, i) => (
+          // F221 round 1: a medal tag (a kill streak, ...) is a positive highlight, not a fault -- T.acc,
+          // the same colour MC's own call-out already used, not T.warn.
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: `${SZ.pad}px 12px`, background: T.panel, flex: '0 1 auto', minHeight: 0, overflow: 'hidden',
-                                borderLeft: `3px solid ${ev.kind === 'alert' ? T.acc : ev.tag ? T.warn : T.line}` }}>
+                                borderLeft: `3px solid ${ev.kind === 'alert' || ev.tag ? T.acc : T.line}` }}>
             <span style={{ ...mono(500, SZ.feed), color: T.micro }}><Num value={fmtClock(ev.t_match_s)} /></span>
             <span style={{ flex: 1, ...chk(600, SZ.feed), letterSpacing: '.02em', color: T.body, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.text}</span>
           </div>
@@ -447,7 +461,11 @@ function FinalCard({ SZ, fit }: { SZ: SZ; fit: boolean }) {
       <div data-spectate="final" style={{ border: `1px solid ${T.line}`, borderLeft: `6px solid ${color}`, padding: '24px 28px', marginBottom: 22, flex: 'none',
                     display: 'flex', alignItems: 'baseline', gap: 26, flexWrap: 'wrap' }}>
         <span style={{ ...osw(700, Math.round(SZ.score * 0.78)), letterSpacing: '.08em', color }}>{headline}</span>
-        {rc.provisional && <span style={{ ...chk(700, SZ.label), letterSpacing: '.2em', color: T.warn }}>PROVISIONAL — STILL SETTLING</span>}
+        {rc.provisional && (
+          <span data-alert="spectate-final-provisional" data-sev="amber" style={{ ...chk(700, SZ.label), letterSpacing: '.2em', color: colourOf('spectate-final-provisional') }}>
+            {glyphed('amber', 'PROVISIONAL: STILL SETTLING')}
+          </span>
+        )}
       </div>
       <Board rows={rows} SZ={SZ} fit={fit} />
     </>

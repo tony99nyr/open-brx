@@ -1160,15 +1160,16 @@ class Scorer:
             best = max(best, run, key=len)
             if len(best) + 1 >= self.REPLAY_MIN_HITS:
                 period = sorted(best)[len(best) // 2] / 1000
-                out.append(f"F74? {names.get(victim, victim)} took {len(best) + 1} identical {dmg}-damage hits from "
-                           f"{names.get(shooter, shooter)} at a steady {period:.1f} s period -- the shape of a gun REPLAYING "
-                           "a latched IR event, not a player firing. Those hits and any death they caused are counted; "
-                           "check the shooter's shots against them, and re-arm the victim's gun with $SPAWN")
+                # F221: `WHAT IS WRONG: WHAT TO DO`, upper case outside the players' names.
+                out.append(f"POSSIBLE GUN REPLAY (F74): {names.get(victim, victim)} TOOK {len(best) + 1} IDENTICAL "
+                           f"{dmg}-DAMAGE HITS FROM {names.get(shooter, shooter)} AT A STEADY {period:.1f} S PERIOD, "
+                           "AND THEY COUNT, WITH ANY DEATH THEY CAUSED: CHECK THE SHOOTER'S SHOTS AGAINST THEM, "
+                           "AND RE-ARM THE VICTIM'S GUN WITH $SPAWN")
         n_hit, n_death = self.wire0["hit_taken"], self.wire0["death"]
         if n_hit or n_death:
-            out.append(f"WIRE 0: {n_hit} hit(s) and {n_death} death(s) came from a shooter with NO identity -- a grenade "
-                       "hill's damage word (F69) or a gun whose $PSET never landed (F80). They scored for nobody. If no "
-                       "hill was on the field, one gun played the whole match unable to score: check its $PSET at the next arm")
+            out.append(f"WIRE 0 HITS: {n_hit} HIT(S) AND {n_death} DEATH(S) CAME FROM A SHOOTER WITH NO IDENTITY (A "
+                       "GRENADE HILL'S DAMAGE WORD, F69, OR A GUN WHOSE $PSET NEVER LANDED, F80) AND SCORED FOR "
+                       "NOBODY: IF NO HILL WAS ON THE FIELD, CHECK EACH GUN'S $PSET AT THE NEXT ARM")
         return out
 
     _csv_safe = staticmethod(_csv_safe)

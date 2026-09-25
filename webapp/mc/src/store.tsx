@@ -258,7 +258,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     latched: spectatorTab.current, wantedView: wanted,
     designerSeed, openDesigner: seed => { setDesignerSeed(seed); setView('designer'); },
     connected: mock ? true : connected, authRequired, serverOld, hasToken: !!getToken(),
-    setToken: tok => { saveToken(tok); setAuthRequired(false); setTokenVersion(v => v + 1); },
+    setToken: tok => { saveToken(tok); setAuthRequired(false); setError(null); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,

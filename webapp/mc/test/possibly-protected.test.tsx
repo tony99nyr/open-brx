@@ -40,7 +40,8 @@ describe('F289 · POSSIBLY PROTECTED', () => {
     const m = await mount(<StoreCtx.Provider value={makeStore({ ...d, state, view: 'live' })}><Live /></StoreCtx.Provider>);
     const cues = m.find('[data-possibly-protected]');
     expect(cues.map(c => c.getAttribute('data-possibly-protected'))).toEqual(['p1']);
-    expect(cues[0].textContent).toBe('POSSIBLY PROTECTED · HITS MAY NOT COUNT');
+    // F221 (2026-09-25): AMBER carries the ▲ glyph.
+    expect(cues[0].textContent).toBe('▲ POSSIBLY PROTECTED · HITS MAY NOT COUNT');
     expect(cues[0].style.color).toBe(rgb(T.warn));
     m.unmount();
   });

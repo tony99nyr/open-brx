@@ -22,11 +22,11 @@ function station(node_id: string, over: Partial<StationView> = {}): StationView 
 }
 
 /** `<StationAlerts />` (or `showUnlock`) against a MockBackend store carrying exactly `stations`. */
-async function alerts(stations: StationView[], opts: { showUnlock?: boolean; over?: Partial<Api>; now?: () => number } = {}) {
+async function alerts(stations: StationView[], opts: { showUnlock?: boolean; over?: Partial<Api>; now?: () => number; phase?: State['phase'] } = {}) {
   const api = new MockBackend();
   Object.assign(api, opts.over ?? {});
   const base = await api.getState();
-  const state: State = { ...base, stations };
+  const state: State = { ...base, stations, ...(opts.phase ? { phase: opts.phase } : {}) };
   let error: string | null = null;
   const run: <T,>(fn: () => Promise<T>) => Promise<T | undefined> = async fn => {
     try { error = null; return await fn(); } catch (e) { error = (e as Error).message; return undefined; }
@@ -43,21 +43,36 @@ async function alerts(stations: StationView[], opts: { showUnlock?: boolean; ove
 
 describe('StationAlerts — the STATION #N attention lines', () => {
   it('renders a RESTARTED line', async () => {
-    const { m } = await alerts([station('a', { attention: ['STATION #4 RESTARTED 2 TIMES'] })]);
+    const { m } = await alerts([station('a', { attention: ['STATION #4 RESTARTED 2 TIMES: CHECK THE STATION'] })]);
     expect(m.find('[data-testid="station-alerts"]').length, m.text()).toBe(1);
-    expect(m.text()).toContain('STATION #4 RESTARTED 2 TIMES');
+    expect(m.text()).toContain('STATION #4 RESTARTED 2 TIMES: CHECK THE STATION');
     m.unmount();
   });
 
   it('renders an OFFLINE line', async () => {
-    const { m } = await alerts([station('a', { attention: ['STATION #4 OFFLINE'] })]);
-    expect(m.text()).toContain('STATION #4 OFFLINE');
+    const { m } = await alerts([station('a', { attention: ['STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE'] })]);
+    expect(m.text()).toContain('STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE');
+    m.unmount();
+  });
+
+  // F221 round 1: one server line, two ids. MC's words cannot tell ARMED from LIVE; the console can.
+  it('an OFFLINE line is RED (act now) while the phase is live', async () => {
+    const { m } = await alerts([station('a', { attention: ['STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE'] })], { phase: 'live' });
+    const line = m.find('[data-station-alert="STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE"]')[0] as HTMLElement;
+    expect(line.querySelector('[data-alert="frame-station-offline"][data-sev="red"]'), line.textContent ?? '').toBeTruthy();
+    m.unmount();
+  });
+
+  it('an OFFLINE line is AMBER (fix before the next match) outside live -- LOBBY here', async () => {
+    const { m } = await alerts([station('a', { attention: ['STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE'] })], { phase: 'lobby' });
+    const line = m.find('[data-station-alert="STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE"]')[0] as HTMLElement;
+    expect(line.querySelector('[data-alert="station-attention-offline"][data-sev="amber"]'), line.textContent ?? '').toBeTruthy();
     m.unmount();
   });
 
   it('renders a LOCK EXPIRES MID-MATCH line', async () => {
-    const { m } = await alerts([station('a', { attention: ['STATION #4 LOCK EXPIRES MID-MATCH, REJOIN IT'] })]);
-    expect(m.text()).toContain('STATION #4 LOCK EXPIRES MID-MATCH, REJOIN IT');
+    const { m } = await alerts([station('a', { attention: ['STATION #4 LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER'] })]);
+    expect(m.text()).toContain('STATION #4 LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER');
     m.unmount();
   });
 
@@ -273,13 +288,14 @@ describe('ITEMS — the ASSIGN + ARM form (Block 9, brx4)', () => {
     m.unmount();
   });
 
-  it('a write the server refuses for auth says the operator link expired, on the card itself', async () => {
+  it('a write the server refuses for auth says the operator token is needed, on the card itself', async () => {
+    // F221 round 2: AuthError's words are `operatorTokenLine()` (OPERATOR_TOKEN), one fact one sentence.
     const { AuthError } = await import('../src/api/client');
     const { m } = await itemsWith([unarmed('stick-1')], { putStation: async () => { throw new AuthError(); } } as unknown as Partial<Api>);
     const card = () => m.find('[data-station-card="stick-1"]')[0] as HTMLElement;
     const btn = [...card().querySelectorAll('button')].find(b => b.textContent === 'ASSIGN + ARM') as HTMLButtonElement;
     await act(async () => { btn.click(); });
-    expect(card().textContent).toMatch(/OPERATOR LINK EXPIRED/);
+    expect(card().textContent).toMatch(/OPERATOR TOKEN NEEDED/);
     m.unmount();
   });
 });

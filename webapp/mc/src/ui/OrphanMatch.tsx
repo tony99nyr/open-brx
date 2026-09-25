@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { setNotice } from '../notice';
 import { F, T } from '../tokens';
+import { Alert } from './Alert';
 import { GhostButton, PrimaryButton } from './index';
 
 export function OrphanMatch() {
@@ -17,10 +18,12 @@ export function OrphanMatch() {
   const phones = `${n} PHONE${n === 1 ? ' IS' : 'S ARE'}`;
   return (
     <div data-testid="orphan-match" role="status"
-      style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 14px', marginBottom: 12,
-               padding: '10px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.warn}` }}>
-      <span style={{ flex: '1 1 260px', font: F.chk(700, 12), letterSpacing: '.14em', color: T.ink, lineHeight: 1.4 }}>
-        {phones} IN A MATCH THIS MC DID NOT START
+      style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 14px', marginBottom: 12 }}>
+      {/* F221 polish r2: `frame-orphan-match` is amber-only, and Tony's rule is explicit that AMBER is
+          never a banner — this used to keep the bordered, left-ruled box even after the words moved
+          onto their own line (F221 round 1); now it is one plain <Alert> line, nothing else. */}
+      <span style={{ flex: '1 1 260px' }}>
+        <Alert id="frame-orphan-match" variant="line" what={`${phones} IN A MATCH THIS MC DID NOT START`} />
         <span style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim }}>
           {om.players.join(', ')} · {om.arm_state.toUpperCase()}
         </span>

@@ -163,7 +163,10 @@ describe('S25 · the spectator board', () => {
     const m = await spectate({}, { connected: false });
     const tag = m.find('[data-spectate="frozen"]')[0];
     expect(tag, 'a tag that says why').toBeTruthy();
-    expect(tag.textContent).toContain('FROZEN · MC OFFLINE');
+    // F221 (Tony, 2026-09-25): the words are MC_OFFLINE's, imported from src/alerts, never re-typed —
+    // the LIVE offline banner is the model, so this tag now carries the same wording.
+    expect(tag.textContent).toContain('MC OFFLINE');
+    expect(tag.textContent).toContain('FROZEN');
     expect(fontOf(tag), 'and it is legible across the room too').toBeGreaterThanOrEqual(16);
     const frame = m.find('[data-spectate="board"]')[0];
     expect(frame.getAttribute('data-frozen')).toBe('1');

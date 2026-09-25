@@ -936,7 +936,9 @@ step('recap-coverage-floor', async ({ browser, base }) => {
   const tTxt = await thin.line.textContent();
   expect(/BEST COVERAGE 7:21 OF 10:00/.test(tTxt), `the coverage line reads "BEST COVERAGE 7:21 OF 10:00" (saw ${JSON.stringify(tTxt.trim().slice(0, 140))})`);
   expect(/THIS IS A FLOOR, NOT A FULL ACCOUNT/i.test(tTxt), 'it says the number is a FLOOR');
-  expect(/^▲/.test(tTxt.trim()), 'under 75% coverage it is flagged with ▲');
+  // F221 (approved audit): a coverage caveat is about the MEASUREMENT, not a fault in the match, so
+  // it is NEUTRAL whatever the number says: no ▲, no colour change under 75%.
+  expect(!/^▲/.test(tTxt.trim()), 'a thin coverage run is NEUTRAL, not flagged with ▲');
   const tStyle = await thin.line.evaluate(e => ({ c: getComputedStyle(e).color, px: parseFloat(getComputedStyle(e).fontSize) }));
   expect(tStyle.px >= 10, `the coverage line is legible (${tStyle.px}px)`);
   await shot(thin.pg, '18-coverage-thin');
@@ -945,10 +947,10 @@ step('recap-coverage-floor', async ({ browser, base }) => {
   const full = await open('full');            // 560 of 600 s = 93%
   const fTxt = await full.line.textContent();
   expect(/BEST COVERAGE 9:20 OF 10:00/.test(fTxt), `a well-watched match reads 9:20 OF 10:00 (saw ${JSON.stringify(fTxt.trim().slice(0, 140))})`);
-  expect(!/^▲/.test(fTxt.trim()), 'CONTROL: over 75% coverage is NOT flagged — the amber means something');
+  expect(!/^▲/.test(fTxt.trim()), 'CONTROL: a well-covered run is not flagged either');
   const fStyle = await full.line.evaluate(e => getComputedStyle(e).color);
-  expect(fStyle !== tStyle.c, `the thin run is painted a different colour from the covered one (${tStyle.c} vs ${fStyle})`);
-  ok(`the coverage floor is stated, and amber only under 75%  ${await shot(full.pg, '18-coverage-full')}`);
+  expect(fStyle === tStyle.c, `the coverage caveat is NEUTRAL regardless of coverage: same colour thin vs full (${tStyle.c} vs ${fStyle})`);
+  ok(`the coverage floor is stated as a neutral measurement caveat, never flagged  ${await shot(full.pg, '18-coverage-full')}`);
   await closePage(full.pg);
 });
 
@@ -1101,9 +1103,9 @@ step('stale-server', async ({ browser, base }) => {
   await go(pg, 'build');
   expect(stripped > 0, 'REST bodies were actually stripped (the interception is live)');
   // the skew banner is the whole point of a stale run
-  await until(() => pg.locator('header [role="alert"]:has-text("PREDATES THIS UI")').count().then(n => n > 0), 8000, 'the version-skew banner');
-  const banner = await pg.locator('header [role="alert"]:has-text("PREDATES THIS UI")').first().textContent();
-  expect(/python -m brx_mcp\.mc/.test(banner), 'the banner gives the restart command');
+  await until(() => pg.locator('header [role="alert"]:has-text("MC SERVER IS OLDER THAN THIS CONSOLE")').count().then(n => n > 0), 8000, 'the version-skew banner');
+  const banner = await pg.locator('header [role="alert"]:has-text("MC SERVER IS OLDER THAN THIS CONSOLE")').first().textContent();
+  expect(/\.\/start\.sh/.test(banner), 'the banner gives the restart command');
   // picking KotH must still work locally, and the missing field must simply not render
   await pickKoth(pg, { ms: 8000, what: 'KotH selectable against a stale server' });
   expect(await railRow(pg, 'OBJECTIVE').count() === 0, 'no OBJECTIVE row is invented when the server sends no station_source');

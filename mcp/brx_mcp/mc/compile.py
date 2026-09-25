@@ -2909,7 +2909,7 @@ class Compiler:
             if on_neutral:
                 errors.append(
                     f"F82: mode {mode!r} cannot roster players on $TID {_NEUTRAL_TEAM} "
-                    f"({', '.join(on_neutral)}) — that is the team a NEUTRAL grenade hill "
+                    f"({', '.join(on_neutral)}), the team a NEUTRAL grenade hill "
                     "broadcasts, so they read every uncaptured point as their own and take no "
                     "hill damage. Use tid 0, 1 or 3.")
             # The EMPTY tid-2 team was the open route (operator review 2026-09-10): the roster scan
@@ -2922,7 +2922,7 @@ class Compiler:
             if neutral_teams:
                 errors.append(
                     f"F82: mode {mode!r} cannot have a team on $TID {_NEUTRAL_TEAM} at all "
-                    f"({', '.join(neutral_teams)}) — that is the value a NEUTRAL hill broadcasts, and "
+                    f"({', '.join(neutral_teams)}), the value a NEUTRAL hill broadcasts, and "
                     "anyone moved onto it later reads every uncaptured point as their own. Use tid 0, 1 or 3.")
 
         # F97: a hill mode has THREE usable teams, never four. Four tids exist (0-3, F35), a neutral hill
@@ -2955,7 +2955,7 @@ class Compiler:
         if vip is not None:
             rostered = {str(p.get("player_id")) for p in roster}
             if not isinstance(vip, str) or vip not in rostered:
-                errors.append(f"vip_player_id {vip!r} is not on the roster — pick the VIP from the players in this session")
+                errors.append(f"vip_player_id {vip!r} is not on the roster: pick the VIP from the players in this session")
         elif (config.get("presentation") or {}).get("preset") == "vip":
             warnings.append("VIP profile with no VIP named — set config.vip_player_id or nobody's headset holds the "
                             "white VIP state and vip_hit / vip_down have no subject")
@@ -2979,12 +2979,12 @@ class Compiler:
         vocab = ", ".join(f"{k!r} ({v})" for k, v in sorted(STATION_SOURCES.items()))
         if mode in _STATION_GATED_MODES:
             if not src:
-                errors.append(f"mode {mode!r} needs a station/objective source (Tier 1) — set "
+                errors.append(f"mode {mode!r} needs a station/objective source (Tier 1): set "
                               f"config.station_source to one of: {vocab}")
             elif src not in STATION_SOURCES:
                 # This used to be a bare truthiness gate, so any string at all passed -- including a
                 # typo, which then shipped a match with nothing on the field emitting its objective.
-                errors.append(f"unknown station_source {src!r} for mode {mode!r} — valid values are: {vocab}")
+                errors.append(f"unknown station_source {src!r} for mode {mode!r}: use one of {vocab}")
             elif mode in _OBJECTIVE_MODES:
                 # F88: a beacon carries NO station id, so one grenade is indistinguishable from
                 # another and the bridge can only ever speak for ONE point. KotH is exactly that;
@@ -2999,7 +2999,7 @@ class Compiler:
                 points = config.get("control_points")
                 if src == "grenade" and isinstance(points, int) and not isinstance(points, bool) and points > 1:
                     errors.append(
-                        f"F88: {points} control points on a grenade source is not buildable — a hill "
+                        f"F88: {points} control points on a grenade source is not buildable, because a hill "
                         "beacon carries no station id, so two grenades in range are indistinguishable "
                         "on the wire and would fight over the same point. Run ONE point (koth), or "
                         "supply a station source that names its point")
@@ -3013,22 +3013,21 @@ class Compiler:
                 if src == "grenade":
                     warnings.append(
                         "SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND "
-                        "PLACE IT — a hill that starts already owned skews the whole match, and only a "
-                        "power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)")
+                        "PLACE IT (A HILL THAT STARTS ALREADY OWNED SKEWS THE WHOLE MATCH, AND ONLY A POWER "
+                        "CYCLE GUARANTEES NEUTRAL). ONE POINT ONLY (F88)")
                 elif src == "phone":
                     # A phone point is NOT power-cycled: arming is what resets it (utility.js
                     # `applyStationConfig` calls `resetPoint()` when the game id changes), so the
                     # checklist is about the app being in the right role and staying awake on the point.
                     warnings.append(
-                        "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION — a phone in the UTILITY role, kind "
-                        "CONTROL; confirm it shows MC-ARMED for THIS game (arming resets the point; do "
-                        "NOT power-cycle it), keep it awake on the point, and check its battery. "
-                        "Players must be advertising (the HUD does this) or the point counts nobody")
+                        "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE "
+                        "POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT "
+                        "AWAKE ON THE POINT, AND CHECK ITS BATTERY")
                 else:
                     warnings.append(
-                        "SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE "
-                        "WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it "
-                        "speaks the protocol our nodes read. Use OBJECTIVE SOURCE PHONE for the MVP hill")
+                        "SETUP: THE IR STATION IS UNPROVEN (WE HAVE NEVER HAD ONE ON THE BENCH, SO NOTHING "
+                        "CONFIRMS IT SPEAKS THE PROTOCOL OUR NODES READ): PLACE AND POWER IT, AND CHECK IT READS NEUTRAL BEFORE THE "
+                        "WHISTLE, OR USE OBJECTIVE SOURCE PHONE")
 
         # unknown weapon / perk ids; a perk rides BESIDE a secondary weapon (A14) -- the ALT-button pairing is refused by policy.py before it gets here
         for p in roster:
@@ -3195,7 +3194,7 @@ class Compiler:
                 fn = sir.get(key)
                 if fn is None:
                     flagged.add(wid)
-                    errors.append(f"{wid} keys $SIR {key[0]},{key[1]} — NO ROW in the pushed table, so "
+                    errors.append(f"{wid} keys $SIR {key[0]},{key[1]} with NO ROW in the pushed table, so "
                                   f"every hit is silently dropped (ir-effects-design.md §6.2)")
                 elif fn in _SIR_NO_POOL:
                     flagged.add(wid)

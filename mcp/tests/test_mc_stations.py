@@ -294,7 +294,7 @@ def test_a_station_that_is_offline_is_flagged_and_armed_on_its_next_hello():
     s.net.simulate_utility_hello("util-1")
     s.net.push = lambda nid, kind, body: False           # NetServer: "no live socket"
     v = s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
-    assert v["arm_pending"] and "BRING IT BACK TO RE-ARM" in v["attention"]
+    assert v["arm_pending"] and "NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM" in v["attention"]
     sent = []
     s.net.push = lambda nid, kind, body: sent.append((nid, kind, body))
     s.net.simulate_utility_hello("util-1")               # it walks back into range
@@ -373,7 +373,7 @@ def test_a_station_armed_for_an_older_game_is_flagged_on_the_items_panel():
     s.push_config(force=True)
     v = s._station_view("util-1")
     assert v["armed"]["game"] == 1 and v["game"] == 2
-    assert "ARMED FOR AN OLDER GAME" in v["attention"], v["attention"]
+    assert "ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY" in v["attention"], v["attention"]
 
 
 # --------------------------------------------------------------------------- the allow-list
@@ -409,12 +409,12 @@ def test_the_utility_heartbeat_is_kept_as_the_stations_report():
                                      "control": {"owner": 1, "progress": 100, "hold_ms": {"1": 42000}}}, s.now_ms() + 1)
     v = s._station_view("util-1")
     assert v["report"]["control"]["hold_ms"] == {"1": 42000} and v["report"]["live"] is True
-    assert "BATTERY LOW" in v["attention"]
+    assert "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE" in v["attention"]
     # the phone advertising a DIFFERENT id than assigned is the kind of drift the panel exists to show
     s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility",
                                      "kind": "control", "station_id": 2, "armed": False}, s.now_ms() + 2)
     att = s._station_view("util-1")["attention"]
-    assert any("ADVERTISES ID 2" in a for a in att) and "PHONE SAYS NOT ARMED" in att, att
+    assert any("ADVERTISES ID 2" in a for a in att) and "PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY" in att, att
 
 
 def test_a_station_gated_game_with_nothing_assigned_says_so_in_config_warnings():
@@ -505,7 +505,7 @@ def test_the_phones_report_only_contradicts_an_arming_it_post_dates():
     s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility",
                                      "kind": "respawn", "station_id": 1, "armed": False}, base + 20)
     att = s._station_view("util-1")["attention"]
-    assert "PHONE SAYS NOT ARMED" in att and any("ADVERTISES ID 1" in a for a in att), att
+    assert "PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY" in att and any("ADVERTISES ID 1" in a for a in att), att
 
 
 def test_end_reaches_every_hud_but_counts_only_bound_players():

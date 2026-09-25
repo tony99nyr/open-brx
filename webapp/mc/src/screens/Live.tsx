@@ -12,6 +12,7 @@ import { isKillScored } from './gameSummary';
 import { heldSeconds, hillOwner, isObjectiveScored, objectiveWord } from './objective';
 import { PowerupStrip } from '../ui/Powerups';
 import { StationAlerts } from '../ui/StationAlerts';
+import { colourOf, glyphed } from '../alerts';
 
 // S24 (game test 2026-09-11, D4): the board was `minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px …`
 // at `gap:'0 10px'` with 9 px headers over 14-16 px values, and K/D/A were three identical right-aligned
@@ -88,7 +89,7 @@ export function rowFault(r: LiveRow, ctx: { offline?: boolean; endUnconfirmed?: 
 export const POOLS_WRONG = 'POOLS WRONG';
 
 /** M7: why END and RECALL are off while MC is offline. */
-const OFFLINE_WHY = 'END and RECALL need MC, and MC is offline. They come back when it reconnects.';
+const OFFLINE_WHY = 'MC is offline: END and RECALL return when it reconnects.';
 
 /** How far a control actually got. An older MC sends no `nodes` at all, and "REACHED 0 OF 0" is a
  *  worse answer than not claiming a number — so the clause is dropped rather than invented. */
@@ -113,9 +114,9 @@ export function Live() {
   const lv = state.live;
   if (!lv) {
     return (
-      <div className="screen" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>
+      <div className="screen" data-alert="live-no-match" data-sev="neutral" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: colourOf('live-no-match') }}>
         <OrphanMatch />
-        NO MATCH LIVE — THE BOARD FILLS WHEN NODES GO LIVE AT T-0.
+        NO MATCH LIVE: THE BOARD FILLS WHEN NODES GO LIVE AT T-0.
       </div>
     );
   }
@@ -211,36 +212,39 @@ export function Live() {
       <PowerupStrip compact />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '2 1 560px', minWidth: 0 }}>
-          {offline && (
-            // M7: the rows below are the last snapshot, not the field. Said once, above them.
-            <div data-testid="live-offline" role="status"
-              style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`,
-                font: F.mono(500, 11), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>
-              MC IS OFFLINE: THE BOARD IS FROZEN AT THE LAST SNAPSHOT, SO NOBODY'S STATUS IS KNOWN.
-            </div>
-          )}
+          {/* F221 round 2: the frame already carries MC_OFFLINE once, across every screen. This board said
+              it again in a second red banner; the rows dim (opacity below) is the only thing this screen
+              adds, so the repeat is gone. `controls-offline` still names what THIS screen loses. */}
           {lv.phones_ended && (
             // A47 review: an ADOPTED match that every phone has already ended. MC never ends an adopted match
             // on its own guess (it holds no config for it), so the operator is told once, in one line.
-            <div data-testid="phones-ended" role="status"
-              style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.warn}`,
-                font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn, lineHeight: 1.5 }}>
-              PHONES HAVE ENDED THIS MATCH: PRESS END
+            <div data-testid="phones-ended" role="status" data-alert="live-phones-ended" data-sev="amber"
+              style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${colourOf('live-phones-ended')}`,
+                font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf('live-phones-ended'), lineHeight: 1.5 }}>
+              {glyphed('amber', 'PHONES HAVE ENDED THIS MATCH: PRESS END')}
             </div>
           )}
-          {edLine && (
-            <div data-testid="end-delivery" role={edLine.ok ? undefined : 'alert'}
-              style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${edLine.ok ? T.line2 : T.bad}`,
-                borderLeft: `3px solid ${edLine.ok ? T.ok : T.bad}`, background: edLine.ok ? undefined : 'rgba(255,82,82,.07)',
-                font: F.mono(500, 11), letterSpacing: '.1em', color: edLine.ok ? T.dim : T.bad, lineHeight: 1.5 }}>
-              {edLine.ok ? '✓ ' : '▲ '}{edLine.text}
-            </div>
-          )}
+          {edLine && (() => {
+            // F221: a clean end is NOT-ALERT (green, unchanged). An unconfirmed end while MC is still
+            // retrying is AMBER (recoverable); once the ladder is spent it is RED (act now, end it on
+            // the gun) — the same split RECAP uses, so the two screens read one condition one way.
+            const edSev = edLine.ok ? null : ed?.retrying ? 'amber' : 'red';
+            const edId = edLine.ok ? 'live-end-delivery-ok' : ed?.retrying ? 'live-end-delivery-retrying' : 'live-end-delivery-spent';
+            const c = edLine.ok ? T.ok : colourOf(edId);
+            return (
+              <div data-testid="end-delivery" role={edLine.ok ? undefined : 'alert'} data-alert={edId} data-sev={edSev ?? 'neutral'}
+                style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${edLine.ok ? T.line2 : c}`,
+                  borderLeft: `3px solid ${c}`, background: edLine.ok ? undefined : edSev === 'red' ? 'rgba(255,82,82,.07)' : 'rgba(255,176,32,.07)',
+                  font: F.mono(500, 11), letterSpacing: '.1em', color: edLine.ok ? T.dim : c, lineHeight: 1.5 }}>
+                {edLine.ok ? `✓ ${edLine.text}` : glyphed(edSev!, edLine.text)}
+              </div>
+            );
+          })()}
           {/* the widened S24 columns total ~780px; the wrapper has to say so or the scroll container
               under-reports how much there is to scroll to on a phone. <ScrollX> is what TELLS the
               operator it was cut: on a 393px phone the board is 783px in a 345px box, and it used to
               end at K/D with nothing on screen saying there was more (393px walk, 2026-09-12). */}
-          <ScrollX hint="▸ SCROLL FOR K/D · ACC · STK · STATUS">
+          <ScrollX hint="▸ SCROLL FOR K/D · ACC · STK · STATUS" hintStyle={{ color: colourOf('live-scroll-hint') }}>
           <div style={{ minWidth: 780 }}>
             <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, padding: '9px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, font: F.mono(600, 11), letterSpacing: '.14em', color: T.dim }}>
               {COLUMNS.map(c => (
@@ -260,12 +264,12 @@ export function Live() {
               ))}
             </div>
             {held && (
-              <div data-testid="order-held" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.warn, marginTop: 8 }}>
+              <div data-testid="order-held" data-alert="live-order-held" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-order-held'), marginTop: 8 }}>
                 ORDER HELD WHILE THE POINTER IS ON THE BOARD OR A MENU IS OPEN. IT RE-SORTS WHEN YOU MOVE AWAY.
               </div>
             )}
             {anyTeamKill && (
-              <div data-testid="team-kill-note" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.warn, marginTop: 8 }}>
+              <div data-testid="team-kill-note" data-alert="live-team-kill-note" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-team-kill-note'), marginTop: 8 }}>
                 K BELOW ZERO: {TEAM_KILL_NOTE}
               </div>
             )}
@@ -288,7 +292,7 @@ export function Live() {
                 <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setRecallConfirm(true)} disabled={offline}
                   title={offline ? OFFLINE_WHY : 'Two-step: revive and hold every node in range'}>RECALL</GhostButton>
               )}
-              {offline && <span data-testid="controls-offline" style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: T.bad }}>{OFFLINE_WHY.toUpperCase()}</span>}
+              {offline && <span data-testid="controls-offline" data-alert="live-controls-offline" data-sev="red" style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: colourOf('live-controls-offline') }}>{glyphed('red', OFFLINE_WHY.toUpperCase())}</span>}
               <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT MATCH TIME {fmtClock(lv.time_limit_s)}.</span>
             </div>
           </div>
@@ -309,9 +313,15 @@ export function Live() {
               // F357: an AFTER WHISTLE kill counts for nothing; it is drawn like a WITHHELD line (dashed, dim), not a medal.
               const late = ev.tag === 'AFTER WHISTLE';
               const alert = ev.kind === 'alert';
+              // F221: FIRST BLOOD/TEAM KILL are fact tags, not faults — T.ink, not the T.bad a real
+              // alert uses (live-feed-first-blood-tag, live-feed-team-kill-tag, retired as NOT-ALERT).
+              // MC's own call-out (kind:'alert') is informational too, so it takes the neutral colour.
+              // F221 round 1: a medal tag (DOUBLE KILL, a streak, ...) is a positive highlight, not a
+              // fault, so it takes T.acc, the same non-alert highlight a sync event uses -- not T.warn,
+              // which now means only "fix before the next match".
               const color = withheld || late ? T.micro
-                : ev.tag === 'FIRST BLOOD' || ev.tag === 'TEAM KILL' ? T.bad
-                : alert ? T.acc : ev.tag ? T.warn : ev.kind === 'sync' ? T.acc : T.line;
+                : ev.tag === 'FIRST BLOOD' || ev.tag === 'TEAM KILL' ? T.ink
+                : alert ? colourOf('live-feed-alert-line') : ev.tag ? T.acc : ev.kind === 'sync' ? T.acc : T.line;
               return (
                 <div key={i} data-feed-kind={ev.kind} data-feed-tag={ev.tag ?? ''}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
@@ -330,7 +340,7 @@ export function Live() {
             {/* WITHHELD is a fact about DELIVERY, not about the game — say so once, under the feed,
                 rather than train the operator to read a dashed row as noise. */}
             {feed.some(e => e.tag === 'WITHHELD') && (
-              <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, padding: '6px 10px', lineHeight: 1.5 }}>
+              <div data-alert="live-feed-withheld-note" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-feed-withheld-note'), padding: '6px 10px', lineHeight: 1.5 }}>
                 WITHHELD = MC RECORDED IT BUT DID NOT CALL IT TO THE PLAYERS.
               </div>
             )}
@@ -382,8 +392,9 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
     <div data-testid="hill-panel" style={{ marginBottom: 16, border: `1px solid ${T.line}`, background: T.panelDeep }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '9px 14px', background: T.panelAlt, borderBottom: `1px solid ${T.line}` }}>
         <span style={{ font: F.chk(700, 12), letterSpacing: '.24em', color: T.dim }}>{word} // POSSESSION</span>
-        <span data-hill-owner="1" style={{ font: F.mono(600, 11), letterSpacing: '.1em',
-          color: owner?.team_id ? teamColor(owner.team_id) : T.micro }}>
+        <span data-hill-owner="1" data-alert={owner ? undefined : 'live-hill-owner-none'} data-sev={owner ? undefined : 'neutral'}
+          style={{ font: F.mono(600, 11), letterSpacing: '.1em',
+          color: owner?.team_id ? teamColor(owner.team_id) : colourOf('live-hill-owner-none') }}>
           {owner ? `${owner.text}${owner.stale ? ' (LAST REPORT, STATION OUT OF REACH)' : ''}` : `OWNER NOT REPORTED LIVE`}
         </span>
       </div>
@@ -400,7 +411,7 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
             </div>
           );
         }) : (
-          <div data-hill-none="1" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.5 }}>
+          <div data-hill-none="1" data-alert="live-hill-none" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-hill-none'), lineHeight: 1.5 }}>
             NO PHONE HAS REPORTED POSSESSION YET. THE {word} TIME SHOWS HERE WHEN ONE DOES; UNTIL THEN THE WINNER IS THE HOST'S CALL.
           </div>
         )}
@@ -415,9 +426,10 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
 }
 function TimeCell({ remaining, sub, dim }: { remaining: number; sub: string; dim?: boolean }) {
   return (
-    <div role="status" aria-live="off" title={dim ? 'MC offline — clock frozen at the last snapshot' : undefined}
-      style={{ flex: '0 1 240px', background: T.panel, border: `1px solid ${dim ? T.bad : T.line}`, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, opacity: dim ? .45 : 1 }}>
-      <ClockSub text={dim ? 'TIME REMAINING · OFFLINE' : 'TIME REMAINING'} style={{ font: F.mono(500, 11), letterSpacing: '.2em', color: T.micro }} />
+    <div role="status" aria-live="off" data-alert={dim ? 'live-timecell-offline' : undefined} data-sev={dim ? 'red' : undefined}
+      title={dim ? 'MC offline: clock frozen at the last snapshot' : undefined}
+      style={{ flex: '0 1 240px', background: T.panel, border: `1px solid ${dim ? colourOf('live-timecell-offline') : T.line}`, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, opacity: dim ? .45 : 1 }}>
+      <ClockSub text={dim ? 'TIME REMAINING, OFFLINE' : 'TIME REMAINING'} style={{ font: F.mono(500, 11), letterSpacing: '.2em', color: T.micro }} />
       {/* the clock is the one number that changes every second — a per-digit cell is what stops it
           re-centring on every tick (the HUD's A5 defect, same cause) */}
       <span style={{ font: F.osw(700, 40), lineHeight: 1 }}><Num value={fmtClock(remaining)} /></span>
@@ -457,24 +469,53 @@ function Row({ r, endUnconfirmed, open, onToggle, offline }: { r: LiveRow; endUn
             transform: open ? 'rotate(90deg)' : undefined }}>▸</span>
           <span data-row-name={r.player_id} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.display}</span>
         </button>
-        {locked && <span data-gun-locked={r.player_id} role="alert" title="The player's phone proved that the gun stopped answering."
-          style={{ display: 'block', font: F.mono(700, 11), letterSpacing: '.08em', color: T.bad }}>{locked}</span>}
-        {shielded && <span data-possibly-protected={r.player_id} role="status"
+        {locked && <span data-gun-locked={r.player_id} data-alert="live-row-gun-locked" data-sev="red" role="alert" title="The player's phone proved that the gun stopped answering."
+          style={{ display: 'block', font: F.mono(700, 11), letterSpacing: '.08em', color: colourOf('live-row-gun-locked') }}>{glyphed('red', locked)}</span>}
+        {shielded && <span data-possibly-protected={r.player_id} data-alert="live-row-shielded" data-sev="amber" role="status"
           title="This phone went quiet before it ended spawn protection. Hits on this player may do no damage until the phone reconnects."
-          style={{ display: 'block', font: F.mono(700, 11), letterSpacing: '.08em', color: T.warn }}>{shielded} · HITS MAY NOT COUNT</span>}
-        {silent && <span data-gun-silent={r.player_id} title="The phone says this gun's health and ammo readout may be out of date."
-          style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: r.pool_stale === 'pool_wrong' ? T.warn : T.micro }}>{silent}</span>}
-        {cure && <span data-gun-cure={r.player_id} title="The node's own outcome after it probed the gun."
-          style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: r.cure === 'no_answer' ? T.warn : T.micro }}>{cure}</span>}
+          style={{ display: 'block', font: F.mono(700, 11), letterSpacing: '.08em', color: colourOf('live-row-shielded') }}>{glyphed('amber', shielded)} · HITS MAY NOT COUNT</span>}
+        {silent && (() => {
+          // F221: GUN NOT FIRING / GUN WRITE LOST / GUN SILENT stay the quiet grey they always were
+          // (NEUTRAL, T.micro — pinned by test/gun-silent.test.tsx across LIVE and ARMORY alike).
+          // GUN POOLS WRONG is the one that needs the operator NOW (RED, live-row-pools-wrong-cue).
+          const wrong = r.pool_stale === 'pool_wrong';
+          const id = wrong ? 'live-row-pools-wrong-cue'
+            : r.pool_stale === 'no_fire' ? 'live-row-gun-not-firing'
+            : r.pool_stale === 'write_lost' ? 'live-row-gun-write-lost'
+            : 'live-row-gun-silent';
+          return (
+            <span data-gun-silent={r.player_id} data-alert={id} data-sev={wrong ? 'red' : 'neutral'}
+              title="The phone says this gun's health and ammo readout may be out of date."
+              style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: wrong ? colourOf('live-row-pools-wrong-cue') : T.micro }}>
+              {wrong ? glyphed('red', silent) : silent}
+            </span>
+          );
+        })()}
+        {cure && (() => {
+          // F221: no_answer needs the operator NOW (RED). `dead`/`alive` are the node's own resolved
+          // verdicts, the quiet grey they always were (NEUTRAL/NOT-ALERT — pinned by gun-silent.test.tsx).
+          const noAnswer = r.cure === 'no_answer', dead = r.cure === 'dead';
+          return (
+            <span data-gun-cure={r.player_id} data-alert={noAnswer ? 'live-row-cure-no-answer' : dead ? 'live-row-cure-dead' : undefined}
+              data-sev={noAnswer ? 'red' : dead ? 'neutral' : undefined}
+              title="The node's own outcome after it probed the gun."
+              style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: noAnswer ? colourOf('live-row-cure-no-answer') : T.micro }}>
+              {noAnswer ? glyphed('red', cure) : cure}
+            </span>
+          );
+        })()}
       </span>
+      {/* F221 round 1: a negative K/K-D is a data fact a team kill explains (TEAM_KILL_NOTE), not a
+          fault to fix before the next match; a streak of 3+ is a positive highlight. Neither is an
+          alert, so neither takes T.warn -- amber means only "fix before the next match" now. */}
       <span data-cell="k" title={r.kills < 0 ? TEAM_KILL_NOTE : undefined}
-        style={{ textAlign: 'right', font: F.osw(700, 17), color: r.kills < 0 ? T.warn : undefined, ...edge('k') }}><Num value={r.kills} /></span>
+        style={{ textAlign: 'right', font: F.osw(700, 17), color: r.kills < 0 ? T.ink : undefined, ...edge('k') }}><Num value={r.kills} /></span>
       <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim }}><Num value={r.deaths} /></span>
       <span data-cell="a" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim }}><Num value={r.assists} /></span>
       <span data-cell="kd" title={r.kd < 0 ? TEAM_KILL_NOTE : undefined}
-        style={{ textAlign: 'right', font: F.osw(600, 15), color: r.kd < 0 ? T.warn : undefined, ...edge('kd') }}><Num value={r.kd.toFixed(1)} /></span>
+        style={{ textAlign: 'right', font: F.osw(600, 15), color: r.kd < 0 ? T.ink : undefined, ...edge('kd') }}><Num value={r.kd.toFixed(1)} /></span>
       <Acc r={r} />
-      <span data-cell="stk" style={{ textAlign: 'right', font: F.osw(600, 15), color: stk >= 3 ? T.warn : T.dim, ...edge('stk') }}><Num value={stk} /></span>
+      <span data-cell="stk" style={{ textAlign: 'right', font: F.osw(600, 15), color: stk >= 3 ? T.acc : T.dim, ...edge('stk') }}><Num value={stk} /></span>
       {/* A42: the END overrides ALIVE/LAST KNOWN here on purpose. Once the match is over, whether this
           player was alive is history; whether their HUD took the end is the only live question about
           them, and it is the one the operator is standing on the field trying to answer. */}
@@ -483,13 +524,24 @@ function Row({ r, endUnconfirmed, open, onToggle, offline }: { r: LiveRow; endUn
           or more ("10:00" became "0:00"). `fmtDuration` gives the same unpadded reading directly. */}
       {/* M7: while MC is offline nothing on this row is current, so the state cells say UNKNOWN rather
           than a confident ALIVE with a "0s" sync that stopped counting when the link dropped. */}
+      {/* F221 (2026-09-25): each branch is its own catalogue id — END NOT CONFIRMED and LAST KNOWN are
+          AMBER (fix before the next match), POOLS WRONG is RED (act now), a plain RESPAWN countdown
+          is NEUTRAL (ordinary game state, not a fault), UNKNOWN (offline) is NEUTRAL. ALIVE is
+          NOT-ALERT (positive, T.ok, unchanged). */}
       <span data-cell="status" data-end-confirm={endUnconfirmed ? 'pending' : undefined}
+        data-alert={offline ? 'live-row-status-unknown' : endUnconfirmed ? 'live-row-status-end-not-confirmed'
+          : poolsWrong ? 'live-row-status-poolswrong' : stale ? 'live-row-status-last-known' : dead ? 'live-row-status-respawn' : undefined}
+        data-sev={offline ? 'neutral' : endUnconfirmed ? 'amber' : poolsWrong ? 'red' : stale ? 'amber' : dead ? 'neutral' : undefined}
         title={offline ? 'MC is offline: this is the last snapshot, not the current state'
           : endUnconfirmed ? 'This HUD has not confirmed the end — that tagger may still be in the match'
           : never ? 'MC has not heard from this phone since MC started' : undefined}
-        style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: offline ? T.micro : endUnconfirmed ? T.bad : stale || poolsWrong ? T.warn : dead ? T.bad : T.ok, ...edge('status') }}>
+        style={{ font: F.chk(700, 11), letterSpacing: '.12em',
+          color: offline ? colourOf('live-row-status-unknown') : endUnconfirmed ? colourOf('live-row-status-end-not-confirmed')
+            : poolsWrong ? colourOf('live-row-status-poolswrong') : stale ? colourOf('live-row-status-last-known')
+            : dead ? colourOf('live-row-status-respawn') : T.ok, ...edge('status') }}>
         {offline ? 'UNKNOWN' : endUnconfirmed ? 'END NOT CONFIRMED' : never ? 'NOT HEARD' : stale ? 'LAST KNOWN' : poolsWrong ? POOLS_WRONG : dead ? `RESPAWN ${fmtDuration(r.respawn_in_s ?? 0)}` : 'ALIVE'}</span>
-      <span data-cell="sync" style={{ textAlign: 'right', font: F.mono(500, 11), letterSpacing: '.04em', color: offline ? T.micro : syncWarn ? T.warn : T.faint }}>
+      <span data-cell="sync" data-alert={!offline && syncWarn ? 'live-row-sync-stale' : undefined} data-sev={!offline && syncWarn ? 'neutral' : undefined}
+        style={{ textAlign: 'right', font: F.mono(500, 11), letterSpacing: '.04em', color: offline ? T.micro : syncWarn ? colourOf('live-row-sync-stale') : T.faint }}>
         {offline || never ? '—' : <>{fmtAge(r.sync_age_ms)}{stale ? ' AGO' : ''}</>}</span>
     </div>
   );

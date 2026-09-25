@@ -1,5 +1,7 @@
 import { useStore } from '../store';
 import { F, T } from '../tokens';
+import { colourOf, serverLine } from '../alerts';
+import { Alert } from './Alert';
 import { friendlyMcVerifyLine } from './McVerify';
 
 /** Known `SETUP: ` bodies, rewritten as short, sentence-case, id-free lines for the operator.
@@ -17,15 +19,20 @@ const KNOWN_SETUP_LINES: Array<{ test: RegExp; line: string }> = [
   // we have measured") — match the grenade body by its distinctive phrase, not the bare word, or an
   // ir_station game would be misread as a grenade one.
   // First: this body names the grenade or an IR station too, and must not read as either one's field step.
-  { test: /A CONTROL STATION IS ASSIGNED BUT/i, line: "A control station is assigned, but this game's objective is not a station, so every phone ignores its hill. Set OBJECTIVE SOURCE to PHONE, or clear the CONTROL station in ITEMS." },
+  //
+  // F221 polish r2: the three STATION_CONFLICT lines below now read `WHAT: DO`, one colon, no full stop
+  // in the middle — they used to be two full sentences (a fact, then a command), which read as prose,
+  // not an alert. `conflictWords()` below is the one place that upper-cases them for GAMES/LOBBY/ITEMS,
+  // so the words cannot drift apart across the three screens again.
+  { test: /A CONTROL STATION IS ASSIGNED BUT/i, line: "A control station is assigned, but the objective is not a station, so every phone ignores its hill: set OBJECTIVE SOURCE to PHONE, or clear the CONTROL station in ITEMS." },
   { test: /POWER-CYCLE THE GRENADE/i, line: 'Power-cycle the grenade so it starts neutral, then set it to hill mode and place it. This mode supports one point only.' },
   { test: /IR STATION/i, line: 'Place and power the IR station, and check it reads neutral before the whistle. This source is unproven on our bench; the MVP hill is OBJECTIVE SOURCE PHONE.' },
   { test: /CONTROL POINT IS A BLUETOOTH STATION/i, line: 'The control point is a Bluetooth station assigned as CONTROL. Confirm it shows MC-armed for this game, keep it awake, and check its battery. Do not power-cycle it once armed.' },
   // M12 (visual QA 2026-09-24): the server does not say WHICH device will be the station (a phone or a
   // StickS3), so these say "a station", never "a utility phone".
-  { test: /NO CONTROL STATION IS ASSIGNED/i, line: "No control station is assigned. This game's objective is a Bluetooth control point, so assign a station as CONTROL in ITEMS and arm it, or nothing on the field is the hill." },
-  { test: /NO RESPAWN STATION/i, line: 'No respawn station is assigned. Respawn is set to scanner, so a downed player can only come back at a station. Assign a station as RESPAWN in ITEMS and arm it.' },
-  { test: /SCANNER RESPAWN HAS NO STATION FOR\s+(.+?)\s+—/i, line: 'Scanner respawn has no station for $1. Those players use timed AUTO respawn; assign another RESPAWN station if you want station respawn for both teams.' },
+  { test: /NO CONTROL STATION IS ASSIGNED/i, line: "No control station is assigned, and the objective is a Bluetooth control point, so nothing on the field is the hill: assign a station as CONTROL in ITEMS and arm it." },
+  { test: /NO RESPAWN STATION/i, line: 'No respawn station is assigned, and respawn is set to scanner, so a downed player can only come back at a station: assign a station as RESPAWN in ITEMS and arm it.' },
+  { test: /SCANNER RESPAWN HAS NO STATION FOR\s+(.+?)\s+\(/i, line: 'Scanner respawn has no station for $1. Those players use timed AUTO respawn; assign another RESPAWN station if you want station respawn for both teams.' },
 ];
 
 /** `SETUP: ...` -> a short, sentence-case, id-free line. Exported for the unit test that proves the
@@ -51,24 +58,46 @@ export const STATION_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT|NO CONTROL ST
 export const CONTROL_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT/i;
 export const setupLines = (warnings: string[] | undefined) => (warnings ?? []).filter(w => /^SETUP:/i.test(w));
 
-/** The amber block for `STATION_CONFLICT` lines, inside a `role="status"` region that is ALWAYS mounted: these
- *  are standing facts, not interruptions, and a region that exists before its first line is the one a screen
- *  reader announces (polish r1). Titled FIX BEFORE ARM; SETUP CONFLICT only when the CONTROL-under-grenade
- *  conflict is among the lines, since only that one is the game and ITEMS contradicting each other. */
+/** F221 polish r2: one function for a `STATION_CONFLICT` line's alert words, so GAMES, LOBBY/ARMED
+ *  (`SetupConflicts` below) and ITEMS (the CONTROL card) show the exact same words — the friendly
+ *  rewrite, upper case, `WHAT: DO`. Never re-typed at any of the three call sites. */
+export const conflictWords = (raw: string): string => friendlySetupLine(raw).toUpperCase();
+
+/** The conflict block for `STATION_CONFLICT` lines, inside a `role="status"` region that is ALWAYS mounted:
+ *  these are standing facts, not interruptions, and a region that exists before its first line is the one a
+ *  screen reader announces (polish r1). Titled FIX BEFORE ARM; SETUP CONFLICT only when the CONTROL-under-
+ *  grenade conflict is among the lines, since only that one is the game and ITEMS contradicting each other.
+ *
+ *  F221 polish r1: each line used to render as flat amber text, so the control-vs-grenade conflict (RED in
+ *  the catalogue, `frame-setup-conflict-control-vs-grenade`, because the game will not play as set up) read
+ *  exactly like the ordinary "no station assigned yet" amber. Each line now goes through `serverLine`, the
+ *  same lookup the LOBBY/GAMES fault lists use, so its true catalogued severity decides its colour; the box
+ *  itself turns red (not amber) the moment any line inside it is.
+ *
+ *  F221 polish r2: Tony's rule is explicit that AMBER is never a banner (tint + border + left rule) —
+ *  only RED draws one. This block used to keep the tinted, bordered box even with every line amber; now
+ *  the tint/border/rule apply only while `anyRed`, and an amber-only conflict is plain lines under the
+ *  heading, the same weight as the neutral "Match reminders" panel below it. */
 export function SetupConflicts({ style }: { style?: React.CSSProperties }) {
   const { state } = useStore();
   const lines = setupLines(state?.config_warnings).filter(w => STATION_CONFLICT.test(w));
   const title = lines.some(w => CONTROL_CONFLICT.test(w)) ? 'SETUP CONFLICT' : 'SETUP: FIX BEFORE ARM';
+  const rows = lines.map(w => ({ w, ...serverLine(w, 'amber') }));
+  const anyRed = rows.some(r => r.sev === 'red');
+  const boxColor = anyRed ? T.bad : T.warn;
   return (
     <div role="status" data-setup-region="conflict">
       {lines.length > 0 && (
         <div data-testid="setup-conflict"
-          style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'rgba(255,176,32,.08)', border: `1px solid ${T.warn}`,
-                   borderLeft: `3px solid ${T.warn}`, padding: '10px 14px', ...style }}>
-          <span style={{ font: F.chk(700, 11), letterSpacing: '.16em', color: T.warn }}>▲ {title}</span>
-          {lines.map((w, i) => (
-            <div key={i} style={{ font: F.chk(600, 12.5), letterSpacing: '.02em', lineHeight: 1.5, color: T.ink }}>{friendlySetupLine(w)}</div>
-          ))}
+          style={{ display: 'flex', flexDirection: 'column', gap: 6,
+                   ...(anyRed ? { background: 'rgba(255,82,82,.08)', border: `1px solid ${boxColor}`, borderLeft: `3px solid ${boxColor}`, padding: '10px 14px' } : {}),
+                   ...style }}>
+          {/* the glyph lives on each line below (via `<Alert>`), never doubled on this heading too */}
+          <span style={{ font: F.chk(700, 11), letterSpacing: '.16em', color: boxColor }}>{title}</span>
+          {/* `role="status"` on every row: this whole region is a standing fact, always mounted, never
+              an interruption. `<Alert>` defaults red/amber to `role="alert"`, which this box must not
+              carry (H2, polish r1). */}
+          {rows.map((r, i) => <Alert key={i} id={r.id} sev={r.sev} variant="line" role="status">{conflictWords(r.w)}</Alert>)}
         </div>
       )}
     </div>
@@ -113,7 +142,9 @@ export function SetupSteps({ style }: { style?: React.CSSProperties }) {
     {(steps.length > 0 || verifyLine) && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6,
                                  background: T.panelSoft, border: `1px solid ${T.line}`, padding: '10px 14px', ...style }}>
-      <span style={{ font: F.chk(600, 11), letterSpacing: '.16em', textTransform: 'uppercase', color: T.dim }}>Match reminders</span>
+      {/* F221: a standing, de-alarmed reminder panel (field feedback 2026-09-19) — NEUTRAL by design,
+          so the label colour comes off the catalogue rather than a bare token. */}
+      <span style={{ font: F.chk(600, 11), letterSpacing: '.16em', textTransform: 'uppercase', color: colourOf('frame-setup-steps-reminders') }}>Match reminders</span>
       {steps.length > 0 && (
         <div data-testid="setup-steps" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {steps.map((w, i) => (

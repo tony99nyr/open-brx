@@ -111,10 +111,11 @@ describe('the standby route tells a missing route from a missing player', () => 
     expect(await with404('{"error":"no such player on standby"}', 'application/json', a => a.reinstatePlayer('p1'))).toBe('no such player on standby');
   });
   it('a bare 404 (no route on an older MC) surfaces the skew text, with the restart command', async () => {
+    // F221 (2026-09-25): the shared MC_OLDER words, not a screen-specific paraphrase.
     const msg = await with404('Not Found', 'text/plain', a => a.standbyPlayer('p1'));
-    expect(msg).toMatch(/PREDATES THIS UI/);
-    expect(msg).toMatch(/RESTART IT: python -m brx_mcp\.mc/);
-    expect(await with404('Not Found', 'text/plain', a => a.reinstatePlayer('p1'))).toMatch(/PREDATES THIS UI/);
+    expect(msg).toMatch(/OLDER THAN THIS CONSOLE/);
+    expect(msg).toMatch(/start\.sh/);
+    expect(await with404('Not Found', 'text/plain', a => a.reinstatePlayer('p1'))).toMatch(/OLDER THAN THIS CONSOLE/);
   });
 });
 
@@ -147,13 +148,14 @@ describe('makeReport posts to /api/report and reads version skew plainly', () =>
   });
 
   it('a 404 (route missing) shows the old-server message, with the fix', async () => {
+    // F221 round 2: one fact, one sentence — MC_OLDER's own words (`olderServer()`), not a paraphrase.
     const { msg } = await withStatus(404);
-    expect(msg).toBe('This Mission Control is too old to make reports: update it with ./start.sh');
+    expect(msg).toBe('MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC (./start.sh)');
   });
 
-  it('a 405 (route exists for another method — e.g. GET) shows the same message', async () => {
+  it('a 405 (route exists for another method: e.g. GET) shows the same message', async () => {
     const { msg } = await withStatus(405);
-    expect(msg).toBe('This Mission Control is too old to make reports: update it with ./start.sh');
+    expect(msg).toBe('MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC (./start.sh)');
   });
 
   it('a 500 with the server\'s own words is never overridden by the skew message', async () => {
@@ -179,7 +181,8 @@ describe('A56 powerup routes', () => {
     expect((await call(200, '{"ok":true}', 'application/json', a => a.resetStation('util a'))).seen).toEqual([{ url: '/api/stations/util%20a/reset', method: 'POST' }]);
   });
   it('a bare 404 on reset is an older MC; the handler\'s own 404 is its words', async () => {
-    expect((await call(404, 'Not Found', 'text/plain', a => a.resetStation('u1'))).err).toMatch(/PREDATES THIS UI/);
+    // F221 (2026-09-25): the shared MC_OLDER words, not a screen-specific paraphrase.
+    expect((await call(404, 'Not Found', 'text/plain', a => a.resetStation('u1'))).err).toMatch(/OLDER THAN THIS CONSOLE/);
     expect((await call(404, '{"error":"no such station"}', 'application/json', a => a.resetStation('u1'))).err).toBe('no such station');
   });
 });

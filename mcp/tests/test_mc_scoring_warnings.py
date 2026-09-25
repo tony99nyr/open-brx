@@ -52,7 +52,7 @@ def test_a_steady_five_second_run_of_identical_hits_is_named_in_the_recap_and_st
     for i in range(6):
         _hit(sc, 1_010_000 + i * 5070, 1)           # the measured 5.07 s replay, six times
     r = sc.recap()
-    assert any("F74?" in w and "BRAVO" in w and "ALPHA" in w and "5.1 s" in w for w in r.get("warnings", [])), r.get("warnings")
+    assert any("F74" in w and "BRAVO" in w and "ALPHA" in w and "5.1 S" in w for w in r.get("warnings", [])), r.get("warnings")
     # NOT dropped: F77 says a suppressor would eat real bursts, so the detector only names it
     assert next(row for row in r["rows"] if row["player_id"] == "p1")["hits"] == 6
 
@@ -71,7 +71,7 @@ def test_real_fire_is_not_called_a_replay():
     assert "warnings" not in sc2.recap()
     # CONTROL: the same three plus one more at the same period trips it -- the floor is the fourth hit
     _hit(sc2, 1_010_000 + 3 * 5000, 1)
-    assert any("F74?" in w for w in sc2.recap()["warnings"])
+    assert any("F74" in w for w in sc2.recap()["warnings"])
 
 
 def test_wire_zero_facts_are_counted_and_named_not_credited():
@@ -83,6 +83,6 @@ def test_wire_zero_facts_are_counted_and_named_not_credited():
     r = sc.recap()
     assert next(row for row in r["rows"] if row["player_id"] == "p1")["hits"] == 0, "wire 0 credits nobody"
     assert next(row for row in r["rows"] if row["player_id"] == "p1")["kills"] == 0
-    assert any("WIRE 0" in w and "3 hit(s)" in w and "1 death(s)" in w and "F80" in w for w in r["warnings"]), r["warnings"]
+    assert any("WIRE 0" in w and "3 HIT(S)" in w and "1 DEATH(S)" in w and "F80" in w for w in r["warnings"]), r["warnings"]
     # CONTROL: an ordinary match says nothing
     assert "warnings" not in _scorer().recap()

@@ -7,6 +7,7 @@ import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { schedule, usePowerups } from './powerupData';
 import { GhostButton, SectionRule, Tag } from './index';
+import { GLYPH, MC_OLDER, colourOf, glyphed, sevOf } from '../alerts';
 
 /** a countdown: floors (never shows a time that has not arrived), clamps a past time to 0:00, minutes unpadded */
 const countdown = (ms: number) => { const v = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
@@ -55,6 +56,7 @@ function ResetItem({ s, item }: { s: StationView; item: StationItem }) {
   };
   return (
     <div data-testid="item-reset" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* F221: a two-tap hazard confirm (hands out a heavy mid-match) — UNCHANGED per Tony's rule. */}
       {confirm && (
         <span role="status" style={{ font: F.chk(700, 11), letterSpacing: '.08em', color: T.warn }}>
           ▲ RESET MAKES THE {item.name} AVAILABLE ON THIS STATION NOW, OFF ITS SCHEDULE. TAP RESET ITEM AGAIN TO SEND IT.
@@ -67,7 +69,7 @@ function ResetItem({ s, item }: { s: StationView; item: StationItem }) {
         </GhostButton>
         {confirm && <GhostButton size={11} onClick={() => setConfirm(false)} title="back out: nothing was sent">CANCEL</GhostButton>}
       </span>
-      {err && <span data-testid="item-reset-error" role="alert" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: T.bad }}>▲ RESET REFUSED: {err}</span>}
+      {err && <span data-testid="item-reset-error" role="alert" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('frame-item-reset-error') }}>{GLYPH} RESET REFUSED: {err}</span>}
     </div>
   );
 }
@@ -94,8 +96,11 @@ export function PowerupStrip({ compact = false }: { compact?: boolean }) {
   return (
     <div data-testid="powerup-strip" data-compact={compact ? '1' : undefined} style={{ margin: compact ? '0 0 10px' : '0 0 14px' }}>
       {/* M7 (visual QA 2026-09-24): on LIVE each station is one row, so the board starts near the top */}
+      {/* 'frame-powerup-predates' is AMBER (F221 polish, 2026-09-25): the same MC_OLDER fact every other
+          screen already shows amber. */}
       {(!compact || pu.s === 'old' || pu.s === 'err') && <SectionRule label={`POWERUPS // ${rows.length} STATION${rows.length === 1 ? '' : 'S'}`}
-        hint={pu.s === 'old' ? 'THIS MC PREDATES POWERUPS' : pu.s === 'err' ? `COULD NOT READ THE ITEM LIST: ${pu.msg}` : undefined} />}
+        hint={pu.s === 'old' ? <span style={{ color: colourOf('frame-powerup-predates') }}>{glyphed(sevOf('frame-powerup-predates'), MC_OLDER.what)}</span>
+          : pu.s === 'err' ? <span style={{ color: colourOf('frame-powerup-err') }}>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</span> : undefined} />}
       <div style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(auto-fill,minmax(min(420px,100%),1fr))' : 'repeat(auto-fill,minmax(260px,1fr))', gap: compact ? 6 : 8 }}>
         {rows.map(s => (
           <div key={s.node_id} data-powerup-row={s.node_id}

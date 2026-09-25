@@ -30,6 +30,8 @@ import { useState } from 'react';
 import type { State } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
+import { alertWords, colourOf, glyphed, sevOf } from '../alerts';
+import { Alert } from './Alert';
 import { BTN_RESET, useNarrow } from './index';
 
 /** What the operator is ACTUALLY about to do when they force the whistle past the server's gate
@@ -160,9 +162,12 @@ function Cell({ mark, title }: { mark: Mark; title: string }) {
 }
 
 function Count({ label, n, of, good, bad }: { label: string; n: number; of: number; good: boolean; bad: boolean }) {
+  // F221 polish r2 (Low): `bad` is true only once a row's Cell for this column is a real `fail`
+  // (T.bad, above) — this count used to say the same fact in amber, a lesser severity than the row it
+  // is counting.
   return (
     <span data-count={label} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, font: F.chk(700, 12), letterSpacing: '.1em',
-                   color: of > 0 && good ? T.ok : bad ? T.warn : T.micro }}>
+                   color: of > 0 && good ? T.ok : bad ? T.bad : T.micro }}>
       <span style={{ font: F.mono(500, 11), letterSpacing: '.18em', color: T.dim }}>{label}</span>
       {/* the denominator is never dropped: "4" alone cannot be checked by eye, "4/8" can */}
       {n}/{of}
@@ -208,7 +213,7 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
       <div data-testid="pre-arm-summary" data-state="idle" style={{ border: `1px solid ${T.line}`, background: T.panelSoft,
         marginBottom: 12, padding: '10px 14px', display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap', ...style }}>
         <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>PRE-ARM CHECK</span>
-        <span role="status" data-testid="pre-arm-verdict" style={{ font: F.chk(700, 12), letterSpacing: '.08em', color: T.micro }}>NO GAME LOADED</span>
+        <span role="status" data-testid="pre-arm-verdict" style={{ font: F.chk(700, 12), letterSpacing: '.08em', color: colourOf('frame-prearm-no-game') }}>NO GAME LOADED</span>
       </div>
     );
   }
@@ -233,18 +238,23 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
         : acking.length > 0
           ? `WAITING FOR ${acking.length} OF ${rows.length} GUN${rows.length === 1 ? '' : 'S'} TO CONFIRM`
           : 'IN SYNC: EVERY GUN HAS THIS CONFIG, EVERY PHONE HAS THIS GAME';
-  const tone = allClear ? T.ok : fails.length > 0 ? T.warn : T.micro;
+  const tone = allClear ? T.ok : fails.length > 0 ? colourOf('frame-prearm-action') : T.micro;
 
   return (
     <div data-testid="pre-arm-summary" data-state={allClear ? 'clear' : fails.length ? 'action' : 'waiting'}
-      style={{ border: `1px solid ${fails.length ? T.warn : T.line}`,
-      borderLeft: `3px solid ${allClear ? T.ok : fails.length ? T.warn : T.line2}`, background: T.panelSoft, marginBottom: 12, ...style }}>
+      // F221 polish r1: an amber verdict used to give the whole panel an amber border and left rule,
+      // a panel reading as a banner, which Tony's rule reserves for RED. AMBER is one line, never a
+      // border, so the frame is now neutral whatever the verdict says; only the all-clear green stays.
+      style={{ border: `1px solid ${T.line}`,
+      borderLeft: `3px solid ${allClear ? T.ok : T.line2}`, background: T.panelSoft, marginBottom: 12, ...style }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px 18px', flexWrap: 'wrap', padding: '10px 14px' }}>
         <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>PRE-ARM CHECK</span>
-        <span role="status" data-testid="pre-arm-verdict"
-          style={{ font: F.chk(700, 12), letterSpacing: '.08em', color: tone }}>
-          {verdict}
-        </span>
+        {/* F221 polish r1: the amber verdict ("N NEED ACTION") had no ▲, so it is routed through
+            `<Alert>` now, which carries the glyph and the catalogue's colour; the waiting/all-clear
+            verdicts are status, not alerts, and stay plain. */}
+        {fails.length > 0
+          ? <Alert id="frame-prearm-action" what={verdict} testid="pre-arm-verdict" role="status" style={{ font: F.chk(700, 12), letterSpacing: '.08em' }} />
+          : <span role="status" data-testid="pre-arm-verdict" style={{ font: F.chk(700, 12), letterSpacing: '.08em', color: tone }}>{verdict}</span>}
         <span style={{ flex: 1 }} />
         <span data-testid="pre-arm-counts" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
           <Count label="PHONES TOLD" n={totals.phone_game} of={totals.rostered} good={totals.phone_game === totals.rostered} bad={col('phone')} />
@@ -278,12 +288,17 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
           {shown.map(({ r, m }) => {
             // ONE instruction per row, the first thing that is actually wrong — an operator reading
             // four cures at once does none of them. A row that is only WAITING says so, neutrally.
-            const todo = m.phone === 'fail' && !r.bound ? 'No phone bound: switch it on and bind it, or STAND DOWN'
-              : m.phone === 'fail' ? 'Phone missed LOAD; MC is retrying automatically — wait for PHONE ✓'
-              : m.push === 'fail' ? 'Gun has no head yet: PUSH CONFIG below'
-              : m.ack === 'fail' ? 'Gun has not confirmed this config: RE-PUSH CONFIG below'
-              : m.echo === 'fail' ? 'Gun answered with another weapon: RE-PUSH CONFIG below'
-              : '';
+            // F221 polish r1: `WHAT: DO`, not sentence case with a raw em dash.
+            // F221 polish r2: each fault kind now carries its own catalogue id, so its colour comes off
+            // the catalogue rather than a bare `T.warn` at the call site — the echo-mismatch row is RED
+            // (`armory-blocker-echo-mismatch`, the same id and words ARMORY/LOBBY already show), every
+            // other row here is amber.
+            const todo = m.phone === 'fail' && !r.bound ? { id: 'prearm-todo-no-phone', what: 'no phone bound', act: 'switch it on and bind it, or stand down' }
+              : m.phone === 'fail' ? { id: 'prearm-todo-phone-missed-load', what: 'phone missed load', act: 'wait, mc is retrying automatically' }
+              : m.push === 'fail' ? { id: 'prearm-todo-gun-no-head', what: 'gun has no head yet', act: 'push config below' }
+              : m.ack === 'fail' ? { id: 'prearm-todo-gun-not-confirmed', what: 'gun has not confirmed this config', act: 're-push config below' }
+              : m.echo === 'fail' ? { id: 'armory-blocker-echo-mismatch', what: 'gun echo ≠ config', act: 're-push' }
+              : null;
             const note = todo ? '' : !pushed ? 'Guns are configured at the push' : m.ack === 'wait' ? 'Waiting for the gun to confirm' : 'Ready';
             return (
               <div key={r.player_id} data-testid="pre-arm-row" data-player={r.player_id} data-compact={narrow ? '1' : '0'}
@@ -313,8 +328,8 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
                 </span>
                 <span data-testid="pre-arm-todo" data-narrow={narrow ? '1' : '0'}
                   style={{ flex: narrow ? '1 1 100%' : '1 1 190px', minWidth: 0, font: F.chk(500, 11.5),
-                           color: todo ? T.warn : T.micro, textTransform: 'none', paddingLeft: narrow ? 2 : 0 }}>
-                  {todo || note}
+                           color: todo ? colourOf(todo.id) : T.micro, textTransform: 'none', paddingLeft: narrow ? 2 : 0 }}>
+                  {todo ? glyphed(sevOf(todo.id), alertWords(todo.what, todo.act)) : note}
                 </span>
               </div>
             );

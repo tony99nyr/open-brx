@@ -3,6 +3,7 @@ import { STALE_AFTER_MS } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge } from '../tokens';
 import { GhostButton, ScreenHeader, SectionRule } from '../ui';
+import { OPERATOR_TOKEN, colourOf } from '../alerts';
 
 // Everything the header used to shout at you, plus what was never shown at all.
 // Tony, 2026-09-02: "the header should be cleaner and simpler. less intimidating and less confusing.
@@ -45,11 +46,14 @@ export function Debug() {
 
       {(authRequired || (!mock && state?.lan.auth_required !== false && !hasToken)) && (
         <form onSubmit={e => { e.preventDefault(); if (tok.trim()) { setToken(tok); setTok(''); } }}
-          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 14, border: `1px solid ${T.warn}`, background: 'rgba(255,176,32,.06)' }}>
-          <label htmlFor="dbg-tok" style={{ font: F.chk(700, 13), color: T.warn }}>Operator token required</label>
+          data-alert="frame-token-required-app" data-sev="neutral"
+          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 14, border: `1px solid ${T.line2}` }}>
+          <label htmlFor="dbg-tok" style={{ font: F.chk(700, 13), color: colourOf('frame-token-required-app') }}>
+            {OPERATOR_TOKEN.what}: {OPERATOR_TOKEN.actPre} <code>{OPERATOR_TOKEN.code}</code> {OPERATOR_TOKEN.actPost}
+          </label>
           <input id="dbg-tok" className="textbox" value={tok} onChange={e => setTok(e.target.value)} placeholder="paste from the MC console"
-            autoComplete="off" spellCheck={false} style={{ flex: '0 1 24ch', borderBottom: `1px solid ${T.warn}`, color: T.ink, minHeight: 36 }} />
-          <button type="submit" style={{ background: T.warn, color: T.accInk, border: 'none', font: F.chk(700, 12), letterSpacing: '.12em', padding: '8px 14px', cursor: 'pointer', minHeight: 36 }}>APPLY</button>
+            autoComplete="off" spellCheck={false} style={{ flex: '0 1 24ch', borderBottom: `1px solid ${T.line2}`, color: T.ink, minHeight: 36 }} />
+          <button type="submit" style={{ background: T.acc, color: T.accInk, border: 'none', font: F.chk(700, 12), letterSpacing: '.12em', padding: '8px 14px', cursor: 'pointer', minHeight: 36 }}>APPLY</button>
         </form>
       )}
 
@@ -58,9 +62,9 @@ export function Debug() {
         <Row k="SESSION" v={state?.session_id ?? '—'} />
         <Row k="SERVER CLOCK" v={state ? new Date(state.t).toLocaleTimeString([], { hour12: false }) : '—'} />
         <Row k="PHASE" v={(state?.phase ?? '—').toUpperCase()} />
-        <Row k="UPLINK" v={connected ? 'CONNECTED' : 'DOWN'} color={connected ? T.ok : T.bad} />
-        {mock && <Row k="MODE" v="MOCK — no real server" color={T.warn} />}
-        {error && <Row k="LAST ERROR" v={error} color={T.bad} />}
+        <Row k="UPLINK" v={connected ? 'CONNECTED' : 'DOWN'} color={connected ? T.ok : colourOf('frame-debug-uplink-down')} />
+        {mock && <Row k="MODE" v="MOCK: no real server" color={colourOf('frame-debug-mock-mode')} />}
+        {error && <Row k="LAST ERROR" v={error} color={colourOf('frame-debug-last-error')} />}
       </Grid>
 
       <SectionRule label="NETWORK" hint="PHONES JOIN ON THIS URL" />
@@ -96,10 +100,10 @@ export function Debug() {
                       {cell(n.gun_name ?? n.gun_tail ?? '—')}
                       {cell(n.arm_state)}
                       {cell(n.last_seen_ms == null ? '—' : `${fmtAge(n.last_seen_ms)} ago`)}
-                      {cell(n.synced ? 'yes' : 'no', n.synced ? T.ok : T.warn)}
-                      {cell(pf.gun_linked === true ? 'linked' : pf.gun_linked === false ? 'lost' : '—', pf.gun_linked === false ? T.bad : undefined)}
+                      {cell(n.synced ? 'yes' : 'NO', n.synced ? T.ok : colourOf('frame-debug-synced-no'))}
+                      {cell(pf.gun_linked === true ? 'linked' : pf.gun_linked === false ? 'LOST' : '—', pf.gun_linked === false ? colourOf('frame-debug-gun-link-lost') : undefined)}
                       {cell(pf.headset_ok === true ? 'ok' : pf.headset_ok === false ? 'no' : '—')}
-                      {cell(String(n.pending ?? 0), (n.pending ?? 0) > 0 ? T.warn : undefined)}
+                      {cell(String(n.pending ?? 0), (n.pending ?? 0) > 0 ? colourOf('frame-debug-pending') : undefined)}
                     </tr>
                   );
                 })}

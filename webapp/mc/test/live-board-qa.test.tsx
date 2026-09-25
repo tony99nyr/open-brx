@@ -165,7 +165,8 @@ describe('M7 · MC offline', () => {
     const { m } = await board('live', {}, [row()], {}, { connected: false });
     expect(m.find('[data-cell="status"]')[0].textContent).toBe('UNKNOWN');
     expect(m.find('[data-cell="sync"]')[0].textContent).toBe('—');
-    expect(m.find('[data-testid="live-offline"]').length).toBe(1);
+    // F221 round 2: the frame's MC_OFFLINE banner already says this once; the screen no longer repeats it.
+    expect(m.find('[data-testid="live-offline"]').length).toBe(0);
     const btn = (t: string) => (m.find('button') as HTMLButtonElement[]).find(b => b.textContent?.trim() === t)!;
     expect(btn('END MATCH EARLY').disabled).toBe(true);
     expect(btn('RECALL').disabled).toBe(true);

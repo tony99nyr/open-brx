@@ -4,6 +4,7 @@ import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUT
 import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
+import { GLYPH, colourOf } from '../alerts';
 import { DEFAULT_POLICY, HEALTH_PRESET_COPY, computePool, healthPresetOf, kindRows, splitLine } from '../screens/gameSummary';
 import { HealthPresetEditor } from '../screens/HealthPresetEditor';
 import { GhostButton, PrimaryButton, Seg, SwitchConfirm, Toggle } from './index';
@@ -203,8 +204,8 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
         <div style={{ borderTop: alwaysOpen ? undefined : `1px solid ${T.line}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {locked && (
             <div role="alert" data-testid="game-edit-locked" style={{ font: F.chk(700, 12), letterSpacing: '.08em', lineHeight: 1.5,
-                                                                       color: T.warn, background: 'rgba(255,176,32,.08)', border: `1px solid ${T.warn}`, padding: '9px 12px' }}>
-              {`▲ THE MATCH IS ${state.phase.toUpperCase()}. MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.`}
+                                                                       color: colourOf('frame-game-edit-locked'), background: 'rgba(255,176,32,.08)', border: `1px solid ${colourOf('frame-game-edit-locked')}`, padding: '9px 12px' }}>
+              {`${GLYPH} THE MATCH IS ${state.phase.toUpperCase()}. MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.`}
             </div>
           )}
           {/* A real `disabled`, not a tap that quietly does nothing (ui-build-verify): every control
@@ -261,7 +262,8 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                   panel whose own copy is hidden behind it), so this is the one on screen */}
               <LoadStatus testid={alwaysOpen ? 'game-edit-repush' : 'game-edit-repush-open'}
                 pushed={pushed} acked={acked} total={total} recent={recentEdit} />
-              <span data-testid="game-edit-dirty" style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: dirty ? T.warn : T.micro }}>
+              {/* F221: editing-in-progress status, not a fault — NEUTRAL whether dirty or not. */}
+              <span data-testid="game-edit-dirty" style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('frame-game-edit-dirty') }}>
                 {dirty ? `UNSAVED: ${Object.keys(patch).map(k => k.replace('loadout_policy', 'weapons').toUpperCase()).join(' · ')}` : 'NO CHANGES YET'}
               </span>
             </span>
@@ -337,8 +339,10 @@ function VolumeEditor({ volume, environment, benchVolume, onChange }:
           ? `PLAYS AT ${venue}: the ${(environment ?? 'indoor').toUpperCase()} venue default.`
           : `PLAYS AT ${set}, set for this game (the venue default is ${venue}).`}
         {` ${GAME_VOLUME_MIN} is on-gun level 1, ${GAME_VOLUME_MAX} the loudest. Try-outs stay at 69.`}
+        {/* F221: Tony's rule names BENCH VOL itself NEUTRAL; this inline note states the same fact and
+            now matches, instead of a third amber rendering of it (the audit's own issue note). */}
         {benchVolume != null && (
-          <span style={{ color: T.warn }}>{` ▲ BENCH VOLUME ${benchVolume} OVERRIDES THIS ON THIS RUN: every gun plays at ${plays}.`}</span>
+          <span style={{ color: colourOf('frame-bench-volume-override') }}>{` BENCH VOLUME ${benchVolume} OVERRIDES THIS ON THIS RUN: every gun plays at ${plays}.`}</span>
         )}
       </div>
     </div>

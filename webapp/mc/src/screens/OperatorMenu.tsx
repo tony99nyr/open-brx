@@ -3,6 +3,7 @@ import { setNotice } from '../notice';
 import type { LiveRow, OperatorCmd } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge } from '../tokens';
+import { colourOf, glyphed } from '../alerts';
 
 /** A47 (bench 2026-09-17): the operator's cures for ONE player in a bad state, e.g. a gun that cannot fire.
  *  Each goes to that player's phone only (`POST /api/players/{pid}/operator`), and the phone does the work.
@@ -76,15 +77,19 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
                    border: `1px solid ${T.line}`, padding: '8px 14px', minHeight: 40, cursor: 'pointer' }}>CLOSE</button>
       </div>
       {!inPlay ? (
-        <div data-op-unavailable="phase" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.5 }}>
+        <div data-op-unavailable="phase" data-alert="frame-op-not-in-play" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-not-in-play'), lineHeight: 1.5 }}>
           THE MATCH IS NOT IN PLAY. NOTHING CAN BE SENT.
         </div>
       ) : outOfReach ? (
-        <div data-op-unavailable="reach" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim, lineHeight: 1.5 }}>
-          {who}'S PHONE IS OUT OF REACH (LAST HEARD {fmtAge(r.sync_age_ms)} AGO). NOTHING CAN BE SENT UNTIL IT CHECKS IN AGAIN.
+        // F221 (2026-09-25): a gun/phone link lost DURING a match is RED — the boxed row, per Tony's
+        // rule for a gun card. Was a quiet T.dim line; a live-match link loss is act-now, not status.
+        <div data-op-unavailable="reach" data-alert="frame-op-out-of-reach" data-sev="red" role="alert"
+          style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-out-of-reach'), lineHeight: 1.5,
+            padding: '4px 8px', border: `1px solid ${colourOf('frame-op-out-of-reach')}`, background: 'rgba(255,82,82,.08)' }}>
+          {glyphed('red', `${who}'S PHONE IS OUT OF REACH (LAST HEARD ${fmtAge(r.sync_age_ms)} AGO). NOTHING CAN BE SENT UNTIL IT CHECKS IN AGAIN.`)}
         </div>
       ) : <>{!live && (
-        <div data-op-unavailable="armed" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim, lineHeight: 1.5 }}>
+        <div data-op-unavailable="armed" data-alert="frame-op-wait-t0" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-wait-t0'), lineHeight: 1.5 }}>
           RESYNC AND RESPAWN WAIT FOR T-0. RELINK WORKS NOW.
         </div>
       )}{offered.map(a => {
@@ -112,10 +117,12 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
         );
       })}</>}
       {inPlay && outcome && (
-        <div data-op-outcome={r.operator?.state} role="status"
+        <div data-op-outcome={r.operator?.state} data-alert={outcome.color === 'warn' ? 'frame-op-outcome-refused' : r.operator?.state === 'sent' ? 'frame-op-outcome-sent' : undefined}
+          data-sev={outcome.color === 'warn' ? 'amber' : outcome.color === 'ok' ? undefined : 'neutral'}
+          role="status"
           style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5,
-                   color: outcome.color === 'ok' ? T.ok : outcome.color === 'warn' ? T.warn : T.dim }}>
-          {outcome.text}
+                   color: outcome.color === 'ok' ? T.ok : outcome.color === 'warn' ? colourOf('frame-op-outcome-refused') : colourOf('frame-op-outcome-sent') }}>
+          {outcome.color === 'warn' ? glyphed('amber', outcome.text) : outcome.text}
         </div>
       )}
     </div>

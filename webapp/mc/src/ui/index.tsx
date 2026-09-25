@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Coverage } from '../api/contract.gen';
 import { CHAMFER, F, HAZARD, SEG_OVERLAY, STRIPES, T, TAB } from '../tokens';
+import { colourOf } from '../alerts';
 
 export { Num, Digits, DIGIT_W } from './Num';
 
@@ -402,8 +403,11 @@ export function shortCoverageLine(coverage: Coverage | null | undefined): string
   // F309: an older server sends no `on_cellular`; say nothing rather than a 0 it never measured.
   return coverage.on_backhaul > 0 && typeof coverage.on_cellular === 'number' ? `${base} · ${coverage.on_cellular} on cellular` : base;
 }
-/** F309: green only when the server derives FULL coverage (every phone on cellular through the tunnel). */
-export const coverageColor = (coverage: Coverage | null | undefined): string => (coverage?.level === 'full' ? T.ok : T.micro);
+/** F309: green only when the server derives FULL coverage (every phone on cellular through the tunnel).
+ *  F221: partial/no coverage is the `lobby-coverage-tag` fact (NEUTRAL by design, S40/2026-09-19: it
+ *  is not a fault), routed through the catalogue rather than a bare token so the colour cannot drift
+ *  from the audit's own bar. */
+export const coverageColor = (coverage: Coverage | null | undefined): string => (coverage?.level === 'full' ? T.ok : colourOf('lobby-coverage-tag'));
 
 /** F318: a clock subtitle ("KOTH · FIRST TO 3 · MOST HILL TIME WINS") wrapped mid-phrase at 1280 and
  *  900 px. Each ` · ` part stays whole, so the line only ever breaks between parts, and it centres. */

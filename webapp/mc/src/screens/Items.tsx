@@ -15,7 +15,9 @@ import { CHAMFER, F, T, fmtAge, teamColor } from '../tokens';
 import { ItemStationRow, Swatch } from '../ui/Powerups';
 import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
 import { GhostButton, Micro, SectionRule, Seg, SwitchConfirm, Tag, ValueBox } from '../ui';
-import { CONTROL_CONFLICT, friendlySetupLine, setupLines } from '../ui/SetupSteps';
+import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
+import { Alert, AlertTag } from '../ui/Alert';
+import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
 
 const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 /** the picker's labels: short enough for five in a card row */
@@ -49,7 +51,7 @@ export function Items() {
   return (
     <div style={{ marginTop: 20 }} data-testid="items-panel">
       <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
-        hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: T.warn }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? state.game_no ?? '—'} · ASSIGN, THEN PLACE — A STATION NEEDS NO WI-FI ONCE ARMED</>} />
+        hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: colourOf('items-need-attention-count') }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? state.game_no ?? '—'} · ASSIGN, THEN PLACE: A STATION NEEDS NO WI-FI ONCE ARMED</>} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
         {/* keyed on the node and the assignment ONLY. The phone's `report` (kind/team/id/threshold/…) is
             deliberately NOT in the key: it starts empty and fills in on the first heartbeat (~2s after
@@ -136,7 +138,17 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
   // phone. The server says so in `config_warnings`; the card carries the same line and is not green.
   const setupConflict = a?.kind === 'control'
     ? setupLines(state?.config_warnings).find(w => CONTROL_CONFLICT.test(w)) ?? null : null;
-  const color = !a ? T.micro : s.attention.length || s.arm_pending || setupConflict ? T.warn : T.ok;
+  // the worst attention line, id and severity together: `color` (the card border) reads its severity,
+  // the status tag below reads its id (F221 polish, 2026-09-25).
+  const attentionHit = s.attention.length
+    ? (['red', 'amber', 'neutral'] as const).map(v => s.attention.map(t => serverLine(t, 'amber')).find(h => h.sev === v)).find(Boolean) ?? null
+    : null;
+  const color = !a ? colourOf('items-status-not-assigned') : setupConflict ? colourOf('items-setup-conflict')
+    : s.arm_pending ? colourOf('items-status-arm-pending') : attentionHit ? SEV_COLOUR[attentionHit.sev] : T.ok;
+  // the status chip: AMBER/NEUTRAL/RED never fill (Tony's rule) — only the one positive case (no id)
+  // keeps the filled <Tag>; every other case is an outline <AlertTag> coloured by this same id.
+  const statusAlertId: string | null = !a ? 'items-status-not-assigned' : setupConflict ? 'items-setup-conflict'
+    : s.arm_pending ? 'items-status-arm-pending' : attentionHit ? attentionHit.id : null;
   // A58: a live tamper lock, while it is still in the future -- `lock_until_ms` is MC's clock, so the
   // comparison runs through `serverNow()`, not the browser's own clock (`ItemState`'s countdown above does the same).
   const stick = deviceOf(s) === 'STICKS3';
@@ -177,17 +189,21 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
           {a ? `${KIND_SHORT[a.kind]} ${a.id}` : stick ? 'STICKS3' : 'UTILITY PHONE'}
         </span>
         <span data-station-tags={s.node_id} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <Tag color={color} ink={a ? T.accInk : T.ink}>{status}</Tag>
-          {tamperLocked && <Tag data-testid="station-locked" color={T.line2} ink={T.dim}>LOCKED</Tag>}
+          {statusAlertId ? <AlertTag id={statusAlertId}>{status}</AlertTag> : <Tag color={T.ok} ink={T.accInk}>{status}</Tag>}
+          {tamperLocked && <Tag data-testid="station-locked" color={T.line2} ink={colourOf('items-tag-locked')}>LOCKED</Tag>}
         </span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         <Micro>{deviceOf(s)}</Micro><Val color={T.dim}>{s.node_id.slice(0, 12)}</Val>
         <Micro>ID</Micro><span data-station-id={s.node_id} style={{ font: F.chk(600, 12), letterSpacing: '.08em', color: a ? T.ink : T.micro }}>{a ? a.id : 'SET BY MC AT ARM'}</span>
-        <Micro>LINK</Micro><Val color={!s.online ? T.warn : T.dim}>{age == null ? 'NEVER' : `${fmtAge(age)} AGO`}{!s.online && ' — OUT OF WI-FI'}</Val>
-        {/* what the PHONE says it is, so an assignment that never landed shows as the two disagreeing */}
+        {/* 'items-link-out-of-wifi' is NEUTRAL (F221 polish, 2026-09-25): out of range is expected once a
+            station is armed; the real fault sits in the attention line below, not here. */}
+        <Micro>LINK</Micro><Val color={!s.online ? colourOf('items-link-out-of-wifi') : T.dim}>{age == null ? 'NEVER' : `${fmtAge(age)} AGO`}{!s.online && ': OUT OF WI-FI'}</Val>
+        {/* what the PHONE says it is, so an assignment that never landed shows as the two disagreeing.
+            F221: unassigned, "not armed" is only a device-says-so status (NEUTRAL) — it is a real
+            fault (AMBER) only once the station IS assigned and the phone disagrees with it. */}
         <Micro>{deviceOf(s)} SAYS</Micro>
-        <Val color={rep.armed ? T.dim : T.warn}>
+        <Val color={rep.armed !== false ? T.dim : !a ? colourOf('items-rep-not-armed') : colourOf('items-rep-not-armed-advertising')}>
           {rep.kind ? `${KIND_LABEL[rep.kind] ?? rep.kind} ${rep.station_id ?? '?'} · ${TID_NAME[rep.team ?? 255] ?? rep.team}` : '—'}
           {rep.armed === false && ' · NOT ARMED'}{rep.live ? ' · ADVERTISING' : ''}
         </Val>
@@ -206,24 +222,22 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
         {a?.item && (<><Micro>ITEM</Micro><ItemStationRow s={s} item={a.item} canReset={canReset} /></>)}
         {s.range?.threshold != null && (<><Micro>RANGE</Micro><Val color={T.dim}><span data-station-range={s.node_id}>{s.range.threshold} dBm{edited(s.range.threshold_src, s.range.threshold_edit_age_ms)}</span></Val></>)}
         {s.range?.tx_power != null && (<><Micro>STRENGTH</Micro><Val color={T.dim}><span data-station-strength={s.node_id}>{TX_POWER_LABEL[s.range.tx_power]}{edited(s.range.tx_power_src, s.range.tx_power_edit_age_ms)}</span></Val></>)}
-        {rep.battery != null && (<><Micro>BATTERY</Micro><Val color={rep.battery < 30 ? T.bad : T.dim}>{rep.battery}%</Val></>)}
+        {rep.battery != null && (<><Micro>BATTERY</Micro><Val color={batteryColour(rep.battery, T.dim)}>{rep.battery}%</Val></>)}
       </div>
-      {/* a standing fact, so a status region that is always mounted (it announces when the line arrives) */}
+      {/* a standing fact, so a status region that is always mounted (it announces when the line arrives).
+          F221: RED — Tony names the KOTH grenade-vs-control conflict by name as RED, the game is wrong. */}
       <div role="status" data-station-setup-region={s.node_id} style={{ display: 'contents' }}>
+        {/* F221 polish r2: same words, same case as GAMES/LOBBY's own conflict line (`SetupConflicts`,
+            `conflictWords()`) — this card used to hand-draw the glyph and keep sentence case, so the
+            one fact read differently on three screens. */}
         {setupConflict && (
-          <div data-testid="station-setup-conflict" style={{ display: 'flex', gap: 8, padding: '7px 10px', background: 'rgba(255,176,32,.08)', borderLeft: `2px solid ${T.warn}` }}>
-            <span style={{ font: F.chk(700, 11), color: T.warn }}>▲</span>
-            <span style={{ font: F.chk(600, 12), letterSpacing: '.02em', lineHeight: 1.45, color: T.warn }}>{friendlySetupLine(setupConflict)}</span>
-          </div>
+          <Alert id="items-setup-conflict" variant="row" testid="station-setup-conflict">{conflictWords(setupConflict)}</Alert>
         )}
       </div>
       {s.attention.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="station-attention">
           {s.attention.map(t => (
-            <div key={t} style={{ display: 'flex', gap: 8, padding: '7px 10px', background: 'rgba(255,176,32,.08)', borderLeft: `2px solid ${T.warn}` }}>
-              <span style={{ font: F.chk(700, 11), color: T.warn }}>▲</span>
-              <span style={{ font: F.chk(700, 11.5), letterSpacing: '.06em', color: T.warn }}>{t}</span>
-            </div>
+            <Alert key={t} {...serverLine(t, 'amber')}>{t}</Alert>
           ))}
         </div>
       )}
@@ -236,7 +250,7 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* a control point starts NEUTRAL and is taken by presence (§5d): the team control is moot for it */}
           {!control && <Seg label={`team for ${s.node_id}`} value={String(team)} size={11} pad="5px 8px" wrap options={teamOptions} onChange={v => setTeam(Number(v))} />}
-          {control && <span style={{ font: F.chk(600, 11), letterSpacing: '.06em', color: T.micro }}>STARTS NEUTRAL — TAKEN BY PRESENCE</span>}
+          {control && <span style={{ font: F.chk(600, 11), letterSpacing: '.06em', color: T.micro }}>STARTS NEUTRAL: TAKEN BY PRESENCE</span>}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}><Micro>BUBBLE</Micro>
             {threshold === 0
               ? <GhostButton data-bubble-edit={s.node_id} size={11} onClick={() => setThreshold(bubbleDefault(kind, stick).start)}
@@ -278,7 +292,8 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
               border: `1px solid ${lit ? T.acc : T.line}`, clipPath: CHAMFER.tl14, cursor: busy ? 'wait' : dirty && needsPick ? 'not-allowed' : lit ? 'pointer' : 'default', minHeight: 40 }}>
             {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
-          {applyErr && <span data-testid="station-apply-error" role="alert" style={{ flexBasis: '100%', font: F.chk(700, 11), letterSpacing: '.06em', color: T.bad }}>▲ NOT ARMED: {applyErr}</span>}
+          {/* F221: a fix-before-match refusal on ARMORY, not an act-now event — AMBER, not red. */}
+          {applyErr && <span data-testid="station-apply-error" role="alert" style={{ flexBasis: '100%', font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-apply-err') }}>{GLYPH} NOT ARMED: {applyErr}</span>}
           {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
           {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
               gesture that opens this card's settings, undiscoverable on the phone and with no feedback on
@@ -305,8 +320,9 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
             {releaseLabel}
           </GhostButton>
           {confirmRelease && <GhostButton size={11} onClick={() => setConfirmRelease(false)} title="back out — nothing was sent">CANCEL</GhostButton>}
-          {released != null && <Tag color={released ? T.ok : T.warn} ink={T.ink}>{released ? 'SENT' : 'NO SOCKET'}</Tag>}
-          {dirty && needsPick && <span style={{ font: F.chk(700, 11), letterSpacing: '.1em', color: T.warn }}>▲ PICK AN ITEM ABOVE</span>}
+          {/* F221: NO SOCKET is Tony's own example of a NEUTRAL status, not a warning. */}
+          {released != null && <Tag color={released ? T.ok : colourOf('items-released-no-socket')} ink={T.ink}>{released ? 'SENT' : 'NO SOCKET'}</Tag>}
+          {dirty && needsPick && <span style={{ font: F.chk(700, 11), letterSpacing: '.1em', color: colourOf('items-pick-item-warning') }}>PICK AN ITEM ABOVE</span>}
           {a && <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: teamColor(TID_NAME[a.team]?.toLowerCase() ?? 'any') }}>{TID_NAME[a.team] ?? a.team}</span>}
         </div>
       </div>
@@ -329,12 +345,13 @@ function Val({ children, color }: { children: React.ReactNode; color: string }) 
  *  (with a one-line reason) when MC has powerups off or predates them. */
 function ItemPicker({ node, pu, chosen, locked, onPick }:
   { node: string; pu: PowerupsState; chosen: string | null; locked: boolean; onPick: (p: string) => void }) {
-  const note = (text: string, color: string = T.micro) => (
+  const note = (text: React.ReactNode, color: string = colourOf('items-itempicker-loading')) => (
     <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
   if (pu.s === 'loading') return note('READING THE ITEM LIST…');
-  if (pu.s === 'old') return note('THIS MC PREDATES POWERUPS: NO ITEM PICKER. UPDATE AND RESTART IT (./start.sh) TO GIVE A STATION AN ITEM.', T.warn);
-  if (pu.s === 'err') return note(`COULD NOT READ THE ITEM LIST: ${pu.msg}`, T.warn);
-  if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC: THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC WITH ${POWERUPS_RESTART}`);
+  // F221: use the shared MC_OLDER words — the head stays 'MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC'.
+  if (pu.s === 'old') return note(<>{GLYPH} {MC_OLDER.what}: {MC_OLDER.act} (<code>{MC_RESTART_CMD}</code>) TO GIVE A STATION AN ITEM. NO ITEM PICKER UNTIL THEN.</>, colourOf('items-itempicker-old-mc'));
+  if (pu.s === 'err') return note(<>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</>, colourOf('items-itempicker-err'));
+  if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC: THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC WITH ${POWERUPS_RESTART}`, colourOf('items-itempicker-powerups-off'));
   return (
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Micro>ITEM · ONE PER STATION</Micro>
@@ -357,7 +374,7 @@ function ItemPicker({ node, pu, chosen, locked, onPick }:
           );
         })}
       </div>
-      {locked && <div data-testid="item-locked" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: T.warn }}>▲ LOCKED FOR THE MATCH: RECALL OR END IT TO CHANGE THIS STATION'S ITEM</div>}
+      {locked && <div data-testid="item-locked" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-itempicker-locked') }}>LOCKED FOR THE MATCH: RECALL OR END IT TO CHANGE THIS STATION'S ITEM</div>}
     </div>
   );
 }

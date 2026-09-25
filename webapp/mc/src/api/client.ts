@@ -1,4 +1,9 @@
 import type { Api, FeedEntry, GameConfig, OperatorActionResult, Player, ReportResult, State } from './types';
+import { MC_OLDER, MC_RESTART_CMD, alertWords, operatorTokenLine } from '../alerts';
+
+/** F221: the words client.ts throws whenever a 404 means "this MC predates the route", not a real
+ *  refusal. One fact, one sentence — `MC_OLDER`, never a screen-specific paraphrase. */
+const olderServer = (): string => `${alertWords(MC_OLDER.what, MC_OLDER.act)} (${MC_RESTART_CMD})`;
 
 // ---- operator token (server requires it on mutating /api/* and on /ui-ws) ----
 const TOK_KEY = 'brx_mc_tok';
@@ -25,7 +30,10 @@ const notifyAuth = (required: boolean) => authListeners.forEach(cb => cb(require
 
 // Block 9 (2026-09-24): a tab left open across an MC restart holds the OLD token, and 'TOKEN REQUIRED' read as
 // nothing Tony had done wrong. Say what happened and the cure.
-export class AuthError extends Error { constructor() { super('OPERATOR LINK EXPIRED OR MISSING: reopen the console from the link MC printed (it ends #tok=…)'); } }
+// F221 round 2: this used to retype OPERATOR_TOKEN in a second, mixed-case wording. `operatorTokenLine()`
+// is the one fact, one sentence; the header's own NEUTRAL token control already shows it (CommandBar
+// skips the RED error toast for this message, see `frame-error-toast`'s render site).
+export class AuthError extends Error { constructor() { super(operatorTokenLine()); } }
 
 async function j<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
@@ -57,7 +65,7 @@ export function skewOr404(e: unknown): never {
   const err = e as Error & { status?: number; body?: unknown };
   const serverSaid = typeof (err?.body as { error?: unknown } | undefined)?.error === 'string';
   if (err?.status === 404 && !serverSaid) {
-    const skew = new Error('THE MC SERVER PREDATES THIS UI (no standby route) — RESTART IT: python -m brx_mcp.mc') as Error & { status?: number };
+    const skew = new Error(olderServer()) as Error & { status?: number };
     skew.status = 404;
     throw skew;
   }
@@ -71,7 +79,9 @@ export function skewOr404(e: unknown): never {
 function reportSkewOr404(e: unknown): never {
   const err = e as Error & { status?: number };
   if (err?.status === 404 || err?.status === 405) {
-    const skew = new Error('This Mission Control is too old to make reports: update it with ./start.sh') as Error & { status?: number };
+    // F221 round 2: was retyped here in sentence case ("This Mission Control is too old..."). One
+    // fact, one sentence: `olderServer()` gives MC_OLDER's own words, never a paraphrase.
+    const skew = new Error(olderServer()) as Error & { status?: number };
     skew.status = err.status;
     throw skew;
   }
@@ -163,7 +173,7 @@ export function createHttpApi(): Api {
     resetStation: id => post<{ ok?: boolean }>(`/api/stations/${encodeURIComponent(id)}/reset`).catch((e: Error & { status?: number; body?: unknown }) => {
       // a route-less 404 is an OLD server; a 404 carrying the server's own `error` is its words (as `skewOr404`)
       if (e?.status === 404 && typeof (e.body as { error?: unknown } | undefined)?.error !== 'string') {
-        throw Object.assign(new Error('THE MC SERVER PREDATES THIS UI (no station reset route). RESTART IT: python -m brx_mcp.mc'), { status: 404 });
+        throw Object.assign(new Error(olderServer()), { status: 404 });
       }
       throw e;
     }),
@@ -190,7 +200,7 @@ export function createHttpApi(): Api {
       .catch((e: Error & { status?: number; body?: unknown }) => {
         // a route-less 404 is an OLD server; a 404 carrying the server's own `error` is its words (as `skewOr404`)
         if (e?.status === 404 && typeof (e.body as { error?: unknown } | undefined)?.error !== 'string') {
-          throw Object.assign(new Error('THE MC SERVER PREDATES THIS UI (no operator route). RESTART IT: python -m brx_mcp.mc'), { status: 404 });
+          throw Object.assign(new Error(olderServer()), { status: 404 });
         }
         throw e;
       }),
@@ -203,7 +213,7 @@ export function createHttpApi(): Api {
     // control left on 2026-09-17 — LOAD after a match, or RECAP's NEXT MATCH ▸, already cover it — so
     // a restart is the only fallback worth naming here.)
     nextMatch: () => post<State>('/api/match/next', {}).catch((e: Error & { status?: number }) => {
-      if (e?.status === 404) throw new Error('THIS MC PREDATES NEXT MATCH: RESTART IT (python -m brx_mcp.mc)');
+      if (e?.status === 404) throw new Error(olderServer());
       throw e;
     }),
     resumeOrphan: match_id => post<State>('/api/match/orphan/resume', { match_id }),

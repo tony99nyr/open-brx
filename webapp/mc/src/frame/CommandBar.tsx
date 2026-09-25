@@ -6,6 +6,7 @@ import { F, T } from '../tokens';
 import { HazardButton, GhostButton, InfoIcon } from '../ui';
 import { ReportPanel } from '../ui/ReportPanel';
 import { panicReceipt, splitWarning } from './frameText';
+import { MC_OFFLINE, MC_OLDER, MC_RESTART_CMD, OPERATOR_TOKEN, alertWords, colourOf, glyphed, operatorTokenLine } from '../alerts';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
@@ -58,15 +59,17 @@ export function CommandBar() {
   return (
     <header style={{ background: T.inset, borderBottom: `1px solid ${T.line2}` }}>
       {offline && (
-        <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${T.bad}`, font: F.chk(700, 12), letterSpacing: '.22em', color: T.bad }}>
-          <span style={{ width: 8, height: 8, background: T.bad, animation: 'linkBlink 1.2s infinite' }} />
-          MC OFFLINE — RECONNECTING
-          <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state ? 'SHOWING THE LAST SNAPSHOT — CLOCKS ARE FROZEN' : 'NO SNAPSHOT YET — IS THE SERVER RUNNING?'}</span>
+        <div role="status" aria-live="polite" data-alert="frame-mc-offline" data-sev="red"
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${colourOf('frame-mc-offline')}`, font: F.chk(700, 12), letterSpacing: '.22em', color: colourOf('frame-mc-offline') }}>
+          <span style={{ width: 8, height: 8, background: colourOf('frame-mc-offline'), animation: 'linkBlink 1.2s infinite' }} />
+          {glyphed('red', MC_OFFLINE.what)}
+          <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state ? MC_OFFLINE.act.toUpperCase() : 'NO SNAPSHOT YET: IS THE SERVER RUNNING?'}</span>
         </div>
       )}
       {serverOld && (
-        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,176,32,.12)', borderBottom: `1px solid ${T.warn}`, font: F.chk(700, 12), letterSpacing: '.14em', color: T.warn }}>
-          ▲ THE MC SERVER PREDATES THIS UI — RESTART IT (<span style={{ font: F.mono(600, 11), letterSpacing: '.06em' }}>python -m brx_mcp.mc</span>)
+        <div role="alert" data-alert="frame-server-old" data-sev="amber"
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', font: F.chk(700, 12), letterSpacing: '.14em', color: colourOf('frame-server-old') }}>
+          {glyphed('amber', alertWords(MC_OLDER.what, MC_OLDER.act))} (<code style={{ font: F.mono(600, 11), letterSpacing: '.06em' }}>{MC_RESTART_CMD}</code>)
           <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>SAVED GAMES, PERKS AND LOADOUT RULES ARE UNAVAILABLE UNTIL THEN</span>
         </div>
       )}
@@ -75,8 +78,9 @@ export function CommandBar() {
           ▲ glyph carries the same meaning as the colour, so this still reads on a colour-blind or
           greyscale screen (never colour-only). */}
       {state?.lan.public?.status === 'error' && (
-        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${T.bad}`, font: F.chk(700, 12), letterSpacing: '.14em', color: T.bad }}>
-          ▲ INTERNET TUNNEL DOWN — {tunnelSeenUp ? 'PHONES FELL BACK TO WI-FI' : 'NOT RUNNING, SO PHONES CAN JOIN OVER WI-FI ONLY'}
+        <div role="alert" data-alert="frame-tunnel-down" data-sev="red"
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${colourOf('frame-tunnel-down')}`, font: F.chk(700, 12), letterSpacing: '.14em', color: colourOf('frame-tunnel-down') }}>
+          {glyphed('red', alertWords('INTERNET TUNNEL DOWN', tunnelSeenUp ? 'PHONES FELL BACK TO WI-FI' : 'NOT RUNNING, SO PHONES CAN JOIN OVER WI-FI ONLY'))}
           <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state.lan.public.error || 'no reason given by the tunnel process'}</span>
         </div>
       )}
@@ -93,10 +97,11 @@ export function CommandBar() {
       {state?.lan.warning && (() => {
         const { head, rest } = splitWarning(state.lan.warning);
         return (
-          <div role="status" data-testid="lan-warning" style={{ background: T.panelAlt, borderBottom: `1px solid ${T.line2}`, padding: '5px 20px', color: T.dim }}>
+          <div role="status" data-testid="lan-warning" data-alert="frame-lan-warning-head" data-sev="neutral"
+            style={{ background: T.panelAlt, borderBottom: `1px solid ${T.line2}`, padding: '5px 20px', color: colourOf('frame-lan-warning-head') }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 28 }}>
               <InfoIcon size={14} color={T.acc} />
-              <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.body, flex: '0 1 auto', minWidth: 0 }}>{head}</span>
+              <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: colourOf('frame-lan-warning-head'), flex: '0 1 auto', minWidth: 0 }}>{head}</span>
               {rest && (
                 <button type="button" aria-expanded={lanDetails} aria-controls="lan-warning-details" onClick={() => setLanDetails(v => !v)}
                   className="hov-acc"
@@ -106,7 +111,8 @@ export function CommandBar() {
               )}
             </div>
             {rest && lanDetails && (
-              <div id="lan-warning-details" style={{ font: F.mono(500, 11), lineHeight: 1.6, letterSpacing: '.02em', color: T.dim, padding: '4px 0 6px 24px', overflowWrap: 'anywhere' }}>{rest}</div>
+              <div id="lan-warning-details" data-alert="frame-lan-warning-details" data-sev="neutral"
+                style={{ font: F.mono(500, 11), lineHeight: 1.6, letterSpacing: '.02em', color: colourOf('frame-lan-warning-details'), padding: '4px 0 6px 24px', overflowWrap: 'anywhere' }}>{rest}</div>
             )}
           </div>
         );
@@ -138,32 +144,39 @@ export function CommandBar() {
                 <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}
                   {/* Bench 2026-09-17: phones are in a match this MC did not start. Only while that is true. */}
                   {id === 'live' && state?.orphan_match && (
-                    <span data-testid="match-tab-dot" role="img" aria-label="phones in a match this MC did not start"
-                      style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.warn, marginLeft: 8, verticalAlign: 'middle' }} />
+                    <span data-testid="match-tab-dot" data-alert="frame-match-tab-dot" data-sev="amber" role="img"
+                      aria-label="phones are in a match this MC did not start: open MATCH" title="Phones are in a match this MC did not start: open MATCH"
+                      style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: colourOf('frame-match-tab-dot'), marginLeft: 8, verticalAlign: 'middle' }} />
                   )}</span>
               </button>
             );
           })}
         </nav>
         <div className="cb-right" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          {/* Auth is the one thing that must stay in the header: nothing works without it. */}
+          {/* Auth is the one thing that must stay in the header: nothing works without it (F221: NEUTRAL
+              per Tony's rule — a prompt, not a fault; a short "TOKEN ▸" stays as a control label). */}
           {authRequired && <button type="button" onClick={() => setView('debug')}
-            aria-label="Operator token needed"
-            style={{ background: 'transparent', border: `1px solid ${T.warn}`, color: T.warn, font: F.chk(700, 12), padding: '7px 12px', cursor: 'pointer', minHeight: 40, whiteSpace: 'nowrap' }}>
-            <span className="cb-long">Operator token needed ▸</span><span className="cb-short">Token ▸</span></button>}
+            data-alert="frame-token-required-app" data-sev="neutral"
+            aria-label={operatorTokenLine()}
+            style={{ background: 'transparent', border: `1px solid ${T.line2}`, color: colourOf('frame-token-required-app'), font: F.chk(700, 12), padding: '7px 12px', cursor: 'pointer', minHeight: 40, whiteSpace: 'nowrap' }}>
+            <span className="cb-long">{OPERATOR_TOKEN.what} ▸</span><span className="cb-short">TOKEN ▸</span></button>}
 
           {/* F318: offline, the phase is the LAST SNAPSHOT's, not a fact. A red ● LIVE beside MC OFFLINE
-              read as "the match is live and fine", so the chip goes grey and says it is the last known. */}
+              read as "the match is live and fine", so the chip goes grey and says it is the last known.
+              F221 round 2: ARMED used ▲ in T.warn, the glyph and colour every amber ALERT uses, on a
+              plain phase readout. A phase is NOT-ALERT (data, never T.warn/T.bad): ◆ is its own glyph,
+              shared with no alert, in T.ink. */}
           <span data-testid="phase-chip" title={offline ? 'MC is offline: this is the phase in the last snapshot' : undefined}
                 style={{ font: F.chk(700, 12), letterSpacing: '.16em', whiteSpace: 'nowrap',
-                         color: offline ? T.dim : state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.warn : state?.phase === 'recap' ? T.ok : T.dim }}>
+                         color: offline ? T.dim : state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.ink : state?.phase === 'recap' ? T.ok : T.dim }}>
             {offline && state ? 'LAST KNOWN: ' : ''}
-            {state?.phase === 'live' ? (offline ? '○ LIVE' : '● LIVE') : state?.phase === 'armed' ? '▲ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
+            {state?.phase === 'live' ? (offline ? '○ LIVE' : '● LIVE') : state?.phase === 'armed' ? '◆ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
           </span>
           {/* `--bench-volume N`: every gun plays at N, not the venue level. Say it where nobody can miss it. */}
           {state?.bench_volume != null && (
-            <span data-testid="bench-volume" title={`MC was started with --bench-volume ${state.bench_volume}: every gun plays at ${state.bench_volume}, not the venue level. Not for a real game.`}
-              style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '5px 10px', whiteSpace: 'nowrap' }}>
+            <span data-testid="bench-volume" data-alert="frame-bench-vol" data-sev="neutral"
+              title={`MC was started with --bench-volume ${state.bench_volume}: every gun plays at ${state.bench_volume}, not the venue level. Not for a real game.`}
+              style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: colourOf('frame-bench-vol'), border: `1px solid ${T.line2}`, padding: '5px 10px', whiteSpace: 'nowrap' }}>
               BENCH VOL {state.bench_volume}
             </span>
           )}
@@ -210,28 +223,39 @@ export function CommandBar() {
           The strip collapses to nothing when it is empty (styles.css). */}
       <div className="cb-notices" data-testid="cb-notices">
         {/* an action that failed must still say so somewhere immediate */}
-        {error && (
+        {error && !(authRequired && error === operatorTokenLine()) && (() => {
           // This was one `nowrap` line clipped at 420px with `title="dismiss"`, so the server's most
           // useful refusals were unreadable: a rejected `station_source` answers with the whole legal
           // vocabulary (~250 chars) and the operator saw "▲ station_source must be null or one of: gre…"
-          // — a message that names the valid values, with the valid values cut off. It wraps now (up to
+          // (a message that names the valid values, with the valid values cut off). It wraps now (up to
           // four lines, then scrolls) and carries the full text as its tooltip.
-          <button type="button" role="alert" onClick={clearError} title={error}
-            style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad,
-                     font: F.chk(600, 12), lineHeight: 1.35, padding: '6px 12px', cursor: 'pointer',
-                     maxWidth: 520, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere',
-                     maxHeight: '8em', overflowY: 'auto' }}>▲ {error} ✕</button>
-        )}
+          // F221 round 2: two fixes. (1) an AuthError's words are `operatorTokenLine()` (NEUTRAL), and
+          // the header's own token control already shows them: `authRequired` guards this toast so the
+          // one fact never shows twice, once neutral and once red. (2) a version-skew 404 (`MC_OLDER`,
+          // via `olderServer()`) is AMBER everywhere else on the console: this toast used to force every
+          // failure red, including that one. Detected by the message's own words, `frame-server-old`'s.
+          const skew = error.startsWith(MC_OLDER.what);
+          const id = skew ? 'frame-server-old' : 'frame-error-toast';
+          const sev = skew ? 'amber' : 'red';
+          const c = colourOf(id);
+          return (
+            <button type="button" role="alert" onClick={clearError} title={error} data-alert={id} data-sev={sev}
+              style={{ background: skew ? 'rgba(255,176,32,.12)' : 'rgba(255,82,82,.12)', border: `1px solid ${c}`, color: c,
+                       font: F.chk(600, 12), lineHeight: 1.35, padding: '6px 12px', cursor: 'pointer',
+                       maxWidth: 520, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere',
+                       maxHeight: '8em', overflowY: 'auto' }}>{glyphed(sev, error)} ✕</button>
+          );
+        })()}
         {notice && (
-          <button type="button" onClick={clearNotice} title="dismiss"
+          <button type="button" onClick={clearNotice} title="dismiss" data-alert="frame-notice-toast" data-sev={notice.bad ? 'red' : 'neutral'}
             style={{ background: notice.bad ? 'rgba(255,82,82,.12)' : 'transparent', border: `1px solid ${notice.bad ? T.bad : T.line2}`,
-                     color: notice.bad ? T.bad : T.dim, font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>
-            {notice.bad ? '▲ ' : ''}{notice.text} ✕
+                     color: notice.bad ? T.bad : colourOf('frame-notice-toast'), font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>
+            {notice.bad ? glyphed('red', notice.text) : notice.text} ✕
           </button>
         )}
         {panicked && (
-          <button type="button" onClick={() => setPanicked(null)} title="dismiss"
-            style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad, font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>▲ {panicked} ✕</button>
+          <button type="button" onClick={() => setPanicked(null)} title="dismiss" data-alert="frame-panicked-toast" data-sev="red"
+            style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${colourOf('frame-panicked-toast')}`, color: colourOf('frame-panicked-toast'), font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>{glyphed('red', panicked)} ✕</button>
         )}
       </div>
       {report && <ReportPanel onClose={() => { setReport(false); menuBtnRef.current?.focus(); }} />}

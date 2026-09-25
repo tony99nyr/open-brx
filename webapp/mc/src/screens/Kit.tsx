@@ -9,6 +9,8 @@ import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, ScrollX, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
 import { TagHint } from '../ui/TagHint';
 import { TAG_INPUT_MAX, tagError } from '../api/tag';
+import { GLYPH, colourOf, glyphed, sevOf } from '../alerts';
+import { Alert } from '../ui/Alert';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
@@ -86,12 +88,22 @@ const waitingNames = (names: string[]) => (names.length <= 3 ? names.join(', ') 
 export function refusalLine(r: PhaseRefusal): string {
   const said = (r.error || '').trim() || 'MISSION CONTROL REFUSED THE ADVANCE';
   const names = (r.not_ready ?? []).map(n => n.toUpperCase()).filter(Boolean);
+  // F221 polish (2026-09-25): MC's own sentence for this one refusal is "N of M are not READY: names",
+  // mixed case with its own colon — appending ": CONTINUE ANYWAY?" doubled the colon and left half the
+  // line lower case. Reshape that one known server sentence into one colon, upper case throughout, the
+  // names in brackets; anything else keeps the general path below.
+  const notReady = /^(\d+) of (\d+) are not READY: (.+)$/i.exec(said);
+  if (notReady) {
+    const [, n, total, who] = notReady;
+    return `${n} OF ${total} NOT READY (${who.toUpperCase()}): CONTINUE ANYWAY?`;
+  }
   const upper = said.toUpperCase();
   const missing = names.filter(n => !upper.includes(n));
   // just the names. The server's sentence has already said WHAT is wrong; repeating "ARE NOT READY"
   // after it makes one fact read as two.
-  const who = missing.length ? ` — ${waitingNames(missing)}` : '';
-  return `${said}${who}${/CONTINUE ANYWAY\?$/.test(upper) ? '' : ' — CONTINUE ANYWAY?'}`;
+  const who = missing.length ? `, ${waitingNames(missing)}` : '';
+  // F221: one separator, a colon, joining the fact to the next action — never an em dash.
+  return `${said}${who}${/CONTINUE ANYWAY\?$/.test(upper) ? '' : ': CONTINUE ANYWAY?'}`;
 }
 
 /** The refusal of a tap that ALREADY carried `force`.
@@ -103,7 +115,7 @@ export function refusalLine(r: PhaseRefusal): string {
  *  button stays armed until it is cancelled, and the next tap forces again. */
 function overrideRefusedLine(r: PhaseRefusal): string {
   const said = (r.error || '').trim() || 'IT WOULD NOT ADVANCE';
-  return `MC REFUSED THE OVERRIDE — ${said.toUpperCase()}`;
+  return `MC REFUSED THE OVERRIDE: ${said.toUpperCase()}`;
 }
 
 /** The ready count the button prints. While the SERVER has refused, it is the SERVER's tally: the
@@ -208,20 +220,23 @@ function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onG
         // (real-server walk, 2026-09-12). It used to live in a `title` tooltip — which the operator was
         // never going to hover, and which a touch console has no way to show at all — so the visible
         // line said only that someone was "waiting", not that a tap takes their screen away (F127).
-        <span role="alert" data-continue-warn="1" style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: T.warn, maxWidth: 'min(620px, calc(100vw - 48px))', textAlign: 'right', lineHeight: 1.45 }}>
-          {waitingNames(gate.waiting)} {gate.waiting.length === 1 ? 'IS' : 'ARE'} STILL KITTING AND WILL LOSE THEIR SCREEN — CONTINUE ANYWAY?
+        <span role="alert" data-continue-warn="1" style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: colourOf('kit-continue-warn'), maxWidth: 'min(620px, calc(100vw - 48px))', textAlign: 'right', lineHeight: 1.45 }}>
+          {glyphed('amber', `${waitingNames(gate.waiting)} ${gate.waiting.length === 1 ? 'IS' : 'ARE'} STILL KITTING AND WILL LOSE THEIR SCREEN: CONTINUE ANYWAY?`)}
         </span>
       )}
-      {refusal && (
+      {refusal && (() => {
         // The SERVER's sentence and the SERVER's names, verbatim. Not the console's own count — when
         // the two disagree this is the one that decided, and the operator is about to override it.
-        <span role="alert" data-continue-refusal="1" data-override-refused={refusedForce ? '1' : '0'}
-          style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: refusedForce ? T.bad : T.warn, maxWidth: 'min(620px, calc(100vw - 48px))', textAlign: 'right', lineHeight: 1.45 }}>
-          {refusedForce ? overrideRefusedLine(refusal) : refusalLine(refusal)}
-        </span>
-      )}
+        const id = refusedForce ? 'kit-continue-refused-force' : 'kit-continue-refusal';
+        return (
+          <span role="alert" data-continue-refusal="1" data-override-refused={refusedForce ? '1' : '0'}
+            style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: colourOf(id), maxWidth: 'min(620px, calc(100vw - 48px))', textAlign: 'right', lineHeight: 1.45 }}>
+            {glyphed(sevOf(id), refusedForce ? overrideRefusedLine(refusal) : refusalLine(refusal))}
+          </span>
+        );
+      })()}
       {!gate.known && gate.total > 0 && (
-        <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro }}>READINESS UNKNOWN</span>
+        <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: colourOf('kit-readiness-unknown') }}>READINESS UNKNOWN</span>
       )}
     </span>
   );
@@ -491,10 +506,15 @@ export function Kit() {
               const liveNode = state.nodes.some(n => n.player_id === pl.player_id);
               const kittedRow = !!(p0 && pl.team_id && pl.gun_id);
               let chip: ReactNode;
-              if (tw) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '2px 7px', animation: 'tryPulse 1.6s infinite', whiteSpace: 'nowrap' }}>TRYING {(wById(tw)?.name ?? tw).toUpperCase()}</span>;
+              // F221: an activity status, not a fault, so the TEXT is neutral (no amber, no glyph) — but
+              // it is still LIVE (the player is trying the weapon right now), so the chip keeps its own
+              // pulse (`tryPulse`, styles.css), same as before this rework.
+              if (tw) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: colourOf('kit-roster-trying'), whiteSpace: 'nowrap', borderRadius: 3, animation: 'tryPulse 1.6s ease-in-out infinite' }}>TRYING {(wById(tw)?.name ?? tw).toUpperCase()}</span>;
               else if (pl.ready) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.ok }}>READY ✓</span>;
               else if (isBrowsing) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.acc, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Blink color={T.acc} period={1.2} size={6} />PICKING…</span>;
-              else if (!liveNode) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.micro }}>NO PHONE</span>;
+              // F221: a phone waiting for its gun is Tony's AMBER bucket; a KITTED-but-gone row (F142's
+              // restored ghost) is the same bucket but says so by name, so it does not blend into the crowd.
+              else if (!liveNode) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: colourOf(kittedRow ? 'kit-roster-restored-ghost' : 'kit-roster-no-phone') }}>{kittedRow ? 'RESTORED · NO PHONE' : 'NO PHONE'}</span>;
               else chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: kittedRow ? T.dim : T.micro }}>{kittedRow ? 'KITTED' : pl.gun_id ? 'FITTING' : 'NO GUN'}</span>;
               return (
                 <div key={pl.player_id} className="hov-acc kit-row" role="button" tabIndex={0} aria-pressed={on} data-no-phone={liveNode ? undefined : '1'}
@@ -516,9 +536,10 @@ export function Kit() {
                         <span style={{ color: T.faint }}> + </span>
                         {p1 ? shortName(p1.name) : <span style={{ color: T.faint }}>NONE</span>}
                         {pk && <span style={{ color: PERK_COLOR }}> ◆ {pk.name.toUpperCase()}</span>}</span>
+                      {/* F221: a deliberate, host-set difference — status, not a fault (NEUTRAL). */}
                       {(() => { const pp = poolOf(pl, gameHp, gameAr); return pp.set
-                        ? <span data-pool-chip={pl.player_id} title={`Armed at ${pp.hp} HP / ${pp.armor} AR — the game pool is ${gameHp} / ${gameAr}`}
-                            style={{ color: T.warn, whiteSpace: 'nowrap' }}>◆ {pp.hp}/{pp.armor} POOL</span>
+                        ? <span data-pool-chip={pl.player_id} title={`Armed at ${pp.hp} HP / ${pp.armor} AR: the game pool is ${gameHp} / ${gameAr}`}
+                            style={{ color: colourOf('kit-pool-chip'), whiteSpace: 'nowrap' }}>◆ {pp.hp}/{pp.armor} POOL</span>
                         : null; })()}
                       {/* The OTHER accessibility switch, marked for the same reason as the pool: the host
                           has to see who is set up differently without selecting them one at a time. */}
@@ -617,7 +638,8 @@ export function Kit() {
                     return <option key={o.gun_id} value={o.gun_id} disabled={!!takenBy}>{o.label}{takenBy ? ` · ${takenBy.display}` : ''}</option>;
                   })}
                 </select>
-                <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: node ? T.ok : sp.gun_id ? T.bad : T.micro }}>{node ? `LINKED ${fmtAge(node.last_seen_ms)}` : sp.gun_id ? 'NO NODE' : 'PICK A GUN'}</span>
+                {/* F221: a link lost pre-match (LOBBY/KIT) is Tony's AMBER bucket, not the RED "lost during a match" one. */}
+                <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: node ? T.ok : sp.gun_id ? colourOf('kit-no-node') : T.micro }}>{node ? `LINKED ${fmtAge(node.last_seen_ms)}` : sp.gun_id ? 'NO NODE' : 'PICK A GUN'}</span>
                 {node && <EvictButton nodeId={node.node_id} />}   {/* A30: EVICT works in every phase (a stranger holding a gun's name) */}
               </div>
             </div>
@@ -637,8 +659,12 @@ export function Kit() {
                   onClear={perk && !slotLocked('perk') && !locked ? clearPerk : undefined} />
                 <PoolCard locked={locked} hp={gameHp} armor={gameAr} pool={playerPool} onSet={patchPool} onClear={clearPool} name={sp.display}
                   easy={!!lo.overrides?.easy_reload} onEasy={setEasyReload} easyAsk={confirmFor('easy_reload')} />
-                <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '2px 4px' }}>
-                  {locked ? '▲ THE KIT LOCKED AT THE START OF THE MATCH. CHANGE IT AFTER THE WHISTLE.' : pol?.hud_select ? '▲ PLAYERS PICK ON THEIR PHONE — ANYTHING YOU SET HERE OVERRIDES IT AND SHOWS ON THEIR SCREEN' : '▲ PHONE PICKS ARE OFF — YOU KIT EVERY PLAYER HERE'}
+                {/* F221: THE KIT LOCKED is a real constraint right now (AMBER); the other two just state the
+                    loadout policy's mode of operation (NEUTRAL) — same render site, different facts, different colours. */}
+                <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: locked ? colourOf('kit-slot-note-locked') : colourOf(pol?.hud_select ? 'kit-slot-note-phone-picks' : 'kit-slot-note-phone-off'), padding: '2px 4px' }}>
+                  {locked ? glyphed('amber', 'THE KIT LOCKED AT THE START OF THE MATCH. CHANGE IT AFTER THE WHISTLE.')
+                    : pol?.hud_select ? 'PLAYERS PICK ON THEIR PHONE: ANYTHING YOU SET HERE OVERRIDES IT AND SHOWS ON THEIR SCREEN'
+                    : 'PHONE PICKS ARE OFF: YOU KIT EVERY PLAYER HERE'}
                 </div>
               </div>
 
@@ -701,9 +727,11 @@ export function Kit() {
                         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
                           {dis && <Lock color={T.micro} size={10} />}
                           <span style={{ font: F.chk(700, 12), letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: dis ? T.dim : T.ink, flex: 1 }}>{w.name}</span>
-                          {w.caution && <span title={w.caution} aria-label={w.caution} style={{ font: F.chk(700, 11), color: T.bad }}>▲</span>}
+                          {/* F221: briefing information about a known hardware quirk, not a live fault: amber, not red. */}
+                          {w.caution && <span title={w.caution} aria-label={w.caution} style={{ font: F.chk(700, 11), color: colourOf('kit-weapon-caution-icon') }}>{GLYPH}</span>}
                           <span style={{ font: F.osw(600, 11), ...TAB, color: T.micro }} title={`magazine ${w.clip}`}>MAG {w.clip}</span>
-                          {verdicts[w.weapon_id] && <span title={verdicts[w.weapon_id].note || undefined} style={{ font: F.chk(700, 11), color: verdicts[w.weapon_id].verdict === 'pass' ? T.ok : T.bad }}>{verdicts[w.weapon_id].verdict === 'pass' ? '✓' : '✗'}</span>}
+                          {/* F221: a pass/fail QA marker, not a live-match alert — NOT-ALERT, so the fail glyph never borrows T.bad. */}
+                          {verdicts[w.weapon_id] && <span title={verdicts[w.weapon_id].note || undefined} style={{ font: F.chk(700, 11), color: verdicts[w.weapon_id].verdict === 'pass' ? T.ok : T.body }}>{verdicts[w.weapon_id].verdict === 'pass' ? '✓' : '✗'}</span>}
                         </div>
                       </div>
                     );
@@ -727,7 +755,8 @@ export function Kit() {
                         <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                           <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                             <span style={{ font: F.chk(700, 13), letterSpacing: '.05em' }}>{k.name}</span>
-                            {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.warn }}>UNPROVEN</span>}
+                            {/* F221: a confidence fact about our own build, not something the operator can fix tonight — NEUTRAL. */}
+                            {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: colourOf('kit-perk-unproven') }}>UNPROVEN</span>}
                           </span>
                           <PerkTrade k={k} style={{ font: F.mono(600, 11), letterSpacing: '.1em' }} />
                         </span>
@@ -752,6 +781,9 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
   const choice = rule?.choice ?? 'player';
   const locked = matchLocked || choice === 'fixed' || choice === 'off';
   const right = matchLocked ? 'LOCKED FOR THIS MATCH' : choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME' : choice === 'host' ? 'HOST PICKS' : 'PLAYER PICKS · YOU CAN OVERRIDE';
+  // F221 polish r2 (Low): FIXED/OFF are configuration facts, not a fault — only a match already LOCKED
+  // (`kit-slot-note-locked`) is a real constraint on the operator right now, so only that one is amber.
+  const lockColor = matchLocked ? colourOf('kit-slot-note-locked') : T.micro;
   const isPerk = kind === 'perk' && item && 'perk_id' in item;
   const color = isPerk ? PERK_COLOR : T.acc;
   const empty = kind === 'none';
@@ -769,7 +801,7 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
         borderTop: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderRight: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderBottom: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderLeft: `3px solid ${active ? color : T.line2}` }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '2px 8px', flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 12), letterSpacing: '.22em', color: active ? color : T.dim }}>{active ? '▸ ' : ''}{label}</span>
-        <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: locked ? T.warn : T.micro, marginLeft: 'auto', textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{locked && <Lock color={T.warn} />}{right}</span>
+        <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: locked ? lockColor : T.micro, marginLeft: 'auto', textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{locked && <Lock color={lockColor} />}{right}</span>
       </div>
       {empty ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48 }}>
@@ -800,10 +832,12 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
         <button type="button" data-slot-clear={slot} onClick={e => { e.stopPropagation(); onClear(); }} aria-label={`clear ${slot}`} title={slot === 'perk' ? 'No perk' : 'Leave slot 2 empty'} className="hov-acc-ink"
           style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, width: clearW - 12, textAlign: 'right', font: F.mono(600, 11), letterSpacing: '.14em', color: T.micro, padding: '8px 10px', minHeight: 36, boxSizing: 'border-box' }}>✕ CLEAR</button>
       )}
-      {required && !item && <span style={{ font: F.mono(500, 11), color: T.bad }}>A PRIMARY IS REQUIRED</span>}
+      {/* F221 polish r2: this was plain mono text colouring itself off the catalogue — RED goes through
+          <Alert>, the boxed row a gun card uses (Tony's rule), like every other RED on this card. */}
+      {required && !item && <Alert id="kit-primary-required" variant="row" what="a primary is required" />}
       {overridden && (
-        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn }}>
-          ▲ CHANGED FROM THEIR PHONE — YOURS WAS {overridden.label.toUpperCase()}
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('kit-changed-from-phone') }}>
+          {GLYPH} CHANGED FROM THEIR PHONE: YOURS WAS {overridden.label.toUpperCase()}
           <button type="button" onClick={e => { e.stopPropagation(); onReapply?.(overridden); }} className="hov-warnbg"
             style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '7px 12px', minHeight: 36 }}>REAPPLY MINE</button>
         </div>
@@ -823,8 +857,9 @@ function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBuild }:
     : slot === 'perk' ? `${pool.perks.length} PERKS${presetTxt}`                                          // A14: the perk slot
     : sidearms ? `${nAllowed} SIDEARMS${presetTxt}`
     : `${nAllowed} OF ${weapons.length} WEAPONS${presetTxt}`;
+  // F221 polish r2 (Low): a navigation link, not a fault -- the ordinary accent colour, not amber.
   const hint = choice === 'fixed' || choice === 'off'
-    ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 11), letterSpacing: '.18em', color: T.warn, minHeight: 36 }}>CHANGE IN GAMES ▸</button>
+    ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 11), letterSpacing: '.18em', color: T.acc, minHeight: 36 }}>CHANGE IN GAMES ▸</button>
     : <span>{slot === 'primary' ? 'SELECT TO ARM · TRY-OUT STARTS ON PICK' : slot === 'secondary' ? 'SELECT · WEAPONS TRY OUT ON PICK' : 'SELECT · APPLIED WHEN THE GAME IS PUSHED'}</span>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
@@ -859,7 +894,8 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
           <span style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase' }}>{w.name}</span>
           <Tag color={role.color} style={{ letterSpacing: '.22em', padding: '3px 10px' }}>{role.label}</Tag>
           {!w.verified && <span title="Retuned from the captured Callsign frame for balance — not the stock numbers" style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>TUNED · NOT STOCK</span>}
-          {w.caution && <span role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: T.bad }}>▲ {w.caution.toUpperCase()}</span>}
+          {/* F221: briefing information (a known hardware quirk), not a live fault — amber, not red. */}
+          {w.caution && <span role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: colourOf('kit-weapon-caution-hero') }}>{GLYPH} {w.caution.toUpperCase()}</span>}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '7px 14px', alignItems: 'center', maxWidth: 440 }}>
           {/* Field 2026-08-30: these read `dmg`/`rpm` straight, but `dmg` is "% of a 115 pool per hit"
@@ -878,14 +914,16 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
               cell. CATALOG already showed `—`; this one did not (merge review 2026-09-01). */}
           <NumberCell label="RELOAD" value={w.reload_s ?? '—'} unit={w.reload_s == null ? undefined : 's'} size={20} pad="6px 14px" />
           {/* both follow the host's health config now, not a hardcoded 115 (W2) — say which pool */}
-          {w.htk != null && <NumberCell label={w.dual_emitter ? `PULLS TO KILL · ${w.pool ?? ''}*` : (w.pool ? `HITS TO KILL · ${w.pool}` : 'HITS TO KILL')} value={w.htk} size={20} pad="6px 14px" color={w.htk <= 2 ? T.warn : T.ink} />}
+          {/* F221 polish (2026-09-25): a low hits-to-kill figure is data worth noticing, not an alert —
+              T.acc, the console's own "look here" data colour, replaces the alert amber. */}
+          {w.htk != null && <NumberCell label={w.dual_emitter ? `PULLS TO KILL · ${w.pool ?? ''}*` : (w.pool ? `HITS TO KILL · ${w.pool}` : 'HITS TO KILL')} value={w.htk} size={20} pad="6px 14px" color={w.htk <= 2 ? T.acc : T.ink} />}
           {w.ttk_ms != null && <NumberCell label="TIME TO KILL" value={+(w.ttk_ms / 1000).toFixed(2)} unit="s" size={20} pad="6px 14px" />}
         </div>
         {w.desc && <div style={{ font: F.chk(500, 12), lineHeight: 1.5, color: T.dim, maxWidth: '54ch' }}>{w.desc}</div>}
         {w.dual_emitter && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, maxWidth: '54ch' }}>* ONE TRIGGER MAY EMIT SEPARATE GUN AND HEADSET WORDS; THE TOTAL ASSUMES BOTH LAND.</div>}
         {tryingId && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', font: F.mono(500, 11), letterSpacing: '.12em', color: T.warn }}>
-            ▲ TRYING OUT ON {sp.display}'S GUN — HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('kit-tryout-banner') }}>
+            {GLYPH} TRYING OUT ON {sp.display}'S GUN: HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS
             <GhostButton size={11} pad="4px 10px" onClick={() => run(() => api.endTryout(sp.player_id))}>END TRY-OUT</GhostButton>
             <span style={{ display: 'inline-flex', gap: 6 }}>
               <GhostButton size={11} pad="4px 10px" onClick={async () => { await run(() => api.rangeVerdict(tryingId, 'pass')); setVerdicts(v => ({ ...v, [tryingId]: { verdict: 'pass', note: '' } })); }}>SOUNDS RIGHT ✓</GhostButton>
@@ -893,8 +931,9 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
             </span>
           </div>
         )}
-        {pushed && <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>TRY-OUTS CLOSED — THE GAME HAS BEEN PUSHED TO THE GUNS</div>}
-        {verdicts[w.weapon_id]?.verdict === 'issue' && <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.bad }}>RANGE LOG: {verdicts[w.weapon_id].note.toUpperCase()}</div>}
+        {pushed && <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('kit-tryouts-closed') }}>TRY-OUTS CLOSED: THE GAME HAS BEEN PUSHED TO THE GUNS</div>}
+        {/* F221: a bench note to fix before play, not a live blocker — amber, not red. */}
+        {verdicts[w.weapon_id]?.verdict === 'issue' && <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('kit-range-log-issue') }}>RANGE LOG: {verdicts[w.weapon_id].note.toUpperCase()}</div>}
       </div>
     </>
   );
@@ -912,19 +951,22 @@ function PerkHero({ k }: { k: PerkView }) {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
           <span style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase' }}>{k.name}</span>
           <Tag color={PERK_COLOR} style={{ letterSpacing: '.22em', padding: '3px 10px' }}>PERK</Tag>
-          {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.warn }}>UNPROVEN ON HARDWARE</span>}
+          {/* 'kit-perk-unproven' is NEUTRAL (F221 polish, 2026-09-25): the absence of a hardware proof
+              is a status, not a fix-before-match amber. */}
+          {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: colourOf('kit-perk-unproven') }}>UNPROVEN ON HARDWARE</span>}
         </div>
         {/* S50 (2026-09-19): GAIN and COST, read straight off the server's `PerkView.gain`/`.cost` —
             this used to rebuild the same numbers from `effects` and got the sign wrong on every
             multiplier over 1 (body_armor's `reload_mult: 1.25`, a cost, printed as a gain). Two rows,
-            two colours: gain in the perk colour, cost in the neutral warning tone, never red and never
-            a team colour, so a host reads which is which without parsing the words. */}
+            two colours: gain in the perk colour, cost in an ordinary data tone (F221 polish, 2026-09-25:
+            T.body, not the alert amber — a perk's cost is not a fault to fix), never red and never a
+            team colour, so a host reads which is which without parsing the words. */}
         <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           {gain.map((g, i) => <Tag key={`g${i}`} color={PERK_COLOR} size={12} style={{ letterSpacing: '.1em', padding: '6px 12px' }}>{g}</Tag>)}
         </div>
         {cost.length > 0 && (
           <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            {cost.map((c, i) => <Tag key={`c${i}`} color={T.warn} ink={T.ink} size={12} style={{ letterSpacing: '.1em', padding: '6px 12px' }}>{c}</Tag>)}
+            {cost.map((c, i) => <Tag key={`c${i}`} color={T.body} ink={T.ink} size={12} style={{ letterSpacing: '.1em', padding: '6px 12px' }}>{c}</Tag>)}
           </div>
         )}
         <div style={{ font: F.chk(500, 13), lineHeight: 1.5, color: T.body, maxWidth: '54ch' }}>{k.desc}</div>
@@ -934,7 +976,9 @@ function PerkHero({ k }: { k: PerkView }) {
   );
 }
 
-export function Lock({ color = T.warn, size = 10 }: { color?: string; size?: number }) {
+// F221 polish r2 (Low): a lock icon is not inherently a warning -- every call site passes its own
+// colour (amber only for a real fault); the default is the ordinary data colour, not T.warn.
+export function Lock({ color = T.micro, size = 10 }: { color?: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" fill={color} /><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke={color} strokeWidth="2.5" /></svg>;
 }
 
@@ -973,10 +1017,11 @@ export function PerkGlyph({ id, size = 24, color = PERK_COLOR }: { id: string; s
 // which side of 1 it fell on (body_armor's 1.25 is a COST), and Armour Piercing's slower cycle had no
 // line at all. Both now come from the server (`mcp/brx_mcp/mc/perks.py` `gain_cost_lines`, on every
 // `PerkView` as `gain`/`cost`) — this file only renders the two lists, never derives them.
-/** `k.gain`/`k.cost` as one inline run of text: gain in the perk colour, cost in the neutral warning
- *  tone (never a team colour, never red — S50 desc F) so the two kinds of fact read as different at a
- *  glance, not just by word order. Renders 'PASSIVE' plain when a perk (a node-local one with nothing
- *  compiled, or a stale server that has not shipped the two lists yet) carries neither. */
+/** `k.gain`/`k.cost` as one inline run of text: gain in the perk colour, cost in an ordinary data tone
+ *  (F221 polish, 2026-09-25: T.body, not the alert amber — never a team colour, never red — S50 desc F)
+ *  so the two kinds of fact read as different at a glance, not just by word order. Renders 'PASSIVE'
+ *  plain when a perk (a node-local one with nothing compiled, or a stale server that has not shipped
+ *  the two lists yet) carries neither. */
 function PerkTrade({ k, style }: { k: PerkView; style?: CSSProperties }) {
   const gain = k.gain ?? [], cost = k.cost ?? [];
   if (!gain.length && !cost.length) return <span style={style}>PASSIVE</span>;
@@ -984,7 +1029,7 @@ function PerkTrade({ k, style }: { k: PerkView; style?: CSSProperties }) {
     <span style={style}>
       {gain.length > 0 && <span style={{ color: PERK_COLOR }}>{gain.join(' · ')}</span>}
       {gain.length > 0 && cost.length > 0 && ' · '}
-      {cost.length > 0 && <span style={{ color: T.warn }}>{cost.join(' · ')}</span>}
+      {cost.length > 0 && <span style={{ color: T.body }}>{cost.join(' · ')}</span>}
     </span>
   );
 }
@@ -1014,7 +1059,7 @@ function PlayerNum({ value, onCommit, disabled }: { value: number; onCommit: (n:
         style={{ width: '2.6em', font: F.mono(600, 11), color: invalid ? T.bad : T.acc, textAlign: 'left', minHeight: 36, borderBottom: invalid ? `1px solid ${T.bad}` : undefined }}
         onFocus={() => { setFocused(true); setInvalid(false); }} onBlur={() => { setFocused(false); commit(); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         onChange={e => setDraft(e.target.value)} />
-      {invalid && <span role="alert" style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.12em', color: T.bad }}>PLAYER NUMBER MUST BE 1–63</span>}
+      {invalid && <span role="alert" style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('kit-player-num-invalid') }}>PLAYER NUMBER MUST BE 1–63</span>}
     </>
   );
 }
@@ -1053,7 +1098,10 @@ function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk
     // Fix-1: in ARMED/LIVE a disabled <fieldset> turns off every button and input inside it at once
     // (Seg's options, both ValueBoxes, MATCH THE GAME POOL), so the card still SAYS the player's
     // setup without offering a write the server refuses.
-    <fieldset data-pool-card disabled={locked || undefined} style={{ margin: 0, minWidth: 0, border: `1px solid ${on ? T.warn : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8, opacity: locked ? 0.7 : 1 }}>
+    // 'kit-pool-note-on' is NEUTRAL (F221 polish, 2026-09-25): a deliberate, host-set difference is a
+    // status, not a fix-before-match amber, so the whole card border/label reads the same colour as the
+    // note at the bottom of it, not a hardcoded T.warn.
+    <fieldset data-pool-card disabled={locked || undefined} style={{ margin: 0, minWidth: 0, border: `1px solid ${on ? colourOf('kit-pool-note-on') : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8, opacity: locked ? 0.7 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: easy ? T.acc : T.dim }}>EASY RELOAD</span>
         <Seg value={easy ? 'on' : 'off'} onChange={v => onEasy(v === 'on')} size={11} pad="4px 12px"
@@ -1061,16 +1109,18 @@ function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk
           titles={{ off: `${name} reloads with the lever, like everyone else`, on: `The ALT button reloads ${name}'s gun` }}
           options={[{ value: 'off', label: 'OFF' }, { value: 'on', label: 'ON' }]} />
       </div>
+      {/* F221: a two-tap confirm (drops the second weapon) — UNCHANGED per Tony's rule. */}
       {easyAsk && <span role="alert" data-easy-ask style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {easyAsk}</span>}
-      <div data-easy-note style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: easy ? T.acc : T.micro, lineHeight: 1.6 }}>
+      {/* F221: explanatory copy, always shown — NEUTRAL, no glyph (matches kit-easy-note-off/on). */}
+      <div data-easy-note style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf(easy ? 'kit-easy-note-on' : 'kit-easy-note-off'), lineHeight: 1.6 }}>
         {easy
-          ? `▲ ON PURPOSE: ${who} RELOADS WITH THE ALT BUTTON, NOT THE LEVER. NO SECOND WEAPON, BECAUSE ALT CANNOT DO BOTH.`
-          : '▲ THE ALT BUTTON RELOADS, FOR A PLAYER WHO CANNOT WORK THE RELOAD LEVER. IT WINS NO FIGHTS: IT COSTS THE SECOND WEAPON.'}
+          ? `ON PURPOSE: ${who} RELOADS WITH THE ALT BUTTON, NOT THE LEVER. NO SECOND WEAPON, BECAUSE ALT CANNOT DO BOTH.`
+          : 'THE ALT BUTTON RELOADS, FOR A PLAYER WHO CANNOT WORK THE RELOAD LEVER. IT WINS NO FIGHTS: IT COSTS THE SECOND WEAPON.'}
       </div>
       <span style={{ height: 1, background: T.line }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: on ? T.warn : T.dim }}>POOL</span>
-        <span data-pool-state style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: on ? T.warn : T.micro }}>
+        <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: on ? colourOf('kit-pool-note-on') : T.dim }}>POOL</span>
+        <span data-pool-state style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: on ? colourOf('kit-pool-note-on') : T.micro }}>
           {on ? `${mult}\u00d7 GAME POOL` : 'GAME DEFAULT'}
         </span>
       </div>
@@ -1087,12 +1137,13 @@ function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk
           </div>
         );
       })}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: on ? T.warn : T.micro, lineHeight: 1.6 }}>
+      {/* F221: a deliberate, host-set difference either way \u2014 NEUTRAL, no glyph (kit-pool-note-off/on). */}
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf(on ? 'kit-pool-note-on' : 'kit-pool-note-off'), lineHeight: 1.6 }}>
         {on
-          ? `\u25b2 ON PURPOSE: ${name.toUpperCase()} IS ARMED AT ${pool.hp} HP / ${pool.armor} AR. EVERY OTHER PLAYER USES THE GAME POOL.`
-          : '\u25b2 SET A DIFFERENT POOL FOR THIS ONE PLAYER (A HANDICAP: A YOUNGER PLAYER, OR THE SOLO SIDE OF A 2v1).'}
+          ? `ON PURPOSE: ${name.toUpperCase()} IS ARMED AT ${pool.hp} HP / ${pool.armor} AR. EVERY OTHER PLAYER USES THE GAME POOL.`
+          : 'SET A DIFFERENT POOL FOR THIS ONE PLAYER (A HANDICAP: A YOUNGER PLAYER, OR THE SOLO SIDE OF A 2V1).'}
       </div>
-      {on && !locked && <GhostButton onClick={onClear} color={T.warn} border={T.warn} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
+      {on && !locked && <GhostButton onClick={onClear} color={colourOf('kit-pool-note-on')} border={colourOf('kit-pool-note-on')} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
     </fieldset>
   );
 }

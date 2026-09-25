@@ -700,7 +700,8 @@ def test_f155_a_node_whose_last_path_was_the_internet_is_not_accused_of_the_wron
     s.lan["public"] = {"status": "error", "ws_url": None, "provider": "cloudflared",
                        "available": True, "error": "cloudflared exited (1)"}
     row = next(r for r in s.readiness()["board"] if r["player_id"] == p["player_id"])
-    assert any(b.startswith("TUNNEL DOWN — NOT REACHED FOR ") for b in row["blockers"]), row["blockers"]
+    assert any(b.startswith("NOT REACHED FOR ") and b.endswith(", TUNNEL DOWN: TURN THE TUNNEL ON IN REACH")
+               for b in row["blockers"]), row["blockers"]
 
     # a node whose last path was the LAN keeps the old, correct accusation
     s2 = _sess()

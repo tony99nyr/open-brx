@@ -110,7 +110,9 @@ describe('Armory REACH panel', () => {
   it('a server that predates A28: the control is disabled with a restart explanation, not hidden or invented', async () => {
     const d = await withPublic(undefined);
     const m = await mountScreen(<Armory />, d);
-    expect(m.text()).toContain('PREDATES BACKHAUL');
+    // F221 (2026-09-25): the MC_OLDER words, not screen-specific wording — one fact, one sentence.
+    expect(m.text()).toContain('MC SERVER IS OLDER THAN THIS CONSOLE');
+    expect(m.text()).toContain('RESTART MC');
     const toggle = m.find('button').find(b => /TURN (ON|OFF)/.test(b.textContent ?? ''));
     expect(toggle, 'no toggle is invented for a route that does not exist on this server').toBeFalsy();
     m.unmount();

@@ -101,12 +101,13 @@ describe('Report a problem', () => {
   });
 
   it('error: an old server (404/405) shows a clear message, never a silent failure', async () => {
-    const skew = new Error('This Mission Control is too old to make reports: update it with ./start.sh');
+    // F221 round 2: the real message is `olderServer()`'s (MC_OLDER's own words), not a paraphrase.
+    const skew = new Error('MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC (./start.sh)');
     const m = await openPanel(async () => { throw skew; });
     await m.click('MAKE REPORT');
     const p = panel(m);
     expect(p.getAttribute('data-report-phase')).toBe('error');
-    expect(p.querySelector('[role="alert"]')?.textContent ?? '').toContain('too old to make reports');
+    expect(p.querySelector('[role="alert"]')?.textContent ?? '').toContain('MC SERVER IS OLDER THAN THIS CONSOLE');
     expect(m.find('[data-testid="report-panel"] button').some(b => (b.textContent ?? '').includes('TRY AGAIN'))).toBe(true);
     m.unmount();
   });
@@ -142,7 +143,8 @@ describe('Report a problem', () => {
     await m.click('MAKE REPORT');
     const p = panel(m);
     expect(p.getAttribute('data-report-phase')).toBe('auth');
-    expect((p.textContent ?? '').toLowerCase()).toMatch(/operator token required/);
+    // F221 (2026-09-25): the shared OPERATOR_TOKEN words, not screen-specific wording.
+    expect((p.textContent ?? '').toLowerCase()).toMatch(/operator token needed/);
     expect(m.find('[data-testid="report-panel"] button').some(b => (b.textContent ?? '').includes('TRY AGAIN'))).toBe(false);
     await m.click('ENTER OPERATOR TOKEN');
     expect(seenViews).toContain('debug');           // sent to the screen that holds the token control

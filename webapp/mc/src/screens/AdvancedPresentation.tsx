@@ -18,6 +18,7 @@ import type { PresentationRow, PresentationView } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { BTN_RESET, SectionRule } from '../ui';
+import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, colourOf, glyphed, sevOf } from '../alerts';
 
 const PALETTE = ['RED', 'BLUE', 'YELLOW', 'GREEN', 'PURPLE', 'TEAL', 'WHITE', 'PINK', 'ORANGE'];
 const SWATCH = ['#e33', '#37f', '#ed2', '#3c5', '#a4e', '#3cc', '#eee', '#f7b', '#f92'];
@@ -95,9 +96,11 @@ export function AdvancedPresentation({ draft }: { draft?: { presentation?: Recor
                 ? <>Read only. The draft above uses the <b data-testid="presentation-draft-preset">{draftPreset}</b> profile, and tonight's applied game uses a different one. The server resolves the full table for the applied game only, so it shows here once you play this game.</>
                 : <>Read only. These are the sounds and lights of the draft above, which shares its profile with tonight's applied game. The designer does not change them.</>}
           </div>
-          {loading && <div role="status" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: T.dim }}>LOADING…</div>}
-          {stale && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn }}>▲ THE MC SERVER PREDATES THIS UI — IT HAS NO /api/presentation. RESTART IT: <code>python -m brx_mcp.mc</code></div>}
-          {err && !stale && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn }}>▲ COULD NOT LOAD THE PRESENTATION PROFILE — {err.msg.toUpperCase()}</div>}
+          {loading && <div role="status" data-alert="adv-loading" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: colourOf('adv-loading') }}>LOADING…</div>}
+          {stale && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('adv-server-old') }}>
+            {glyphed('amber', `${MC_OLDER.what}: ${MC_OLDER.act}`)}. IT HAS NO <code>/api/presentation</code>. RESTART WITH <code>{MC_RESTART_CMD}</code>.
+          </div>}
+          {err && !stale && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('adv-load-failed') }}>{glyphed('amber', `COULD NOT LOAD THE PRESENTATION PROFILE: ${err.msg.toUpperCase()}`)}</div>}
           {view && !draftDiffers && (
             <>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
@@ -139,17 +142,25 @@ export function AdvancedPresentation({ draft }: { draft?: { presentation?: Recor
                 const counts = `OFFLINE ${c.missing.length} · STALE ${c.stale.length} · UNFLUSHED ${c.unflushed.length}`;
                 // The switches come first: with MC events off nothing is sent at all, and with the gate off the
                 // global-state events go out regardless of who is connected (state.py _alert).
+                const alertId = !view.summary.mc_events ? 'adv-mc-events-off'
+                  : !view.summary.mc_confidence ? 'adv-confidence-gate-off'
+                  : !inMatch ? 'adv-confidence-armed'
+                  : !c.confident ? 'adv-not-confident'
+                  : null;   // adv-confident: NOT-ALERT, a positive live status
                 const text = !view.summary.mc_events
-                  ? 'MC-DRIVEN EVENTS OFF — THIS GAME SENDS NO LEAD / NEXT KILL WINS / LAST SURVIVOR CALLS'
+                  ? 'MC-DRIVEN EVENTS OFF: THIS GAME SENDS NO LEAD / NEXT KILL WINS / LAST SURVIVOR CALLS'
                   : !view.summary.mc_confidence
-                    ? `MC CONFIDENCE GATE OFF — MC-DRIVEN GLOBAL EVENTS ARE SENT REGARDLESS OF WHO IS CONNECTED. RIGHT NOW: ${counts}`
+                    ? `MC CONFIDENCE GATE OFF: MC-DRIVEN GLOBAL EVENTS ARE SENT REGARDLESS OF WHO IS CONNECTED. RIGHT NOW: ${counts}`
                     : !inMatch
-                      ? `MC CONFIDENCE GATE ARMED — MC-DRIVEN GLOBAL EVENTS (LEAD, NEXT KILL WINS, LAST SURVIVOR) ARE SENT ONLY WHILE EVERY HUD IS CONNECTED, FRESH AND FLUSHED; CHECKED AT EACH EVENT. RIGHT NOW: ${counts}`
+                      ? `MC CONFIDENCE GATE ARMED: MC-DRIVEN GLOBAL EVENTS (LEAD, NEXT KILL WINS, LAST SURVIVOR) ARE SENT ONLY WHILE EVERY HUD IS CONNECTED, FRESH AND FLUSHED; CHECKED AT EACH EVENT. RIGHT NOW: ${counts}`
                       : c.confident
-                        ? 'MC CONFIDENT — EVERY HUD CONNECTED, FRESH AND FLUSHED: MC-DRIVEN EVENTS (LEAD, NEXT KILL WINS) WILL BE SENT'
-                        : `MC NOT CONFIDENT — MC-DRIVEN GLOBAL EVENTS ARE WITHHELD · OFFLINE: ${who(c.missing)} · STALE: ${who(c.stale)} · UNFLUSHED: ${who(c.unflushed)}`;
-                const colour = (!view.summary.mc_events || !view.summary.mc_confidence || !inMatch) ? T.dim : c.confident ? T.ok : T.warn;
-                return <div role="status" data-testid="mc-confidence" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: colour, lineHeight: 1.5, textTransform: 'uppercase' }}>{text}</div>;
+                        ? 'MC CONFIDENT: EVERY HUD CONNECTED, FRESH AND FLUSHED: MC-DRIVEN EVENTS (LEAD, NEXT KILL WINS) WILL BE SENT'
+                        : `MC NOT CONFIDENT: MC-DRIVEN GLOBAL EVENTS ARE WITHHELD. OFFLINE: ${who(c.missing)} · STALE: ${who(c.stale)} · UNFLUSHED: ${who(c.unflushed)}`;
+                const sev = alertId ? sevOf(alertId) : null;
+                const colour = sev ? SEV_COLOUR[sev] : T.ok;
+                return <div role={sev && sev !== 'neutral' ? 'alert' : 'status'} data-testid="mc-confidence" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: colour, lineHeight: 1.5, textTransform: 'uppercase' }}>
+                  {sev && sev !== 'neutral' ? `${GLYPH} ${text}` : text}
+                </div>;
               })()}
               <div style={{ font: F.chk(500, 12), color: T.micro, lineHeight: 1.45 }}>
                 <b>HUD</b> = {SOURCE_HINT.hud}. <b>MC</b> = {SOURCE_HINT.mc}. A row marked SOUND OFF plays no sound; its lights still fire.
@@ -167,7 +178,9 @@ export function AdvancedPresentation({ draft }: { draft?: { presentation?: Recor
                         style={{ color: r.enabled ? T.body : T.faint, borderBottom: `1px solid ${T.line}` }}>
                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: r.enabled ? T.ink : T.faint }}>{r.event}</td>
                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }} title={SOURCE_HINT[r.source]}>
-                          <span style={{ font: F.chk(700, 11), letterSpacing: '.12em', padding: '2px 6px', border: `1px solid ${r.source === 'hud' ? T.ok : r.source === 'mc' ? T.warn : T.acc}`, color: r.source === 'hud' ? T.ok : r.source === 'mc' ? T.warn : T.acc }}>{SOURCE_LABEL[r.source]}</span>
+                          {/* F221 M2: a classification tag, never an alert colour — the MC source used to borrow
+                              T.warn, which read as a caution though it signals nothing wrong (NOT-ALERT). */}
+                          <span style={{ font: F.chk(700, 11), letterSpacing: '.12em', padding: '2px 6px', border: `1px solid ${r.source === 'hud' ? T.ok : r.source === 'mc' ? T.acc : T.dim}`, color: r.source === 'hud' ? T.ok : r.source === 'mc' ? T.acc : T.dim }}>{SOURCE_LABEL[r.source]}</span>
                         </td>
                         <td style={{ padding: '6px 8px', font: F.chk(500, 12), color: r.enabled ? T.dim : T.faint }}>{r.desc}</td>
                         <td style={{ padding: '6px 8px' }}>

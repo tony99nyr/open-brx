@@ -361,7 +361,7 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
     // was an amber "4 V 0 — UNBALANCED" chip beside a live PUSH button. The SERVER names the fault
     // (round-3 FIELD-3: the console renders what it was told, and only invents a fault of its own
     // when the key is absent altogether).
-    const m = await lobbyOn(() => 'blue', ['ONLY ONE SIDE HAS PLAYERS — move players between teams']);
+    const m = await lobbyOn(() => 'blue', ['ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS']);
     const alert = m.find('[data-testid="roster-fault"]');
     expect(alert.length, 'the empty team gets its own alert, not a tag').toBe(1);
     expect(alert[0].getAttribute('role')).toBe('alert');
@@ -406,7 +406,7 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
     const d = await demo();
     const players = d.state.players.map(p => ({ ...p, team_id: 'blue', ready: true }));
     const board = d.state.readiness.board.map((b, i) => ({ ...b, status: (i === 0 ? 'red' : 'green') as 'red' | 'green', blockers: i === 0 ? ['GUN LINK LOST'] : [] }));
-    const readiness = { ...d.state.readiness, board, go: false, roster_faults: ['ONLY ONE SIDE HAS PLAYERS — move players between teams'] };
+    const readiness = { ...d.state.readiness, board, go: false, roster_faults: ['ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS'] };
     const state: State = { ...d.state, phase: 'lobby', players, config: { ...d.state.config, mode: 'tdm' },
       lobby: { ...d.state.lobby, pushed: false, acks: {} }, readiness };
     const m = await mountScreen(<Lobby />, { ...d, state });
@@ -482,7 +482,7 @@ describe('F144/F155 — Armory gun card reach', () => {
     // wifi-worded blocker must be REPLACED, never sit beside the honest one.
     const board = d.state.readiness.board.map(b => b.sticker === redRow!.sticker
       ? { ...b, present: true, reach: null, last_reach: 'backhaul' as const, last_seen_age_ms: 95_000,
-          blockers: ['WRONG WI-FI / MC UNREACHABLE — BLOCKS START'] } : b);
+          blockers: ['WRONG WI-FI OR MC UNREACHABLE: JOIN THE PHONE TO THE FIELD WI-FI'] } : b);
     const state: State = { ...d.state, readiness: { ...d.state.readiness, board } };
     const m = await mountScreen(<Armory />, { ...d, state });
     expect(m.text()).toContain('NOT REACHED FOR');

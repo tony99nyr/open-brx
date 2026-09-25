@@ -20,8 +20,10 @@ describe('LOBBY before the push, with nobody ready', () => {
   it('names the step that gets the phones off SETTING UP', async () => {
     const d = await demo();
     const m = await mountScreen(<Lobby />, { ...d, state: lobbyWith(d.state, false), view: 'lobby' });
-    expect(railLine(m)).toContain('Not ready yet:');
-    expect(railLine(m)).toContain('HOST IS SETTING UP until you open KIT or push the config');
+    // F221 polish r1: this line is a catalogued amber alert now (`lobby-status-line-amber`), so it
+    // reads upper case, WHAT: DO, with its own glyph.
+    expect(railLine(m).toUpperCase()).toContain('NOT READY YET:');
+    expect(railLine(m).toUpperCase()).toContain('HOST IS SETTING UP UNTIL YOU OPEN KIT OR PUSH THE CONFIG');
     m.unmount();
   });
 

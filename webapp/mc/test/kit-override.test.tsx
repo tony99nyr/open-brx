@@ -91,13 +91,13 @@ describe('A27 · a refused OVERRIDE', () => {
     await act(async () => { m.btn().click(); });                     // refused, unforced
     const first = m.find('[data-continue-refusal]')[0];
     expect(first.getAttribute('data-override-refused')).toBe('0');
-    expect(first.textContent).toBe('THE LOBBY IS CLOSED — CONTINUE ANYWAY?');
+    expect(first.textContent).toBe('▲ THE LOBBY IS CLOSED: CONTINUE ANYWAY?');
 
     await act(async () => { m.btn().click(); });                     // refused, FORCED
     expect(m.calls).toEqual([undefined, true]);
     const second = m.find('[data-continue-refusal]')[0];
     expect(second.getAttribute('data-override-refused'), 'the forced tap was refused and the screen says so').toBe('1');
-    expect(second.textContent).toBe('MC REFUSED THE OVERRIDE — THE LOBBY IS CLOSED');
+    expect(second.textContent).toBe('▲ MC REFUSED THE OVERRIDE: THE LOBBY IS CLOSED');
     m.unmount();
   });
 
@@ -146,7 +146,7 @@ describe('A27 · a refused OVERRIDE', () => {
     await act(async () => { m.btn().click(); });
     await act(async () => { m.btn().click(); });
     await m.push({ ...m.base, t: m.base.t + 250 });
-    expect(m.find('[data-continue-refusal]')[0].textContent).toBe('MC REFUSED THE OVERRIDE — THE LOBBY IS CLOSED');
+    expect(m.find('[data-continue-refusal]')[0].textContent).toBe('▲ MC REFUSED THE OVERRIDE: THE LOBBY IS CLOSED');
     m.unmount();
   });
 

@@ -1,15 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
-import { armoryGate, backhaulOffer, cureLabel, gunLockedLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
+import { armoryGate, backhaulOffer, cleanServerLine, cureAlertId, cureLabel, GUN_LOCKED_ALERT_ID, poolStaleAlertId, gunLockedLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, staleReachReason } from '../api/derive';
 import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
 import { StationAlerts } from '../ui/StationAlerts';
-import { STATION_CONFLICT, friendlySetupLine, setupLines } from '../ui/SetupSteps';
+import { STATION_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
 import { CountBlock, GhostButton, Micro, OutlineTag, ScreenHeader, SectionRule, Seg, SegBar, Tag } from '../ui';
 import { TagHint } from '../ui/TagHint';
 import { TAG_INPUT_MAX, tagError } from '../api/tag';
+import { Alert, AlertTag, alertStyle } from '../ui/Alert';
+import { batteryColour, colourOf, glyphed, serverLine, sevOf, MC_OLDER, MC_RESTART_CMD } from '../alerts';
 import { Items } from './Items';
 import { PlayButton, standDownLocked } from '../ui/Standby';
 
@@ -66,8 +68,8 @@ export function appVerSummary(nodes: { app_ver?: string | null }[], field?: Reco
 const LOG_LABEL: Record<LogView['state'], { text: string; color: string }> = {
   none: { text: 'NOTHING OFFERED', color: T.micro },
   offered: { text: 'READY TO SEND', color: T.acc },
-  pulling: { text: 'SENDING…', color: T.warn },
-  held: { text: 'HOLDING', color: T.warn },
+  pulling: { text: 'SENDING…', color: T.acc },
+  held: { text: 'HOLDING', color: T.dim },
   complete: { text: 'DELIVERED ✓', color: T.ok },
 };
 const kb = (n?: number) => (n == null ? '' : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
@@ -170,9 +172,11 @@ export function Armory() {
             </span>
           )}
           <div style={{ display: 'flex', gap: 2 }}>
+            {/* armory-counts-green-amber-nophone: NOT-ALERT — a fixed legend tally, never a live warning,
+                so none of its three blocks may carry T.warn/T.bad (F221, Tony 2026-09-25). */}
             <CountBlock value={nGreen} label="GREEN" color={T.ok} />
-            <CountBlock value={nAmber} label="AMBER" color={T.warn} />
-            <CountBlock value={nRed} label="RED" color={nRed ? T.bad : T.micro} />
+            <CountBlock value={nAmber} label="AMBER" color={T.dim} />
+            <CountBlock value={nRed} label="RED" color={nRed ? colourOf('armory-counts-red') : T.micro} />
             {nWaiting > 0 && <CountBlock value={nWaiting} label="NO PHONE" color={T.micro} />}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
@@ -180,14 +184,14 @@ export function Armory() {
               {backhaul.control}
               {/* Disabled on REDS a push cannot cure, only. Amber and a waiting phone never blocked
                   going on: this is navigation to GAMES; the real gate is the lobby push. */}
-              <button type="button" data-testid="armory-gate" data-gate-ready={gate.ready ? '1' : '0'}
+              <button type="button" data-testid="armory-gate" data-alert={gate.alert ?? undefined} data-gate-ready={gate.ready ? '1' : '0'}
                 className={!gate.disabled ? 'hov-accbg' : ''} disabled={gate.disabled} title={gate.why}
                 onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
                 // M4 (visual QA 2026-09-23): WAITING FOR N PHONES is pressable (it goes on to GAMES), but in
                 // dim grey on a panel it read as disabled. Anything pressable that is not HARDWARE READY is
                 // an accent outline now; only a real block is the flat grey `disabled` look.
                 style={{ font: F.osw(700, 20), letterSpacing: '.22em', padding: '10px 26px 10px 32px', whiteSpace: 'nowrap',
-                  background: gate.disabled ? 'transparent' : gate.ready && nGreen ? T.ok : T.panelAlt, color: gate.disabled ? T.micro : gate.ready && nGreen ? T.accInk : T.acc,
+                  background: gate.disabled ? 'transparent' : gate.ready && nGreen ? T.ok : T.panelAlt, color: gate.disabled ? (gate.alert ? colourOf(gate.alert) : T.micro) : gate.ready && nGreen ? T.accInk : T.acc,
                   border: `1px solid ${gate.disabled ? T.line2 : gate.ready && nGreen ? T.ok : T.acc}`, clipPath: CHAMFER.tl14,
                   cursor: gate.disabled ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gate.label}</button>
             </div>
@@ -196,8 +200,13 @@ export function Armory() {
                 station nobody assigned says so here, beside HARDWARE READY, not only on GAMES. */}
             {setupNeeds.length > 0 && (
               <div data-testid="armory-setup" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 460, textAlign: 'right' }}>
+                {/* F221 polish (2026-09-25): draw MC's own SETUP words, not a sentence-cased retelling
+                    (`friendlySetupLine`): that hid the RED control-vs-grenade conflict under the same
+                    amber this row always used. `serverLine` reads the id and severity off the line MC sent. */}
                 {setupNeeds.map((w, i) => (
-                  <span key={i} style={{ font: F.chk(600, 12), lineHeight: 1.45, color: T.warn }}>▲ SETUP: {friendlySetupLine(w)}</span>
+                  <Alert key={i} {...serverLine(cleanServerLine(w), 'amber')} variant="line" size={12} style={{ lineHeight: 1.45 }}>
+                    {conflictWords(cleanServerLine(w))}
+                  </Alert>
                 ))}
               </div>
             )}
@@ -253,7 +262,9 @@ export function Armory() {
                 <span style={{ font: F.osw(700, 16), letterSpacing: '.08em' }}>{u.basename}</span>
                 <Micro>-{u.tail}</Micro>
                 <Micro color={T.dim}>{u.rssi} dBm</Micro>
-                {u.identity !== 'ok' && <Tag color={u.identity === 'reverted' ? T.bad : T.warn} size={11}>{u.identity.toUpperCase()}</Tag>}
+                {/* armory-unclaimed-identity-tag: one amber for any non-ok identity scan on an unclaimed
+                    gun, REVERTED included (F221, Tony 2026-09-25) — not a live emergency. */}
+                {u.identity !== 'ok' && <AlertTag id="armory-unclaimed-identity-tag">{u.identity.toUpperCase()}</AlertTag>}
               </span>
             ))}
           </div>
@@ -286,15 +297,17 @@ function useBackhaul(): { control: ReactNode; errLine: ReactNode } {
   const linkErr = status === 'up' ? null : err ?? (pressed && status === 'error' ? (state?.lan.public?.error || 'the link did not start') : null);
   // one quiet line under the button row, so the row itself keeps its alignment
   const errLine = linkErr ? (
-    <span data-backhaul-error="1" title={linkErr}
-      style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: T.warn, maxWidth: 'min(420px, calc(100vw - 32px))',
+    // 'armory-backhaul-error': AMBER, one quiet line with the glyph the audit found missing (F221,
+    // Tony 2026-09-25). Kept as a plain div (not <Alert>) so `data-backhaul-error` survives for the tests.
+    <div data-backhaul-error="1" data-alert="armory-backhaul-error" data-sev="amber" role="alert" title={linkErr}
+      style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: colourOf('armory-backhaul-error'), maxWidth: 'min(420px, calc(100vw - 32px))',
                minWidth: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-      BACKHAUL FAILED: {linkErr}
-    </span>
+      {glyphed('amber', `BACKHAUL FAILED: ${linkErr}`)}
+    </div>
   ) : null;
   let control: ReactNode = null;
   if (status === 'starting' || (sending && status !== 'up')) {
-    control = <span data-backhaul="starting" style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.dim, padding: '8px 4px' }}>STARTING…</span>;
+    control = <span data-backhaul="starting" style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: colourOf('armory-backhaul-starting'), padding: '8px 4px' }}>STARTING…</span>;
   } else if (status === 'up') {
     control = pressed ? <span data-backhaul="on"><OutlineTag color={T.ok} border={T.ok} title="The internet link is up. REACH shows its address.">BACKHAUL ON</OutlineTag></span> : null;
   } else if (offer) {
@@ -325,17 +338,17 @@ function RestoredBanner() {
   const stamp = Number.isFinite(when.getTime())
     ? when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
     : '—';
+  const bannerColor = colourOf('armory-restored-banner');
   return (
-    <div role="alert" data-testid="restored-banner" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-      background: 'rgba(255,176,32,.08)', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, padding: '12px 16px' }}>
-      <span style={{ font: F.chk(700, 12), letterSpacing: '.1em', color: T.warn, lineHeight: 1.5 }}>
-        ▲ RESTORED FROM {stamp.toUpperCase()} · {r.players} PLAYER{r.players === 1 ? '' : 'S'} CARRIED OVER FROM THE LAST SESSION —
-        {' '}CHECK THE ROSTER BEFORE YOU KIT OUT.
+    <div role="alert" data-testid="restored-banner" data-alert="armory-restored-banner" data-sev="amber"
+      style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+      <span style={{ ...alertStyle('amber', 'line', 12) }}>
+        {glyphed('amber', `SESSION RESTORED FROM ${stamp.toUpperCase()}, ${r.players} PLAYER${r.players === 1 ? '' : 'S'} CARRIED OVER: CHECK THE ROSTER BEFORE YOU KIT OUT`)}
       </span>
       <button type="button" disabled={busy} className={busy ? undefined : 'hov-warnbg'}
         onClick={async () => { setBusy(true); try { await run(() => api.newSession(false)); } finally { setBusy(false); } }}
-        style={{ marginLeft: 'auto', font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px', minHeight: 36,
-                 background: 'transparent', border: `1px solid ${T.warn}`, color: busy ? T.micro : T.warn, cursor: busy ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+        style={{ font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px', minHeight: 36,
+                 background: 'transparent', border: `1px solid ${bannerColor}`, color: busy ? T.micro : bannerColor, cursor: busy ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
         {busy ? 'STARTING…' : 'NEW SESSION, CLEAR ROSTER ▸'}
       </button>
     </div>
@@ -348,7 +361,9 @@ function GunCard({ g }: { g: ReadinessRow }) {
   const red = g.status === 'red';
   const waiting = g.status === 'waiting';   // no phone yet: inactive, NOT a fault
   const batt = g.battery_pct;
-  const battColor = batt == null ? T.micro : batt < 30 ? T.bad : batt < 60 ? T.warn : T.ok;
+  // 'armory-guncard-battery-red' (retired: 'armory-guncard-battery-amber'): one threshold, no red
+  // battery (F221, Tony 2026-09-25) — under 30% is amber, everything else is the ordinary reading colour.
+  const battColor = batt == null ? T.micro : batteryColour(batt, T.ink);
   const age = g.last_seen_age_ms ?? g.battery_age_ms ?? null;                 // real link age from the server
   const stale = age != null && age > 60_000;                                   // >1 min old = show nothing as live truth
   const current = g.node === 'linked' && g.reach != null && age != null && age <= STALE_AFTER_MS;
@@ -408,9 +423,15 @@ function GunCard({ g }: { g: ReadinessRow }) {
               {reachLabel(g.reach)}
             </OutlineTag>
           )}
-          <Tag color={color} style={{ whiteSpace: 'nowrap' }}>
-            {red ? 'BLOCKED' : g.status === 'waiting' ? (g.node === 'none' ? 'NO PHONE YET' : 'OFFLINE') : g.status === 'amber' ? 'CHECK' : 'READY'}
-          </Tag>
+          {/* armory-guncard-blocked-tag/check-tag/no-phone-yet-tag/offline-tag: an AMBER or NEUTRAL fact
+              never fills a chip (F221 polish, 2026-09-25) — <AlertTag> draws the outline instead, coloured
+              from the catalogue, not from the card's border-left `color`; a RED blocker is the boxed row
+              below, this tag is a lobby-time summary. READY is the one positive status, so it alone keeps
+              the filled <Tag>. */}
+          {red ? <AlertTag id="armory-guncard-blocked-tag">BLOCKED</AlertTag>
+            : g.status === 'waiting' ? (g.node === 'none' ? <AlertTag id="armory-guncard-no-phone-yet-tag">NO PHONE YET</AlertTag> : <AlertTag id="armory-guncard-offline-tag">OFFLINE</AlertTag>)
+            : g.status === 'amber' ? <AlertTag id="armory-guncard-check-tag">CHECK</AlertTag>
+            : <Tag color={T.ok} style={{ whiteSpace: 'nowrap' }}>READY</Tag>}
         </div>
       </div>
       {g.node === 'none' ? (
@@ -422,18 +443,26 @@ function GunCard({ g }: { g: ReadinessRow }) {
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         {/* Bench 2026-09-17: a headset that is off makes the gun drop the link every few seconds. The phone
             reports `gun_flapping`, and this row holds one steady amber line instead of LINKED / LINK LOST in turn. */}
+        {/* F221 polish (2026-09-25): every fact in this row now takes its colour from the same catalogue
+            id `armory-guncard-link-lost`/`armory-guncard-gun-flapping`/`armory-amber-stale-link` speak
+            for at the bottom of the card, so a gun never shows one fact in two colours on one card. */}
         <Micro>GUN</Micro><span data-gun-flapping={!stale && g.gun_flapping ? 'true' : undefined}>{!stale && g.gun_flapping
-          ? <Val color={T.warn}>{GUN_FLAPPING_LINE}</Val>
-          : <Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN: LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>}
+          ? <Val color={colourOf('armory-guncard-gun-flapping')}>{glyphed(sevOf('armory-guncard-gun-flapping'), GUN_FLAPPING_LINE)}</Val>
+          : <Val color={stale ? colourOf('armory-amber-stale-link') : g.gun_linked ? T.ink : g.gun_linked === false ? colourOf('armory-guncard-link-lost') : T.micro}>{stale ? glyphed(sevOf('armory-amber-stale-link'), `UNKNOWN: LAST DATA ${fmtAge(age ?? 0)} AGO`) : g.gun_linked ? 'LINKED' : g.gun_linked === false ? glyphed(sevOf('armory-guncard-link-lost'), 'LINK LOST') : '—'}</Val>}
           {current && gunLockedLabel(g.gun_locked) && <span data-gun-locked={g.player_id} role="alert" title="The player's phone proved that the gun stopped answering."
-            style={{ display: 'block', marginTop: 4, font: F.mono(700, 11), letterSpacing: '.08em', color: T.bad }}>{gunLockedLabel(g.gun_locked)}</span>}
+            data-alert={GUN_LOCKED_ALERT_ID} data-sev={sevOf(GUN_LOCKED_ALERT_ID)}
+            style={{ display: 'block', marginTop: 4, ...alertStyle(sevOf(GUN_LOCKED_ALERT_ID), 'row') }}>{glyphed(sevOf(GUN_LOCKED_ALERT_ID), gunLockedLabel(g.gun_locked)!)}</span>}
           {/* F208: grey information beside the link state, never a warning and never on a stale card */}
           {!stale && poolStaleLabel(g.pool_stale, g.pool_stale_ms) && <span data-gun-silent={g.player_id} title="The phone says this gun's health and ammo readout may be out of date."
-            style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{poolStaleLabel(g.pool_stale, g.pool_stale_ms)}</span>}
+            data-alert={poolStaleAlertId(g.pool_stale) ?? undefined}
+            style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: poolStaleAlertId(g.pool_stale) ? colourOf(poolStaleAlertId(g.pool_stale)!) : T.dim }}>{poolStaleAlertId(g.pool_stale) ? glyphed(sevOf(poolStaleAlertId(g.pool_stale)!), poolStaleLabel(g.pool_stale, g.pool_stale_ms)!) : poolStaleLabel(g.pool_stale, g.pool_stale_ms)}</span>}
           {/* F264: the node's own outcome. `no_answer` needs a human, so it alone gets the warning colour. */}
           {!stale && cureLabel(g.cure) && <span data-gun-cure={g.player_id} title="The node's own outcome after it probed the gun."
-            style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: g.cure === 'no_answer' ? T.warn : T.micro }}>{cureLabel(g.cure)}</span>}</span>
-        <Micro>HEADSET</Micro><span data-headset={stale ? 'stale' : g.headset_proof ?? g.headset}><Val color={stale ? T.micro : g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : T.warn}>{hs}</Val></span>
+            data-alert={cureAlertId(g.cure) ?? undefined}
+            style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: cureAlertId(g.cure) ? colourOf(cureAlertId(g.cure)!) : T.dim }}>{cureAlertId(g.cure) ? glyphed(sevOf(cureAlertId(g.cure)!), cureLabel(g.cure)!) : cureLabel(g.cure)}</span>}</span>
+        {/* armory-headset-unknown-amber: proven/absent are plain facts (T.ink/T.micro); only the
+            not-yet-proven case is a fix-before-match amber (F221, Tony 2026-09-25). */}
+        <Micro>HEADSET</Micro><span data-headset={stale ? 'stale' : g.headset_proof ?? g.headset}><Val color={stale ? T.micro : g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : colourOf('armory-headset-unknown-amber')}>{hs}</Val></span>
         {/* A37 — the WEAPON check, said out loud in THREE states. The headset row above answers "did
             the gun answer at all"; this one answers "did it answer with the weapon we compiled". It
             is separate because `not_echoed` is the NORMAL answer on v4.32 firmware (the `$WEAP` echo
@@ -443,10 +472,10 @@ function GunCard({ g }: { g: ReadinessRow }) {
         {g.echo && (<>
           <Micro>WEAPON</Micro>
           <span data-echo={g.echo}>
-            <Val color={g.echo === 'proven' ? T.ink : g.echo === 'mismatch' ? T.bad : T.micro}>
+            <Val color={g.echo === 'proven' ? T.ink : g.echo === 'mismatch' ? colourOf('armory-weapon-echo-mismatch-row') : colourOf('armory-weapon-not-echoed-row')}>
               {g.echo === 'proven' ? 'ECHO MATCHES CONFIG'
                 : g.echo === 'mismatch' ? 'ECHO ≠ CONFIG'
-                : 'GUN DID NOT ECHO ITS WEAPON — UNPROVEN ON THIS FIRMWARE'}
+                : 'GUN DID NOT ECHO ITS WEAPON: UNPROVEN ON THIS FIRMWARE'}
             </Val>
           </span>
         </>)}
@@ -456,12 +485,13 @@ function GunCard({ g }: { g: ReadinessRow }) {
           <SegBar pct={stale ? 0 : batt ?? 0} color={battColor} height={8} cell={7} style={{ flex: 1, maxWidth: 96 }} />
           {stale && <span style={{ font: F.mono(500, 11), color: T.micro }}>*OLD</span>}
         </span>
-        <Micro>LINK</Micro><Val color={stale ? T.warn : T.dim}>{linkText}</Val>   {/* this branch only runs when a node IS linked */}
+        <Micro>LINK</Micro><Val color={stale ? colourOf('armory-amber-stale-link') : T.dim}>{linkText}</Val>   {/* this branch only runs when a node IS linked; stale takes the same neutral colour as `armory-amber-stale-link`, not amber */}
         {/* F-armory-dedup: phone battery and firmware, carried by the row (`state.py readiness()` puts
             both on `ReadinessRow` already) but never SHOWN here before today — they lived only on the
             node card this fix now hides for a bound phone, so a rostered player's card said nothing
             about either. */}
-        {g.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={g.phone_batt < 20 ? T.bad : T.dim}>{g.phone_batt}%</Val></>)}
+        {/* 'armory-guncard-ph-batt-red': same one threshold as the gun battery, no red (F221, Tony 2026-09-25). */}
+        {g.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={batteryColour(g.phone_batt, T.dim)}>{g.phone_batt}%</Val></>)}
         {g.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{g.fw}</Val></>)}
         <AppVerRow app_ver={g.app_ver} platform={g.platform} />
         {/* A25: the same log view as the node card, on the per-player board — this is the one the
@@ -481,27 +511,18 @@ function GunCard({ g }: { g: ReadinessRow }) {
         // to read "WRONG WI-FI" the moment that tunnel dropped — sending the operator to the phone's
         // Wi-Fi settings for a fault that is entirely MC's tunnel. When we know the real reason, it
         // REPLACES any wifi-worded line rather than sitting beside it (two explanations for one fault
-        // is worse than one, even a partial one).
-        const items = reachReason ? [...raw.filter(([b]) => !/WI-?FI/i.test(b)), [reachReason, red] as const] : raw;
+        // is worse than one, even a partial one). F221 polish (2026-09-25): the server now sends its
+        // own `NOT REACHED FOR …` blocker (`server-not-reached`/`armory-blocker-reach-reason`), which
+        // said the same thing twice on a card `staleReachReason` also covers — drop that head too.
+        const items = reachReason ? [...raw.filter(([b]) => !/WI-?FI|^NOT REACHED FOR /i.test(b)), [reachReason, red] as const] : raw;
         if (items.length === 0) return null;
         return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {/* Every message is `STATEMENT — INSTRUCTION`. As one uppercase run-on in a 248px card it
-              wrapped mid-phrase and read as noise; split, the statement carries and the instruction
-              sits under it quietly (field 2026-09-02). */}
-          {items.map(([b, blocking]) => {
-            const { head, hint } = splitBlocker(b);
-            return (
-              <div key={b} style={{ display: 'flex', gap: 8, padding: '7px 10px',
-                background: blocking && red ? 'rgba(255,82,82,.1)' : blocking && !waiting ? 'rgba(255,176,32,.08)' : 'transparent',
-                borderLeft: `2px solid ${blocking ? color : T.line2}` }}>
-                <span style={{ font: F.chk(700, 11), color: blocking ? color : T.micro, flex: '0 0 auto' }}>{blocking ? (waiting ? '·' : '▲') : '·'}</span>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                  <span style={{ font: F.chk(700, 11.5), letterSpacing: '.06em', color: blocking ? color : T.micro }}>{head}</span>
-                  {hint && <span style={{ font: F.chk(500, 11), letterSpacing: '.02em', color: T.micro, textTransform: 'none' }}>{sentenceCase(hint)}</span>}
-                </span>
-              </div>
-            );
+                    {items.map(([b, blocking], i) => {
+            // F221: MC words the line, the catalogue colours it (`serverLine`), one line each.
+            const line = cleanServerLine(b);
+            const { id, sev } = serverLine(line, blocking ? 'blocker' : 'amber');
+            return <Alert key={`${i}-${b}`} id={id} sev={sev} variant="row">{line}</Alert>;
           })}
         </div>
         );
@@ -598,13 +619,16 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
     <div data-node-card={n.node_id ?? '?'} data-node-stale={stale ? '1' : '0'} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${accent}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12, opacity: stale ? 0.7 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hasGun ? n.gun_name : 'NO GUN SET'}</span>
-        <Tag color={accent}>{stale ? 'OFFLINE' : (n.arm_state ?? 'unknown').toUpperCase()}</Tag>
+        <Tag color={stale ? colourOf('armory-nodecard-offline-tag') : accent}>{stale ? 'OFFLINE' : (n.arm_state ?? 'unknown').toUpperCase()}</Tag>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         <Micro>PHONE</Micro><Val color={T.dim}>{(n.node_id ?? '—').slice(0, 12)}</Val>
-        <Micro>LINK</Micro><Val color={stale ? T.warn : T.dim}>{fmtAge(age)} AGO{stale && ' — OFFLINE'}</Val>
-        {!stale && n.preflight?.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={n.preflight.phone_batt < 20 ? T.bad : T.dim}>{n.preflight.phone_batt}%</Val></>)}
-        {!stale && n.battery != null && (<><Micro>GUN BATT</Micro><Val color={T.dim}>{n.battery}%</Val></>)}
+        {/* armory-nodecard-link-offline: the same stale-node fact as the OFFLINE tag above, so the
+            same neutral colour (F221, Tony 2026-09-25) — it used to disagree (amber here, grey there). */}
+        <Micro>LINK</Micro><Val color={stale ? colourOf('armory-nodecard-link-offline') : T.dim}>{fmtAge(age)} AGO{stale && ': OFFLINE'}</Val>
+        {/* armory-guncard-ph-batt-red / 'armory-guncard-battery-red': one battery threshold everywhere, no red. */}
+        {!stale && n.preflight?.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={batteryColour(n.preflight.phone_batt, T.dim)}>{n.preflight.phone_batt}%</Val></>)}
+        {!stale && n.battery != null && (<><Micro>GUN BATT</Micro><Val color={batteryColour(n.battery, T.dim)}>{n.battery}%</Val></>)}
         {!stale && n.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{n.fw}</Val></>)}
         {/* A29: always rendered, even when the phone has not said — "UNKNOWN" is the answer the
             operator needs (an app that predates A29 reports nothing at all), and a row that simply
@@ -615,11 +639,13 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
       </div>
       {/* A25: always asks, whatever `log_sync` is set to — `reason: "manual"` is never gated. */}
       <PullLogButton node_id={n.node_id ?? ''} />
-      {!stale && !hasGun && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>▲ WAITING FOR ITS GUN — SET IT ON THE PHONE</div>}
+      {/* armory-nodecard-waiting-for-gun: NEUTRAL, not amber — a phone with no gun set yet is a normal
+          muster step, nothing has gone wrong (F221, Tony 2026-09-25). */}
+      {!stale && !hasGun && <Alert id="armory-nodecard-waiting-for-gun" what="WAITING FOR ITS GUN" act="SET IT ON THE PHONE" />}
       {/* 2026-09-19: no claim, no standby offer, nothing to act on -- there is no live socket to push a
           claim to, and a claim made now would sit unacknowledged exactly like the assign this same fix
           refuses on a stale station. */}
-      {stale && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>NOT HEARD FROM RECENTLY — WAITING TO RECONNECT</div>}
+      {stale && <Alert id="armory-nodecard-not-heard" what="NOT HEARD FROM RECENTLY" act="WAITING TO RECONNECT" />}
       {!stale && hasGun && !n.player_id && parkedHolder && (
         <div data-standby-holder={parkedHolder.player_id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
           <span style={{ flex: 1, minWidth: 0, font: F.chk(700, 11), letterSpacing: '.16em', color: T.micro }}>ON STANDBY · {parkedHolder.display}</span>
@@ -639,7 +665,8 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
             {claiming ? 'SETTING…' : 'SET GAMERTAG'}
           </button>
           {/* the operator's team stays a LOBBY decision; the server auto-balances a new claim */}
-          {claimErr && <div role="alert" data-claim-error={n.node_id ?? ''} style={{ font: F.chk(700, 11), letterSpacing: '.05em', color: T.warn, textTransform: 'none' }}>▲ {claimErr.toUpperCase()}</div>}
+          {claimErr && <div role="alert" data-claim-error={n.node_id ?? ''} data-alert="armory-nodecard-claim-error" data-sev="amber"
+            style={{ font: F.chk(700, 11), letterSpacing: '.05em', color: colourOf('armory-nodecard-claim-error'), textTransform: 'none' }}>{glyphed('amber', claimErr.toUpperCase())}</div>}
         </form>
       )}
     </div>
@@ -662,9 +689,11 @@ function PullLogButton({ node_id }: { node_id: string }) {
       onClick={async () => {
         setBusy(true);
         try {
+          // 'armory-pulllog-notice': NEUTRAL both ways — the toast itself is drawn by the app frame
+          // outside this lane's files (F221, Tony 2026-09-25); this lane owns only the wording.
           const r = await run(() => api.pullLog(node_id));
-          if (r) setNotice(r.ok ? 'ASKED FOR THE LOG — THE PHONE ANSWERS WHEN IT CAN'
-                                : 'COULD NOT ASK FOR THE LOG — THE PHONE IS OFF THE NET, OR PAST ITS UPLOAD BUDGET', !r.ok);
+          if (r) setNotice(r.ok ? 'ASKED FOR THE LOG: THE PHONE ANSWERS WHEN IT CAN'
+                                : 'COULD NOT ASK FOR THE LOG: THE PHONE IS OFF THE NET, OR PAST ITS UPLOAD BUDGET', !r.ok);
         } finally { setBusy(false); }
       }}
       style={{ alignSelf: 'flex-start', font: F.chk(700, 11), letterSpacing: '.18em', padding: '9px 14px', minHeight: 36,
@@ -683,7 +712,7 @@ function GhostCard({ r }: { r: { gun_id: string; sticker: string; ble: { tail?: 
         <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', color: T.dim }}>{r.sticker}{r.ble?.tail ? <span style={{ font: F.mono(500, 11), color: T.micro }}>-{r.ble.tail}</span> : null}</span>
         <Tag color={T.micro}>OFFLINE</Tag>
       </div>
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>IN THE REGISTRY — POWER IT UP AND SCAN</div>
+      <Alert id="armory-ghostcard-registry" what="IN THE REGISTRY" act="POWER IT UP AND SCAN" />
     </div>
   );
 }
@@ -715,11 +744,15 @@ function JoinPanel() {
       {/* M11 (visual QA 2026-09-23): "find MC automatically" sat beside the "cannot reach" note. The claim
           is made only when MC has no reason to doubt its own address. */}
       <div data-testid="join-hint" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.dim, textAlign: 'center', lineHeight: 1.8 }}>
+        {/* armory-joinpanel-lanwarn: AMBER, not neutral — phones cannot join automatically, though the
+            internet QR still works so it is fix-before-match, not act-now (F221, Tony 2026-09-25). */}
         {state?.lan.warning
-          ? <>PHONES WILL <span style={{ color: T.ink }}>NOT</span> FIND MC ON THIS WI-FI UNTIL THE ADDRESS NOTE AT THE TOP IS FIXED{pub?.status === 'up' ? ' — THE INTERNET JOIN IN THE QR STILL WORKS' : ''}</>
+          ? <Alert id="armory-joinpanel-lanwarn" variant="line" style={{ textAlign: 'center' }}>
+              PHONES WILL NOT FIND MC ON THIS WI-FI UNTIL THE ADDRESS NOTE AT THE TOP IS FIXED{pub?.status === 'up' ? ': THE INTERNET JOIN IN THE QR STILL WORKS' : ''}
+            </Alert>
           : !isRoutableLanIp(state?.lan.ip)
             ? <>MC IS NOT ON A NETWORK PHONES CAN REACH, SO PHONES WILL <span style={{ color: T.ink }}>NOT</span> FIND IT ON THEIR OWN</>
-            : <>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span> — OPEN BRX COMPANION AND WAIT A BEAT</>}
+            : <>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span>: OPEN BRX COMPANION AND WAIT A BEAT</>}
       </div>
       <div style={{ font: F.mono(600, 12), letterSpacing: '.04em', color: T.ink, textAlign: 'center', wordBreak: 'break-all' }}>{state?.lan.ws_url}</div>
       <button onClick={() => setShowQr(v => !v)} style={{ minHeight: 36,  alignSelf: 'stretch', background: showQr ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim, font: F.chk(700, 11), letterSpacing: '.2em', padding: '9px 0', cursor: 'pointer' }}>
@@ -758,10 +791,11 @@ function JoinPanel() {
             <div style={{ font: F.mono(500, 11), letterSpacing: '.02em', color: T.micro, wordBreak: 'break-all', textAlign: 'center' }}>{apkUrl}</div>
           </div>
         ) : (
-          <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, textAlign: 'center' }}>
-            NO LAN ADDRESS ({state?.lan.ip || '—'}) — MC IS NOT ON A NETWORK PHONES CAN REACH.
+          <Alert id="armory-joinpanel-no-lan-address" variant="line"
+            style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, textAlign: 'center' }}>
+            NO LAN ADDRESS ({state?.lan.ip || '—'}): MC IS NOT ON A NETWORK PHONES CAN REACH.
             {' '}JOIN THE FIELD WI-FI AND RESTART MC; SIDELOAD THE APK BY CABLE MEANWHILE.
-          </div>
+          </Alert>
         )}
       </>}
       <ReachBlock />
@@ -800,7 +834,7 @@ function ReachBlock() {
     setConfirmOff(false);
     setBusy(true); try { await run(() => api.setTunnel(turningOn)); } finally { setBusy(false); }
   };
-  const statusColor = status === 'up' ? T.ok : status === 'error' ? T.bad : status === 'starting' ? T.warn : T.micro;
+  const statusColor = status === 'up' ? T.ok : status === 'error' ? T.bad : status === 'starting' ? colourOf('armory-backhaul-starting') : T.micro;
   const statusText = status === 'up' ? `UP ${hostnameOf(pub?.ws_url) || pub?.ws_url}`
     // field 2026-09-12 (ISSUE 7): cloudflared's own "up" line is premature for OTHER people's DNS
     // resolvers — `detail` carries whatever the server is doing while the hostname is still resolving.
@@ -820,18 +854,21 @@ function ReachBlock() {
         <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>INTERNET</span>
         <span style={{ font: F.chk(700, 11), color: statusColor, wordBreak: 'break-word' }}>{statusText}</span>
       </div>
+      {/* armory-reach-predates-backhaul: MC_OLDER's one fact, one sentence, with the restart command in
+          <code> (F221, Tony 2026-09-25). */}
       {!supported && (
-        <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn, lineHeight: 1.6 }}>
-          ▲ THIS MC SERVER PREDATES BACKHAUL — restart it to get an internet join option
-        </div>
+        <Alert id="armory-reach-predates-backhaul" variant="line" style={{ lineHeight: 1.6 }}>
+          {MC_OLDER.what}: {MC_OLDER.act} (<code>{MC_RESTART_CMD}</code>) TO GET AN INTERNET JOIN OPTION
+        </Alert>
       )}
       {supported && !available && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button type="button" disabled title="cloudflared was not found on this machine's PATH"
             style={{ alignSelf: 'flex-start', minHeight: 36, background: 'transparent', border: `1px solid ${T.line2}`, color: T.micro,
                      font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px', cursor: 'not-allowed' }}>TURN ON</button>
-          <div style={{ font: F.mono(500, 11), letterSpacing: '.05em', color: T.micro, lineHeight: 1.7 }}>
-            INSTALL CLOUDFLARED — mac: <span style={{ color: T.dim }}>brew install cloudflared</span>
+          {/* armory-reach-install-cloudflared: a setup instruction, not a live warning (F221, Tony 2026-09-25). */}
+          <div style={{ font: F.mono(500, 11), letterSpacing: '.05em', color: colourOf('armory-reach-install-cloudflared'), lineHeight: 1.7 }}>
+            INSTALL CLOUDFLARED: mac <span style={{ color: T.dim }}>brew install cloudflared</span>
             {' '}· windows: <span style={{ color: T.dim }}>winget install Cloudflare.cloudflared</span>
             {' '}· linux: <span style={{ color: T.dim }}>apt install cloudflared</span>
           </div>
@@ -839,7 +876,7 @@ function ReachBlock() {
       )}
       {supported && available && manual && (
         <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.6 }}>
-          SET BY --public-url ON THE MC COMMAND LINE — not MC's to turn off from here.
+          SET BY --public-url ON THE MC COMMAND LINE: not MC's to turn off from here.
         </div>
       )}
       {supported && available && !manual && (

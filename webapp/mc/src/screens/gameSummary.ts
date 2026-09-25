@@ -138,14 +138,16 @@ export function emptyRequiredSlots(pool: LoadoutPool | null): { primary: boolean
  *  the pronoun; `needs_secondary` only ever occurs on the perk slot but is worded generically in case
  *  a second swap-effect perk ever lands on another slot. */
 export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: PoolEmptyCode, name?: string | null): string {
+  // F221 polish r1: one colon, not an em dash. These feed a RED alert (`designer-slot-empty-pool`,
+  // `games-locked-banner`), and the wording rule is WHAT: DO, one separator.
   switch (code) {
-    case 'fixed_missing': return `${slot}'S FIXED PICK IS NOT IN THIS GAME — CHOOSE A DIFFERENT ONE.`;
-    case 'only_ids_missing': return `${slot}'S ALLOW-LIST NAMES NOTHING THIS GAME HAS — ADD A VALID ID OR CLEAR IT.`;
-    case 'needs_secondary': return 'QUICK SWITCH NEEDS A SECONDARY — TURN THE SECONDARY ON, OR PICK ANOTHER PERK.';
+    case 'fixed_missing': return `${slot}'S FIXED PICK IS NOT IN THIS GAME: CHOOSE A DIFFERENT ONE.`;
+    case 'only_ids_missing': return `${slot}'S ALLOW-LIST NAMES NOTHING THIS GAME HAS: ADD A VALID ID OR CLEAR IT.`;
+    case 'needs_secondary': return 'QUICK SWITCH NEEDS A SECONDARY: TURN THE SECONDARY ON, OR PICK ANOTHER PERK.';
     // round-3 UX-2: NAMES the weapon. `name` is the catalogue row's name where the caller has it (the
     // rule only carries an id); without one the sentence still says the right thing about the slot.
-    case 'unplayable': return `${(name ?? `THE ${slot}'S PICK`).toUpperCase()} CANNOT BE PLAYED — ITS HIT ROW DEALS NO DAMAGE (CATALOGUE); PICK ANOTHER WEAPON.`;
-    case 'filtered': return `${slot}'S CLASS/ID FILTERS EXCLUDE EVERYTHING — CLEAR ONE, OR SET WHO PICKS TO FIXED.`;
+    case 'unplayable': return `${(name ?? `THE ${slot}'S PICK`).toUpperCase()} CANNOT BE PLAYED: ITS HIT ROW DEALS NO DAMAGE (CATALOGUE), PICK ANOTHER WEAPON.`;
+    case 'filtered': return `${slot}'S CLASS/ID FILTERS EXCLUDE EVERYTHING: CLEAR ONE, OR SET WHO PICKS TO FIXED.`;
     case 'off': return '';   // never shown — an off slot is not a problem
   }
 }

@@ -12,8 +12,7 @@
 //
 // Runs: real (☰ → Report a problem → MAKE REPORT → done; the download is a real zip with the four
 // files; the issue link's href and target), stale (the POST route intercepted to 404: the panel shows
-// the "too old to make reports" message, never a silent failure) — at desk (1280x800) and phone
-// (393x830) widths for `real`.
+// the MC_OLDER message, never a silent failure), at desk (1280x800) and phone (393x830) widths for `real`.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -215,7 +214,7 @@ async function runStale(browser, viteBase, vp) {
   await until(() => panel(pg).getAttribute('data-report-phase').then(p => p === 'error'), 8000, 'the error phase');
   expect(hits === 1, `exactly one request went out (${hits})`);
   const text = (await panel(pg).innerText()).replace(/\s+/g, ' ');
-  expect(/too old to make reports/.test(text), `the panel names the version skew, plainly (saw ${JSON.stringify(text)})`);
+  expect(/MC SERVER IS OLDER THAN THIS CONSOLE/.test(text), `the panel names the version skew, plainly (saw ${JSON.stringify(text)})`);
   ok(`stale server: "${text.trim()}"   ${await shot(pg, '10-stale')}`);
   await pg.unroute('**/api/report');
   await pg.context().close();

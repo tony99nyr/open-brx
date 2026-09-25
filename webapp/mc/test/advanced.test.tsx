@@ -42,8 +42,8 @@ describe('ADVANCED — sounds & lights (read only)', () => {
     await act(async () => { await new Promise(r => setTimeout(r, 5)); });
     const alert = m.find('[role="alert"]')[0];
     expect(alert).toBeTruthy();
-    expect(alert.textContent).toMatch(/PREDATES THIS UI/);
-    expect(alert.textContent).toMatch(/brx_mcp\.mc/);           // the restart command is on screen
+    expect(alert.textContent).toMatch(/MC SERVER IS OLDER THAN THIS CONSOLE/);
+    expect(alert.textContent).toMatch(/start\.sh/);           // the restart command is on screen
     expect(m.find('[data-testid^="pres-row-"]').length).toBe(0);
     m.unmount();
   });

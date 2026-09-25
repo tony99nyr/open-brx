@@ -106,15 +106,18 @@ describe('H2 · a CONTROL station under a grenade objective is a conflict, not a
   const control = station('util-c', { assigned: { kind: 'control', team: 255, id: 9, threshold: 0, at: 0 },
     armed: { game: 1, at: 0, kind: 'control', team: 255, id: 9 }, report: { kind: 'control', team: 255, station_id: 9, armed: true, live: true } });
 
-  it('LOBBY shows the line as an amber conflict block', async () => {
+  it('LOBBY shows the line as a RED conflict block', async () => {
+    // F221 polish r1: this conflict is RED in the catalogue (`frame-setup-conflict-control-vs-grenade`):
+    // the game will not play as set up, not a reminder to fix before next time. So the box now
+    // draws red, and each line is upper case with its own glyph, like every other catalogued alert.
     const { m } = await screen(<Lobby />, { phase: 'lobby', config_warnings: [REVERSE], stations: [control] });
     const block = m.find('[data-testid="setup-conflict"]')[0];
-    expect(block, 'an amber conflict block on LOBBY').toBeTruthy();
+    expect(block, 'a red conflict block on LOBBY').toBeTruthy();
     expect(block.closest('[role="status"]'), 'a standing status, not an alert').toBeTruthy();
-    expect(block.getAttribute('style') ?? '').toContain('rgb(255, 176, 32)');
-    expect(block.textContent).toMatch(/every phone ignores its hill/);
+    expect(block.getAttribute('style') ?? '').toContain('rgb(255, 82, 82)');
+    expect(block.textContent).toMatch(/EVERY PHONE IGNORES ITS HILL/);
     const reminders = m.find('[data-testid="setup-steps"]')[0];
-    expect(reminders?.textContent ?? '', 'not also a plain reminder').not.toMatch(/every phone ignores/);
+    expect(reminders?.textContent ?? '', 'not also a plain reminder').not.toMatch(/every phone ignores/i);
     m.unmount();
   });
 
@@ -123,7 +126,8 @@ describe('H2 · a CONTROL station under a grenade objective is a conflict, not a
     const card = m.find('[data-station-card="util-c"]')[0];
     const line = card.querySelector('[data-testid="station-setup-conflict"]');
     expect(line, 'the conflict line is on the CONTROL card').toBeTruthy();
-    expect(line!.textContent).toMatch(/every phone ignores its hill/);
+    // F221 polish r2: upper case now, same words as GAMES/LOBBY's own conflict line.
+    expect(line!.textContent).toMatch(/EVERY PHONE IGNORES ITS HILL/);
     expect(card.getAttribute('style') ?? '').not.toContain('rgb(46, 204, 113)');
     m.unmount();
   });
@@ -164,14 +168,13 @@ describe('M4 · UNLOCK STATIONS is offered on LOBBY while a lock runs', () => {
 describe('M5 · Station Alerts carry every attention line of an assigned station, each with its next step', () => {
   it('BATTERY LOW and RESTARTED both show, with their steps', async () => {
     const { m } = await screen(<StationAlerts showUnlock />, { phase: 'live', stations: [
-      station('a', { attention: ['BATTERY LOW'] }),
-      station('b', { assigned: { kind: 'respawn', team: 255, id: 2, threshold: 0 }, attention: ['STATION #2 RESTARTED'] }),
+      station('a', { attention: ['BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE'] }),
+      station('b', { assigned: { kind: 'respawn', team: 255, id: 2, threshold: 0 }, attention: ['STATION #2 RESTARTED: CHECK THE STATION'] }),
     ] });
     const t = m.text();
-    expect(t).toContain('BATTERY LOW');
-    expect(t).toContain('swap or charge before the whistle');
-    expect(t).toContain('STATION #2 RESTARTED');
-    expect(t).toContain('check the station; it restarted during the lock');
+    // F221: the step is the server line's own action now (`WHAT IS WRONG: WHAT TO DO`)
+    expect(t).toContain('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
+    expect(t).toContain('STATION #2 RESTARTED: CHECK THE STATION');
     expect(t, 'a line that names no station says which one').toMatch(/RESPAWN 1/);
     m.unmount();
   });
@@ -192,12 +195,12 @@ const liveView = (rows: LiveRow[]): LiveView => ({
 });
 
 describe('M6 · a row whose gun pools are wrong reads POOLS WRONG and sorts first', () => {
-  it('amber POOLS WRONG status, a tinted row, first on the board', async () => {
+  it('RED POOLS WRONG status (F221, 2026-09-25: act now), a tinted row, first on the board', async () => {
     const rows = [row(), row({ player_id: 'p2', display: 'NOMAD', kills: 1, pool_stale: 'pool_wrong' })];
     const { m } = await screen(<Live />, { phase: 'live', live: liveView(rows) });
     const status = m.find('[data-live-row="p2"] [data-cell="status"]')[0];
     expect(status.textContent).toBe('POOLS WRONG');
-    expect(status.getAttribute('style') ?? '').toContain('rgb(255, 176, 32)');
+    expect(status.getAttribute('style') ?? '').toContain('rgb(255, 82, 82)');
     expect(m.find('[data-live-row="p2"]')[0].getAttribute('data-row-fault')).toBe('pools');
     const order = m.find('[data-live-row]').map(e => e.getAttribute('data-live-row'));
     expect(order[0], `order ${order}`).toBe('p2');
@@ -307,7 +310,9 @@ describe('M11 · ARMORY says when the game needs a station that is not assigned'
     const { m } = await screen(<Armory />, { phase: 'muster', config_warnings: [NO_CONTROL] });
     const line = m.find('[data-testid="armory-setup"]')[0];
     expect(line, 'a SETUP line in the ARMORY header').toBeTruthy();
-    expect(line.textContent).toMatch(/No control station is assigned/);
+    // F221 polish (2026-09-25): this row now draws MC's own words verbatim (`serverLine`), upper case,
+    // not a sentence-cased retelling.
+    expect(line.textContent).toMatch(/NO CONTROL STATION IS ASSIGNED/);
     m.unmount();
   });
   it('nothing when every needed station is assigned', async () => {
@@ -317,12 +322,18 @@ describe('M11 · ARMORY says when the game needs a station that is not assigned'
   });
 });
 
-describe('M12 · the GAMES rail SETUP warnings are sentence case and name no device the server did not', () => {
-  it('renders the friendly line, not the shouted server copy', async () => {
+describe('M12 · the GAMES rail SETUP warnings are the friendly rewrite, upper case, and name no device the server did not', () => {
+  // F221 polish r1: GAMES used to draw every `SETUP:` line as one flat amber chip, so the control-vs-
+  // grenade conflict (RED in the catalogue) read exactly like this ordinary reminder. Each line now
+  // goes through `serverLine` and is upper case, WHAT: DO, like every other catalogued alert, but it
+  // is still the FRIENDLY rewrite (`friendlySetupLine`), never the raw server sentence with its
+  // semicolons and the device name the server never sent.
+  it('renders the friendly line, upper case, not the raw server copy', async () => {
     const { m } = await screen(<Games />, { phase: 'build', config_warnings: [NO_RESPAWN] });
     const t = m.text();
-    expect(t).toContain('No respawn station is assigned');
-    expect(t).not.toContain('NO RESPAWN STATION IS ASSIGNED');
+    expect(t.toUpperCase()).toContain('NO RESPAWN STATION IS ASSIGNED');
+    // the friendly rewrite, not the raw server sentence (which never says "set to")
+    expect(t.toUpperCase()).toContain('RESPAWN IS SET TO SCANNER');
     expect(t).not.toMatch(/utility phone/i);
     m.unmount();
   });
@@ -387,7 +398,8 @@ describe('polish round 1 (2026-09-24)', () => {
     state = { ...base, config_warnings: [NO_CONTROL] };
     await m.update(node());
     expect(m.find('[data-setup-region]')[0], 'the same element, not a remount').toBe(region);
-    expect(region.textContent).toContain('No control station is assigned');
+    // F221 polish r1: upper case now, like every catalogued line.
+    expect(region.textContent?.toUpperCase()).toContain('NO CONTROL STATION IS ASSIGNED');
     expect(m.find('[role="alert"]').filter(e => /control station/i.test(e.textContent ?? '')).length).toBe(0);
     m.unmount();
   });
