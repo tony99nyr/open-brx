@@ -20,14 +20,14 @@ FFA_TEAMS = [{"team_id": "ffa", "name": "All", "color": "red", "tid": 1}]
 scenario(Scenario(
     name="tdm-mixed", mode="tdm", nodes=14, steps=36, finish="end",
     doc="Two teams, every action in the mix, a frag cap high enough that END usually ends it.",
-    weights=dict(MIX), config={"scoring": {"frag_limit": 12, "win_by": "kills"}},
+    weights={**MIX, "team_credit_kill": 0.8}, config={"scoring": {"frag_limit": 12, "win_by": "kills"}},
     ci_seeds=(1, 2),
 ))
 
 scenario(Scenario(
     name="tdm-frag-race", mode="tdm", nodes=12, steps=60, finish="end",
     doc="A low frag cap and kill-heavy weights, so the cap ends the match in the middle of the chaos.",
-    weights={**MIX, "kill": 9, "trade": 3, "hit": 3}, config={"scoring": {"frag_limit": 5, "win_by": "kills"}},
+    weights={**MIX, "kill": 9, "trade": 3, "hit": 3, "team_credit_kill": 1}, config={"scoring": {"frag_limit": 5, "win_by": "kills"}},
     ci_seeds=(3,),
 ))
 

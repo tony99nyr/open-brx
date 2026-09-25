@@ -85,3 +85,23 @@ def test_every_scenario_has_ci_seeds_or_is_the_template():
     needs(HAVE_WS, "websockets")
     bare = [sc.name for sc in SCENARIOS.values() if not sc.ci_seeds]
     assert not bare, f"these scenarios have no ci_seeds: {bare}"
+
+
+def test_no_kill_cue_after_end_flags_a_cue_sent_after_the_cap_froze_the_match():
+    """F357 polish r1: a same-batch cue after the frag cap leaves MC before the finish (`sent_ms` cannot show it), so
+    the invariant reads the cap as it stood when the cue left (`cap_t`). A cue with none passes; one with it fails."""
+    needs(HAVE_WS, "websockets")
+    from types import SimpleNamespace
+    from brx_mcp.chaos.invariants import no_kill_cue_after_end
+    from brx_mcp.chaos.registry import InvariantError
+    sc = SimpleNamespace(go_live_t=0, time_limit_s=None, limit_reached_t=5_000)
+    cue = {"match_id": "m", "player_id": "p0", "victim": "p1", "t": 5_000, "sent_ms": 5_100, "phase": "live", "cap_t": None}
+    world = SimpleNamespace(session=SimpleNamespace(scorer=sc), match_id="m",
+                            finishes=[{"match_id": "m", "at_ms": 5_200}], kill_cues=[cue])
+    no_kill_cue_after_end(world)                       # control: the capping kill's own cue
+    world.kill_cues = [cue, {**cue, "victim": "p2", "t": 4_900, "cap_t": 5_000}]
+    try:
+        no_kill_cue_after_end(world)
+    except InvariantError:
+        return
+    raise AssertionError("a cue sent after the cap froze the match passed")

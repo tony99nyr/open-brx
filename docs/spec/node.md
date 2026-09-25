@@ -189,7 +189,7 @@ resets `prev`. `shots` resets to 0 at `startAt()` and rides `status`; MC diffs i
 hardware-verified in both directions (protocol §7q). Latch `{shooter_num, shooter_team, at}` on every
 valid `$HIR` (tok 2 ≠ 15); at death read the latch iff `now − at ≤ DEATH_LATCH_MS`, else report
 `shooter_num: 0`. The death's shooter is the last DAMAGING hit within `DEATH_LATCH_MS`, and the raw latch only when none is (F354): a word
-whose cell in this bundle's `$SIR` table has a no-pool function (`_SIR_NO_POOL`: the fn-23 Haze, or the stun's fn-23 EMP) never takes the kill. Attribution is **exact**; there is no team-only fallback and no heuristic. The node still
+whose cell in this bundle's `$SIR` table has a no-pool function (`_SIR_NO_POOL`: the fn-23 Haze, or the stun's fn-23 EMP) never takes the kill. **[A65] Team-only credit (F354, Tony 2026-09-25):** when the damaging hit was lost and the killing source is a no-pool word (the lethal drop's `hit_taken` was booked to it, or no hit was booked and only that raw latch is fresh), the death names that word's TEAM and no player: `shooter_num: 0`, `shooter_team` = the word's team, `credit: "team"`. The DOWN screen reads KILLED BY <TEAM> (`killedBy` = `{num: 0, team, name: null, teamName, teamKey, teamOnly: true}`), and the S57 callout is a bare DOWN. A word from our own team, from a tid that is not on this match's roster (`config.teams`), or any word in FFA, credits nobody (`shooter_num: 0`, no `credit`, KILLED BY UNKNOWN). Otherwise attribution is **exact**, with no heuristic. The node still
 **never computes its own kills** — a kill you score is invisible in your own stream; only the *victim* reports
 it (§3.6). The `roster` turns a number into a name for the HUD; an unknown number is still reported verbatim.
 
@@ -560,11 +560,25 @@ tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/
   With several hosts, the proof decides which one is ours. The dial sends no `node_key`, no join secret
   and no utility proof, and the transport processes nothing from it until `welcome.mc_proof` matches a
   held key. A match joins as a trusted dial would, and the new address becomes the remembered one.
+- **No tap, on first contact (F346 d, Tony 2026-09-25).** A never-joined phone (no trust key and no
+  remembered address) that sees exactly ONE MC joins it with no tap. One MC is one distinct host:port
+  among the hosts mDNS and the sweep reported, 3 s after the first of them (`FIRST_CONTACT_SETTLE_MS`), not
+  one mDNS packet. The window starts at the first sighting and does not wait for a full sweep. The dial is untrusted: it sends no `node_key`, no join secret and no utility proof, but it
+  sends `mc_enroll` and the nonce, so the MC that welcomes it issues the trust key and becomes the known MC.
+  A first contact with no welcome cools that host for 10 minutes and shows the NEW row, or SEVERAL if
+  discovery saw another host meanwhile. A first-contact dial never becomes RECONNECT MC's target until it
+  binds, and a first-contact session never sends the utility proof.
+- **The utility proof is bound to its MC.** BACK TO HUD stores the MC url with `prior_utility`, and the
+  HUD sends it only on a trusted hello to that url.
+- **A second, different MC.** A phone that holds a key for any MC never first-contacts. Another MC gets the
+  proof dial, fails it, and shows UNVERIFIED; one tap joins it and enrols a second key. A phone with no key
+  but a remembered address is not a first contact either: it keeps redialling that address and shows NEW.
 - **Never overridden.** While a dial the player named is inside its welcome window, discovery changes
   nothing. A proof dial never becomes RECONNECT MC's target.
 - **One tap.** Each case puts its reason in the JOIN row (it names its own tap):
-  - no trust key, one other host: `NEW MISSION CONTROL · <ip> · TAP JOIN`;
-  - no trust key, two or more other hosts (or all of them cooling down): `SEVERAL MISSION CONTROLS · TAP YOURS`;
+  - no trust key, one other host, and not a first contact (a remembered address, or the host is cooling
+    down): `NEW MISSION CONTROL · <ip> · TAP JOIN`;
+  - no trust key, two or more distinct hosts (or all of them cooling down): `SEVERAL MISSION CONTROLS · TAP YOURS`;
   - a wrong proof, or none (an older MC): `UNVERIFIED MISSION CONTROL · <ip> · TAP JOIN IF YOURS`.
   A failed proof dial cools that host for 10 minutes. A host that never answered gets no row at once.
 - **The trust key.** A phone dial asks for its key (`hello.mc_enroll`). MC issues it once per node_id
@@ -581,6 +595,12 @@ tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/
   the trust key in clear over ws://, so one passive capture of it lets the capturer impersonate MC to
   that phone for as long as the key is held. The proof is not bound to host:port, because behind a
   portproxy MC's local address is not the address the phone dialled.
+- **What first contact does not stop (accepted, F346 d).** A rogue host that is the only MC a fresh phone
+  can see claims that phone: it gets the phone's enrolment and a trusted session, and the real MC is then
+  an UNVERIFIED host to that phone. The sweep stops at its first answer, so with mDNS filtered it cannot
+  see a second MC. A reinstall or cleared app data makes the phone fresh again, so it can then auto-join
+  a rogue host that is the only MC it sees. Tony accepts this trade-off: more than one MC on a field is
+  unlikely.
 
 ## 4. The HUD — requirements and state mapping
 

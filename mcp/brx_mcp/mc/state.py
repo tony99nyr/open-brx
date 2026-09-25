@@ -391,6 +391,10 @@ class Session:
         # never pruned while it holds an assignment (the operator set it up; a 10-minute silence is a phone
         # propped on a hill, not a phantom).
         self.stations: dict[str, dict] = {}
+        # F364 (Tony 2026-09-25): the station id MC handed each node_id this session, kept after a clear or a
+        # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
+        # an MC restart. `_auto_station_id` reads it; the operator never types an id.
+        self._station_id_of: dict[str, int] = {}
         # A56 (S58): `--powerups`. Off (the default), MC refuses an item preset, compiles no spare slot, sends no
         # `item` and runs no spawn schedule; a stored item (a restored snapshot) is inert. `__main__` sets it.
         self.powerups_enabled = False
@@ -673,6 +677,8 @@ class Session:
                     "standby": [{**p, "node_id": None, "ready": False} for p in self.standby.values()],
                     "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
                     "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
+                    # F364: every id MC handed out, so a restarted MC gives a cleared station its old number back.
+                    "station_ids": dict(self._station_id_of),
                     # F337 (a): the lock bookkeeping, so a restarted MC keeps an UNLOCK and every restart it counted.
                     "stations_unlocked": self._stations_unlocked,
                     "station_locks": {nid: {k: st[k] for k in _STATION_LOCK_KEYS if k in st}
@@ -907,6 +913,13 @@ class Session:
                                                             {**e, "age_ms": 0})][-8:]}
                 self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
                                             "synced": False, "last_seen_ms": 0})
+            # F364: the ids MC handed out, then each restored assignment's own id (it wins over a stale entry).
+            for nid, sid in (snap.get("station_ids") or {}).items():
+                if isinstance(nid, str) and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535:
+                    self._station_id_of[nid] = sid
+            for nid, st in self.stations.items():
+                if isinstance(sid := (st.get("assigned") or {}).get("id"), int):
+                    self._station_id_of[nid] = sid
             self.game_no = snap.get("game_no", self.game_no)
             self._game_no_started = bool(snap.get("game_no_started", False))
             if isinstance(snap.get("range_epoch"), int):
@@ -3052,9 +3065,12 @@ class Session:
                              "a station on it would serve nobody -- pick a team in the game, or 'any'")
         if kind == "control" and team != STATION_TEAM_ANY:
             raise ValueError("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'")
+        # F364: MC assigns the id. An explicit `id` (an older console) is still accepted and validated below.
         sid = a.get("id")
+        if sid is None:
+            sid = self._auto_station_id(nid)
         if not (isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535):
-            raise ValueError("id must be an integer 1..65535 (the station id in the advert)")
+            raise ValueError("id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one")
         clash = next((n for n, st in self.stations.items() if n != nid and (st.get("assigned") or {}).get("id") == sid), None)
         if clash:
             raise ValueError(f"station id {sid} is already assigned to {clash}; ids must be unique on the field")
@@ -3105,12 +3121,31 @@ class Session:
         if item is not None:
             assignment["item"] = item
         st["assigned"] = assignment
+        self._station_id_of[nid] = sid
         self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
         self._after_station_change(slots_before)
         self._validate()
         self._changed()
         return self._station_view(nid)
+
+    def _auto_station_id(self, nid: str) -> int:
+        """F364: the id MC gives a station assigned with no `id`. A station keeps the id it already holds, then the
+        one it was handed earlier this session (a clear, a restart or a relink never renumbers it), unless another
+        station now holds that number. A new station takes the lowest id no station holds or was handed, so a
+        phone and a Stick share one sequence: 1, 2, 3."""
+        used = {a["id"] for n, st in self.stations.items() if n != nid and (a := st.get("assigned"))}
+        own = ((self.stations.get(nid) or {}).get("assigned") or {}).get("id")
+        for cand in (own, self._station_id_of.get(nid)):
+            if isinstance(cand, int) and 1 <= cand <= 65535 and cand not in used:
+                return cand
+        taken = used | {i for n, i in self._station_id_of.items() if n != nid}
+        sid = 1
+        while sid in taken:
+            sid += 1
+        if sid > 65535:
+            raise ValueError("no free station id is left (1..65535)")
+        return sid
 
     def clear_station(self, nid: str) -> bool:
         st = self.stations.get(nid)
@@ -3255,7 +3290,7 @@ class Session:
         None = not a range-only change; `set_station` goes on as before."""
         st = self.stations.get(nid)
         prev = (st or {}).get("assigned")
-        if not prev or a.get("kind") != prev["kind"] or a.get("id") != prev["id"]:
+        if not prev or a.get("kind") != prev["kind"] or ("id" in a and a["id"] != prev["id"]):
             return None
         team = a.get("team", STATION_TEAM_ANY)
         if team in ("any", "ffa"):
@@ -4015,6 +4050,7 @@ class Session:
         # session. Bounded by the ladder, but a delivery fact about a node that no longer exists is not a
         # fact at all.
         self._end_delivery.pop(nid, None)
+        self._station_id_of.pop(nid, None)     # F364: an evicted node (a reinstall) frees its number; a CLEAR keeps it
         if (self.stations.pop(nid, None) or {}).get("assigned"):
             # An assigned station left with its id still in every other station's `valid_ids` and every
             # HUD's `config.stations` (polish review 2026-09-11): shrink both, as `clear_station` does.
@@ -4035,6 +4071,7 @@ class Session:
             if now - self.nodes[nid].get("last_seen_ms", 0) > 600_000:
                 self.nodes.pop(nid, None)
                 self.stations.pop(nid, None)
+                self._station_id_of.pop(nid, None)   # F364: a pruned row releases its reserved id
                 self._app_blocked_alerted.pop(nid, None)   # F121: a re-hello after this can say WITHHELD again
                 self._plan_blocked_alerted.pop(nid, None)
 
@@ -4127,6 +4164,7 @@ class Session:
                 self._departed_match_stations[prior_nid] = rec
         if prior_station:
             self.stations.pop(prior_nid, None)
+            self._station_id_of.pop(prior_nid, None)   # F364: a station that became a HUD frees its number
             if prior_nid != nid:
                 # NetServer consumed the old authenticated identity too. Do not leave its utility node
                 # ghost on ARMORY or in per-node bookkeeping after ITEMS has accepted the role handoff.
@@ -5674,6 +5712,15 @@ class Session:
         before = (live.winner(), end_t)
         self._adopt_scorer(live, sc)
         if cap_t < end_t:
+            # F357: a kill the moved end un-scores is now an after-the-whistle kill, and the feed line MC wrote
+            # when it counted cannot say so. Mark each one again, AFTER WHISTLE, as the live path marks a late one.
+            # keyed on the fact's content: a stored body and a live batch body do not both carry `seq`
+            def key(n: str, ev: Event) -> tuple:
+                return (n, ev.get("t"), ev.get("player_id"), ev.get("shooter_num"))
+            was = {key(n, ev) for n, ev, _t in live.post_end}
+            for n, ev, t_recv in sc.post_end:
+                if ev.get("type") == "death" and key(n, ev) not in was:
+                    sc._after_whistle_feed(n, ev, sc.eff_t(n, ev, t_recv))
             moved = (end_t - cap_t) / 1000.0
             self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
                            "text": f"END MOVED BACK {moved:.1f}s — a late flush shows the cap was reached earlier. "
@@ -7081,8 +7128,8 @@ class Session:
         return 1 if ok else 0
 
     def _feedback(self, pid: str, body: dict):
-        if body.get("kind") == "kill" and self.phase == "recap" and self.end_reason == "frag_limit":
-            return      # F357: no kill confirm after a frag-cap whistle (the Scorer gates it on `cap_recv` too)
+        if body.get("kind") == "kill" and self.phase == "recap":
+            return      # F357: no kill confirm after the whistle, any end (the Scorer gates it too: `_before_whistle`)
         p = self.players.get(pid)
         if p and p.get("node_id"):
             cues = (self.bundles.get(pid) or {}).get("cues") or {}
@@ -7601,6 +7648,8 @@ class Session:
             for nv in self.nodes.values():
                 nv.pop("player_id", None)
             self.restored_from = None      # F142: FRESH SESSION is the answer to the restore notice
+            # F364: a fresh session hands ids out from 1 again; a station still assigned keeps its own.
+            self._station_id_of = {n: a["id"] for n, st in self.stations.items() if (a := st.get("assigned"))}
         self._changed()
         if keep_roster:
             self.persist_now()                       # roster survives a crash right after NEW MATCH

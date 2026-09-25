@@ -20,6 +20,7 @@
 #include "brx_advert.h"
 #include "json_lite.h"
 #include "presence.h"  // the Bluetooth hill and the revive count a control/respawn assignment runs
+#include "station_range.h"  // F365/A67: the on-station range edit and its sync (STICK_DEFAULT_THRESHOLD_DBM)
 
 namespace brx {
 
@@ -77,6 +78,11 @@ struct StationAssignment {
   std::vector<int> valid_ids;
   StationItem item;  // A56, additive: absent on an older MC or a non-powerup kind
   int lock_s = 0;    // A58, additive: seconds to lock the operator controls from receipt; 0/absent = unlocked
+  // A67 (additive): how long ago MC's threshold was last set (-1 = absent, an older MC: apply as today),
+  // and MC's advertising power for this station (-1 = absent: keep the Stick's own) with its age.
+  int64_t threshold_age_ms = -1;
+  int tx_power = -1;
+  int64_t tx_power_age_ms = -1;
 };
 
 // ---- A58 (the match lock, additive) --------------------------------------------------------------
@@ -203,6 +209,15 @@ struct StatusFields {
   uint32_t boot_count = 0;   // Preferences counter, incremented once per boot
   std::string assoc;         // "muster" | "held"
   long lock_s = -1;          // seconds left on the match lock (0 = unlocked); -1 = absent
+  // A67 (additive; left unset, the body is byte-identical to the older shape): where `threshold` came
+  // from ("station" | "mc"), the station edit's age (only when "station"), the advertising power with the
+  // same pair, and the last on-station edits as a JSON array (restated every beat; MC dedupes by seq).
+  std::string threshold_src;
+  int64_t threshold_edit_age_ms = -1;
+  std::string tx_power;
+  std::string tx_power_src;
+  int64_t tx_power_edit_age_ms = -1;
+  std::string range_edits_json;
 };
 
 inline std::string build_status_body(const StatusFields& f) {
@@ -244,6 +259,18 @@ inline std::string build_status_body(const StatusFields& f) {
     j += ",\"assoc\":" + json::quote(f.assoc);
   }
   if (f.lock_s >= 0) j += ",\"lock_s\":" + std::to_string(f.lock_s);
+  if (!f.threshold_src.empty()) {
+    j += ",\"threshold_src\":" + json::quote(f.threshold_src);
+    if (f.threshold_src == "station" && f.threshold_edit_age_ms >= 0)
+      j += ",\"threshold_edit_age_ms\":" + std::to_string(f.threshold_edit_age_ms);
+  }
+  if (!f.tx_power.empty()) {
+    j += ",\"tx_power\":" + json::quote(f.tx_power);
+    if (!f.tx_power_src.empty()) j += ",\"tx_power_src\":" + json::quote(f.tx_power_src);
+    if (f.tx_power_src == "station" && f.tx_power_edit_age_ms >= 0)
+      j += ",\"tx_power_edit_age_ms\":" + std::to_string(f.tx_power_edit_age_ms);
+  }
+  if (!f.range_edits_json.empty() && f.range_edits_json != "[]") j += ",\"range_edits\":" + f.range_edits_json;
   j += "}";
   return j;
 }
@@ -310,7 +337,7 @@ inline StationItem parse_item(const json::Value& v) {
 // a phone station defaults to -70). It is
 // also what the Stick advertises in byte 14, and a player's phone measures a respawn station against byte 14
 // (beacon.js Presence), so the Stick must advertise the same value it measures by.
-constexpr int STICK_DEFAULT_THRESHOLD_DBM = -57;  // Tony, 2026-09-24, after walking both stations at 3-5 m
+// STICK_DEFAULT_THRESHOLD_DBM (-57, Tony 2026-09-24) lives in station_range.h, beside the range edit.
 
 // Required per contracts.md §5 (`REQUIRED["station_config"]`): kind, team, id. `threshold`/`game`/
 // `valid_ids`/`item` are optional (utility.md §5c, A56).
@@ -332,6 +359,10 @@ inline StationAssignment parse_station_config(const json::Value& body) {
     for (const auto& x : ids.arr) a.valid_ids.push_back((int)x.as_int());
   }
   a.item = parse_item(body.get("item"));
+  // A67: ages are relative to receipt, so they are never saved (station_config_storage_body leaves them out).
+  if (body.has("threshold_age_ms")) a.threshold_age_ms = body.get("threshold_age_ms").as_int64(-1);
+  a.tx_power = parse_tx_power(body.get("tx_power").as_string());
+  if (a.tx_power >= 0 && body.has("tx_power_age_ms")) a.tx_power_age_ms = body.get("tx_power_age_ms").as_int64(-1);
   // Clamp as a double first: a (long) cast of an out-of-range number is undefined and could come out 0,
   // which would turn a garbage lock into an unlock. Anything above the cap locks for the cap.
   {
@@ -361,6 +392,7 @@ inline std::string station_config_storage_body(const StationAssignment& a) {
   j += ",\"id\":" + std::to_string(a.id);
   j += ",\"threshold\":" + std::to_string(a.threshold);
   if (a.threshold_defaulted) j += ",\"threshold_default\":true";
+  if (a.tx_power >= 0) j += ",\"tx_power\":" + json::quote(tx_power_name(a.tx_power));
   j += ",\"game\":" + std::to_string(a.game);
   j += ",\"valid_ids\":[";
   for (size_t i = 0; i < a.valid_ids.size(); i++) {
@@ -943,6 +975,59 @@ class StationLink {
     return u;
   }
 
+  // ---- F365 / A67: the station's range, as applied NOW (MC's value, or a younger on-station edit) ----
+  int threshold_dbm() const { return threshold_.applied(); }
+  int tx_power_level() const { return tx_power_.applied(); }
+  const SyncedSetting& threshold_setting() const { return threshold_; }
+  const SyncedSetting& tx_power_setting() const { return tx_power_; }
+  const RangeEditLog& range_edits() const { return edits_; }
+
+  // The operator's edits on the RANGE screen: allowed during play and under the A58 lock (the lock
+  // guards reassign/reset, not range), but only with a station assigned. Each step applies at once (the
+  // glue re-reads threshold_dbm()/tx_power_level() for presence, byte 14 and the radio) and is logged
+  // for MC. False when nothing changed (no station, or already at the clamp).
+  bool edit_threshold(int delta_db, uint32_t now_ms) {
+    if (!assignment_.present) return false;
+    const int from = threshold_.applied();
+    const int to = clamp_threshold_dbm(from + delta_db);
+    if (to == from) return false;
+    threshold_.edit_to(to, now_ms);
+    edits_.add(false, from, to, lock_.locked(now_ms), now_ms);
+    return true;
+  }
+  bool edit_tx_power(int delta_levels, uint32_t now_ms) {
+    if (!assignment_.present) return false;
+    const int from = tx_power_.applied();
+    const int to = clamp_tx_power(from + delta_levels);
+    if (to == from) return false;
+    tx_power_.edit_to(to, now_ms);
+    edits_.add(true, from, to, lock_.locked(now_ms), now_ms);
+    return true;
+  }
+
+  // NVS (written by the glue on each edit only): the current on-station values, tagged with the station
+  // id they were made on, and the edit log with its seq. `{"id":3,"thr":-60,"tx":1,"log":{...}}`.
+  std::string range_storage_body() const {
+    std::string j = "{\"id\":" + std::to_string(assignment_.present ? assignment_.id : -1);
+    if (threshold_.from_station()) j += ",\"thr\":" + std::to_string(threshold_.applied());
+    if (tx_power_.from_station()) j += ",\"tx\":" + std::to_string(tx_power_.applied());
+    return j + ",\"log\":" + edits_.storage() + "}";
+  }
+  // At boot, after restore_station_config: the log and its seq always come back; the edited values only
+  // onto the same station id, with their age unknown (EDIT_AGE_UNKNOWN_MS), so any MC value wins later.
+  bool restore_range(const std::string& body) {
+    bool ok = false;
+    json::Value v = json::parse(body, &ok);
+    if (!ok || !v.is_object()) return false;
+    const json::Value& log = v.get("log");
+    if (log.is_object()) edits_.load(log);
+    if (assignment_.present && v.get("id").as_int(-1) == assignment_.id) {
+      if (v.has("thr")) threshold_.restore_edit(clamp_threshold_dbm((int)v.get("thr").as_int()));
+      if (v.has("tx")) tx_power_.restore_edit(clamp_tx_power((int)v.get("tx").as_int()));
+    }
+    return true;
+  }
+
   // A58: the operator-control lock (MatchLock, above). Read-only for the glue and the screen.
   const MatchLock& lock() const { return lock_; }
   bool poll_lock(uint32_t now_ms) { return lock_.poll(now_ms); }
@@ -983,10 +1068,20 @@ class StationLink {
       revives_.reset();
       epoch_++;
     }
+    // F365: a new station (kind or id) starts from MC's values (the log stays). A new GAME alone is the
+    // same station in the same place for the next match: apply_mc below decides (the age rule, or the
+    // ageless changed-value guard), so a pre-match edit survives arming.
+    if (kind_or_id_changed) {
+      threshold_.reset();
+      tx_power_.reset();
+    }
     // A56 (brx5): unsent `taken` reports belong to the game they were awarded in; a new game drops them.
     if (game_changed) pending_actions_.clear();
     assignment_ = a;
     state_ = LinkState::ASSIGNED;
+    // A67: MC's range values, each through the keep-the-younger-edit rule (station_range.h).
+    threshold_.apply_mc(a.threshold, a.threshold_age_ms, received_at_ms);
+    if (a.tx_power >= 0) tx_power_.apply_mc(a.tx_power, a.tx_power_age_ms, received_at_ms);
     if (a.kind == "powerup") {
       powerup_.apply_item(a.item);
       claims_.configure(a.id, a.game);
@@ -1050,6 +1145,12 @@ class StationLink {
     pending_actions_.clear();
     last_update_ = StationUpdateMsg();
     assignment_ = a;
+    // A67: MC's saved values come back as MC's; an on-station edit is restored after this, from its own
+    // NVS copy (restore_range), with its age unknown.
+    threshold_.reset();
+    tx_power_.reset();
+    threshold_.set_mc(a.threshold);
+    if (a.tx_power >= 0) tx_power_.set_mc(a.tx_power);
     if (a.kind == "powerup") {
       powerup_.apply_item(a.item);
       claims_.configure(a.id, a.game);
@@ -1110,6 +1211,9 @@ class StationLink {
   // A58: a release also lifts the lock -- an unarmed station has nothing left to protect, and a
   // released Stick locked for up to two hours would only strand the operator.
   void apply_release() {
+    // A67: an unarmed Stick has no range to hold; the edit goes (the edit LOG and its seq stay).
+    threshold_.reset();
+    tx_power_.reset();
     lock_.clear();
     restored_ = false;
     assignment_ = StationAssignment();
@@ -1150,12 +1254,39 @@ class StationLink {
   bool actions_enabled_ = true;   // MC accepts station_action since A56 landed (f3fe3cf6); `ACTIONS OFF` for an older MC
   bool dropped_for_match_ = false;
   MatchLock lock_;  // A58, RAM only
+  SyncedSetting threshold_{STICK_DEFAULT_THRESHOLD_DBM};  // A67
+  SyncedSetting tx_power_{TX_POWER_DEFAULT};              // A67 addendum 1
+  RangeEditLog edits_;                                    // A67 addendum 2
   bool restored_ = false;  // the assignment came from flash this boot (restore_station_config)
   std::string session_id_;  // the last WELCOME's session_id ("" before any)
   bool drop_pending_ = false;   // a latched MUSTER drop the glue has not performed yet
   bool drop_deferred_ = false;  // ...and it waits for the re-anchor (first config after a restore)
   uint32_t drop_latched_at_ms_ = 0;
 };
+
+// The NVS "range" body read at boot: absent ("", a first boot) or one that parses is usable. A body that
+// exists but does not parse is treated like an unreadable namespace: that boot never writes the key, so
+// a seq it cannot see is never overwritten by a lower one (brx3: seq never goes down).
+inline bool range_body_usable(const std::string& body) {
+  if (body.empty()) return true;
+  bool ok = false;
+  json::Value v = json::parse(body, &ok);
+  return ok && v.is_object() && v.get("log").is_object();
+}
+
+// A67: the range half of a status beat, from the link (the glue calls this every beat). `threshold` is the
+// value applied NOW; the edit ages are reported only while an on-station edit stands.
+inline void fill_range_status(const StationLink& link, StatusFields& f, uint32_t now_ms) {
+  const SyncedSetting& thr = link.threshold_setting();
+  const SyncedSetting& tx = link.tx_power_setting();
+  f.threshold = thr.applied();
+  f.threshold_src = thr.src();
+  f.threshold_edit_age_ms = thr.from_station() ? thr.edit_age_ms(now_ms) : -1;
+  f.tx_power = tx_power_name(tx.applied());
+  f.tx_power_src = tx.src();
+  f.tx_power_edit_age_ms = tx.from_station() ? tx.edit_age_ms(now_ms) : -1;
+  f.range_edits_json = link.range_edits().status_json(now_ms);
+}
 
 // Review round 1 (HIGH): what a WELCOME means for the saved copy. A copy from another session (or
 // with no session id) is erased, and a restored assignment still standing is dropped to UNASSIGNED.

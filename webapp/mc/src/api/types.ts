@@ -56,7 +56,12 @@ export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FI
   /** Bench 2026-09-17: MC restarted and resumed (or adopted) the match in play. */
   | 'RESUMED'
   /** A note about a match MC did not start (an adopted match): MC records it and ends nothing. */
-  | 'NOTE';
+  | 'NOTE'
+  /** F357: a kill after the whistle (stamped after the end, or a team kill frozen out after a frag cap). Shown,
+   *  and counted in nothing: not the score, the rows, the awards or the medals. */
+  | 'AFTER WHISTLE'
+  /** A65 (F354): a kill credited to a TEAM and no player (the victim's phone lost the damaging hit). */
+  | 'TEAM CREDIT';
 export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
@@ -116,8 +121,9 @@ export interface Api {
   /** A28.1: `POST /api/tunnel {on}` → `lan.public`. 409 (available:false / provider:"manual") — the
    *  server's `error` text is the whole point of the rejection, never swallow it. */
   setTunnel(on: boolean): Promise<LanPublic>;
-  /** A13.5: assign a utility phone (kind / team / id / threshold); MC pushes `station_config` at once. 400 in the operator's voice. */
-  putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number;
+  /** A13.5: assign a utility phone (kind / team / threshold); MC pushes `station_config` at once. 400 in the operator's voice.
+   *  F364: MC assigns the station id when `id` is absent (this console never sends one); an explicit id is still validated. */
+  putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number;
     /** A56: a `powerup` station's item, one of `getPowerups().presets[].preset`. Refused when MC's powerups flag is off. */
     item_preset?: string;
     /** A67 (F365): the station's advert strength. Absent = keep what MC holds. A range-only PUT is allowed in any phase. */

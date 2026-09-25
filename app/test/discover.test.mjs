@@ -302,7 +302,9 @@ test('security guard: an mDNS advert is offered, never dialled — same one-tap 
   const dials = [...suggest.matchAll(/connectMc\([^\n]*/g)].map(m => m[0]);
   // (the remembered url, re-dialled when discovery sees it and nothing is dialling, is not automatic in
   // this sense: the player named it or it bound us, the same rule as every boot dial)
-  assert.deepEqual(dials, ['connectMc(settings.mcUrl);', 'connectMc(url, false, { verify: true, source });'], 'an automatic dial is a proof dial, never a trusted or keyless-trusting one');
+  // F346 (d): and a first-contact dial, which is untrusted (no node_key, no secret, no utility proof)
+  assert.deepEqual(dials, ['connectMc(url, false, { trusted: false, firstContact: true, source });',
+    'connectMc(settings.mcUrl);', 'connectMc(url, false, { verify: true, source });'], 'an automatic dial is a proof dial or an untrusted first contact, never a trusted one');
   assert.match(suggest, /holdsTrustKey\(\)/, 'only a phone that holds a trust key may proof-dial');
   // and the offer itself dials nothing
   const k = src.indexOf('function offerMc(');
@@ -322,15 +324,17 @@ test('security guard: no automatic dial is left anywhere — every connectMc cal
     assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|\bv\)|\bv, true, \{ user: true \}\)|\burl,|\burl\)/.test(l), `unexpected connectMc caller: ${l}`);
   }
   assert.ok(callers.length >= 4, 'the real callers are still there');
-  // A60: the one caller that no person started (a discovery hit) must be a verify dial...
+  // A60: the callers no person started (a discovery hit) are a verify dial and (F346 d) an untrusted
+  // first-contact dial...
   const auto = callers.filter(l => /connectMc\(url, false/.test(l));
-  assert.deepEqual(auto, ['connectMc(url, false, { verify: true, source });']);
-  // ...and a verify dial must send neither the takeover key, the join secret nor the utility proof
+  assert.deepEqual(auto, ['connectMc(url, false, { trusted: false, firstContact: true, source });', 'connectMc(url, false, { verify: true, source });']);
+  // ...and neither may send the takeover key, the join secret or the utility proof
   const t = readFileSync(path.resolve(HERE, '../src/transport/transport.js'), 'utf8');
   assert.match(t, /this\.trusted = trusted !== false && !this\.verify;/, 'verify forces an untrusted (keyless) hello');
   assert.match(t, /this\.secret && this\.trusted \? \{ secret: this\.secret \}/);
   assert.match(t, /this\.nodeKey && this\.trusted \? \{ node_key: this\.nodeKey \}/);
-  assert.match(t, /this\.priorUtility && this\.trusted \? \{ prior_utility: this\.priorUtility \}/);
+  assert.match(t, /if \(!pu \|\| !this\.trusted \|\| this\._firstContact \|\| !pu\.mc_url \|\| normUrl\(pu\.mc_url\) !== normUrl\(this\.url\)\) return undefined;/,
+    'the utility proof: trusted, not a first contact, and only to the MC url it came from (F346 d r1)');
   assert.match(t, /if \(this\.pub && !this\.verify\) this\._dialVia\('backhaul'/, 'and never goes to the trusted MC\'s tunnel');
 });
 

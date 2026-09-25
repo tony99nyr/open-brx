@@ -190,6 +190,45 @@ static void mcWriteSavedHill() {
   Serial.printf("# hill owner saved: %d (game %d, id %d)\n", savedHill.owner(), savedHill.game(), savedHill.id());
 }
 
+// ---- F365 / A67: the on-station range edit in NVS ("brxmc"/"range") -----------------------------------
+// StationLink::range_storage_body(): the edited values (tagged with the station id) and the edit log with
+// its seq. Written only when that body changes (an edit, an MC config that drops an edit, a release):
+// never per beat, since the body carries no ages. Loaded at boot after the saved config is restored.
+static String lastRangeSaved;
+// seq must never go down (MC reads a lower seq as a reset): if the NVS namespace cannot be opened at boot,
+// nothing here knows the old seq, so this boot never WRITES the range key either (it would overwrite a
+// higher seq with a lower one). Only an erased NVS (a reinstall) restarts seq at 1.
+static bool rangeNvsReadable = true;
+static void mcLoadRange(StationLink& link) {
+  if (!mcPrefs.begin("brxmc", true)) {
+    rangeNvsReadable = false;
+    Serial.println("ERR NVS unreadable: range edits stay in RAM this boot (seq kept safe on flash)");
+    return;
+  }
+  String body = mcPrefs.getString("range", "");
+  mcPrefs.end();
+  if (!range_body_usable(body.c_str())) {  // there, but unparsable: its seq is unknowable, so never write over it
+    rangeNvsReadable = false;
+    Serial.println("ERR NVS range body does not parse: range edits stay in RAM this boot (seq kept safe on flash)");
+    return;
+  }
+  lastRangeSaved = body;
+  if (body.length() && link.restore_range(body.c_str())) {
+    Serial.printf("RESTORED range threshold=%d src=%s tx=%s src=%s edits=%u next_seq=%lu\n", link.threshold_dbm(),
+                  link.threshold_setting().src(), tx_power_name(link.tx_power_level()), link.tx_power_setting().src(),
+                  (unsigned)link.range_edits().edits().size(), (unsigned long)link.range_edits().next_seq());
+  }
+}
+static void mcSaveRangeIfChanged(StationLink& link) {
+  if (!rangeNvsReadable) return;
+  std::string body = link.range_storage_body();
+  if (lastRangeSaved == body.c_str()) return;
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.putString("range", body.c_str());
+  mcPrefs.end();
+  lastRangeSaved = body.c_str();
+}
+
 static void mcEraseSavedHill() {
   mcPrefs.begin("brxmc", false);
   mcPrefs.remove("hill_owner");
@@ -531,7 +570,7 @@ static void mcTickPlayers(uint32_t now) {
   const StationAssignment& a = link.assignment();
   // utility.js: `presence.defaultThreshold = settings.threshold; presence.game = settings.game`, every
   // tick. The threshold is MC's, or the Stick's own -57 default (STICK_DEFAULT_THRESHOLD_DBM) when MC sent none.
-  presence.default_threshold = presence_threshold_dbm(a);  // -57 when MC sent 0: the Stick's platform default
+  presence.default_threshold = link.threshold_dbm();  // MC's (0 = the Stick's -57) or a younger on-station edit (A67)
   presence.game = (uint8_t)a.game;
   // A different station now (new kind/id/game, a restore, a release): the old station's sightings and
   // presence belong to it, not to this one.
@@ -625,6 +664,7 @@ static void mcHandleFrame(const String& text) {
       // radio action the glue owns; the decision itself is pure and tested in station_link.h.
       uint32_t rx = millis();
       link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
+      mcSaveRangeIfChanged(link);            // A67: MC's value may have replaced an on-station edit
       // Only when it differs (lock_s excluded) or the session is new.
       if (savedConfig.note_applied(a, link.session_id())) mcWriteSavedConfig();
       if (savedHill.note_config(link.assignment(), savedConfig.session_id())) mcEraseSavedHill();  // new game/id/session
@@ -648,6 +688,7 @@ static void mcHandleFrame(const String& text) {
     std::string cmd = parse_control_cmd(body);
     if (cmd == "release_utility") {
       link.apply_release();
+      mcSaveRangeIfChanged(link);  // A67: the edited values go with the station (the log and its seq stay)
       if (savedConfig.note_released()) mcEraseSavedConfig();  // a released Stick must not come back armed
       if (savedHill.clear()) mcEraseSavedHill();
       mcScreenWake = true;
@@ -826,7 +867,12 @@ static void mcLoop(uint32_t now) {
     f.kind = a.present ? a.kind : "respawn";
     f.team = a.present ? a.team : 255;
     f.station_id = a.present ? a.id : 0;
-    f.threshold = a.present ? a.threshold : STICK_DEFAULT_THRESHOLD_DBM;
+    f.threshold = STICK_DEFAULT_THRESHOLD_DBM;
+    // A67: the threshold and TX power applied NOW, where each came from, and the on-station edit log
+    // (restated every beat; MC dedupes by seq). The log goes out even unassigned, so a release cannot hide
+    // an edit MC has not seen yet.
+    if (a.present) fill_range_status(link, f, now);
+    else f.range_edits_json = link.range_edits().status_json(now);
     f.live = stationLive;  // the real BLE advert state, not merely "MC armed us" (polish round 1)
     f.armed = link.state() == LinkState::ASSIGNED;
     f.has_health = true;  // A58
@@ -949,6 +995,7 @@ static void mcSetup() {
   mcCountBoot();                   // A58
   mcLoadSavedHill();               // before the restore, which may bring the hill back held
   mcRestoreSavedConfig(link);      // restart survival: before WiFi.begin, so the station plays at once
+  mcLoadRange(link);                   // F365: an on-station range edit and the edit log's seq, after the config
   // A58: every boot starts unlocked, the PMIC included: setup() already cleared it, first thing (F332).
   bootRandomPrefix = esp_random();  // the fixed half of every station_action envelope id this boot
   WiFi.mode(WIFI_STA);

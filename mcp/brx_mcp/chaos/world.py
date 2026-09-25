@@ -202,6 +202,9 @@ class World:
         self.scorers: dict[int, Scorer] = {}                # id -> every Scorer the tap saw fed
         self.ingests: dict[int, list[dict]] = {}            # id -> that Scorer's inputs, in order
         self.timeline_t0: int | None = None                 # `timed_kill`'s zero, set by its first use
+        # F357: every kill cue MC sent, as {match_id, player_id, victim, t, sent_ms} (the Session's MC clock), for
+        # `no_kill_cue_after_end`. Recorded where MC pushes it (`Session._feedback`), not where a node receives it.
+        self.kill_cues: list[dict] = []
 
     # ------------------------------------------------------------------ setup / teardown
     @property
@@ -297,11 +300,23 @@ class World:
         orig = s._finish
 
         def finish() -> None:
-            self.finishes.append({"gen": gen, "phase": s.phase, "reason": s.end_reason,
+            self.finishes.append({"gen": gen, "phase": s.phase, "reason": s.end_reason, "at_ms": s.now_ms(),
                                   "match_id": (s.start_info or {}).get("match_id")
                                   or (s.scorer.match_id if s.scorer else None), "step": self.step})
             orig()
         setattr(s, "_finish", finish)      # every internal `self._finish()` now goes through here
+        net, orig_push = s.net, s.net.push
+
+        def push(node_id, kind, body, *a, **kw):
+            if kind == "feedback" and isinstance(body, dict) and body.get("kind") == "kill":
+                self.kill_cues.append({"match_id": s.scorer.match_id if s.scorer else None, "player_id": body.get("player_id"),
+                                       "victim": body.get("victim"), "t": body.get("t"), "sent_ms": s.now_ms(), "phase": s.phase,
+                                       # the frag cap that had FROZEN the match when this cue left (None = none yet): a
+                                       # same-batch cue after the cap leaves before the finish, so `sent_ms` cannot show it
+                                       "cap_t": (sc.limit_reached_t if (sc := s.scorer) is not None and sc.limit_reached_t is not None
+                                                 and sc.end_t is not None and sc.end_t <= sc.limit_reached_t else None)})
+            return orig_push(node_id, kind, body, *a, **kw)
+        setattr(net, "push", push)
         self._last_phase = last
 
     async def restart_mc(self, crash: bool = False) -> None:

@@ -195,10 +195,9 @@ def test_a_kill_flushed_after_the_whistle_scores_but_gets_no_kill_confirm():
     assert len(cues) == cues_before, f"MC sent a kill confirm after the whistle: {cues[cues_before:]}"
 
 
-def test_a_kill_just_after_a_timed_buzzer_keeps_its_kill_confirm():
-    """F357 round 3: the mute is for a FRAG-CAP end only, where a later flush can move the end. A timed
-    end never moves, and the freshness gate (FEEDBACK_MAX_AGE_MS) already drops a stale confirm, so a kill
-    stamped just before the buzzer and landing just after it is still confirmed."""
+def test_a_kill_just_after_a_timed_buzzer_scores_but_gets_no_kill_confirm():
+    """F357 (Tony 2026-09-25: "MC shouldn't push KCs" after the whistle): the mute is for EVERY end, a timed one
+    too. A kill stamped just before the buzzer and landing just after it still counts; it gets no confirm."""
     s, net, clock, ps, info = go_live(2, "tdm", {"time_limit_s": 10})
     go = info["go_live_t"]
     clock["t"] = go + 10_500                # past the buzzer, inside MC's 5 s grace before the recap
@@ -209,7 +208,7 @@ def test_a_kill_just_after_a_timed_buzzer_keeps_its_kill_confirm():
                                  "shooter_team": 1}, clock["t"] + 100, seq=1)
     assert s.scorer.rows()[0]["kills"] + s.scorer.rows()[1]["kills"] == 1, "the kill is inside the window"
     cues = [p for p in net.pushes("feedback", ps[0]["node_id"]) if p[2].get("kind") == "kill"]
-    assert len(cues) == 1, f"a kill just before a timed buzzer lost its confirm: {cues}"
+    assert cues == [], f"a kill processed after a timed buzzer was confirmed: {cues}"
 
 
 def test_the_cap_never_ends_a_match_that_is_not_won_on_kills():

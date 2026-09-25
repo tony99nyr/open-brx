@@ -517,6 +517,64 @@ test('F354: a heal word on a grant cell between the killing blow and $HP,0 does 
   assert.equal(h.kind('hit_taken').at(-1).shooter_num, 3);
 });
 
+// A65 (F354, Tony 2026-09-25: "killed by blue makes sense"): the damaging `$HIR` is lost, and the only fresh word is a
+// non-damaging one. Its shooter did no damage, so the death credits that word's TEAM and no player.
+for (const [proto, label, opts] of [[7, 'smoke', { sir: HAZE }], [8, 'EMP', { sir: EMP, stun: { duration_s: 5 } }]]) {
+  test(`A65: a lost damaging hit with only an enemy ${label} word fresh credits the TEAM, not the player`, () => {
+    const h = harness(opts);
+    h.eng.feedFrame(`$HIR,0,${proto},3,2,0,0,0,*`);     // player 3 (yellow) lands a word that does no damage
+    h.eng.feedFrame('$HP,0,0,0,*');                      // the killing word was lost; the gun says dead
+    const d = h.kind('death');
+    assert.equal(d.length, 1);
+    assert.equal(d[0].shooter_num, 0, 'no player is named');
+    assert.equal(d[0].shooter_team, 2, 'the team is');
+    assert.equal(d[0].credit, 'team');
+    const kb = h.eng.killedBy;
+    assert.equal(kb.num, 0); assert.equal(kb.name, null); assert.equal(kb.teamName, 'YELLOW'); assert.equal(kb.teamOnly, true);
+    assert.ok(!kb.unknown, 'the death screen says KILLED BY YELLOW, not UNKNOWN');
+    const irtx = h.writes.filter(f => f.startsWith('$IRTX,'));
+    assert.equal(irtx.length, 1, `a bare DOWN, with no DOWN_BY naming player 3 or 0: ${irtx}`);
+    assert.equal(irtx[0].split(',')[3], '7', 'the S57 callout names the victim');
+  });
+}
+
+test('A65: with no hit booked (the $HP came after the 1000 ms gate), a fresh enemy smoke latch still credits only its team', () => {
+  const h = harness({ sir: HAZE });
+  h.eng.feedFrame('$HIR,0,7,3,2,0,0,0,*');
+  h.adv(1500);                                           // past the hit gate, inside DEATH_LATCH_MS
+  h.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(h.kind('hit_taken').length, 0);
+  const d = h.kind('death')[0];
+  assert.equal(d.shooter_num, 0); assert.equal(d.shooter_team, 2); assert.equal(d.credit, 'team');
+  assert.equal(h.eng.killedBy.teamName, 'YELLOW');
+});
+
+test('A65: a no-pool word from a team that is not on this match\'s roster credits nobody', () => {
+  const h = harness({ sir: HAZE });
+  h.eng.feedFrame('$HIR,0,7,5,3,0,0,0,*');               // tid 3 (GREEN): the roster has only blue (1) and yellow (2)
+  h.eng.feedFrame('$HP,0,0,0,*');
+  const d = h.kind('death')[0];
+  assert.equal(d.shooter_num, 0); assert.equal(d.credit, undefined);
+  assert.equal(h.eng.killedBy.unknown, true);
+});
+
+test('A65: our own team\'s smoke word with the damaging hit lost credits nobody', () => {
+  const h = harness({ sir: HAZE });
+  h.eng.feedFrame('$HIR,0,7,5,1,0,0,0,*');               // a BLUE teammate's smoke
+  h.eng.feedFrame('$HP,0,0,0,*');
+  const d = h.kind('death')[0];
+  assert.equal(d.shooter_num, 0); assert.equal(d.credit, undefined);
+  assert.equal(h.eng.killedBy.unknown, true);
+});
+
+test('A65: a fresh damaging word still names its player (no team credit)', () => {
+  const h = harness({ sir: HAZE });
+  h.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*');
+  h.eng.feedFrame('$HP,0,0,0,*');
+  const d = h.kind('death')[0];
+  assert.equal(d.shooter_num, 3); assert.equal(d.credit, undefined);
+});
+
 test('F354: SIR_GRANT_FNS matches compile.py _SIR_GRANT', () => {
   const src = readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/compile.py', import.meta.url)), 'utf8');
   const m = /^_SIR_GRANT = frozenset\(range\((\d+), (\d+)\)\)/m.exec(src);

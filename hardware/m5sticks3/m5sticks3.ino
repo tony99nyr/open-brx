@@ -129,6 +129,9 @@ static void resetPoints() {
 // ---- screen model/render (station_screen.h / station_render.h) ------------------------------- //
 M5Canvas canvas(&M5.Display);   // one off-screen sprite, pushed once per paint: no flicker
 HomeNav homeNav;                // Tony, 2026-09-24: idle timeout + A-long-press "go home"
+AHoldGesture aHoldGesture;      // F365: A as click / home-on-release / 5 s RANGE (station_ui.h)
+RangeEditor rangeEd;            // F365: the on-station RANGE editor (station_ui.h)
+int lastRangeCue = -1;
 uint32_t confirmArmedAtMs = 0;  // mirrors station_ui.h's own armed_at_ms_ (no getter there; see pollButtons())
 bool resetOutcomeActive = false;  // a RESET was just confirmed; show its outcome briefly, then clear
 bool resetOutcomeOk = false;      // true = sent to MC; false = RESET NEEDS MISSION CONTROL
@@ -384,6 +387,27 @@ static AdvertView currentAdvertView(uint32_t now) {
 
 bool advertising = false;
 uint32_t advertRetryAt = 0;
+// A67 addendum 1: the advertising TX power follows the station's tx_power (MC's, or an on-station edit):
+// ultra_low -18 dBm, low -9, medium 0, high +9 (the default, what the Stick always used). Applied on
+// every (re)start of the advert, so a change takes effect at the next publish.
+static esp_power_level_t advertPowerLevel(int level) {
+  switch (level) {
+    case TX_POWER_ULTRA_LOW: return ESP_PWR_LVL_N18;
+    case TX_POWER_LOW: return ESP_PWR_LVL_N9;
+    case TX_POWER_MEDIUM: return ESP_PWR_LVL_N0;
+    default: return ESP_PWR_LVL_P9;
+  }
+}
+int appliedTxLevel = -1;
+static void applyAdvertTxPower() {
+  const int level = brx_glue::link.assignment().present ? brx_glue::link.tx_power_level() : TX_POWER_DEFAULT;
+  BLEDevice::setPower(advertPowerLevel(level), ESP_BLE_PWR_TYPE_ADV);
+  if (level != appliedTxLevel) {
+    appliedTxLevel = level;
+    Serial.printf("# advert TX power %s (%d dBm)\n", tx_power_name(level), tx_power_dbm(level));
+  }
+}
+
 static void publishAdvert(const AdvertView& v, uint32_t now) {
   using brx_glue::link;
   uint8_t seq = policy.published(v, now);
@@ -398,7 +422,7 @@ static void publishAdvert(const AdvertView& v, uint32_t now) {
   adv_.value = v.value;
   adv_.seq = seq;
   adv_.game = assigned ? (uint8_t)a.game : settings.game;
-  adv_.threshold = assigned ? a.threshold : 0;
+  adv_.threshold = assigned ? link.threshold_dbm() : 0;  // A67: MC's value or a younger on-station edit
   adv_.taker = v.taker;
   String uuid = advert_uuid(adv_).c_str();
   if (!adv) { policy.have_last = false; return; }
@@ -406,6 +430,7 @@ static void publishAdvert(const AdvertView& v, uint32_t now) {
   BLEAdvertisementData data;
   data.setFlags(0x04);  // BR/EDR not supported; general discoverable is not needed for a beacon
   data.setCompleteServices(BLEUUID(uuid.c_str()));
+  applyAdvertTxPower();  // A67: the advertising power, re-applied on every restart of the advert
   bool ok = adv->setAdvertisementData(data) && adv->start();
   advertising = ok;
   if (!ok) {
@@ -460,7 +485,11 @@ static void pollAdvert(uint32_t now) {
     v.kind = a.present ? station_kind_byte(a.kind) : KIND_CONTROL;
     v.id = a.present ? (uint16_t)a.id : settings.id;
     v.game = a.present ? (uint8_t)a.game : settings.game;
-    v.threshold = a.present ? a.threshold : 0;
+    v.threshold = a.present ? brx_glue::link.threshold_dbm() : 0;  // an edit republishes at once (identity)
+  }
+  {  // A67: a new TX power restarts the advert at once (publishAdvert applies it before adv->start())
+    const int wantTx = brx_glue::link.assignment().present ? brx_glue::link.tx_power_level() : TX_POWER_DEFAULT;
+    if (advertising && wantTx != appliedTxLevel) policy.have_last = false;
   }
   if (policy.due(v, now)) publishAdvert(v, now);
   // H8 (polish round 1): status.live must say whether the advert is ACTUALLY up, not merely that MC
@@ -498,6 +527,9 @@ static StickState buildStickState(uint32_t now) {
   in.reset_outcome_locked = resetOutcomeLocked;
   in.force_restart_countdown_s = forceRestart.countdown_s();
   in.at_home = homeNav.at_home();
+  in.range_active = rangeEd.active();
+  in.range_edit_strength = rangeEd.field() == RangeField::STRENGTH;
+  in.range_cue_pct = aHoldGesture.range_cue_pct();
   return build_stick_state(in, heldClock);
 }
 
@@ -526,7 +558,10 @@ static void printStatus() {
                 link.actions_enabled() ? "ON" : "OFF", link.dropped_for_match() ? 1 : 0,
                 link.identity().node_id.c_str(), brx_glue::wifiSsid.c_str(), a.present ? a.kind.c_str() : "-",
                 a.present ? a.team : -1, a.present ? a.id : -1, a.present ? a.game : -1,
-                a.present ? a.threshold : 0);
+                a.present ? link.threshold_dbm() : 0);
+  Serial.printf(" threshold_src=%s tx_power=%s tx_src=%s range_edits=%u", link.threshold_setting().src(),
+                tx_power_name(link.tx_power_level()), link.tx_power_setting().src(),
+                (unsigned)link.range_edits().edits().size());  // F365 / A67
   Serial.printf(" locked=%d lock_s=%lu boots=%lu uptime_s=%lu", link.lock().locked(millis()) ? 1 : 0,
                 (unsigned long)link.lock().remaining_s(millis()), (unsigned long)brx_glue::bootCount,
                 (unsigned long)(millis() / 1000));
@@ -765,6 +800,7 @@ static void pollButtons() {
   const bool aHold = aOk && M5.BtnA.wasHold(), bHold = bOk && M5.BtnB.wasHold();
   const bool aReleased = aOk && M5.BtnA.wasReleased(), bReleased = bOk && M5.BtnB.wasReleased();
   const bool aClicked = aOk && M5.BtnA.wasClicked();
+  const bool bClicked = bOk && M5.BtnB.wasClicked();
   // Bench diagnostic: the serial timestamps between DOWN and HOLD measure the real hold threshold.
   if (aPressed) Serial.printf("BTN A down thresh=%u\n", (unsigned)M5.BtnA.getHoldThresh());
   if (bPressed) Serial.printf("BTN B down thresh=%u\n", (unsigned)M5.BtnB.getHoldThresh());
@@ -779,12 +815,23 @@ static void pollButtons() {
   }
   uint32_t countdown = forceRestart.countdown_s();
   if (countdown != lastRestartCountdown) { lastRestartCountdown = countdown; displayDirty = true; }
+  // F365: A is read as one gesture from its level (station_ui.h AHoldGesture): a click, HOME on a release
+  // between 1 s and 5 s, or RANGE on reaching 5 s on the STATS page. The bench path below keeps its own.
+  // Not while a RESET confirm is open: that prompt is the operator's focus until it resolves or times out.
+  const bool rangeAllowed = link.state() != LinkState::NOT_CONFIGURED && !homeNav.at_home() &&
+                            link.assignment().present && !rangeEd.active() &&
+                            brx_glue::buttons.phase() == ButtonPhase::NORMAL;
+  const AHoldEvent aEvent = aHoldGesture.update(bootHeld.a_down(), now, rangeAllowed);
+  const int cue = aHoldGesture.range_cue_pct();
+  if (cue != lastRangeCue) { lastRangeCue = cue; displayDirty = true; }
   if (forceRestart.suppress_single()) {
+    aHoldGesture.cancel();  // the joint hold owns this press
     homeNav.note_activity(now);
     if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;
     return;
   }
   if (link.state() == LinkState::NOT_CONFIGURED) {
+    if (rangeEd.active()) rangeEd.close();  // bench mode has no station: RANGE never edits invisibly here
     // Long presses only: a knock on the field must not flip the point or its mode.
     if (aHold) { resetPoints(); Serial.println("RESET neutral (button)"); displayDirty = true; }
     if (aClicked) {
@@ -795,14 +842,54 @@ static void pollButtons() {
     if (homeNav.poll_idle(now)) displayDirty = true;
     return;
   }
-  if (aClicked) {
+  // F365: the RANGE editor. Allowed during play and under the A58 lock (Tony, 2026-09-25: the lock guards
+  // reassign and reset; range sits behind the stronger 5 s gesture, and every edit is reported to MC).
+  // Never edit invisibly: no station any more (a release) or the low-battery screen closes RANGE.
+  // The battery half is INERT today: no battery reading is wired up (README "Power"; buildStickState
+  // reports -1 too). Pass the real reading here once one exists.
+  if (rangeEd.active() && range_must_close(link.assignment().present, /*battery_pct=*/-1)) {
+    rangeEd.close();
+    Serial.println("RANGE closed (no station assigned)");
+    displayDirty = true;
+  }
+  if (rangeEd.active()) {
+    bool edited = false;
+    if (aEvent == AHoldEvent::CLICK || bClicked) {
+      const int step = RangeEditor::step_for(rangeEd.field(), aEvent == AHoldEvent::CLICK);
+      edited = rangeEd.field() == RangeField::RADIUS ? link.edit_threshold(step, now) : link.edit_tx_power(step, now);
+      rangeEd.touch(now);
+    } else if (aEvent == AHoldEvent::HOME) {
+      rangeEd.switch_field(now);  // an A hold switches RADIUS <-> STRENGTH
+    }
+    if (bHold) {
+      rangeEd.close();  // every step already applied and saved; this only leaves the screen
+      Serial.println("RANGE closed (B hold)");
+    }
+    if (edited) {
+      brx_glue::mcSaveRangeIfChanged(link);  // NVS on an edit only
+      Serial.printf("RANGE threshold=%d tx=%s (on-station edit, seq %lu)\n", link.threshold_dbm(),
+                    tx_power_name(link.tx_power_level()), (unsigned long)(link.range_edits().next_seq() - 1));
+    }
+    if (rangeEd.poll_idle(now, bootHeld.a_down() || bootHeld.b_down())) Serial.println("RANGE closed (10 s idle)");
+    if (aEvent != AHoldEvent::NONE || bClicked || bHold || edited) homeNav.note_activity(now);
+    if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;  // the same housekeeping as every other path
+    if (homeNav.poll_idle(now)) displayDirty = true;
+    displayDirty = true;
+    return;  // B's RESET is not reachable from RANGE
+  }
+  if (aEvent == AHoldEvent::RANGE) {
+    if (brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) brx_glue::buttons.on_short_press();  // belt and braces
+    rangeEd.open(now);
+    Serial.println("RANGE opened (A held 5 s on STATS)");
+    homeNav.note_activity(now);
+    displayDirty = true;
+  } else if (aEvent == AHoldEvent::CLICK) {
     ButtonPhase before = brx_glue::buttons.phase();
     brx_glue::buttons.on_short_press();
     if (before == ButtonPhase::CONFIRM_ARMED) homeNav.note_activity(now);  // cancelled, not a page move
     else homeNav.leave_home(now);
     displayDirty = true;
-  }
-  if (aHold) {
+  } else if (aEvent == AHoldEvent::HOME) {  // on the release, 1 to 5 s
     if (brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) brx_glue::buttons.on_short_press();  // cancel it
     homeNav.go_home(now);
     displayDirty = true;

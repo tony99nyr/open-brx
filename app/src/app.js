@@ -291,6 +291,10 @@ let currentJoinUrl = null;
 const autoJoin = new McAutoJoin();
 /** A60 polish: the dial the player named last, while it waits for its first welcome. */
 let userDial = /** @type {{t:any}|null} */ (null);
+/** F346 (d): the first-contact dial in flight (an untrusted dial no person started), and the one timer
+ *  that asks autojoin.js again when the discovery window closes. */
+let firstContactDial = /** @type {{t:any}|null} */ (null);
+let firstContactTimer = /** @type {any} */ (null);
 // F346 (c): the window is the transport's armed deadline, which a 4003 reclaim wait extends past 10 s.
 function userDialPending() { return namedDialPending(userDial, transport); }
 function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl = url; }
@@ -304,11 +308,13 @@ function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl =
  *   operator's scanned target, suppress the boot sweep, and come back next boot as a url nothing ever
  *   vouched for — dialled trusted, since trust lives on the Transport and does not survive a restart.
  *   Both things that CAN persist are therefore trusted: the user named it, or it bound us.
- * @param {{pub?:string|null, secret?:string|null, trusted?:boolean, verify?:boolean, source?:string, user?:boolean}} [join]
+ * @param {{pub?:string|null, secret?:string|null, trusted?:boolean, verify?:boolean, firstContact?:boolean, source?:string, user?:boolean}} [join]
  *   `user` = the player named this address just now (QR, typed, tapped JOIN): no discovery hit replaces
  *   the dial inside its welcome window. A60: `verify` = a
  *   discovery hit this phone may join with no tap IF it proves it is the MC install whose trust key we hold
  *   (autojoin.js). The transport withholds every secret on it and processes nothing until the proof checks out.
+ *   F346 (d): `firstContact` = a never-joined phone dials the one MC discovery found, untrusted (no
+ *   node_key, no join secret, no utility proof) but enrolling, so the MC that welcomes it issues the trust key.
  *   A28.2: from a QR scan or a typed full join
  *   code — when given, replaces whatever backhaul target/secret Transport is holding. When omitted
  *   (every discovery/sweep/remembered-address reconnect) neither is passed at all: Transport's OWN
@@ -326,7 +332,7 @@ function connectMc(url, remember = true, join = {}) {
   // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
   // A60 polish: a proof dial never becomes RECONNECT MC's target. RECONNECT dials as a trusted peer, so
   // only an address the player named or one that bound us may be there (the bound branch sets settings.mcUrl).
-  if (join.verify !== true) lastMcUrl = url;
+  if (join.verify !== true && join.firstContact !== true) lastMcUrl = url;
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
   // F309: carry the last known connection into the new Transport, so a redial is not a 5 s gap in the claim.
@@ -335,6 +341,7 @@ function connectMc(url, remember = true, join = {}) {
   // A60 polish: a dial the player named (QR, typed, tapped JOIN) owns its welcome window; discovery
   // must not replace it with a proof dial while it is still waiting for its welcome.
   userDial = join.user === true ? { t: candidate } : null;
+  firstContactDial = join.firstContact === true ? { t: candidate } : null;
   // `log` is this node's own view of the sync (A25: MC shows none|offered|pulling|held per node);
   // app_ver/platform are added by the transport itself so every node type reports them (A29).
   transport.setStatusProvider(() => ({ ...engine.statusBody(preflight), log: logsync.state() }));
@@ -370,10 +377,11 @@ function connectMc(url, remember = true, join = {}) {
   // `trusted:false` (a LAN-sweep address — nobody typed or scanned it) keeps this node's takeover key
   // and the join secret off the hello until that peer proves it is MC by welcoming us.
   const verify = join.verify === true;
-  transport.connect({ url, pub: join.pub, secret: join.secret, trusted: join.trusted !== false, verify })
+  transport.connect({ url, pub: join.pub, secret: join.secret, trusted: join.trusted !== false, verify, firstContact: join.firstContact === true })
     .then(() => log(verify ? `MISSION CONTROL AT ${hostOf(url)} PROVED IT IS YOURS — joined with no tap` : 'MC hydrated', 'lk')).catch(e => {
       const message = e && e.message || e;
       if (verify) { onVerifyFailed(candidate, url, join.source || 'sweep', e); return; }
+      if (join.firstContact === true) { onFirstContactFailed(candidate, url, join.source || 'sweep', e); return; }
       log('MC connect: ' + message, 'le');
       // F203, revised for A60 (Tony 2026-09-24: a phone launched while MC was restarting needed a tap).
       // A remembered url that misses its FIRST welcome window stays remembered: the transport keeps
@@ -397,6 +405,18 @@ function onVerifyFailed(candidate, url, source, e) {
   const reason = autoJoin.onVerifyFailed(url, unproven);
   if (settings.mcUrl) connectMc(settings.mcUrl); else transport = null;
   if (reason) offerMc(url, source, reason);   // a host that never answered gets no row yet
+}
+
+/** F346 (d): a first-contact dial got no welcome (or was refused). Nothing was sent that it could keep: the
+ *  hello carried no node_key, no join secret and no utility proof. Stop dialling it, cool it for 10 min,
+ *  and show the one-tap row instead.
+ *  @param {Transport} candidate @param {string} url @param {string} source @param {unknown} e */
+function onFirstContactFailed(candidate, url, source, e) {
+  if (transport !== candidate) return;   // superseded by a tap, a QR or a newer dial
+  try { candidate.close(); } catch (_) { /* ignore */ }
+  firstContactDial = null; transport = null;
+  log(`MISSION CONTROL AT ${hostOf(url)} did not welcome us (${(e && /** @type {{message?:string}} */ (e).message) || e}) — tap JOIN to try again`, 'le');
+  offerMc(url, source, autoJoin.onFirstContactFailed(url));
 }
 
 // ---------- HUD handlers ----------
@@ -792,10 +812,26 @@ function startDiscovery() {
 function suggestMc(url, source) {
   if (!url) return;
   const live = transport && !transport.closed ? transport : null;
+  const firstContactLive = !!(live && firstContactDial && firstContactDial.t === live && live.state !== 'bound');
   const d = autoJoin.onFound(url, source, { bound: !!(transport && transport.state === 'bound'),
-    dialling: live && live.url, verifying: !!(live && live.verify), hasTrustKey: holdsTrustKey(),
+    dialling: live && live.url, verifying: !!(live && (live.verify || firstContactLive)), hasTrustKey: holdsTrustKey(),
     remembered: settings.mcUrl || null, userDialPending: userDialPending() });
   if (d.do === 'ignore') return;
+  // F346 (d): the discovery window is still open. Ask again when it closes; a second MC seen by then
+  // turns this into the "several" row instead of a join.
+  if (d.do === 'wait') {
+    if (!firstContactTimer) firstContactTimer = setTimeout(() => { firstContactTimer = null; suggestMc(url, source); }, d.ms || 0);
+    return;
+  }
+  // F346 (d), Tony 2026-09-25: a never-joined phone (no trust key, no remembered address) that sees ONE MC
+  // joins it with no tap (trust on first use). The dial is untrusted: no node_key, no join secret, no
+  // utility proof on the hello, but `mc_enroll` + nonce, so that MC issues this phone its trust key.
+  if (d.do === 'join') {
+    log(`MISSION CONTROL FOUND AT ${hostOf(url)} — the only one on this network, joining (no tap needed)`, 'lk');
+    noteJoinUrl(url);
+    connectMc(url, false, { trusted: false, firstContact: true, source });
+    return;
+  }
   // The remembered MC answered discovery: its own dial is waiting out a backoff, so start it now.
   if (d.do === 'kick') {
     if (live && live.url && urlKey(live.url) === urlKey(url)) { if (live.state === 'offline') live.kick(); }

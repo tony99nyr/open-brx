@@ -30,12 +30,13 @@ import { newChallenge, matchingKey, validTrustKey } from './mcproof.js';
 /** @typedef {{onopen: WebSocket['onopen'], onmessage: WebSocket['onmessage'], onerror: WebSocket['onerror'], onclose: WebSocket['onclose'], send(data:string): void, close(code?:number, reason?:string): void, bufferedAmount?: number}} TransportSocket */
 /** @typedef {{setTimeout(callback: (...args:any[]) => void, ms:number): unknown, clearTimeout(id:unknown): void}} TransportTimers */
 /** @typedef {{node_id?:string, node_type?:string, app_ver?:string, platform?:string, connection_type?:'wifi'|'cellular'|'none'|'unknown'|null}} TransportNode */
-/** @typedef {{node_id:string, node_key:string}} PriorUtility */
+/** F346 (d) r1: `mc_url` = the MC url the utility was bound to; the proof goes to that url only.
+ *  @typedef {{node_id:string, node_key:string, mc_url?:string}} PriorUtility */
 /** @typedef {{name:string, tail:string, fw?:string}} TransportGun */
 /** @typedef {{baseMs:number, capMs:number, jitter:number}} BackoffOptions */
 /** @typedef {Record<string, unknown>} TransportBody */
 /** @typedef {{v:number, kind:string, id:string, t:number, body:TransportBody, seq?:number}} TransportEnvelope */
-/** @typedef {{url?:string, mdns?:string, qr?:string, pub?:string|null, secret?:string|null, trusted?:boolean, verify?:boolean}} ConnectOptions */
+/** @typedef {{url?:string, mdns?:string, qr?:string, pub?:string|null, secret?:string|null, trusted?:boolean, verify?:boolean, firstContact?:boolean}} ConnectOptions */
 /** @typedef {{storage?:TransportStorage, wsFactory?:(url:string) => TransportSocket, node?:TransportNode, gun?:TransportGun|null, priorUtility?:PriorUtility|null, heartbeatMs?:number, now?:() => number, timers?:TransportTimers, random?:() => number, backoff?:BackoffOptions, helloTimeoutMs?:number, welcomeTimeoutMs?:number, keyPrefix?:string, backhaulGiveupMs?:number, pubRetryMs?:number, lanGiveupMs?:number, reclaimRetryMs?:number, randomBytes?:(n:number) => Uint8Array}} TransportOptions */
 /** @typedef {{type?:string, t?:number, match_id?:string|null, node_id?:string, player_id?:string|null} & Record<string, unknown>} TransportFact */
 /** @typedef {Record<string, unknown> & {pending?:number, dropped?:number, preflight?:Record<string, unknown>}} StatusBody */
@@ -175,7 +176,7 @@ export class Transport {
     // socket to it -- is an UNTRUSTED peer until it proves it is Mission Control by welcoming us. Any
     // host on the subnet can accept a websocket upgrade on the node port, and `hello` otherwise hands it
     // this node's takeover key (A8.2) and the join secret (A28.2). Both are stripped while untrusted.
-    this.trusted = true; this._reclaimTried = false;
+    this.trusted = true; this._reclaimTried = false; this._firstContact = false;
     this.armedOrLive = false;                // app sets true in ARMED/LIVE → reconnect is unbounded
     /** @type {Record<string, unknown>} */ this.preflight = {}; // app merges via setPreflight()
     /** @type {(() => StatusBody)|null} */ this.statusProvider = null; // app: () => status body (hp, armor, ammo, alive, shots, arm_state, ...)
@@ -201,7 +202,7 @@ export class Transport {
 
   // ---------- public API (net.md §6) ----------
   /** @param {ConnectOptions} [options] @returns {Promise<TransportBody>} */
-  connect({ url, mdns, qr, pub, secret, trusted = true, verify = false } = {}) {
+  connect({ url, mdns, qr, pub, secret, trusted = true, verify = false, firstContact = false } = {}) {
     // F153b (field 2026-09-12): a new connect() SUPERSEDES whatever dial is already in flight. A QR
     // rescan after the tunnel restarted, a typed address, RECONNECT MC -- each hands us a new triple,
     // and the socket already connecting was aimed at the old one. Left alone it holds the slot until the
@@ -211,6 +212,8 @@ export class Transport {
     this._abortInFlight('superseded by a new connect()', 'reconnect');
     this.attempt = 0;
     this.verify = verify === true; this._challenge = null; this.verifyFailed = null;
+    // F346 (d) r1: a first-contact session never hands on the utility proof, even once it has welcomed us
+    this._firstContact = firstContact === true;
     this.trusted = trusted !== false && !this.verify;   // stays false until this peer welcomes us (see `trusted` above)
     this._reclaimTried = false;
     const nextUrl = url || qr || this.url;
@@ -569,8 +572,15 @@ export class Transport {
       ...(this.secret && this.trusted ? { secret: this.secret } : {}),
       gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
       seq_next: this.ring.seqNext, ...(this.nodeKey && this.trusted ? { node_key: this.nodeKey } : {}),
-      ...(this.priorUtility && this.trusted ? { prior_utility: this.priorUtility } : {}),
+      ...((pu => pu ? { prior_utility: pu } : {})(this._priorUtilityHello())),
     };
+  }
+  /** F184 + F346 (d) r1: the utility proof, only on a trusted hello to the MC url it came from, and never in
+   *  a first-contact session. Only `{node_id, node_key}` goes on the wire. @returns {PriorUtility|undefined} */
+  _priorUtilityHello() {
+    const pu = this.priorUtility;
+    if (!pu || !this.trusted || this._firstContact || !pu.mc_url || normUrl(pu.mc_url) !== normUrl(this.url)) return undefined;
+    return { node_id: pu.node_id, node_key: pu.node_key };
   }
   _open() {
     if (this.closed) return;
@@ -788,8 +798,9 @@ export class Transport {
     // It welcomed us, so it speaks the M-NET protocol and is the MC we dialled: the next hello may carry
     // the key (a keyless hello cannot take a still-live node_id back, A8.2) and the secret.
     this.trusted = true; this._reclaimTried = false;
-    // A60: MC's trust key for this node (issued once per node_id). Only a user-named, remembered or
-    // proof-verified dial ever reaches this line, so the key comes from a host the phone had reason to trust.
+    // A60: MC's trust key for this node (issued once per node_id). A user-named, remembered or
+    // proof-verified dial reaches this line, and so does (F346 d) a first-contact dial: a never-joined
+    // phone trusts the only MC it saw on first use, which is Tony's accepted trade-off.
     // ...and only when THIS socket's hello asked for it (`mc_enroll`): a key nobody asked for is ignored.
     const trust = objectBody(body.mc_trust);
     if (trust && this._enrollSent && validTrustKey(trust.key)) {

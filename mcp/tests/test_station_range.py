@@ -250,6 +250,9 @@ def test_a_range_only_put_is_allowed_in_play_and_re_arms_that_station_only():
         v = _put(s, threshold=-50 if phase == "armed" else -52, tx_power="medium")
         assert v["assigned"]["threshold"] in (-50, -52) and _cfg(s) and _cfg(s)[-1]["tx_power"] == "medium"
         assert not [1 for _n, k, _b in s.net.pushed if k == "config"], "no HUD is re-armed for a range edit"
+        # A66: the console sends no id (MC owns it); that is still a range-only change
+        v = s.set_station("stick-1", {"kind": "respawn", "team": 1, "threshold": -54 if phase == "armed" else -56})
+        assert v["assigned"]["threshold"] in (-54, -56) and v["assigned"]["id"] == 3, v["assigned"]
         # CONTROL: any other change is still refused in play
         try:
             s.set_station("stick-1", {"kind": "respawn", "team": 1, "id": 4, "threshold": -50})

@@ -972,6 +972,10 @@ class Event(TypedDict, total=False):
     dot: bool
     # Tony 2026-09-24 (death): the killing $HIR was the melee proto (13) -- the melee medal. Absent on an older phone.
     melee: bool
+    # A65 (F354, death): the victim's phone lost the damaging hit and only a non-damaging word (smoke, EMP) was fresh,
+    # so it credits that word's TEAM (`shooter_team`) and no player (`shooter_num` 0). The team score counts the kill;
+    # no player gets the K, a medal, a chain, first blood or an assist. Absent on an older phone.
+    credit: Literal["team"]
     # S56 (hit_taken): the weapon the victim's phone resolved from the shooter's roster loadout; absent = unresolved or ambiguous.
     weapon_id: str
     # respawn

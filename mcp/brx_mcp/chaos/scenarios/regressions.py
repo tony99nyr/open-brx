@@ -257,3 +257,19 @@ scenario(Scenario(
     ],
     ci_seeds=(1,),
 ))
+
+scenario(Scenario(
+    name="late-kill-after-host-end-no-cue", mode="tdm", nodes=4,
+    doc="F357 (Tony 2026-09-25): node 1 is out of coverage when it dies, and flushes the kill just after the "
+        "operator's END. The kill is stamped before the END, so it counts, but MC sends no kill confirm for it "
+        "(`no_kill_cue_after_end`). A team-only kill (A65) before the END scores for blue and for no player "
+        "(`team_score_equals_facts`).",
+    script=[
+        # nodes 0 and 2 are blue, 1 and 3 are yellow
+        {"name": "team_credit_kill", "params": {"victim": 3, "shooter": 0}},
+        {"name": "drop", "params": {"node": 1}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 2}},
+        {"name": "end", "params": {}},
+    ],
+    ci_seeds=(1,),
+))
