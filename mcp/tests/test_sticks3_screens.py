@@ -87,5 +87,6 @@ def test_f398_countdown_ring_geometry_clears_next_spawn_label():
     render = (ROOT / "hardware/m5sticks3/station_render.h").read_text(encoding="utf-8")
     model = (ROOT / "hardware/m5sticks3/station_screen.h").read_text(encoding="utf-8")
     y = int(re.search(r"PICKUP_COUNTDOWN_INDICATOR_Y\s*=\s*(\d+)", model).group(1))
-    assert "cy = PICKUP_COUNTDOWN_INDICATOR_Y, r = 16" in render
-    assert y + 16 < 99, f"countdown ring reaches {y + 16}, too close to NEXT SPAWN text"
+    assert "cy = PICKUP_COUNTDOWN_INDICATOR_Y, r = 12" in render
+    assert y - 12 >= 66, f"countdown ring reaches {y - 12}, too close to TAKEN BY text"
+    assert y + 12 < 99, f"countdown ring reaches {y + 12}, too close to NEXT SPAWN text"

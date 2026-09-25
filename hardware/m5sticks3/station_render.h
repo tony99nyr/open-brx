@@ -331,7 +331,7 @@ inline void drawPickup(M5Canvas& c, const ScreenSpec& s) {
     if (!s.taken_by.empty()) {
       fitCenterText(c, SCREEN_W / 2, 54, "TAKEN BY " + s.taken_by, TEXT_MAX_W, {&fonts::FreeSansBold9pt7b}, COL_MUT);
     }
-    int cx = SCREEN_W / 2, cy = PICKUP_COUNTDOWN_INDICATOR_Y, r = 16;
+    int cx = SCREEN_W / 2, cy = PICKUP_COUNTDOWN_INDICATOR_Y, r = 12;
     c.drawCircle(cx, cy, r, COL_EDGE);
     float frac = s.pickup_frac_pct / 100.0f;
     if (frac > 0.0f) c.drawArc(cx, cy, r - 1, r + 1, -90, -90 + 360 * frac, COL_WARN);

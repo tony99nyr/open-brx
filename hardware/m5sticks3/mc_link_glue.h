@@ -65,6 +65,7 @@ String wifiSsid, wifiPass;
 String savedMcUrl;
 uint32_t lockLastSavedMs = 0;
 uint32_t lockLastSavedSeconds = 0;
+uint8_t lockLastSavedGame = 255;
 String stationAppVer = "h8-0.1";  // bumped by hand; no build-time git sha injection in this sketch yet
 bool actionsEnabled = false;      // mirrors link.actions_enabled(); persisted so ACTIONS survives a reboot
 uint32_t bootCount = 0;           // A58: incremented once per boot in mcSetup(); rides on every status
@@ -278,7 +279,7 @@ static void mcRestoreSavedConfig(StationLink& link) {
     if (savedHill.clear()) mcEraseSavedHill();
     return;
   }
-  Serial.printf("RESTORED kind=%s team=%d id=%d game=%d (from flash; unlocked)\n", a.kind.c_str(), a.team,
+  Serial.printf("RESTORED kind=%s team=%d id=%d game=%d (from flash; lock checked next)\n", a.kind.c_str(), a.team,
                 a.id, a.game);
   // F332: a restarted hill comes back held by the owner it had, when the save is this config's.
   // The tag must match this config AND the session it was saved in (a new MC session restarts game numbers).
@@ -402,7 +403,7 @@ static void pmicWatchLoop(bool locked) {
   Serial.printf("# loop watchdog %s\n", locked ? "ON, 20 s (match lock)" : "OFF (task watchdog back to its default)");
 }
 
-// ---- the typed floor: `MC <ws-url>` (never persisted across reboots, §5g.3) ---------------------
+// ---- the typed floor: `MC <ws-url>` (persisted across reboots) -----------------------------------
 struct WsAddress {
   bool valid = false;
   String host;
@@ -442,8 +443,10 @@ bool linkOff = false;         // explicit LINK OFF; only WIFI, MC or LINK RECONN
 static void mcClearSavedLock() {
   mcPrefs.begin("brxmc", false);
   mcPrefs.remove("lock_s");
+  mcPrefs.remove("lock_game");
   mcPrefs.end();
   lockLastSavedSeconds = 0;
+  lockLastSavedGame = 255;
 }
 
 static void mcSaveLockIfDue(uint32_t now) {
@@ -451,9 +454,11 @@ static void mcSaveLockIfDue(uint32_t now) {
   if (!lock_save_due(remaining, lockLastSavedMs, now) || remaining == lockLastSavedSeconds) return;
   mcPrefs.begin("brxmc", false);
   mcPrefs.putUInt("lock_s", lock_snapshot_seconds(remaining));
+  mcPrefs.putUChar("lock_game", (uint8_t)link.assignment().game);
   mcPrefs.end();
   lockLastSavedMs = now;
   lockLastSavedSeconds = remaining;
+  lockLastSavedGame = (uint8_t)link.assignment().game;
 }
 // Polish round 1: `status.live` must say whether the BLE advert is actually up, not merely that MC
 // armed us -- an advert can fail to start (ERR advert start, m5sticks3.ino publishAdvert()) or a
@@ -735,11 +740,15 @@ static void mcHandleFrame(const String& text) {
       uint32_t rx = millis();
       link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
       if (a.lock_s > 0) {
-        mcPrefs.begin("brxmc", false);
-        mcPrefs.putUInt("lock_s", lock_snapshot_seconds((uint32_t)a.lock_s));
-        mcPrefs.end();
+        if (lockLastSavedSeconds != (uint32_t)a.lock_s || lockLastSavedGame != (uint8_t)a.game) {
+          mcPrefs.begin("brxmc", false);
+          mcPrefs.putUInt("lock_s", lock_snapshot_seconds((uint32_t)a.lock_s));
+          mcPrefs.putUChar("lock_game", (uint8_t)a.game);
+          mcPrefs.end();
+        }
         lockLastSavedMs = rx;
         lockLastSavedSeconds = (uint32_t)a.lock_s;
+        lockLastSavedGame = (uint8_t)a.game;
       } else mcClearSavedLock();
       if (preserveClaim) mcResumeClaimFeed(wasFeeding);
       mcSaveRangeIfChanged(link);            // A67: MC's value may have replaced an on-station edit
@@ -884,9 +893,8 @@ static void mcLoop(uint32_t now) {
     Serial.println("UNLOCKED (match lock ran out)");
   }
   mcSaveLockIfDue(now);
-  if (link.automatic_rejoin_due(now)) {
+  if (link.automatic_rejoin_due(now, linkOff)) {
     link.clear_dropped_for_match();
-    linkOff = false;
     Serial.println("MUSTER: match deadline or lock expired; rejoining MC");
   }
   const bool wantPmicLock = link.lock().locked(now);
@@ -919,7 +927,7 @@ static void mcLoop(uint32_t now) {
   if (!wifiUp) {
     // Polish round 2 (CRITICAL): a deliberate MUSTER drop must STAY dropped. Without this guard the
     // very next tick's kick re-associated Wi-Fi immediately, undoing the drop `mcHandleFrame` just
-    // performed -- the whole point of MUSTER. `LINK RECONNECT` (below) is the only way past it. A drop that is
+    // performed -- the whole point of MUSTER. A local deadline or operator action clears it. A drop that is
     // latched but not yet taken (F374: a powerup waiting for START) still rejoins.
     if (!linkOff && !link.radio_down_for_match() && link.state() == LinkState::JOINING_WIFI && wifiSsid.length() &&
         WiFi.status() != WL_IDLE_STATUS && now - lastWifiKickMs >= WIFI_KICK_MS) {
@@ -934,6 +942,10 @@ static void mcLoop(uint32_t now) {
 
   // Address discovery: a typed `MC <url>` wins immediately; otherwise browse mDNS periodically.
   if (link.state() == LinkState::LOOKING_FOR_MC && mc_dial_allowed(wifiUp, link.dropped_for_match(), linkOff)) {
+    if (!haveTypedMc && saved_mc_url_usable(savedMcUrl.c_str())) {
+      pendingTypedMc = mcParseWsUrl(savedMcUrl);
+      haveTypedMc = pendingTypedMc.valid;
+    }
     if (haveTypedMc) {
       link.mc_address_known();
       ws.begin(pendingTypedMc.host.c_str(), pendingTypedMc.port, pendingTypedMc.path.c_str());
@@ -953,7 +965,7 @@ static void mcLoop(uint32_t now) {
 
   // A `held` reconnect after a drop needs nothing extra here: `ws_closed()` already put the link
   // back at LOOKING_FOR_MC, and the discovery block above re-dials as soon as an address is found
-  // again, mDNS or a fresh `MC <url>`, never a cached one (§5g.3).
+  // again. A saved typed URL takes precedence over mDNS.
 
   // Heartbeat while connected (welcomed or armed).
   bool connected = (link.state() == LinkState::WELCOMED || link.state() == LinkState::ASSIGNED) &&
@@ -1046,12 +1058,18 @@ static bool mcHandleLine(const String& lineIn) {
     return true;
   }
   if (line.startsWith("MC ")) {
+    if (!saved_mc_url_usable(std::string(line.substring(3).c_str()))) {
+      Serial.println("ERR MC ws://host:port/path (max 192 characters)"); return true;
+    }
     WsAddress a = mcParseWsUrl(line.substring(3));
     if (!a.valid) { Serial.println("ERR MC ws://host:port/path"); return true; }
     pendingTypedMc = a;
     linkOff = false;
     haveTypedMc = true;
     mcSaveTypedMcUrl(line.substring(3));
+    ws.disconnect();
+    wsWantOpen = false;
+    link.ws_closed();
     Serial.printf("MC %s:%u%s (typed and saved)\n", a.host.c_str(), a.port, a.path.c_str());
     return true;
   }
@@ -1115,10 +1133,16 @@ static void mcSetup() {
     haveTypedMc = pendingTypedMc.valid;
   }
   mcPrefs.begin("brxmc", true);
-  uint32_t restoredLock = lock_restore_remaining_s(mcPrefs.getUInt("lock_s", 0));
+  uint32_t restoredLock = 0;
+  if (link.assignment().present && mcPrefs.isKey("lock_game") &&
+      mcPrefs.getUChar("lock_game", 255) == (uint8_t)link.assignment().game)
+    restoredLock = lock_restore_remaining_s(mcPrefs.getUInt("lock_s", 0));
   mcPrefs.end();
   link.restore_lock(restoredLock, millis());
+  pmicSync(restoredLock > 0, millis(), "boot lock restore");
+  pmicWatchLoop(restoredLock > 0);
   lockLastSavedSeconds = restoredLock;
+  if (restoredLock > 0) lockLastSavedGame = (uint8_t)link.assignment().game;
   mcLoadRange(link);                   // F365: an on-station range edit and the edit log's seq, after the config
   // A58: setup clears PMIC bits first, then mcLoop reapplies a restored active lock.
   bootRandomPrefix = esp_random();  // the fixed half of every station_action envelope id this boot

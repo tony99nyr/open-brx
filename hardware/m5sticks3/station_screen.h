@@ -24,7 +24,7 @@
 namespace brx {
 
 // F398: keep the countdown ring clear of the NEXT SPAWN label below it.
-constexpr int PICKUP_COUNTDOWN_INDICATOR_Y = 76;
+constexpr int PICKUP_COUNTDOWN_INDICATOR_Y = 79;
 
 // ---------------------------------------------------------------------------------------------
 // Home navigation (Tony, 2026-09-24, added after render.py): the operator must always be able to
@@ -90,7 +90,7 @@ constexpr const char* RESET_CONFIRM_HINT = "A: CANCEL";  // render.py's reset_co
 // (gate finding 2026-09-24: an unassigned Stick offered TO RESET STATION #-1).
 constexpr const char* NO_STATION_HINT = "A: STATS";
 // A58: while the match lock is on, B's hold does nothing but say LOCKED, so the hint stops offering it.
-constexpr const char* LOCKED_HINT = "A: STATS   LOCKED";
+constexpr const char* LOCKED_HINT = "LOCKED  A+B 7S: RESTART";
 // Bench mode (no Wi-Fi set): A pages DIAGNOSTICS, a B hold flips HILL/BRIDGE. The hint names the current
 // mode, since both modes share one home screen (bench 2026-09-24: the flip was invisible otherwise).
 inline std::string bench_hint(const std::string& mode_label) {

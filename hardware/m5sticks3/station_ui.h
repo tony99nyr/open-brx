@@ -23,6 +23,7 @@ constexpr uint32_t RESET_CONFIRM_TIMEOUT_MS = 5000;   // an open confirm prompt 
 // B's long-hold reset, or the A+B force restart.
 class RejoinGesture {
  public:
+  void cancel() { count_ = 0; }
   bool click(uint32_t now_ms, bool locked) {
     if (locked) { count_ = 0; return false; }
     if (count_ && (uint32_t)(now_ms - last_ms_) > 1800) count_ = 0;

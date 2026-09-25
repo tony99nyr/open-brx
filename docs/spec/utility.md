@@ -229,7 +229,7 @@ same message over the same wire with no amendment: **§5g**.
 
 `{ kind, team, id, threshold?, game?, valid_ids?, lock_s?, starts_in_ms?, ends_in_ms? }` — MC → the utility node at muster (and on any re-arm).
 
-**A58 Stick lock persistence:** the Stick saves the lock's remaining seconds to NVS when a lock starts and at most once per minute while it runs. On boot it restores the saved remaining seconds and restores the PMIC side-button lock when the lock remains active. An ordinary restart does not clear the lock. A+B held for 7 s clears the saved lock before the force restart. MC `lock_s: 0` also clears it.
+**A58 Stick lock persistence:** the Stick saves the lock's remaining seconds to NVS when a lock starts and at most once per five minutes while it runs. On boot it restores at most 120 seconds for the saved game byte and restores the PMIC side-button lock before Wi-Fi starts. The cap limits an old offline snapshot because no clock runs while the Stick is off. An ordinary restart does not clear the lock. A+B held for 7 s clears the saved lock before the force restart. MC `lock_s: 0` also clears it.
 The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. `valid_ids` (optional) is
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.

@@ -46,21 +46,50 @@ static void test_f390_rejoin_waits_for_a_known_deadline() {
   CHECK(!muster_rejoin_due(true, false, -1, 0));
   CHECK(!muster_rejoin_due(false, true, 0, 0));
   CHECK(muster_rejoin_due(true, false, 0, 45));
-  CHECK(muster_rejoin_due(true, true, -1, 0));
+  CHECK(!muster_rejoin_due(true, true, -1, 0)); // A short lock can expire during play.
+  CHECK(!muster_rejoin_due(true, false, 0, 0, true)); // LINK OFF must stay off.
+}
+
+static void test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  a.game = 1;
+  a.lock_s = 2;
+  a.starts_known = true;
+  a.starts_in_ms = 0;
+  a.ends_in_ms = 10000;
+  link.apply_station_config(a, 1000);
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = false;
+  u.next_spawn_in_ms = 30000;
+  CHECK(link.apply_station_update(u, 1100));
+  CHECK(link.take_muster_drop(1100));
+  CHECK(!link.automatic_rejoin_due(3100));
+  CHECK(link.automatic_rejoin_due(11000));
 }
 
 static void test_f391_lock_snapshot_never_grows_and_saves_once_a_minute() {
   CHECK_EQ(lock_restore_remaining_s(90), 90u);
-  CHECK_EQ(lock_restore_remaining_s(8000), 7200u);
-  CHECK(!lock_save_due(30, 1000, 60999));
-  CHECK(lock_save_due(30, 1000, 61000));
-  CHECK(!lock_save_due(0, 1000, 61000));
+  CHECK_EQ(lock_restore_remaining_s(8000), 120u);
+  CHECK(!lock_save_due(30, 1000, 300999));
+  CHECK(lock_save_due(30, 1000, 301000));
+  CHECK(!lock_save_due(0, 1000, 301000));
+  CHECK_EQ(lock_restore_remaining_s(7200), 120u); // No clock runs while power is off.
 }
 
 static void test_f397_typed_mc_url_storage_policy() {
   CHECK(saved_mc_url_usable("ws://192.168.1.5:8766/ws"));
   CHECK(!saved_mc_url_usable("http://192.168.1.5:8766/ws"));
   CHECK(normalise_saved_mc_url(std::string(193, 'x')).empty());
+  CHECK(!saved_mc_url_usable("ws://host:70000/ws"));
+  CHECK(!saved_mc_url_usable("ws://host:abc/ws"));
+  CHECK(!saved_mc_url_usable("ws://host:8766/ws?token=x"));
+  CHECK(!saved_mc_url_usable("ws://host:999999999999999999999999/ws"));
 }
 
 // --- json_lite ------------------------------------------------------------------------------
@@ -2239,6 +2268,7 @@ static void test_assignment_epoch_moves_on_a_new_station_only() {
 }
 
 int main(int argc, char** argv) {
+  test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();
   test_f389_every_dial_path_respects_link_stops();
   test_f390_rejoin_waits_for_a_known_deadline();
   test_f391_lock_snapshot_never_grows_and_saves_once_a_minute();

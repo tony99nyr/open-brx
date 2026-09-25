@@ -830,6 +830,7 @@ static void pollButtons() {
   const int cue = aHoldGesture.range_cue_pct();
   if (cue != lastRangeCue) { lastRangeCue = cue; displayDirty = true; }
   if (forceRestart.suppress_single()) {
+    rejoinGesture.cancel();
     aHoldGesture.cancel();  // the joint hold owns this press
     homeNav.note_activity(now);
     if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;
@@ -866,6 +867,7 @@ static void pollButtons() {
     displayDirty = true;
   }
   if (rangeEd.active()) {
+    rejoinGesture.cancel();
     bool edited = false;
     if (aEvent == AHoldEvent::CLICK || bClicked) {
       const int step = RangeEditor::step_for(rangeEd.field(), aEvent == AHoldEvent::CLICK);
@@ -890,8 +892,11 @@ static void pollButtons() {
     displayDirty = true;
     return;  // B's RESET is not reachable from RANGE
   }
-  if (bClicked && stationLocked) Serial.println("REJOIN refused: station locked");
-  if (bClicked && rejoinGesture.click(now, stationLocked) && link.dropped_for_match()) {
+  if (stationLocked || !link.dropped_for_match() || brx_glue::linkOff ||
+      brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) rejoinGesture.cancel();
+  if (bClicked && stationLocked && link.dropped_for_match()) Serial.println("REJOIN refused: station locked");
+  if (bClicked && !brx_glue::linkOff && brx_glue::buttons.phase() == ButtonPhase::NORMAL &&
+      rejoinGesture.click(now, stationLocked) && link.dropped_for_match()) {
     link.clear_dropped_for_match();
     brx_glue::linkOff = false;
     Serial.println("REJOIN: operator gesture (B clicked three times)");

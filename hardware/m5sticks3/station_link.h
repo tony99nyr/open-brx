@@ -121,10 +121,11 @@ inline int clamp_lock_s(long v) {
   return (int)v;
 }
 
-// F391: flash stores a conservative remaining-time snapshot, refreshed no more than once a minute.
-constexpr uint32_t MATCH_LOCK_SAVE_INTERVAL_MS = 60000;
+// F391: flash stores a remaining-time snapshot, refreshed at most once per five minutes.
+constexpr uint32_t MATCH_LOCK_SAVE_INTERVAL_MS = 300000;
+constexpr uint32_t MATCH_LOCK_RESTORE_MAX_S = 120;
 inline uint32_t lock_restore_remaining_s(uint32_t saved_s) {
-  return saved_s > MATCH_LOCK_MAX_S ? MATCH_LOCK_MAX_S : saved_s;
+  return saved_s > MATCH_LOCK_RESTORE_MAX_S ? MATCH_LOCK_RESTORE_MAX_S : saved_s;
 }
 inline bool lock_save_due(uint32_t remaining_s, uint32_t last_saved_ms, uint32_t now_ms) {
   return remaining_s > 0 && (uint32_t)(now_ms - last_saved_ms) >= MATCH_LOCK_SAVE_INTERVAL_MS;
@@ -164,7 +165,7 @@ class MatchLock {
   }
 
  private:
-  bool active_ = false;  // RAM only, by design: a boot always starts here, unlocked
+  bool active_ = false;  // the glue may restore a bounded NVS snapshot during boot
   uint32_t until_ms_ = 0;
 };
 
@@ -935,8 +936,11 @@ constexpr uint32_t MUSTER_DROP_DEFER_MS = 2000;
 constexpr uint32_t MUSTER_WAIT_OFFLINE_MS = 60000;
 
 // F390: rejoin when the station's own match deadline or lock ends, whichever is known first.
-inline bool muster_rejoin_due(bool dropped, bool lock_known, int64_t hill_ends_in_ms, uint32_t lock_remaining_s) {
-  return dropped && ((hill_ends_in_ms >= 0 && hill_ends_in_ms == 0) || (lock_known && lock_remaining_s == 0));
+inline bool muster_rejoin_due(bool dropped, bool lock_known, int64_t hill_ends_in_ms, uint32_t lock_remaining_s,
+                              bool link_off = false) {
+  (void)lock_known;
+  (void)lock_remaining_s;
+  return dropped && !link_off && hill_ends_in_ms == 0;
 }
 
 // ---- the link state machine ------------------------------------------------------------------
@@ -1206,7 +1210,7 @@ class StationLink {
       if (!hill_restore_guard_) hill_.frozen = false;
     }
     if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || !a.starts_known) {
-      deadline_known_ = a.ends_in_ms >= 0;
+      deadline_known_ = a.starts_known && a.ends_in_ms >= 0;
       if (deadline_known_) hill_deadline_ms_ = received_at_ms + (uint32_t)a.ends_in_ms;
     }
     if (hill_restore_guard_ && a.starts_known) {
@@ -1452,10 +1456,10 @@ class StationLink {
   // for MC's station_update keeps rejoining Wi-Fi after a blip, or it could never hear that update.
   bool radio_down_for_match() const { return dropped_for_match_ && !drop_pending_; }
   void clear_dropped_for_match() { dropped_for_match_ = false; drop_pending_ = false; }
-  bool automatic_rejoin_due(uint32_t now_ms) const {
+  bool automatic_rejoin_due(uint32_t now_ms, bool link_off = false) const {
     const bool hill_end = deadline_known_ && (int32_t)(now_ms - hill_deadline_ms_) >= 0;
     return muster_rejoin_due(radio_down_for_match(), lock_deadline_known_, hill_end ? 0 : -1,
-                             lock_.remaining_s(now_ms));
+                             lock_.remaining_s(now_ms), link_off);
   }
 
  private:
@@ -1475,7 +1479,7 @@ class StationLink {
   bool actions_enabled_ = true;   // MC accepts station_action since A56 landed (f3fe3cf6); `ACTIONS OFF` for an older MC
   bool dropped_for_match_ = false;
   bool lock_deadline_known_ = false;
-  MatchLock lock_;  // A58, RAM only
+  MatchLock lock_;  // A58, the glue restores this from NVS at boot
   bool deadline_known_ = false;
   uint32_t hill_deadline_ms_ = 0;
   bool starts_known_ = false;

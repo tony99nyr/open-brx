@@ -276,7 +276,7 @@ decides, on every game-byte edge under `MUSTER` -- **including the very first ar
 0 -> N counts as a new match exactly like N -> N+1 does). The decision LATCHES as
 `dropped_for_match()`: the glue drops the socket once, and its own Wi-Fi reconnect kick then
 refuses to re-associate while the latch holds (polish round 2 fixed a real bug here -- the kick
-used to undo the drop on the very next `loop()` tick). A known A68 hill deadline or a known A58 lock expiry clears the latch and rejoins automatically. If neither is known, the Stick stays offline after its fallback ends; `LINK RECONNECT` or three quick B clicks can force a rejoin. `HELD` never sets the latch at
+used to undo the drop on the very next `loop()` tick). A running station's known match deadline clears the latch and rejoins automatically. A lock expiry alone cannot prove the match ended. Untimed stations stay offline until `LINK RECONNECT` or three quick B clicks. `LINK OFF` stays off. `HELD` never sets the latch at
 all. Neither mode ever discards `node_key` or the current assignment on a drop.
 
 **The powerup station (A56, `docs/spec/powerups.md`).** `station_config.item`
@@ -642,7 +642,7 @@ unlocks itself at zero. While it is on, a padlock shows in the status strip and:
 releasing either button cancels. It works whether the Stick is locked or not, and the joint hold
 never also triggers A's home or B's RESET.
 
-The lock remaining seconds are saved to NVS when a lock starts and at most once per minute. A boot restores that saved value without increasing it. An ordinary restart keeps the lock. MC detects a restart from the status heartbeat: `uptime_s` goes back to near zero and
+The lock remaining seconds are saved to NVS when a lock starts and at most once per five minutes. A boot restores at most 120 seconds because the Stick cannot count time while powered off. A saved lock applies only to the saved game byte. An ordinary restart keeps this bounded lock. Without Wi-Fi or MC, the screen shows `A+B 7S: RESTART`; that gesture clears the saved lock. A two-hour lock makes at most 24 timer snapshots, plus one removal at expiry. Each changed MC lock config can add one write. MC detects a restart from the status heartbeat: `uptime_s` goes back to near zero and
 `boot_count` goes up. The heartbeat also carries `assoc` (`muster` or `held`) and `lock_s`, the
 seconds left on the lock.
 
@@ -661,7 +661,7 @@ it. With no Wi-Fi SSID set (bench mode) the Stick never restores. A button
 still held when the Stick boots (hands still on A+B after a force restart) is ignored until it is
 released.
 
-The PMIC side-button lock is restored at boot when the saved match lock is active. Each PMIC write logs its register, value and reason. A+B held for 7 s clears the saved lock before `ESP.restart()`; MC `lock_s: 0` also clears it.
+The PMIC side-button lock is restored at boot before Wi-Fi starts when the saved match lock is active. Setup first clears an old PMIC lock so a crash loop cannot strand the operator. Each PMIC write logs its register, value and reason. A+B held for 7 s clears the saved lock before `ESP.restart()`; MC `lock_s: 0` also clears it.
 
 ## Diagnostics
 
@@ -734,7 +734,7 @@ The PMIC side-button lock is restored at boot when the saved match lock is activ
 ## Bench checks for F389-F398
 
 1. **F389:** Connect by typed MC URL. Send `LINK MUSTER`, push a new lobby game, then confirm STATUS shows the drop and MC shows no socket. Repeat with `LINK OFF`; confirm neither typed nor mDNS reconnects until `LINK RECONNECT`.
-2. **F390:** On a MUSTER hill with `ends_in_ms`, confirm it rejoins after the deadline. Repeat with a lock and confirm rejoin at lock expiry. Check B three-click rejoin while unlocked, then confirm the same gesture is refused while locked.
+2. **F390:** On a MUSTER hill with `ends_in_ms`, confirm it rejoins after the deadline. With an untimed match, confirm lock expiry leaves it offline. Check B three-click rejoin while unlocked, then confirm the same gesture is refused while locked.
 3. **F391:** Lock a Stick, power-cycle it, and confirm `STATUS lock_s` remains nonzero and the PMIC side button stays locked. Hold A+B for 7 s and confirm the next boot is unlocked. Then send MC `lock_s: 0` and confirm the lock clears.
 4. **F392:** Reproduce `LINK OFF`, `LINK HELD`, `LINK RECONNECT` while Wi-Fi is joining. Compare each PMIC write log and reason with PMIC readback; click the side button once and confirm restart. Record whether a join delays PMIC sync or changes either register.
 5. **F397:** Type an MC URL, restart the Stick, and confirm it dials the saved URL without serial input. Send `WIFI CLEAR`, restart, and confirm both Wi-Fi credentials and the typed URL are gone.

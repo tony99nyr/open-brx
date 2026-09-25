@@ -324,7 +324,18 @@ static void test_f390_rejoin_three_quick_b_clicks_and_refuses_while_locked() {
   CHECK(!g.click(1000, false));
 }
 
+static void test_f390_interrupted_clicks_cannot_rejoin() {
+  RejoinGesture g;
+  CHECK(!g.click(100, false));
+  CHECK(!g.click(200, false));
+  g.cancel();  // RANGE, RESET confirm and A+B consume the gesture.
+  CHECK(!g.click(300, false));
+  CHECK(!g.click(400, false));
+  CHECK(g.click(500, false));
+}
+
 int main() {
+  test_f390_interrupted_clicks_cannot_rejoin();
   test_f390_rejoin_three_quick_b_clicks_and_refuses_while_locked();
   test_locked_range_hold_hides_cue_and_reports_range_event();
   test_side_button_lock_sync_backs_off_after_ten_failures();
