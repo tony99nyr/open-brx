@@ -299,6 +299,14 @@ export function dotEchoMatches(echo, before, after) {
 /** S53 (bench 2026-09-18, the controlled redo): a fn-23 smoke holds the victim's live accuracy at 0 for about 6 s,
  *  then the gun restores it in one step (the V4_31 6000 ms timer). */
 export const SMOKE_MS = 6000;
+// F354: the `$SIR` row functions that register a `$HIR` and move no pool. A mirror of compile.py `_SIR_NO_POOL`
+// (app/test/poison.test.mjs guards the copy). A word whose cell holds one of these still latches (the stun and smoke
+// paths read it), but it never names who did damage. The cell decides, never the protocol alone: the stock <8,0> row
+// is fn 1 damage (the Charge Rifle) and becomes the fn-23 EMP only when `config.stun` is on.
+export const SIR_NO_POOL_FNS = new Set([8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34]);
+// F354: the grant functions (compile.py `_SIR_GRANT`, fn 9-22: heals, armour, shields). A grant word HELPS its target,
+// so it can never be the damage behind a drop or take a kill. Test-guarded against compile.py like the set above.
+export const SIR_GRANT_FNS = new Set([9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
 /** S53: the victim's `$ALCD` accuracy drops to 0 "in the same millisecond" as the smoke's `$HIR` (bench 2026-09-18).
  *  A drop to 0 and a `$HIR` this close together, in either order, is a smoke landing. */
 export const SMOKE_PAIR_MS = 400;
@@ -745,6 +753,8 @@ export class Engine {
     this._activeRole = null;        // A16 §3.3: {name, tid} — the ONE headset role currently held (carrier|infected|vip|beacon|extracted), re-asserted after every hit, cleared on death
     this._lastHeadsetFlashAt = null; // led-language.md §2 (safety: bursts ≥ 1 s apart) / §5: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto, ir_subtype, sensor}
+    this._dmgLatch = null;          // F354: the last latch whose `$SIR` cell can move a pool (`_nonDamaging`); the `$HP` that follows is ITS damage
+    this._sirFnsFor = undefined; this._sirFnsMap = null;   // F354: `_sirFns()`'s cache, keyed on the bundle object
     this._hitGroupSeq = 0;
     this._hitGroupEpoch = Math.random().toString(36).slice(2);
     this._dualEmitters = [];
@@ -1324,6 +1334,30 @@ export class Engine {
   get timedRespawn() { return this.respawnType === 'auto' || (this.respawnType === 'scanner' && this.team && this.respawnAutoTeams.includes(this.team.tid)); }
   /** F15: the host-driven stun is ON when the config carries a `stun` object (`{duration_s}`); a proto-8 `$HIR` is
    *  otherwise an ordinary hit (the stock `<8,0>` row is the charge rifle's plain damage) and must disarm nothing. */
+  /** F354: `proto:subtype` -> the `$SIR` row function of THIS bundle's table (the head rows, then the first `sir_pool`
+   *  take; the last row for a cell wins, as on the gun), or null when the bundle carries no `$SIR` row. Rebuilt when a
+   *  new bundle applies (the cache is keyed on the `frames` object). */
+  _sirFns() {
+    const f = this.frames;
+    if (this._sirFnsFor === f) return this._sirFnsMap;
+    let map = null;
+    for (const list of f ? [f.head, Array.isArray(f.sir_pool) ? f.sir_pool[0] : null] : []) {
+      for (const row of Array.isArray(list) ? list : []) {
+        if (typeof row !== 'string' || !row.startsWith('$SIR,')) continue;
+        const t = row.split(','), fn = parseInt(t[4], 10);
+        if (!Number.isNaN(fn)) (map = map || new Map()).set(`${parseInt(t[1], 10)}:${parseInt(t[2], 10)}`, fn);
+      }
+    }
+    this._sirFnsFor = f; this._sirFnsMap = map;
+    return map;
+  }
+  /** F354: true when this `$HIR` word's cell moves no pool or grants one, so the `$HP` behind it is never its damage. With no rows to
+   *  read, only the EMP counts, and only while `config.stun` makes <8,0> the fn-23 cell (a fn-23 Haze row needs rows). */
+  _nonDamaging(latch) {
+    const fns = this._sirFns();
+    if (fns) { const fn = fns.get(`${latch.ir_proto}:${latch.ir_subtype}`); return fn != null && (SIR_NO_POOL_FNS.has(fn) || SIR_GRANT_FNS.has(fn)); }
+    return latch.ir_proto === 8 && this.stunEnabled;
+  }
   get stunEnabled() { return !!(this.config && this.config.stun && typeof this.config.stun === 'object'); }
   get stunMs() { const s = this.config && this.config.stun && +this.config.stun.duration_s; return (s > 0 ? s : STUN_DEFAULT_S) * 1000; }
   /** scanner respawn: 'trigger' = at the station AND pull the trigger (default); 'presence' = being at the station is enough.
@@ -5011,7 +5045,7 @@ export class Engine {
         // word), latched raw and unmapped to any pool -- `_resolveHitWeapon` matches it against the roster's
         // `RosterWeapon.hir` to name what hit us. Never confused with the `dmg` `_onHp` computes from the
         // pool delta a moment later: that number is armour/shield-adjusted, this one is the wire magnitude.
-        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10), mag: parseInt(t[5], 10) }; this.lastHitAt = this.now(); this._shieldReassert(); }
+        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10), mag: parseInt(t[5], 10) }; if (!this._nonDamaging(this.latch)) this._dmgLatch = this.latch; this.lastHitAt = this.now(); this._shieldReassert(); }
         if (t[2] === '8') this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
         if (t[2] === '7') {               // S55: the Haze's fn-23 cell; repeated hits arrive while accuracy is already 0
           const until = this.now() + SMOKE_MS;
@@ -6362,19 +6396,26 @@ export class Engine {
         if (tl && !hurtNow) this._write([tl], 'team led');
       }
     }
-    if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial && !dotEcho) {
+    // F354: the damage belongs to the last word that CAN do damage (`_dmgLatch`), not to a smoke or EMP word that
+    // landed between that word and this `$HP` -- those move no pool, so this drop is never theirs. With no fresh
+    // damaging word inside DEATH_LATCH_MS (its `$HIR` was lost) the raw latch still names the shooter, as before. The
+    // gate is unchanged: a word of any kind within 1000 ms makes this drop a hit (stage.py `_last_hir_at` gate), so no
+    // `hit_taken`, damage row or assist is lost when a no-pool word lands after a damaging word 1-2 s old.
+    const dl = this._dmgLatch;
+    const hl = dl && this.now() - dl.at <= C.DEATH_LATCH_MS ? dl : this.latch;
+    if (this.phase === 'live' && this.spawned && hl && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial && !dotEcho) {
       // `sensor` is $HIR tok1: 0-3 are ALL HEADSET sensors (it has four; 0 = front and 1 = back are
       // bench-mapped, 2 and 3 are not), 4 = gun body. It was parsed
       // and dropped, so MC could not see WHICH sensor caught a hit — answering that took the phone's
       // raw frame ring (field 2026-09-01). One field, and the question becomes readable live.
       const prior = this._lastHitFact, now = this.now();
-      const candidates = this._dualEmitters.filter(s => Number(s.proto) === this.latch.ir_proto && Number(s.subtype) === this.latch.ir_subtype);
+      const candidates = this._dualEmitters.filter(s => Number(s.proto) === hl.ir_proto && Number(s.subtype) === hl.ir_subtype);
       const valuesMatch = !!candidates.find(s => Number(s.body) === prior?.dmg && Number(s.headset) === dmg);
       const equalDual = candidates.find(s => Number(s.body) === Number(s.headset) && Number(s.body) === dmg
         && prior && prior.dmg === dmg && now - prior.at <= 150 && Number(s.cycle_ms) > 150);
-      const paired = prior && now - prior.at <= 150 && prior.shooter_num === this.latch.shooter_num
-        && prior.ir_proto === this.latch.ir_proto && prior.ir_subtype === this.latch.ir_subtype
-        && prior.crit === this.latch.crit && (valuesMatch || !!equalDual);
+      const paired = prior && now - prior.at <= 150 && prior.shooter_num === hl.shooter_num
+        && prior.ir_proto === hl.ir_proto && prior.ir_subtype === hl.ir_subtype
+        && prior.crit === hl.crit && (valuesMatch || !!equalDual);
       const shot_group = paired ? prior.shot_group : `${this._hitGroupEpoch}:${++this._hitGroupSeq}`;
       // S56 "what hit me": resolved off THIS word's own `mag` -- a dual-emitter pair's second word carries a
       // different magnitude from the first (e.g. body vs headset), and the roster's `hir` list covers both, so
@@ -6386,25 +6427,25 @@ export class Engine {
       // number can match some other catalogue weapon ("AMR · PICKUP"). The clamp is recognisable: token 5 equals the
       // whole pool held before the hit. Only then does the word keep just an exact loadout match; otherwise it takes
       // the weapon this shooter was already resolved to this life, else it names nothing.
-      const clamped = hp <= 0 && this.latch.mag === pools0.health + pools0.armor + pools0.shield;
-      const resolved = clamped ? this._lethalWeapon(this.latch.shooter_num, this._resolveHitWeapon(this.latch)) : this._resolveHitWeapon(this.latch);
+      const clamped = hp <= 0 && hl.mag === pools0.health + pools0.armor + pools0.shield;
+      const resolved = clamped ? this._lethalWeapon(hl.shooter_num, this._resolveHitWeapon(hl)) : this._resolveHitWeapon(hl);
       hitWeapon = resolved && resolved.weapon_id != null ? { id: resolved.weapon_id, name: resolved.name, source: resolved.source }
         : resolved && resolved.ambiguous ? { ambiguous: true, names: resolved.candidates.map(id => { const row = this.weaponRow(id); return (row && row.name) || id; }) }
         : null;
-      this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
-        shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto, ir_subtype: this.latch.ir_subtype,
-        sensor: this.latch.sensor, shot_group, ...(resolved && !resolved.ambiguous && resolved.weapon_id != null ? { weapon_id: resolved.weapon_id } : {}) });
-      this._lastHitFact = { at: now, shooter_num: this.latch.shooter_num, ir_proto: this.latch.ir_proto,
-        ir_subtype: this.latch.ir_subtype, crit: this.latch.crit, dmg, shot_group };
+      this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: hl.shooter_num,
+        shooter_team: hl.shooter_team, dmg, ir_proto: hl.ir_proto, ir_subtype: hl.ir_subtype,
+        sensor: hl.sensor, shot_group, ...(resolved && !resolved.ambiguous && resolved.weapon_id != null ? { weapon_id: resolved.weapon_id } : {}) });
+      this._lastHitFact = { at: now, shooter_num: hl.shooter_num, shooter_team: hl.shooter_team, ir_proto: hl.ir_proto,
+        ir_subtype: hl.ir_subtype, crit: hl.crit, dmg, shot_group };
       this.lastHitAt = this.now();
-      this._lifeBookHit(this.latch.shooter_num, this.latch.shooter_team, dmg, shot_group, resolved, { sensor: this.latch.sensor, crit: this.latch.crit });   // S56: the per-life "what hit me" ledger
+      this._lifeBookHit(hl.shooter_num, hl.shooter_team, dmg, shot_group, resolved, { sensor: hl.sensor, crit: hl.crit });   // S56: the per-life "what hit me" ledger
       // F57 (bench 2026-09-09, "the critical sounds are a bit bugged when it was at 1 red"): the hit that CROSSES the
       // low-health threshold used to fire `low_health` AND the pain grunt in the same millisecond, and the gun plays
       // one clip at a time, so they cut each other off -- exactly once per life, at the moment the warning is the
       // whole point. The warning IS the reaction to that hit, so the grunt is suppressed on it (the A17 "never on
       // the lethal hit" precedent: two cues, one speaker, the rarer one wins). The pain gate is stamped too, so a
       // follow-up hit inside PAIN_GAP_MS cannot cut the warning short either; past the gap the grunt is back.
-      if (this.alive && hp > 0) { this._event('hit_taken'); if (hurtNow) this._lastPainAt = this.now(); else this._pain(dmg, this.latch.ir_proto, movedPool); }   // A11: a death is its own event; A15.3: our pain grunt by damage; A17: only when it reached HEALTH; F57: not on the low-health crossing
+      if (this.alive && hp > 0) { this._event('hit_taken'); if (hurtNow) this._lastPainAt = this.now(); else this._pain(dmg, hl.ir_proto, movedPool); }   // A11: a death is its own event; A15.3: our pain grunt by damage; A17: only when it reached HEALTH; F57: not on the low-health crossing
     }
     // HUD moments. The gun's own LED strip cannot hold a steady colour in game (the firmware
     // animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries
@@ -6429,14 +6470,14 @@ export class Engine {
       else if (dmg > 0 && hp > 0) {
         // A death sets its own 'down' moment; a hit that kills must not flash "hit" first.
         this.moment = { kind: 'hit', at: this.now(),
-          data: { dmg, shooter_team: this.latch ? this.latch.shooter_team : 0,
+          data: { dmg, shooter_team: hl ? hl.shooter_team : 0,
                   // the KEY, not the tid: the engine already owns tid->key (TEAM_KEY), and a second
                   // copy of that mapping in the HUD is a divergence waiting to happen
-                  shooter_key: TEAM_KEY[this.latch ? this.latch.shooter_team : 0] || 'red',
+                  shooter_key: TEAM_KEY[hl ? hl.shooter_team : 0] || 'red',
                   // S56 "what hit me": {id, name, source} resolved, {ambiguous: true, names} two-or-more
                   // candidates share the magnitude, or null (no claim, or an unknown magnitude) -- set above
                   // in the hit_taken block, which always runs first (same `dmg > 0` gate) when this fires.
-                  sensor: this.latch ? this.latch.sensor : null, hp, armor, shield, weapon: hitWeapon } };
+                  sensor: hl ? hl.sensor : null, hp, armor, shield, weapon: hitWeapon } };
       } else if (before > 0) {
         // Pools went UP: a heal, an armour pickup, or a shield grant. `before > 0` keeps the
         // spawn/respawn refill out of it — that has its own 'redeploy' moment.
@@ -6531,9 +6572,19 @@ export class Engine {
     // must not carry the old one's numbers.
     if (dk && !dk.booked && dk.dmg > 0) this._lifeBookDot(dk.num, dk.team, dk.dmg);   // the lethal tick: answered by $LCD, so no echo booked it
     this._life.deathAt = this.now(); this._lastLife = this._life; this._resetLifeLedger();
-    const fresh = dk ? true : this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
-    const shooter_num = dk ? dk.num : fresh ? this.latch.shooter_num : 0;
-    const shooter_team = dk ? dk.team : fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
+    // F354: the kill goes to the last DAMAGING hit while it is inside DEATH_LATCH_MS. A smoke or EMP word latches too,
+    // and one landing between the killing blow and its `$HP,0` used to hand the kill to a player who did no damage.
+    // In order: a damaging word NEWER than the last `hit_taken` (its `$HP` came after `hl`'s 1000 ms gate, so it
+    // never became a fact), then `_lastHitFact`, then the raw latch, else unknown.
+    const now = this.now(), lh = this._lastHitFact, dl = this._dmgLatch;
+    const dlFresh = !dk && !!dl && now - dl.at <= C.DEATH_LATCH_MS && (!lh || dl.at > lh.at);
+    const lhFresh = !dk && !dlFresh && !!lh && now - lh.at <= C.DEATH_LATCH_MS;
+    const latchFresh = !!this.latch && now - this.latch.at <= C.DEATH_LATCH_MS;
+    const blow = dlFresh ? dl : lhFresh ? lh : null;   // the killing blow, when a damaging hit names it (the melee flag reads it)
+    const src = dk ? { shooter_num: dk.num, shooter_team: dk.team } : blow || (latchFresh ? this.latch : null);
+    const fresh = !!src;
+    const shooter_num = src ? src.shooter_num : 0;
+    const shooter_team = src ? src.shooter_team : (this.latch ? this.latch.shooter_team : 0);
     // F81: wire id 0 is "no identity" (A5.1) -- a grenade hill's ambient damage word (F69) or a gun whose `$PSET`
     // never landed (F80). Its team field is the hill's OWNER, so naming that team as the killer told the player a
     // specific lie ("KILLED BY GREEN" when nobody shot them). MC already refuses to credit wire 0; the phone now
@@ -6568,8 +6619,7 @@ export class Engine {
     // Tony 2026-09-24: "melee kills should be a medal". The killing blow is the last DAMAGING hit (`_lastHitFact`,
     // stamped only when a hit moved a pool), not the raw latch: a smoke or EMP word landing between the melee blow and
     // the `$HP,0` re-latches without doing damage (the same trap `dk` avoids above). Proto 13 is melee.
-    const lh = this._lastHitFact;
-    const melee = !dk && fresh && !!lh && lh.ir_proto === 13 && lh.shooter_num === shooter_num && this.now() - lh.at <= C.DEATH_LATCH_MS;
+    const melee = !!blow && blow.ir_proto === 13;
     this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}), ...(dk ? { dot: true } : {}), ...(melee ? { melee: true } : {}) });
     const flipTable = (this._respawnProfile() && this._respawnProfile().team_flip) || (this.frames && this.frames.team_flip);   // 2026-09-19: the timed-profile bursts
     let irFlip = false;   // S57: true once this death turns out to BE an infection flip, not a real death (see below)

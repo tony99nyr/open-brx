@@ -188,7 +188,8 @@ resets `prev`. `shots` resets to 0 at `startAt()` and rides `status`; MC diffs i
 `$HIR` token 3 = shooter **`player_num`**, token 4 = shooter **team** — both always present, both
 hardware-verified in both directions (protocol §7q). Latch `{shooter_num, shooter_team, at}` on every
 valid `$HIR` (tok 2 ≠ 15); at death read the latch iff `now − at ≤ DEATH_LATCH_MS`, else report
-`shooter_num: 0`. Attribution is **exact**; there is no team-only fallback and no heuristic. The node still
+`shooter_num: 0`. The death's shooter is the last DAMAGING hit within `DEATH_LATCH_MS`, and the raw latch only when none is (F354): a word
+whose cell in this bundle's `$SIR` table has a no-pool function (`_SIR_NO_POOL`: the fn-23 Haze, or the stun's fn-23 EMP) never takes the kill. Attribution is **exact**; there is no team-only fallback and no heuristic. The node still
 **never computes its own kills** — a kill you score is invisible in your own stream; only the *victim* reports
 it (§3.6). The `roster` turns a number into a name for the HUD; an unknown number is still reported verbatim.
 

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, SMOKE_MS, isPoolProbe } from '../src/engine.js';
+import { Engine, SMOKE_MS, SIR_NO_POOL_FNS, SIR_GRANT_FNS, isPoolProbe } from '../src/engine.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const DOT = { 11: { weapon_id: 'toxin_rifle', per_tick: 4, tick_ms: 1000, duration_ms: 5000 } };
@@ -17,7 +17,7 @@ function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m
 /** A live match with a fake gun that answers our `$LIFE` ticks the way the bench measured: per pool, no spill, floor
  *  at 0, `$HP` for a non-lethal write and `$LCD` (never `$HP`) for a lethal one. With `gun.hold` set, the gun's
  *  answers wait in `held` until `release()`, so a test can put other frames between a tick write and its `$HP`. */
-function harness({ dot = DOT, stun } = {}) {
+function harness({ dot = DOT, stun, sir } = {}) {
   const writes = []; const facts = []; let clock = 1_000_000;
   const gun = { hp: 45, armor: 70, shield: 0, auto: true, hold: false };
   const held = [];
@@ -42,7 +42,10 @@ function harness({ dot = DOT, stun } = {}) {
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
-  eng.onMcMessage({ kind: 'config', body: { config, frames: { ...golden, player_id: 'p1', ...(dot ? { dot } : {}) }, roster: [] } });
+  // `sir(rows)` rewrites the bundle's `$SIR` table (the head and every `sir_pool` take), the way compile.py would
+  const frames = { ...golden, player_id: 'p1', ...(dot ? { dot } : {}) };
+  if (sir) { frames.head = sir(golden.head); frames.sir_pool = (golden.sir_pool || []).map(t => sir(t)); }
+  eng.onMcMessage({ kind: 'config', body: { config, frames, roster: [] } });
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const flush = () => { while (pending.length) eng.feedFrame(pending.shift()); };
@@ -422,18 +425,144 @@ test('melee medal: a death whose killing $HIR is proto 13 is flagged melee; a gu
 
 test('melee medal: a non-damaging word between the melee blow and the death does not change the flag', () => {
   // melee (proto 13) kills, then a bystander's smoke word (proto 7) re-latches before the $HP,0 lands
-  const h = harness();
+  const h = harness({ sir: rows => [...rows, '$SIR,7,0,,23,0,0,1,,*'] });
   h.eng.feedFrame('$HIR,4,13,3,2,45,0,0,*');
   h.eng.feedFrame('$HIR,0,7,5,2,0,0,0,*');
   h.eng.feedFrame('$HP,0,0,0,*');
   const d = h.kind('death');
   assert.equal(d.length, 1);
-  if (d[0].shooter_num === 3) assert.equal(d[0].melee, true, 'the melee blow killed');
-  else assert.equal(d[0].melee, undefined, 'the credited shooter did not melee, so no melee flag');
+  assert.equal(d[0].shooter_num, 3, 'F354: the melee blow killed, not the smoke');
+  assert.equal(d[0].melee, true, 'the melee flag follows the killer');
   // a gun blow, then a bystander's melee-proto word that did no damage: never a melee kill
   const g = harness();
   g.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*');
   g.eng.feedFrame('$HP,0,0,0,*');
   assert.equal(g.kind('death')[0].melee, undefined);
+});
+
+// F354: the kill goes to the last DAMAGING hit, not to the raw latch. A word whose `$SIR` cell moves no pool (the fn-23
+// Haze on <7,0>, the fn-23 EMP that `config.stun` puts on <8,0>) landing between the killing blow and its `$HP,0` must
+// not take the kill, the death screen or the IR callout. The bundle's own rows decide, never the protocol alone.
+const HAZE = rows => [...rows, '$SIR,7,0,,23,0,0,1,,*'];                                   // compile.py adds the Haze's conditional row
+const EMP = rows => rows.map(r => (r.startsWith('$SIR,8,0,,1,') ? '$SIR,8,0,,23,0,0,1,,*' : r));   // compile.py `_with_stun_row`
+for (const [proto, label, opts] of [[7, 'smoke', { sir: HAZE }], [8, 'EMP', { sir: EMP, stun: { duration_s: 5 } }]]) {
+  test(`F354: a bystander's ${label} word between the killing blow and $HP,0 does not take the kill`, () => {
+    const h = harness(opts);
+    h.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*');           // player 3 (yellow) fires the killing blow
+    h.eng.feedFrame(`$HIR,0,${proto},5,1,0,0,0,*`);     // player 5 (blue) lands a word that does no damage
+    h.eng.feedFrame('$HP,0,0,0,*');
+    const d = h.kind('death');
+    assert.equal(d.length, 1);
+    assert.equal(d[0].shooter_num, 3); assert.equal(d[0].shooter_team, 2);
+    assert.equal(d[0].melee, undefined);
+    assert.equal(h.kind('hit_taken').at(-1).shooter_num, 3, 'the lethal damage is booked to 3 too');
+    assert.equal(h.eng.killedBy.num, 3); assert.equal(h.eng.killedBy.team, 2);
+    const irtx = h.writes.filter(f => f.startsWith('$IRTX,'));
+    assert.ok(irtx.length >= 1 && irtx[0].split(',')[3] === '3', `the S57 DOWN_BY callout names 3: ${irtx[0]}`);
+  });
+}
+
+test('F354: with stun off, <8,0> is the Charge Rifle\'s fn-1 damage cell, so its word takes the kill', () => {
+  const h = harness();                                    // golden: `$SIR,8,0,,1,...`, no config.stun
+  h.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*');
+  h.eng.feedFrame('$HIR,0,8,5,1,70,0,0,*');               // the Charge Rifle, after 3's word, before the $HP,0
+  h.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(h.kind('death')[0].shooter_num, 5);
+  assert.equal(h.kind('hit_taken').at(-1).shooter_num, 5);
+});
+
+test('F354: a bundle with no $SIR rows falls back to the protocol: 8 only while stun is on, 7 always damaging', () => {
+  const none = rows => rows.filter(r => !r.startsWith('$SIR,'));
+  const on = harness({ sir: none, stun: { duration_s: 5 } });
+  on.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*'); on.eng.feedFrame('$HIR,0,8,5,1,0,0,0,*'); on.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(on.kind('death')[0].shooter_num, 3, 'stun on: the EMP word moves no pool');
+  const off = harness({ sir: none });
+  off.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*'); off.eng.feedFrame('$HIR,0,8,5,1,70,0,0,*'); off.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(off.kind('death')[0].shooter_num, 5, 'stun off: proto 8 is damage');
+  const haze = harness({ sir: none });
+  haze.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*'); haze.eng.feedFrame('$HIR,0,7,5,1,0,0,0,*'); haze.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(haze.kind('death')[0].shooter_num, 5, 'no fn-23 row can exist without rows, so proto 7 counts as damage');
+});
+
+test('F354: a damaging word newer than the last hit_taken, whose $HP came after the 1000 ms gate, takes the kill', () => {
+  const h = harness();
+  h.eng.feedFrame('$HIR,0,1,4,2,20,0,0,*'); h.eng.feedFrame('$HP,45,50,0,*');   // player 4's hit books a hit_taken
+  h.adv(100);
+  h.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*');                                    // player 3's killing word ...
+  h.adv(1200);
+  h.eng.feedFrame('$HP,0,0,0,*');                                              // ... whose $HP lands 1.2 s later
+  assert.equal(h.kind('hit_taken').length, 1, 'the late $HP books no fact');
+  assert.equal(h.kind('death')[0].shooter_num, 3);
+  // the same, with a bystander's smoke word just before the late $HP: the drop is still not the smoke's
+  const g = harness({ sir: HAZE });
+  g.eng.feedFrame('$HIR,0,1,4,2,20,0,0,*'); g.eng.feedFrame('$HP,45,50,0,*');
+  g.adv(100);
+  g.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*');
+  g.adv(1200);
+  g.eng.feedFrame('$HIR,0,7,5,1,0,0,0,*');
+  g.eng.feedFrame('$HP,0,0,0,*');
+  const ht = g.kind('hit_taken');
+  assert.equal(ht.length, 2, 'the smoke word makes the late drop a hit, as before F354');
+  assert.equal(ht.at(-1).shooter_num, 3, 'the drop is booked to the damaging word, not to the smoke shooter');
+  assert.equal(g.eng.state().lastLife.finalHit && g.eng.state().lastLife.finalHit.num, 3, 'the death screen\'s final hit names 3');
+  assert.equal(g.kind('death')[0].shooter_num, 3);
+});
+
+test('F354: a heal word on a grant cell between the killing blow and $HP,0 does not take the kill', () => {
+  const h = harness({ sir: rows => [...rows, '$SIR,12,0,,10,0,0,1,,*'] });   // a grant row (fn 10, in `_SIR_GRANT`)
+  h.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*');
+  h.eng.feedFrame('$HIR,0,12,5,2,20,0,0,*');             // a teammate's med-kit word
+  h.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(h.kind('death')[0].shooter_num, 3);
+  assert.equal(h.kind('hit_taken').at(-1).shooter_num, 3);
+});
+
+test('F354: SIR_GRANT_FNS matches compile.py _SIR_GRANT', () => {
+  const src = readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/compile.py', import.meta.url)), 'utf8');
+  const m = /^_SIR_GRANT = frozenset\(range\((\d+), (\d+)\)\)/m.exec(src);
+  assert.ok(m, 'compile.py still defines _SIR_GRANT as a range (update this guard if its shape changes)');
+  const want = []; for (let i = Number(m[1]); i < Number(m[2]); i++) want.push(i);
+  assert.deepEqual([...SIR_GRANT_FNS].sort((x, y) => x - y), want);
+});
+
+// F354: the engine's copy of compile.py `_SIR_NO_POOL` must not drift from the server's.
+test('F354: SIR_NO_POOL_FNS matches compile.py _SIR_NO_POOL', () => {
+  const src = readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/compile.py', import.meta.url)), 'utf8');
+  const m = /^_SIR_NO_POOL = frozenset\(\{([^}]*)\}\)/m.exec(src);
+  assert.ok(m, 'compile.py still defines _SIR_NO_POOL');
+  assert.deepEqual([...SIR_NO_POOL_FNS].sort((x, y) => x - y), m[1].split(',').map(Number).sort((x, y) => x - y));
+});
+
+test('F354: a lone smoke latch with no damaging hit keeps the latch fallback', () => {
+  const h = harness();
+  h.eng.feedFrame('$HIR,0,7,5,2,0,0,0,*');
+  h.eng.feedFrame('$HP,0,0,0,*');
+  const d = h.kind('death');
+  assert.equal(d.length, 1);
+  assert.equal(d[0].shooter_num, 5, 'no damaging hit is fresh, so the fresh latch names the killer, as before');
+  assert.equal(h.kind('hit_taken').at(-1).shooter_num, 5, 'with no damaging word, the drop is booked to the latch, as before');
+  assert.equal(h.eng.killedBy.num, 5);
+});
+
+test('F354: a stale damaging hit falls back to the latch, or to an unknown killer', () => {
+  // a damaging hit from 3, then nothing for longer than DEATH_LATCH_MS: the death names nobody
+  const h = harness();
+  h.eng.feedFrame('$HIR,0,1,3,2,20,0,0,*'); h.eng.feedFrame('$HP,45,50,0,*');
+  assert.equal(h.kind('hit_taken').at(-1).shooter_num, 3);
+  h.adv(3000);
+  h.eng.feedFrame('$HP,0,0,0,*');
+  let d = h.kind('death');
+  assert.equal(d.length, 1);
+  assert.equal(d[0].shooter_num, 0, 'a stale hit and a stale latch: the killer is unknown');
+  assert.equal(h.eng.killedBy.unknown, true);
+  // the same stale hit, then a fresh smoke word from 5: no fresh damaging hit, so the fresh latch is the fallback
+  const g = harness();
+  g.eng.feedFrame('$HIR,0,1,3,2,20,0,0,*'); g.eng.feedFrame('$HP,45,50,0,*');
+  g.adv(3000);
+  g.eng.feedFrame('$HIR,0,7,5,2,0,0,0,*');
+  g.eng.feedFrame('$HP,0,0,0,*');
+  d = g.kind('death');
+  assert.equal(d.length, 1);
+  assert.equal(d[0].shooter_num, 5);
 });
 
