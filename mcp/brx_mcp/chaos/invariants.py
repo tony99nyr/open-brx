@@ -817,12 +817,33 @@ def ends_exactly_once(world: World) -> None:
 
 
 def _top_score(world: World, sc, kills: Counter) -> int:
+    """The top team (or FFA player) score. Teams come from the roster: chaos has no team-change action."""
     if sc.mode == "ffa":
         return max(kills.values(), default=0)
     per_team: Counter = Counter()
     for pid, k in kills.items():
         per_team[world.team_of(pid)] += k
     return max(per_team.values(), default=0)
+
+
+def _arrival_crossing(world: World, match_id: str, keys: set, cap: int) -> int | None:
+    """The top score at the first moment the facts in `keys`, taken in the order MC FIRST received them (each
+    scorer's tapped inputs, scorers in creation order, a key counted once), reach `cap`; None if they never
+    do. A replay after a restart re-takes old facts in `t` order, so only a key's first taking counts."""
+    seen: set = set()
+    kills: Counter = Counter()
+    for s in _scorers_of(world, match_id):
+        for f in taken_facts(world, s):
+            if f["key"] in seen:
+                continue
+            seen.add(f["key"])
+            if f["key"] not in keys or f["status"] != "scored" or f["kind"] != "death" or not f["killer"]:
+                continue
+            kills[f["killer"]] += -1 if _friendly(world, f["killer"], f["pid"]) else 1
+            top = _top_score(world, s, kills)
+            if top >= cap:
+                return top
+    return None
 
 
 @invariant("cap_ends_live_match")
@@ -832,8 +853,8 @@ def cap_ends_live_match(world: World) -> None:
     board back below it (polish review 2026-09-25, beside F362 l)."""
     s = world.session
     sc, facts = _current(world)
-    cap = (s.config.get("scoring") or {}).get("frag_limit")
-    if sc is None or s.phase != "live" or not cap or sc.win_by != "kills":
+    cap = sc.frag_limit if sc is not None else None      # the scorer's cap, not the operator's draft
+    if sc is None or s.phase != "live" or not cap or sc.win_by != "kills" or s.is_adopted():
         return
     kills, _d, _h, _p = _expected(world, sc, facts)
     top = _top_score(world, sc, kills)
@@ -868,8 +889,14 @@ def frag_cap_ends_match(world: World) -> None:
             held = [f for f in facts if (f[0], f[1]) in world.end_delivered]
             kills, _d, _h, _p = _expected(world, sc, held)
             top_then = _top_score(world, sc, kills)
-            if top_then < cap:     # a cap held in play and then lost again is `cap_ends_live_match`'s
+            # polish r2: a cap held in play and lost again inside one step (a flush with the capping kill and
+            # then a team kill) sums below the cap at every step boundary, so check the arrival order too.
+            crossed = _arrival_crossing(world, sc.match_id, world.end_delivered, cap)
+            if top_then < cap and crossed is None:
                 return
+            if crossed is not None:
+                _fail("frag_cap_ends_match", f"the facts held at the end reached the cap ({crossed} >= {cap}) in "
+                                             f"the order MC received them, but the match ended by {reason!r}")
             _fail("frag_cap_ends_match", f"the board held at the end reached the cap ({top_then} >= {cap}) "
                                          f"but the match ended by {reason!r}")
         _fail("frag_cap_ends_match", f"the board reached the cap ({top} >= {cap}) but the match ended by {reason!r}")

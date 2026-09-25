@@ -686,8 +686,7 @@ class Session:
                 "cap_recv": self.scorer.cap_recv,
                 # F362 (k): what the field was already told (the lead, cap - 1, the last survivor), so a
                 # resume does not tell them again and still tells them what they never heard.
-                "alerts": {"leader": self.scorer._leader,
-                           "announced": sorted(self.scorer._announced - {"frag_limit"})},
+                "alerts": self.scorer.match_state_alerts(),
                 # An accepted LIVE release removes the active row, but its frozen tally still belongs
                 # to this match and must survive an MC restart before the whistle.
                 "departed_stations": [dict(row) for row in sorted(
