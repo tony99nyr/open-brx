@@ -2,8 +2,8 @@
 
 `site/shots.mjs` renders Mission Control and the phone HUD in a real browser and writes JPEGs plus
 a manifest into `site/shots/`. The manifest records the git tree hash of each UI's source directory
-at capture time; this file's staleness test fails the moment that source moves on without a
-re-capture, so a screenshot can never silently drift out of sync with the UI it claims to show.
+at capture time. The `site-shots` CI job compares those hashes to main and re-captures when they
+differ, so a screenshot cannot drift out of step with the UI it shows for longer than one CI run.
 
 Runs under both `pytest` and the zero-dependency `run_tests.py` (system python has no pytest), same
 pattern as test_published_build.py: `pytest` may be unavailable, so we skip through `_skip.Skipped`
@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import os
 import pathlib
-import subprocess
 
 from _skip import Skipped
 
@@ -29,15 +28,11 @@ SHOTS_DIR = REPO / "site" / "shots"
 MANIFEST = SHOTS_DIR / "manifest.json"
 MAX_BYTES = 450 * 1024
 
-# On CI the `site-shots` job in .github/workflows/ci.yml owns the staleness check: it regenerates the
-# shots and pushes them back to main. A commit that moves the UI is therefore stale for a few minutes
-# BY DESIGN, and failing the `mcp` job for it turned 15 of 19 runs red — each one fixable only by a
-# person with a browser, because the capture needs a built app/www, a built webapp/mc/dist and
-# Playwright. So the two staleness tests below skip inside GitHub Actions. Nothing else in this file
-# skips, and the check itself is UNCHANGED locally, which is where it does its work: it stops a stale
-# screenshot reaching a PR.
-ON_GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
-_CI_OWNER = "the site-shots CI job, which regenerates the shots and commits them to main"
+# Staleness (do the shots match the UI source?) is NOT checked here. The `site-shots` job in
+# .github/workflows/ci.yml owns it: it regenerates the shots after every push to main and commits them
+# back. A local check made every UI commit fail `test:all` until someone captured by hand, and those hand
+# captures raced the job's own commit (removed 2026-09-26). This file keeps the checks a push can fail
+# on its own: the manifest lists what is on disk, and every shot is small.
 
 
 def _skip(reason: str) -> None:
@@ -47,14 +42,6 @@ def _skip(reason: str) -> None:
     if pytest is not None and os.environ.get("PYTEST_CURRENT_TEST"):
         pytest.skip(reason)
     raise Skipped(reason)
-
-
-def _git(*args: str) -> str | None:
-    try:
-        r = subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return r.stdout.strip() if r.returncode == 0 else None
 
 
 def _manifest() -> dict:
@@ -86,34 +73,6 @@ def test_site_shots_manifest_exists():
     )
 
 
-def test_site_shots_match_the_ui_source():
-    if ON_GITHUB_ACTIONS:
-        _skip(_CI_OWNER)
-    if not MANIFEST.exists():
-        _skip(f"{MANIFEST} missing (covered by test_site_shots_manifest_exists)")
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-
-    if _git("rev-parse", "--git-dir") is None:
-        _skip("git")
-
-    mc_head = _git("rev-parse", "HEAD:webapp/mc/src")
-    hud_head = _git("rev-parse", "HEAD:app/src")
-    if mc_head is None or hud_head is None:
-        _skip("shallow clone: webapp/mc/src or app/src is not a tree object at HEAD")
-
-    heads = {d: _git("rev-parse", f"HEAD:{d}") for d in _UI_DIRS}
-    if any(v is None for v in heads.values()):
-        _skip("shallow clone: a UI path is not an object at HEAD")
-    stale = [f"{d} ({manifest.get(k)!r} != {heads[d]!r})"
-             for d, k in _UI_KEYS
-             if manifest.get(k) != heads[d]]
-
-    assert not stale, (
-        "site/shots are older than the UI they show: run \"cd site && node shots.mjs\" and commit "
-        "site/shots/ (stale: " + "; ".join(stale) + ")"
-    )
-
-
 def test_site_shots_are_small():
     if not SHOTS_DIR.exists():
         _skip(f"{SHOTS_DIR} missing (covered by test_site_shots_manifest_exists)")
@@ -122,57 +81,3 @@ def test_site_shots_are_small():
         _skip(f"no jpgs in {SHOTS_DIR} (covered by test_site_shots_manifest_exists)")
     oversized = [(p.name, p.stat().st_size) for p in jpgs if p.stat().st_size >= MAX_BYTES]
     assert not oversized, f"screenshots at or over {MAX_BYTES} bytes: {oversized}"
-
-
-# The two source trees and the two hand-kept HTML shells the shots also render (all of the HUD CSS is
-# in `app/www/index.html`). `site/shots.mjs` writes one manifest key per entry, same order.
-_UI_DIRS = ("webapp/mc/src", "app/src", "webapp/mc/index.html", "app/www/index.html")
-_UI_KEYS = (("webapp/mc/src", "mc_src"), ("app/src", "hud_src"),
-            ("webapp/mc/index.html", "mc_shell"), ("app/www/index.html", "hud_shell"))
-
-
-def _dirty_ui_files() -> list[str] | None:
-    """Paths under the UI source dirs that differ from HEAD — modified, staged or untracked.
-
-    `git status --porcelain` is the working-tree hash: it already walks the files, compares content to
-    the index and HEAD, and honours .gitignore, which a hand-rolled sha walk would have to re-implement
-    (and would get wrong for `app/www/app.js`, which is generated and ignored).
-    """
-    out = _git("status", "--porcelain", "--untracked-files=normal", "--", *_UI_DIRS)
-    if out is None:
-        return None
-    # `_git` strips the output, so the FIRST porcelain line has lost its leading status column; split on
-    # the first run of whitespace instead of slicing at a fixed column (a quoted path keeps its spaces).
-    return sorted({ln.strip().split(maxsplit=1)[-1].strip('"') for ln in out.split("\n") if ln.strip()})
-
-
-def test_site_shots_match_the_ui_working_tree():
-    """2026-09-12 review: the staleness check compared the manifest to `HEAD:webapp/mc/src` and
-    `HEAD:app/src` only, so a screenshot was "current" the moment the UI change was committed — and
-    every UI change is UNCOMMITTED while it is being made. That is exactly when someone rebuilds the
-    site and ships a shot of the previous design.
-
-    A dirty tree cannot prove anything about the shots either way, so it SKIPS and names the files;
-    with a clean tree the HEAD hashes ARE the working tree and the manifest must match them.
-    """
-    if ON_GITHUB_ACTIONS:
-        _skip(_CI_OWNER)
-    if not MANIFEST.exists():
-        _skip(f"{MANIFEST} missing (covered by test_site_shots_manifest_exists)")
-    dirty = _dirty_ui_files()
-    if dirty is None:
-        _skip("git")
-    if dirty:
-        _skip("working tree dirty: shots may be stale for " + ", ".join(dirty[:8])
-              + (f" (+{len(dirty) - 8} more)" if len(dirty) > 8 else ""))
-
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    heads = {d: _git("rev-parse", f"HEAD:{d}") for d in _UI_DIRS}
-    if any(v is None for v in heads.values()):
-        _skip("shallow clone: webapp/mc/src or app/src is not a tree object at HEAD")
-    stale = [f"{d} ({manifest.get(k)!r} != {heads[d]!r})"
-             for d, k in _UI_KEYS
-             if manifest.get(k) != heads[d]]
-    assert not stale, (
-        "the UI source is clean but site/shots do not match it: run \"cd site && npm run shots\" and "
-        "commit site/shots/ (stale: " + "; ".join(stale) + ")")
