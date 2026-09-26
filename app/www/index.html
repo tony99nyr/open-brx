@@ -1441,8 +1441,8 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .bf .bfpu{display:flex;gap:10px;align-items:baseline;font-size:12px;line-height:1.35;font-weight:600;max-width:540px;white-space:nowrap;overflow:hidden}
 .bf .bfpu .k{flex:0 0 auto;font-size:11px;letter-spacing:.26em;color:var(--glow);font-weight:700;padding-top:2px;padding-left:2px}
 .bf .bfpu .v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bf .bfpu .pun{font-family:var(--fd);font-weight:700;letter-spacing:.04em;color:var(--item)}
-.bf .bfpu .pun:not(:last-child)::after{content:" \00b7 ";color:var(--mut);font-weight:600}
+.bf .bfpu .pun{font-family:var(--fd);font-size:15px;font-weight:700;letter-spacing:.04em;color:var(--item)}   /* the condensed display face reads small: 15px sits level with the LOADOUT line */
+.bf .bfpu .pun:not(:last-child)::after{content:"\00b7";margin:0 .5em;color:var(--mut);font-weight:600}
 /* QA-20: the mode art is a render with a fake HUD baked in (a 04:52 TIME REMAINING clock on tdm.jpg), which read as
    live data behind a real briefing. Blurred, it stays atmosphere and no number in it can be read. */
 .bf .bfart{inset:-12px;filter:blur(5px)}
