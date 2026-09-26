@@ -316,6 +316,74 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         s._changed()
         return JSONResponse({"ok": res["ok"], "errors": res["errors"], "config": res["config"], "pick": s.game_pick})
 
+    # ---- F411 §6: FAVOURITES -- a named bundle of the whole PLAY pick ----
+    from .favourites import FavouriteError, FavouriteStore
+    if getattr(s, "favourites", None) is None:
+        s.favourites = FavouriteStore(None, now_ms=s.now_ms)   # memory-only
+
+    def _ferr(e: FavouriteError):
+        return _err(str(e), e.status)
+
+    def _favourites(s: Session) -> FavouriteStore:
+        """Mirrors `_pieces` above: `s.favourites` is only ever None before the memory-only fallback
+        just ran, but stays Optional on `Session` (attached by `__main__`/here)."""
+        if s.favourites is None:
+            raise FavouriteError(409, "favourites are not available for this session")
+        return s.favourites
+
+    async def favourites_list(_):
+        return JSONResponse(_favourites(s).list())
+
+    async def favourites_create(req):
+        b = await body(req)
+        pick = b.get("pick") if isinstance(b.get("pick"), dict) else s.game_pick   # default: the current pick
+        try:
+            return JSONResponse(_favourites(s).create(b.get("name"), b.get("countdown_s"), pick))
+        except FavouriteError as e:
+            return _ferr(e)
+
+    async def favourites_update(req):
+        b = await body(req)
+        try:
+            return JSONResponse(_favourites(s).update(req.path_params["fid"], b.get("name")))
+        except FavouriteError as e:
+            return _ferr(e)
+
+    async def favourites_delete(req):
+        try:
+            _favourites(s).delete(req.path_params["fid"])
+        except FavouriteError as e:
+            return _ferr(e)
+        return JSONResponse({"ok": True})
+
+    async def favourites_load(req):
+        """Applies the favourite's pieces + match through the SAME compose/precheck/set_config path
+        `POST /api/play/pick` uses (same phase gating, `ok: false` changes nothing) -- the one
+        difference is `resolve_pieces_with_fallback`: a piece the favourite named that no longer
+        exists (or turned post_mvp) falls back to that kind's first builtin rather than 404ing the
+        whole favourite, and is named in `fallbacks`."""
+        try:
+            fav = _favourites(s).get(req.path_params["fid"])
+        except FavouriteError as e:
+            return _ferr(e)
+        resolved, fallbacks = _gamepick.resolve_pieces_with_fallback(_pieces(s), fav["pick"]["pieces"])
+        mode = resolved["mode"]["value"]["mode"]
+        match = fav["pick"]["match"]
+        ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
+        patch = _gamepick.compose(resolved, match, _mode_row(mode))
+        precheck = s._compose_precheck(patch)
+        if not precheck["ok"]:
+            return JSONResponse({"ok": False, "errors": precheck["errors"], "config": s.config, "pick": s.game_pick,
+                                 "countdown_s": fav["countdown_s"], "fallbacks": fallbacks})
+        try:
+            res = s.set_config(patch)
+        except ValueError as e:
+            return _err(str(e))
+        s.game_pick = {"pieces": ids, "match": match}
+        s._changed()
+        return JSONResponse({"ok": res["ok"], "errors": res["errors"], "config": res["config"], "pick": s.game_pick,
+                             "countdown_s": fav["countdown_s"], "fallbacks": fallbacks})
+
     async def loadout_pool_preview(req):
         """A10 §5 designer: the pool a DRAFT `loadout_policy` would allow — same rule engine as `State.loadout_pool`,
         nothing applied. Body `{loadout_policy}` (partial ok: merged onto the mode's default policy)."""
@@ -903,6 +971,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/pieces/{pid}", pieces_update, methods=["PUT"]),
         Route("/api/pieces/{pid}", pieces_delete, methods=["DELETE"]),
         Route("/api/play/pick", play_pick, methods=["POST"]),
+        Route("/api/favourites", favourites_list),
+        Route("/api/favourites", favourites_create, methods=["POST"]),
+        Route("/api/favourites/{fid}", favourites_update, methods=["PUT"]),
+        Route("/api/favourites/{fid}", favourites_delete, methods=["DELETE"]),
+        Route("/api/favourites/{fid}/load", favourites_load, methods=["POST"]),
         Route("/api/config", put_config, methods=["PUT"]),
         Route("/api/phase", set_phase, methods=["POST"]),
         Route("/api/players", post_player, methods=["POST"]),

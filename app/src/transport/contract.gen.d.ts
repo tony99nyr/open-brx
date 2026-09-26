@@ -958,6 +958,21 @@ export interface GamePick {
   match: MatchSettings;
 }
 
+/** F411 §6: a named bundle of the whole PLAY pick (games-presets.md §6) — "like a named LAST
+ *  MATCH" (Tony). Stores piece REFERENCES, not copies: a favourite tracks its pieces' current
+ *  values, and a piece deleted after being favourited falls back to that kind's first builtin at
+ *  LOAD time (`POST /api/favourites/{id}/load`'s `fallbacks`), never a 404 for the favourite itself. */
+export interface Favourite {
+  favourite_id: string;
+  /** <= 24 chars, unique (case-insensitive) */
+  name: string;
+  created_t: number;
+  updated_t: number;
+  pick: GamePick;
+  /** the arm runway this favourite loads (games-presets.md §2 COUNTDOWN) */
+  countdown_s: number;
+}
+
 export interface Preflight {
   ssid_ok?: boolean;
   mc_reachable?: boolean;
