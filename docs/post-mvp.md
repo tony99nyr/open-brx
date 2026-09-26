@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-26 (F412 filed: a melee preset; F390 moved from FOLLOWUPS.md: MUSTER is post-launch; created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3; F407, F408 and F409 filed).
+Updated: 2026-09-26 (F414 filed: a Codex delegation that reports back; F412 filed: a melee preset; F390 moved from FOLLOWUPS.md: MUSTER is post-launch; created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3; F407, F408 and F409 filed).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -878,6 +878,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   identical geometry (2026-09-02).
 
 ## 8. Hardware, tooling, the site and the docs
+
+- **F414 🟠 A CODEX DELEGATION THAT REPORTS BACK.** Tony 2026-09-26: "We need a followup for working with codex". What happened on 2026-09-26: (1) Codex returned 401 until Tony ran `codex login`, and nothing warned before a lane was routed to it; (2) a `codex:codex-rescue` agent (worktree isolation, `--model gpt-6-luna`) answered only "Codex task started in the background as `task-mui78jbw-tv2ia2`" and finished; the orchestrator got no completion event, `codex-companion.mjs status` later said "No jobs recorded yet", no commit reached main, and the auto-cleaned worktree left no trace. The B21 iOS toggle lane was lost and re-run on a Sonnet subagent. Build: one documented path for a Claude session to hand a lane to Codex and get a completion signal and a result (for example a foreground `codex exec -p luna` inside a Bash-capable subagent, or the rescue agent in `--wait` mode, never a detached background job); a preflight that fails fast on a logged-out Codex; where the result and the diff land. Then record it in `~/.codex/AGENTS.md` (the routing rules) and a project skill. `build`.
 
 - **H1 🟡** reload-handle → push-button STL (version-tag it; older/newer handles differ). **H2 🟡** D-pad buttons STL.
   **H3 ⬜** Companion mount + ported audio box (with B1). **H4 ⬜** station enclosure (with B4). **H5 ⬜** skins.

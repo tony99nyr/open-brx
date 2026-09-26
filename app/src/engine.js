@@ -3866,7 +3866,11 @@ export class Engine {
         if (this._puHeld && !pu) this._puHeld.trig = to;   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
         if (!pu) this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile (`_puEquip` already armed a pickup card's)
         if (!pu) this._showSlotAmmo(to);   // F394: the gun sends no `$ALCD` on ALT, so the new slot's counts come from the node
-        this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true } };
+        // `pu` rides along so the HUD can tell a pickup's ACTIVE bubble from ALT's own (docs/spec/powerups.md
+        // "The switch card"): a pickup switch is never "assumed" the way an unconfirmed ALT swap is -- it is
+        // display-only for `_onAmmo`'s confirm-by-shot code (`_puSwitchCard`), so it always closes here, on its
+        // own timer, with the equip already a settled fact.
+        this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true, pu } };
         this.log(pu ? `pickup switch card to slot ${to} closed after ${this.switchWindowMs()}ms` : `swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
       }
       this._changed();
