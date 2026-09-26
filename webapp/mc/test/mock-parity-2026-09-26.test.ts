@@ -7,7 +7,11 @@
 // (2) The server now keeps `game_pick`'s mode and match settings following whatever `PUT /api/config`
 // last did, not just what `POST /api/play/pick` did -- so `GameEditPanel`'s inline KIT/LOBBY edit
 // (a direct `putConfig` call, never through `pick()`) no longer leaves PLAY's marks describing a pick
-// the field has since moved past.
+// the field has since moved past. Round 2 (6): settled on the SERVER's exact rule
+// (state.py `_sync_game_pick_from_config`) -- the sync runs on EVERY applied `set_config`, errors or
+// not (an invalid config is still APPLIED to `self.config`, just flagged), and the mode piece id is
+// recomputed directly as `builtin:mode:<mode>`, with no post_mvp exclusion (a post-MVP mode still gets
+// its own real builtin id, never a fallback to another mode's).
 import { describe, expect, it } from 'vitest';
 import { MockBackend } from '../src/mock/backend';
 
@@ -61,12 +65,21 @@ describe('putConfig keeps game_pick following the played config, not just pick()
     expect(state.game_pick!.match).toMatchObject({ time_limit_s: 900, frag_limit: 20, night: true });
   });
 
-  it('a REFUSED putConfig (errors non-empty) leaves game_pick untouched', async () => {
+  it('a REFUSED putConfig (errors non-empty) still syncs game_pick, the server’s own rule', async () => {
     const b = new MockBackend();
-    const before = (await b.getState()).game_pick;
     // the mock's own "time_limit_s is required on the phone path" refusal (state.py set_config, same words)
-    await b.putConfig({ time_limit_s: 0 });
-    const after = (await b.getState()).game_pick;
-    expect(after).toEqual(before);
+    const r = await b.putConfig({ time_limit_s: 0 });
+    expect(r.ok).toBe(false);
+    const state = await b.getState();
+    expect(state.config.time_limit_s).toBe(0);   // refused, but still APPLIED to the config
+    expect(state.game_pick!.match.time_limit_s).toBe(0);   // and game_pick follows it regardless
+  });
+
+  it('a post-MVP mode still gets its own real builtin mode piece id, never a fallback', async () => {
+    const b = new MockBackend();
+    await b.putConfig({ mode: 'infection' });
+    const state = await b.getState();
+    expect(state.config.mode).toBe('infection');
+    expect(state.game_pick!.pieces.mode).toBe('builtin:mode:infection');
   });
 });

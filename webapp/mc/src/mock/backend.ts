@@ -1534,24 +1534,20 @@ export class MockBackend implements Api {
       }, this.repushAckMs);   // long enough for a real-browser poll to see the transitional "re-pushing" state
     }
     if (rolled) this.phase = 'build';   // `set_config` moves muster -> build once a game is picked
-    // Polish round 1 H2 parity: `pick()`/`loadFavourite()` already set the WHOLE `gamePick` themselves,
-    // right after this call succeeds -- this covers the caller that does not, `GameEditPanel`'s inline
-    // KIT/LOBBY edit (`PUT /api/config` direct), which used to leave PLAY's marks (and a later FAVOURITE
-    // save) describing a pick the field no longer matches. The server now keeps `game_pick`'s mode and
-    // match settings following the played config the same way (mcp/brx_mcp/mc/state.py set_config).
-    if (!errors.length) {
-      const curModePiece = this.pieces.find(x => x.piece_id === this.gamePick.pieces.mode);
-      if (!curModePiece || (curModePiece.value as { mode: string }).mode !== this.config.mode) {
-        const modePiece = this.pieces.find(x => x.kind === 'mode' && !x.post_mvp && (x.value as { mode: string }).mode === this.config.mode);
-        if (modePiece) this.gamePick.pieces.mode = modePiece.piece_id;
-      }
-      this.gamePick.match = {
-        time_limit_s: this.config.time_limit_s ?? null,
-        frag_limit: this.config.scoring.frag_limit ?? null,
-        night: !!this.config.night,
-        silenced: this.config.presentation?.preset === 'silenced',
-      };
-    }
+    // Polish round 1 H2 parity, round 2 (6): mirrors `state.py Session._sync_game_pick_from_config`
+    // exactly -- called on EVERY applied `set_config`, errors or not (the mock used to skip this while
+    // refused, disagreeing with the server the moment a KIT/LOBBY edit was rejected but still applied
+    // to `self.config`, as an invalid one always is). `mode` is a kind BUILD can never create a piece
+    // for, so the picked mode piece is always a builtin named `builtin:mode:<mode>` -- recomputed from
+    // the config's own mode string directly, with no PieceStore lookup and no post_mvp exclusion (a
+    // post-MVP mode still gets its own real builtin id, never falls back to another mode's).
+    this.gamePick.match = {
+      time_limit_s: this.config.time_limit_s ?? null,
+      frag_limit: this.config.scoring.frag_limit ?? null,
+      night: !!this.config.night,
+      silenced: this.config.presentation?.preset === 'silenced',
+    };
+    if (this.config.mode) this.gamePick.pieces.mode = `builtin:mode:${this.config.mode}`;
     this.cfgErrors = errors;
     this.emit();
     return { ok: errors.length === 0, errors, config: clone(this.config) };
