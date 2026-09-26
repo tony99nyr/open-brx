@@ -77,7 +77,8 @@ Carry into sitting C: **F333** (walk every Stick screen at arm's length); **F374
 hill); a hill hold of 2+ minutes then a kill, listening for the kill-confirm delay against the hill tick's
 outstanding model (**F382**); capture pickup timings with the phone log on, claim-ready vs the Stick's taker
 advert (**F380**); re-test the RANGE hold with the Stick serial log running (**F387**); a clean 3 m and 7 m
-Stick-hears-phone RSSI reading (**F383**).
+Stick-hears-phone RSSI reading (**F383**); a first KOTH MODES bench pass, phone hill then Stick hill
+(sitting D, [`bench-2026-09-25.md`](bench-2026-09-25.md)).
 
 Awaiting Tony: whether hill scoring counts in whole ticks or stays continuous (**F382**); whether the editor or
 only the HOLD FOR RANGE bar appeared at about 2 s (**F387**).
