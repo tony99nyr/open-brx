@@ -584,6 +584,7 @@ const CALLOUT_WINDOW_MS = 3000;  // kill-confirm first-to-arrive (Tony), and how
 // its `--powerups` flag on). Tony's defaults (2026-09-24), each a named constant so a change is one line:
 export const PU_RESERVE = 0;                // a weapon item grants its charges as the MAGAZINE and no reserve
 export const PU_LOST_AT_DEATH = true;       // a weapon item's unused charges do not carry into the next life
+export const PU_ACTIVE_CARD_MS = 1200;      // F400: the ACTIVE confirm bubble's life after SWITCHING (hud.js `_swap('switched', el, 900, 1200)`)
 export const PU_WEAPON_SWAPS = true;        // lead 2026-09-24: a second WEAPON pickup replaces the first (never refused)
 export const PU_STACK_CAP_X = 2;            // F381 (Tony, 2026-09-25): the same weapon stacks up to this many times the item's own charges
 export const OVERSHIELD_AMOUNT = 75;        // the fallback when an item carries no `amount` (MC normally expands it)
@@ -5683,7 +5684,7 @@ export class Engine {
       play: () => { this.powerupSpawn = { ...next, at: this.now() }; this.log(`powerup: ${next.name} AVAILABLE (station ${next.station})`, 'li'); this._changed(); } });
     if (this.powerupSpawn && now - this.powerupSpawn.at > PU_ANNOUNCE_MS + 1000) this.powerupSpawn = null;
     if (this.powerupSwap && now - this.powerupSwap.at > PU_ANNOUNCE_MS + 1000) this.powerupSwap = null;
-    if (this.powerupGrant && now - this.powerupGrant.at > PU_READY_MS + 1000) this.powerupGrant = null;
+    if (this.powerupGrant && now - this.powerupGrant.at > PU_READY_MS + this.switchWindowMs() + PU_ACTIVE_CARD_MS + 1000) this.powerupGrant = null;   // F400 r1: past the card, then the hint
   }
   /** A weapon item goes STRAIGHT ONTO THE TRIGGER (Tony, 2026-09-24): save the slot the trigger is on and its counts
    *  (the switch-back target), then the pickup slot's head `$WEAP` and `$AMMO` with the charges. No ALT or SELECT write,
@@ -5888,8 +5889,9 @@ export class Engine {
       const st = this._puStation(items), g = this.powerupGrant, cl = this._puClaim;
       const nameOf = item => String(item.name || '').toUpperCase();
       const b = this._puBack;
-      if (b && now - b.at < PU_READY_MS) hint = { kind: 'switched_back', name: b.name, to: b.to, color: null };
-      else if (g && now - g.at < PU_READY_MS && !(this.lastHitAt > g.at)) hint = { kind: 'granted',   // HUD QA R2-18: a hit retires the pickup card: the hit stack owns the centre
+      const card = this.switchWindowMs() + PU_ACTIVE_CARD_MS;   // F400 r1: the hint's own PU_READY_MS starts when the switch card has left
+      if (b && now - b.at < PU_READY_MS + card) hint = { kind: 'switched_back', name: b.name, to: b.to, color: null };
+      else if (g && now - g.at < PU_READY_MS + (g.kind === 'weapon' ? card : 0) && !(this.lastHitAt > g.at)) hint = { kind: 'granted',   // HUD QA R2-18: a hit retires the pickup card: the hit stack owns the centre
         name: g.name, color: g.color, itemKind: g.kind, ...(g.charges != null ? { charges: g.charges } : {}), ...(g.replaced ? { replaced: g.replaced } : {}) };
       else if (cl && items[cl.station]) {
         const item = items[cl.station], base = { name: nameOf(item), color: item.color || null, station: cl.station };

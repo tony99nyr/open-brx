@@ -492,6 +492,12 @@ test('F400 r1: the gun\'s echo of the equip does not cut the pickup card short: 
   assert.equal(h.eng.moment.kind, 'switched'); assert.equal(h.eng.moment.data.slot, 2);
 });
 
+test('F400 r1: the ON TRIGGER hint gets its full time after the switch card, even with a slow swap perk', () => {
+  const h = armed(); h.eng.switchWindowMs = () => 1105; h.take(4);
+  h.adv(1105 + E.PU_ACTIVE_CARD_MS + 1000);   // the card has left; the hint's own 2.5 s is still running
+  assert.equal(h.eng.state().powerup.hint && h.eng.state().powerup.hint.kind, 'granted');
+});
+
 test('F400 r1: SELECT acts while a pickup card is up (the gun can already fire)', () => {
   const h = armed(); h.take(4);
   assert.ok(h.eng.switching && h.eng.switching.pu, 'setup: the pickup card is up');

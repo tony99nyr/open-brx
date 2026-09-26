@@ -5361,8 +5361,11 @@ const puRead = pg => pg.evaluate(() => {
     takeover: document.getElementById('frame').dataset.takeover || '',
     switching: (() => { const sw = document.querySelector('#overlay .mo.switching'); if (!sw || !vis(sw)) return null;
       const tile = cls => { const t = sw.querySelector(`.wt.${cls}`); if (!t) return null;
-        const wc = t.querySelector('.wc'); return { name: (t.querySelector('.wn') || {}).textContent, pu: t.classList.contains('pu'), charges: wc ? wc.textContent.trim() : null }; };
-      return { from: tile('from'), to: tile('to') }; })(),
+        const wc = t.querySelector('.wc'), wn = t.querySelector('.wn'), b = t.getBoundingClientRect();
+        return { name: (wn || {}).textContent, pu: t.classList.contains('pu'), charges: wc ? wc.textContent.trim() : null,
+          box: { l: b.left, r: b.right, t: b.top, b: b.bottom }, clipped: !!(wn && wn.scrollWidth > wn.clientWidth + 1) }; };
+      const b = sw.getBoundingClientRect();
+      return { from: tile('from'), to: tile('to'), box: { l: b.left, r: b.right, t: b.top, b: b.bottom } }; })(),
     active: (() => { const el = document.querySelector('#overlay .mo.switched .wt.on'); if (!el || !vis(el)) return null;
       const wc = el.querySelector('.wc'); return { name: (el.querySelector('.wn') || {}).textContent, pu: el.classList.contains('pu'), charges: wc ? wc.textContent.trim() : null }; })(),
     // every colour the powerup pieces paint (text, fill, border), for the night check: no green, no white
@@ -5438,8 +5441,15 @@ for (const view of VIEWS) for (const night of [false, true]) {
     // F400: the swap also opens the same full switch card, at the same instant as the feed row (both fire off the
     // grant directly); decision 3 hides the small hint chip while it is up, so this checks the card, not the hint.
     must(r.switching && r.switching.to && r.switching.to.name === 'RAIL GUN' && r.switching.to.pu && r.switching.to.charges === '2', `the card draws RAIL GUN with its charges: ${JSON.stringify(r.switching)}`);
-    const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2 SELECT', 1500); await puClose(pg, night);
+    must(inside(r.switching.to.box, r.frame), `the RAIL GUN tile is on screen: ${JSON.stringify([r.switching.to.box, r.frame])}`);
+    must(!r.switching.to.clipped, 'the longest pickup name is not cut off in its tile');
+    must(apart(r.card.box, r.switching.to.box) && apart(r.card.box, r.switching.from.box), `the switch tiles are clear of the feed row: ${JSON.stringify([r.card.box, r.switching.from.box, r.switching.to.box])}`);
+    const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2 SELECT', 1500);
     must(after.chip && after.chip.text === 'RAIL GUN 2 SELECT' && after.chip.on && after.chip.rows === 1, `the chip: ${JSON.stringify(after.chip)}`);
+    // F400 r1: the hint's own time starts when the card has left, so the longest ON TRIGGER hint still shows and must fit
+    const h = await puWait(pg, x => x.hint && x.hint.act === 'RAIL GUN ON TRIGGER' && !x.switching, 3500); await puClose(pg, night);
+    must(h.hint && h.hint.act === 'RAIL GUN ON TRIGGER' && h.hint.lab === '2 SHOTS', `the hint after the card: ${JSON.stringify(h.hint)}`);
+    must(inside(h.hint.box, h.frame) && vclear(h.hint.box, h) && apart(h.hint.box, h.ammo), `the longest ON TRIGGER hint still fits: ${JSON.stringify(h.hint.box)}`);
   });
   await step(`${tag}: a spawn announces <ITEM> AVAILABLE on a feed row in the item's colour, clear of the vitals and the ammo`, async () => {
     const pg = await open(view, 'live-pu-spawn', N, 2000);
