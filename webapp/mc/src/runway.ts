@@ -28,6 +28,15 @@ export function setRunway(v: number) {
 
 export function getRunway(): number { return current; }
 
+/** Polish round 1 Low: LAST MATCH and a loaded FAVOURITE can both set the runway to whatever they were
+ *  actually armed with, which need not be a RUNWAYS value (an older favourite, or a value another
+ *  console version wrote). SAVE AS A FAVOURITE snaps to the nearest one so a newly saved favourite
+ *  never drifts off the enumerated set. */
+export function nearestRunway(v: number): number {
+  if (RUNWAYS.includes(v)) return v;
+  return RUNWAYS.reduce((best, r) => (Math.abs(r - v) < Math.abs(best - v) ? r : best), RUNWAYS[0]);
+}
+
 /** The armed-countdown length, shared by every screen and stable across remounts. */
 export function useRunway(): [number, (v: number) => void] {
   const [v, setV] = useState(current);

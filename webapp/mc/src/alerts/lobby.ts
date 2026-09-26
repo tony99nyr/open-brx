@@ -99,6 +99,9 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   // is not the older-console 404 is a real fetch problem, shown and retried on reconnect.
   'games-koth-no-hill': { sev: 'amber', text: 'NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.' },
   'games-pieces-error': { sev: 'amber', text: 'COULD NOT LOAD THE GAME PIECES: {msg}' },
+  // Polish round 1 M5: a 404 here means an older MC with no FAVOURITES route -- stale, not a fault
+  // (silent, same as `games-pieces-error`'s own 404 case). Any OTHER failure is a real fetch problem.
+  'games-favourites-error': { sev: 'amber', text: 'COULD NOT LOAD FAVOURITES: {msg}' },
   // Config-warning wording is server-authored (`state.py` validate), but this one line has always been
   // stable enough to catalogue directly rather than route through `serverLine` (which is for the
   // readiness board's blocker/amber lists, not `config_warnings`).
