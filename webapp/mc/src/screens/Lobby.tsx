@@ -13,6 +13,7 @@ import { StandDownChip, StandbySection } from '../ui/Standby';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
+import { PowerupsLobbyLine } from '../ui/Powerups';
 import { ARM_TIMEOUT_MS } from './OperatorMenu';
 
 /** H5 (visual QA 2026-09-23): the phases the server refuses every LOBBY write in. `push_config`
@@ -293,6 +294,10 @@ export function Lobby() {
           shows. M4 (visual QA 2026-09-24): UNLOCK too. The LOAD lock at the push stays (it is the only lock a
           muster Stick gets), so the way out of it has to be on the screen the host is on. */}
       <StationAlerts showUnlock />
+      {/* F404 (2026-09-25): Tony wants to see what is armed before the match — pickups are set up at
+          ARMORY only, and the powerup strip used to show only on ARMED/LIVE. One read-only line, reusing
+          `ui/Powerups.tsx`'s own rows and enabled-flag rule (never a second renderer). */}
+      <PowerupsLobbyLine />
       {/* F-3/A39: a connected phone with nobody in the roster claiming it — last night's "4 guns
           connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
       <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />

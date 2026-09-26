@@ -1663,6 +1663,46 @@ def test_every_mode_and_preset_paints_headset_and_gun_body_pregame():
                 assert gled and gled[-1].startswith(f"$GLED,{want},"), ("gun pregame missing", m["mode"], preset, gled)
 
 
+def test_silenced_preset_gives_every_weapon_the_suppressors_quiet_tokens():
+    """F282 (Tony, 2026-09-25: "yes, MVP; the silenced preset must silence the weapons"): the
+    "silenced" preset's `presentation.silent_weapons` switch writes tok25/tok26/tok27 -- the
+    Suppressor's OWN captured values, read from `weapons.json` rather than hard-coded -- onto EVERY
+    compiled weapon (primary, secondary, melee), and moves nothing else. The doc-token numbering is
+    1-based (`WeaponCatalog._T`, "doc tokN == frame.split(',')[N+1]"), so tok25/26/27 land at raw
+    frame indices 26/27/28."""
+    cat = WeaponCatalog()
+    tok25, tok26, tok27 = cat._silent_weapon_tokens()
+    assert (tok25, tok26, tok27) == ("2", "50", "Q06"), "today's bench-read Suppressor tokens (F282)"
+    weapon_ids = [w["weapon_id"] for w in cat._rows if (w.get("capture") or {}).get("frame")]
+    assert {"melee", "suppressor", "usp", "assault_rifle"} <= set(weapon_ids)
+    usp_silent = cat.resolve("usp", 0, {"silent_weapons": True}).split(",")
+    assert usp_silent[28] == cat.resolve("usp", 0).split(",")[28] != tok27, "the USP-S keeps its own quiet Q04"
+    for wid in weapon_ids:
+        normal = cat.resolve(wid, 0).split(",")
+        silent = cat.resolve(wid, 0, {"silent_weapons": True}).split(",")
+        assert len(normal) == len(silent), wid
+        for i, (a, b) in enumerate(zip(normal, silent)):
+            already_quiet = normal[26:28] == [tok25, tok26]
+            if i in (26, 27):
+                assert b == (tok25, tok26)[i - 26], (wid, i, a, b)
+            elif i == 28:
+                # a weapon already carrying the Suppressor's pair (the Suppressor, the USP-S) keeps its own quiet sound
+                assert b == (a if already_quiet else tok27), (wid, i, a, b)
+            else:
+                assert a == b, ("an unrelated token moved", wid, i, a, b)
+    # end to end through compile(): the standard preset (no presentation key at all) is unaffected,
+    # and the silenced preset changes ONLY the two compiled weapons' tok25/26/27.
+    plain = C.compile(_cfg(), _player(), _TEAMS)
+    standard = C.compile({**_cfg(), "presentation": {"preset": "standard"}}, _player(), _TEAMS)
+    assert plain["head"] == standard["head"]
+    silenced = C.compile({**_cfg(), "presentation": {"preset": "silenced"}}, _player(), _TEAMS)
+    ar_plain = next(f for f in plain["head"] if f.startswith("$WEAP,0,")).split(",")
+    ar_silent = next(f for f in silenced["head"] if f.startswith("$WEAP,0,")).split(",")
+    assert ar_silent[26:29] == [tok25, tok26, tok27] and ar_plain[26:29] != [tok25, tok26, tok27]
+    assert [x for i, x in enumerate(ar_plain) if i not in (26, 27, 28)] == \
+           [x for i, x in enumerate(ar_silent) if i not in (26, 27, 28)]
+
+
 def test_a_roll_draws_the_pset_voice_fields_and_the_kill_cue_is_a_pool():
     """A15.1 (Tony, 2026-09-06): with `roll=` the un-picked $PSET fields are drawn from the family pools and the
     bundle says what was drawn; without it the compile is the deterministic default (the golden bundle). A15.3
@@ -2079,3 +2119,14 @@ def test_f312_the_bench_flag_reaches_the_class_sound_takes_too():
     default = C.compile(cfg, _player(), _TEAMS)
     for take in default["sir_pool"]:
         assert [f for f in take if f.startswith("$SIR,15,0,")] == ["$SIR,15,0,,28,0,0,1,,*"], take
+
+
+def test_f282_the_tryout_fires_the_silenced_weapon_too():
+    """F282 polish: the phone try-out builds its $WEAP on a separate path (`tutorial_frames`); in a silenced
+    game it must fire the same quiet frame the match will."""
+    cat = WeaponCatalog()
+    t25, t26, t27 = cat._silent_weapon_tokens()
+    w = next(x for x in C.weapon_catalog() if x["weapon_id"] == "assault_rifle")
+    loud = next(f for f in C.tutorial_frames(w, "indoor") if f.startswith("$WEAP")).split(",")
+    quiet = next(f for f in C.tutorial_frames(w, "indoor", silent=True) if f.startswith("$WEAP")).split(",")
+    assert loud[26:29] != [t25, t26, t27] and quiet[26:29] == [t25, t26, t27]

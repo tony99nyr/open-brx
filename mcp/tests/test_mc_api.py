@@ -31,6 +31,20 @@ def test_state_and_modes_and_weapons():
     assert [m["mode"] for m in modes] == [m["mode"] for m in MODES], [m["mode"] for m in modes]
     assert all(m.get("abbr") and m.get("brief") and m.get("defaults") for m in modes), modes
     assert len(c.get("/api/weapons").json()) == 18
+    # F-scope A (2026-09-25): MVP is TDM/FFA/KotH only. `mvp` is a served flag, not a console guess, so
+    # the console can hide extraction/infection/lms from the STOCK MODES picker with no name list of its own.
+    assert {m["mode"]: m["mvp"] for m in modes} == {
+        "tdm": True, "ffa": True, "infection": False, "lms": False, "extraction": False, "koth": True}, modes
+
+
+def test_hidden_mode_config_still_loads():
+    """A9 (F-scope A): a mode dropped off the STOCK MODES picker keeps its engine and its config path --
+    an OLD saved game or an API caller naming `lms` must still load and render, never 400."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    r = c.put("/api/config", json={"mode": "lms"})
+    assert r.status_code == 200 and r.json()["ok"], r.json()
+    assert c.get("/api/state").json()["config"]["mode"] == "lms"
 
 
 def test_player_flow_and_errors():

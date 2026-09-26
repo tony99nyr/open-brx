@@ -14,7 +14,7 @@ from brx_mcp.modes import (BombEngine, CtfEngine, DominationEngine, LastManStand
                            build_engine, params_schema, params_schema_json, registry, validate_mode_params)
 from brx_mcp.modes.extraction_adapter import ExtractionEngineAdapter
 from brx_mcp.modes.params import Param, resolve, validate
-from _session import mc_session
+from _session import assign_koth_hill, mc_session
 
 
 _sess = mc_session   # shared fixture: tests/_session.py
@@ -124,6 +124,7 @@ def test_the_compiler_refuses_bad_params_too_and_the_config_still_pushes_when_th
     `validate()`. And the honest CONTROL: a good set passes validate, compiles, and rides the pushed
     `config` body untouched, so a node reads the rules MC set."""
     s = _sess("koth", mode_params={"score_target": 60})
+    assign_koth_hill(s)          # F402: push refuses a koth game with no hill on the field
     res = s._validate()
     assert res["ok"], res["errors"]
     s.config["mode_params"]["score_target"] = 999_999          # bypass PUT

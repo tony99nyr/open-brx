@@ -59,10 +59,14 @@ if (typeof globalThis.localStorage === 'undefined') {
 // another Document", which the download-anchor click emits). Gating those needs a `virtualConsole`
 // hookup in the environment options — deliberately not done.
 import { afterEach, beforeEach, expect, vi } from 'vitest';
+import { unmountAll } from './mounts';
 
 let errorSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => { errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {}); });
 afterEach(() => {
+  // Unmount whatever the test left mounted FIRST, so no screen's timer or fetch outlives its test
+  // (see mounts.ts), and anything the unmount itself logs is still caught below.
+  unmountAll();
   // `c` is explicitly typed: without generics on vi.spyOn the call tuple resolves loosely, and
   // whether that trips noImplicitAny depends on the resolved TS/vitest versions — it does on
   // Node 26 + a fresh install here, so `tsc -b` failed the BUILD while the tests still passed.

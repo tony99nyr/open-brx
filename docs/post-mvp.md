@@ -1,10 +1,12 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed).
+Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3; F407, F408 and F409 filed).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
 files. To schedule a row for MVP, move it to `FOLLOWUPS.md` with its id and say why in the row.
+The readable roadmap over these rows, by theme, is [`post-launch.md`](post-launch.md); what 1.0.0 ships is
+[`release-1.0.md`](release-1.0.md).
 
 Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and the Stick · 3. Weapons, perks and balance · 4. Audio and voice · 5. Lights · 6. Phone HUD and Mission Control · 7. Protocol, firmware and research · 8. Hardware, tooling, the site and the docs · 9. Old bench rungs · 10. System proofs · 11. Low ledgers.
 
@@ -27,7 +29,24 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 - **S3 🟠** extraction on the phone path, HUD-driven (ARC Raiders / Fortnite Sprite reference): zone presence from the
   station beacon on the player's own gun; call → window → close timers on the node with `extraction_tick`; a wallet;
   hard end at expiry (`raid_ending` → `raid_over`); MC reconciles wallets at recap. Port `modes/extraction.py`'s rules,
-  not its transport. `last_survivor` stays opt-in. `build`.
+  not its transport. `last_survivor` stays opt-in. `build`. **Note (2026-09-25, F405):** the `extraction` and `bomb`
+  station kinds are hidden from the ARMORY kind picker for MVP (Tony: "so mvp for utility is respawn station,
+  pickup, hill"); both keep their code, their type and their recap label, so an old assignment of either still
+  renders.
+
+- **F377 🟡 SOLO LMS NEVER PICKS A WINNER.** Found by the Q13 polish (Codex Sol, 2026-09-25): solo LMS now
+  registers hits and credits kills, but survival scoring (`scoring.py` ~974) decides by team, so a one-team match
+  ends `undecided` even with one player alive. Decide the last survivor by player in a one-team game. Predates
+  Q13; LMS is still `proven: False`. Moved here 2026-09-25 with Last Man Standing itself: Tony, on the MVP mode
+  list, "Last Man Standing is post-MVP too" — do not build this fix for MVP. `build` (post-MVP).
+
+- **F407 🟡 INFECTION IS POST-MVP.** Tony, 2026-09-25: "infection can be post mvp". The mode exists in Mission Control's code (MODES row `mvp: false`, hidden from the picker; F319 (a)'s survivor-only alert stays built) but has never run a real match. Before it returns: a desk proof of its win paths (the last human, time expiry) with the chaos suite, then a bench match. `build` + `bench`.
+
+- **F409 🟡 CUSTOM GAMEPLAY PRESETS.** Tony, 2026-09-25: "post mvp we could enable some way of either loading or customizing the gameplay into presets". Today a host picks a stock mode or a saved game; gameplay rules cannot be loaded or edited as a named preset. Design first (what a preset holds beside a saved game), then build. `decision` + `build`.
+
+  **LMS, post-MVP: two more open gaps**, noted here rather than as rows of their own:
+  - the match does not end automatically when one player or team is left.
+  - there is no tie rule for simultaneous deaths or for the time limit with several players alive.
 
 - **S60 🟡 POST-MVP MODE: GUN GAME.** Tony 2026-09-24: "game mode where every time you spawn you get a new gun. you have to get a kill with each gun to win". Each spawn arms the next gun in a set (no repeats, only the guns you still need); a kill with the current gun ticks it off; the first player to tick off the whole set wins. Design questions for later: the set (every catalogue weapon, or a host-picked list), order (fixed or random), whether a death without a kill keeps or skips the gun, and the HUD tracker. Needs no props (Tier 0): the phone writes the life's `$WEAP` at spawn. Voice line VA8O "GUN GAME!" exists. Listed in docs/game-modes.md. `design` (post-MVP).
 
@@ -172,6 +191,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   buff writes it; `bench-firmware-levers-2026-09-19.md` §21 traces it. `build` + `bench`.
 
 ## 2. Stations, the grenade and the Stick
+
+- **F408 🟡 THE EXTRACTION AND BOMB-SITE STATION KINDS.** Tony, 2026-09-25: "so mvp for utility is respawn station, pickup, hill". F405 hid `extraction` and `bomb` from every place a host assigns a station kind; the types, the code and the recap labels stay, so an old assignment still renders. They return with their modes (Extraction, S3; a bomb mode), each with a station built and benched. `build` + `bench`.
 
 - **F338 🟡 POST-MVP: THE GRENADE HILL AND STICK IR RECEIVE.** Tony 2026-09-24: the MVP hill is a Bluetooth control point (`station_source: "phone"`, now KOTH's stock default): a phone station today, and a StickS3 once brx4's presence-capture port is bench-proven (it needs a reflash; older Stick firmware is an IR hill); StickS3 stations are Bluetooth-only for MVP (hill, pickup, respawn), and Stick IR TRANSMIT stays. **Do not build before MVP:** new grenade-hill features (the grenade stays selectable, marked POST-MVP, and bench-proven 2026-09-10) or Stick IR receive (the onboard receiver cannot hear BRX IR; an external VS1838B on Grove G9 decodes shots, `0f50605e`). A CONTROL station under a grenade objective raises a SETUP warning (`a4d2a1ee`). The Stick's SETTINGS screen waits with it (2026-09-25): it would edit MODE, ID, GAME and TXPIN, which only the IR hill and bridge use; `station_render.h` keeps the drawing, and MC assigns the station id (A66). `post-MVP`
 
@@ -430,21 +451,6 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 
 - **F315 🟡 SAME-MAGNITUDE WEAPONS SHARE A HIT TAG.** The Assault Rifle, USP-S, Energy Rifle and Breacher all send magnitude 9, so the S56 resolver (magnitude only) names a hit "A / B" when the shooter carries two of them; the Suppressor and Toxin Rifle share 8. Tony 2026-09-23: "1, fallback to 3": tell weapons apart by IR cell (protocol, subtype), and keep "A / B" where no distinct cell exists. brx5 first logged the collision as a Low under F313. Plan: (a) the roster and catalogue carry each weapon's cell, and the phone matches cell + magnitude, then cell, then magnitude, which fixes every visible pair except the AR and Energy Rifle (both (0,0)); (b) behind a flag, off by default, move the Energy Rifle to the one free proto-0 cell (0,2) with a fn-1 `$SIR` row, after a bench step proves a (0,2) word registers (`bench-2026-09-24.md` 4.10). `build` + `bench`. **→ 2026-09-23, built:** (a) `RosterWeapon`/`WeaponView` carry `cells` ({proto, subtype, mag}, from the compiled frame) and the phone's `_resolveHitWeapon` tries cell + magnitude, then cell, then magnitude, each on the loadout then the catalogue; AR + USP-S, AR + Breacher and Suppressor + Toxin now resolve. (b) MC `--distinct-weapon-cells` (off) moves the Energy Rifle to (0,2) with a fn-1 row when it shares a cell and magnitude with another weapon in play. Open: bench 4.10, then default the flag on.
 
-- **F282 🟡 CAN WE ACTUALLY SUPPRESS THE MUZZLE FLASH, AND IS THE SUPPRESSOR AUDIBLY QUIETER?** Tony, 2026-09-18,
-  reading the arsenal page: "are you sure we can suppress the muzzle flash?" **No, and the claim has been withdrawn
-  from the player copy.** `$WEAP` **t25/t26 are NOT in the APK field table** (`protocol-classes.md` jumps 24
-  `overheat` to 27 `primaryFire_SoundName`), and the only thing naming them muzzle flash is an unsourced comment in
-  `mc/compile.py`. We never write them: they are inherited verbatim from each capture, where the Suppressor carries
-  **2 and 50** and the assault rifle carries **none**. Set-versus-empty is suggestive of something, but says nothing
-  about direction, and 2/50 could be a reduced flash as easily as no flash. The "quiet" half is better grounded but
-  also unjudged: t27 is `Q06` on the Suppressor against `R01` on the AR, so it genuinely plays a different
-  sound, but nobody has heard our two COMPILED weapons back to back. **Bench, 5 minutes, needs only eyes and ears:**
-  arm one gun with the compiled Suppressor and one with the compiled AR, fire each in a DARK room, and (1) say
-  whether either shows a visible flash at the muzzle and whether they differ, (2) judge by ear which is quieter and
-  by how much. Then a second pass writing t25/t26 to 0 and to a large value on the SAME weapon, to find out what
-  they do at all. ⚠️ Until then no public page may claim a stealth property. Same evidence fault the polish loop
-  caught four times on 2026-09-18, this time in copy I wrote myself. `bench` + `eyes` + `ears`.
-
 - **S-A12 sidearms 🟡** .1 ✅ **CLOSED 2026-09-11 (evening, bench):** P09 reads as "a pronounced shot, could be the Deagle"; P16 preferred for the GLOCK ("I like the deagle sound for the glock"); Q04 confirmed silenced, for the USP-S; **Deagle = X14** ("heavy rifle shot", "that could work"); reload chain D08->D07->D06 at 400 ms confirmed working. Wired in `weapons.json`: glock t27 = P16, deagle t27 = X14; usp keeps Q04.
   .2 semi-auto cadence on hardware (t20 = 7, t14 150/200/375; USP-S t25=2/t26=50 = no flash + half loudness?) `trigger`;
   .3 real Counter-Strike audio stays out of the repo (convert with `ltp_convert.py`, copy over the data port) `build`;
@@ -534,6 +540,15 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   `X17` by ear, which matches Battle Company's own UART sheet entry for the concussion grenade ("high pitch
   ringing and temporary disabling of tagger"). This is a workable EMP-grenade primitive, cheaper than fn 23.
   `trigger` (bench 1.5).
+
+- **F406 🟡 AN ARMOUR PICKUP POWERUP IN A SHIELDS GAME.** Tony 2026-09-25. Today's shields-game rule
+  (`health.max_armor === 0` on the GAME, `engine.js` `shieldRegenOn`) already fits: a hit drains shield, then
+  armour, then health (`engine.js` ~4097), and the F341 pool-repair guard checks armour only when the game
+  has armour (`engine.js` ~6148, ~6243), so granting armour on top of a zero-armour game should not fight it.
+  **Open question: the gun.** A shields game arms `$PSET` with max armour 0, and the firmware may clamp a
+  player's armour above that ceiling. The pickup likely needs a mid-life `$PSET` raise, the same shape as the
+  Overshield grant. Bench question: does the gun hold the granted armour, and does it still drain shield, then
+  armour, then health, in that order? `bench` + `design`.
 
 ## 4. Audio and voice
 

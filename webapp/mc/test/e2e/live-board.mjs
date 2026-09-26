@@ -149,11 +149,30 @@ const api = base => ({
   },
 });
 
+/** F402 (2026-09-25): koth's LOBBY push (and LOAD) refuse with nothing on the field that IS the hill
+ *  (`Session._refuse_koth_hill`, force does not open it), so this suite needs one ASSIGNED the proper
+ *  way -- a real utility node saying hello on the node socket, then PUT /api/stations, the same call
+ *  ITEMS makes (`koth.mjs`'s own `assignHillStation`). Player nodes here come from `live_nodes.py`, a
+ *  Python client, so a plain browser-less WebSocket hello is the smallest thing that also stands in
+ *  for a utility phone/Stick; the assignment survives it going quiet again. */
+async function assignHillStation(mc, node_id) {
+  const ws = new WebSocket(mc.wsUrl);
+  await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+  ws.send(JSON.stringify({ v: 1, kind: 'hello', id: `${node_id}-hello`, t: Date.now(),
+    body: { node_id, node_type: 'utility', app_ver: 'e2e-test', seq_next: 1 } }));
+  await new Promise(r => setTimeout(r, 150));
+  const put = await fetch(`${mc.base}/api/stations/${node_id}`, { method: 'PUT',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'control' }) });
+  if (!put.ok) throw new Error(`assignHillStation(${node_id}): PUT /api/stations/${node_id} ${put.status} ${await put.text()}`);
+  return ws;
+}
+
 /** A koth game with a long name on the roster, walked to LIVE over the operator's own REST API. */
 async function setUpMatch(mc) {
   const a = api(mc.base);
   let r = await a.send('PUT', '/api/config', { mode: 'koth', time_limit_s: 600 });
   if (r.status >= 400) throw new Error(`koth refused: ${JSON.stringify(r.body)}`);
+  await assignHillStation(mc, 'e2e-hill');
   let s = await a.get('/api/state');
   const teams = s.config.teams.map(t => t.team_id);
   for (const [i, p] of s.players.entries()) await a.send('PATCH', `/api/players/${p.player_id}`, { team_id: teams[i % teams.length] });

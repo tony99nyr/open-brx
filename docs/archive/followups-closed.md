@@ -812,3 +812,6 @@ closed in the same pass, each checked against the code, the git log or the exper
   restart-survival; the 2(a)/2(b) online and offline pickup claims. The hill threshold value itself stays open as
   F383.
 - 2026-09-25 **F401** built (brx3): a station counts as synced once MC hears it after the whistle; RECAP lists each unsynced station (NEEDS SYNC: BRING IT INTO WI-FI) and LOAD warns that loading loses its result, until the next game byte resets it. The list survives an MC restart. No new Stick message.
+- 2026-09-25 **F404** built (brx3): the MC LOBBY shows the armed pickups on one read-only line (reusing `ui/Powerups.tsx`), grey NO PICKUPS when none, nothing when powerups are off.
+- 2026-09-25 **F405** built (brx3): the ARMORY and the phone utility drawer offer only respawn, powerup and control; an old extraction or bomb assignment still renders.
+- 2026-09-25 **F402** built (brx3): King of the Hill cannot LOAD, push or START without a phone or Stick assigned as a hill (force cannot open it; the console shows the red block with an ARMORY button); an amber line when every assigned hill is offline, sparing a muster or HELD Stick; the tests and the chaos stack assign a hill as a host would.

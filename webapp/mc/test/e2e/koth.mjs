@@ -367,6 +367,28 @@ async function armMatch(base) {
   return start.json();
 }
 
+/** F402 (2026-09-25): a koth LOAD/push is now refused with nothing on the field that IS the hill
+ *  (`Session._refuse_koth_hill`, `force` does not open it) -- so any step that pushes or arms a koth
+ *  game needs one ASSIGNED first, the proper way: a real utility node saying hello on the node socket
+ *  (`net.py`), then PUT /api/stations, the same REST call ITEMS makes. This suite drives MC WITHOUT
+ *  `--fake-net`, so there is no simulated phone already sitting on that socket to reuse -- a plain
+ *  `hello` on `lan.ws_url` is the smallest thing that makes one, and the assignment survives the
+ *  socket going quiet afterwards (`_station_view`'s own docstring: a station's record outlives its
+ *  phone dropping off, so it can be re-armed the moment it returns), so the caller need not keep this
+ *  connection open once ITEMS has taken the assignment. */
+async function assignHillStation(base, node_id) {
+  const { lan } = await (await fetch(`${base}/api/state`)).json();
+  const ws = new WebSocket(lan.ws_url);
+  await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+  ws.send(JSON.stringify({ v: 1, kind: 'hello', id: `${node_id}-hello`, t: Date.now(),
+    body: { node_id, node_type: 'utility', app_ver: 'e2e-test', seq_next: 1 } }));
+  await new Promise(r => setTimeout(r, 150));   // let MC register the hello before ITEMS assigns it
+  const put = await fetch(`${base}/api/stations/${node_id}`, { method: 'PUT',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'control' }) });
+  if (!put.ok) throw new Error(`assignHillStation(${node_id}): PUT /api/stations/${node_id} ${put.status} ${await put.text()}`);
+  return ws;
+}
+
 /** A koth RecapView built by MC'S OWN Scorer — see `recap_fixture.py` for why it is not a JSON
  *  literal in this file. Nothing on `app/src` sends a `possession` fact yet, so a browser run cannot
  *  reach a recap that has one by playing; this is the honest substitute. */
@@ -516,6 +538,7 @@ step('setup-steps-prematch', async ({ browser, base }) => {
   expect(advisories.some(w => /\$SIR/.test(w)), 'CONTROL: the server also sends $SIR advisories');
   expect(!advisories.some(w => /frag_limit/i.test(w)), 'an ignored objective cap sends no frag-limit advisory');
 
+  await assignHillStation(base, 'e2e-hill-prematch');   // F402: armMatch's push refuses koth without one
   await armMatch(base);                       // ARMED renders nothing without a schedule
   for (const view of ['lobby', 'armed']) {
     await go(pg, view);
@@ -782,6 +805,7 @@ step('load-path', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
   await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
+  await assignHillStation(base, 'e2e-hill-load');   // F402: the LOBBY push below refuses koth without one
   const before = await (await fetch(`${base}/api/state`)).json();
   expect(before.lobby.pushed === false, `CONTROL: nothing is loaded yet (saw pushed=${before.lobby.pushed})`);
 

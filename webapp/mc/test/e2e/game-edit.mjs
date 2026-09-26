@@ -309,6 +309,13 @@ async function runMock(browser, viteBase) {
   expect(await puts() === putsBefore + 1, `ONE write carried both edits (saw ${(await puts()) - putsBefore})`);
   ok('LIFE PRESET (CUSTOM) HP -> 180 and NIGHT applied in a single SAVE');
 
+  // F402 (2026-09-25): the mode switch above committed KOTH, and the push below now refuses one with
+  // nothing on the field that IS the hill (`kothHillFault`, force does not open it). This flow is
+  // about the generic re-push mechanics, not koth's own station requirement, so assign one the proper
+  // way -- ITEMS' own call, direct on the mock the way `koth.mjs`'s `assignHillStation` does over the
+  // wire against a real server.
+  await pg.evaluate(async () => { await window.__MC_MOCK__.putStation('e2e-hill', { kind: 'control', team: 'any' }); });
+
   // --- push the lobby (through the console's own control, not a fetch) so the RE-push has something
   //     to re-push TO --- then move to LOBBY and edit again.
   await pg.evaluate(() => { location.hash = '#lobby'; });

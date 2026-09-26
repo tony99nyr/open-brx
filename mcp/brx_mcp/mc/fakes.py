@@ -121,7 +121,7 @@ class FakeCompiler:
                 "team_flip": {str(t["tid"]): [f"$TID,{t['tid']},*"] for t in teams if t["tid"] != tid},
                 "cues": self.cues(player.get("voice", "male"), night=bool(config.get("night")))}
 
-    def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
+    def tutorial_frames(self, weapon: Weapon, environment: str, silent: bool = False) -> list[str]:
         # ⚠️ The `$SIR` row is NOT decoration. `$CLEAR` wipes the `$SIR` table and a gun with no rows
         # silently ignores EVERY hit while reporting alive and healthy (F11, bench-proven 2026-09-02).
         # This class is a RUNTIME FALLBACK -- `mc/__main__.py` selects it whenever the real compiler

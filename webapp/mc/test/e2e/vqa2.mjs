@@ -208,7 +208,11 @@ try {
 
   await runStep('armory-setup', 'ARMORY header SETUP line at 900 and 393 px: under the gate, nothing sideways', async () => {
     await reset();
-    await must('PUT', '/api/config', { mode: 'koth' });   // phone source, no CONTROL assigned: NO CONTROL STATION
+    // F402 (2026-09-25): a koth game with no CONTROL station assigned is now a hard LOAD/push refusal
+    // (`Session._koth_hill_fault`), not this amber SETUP line -- scanner respawn with no station is
+    // the same STATION_CONFLICT class and still an ordinary amber advisory, so the layout it drives is
+    // exercised the same way.
+    await must('PUT', '/api/config', { respawn: { type: 'scanner', delay_s: 15 } });   // NO RESPAWN STATION IS ASSIGNED
     const pg = await page(browser, { width: 900, height: 900 });
     await go(pg, 'ARMORY');
     const line = pg.getByTestId('armory-setup');

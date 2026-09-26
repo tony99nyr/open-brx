@@ -151,6 +151,9 @@ class ModeRow(TypedDict):
     respawn: Respawn
     preset: str                         # led-language.md §4 / G3: the presentation preset the mode resolves to
     proven: bool
+    mvp: bool                           # F405-adjacent scope cut (2026-09-25): MVP is TDM/FFA/KotH only; a
+                                         # False row keeps its engine, config and tests -- `modes()` just
+                                         # tells the console to hide it from the STOCK MODES picker
     station_source: NotRequired[str]    # F70: only the modes with an objective emitter carry one
 
 
@@ -159,27 +162,32 @@ MODES: list[ModeRow] = [
      "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. The highest score at the time limit takes the match; the operator can also set an optional score cap.",
      "teams_text": "2–4 TEAMS", "win_text": "TIME · OPTIONAL SCORE CAP", "respawn_text": "ON · TIMED",
      "teams": ["blue", "yellow"], "win_by": "kills", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "proven": True},
+     "preset": "standard", "proven": True, "mvp": True},
     {"mode": "ffa", "name": "FREE-FOR-ALL", "abbr": "FFA", "desc": "Every operator for themselves",
      "brief": "No teams — everyone is a target. Each elimination scores a point. The top score when time expires wins; the operator can also set an optional frag limit.",
      "teams_text": "NONE · ALL VS ALL", "win_text": "TIME · OPTIONAL FRAG LIMIT", "respawn_text": "ON · TIMED",
      "teams": ["ffa"], "win_by": "kills", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "proven": True},
+     "preset": "standard", "proven": True, "mvp": True},
+    # F-scope A (2026-09-25): Tony -- "infection can be post mvp". Engine, config and tests stay; the row
+    # just drops off the console's STOCK MODES picker (`mvp: False`, `state.modes()`).
     {"mode": "infection", "name": "INFECTION", "abbr": "INF", "desc": "One infected; survive the spread",
      "brief": "One operator starts infected. Survivors who go down switch sides and hunt their old squad. Survivors win by outlasting the clock; the infected win by converting everyone.",
      "teams_text": "SURVIVORS VS INFECTED", "win_text": "SURVIVE THE CLOCK", "respawn_text": "INFECTED ONLY",
      "teams": ["blue", "red"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 10},
-     "preset": "infection", "proven": False},
+     "preset": "infection", "proven": False, "mvp": False},
+    # F-scope A (2026-09-25): Tony -- Last Man Standing is post-MVP too (F377 solo-winner gap moved to
+    # post-mvp.md with it). Same treatment: `mvp: False`, everything else unchanged.
     {"mode": "lms", "name": "LAST MAN STANDING", "abbr": "LMS", "desc": "Limited lives, last alive wins",
      "brief": "Every operator carries a fixed pool of lives. Once they are spent there is no respawn. The last operator — or last squad — still standing takes the match.",
      "teams_text": "SOLO OR SQUADS", "win_text": "LAST ALIVE", "respawn_text": "OFF · LIVES",
      "teams": ["ffa"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "none", "delay_s": 0},
-     "preset": "last_stand", "proven": False},
+     "preset": "last_stand", "proven": False, "mvp": False},
+    # F-scope A (2026-09-25): Tony -- "i think extraction is probably post mvp". Same treatment.
     {"mode": "extraction", "name": "EXTRACTION", "abbr": "EXT", "desc": "Loot, reach the extract, survive the channel",
      "brief": "Gather loot, then reach an extraction point and channel the extract. It is loud: everyone hears the chopper coming and converges on you. Survive the timer and your loot is banked. Die and you drop it all for someone else to take.",
      "teams_text": "SOLO OR SQUADS", "win_text": "BANKED LOOT", "respawn_text": "ON · TIMED",
      "teams": ["blue", "yellow"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "extraction", "proven": False},
+     "preset": "extraction", "proven": False, "mvp": False},
     # F70 (bench-proven end to end 2026-09-10): the hill is a BRX Smart Grenade in hill mode. It
     # broadcasts protocol-15 beacons carrying its OWNER's team, `hillbeacon.py` reads them and
     # `DominationEngine` scores possession, so the mode needs no station hardware at all -- hence
@@ -202,7 +210,7 @@ MODES: list[ModeRow] = [
      # (operator review 2026-09-10). ➡ Drop "· HOST CALL" when the phone ships the fact.
      "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME · HOST CALL", "respawn_text": "ON · TIMED",
      "teams": ["blue", "green"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "station_source": "phone", "proven": True},
+     "preset": "standard", "station_source": "phone", "proven": True, "mvp": True},
 ]
 
 
@@ -1557,6 +1565,7 @@ class Session:
         """
         if self.in_play():
             raise ValueError("cannot load a game once the match has started - ABORT or RECALL first")
+        self._refuse_koth_hill()               # F402: before any side effect, an API LOAD cannot bypass it
         self._roll_forward_from_recap()        # a LOAD after the whistle loads the NEXT match
         cfg_id = self.config["config_id"]
         self.game_loaded = True
@@ -2290,6 +2299,7 @@ class Session:
             row: ModeInfo = {"mode": m["mode"], "name": m["name"], "abbr": m["abbr"],
                              "desc": m["desc"], "brief": m["brief"], "teams_text": m["teams_text"],
                              "win_text": m["win_text"], "respawn_text": m["respawn_text"],
+                             "mvp": m["mvp"],
                              "defaults": default_config(m["mode"]),
                              "params": _params_schema_json(m["mode"])}
             rows.append(row)
@@ -2458,9 +2468,19 @@ class Session:
         # SAVE AND LOAD: a game that has been ANNOUNCED is re-announced on every edit, so the phones'
         # briefing never describes a game nobody is playing. Independent of the frames re-push below:
         # after a real LOBBY push both happen; before one, only this does.
+        # F402: an edit that leaves a LOADED koth game without its hill (the mode switched to koth, the source
+        # moved off phone) must not raise half-way through this edit; the game simply stops being loaded, and
+        # LOAD shows the red block until the host assigns a hill.
+        hill_fault = self._koth_hill_fault() if self.game_loaded else None
+        if hill_fault:
+            self.game_loaded = False
         if self.game_loaded and res["ok"]:
             self.load_game()
-        if repush:
+        if repush and hill_fault:
+            self.lobby_pushed = False
+            self.acks = {}
+            self.arm_stations(relock=True)
+        elif repush:
             # B1/B3 (2026-09-12): editing a LOADED game in KIT/LOBBY used to silently drop the push here
             # (`lobby_pushed=False`, acks cleared) and NEVER re-compile -- every gun kept the STALE head
             # (old $TID/mode/health/weapons) with nothing on screen saying so. A TDM whose teams, mode or
@@ -3084,7 +3104,11 @@ class Session:
         out: list[str] = []
         kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
         src = self.config.get("station_source")
-        if src == "phone" and "control" not in kinds:
+        # F402 (Tony 2026-09-25): "no way to play it without it" — for KOTH this is no longer an
+        # advisory, it is a hard LOAD/push refusal (`_koth_hill_fault`), so the amber line below would
+        # otherwise say the same fact twice in two colours. Left in place for any OTHER mode that ever
+        # sets `station_source: "phone"` without F402's own gate.
+        if src == "phone" and "control" not in kinds and self.config.get("mode") != "koth":
             out.append("SETUP: NO CONTROL STATION IS ASSIGNED (THE OBJECTIVE IS A BLUETOOTH CONTROL POINT, SO "
                        "NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT")
         # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
@@ -3110,6 +3134,53 @@ class Session:
                                + " (THOSE PLAYERS USE TIMED AUTO RESPAWN): ASSIGN ANOTHER RESPAWN STATION FOR "
                                "STATION RESPAWN ON BOTH TEAMS")
         return out
+
+    # F402 wording, shared by the hard refusal and the console (mcp/tests/test_mc_alert_wording.py /
+    # webapp/mc/src/alerts/server.ts SERVER_LINES both key on these exact heads).
+    _KOTH_HILL_FAULT_NONE = "KING OF THE HILL NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY"
+    _KOTH_HILL_FAULT_SOURCE = ("KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A "
+                                "PHONE OR STICK AS A HILL IN THE ARMORY")
+
+    def _koth_hill_fault(self) -> str | None:
+        """F402 (Tony 2026-09-25): "KOTH should require utility in the armory. no way to play it
+        without it." Unlike `_station_warnings()` (advisory — a station may be armed by hand behind
+        the phone's seven-tap gate), this is a HARD refusal: a hill mode with nothing on the field
+        that IS the hill cannot be played at all, not merely a readiness judgement an operator could
+        see and accept. Both a phone utility and a Stick advertise the same kind-5 `control` point
+        (`station_source: "phone"` covers both — spec/utility.md §5b), so this asks ITEMS, never the
+        device type. The grenade and IR-station sources are POST-MVP and never satisfy it."""
+        if self.config.get("mode") != "koth":
+            return None
+        if self.config.get("station_source") != "phone":
+            return self._KOTH_HILL_FAULT_SOURCE
+        kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
+        if "control" not in kinds:
+            return self._KOTH_HILL_FAULT_NONE
+        return None
+
+    def _refuse_koth_hill(self) -> None:
+        """Deliberately NOT bypassable by `force`, the same reason as `_refuse_push_in_play` /
+        `_refuse_one_team`: this is a statement about what the field can physically do (nothing on it
+        is the hill), not a readiness judgement the operator can see and accept instead."""
+        if fault := self._koth_hill_fault():
+            raise ValueError(fault)
+
+    def _koth_hill_offline_warning(self) -> list[str]:
+        """F402 item 2: the assigned hill can go OFFLINE after LOAD with nothing else changing to
+        re-run `_validate()` (a silent node, not an edit) — so this is computed fresh at snapshot
+        time, exactly like `_station_view`'s own `online`, and never cached in `config_warnings`
+        alongside `_station_warnings()`. Advisory only: START is still allowed, unlike
+        `_koth_hill_fault` above, which `force` cannot open either."""
+        if self.config.get("mode") != "koth" or self.config.get("station_source") != "phone":
+            return []
+        hills = [self._station_view(nid) for nid, st in self.stations.items()
+                 if (a := st.get("assigned")) and a.get("kind") == "control"]
+        if not hills or any(v["online"] for v in hills):
+            return []               # one hill online is enough (several control points are allowed)
+        # A muster or HELD Stick is out of Wi-Fi by design (A58/A68); the tamper flags speak for it.
+        if any((v.get("report") or {}).get("assoc") in ("muster", "held") for v in hills):
+            return []
+        return ["SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START"]
 
     def _station_sync_warnings(self) -> list[str]:
         """F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of
@@ -6439,7 +6510,8 @@ class Session:
         w = next((w for w in self.compiler.weapon_catalog() if w["weapon_id"] == weapon_id), None)
         if not w:
             raise KeyError(weapon_id)
-        frames = self.compiler.tutorial_frames(w, self.config["environment"])
+        frames = self.compiler.tutorial_frames(w, self.config["environment"],   # F282: a silenced game tries the quiet frame
+                                               silent=bool(_pres.resolve(self.config).get("silent_weapons")))
         self.trying[pid] = weapon_id
         if p.get("node_id"):
             # A WeaponView, not the raw catalog row: the HUD's stat block draws from `bars`, which only
@@ -6717,6 +6789,9 @@ class Session:
         ⚠ NOT in ARMED or LIVE, and `force` does not open that door (`_refuse_push_in_play`).
         """
         self._refuse_push_in_play()       # before any side effect: a refused push must change nothing
+        # F402: chaos/the CLI/an older console can reach this without ever calling `load_game()`, so the
+        # hard hill gate has to live here too, or a direct push is the bypass LOAD itself was closed against.
+        self._refuse_koth_hill()
         # A push after the whistle is for the NEXT match. The roll is the one side effect that may come
         # before a refusal below: the operator has already moved on, and the roll is what they asked for.
         self._roll_forward_from_recap()
@@ -6988,6 +7063,7 @@ class Session:
         if not self.lobby_pushed:
             raise ValueError("push config first")
         self._refuse_one_team()           # round-2 B: a team can empty out between the push and the whistle
+        self._refuse_koth_hill()          # F402: the hill can be unassigned in LOBBY after a legit LOAD; force-proof
         self._refuse_stale_ack()          # A36: and a gun can answer for LAST game's head at any moment
         self._refuse_incompatible_app()   # F121: and a gun can arrive on an old app at any moment too
         self._refuse_gun_config_mismatch() # F271: direct gun read-back is force-proof like a stale ack
@@ -7954,7 +8030,10 @@ class Session:
                 "readiness": self.readiness(), "config": self._snapshot_config(), "config_errors": self.config_errors,
                 "options": self._snapshot_options(),      # A25: session options (log_sync)
                 "versions": self.versions(),        # A29: the muster version header
-                "config_warnings": self.config_warnings,
+                # F402 item 2: appended fresh here, never cached in `self.config_warnings` (see
+                # `_koth_hill_offline_warning`'s docstring) -- a silent station going quiet has no edit
+                # to re-run `_validate()` on.
+                "config_warnings": self.config_warnings + self._koth_hill_offline_warning(),
                 "players": list(self.players.values()), "teams": self.teams,
                 "standby": list(self.standby.values()),      # STANDBY: parked players, never counted above
                 "kit": self._snapshot_kit(kitted),

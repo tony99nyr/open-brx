@@ -8,6 +8,7 @@
 // two phones) stays in `app/tools/e2e.mjs` — this does not replace it, it catches the crashes long
 // before that suite is worth starting.
 import { act } from 'react';
+import { liveMounts } from './mounts';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 import { StoreCtx, type Store, type View } from '../src/store';
@@ -100,8 +101,9 @@ export async function mount(node: ReactNode): Promise<Mounted> {
           .map(b => (b.textContent ?? '').trim().slice(0, 24)).join(' | ')}`);
       await act(async () => { hit.click(); });
     },
-    unmount: () => { act(() => { root.unmount(); }); el.remove(); },
+    unmount: () => { if (!liveMounts.delete(m.unmount)) return; act(() => { root.unmount(); }); el.remove(); },
   };
+  liveMounts.add(m.unmount);
   return m;
 }
 

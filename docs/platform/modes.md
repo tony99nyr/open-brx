@@ -1,5 +1,5 @@
 # Modes and game setup
-Last verified: 2026-09-24
+Last verified: 2026-09-25
 
 This page covers the modes Open BRX itself runs, and the pieces you choose when you build a game.
 The stock on-tagger and Callsign modes are a separate thing and live on the [gameplay page](/manual/gameplay).
@@ -32,6 +32,10 @@ met a tagger can still surprise you.
 Two rule variants sit in the same "written, not played" bucket. **Syphon** heals the killer on every
 kill, and **regenerating health** refills a player who has gone a few seconds without damage. Both
 exist only in the laptop command-line path, so neither reaches a player carrying a phone.
+
+Infection, Last Man Standing and Extraction still run end to end through Mission Control, but the
+console's own game picker offers only Team Deathmatch, Free-for-all and King of the Hill for now
+(2026-09-25 MVP scope). Load one of the three from a saved game or the API and it still plays.
 
 ## How a game is put together
 

@@ -1684,3 +1684,26 @@ def test_a_thin_shield_only_game_warns_when_someone_carries_armour_piercing():
     # perk is sold against -- that is the trade working, not a problem.
     armoured = dict(_cfg(), health={"max_hp": 30, "max_armor": 70, "max_shield": 0})
     assert "shield-only" not in " ".join(C.validate(armoured, [ap])["warnings"])
+
+
+def test_f282_the_builtin_silenced_sniper_uses_the_silenced_preset():
+    """F282 polish: with no separate switch (Tony: "we only need one switch"), the shipped Silenced Sniper
+    game is how a host reaches the silenced preset today, so it must carry it."""
+    st, path, s = _store()
+    b = st.list()[0]
+    assert b["config"]["presentation"]["preset"] == "silenced", b["config"].get("presentation")
+    assert "pending" not in b["desc"].lower() and "sounds stock" not in b["desc"].lower(), b["desc"]
+
+
+def test_f282_a_silenced_games_tryout_pushes_the_quiet_weapon_frame():
+    """F282 polish: `Session.tryout()` passes the game's `silent_weapons` to `tutorial_frames`."""
+    from brx_mcp.mc.compile import WeaponCatalog
+    t25, t26, t27 = WeaponCatalog()._silent_weapon_tokens()
+    for preset, quiet in (("silenced", True), ("standard", False)):
+        s, net, clock, ps = mk(1, compiler=C)
+        online(s, net, clock, ps[0], 0)
+        s.set_config({"presentation": {"preset": preset}})
+        s.tryout(ps[0]["player_id"], "assault_rifle")
+        frames = net.pushes("tutorial", "node0")[-1][2]["frames"]
+        weap = next(f for f in frames if f.startswith("$WEAP")).split(",")
+        assert (weap[26:29] == [t25, t26, t27]) is quiet, (preset, weap[26:29])

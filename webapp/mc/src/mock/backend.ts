@@ -36,8 +36,9 @@ const BUILTIN_SNIPER = (): SavedGame => {
     primary: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' },
     secondary: { choice: 'off', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null },
     perk: { choice: 'fixed', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'extended_mags' } };   // A14: the perk is its own slot
+  ffa.presentation = { ...(ffa.presentation ?? {}), preset: 'silenced' } as ConfigView['presentation'];   // F282: mirrors presets.py
   return { preset_id: 'builtin:silenced_sniper', name: 'Silenced Sniper', builtin: true, created_t: 0, updated_t: 0, config: ffa,
-    desc: 'Everyone gets the bolt-action sniper with extended mags, no armor — one shot kills. No teams, no picking. (Fire-sound "silencing" waits on the weapon-tuning spec.)' };
+    desc: 'Everyone gets the bolt-action sniper with extended mags, no armor: one shot kills. No teams, no picking. Silenced: no announcer or LED flashes, and every rifle uses the Suppressor\'s fire sound.' };
 };
 // every kit shape the Kit page can show: weapon + perk (A14: all three slots), perk only, empty, weapon only
 const DEMO_LOADOUTS: (() => Loadout)[] = [
@@ -759,14 +760,22 @@ export class MockBackend implements Api {
       stations: this.stationViews(), game_byte: this.gameNo, game_no: this.gameNo,
       config_warnings: [
         ...(SETUP_WARNING[this.config.station_source ?? ''] ? [SETUP_WARNING[this.config.station_source ?? '']] : []),
-        // mirrors Session._station_warnings(): a station-gated rule with nothing assigned in ITEMS
+        // mirrors Session._station_warnings(): a station-gated rule with nothing assigned in ITEMS.
+        // F402: retired for koth -- that case is now a hard LOAD/push refusal (`kothHillFault`), not
+        // an amber advisory, or the console would say the same fact twice in two colours.
         ...(this.config.station_source === 'phone' && !Object.values(this.stations).some(s => s.assigned?.kind === 'control')
+          && this.config.mode !== 'koth'
           ? ['SETUP: NO CONTROL STATION IS ASSIGNED (THE OBJECTIVE IS A BLUETOOTH CONTROL POINT, SO NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT'] : []),
         ...((this.config.station_source === 'grenade' || this.config.station_source === 'ir_station')
           && Object.values(this.stations).some(s => s.assigned?.kind === 'control')
           ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} (EVERY PHONE IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS`] : []),
         ...(this.config.respawn.type === 'scanner' && !Object.values(this.stations).some(s => s.assigned?.kind === 'respawn')
           ? ['SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SCANNER, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT'] : []),
+        // F402 item 2: mirrors Session._koth_hill_offline_warning() -- computed fresh here too, never
+        // cached, so a hill that goes quiet after LOAD with no other edit still shows it.
+        ...(this.config.mode === 'koth' && this.config.station_source === 'phone'
+          && Object.values(this.stations).some(s => s.assigned?.kind === 'control' && s.offline)
+          ? ['SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START'] : []),
         // F401: mirrors Session._station_sync_warnings() -- any station of the LAST FINISHED match MC
         // has not heard from since that match's whistle. `util-d4e5f6` demos this by default (F106(i):
         // seeded 20 min stale), so `?mock` shows the LOAD warning with no operator action needed.
@@ -1131,7 +1140,7 @@ export class MockBackend implements Api {
       { event: 'infected', source: 'both', desc: 'a survivor turned (infection)', sound: 'VB1M', words: 'The infection is spread.', gun_led: null, headset: null, text: 'THE INFECTION SPREADS', enabled: true },
     ] as const;
     return {
-      summary: { preset: 'standard', announcer: true, gun_flash: true, headset_team: true, sight_flash: true, hud_events: true, mc_events: true, mc_confidence: true, blackout: false, voice: 'on' as const, custom_events: [] as string[],
+      summary: { preset: 'standard', announcer: true, gun_flash: true, headset_team: true, sight_flash: true, hud_events: true, mc_events: true, mc_confidence: true, blackout: false, silent_weapons: false, voice: 'on' as const, custom_events: [] as string[],
         headset: { pregame: 'team', start_flash: true, in_play: 'dark', hit: 0, death: 'native', respawn_flash: true, role: true, carrier: true },
         gun: { in_play: 'team', pregame: 'team' } },
       events: rows.map(r => ({ ...r, flash: null, slot: null })),
@@ -1448,11 +1457,25 @@ export class MockBackend implements Api {
     this.emit();
     return { ok: true, readied };
   }
+  /** F402 (2026-09-25): mirrors `state.py Session._koth_hill_fault` -- "no way to play it without
+   *  it". A koth LOAD/push is refused with nothing on the field that IS the hill, `force` does not
+   *  open it either, and this is checked fresh (never cached), the same as the server. */
+  private kothHillFault(): string | null {
+    if (this.config.mode !== 'koth') return null;
+    if (this.config.station_source !== 'phone') {
+      return 'KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY';
+    }
+    if (Object.values(this.stations).some(s => s.assigned?.kind === 'control')) return null;
+    return 'KING OF THE HILL NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY';
+  }
+
   /** LOAD: announce the game, write no gun (`state.py load_game`). `pushed` stays FALSE. */
   async loadGame() {
     if (this.phase === 'armed' || this.phase === 'live') {
       throw new Error('cannot load a game once the match has started — ABORT or RECALL first');
     }
+    const hillFault = this.kothHillFault();
+    if (hillFault) throw new Error(hillFault);
     await this.rollFromRecap();          // a LOAD after the whistle loads the NEXT match
     const cfg = this.config.config_id;
     this.gameLoaded = true;
@@ -1518,6 +1541,8 @@ export class MockBackend implements Api {
   }
 
   async pushLobby(force?: boolean) {
+    const hillFault = this.kothHillFault();     // F402: not a readiness judgement either; force does not open it
+    if (hillFault) throw new Error(hillFault);
     await this.rollFromRecap();          // a push after the whistle is for the NEXT match
     const rf = this.rosterFault();
     if (rf) throw new Error(rf);          // round-2 B: not a readiness judgement, so `force` does not open it

@@ -57,7 +57,7 @@ export function HealthPresetEditor({ health, onChange }: { health: Health; onCha
           <ValueBox value={health.max_armor} unit="AR" min={0} max={255} label="armor" onChange={v => editNumber({ max_armor: v })} />
           <ValueBox value={health.max_shield} unit="SH" min={0} max={255} label="shield" onChange={v => editNumber({ max_shield: v })} />
           <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, maxWidth: 340 }}>
-            the shield recharges only while armour is 0 · a player's own POOL override (on KIT) still wins over HP/armour
+            the shield recharges only in a game with no armour · a player's own POOL override (on KIT) still wins over HP/armour
           </span>
         </span>
       )}
