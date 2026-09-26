@@ -818,6 +818,51 @@ def test_every_weapon_is_tagged_with_the_class_it_is_actually_in():
     assert not mislabelled, ("'support' means the weapon cannot kill; it is not a bucket for weapons "
                              "nobody has classified:\n  " + "\n  ".join(mislabelled))
 
+
+# F411 (2026-09-26): `types` is the loadout-preset vocabulary BUILD's type toggles union over
+# (games-presets.md, docs/spec/design/games-presets.md). Unlike `role`/`tags`, a weapon may hold
+# several -- a bolt-action rifle is both `rifle` and `long` -- and the five pickup-only heavies
+# deliberately carry none (they never enter a loadout pool, whatever the preset).
+WEAPON_TYPES = {"rifle", "close", "long", "sidearm", "support"}
+
+
+def test_every_weapon_has_a_types_key_from_the_closed_vocabulary():
+    """Every row must carry `types` (even if `[]`), and every entry in it must be one of the five
+    words BUILD's toggles offer -- an unknown word would show no toggle and could never be picked
+    back out of a preset built from it."""
+    bad = []
+    for w in ROWS:
+        if "types" not in w:
+            bad.append(f"{w['weapon_id']}: no `types` key (use [] for a pickup-only heavy)")
+            continue
+        unknown = [t for t in w["types"] if t not in WEAPON_TYPES]
+        if unknown:
+            bad.append(f"{w['weapon_id']}: unknown type(s) {unknown!r} (vocabulary is {sorted(WEAPON_TYPES)})")
+    assert not bad, "\n  ".join(bad)
+
+
+def test_pickup_only_weapons_carry_no_type():
+    """The five heavies are never in a loadout pool preset, so a type toggle must never select them
+    in (games-presets.md §1's `pickup_only` rule) -- `types: []` is how the row says so."""
+    wrong = [w["weapon_id"] for w in ROWS if w.get("pickup_only") and w.get("types")]
+    assert not wrong, f"pickup-only weapons must ship types: [] : {wrong}"
+
+
+def test_a_type_dependent_weapon_declares_it():
+    """Spot-check a few rows against games-presets.md's proposed table, so a future edit to the
+    vocabulary or a copy-paste slip in weapons.json is caught here rather than by an operator
+    building a RIFLES preset that is missing a rifle."""
+    expect = {
+        "assault_rifle": {"rifle"}, "bolt_rifle": {"rifle", "long"}, "amr": {"long"},
+        "smg": {"close"}, "usp": {"sidearm", "close"}, "stripper": {"support", "close"},
+        "smoke_gun": {"support"}, "rocket_launcher": set(),
+    }
+    by_id = {w["weapon_id"]: w for w in ROWS}
+    wrong = [f"{wid}: got {set(by_id[wid]['types'])}, want {want}"
+             for wid, want in expect.items() if set(by_id[wid]["types"]) != want]
+    assert not wrong, "\n  ".join(wrong)
+
+
 def test_a_two_word_weapon_never_also_carries_a_crit_chance():
     """The crit flag rides on BOTH IR words but the multiplier applies only to the barrel word, so a
     two-word weapon with a crit chance deals a damage split nothing in the catalogue models.

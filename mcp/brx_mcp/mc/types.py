@@ -825,6 +825,7 @@ class Weapon(TypedDict):
     verified: NotRequired[bool]
     tags: NotRequired[list[str]]   # A10 policy vocabulary (loadout.md §1.1)
     role: NotRequired[str]
+    types: NotRequired[list[str]]  # F411 (2026-09-26): the loadout-preset vocabulary BUILD's type toggles union over (games-presets.md) -- rifle|close|long|sidearm|support, several per row allowed, [] on a pickup-only heavy
     caution: NotRequired[str]      # A10: human copy for a known LIVE problem (weapons.json `caution`)
     pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile (weapons.json `recoil`)
@@ -863,6 +864,7 @@ class WeaponView(TypedDict):
     verified: bool
     tags: list[str]
     role: str
+    types: NotRequired[list[str]]  # F411 (2026-09-26): rifle|close|long|sidearm|support, several allowed, [] on a pickup-only heavy -- NotRequired so a console reading an older server (games-presets.md's own stale-server rule) degrades to no type toggles rather than crashing on `undefined.includes`
     htk: float | None
     ttk_ms: NotRequired[float | None]  # older MC rows can omit this derived figure
     caution: NotRequired[str]
