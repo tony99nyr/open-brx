@@ -12,7 +12,9 @@ import { MC_OFFLINE, MC_OLDER, MC_RESTART_CMD, OPERATOR_TOKEN, alertWords, colou
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
 // whole scoreboard. The VIEWS stay separate (the store still follows the phase into `recap` on its
 // own); only the nav collapses, and MATCH lands you on whichever one is real right now.
-const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'GAMES'], ['kit', 'KIT'], ['lobby', 'LOBBY'], ['live', 'MATCH']];
+// F411: the stepper's second slot label is PLAY now (header title PICK GAME); the view id stays
+// 'build' (docs/spec/design/games-presets.md, brief §2).
+const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'PLAY'], ['kit', 'KIT'], ['lobby', 'LOBBY'], ['live', 'MATCH']];
 const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : p === 'recap' ? 4 : PH.findIndex(x => x[0] === p));
 // Views that are not phases need their own label: viewIdx() returns -1 for them, and `PH[-1][1]`
 // threw, blanking the whole console (the WEAPONS tab rendered a black page, 2026-08-31).
@@ -141,7 +143,7 @@ export function CommandBar() {
                   border: 'none', borderBottom: `2px solid ${active ? T.acc : 'transparent'}`, cursor: 'pointer', color: active ? T.ink : T.dim, minHeight: 44, whiteSpace: 'nowrap' }}>
                 {/* F318: the step digit is decorative (the label beside it carries the meaning), so 9 px stays and readers skip it. */}
                 <span aria-hidden="true" style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: active ? T.acc : 'rgba(92,113,134,.7)' }}>0{i + 1}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}
+                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ BUILD</span> : ''}
                   {/* Bench 2026-09-17: phones are in a match this MC did not start. Only while that is true. */}
                   {id === 'live' && state?.orphan_match && (
                     <span data-testid="match-tab-dot" data-alert="frame-match-tab-dot" data-sev="amber" role="img"

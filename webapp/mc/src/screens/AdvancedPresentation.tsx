@@ -91,10 +91,10 @@ export function AdvancedPresentation({ draft }: { draft?: { presentation?: Recor
         <div id="advanced-presentation-body" style={{ marginTop: 12, background: T.panel, border: `1px solid ${T.line}`, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div data-testid="presentation-scope" style={{ font: F.chk(500, 12), color: T.micro, lineHeight: 1.45 }}>
             {!draft
-              ? <>Read only. This is tonight's applied game, as the server resolved it.</>
+              ? <>Read only. This is the applied game, as the server resolved it.</>
               : draftDiffers
-                ? <>Read only. The draft above uses the <b data-testid="presentation-draft-preset">{draftPreset}</b> profile, and tonight's applied game uses a different one. The server resolves the full table for the applied game only, so it shows here once you play this game.</>
-                : <>Read only. These are the sounds and lights of the draft above, which shares its profile with tonight's applied game. The designer does not change them.</>}
+                ? <>Read only. The draft above uses the <b data-testid="presentation-draft-preset">{draftPreset}</b> profile, and the applied game uses a different one. The server resolves the full table for the applied game only, so it shows here once you play this game.</>
+                : <>Read only. These are the sounds and lights of the draft above, which shares its profile with the applied game. The designer does not change them.</>}
           </div>
           {loading && <div role="status" data-alert="adv-loading" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: colourOf('adv-loading') }}>LOADING…</div>}
           {stale && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('adv-server-old') }}>

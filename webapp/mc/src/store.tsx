@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Api, FeedEntry, ModeInfo, PerkView, Phase, SavedGame, State, WeaponView } from './api/types';
+import type { Api, FeedEntry, ModeInfo, PerkView, Phase, State, WeaponView } from './api/types';
 
 /** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5). */
 /** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5) + `spectate`,
@@ -37,8 +37,6 @@ function writeHash(v: View, want?: View | null) {
     history.replaceState(null, '', location.pathname + location.search + h);
   } catch { /* no history: the view still works, it just will not survive a refresh */ }
 }
-/** what the designer opens with: an existing saved game to edit, a stock mode to customise, or the live draft */
-export type DesignerSeed = { game?: SavedGame; mode?: string; fromLive?: boolean; copy?: boolean /* open as an unsaved draft named after `game` */ };
 import { createHttpApi, getToken, onAuthRequired, setToken as saveToken } from './api/client';
 import { MockBackend } from './mock/backend';
 
@@ -58,8 +56,14 @@ export interface Store {
   latched: boolean;
   /** the view this latched tab was last asked for — it opens on the next reload, and the board says so */
   wantedView: View | null;
-  designerSeed: DesignerSeed | null;
-  openDesigner: (seed: DesignerSeed) => void;
+  /** F411 (docs/spec/design/games-presets.md §2): BUILD is a header link from PLAY and ARMORY, never a
+   *  stepper step — it carries no seed, since BUILD is a preset editor now, not a per-game draft. */
+  openBuild: () => void;
+  /** F411 §5/§8: PLAY's "ASSIGN A HILL ▸" (KOTH with nothing assigned) sets this and jumps to ARMORY,
+   *  which scrolls to and highlights the ITEMS station slot and offers "◂ BACK TO PLAY". Transient,
+   *  cleared by that button — never a second source of truth for anything server-side. */
+  focusHill: boolean;
+  setFocusHill: (v: boolean) => void;
   selPlayer: string | null;
   setSelPlayer: (id: string | null) => void;
   error: string | null;
@@ -160,8 +164,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
-  const [designerSeed, setDesignerSeed] = useState<DesignerSeed | null>(null);
   const [selPlayer, setSelPlayer] = useState<string | null>(null);
+  const [focusHill, setFocusHill] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean>(mock);
   const [authRequired, setAuthRequired] = useState(false);
@@ -256,13 +260,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const store = useMemo<Store>(() => ({
     api, state, feed, modes, weapons, perks, view, setView, selPlayer, setSelPlayer, error, mock,
     latched: spectatorTab.current, wantedView: wanted,
-    designerSeed, openDesigner: seed => { setDesignerSeed(seed); setView('designer'); },
+    openBuild: () => setView('designer'),
+    focusHill, setFocusHill,
     connected: mock ? true : connected, authRequired, serverOld, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setError(null); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, designerSeed, serverOld]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, serverOld, focusHill]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

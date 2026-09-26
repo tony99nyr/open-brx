@@ -3,7 +3,7 @@
 2026-09-13: test runs (every e2e boot's `python -m brx_mcp.mc --demo/--ephemeral`, the app's
 fake-game e2e runner, `run_tests.py` itself) were littering `~/.brx-mcp/mc/session-*.sqlite` --
 hundreds of them, mostly empty -- because `build()` constructed the session `Store` unconditionally,
-never checking `--demo`/`--ephemeral` the way the presets shelf and the tunnel pidfile already did.
+never checking `--demo`/`--ephemeral` the way the pieces shelf and the tunnel pidfile already did.
 After a field night Tony had to filter them by size and timestamp to find the four real games.
 
 `storage.home_dir()` resolves `BRX_MCP_HOME` when set (fresh on every call, not baked in at import),
@@ -131,7 +131,7 @@ def test_no_mission_control_module_hardcodes_the_dotfile_path():
     into the real home after BRX_MCP_HOME landed.
 
     Scope: the MC server package, which is what a test run boots. The bench CLI's own paths
-    (`brx_mcp/__main__.py`'s sound-audit log, and `usbconsole.py` / `mc/presets.py` through the legacy
+    (`brx_mcp/__main__.py`'s sound-audit log, and `usbconsole.py` / `mc/pieces.py` through the legacy
     import-time `storage.BASE_DIR`) are the same shape and are NOT covered here -- see storage.py's note
     on BASE_DIR."""
     root = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc"

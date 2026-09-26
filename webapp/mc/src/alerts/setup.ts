@@ -1,7 +1,9 @@
 // F221: the alerts this lane's screens render, by the audit id. See ./index.ts for the rule.
 //
-// Lane files: screens/Kit.tsx, screens/Items.tsx, ui/Powerups.tsx, screens/Designer.tsx,
-// screens/AdvancedPresentation.tsx, screens/HealthPresetEditor.tsx.
+// Lane files: screens/Kit.tsx, screens/Items.tsx, ui/Powerups.tsx, screens/Games.tsx (PLAY),
+// screens/AdvancedPresentation.tsx, screens/HealthPresetEditor.tsx. F411: the GAME DESIGNER is retired
+// (docs/spec/design/games-presets.md) — most of its own `designer-*` ids retired with it; one survives,
+// renamed, under PLAY (below).
 import type { AlertDef } from './index';
 
 export const SETUP_ALERTS: Record<string, AlertDef> = {
@@ -22,15 +24,6 @@ export const SETUP_ALERTS: Record<string, AlertDef> = {
   'adv-loading': { sev: 'neutral', text: 'LOADING…' },
   'adv-server-old': { sev: 'amber', text: "MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC. IT HAS NO `/api/presentation`." },
 
-  // ---- DESIGNER — Designer.tsx --------------------------------------------------------------------
-  'designer-blocked-banner': { sev: 'red', text: '{blockedReason}' },
-  'designer-name-it-first': { sev: 'neutral', text: 'NAME IT FIRST' },
-  'designer-old-version': { sev: 'amber', text: "TONIGHT'S GAME STILL RUNS THE OLD VERSION" },
-  'designer-pick-objective': { sev: 'amber', text: 'PICK AN OBJECTIVE SOURCE: THE SERVER REFUSES THIS MODE WITHOUT ONE.' },
-  'designer-plays-without-saving': { sev: 'neutral', text: 'PLAYS TONIGHT WITHOUT SAVING: NAME IT ABOVE TO KEEP IT ON THE SHELF' },
-  'designer-preview-off': { sev: 'amber',
-    text: 'MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC. RULES PREVIEW LOCALLY, BUT SAVE / PLAY WILL FAIL UNTIL THEN.' },
-  'designer-slot-empty-pool': { sev: 'red', text: "{SLOT}'S {FIXED PICK IS NOT IN THIS GAME | ALLOW-LIST NAMES NOTHING | CLASS/ID FILTERS EXCLUDE EVERYTHING | CANNOT BE PLAYED}" },
 
   // ---- ARMORY / ITEMS — screens/Items.tsx, ui/Powerups.tsx (audit's "ARMORY" screen, this lane's files) --
   'frame-health-preset-custom': { sev: 'neutral', text: 'CUSTOM' },   // NOT-ALERT would fit too; kept as a plain status tag, never amber-filled
@@ -105,6 +98,16 @@ export const SETUP_RETIRED: Record<string, string> = {
   'adv-switch-chip': 'a plain on/off status chip — not an alert (NOT-ALERT).',
   'designer-saved-ok': 'positive confirmation, restyled T.ok — not an alert (NOT-ALERT).',
   'designer-unsaved-leave': 'a two-tap drop-your-draft confirm; UNCHANGED per Tony\'s rule, left exactly as it is.',
+  // F411 (docs/spec/design/games-presets.md): the GAME DESIGNER is retired outright — BUILD (owned by
+  // another lane) replaces it, and PLAY (screens/Games.tsx) never edits a preset, so none of these
+  // apply any more. `games-locked-banner` (alerts/lobby.ts) already covers PLAY's own phase-lock banner.
+  'designer-blocked-banner': 'the Designer is retired; PLAY reuses games-locked-banner for its own phase lock.',
+  'designer-name-it-first': 'the Designer\'s unsaved-draft SAVE flow is retired; naming a piece is a BUILD concern now.',
+  'designer-old-version': 'the "tonight\'s game still runs the old version" draft-vs-applied state is retired with the Designer.',
+  'designer-pick-objective': 'GAME MODE no longer carries a console-set station_source (games-presets.md §3) — the mode\'s own defaults decide it.',
+  'designer-plays-without-saving': 'PLAY never leaves a "tuned, not saved" draft any more (games-redesign.md §1).',
+  'designer-preview-off': 'the Designer\'s live pool preview is retired with it.',
+  'designer-slot-empty-pool': 'the Designer\'s own per-slot empty-pool box is retired; PLAY\'s equivalent reuses games-locked-banner.',
   'frame-item-available': 'a positive status chip, already T.ok — not an alert (NOT-ALERT).',
   'frame-item-reset-confirm': 'a two-tap hazard confirm (hands out a heavy mid-match); UNCHANGED per Tony\'s rule.',
   'frame-switch-confirm': "the shared SwitchConfirm component (ui/index.tsx), not owned by this lane; UNCHANGED per Tony's rule (named explicitly). The doubled-▲-glyph issue the audit flagged is reported to the lane that owns ui/index.tsx, not fixed here.",

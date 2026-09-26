@@ -22,6 +22,7 @@ from .. import poolgauge as _pg
 from .. import voices as _voices
 from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — one coverage model
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
+from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
@@ -35,6 +36,7 @@ from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PH
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, ADOPT_SLACK_MS, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
                     STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, TX_POWERS, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
+                    GamePick, LastMatch,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
@@ -45,8 +47,8 @@ from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PH
 
 from . import powerups as _pu
 
-if TYPE_CHECKING:                      # `presets.PresetStore` is attached by `__main__`/`create_app`
-    from .presets import PresetStore
+if TYPE_CHECKING:                      # `pieces.PieceStore` is attached by `__main__`/`create_app`
+    from .pieces import PieceStore
 
 PHASES = get_args(Phase)      # the vocabulary itself lives on `types.Phase`, so the console's is generated from it
 
@@ -309,7 +311,7 @@ class ConflictError(ValueError):
     """A refusal about the STATE OF PLAY rather than the request: correct, just not now (A30 → HTTP 409).
 
     Still a ValueError, so every existing caller and route keeps working unchanged; `api.py` reads
-    `.status` where it matters. `PresetError` has carried the same field since the saved-games lane."""
+    `.status` where it matters. `pieces.PieceError` carries the same field, for BUILD's own refusals."""
     status = 409
 
 class NotReadyError(ConflictError):
@@ -486,9 +488,12 @@ class Session:
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
-        self.active_preset_id: str | None = None  # A10 §8: the saved game that was APPLIED — GAMES marks it PLAYING (content-matching
-                                                  # cannot tell a duplicate from its source: review 2026-08-27 #0)
-        self.presets: PresetStore | None = None   # A10 §8: attached by __main__/create_app (memory store when absent)
+        # F411 (GAMES = PLAY picks, BUILD creates): `game_pick` always exists once `__init__` has run —
+        # `pieces` is None until `__main__`/`api.py` attaches a real store, so the fresh pick uses the
+        # bare `BUILTIN_IDS` (`gamepick.default_pick`), never a store read.
+        self.game_pick: GamePick = _gamepick.default_pick(default_config)
+        self.last_match: LastMatch | None = None   # absent until a match has been STARTed (persists across a restart)
+        self.pieces: PieceStore | None = None       # attached by __main__/create_app (memory store when absent)
         # A17: `lobby_pushed` is ALSO the real guard on `_pinned_hit_plan` below. It is set True in exactly
         # one place (`push_config`, which clears the pin as its first statement), and every path that can
         # compile (`_resend`, `_bind`, hydrate) is gated on it -- so a pin can never survive into a new
@@ -733,7 +738,8 @@ class Session:
                     "demo": bool(self.demo_session),
                     "players": [{**p, "node_id": None, "ready": False} for p in self.players.values()],
                     "standby": [{**p, "node_id": None, "ready": False} for p in self.standby.values()],
-                    "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
+                    "teams": self.teams, "config": self.config, "game_pick": self.game_pick,
+                    **({"last_match": self.last_match} if self.last_match else {}),
                     "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
                     "feed": [dict(row) for row in self.feed[:200] if isinstance(row, dict)],
                     # F401: the stations the last match still waits to hear from, and its whistle time.
@@ -956,7 +962,13 @@ class Session:
                         self.config.pop("volume", None)
                 except ValueError:
                     self.config.pop("volume", None)
-            self.active_preset_id = snap.get("active_preset_id")
+            # F411: a snapshot from before GAMES = PLAY picks, BUILD creates has no `game_pick` at all —
+            # derive one from the config it DOES carry (§2); MC does not recompose the config for this.
+            gp = snap.get("game_pick")
+            self.game_pick = (gp if _gamepick.looks_like_pick(gp) else
+                              _gamepick.derive_pick_from_config(self.config, frozenset(m["mode"] for m in MODES if m["mvp"])))
+            lm = snap.get("last_match")
+            self.last_match = cast(LastMatch, lm) if isinstance(lm, dict) else None
             # S5(a): a restored station comes back UNARMED -- `armed=None, arm_pending=True` -- because the
             # phone itself remembers nothing about MC across a restart; the existing "re-arm on next hello"
             # path (`_on_node`'s utility branch, `if st.get("assigned"): self._arm_station(nid)`) is what
@@ -1504,13 +1516,6 @@ class Session:
             n = len(lp["perks"])
             parts.append((f"a perk of your choice ({n})" if pol.get("hud_select") and kr["choice"] == "player" else "the host sets your perk"))
         preset_lbl = _policy.PRESET_LABELS.get(pol.get("preset") or "", "")
-        saved = None
-        try:
-            if self.presets is not None:
-                sig = {k: v for k, v in cfg.items() if k not in ("config_id", "vip_player_id")}   # A19: never in a saved game, so never in the match
-                saved = next((r for r in self.presets.list() if {k: v for k, v in r["config"].items() if k != "config_id"} == sig), None)
-        except Exception:
-            saved = None
         scoring = cfg.get("scoring") or {}
         if scoring.get("win_by") in (None, "", "kills"):
             cap = scoring.get("frag_limit")
@@ -1519,8 +1524,8 @@ class Session:
         else:
             win_text = mode.get("win_text")
         return {
-            "name": (saved or {}).get("name") or mode.get("name") or str(cfg.get("mode", "")).upper(),
-            "desc": (saved or {}).get("desc") or mode.get("brief") or mode.get("desc") or "",
+            "name": mode.get("name") or str(cfg.get("mode", "")).upper(),
+            "desc": mode.get("brief") or mode.get("desc") or "",
             "mode": cfg.get("mode"), "mode_name": mode.get("name"), "abbr": mode.get("abbr"),
             "teams_text": mode.get("teams_text"), "win_text": win_text, "respawn_text": mode.get("respawn_text"),
             "time_limit_s": cfg.get("time_limit_s"), "respawn": cfg.get("respawn"), "health": cfg.get("health"),
@@ -1747,12 +1752,12 @@ class Session:
                 self.tryout(pid, None)                   # → tutorial {end} teardown on the node
             self._resend(pl)
         if changed:
-            label = _policy.PRESET_LABELS.get(self.policy().get("preset") or "", "THE LOADOUT RULES")
-            try:
-                if self.active_preset_id and self.presets is not None:
-                    label = self.presets.get(self.active_preset_id)["name"].upper()
-            except Exception:
-                pass
+            # F411: the whole-game "saved game" this used to override with is gone (the old branch
+            # read `self.presets.get(self.active_preset_id)["name"]`) — a named loadout_policy preset
+            # (no_heavies/snipers/open/custom) always has its own label, so the mode's own name is
+            # only ever the defensive fallback below, same as before.
+            mode_row = next((m for m in MODES if m["mode"] == self.config.get("mode")), None)
+            label = _policy.PRESET_LABELS.get(self.policy().get("preset") or "", (mode_row or {}).get("name") or "THE LOADOUT RULES")
             self._policy_notice = f"{len(changed)} LOADOUT{'S' if len(changed) != 1 else ''} RESET BY {label}"
         return changed
 
@@ -2310,16 +2315,41 @@ class Session:
                     "station_source", "mode_params", "vip_player_id", "stun", "coverage", "recoil",
                     "volume"}
 
-    def apply_preset(self, preset_id: str, config: GameConfig) -> dict:
-        """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
-        self.active_preset_id = preset_id
+    def _compose_precheck(self, patch: dict) -> dict:
+        """F411: does this GAMES pick compose a config `_validate()` accepts, WITHOUT leaving any
+        session state changed? `POST /api/play/pick`'s own contract ("a pick with ok: false changes
+        nothing") needs the answer before `set_config` commits it. Mirrors `set_config`'s own
+        base-selection + merge (the mode-change venue carry-over included), then runs the SAME
+        `_validate()` `set_config` would (compiler errors AND `_primary_pool_refusal`'s own check,
+        which reads `self.config` rather than a config passed in) against the candidate, restoring
+        the real config again straight after -- `_validate` also refreshes `config_errors`/
+        `config_warnings` as a side effect, which is fine: a real read recomputes both before anyone
+        sees them."""
+        mode = patch.get("mode", self.config["mode"])
+        if mode != self.config["mode"]:
+            cfg = default_config(mode)
+            # Written key by key, not through a loop variable, for the same reason `set_config` is:
+            # `cfg` is a `GameConfig` and these four keys do not share a value type (pyright).
+            if "environment" not in patch and "environment" in self.config:
+                cfg["environment"] = self.config["environment"]
+            if "night" not in patch and "night" in self.config:
+                cfg["night"] = self.config["night"]
+            if "volume" not in patch and (vol := self.config.get("volume")) is not None:
+                cfg["volume"] = vol
+            if "coverage" not in patch and (cov := self.config.get("coverage")) is not None:
+                cfg["coverage"] = cov
+        else:
+            cfg = copy.deepcopy(self.config)
         try:
-            # K8: a saved game from before the volume knob carries no key; it plays at the venue volume,
-            # never at whatever the previous game's knob said.
-            return self.set_config({**dict(config), "volume": config.get("volume")}, _from_preset=True)
-        except Exception:
-            self.active_preset_id = None
-            raise
+            cfg = self._merge_config(cfg, patch, mode)
+        except ValueError as e:
+            return {"ok": False, "errors": [str(e)]}
+        saved = self.config
+        self.config = cfg
+        try:
+            return self._validate()
+        finally:
+            self.config = saved
 
     def _reteam_for_config(self, prev_teams: list[Team]) -> None:
         """FIELD-1 (round-3 fix pass, 2026-09-13). Carry the operator's SPLIT across a mode pick.
@@ -2394,11 +2424,9 @@ class Session:
                 return
             max(movers, key=lambda q: q["player_num"])["team_id"] = emptiest
 
-    def set_config(self, patch: dict, _from_preset: bool = False) -> dict:
+    def set_config(self, patch: dict) -> dict:
         if not isinstance(patch, dict):
             raise ValueError("config must be an object")
-        if not _from_preset and (set(patch) - {"environment", "night", "config_id"}):
-            self.active_preset_id = None                     # any real edit means the draft is no longer that saved game
         # The match is OVER: any config edit is the operator starting the next one. Tony, 2026-08-26:
         # "i get an error bc match in progress, but MC knows its over". Tony, 2026-09-16, on the
         # mode-only rule that followed: "why? just make a new one". Every edit rolls forward now.
@@ -2409,7 +2437,7 @@ class Session:
         if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
             raise ValueError(f"unknown mode {mode!r}")
         if set(patch) - {"environment", "night", "config_id"}:     # a VENUE-only PUT (GAMES re-asserts it right after
-            self._policy_notice = None                       # a saved game applies) must not eat the reset notice
+            self._policy_notice = None                       # a picked piece applies) must not eat the reset notice
 
         cfg = default_config(mode) if mode != self.config["mode"] else copy.deepcopy(self.config)
         if mode != self.config["mode"]:
@@ -7080,6 +7108,9 @@ class Session:
         self.start_seq += 1
         self._game_no_started = True           # the next muster push is a NEW match to every station
         self._range_epoch += 1                 # A67: the last match's range-edit lines clear at this START
+        # F411 LAST MATCH (games-presets.md §2): captured at every START, not just the first — a mode/
+        # preset change since the last game must not leave LAST MATCH offering stale values.
+        self.last_match = {**self.game_pick["match"], "countdown_s": runway_s}
         now = self.now_ms()
         # A42: whether the LAST match's end reached every HUD is not a fact about THIS one. The operator
         # has moved on, and a straggler line left standing over a live board would be read as this match's.
@@ -8038,7 +8069,7 @@ class Session:
                 "standby": list(self.standby.values()),      # STANDBY: parked players, never counted above
                 "kit": self._snapshot_kit(kitted),
                 "loadout_pool": self.loadout_pool(),
-                "active_preset_id": self.active_preset_id,
+                "game_pick": self.game_pick,
                 "lobby": self._snapshot_lobby(),
                 # LOAD: the GAME the phones have been told about. `loaded` is what the GAMES tab keys
                 # its ACTIVE GAME CONFIG state on -- `lobby.pushed` no longer becomes true at LOAD,
@@ -8054,6 +8085,8 @@ class Session:
                 "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,
                 "notices": self._notices(),      # A31: standing host lines (absent keys = nothing to say)
                 "feed": self._snapshot_feed()}
+        if self.last_match is not None:
+            state["last_match"] = self.last_match
         if self.restored_from is not None:
             state["restored_from"] = self.restored_from
         bench_volume = getattr(self.compiler, "bench_volume", None)   # `--bench-volume`: the compiler owns it

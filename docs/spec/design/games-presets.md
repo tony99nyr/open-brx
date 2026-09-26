@@ -90,7 +90,7 @@ same phase gating, the same RECAP roll-forward, the same re-announce while LOADE
 | `POST /api/pieces` | `{kind, name, note?, value}` → `GamePiece` | 400 bad kind/name/value · 403 kind `mode`/`gameplay`, or a builtin's name · 409 name clash in the kind | any |
 | `PUT /api/pieces/{id}` | `{name?, note?, value?}` → `GamePiece`. When the piece is in the current pick, MC recomposes the config | 403 builtin · 404 · 409 clash · 409 `IN USE BY THE RUNNING GAME` when the piece is picked and the phase is armed/live | any |
 | `DELETE /api/pieces/{id}` | → `{ok: true}` | 403 builtin · 404 · 409 `IN USE: PICK ANOTHER ON PLAY FIRST` when the piece is in the current pick | any |
-| `POST /api/play/pick` | `{pieces?: {kind: piece_id}, match?: Partial<MatchSettings>}` → `{ok, errors, config, pick}` | 400 unknown id, a piece of the wrong kind, a `post_mvp` mode, a bad match value; the `PUT /api/config` phase 400s | as `PUT /api/config` |
+| `POST /api/play/pick` | `{pieces?: {kind: piece_id}, match?: Partial<MatchSettings>}` → `{ok, errors, config, pick}` | 404 unknown id · 400 a piece of the wrong kind, a `post_mvp` mode, a bad match value; the `PUT /api/config` phase 400s | as `PUT /api/config` |
 
 - A pick with `ok: false` changes nothing: not the pick, not the config.
 - `config_errors` (for example KOTH with no hill station) still arrive in the snapshot. A pick that composes a

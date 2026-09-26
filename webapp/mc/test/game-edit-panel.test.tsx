@@ -307,7 +307,7 @@ describe('GameEditPanel — locked once the match has started (armed/live)', () 
     m.unmount();
   });
 
-  it('OPEN GAME DESIGNER is inside that lock too — it used to stay tappable and dead-end on the Designer banner', async () => {
+  it('OPEN BUILD is inside that lock too — it used to stay tappable and dead-end on the Designer banner', async () => {
     const d = await demo();
     const modes = await d.api.getModes();
     const designer = (state: State) => {
@@ -315,7 +315,7 @@ describe('GameEditPanel — locked once the match has started (armed/live)', () 
       return mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
     };
     const find = (m: Awaited<ReturnType<typeof designer>>) =>
-      m.find('button').find(b => (b.textContent ?? '').includes('OPEN GAME DESIGNER')) as HTMLButtonElement | undefined;
+      m.find('button').find(b => (b.textContent ?? '').includes('OPEN BUILD')) as HTMLButtonElement | undefined;
 
     const live = await designer({ ...d.state, phase: 'live' });
     await click(live.find('[data-testid="game-edit-toggle"]')[0]);

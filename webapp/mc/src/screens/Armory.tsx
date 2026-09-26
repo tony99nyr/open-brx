@@ -101,7 +101,7 @@ function problemsFirst<R extends { status?: string }>(board: R[]): R[] {
 }
 
 export function Armory() {
-  const { state, run, api, setView } = useStore();
+  const { state, run, api, setView, focusHill, setFocusHill, openBuild } = useStore();
   const [scanning, setScanning] = useState(false);
   const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
   // Keyed on WHICH GUNS MC knows about, so a SCAN that enrols a new gun shows up in KNOWN GUNS —
@@ -145,6 +145,14 @@ export function Armory() {
       <RestoredBanner />
       <ScreenHeader kicker="[ A1 // GEAR CHECK ]" title="Readiness Board" right={
         <>
+          {/* F411 §8: PLAY's ASSIGN A HILL ▸ jumps here with the station slot focused; BACK TO PLAY
+              returns with KOTH still picked (Items below carries the highlight/scroll). */}
+          {focusHill && (
+            <span data-testid="armory-back-to-play">
+              <GhostButton onClick={() => { setFocusHill(false); setView('build'); }}>◂ BACK TO PLAY</GhostButton>
+            </span>
+          )}
+          <GhostButton onClick={openBuild}>BUILD ▸</GhostButton>
           <GhostButton onClick={async () => { setScanning(true); await run(() => api.scan(6)); setScanning(false); }}>{scanning ? 'SCANNING…' : '⟳ SCAN ARMORY'}</GhostButton>
           {/* A29: what the field is running, at the top of the screen where the operator decides whether
               to send someone to update before the night starts. The server may word this itself
