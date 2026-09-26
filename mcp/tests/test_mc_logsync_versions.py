@@ -545,14 +545,29 @@ def test_set_phase_refuses_kit_to_lobby_until_ready():
         assert e.not_ready == ["OP1"] and e.greens == 1
     assert s.set_phase("lobby", force=True) == "lobby"
 
-    # All ready: no guard at all. And the guard is KIT→LOBBY only.
+    # All ready: no guard at all.
     s.phase = "kit"
     s.set_ready(ps[1]["player_id"], True, host_override=True)
     assert s.set_phase("lobby") == "lobby"
     s.phase = "muster"
     for p in ps:
         s.set_ready(p["player_id"], False, host_override=True)
-    assert s.set_phase("lobby") == "lobby", "only a move OUT OF KIT is guarded"
+    assert s.set_phase("lobby") == "lobby", "MUSTER has no game to be half-kitted out of, so it is not guarded"
+
+
+def test_set_phase_refuses_build_to_lobby_until_ready():
+    """F411 (VQA round 1, 2026-09-26): PLAY's nav bar can reach LOBBY straight from BUILD (the tabs are
+    a client-side view switch, not a phase move) -- CONTINUE TO KIT ▸ is not the only door any more, so
+    the guard must not only fire from KIT. Fails first against the pre-fix `self.phase == "kit"` check."""
+    s, net, clock, ps = mk(2)
+    s.phase = "build"
+    try:
+        s.set_phase("lobby")
+        raise AssertionError("expected a NotReadyError")
+    except NotReadyError as e:
+        assert e.status == 409 and e.not_ready == ["OP0", "OP1"] and e.greens == 0 and e.roster_size == 2
+    assert s.phase == "build", "a refused move must not move the phase"
+    assert s.set_phase("lobby", force=True) == "lobby"
 
 
 def test_set_phase_still_refuses_a_driven_phase():

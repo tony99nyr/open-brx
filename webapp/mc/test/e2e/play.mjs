@@ -168,6 +168,16 @@ step('fresh', async ({ browser, base }) => {
     // VQA QA-06: the strip carries no "MATCH SETTINGS" heading any more (the storyboard drops it) --
     // its own self-describing values are the proof it rendered.
     expect(/10 MIN/.test(t) && /NO KILL LIMIT/.test(t) && /COUNTDOWN 30 S/.test(t), `${w}px: the strip shows`);
+    // Tony, 2026-09-26: each GAME MODE option carries its own mark, fully inside a fixed box (never a
+    // crop, never a jump). One mark per visible option, and each mark stays within its own box.
+    const marks = await pg.evaluate(() => [...document.querySelectorAll('[aria-label="game mode"] button')].map(btn => {
+      const box = btn.querySelector('span[style*="width: 44px"]');
+      const mark = box?.querySelector('img, svg');
+      if (!box || !mark) return null;
+      const b = box.getBoundingClientRect(), m = mark.getBoundingClientRect();
+      return { fits: m.left >= b.left - 1 && m.right <= b.right + 1 && m.top >= b.top - 1 && m.bottom <= b.bottom + 1 };
+    }));
+    expect(marks.length === 3 && marks.every(x => x?.fits), `${w}px: every mode option has a mark, fully inside its box (saw ${JSON.stringify(marks)})`);
     ok(`${w}px fresh install   ${await shot(pg, `fresh-${w}`)}`);
     await pg.context().close();
   }
@@ -439,7 +449,14 @@ step('real-load-feedback', async ({ browser }) => {
     await pg.getByTestId('game-load').getByRole('button').click();
     await until(() => pg.getByTestId('game-loaded-status').count().then(n => n === 1), 8000, 'the LOADED status line, against a real MC');
     expect(await pg.getByTestId('game-continue-kit').count() === 1, 'CONTINUE TO KIT ▸ becomes the primary against a real MC too');
-    ok('LOAD feedback (QA-01) holds against a real MC');
+    // team-lead 2026-09-26: CONTINUE TO KIT must actually move the SERVER's own phase to "kit" (the
+    // only door state.py's A27 not-ready guard fires from before this round's build->lobby widening) —
+    // not just the console's own view.
+    await pg.getByTestId('game-continue-kit').getByRole('button').click();
+    await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).phase === 'kit', 6000, 'the server phase to reach kit');
+    const after = await fetch(`${mc.base}/api/state`).then(r => r.json());
+    expect(after.phase === 'kit', `CONTINUE TO KIT ▸ moves the server's own phase to kit (saw ${JSON.stringify(after.phase)})`);
+    ok('LOAD feedback (QA-01) holds against a real MC, and CONTINUE TO KIT ▸ moves the server phase to kit');
     await pg.context().close();
   } finally { await vite.stop(); await mc.stop(); }
 });
@@ -465,7 +482,9 @@ step('real-last-match-restart', async () => {
 });
 
 step('widths', async ({ browser, base }) => {
-  for (const w of [1280, 900]) {
+  // team-lead 2026-09-26: the strip must wrap cleanly at 900 AND 768px too (a TEAMS item joins it
+  // later, F413) -- 768 added alongside the existing two.
+  for (const w of [1280, 900, 768]) {
     const pg = await open(browser, base, '?mock#build', w);
     const overflow = await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     expect(!overflow, `${w}px: no sideways page scroll`);
@@ -478,7 +497,7 @@ step('widths', async ({ browser, base }) => {
     expect(sizes.length > 0 && sizes.every(h => h >= 44), `${w}px: every new strip control meets the 44px hit-area floor (saw ${JSON.stringify(sizes)})`);
     await pg.context().close();
   }
-  ok('900px and 1280px: no overflow, real tap targets');
+  ok('768px, 900px and 1280px: no overflow, real tap targets');
 });
 
 async function main() {

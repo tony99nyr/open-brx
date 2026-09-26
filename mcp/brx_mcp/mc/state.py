@@ -6056,14 +6056,21 @@ class Session:
 
         Everything a player carries is compiled at the lobby push, so advancing past KIT while somebody
         is still choosing takes their half-made kit into the match (loadout.md §4.4 -- the node says so
-        in its own words). The host may still do it deliberately; `force` is that deliberate second tap."""
+        in its own words). The host may still do it deliberately; `force` is that deliberate second tap.
+
+        F411 (VQA round 1, 2026-09-26): PLAY's own CONTINUE TO KIT ▸ still moves `build` -> `kit` first,
+        same as before -- but nothing stops an operator reaching LOBBY straight from PLAY by the nav bar
+        alone (the tabs are a client-side view switch, not a phase move), which used to skip this guard
+        entirely (`self.phase` stayed `build`, never `kit`). Guarded from BUILD too now, not only KIT.
+        MUSTER stays unguarded on purpose: a session that has not even reached PLAY yet has no game to be
+        half-kitted out of."""
         if phase not in PHASES or phase in ("armed", "live", "recap"):
             raise ValueError("phase must be one of muster|build|kit|lobby (armed/live/recap are driven by start/end)")
         if self.in_play():
             raise ConflictError(
                 f"the match is {self.phase.upper()} — end it (control END) before moving the session back to "
                 f"{str(phase).upper()}; `force` does not apply")
-        if phase == "lobby" and self.phase == "kit" and not force:
+        if phase == "lobby" and self.phase in ("build", "kit") and not force:
             not_ready = [p.get("display") or p["player_id"] for p in self.players.values() if not p.get("ready")]
             if not_ready:
                 greens = len(self.players) - len(not_ready)
