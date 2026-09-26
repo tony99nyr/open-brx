@@ -1523,7 +1523,20 @@ class Session:
             **({"team_damage": "off"} if not _compile.team_damage_on(cfg) else {}),
             # A31: present ONLY when this match needs it, so a node can treat presence as the rule.
             **({"mc_verify": mcv} if (mcv := self._mc_verify_player_line()) else {}),
+            # F403: the game's pickups, each item once in station order; present ONLY when an item is active.
+            **({"pickups": pk} if (pk := self._brief_pickups()) else {}),
         }
+
+    def _brief_pickups(self) -> list[dict]:
+        """F403: `[{name, color}]` for the BRIEFING's PICKUPS line, from the items this run carries (`_item_stations`)."""
+        seen: set[str] = set()
+        out: list[dict] = []
+        for _nid, _a, item in self._item_stations():
+            name = str(item.get("name") or item.get("weapon_id") or item.get("kind") or "")
+            if name and name not in seen:
+                seen.add(name)
+                out.append({"name": name, "color": item.get("color") or ""})
+        return out
 
     def load_game(self) -> dict:
         """LOAD: tell every bound phone WHICH GAME is loaded. No frames, no head, no gun write.

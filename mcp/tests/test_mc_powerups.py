@@ -653,3 +653,17 @@ def test_the_hit_plan_carrier_is_the_compilers_own():
     finally:
         Compiler._pickup_carrier = staticmethod(orig)  # type: ignore[method-assign]
     assert seen == [[{"weapon_id": "rocket_launcher", "slot": 2}]], seen
+
+
+def test_f403_the_game_brief_names_each_pickup_once_in_station_order():
+    s, _ = _sess(powerups=True)
+    assert "pickups" not in s.game_brief(), "no item station: no PICKUPS line"
+    _station(s, "u1", 5, "rockets")
+    _station(s, "u2", 6, "overshield")
+    _station(s, "u3", 7, "rockets")                      # the same item names once
+    pk = s.game_brief()["pickups"]
+    assert [p["name"] for p in pk] == ["Rockets", "Overshield"] or [p["name"].upper() for p in pk] == ["ROCKETS", "OVERSHIELD"], pk
+    assert all(isinstance(p.get("color"), str) and p["color"] for p in pk), pk
+    off, _ = _sess(powerups=False)
+    _station(off, "u1", 5)
+    assert "pickups" not in off.game_brief(), "the flag off: items are inert, so no line"

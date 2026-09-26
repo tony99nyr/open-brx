@@ -325,7 +325,8 @@ assign.game { name, desc,                       // saved-game name/desc when the
               mode, mode_name, abbr, teams_text, win_text, respawn_text,
               time_limit_s, respawn, health, environment, night,
               loadout_line,                     // one human sentence: "You pick your primary (16 to choose from), slot 2: a second weapon, a perk of your choice (5)."
-              ruleset, hud_select }             // preset label (OPEN / NO HEAVIES / …) + whether phones may pick
+              ruleset, hud_select,              // preset label (OPEN / NO HEAVIES / …) + whether phones may pick
+              pickups? }                        // F403 (2026-09-25): [{name, color}], each active item once in station order; absent with no items
 ```
 - **`kit_open:false`** (ARMORY / GAMES): the KITTED screen shows **"MISSION CONTROL IS SETTING UP THE GAME"** —
   name + number + gun, no plates, no READY UP. Calm, not an error.
