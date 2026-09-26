@@ -2,6 +2,7 @@
 **State as of 2026-09-25 (before Tony clears every session).** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 Open MVP work is [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench, decision); ideas and the roadmap are [`post-mvp.md`](post-mvp.md);
 what is done is [`archive/followups-closed.md`](archive/followups-closed.md). The bench order is [`bench-plan.md`](bench-plan.md).
+What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is [`post-launch.md`](post-launch.md).
 Update only the lane you worked.
 ## State of main (2026-09-25)
 **App 0.4.11 is published** (`app-v0.4.11`, release-signed; a phone on a debug build must uninstall once). Main is
@@ -46,11 +47,12 @@ Stick lock/link bugs F387-F392, F397; **F390** (MUSTER's no-way-back) to DECISIO
   authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
-APK 0.4.12 published 2026-09-25 (`app-v0.4.12`), release-signed, WebView debugging on. Built on 2026-09-25: F319 and
-F401 closed; F382 (phone half), F384 and F385 on the bench list; the stage flakes fixed.
-- **Next:** one shared drain helper for every stage-mirror test that reads the reserve (the stun test flaked on CI
-  36195523113), then F377.
-- **Desk (MVP):** S32 waits on Tony's two renders. Codex needs `codex login` (401).
+APK 0.4.12 published 2026-09-25 (release-signed, WebView debugging on). Since then on main: F282 (silenced weapons,
+MC-only: restart MC from main before the bench), F382 phone half, F384, F385, F401, F402, F404, F405, the MVP mode
+cut (TDM, FFA, KOTH), the TDM/FFA/KOTH chaos desk proofs and three flake fixes; F372 closed (powerups on by default).
+- **Next:** S32 waits on Tony's two renders. The next APK carries F382, F384, F385 and the phone's MVP-only utility
+  drawer.
+- **Tools:** Codex returns 401 until `codex login`; Sonnet agents did the work since.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
@@ -67,7 +69,7 @@ before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392
 On main: S58 powerups ON by default (F372 closed, `--no-powerups` is the opt-out); S59 Visor; F348/F349; death first; the three-lane alerts; F347, F350, F378.
 2026-09-25: sitting B's F379, F380, F381 (a same-weapon stack capped at 2x the drop) and F393; F400, the pickup switch
 card (ALT's card and timing for a weapon pickup, SELECT and the switch-back; display only; the Overshield gets N102
-and no card; the kill-card clash is Tony's lean).
+and no card; the kill-card clash is Tony's lean). 2026-09-26: F403, the BRIEFING's PICKUPS line (MC's brief carries `pickups`).
 - **Next desk task:** B21's iOS half on the MacBook; `PLAY_GAP_MS` from sitting C's spacing check (F372 closed).
 - **Next bench task:** sitting C: the powerup setup (11.3), F381 (Rockets twice: 3, then 4), F400 on the gun (the card
   holds ALT's time, SELECT works while it is up), the shield-up kill-cue A/B/A, the spacing check, 11.1 (c), 11.8.

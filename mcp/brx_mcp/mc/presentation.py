@@ -22,6 +22,12 @@ Shape (lives in `GameConfig.presentation`, validated by `merge`, expanded by `re
       "hud_events": bool, "mc_events": bool, "mc_confidence": bool,   # A11.5 event classes + the confidence gate
       "blackout":     bool,  # A16/led-language.md §4/§6#2: no light ANYWHERE except `down` (own switch,
                              # separate from `config.night` -- night dims/shortens, blackout empties)
+      "silent_weapons": bool,  # F282 (Tony, 2026-09-25: "yes, MVP; the silenced preset must silence the
+                             # weapons"): true in the "silenced" preset, false in every other preset and
+                             # the default (an absent/unknown value on an older saved game reads false).
+                             # `compile.py` reads it to give EVERY compiled weapon the Suppressor's own
+                             # captured t25/t26/t27 -- see the compile-side comment for what those tokens
+                             # are and are not proven to do.
       "headset": {pregame, start_flash, in_play, hit, death, respawn_flash, role},   # A11.6/§3.3
                  # (death: flash|native|colour; `role` was `carrier` -- both accepted, `role` canonical,
                  # `carrier` still an input alias mapped onto it by `merge()`/`resolve()`)
@@ -414,9 +420,10 @@ NIGHT_READOUT = {"hold_s": 2, "reload_glance_s": 1}   # §3.4: night halves both
 # everything else; the two are independent now, and `down` is unconditional regardless of either.
 _BASE = {"announcer": True, "gun_flash": True, "headset_team": True, "sight_flash": True,
          "hud_events": True, "mc_events": True, "mc_confidence": True, "blackout": False,
+         "silent_weapons": False,
          "voice": "on", "headset": dict(HEADSET_DEFAULT), "gun": dict(GUN_DEFAULT)}
 SWITCHES = ("announcer", "gun_flash", "headset_team", "sight_flash", "hud_events", "mc_events",
-            "mc_confidence", "blackout")
+            "mc_confidence", "blackout", "silent_weapons")
 # S12: the player's OWN voice-line switch. Not a SWITCHES member -- it is a 3-way enum, not a bool, so
 # it gets its own validation in `merge()`/`resolve()`/`summary()` rather than the bool-cast loop.
 VOICE_VALUES = ("on", "hits_only", "off")
@@ -431,7 +438,10 @@ PRESETS: dict[str, dict] = {
     # `readout.pools: []` empties it -- `gun_readout()` returns {} for an empty pool list.
     # S12 (Tony, 2026-09-11: "let the config drive it. silenced snipers no grunts could be legit"):
     # `voice: "off"` -- the player's own pain/spawn lines are dropped along with the announcer.
-    "silenced": {**_BASE, "announcer": False, "gun_flash": False, "voice": "off",
+    # F282 (Tony, 2026-09-25: "yes, MVP; the silenced preset must silence the weapons"): `silent_weapons`
+    # makes every compiled weapon fire on the Suppressor's own captured t25/t26/t27 -- see the
+    # compile-side comment on `WeaponCatalog.resolve()` for the mechanism and what is proven vs not.
+    "silenced": {**_BASE, "announcer": False, "gun_flash": False, "voice": "off", "silent_weapons": True,
                 "gun": {**GUN_DEFAULT, "readout": {"pools": []}}, "events": {}},
     # Tony: "for a counter-strike mode we use the bomb armed and bomb defused sounds".
     # X12 is the unambiguous heavy explosion by ear (2026-09-04); X13 "might actually be a sniper".
@@ -1033,6 +1043,7 @@ def summary(profile: dict) -> PresentationSummary:
             "mc_events": bool(profile.get("mc_events", _BASE["mc_events"])),
             "mc_confidence": bool(profile.get("mc_confidence", _BASE["mc_confidence"])),
             "blackout": bool(profile.get("blackout", _BASE["blackout"])),
+            "silent_weapons": bool(profile.get("silent_weapons", _BASE["silent_weapons"])),
             "voice": voice if voice in VOICE_VALUES else "on",
             "headset": {"pregame": hs["pregame"], "start_flash": hs["start_flash"],
                         "in_play": hs["in_play"], "hit": hs["hit"], "death": hs["death"],

@@ -62,6 +62,9 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   'frame-setup-conflict': {
     sev: 'amber', text: 'SETUP: NO CONTROL STATION IS ASSIGNED | NO RESPAWN STATION IS ASSIGNED ({WHY}): ASSIGN A STATION IN ITEMS AND ARM IT',
   },
+  // F402 item 2: the assigned hill has gone quiet since LOAD. Advisory, unlike `frame-setup-conflict`'s
+  // koth case (now a hard refusal, `games-locked-banner`'s koth reason) -- this warns; it does not block.
+  'frame-setup-hill-offline': { sev: 'amber', text: 'SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START' },
   'games-setup-line': { sev: 'amber', text: 'SETUP: {THE FIELD STEP}' },
   'recap-server-warning': {
     sev: 'amber', text: "POSSIBLE GUN REPLAY (F74): {VICTIM} TOOK {N} IDENTICAL {DMG}-DAMAGE HITS FROM {SHOOTER} AT A STEADY {P} S PERIOD, AND THEY COUNT, WITH ANY DEATH THEY CAUSED: CHECK THE SHOOTER'S SHOTS AGAINST THEM, AND RE-ARM THE VICTIM'S GUN WITH `$SPAWN`",
@@ -144,6 +147,7 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'SETUP: A CONTROL STATION IS ASSIGNED BUT', id: 'frame-setup-conflict-control-vs-grenade' },
   { head: 'SETUP: NO CONTROL STATION IS ASSIGNED', id: 'frame-setup-conflict' },
   { head: 'SETUP: NO RESPAWN STATION IS ASSIGNED', id: 'frame-setup-conflict' },
+  { head: 'SETUP: THE HILL IS OFFLINE', id: 'frame-setup-hill-offline' },
   { head: 'SETUP:', id: 'games-setup-line' },
   { head: 'POSSIBLE GUN REPLAY', id: 'recap-server-warning' },
   { head: 'WIRE 0 HITS', id: 'recap-server-warning' },

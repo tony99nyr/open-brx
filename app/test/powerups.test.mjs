@@ -15,7 +15,7 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 
 const ROCKETS = { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' };
 const RAIL = { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#8a5cff' };
-const OVERSHIELD = { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#3ad6ff' };
+const OVERSHIELD = { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#b36bff' };
 // The pickup slots' head `$WEAP` rows (`WeaponCatalog.resolve()` output, 2026-09-24; the grant re-sends them verbatim).
 const WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*',
   3: '$WEAP,3,0,100,6,0,149,0,,,,,,,,1200,850,2,2,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,2,1,75,*' };
@@ -131,7 +131,7 @@ test('announcement: <ITEM> AVAILABLE at each spawn time, skipped when the statio
   h.at(60.5);
   const a = h.eng.state().powerupSpawn;
   assert.ok(a, 'the first spawn announces');
-  assert.equal(a.name, 'OVERSHIELD'); assert.equal(a.color, '#3ad6ff');
+  assert.equal(a.name, 'OVERSHIELD'); assert.equal(a.color, '#b36bff');
   h.near(4, { median: -85, state: 1 });   // heard across the field: available, nobody took it
   h.at(120.5);
   const sp = h.eng.state().powerupSpawn;

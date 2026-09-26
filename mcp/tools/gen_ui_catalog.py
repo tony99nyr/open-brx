@@ -36,7 +36,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 DATA_TS = REPO / "webapp" / "mc" / "src" / "mock" / "data.ts"
 DEMO_JS = REPO / "app" / "src" / "demo-catalog.js"
 
-_MODE_TEXT_KEYS = ("name", "abbr", "desc", "brief", "teams_text", "win_text", "respawn_text")
+_MODE_TEXT_KEYS = ("name", "abbr", "desc", "brief", "teams_text", "win_text", "respawn_text", "mvp")
 
 
 def weapon_views() -> list[dict]:

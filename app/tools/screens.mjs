@@ -1384,6 +1384,37 @@ for (const view of VIEWS) {
     must(!r.over, 'the briefing body overflows its own box: ' + JSON.stringify(r));
     must(r.last <= r.footTop - 4, `the last briefing row runs into the footer: ${Math.round(r.last)} > ${Math.round(r.footTop)}`);
   });
+  // ---------- F403 (2026-09-25): the BRIEFING names the game's pickups, so a player knows before it starts ----------
+  await step(`${view.name} F403 briefing-pu: the PICKUPS line names each item in its own colour, fits, and is absent from the plain briefing`, async () => {
+    const read = pg => pg.evaluate(() => {
+      const el = document.querySelector('.bfpu'); if (!el) return { present: false };
+      const items = Array.from(el.querySelectorAll('.pun')).map(e => ({ name: e.textContent.trim(), color: getComputedStyle(e).color }));
+      const r = el.getBoundingClientRect(), foot = document.querySelector('.bffoot').getBoundingClientRect();
+      const clipped = Array.from(el.querySelectorAll('*')).concat([el]).some(e => e.scrollWidth > e.clientWidth + 1);
+      const v = el.querySelector('.v'); const range = document.createRange(); range.selectNodeContents(v);
+      const rects = Array.from(range.getClientRects()).filter(x => x.width > 1 && x.height > 1);
+      const wrapped = new Set(rects.map(x => Math.round(x.top))).size > 1;
+      return { present: true, items, clipped, wrapped, overlapsFoot: r.bottom > foot.top + 1 };
+    });
+    const dayPg = await open(view, 'briefing-pu'); const day = await read(dayPg); await dayPg.close();
+    must(day.present, 'no PICKUPS line on the pickups briefing');
+    must(day.items.map(i => i.name).join(' · ') === 'ROCKETS · RAIL GUN · OVERSHIELD', 'item names/order: ' + JSON.stringify(day.items));
+    must(!day.clipped && !day.wrapped && !day.overlapsFoot, 'the PICKUPS line does not fit cleanly: ' + JSON.stringify(day));
+    must(day.items[0].color === 'rgb(255, 122, 26)' && day.items[1].color === 'rgb(34, 211, 238)' && day.items[2].color === 'rgb(179, 107, 255)',
+      'each item is not painted in its own day colour: ' + JSON.stringify(day.items));
+
+    const nightPg = await open(view, 'briefing-pu', '&night'); const night = await read(nightPg); await nightPg.close();
+    must(night.present, 'no PICKUPS line at night');
+    const rgb = css => css.match(/\d+/g).map(Number);
+    const green = c => { const [r, g, bl] = rgb(c); return g > r + 12 && g > bl - 8 && g > 40; };
+    const nearWhite = c => rgb(c).every(x => x > 220);
+    must(night.items.every(i => !green(i.color) && !nearWhite(i.color)), 'night PICKUPS colour must not be green or near-white: ' + JSON.stringify(night.items));
+    must(new Set(night.items.map(i => i.color)).size === 1, 'night must collapse every item to the single night accent, not day colours: ' + JSON.stringify(night.items));
+
+    const plainPg = await open(view, 'briefing'); const plainHas = await plainPg.evaluate(() => !!document.querySelector('.bfpu')); await plainPg.close();
+    must(!plainHas, 'the plain briefing (no items) must show no PICKUPS line at all');
+  });
+
   await step(`${view.name} F117 over: READY FOR NEXT MATCH is a control, styled like READY UP`, async () => {
     const read = pg => pg.evaluate(() => { const e = document.querySelector('.foot .ready'); const cs = getComputedStyle(e);
       return { txt: e.textContent.trim(), act: e.dataset.act || null, color: cs.color, fs: cs.fontSize, wait: e.classList.contains('wait'), clipped: e.scrollWidth > e.clientWidth + 1 }; });

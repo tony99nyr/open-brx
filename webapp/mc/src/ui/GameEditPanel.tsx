@@ -105,6 +105,9 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
   const polOf = (c: GameConfig): LoadoutPolicy => (c.loadout_policy?.primary ? c.loadout_policy : DEFAULT_POLICY());
   const shown = draft ?? cfg;                 // what the controls read while open; the header reads `cfg`
   const pol = polOf(shown);
+  const stockModes = modes.filter(m => m.mvp);
+  const modeOptions = stockModes.some(m => m.mode === shown.mode) ? stockModes
+    : [...stockModes, ...modes.filter(m => m.mode === shown.mode)];
   const locked = !EDITABLE.has(state.phase);
   const pushed = state.lobby.pushed;
   const loaded = !!state.game?.loaded || pushed;   // PreArmSummary's own test for NO GAME LOADED
@@ -214,8 +217,12 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
             <Row label="MODE">
               {modes.length > 0 ? (
                 <>
-                  <Seg label="mode" value={shown.mode} wrap options={modes.map(m => ({ value: m.mode, label: m.abbr }))}
-                    titles={Object.fromEntries(modes.map(m => [m.mode, m.name]))}
+                  {/* F-scope A (2026-09-25): MVP is TDM/FFA/KotH only. `modeOptions` offers only the
+                      server-flagged MVP modes, unless the draft is ALREADY on a hidden one (an old saved
+                      game, or a config loaded via the API) -- that mode's own option stays so the Seg
+                      shows it selected instead of reading as unset. */}
+                  <Seg label="mode" value={shown.mode} wrap options={modeOptions.map(m => ({ value: m.mode, label: m.abbr }))}
+                    titles={Object.fromEntries(modeOptions.map(m => [m.mode, m.name]))}
                     onChange={pickMode} />
                   <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) and volume stay. Nothing is sent until {saveLabel.replace(' ▸', '')}.</div>
                 </>

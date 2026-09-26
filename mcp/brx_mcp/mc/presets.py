@@ -46,11 +46,16 @@ def _builtin_configs(default_config: Callable[[str], GameConfig],
         "secondary": {"choice": "off"},
         "perk": {"choice": "fixed", "fixed_id": "extended_mags"},      # A14: the perk is its own slot
     })
+    # F282: the silenced presentation preset (no announcer, no LED flashes, and silent_weapons: every weapon
+    # takes the Suppressor's quiet fire tokens). Until the GAMES redesign adds a SILENCED toggle, this game is
+    # how a host reaches it.
+    from . import presentation as _pres
+    cfg["presentation"] = _pres.profile_from_preset("silenced")
     cfg.pop("config_id", None)
     return [{
         "preset_id": BUILTIN_SILENCED_SNIPER, "name": "Silenced Sniper",
         "desc": "Free-for-all, sniper rifles only, no armor — one shot drops you. Everyone carries Extended Mags. "
-                "The \"silenced\" fire sound is pending the weapon-tuning spec; today the rifle sounds stock.",
+                "Silenced: no announcer or LED flashes, and every rifle uses the Suppressor's fire sound.",
         "builtin": True, "created_t": 0, "updated_t": 0, "config": cfg,
     }]
 

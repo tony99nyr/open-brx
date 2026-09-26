@@ -1456,7 +1456,7 @@ class StationLink {
         wait_offline_since_ms_ = now_ms;
       }
       if ((uint32_t)(now_ms - wait_offline_since_ms_) < MUSTER_WAIT_OFFLINE_MS) return false;
-      if (has_control_assignment() && !heard_start_) hill_live_ = true;
+      if (has_control_assignment() && !heard_start_ && assignment_.duration_ms <= 0) hill_live_ = true;
     } else if (drop_deferred_ && (uint32_t)(now_ms - drop_latched_at_ms_) < MUSTER_DROP_DEFER_MS) {
       return false;
     }

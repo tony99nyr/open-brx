@@ -232,7 +232,9 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s.net.simulate_utility_hello("stick-1")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.phase = "live"
-    s.start_info = {"go_live_t": s.now_ms() - 1000}
+    t0 = s.now_ms()
+    s.now_ms = lambda: t0  # a fixed clock: the asserts below are exact milliseconds
+    s.start_info = {"go_live_t": t0 - 1000}
     s.config["time_limit_s"] = 600
     s._arm_station("stick-1")
     assert _pushed(s, "station_config", "stick-1")[-1].get("duration_ms") == 600000
@@ -259,7 +261,9 @@ def test_station_config_carries_match_end_deadline_when_known():
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
     s.phase = "live"
-    s.start_info = {"go_live_t": s.now_ms() - 1000}
+    t0 = s.now_ms()
+    s.now_ms = lambda: t0  # a fixed clock: the asserts below are exact milliseconds
+    s.start_info = {"go_live_t": t0 - 1000}
     s.config["time_limit_s"] = 600
     s._arm_station("util-1")
     body = _pushed(s, "station_config", "util-1")[-1]
@@ -579,18 +583,30 @@ def test_the_utility_heartbeat_is_kept_as_the_stations_report():
 
 
 def test_a_station_gated_game_with_nothing_assigned_says_so_in_config_warnings():
+    """F402 (2026-09-25): for KOTH this is no longer an advisory in `config_warnings` -- it is a hard
+    LOAD/push refusal (`Session._koth_hill_fault`), so the amber SETUP line is gone for this mode and
+    the fault lives on `_koth_hill_fault()` / the refusal itself instead."""
     s = _sess("koth", station_source="phone")
     s._validate()
-    assert any("NO CONTROL STATION IS ASSIGNED" in w for w in s.config_warnings), s.config_warnings
+    assert not any("NO CONTROL STATION IS ASSIGNED" in w for w in s.config_warnings), \
+        "F402: the amber advisory is retired for koth, replaced by the hard refusal"
+    assert s._koth_hill_fault() == Session._KOTH_HILL_FAULT_NONE, s._koth_hill_fault()
+    try:
+        s.push_config(force=True)
+        raise AssertionError("F402: MC pushed a koth game with no hill on the field")
+    except ValueError as e:
+        assert str(e) == Session._KOTH_HILL_FAULT_NONE, e
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 9})
-    assert not any("NO CONTROL STATION IS ASSIGNED" in w for w in s.config_warnings), "assigning one clears it"
+    assert s._koth_hill_fault() is None, "assigning a hill clears the fault"
+    s.push_config(force=True)
     # scanner respawn wants a respawn station the same way
     t = _sess(respawn={"type": "scanner", "delay_s": 15})
     assert any("NO RESPAWN STATION" in w for w in t.config_warnings), t.config_warnings
     # CONTROL: a grenade objective wants no phone, and auto respawn wants no station
     u = _sess("koth", station_source="grenade")
     assert not any("PHONE IS ASSIGNED" in w or "RESPAWN STATION" in w for w in u.config_warnings)
+    assert u._koth_hill_fault() == Session._KOTH_HILL_FAULT_SOURCE, u._koth_hill_fault()
 
 
 def test_scanner_respawn_warns_when_one_team_has_no_station():
@@ -1320,3 +1336,42 @@ def test_f401_the_sync_warning_stops_once_a_new_game_byte_has_reset_the_station(
     s._validate()
     assert not any("HAS NOT SYNCED" in w for w in s.config_warnings), s.config_warnings
 
+
+
+def test_f402_start_refuses_a_koth_whose_hill_was_unassigned_after_load():
+    """F402 polish: LOAD passed with a hill, then the host cleared it in LOBBY; START must refuse (force too)."""
+    from _session import assign_koth_hill
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    nid = assign_koth_hill(s)
+    s.push_config(force=True)
+    assert s.clear_station(nid)
+    for force in (False, True):
+        try:
+            s.start(runway_s=3, force=force)
+            raise AssertionError("a koth with no hill reached START")
+        except ValueError as e:
+            assert "KING OF THE HILL NEEDS A HILL" in str(e), e
+
+
+def test_f402_the_hill_offline_warning_skips_a_held_stick_and_a_second_online_hill():
+    """F402 polish: a HELD or muster Stick is out of Wi-Fi by design (A68), and one online hill is enough."""
+    from _session import assign_koth_hill
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    a = assign_koth_hill(s, "hill-a")
+    offline = lambda: [w for w in s.snapshot()["config_warnings"] if "THE HILL IS OFFLINE" in w]
+    s.nodes[a]["stale"] = True                                  # its link has gone stale
+    assert offline(), "CONTROL: a plain hill gone quiet is warned"
+    s.stations[a].setdefault("report", {})["assoc"] = "held"
+    assert not offline(), "a HELD Stick carried out of Wi-Fi is not 'offline' news"
+    s.stations[a]["report"].pop("assoc")
+    b = assign_koth_hill(s, "hill-b")                          # a second hill, heard just now
+    assert not offline(), "one online hill is enough"
+
+
+def test_f402_switching_a_loaded_game_to_koth_without_a_hill_unloads_it_instead_of_raising():
+    s = _joined(_sess(mode="tdm"))
+    s.push_config(force=True)
+    s.load_game()
+    assert s.game_loaded
+    r = s.set_config({"mode": "koth", "station_source": "phone"})    # must not raise half-way
+    assert s.game_loaded is False and s.config["mode"] == "koth", r

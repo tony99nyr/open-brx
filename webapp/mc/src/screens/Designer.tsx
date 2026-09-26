@@ -80,6 +80,13 @@ export function Designer() {
 
   if (!state || !cfg) return null;
   const mode = modes.find(m => m.mode === cfg.mode);
+  // F-scope A (2026-09-25): the BASE picker below offers only the MVP modes (server-flagged,
+  // `ModeInfo.mvp`); `modes` itself stays the full list, so a hidden mode already on `cfg` (an old saved
+  // game, or CUSTOMIZE off a loaded config) still resolves its row above for the brief/labels.
+  const stockModes = modes.filter(m => m.mvp);
+  // ...but if the CURRENT base is a hidden mode (an old saved game, CUSTOMIZE off a loaded config), its
+  // own card stays in the grid, selected — just not offered as a switch target from any other card.
+  const baseModes = mode && !mode.mvp ? [...stockModes, mode] : stockModes;
   // "this mode needs an objective source" is the SERVER's fact, read off the mode row's defaults
   // (/api/modes → default_config(mode)) rather than a second list of mode names living in the UI.
   // A draft that already carries one counts too, so an older MC's config still shows its own field.
@@ -188,8 +195,8 @@ export function Designer() {
           {/* 1 BASE */}
           <section>
             <SectionRule label="1 // BASE MODE" hint="SWITCHING THE BASE REPLACES EVERY RULE BELOW WITH THAT MODE'S DEFAULTS" style={{ marginBottom: 12 }} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8 }}>
-              {modes.map(m => {
+            <div data-testid="mode-base-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8 }}>
+              {baseModes.map(m => {
                 const on = m.mode === cfg.mode;
                 return (
                   <button key={m.mode} type="button" aria-pressed={on} onClick={() => setBase(m)} className={on ? undefined : 'hov-acc'}

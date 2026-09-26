@@ -650,7 +650,14 @@ function render() {
   $('netCap').textContent = `${settings.netCap}`;
   $('teamnote').hidden = !isControl;
   for (const b of document.querySelectorAll('[data-tx]')) b.classList.toggle('sel', b.dataset.tx === settings.tx);
-  for (const b of document.querySelectorAll('[data-kind]')) b.classList.toggle('sel', b.dataset.kind === settings.kind);
+  // F405 (2026-09-25): Tony -- "so mvp for utility is respawn station, pickup, hill". `extraction` and
+  // `bomb` are hidden from this picker (`hidden` in utility.html) so a host cannot pick a new one; an
+  // OLD assignment of either (from MC, or from before this change) keeps its own button visible and
+  // selected here instead of reading as unset.
+  for (const b of document.querySelectorAll('[data-kind]')) {
+    if (b.dataset.kind === 'extraction' || b.dataset.kind === 'bomb') b.hidden = b.dataset.kind !== settings.kind;
+    b.classList.toggle('sel', b.dataset.kind === settings.kind);
+  }
   for (const b of document.querySelectorAll('[data-team]')) b.classList.toggle('sel', +b.dataset.team === settings.team);
 }
 

@@ -311,15 +311,17 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     const g = await games({ load: true });
     await openEdit(g);
     await tap(g.q('[data-testid="pick-another"]'));   // shows the shelves next to the open draft
-    // INFECTION shares TDM's own default teams (mock/data.ts), so this pick needs no reshape confirm
-    // either — the one tap proves the draft's discard, not a second, unrelated confirm mechanic.
-    const other = g.modes.find(mm => mm.mode === 'infection')!;
+    // F-scope A (2026-09-25): the STOCK MODES shelf now offers only TDM/FFA/KOTH. FFA's single team
+    // (`newTeams.length < 2`) needs no reshape confirm regardless of the roster, unlike KOTH against
+    // TDM's default teams -- so it still proves the draft's discard with one tap, not a second,
+    // unrelated confirm mechanic.
+    const other = g.modes.find(mm => mm.mode === 'ffa')!;
     const card = g.q(`[aria-label="play ${other.name}"]`);
     expect(card, 'control: the shelf offers a different mode to tap').toBeTruthy();
     await tap(card);
     expect(g.q('[data-testid="game-edit-panel"]'), 'the draft is gone — discarded, not left open').toBeFalsy();
     expect(g.calls.putConfig.length, 'the pick itself goes straight through').toBe(1);
-    expect(g.calls.putConfig[0].mode).toBe('infection');
+    expect(g.calls.putConfig[0].mode).toBe('ffa');
     g.m.unmount();
   });
 
@@ -327,7 +329,7 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     const g = await games({ load: true });
     await openEdit(g);   // seeded, untouched — `dirty` is false
     await tap(g.q('[data-testid="pick-another"]'));
-    const other = g.modes.find(mm => mm.mode === 'infection')!;
+    const other = g.modes.find(mm => mm.mode === 'ffa')!;
     await tap(g.q(`[aria-label="play ${other.name}"]`));
     expect(g.m.text(), 'nothing changed, so nothing is worth announcing').not.toContain('DISCARDED');
     g.m.unmount();
@@ -354,12 +356,12 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     await tap(nightSwitch);
     expect(m.el.querySelector('[data-testid="game-edit-dirty"]')!.textContent, 'control: the draft really changed').toContain('UNSAVED');
     await tap(q('[data-testid="pick-another"]'));
-    const other = modes.find(mm => mm.mode === 'infection')!;
+    const other = modes.find(mm => mm.mode === 'ffa')!;
     await tap(q(`[aria-label="play ${other.name}"]`));
     expect(q('[data-testid="game-edit-panel"]'), 'the draft is gone').toBeFalsy();
     // the draft's own NIGHT toggle never reaches the server — only the pick itself does
     expect(calls.length, 'one request: the pick, not the discarded edit').toBe(1);
-    expect(calls[0].mode).toBe('infection');
+    expect(calls[0].mode).toBe('ffa');
     expect(m.text(), 'a plain notice, never the old refusal').toContain('UNSAVED EDITS DISCARDED');
     expect(m.text()).not.toContain('FINISH EDITING FIRST');
     // it is not an error strip: the bar renders a notice styled `bad`, and this one is not
@@ -392,7 +394,7 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     });
     expect(g.q('[data-testid="game-edit-panel"]'), 'no draft UI left to finish or cancel').toBeFalsy();
     expect(g.q('[data-testid="active-game-config"]'), 'back to picking a game, not the active state').toBeFalsy();
-    const other = g.modes.find(mm => mm.mode === 'infection')!;
+    const other = g.modes.find(mm => mm.mode === 'ffa')!;
     const card = g.q(`[aria-label="play ${other.name}"]`);
     expect(card, 'control: a pick is on screen').toBeTruthy();
     await tap(card);
@@ -445,6 +447,70 @@ describe('GAMES · once the match has started', () => {
     expect(g.q('[data-testid="games-locked"]'), 'no RECAP banner').toBeFalsy();
     expect(g.m.text()).not.toMatch(/PICK A MODE|THIS MATCH ENDED/);
     expect(g.btn('[data-testid="game-load"]')!.disabled).toBe(false);
+    g.m.unmount();
+  });
+});
+
+// F402 (Tony 2026-09-25): "KOTH should require utility in the armory. no way to play it without it."
+// The server hard-refuses a koth LOAD/push with nothing on the field that IS the hill
+// (`state.py Session._koth_hill_fault`, force does not open it) -- these pin the console's OWN
+// prediction of that same fault: LOAD disabled, the existing red banner beside it (never a second,
+// new blocker area), and a way straight to the fix.
+describe('GAMES · F402 koth needs a hill assigned, or LOAD is refused', () => {
+  const controlStation = (kind: 'control' | 'respawn' = 'control') => [{
+    node_id: 'util-hill', assigned: { kind, team: 255, id: 1, threshold: 0 }, armed: null,
+    arm_pending: false, report: {}, last_seen_ms: 0, online: true, attention: [], game: 1,
+  }];
+
+  it('no station assigned: LOAD is disabled, the red banner names it, and a button jumps to ARMORY', async () => {
+    const g = await games({ patch: s => ({ ...s, config: { ...s.config, mode: 'koth', station_source: 'phone' }, stations: [] }) });
+    const load = g.btn('[data-testid="game-load"]');
+    expect(load!.disabled, 'LOAD is visibly disabled, never a silent no-op').toBe(true);
+    const banner = g.q('[data-testid="games-locked"]');
+    expect(banner, 'the EXISTING blocker banner beside LOAD, not a new one').toBeTruthy();
+    expect(banner!.textContent).toContain('KING OF THE HILL NEEDS A HILL');
+    expect(banner!.textContent).toContain('ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY');
+    const jump = Array.from(banner!.querySelectorAll('button')).find(b => (b.textContent ?? '').includes('ARMORY'));
+    expect(jump, 'a button that jumps to the ARMORY').toBeTruthy();
+    await tap(jump);
+    expect(g.views).toEqual(['muster']);   // the view id the nav bar renders as ARMORY
+    g.m.unmount();
+  });
+
+  it('a phone or Stick assigned as CONTROL clears the block: LOAD is live and the banner is gone', async () => {
+    const g = await games({ patch: s => ({ ...s, config: { ...s.config, mode: 'koth', station_source: 'phone' }, stations: controlStation() }) });
+    expect(g.q('[data-testid="games-locked"]'), 'no block once a hill is assigned').toBeFalsy();
+    expect(g.btn('[data-testid="game-load"]')!.disabled).toBe(false);
+    g.m.unmount();
+  });
+
+  it('a station assigned as RESPAWN (not CONTROL) does not satisfy the gate', async () => {
+    const g = await games({ patch: s => ({ ...s, config: { ...s.config, mode: 'koth', station_source: 'phone' }, stations: controlStation('respawn') }) });
+    expect(g.btn('[data-testid="game-load"]')!.disabled, 'a respawn station is not a hill').toBe(true);
+    expect(g.q('[data-testid="games-locked"]')!.textContent).toContain('KING OF THE HILL NEEDS A HILL');
+    g.m.unmount();
+  });
+
+  it("station_source is not phone: the block names the OTHER fix (set the source, then assign a hill)", async () => {
+    const g = await games({ patch: s => ({ ...s, config: { ...s.config, mode: 'koth', station_source: 'grenade' }, stations: [] }) });
+    const banner = g.q('[data-testid="games-locked"]');
+    expect(banner!.textContent).toContain('SET OBJECTIVE SOURCE TO PHONE');
+    expect(g.btn('[data-testid="game-load"]')!.disabled).toBe(true);
+    g.m.unmount();
+  });
+
+  it('a mode other than koth is never blocked by this gate', async () => {
+    const g = await games({ patch: s => ({ ...s, config: { ...s.config, mode: 'tdm' }, stations: [] }) });
+    expect(g.q('[data-testid="games-locked"]')).toBeFalsy();
+    expect(g.btn('[data-testid="game-load"]')!.disabled).toBe(false);
+    g.m.unmount();
+  });
+
+  it('an older server with no `stations` field at all does not crash, and reads as no hill assigned', async () => {
+    const g = await games({ patch: s => ({ ...s, config: { ...s.config, mode: 'koth', station_source: 'phone' }, stations: undefined }) });
+    expect(() => g.m.text()).not.toThrow();
+    expect(g.btn('[data-testid="game-load"]')!.disabled).toBe(true);
+    expect(g.q('[data-testid="games-locked"]')!.textContent).toContain('KING OF THE HILL NEEDS A HILL');
     g.m.unmount();
   });
 });

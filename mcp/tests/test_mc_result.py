@@ -45,6 +45,10 @@ def go_live(n_players=2, mode="tdm", cfg=None, store=True):
     s, net, clock, ps = mk(n_players, mode, cfg, store)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
+    if mode == "koth":
+        # F402: push/start refuses a koth game with nothing on the field that IS the hill.
+        net.simulate_utility_hello("util-hill")
+        s.set_station("util-hill", {"kind": "control"})
     s.push_config()
     for i in range(n_players):
         net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
@@ -105,7 +109,7 @@ def test_the_result_stops_being_provisional_once_every_node_has_flushed():
 def test_result_says_undecided_rather_than_inventing_a_winner():
     """An objective match nobody reported on is UNDECIDED (A5.9/A6.1 — the host decides). MC says so
     to every phone; it must never fall back to the kills table it happens to have."""
-    s, net, clock, ps, info = go_live(2, "koth", {"scoring": {"win_by": "objective"}, "station_source": "grenade"})
+    s, net, clock, ps, info = go_live(2, "koth", {"scoring": {"win_by": "objective"}, "station_source": "phone"})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s.control("end")
     got = results(net)

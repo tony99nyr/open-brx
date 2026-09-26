@@ -2095,6 +2095,24 @@ static void test_duration_hill_skips_the_offline_go_live() {
   CHECK_EQ(link.hill().hold_ms[1], 0u);
 }
 
+static void test_muster_duration_hill_waits_for_player_after_offline_drop() {
+  StationLink link;
+  link.set_mode(AssocMode::MUSTER);
+  StationAssignment a = control_config(7);
+  a.duration_ms = 120000;
+  link.apply_station_config(a, 0);
+  link.wifi_down();
+  CHECK(!link.take_muster_drop(1000));
+  CHECK(link.take_muster_drop(1000 + MUSTER_WAIT_OFFLINE_MS));
+  CHECK(link.hill_waiting(1000 + MUSTER_WAIT_OFFLINE_MS));
+  PlayerPresence p;
+  link.hill().owner = 1;
+  link.hill().progress = 100;
+  link.tick_players(p, 62000);
+  link.tick_players(p, 63000);
+  CHECK_EQ(link.hill().hold_ms[1], 0u);
+}
+
 // Review 2026-09-25: an offline restart mid-match used to re-anchor at the next alive advert, so the whistle
 // moved later by the whole time already played. The time left is saved (at the anchor, then at most once
 // per HILL_CLOCK_SAVE_MS, and once as 0 at the whistle) and a restart resumes from it at boot.
@@ -2727,6 +2745,7 @@ int main(int argc, char** argv) {
   test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi_gate();
   test_duration_anchor_needs_a_player_heard_down_in_this_game_first();
   test_duration_hill_skips_the_offline_go_live();
+  test_muster_duration_hill_waits_for_player_after_offline_drop();
   test_duration_clock_survives_an_offline_restart();
   test_boot_assoc_mode_defaults_to_held_and_a_saved_mode_wins();
   test_saved_hill_clock_cadence_restore_and_clears();

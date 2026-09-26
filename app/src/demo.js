@@ -479,8 +479,8 @@ export function startDemo({ engine, log }) {
     // through the same presence path the app uses, with the claim's median RSSI and the station's `taker` byte. ----
     const PU = {
       rockets: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' },
-      rail: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#b06cff' },
-      overshield: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#3ad6ff' },
+      rail: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#22d3ee' },
+      overshield: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#b36bff' },
     };
     const PU_WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*',
       3: '$WEAP,3,0,100,6,0,149,0,,,,,,,,1200,850,2,2,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,2,1,75,*' };
@@ -498,6 +498,9 @@ export function startDemo({ engine, log }) {
         config.stations = [{ id: 4, kind: 'powerup', item: past(PU.rockets) }, { id: 5, kind: 'powerup', item: past(PU.rail) },
         { id: 6, kind: 'powerup', item: firstOvershield == null ? past(PU.overshield) : { ...PU.overshield, first_at_s: firstOvershield } }];
         config.powerups = [{ weapon_id: 'rocket_launcher', slot: 2 }, { weapon_id: 'rail_gun', slot: 3 }];
+        // F403: the BRIEFING's PICKUPS line — one entry per distinct item (engine.js `_puItems()` reads the
+        // same `config.stations`), in station order, so a player knows what the game carries before it starts.
+        { const seen = new Set(); game.pickups = config.stations.map(s => s.item).filter(it => it && !seen.has(it.name) && seen.add(it.name)).map(it => ({ name: it.name, color: it.color })); }
         // compile arms each pickup in its spare slot with its head `$WEAP` (the grant re-sends it verbatim to put the heavy
         // on the trigger) and empties it at every spawn and revive. The rows are `WeaponCatalog.resolve()` output, 2026-09-24.
         if (!bundle.head.some(f => f.startsWith('$WEAP,2,'))) bundle.head = [...bundle.head, PU_WEAP[2], PU_WEAP[3]];
@@ -568,6 +571,7 @@ export function startDemo({ engine, log }) {
       'connected-linked':  [[0, 'linkGun'], [400, 'mcBound']],
       'setup':             [[0, () => { policy.kit_open = false; }], ...kit],
       'briefing':          kit,
+      'briefing-pu':       [[0, () => ev.powerups()], ...kit],                                                 // F403: the PICKUPS line — ROCKETS · RAIL GUN · OVERSHIELD
       'briefing-long':     [...kit, [250, 'longGame']],                                                       // F110: a two-line name AND a wrapped loadout line
       'kitted':            kitted,
       'kitted-ready':      [...kitted, [400, () => ev.ready(true)]],

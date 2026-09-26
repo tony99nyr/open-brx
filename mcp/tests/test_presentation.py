@@ -87,6 +87,31 @@ def test_merge_rejects_bad_input():
             P.merge(None, bad)
 
 
+def test_silent_weapons_switch_true_only_in_silenced_absent_means_false():
+    """F282 (Tony, 2026-09-25: "yes, MVP; the silenced preset must silence the weapons"):
+    `silent_weapons` is a plain SWITCHES bool -- true only in the "silenced" preset, false in every
+    other preset and the default, and false for an older saved game that carries no such field at
+    all (an absent key, not merely a falsy one)."""
+    assert P.default_for("tdm")["silent_weapons"] is False
+    for name in P.PRESETS:
+        expect = name == "silenced"
+        assert P.profile_from_preset(name)["silent_weapons"] is expect, name
+    assert P.merge(None, {"preset": "silenced"})["silent_weapons"] is True
+    assert P.merge(None, {"preset": "standard"})["silent_weapons"] is False
+    # a saved profile from before this field existed: no key at all
+    old = {"preset": "silenced", "announcer": False}
+    assert "silent_weapons" not in old
+    assert P.resolve({"presentation": old})["silent_weapons"] is True  # resolve() still expands it from the preset
+    assert P.summary(old)["silent_weapons"] is False                   # summary() reads a bare dict -- no preset expansion, so absent -> False
+    # an explicit override on a non-silenced preset, and clearing it back off
+    on = P.merge(None, {"preset": "standard", "silent_weapons": True})
+    assert on["preset"] == "custom" and on["silent_weapons"] is True
+    off = P.merge(on, {"silent_weapons": False})
+    assert off["silent_weapons"] is False
+    with raises(ValueError):
+        P.merge(None, {"silent_weapons": "yes"})
+
+
 def test_voice_switch_presets_and_validation():
     """S12 (Tony, 2026-09-11: "let the config drive it. silenced snipers no grunts could be legit"):
     `presentation.voice` gates the player's OWN pain/spawn lines -- a 3-way enum, not a SWITCHES bool,
