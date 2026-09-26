@@ -24,7 +24,9 @@ WebView debugging ships ON by default on both platforms (B21, `DEFAULT_ON` in `B
 
 ## On the go (Tony)
 
-4. On a tree rebased onto `origin/main`, commit the version bump, `RELEASING.md` and the release notes.
+4. On a tree rebased onto `origin/main`, commit the version bump, `RELEASING.md` and the release notes. **Do not push
+   yet:** the bump alone fails `test_published_build` on CI (the site still names the old version), so it goes up with
+   the sidecar in step 7, in one push (0.4.14 pushed early and sent a red run).
 5. Run `cd app && npm run android:release`. It builds the signed APK, copies it to `webapp/download/` as
    `brx-companion-0.4.14-android-release.apk` and writes `webapp/download/build.json` for it (`variant`
    "release", its bytes and sha256, the commit it built from, the `app-v0.4.14` asset URL). It publishes
