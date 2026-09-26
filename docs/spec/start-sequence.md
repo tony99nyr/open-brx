@@ -60,7 +60,8 @@ verbatim** — they arrive pre-composed (contracts A6.3); the node carries no so
 of its own. A `$PLAY` needs tokens 2-3 = `4,6` to be audible; the empty-token form is silent (bench
 2026-08-25), so every cue below is the full `4,6` form.
 
-**Default runway = `DEFAULT_RUNWAY_S` (120 s, "walk time"; host-set, presets 60/120/180).**
+**Default runway = `DEFAULT_RUNWAY_S` (30 s; host-set, presets 60/120/180). Tony 2026-09-25: lowered
+from 120 s -- "120s is generally too long."**
 
 What `compile.py` ships today (`Compiler.cues()`, checked 2026-09-11):
 

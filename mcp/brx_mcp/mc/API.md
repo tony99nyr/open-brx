@@ -509,7 +509,7 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   the whistle; echo mismatch is forceable; the pool fault arises only in play. Every other red and every `waiting`
   row still refuses the push.
   `POST /api/start` mints `match_id`, stamps a monotonic `seq`, `go_live_t = now + runway_s`
-  (default `DEFAULT_RUNWAY_S` 120; presets 60/120/180). A same-schedule re-push keeps `seq` + `match_id`; a
+  (default `DEFAULT_RUNWAY_S` 30; presets 60/120/180). A same-schedule re-push keeps `seq` + `match_id`; a
   reschedule mints both anew; abort reaches only nodes in range (`reached`/`unreachable`).
 - **Scoring** (`scoring.py`, contracts §4): exact kills/assists, roster-based friendly (never in FFA), accuracy from
   victims' hits over own `shots_total` ("—" on a stale status; `acc_provisional` marks a number that has not
