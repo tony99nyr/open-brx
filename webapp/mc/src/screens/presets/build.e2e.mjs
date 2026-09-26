@@ -1,14 +1,15 @@
 // F411 BUILD e2e — drives the preset editor in a real browser against `?mock`.
 //
-// UNVERIFIED as of this lane's report: the `designer` view still renders the old <Designer/> until
-// the f411-console lane merges (App.tsx's routing is its file, not this lane's) and neither does the
-// mock backend implement the pieces routes yet (`src/mock/backend.ts`). This script therefore installs
-// its OWN in-page piece store on top of `window.__MC_MOCK__` (the same escape hatch
-// `test/e2e/frame.mjs` uses for `window.__MC_MOCK__.control`), so it exercises the real Build.tsx
-// against real, contract-shaped data regardless of how the merged mock backend ends up implementing
-// the routes. Once the merge lands: move this file into `test/e2e/`, add it to `scripts/test-all.mjs`'s
-// JOBS (with a measured mb/secs), and drop the in-page store in favour of the real mock backend if it
-// covers the same ground.
+// Verified after the f411-games merge (App.tsx routes `designer` -> <Build/>, the mock backend
+// implements the pieces routes): all six steps pass, twice in a row, against BOTH this script's own
+// in-page piece store below AND the real merged mock backend (spot-checked by hand across every kind,
+// zero console/page errors). Kept the in-page store rather than dropping it: it installs on top of
+// `window.__MC_MOCK__` (the same escape hatch `test/e2e/frame.mjs` uses for
+// `window.__MC_MOCK__.control`), so this script stays deterministic and does not depend on the mock
+// backend's seed data changing later.
+//
+// Per the brief: still needs to move into `test/e2e/` and `scripts/test-all.mjs`'s JOBS (with a
+// measured mb/secs) at integration — that directory is the PLAY lane's, not this lane's.
 //
 //   node src/screens/presets/build.e2e.mjs
 //   ONLY=<step> node src/screens/presets/build.e2e.mjs   # tabs | life | spawn | delete | save-error | leave-confirm
@@ -183,12 +184,16 @@ step('spawn', async ({ browser, base }) => {
   await until(() => pg.getByLabel('respawn delay seconds').count().then(n => n === 1), 4000, 'the SPAWN editor');
   expect((await pg.getByLabel('respawn delay seconds').inputValue()) === '15', 'AUTO starts at the 15s delay');
   await pg.getByRole('group', { name: 'respawn type' }).getByRole('button', { name: 'STATION' }).click();
-  expect((await pg.getByLabel('respawn delay seconds').inputValue()) === '10', 'switching to STATION shows the 10s delay from its own builtin');
+  // ValueBox's draft state syncs from the new `value` prop on the NEXT render after the click's own
+  // state update (its own useEffect, src/ui/index.tsx) — a bare read races that tick under load, so
+  // poll rather than assert immediately (CLAUDE.md "wait for a condition, not a fixed sleep").
+  await until(() => pg.getByLabel('respawn delay seconds').inputValue().then(v => v === '10'), 3000, 'the 10s delay from the STATION builtin');
+  ok('switching to STATION shows the 10s delay from its own builtin');
   // the 1-2s wedge guard: stepping the delay to 1 must snap away, never save as 1
   const delay = pg.getByLabel('respawn delay seconds');
   await delay.fill('1'); await delay.blur();
-  const after = await delay.inputValue();
-  expect(after === '0' || after === '3', `a 1s delay is refused by the guard (saw ${after})`);
+  await until(() => delay.inputValue().then(v => v === '0' || v === '3'), 3000, 'the delay to snap away from 1-2s');
+  ok(`a 1s delay is refused by the guard (now ${await delay.inputValue()})`);
   ok(`AUTO→STATION delay + the 1-2s guard   ${await shot(pg, 'spawn-guard')}`);
   await pg.context().close();
 });
