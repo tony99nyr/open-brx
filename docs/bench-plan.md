@@ -3,14 +3,60 @@
 Updated: 2026-09-26. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**The next sitting: [below](#next-sitting-after-games-and-014), once the MC GAMES tab redesign lands and app
+**Part 1 is today's short bench (the first section). Part 2, tomorrow: [below](#part-2-tomorrow-after-games-and-014), once the MC GAMES tab redesign lands and app
 0.4.14 is cut.** It supersedes the 2026-09-25 read of sitting C; see "Superseded" under "Sittings, in priority
 order" for the pointer.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
 
-## Next sitting: after GAMES and 0.4.14
+## NOW: part 1, the short bench, 2026-09-26 (1.5 h, on what exists today)
+
+Tony has 1.5 h before GAMES (F411) and 0.4.14 are ready. This runs on the phones' **0.4.13**, MC restarted from
+the current `main` (powerups ON by default, F372; outdoor default, F410), **no iPhone**. It holds only the steps
+that need neither F411, nor F394's or F400's phone fixes, nor the iPhone. **[RE-CHECK 0.4.14]** or **[RE-CHECK
+GAMES]** marks a step to repeat on that build. Priority order; stop at any STOP POINT. Procedures: the full plan
+below (Groups 2, 3, 7) and `bench-2026-09-24.md`.
+
+**Setup (15 min).** The grey and green Pixels: wireless debugging on, `adb connect`, `adb install -r`
+`app-v0.4.13`; **do not open the grey Pixel** (its first open is 11.7, in KOTH game 1). Confirm no match is
+ARMED or LIVE, then restart MC from `main` (no `--powerups`; check the banner says powerups on). Flash the Stick
+from `main` (`stick.py flash`; it carries F382's Stick half, F383's -75, F386, F387's timing line), then `stick.py
+cmd 10 "MC ws://<laptop>:8766/ws"`. Log: MC's banner, the Stick STATUS, both phones' version.
+
+**S1. KOTH, phone hill then Stick hill (20 min; 2 guns, the grey and green Pixels, the black Pixel as the
+phone hill).** Group 2 below. Game 1 opens the grey Pixel for the first time: **11.7** (it joins MC and binds
+within about 3 s, no tap). Pass rules as Group 2: the tick every 3 s held, 1.5 s losing, silent and the score
+paused while CONTESTED (F382), a recapture announced (F384), the HUD card clears (F385), the Stick freezes on
+MATCH OVER at the whistle (F386). The KOTH no-hill LOAD block is **[RE-CHECK GAMES]**.
+
+STOP POINT A (35 min): KOTH on both hill sources, 11.7.
+
+**S2. Powerups core, MC-side and Stick (30 min; same kit).** (1) F372: a fresh MC arms a Stick Rockets station
+with no flag. (2) 11.6: the black Pixel and the Stick get two different MC ids that survive a Stick restart. (3)
+11.2 at the Stick: a 1 s dwell at 30 cm claims; 2 m gives no ring (control); two players racing gives one
+winner; the item respawns on schedule. (4) F381: Rockets, fire once, Rockets again: 3 held; a third take caps at
+4. (5) F399: nine claims, claim-ready to grant near 1 s (MC session log). (6) F374: the HELD Stick carried out of
+Wi-Fi before START reads READY within a second of `first_at_s`, and no phone claims before it. Watch F380
+(CONFIRMING, no false NOT ANSWERING) in passing: **[RE-CHECK 0.4.14]** (brx5: the fix ships in 0.4.14).
+
+STOP POINT B (65 min): the shipped powerup default, station ids, the Stick claim, stacking and latency.
+
+**S3. The Stick alone (10 min).** Group 3 below: F387 (the RANGE hold with the serial log: opens at 5 s) and
+F333 (walk every screen at arm's length, MATCH OVER seen in S1).
+
+STOP POINT C (75 min).
+
+**S4. One gun, no phone (15 min).** Group 7 below: the `$PLAY` spacing check at 150 and 300 ms, then F282
+silenced vs standard, A/B/A, armed from `compile.resolve()`.
+
+STOP POINT D (90 min). If time is left: F348 (a Shields spawn starts at 105, Group 1 item 1, **[RE-CHECK
+0.4.14]**), then the F383 field walk (Group 6).
+
+Part 2 is tomorrow: everything that needs 0.4.14, GAMES or the iPhone (the GAMES CHECK, the iPhone block, F394,
+F400 and its lows, the 0.4.14 release loop, and every [RE-CHECK] above) is the section below, not squeezed in here.
+
+## Part 2, tomorrow: after GAMES and 0.4.14
 
 Waits on two things landing: the MC GAMES tab redesign (`docs/spec/design/games-redesign.md`, which may still be
 landing) and app 0.4.14 (carries F394's ammo-HUD fix and F400's two HUD lows). The cut itself waits on brx1's GO
