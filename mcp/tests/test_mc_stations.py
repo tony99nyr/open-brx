@@ -232,7 +232,9 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s.net.simulate_utility_hello("stick-1")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.phase = "live"
-    s.start_info = {"go_live_t": s.now_ms() - 1000}
+    t0 = s.now_ms()
+    s.now_ms = lambda: t0  # a fixed clock: the asserts below are exact milliseconds
+    s.start_info = {"go_live_t": t0 - 1000}
     s.config["time_limit_s"] = 600
     s._arm_station("stick-1")
     assert _pushed(s, "station_config", "stick-1")[-1].get("duration_ms") == 600000
@@ -259,7 +261,9 @@ def test_station_config_carries_match_end_deadline_when_known():
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
     s.phase = "live"
-    s.start_info = {"go_live_t": s.now_ms() - 1000}
+    t0 = s.now_ms()
+    s.now_ms = lambda: t0  # a fixed clock: the asserts below are exact milliseconds
+    s.start_info = {"go_live_t": t0 - 1000}
     s.config["time_limit_s"] = 600
     s._arm_station("util-1")
     body = _pushed(s, "station_config", "util-1")[-1]
