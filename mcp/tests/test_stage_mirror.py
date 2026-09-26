@@ -544,8 +544,10 @@ def test_a_new_match_forgets_the_point_and_a_tid_2_listener_is_silent_on_the_sta
 
 def mk_gain(**profile):
     """A health-body stage on a driveable clock, with a SOUND on each rise event so the tx stream shows it."""
-    mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
     clock = _Clock()
+    # the fake's delayed $ALCD replies must age on the SAME clock the test drives, not the real wall clock --
+    # otherwise a reply queued by an earlier write can come "due" from real CPU load alone (the flaky class).
+    mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     st.set_profile(gun="health", **profile)
     st.patch_presentation({"events": {"healed": {"sound": "VA7H"}, "armour_up": {"sound": "VA7I"}, "shield_up": {"sound": "VA7J"}}})
@@ -566,6 +568,7 @@ async def live(st):
     st.poll()
     st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes hits
     await settle(st)
+    await flush_fake_ammo(st)   # the spawn burst's own delayed $ALCD must not surface mid-test later
 
 
 def test_a_pool_rise_fires_healed_armour_up_or_shield_up_by_the_biggest_gain_like_the_phone():
@@ -695,22 +698,30 @@ def test_a_rise_inside_the_rare_moment_guard_is_dropped_and_after_it_fires():
 # ======================================================================================================
 
 def mk_reload():
-    mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
     clock = _Clock()
+    # same clock on both sides (see mk_gain): the fake's ALCD delay must age on the test's own driven time.
+    mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
 
 
-async def flush_fake_ammo(st, mgr):
-    """Drain delayed `$ALCD` replies before a test injects a newer gun report."""
+async def flush_fake_ammo(st, mgr=None):
+    """Force any delayed `$ALCD` reply through before a test (or a shared fixture such as `live()`) injects
+    a newer gun report, as if the round trip had already landed. The fake and the stage share one clock
+    (mk_reload/mk_stun/mk_gain), so a small deterministic jump -- comfortably past `_ALCD_WRITE_DELAY_S`
+    (0.04 s) but well under the shortest real timer a test drives (`ACC_ECHO_S` 0.7 s) -- is enough to make
+    it due; `mgr.pump()` then delivers it (independent of any write, unlike the old real-sleep loop, so
+    nothing races under CPU load) and `poll()` lets the stage react before the fresher report lands. Left
+    undrained, it would otherwise surface later, out of the test's narrative order, the moment some OTHER
+    write (a nag, a stun, a swap) next calls the fake's `drain()` -- the flaky class this closes."""
+    mgr = mgr or st.mgr
     tagger = mgr.taggers[GUN]
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + 5.0
-    while tagger._pending and loop.time() < deadline:
-        await st.write(["$VOLTS,*"], "flush delayed fake ammo", gap_ms=0)
-        st.poll()
-        if tagger._pending:
-            await asyncio.sleep(0.01)
+    advance = getattr(st.now, "advance", None)
+    if advance is not None:
+        advance(0.1)
+    mgr.pump()
+    st.poll()
+    await settle(st)
     assert not tagger._pending, "the fake gun's delayed ammo replies did not drain"
 
 
@@ -1126,8 +1137,9 @@ def test_f374_a_hit_during_the_hold_restarts_it_and_a_heal_drops_the_line():
 # ======================================================================================================
 
 def mk_stun(stun=10, **profile):
-    mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
     clock = _Clock()
+    # same clock on both sides (see mk_gain): the fake's ALCD delay must age on the test's own driven time.
+    mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     st.set_profile(stun=stun, **profile)
     return st, mgr, clock
@@ -1242,6 +1254,7 @@ def test_a_stun_before_the_first_shot_of_a_new_life_restores_this_lifes_reserve_
         st._arm_life("test"); await settle(st)   # F209: past spawn protection
         assert st.alive
         assert st._prev_ammo == {} and st._prev_reserve == {}, "both $ALCD maps reset on spawn"
+        await flush_fake_ammo(st, mgr)   # life 2's own spawn echo must not surface later and stomp the injected shot below
         n = mark(mgr)
         await st.ir("emp"); st.poll(); await settle(st)
         assert st.stunned and st.stunned["ammo"][0] == list(spawn[0]), st.stunned["ammo"]
@@ -1249,6 +1262,7 @@ def test_a_stun_before_the_first_shot_of_a_new_life_restores_this_lifes_reserve_
         w = ammo_writes(mgr, n)
         assert w == [f"$AMMO,0,{spawn[0][0]},{spawn[0][1]},1,*", f"$AMMO,1,{spawn[1][0]},{spawn[1][1]},1,*"], w
         assert not any(",150," in f for f in w), "life 1's reserve never reaches the gun"
+        await flush_fake_ammo(st, mgr)   # the first stun/restore round trip must not surface later either
         # CONTROL: a shot in life 2 before the stun makes the live pair the restore (the main test's rule)
         st._on_rx("$ALCD,31,100,0,190,0,*")
         await st.ir("emp"); st.poll(); await settle(st)
