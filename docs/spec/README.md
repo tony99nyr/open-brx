@@ -71,7 +71,7 @@ Field LAN = battery travel router, MC joins as a client (ADR-0002) · large park
 time-synced local countdown and local time-expiry end, `time_limit_s` required · exact BLE-native attribution
 (A4.1/A5.2) · accuracy = victims' shooter-tagged hits over own shots (A4.4) · readiness is node-reported (A4.9)
 and cannot deadlock (A5.4) · a live BLE rejoin reconciles from persisted state and never heals (A6.8) · after a
-match nodes return to KITTED (A5.9) · runway default 120 s (A5.10) · MC = Python server + local web UI, node =
+match nodes return to KITTED (A5.9) · runway default 30 s (A5.10) · MC = Python server + local web UI, node =
 Capacitor · full `config` + bundle at lobby all-ready, then only `start` at go time · play volume 80 indoors /
 90 outdoors, try-outs 69 (2026-08-30) · a perk is its own slot (A14).
 
