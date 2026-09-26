@@ -306,8 +306,9 @@ describe('M12 · the GAMES rail SETUP warnings are the friendly rewrite, upper c
     const { m } = await screen(<Games />, { phase: 'build', config_warnings: [NO_RESPAWN] });
     const t = m.text();
     expect(t.toUpperCase()).toContain('NO RESPAWN STATION IS ASSIGNED');
-    // the friendly rewrite, not the raw server sentence (which never says "set to")
-    expect(t.toUpperCase()).toContain('RESPAWN IS SET TO SCANNER');
+    // VQA round 1 QA-17: the picker calls this option STATION, never the wire word SCANNER — the
+    // friendly rewrite must use the operator's own vocabulary, not the raw server sentence's.
+    expect(t.toUpperCase()).toContain('RESPAWN IS SET TO STATION');
     expect(t).not.toMatch(/utility phone/i);
     m.unmount();
   });

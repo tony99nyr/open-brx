@@ -788,7 +788,7 @@ export class MockBackend implements Api {
           && Object.values(this.stations).some(s => s.assigned?.kind === 'control')
           ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} (EVERY PHONE IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS`] : []),
         ...(this.config.respawn.type === 'scanner' && !Object.values(this.stations).some(s => s.assigned?.kind === 'respawn')
-          ? ['SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SCANNER, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT'] : []),
+          ? ['SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT'] : []),
         // F402 item 2: mirrors Session._koth_hill_offline_warning() -- computed fresh here too, never
         // cached, so a hill that goes quiet after LOAD with no other edit still shows it.
         ...(this.config.mode === 'koth' && this.config.station_source === 'phone'

@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { operatorNote } from '../src/screens/operatorNote';
 
-const base = { mode: 'tdm', time_limit_s: 600, respawn: { type: 'auto' as const }, scoring: { frag_limit: null as number | null } };
+const base = { mode: 'tdm', respawn: { type: 'auto' as const }, scoring: { frag_limit: null as number | null } };
 
 describe('operatorNote', () => {
   it('KOTH: place the hill, hold it to score', () => {
@@ -21,11 +21,10 @@ describe('operatorNote', () => {
   it('SPAWN station: RESPAWN AT STATIONS', () => {
     expect(operatorNote({ ...base, mode: 'ffa', respawn: { type: 'scanner' } })).toEqual(['RESPAWN AT STATIONS']);
   });
-  it('no time limit: TIME: RUNS UNTIL YOU END IT', () => {
-    expect(operatorNote({ ...base, mode: 'ffa', time_limit_s: null })).toEqual(['TIME: RUNS UNTIL YOU END IT']);
-  });
+  // VQA round 1 QA-28: "TIME: RUNS UNTIL YOU END IT" is retired -- PLAY's TIME control can never be
+  // set to no limit, so the line could never show. See screens/operatorNote.ts.
   it('caps at two lines, even when more would apply', () => {
-    const cfg = { mode: 'koth', time_limit_s: null, respawn: { type: 'scanner' as const }, scoring: { frag_limit: 15 } };
+    const cfg = { mode: 'koth', respawn: { type: 'scanner' as const }, scoring: { frag_limit: 15 } };
     expect(operatorNote(cfg)).toHaveLength(2);
     expect(operatorNote(cfg)).toEqual(['PLACE THE HILL BEFORE START · HOLD IT TO SCORE', 'RESPAWN AT STATIONS']);
   });
