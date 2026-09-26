@@ -160,7 +160,7 @@ Per player two ticks — **frames written** and **gun echoed** (the headset proo
 everyone's in range — make "all ready → push → start" a confident sequence.
 
 ### A6 · START (dispersed countdown control)
-Host sets a **runway** (default 120 s — walk time; presets 60/120/180) and arms; MC hands every node a synced
+Host sets a **runway** (default 30 s; presets 60/120/180) and arms; MC hands every node a synced
 go-live time. Hero: `SYNCED GO-LIVE IN` + a big T-minus mirror, "GUNS COUNT DOWN ON THEIR OWN — PLAYERS MAY
 SCATTER OUT OF RANGE. ALL GO LIVE AT T-0." A per-node **armed / T-minus / in range / last seen** grid (ARMED ·
 NO ACK · RETRYING · LAST SEEN 40s — a silent node is never "gone"). **RESCHEDULE** (primary; the runway seg

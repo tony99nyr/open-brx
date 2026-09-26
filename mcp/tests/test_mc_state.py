@@ -3,7 +3,7 @@ timed-end mirror, hydrate by gun, hot-swap baseline, controls → KITTED."""
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import TEAM_DEFS, Session
 from brx_mcp.mc.scoring import Scorer
-from brx_mcp.mc.types import MAX_PLAYERS
+from brx_mcp.mc.types import DEFAULT_RUNWAY_S, MAX_PLAYERS
 
 T0 = 5_000_000
 
@@ -194,6 +194,20 @@ def test_push_gate_and_empty_echo_red_and_start_rules():
     ab = s.abort_start()
     assert s.phase == "lobby" and set(ab["reached"]) == {p["player_id"] for p in ps}
     assert net.pushes("control")[-1][2] == {"cmd": "abort_start", "seq": 2}
+
+
+def test_start_with_no_runway_defaults_to_default_runway_s():
+    """Tony 2026-09-25: "default countdown 30s. 120s is generally too long." A START with no
+    runway_s must use the ONE `DEFAULT_RUNWAY_S` constant, not a stale literal re-typed at the call site."""
+    assert DEFAULT_RUNWAY_S == 30, "the default itself moved; update this test's expectation, not the constant"
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    st = s.start()   # no runway_s passed at all
+    assert st["go_live_t"] == T0 + DEFAULT_RUNWAY_S * 1000
+    assert s.snapshot()["start"]["countdown_s"] == DEFAULT_RUNWAY_S
 
 
 def test_timed_end_mirror_and_recap_kitted():

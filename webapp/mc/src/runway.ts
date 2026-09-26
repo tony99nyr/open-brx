@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
+import { DEFAULT_RUNWAY_S } from './api/contract.gen';
 
 /** Countdown lengths the operator can arm: quick bench starts through full walk-outs (Tony 2026-08-26). */
 export const RUNWAYS = [10, 15, 30, 45, 60, 90, 120, 180];
-export const DEFAULT_RUNWAY = 120;
+/** Tony 2026-09-25: the ONE default lives in `types.py` (`DEFAULT_RUNWAY_S`); this reads the
+ *  generated contract so the picker's preselected value can never drift from MC's own START default. */
+export const DEFAULT_RUNWAY = DEFAULT_RUNWAY_S;
 
 const KEY = 'brx.mc.runway';
 
