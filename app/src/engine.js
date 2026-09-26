@@ -580,8 +580,9 @@ const CALLOUT_NAME_GAP_MS = 300; // the victim's DOWN word goes out this long af
 const CALLOUT_WINDOW_MS = 3000;  // kill-confirm first-to-arrive (Tony), and how long `state().callout` stays lit
 
 // ---------- A56 (S58): powerups (docs/spec/powerups.md) ----------
-// Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one only with
-// its `--powerups` flag on). Tony's defaults (2026-09-24), each a named constant so a change is one line:
+// Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one
+// unless it was started with `--no-powerups`; powerups are ON by default, F372). Tony's defaults (2026-09-24),
+// each a named constant so a change is one line:
 export const PU_RESERVE = 0;                // a weapon item grants its charges as the MAGAZINE and no reserve
 export const PU_LOST_AT_DEATH = true;       // a weapon item's unused charges do not carry into the next life
 export const PU_ACTIVE_CARD_MS = 1200;      // F400: the ACTIVE confirm bubble's life after SWITCHING (hud.js `_swap('switched', el, 900, 1200)`)

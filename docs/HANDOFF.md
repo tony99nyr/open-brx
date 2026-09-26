@@ -11,8 +11,8 @@ station scan and revive fixes (F342 part, F344, F345), A60 auto-join with first 
 and awards, A64/A65 no kill cue after any whistle and team-only credit (F357, F354), A66 MC-assigned station ids
 (F364), A67 the station range edit on all three halves (F365), the F231 ranges (SMG and rockets 40, rail 100) and
 F308's AR heavy 45. **0.4.12 waits on sitting A** of [`bench-2026-09-25.md`](bench-2026-09-25.md): screamers A4 (F341's
-`$*` reset) and F347's two answers. **Powerups are MVP** (Tony, 2026-09-25): they turn on by default (F372) once
-sitting C's powerup setup passes. Still P0: the link loop under load (**F293**) and BLE setup metrics (**F297**).
+`$*` reset) and F347's two answers. **Powerups are ON by default** (Tony, 2026-09-25, F372 closed): sitting C's
+powerup setup now runs as verification, not a gate. Still P0: the link loop under load (**F293**) and BLE setup metrics (**F297**).
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: brx1, orchestration
@@ -22,8 +22,8 @@ alert colours, F366 gamertag limit, D5 pistol Extended Mags (+50%), B6 and I2b r
 the death scream, F374 a pickup Stick waits for START, F164 reconcile ammo, F319, Q13's solo-game fix, B21's Android
 switch. Decided and recorded (do not re-ask): everything in the FOLLOWUPS rows, plus D5, F366 and F317 (post-MVP).
 - **Next:** run [`bench-2026-09-25.md`](bench-2026-09-25.md) with Tony. Sitting A's audio results are built (brx5,
-  t23 empty and the shield-hit clip); cut 0.4.12 after A4 (RELEASING.md); sitting C's powerup result goes to F372.
-- **Desk:** F377 (solo LMS picks no winner), B21's iOS half (needs the MacBook), F372 after the bench.
+  t23 empty and the shield-hit clip); cut 0.4.12 after A4 (RELEASING.md); sitting C's powerup setup verifies F372 (closed).
+- **Desk:** F377 (solo LMS picks no winner), B21's iOS half (needs the MacBook).
 - **Awaiting Tony:** F221 (look at `C:\Users\Tony\brx-mc-alerts\index.html`) and S32 (the koth and melee art).
 - **Parked, not merged:** `pu-select` 1fb1aec9 (brx5, SELECT swap; later powerup work on main likely supersedes it).
 ## Lane: brx2, bench, audio, utility and docs
@@ -50,7 +50,7 @@ APK 0.4.12 published 2026-09-25 (`app-v0.4.12`), release-signed, WebView debuggi
 F401 closed; F382 (phone half), F384 and F385 on the bench list; the stage flakes fixed.
 - **Next:** one shared drain helper for every stage-mirror test that reads the reserve (the stun test flaked on CI
   36195523113), then F377.
-- **Desk (MVP):** the MC half of F372 after sitting C. S32 waits on Tony's two renders. Codex needs `codex login` (401).
+- **Desk (MVP):** S32 waits on Tony's two renders. Codex needs `codex login` (401).
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
@@ -64,12 +64,11 @@ before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392
   `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785 --ws-port
   8786 --ephemeral --powerups`.
 ## Lane: brx5, powerups, the HUD and gun audio
-On main: S58 powerups behind `--powerups`; S59 Visor; F348/F349; death first; the three-lane alerts; F347, F350, F378.
+On main: S58 powerups ON by default (F372 closed, `--no-powerups` is the opt-out); S59 Visor; F348/F349; death first; the three-lane alerts; F347, F350, F378.
 2026-09-25: sitting B's F379, F380, F381 (a same-weapon stack capped at 2x the drop) and F393; F400, the pickup switch
 card (ALT's card and timing for a weapon pickup, SELECT and the switch-back; display only; the Overshield gets N102
 and no card; the kill-card clash is Tony's lean).
-- **Next desk task:** F372 (powerups on by default, after sitting C); B21's iOS half on the MacBook; `PLAY_GAP_MS`
-  from sitting C's spacing check.
+- **Next desk task:** B21's iOS half on the MacBook; `PLAY_GAP_MS` from sitting C's spacing check (F372 closed).
 - **Next bench task:** sitting C: the powerup setup (11.3), F381 (Rockets twice: 3, then 4), F400 on the gun (the card
   holds ALT's time, SELECT works while it is up), the shield-up kill-cue A/B/A, the spacing check, 11.1 (c), 11.8.
 
@@ -77,7 +76,7 @@ and no card; the kill-card clash is Tony's lean).
 
 1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
    evidence and promote or close each row from the result.
-2. **Desk:** the FOLLOWUPS MVP DESK group, highest value first (B21, F372, Q13).
+2. **Desk:** the FOLLOWUPS MVP DESK group, highest value first (B21, F400, F402).
 3. **Decisions for Tony:** the FOLLOWUPS MVP DECISION group.
 4. **Only after MVP:** [`post-mvp.md`](post-mvp.md) is the roadmap; nothing there is scheduled.
 
@@ -88,5 +87,5 @@ implementation for a bench-gated row.
 
 MC is `mcp/` on 8765/8766 serving `webapp/mc/dist`; rebuild before starting and restart between matches
 (`ss -ltn | grep 876`). Launch with `setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume`
-(add `--powerups` for S58). Shields recharge only on the Shields preset (armour 0). WSL runs Python/no-hardware MC,
+(S58 powerups are on by default; add `--no-powerups` to turn them off). Shields recharge only on the Shields preset (armour 0). WSL runs Python/no-hardware MC,
 Windows drives BLE, and the MacBook is the field target. Never modify stock firmware.

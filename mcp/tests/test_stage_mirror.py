@@ -1788,7 +1788,7 @@ KNOWN_UNMIRRORED = {
     "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
-    # A56 (S58, docs/spec/powerups.md), behind MC's `--powerups` flag until bench Sitting A passes. PRESENTATION only:
+    # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off). PRESENTATION only:
     # the spawn announcer and the HUD's view (`_puTick`, `powerupView`, `_puNextInMs`). GAME STATE, but not portable
     # yet: the claim, the grant, the end of an item and the overshield all hang off a powerup station's advert (its
     # median RSSI and its `taker` byte, like `setStations` above) and the MATCH CLOCK's spawn schedule (like `goLiveT`

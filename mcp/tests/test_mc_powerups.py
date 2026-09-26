@@ -1,9 +1,10 @@
 """A56 / S58 (docs/spec/powerups.md): powerup stations, MC side.
 
-The flag (`--powerups`, off by default), the item presets (`GET /api/powerups`, `item_preset` on the station PUT),
-the compile (pickup weapons armed EMPTY in spare slots 2 and 3, out of the ALT cycle), the `pickup` fact (stored,
-never scored) and the Halo spawn schedule on MC's own match clock (`station_update` to the station).
-Every behaviour test carries a control on the same path: the flag off, or the state before the change.
+Powerups are ON by default (F372, Tony 2026-09-25); `--no-powerups` is the opt-out and `--powerups` is kept as
+a no-op so an old command line still works. The item presets (`GET /api/powerups`, `item_preset` on the station
+PUT), the compile (pickup weapons armed EMPTY in spare slots 2 and 3, out of the ALT cycle), the `pickup` fact
+(stored, never scored) and the Halo spawn schedule on MC's own match clock (`station_update` to the station).
+Every behaviour test carries a control on the same path: powerups off, or the state before the change.
 """
 from __future__ import annotations
 
@@ -92,18 +93,22 @@ def test_the_three_presets_expand_from_the_named_defaults():
     assert PU.presets_view(False, cat)["presets"] == view["presets"]
 
 
-def test_the_cli_flag_defaults_off_and_reaches_the_session():
+def test_the_cli_defaults_powerups_on_and_no_powerups_is_the_opt_out():
+    """F372: no flag needed to grant items; `--no-powerups` is the opt-out; `--powerups` is a harmless no-op."""
     from brx_mcp.mc import __main__ as M
-    assert M.parser().parse_args([]).powerups is False
-    assert M.parser().parse_args(["--powerups"]).powerups is True
+    args = M.parser().parse_args([])
+    assert args.powerups is False and args.no_powerups is False, "no flag typed"
+    assert M.parser().parse_args(["--powerups"]).powerups is True          # accepted, but changes nothing (see build())
+    assert M.parser().parse_args(["--no-powerups"]).no_powerups is True
+    # CONTROL: a bare Session() (no CLI in the picture at all) also starts with powerups on
     s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
-    assert s.powerups_enabled is False, "a Session is built with the flag OFF"
-    assert s.powerups_view()["enabled"] is False
-    s.powerups_enabled = True
+    assert s.powerups_enabled is True, "a Session is built with powerups ON"
     assert s.powerups_view()["enabled"] is True
+    s.powerups_enabled = False
+    assert s.powerups_view()["enabled"] is False
 
 
-def test_build_carries_the_flag_to_the_session():
+def test_build_carries_no_powerups_to_the_session_and_ignores_the_old_flag():
     import os
     import shutil
     import tempfile
@@ -112,11 +117,11 @@ def test_build_carries_the_flag_to_the_session():
     had, old = "BRX_MC_DIR" in os.environ, os.environ.get("BRX_MC_DIR")
     os.environ["BRX_MC_DIR"] = tmp
     try:
-        for flag in (False, True):
-            args = M.parser().parse_args(["--fake-net", "--ephemeral", "--no-auth", "--port", "0", "--ws-port", "0"]
-                                         + (["--powerups"] if flag else []))
+        base = ["--fake-net", "--ephemeral", "--no-auth", "--port", "0", "--ws-port", "0"]
+        for extra, want in ((base, True), (base + ["--powerups"], True), (base + ["--no-powerups"], False)):
+            args = M.parser().parse_args(extra)
             session, _net, _extra = M.build(argparse.Namespace(**vars(args)))
-            assert session.powerups_enabled is flag
+            assert session.powerups_enabled is want, extra
     finally:
         if had:
             os.environ["BRX_MC_DIR"] = old or ""
@@ -130,7 +135,7 @@ def test_item_preset_is_refused_with_the_flag_off():
     s, _ = _sess(powerups=False)
     s.net.simulate_utility_hello("u1")
     _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets"}),
-             "--powerups")
+             "--no-powerups")
     assert s.stations["u1"]["assigned"] is None
     # CONTROL: the same station without an item is still accepted with the flag off
     assert s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5})["assigned"]["id"] == 5
@@ -176,7 +181,7 @@ def test_get_api_powerups():
     assert [p["preset"] for p in r.json()["presets"]] == ["rockets", "rail_gun", "overshield"]
     s.net.simulate_utility_hello("u1")
     r = c.put("/api/stations/u1", json={"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets"})
-    assert r.status_code == 400 and "--powerups" in r.json()["error"]
+    assert r.status_code == 400 and "--no-powerups" in r.json()["error"]
     s.powerups_enabled = True
     assert c.get("/api/powerups").json()["enabled"] is True
     r = c.put("/api/stations/u1", json={"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets"})
@@ -189,7 +194,7 @@ def _frames(s):
 
 
 def test_flag_off_compiles_nothing_new_even_with_a_stored_item():
-    """A restored snapshot can carry an item into a run started WITHOUT --powerups: it must be inert."""
+    """A restored snapshot can carry an item into a run started WITH --no-powerups: it must be inert."""
     base, _ = _sess(powerups=False)
     base.push_config(force=True)
     s, _ = _sess(powerups=False)
@@ -455,7 +460,7 @@ def test_console_reset_route_and_its_refusals():
     off.net.simulate_utility_hello("u1")
     off.set_station("u1", {"kind": "powerup", "team": "any", "id": 5})
     _live(off, clock2)
-    _refused(lambda: off.reset_station("u1"), "--powerups")
+    _refused(lambda: off.reset_station("u1"), "--no-powerups")
     try:
         import httpx  # noqa: F401
         from starlette.testclient import TestClient
@@ -467,7 +472,7 @@ def test_console_reset_route_and_its_refusals():
     assert c.post("/api/stations/nope/reset").status_code == 404
     assert c.post("/api/stations/u1/reset").json()["ok"] is True
     r = TestClient(create_app(off)).post("/api/stations/u1/reset")
-    assert r.status_code == 400 and "--powerups" in r.json()["error"]
+    assert r.status_code == 400 and "--no-powerups" in r.json()["error"]
 
 
 def test_taken_records_the_winner_and_dedupes_against_the_pickup_fact():

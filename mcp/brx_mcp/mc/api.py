@@ -362,7 +362,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return JSONResponse(s.powerups_view())
 
     async def reset_station(req):
-        """A56: the operator reset of a powerup station's item (armed/live, `--powerups` only)."""
+        """A56: the operator reset of a powerup station's item (armed/live, only while powerups are on)."""
         try:
             return JSONResponse(s.reset_station(req.path_params["nid"]))
         except KeyError:

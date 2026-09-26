@@ -17,8 +17,8 @@ const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
 // heavies every 120 s, Overshield +75 every 60 s, each first spawning after one interval; a weapon item's
 // charges are its magazine, weapons.json `mag`). The real list comes from `GET /api/powerups`; this mirrors it
-// so `?mock` and the tests work without the server. `?mock&powerups=off` demos MC started without
-// `--powerups`; `?mock&powerups=old` demos an MC that predates the route (404).
+// so `?mock` and the tests work without the server. `?mock&powerups=off` demos MC started with
+// `--no-powerups`; `?mock&powerups=old` demos an MC that predates the route (404).
 const POWERUP_PRESETS: PowerupPreset[] = [
   { preset: 'rockets', item: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff6a2b' } },
   { preset: 'rail_gun', item: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#38b6ff' } },
@@ -142,7 +142,7 @@ export class MockBackend implements Api {
   pickupStation(node_id: string, player_num?: number) { const st = this.stations[node_id]; if (st) { st.takenAt = now(); st.takenBy = player_num; this.emit(); } }
   async resetStation(node_id: string): Promise<{ ok: boolean }> {
     const st = this.stations[node_id]; if (!st) throw Object.assign(new Error('no such station'), { status: 404, body: { error: 'no such station' } });
-    if (mockPowerups() !== 'on') throw new Error('powerups are OFF: start Mission Control with --powerups to give a station an item (it stays off until the bench proves the spare weapon slots, powerups.md Sitting A)');
+    if (mockPowerups() !== 'on') throw new Error('powerups are OFF: Mission Control was started with --no-powerups; drop that flag to give a station an item');
     if (!st.assigned?.item) throw new Error('this station has no item to reset');
     if (!['armed', 'live'].includes(this.phase)) throw new Error(`the match is ${this.phase.toUpperCase()}: an item can be reset only while a match is armed or live`);   // state.py reset_station
     st.resetAt = now(); st.takenAt = undefined; st.takenBy = undefined; this.emit();
@@ -268,7 +268,7 @@ export class MockBackend implements Api {
     if (!STATION_KINDS.includes(a.kind)) throw new Error(`kind must be one of ${STATION_KINDS.join(', ')}`);
     let item: StationAssignment['item'];
     if (a.item_preset != null) {
-      if (mockPowerups() !== 'on') throw new Error('powerups are OFF: start Mission Control with --powerups to give a station an item (it stays off until the bench proves the spare weapon slots, powerups.md Sitting A)');   // powerups.py REFUSED_FLAG_OFF
+      if (mockPowerups() !== 'on') throw new Error('powerups are OFF: Mission Control was started with --no-powerups; drop that flag to give a station an item');   // powerups.py REFUSED_FLAG_OFF
       if (a.kind !== 'powerup') throw new Error(`item_preset is only for a powerup station, not ${a.kind}`);
       const p = POWERUP_PRESETS.find(x => x.preset === a.item_preset);
       if (!p) throw new Error(`unknown item_preset '${a.item_preset}': one of ${POWERUP_PRESETS.map(x => x.preset).join(', ')}`);

@@ -1,7 +1,9 @@
 """A56 / S58 powerup items: MC's default constants and the Halo spawn schedule (docs/spec/powerups.md).
 
-Everything here is inert unless Mission Control is started with `--powerups` (`Session.powerups_enabled`);
-the flag stays off until bench Sitting A step 3.3 passes.
+Powerups (Rockets, Rail Gun, Overshield) are ON by default (F372, Tony 2026-09-25: "rockets, railgun,
+overshield as powerup/pickups. yes lets enable them"). `--no-powerups` turns everything here inert
+(`Session.powerups_enabled = False`); the bench steps in powerups.md "Bench gate" stay open as
+verification, not as a condition for the default.
 
 The named constants below are the ONE place a default lives. The player phone mirrors the rules it
 enforces on its own (`LOST_AT_DEATH`, `WEAPON_PICKUP_SWAPS`, the overshield's decay and regen); they are not
@@ -41,8 +43,8 @@ _PRESETS: dict[str, dict] = {
 }
 PRESET_IDS = tuple(_PRESETS)
 
-REFUSED_FLAG_OFF = ("powerups are OFF: start Mission Control with --powerups (./start.sh -- --powerups) to give a station an item "
-                    "(it stays off until the bench proves the spare weapon slots, powerups.md Sitting A)")
+REFUSED_FLAG_OFF = ("powerups are OFF: Mission Control was started with --no-powerups. Drop that flag "
+                    "(or restart with ./start.sh, no flag needed) to give a station an item")
 
 
 class _Magazines(Protocol):

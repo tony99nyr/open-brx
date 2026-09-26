@@ -4,9 +4,9 @@ Updated: 2026-09-25. **Open this file first at the bench.** How a live bench run
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 **The next sitting (2026-09-26): [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting C**, the last of three setups.
-Sittings A and B and stop point 2 are DONE (below); sitting C was not run and is next. Sitting C's powerup setup
-gates powerups on by default (F372). Its LATER list places every other row of the FOLLOWUPS **MVP BENCH** group
-by setup.
+Sittings A and B and stop point 2 are DONE (below); sitting C was not run and is next. Powerups are already ON
+by default (F372, Tony's decision 2026-09-25); sitting C's powerup setup now runs as verification, not as a
+gate. Its LATER list places every other row of the FOLLOWUPS **MVP BENCH** group by setup.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
@@ -60,7 +60,7 @@ and Block 9 steps 3 and 4 (H9, H8, found F383-F386); it left F374's carry-out A/
 F365's Stick half PARTIAL (RADIUS/STRENGTH confirmed, the 5 s gesture REFUTED as F387, F388 filed; the phone
 station half, 11.4, did not run). **Stop point 2 is DONE**: all three Pixels are on app 0.4.12; the grey Pixel
 has not been opened since that install, so 11.7's auto-join must be sitting C's first step; MC runs from `main`
-with `--powerups`.
+(powerups on by default, F372).
 
 ## Sittings, in priority order
 

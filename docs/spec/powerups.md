@@ -1,7 +1,9 @@
 # Powerups: a station grants an item (design, 2026-09-24)
 
-Status: **DESIGN, built behind MC's `--powerups` flag.** Sitting A's slot and button checks ran on 2026-09-24
-(bench 3.3, below). The flag stays off until steps 3.4, 3.5 and 4.11 pass and Tony decides (S58). Tony's model: a station (a utility phone or an M5Stick) is assigned a kind and its data by Mission Control
+Status: **BUILT, ON by default (F372, Tony 2026-09-25: "rockets, railgun, overshield as powerup/pickups. yes
+lets enable them").** `--no-powerups` is the opt-out. Sitting A's slot and button checks ran on 2026-09-24
+(bench 3.3, below); steps 3.4, 3.5 and 4.11 remain as verification, not as a condition for the default.
+Tony's model: a station (a utility phone or an M5Stick) is assigned a kind and its data by Mission Control
 (MC) per game. A powerup station grants an item, for example a pickup-only heavy (rockets). Contract row: A56.
 Roadmap entry it replaces: K3 in `docs/utility-roadmap.md`; the station half of S46.
 
@@ -49,13 +51,16 @@ powerups flag. The overshield is unchanged by this section.
 **Decided by the lead, 2026-09-24, then overridden the same day:** a first draft blocked ALT (`$BMAP,1,98`) while the
 heavy was on the trigger. Tony's SELECT decision dropped the block: ALT keeps its normal job.
 
-## Bench gate (before the flag turns on)
+## Bench gate (verification, not a condition for the default)
 
-Items 1 to 6 ran at bench 3.3 on 2026-09-24 (the next section), and so did item 7's clamp and death checks. Open:
-item 7's hit and dead-gun cases, item 8 (`bench-2026-09-24.md` step 4.11, the claim calibration for a phone station
-and the Stick) and item 9 (steps 3.4 and 3.5), plus the claim race and the respawn (step 11.2). Step 11.3 gives the
-order. **Powerups are MVP** (Tony, 2026-09-25): when those steps pass, the flag turns on by default and the
-calibrated thresholds replace the placeholders (FOLLOWUPS F372).
+**Powerups are ON by default** (Tony, 2026-09-25: "rockets, railgun, overshield as powerup/pickups. yes lets
+enable them", FOLLOWUPS F372). This section's steps are no longer a gate on the default; they stay as the bench
+plan that verifies the mechanism and calibrates the claim thresholds. Items 1 to 6 ran at bench 3.3 on 2026-09-24
+(the next section), and so did item 7's clamp and death checks. Open: item 7's hit and dead-gun cases, item 8
+(`bench-2026-09-24.md` step 4.11, the claim calibration for a phone station and the Stick) and item 9 (steps 3.4
+and 3.5), plus the claim race and the respawn (step 11.2). Step 11.3 gives the order. Once those steps pass, the
+calibrated thresholds replace the placeholders (`POWERUP_THRESHOLD_DEFAULT`, `beacon.js POWERUP_RSSI_DBM`, the
+Stick's -57).
 
 1. A `$WEAP` in slot 2 and 3 at arm time; `$ALCD` reports each slot; each fires and takes its own `$AMMO`.
 2. Slots 4 and 5: does a `$WEAP` take (Jay: "about 5 weapons")? Slot 4 is melee today.
@@ -129,10 +134,12 @@ behind the flag until the design catches up (open for Tony, S58).
   claimed station id in `value`; the station advert's reserved byte 15 becomes `taker` (the winner's
   `player_num`, 0 = none).
 
-## Mission Control side (built 2026-09-24, behind `--powerups`)
+## Mission Control side (built 2026-09-24, on by default since F372)
 
-- **The flag:** `python -m brx_mcp.mc --powerups`. Off (the default), MC refuses an `item_preset`, compiles no spare
-  slot, sends no `item` and runs no schedule; an item restored from an old session is inert.
+- **The flag:** powerups are on by default (`python -m brx_mcp.mc`); `--no-powerups` turns them off. `--powerups`
+  is still accepted, as a no-op, so an old command line does not break. With powerups off, MC refuses an
+  `item_preset`, compiles no spare slot, sends no `item` and runs no schedule; an item restored from an old
+  session is inert.
 - **Defaults** live in one place, `mcp/brx_mcp/mc/powerups.py`: the three presets, the intervals, `OVERSHIELD_AMOUNT`,
   and the rules the phone mirrors (`LOST_AT_DEATH`, `WEAPON_PICKUP_SWAPS`, `OVERSHIELD_DECAY_PER_S`,
   `OVERSHIELD_REGEN`). Those rules are constants, not item fields.
