@@ -938,6 +938,19 @@ class GamePick(TypedDict):
     match: MatchSettings
 
 
+class Favourite(TypedDict):
+    """F411 §6: a named bundle of the whole PLAY pick (games-presets.md §6) — "like a named LAST
+    MATCH" (Tony). Stores piece REFERENCES, not copies: a favourite tracks its pieces' current
+    values, and a piece deleted after being favourited falls back to that kind's first builtin at
+    LOAD time (`POST /api/favourites/{id}/load`'s `fallbacks`), never a 404 for the favourite itself."""
+    favourite_id: str
+    name: str                              # <= 24 chars, unique (case-insensitive)
+    created_t: int
+    updated_t: int
+    pick: GamePick
+    countdown_s: int                       # the arm runway this favourite loads (games-presets.md §2 COUNTDOWN)
+
+
 # ---- §4 events ----
 class Preflight(TypedDict, total=False):
     ssid_ok: bool

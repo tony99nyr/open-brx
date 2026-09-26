@@ -357,6 +357,16 @@ def build(args):
         ppath = default_path()
     session.pieces = PieceStore(ppath, now_ms=session.now_ms)
 
+    # F411 §6 FAVOURITES: same real-shelf-vs-throwaway-demo split as BUILD pieces above.
+    from .favourites import FavouriteStore, default_path as _fav_default_path
+    if args.demo or getattr(args, "ephemeral", False):
+        import tempfile
+        fpath = _PP(tempfile.mkdtemp(prefix="brx-mc-favourites-")) / "favourites.json"
+        log.info("favourites: throwaway shelf at %s (demo/ephemeral)", fpath)
+    else:
+        fpath = _fav_default_path()
+    session.favourites = FavouriteStore(fpath, now_ms=session.now_ms)
+
     if args.demo and not restored_from_file:   # a restored session keeps its roster; demo seeding would re-add GUN-A..H (e2e lane finding)
         session.set_config({"mode": "tdm"})
         # A10 demo loadouts: a secondary weapon, a perk, an empty slot 2, and different primaries, so the

@@ -47,7 +47,8 @@ from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PH
 
 from . import powerups as _pu
 
-if TYPE_CHECKING:                      # `pieces.PieceStore` is attached by `__main__`/`create_app`
+if TYPE_CHECKING:                      # `pieces.PieceStore`/`favourites.FavouriteStore` are attached by `__main__`/`create_app`
+    from .favourites import FavouriteStore
     from .pieces import PieceStore
 
 PHASES = get_args(Phase)      # the vocabulary itself lives on `types.Phase`, so the console's is generated from it
@@ -494,6 +495,7 @@ class Session:
         self.game_pick: GamePick = _gamepick.default_pick(default_config)
         self.last_match: LastMatch | None = None   # absent until a match has been STARTed (persists across a restart)
         self.pieces: PieceStore | None = None       # attached by __main__/create_app (memory store when absent)
+        self.favourites: FavouriteStore | None = None   # F411 §6: same attach pattern as `pieces`
         # A17: `lobby_pushed` is ALSO the real guard on `_pinned_hit_plan` below. It is set True in exactly
         # one place (`push_config`, which clears the pin as its first statement), and every path that can
         # compile (`_resend`, `_bind`, hydrate) is gated on it -- so a pin can never survive into a new

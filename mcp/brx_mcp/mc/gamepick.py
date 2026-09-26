@@ -74,6 +74,29 @@ def resolve_pieces(store: PieceStore, ids: Mapping[str, str]) -> dict[PieceKind,
     return resolved
 
 
+def resolve_pieces_with_fallback(store: PieceStore, ids: Mapping[str, str]) -> tuple[dict[PieceKind, GamePiece], list[PieceKind]]:
+    """§6 FAVOURITES LOAD: like `resolve_pieces`, but a favourite outlives the pieces it named, so a
+    missing/wrong-kind/post_mvp id falls back to that kind's first builtin instead of raising -- named
+    in the returned list (`fallbacks`) rather than a 404 for the whole favourite."""
+    resolved: dict[PieceKind, GamePiece] = {}
+    fallbacks: list[PieceKind] = []
+    for kind in PIECE_KINDS:
+        pid = ids.get(kind)
+        piece = None
+        if pid:
+            try:
+                candidate = store.get(pid)
+                if candidate["kind"] == kind and not candidate.get("post_mvp"):
+                    piece = candidate
+            except PieceError:
+                piece = None
+        if piece is None:
+            piece = store.get(BUILTIN_IDS[kind])
+            fallbacks.append(kind)
+        resolved[kind] = piece
+    return resolved, fallbacks
+
+
 def _opt_int(v: object, field: str) -> int | None:
     if v is None:
         return None
