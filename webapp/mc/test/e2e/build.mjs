@@ -1,18 +1,10 @@
 // F411 BUILD e2e — drives the preset editor in a real browser against `?mock`.
 //
-// Verified after the f411-games merge (App.tsx routes `designer` -> <Build/>, the mock backend
-// implements the pieces routes): all six steps pass, twice in a row, against BOTH this script's own
-// in-page piece store below AND the real merged mock backend (spot-checked by hand across every kind,
-// zero console/page errors). Kept the in-page store rather than dropping it: it installs on top of
-// `window.__MC_MOCK__` (the same escape hatch `test/e2e/frame.mjs` uses for
-// `window.__MC_MOCK__.control`), so this script stays deterministic and does not depend on the mock
-// backend's seed data changing later.
+// It runs against the real `?mock` backend (`src/mock/backend.ts`), the same piece routes PLAY uses, and
+// reaches BUILD the way an operator does: PLAY's `BUILD ▸` link. Only the save-error step swaps one route.
 //
-// Per the brief: still needs to move into `test/e2e/` and `scripts/test-all.mjs`'s JOBS (with a
-// measured mb/secs) at integration — that directory is the PLAY lane's, not this lane's.
-//
-//   node src/screens/presets/build.e2e.mjs
-//   ONLY=<step> node src/screens/presets/build.e2e.mjs   # tabs | life | spawn | delete | save-error | leave-confirm
+//   node test/e2e/build.mjs
+//   ONLY=<step> node test/e2e/build.mjs   # tabs | life | spawn | delete | save-error | leave-confirm
 //   HEADED=1 / KEEP_SHOTS=1 / VITE_PORT=…
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -21,9 +13,9 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));       // webapp/mc/src/screens/presets
-const MC = path.resolve(HERE, '../../..');                       // webapp/mc
-const SHOTS = path.join(HERE, 'shots');
+const HERE = path.dirname(fileURLToPath(import.meta.url));       // webapp/mc/test/e2e
+const MC = path.resolve(HERE, '../..');                          // webapp/mc
+const SHOTS = path.join(HERE, 'shots', 'build');
 const ONLY = process.env.ONLY || '';
 const WIDTHS = [1280, 900];
 
@@ -64,53 +56,6 @@ async function startVite() {
   console.error(`vite did not start:\n${log}`); proc.kill('SIGKILL'); process.exit(3);
 }
 
-/** Replaces window.__MC_MOCK__'s piece routes with a small, deterministic in-page store seeded with
- *  the real builtins (games-presets.md §1) — see the file header for why. */
-async function installPieceStore(pg) {
-  await pg.evaluate(() => {
-    let n = 1;
-    const now = () => Date.now();
-    const mk = (kind, piece_id, name, note, builtin, post_mvp, value) => ({ piece_id, kind, name, note, builtin, post_mvp, created_t: now(), updated_t: now(), value });
-    const pieces = [
-      mk('mode', 'builtin:mode:tdm', 'TDM', 'Squads score per elimination.', true, false, { mode: 'tdm' }),
-      mk('mode', 'builtin:mode:ffa', 'FFA', 'Free for all.', true, false, { mode: 'ffa' }),
-      mk('mode', 'builtin:mode:koth', 'KOTH', 'Hold the hill.', true, false, { mode: 'koth' }),
-      mk('mode', 'builtin:mode:infection', 'INFECTION', '', true, true, { mode: 'infection' }),
-      mk('life', 'builtin:life:standard', 'STANDARD', '', true, false, { max_hp: 45, max_armor: 70, max_shield: 0 }),
-      mk('life', 'builtin:life:shields', 'SHIELDS', '', true, false, { max_hp: 45, max_armor: 0, max_shield: 105 }),
-      mk('life', 'builtin:life:hardcore', 'HARDCORE', '', true, false, { max_hp: 45, max_armor: 0, max_shield: 0 }),
-      mk('spawn', 'builtin:spawn:auto', 'AUTO', '', true, false, { type: 'auto', delay_s: 15, protect_s: 0, weapon_delay_ms: 500 }),
-      mk('spawn', 'builtin:spawn:station', 'STATION', '', true, false, { type: 'scanner', delay_s: 10, station_protect_s: 2, gate: 'trigger' }),
-      mk('primary', 'builtin:primary:all', 'ALL', '', true, false, { choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null }),
-      mk('secondary', 'builtin:secondary:all', 'ALL', '', true, false, { choice: 'player', kinds: ['weapon', 'sidearm'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null }),
-      mk('perks', 'builtin:perks:all', 'ALL', '', true, false, { choice: 'player', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null }),
-      mk('misc_loadouts', 'builtin:misc_loadouts:standard', 'STANDARD', '', true, false, { hud_select: true, heavies: true }),
-      mk('gameplay', 'builtin:gameplay:standard', 'STANDARD', '', true, false, { mode_params: {} }),
-    ];
-    const api = window.__MC_MOCK__;
-    api.getPieces = async () => pieces.map(p => ({ ...p }));
-    api.createPiece = async p => {
-      if (p.kind === 'mode' || p.kind === 'gameplay') { const e = new Error(`${p.kind} cannot be created`); e.status = 403; throw e; }
-      if (pieces.some(x => x.kind === p.kind && x.name.toLowerCase() === p.name.toLowerCase())) { const e = new Error('NAME ALREADY USED IN THIS KIND'); e.status = 409; throw e; }
-      const row = mk(p.kind, `custom:${n++}`, p.name, p.note || '', false, false, p.value);
-      pieces.push(row); return { ...row };
-    };
-    api.updatePiece = async (id, patch) => {
-      const row = pieces.find(x => x.piece_id === id);
-      if (!row) { const e = new Error('NOT FOUND'); e.status = 404; throw e; }
-      if (row.builtin) { const e = new Error('A BUILT-IN CANNOT BE EDITED'); e.status = 403; throw e; }
-      Object.assign(row, patch, { updated_t: now() });
-      return { ...row };
-    };
-    api.deletePiece = async id => {
-      const i = pieces.findIndex(x => x.piece_id === id);
-      if (i < 0) { const e = new Error('NOT FOUND'); e.status = 404; throw e; }
-      if (pieces[i].builtin) { const e = new Error('A BUILT-IN CANNOT BE DELETED'); e.status = 403; throw e; }
-      pieces.splice(i, 1);
-    };
-  });
-}
-
 async function open(browser, base, width) {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 1 });
   const pg = await ctx.newPage();
@@ -119,8 +64,9 @@ async function open(browser, base, width) {
   await pg.goto(`${base}/?mock#muster`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header nav').count().then(n => n > 0), 10000, 'the command bar');
   await until(() => pg.evaluate(() => !!window.__MC_MOCK__), 10000, 'the mock backend handle');
-  await installPieceStore(pg);
-  await pg.evaluate(() => { location.hash = '#designer'; });
+  await pg.evaluate(() => { location.hash = '#build'; });   // the PLAY step (its phase is named `build`)
+  await until(() => pg.locator('main button', { hasText: 'BUILD ▸' }).count().then(n => n > 0), 10000, 'PLAY and its BUILD link');
+  await pg.locator('main button', { hasText: 'BUILD ▸' }).first().click();
   await until(() => pg.locator('text=BUILD CREATES PRESETS').count().then(n => n > 0), 10000, 'the BUILD screen');
   return pg;
 }
@@ -162,15 +108,15 @@ step('life', async ({ browser, base }) => {
   await pg.getByLabel('max hp').fill('60');
   await pg.getByLabel('max hp').blur();
   await pg.getByRole('button', { name: 'SAVE ▸' }).click();
-  await until(() => pg.locator('[data-testid^="piece-card-custom:"]').count().then(n => n >= 1), 4000, 'the saved piece back on the shelf');
-  const created = pg.locator('[data-testid^="piece-card-custom:"]').first();
+  await until(() => pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])').count().then(n => n >= 1), 4000, 'the saved piece back on the shelf');
+  const created = pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])').first();
   expect((await created.innerText()).includes('MY LIFE PRESET'), 'the new LIFE preset shows its name on the shelf');
   // rename it
   await created.click();
   await until(() => pg.locator('input[aria-label="preset name"]').count().then(n => n === 1), 4000, 'the editor, reopened for the custom piece');
   await pg.locator('input[aria-label="preset name"]').fill('RENAMED PRESET');
   await pg.getByRole('button', { name: 'SAVE ▸' }).click();
-  await until(() => pg.locator('[data-testid^="piece-card-custom:"]', { hasText: 'RENAMED PRESET' }).count().then(n => n === 1), 4000, 'the rename to land');
+  await until(() => pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'RENAMED PRESET' }).count().then(n => n === 1), 4000, 'the rename to land');
   ok(`create + rename a LIFE preset   ${await shot(pg, 'life-renamed')}`);
   await pg.context().close();
 });
@@ -206,13 +152,13 @@ step('delete', async ({ browser, base }) => {
   await pg.getByRole('button', { name: 'NEW ▸' }).click();
   await pg.locator('input[aria-label="preset name"]').fill('TO DELETE');
   await pg.getByRole('button', { name: 'SAVE ▸' }).click();
-  await until(() => pg.locator('[data-testid^="piece-card-custom:"]', { hasText: 'TO DELETE' }).count().then(n => n === 1), 4000, 'the piece to delete');
-  await pg.locator('[data-testid^="piece-card-custom:"]', { hasText: 'TO DELETE' }).click();
+  await until(() => pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'TO DELETE' }).count().then(n => n === 1), 4000, 'the piece to delete');
+  await pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'TO DELETE' }).click();
   await until(() => pg.getByRole('button', { name: 'DELETE' }).count().then(n => n === 1), 4000, 'the editor');
   await pg.getByRole('button', { name: 'DELETE' }).click();
   await until(() => pg.getByRole('button', { name: 'CONFIRM DELETE' }).count().then(n => n === 1), 2000, 'the two-tap confirm');
   await pg.getByRole('button', { name: 'CONFIRM DELETE' }).click();
-  await until(() => pg.locator('[data-testid^="piece-card-custom:"]', { hasText: 'TO DELETE' }).count().then(n => n === 0), 4000, 'the piece to be gone');
+  await until(() => pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'TO DELETE' }).count().then(n => n === 0), 4000, 'the piece to be gone');
   ok(`two-tap delete   ${await shot(pg, 'delete-two-tap')}`);
   await pg.context().close();
 });

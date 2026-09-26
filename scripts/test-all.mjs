@@ -112,7 +112,7 @@ const JOBS = [
       // MC visual QA round 2 (2026-09-24): a real MC with station and phone stand-ins; 27 s measured
       // F411 (2026-09-26): PLAY (screens/Games.tsx rewrite) replaces designer-rail-play, which it retires;
       // `?mock` only (no python MC), 5 s measured wall clock for 8 steps -- same family as `frame`.
-      ['vqa2', 27, 900], ['play', 8, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
+      ['vqa2', 27, 900], ['play', 8, 900], ['build', 8, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
 ].filter(j => (UI || !j.ui) && (!filters.length || filters.some(f => j.name.includes(f))));
 
 if (LIST) { for (const j of JOBS) console.log(j.name); process.exit(0); }
