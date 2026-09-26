@@ -880,15 +880,62 @@ class WeaponView(TypedDict):
     cells: NotRequired[list[HirCell]]  # F315: the same magnitudes with the catalogue frame's own cell (t3/t4), one entry per `hir` value -- a match's `--distinct-weapon-cells` move is in the roster's `cells`, never here
 
 
-class SavedGame(TypedDict):
-    """A sanitized whole-game preset stored on the Mission Control host."""
-    preset_id: str
-    name: str
-    desc: str
+# ---- F411: GAMES = PLAY picks, BUILD creates (docs/spec/design/games-presets.md) ----
+PieceKind = Literal["mode", "life", "spawn", "primary", "secondary", "perks", "misc_loadouts", "gameplay"]
+PIECE_KINDS: tuple[PieceKind, ...] = ("mode", "life", "spawn", "primary", "secondary", "perks", "misc_loadouts", "gameplay")
+
+
+class ModePiece(TypedDict):
+    mode: str                              # a `GET /api/modes` mode; the rest of the mode's defaults come from there
+
+
+class LifePiece(TypedDict):
+    max_hp: int
+    max_armor: int
+    max_shield: int
+
+
+class MiscLoadoutsPiece(TypedDict):
+    hud_select: bool                       # True = PLAYERS pick on the phone, False = the HOST picks
+    heavies: bool                          # False = exclude_tags ["heavy"] on primary + secondary (a slot piece's own tags win)
+
+
+class GameplayPiece(TypedDict):
+    mode_params: dict[str, Any]            # MVP: {} = OPEN BRX STANDARD (each mode's own defaults)
+
+
+class GamePiece(TypedDict):
+    """One named preset for one PLAY picker. `value` is the kind's shape: mode -> ModePiece, life -> LifePiece,
+    spawn -> Respawn, primary/secondary/perks -> SlotRule, misc_loadouts -> MiscLoadoutsPiece,
+    gameplay -> GameplayPiece. Builtins carry ids `builtin:<kind>:<slug>` and cannot be edited or deleted."""
+    piece_id: str
+    kind: PieceKind
+    name: str                              # <= 24 chars, unique per kind (case-insensitive)
+    note: str                              # one line, <= 80 chars; "" = none
     builtin: bool
+    post_mvp: bool                         # True: shown greyed in BUILD, never offered on PLAY
     created_t: int
     updated_t: int
-    config: GameConfig
+    value: dict[str, Any]
+
+
+class MatchSettings(TypedDict):
+    """Per-game values on the PLAY strip. Never saved into a piece; kept by PLAY AGAIN."""
+    time_limit_s: int | None
+    frag_limit: int | None
+    night: bool
+    silenced: bool
+
+
+class LastMatch(MatchSettings):
+    """F411 LAST MATCH: the strip values of the last match STARTed, kept across an MC restart."""
+    countdown_s: int
+
+
+class GamePick(TypedDict):
+    """What PLAY has picked: one piece id per kind, plus the strip. The config is composed from it."""
+    pieces: dict[str, str]                 # PieceKind -> piece_id, every kind present
+    match: MatchSettings
 
 
 # ---- §4 events ----
@@ -1794,7 +1841,8 @@ class State(TypedDict):
     game_no: NotRequired[int]
     config_warnings: NotRequired[list[str]]
     standby: NotRequired[list[Player]]
-    active_preset_id: NotRequired[str | None]
+    game_pick: NotRequired[GamePick]   # F411: absent = a server that predates PLAY/BUILD
+    last_match: NotRequired[LastMatch]   # F411: absent until a match has been played
     restored_from: NotRequired[RestoredFromView]
     game: NotRequired[GameAnnouncementView]
     sync: NotRequired[SyncView]

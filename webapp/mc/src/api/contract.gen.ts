@@ -163,6 +163,7 @@ export type TxPower = 'ultra_low' | 'low' | 'medium' | 'high';
 export type RangeSrc = 'station' | 'mc';
 export type RangeField = 'threshold' | 'tx_power';
 export type StationItemKind = 'weapon' | 'overshield';
+export type PieceKind = 'mode' | 'life' | 'spawn' | 'primary' | 'secondary' | 'perks' | 'misc_loadouts' | 'gameplay';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
@@ -888,15 +889,69 @@ export interface WeaponView {
   cells?: HirCell[];
 }
 
-/** A sanitized whole-game preset stored on the Mission Control host. */
-export interface SavedGame {
-  preset_id: string;
+export interface ModePiece {
+  /** a `GET /api/modes` mode; the rest of the mode's defaults come from there */
+  mode: string;
+}
+
+export interface LifePiece {
+  max_hp: number;
+  max_armor: number;
+  max_shield: number;
+}
+
+export interface MiscLoadoutsPiece {
+  /** True = PLAYERS pick on the phone, False = the HOST picks */
+  hud_select: boolean;
+  /** False = exclude_tags ["heavy"] on primary + secondary (a slot piece's own tags win) */
+  heavies: boolean;
+}
+
+export interface GameplayPiece {
+  /** MVP: {} = OPEN BRX STANDARD (each mode's own defaults) */
+  mode_params: Record<string, unknown>;
+}
+
+/** One named preset for one PLAY picker. `value` is the kind's shape: mode -> ModePiece, life -> LifePiece,
+ *  spawn -> Respawn, primary/secondary/perks -> SlotRule, misc_loadouts -> MiscLoadoutsPiece,
+ *  gameplay -> GameplayPiece. Builtins carry ids `builtin:<kind>:<slug>` and cannot be edited or deleted. */
+export interface GamePiece {
+  piece_id: string;
+  kind: PieceKind;
+  /** <= 24 chars, unique per kind (case-insensitive) */
   name: string;
-  desc: string;
+  /** one line, <= 80 chars; "" = none */
+  note: string;
   builtin: boolean;
+  /** True: shown greyed in BUILD, never offered on PLAY */
+  post_mvp: boolean;
   created_t: number;
   updated_t: number;
-  config: GameConfig;
+  value: Record<string, unknown>;
+}
+
+/** Per-game values on the PLAY strip. Never saved into a piece; kept by PLAY AGAIN. */
+export interface MatchSettings {
+  time_limit_s: number | null;
+  frag_limit: number | null;
+  night: boolean;
+  silenced: boolean;
+}
+
+/** F411 LAST MATCH: the strip values of the last match STARTed, kept across an MC restart. */
+export interface LastMatch {
+  time_limit_s: number | null;
+  frag_limit: number | null;
+  night: boolean;
+  silenced: boolean;
+  countdown_s: number;
+}
+
+/** What PLAY has picked: one piece id per kind, plus the strip. The config is composed from it. */
+export interface GamePick {
+  /** PieceKind -> piece_id, every kind present */
+  pieces: Record<string, string>;
+  match: MatchSettings;
 }
 
 export interface Preflight {
@@ -1844,7 +1899,10 @@ export interface State {
   game_no?: number;
   config_warnings?: string[];
   standby?: Player[];
-  active_preset_id?: string | null;
+  /** F411: absent = a server that predates PLAY/BUILD */
+  game_pick?: GamePick;
+  /** F411: absent until a match has been played */
+  last_match?: LastMatch;
   restored_from?: RestoredFromView;
   game?: GameAnnouncementView;
   sync?: SyncView;
