@@ -430,6 +430,7 @@ def test_last_match_captured_at_start_and_survives_a_restart():
 def test_pick_forces_outdoor_and_reads_the_builtin_loadout_back_as_open():
     """F410 + compose §3: a pick always plays outdoors, and the all-builtin loadout reads back OPEN, not CUSTOM.
     A slot piece that leaves a key out must not inherit the previous game's value for it."""
+    needs(HAVE, "starlette + httpx")
     c, s, *_ = _pclient()
     s.config["environment"] = "indoor"
     s.config["loadout_policy"]["primary"]["exclude_ids"] = ["sniper_rifle"]
