@@ -549,7 +549,7 @@ function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch }:
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           {guarded(
-            <Seg size={14} value={pick.match.night ? 'night' : 'day'} pad={SEG_PAD_44}
+            <Seg size={14} label="day or night" value={pick.match.night ? 'night' : 'day'} pad={SEG_PAD_44}
               options={[{ value: 'day', label: 'DAY' }, { value: 'night', label: 'NIGHT' }]}
               onChange={v => pickMatch({ night: v === 'night' })} />,
           )}

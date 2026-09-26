@@ -384,7 +384,7 @@ step('hit-areas', async ({ browser, base }) => {
       // pad used to fall short of it. `pad={SEG_PAD_44}` on the two Seg-based rows (LIFE/SPAWN share
       // one Seg call; GAME MODE is its own bespoke row, already built with an explicit 44px floor).
       pickers: rects('[data-testid^="picker-"] button'),
-      daynight: rects('[data-testid="match-settings"] [role="group"] button'),
+      daynight: rects('[data-testid="match-settings"] [role="group"][aria-label="day or night"] button'),
     };
   });
   expect(sizes.steppers.length > 0 && sizes.steppers.every(r => r.width >= 44 && r.height >= 44), `every − / + is >= 44 x 44 (saw ${JSON.stringify(sizes.steppers.map(r => [Math.round(r.width), Math.round(r.height)]))})`);
