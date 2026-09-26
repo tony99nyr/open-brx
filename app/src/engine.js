@@ -1444,7 +1444,9 @@ export class Engine {
       // node booked a death on its 0 pool. A blind second burst is still unsafe (pl4, above), so ASK the gun first.
       this.log(`*** write ${why} failed -- asking the gun before any re-send (F416) ***`, 'le');
       const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: at };
-      Object.assign(c, { writeAt: at, asks: 0, lost: false, heardAt: 0, resentAt: c.resentAt || 0 });
+      // Review 2026-09-26: `resentAt` clears. A lost re-send is off the radio, so its in-flight guard must not swallow
+      // the probe's `$HP,0` answer (`_spawnIntercept`). `resends` still counts it, so the SPAWN_RESENDS bound holds.
+      Object.assign(c, { writeAt: at, asks: 0, lost: false, heardAt: 0, resentAt: 0 });
       this._spawnCheck = c;
       this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
       // The repair runs NOW, as it always did, whatever the check finds: ending spawn protection must never wait on
@@ -1531,6 +1533,14 @@ export class Engine {
   _spawnLanded({ life, frames, why }) {
     {
       if (this._lifeSeq !== life || !this.alive || this.phase !== 'live' || this.ended) return;
+      // Review 2026-09-26: a timed revive holds the trigger (`$BMAP,0,98`). If the weapon delay already ran out
+      // (`_triggerLive` wrote `$BMAP,0,0`), this burst unmapped the trigger again: run the delay once more, or the
+      // player is hittable and cannot fire all life. The T-0 spawn and station revives carry the trigger live.
+      const rp = this._respawnProfile();
+      if (rp && !this._triggerPending && frames.some(f => typeof f === 'string' && f.startsWith('$BMAP,0,98,'))) {
+        const now = this.now();
+        this._triggerPending = { at: now, due: now + (rp.trigger_ms || 0), flip: false };
+      }
       if (this._protectsSpawn()) {
         if (this._armPending) return;   // the take still follows the first shot or the cap
         this._armPending = this._repairArm();
@@ -5453,7 +5463,7 @@ export class Engine {
         if (t[5] !== undefined) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);   // $LCD carries no heat token — leave it untouched this frame
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         const wasResync = !!this.resync;
-        this._spawnCheckSeen(this.hp, this.armor, this.shield);   // F416: a `$SPAWN`'s own `$LCD` answers a spawn check too
+        this._spawnCheckSeen(this.hp, this.armor, 0);   // F416: a `$SPAWN`'s own `$LCD` answers a spawn check too. `$LCD` carries no shield, so never the engine's own
         if (this.resync) this._resyncEvidence('lcd');
         // F264: a SOLICITED zero is a `desync` death by the §3.3 definition -- the node learned the `$HP,0` out of
         // band, from its own question, rather than from a live hit sequence. There is ONE death path and this is
