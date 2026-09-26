@@ -5443,7 +5443,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.switching && r.switching.to && r.switching.to.name === 'RAIL GUN' && r.switching.to.pu && r.switching.to.charges === '2', `the card draws RAIL GUN with its charges: ${JSON.stringify(r.switching)}`);
     must(inside(r.switching.to.box, r.frame), `the RAIL GUN tile is on screen: ${JSON.stringify([r.switching.to.box, r.frame])}`);
     must(!r.switching.to.clipped, 'the longest pickup name is not cut off in its tile');
-    must(apart(r.card.box, r.switching.to.box) && apart(r.card.box, r.switching.from.box), `the switch tiles are clear of the feed row: ${JSON.stringify([r.card.box, r.switching.from.box, r.switching.to.box])}`);
+    must(r.switching.from && apart(r.card.box, r.switching.to.box) && apart(r.card.box, r.switching.from.box), `the switch tiles are clear of the feed row: ${JSON.stringify([r.card.box, r.switching.from.box, r.switching.to.box])}`);
     const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2 SELECT', 1500);
     must(after.chip && after.chip.text === 'RAIL GUN 2 SELECT' && after.chip.on && after.chip.rows === 1, `the chip: ${JSON.stringify(after.chip)}`);
     // F400 r1: the hint's own time starts when the card has left, so the longest ON TRIGGER hint still shows and must fit

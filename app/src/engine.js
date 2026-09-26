@@ -3858,10 +3858,11 @@ export class Engine {
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
       if (this.switching && now - this.switching.at > this.switchWindowMs()) {
-        const to = this.switching.to != null ? this.switching.to : this._nextAltSlot(); this.activeSlot = to;
+        const to = this.switching.to != null ? this.switching.to : this._nextAltSlot();
         const pu = !!this.switching.pu; this.switching = null;
+        if (!pu) this.activeSlot = to;   // F400 r2: `_puEquip` already moved a pickup card's trigger; a shot since may have moved it again
         if (!pu) this._altPtr = to;   // F400 r1: a pickup card is a phone equip, which moves the trigger and never the gun's ALT pointer
-        if (this._puHeld) this._puHeld.trig = to;   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
+        if (this._puHeld && !pu) this._puHeld.trig = to;   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
         if (!pu) this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile (`_puEquip` already armed a pickup card's)
         this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true } };
         this.log(pu ? `pickup switch card to slot ${to} closed after ${this.switchWindowMs()}ms` : `swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
