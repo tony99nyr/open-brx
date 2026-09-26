@@ -3865,6 +3865,7 @@ export class Engine {
         if (!pu) this._altPtr = to;   // F400 r1: a pickup card is a phone equip, which moves the trigger and never the gun's ALT pointer
         if (this._puHeld && !pu) this._puHeld.trig = to;   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
         if (!pu) this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile (`_puEquip` already armed a pickup card's)
+        if (!pu) this._showSlotAmmo(to);   // F394: the gun sends no `$ALCD` on ALT, so the new slot's counts come from the node
         this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true } };
         this.log(pu ? `pickup switch card to slot ${to} closed after ${this.switchWindowMs()}ms` : `swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
       }
@@ -4477,6 +4478,14 @@ export class Engine {
     this.magBySlot[slot] = Math.max(this.magBySlot[slot] || 0, mag);
     this.ammo = mag; this.mag = this.magBySlot[slot];
     if (reserve != null && !Number.isNaN(reserve)) this.reserve = reserve;
+  }
+  /** F394: put `slot`'s own counts in the ammo block when the node moves the trigger with no `$ALCD` to say so.
+   *  The gun reports nothing on ALT, so before this an assumed swap kept the OLD slot's number until the next
+   *  shot while the pips took the new slot's size, and a reload pull was judged against the wrong magazine
+   *  (sitting B, 2026-09-25). The counts are `_liveAmmo`'s: the account, else the spawn row. */
+  _showSlotAmmo(slot) {
+    const l = this._liveAmmo()[slot];
+    if (l) this._publishAmmo(slot, l[0], l[1]);
   }
   /** Rounds that LEFT the gun: the drop in the ACCOUNT's magazine across one `$ALCD`, and nothing else.
    *  The only thing that drives the recoil burst counter.
@@ -6573,10 +6582,22 @@ export class Engine {
     // and not a magazine worth showing: Tony watched the HUD jump to 32 every time he fired. The node
     // already knows the count, because it wrote it -- so book NOTHING, leave `_prevAmmo` where it was so
     // the next real frame measures from before the write, and put the ACCOUNT on the screen.
+    // F394: the restore landing for a slot that is NOT on the trigger (a switch-back resend, a stun restore of the
+    // other slot) is the gun reading back our own write, not the trigger moving. Measured before `_acctAmmo` closes it.
+    // A report on the slot ALT is switching TO is the player's confirming shot, never an echo (polish round 2).
+    const offSlotEcho = slot !== this.activeSlot && !(this.switching && slot === this.switching.to)
+      && this._acctEchoing(slot) && mag <= this._shotAcct[slot].echoExpect;
     let prev = this._acctAmmo(slot, mag, this._prevAmmo[slot]);
     if (prev === null) {
       const a = this._shotAcct[slot];
-      this._publishAmmo(slot, this._acctLive(slot), a ? a.res : null);
+      // F394: only the slot on the trigger owns the ammo block. A switch-back resend for slot 0 while the player
+      // is on the secondary put the primary's number over the secondary's pips (sitting B, 2026-09-25).
+      if (slot === this.activeSlot) this._publishAmmo(slot, this._acctLive(slot), a ? a.res : null);
+      return;
+    }
+    if (offSlotEcho) {
+      this._prevAmmo[slot] = mag;
+      if (reserve != null && !Number.isNaN(reserve)) this._prevReserve[slot] = reserve;
       return;
     }
     // F147 (tightened, polish-loop passes 1+2): the gun's own confirmation that a try-out weapon write
