@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F282 back from post-mvp.md into MVP DESK -- Tony: yes, MVP, silenced must silence the weapons -- built at the desk, `silent_weapons` bench check left; F406 filed to post-mvp.md).
+Updated: 2026-09-25 (F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F282 back from post-mvp.md into MVP DESK -- Tony: yes, MVP, silenced must silence the weapons -- built at the desk, `silent_weapons` bench check left; F406 filed to post-mvp.md).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,11 +9,11 @@ Updated: 2026-09-25 (MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 78.** Desk 8 · bench 67 · decision 3.
+**MVP open: 76.** Desk 6 · bench 67 · decision 3.
 
-**MVP DESK (8),** a keyboard is enough:
+**MVP DESK (6),** a keyboard is enough:
 - 🟠 **B21** · **F372** · **F400** · **F402** · **F403**
-- 🟡 **F282** · **F404** · **F405**
+- 🟡 **F282**
 
 **MVP BENCH (67),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
@@ -52,10 +52,6 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 ## MVP DESK
 
 A keyboard is enough. Highest value first.
-
-- **F404 🟡 MC LOBBY SHOWS WHICH PICKUPS ARE ARMED.** Tony 2026-09-25: pickups are set up in the ARMORY only and he wants to see them before the match; today the powerup strip shows on ARMED and LIVE, not LOBBY. Build: one read-only LOBBY line ("PICKUPS: ROCKETS · STICK 1 · OVERSHIELD · PHONE 2"), grey "NO PICKUPS" when none is armed, nothing when the powerups flag is off; reuse `ui/Powerups.tsx`. Owner: brx3. `build`.
-
-- **F405 🟡 THE ARMORY OFFERS ONLY THE MVP STATION KINDS.** Tony 2026-09-25: "so mvp for utility is respawn station, pickup, hill". Hide `extraction` and `bomb` from the ARMORY ITEMS kind picker and any other place a host assigns a kind; keep the code, the types and the recap labels so an old assignment still renders. Owner: brx3. `build`.
 
 - **F402 🟠 KING OF THE HILL CANNOT LOAD WITHOUT A HILL STATION.** Tony 2026-09-25: "KOTH should require utility in the armory. no way to play it without it." Today (checked on main): a KOTH game with no control station LOADs; MC shows only an amber advisory line (`_station_warnings`, "SETUP: NO CONTROL STATION IS ASSIGNED ..."). Build: LOAD is BLOCKED, on the server and the console, until a phone or Stick is assigned as a hill (the grenade hill is post-MVP and does not count), with one red F221 line that says what to do and jumps to the ARMORY; an amber warning at START if the hill station went offline after LOAD. Owner: brx3. `build`.
 
