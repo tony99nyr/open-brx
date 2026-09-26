@@ -6,7 +6,7 @@ import contextlib
 import json
 import logging
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -18,7 +18,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .state import CoverageRequired, NotReadyError, Session
-from .types import MatchHistoryRow, PerkView, PresentationView, VoiceList
+from .types import MatchHistoryRow, MatchSettings, PerkView, PresentationView, VoiceList
 from .tunnel import TunnelError
 
 log = logging.getLogger("brx.mc.api")
@@ -214,69 +214,107 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except Exception:
             return JSONResponse(fake_weapon_views())
 
-    # ---- A10 §8 saved games (presets) ----
-    from .presets import PresetError, PresetStore
-    if getattr(s, "presets", None) is None:
-        from .state import default_config
-        from . import policy as _policy
-        s.presets = PresetStore(None, s.sanitize_config, default_config, _policy.merge, now_ms=s.now_ms)   # memory-only
+    # ---- F411: BUILD's pieces + PLAY's pick (docs/spec/design/games-presets.md) ----
+    from . import gamepick as _gamepick
+    from .pieces import PieceError, PieceStore
+    from .state import MODES, ModeRow, default_config
+    if getattr(s, "pieces", None) is None:
+        s.pieces = PieceStore(None, now_ms=s.now_ms)   # memory-only
 
-    def _perr(e: PresetError):
+    def _perr(e: PieceError):
         return _err(str(e), e.status)
 
-    def _presets(s: Session) -> PresetStore:
-        """`s.presets` is only ever None before the memory-only fallback above runs -- which happens
+    def _pieces(s: Session) -> PieceStore:
+        """`s.pieces` is only ever None before the memory-only fallback above runs -- which happens
         unconditionally in this same function, before any route can be dispatched -- but it stays
         Optional on `Session` (attached by `__main__`/here), so every route reads it through this
         rather than five copies of the same narrowing."""
-        if s.presets is None:
-            raise PresetError(409, "saved games are not available for this session")
-        return s.presets
+        if s.pieces is None:
+            raise PieceError(409, "pieces are not available for this session")
+        return s.pieces
 
-    async def presets_list(_):
-        try:
-            return JSONResponse(_presets(s).list())
-        except PresetError as e:
-            return _perr(e)
+    def _mode_row(mode: str) -> ModeRow:
+        return next(m for m in MODES if m["mode"] == mode)
 
-    async def presets_create(req):
-        b = await body(req)
-        raw = b.get("config")
-        cfg = raw if isinstance(raw, dict) else s.config   # one read, so the checker sees the narrowing
-        try:
-            return JSONResponse(_presets(s).create(b.get("name"), b.get("desc"), cfg, replace=bool(b.get("replace"))))
-        except PresetError as e:
-            return _perr(e)
-        except ValueError as e:
-            return _err(str(e))
+    def _recompose_if_picked(piece_id: str) -> None:
+        """PUT /api/pieces/{id}: when the edited piece is in the current pick, MC recomposes the config
+        (games-presets.md §4) -- the SAME piece ids, re-resolved, so the edited value takes effect at once."""
+        if piece_id not in s.game_pick["pieces"].values():
+            return
+        resolved = _gamepick.resolve_pieces(_pieces(s), s.game_pick["pieces"])
+        patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]))
+        s.set_config(patch)
 
-    async def presets_update(req):
+    async def pieces_list(_):
+        return JSONResponse(_pieces(s).list())
+
+    async def pieces_create(req):
         b = await body(req)
         try:
-            return JSONResponse(_presets(s).update(req.path_params["pid"], name=b.get("name"), desc=b.get("desc"),
-                                                    config=b.get("config") if isinstance(b.get("config"), dict) else None))
-        except PresetError as e:
+            return JSONResponse(_pieces(s).create(b.get("kind"), b.get("name"), b.get("note"), b.get("value")))
+        except PieceError as e:
             return _perr(e)
+
+    async def pieces_update(req):
+        pid = req.path_params["pid"]
+        b = await body(req)
+        try:
+            piece = _pieces(s).get(pid)   # 404/403(builtin) before the in-use check
+        except PieceError as e:
+            return _perr(e)
+        if not piece["builtin"] and pid in s.game_pick["pieces"].values() and s.phase in ("armed", "live"):
+            return _err("IN USE BY THE RUNNING GAME", 409)
+        try:
+            row = _pieces(s).update(pid, name=b.get("name"), note=b.get("note"), value=b.get("value"))
+        except PieceError as e:
+            return _perr(e)
+        try:
+            _recompose_if_picked(pid)
         except ValueError as e:
             return _err(str(e))
+        return JSONResponse(row)
 
-    async def presets_delete(req):
+    async def pieces_delete(req):
+        pid = req.path_params["pid"]
         try:
-            _presets(s).delete(req.path_params["pid"])
-            if s.active_preset_id == req.path_params["pid"]:
-                s.active_preset_id = None; s._changed()
-        except PresetError as e:
+            piece = _pieces(s).get(pid)   # 404 before anything else; builtin-ness before the in-use check
+        except PieceError as e:
+            return _perr(e)
+        if not piece["builtin"] and pid in s.game_pick["pieces"].values():
+            return _err("IN USE: PICK ANOTHER ON PLAY FIRST", 409)
+        try:
+            _pieces(s).delete(pid)
+        except PieceError as e:
             return _perr(e)
         return JSONResponse({"ok": True})
 
-    async def presets_apply(req):
+    async def play_pick(req):
+        b = await body(req)
         try:
-            row = _presets(s).get(req.path_params["pid"])
-            return JSONResponse(s.apply_preset(row["preset_id"], row["config"]))   # PUT /api/config path + remembers which game is playing
-        except PresetError as e:
+            ids = _gamepick.merge_piece_ids(s.game_pick["pieces"], b.get("pieces") or {})
+            resolved = _gamepick.resolve_pieces(_pieces(s), ids)
+            mode = resolved["mode"]["value"]["mode"]
+            prev_mode = _pieces(s).get(s.game_pick["pieces"]["mode"])["value"]["mode"]
+            match = cast(MatchSettings, dict(s.game_pick["match"]))
+            if mode != prev_mode:
+                dc = default_config(mode)
+                match["time_limit_s"] = dc["time_limit_s"]
+                match["frag_limit"] = (dc.get("scoring") or {}).get("frag_limit")
+            match = _gamepick.merge_match(match, b.get("match") or {})
+        except PieceError as e:
             return _perr(e)
+        patch = _gamepick.compose(resolved, match, _mode_row(mode))
+        precheck = s._compose_precheck(patch)
+        if not precheck["ok"]:
+            # games-presets.md §4: "a pick with ok: false changes nothing" -- neither the config nor the pick.
+            return JSONResponse({"ok": False, "errors": precheck["errors"], "config": s.config, "pick": s.game_pick})
+        try:
+            res = s.set_config(patch)
         except ValueError as e:
             return _err(str(e))
+        s.game_pick = {"pieces": ids, "match": match}
+        s._changed()
+        return JSONResponse({"ok": res["ok"], "errors": res["errors"], "config": res["config"], "pick": s.game_pick})
 
     async def loadout_pool_preview(req):
         """A10 §5 designer: the pool a DRAFT `loadout_policy` would allow — same rule engine as `State.loadout_pool`,
@@ -860,11 +898,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/weapons", weapons),
         Route("/api/perks", perks),
         Route("/api/loadout/pool", loadout_pool_preview, methods=["POST"]),
-        Route("/api/presets", presets_list),
-        Route("/api/presets", presets_create, methods=["POST"]),
-        Route("/api/presets/{pid}", presets_update, methods=["PUT"]),
-        Route("/api/presets/{pid}", presets_delete, methods=["DELETE"]),
-        Route("/api/presets/{pid}/apply", presets_apply, methods=["POST"]),
+        Route("/api/pieces", pieces_list),
+        Route("/api/pieces", pieces_create, methods=["POST"]),
+        Route("/api/pieces/{pid}", pieces_update, methods=["PUT"]),
+        Route("/api/pieces/{pid}", pieces_delete, methods=["DELETE"]),
+        Route("/api/play/pick", play_pick, methods=["POST"]),
         Route("/api/config", put_config, methods=["PUT"]),
         Route("/api/phase", set_phase, methods=["POST"]),
         Route("/api/players", post_player, methods=["POST"]),
