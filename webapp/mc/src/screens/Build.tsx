@@ -12,10 +12,10 @@ import type {
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { GhostButton, PrimaryButton, ScreenHeader, SectionRule, Shelf } from '../ui';
-import { KIND_TABS } from './build/kinds';
-import { draftOf, isDirty, MAX_NOTE, proposeCopyName, type PieceDraft } from './build/helpers';
-import { LifeFields, MiscLoadoutsFields, SlotFields, SpawnFields, type CatalogueRow } from './build/editors';
-import { PieceCard } from './build/PieceCard';
+import { KIND_TABS } from './presets/kinds';
+import { draftOf, isDirty, MAX_NOTE, proposeCopyName, type PieceDraft } from './presets/helpers';
+import { LifeFields, MiscLoadoutsFields, SlotFields, SpawnFields, type CatalogueRow } from './presets/editors';
+import { PieceCard } from './presets/PieceCard';
 
 const weaponCatalogue = (weapons: WeaponView[], slot: 'primary' | 'secondary'): CatalogueRow[] =>
   weapons.filter(w => !w.pickup_only).filter(w => slot === 'secondary' || w.role !== 'sidearm')

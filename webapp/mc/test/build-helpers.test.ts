@@ -1,15 +1,15 @@
-// F411 BUILD lane's pure helpers (src/screens/build/helpers.ts). These live under `test/`, not
-// `src/screens/build/`, because `vitest.config.ts` (a PLAY-lane file this lane does not own) only
-// collects `test/**/*.test.{ts,tsx}` — a file under `src/screens/build/*.test.ts` is invisible to
+// F411 BUILD lane's pure helpers (src/screens/presets/helpers.ts). These live under `test/`, not
+// `src/screens/presets/`, because `vitest.config.ts` (a PLAY-lane file this lane does not own) only
+// collects `test/**/*.test.{ts,tsx}` — a file under `src/screens/presets/*.test.ts` is invisible to
 // `npx vitest run` no matter how it is invoked (checked directly: passing the path as a CLI filter
 // still reports "No test files found", since `include` is fixed at collection time, not overridden by
 // an explicit path). Reported in the BUILD lane's final report as the smallest sensible fix for that
-// gap — the source stays in `src/screens/build/`, only the spec moves.
+// gap — the source stays in `src/screens/presets/`, only the spec moves.
 import { describe, expect, it } from 'vitest';
 import type { GamePiece } from '../src/api/contract.gen';
 import {
   classesOf, draftOf, guardSpawnDelay, isDirty, onlyIdsForClass, proposeCopyName, spawnBuiltinValue,
-} from '../src/screens/build/helpers';
+} from '../src/screens/presets/helpers';
 
 describe('guardSpawnDelay (Designer.tsx\'s own 1-2s wedge guard, kept byte-for-byte)', () => {
   it('stepping up from 0 skips 1-2 and lands on 3', () => {

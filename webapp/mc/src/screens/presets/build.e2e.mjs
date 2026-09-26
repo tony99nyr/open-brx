@@ -10,8 +10,8 @@
 // JOBS (with a measured mb/secs), and drop the in-page store in favour of the real mock backend if it
 // covers the same ground.
 //
-//   node src/screens/build/build.e2e.mjs
-//   ONLY=<step> node src/screens/build/build.e2e.mjs   # tabs | life | spawn | delete | save-error | leave-confirm
+//   node src/screens/presets/build.e2e.mjs
+//   ONLY=<step> node src/screens/presets/build.e2e.mjs   # tabs | life | spawn | delete | save-error | leave-confirm
 //   HEADED=1 / KEEP_SHOTS=1 / VITE_PORT=…
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -20,7 +20,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));       // webapp/mc/src/screens/build
+const HERE = path.dirname(fileURLToPath(import.meta.url));       // webapp/mc/src/screens/presets
 const MC = path.resolve(HERE, '../../..');                       // webapp/mc
 const SHOTS = path.join(HERE, 'shots');
 const ONLY = process.env.ONLY || '';
