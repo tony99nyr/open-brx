@@ -3,7 +3,7 @@ import { OPERATOR_TOKEN, alertWords, colourOf, glyphed } from './alerts';
 import { CommandBar } from './frame/CommandBar';
 import { Armed } from './screens/Armed';
 import { Armory } from './screens/Armory';
-import { Designer } from './screens/Designer';
+import { Build } from './screens/Build';
 import { Catalog } from './screens/Catalog';
 import { Debug } from './screens/Debug';
 import { Games } from './screens/Games';
@@ -44,7 +44,7 @@ function Screen() {
   switch (view) {
     case 'muster': return <Armory />;
     case 'build': return <Games />;
-    case 'designer': return <Designer />;
+    case 'designer': return <Build />;
     case 'catalog': return <Catalog />;
     case 'debug': return <Debug />;
     case 'kit': return <Kit />;

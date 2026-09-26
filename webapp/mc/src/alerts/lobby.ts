@@ -88,18 +88,12 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   // match fact, not a status colour picked at the call site.
   'frame-load-status-confirmed': { sev: 'amber', text: '{ACKED}/{TOTAL} GUNS CONFIRMED ON THIS CONFIG' },
 
-  // ---- Games --------------------------------------------------------------------------------------
-  'games-guns-not-configured': { sev: 'neutral', text: 'GUNS NOT CONFIGURED YET: WEAPONS GO AT THE LOBBY PUSH, AFTER KITTING' },
+  // ---- PLAY (screens/Games.tsx, F411 rewrite) ------------------------------------------------------
   'games-locked-banner': { sev: 'red', text: 'GAME SETTINGS ARE LOCKED: {REASON}' },
   // Config-warning wording is server-authored (`state.py` validate), but this one line has always been
   // stable enough to catalogue directly rather than route through `serverLine` (which is for the
   // readiness board's blocker/amber lists, not `config_warnings`).
   'games-loadouts-reset': { sev: 'amber', text: '{N} LOADOUT(S) RESET BY {LABEL}' },
-  'games-partial-delivery': { sev: 'neutral', text: '{N} OF {M} PHONES HAVE THE GAME SO FAR. THE REST ARE NOT CONNECTED. KITTING IS NEXT, AND THE GUNS ARE CONFIGURED AT THE LOBBY PUSH.' },
-  'games-no-echo': { sev: 'amber', text: 'NO CONFIG ECHO FROM {NAMES}: HEADSET OFF, OR GUN ASLEEP?' },
-  'games-tuned-not-saved': { sev: 'neutral', text: 'TUNED: NOT SAVED // LOADED' },
-  'games-venue-in-draft': { sev: 'neutral', text: 'IN THE DRAFT BELOW' },
-  'games-venue-locked': { sev: 'amber', text: 'LOCKED WHILE THE MATCH IS {PHASE}' },
   'games-wait-why': { sev: 'neutral', text: 'WAITING FOR {N} PHONE(S): {NAMES}' },
 };
 
@@ -108,4 +102,15 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
 export const LOBBY_RETIRED: Record<string, string> = {
   'lobby-unassigned-heading': 'a column header, not a fact about any one player — restyled off T.warn to plain ink; the audit itself flagged the borrowed amber as unearned.',
   'games-jump-to-match': 'a navigation button beside the locked banner, not itself an alert — its border no longer borrows T.bad.',
+  // F411 (docs/spec/design/games-presets.md): PLAY is rewritten — no more LOAD/ACTIVE GAME CONFIG dual
+  // state (LOAD stays on PLAY, but PLAY never becomes "the loaded game" screen), no gun-programming
+  // line (brief §10: "isn't it at the kit?" — LOBBY alone reports GUNS READY n/n), no venue chips/EDIT
+  // draft (day/night is a MATCH SETTINGS switch now), and no "TUNED: NOT SAVED" state (a pick is always
+  // either a saved BUILD piece or the composed config; nothing is ever left dangling and unsaved).
+  'games-guns-not-configured': 'PICK GAME never shows this any more — LOBBY alone reports GUNS READY n/n (games-redesign.md §10).',
+  'games-partial-delivery': 'the LOAD/ACTIVE-GAME-CONFIG dual state (and its phone-delivery status line) is retired with the old GAMES shelf UI.',
+  'games-no-echo': 'same: the gun-echo status line moved to LOBBY (frame-load-status-*), never shown on PLAY any more.',
+  'games-tuned-not-saved': 'PLAY never leaves a "tuned, not saved" draft (games-redesign.md §1) — every pick is a BUILD piece or the composed default.',
+  'games-venue-in-draft': 'PLAY has no venue chips or EDIT draft any more; DAY/NIGHT is one MATCH SETTINGS switch.',
+  'games-venue-locked': 'same: no venue control on PLAY to lock.',
 };

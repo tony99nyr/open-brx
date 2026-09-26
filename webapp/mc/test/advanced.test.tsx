@@ -3,7 +3,6 @@
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { AdvancedPresentation } from '../src/screens/AdvancedPresentation';
-import { Designer } from '../src/screens/Designer';
 import { demo, mountScreen } from './harness';
 
 describe('ADVANCED — sounds & lights (read only)', () => {
@@ -54,14 +53,6 @@ describe('ADVANCED — sounds & lights (read only)', () => {
     await m.click('ADVANCED');
     await act(async () => { await new Promise(r => setTimeout(r, 5)); });
     expect(m.find('[role="alert"]')[0].textContent).toMatch(/COULD NOT LOAD.*BOOM/);
-    m.unmount();
-  });
-
-  it('is part of the Designer, collapsed, so the editing flow is unchanged', async () => {
-    const d = await demo();
-    const m = await mountScreen(<Designer />, { state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' });
-    expect(m.find('[data-testid="advanced-presentation"] button[aria-expanded="false"]').length).toBe(1);
-    expect(m.text()).toMatch(/ADVANCED — SOUNDS & LIGHTS/);
     m.unmount();
   });
 });

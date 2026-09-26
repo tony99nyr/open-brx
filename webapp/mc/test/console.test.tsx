@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Armed } from '../src/screens/Armed';
 import { Armory } from '../src/screens/Armory';
 import { Catalog } from '../src/screens/Catalog';
-import { Designer } from '../src/screens/Designer';
 import { Kit } from '../src/screens/Kit';
 import { Lobby } from '../src/screens/Lobby';
 import { Recap } from '../src/screens/Recap';
@@ -432,44 +431,8 @@ describe('the APK QR is only offered on an address a phone can reach', () => {
   });
 });
 
-describe('the designer seeds a late snapshot without stomping edits', () => {
-  // NOTE: Designer is imported statically at the top of this file. A dynamic import here would get a
-  // SECOND copy of store.tsx after the runway test's `vi.resetModules()`, and its `StoreCtx` would be
-  // a different React context than the one this provider supplies — "useStore outside StoreProvider".
-  it('fills a null draft when the snapshot arrives, then never touches it again', async () => {
-    // `cfg` is a lazy useState initialiser, so mounting before the first snapshot captured `null`
-    // and the screen stayed blank forever. The seeding effect that fixes it depends on `initial`,
-    // which depends on `state` — which changes on EVERY snapshot. If the `cfg === null` guard were
-    // wrong, every snapshot would reset the config the operator is editing (review 2026-09-01).
-    const d = await demo();
-    const modes = await d.api.getModes();
-    const base = makeStore({ ...d, view: 'designer' });
-    const render = (state: State | null) => (
-      <StoreCtx.Provider value={{ ...base, state, modes }}><Designer /></StoreCtx.Provider>
-    );
-    const m = await mount(render(null));
-    await m.update(render({ ...d.state }));           // the first snapshot arrives
-    // The counts come from the demo catalogue, not typed here: a weapon that joins or leaves the
-    // visible arsenal (the Toxin Rifle, 2026-09-19) must not break a test about draft seeding.
-    // PRIMARY counts every visible weapon except the `pickup_only` heavies (rocket_launcher/rail_gun)
-    // and the `lethal: false` support weapons (Breacher, Haze), which can never be a primary
-    // (weapon-design.md §7.4).
-    const weapons = await d.api.getWeapons();
-    const primary = `${weapons.filter((w) => !w.pickup_only && w.lethal !== false).length} OF ${weapons.length}`;
-    expect(m.text(), 'the draft must be seeded, not left blank forever').toContain(`OF ${weapons.length}`);
-
-    // Now make a REAL edit and prove it survives five more snapshots. Asserting that the text is
-    // merely UNCHANGED would pass against a broken guard: re-seeding restores the same defaults, so
-    // it looks identical unless something has actually been changed away from them.
-    // NO HEAVIES now lands on the SAME count as OPEN: the only visible `heavy`-tagged weapons
-    // (rocket_launcher/rail_gun) were already excluded from OPEN by `pickup_only`.
-    await m.click('NO HEAVIES');
-    expect(m.text()).toContain(primary);
-    for (let i = 0; i < 5; i++) await m.update(render({ ...d.state, t: Date.now() + i }));
-    expect(m.text(), 'a snapshot must not reset the draft being edited').toContain(primary);
-    m.unmount();
-  });
-});
+// F411: the GAME DESIGNER is retired (docs/spec/design/games-presets.md) — its own draft-seeding
+// test went with it. BUILD (screens/Build.tsx) replaces it; that lane owns its own tests.
 
 describe('the RECAP selection and its export error', () => {
   it('drops a selection whose match is gone, instead of silently showing the live one', async () => {

@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 
 /** Countdown lengths the operator can arm: quick bench starts through full walk-outs (Tony 2026-08-26). */
 export const RUNWAYS = [10, 15, 30, 45, 60, 90, 120, 180];
-export const DEFAULT_RUNWAY = 120;
+// F411 (docs/spec/design/games-presets.md §2, Tony 2026-09-26): "default countdown 30s. 120s is
+// generally too long." MATCH SETTINGS' COUNTDOWN pre-fills this same default.
+export const DEFAULT_RUNWAY = 30;
 
 const KEY = 'brx.mc.runway';
 
