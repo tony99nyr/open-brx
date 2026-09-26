@@ -379,12 +379,20 @@ step('hit-areas', async ({ browser, base }) => {
       steppers: rects('[aria-label$=" minus"], [aria-label$=" plus"]'),
       silenced: rects('[role="switch"][aria-label="silenced"]'),
       quick: rects('[data-testid="quick-pick-row"] button'),
+      // UX round 1 2026-09-26: GAME MODE/LIFE/SPAWN (the pickers) and DAY/NIGHT (in MATCH SETTINGS)
+      // measured 38px in a real browser -- the shared `Seg`'s own floor is 36px, and these rows'
+      // pad used to fall short of it. `pad={SEG_PAD_44}` on the two Seg-based rows (LIFE/SPAWN share
+      // one Seg call; GAME MODE is its own bespoke row, already built with an explicit 44px floor).
+      pickers: rects('[data-testid^="picker-"] button'),
+      daynight: rects('[data-testid="match-settings"] [role="group"] button'),
     };
   });
   expect(sizes.steppers.length > 0 && sizes.steppers.every(r => r.width >= 44 && r.height >= 44), `every − / + is >= 44 x 44 (saw ${JSON.stringify(sizes.steppers.map(r => [Math.round(r.width), Math.round(r.height)]))})`);
   expect(sizes.silenced.length === 1 && sizes.silenced[0].height >= 44, `SILENCED's own hit area is >= 44px tall (saw ${JSON.stringify(sizes.silenced)})`);
   expect(sizes.quick.length > 0 && sizes.quick.every(r => r.width >= 44 && r.height >= 44), `every quick-pick button is >= 44 x 44 (saw ${JSON.stringify(sizes.quick.map(r => [Math.round(r.width), Math.round(r.height)]))})`);
-  ok('steppers, SILENCED and every quick-pick button meet the 44px hit-area floor');
+  expect(sizes.pickers.length > 0 && sizes.pickers.every(r => r.height >= 44), `every GAME MODE/LIFE/SPAWN option is >= 44px tall (saw ${JSON.stringify(sizes.pickers.map(r => Math.round(r.height)))})`);
+  expect(sizes.daynight.length === 2 && sizes.daynight.every(r => r.height >= 44), `DAY and NIGHT are each >= 44px tall (saw ${JSON.stringify(sizes.daynight.map(r => Math.round(r.height)))})`);
+  ok('steppers, SILENCED, every quick-pick button and the picker/DAY-NIGHT rows meet the 44px hit-area floor');
   await pg.context().close();
 });
 

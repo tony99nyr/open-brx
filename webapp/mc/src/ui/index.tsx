@@ -158,6 +158,12 @@ export function OutlineTag({ children, color, border, title }: { children: React
   return <span title={title} style={{ font: F.chk(700, 11), letterSpacing: '.14em', color, border: `1px solid ${border}`, padding: '3px 9px' }}>{children}</span>;
 }
 
+/** `Seg`'s own floor is 36px. A call site that needs the 44px tap-target floor passes this pad
+ *  instead (BUILD's editors did first, QA-16; UX round 1 2026-09-26 moved it here so PLAY's own
+ *  Seg rows — GAME MODE/LIFE/SPAWN/DAY-NIGHT, which measured 38px in a real browser — can share it
+ *  rather than the shared component's own floor changing under every OTHER screen's Segs too). */
+export const SEG_PAD_44 = '15px 14px';
+
 /** Segmented control. */
 export function Seg<V extends string>({ value, options, onChange, size = 11, pad = '5px 14px', label, titles, wrap = false }:
   { value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; size?: number; pad?: string;

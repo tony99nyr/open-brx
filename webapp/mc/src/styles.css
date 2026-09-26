@@ -38,7 +38,9 @@ input { font-family: inherit; }
 .textbox { background: transparent; border: none; border-bottom: 1px solid transparent; color: inherit; font: inherit; letter-spacing: inherit; padding: 0; min-width: 6ch; }
 .textbox:focus { border-bottom-color: #39b4ff; }
 /* keyboard focus is always visible; mouse/touch focus stays quiet */
-button:focus-visible, [tabindex]:focus-visible, input:focus-visible, .numbox:focus-visible, .textbox:focus-visible { outline: 2px solid #39b4ff; outline-offset: 2px; }
+/* UX round 1 2026-09-26: an `<a>` (the DAY/NIGHT venue-mode manual link) had no rule here at all, so
+   tabbing to it showed no focus ring. */
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible, input:focus-visible, .numbox:focus-visible, .textbox:focus-visible { outline: 2px solid #39b4ff; outline-offset: 2px; }
 button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: none; }
 /* ≥44px touch target without changing the visual size: extend the hit box vertically */
 .hit44 { position: relative; }

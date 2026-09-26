@@ -17,7 +17,7 @@ import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind } from '.
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
-import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, StepBtn, Toggle } from '../ui';
+import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, Toggle } from '../ui';
 import { Alert } from '../ui/Alert';
 import { alertWords, serverLine } from '../alerts';
 import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
@@ -357,7 +357,7 @@ export function Games() {
                       })}
                     </span>
                   ) : (
-                    <Seg wrap size={14} label={kindLabel(kind).toLowerCase()} value={selected} pad="10px 16px"
+                    <Seg wrap size={14} label={kindLabel(kind).toLowerCase()} value={selected} pad={SEG_PAD_44}
                       options={options.map(p => ({ value: p.piece_id, label: p.name }))}
                       titles={Object.fromEntries(options.map(p => [p.piece_id, p.note || p.name]))}
                       onChange={id => pickPiece(kind, id)} />
@@ -467,12 +467,23 @@ function FavouriteChip({ fav, renaming, confirmingDelete, onLoad, onRenameStart,
   onLoad: () => void; onRenameStart: () => void; onRenameCommit: (name: string) => void; onRenameCancel: () => void;
   onDeleteStart: () => void; onDeleteConfirm: () => void; onDeleteCancel: () => void;
 }) {
+  // UX round 1 (2026-09-26): renaming had only a ✕ (cancel), with no visible way to CONFIRM a typed
+  // name — Enter or clicking away commits it (`DraftText`'s own blur/Enter rule), but nothing on
+  // screen said so. `draft` mirrors `DraftText`'s own live value (its `onDraft` hook) so a sibling ✓
+  // button can commit the CURRENT text directly. Both buttons take focus with `onMouseDown`'s
+  // `preventDefault` — without it, a click blurs the input FIRST (committing via `DraftText`'s own
+  // onBlur) and only THEN runs the button's onClick, so ✕ used to "cancel" an edit it had already sent.
+  const [draft, setDraftMirror] = useState(fav.name);
+  useEffect(() => { if (renaming) setDraftMirror(fav.name); }, [renaming, fav.name]);
   if (renaming) {
+    const save = () => { const v = draft.trim(); if (v && v !== fav.name) onRenameCommit(v); else onRenameCancel(); };
     return (
       <span data-testid={`favourite-rename-${fav.favourite_id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${T.line2}`, padding: '4px 8px', minHeight: 44 }}>
-        <DraftText value={fav.name} onCommit={onRenameCommit} ariaLabel={`rename ${fav.name}`} maxLength={24}
+        <DraftText value={fav.name} onCommit={onRenameCommit} onDraft={setDraftMirror} ariaLabel={`rename ${fav.name}`} maxLength={24}
           style={{ font: F.chk(700, 14), minWidth: 120, borderBottomColor: T.line2 }} />
-        <button type="button" onClick={onRenameCancel} aria-label="cancel rename" className="hit44"
+        <button type="button" onMouseDown={e => e.preventDefault()} onClick={save} aria-label="save rename" className="hit44"
+          style={{ ...BTN_RESET, cursor: 'pointer', color: T.ok, padding: '0 8px', minHeight: 44 }}>✓</button>
+        <button type="button" onMouseDown={e => e.preventDefault()} onClick={onRenameCancel} aria-label="cancel rename" className="hit44"
           style={{ ...BTN_RESET, cursor: 'pointer', color: T.micro, padding: '0 8px', minHeight: 44 }}>✕</button>
       </span>
     );
@@ -538,7 +549,7 @@ function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch }:
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           {guarded(
-            <Seg size={14} value={pick.match.night ? 'night' : 'day'} pad="10px 14px"
+            <Seg size={14} value={pick.match.night ? 'night' : 'day'} pad={SEG_PAD_44}
               options={[{ value: 'day', label: 'DAY' }, { value: 'night', label: 'NIGHT' }]}
               onChange={v => pickMatch({ night: v === 'night' })} />,
           )}

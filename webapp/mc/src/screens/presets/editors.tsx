@@ -8,7 +8,7 @@ import type {
   StationProtectS, TimedProtectS, WeaponDelayMs,
 } from '../../api/contract.gen';
 import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../../api/contract.gen';
-import { BTN_RESET, LockIcon, Micro, OutlineTag, Seg, ValueBox } from '../../ui';
+import { BTN_RESET, LockIcon, Micro, OutlineTag, Seg, SEG_PAD_44, ValueBox } from '../../ui';
 import { F, T } from '../../tokens';
 import {
   deriveTypeSelection, guardSpawnDelay, idsCoveredByActiveTypes, idsForType, spawnBuiltinValue,
@@ -33,9 +33,7 @@ function Row({ label, children, note, testId }: { label: string; children: React
 
 // QA-16 (visual QA round 1): every tappable control in these editors is at least 44px tall.
 const CHIP_MIN_HEIGHT = 44;
-/** `Seg`'s own floor is 36px (`ui/index.tsx`, shared across screens this lane does not own) — enough
- *  vertical padding here clears 44px from THIS call site without touching the shared component. */
-const SEG_PAD_44 = '15px 14px';
+// `SEG_PAD_44` moved to ui/index.tsx (UX round 1 2026-09-26): PLAY's own Seg rows need the same pad.
 
 function Chip({ label, on, locked, onClick }: { label: string; on: boolean; locked?: boolean; onClick: () => void }) {
   return (
