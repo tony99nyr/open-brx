@@ -716,6 +716,15 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .idle .wm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:54px;letter-spacing:.16em;text-indent:.16em}
 .idle .wm b{color:var(--glow)}
 .idle .sub{font-size:11px;letter-spacing:.4em;color:var(--mut);font-weight:600}
+/* F422: SET MY GUN gave no sign the phone had joined Mission Control — MC can bind over Wi-Fi before any
+   gun is even picked (an mDNS auto-join, no tap). Minimal: a dot + a word, the same shape as the live
+   HUD's own GUN/MC pair (`.topright`), never hidden — a NOT JOINED phone needs to say so as plainly. */
+.idle .mcline{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.14em;font-weight:600;color:var(--mut)}
+.idle .mcline.on{color:var(--ok)}
+.idle .mcline .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);flex:none}
+.idle .mcline .dot.off{background:var(--mut);box-shadow:none}
+[data-env="night"] .idle .mcline{color:var(--mut)}
+[data-env="night"] .idle .mcline .dot{background:var(--mut);box-shadow:none}
 .bigbtn{height:60px;width:260px;background:var(--glow);color:#04121e;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.16em;transform:skewX(-12deg)}
 .bigbtn .unskew{display:inline-block;transform:skewX(12deg)}
 .bigbtn.ghost{background:transparent;border:1px solid var(--edge);color:var(--mut);height:44px;width:220px;font-size:14px}

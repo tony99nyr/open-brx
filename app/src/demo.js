@@ -743,6 +743,11 @@ export function startDemo({ engine, log }) {
       // Bench 2026-09-17: MC's live score push has landed -- what the scores overlay (tap the name or the clock) reads.
       'live-scores':       [...live, [2300, () => ev.score(3, 1, 1)]],
       'live-scores-ffa':   [[0, () => { config.mode = 'ffa'; }], ...live, [2300, () => ev.scoreFfa()]],
+      // F424: KOTH is not scored on kills, so the scores overlay's team chip must show hold time — feed a
+      // real hill beacon (owner tid 1, our own team) so `engine.js` accrues `possession.by_site` for real,
+      // the same tally the board now reads (`hud.js _liveHold`); `ev.score` still lands so the board has
+      // team names/colours to show (its `score` kill numbers are the part the KOTH chip must NOT use).
+      'live-scores-koth':  [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(1)], [2300, () => ev.score(3, 1, 1)]],
       'mc-rejected':       [...kitted, [400, 'mcRejected']],
       'result':            [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end']],
       'over':              [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, 'endOk']],
