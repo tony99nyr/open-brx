@@ -229,6 +229,37 @@ def test_f426_a_hills_neutral_tid_is_dropped_from_the_stations_recap_not_shown_a
                      "hold_ms": {"1": 12_000, "3": 4_000}, "owner": 1}], rows
 
 
+def test_f431_a_stale_unrostered_tid_already_in_the_restored_tally_is_still_dropped():
+    """F431 (2026-09-26): F426 filters `control.hold_ms` (the LIVE beat) to rostered tids, but the
+    station's own persisted `tally["hold_ms"]` (`_keep_station_tally`, resumed from `session.json` across
+    a Stick restart -- `_tally_ok` checks only its SHAPE, not roster membership) only ever grows and used
+    to be merged back in LAST, unfiltered. A tid 2 already sitting in the tally from before this session's
+    roster was set (or from an old snapshot saved before F426 existed) rode straight back into every later
+    beat's report and the recap, exactly the F426 bug, just entering through the tally instead of the wire."""
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    s.net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    common = {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+              "role": "utility", "kind": "control", "station_id": 3, "armed": True}
+    t0 = s.now_ms()
+    # a first beat, well past the arming heartbeat gate, seeds the tally (rostered tids only -- F426
+    # already filtered this one)
+    s.net.simulate_status("brxu-live", {**common, "control": {
+        "hold_ms": {"1": 12_000, "3": 4_000}, "owner": 1}}, t0 + 60_000)
+    assert s.stations["brxu-live"]["tally"]["hold_ms"] == {"1": 12_000, "3": 4_000}, "the tally must be seeded by now"
+    # simulate a resumed snapshot: an unrostered tid 2 already sitting in the persisted tally, as it
+    # could from before F426 existed, or a roster that has since changed
+    s.stations["brxu-live"]["tally"]["hold_ms"]["2"] = 122_744
+    # a later beat must not let that stale entry back into the report or the recap
+    s.net.simulate_status("brxu-live", {**common, "control": {
+        "hold_ms": {"1": 13_000, "3": 4_500}, "owner": 1}}, t0 + 65_000)
+    s.control("end")
+    rows = [{k: v for k, v in r.items() if k != "synced"} for r in s.last_recap["stations"]]
+    assert rows == [{"node_id": "brxu-live", "kind": "control", "id": 3, "team": 255, "heard": True,
+                     "hold_ms": {"1": 13_000, "3": 4_500}, "owner": 1}], rows
+
+
 # --------------------------------------------------------------------------- arming
 def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list():
     s = _sess()

@@ -343,10 +343,23 @@ test('security guard: no automatic dial is left anywhere — every connectMc cal
   // discovery hit: `priorUtilityReconnectUrl` only ever returns the exact url `exitToHud` persisted at the
   // moment this same phone was authenticated as that MC's utility node, and only when nothing is already
   // remembered (a remembered address, named by the player or one that already bound us, always wins).
+  //
+  // F430 (review, 2026-09-26): TWO more guarantees now hold, both enforced on the WRITE side (`utility.js
+  // exitToHud`) and re-checked here on the READ side, so a drift on either end fails this test:
+  //   1. `exitToHud` writes `mc_url` only when `transport.state === 'bound'` at the moment of release — a
+  //      dial that never completed no longer leaves a url behind at all, bound or not, real or stale.
+  //   2. every `mc_url` it writes carries an `at` timestamp, and `priorUtilityReconnectUrl` refuses to
+  //      dial one older than `PRIOR_UTILITY_HANDOFF_MAX_AGE_MS` (about 1 hour) — a handoff nobody consumed
+  //      does not sit there forever as a standing dial target.
   const priorMcCaller = callers.find(l => /connectMc\(priorMc, false\)/.test(l));
   assert.ok(priorMcCaller, 'the F421 release-reconnect caller is gone — FIX this guard, do not delete it');
-  assert.match(t, /export function priorUtilityReconnectUrl\(priorUtility, remembered\) \{\s*\n\s*return !remembered && priorUtility/,
+  assert.match(t, /export function priorUtilityReconnectUrl\(priorUtility, remembered, now = Date\.now\(\)\) \{\s*\n\s*if \(remembered \|\| !priorUtility/,
     'the handoff url is only ever offered when nothing is already remembered');
+  assert.match(t, /typeof priorUtility\.at !== 'number' \|\| now - priorUtility\.at > PRIOR_UTILITY_HANDOFF_MAX_AGE_MS\) return null;/,
+    'F430: a handoff with no timestamp, or one past its max age, must not be dialled');
+  const u = readFileSync(path.resolve(HERE, '../src/utility.js'), 'utf8');
+  assert.match(u, /if \(transport\.state === 'bound'\) \{ handoff\.mc_url = transport\.url; handoff\.at = Date\.now\(\); \}/,
+    "F430: exitToHud writes mc_url (and its 'at' stamp) only for a phone that is actually bound right now");
 });
 
 test('A60 guard: the verify path processes nothing before the proof check', () => {

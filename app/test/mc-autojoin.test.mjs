@@ -624,7 +624,11 @@ test('F346 (d) r1: a first-contact host never gets prior_utility, not even after
 
 test('F346 (d) r1 guard: BACK TO HUD stores the MC url with the utility proof; app.js tells the transport about first contact', () => {
   const u = readFileSync(path.resolve(HERE, '../src/utility.js'), 'utf8');
-  assert.match(u, /JSON\.stringify\(\{ node_id: transport\.nodeId, node_key: transport\.nodeKey, mc_url: transport\.url \}\)/);
+  // F430 (review, 2026-09-26): the url (and its `at` stamp) is added to the handoff only for a phone
+  // that is actually `bound` right now -- see test/utility-exit-guard.test.mjs for that behaviour.
+  assert.match(u, /const handoff = \{ node_id: transport\.nodeId, node_key: transport\.nodeKey \};/);
+  assert.match(u, /if \(transport\.state === 'bound'\) \{ handoff\.mc_url = transport\.url; handoff\.at = Date\.now\(\); \}/);
+  assert.match(u, /localStorage\.setItem\(PRIOR_UTILITY_KEY, JSON\.stringify\(handoff\)\);/);
   const src = readFileSync(APP_JS, 'utf8');
   assert.match(src, /transport\.connect\(\{ url, pub: join\.pub, secret: join\.secret, trusted: join\.trusted !== false, verify, firstContact: join\.firstContact === true \}\)/);
 });

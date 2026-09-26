@@ -182,8 +182,12 @@ jobs:
               dir=${pair#*:}
               captured=$(python3 -c "import json,sys; print(json.load(open('site/shots/manifest.json')).get(sys.argv[1], ''))" "$key") || captured=""
               tip=$(git rev-parse "FETCH_HEAD:$dir") || tip=""
-              if [ -z "$captured" ] || [ -z "$tip" ]; then
-                echo "::error::Could not read the $dir hash (manifest '$captured', main '$tip'). $HOWTO"
+              # F433: a manifest value of JSON `null` prints as the Python string "None", which is
+              # non-empty and so slid past the blank check below and straight into the "a UI moved"
+              # branch (return 2, green) as if it were a real hash mismatch. Both sides must look like
+              # an actual git SHA-1 before a mismatch is trusted at all; anything else is a read failure.
+              if ! [[ "$captured" =~ ^[0-9a-f]{40}$ ]] || ! [[ "$tip" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "::error::Could not read the $dir hash as a real SHA-1 (manifest '$captured', main '$tip'). $HOWTO"
                 return 1
               fi
               if [ "$captured" != "$tip" ]; then

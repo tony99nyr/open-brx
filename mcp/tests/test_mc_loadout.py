@@ -1049,6 +1049,29 @@ def test_presets_sanitize_drops_junk_and_corrupt_file_is_moved_aside():
     assert path.exists()
 
 
+def test_a_presetsjson_saved_game_with_the_old_green_team_migrates_to_purple_on_load():
+    """F423/F432 (2026-09-26): tid 3's team_id/name/colour was renamed GREEN -> PURPLE end to end, but a
+    saved game written before that (a KOTH preset in `~/.brx-mcp/presets.json` under the field's real
+    path) froze the old row into its own `config["teams"]` -- `_clean_row` re-validates every row
+    through `sanitize_config` on load, and that must migrate GREEN forward, not carry it into a fresh
+    game an operator applies today."""
+    import json
+    from brx_mcp.mc.state import default_config
+    st, path, s = _store()
+    cfg = default_config("koth")
+    cfg["teams"] = [
+        {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
+        {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3},
+    ]
+    path.write_text(json.dumps({"v": 1, "presets": [{"preset_id": "koth1", "name": "Friday KOTH", "desc": "",
+        "created_t": 0, "updated_t": 0, "config": cfg}]}))
+    st2, _, _ = _store(tmp=path.parent, s=s)
+    row = st2.get("koth1")
+    assert [t["team_id"] for t in row["config"]["teams"]] == ["blue", "purple"], row["config"]["teams"]
+    purple = next(t for t in row["config"]["teams"] if t["team_id"] == "purple")
+    assert purple["name"] == "PURPLE TEAM" and purple["color"] == "#bf4ce6" and purple["tid"] == 3
+
+
 def test_presets_api_and_apply_runs_apply_policy():
     try:
         from starlette.testclient import TestClient

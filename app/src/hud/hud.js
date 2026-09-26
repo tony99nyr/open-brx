@@ -10,13 +10,17 @@ import { medalIcon, medalChip } from './medalicons.js';   // the RECAP icons onl
 
 // F423: tid 3 paints purple, not green (the gun/headset paint) -- MC's roster names it team_id
 // "purple" now (state.py TEAM_DEFS), and `st.teamKey` (engine.js TEAM_KEY) tracks that.
-const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', purple: 'var(--team-purple)' };
-const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', purple: '#140a1c' };
+// F432 (2026-09-26): `green` stays as an ALIAS of tid 3 in both maps below, a safety net for a
+// pre-F423 preset/saved-game/snapshot that reaches this phone before MC's own migration catches it
+// (`state.py`'s preset/snapshot loaders) — the gun still paints purple regardless of which string MC
+// sends, so a stray "green" team_id must draw exactly like "purple", not fall back to the plain ink.
+const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', purple: 'var(--team-purple)', green: 'var(--team-purple)' };
+const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', purple: '#140a1c', green: '#140a1c' };
 // F424: engine.js's own possession tally (`st.possession.by_site`) is keyed by the raw numeric tid the
 // beacon carries (TEAM_KEY in engine.js, 0..3), but the board's teams (MC's `score.board`) come back
 // keyed by the colour string (`t.team_id`, e.g. "blue"). This is the same table, reversed, so a KOTH
 // board can look a team's hold up by its colour.
-const TEAM_TID = { red: 0, blue: 1, yellow: 2, purple: 3 };
+const TEAM_TID = { red: 0, blue: 1, yellow: 2, purple: 3, green: 3 };
 const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 /** A countdown as one fixed-width cell per digit (F115). Saira Condensed has no tabular figures, so
  *  `font-variant-numeric:tabular-nums` silently does nothing and every value is a different width:
@@ -1606,7 +1610,7 @@ export class Hud {
         const chip = koth ? this._teamChipKoth(t, holdByTid && TEAM_TID[k] != null ? holdByTid[TEAM_TID[k]] : 0) : this._teamChip(t, mine);
         return `<div class="bdteam ${mine ? 'mine' : ''}">${chip}
           ${ps.map(r => `<div class="bdr tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${name(r)}</span><span class="tab">${v(r.kills)} · ${v(r.deaths)} · ${v(r.assists)}</span></div>`).join('')}</div>`; }).join('')}</div>
-        ${koth ? '<div class="bdcap">HOLD TIME · A LOWER BOUND</div>'
+        ${koth ? '<div class="bdcap">HOLD TIME · A LOWER BOUND · K · D · A</div>'
           : st.board && num(st.board.cap) != null ? `<div class="bdcap">FIRST TO ${st.board.cap} · K · D · A</div>` : ''}`
         : '<div class="bdnone">NO TEAM TOTALS FROM MISSION CONTROL YET</div>';
     }

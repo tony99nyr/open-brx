@@ -8,7 +8,7 @@ import jsQR from 'jsqr';
 import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
-import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl } from './transport/transport.js';
+import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
 import { McAutoJoin, offerText, hostOf, urlKey, namedDialPending } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
@@ -763,7 +763,23 @@ setInterval(refreshPreflight, 5000);
 // QA-15 (2026-09-23): the stage has no transport, so this read "never bound" and every stage result said OUT OF RANGE
 // under a result MC had just delivered. On a phone a result only arrives over a bound transport, and the engine's
 // wsState follows transport.onState, so the stage reads the engine's link instead: it predicts the phone again.
-setInterval(() => { try { hud.sync = (DEMO && !transport) ? { bound: engine.state().wsState === 'bound', pending: 0 } : { bound: !!transport && transport.state === 'bound', pending: transport && transport.ring ? transport.ring.pending().length : 0 }; if (transport) hud.sessionId = transport.sessionId || null; } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
+// F428: debounces `hud.sync.bound` across BOUND_DEBOUNCE_POLLS polls, so a brief REAL MC drop does not
+// rebuild the idle screen. Only the real-transport reading is debounced -- the stage/demo reading just
+// above (QA-15) mirrors the engine's own scripted `wsState` one-to-one on purpose: a stage scenario's
+// transitions are deterministic and screen-truth asserts against them land within a couple of seconds,
+// which the debounce would otherwise blow straight through.
+let _boundRun = null;
+setInterval(() => { try {
+  let bound, pending;
+  if (DEMO && !transport) { bound = engine.state().wsState === 'bound'; pending = 0; }
+  else {
+    _boundRun = debounceBound(_boundRun, !!transport && transport.state === 'bound');
+    bound = _boundRun.committed;
+    pending = transport && transport.ring ? transport.ring.pending().length : 0;
+  }
+  hud.sync = { bound, pending };
+  if (transport) hud.sessionId = transport.sessionId || null;
+} catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 
 // ---------- app lifecycle (§3.11) ----------
 function onForeground(fg) {

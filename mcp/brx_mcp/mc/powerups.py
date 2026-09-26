@@ -38,7 +38,10 @@ _PRESETS: dict[str, dict] = {
                 "spawn_every_s": HEAVY_SPAWN_EVERY_S, "first_at_s": HEAVY_SPAWN_EVERY_S},
     "rail_gun": {"kind": "weapon", "weapon_id": "rail_gun", "name": "RAIL GUN", "color": "#22d3ee",
                  "spawn_every_s": HEAVY_SPAWN_EVERY_S, "first_at_s": HEAVY_SPAWN_EVERY_S},
-    "overshield": {"kind": "overshield", "amount": OVERSHIELD_AMOUNT, "name": "OVERSHIELD", "color": "#b36bff",
+    # F427 (2026-09-26): #b36bff/#b58cff sat in the same violet family as team purple (~270 deg hue,
+    # both #bf4ce6 and #7b2cbf) and read as one colour outdoors. Moved to a magenta/pink (#ff4fd8,
+    # ~313 deg) clear of team purple, team red, Rockets (orange) and Rail Gun (cyan).
+    "overshield": {"kind": "overshield", "amount": OVERSHIELD_AMOUNT, "name": "OVERSHIELD", "color": "#ff4fd8",
                    "spawn_every_s": OVERSHIELD_SPAWN_EVERY_S, "first_at_s": OVERSHIELD_SPAWN_EVERY_S},
 }
 PRESET_IDS = tuple(_PRESETS)
