@@ -6,7 +6,7 @@
 // Serves the built Mission Control UI (webapp/mc/dist) and the built phone HUD (app/www) over two
 // throwaway static servers, drives each with Playwright, and writes JPEGs + a manifest into
 // site/shots/. The manifest records the git tree hash of each UI's source directory at capture
-// time; mcp/tests/test_site_shots.py fails the moment that source moves on without a re-capture.
+// time; the `site-shots` CI job re-captures on main the moment that source moves on.
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import http from 'node:http';

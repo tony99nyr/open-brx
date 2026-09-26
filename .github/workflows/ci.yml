@@ -60,8 +60,8 @@ jobs:
     # the git tree hash of `webapp/mc/src` and `app/src` at capture time. Any commit that moves a UI
     # therefore leaves the shots stale, and NOBODY can fix that inside a normal CI job: the script
     # needs a built `webapp/mc/dist`, a built `app/www` and a real browser. So this job regenerates the
-    # shots and pushes them back to main itself. `mcp/tests/test_site_shots.py` hands the staleness
-    # check to this job on CI and keeps it locally, where it stops a stale shot reaching a PR.
+    # shots and pushes them back to main itself. This job is the ONLY staleness check: the local one
+    # was removed 2026-09-26, because it made every UI commit fail until someone captured by hand.
     #
     # Push events only. A `pull_request` run from a fork gets a read-only token and cannot push.
     if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
@@ -135,9 +135,9 @@ jobs:
 
       - name: Commit and push the refreshed shots
         if: steps.check.outputs.stale == 'true'
-        # Every exit from here is either a push that landed or a red run. This job is the only thing
-        # left watching staleness on CI (test_site_shots.py hands it over inside Actions), so a
-        # warning that passes would hide the very problem the job exists to catch.
+        # Every exit from here is a push that landed, a red run, or (one case only) a capture dropped
+        # because a newer UI push queued its own run behind this one. This job is the only thing
+        # watching staleness anywhere (nothing local checks it), so no other failure may pass green.
         run: |
           set -euo pipefail
 
@@ -178,8 +178,11 @@ jobs:
               captured=$(python3 -c "import json,sys; print(json.load(open('site/shots/manifest.json')).get(sys.argv[1], ''))" "$key")
               tip=$(git rev-parse "FETCH_HEAD:$dir")
               if [ "$captured" != "$tip" ]; then
-                echo "::error::$dir moved on main while this job ran (captured '$captured', main now has '$tip'). These screenshots show the older UI, so this job refuses to commit them. The push that changed $dir refreshes them itself, in the run queued behind this one. If it did not: $HOWTO"
-                return 1
+                # Not a fault: the push that moved $dir queued its own run of this job behind this one,
+                # and that run captures the newer UI. Going red here only sent a failure email for a
+                # race that fixes itself (2026-09-26).
+                echo "::notice::$dir moved on main while this job ran (captured '$captured', main now has '$tip'). These screenshots show the older UI, so this job drops them. The run queued behind this one captures the newer UI."
+                return 2
               fi
             done
             # `--onto FETCH_HEAD HEAD~1` replays ONLY this job's own commit. A bare `git rebase FETCH_HEAD`
@@ -198,14 +201,17 @@ jobs:
             fi
           }
 
-          sync_onto_main || exit 1
+          # sync_onto_main returns 2 when a UI moved under this job: drop the capture and stay green.
+          rc=0; sync_onto_main || rc=$?
+          if [ "$rc" = 2 ]; then exit 0; elif [ "$rc" != 0 ]; then exit 1; fi
           if git push origin HEAD:main; then
             exit 0
           fi
           # Usually an overlapping commit. It can also be branch protection or a token without write, and
           # the retry below then fails the same way, which is the right outcome: the job goes red.
           echo "The push was rejected. Syncing once more and retrying; if this is not an overlapping commit, the retry fails too."
-          sync_onto_main || exit 1
+          rc=0; sync_onto_main || rc=$?
+          if [ "$rc" = 2 ]; then exit 0; elif [ "$rc" != 0 ]; then exit 1; fi
           if ! git push origin HEAD:main; then
             echo "::error::The refreshed site/shots would not push after one retry. This job never force-pushes. $HOWTO"
             exit 1

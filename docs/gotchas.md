@@ -631,12 +631,10 @@ armour-piercing or outdoor frame comes out of the same call instead of being reb
 as the two traps below: a harness that exercises something adjacent to what ships proves nothing about
 what ships.
 
-**Capture the site screenshots AFTER you commit the UI change, never before.** `site/shots.mjs` stamps
-the manifest with `git rev-parse HEAD:app/src`, so a capture taken while the change is still uncommitted
-records the OLD hash, and the guard goes red the moment you commit. The order is: commit the UI, run
-`cd site && npm run shots`, commit `site/shots/`. Found 2026-09-18, after two captures in a row went
-stale on the commit that followed them. CI does it in the right order by construction, because it only
-ever captures at a committed sha.
+**Do not capture the site screenshots by hand.** The `site-shots` CI job re-captures them after every
+push to `main` that moves a UI, and commits them back. A hand capture only races that commit. If you
+must capture (the job stays red), do it AFTER you commit the UI change: `site/shots.mjs` stamps the
+manifest with `git rev-parse HEAD:app/src`, so a capture of an uncommitted change records the OLD hash.
 
 **Never write GitHub's skip keyword in a commit message, not even to explain it.** GitHub scans the whole
 message, so a commit that described the shots job's loop guard and quoted the token ran no CI at all: no

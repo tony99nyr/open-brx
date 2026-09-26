@@ -103,14 +103,14 @@ all: no red build, no queued run, only the Cloudflare check on the commit (2026-
 keyword" in prose and leave the literal token in the workflow file, where it is inert.
 
 The `site-shots` job in `.github/workflows/ci.yml` regenerates them on every push to `main` that leaves
-them stale, and commits the result back as `github-actions[bot]`, so **a stale shot can no longer keep CI
-red**. The local check is unchanged: `pnpm run test:all` still fails on a UI commit until you capture, and
-that is deliberate, because it is the only signal a pull request gets. Capture with `cd app && npm run
-build && cd ../webapp/mc && npm run build`, then `cd site && npm run shots`.
-That job never forces anything: if `main` moves under it, it replays its commit on the new tip, and if
-the move touched a UI it abandons the capture and goes red rather than committing shots of the older
-UI. So a red `site-shots` usually means two pushes overlapped, and the run queued behind it fixes the
-shots. If it stays red, read the log, then run `cd app && npm run build && cd ../webapp/mc && npm run
+them stale, and commits the result back as `github-actions[bot]`. **Do not capture the shots by hand
+after a UI change**, and nothing local checks their staleness any more (2026-09-26): a hand capture
+only races the job's own commit. `test_site_shots.py` still checks that the manifest matches the files
+and that every shot is small.
+That job never forces anything: if `main` moves under it, it replays its commit on the new tip. If
+the move touched a UI, it abandons the capture with a notice and exits green, because the run queued
+behind it captures the newer UI. A red `site-shots` is therefore a real fault (the capture failed, wrote
+nothing, or could not push). Read the log, then run `cd app && npm run build && cd ../webapp/mc && npm run
 build`, then `cd site && npm run shots`, and commit `site/shots/` yourself.
 
 ## The evidence culture
