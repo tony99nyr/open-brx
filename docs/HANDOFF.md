@@ -64,15 +64,14 @@ before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392
   `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785 --ws-port
   8786 --ephemeral --powerups`.
 ## Lane: brx5, powerups, the HUD and gun audio
-On main: S58 powerups behind `--powerups`; S59 Visor; F348/F349; death first; the three-lane alerts and the style B
-recap icons; B21's Android half (the WebView debugging switch, default ON, not yet on a phone). 2026-09-25, from
-sitting A: F347, F350 and F378 closed at the desk. Every `$PSET` ships t23 empty (no shield hum), the gun audio model
-has no hum, `$PLAY` writes are 150 ms apart from transmission (`PLAY_GAP_MS`, UNPROVEN), a death stop goes one per
-write, and the shield hit is H21.
-- **Next desk task:** F372 (powerups on by default, after sitting C) with the calibrated claim thresholds; B21's iOS
-  half on the MacBook; `PLAY_GAP_MS` from sitting C's spacing check (a drop at 150 ms moves it to 300).
-- **Next bench task:** sitting C: the powerup setup (11.3), the shield-up kill-cue A/B/A and the spacing check,
-  11.1 (c), 11.8; flip the B21 switch on a Pixel after the next cut.
+On main: S58 powerups behind `--powerups`; S59 Visor; F348/F349; death first; the three-lane alerts; F347, F350, F378.
+2026-09-25: sitting B's F379, F380, F381 (a same-weapon stack capped at 2x the drop) and F393; F400, the pickup switch
+card (ALT's card and timing for a weapon pickup, SELECT and the switch-back; display only; the Overshield gets N102
+and no card; the kill-card clash is Tony's lean).
+- **Next desk task:** F372 (powerups on by default, after sitting C); B21's iOS half on the MacBook; `PLAY_GAP_MS`
+  from sitting C's spacing check.
+- **Next bench task:** sitting C: the powerup setup (11.3), F381 (Rockets twice: 3, then 4), F400 on the gun (the card
+  holds ALT's time, SELECT works while it is up), the shield-up kill-cue A/B/A, the spacing check, 11.1 (c), 11.8.
 
 ## Start here
 
