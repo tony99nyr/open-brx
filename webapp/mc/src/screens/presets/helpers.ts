@@ -9,13 +9,23 @@ export const MAX_NAME = 24;
 /** A piece's note is one line, at most 80 chars, or "" (games-presets.md §1). */
 export const MAX_NOTE = 80;
 
-/** F34/F13 (Designer.tsx's own respawn delay control): 1–2 s wedges the headset relay in its
- *  out-blink and the server refuses it with a 400. Skip the band instead of letting the operator step
- *  into a refusal: stepping UP from 0 lands on 3, stepping DOWN from 3 lands on 0 (no respawn). Kept
- *  byte-for-byte the same rule Designer.tsx already applies, so SPAWN presets built here behave
- *  exactly like a game hand-tuned there. */
-export function guardSpawnDelay(next: number, prev: number): number {
-  return next > 0 && next < 3 ? (next > prev ? 3 : 0) : next;
+/** F34/F13: 1–2 s wedges the headset relay in its out-blink and the server refuses it with a 400.
+ *  QA-15 (visual QA round 1): the DELAY box is a typed number, not a stepper — a direction-sensitive
+ *  guard (stepping up from 0 lands on 3, stepping down from 3 lands on 0) read a typed "2" against
+ *  whatever delay the piece happened to start at, so typing a FAST respawn could silently snap to NO
+ *  respawn at all with no explanation. A typed value has no direction, only an intent: someone who
+ *  types 1 or 2 wants the fastest respawn the gun allows, so it always snaps UP to 3, never down to 0.
+ *  `SpawnFields` shows why beside the box. */
+export function guardSpawnDelay(next: number): number {
+  return next > 0 && next < 3 ? 3 : next;
+}
+
+/** QA-14 (visual QA round 1): a slot preset with WHO PICKS = FIXED and no item chosen used to reach
+ *  SAVE and come back as the server's own field name ("choice 'fixed' needs a fixed_id"). `SlotFields`
+ *  preselects an item the moment FIXED is chosen, so this only fires on an editor opened against an
+ *  empty catalogue — belt and braces, not the primary defence. */
+export function slotNeedsFixedItem(choice: string, fixedId: string | null | undefined): boolean {
+  return choice === 'fixed' && !fixedId;
 }
 
 /** Draft shape every kind editor works on: a piece's own name/note/value, decoupled from its

@@ -121,6 +121,71 @@ step('life', async ({ browser, base }) => {
   await pg.context().close();
 });
 
+step('read-only-mode-tab', async ({ browser, base }) => {
+  // QA-24 (visual QA round 1): a read-only tab (GAME MODE) shows short cards with no selection state,
+  // its BUILT-IN tag is readable, and at 768px (a phone-landscape width the brief targets) nothing
+  // clips off the edge of the page.
+  for (const w of [1280, 768]) {
+    const pg = await open(browser, base, w);
+    await tab(pg, 'mode').click();
+    await until(() => pg.locator('[data-testid^="piece-card-"]').count().then(n => n >= 3), 4000, 'the GAME MODE cards');
+    const card = pg.locator('[data-testid^="piece-card-"]').first();
+    expect((await card.getAttribute('role')) === null, `${w}px: a read-only card has no button role (nothing to select)`);
+    await card.click();   // clicking it must do nothing -- no NEW button appears, no card highlights
+    expect(!(await pg.getByRole('button', { name: 'NEW ▸' }).count()), `${w}px: GAME MODE never offers NEW`);
+    const tagSize = await pg.locator('[data-testid^="piece-card-"] span', { hasText: 'BUILT-IN' }).first()
+      .evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+    expect(tagSize >= 11, `${w}px: the BUILT-IN tag is at least 11px (measured ${tagSize})`);
+    expect(!(await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), `${w}px: no sideways page scroll on GAME MODE`);
+    ok(`${w}px: GAME MODE is read-only, short, and unclipped   ${await shot(pg, `read-only-mode-${w}`)}`);
+    await pg.context().close();
+  }
+});
+
+step('target-sizes', async ({ browser, base }) => {
+  // QA-16 (visual QA round 1): every tappable control in these editors must be at least 44px tall —
+  // fail on the real rendered height, not on reading the style prop back.
+  const height = loc => loc.evaluate(el => el.getBoundingClientRect().height);
+  const atLeast44 = async (loc, what) => expect((await height(loc)) >= 43.5, `${what} is at least 44px tall (measured ${await height(loc)})`);
+
+  const pg = await open(browser, base, 1280);
+  await tab(pg, 'spawn').click();
+  await pg.locator('[data-testid="piece-card-builtin:spawn:auto"]').click();
+  await pg.getByRole('button', { name: 'NEW ▸' }).click();
+  await until(() => pg.getByRole('group', { name: 'respawn type' }).count().then(n => n === 1), 4000, 'the SPAWN editor');
+  await atLeast44(pg.getByRole('group', { name: 'respawn type' }).getByRole('button').first(), 'SPAWN TYPE');
+  await pg.getByRole('group', { name: 'respawn type' }).getByRole('button', { name: 'STATION' }).click();
+  await atLeast44(pg.getByRole('group', { name: 'station respawn protection seconds' }).getByRole('button').first(), 'STATION PROTECTION');
+  await pg.getByRole('button', { name: '◂ BACK TO SPAWN' }).click();
+  await until(() => pg.locator('[data-testid="build-confirm-leave"]').count().then(n => n === 1), 2000, 'the leave confirm (dirty from the STATION switch)');
+  await pg.getByRole('button', { name: '◂ BACK TO SPAWN' }).click();
+
+  await tab(pg, 'primary').click();
+  await pg.locator('[data-testid="piece-card-builtin:primary:all"]').click();
+  await pg.getByRole('button', { name: 'NEW ▸' }).click();
+  await until(() => pg.locator('[data-testid="slot-type-row"]').count().then(n => n === 1), 4000, 'the PRIMARY editor');
+  await atLeast44(pg.getByRole('group', { name: 'who picks' }).getByRole('button').first(), 'WHO PICKS');
+  await atLeast44(pg.locator('[data-testid="slot-type-row"] button').first(), 'a TYPE chip');
+  await atLeast44(pg.locator('[data-testid="slot-only-row"] button').first(), 'an ONLY THESE chip');
+  await atLeast44(pg.getByLabel('preset name'), 'the preset name input');
+  await atLeast44(pg.getByLabel('preset note'), 'the preset note input');
+  await pg.getByRole('group', { name: 'who picks' }).getByRole('button', { name: 'FIXED' }).click();
+  await atLeast44(pg.getByRole('group', { name: 'fixed item' }).getByRole('button').first(), 'a FIXED ITEM option');
+
+  await pg.getByRole('button', { name: '◂ BACK TO PRIMARY' }).click();
+  await until(() => pg.locator('[data-testid="build-confirm-leave"]').count().then(n => n === 1), 2000, 'the leave confirm');
+  await pg.getByRole('button', { name: '◂ BACK TO PRIMARY' }).click();
+
+  await tab(pg, 'misc_loadouts').click();
+  await pg.locator('[data-testid="piece-card-builtin:misc_loadouts:standard"]').click();
+  await pg.getByRole('button', { name: 'NEW ▸' }).click();
+  await until(() => pg.getByRole('switch', { name: 'heavies' }).count().then(n => n === 1), 4000, 'the MISC LOADOUTS editor');
+  await atLeast44(pg.getByRole('group', { name: 'who picks' }).getByRole('button').first(), 'MISC LOADOUTS WHO PICKS');
+  await atLeast44(pg.getByRole('switch', { name: 'heavies' }), 'the HEAVIES switch');
+  ok(`every tappable BUILD control measures at least 44px   ${await shot(pg, 'target-sizes')}`);
+  await pg.context().close();
+});
+
 step('spawn', async ({ browser, base }) => {
   const pg = await open(browser, base, 1280);
   await tab(pg, 'spawn').click();
@@ -135,11 +200,13 @@ step('spawn', async ({ browser, base }) => {
   // poll rather than assert immediately (CLAUDE.md "wait for a condition, not a fixed sleep").
   await until(() => pg.getByLabel('respawn delay seconds').inputValue().then(v => v === '10'), 3000, 'the 10s delay from the STATION builtin');
   ok('switching to STATION shows the 10s delay from its own builtin');
-  // the 1-2s wedge guard: stepping the delay to 1 must snap away, never save as 1
+  // QA-15: the 1-2s wedge guard is a typed value with no direction — a typed 1 (or 2) always snaps UP
+  // to 3 (a fast respawn), never down to 0 (no respawn), and the box explains why beside it.
+  expect((await pg.locator('text=1S OR 2S IS NOT ALLOWED').count()) > 0, 'the DELAY box explains the 1-2s guard');
   const delay = pg.getByLabel('respawn delay seconds');
   await delay.fill('1'); await delay.blur();
-  await until(() => delay.inputValue().then(v => v === '0' || v === '3'), 3000, 'the delay to snap away from 1-2s');
-  ok(`a 1s delay is refused by the guard (now ${await delay.inputValue()})`);
+  await until(() => delay.inputValue().then(v => v === '3'), 3000, 'a typed 1s to snap UP to 3s, never down to 0');
+  ok(`a typed 1s snaps up to 3s, never down to no respawn (now ${await delay.inputValue()})`);
   ok(`AUTO→STATION delay + the 1-2s guard   ${await shot(pg, 'spawn-guard')}`);
   await pg.context().close();
 });
@@ -154,6 +221,10 @@ step('type-toggle', async ({ browser, base }) => {
   await pg.locator('[data-testid="piece-card-builtin:primary:all"]').click();
   await pg.getByRole('button', { name: 'NEW ▸' }).click();
   await until(() => pg.locator('[data-testid="slot-type-row"]').count().then(n => n === 1), 4000, 'the TYPE row');
+  // QA-13 (visual QA round 1): a NEW, unsaved copy of ALL — the piece a fresh session has PICKED for
+  // PRIMARY — used to read "IN USE" from comparing against the builtin it was copied FROM. It has
+  // never been saved, so it cannot be in use by anything.
+  expect((await pg.locator('text=IN USE').count()) === 0, 'a brand-new unsaved copy never reads IN USE');
   await pg.locator('input[aria-label="preset name"]').fill('RIFLES PRESET');
 
   const typeRow = pg.locator('[data-testid="slot-type-row"]');
@@ -214,6 +285,53 @@ step('type-toggle-narrow', async ({ browser, base }) => {
   await until(() => pg.locator('[data-testid="slot-type-row"]').count().then(n => n === 1), 4000, 'the TYPE row at 900px');
   expect(!(await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), '900px: no sideways page scroll with the TYPE row shown');
   ok(`the TYPE row at 900px   ${await shot(pg, 'type-toggle-900')}`);
+  await pg.context().close();
+});
+
+step('in-use-when-editing', async ({ browser, base }) => {
+  // QA-13's other half: IN USE must still show — and DELETE must still be refused — when the piece
+  // really is the one PLAY has picked. Build a custom PRIMARY, pick it on PLAY, then reopen it here.
+  const pg = await open(browser, base, 1280);
+  await tab(pg, 'primary').click();
+  await pg.locator('[data-testid="piece-card-builtin:primary:all"]').click();
+  await pg.getByRole('button', { name: 'NEW ▸' }).click();
+  await pg.locator('input[aria-label="preset name"]').fill('MY CUSTOM PRIMARY');
+  await pg.getByRole('button', { name: 'SAVE ▸' }).click();
+  await until(() => pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'MY CUSTOM PRIMARY' }).count().then(n => n === 1), 4000, 'the saved custom PRIMARY');
+
+  await pg.getByRole('button', { name: '◂ BACK TO PLAY' }).click();
+  await until(() => pg.getByRole('group', { name: 'primary' }).count().then(n => n === 1), 4000, 'the PLAY primary picker (now 2 pieces, so it is no longer hidden)');
+  await pg.getByRole('group', { name: 'primary' }).getByRole('button', { name: 'MY CUSTOM PRIMARY' }).click();
+  await until(() => pg.getByRole('group', { name: 'primary' }).getByRole('button', { name: 'MY CUSTOM PRIMARY' }).getAttribute('aria-pressed').then(v => v === 'true'), 4000, 'PLAY to mark it picked');
+
+  await pg.locator('main button', { hasText: 'BUILD ▸' }).first().click();
+  await until(() => pg.locator('text=BUILD CREATES PRESETS').count().then(n => n > 0), 4000, 'BUILD, reopened');
+  await tab(pg, 'primary').click();
+  await pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'MY CUSTOM PRIMARY' }).click();
+  await until(() => pg.locator('text=IN USE').count().then(n => n > 0), 4000, 'IN USE to show for the piece PLAY actually picked');
+  ok('IN USE shows once the piece is really the one PLAY picked');
+  expect(await pg.getByRole('button', { name: 'DELETE', exact: true }).isDisabled(), 'DELETE stays refused while the piece is in use');
+  ok(`in-use gates DELETE   ${await shot(pg, 'in-use-when-editing')}`);
+  await pg.context().close();
+});
+
+step('fixed-item-required', async ({ browser, base }) => {
+  // QA-14: switching WHO PICKS to FIXED must never leave SAVE reachable with no item chosen, and the
+  // server's raw field name ("choice 'fixed' needs a fixed_id") must never be the only explanation.
+  const pg = await open(browser, base, 1280);
+  await tab(pg, 'secondary').click();
+  await until(() => pg.locator('[data-testid="piece-card-builtin:secondary:all"]').count().then(n => n === 1), 4000, 'the ALL card');
+  await pg.locator('[data-testid="piece-card-builtin:secondary:all"]').click();
+  await pg.getByRole('button', { name: 'NEW ▸' }).click();
+  await pg.locator('input[aria-label="preset name"]').fill('FIXED PISTOL');
+  await pg.getByRole('group', { name: 'who picks' }).getByRole('button', { name: 'FIXED' }).click();
+  await until(() => pg.getByRole('group', { name: 'fixed item' }).count().then(n => n === 1), 4000, 'the FIXED ITEM picker');
+  // an item is preselected automatically -- SAVE must already be reachable, not stuck on an empty pick
+  expect(!(await pg.getByRole('button', { name: 'SAVE ▸' }).isDisabled()), 'FIXED preselects an item, so SAVE is not stuck disabled');
+  await pg.getByRole('button', { name: 'SAVE ▸' }).click();
+  await until(() => pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'FIXED PISTOL' }).count().then(n => n === 1), 4000, 'FIXED PISTOL to save with its preselected item');
+  ok('FIXED with a preselected item saves cleanly');
+  ok(`FIXED ITEM preselects and never blocks SAVE on empty   ${await shot(pg, 'fixed-item-required')}`);
   await pg.context().close();
 });
 

@@ -9,23 +9,19 @@ import { describe, expect, it } from 'vitest';
 import type { GamePiece } from '../src/api/contract.gen';
 import {
   deriveTypeSelection, draftOf, guardSpawnDelay, idsCoveredByActiveTypes, idsForType, isDirty,
-  proposeCopyName, spawnBuiltinValue, toggleManualId, toggleType, typeSelectionIds, typesOf,
-  type TypeSelection,
+  proposeCopyName, slotNeedsFixedItem, spawnBuiltinValue, toggleManualId, toggleType, typeSelectionIds,
+  typesOf, type TypeSelection,
 } from '../src/screens/presets/helpers';
 
-describe('guardSpawnDelay (Designer.tsx\'s own 1-2s wedge guard, kept byte-for-byte)', () => {
-  it('stepping up from 0 skips 1-2 and lands on 3', () => {
-    expect(guardSpawnDelay(1, 0)).toBe(3);
-    expect(guardSpawnDelay(2, 0)).toBe(3);
-  });
-  it('stepping down from 3 skips 1-2 and lands on 0', () => {
-    expect(guardSpawnDelay(2, 3)).toBe(0);
-    expect(guardSpawnDelay(1, 3)).toBe(0);
+describe('guardSpawnDelay (QA-15: a typed 1 or 2 always snaps UP to 3, never down to 0)', () => {
+  it('a typed 1 or 2 snaps up to 3, whatever the delay used to be', () => {
+    expect(guardSpawnDelay(1)).toBe(3);
+    expect(guardSpawnDelay(2)).toBe(3);
   });
   it('leaves every other value alone', () => {
-    expect(guardSpawnDelay(0, 3)).toBe(0);
-    expect(guardSpawnDelay(3, 0)).toBe(3);
-    expect(guardSpawnDelay(15, 10)).toBe(15);
+    expect(guardSpawnDelay(0)).toBe(0);
+    expect(guardSpawnDelay(3)).toBe(3);
+    expect(guardSpawnDelay(15)).toBe(15);
   });
 });
 
@@ -145,6 +141,22 @@ describe('TypeSelection (F411 type toggles: union, and toggle-off keeps hand pic
     const sel = deriveTypeSelection(onlyIds, cat);
     expect(sel.active).toEqual([]);
     expect(sel.manual).toEqual(['assault_rifle']);
+  });
+});
+
+describe('slotNeedsFixedItem (QA-14: SAVE must never reach the server with FIXED and no item)', () => {
+  it('blocks FIXED with no item', () => {
+    expect(slotNeedsFixedItem('fixed', null)).toBe(true);
+    expect(slotNeedsFixedItem('fixed', undefined)).toBe(true);
+    expect(slotNeedsFixedItem('fixed', '')).toBe(true);
+  });
+  it('allows FIXED once an item is picked', () => {
+    expect(slotNeedsFixedItem('fixed', 'assault_rifle')).toBe(false);
+  });
+  it('never blocks a non-FIXED choice, item or not', () => {
+    expect(slotNeedsFixedItem('player', null)).toBe(false);
+    expect(slotNeedsFixedItem('host', null)).toBe(false);
+    expect(slotNeedsFixedItem('off', null)).toBe(false);
   });
 });
 

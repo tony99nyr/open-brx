@@ -8,7 +8,7 @@ import type {
   StationProtectS, TimedProtectS, WeaponDelayMs,
 } from '../../api/contract.gen';
 import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../../api/contract.gen';
-import { BTN_RESET, LockIcon, Micro, OutlineTag, Seg, Toggle, ValueBox } from '../../ui';
+import { BTN_RESET, LockIcon, Micro, OutlineTag, Seg, ValueBox } from '../../ui';
 import { F, T } from '../../tokens';
 import {
   deriveTypeSelection, guardSpawnDelay, idsCoveredByActiveTypes, idsForType, spawnBuiltinValue,
@@ -31,11 +31,17 @@ function Row({ label, children, note, testId }: { label: string; children: React
   );
 }
 
+// QA-16 (visual QA round 1): every tappable control in these editors is at least 44px tall.
+const CHIP_MIN_HEIGHT = 44;
+/** `Seg`'s own floor is 36px (`ui/index.tsx`, shared across screens this lane does not own) — enough
+ *  vertical padding here clears 44px from THIS call site without touching the shared component. */
+const SEG_PAD_44 = '15px 14px';
+
 function Chip({ label, on, locked, onClick }: { label: string; on: boolean; locked?: boolean; onClick: () => void }) {
   return (
     <button type="button" className="hov-acc" aria-pressed={on} disabled={locked} onClick={onClick}
       title={locked ? 'COVERED BY A TYPE TOGGLE ABOVE — TURN THAT OFF TO EDIT THIS ONE' : undefined}
-      style={{ ...BTN_RESET, display: 'flex', alignItems: 'center', gap: 6, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: 36,
+      style={{ ...BTN_RESET, display: 'flex', alignItems: 'center', gap: 6, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: CHIP_MIN_HEIGHT,
         border: `1px solid ${on ? T.acc : T.line}`, background: on ? 'rgba(57,180,255,.1)' : 'transparent',
         color: on ? T.acc : T.dim, cursor: locked ? 'default' : 'pointer', opacity: locked ? 0.6 : 1 }}>
       {locked && <LockIcon size={11} />}{label}
@@ -52,10 +58,25 @@ function TypeChip({ label, state, count, total, onClick }:
   const partial = state === 'partial';
   return (
     <button type="button" className="hov-acc" aria-pressed={on} onClick={onClick}
-      style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: 36,
+      style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: CHIP_MIN_HEIGHT,
         border: `1px solid ${on || partial ? T.acc : T.line}`, background: on ? 'rgba(57,180,255,.1)' : 'transparent',
         color: on ? T.acc : partial ? T.dim : T.micro, cursor: 'pointer' }}>
       {partial ? `◐ ${label} ${count}/${total}` : label}
+    </button>
+  );
+}
+
+/** A 44px-tall switch, local to BUILD (QA-16: the shared `ui/index.tsx Toggle` is 48×36 and used
+ *  across other screens this lane does not own — this is its own control, not a wrapped one, so
+ *  clicking it can never double-fire). Same look as `Toggle`, a bigger hit area. */
+function BigToggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label?: string }) {
+  return (
+    <button type="button" onClick={() => onChange(!on)} role="switch" aria-checked={on} aria-label={label}
+      style={{ ...BTN_RESET, width: 56, minHeight: CHIP_MIN_HEIGHT, position: 'relative', display: 'inline-flex',
+        alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+      <span style={{ position: 'relative', width: 40, height: 20, background: T.inset, border: `1px solid ${on ? T.acc : T.line2}`, boxSizing: 'border-box' }}>
+        <span style={{ position: 'absolute', top: 2, left: on ? 22 : 2, width: 14, height: 14, background: on ? T.acc : T.micro, transition: 'left .12s' }} />
+      </span>
     </button>
   );
 }
@@ -83,22 +104,22 @@ export function SpawnFields({ value, onChange, builtins }: { value: Respawn; onC
   return (
     <>
       <Row label="TYPE">
-        <Seg value={station ? 'scanner' : 'auto'} label="respawn type"
+        <Seg value={station ? 'scanner' : 'auto'} label="respawn type" pad={SEG_PAD_44}
           options={[{ value: 'auto', label: 'AUTO' }, { value: 'scanner', label: 'STATION' }]} onChange={setType} />
       </Row>
-      <Row label="DELAY">
+      <Row label="DELAY" note="1S OR 2S IS NOT ALLOWED — IT WEDGES THE HEADSET, SO IT SNAPS UP TO 3S">
         <ValueBox label="respawn delay seconds" unit="S" min={0} max={300}
-          value={value.delay_s} onChange={v => onChange({ ...value, delay_s: guardSpawnDelay(v, value.delay_s) })} />
+          value={value.delay_s} onChange={v => onChange({ ...value, delay_s: guardSpawnDelay(v) })} />
       </Row>
       {!station && (
         <>
           <Row label="PROTECTION">
-            <Seg value={String(value.protect_s ?? TIMED_PROTECT_S_DEFAULT)} label="respawn protection seconds" pad="5px 11px"
+            <Seg value={String(value.protect_s ?? TIMED_PROTECT_S_DEFAULT)} label="respawn protection seconds" pad={SEG_PAD_44}
               options={[{ value: '0', label: '0 S' }, { value: '1', label: '1 S' }, { value: '2', label: '2 S' }]}
               onChange={v => onChange({ ...value, protect_s: Number(v) as TimedProtectS })} />
           </Row>
           <Row label="WEAPON DELAY">
-            <Seg value={String(value.weapon_delay_ms ?? WEAPON_DELAY_MS_DEFAULT)} label="respawn weapon delay" pad="5px 11px"
+            <Seg value={String(value.weapon_delay_ms ?? WEAPON_DELAY_MS_DEFAULT)} label="respawn weapon delay" pad={SEG_PAD_44}
               options={[{ value: '500', label: '0.5 S' }, { value: '1000', label: '1 S' }, { value: '3000', label: '3 S' }]}
               onChange={v => onChange({ ...value, weapon_delay_ms: Number(v) as WeaponDelayMs })} />
           </Row>
@@ -107,13 +128,13 @@ export function SpawnFields({ value, onChange, builtins }: { value: Respawn; onC
       {station && (
         <>
           <Row label="STATION PROTECTION">
-            <Seg value={String(value.station_protect_s ?? STATION_PROTECT_S_DEFAULT)} label="station respawn protection seconds" pad="5px 11px"
+            <Seg value={String(value.station_protect_s ?? STATION_PROTECT_S_DEFAULT)} label="station respawn protection seconds" pad={SEG_PAD_44}
               options={[{ value: '0', label: '0 S' }, { value: '2', label: '2 S' }, { value: '3', label: '3 S' }]}
               onChange={v => onChange({ ...value, station_protect_s: Number(v) as StationProtectS })} />
           </Row>
           {/* games-presets.md §13: `gate` is a shipped default, not a bench-proven control — read-only,
               never a segmented choice. */}
-          <Row label="GATE" note="NOT YET SUPPORTED — only TRIGGER is bench-proven">
+          <Row label="GATE" note="NOT YET SUPPORTED — ONLY TRIGGER IS BENCH-PROVEN">
             <OutlineTag color={T.dim} border={T.line2}>TRIGGER</OutlineTag>
           </Row>
         </>
@@ -127,8 +148,6 @@ const KINDS_FOR: Record<'primary' | 'secondary' | 'perks', ItemKind[]> = {
   primary: ['weapon'], secondary: ['weapon', 'sidearm'], perks: ['perk'],
 };
 
-/** PRIMARY / SECONDARY / PERKS share one shape (`SlotRule`, games-presets.md §1). `offAllowed` is
- *  false for PRIMARY: every mode needs a primary weapon (brief §3's "off where legal"). */
 /** PRIMARY / SECONDARY / PERKS share one shape (`SlotRule`, games-presets.md §1). `offAllowed` is
  *  false for PRIMARY: every mode needs a primary weapon (brief §3's "off where legal").
  *
@@ -156,11 +175,18 @@ export function SlotFields({ slotKind, value, onChange, catalogue, offAllowed }:
   return (
     <>
       <Row label="WHO PICKS">
-        <Seg value={value.choice} label="who picks" options={options} onChange={choice => onChange({ ...value, kinds: KINDS_FOR[slotKind], choice })} />
+        <Seg value={value.choice} label="who picks" options={options} pad={SEG_PAD_44}
+          onChange={choice => onChange({
+            ...value, kinds: KINDS_FOR[slotKind], choice,
+            // QA-14 (visual QA round 1): switching to FIXED with no item picked used to let SAVE
+            // through, and the server's own field name ("choice 'fixed' needs a fixed_id") reached
+            // the operator verbatim. Preselect the first catalogue item so FIXED never opens empty.
+            fixed_id: choice === 'fixed' ? (value.fixed_id ?? catalogue[0]?.id ?? null) : value.fixed_id,
+          })} />
       </Row>
       {value.choice === 'fixed' && (
-        <Row label="FIXED ITEM">
-          <Seg value={value.fixed_id ?? ''} label="fixed item" wrap
+        <Row label="FIXED ITEM" note={!value.fixed_id ? 'PICK ONE TO SAVE THIS PRESET' : undefined}>
+          <Seg value={value.fixed_id ?? ''} label="fixed item" wrap pad={SEG_PAD_44}
             options={catalogue.map(c => ({ value: c.id, label: c.name.toUpperCase() }))}
             onChange={id => onChange({ ...value, fixed_id: id })} />
         </Row>
@@ -168,7 +194,9 @@ export function SlotFields({ slotKind, value, onChange, catalogue, offAllowed }:
       {(value.choice === 'player' || value.choice === 'host') && (
         <>
           {types.length > 0 && (
-            <Row label="TYPE" testId="slot-type-row" note="A SNAPSHOT — A TYPE WILL NOT AUTO-UPDATE IF THE CATALOGUE GAINS A WEAPON OF IT LATER (games-presets.md §14)">
+            // QA-23 (visual QA round 1): plain uppercase words, no doc reference on screen (the
+            // "why" lives in helpers.ts's own comment, `onlyIdsForClass`/`idsForType`'s snapshot note).
+            <Row label="TYPE" testId="slot-type-row" note="A SNAPSHOT — DOES NOT UPDATE IF A NEW WEAPON OF THIS TYPE IS ADDED LATER">
               {types.map(t => {
                 const meta = WEAPON_TYPES.find(w => w.id === t)!;
                 const ids = idsForType(catalogue, t);
@@ -194,12 +222,16 @@ export function MiscLoadoutsFields({ value, onChange }: { value: MiscLoadoutsPie
   return (
     <>
       <Row label="WHO PICKS">
-        <Seg value={value.hud_select ? 'player' : 'host'} label="who picks"
+        <Seg value={value.hud_select ? 'player' : 'host'} label="who picks" pad={SEG_PAD_44}
           options={[{ value: 'player', label: 'PLAYERS' }, { value: 'host', label: 'HOST' }]}
           onChange={v => onChange({ ...value, hud_select: v === 'player' })} />
       </Row>
-      <Row label="HEAVIES" note="OFF applies exclude_tags:[heavy] to primary and secondary, unless that slot's own preset already sets exclude tags">
-        <Toggle on={value.heavies} onChange={v => onChange({ ...value, heavies: v })} label="heavies" />
+      {/* QA-23 (visual QA round 1): plain uppercase words, no `exclude_tags:[heavy]` on screen. The
+          "unless that slot already excludes its own" caveat is games-presets.md §3's own rule
+          (the slot piece wins over this blanket) -- kept in the note so an operator who picks OFF
+          and still sees a heavy is not left guessing why. */}
+      <Row label="HEAVIES" note="OFF EXCLUDES HEAVY WEAPONS FROM PRIMARY AND SECONDARY, UNLESS THAT SLOT ALREADY EXCLUDES ITS OWN">
+        <BigToggle on={value.heavies} onChange={v => onChange({ ...value, heavies: v })} label="heavies" />
         <span style={{ font: F.chk(600, 11), letterSpacing: '.1em', color: T.dim }}>{value.heavies ? 'ON (PICKUP ONLY)' : 'OFF'}</span>
       </Row>
     </>
