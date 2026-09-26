@@ -22,7 +22,7 @@ MATCH SETTINGS and the KOTH hold target (F415); FAVOURITES in F411; mode art C; 
 pickup was taken, or by whom); the lead badge hides under the switch card; USP-S keeps Q04; iOS is MVP.
 - **Next:** land F411 (brx3), then F413 + F415 (brx3); re-run brx2's desk-prep audit; Tony builds the iPhone.
 - **Open:** F414 (a Codex delegation that reports back: background Codex jobs vanished today).
-- **Ask Tony:** the station phone (utility screen) still shows TAKEN and a NEXT countdown; F425's rule covers the HUD only.
+- **Decided:** the station phone may show TAKEN and a NEXT countdown; F425's rule covers the player HUD only.
 ## Lane: brx2, bench, audio, utility and docs
 **2026-09-26, short bench part 1 DONE** (1.5 h, [`bench-plan.md`](bench-plan.md) "NOW: part 1"; the Stick and app
 0.4.13, MC `main`). KOTH's Stick-hill half ran clean (F382, F384, F385 CONFIRMED and closed); the phone-hill half
