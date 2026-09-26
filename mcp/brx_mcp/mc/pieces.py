@@ -83,9 +83,10 @@ def _builtin_pieces() -> list[GamePiece]:
                        {"type": "auto", "delay_s": 15, "protect_s": 0, "weapon_delay_ms": 500}))
     rows.append(_piece("builtin:spawn:station", "spawn", "STATION",
                        {"type": "scanner", "delay_s": 10, "station_protect_s": 2, "gate": "trigger"}))
-    rows.append(_piece("builtin:primary:all", "primary", "ALL", _policy._rule("player", _policy.PRIMARY_KINDS)))
-    rows.append(_piece("builtin:secondary:all", "secondary", "ALL", _policy._rule("player", _policy.SEC_KINDS)))
-    rows.append(_piece("builtin:perks:all", "perks", "ALL", _policy._rule("player", _policy.PERK_KINDS)))
+    _open = _policy.preset_rules("open")   # ALL is exactly the shipped OPEN rules, so it reads back "open"
+    rows.append(_piece("builtin:primary:all", "primary", "ALL", _open["primary"]))
+    rows.append(_piece("builtin:secondary:all", "secondary", "ALL", _open["secondary"]))
+    rows.append(_piece("builtin:perks:all", "perks", "ALL", _open["perk"]))
     rows.append(_piece("builtin:misc_loadouts:standard", "misc_loadouts", "PLAYERS PICK · HEAVIES ON",
                        {"hud_select": True, "heavies": True}))
     rows.append(_piece("builtin:gameplay:standard", "gameplay", "OPEN BRX STANDARD", {"mode_params": {}}))

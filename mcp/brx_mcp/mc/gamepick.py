@@ -126,7 +126,10 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
             primary = {**primary, "exclude_tags": ["heavy"]}
         if not secondary.get("exclude_tags"):
             secondary = {**secondary, "exclude_tags": ["heavy"]}
-    patch["loadout_policy"] = {"preset": "custom", "hud_select": bool(misc.get("hud_select", True)),
+    # "open" makes `policy.merge` reset to the open rules BEFORE it lays the three slot pieces on top, so no rule
+    # of the previous game leaks into a piece that leaves a key out, and the read-back preset name is derived
+    # ("open" for the builtins), not a blanket "custom".
+    patch["loadout_policy"] = {"preset": "open", "hud_select": bool(misc.get("hud_select", True)),
                                "primary": primary, "secondary": secondary, "perk": perk}
     patch["mode_params"] = dict(gameplay.get("mode_params") or {})
     patch["time_limit_s"] = match.get("time_limit_s")
@@ -134,4 +137,5 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
     patch["night"] = bool(match.get("night"))
     patch["presentation"] = (_pres.profile_from_preset("silenced") if match.get("silenced")
                              else _pres.profile_from_preset(mode_row.get("preset") or "standard"))
+    patch["environment"] = "outdoor"   # F410: MVP is outdoors only, whatever the session held before
     return patch
