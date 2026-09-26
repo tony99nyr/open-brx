@@ -1,7 +1,7 @@
 # M-LOADOUT — three slots (primary, secondary, perk), loadout policy, phone self-serve kitting
 
 - **Status:** **A14 perk slot (2026-09-04): a perk is its OWN slot beside PRIMARY / SECONDARY** — server (`policy.py`,
-  `tests/test_mc_perk_slot.py`), MC KIT/DESIGNER and the phone HUD built the same day; no backwards path (FOLLOWUPS S6). A12 sidearms (three pistols + `sidearm` slot kind) BUILT server-side 2026-09-04 (`weapons.json`, `policy.py`, `tests/test_mc_sidearms.py`; UI lanes in progress). §8 saved games server side BUILT 2026-08-27 (`presets.py`, `/api/presets*`, `Session.sanitize_config`). Server side BUILT 2026-08-27 (`policy.py`, `perks.py`/`perks.json`, `views.py`, state/compile/api/envelope; tests `tests/test_mc_loadout.py` + a real-stack e2e). UI lanes in progress. Amends `contracts.md` (**A10** — A9 was already `apply.preview`) — §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
+  `tests/test_mc_perk_slot.py`), MC KIT/DESIGNER and the phone HUD built the same day; no backwards path (FOLLOWUPS S6). A12 sidearms (three pistols + `sidearm` slot kind) BUILT server-side 2026-09-04 (`weapons.json`, `policy.py`, `tests/test_mc_sidearms.py`; UI lanes in progress). §8's old whole-game saved-game store (BUILT 2026-08-27) was REPLACED by F411 (GAMES = PLAY picks, BUILD creates, 2026-09-26): see §8 below. Server side BUILT 2026-08-27 (`policy.py`, `perks.py`/`perks.json`, `views.py`, state/compile/api/envelope; tests `tests/test_mc_loadout.py` + a real-stack e2e). UI lanes in progress. Amends `contracts.md` (**A10** — A9 was already `apply.preview`) — §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
   Binding for `mcp/brx_mcp/mc` (server), `webapp/mc` (MC UI) and `app/` (phone node). Field names are identical
   in Python TypedDicts, `API.md`, `types.ts` and the phone engine.
 - **Owns:** the shape of a player's kit (primary + optional secondary + optional perk), the **loadout policy** a host
@@ -217,8 +217,6 @@ SlotRule {
 | `snipers` | `fixed` → `sniper_rifle` | `off` | `off` | false |
 | `custom` | whatever the host set (editing any rule of another preset flips `preset` to `custom`) | | | |
 
-The builtin saved game **Silenced Sniper** (§8) is `primary fixed sniper_rifle`, `secondary off`, `perk fixed extended_mags`.
-
 **2026-09-17 (arsenal review):** `pickup_only` (§1.1 above) now excludes `rocket_launcher`/`rail_gun`
 from every preset's pool BEFORE `exclude_tags:["heavy"]` is even applied — they were the only visible
 `heavy`-tagged rows left once the arsenal cut also hid `laser_cannon`/`ion_sniper`/`energy_launcher`.
@@ -356,36 +354,13 @@ TRY IT → MC roster shows TRYING → READY → MC shows READY.
 Body Armor: push head with $PSET armor +50 → `$LCD` shows it → a hit absorbs. Extended Mags: HUD max matches
 `$AMMO`. Easy Reload: ALT reloads. Empty slot 1: ALT press → reload, no crash. Quick Hands: reload chain timing.
 
-## 8. Saved games (presets) — *added 2026-08-27, Tony's ask: "build a silenced-sniper game and save it to replay"*
+## 8. Saved games — REPLACED by F411 (2026-09-26)
 
-A **saved game** is a whole `GameConfig` (mode + settings + health + `loadout_policy`) under a name, persisted on
-the MC host. It is the "mode creation" flow: start from a stock mode card, tune it, **SAVE AS…**, replay it next
-week from the SAVED GAMES shelf. (Per-game *weapon tuning* — damage / fire-sound / rate overrides — is
-**deferred** to its own spec; the preset shape reserves `weapon_tuning` so it slots in without a schema change.)
-
-```jsonc
-SavedGame {
-  preset_id: string,               // opaque; builtin ones are "builtin:<slug>"
-  name: string, desc: string,      // host-typed; name unique (case-insensitive)
-  builtin: boolean,                // shipped example — not deletable, apply/copy only
-  created_t: number, updated_t: number,
-  config: GameConfig,              // config_id stripped on save; assigned fresh on apply
-  weapon_tuning?: {}               // RESERVED (future spec) — always absent today
-}
-```
-- Storage: `~/.brx-mcp/presets.json` (`storage.BASE_DIR`, same place as `armory.json`). Never committed.
-- One builtin example ships so the shelf is never empty on first use: **"Silenced Sniper"** — `ffa`, primary
-  `fixed` → `sniper_rifle`, secondary `off`, perk `fixed` → `extended_mags` (A14 — the perk is its own
-  slot; `presets.py::_builtin_configs`), `hud_select: false`, `health.max_armor: 0`
-  (one shot kills on raw magnitude alone: the sniper's applied magnitude of 60 — `weapons.json` `wire.dmg`, not the
-  0-100 UI bar of 52 — beats 45 HP without needing the fn 36 ×1.25, which is confirmed as floor(magnitude × 1.25)
-  but not relied on here), desc notes that "silenced" (fire-sound override) is
-  pending the weapon-tuning spec.
-- API (`API.md`): `GET /api/presets → SavedGame[]` · `POST /api/presets {name, desc?, config?}` (default
-  `config` = the current draft) `→ SavedGame`, `409` on a name clash unless `{replace: true}` · `PUT
-  /api/presets/{id} {name?, desc?, config?}` · `DELETE /api/presets/{id}` (`403` for builtin) ·
-  `POST /api/presets/{id}/apply → {ok, errors, config}` (same as `PUT /api/config` with the preset's config —
-  runs `apply_policy`, posts the reset notice). Presets are not part of `State` (fetched on demand).
-- BUILD UI: a **SAVED GAMES** shelf above the mode cards — cards (name, mode abbr, rules summary, desc), tap to
-  apply, `SAVE AS…` (name + desc inline form) on the current build, delete behind the two-step confirm; the
-  applied preset's card shows ACTIVE until the config is edited (then "MODIFIED — SAVE AS…").
+The whole-`GameConfig` "saved game" this section used to describe (`presets.py`, `/api/presets*`,
+`Session.active_preset_id`) is gone, with no migration (nobody was using it in the field). GAMES is now
+**per-kind pieces, not whole-game saves**: BUILD creates a named preset for ONE of eight kinds (mode,
+life, spawn, primary, secondary, perks, misc loadouts, gameplay) and PLAY picks one piece per kind plus a
+per-match MATCH SETTINGS strip. The model, the wire (`GamePiece`, `GamePick`, the `/api/pieces*` and
+`/api/play/pick` routes) and the bench-proven gate all live in
+[`docs/spec/design/games-presets.md`](design/games-presets.md) — that file is the spec of record for this
+area now, not this section.

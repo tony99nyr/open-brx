@@ -14,7 +14,7 @@ docstring used to claim that "every e2e boot" set `BRX_MCP_HOME`, and NONE of th
     and every subprocess inherits it) and by the Mission Control e2e boot in
     `webapp/mc/test/e2e/koth.mjs`. Those two, and no others.
   * everything else that boots MC for a test relies on `--demo` / `--ephemeral`, which
-    fall back to a throwaway tempdir for the session store, the presets shelf and the
+    fall back to a throwaway tempdir for the session store, the pieces shelf and the
     tunnel pidfile (`mc/__main__.py`) whether or not the env var is set.
 
 A harness that is in neither group writes to the real home, by design and by default:
@@ -40,7 +40,7 @@ def home_dir() -> Path:
 
 # ⚠ LEGACY, and the one thing in this module that does NOT follow the rule above: these three are
 # resolved ONCE, at import, so a `BRX_MCP_HOME` set afterwards does not move them. They are kept because
-# the bench modules that use them (`usbconsole.py`, the CLI's diag reports, `mc/presets.py`) are
+# the bench modules that use them (`usbconsole.py`, the CLI's diag reports, `mc/pieces.py`) are
 # monkeypatched by name in `tests/test_usbconsole.py` and `tests/test_rename_flow.py` -- patching
 # `storage.BASE_DIR` is how those tests get an isolated tree, and that only works while the value is a
 # module attribute read at call time.
