@@ -142,8 +142,19 @@ def _migrate_green_team_rows(teams: Any) -> list[Team]:
     for t in teams:
         if isinstance(t, dict) and str(t.get("team_id", "")).lower() == "green":
             t = {**t, "team_id": "purple", "name": "PURPLE TEAM", "color": TEAM_DEFS["purple"]["color"]}
+        elif isinstance(t, dict) and t.get("team_id") == "purple" and str(t.get("color", "")).lower() == "#7b2cbf":
+            t = {**t, "color": TEAM_DEFS["purple"]["color"]}   # saved between F423 and the contrast fix
         out.append(cast(Team, t))
     return out
+
+
+def _migrate_green_player_row(p: Any) -> Any:
+    """F423 (polish round 3): a player or standby row restored from a snapshot saved before the rename still
+    points at `team_id: "green"`. Its team row is migrated above, so the player must follow it, or
+    `compile._tid` finds no team and arms the player on tid 0 (RED)."""
+    if isinstance(p, dict) and str(p.get("team_id", "")).lower() == "green":
+        return {**p, "team_id": "purple"}
+    return p
 
 # Briefing copy verbatim from the Mission Control design export (A2 mode briefing panel).
 # `preset` (led-language.md §4, mode-extensibility G3, 2026-09-07): the presentation preset each
@@ -957,7 +968,7 @@ class Session:
                     "%d player(s)", self._persist_path, "demo" if was_demo else "real",
                     "demo" if self.demo_session else "real", len(snap.get("players") or []))
                 return 0
-            self.players = {p["player_id"]: p for p in snap.get("players", [])}
+            self.players = {p["player_id"]: _migrate_green_player_row(p) for p in snap.get("players", [])}
             sp = snap.get("sync_pending")
             if isinstance(sp, dict) and isinstance(sp.get("end_t"), int) and isinstance(sp.get("nodes"), dict):
                 self._match_end_t = sp["end_t"]
@@ -968,7 +979,7 @@ class Session:
             parked: dict[str, Player] = {}
             invalid_parked = 0
             for q in snap.get("standby") or []:
-                player = self._snapshot_player(q)
+                player = self._snapshot_player(_migrate_green_player_row(q))
                 if player is not None:
                     parked[player["player_id"]] = player
                 else:
@@ -1048,6 +1059,12 @@ class Session:
                 # resuming a match nobody is playing any more. `saved_ms` lives on the outer snapshot,
                 # not the nested match dict, so it is carried across here under its own key.
                 self._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
+                # F423 (polish round 3): the held match carries its own config and players; migrate them too.
+                rp = self._resume_pending
+                if isinstance(rp.get("config"), dict) and isinstance(rp["config"].get("teams"), list):
+                    rp["config"] = {**rp["config"], "teams": _migrate_green_team_rows(rp["config"]["teams"])}
+                if isinstance(rp.get("players"), dict):
+                    rp["players"] = {k: _migrate_green_player_row(v) for k, v in rp["players"].items()}
                 if isinstance(snap.get("powerups"), dict):
                     self._pu_restored = snap["powerups"]      # A56 (M1): adopted for this same match only
             self._repair_player_nums()

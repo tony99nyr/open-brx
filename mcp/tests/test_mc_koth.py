@@ -556,3 +556,29 @@ def test_a_koth_game_saved_before_the_phone_default_still_loads_on_the_grenade()
     s.apply_preset("saved-before", old)
     assert s.config["mode"] == "koth" and s.config["station_source"] == "grenade"
     assert any("POWER-CYCLE" in w for w in s.config_warnings), s.config_warnings
+
+
+def test_restore_migrates_green_players_without_a_rebalance():
+    """F423 polish round 3: a snapshot saved before tid 3 was renamed GREEN -> PURPLE restores its team rows
+    as purple, and its players, standby rows and held match must follow them. No `_rebalance` here: that
+    step used to hide the bug, and the players armed on tid 0 (RED) because `compile._tid` found no team."""
+    import json, tempfile, pathlib
+    s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
+    with tempfile.TemporaryDirectory() as d:
+        path = pathlib.Path(d) / "session.json"
+        s._persist_path = path
+        green = {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3}
+        snap = {"demo": False, "teams": [green], "config": {**s.config, "teams": [green]},
+                "players": [{"player_id": "p1", "team_id": "green", "name": "P1"}],
+                "standby": [],
+                "match": {"config": {"teams": [green]}, "players": {"p1": {"player_id": "p1", "team_id": "green"}}}}
+        path.write_text(json.dumps(snap))
+        s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
+        s2._persist_path = path
+        s2.restore_snapshot()
+        assert s2.players["p1"]["team_id"] == "purple", s2.players["p1"]
+        assert all(t["team_id"] != "green" for t in s2.teams)
+        rp = s2._resume_pending or {}
+        assert rp.get("players", {}).get("p1", {}).get("team_id") == "purple", rp
+        assert rp["config"]["teams"][0]["team_id"] == "purple"
+        assert Compiler._tid(s2.players["p1"], s2.teams) == 3
