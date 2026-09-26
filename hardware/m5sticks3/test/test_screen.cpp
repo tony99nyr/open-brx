@@ -83,6 +83,38 @@ static void test_pickup_unknown_then_taken_without_a_taker() {
   CHECK_EQ(taken.next_spawn, std::string("0:30"));
 }
 
+// F386 for a pickup: MATCH OVER beats whatever the schedule was doing (taken, ready or unknown),
+// mirroring the hill's own ended note -- no NEXT SPAWN line, no ring, no TAKEN BY.
+static void test_pickup_ended_shows_match_over_not_the_countdown() {
+  StickState s;
+  s.at_home = true;
+  s.powerup_present = true;
+  s.powerup_known = true;
+  s.powerup_available = false;
+  s.powerup_taker = 7;
+  s.powerup_remaining_s = 100;
+  s.powerup_period_s = 200;
+  s.item_name = "ROCKETS";
+  s.powerup_ended = true;
+  ScreenSpec over = compute_screen(s);
+  CHECK(over.kind == ScreenKind::PICKUP_OVER);
+  CHECK_EQ(over.item_name, std::string("ROCKETS"));
+  CHECK_EQ(over.next_spawn, std::string(""));  // no countdown drawn once ended
+  CHECK_EQ(over.taken_by, std::string(""));
+  CHECK_EQ(over.pickup_frac_pct, 0);  // no ring fill either
+
+  // Ended beats READY too: the item was on offer, unclaimed, when the whistle went.
+  s.powerup_available = true;
+  s.powerup_taker = 0;
+  ScreenSpec over_ready = compute_screen(s);
+  CHECK(over_ready.kind == ScreenKind::PICKUP_OVER);
+
+  // And beats EMPTY (F374's "no station_update yet"): still ended, whatever MC last said.
+  s.powerup_known = false;
+  ScreenSpec over_empty = compute_screen(s);
+  CHECK(over_empty.kind == ScreenKind::PICKUP_OVER);
+}
+
 // ---- reset confirm and its draining timeout -------------------------------------------------
 static void test_reset_confirm_timeout_and_hint() {
   StickState s;
@@ -465,6 +497,7 @@ int main() {
   test_format_mmss();
   test_pickup_ready_vs_taken();
   test_pickup_unknown_then_taken_without_a_taker();
+  test_pickup_ended_shows_match_over_not_the_countdown();
   test_reset_confirm_timeout_and_hint();
   test_no_reset_offer_without_an_assignment();
   test_joining_says_wifi_connected_only_once_it_is();

@@ -48,6 +48,7 @@ static const char* kind_name(ScreenKind k) {
     case ScreenKind::PICKUP_READY: return "PICKUP_READY";
     case ScreenKind::PICKUP_TAKEN: return "PICKUP_TAKEN";
     case ScreenKind::PICKUP_EMPTY: return "PICKUP_EMPTY";
+    case ScreenKind::PICKUP_OVER: return "PICKUP_OVER";
     case ScreenKind::RESPAWN_OWNED: return "RESPAWN_OWNED";
     case ScreenKind::RESPAWN_IDLE: return "RESPAWN_IDLE";
     case ScreenKind::SCR_DIAGNOSTICS: return "SCR_DIAGNOSTICS";
@@ -524,6 +525,15 @@ static std::vector<Scenario> scenarios() {
     ClaimWinner w; w.won = true; w.player_num = 7;
     s.link.award_claim(w, s.now);
     s.advance(91000);
+  }});
+  v.push_back({"pickup_match_over", "pickup", "F386 for a pickup: END freezes a claimed ROCKETS into MATCH OVER, "
+               "no ring, no NEXT SPAWN.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
+    s.frame("station_update", spawn_update(4));
+    ClaimWinner w; w.won = true; w.player_num = 7;
+    s.link.award_claim(w, s.now);
+    s.advance(200);
+    s.frame("station_config", cfg("powerup", 255, 4, std::string(ROCKETS) + ",\"ends_in_ms\":0"));
   }});
   v.push_back({"pickup_stats_long_name", "pickup", "A 12-character item on the STATS page.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 8, LONGNAME));

@@ -88,6 +88,8 @@ EXPECT: dict[str, dict] = {
     "pickup_taken": {"kind": "PICKUP_TAKEN", "has": ["TAKEN BY P7", "NEXT SPAWN 1:30"]},
     "pickup_countdown": {"kind": "PICKUP_TAKEN", "has": ["NEXT SPAWN 0:30"]},
     "pickup_respawned": {"kind": "PICKUP_READY", "has": ["ROCKETS"], "same_as": "pickup_ready"},
+    "pickup_match_over": {"kind": "PICKUP_OVER", "has": ["ROCKETS", "MATCH OVER"],
+                          "lacks": ["NEXT SPAWN", "TAKEN BY", "STAND HERE TO TAKE"]},
     "pickup_stats": {"kind": "SCR_STATS", "has": ["PICKUP - ROCKETS", "P7"]},
     "pickup_stats_long_name": {"kind": "SCR_STATS", "has": ["PICKUP - PLASMA RIFLE"]},
     "hill_neutral": {"kind": "HILL_NEUTRAL", "has": ["NEUTRAL", "WAITING FOR START"],
