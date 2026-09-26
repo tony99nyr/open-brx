@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md).
+Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -521,6 +521,15 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   `X17` by ear, which matches Battle Company's own UART sheet entry for the concussion grenade ("high pitch
   ringing and temporary disabling of tagger"). This is a workable EMP-grenade primitive, cheaper than fn 23.
   `trigger` (bench 1.5).
+
+- **F406 🟡 AN ARMOUR PICKUP POWERUP IN A SHIELDS GAME.** Tony 2026-09-25. Today's shields-game rule
+  (`health.max_armor === 0` on the GAME, `engine.js` `shieldRegenOn`) already fits: a hit drains shield, then
+  armour, then health (`engine.js` ~4097), and the F341 pool-repair guard checks armour only when the game
+  has armour (`engine.js` ~6148, ~6243), so granting armour on top of a zero-armour game should not fight it.
+  **Open question: the gun.** A shields game arms `$PSET` with max armour 0, and the firmware may clamp a
+  player's armour above that ceiling. The pickup likely needs a mid-life `$PSET` raise, the same shape as the
+  Overshield grant. Bench question: does the gun hold the granted armour, and does it still drain shield, then
+  armour, then health, in that order? `bench` + `design`.
 
 ## 4. Audio and voice
 
