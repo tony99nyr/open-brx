@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-26 (F411 brief written, spec/design/games-redesign.md, route brx3; F410 filed: MVP is outdoors only; F403 closed; F402 closed; F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F282 back from post-mvp.md into MVP DESK -- Tony: yes, MVP, silenced must silence the weapons -- built at the desk, `silent_weapons` bench check left; F406 filed to post-mvp.md; F400 desk lows fixed (11px label, CONFIRMED bubble), moved MVP DESK to MVP BENCH for its bench check).
+Updated: 2026-09-26 (F394 built at the desk, bench check left; F380 row marked built; F410 closed: MVP is outdoors-only server-side already (compile.play_volume, default_config default outdoor, unchanged), docs/platform and docs/manual brought in line, quiet fallback for an unrecognised venue kept; hiding the venue picker in the console is F411's own work, not repeated here. F282 moved from MVP DESK to MVP BENCH: build is done, only the bench eyes-and-ears pass is left. F400 desk lows fixed (11px label, CONFIRMED bubble), moved MVP DESK to MVP BENCH for its bench check. F411 brief written, spec/design/games-redesign.md, route brx3; F403 closed; F402 closed; F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F406 filed to post-mvp.md).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,17 +9,16 @@ Updated: 2026-09-26 (F411 brief written, spec/design/games-redesign.md, route br
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 76.** Desk 5 · bench 68 · decision 3.
+**MVP open: 75.** Desk 3 · bench 69 · decision 3.
 
-**MVP DESK (5),** a keyboard is enough:
+**MVP DESK (3),** a keyboard is enough:
 - 🔴 **F411**
-- 🟠 **B21** · **F372** · **F410**
-- 🟡 **F282**
+- 🟠 **B21** · **F372**
 
-**MVP BENCH (68),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (69),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
 - 🟠 **F349** · **F308** · **F374** · **S58** · **F400** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F382** · **F383** · **F384** · **F385** · **F387** · **F388** · **F389** · **F391** · **F393** · **F394** · **F399**
-- 🟡 **Q13** · **F333** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F381** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398**
+- 🟡 **Q13** · **F333** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F381** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398** · **F282**
 - 🟢 **F339**
 
 **MVP DECISION (3),** awaiting Tony:
@@ -54,7 +53,6 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F410 🟠 MVP IS OUTDOORS ONLY.** Tony 2026-09-25 (via brx2): "we dont even support indoor for mvp". Every MVP mode and preset defaults to `outdoor` (play volume 90, `compile.play_volume`), and MC hides the indoor/outdoor choice. Keep `play_volume`'s quiet fallback for an unknown venue (a safety net, not a choice). Indoor play is post-launch. Check every "indoor" line in the console, the docs and the manual. Bench runs keep `--bench-volume`. `build`.
 - **F411 🔴 MC GAMES REDESIGN: PICK GAME AND BUILD (the storyboard's option A).** Tony approved the direction,
   2026-09-26: "yeah this makes sense"; "not gunna bench until new mc games tab is ready" — this blocks the next
   bench sitting. GAMES splits into PLAY (PICK GAME: pick saved presets, LOAD, no editing, no "tuned, not saved"
@@ -76,33 +74,6 @@ A keyboard is enough. Highest value first.
   `assembleRelease`, version bump per build; iOS = TestFlight or source build). `build`. **→ Tony 2026-09-23:** release-sign at the NEXT APK cut, and cut only after the open desk fixes land. Testers uninstall once at that cut. `build`. **→ 2026-09-23: Tony created the release key outside the repo (`~/.brx/`, private, backed up).** The next cut is `npm run android:release` once the open desk fixes land. **→ 2026-09-24, the Android half shipped:** 0.4.6 was the first release-signed build (its release notes tell players to uninstall once), and 0.4.7 to 0.4.11 followed, each published as an `app-v<version>` release (`webapp/download/build.json` names 0.4.11). Open: `webContentsDebuggingEnabled` is still `true` in `app/capacitor.config.json`, and iOS has no distribution path yet. **→ Tony 2026-09-25, decided:** WebView debugging becomes a TOGGLE, not a removal ("can be a toggle to help dev and debugging. we may need that on as we build features"). Build: a runtime switch (the Android WebView `setWebContentsDebuggingEnabled`, called from a small native hook) in the app's ⓘ diag panel, persisted, defaulting ON while MVP features are still being built; the release build keeps the ability; the diag panel shows the current state. Flip the default to OFF for a public release later (a note on the row). `build`. **→ 2026-09-25, Android toggle built (brx5):** an in-app setting, not a build flag, because a tester must flip it on a release APK. `app/plugins/brx-debug` stores it in SharedPreferences and applies it at start (plugins load after Capacitor's config value). The ⓘ panel's DEVELOPER row shows it; default ON (`DEFAULT_ON`, flip for a public release: `app/RELEASING.md`). Not yet on a phone: it ships at the next cut.
 
 - **F372 🟠 TURN POWERUPS ON BY DEFAULT ONCE THE POWERUP BENCH PASSES.** Tony 2026-09-25: "yes powerups an mvp feature, lets bench it". Today MC grants items only with `--powerups` (`mc/__main__.py`), and the banner says "not bench-proven yet". Gate: every step of the powerups setup in [`bench-2026-09-25.md`](bench-2026-09-25.md) passes (3.4, 3.5, 11.2 and 4.11 for the phone station and the Stick). Then: make powerups the default (keep a way to switch them off), replace the -55 claim placeholder (`POWERUP_THRESHOLD_DEFAULT`, `beacon.js POWERUP_RSSI_DBM`) and the Stick's -57 with the calibrated values, and update [`spec/powerups.md`](spec/powerups.md) "Bench gate". `build`.
-
-- **F282 🟡 CAN WE ACTUALLY SUPPRESS THE MUZZLE FLASH, AND IS THE SUPPRESSOR AUDIBLY QUIETER?** Tony, 2026-09-18,
-  reading the arsenal page: "are you sure we can suppress the muzzle flash?" **No, and the claim has been withdrawn
-  from the player copy.** `$WEAP` **t25/t26 are NOT in the APK field table** (`protocol-classes.md` jumps 24
-  `overheat` to 27 `primaryFire_SoundName`), and the only thing naming them muzzle flash is an unsourced comment in
-  `mc/compile.py`. We never write them: they are inherited verbatim from each capture, where the Suppressor carries
-  **2 and 50** and the assault rifle carries **none**. Set-versus-empty is suggestive of something, but says nothing
-  about direction, and 2/50 could be a reduced flash as easily as no flash. The "quiet" half is better grounded but
-  also unjudged: t27 is `Q06` on the Suppressor against `R01` on the AR, so it genuinely plays a different
-  sound, but nobody has heard our two COMPILED weapons back to back. **Bench, 5 minutes, needs only eyes and ears:**
-  arm one gun with the compiled Suppressor and one with the compiled AR, fire each in a DARK room, and (1) say
-  whether either shows a visible flash at the muzzle and whether they differ, (2) judge by ear which is quieter and
-  by how much. Then a second pass writing t25/t26 to 0 and to a large value on the SAME weapon, to find out what
-  they do at all. ⚠️ Until then no public page may claim a stealth property. Same evidence fault the polish loop
-  caught four times on 2026-09-18, this time in copy I wrote myself. **→ Tony 2026-09-25: yes, MVP; the silenced
-  preset must silence the weapons.** Built: a `presentation.silent_weapons` switch (true only in the "silenced"
-  preset, false elsewhere, absent-means-false on an older saved game) makes `compile.py` give EVERY compiled
-  weapon's `$WEAP` the Suppressor's own captured t25/t26/t27 (`2`, `50`, `Q06`, read from its `weapons.json` row,
-  not hard-coded), written LAST, after a weapon's own `overrides`; a weapon that already carries that t25/t26 pair
-  (the Suppressor, the USP-S) keeps its own quiet t27 (the USP-S plays `Q04`). The phone try-out uses it too. The
-  host sees only the existing SILENCED choice (Tony: "we only need one switch"). The
-  standard preset is unchanged. t25/t26 are still UNPROVEN, not "no muzzle flash" — see the code comment on
-  `WeaponCatalog.resolve()`. Left for the bench (sitting C, [`bench-2026-09-25.md`](bench-2026-09-25.md)): the
-  A/B/A eyes-and-ears pass this row always asked for, now run through `compile.resolve()` with the preset, plus
-  a once-only try of an empty t27. `build` + `bench`.
-
-
 
 ## MVP BENCH
 
@@ -188,7 +159,7 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 - **F379 🔴 A ROCKET SHOT LEAVES THE GUN'S ALT POINTER OUT OF SYNC WITH THE PHONE'S ASSUMED WEAPON.** Sitting B, 2026-09-25, reproduced twice: after firing the rocket, ALT animated and showed SHOTGUN on the HUD, but the trigger fired the USP and the gun's own pointer had switched to it; the desync follows a rocket SHOT (the pickup slot's switch-back), not ALT or the reload lever alone. A second repro (match `982ddfaf2c`, no pickup held) showed the same shape from plain ALT-cycling: on the second switch to USP the HUD ammo read wrong until the next trigger pull. Cause, high confidence, refined twice over the sitting: pickup writes (`_puEquip engine.js:5397-5411`, `_puGrantWeapon :5542-5567`, `_puEnd :5644-5654`, `_puBackResend :5634-5639`) write the trigger with raw `$WEAP`+`$AMMO` and never move the gun's own `$BMAP` pointer; `_altPressed`/`_nextAltSlot` (`:6268`, `:5379-5380`) and the tick's assumed swap (`:3729-3734`) assume the active slot mirrors that pointer, so ALT after a rocket assumes SHOTGUN while the gun's pointer has advanced to USP, corrected only on the next shot's `$ALCD` (`_onAmmo ~:6469`). `_puBackTick` (`:3720`, `:5645-5650`) re-sends a stale switch-back every 1.5 s because `_puBackPending` (set `:5652`) clears only on a loadout-slot shot (`_puAmmo :5598-5600`), and can stomp the active slot mid ALT-then-reload; the same one-time back snapshot (`:5554-5556`) replayed by every resend explains a 2-round reload seen the same match. Fix: stop assuming the active slot mirrors `$BMAP` after a raw pickup write, and clear `_puBackPending` on any confirming gun evidence, not only a loadout shot. Bench A/B: ALT onto the secondary with no fire, take the rocket, empty it, ALT once, compare the gun's next `$ALCD` slot against the phone's assumed target. `bench` + `build`.
 
 - **F399 🟠 A STICK POWERUP CLAIM TAKES 2-13 S TO CONFIRM, SO THE PLAYER STANDS AT THE STATION WITH NO ANSWER.** Sitting B, 2026-09-25: the grey Pixel's log (synced to MC's session DB `~/.brx-mcp/mc/session-7b8a251c.sqlite`, `node-b8304e18b5` `log_data`, 1 s resolution) shows "claim ready" to the grant write on 9 claims at station 1 took 9, 13, 10, 4, 9, 2, 9, 8 and 4 s (median 9 s). The phone grants only on a fresh Stick advert naming the taker, so the delay is the Stick's confirm path: its advert interval, its scan window, or when it decides. Separate from F380 (the phone's NOT ANSWERING bound, 15 s). Owner brx4. Target: a confirm within about 1 s of claim ready. Desk build, 2026-09-25: the Stick scans at 50% duty and resolves a ready claim after a 100 ms tie window. Re-run the nine-claim latency measurement on hardware; the target is not bench-proven. `bench`.
-- **F380 🟠 A POWERUP CLAIM CAN FALSE-REPORT "NOT ANSWERING" WHILE THE GRANT IS STILL COMING.** Sitting B, 2026-09-25, seen 3 times (2 of 4 pickups on one claim, then once more on a later real claim). Cause, high confidence: `engine.js:5717-5719` flips the pickup hint to `no_answer` (`POWERUP_NO_ANSWER_MS`, `:601`, 3000 ms) after the dwell's `readyAt` unless the grant has landed; the grant only arrives from `_puTakerCheck` (`:5493-5511`) on a fresh Stick advert naming the taker, so a confirmation over 3 s behind the dwell reads as a false failure even though the claim succeeds moments later. Fix: widen the window, or show HOLD/CONFIRMING until the advert lands and only say NOT ANSWERING after a real timeout. `bench` + `build`.
+- **F380 🟠 A POWERUP CLAIM CAN FALSE-REPORT "NOT ANSWERING" WHILE THE GRANT IS STILL COMING.** Sitting B, 2026-09-25, seen 3 times (2 of 4 pickups on one claim, then once more on a later real claim). Cause, high confidence: `engine.js:5717-5719` flips the pickup hint to `no_answer` (`POWERUP_NO_ANSWER_MS`, `:601`, 3000 ms) after the dwell's `readyAt` unless the grant has landed; the grant only arrives from `_puTakerCheck` (`:5493-5511`) on a fresh Stick advert naming the taker, so a confirmation over 3 s behind the dwell reads as a false failure even though the claim succeeds moments later. **Built at the desk 2026-09-25 (`58003151`):** the window is 15 s (`POWERUP_NO_ANSWER_MS`), and the hint reads CONFIRMING until then. Bench check: a slow Stick grant shows CONFIRMING and never NOT ANSWERING. `bench`.
 
 - **F381 🟡 PICKING UP THE SAME WEAPON WHILE HOLDING CHARGES SHOULD ADD, NOT RESET.** Tony's decision, sitting B, 2026-09-25: taking the same powerup weapon again while some charges remain should ADD to the held count (1 left + 2 = 3); today it resets to 2. Cap not yet decided. Find the pickup grant's charge-set logic (near `_puGrantWeapon`, engine.js) and change it to add, with a cap once Tony picks one. → Tony 2026-09-25: the cap is double the drop (Rockets at most 4); built (`PU_STACK_CAP_X`, engine.js), a stacked pickup goes back on the trigger. `bench`.
 
@@ -196,11 +167,36 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 
 - **F393 🟠 `poison_tick` WRITES THE GUN WITH NO QUEUE GATE.** Desk loop audit, sitting B, 2026-09-25 (ahead of F382's cadence cut): `hill_tick` (`engine.js:3364-3390`) is self-throttled on `_gun.outstanding` and the announcer queue, LOW; `shield_loop` (`:3481-3496`) is LOW; `extraction_tick` (`presentation.py:156`, about 10 s) is LOW. `poison_tick` (`:3948-3979`, via `_event :2511`) writes with NO gate at all, at the weapon's own `tick_ms` (V4G measured 0.5 s), rated MED: a fast-ticking poison weapon could starve the queue the way the A10 shield hum did (F347). Fix: gate it the same way as the other loop writers, or clamp `tick_ms` in `compile.py` (around line 2200). `bench` + `build`.
 
-- **F394 🟠 AMMO PIPS AND THE AMMO NUMBER UPDATE ON DIFFERENT EVENTS AND GO OUT OF STEP.** Same match as F379, sitting B, 2026-09-25: after ALT-switching to the USP twice, the HUD ammo read wrong until the next trigger pull, then corrected (seen twice); a reload lever pull on the USP once did not update the HUD ammo to full; after a reload plus one shot the number read 9 (right) but the pips showed several rounds spent (wrong). Reading: the gun answers `$ALCD` only on a shot, so ALT and reload show assumed or cached counts, and the pips (`_acctLive`/`_shotAcct`) redraw on a different event than the number (`this.ammo`); `hud.js`'s draw path is the suspect. Shares its root with F379; the fix there may resolve this too. `bench`.
+- **F394 🟠 AMMO PIPS AND THE AMMO NUMBER GO OUT OF STEP AFTER ALT.** Sitting B, 2026-09-25 (match `982ddfaf2c`): after ALT to the USP the HUD number read wrong until the next trigger pull; a reload pull on the USP once did not refill it; after a reload and one shot the number read 9 but the pips showed rounds spent. **Built at the desk 2026-09-26:** the gun sends no `$ALCD` on ALT, so the assumed swap kept the OLD slot's number over the NEW slot's pips, and the reload pull was judged against that number. The assumed swap now shows the new slot's own counts (`_showSlotAmmo`), and the echo of the node's write to a slot NOT on the trigger (a switch-back resend, a stun restore) no longer reaches the screen or moves `activeSlot`. The stage's demo gun now stays silent on ALT, as the real gun does (screens #40b). Bench check: ALT to the secondary with no shot, then read the number, the pips and a reload pull against the gun. `bench`.
 
 - **F395 🟡 THE APP'S LAUNCH SPLASH RENDERS STRETCHED AND BROKEN.** Tony, sitting B, 2026-09-25: the white BRX-logo loading screen always looks stretched on the phone HUD. Owner: brx-hud session. `eyes`.
 
 - **F396 🟡 THE ROCKET TIMER JUMPS AFTER A SPAWN.** brx-hud finding, sitting B, 2026-09-25: after a spawn the rocket cooldown timer rendered at the bottom of the HUD, hung off the bottom edge, vanished, then came back. Owner: brx-hud session. `eyes`.
+
+- **F282 🟡 CAN WE ACTUALLY SUPPRESS THE MUZZLE FLASH, AND IS THE SUPPRESSOR AUDIBLY QUIETER?** Tony, 2026-09-18,
+  reading the arsenal page: "are you sure we can suppress the muzzle flash?" **No, and the claim has been withdrawn
+  from the player copy.** `$WEAP` **t25/t26 are NOT in the APK field table** (`protocol-classes.md` jumps 24
+  `overheat` to 27 `primaryFire_SoundName`), and the only thing naming them muzzle flash is an unsourced comment in
+  `mc/compile.py`. We never write them: they are inherited verbatim from each capture, where the Suppressor carries
+  **2 and 50** and the assault rifle carries **none**. Set-versus-empty is suggestive of something, but says nothing
+  about direction, and 2/50 could be a reduced flash as easily as no flash. The "quiet" half is better grounded but
+  also unjudged: t27 is `Q06` on the Suppressor against `R01` on the AR, so it genuinely plays a different
+  sound, but nobody has heard our two COMPILED weapons back to back. **Bench, 5 minutes, needs only eyes and ears:**
+  arm one gun with the compiled Suppressor and one with the compiled AR, fire each in a DARK room, and (1) say
+  whether either shows a visible flash at the muzzle and whether they differ, (2) judge by ear which is quieter and
+  by how much. Then a second pass writing t25/t26 to 0 and to a large value on the SAME weapon, to find out what
+  they do at all. ⚠️ Until then no public page may claim a stealth property. Same evidence fault the polish loop
+  caught four times on 2026-09-18, this time in copy I wrote myself. **→ Tony 2026-09-25: yes, MVP; the silenced
+  preset must silence the weapons.** Built: a `presentation.silent_weapons` switch (true only in the "silenced"
+  preset, false elsewhere, absent-means-false on an older saved game) makes `compile.py` give EVERY compiled
+  weapon's `$WEAP` the Suppressor's own captured t25/t26/t27 (`2`, `50`, `Q06`, read from its `weapons.json` row,
+  not hard-coded), written LAST, after a weapon's own `overrides`; a weapon that already carries that t25/t26 pair
+  (the Suppressor, the USP-S) keeps its own quiet t27 (the USP-S plays `Q04`). The phone try-out uses it too. The
+  host sees only the existing SILENCED choice (Tony: "we only need one switch"). The
+  standard preset is unchanged. t25/t26 are still UNPROVEN, not "no muzzle flash" — see the code comment on
+  `WeaponCatalog.resolve()`. Left for the bench (sitting C, [`bench-2026-09-25.md`](bench-2026-09-25.md)): the
+  A/B/A eyes-and-ears pass this row always asked for, now run through `compile.resolve()` with the preset, plus
+  a once-only try of an empty t27. `bench`.
 
 ### Later: one or two guns, the rig and the laptop
 

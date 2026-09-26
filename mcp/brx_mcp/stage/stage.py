@@ -1623,6 +1623,13 @@ class GunStage:
         if reserve is not None:
             self.reserve = reserve
 
+    def _show_slot_ammo(self, slot: int) -> None:
+        """engine.js `_showSlotAmmo` (F394): put `slot`'s own counts in the ammo block when the node moves the
+        trigger with no $ALCD to say so (the assumed ALT swap). The counts are `_live_ammo`'s."""
+        live = self._live_ammo().get(slot)
+        if live:
+            self._publish_ammo(slot, live[0], live[1])
+
     def _acct_spent(self, slot: int, before: int | None) -> None:
         """engine.js `_acctSpent`: rounds that LEFT the gun -- the drop in the ACCOUNT's magazine across one
         `$ALCD`, never the raw frame delta. The stage drives no recoil model (see KNOWN_UNMIRRORED), so this
@@ -3878,10 +3885,21 @@ class GunStage:
         # the ECHO WINDOW this frame is the gun reading back the node's OWN `$WEAP` reset -- not a shot, not
         # a reload, not resync proof, and not a magazine worth showing. Book NOTHING, leave `_prev_ammo`
         # where it was so the next real frame measures from before the write, and put the ACCOUNT on screen.
+        # F394 (engine.js `_onAmmo`): the restore landing for a slot NOT on the trigger is the gun reading back our
+        # own write, not the trigger moving -- unless it is the slot ALT is switching TO (the confirming shot).
+        acct = self._shot_acct.get(slot)
+        off_slot_echo = (slot != self.active_slot and not (self.switching and slot == self.switching.get("to"))
+                         and self._acct_echoing(slot) and acct is not None and mag <= acct["echo_expect"])
         seen = self._acct_ammo(slot, mag, self._prev_ammo.get(slot))
         if isinstance(seen, _Ignore):
             a = self._shot_acct.get(slot)
-            self._publish_ammo(slot, self._acct_live(slot), a["res"] if a else None)
+            if slot == self.active_slot:   # F394: only the slot on the trigger owns the ammo block
+                self._publish_ammo(slot, self._acct_live(slot), a["res"] if a else None)
+            return
+        if off_slot_echo:
+            self._prev_ammo[slot] = mag
+            if reserve is not None:
+                self._prev_reserve[slot] = reserve
             return
         prev = seen
         # F209 (engine.js `_onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now
@@ -4029,6 +4047,7 @@ class GunStage:
         to = sw.get("to", self._next_alt_slot())
         self.switching = None
         self.active_slot = to; self._alt_ptr = to; self._recoil_slot = to
+        self._show_slot_ammo(to)   # F394: the gun sends no $ALCD on ALT, so the new slot's counts come from the node
         self._log(f"swap to slot {to} assumed after {self._switch_window_s():g}s (no shot yet)", "info")
 
     def _sir_fns(self) -> dict[str, int] | None:

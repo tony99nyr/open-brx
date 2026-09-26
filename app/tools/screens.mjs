@@ -76,7 +76,7 @@ let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
+const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
   'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap', 'down-full', 'down-partial', 'down-unclear', 'down-zero-dealt', 'down-pickup', 'down-ffa', 'down-hill', 'down-stale', 'down-old-mc']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
@@ -792,13 +792,26 @@ for (const view of VIEWS) {
     const r = await pg.evaluate(() => ({ reload: !!document.querySelector('.mo.reloading'), prompt: !!document.querySelector('.prompt'), chips: getComputedStyle(document.getElementById('chips')).opacity })); await pg.close();
     must(!r.reload && r.prompt && r.chips === '1', JSON.stringify(r));
   });
-  await step(`${view.name} #40 SWITCHING takeover: from → to, then ACTIVE on the confirming shot; the STOWING/DRAWING/ACTIVE label stays at or above the 11 px floor`, async () => {
+  await step(`${view.name} #40 SWITCHING takeover: from → to, then ACTIVE once the swap window closes; the STOWING/DRAWING/ACTIVE label stays at or above the 11 px floor`, async () => {
     const pg = await open(view, 'live-switch', '', 3100); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.switching'); if (!m) return null; return { t: m.querySelector('.t').textContent, from: m.querySelector('.wt.from .wn').textContent, to: m.querySelector('.wt.to .wn').textContent, w: parseFloat(m.querySelector('#swbar').style.width), chips: getComputedStyle(document.getElementById('chips')).opacity, fromLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.from .wl')).fontSize), toLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.to .wl')).fontSize) }; });
-    await pg.waitForTimeout(700); const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { sw: !!document.querySelector('.mo.switching'), on: m ? m.querySelector('.wt.on .wn').textContent : null, lab: m ? m.querySelector('.wl').textContent : null, labPx: m ? parseFloat(getComputedStyle(m.querySelector('.wl')).fontSize) : 0, corner: document.querySelector('.ammo .wn').textContent, chips: getComputedStyle(document.getElementById('chips')).opacity }; }); await pg.close();
+    // F394: the demo gun now reports nothing on ALT (as the real gun), so ACTIVE comes from the engine's own swap window
+    await pg.waitForFunction(() => !!document.querySelector('.mo.switched'), null, { timeout: 5000 }).catch(() => {}); const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { sw: !!document.querySelector('.mo.switching'), on: m ? m.querySelector('.wt.on .wn').textContent : null, lab: m ? m.querySelector('.wl').textContent : null, labPx: m ? parseFloat(getComputedStyle(m.querySelector('.wl')).fontSize) : 0, corner: document.querySelector('.ammo .wn').textContent, chips: getComputedStyle(document.getElementById('chips')).opacity }; }); await pg.close();
     must(r, 'no SWITCHING overlay'); must(r.t === 'SWITCHING' && r.from === 'ASSAULT RIFLE' && r.to === 'SMG' && r.w > 0 && r.chips === '0', JSON.stringify(r));
     must(r.fromLabPx >= 11 && r.toLabPx >= 11, `STOWING/DRAWING label under the 11 px floor: ${JSON.stringify(r)}`);
     must(!r2.sw && r2.on === 'SMG' && /ACTIVE/.test(r2.lab) && /SMG/.test(r2.corner) && r2.chips === '1', JSON.stringify(r2));
     must(r2.labPx >= 11, `ACTIVE label under the 11 px floor: ${r2.labPx}`);
+  });
+  await step(`${view.name} #40b F394: after ALT (the gun reports nothing), the number, reserve and pips are all the secondary's`, async () => {
+    // The demo gun fires 3 AR rounds (29 left), then ALT. The secondary's own counts are the bundle's spawn `$AMMO,1`.
+    const pg = await open(view, 'live-switch', '', 3100);
+    await pg.waitForFunction(() => { const s = window.brx.engine.state(); return s.activeSlot === 1 && !s.switching; }, null, { timeout: 5000 }).catch(() => {});
+    const r = await pg.evaluate(() => {
+      const f = (window.brx.engine.frames.spawn || []).find(x => x.startsWith('$AMMO,1,')).split(',');
+      const pips = document.querySelectorAll('#pips > i');
+      return { want: [+f[2], `/${+f[3]}`], mag: +document.getElementById('mag').textContent, res: document.getElementById('res').textContent,
+        pips: pips.length, lit: Array.from(pips).filter(i => !i.classList.contains('spent')).length, slot: window.brx.engine.state().activeSlot };
+    }); await pg.close();
+    must(r.slot === 1 && r.mag === r.want[0] && r.res === r.want[1] && r.pips === r.want[0] && r.lit === r.mag, JSON.stringify(r));
   });
   await step(`${view.name} #41 game-event alert: a FEED row with its text and family colour, one line, gone by ~5 s`, async () => {
     // docs/announcer.md "The three lanes": the lead and the hill are badges on the right; every other alert is a feed row
@@ -4570,9 +4583,10 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [stage, 
       must(onBlack(r.clock.color) >= 4.4 && onBlack(r.res.color) >= 4.4, `clock ${onBlack(r.clock.color).toFixed(2)}:1, reserve ${onBlack(r.res.color).toFixed(2)}:1`);
     });
     await step(`${view.name} QA-17 night weapon switch: CONFIRMED BY YOUR GUN is not green`, async () => {
-      const pg = await open(view, 'live-switch', '&night');
+      const pg = await open(view, 'live-switch-shot', '&night');
       await pg.waitForSelector('.mo.switched .s', { timeout: 4000 });
-      const r = await look(pg, '.mo.switched .s'); await pg.close();
+      const r = await look(pg, '.mo.switched .s'); const t = await pg.evaluate(() => document.querySelector('.mo.switched .s').textContent); await pg.close();
+      must(/CONFIRMED BY YOUR GUN/.test(t), `the shot must confirm the swap: ${t}`);   // F394: 'live-switch' alone is assumed, never confirmed
       must(r && !green(r.color), `night switched line: ${JSON.stringify(r)}`);
     });
     await step(`${view.name} QA-21 live labels: TDM, the squad and PRIMARY are >= 11 px`, async () => {
