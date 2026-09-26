@@ -846,7 +846,7 @@ static void pollButtons() {
       displayDirty = true;
     }
     if (bHold) setMode(point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL);
-    if (homeNav.poll_idle(now)) displayDirty = true;
+    if (homeNav.poll_idle(now, bootHeld.a_down() || bootHeld.b_down())) displayDirty = true;
     return;
   }
   // F365: the RANGE editor is unavailable while the A58 lock is active.
@@ -889,7 +889,7 @@ static void pollButtons() {
     if (rangeEd.poll_idle(now, bootHeld.a_down() || bootHeld.b_down())) Serial.println("RANGE closed (10 s idle)");
     if (aEvent != AHoldEvent::NONE || bClicked || bHold || edited) homeNav.note_activity(now);
     if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;  // the same housekeeping as every other path
-    if (homeNav.poll_idle(now)) displayDirty = true;
+    if (homeNav.poll_idle(now, bootHeld.a_down() || bootHeld.b_down())) displayDirty = true;
     displayDirty = true;
     return;  // B's RESET is not reachable from RANGE
   }
@@ -962,7 +962,7 @@ static void pollButtons() {
     displayDirty = true;
   }
   if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;
-  if (homeNav.poll_idle(now)) displayDirty = true;
+  if (homeNav.poll_idle(now, bootHeld.a_down() || bootHeld.b_down())) displayDirty = true;
 }
 
 // ---- setup / loop ---------------------------------------------------------------------------- //

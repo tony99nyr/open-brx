@@ -443,6 +443,32 @@ static void test_home_nav_go_home_is_immediate() {
   CHECK(nav.at_home());
 }
 
+// F415: the 20 s home idle timeout must not fire mid-hold, or a long A hold started on STATS loses
+// `rangeAllowed` (it needs `!home.at_home()`) partway through and RANGE never fires -- exactly the
+// composition m5sticks3.ino's pollButtons() runs every tick (rangeAllowed recomputed, poll_idle told
+// whether A or B is currently down). On STATS, idle 18 s (short of the 20 s timeout), then hold A for
+// the 5 s RANGE threshold: RANGE must fire, and HomeNav must never have gone home mid-hold.
+static void test_home_idle_does_not_swallow_a_range_hold_started_late() {
+  HomeNav nav;
+  AHoldGesture ahold;
+  nav.leave_home(0);  // on STATS
+  uint32_t now = 0;
+  for (; now < 18000; now += 50) CHECK(!nav.poll_idle(now, /*button_down=*/false));
+  CHECK(!nav.at_home());
+
+  AHoldEvent last = AHoldEvent::NONE;
+  for (uint32_t held = 0; held <= RANGE_ENTER_HOLD_MS; held += 50) {
+    now += 50;
+    bool range_allowed = !nav.at_home();
+    last = ahold.update(/*a_down=*/true, now, range_allowed, /*station_locked=*/false);
+    CHECK(!nav.poll_idle(now, /*button_down=*/true));  // a held button is activity
+    CHECK(!nav.at_home());  // never sent home mid-hold, however long since the last real activity
+    if (last == AHoldEvent::RANGE) break;
+  }
+  CHECK(last == AHoldEvent::RANGE);
+  CHECK(!nav.at_home());
+}
+
 // ---- A's long press also cancels an open confirm (station_ui.h's own cancel path, composed with
 // HomeNav; this is the exact composition m5sticks3.ino's button handler performs) -------------
 static void test_long_press_a_cancels_an_open_confirm_and_goes_home() {
@@ -516,6 +542,7 @@ int main() {
   test_home_nav_idle_timeout_returns_home_after_20s();
   test_home_nav_activity_resets_the_idle_clock();
   test_home_nav_go_home_is_immediate();
+  test_home_idle_does_not_swallow_a_range_hold_started_late();
   test_long_press_a_cancels_an_open_confirm_and_goes_home();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);

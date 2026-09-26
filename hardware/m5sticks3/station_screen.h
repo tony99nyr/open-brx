@@ -56,8 +56,12 @@ class HomeNav {
 
   // Call every loop(): returns true the one call that times out an away-from-home page, so the
   // caller can repaint once. Wrap-safe (unsigned subtraction), matching this codebase's own style
-  // (e.g. control_point.h's beacon-staleness check).
-  bool poll_idle(uint32_t now_ms) {
+  // (e.g. control_point.h's beacon-staleness check). `button_down` is a held A or B: the same
+  // "a held button counts as activity" rule `RangeEditor::poll_idle` (station_ui.h) already uses, so
+  // a long hold (RANGE's 5 s A hold on STATS, for one) is never sent home mid-hold by the 20 s idle
+  // clock, which would drop `rangeAllowed` (it needs `!at_home()`) out from under the gesture.
+  bool poll_idle(uint32_t now_ms, bool button_down = false) {
+    if (!at_home_ && button_down) last_activity_ms_ = now_ms;
     if (!at_home_ && (now_ms - last_activity_ms_) >= HOME_IDLE_TIMEOUT_MS) {
       at_home_ = true;
       return true;
