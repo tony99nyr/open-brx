@@ -36,8 +36,9 @@ const BUILTIN_SNIPER = (): SavedGame => {
     primary: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' },
     secondary: { choice: 'off', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null },
     perk: { choice: 'fixed', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'extended_mags' } };   // A14: the perk is its own slot
+  ffa.presentation = { ...(ffa.presentation ?? {}), preset: 'silenced' } as ConfigView['presentation'];   // F282: mirrors presets.py
   return { preset_id: 'builtin:silenced_sniper', name: 'Silenced Sniper', builtin: true, created_t: 0, updated_t: 0, config: ffa,
-    desc: 'Everyone gets the bolt-action sniper with extended mags, no armor — one shot kills. No teams, no picking. (Fire-sound "silencing" waits on the weapon-tuning spec.)' };
+    desc: 'Everyone gets the bolt-action sniper with extended mags, no armor: one shot kills. No teams, no picking. Silenced: no announcer or LED flashes, and every rifle uses the Suppressor\'s fire sound.' };
 };
 // every kit shape the Kit page can show: weapon + perk (A14: all three slots), perk only, empty, weapon only
 const DEMO_LOADOUTS: (() => Loadout)[] = [
