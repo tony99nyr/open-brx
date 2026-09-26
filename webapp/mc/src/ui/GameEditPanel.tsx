@@ -74,7 +74,7 @@ function patchOf(d: GameConfig, cfg: GameConfig, modes: Modes): Partial<GameConf
  *  that unblocks it (RECALL) and surfaces in the normal error strip -- never swallowed. */
 export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange }:
   { style?: React.CSSProperties; alwaysOpen?: boolean; onDone?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
-  const { state, modes, weapons, perks, run, api, openDesigner } = useStore();
+  const { state, modes, weapons, perks, run, api, openBuild } = useStore();
   /** the config being edited, or null for "not editing". NOTHING here is sent until SAVE AND LOAD. */
   const [draft, setDraft] = useState<GameConfig | null>(() => (alwaysOpen && state ? clone(state.config) : null));
   const [confirmSave, setConfirmSave] = useState(false);      // a reshaping SAVE asks once (see `split`)
@@ -279,7 +279,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                   on this panel that navigates somewhere was the one the lock did not reach. */}
               <GhostButton size={10.5} pad="8px 12px" disabled={locked}
                 title={locked ? `THE MATCH IS ${state.phase.toUpperCase()} — RECALL FIRST, THEN EDIT.` : undefined}
-                onClick={() => { if (!locked) openDesigner({ fromLive: true }); }}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES — OPEN GAME DESIGNER ▸</GhostButton>
+                onClick={() => { if (!locked) openBuild(); }}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES — OPEN BUILD ▸</GhostButton>
               <span data-testid="game-edit-cancel"><GhostButton size={11} pad="9px 14px" onClick={cancel}>CANCEL</GhostButton></span>
               <span data-testid="game-edit-save">
                 <PrimaryButton onClick={save} disabled={locked || saving || !dirty}

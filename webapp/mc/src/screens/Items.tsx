@@ -43,9 +43,16 @@ const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: '
 const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));
 
 export function Items() {
-  const { state } = useStore();
+  const { state, focusHill } = useStore();
   const stations = state?.stations ?? [];
   const pu = usePowerups();   // A56
+  // F411 §8: PLAY's ASSIGN A HILL ▸ lands here. Scroll the panel into view and call out the slot in
+  // words (no station is pre-destined as "the hill" — the operator assigns one, any phone or Stick, to
+  // the CONTROL kind below), rather than guessing which card to ring.
+  useEffect(() => {
+    if (!focusHill || !stations.length) return;
+    document.querySelector('[data-testid="items-panel"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [focusHill, stations.length]);
   if (!state || !stations.length) return null;
   // M2 (visual QA 2026-09-24): ARMED is what each card's status says (MC-ARMED), counted apart from the
   // stations with an attention line. A BATTERY LOW used to drop an armed station out of the count, so
@@ -54,6 +61,12 @@ export function Items() {
   const nAttention = stations.filter(s => s.assigned && s.attention.length).length;
   return (
     <div style={{ marginTop: 20 }} data-testid="items-panel">
+      {focusHill && (
+        <div data-testid="items-hill-focus" role="status" style={{ font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
+          color: T.acc, border: `1px solid ${T.acc}`, background: 'rgba(57,180,255,.08)', padding: '9px 12px', marginBottom: 10 }}>
+          ASSIGN A PHONE OR STICK AS CONTROL BELOW — THAT IS YOUR HILL FOR KING OF THE HILL.
+        </div>
+      )}
       <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
         hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: colourOf('items-need-attention-count') }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? state.game_no ?? '—'} · ASSIGN, THEN PLACE: A STATION NEEDS NO WI-FI ONCE ARMED</>} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
