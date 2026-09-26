@@ -12,7 +12,8 @@ A chaos run stands up the real Session, NetServer, Compiler and session store in
 - combat: hits (multi-word shots too), kills, same-tick trades, team kills, deaths to an unrostered shooter, respawns,
   and kills at a scripted time (`timed_kill`, for a script that needs exact gaps);
 - the wire: node drops and batch flushes, duplicate, resent and reordered facts, malformed bytes;
-- the phones: clock jumps and jitter, late joins, stale heads, stale match ids, possession reports;
+- the phones: clock jumps and jitter, late joins, stale heads, stale match ids, possession reports
+  from a phone's own beacon (`possession`) and from a station (`possession_station`, `source: station`);
 - MC itself: a clean restart, a crash, the operator's END and the time limit.
 
 After every step it checks every invariant.
@@ -142,6 +143,13 @@ A field bug works the same way: write the actions that the field saw as a script
 ## Known limits
 
 - The fields are MockNodes, not phones. `engine.js` is covered by the stage mirror, not here.
+- The harness has no unbound "utility" node type. `possession_station` sends its report from an
+  ordinary rostered field node (the last one), so it can drop, reconnect and go stale like any other --
+  faithful for the wire (`scoring._possession` does not read the reporter's binding) but not a real
+  Stick, and it can also take part in combat. A `hold_ms` that repeats its last value (never falls)
+  models a report sent while the point is CONTESTED (F382: the phone and the Stick both pause their
+  hold clock there); MC's merge-by-max is unchanged by design, so this is a wire-shape check, not a
+  test of the pause itself (that lives in `app/`'s own tests).
 - The field has no station nodes, and a run plays one match. `game_byte_matches_stations` compares each
   node with the byte MC would arm a station with. The bump to a new match is covered by
   `tests/test_mc_stations_game_byte.py`.

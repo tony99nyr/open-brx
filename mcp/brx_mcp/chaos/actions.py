@@ -419,6 +419,34 @@ async def possession(world: World, node: int, tid: int, add_ms: int) -> None:
                             "hold_ms": {str(k): v for k, v in held.items()}, "observed_ms": obs})
 
 
+def _pick_possession_station(world: World, rng: random.Random):
+    """The field's LAST node stands in for a station (Stick): the wire fact is identical
+    (`type: possession`, `source: "station"`), and `scoring._possession` does not care whether the
+    reporting node is bound to a player, so one field node modelling it is a faithful proxy for the
+    merge, the reconnect-queue and the contested-pause behaviour this action drives."""
+    if world.scenario.mode not in ("koth", "domination"):
+        return None
+    station = next((n for n in world.nodes if n.index == world.n_nodes - 1 and n.arm_state == "live"), None)
+    if station is None:
+        return None
+    tids = sorted({world.tid(t) for t in world.team_ids()} | {2})
+    # add_ms=0 models a report sent while the point is CONTESTED: F382 pauses the hold clock (on the
+    # phone AND the Stick) while contested, so the station resends the SAME cumulative total rather
+    # than a smaller or a larger one.
+    return {"node": station.index, "tid": rng.choice(tids), "add_ms": rng.choice((0, 1000, 5000, 20000))}
+
+
+@action("possession_station", pick=_pick_possession_station)
+async def possession_station(world: World, node: int, tid: int, add_ms: int) -> None:
+    """A STATION's (Stick) cumulative hill tally, `source: "station"`: the same merge-by-max rule as a
+    phone's beacon report (mc/API.md `possession`). `add_ms=0` models a report sent while CONTESTED."""
+    held = world.possession.setdefault(node, {})
+    held[tid] = held.get(tid, 0) + add_ms
+    obs = sum(held.values())
+    world.nodes[node].emit({"type": "possession", "site": "A", "source": "station",
+                            "hold_ms": {str(k): v for k, v in held.items()}, "observed_ms": obs})
+
+
 # --------------------------------------------------------------------------- MC itself
 def _pick_restart(world: World, rng: random.Random):
     return {} if world.session.phase == "live" else None
