@@ -13,6 +13,6 @@
 // imported, so nothing needs them in the graph. A five-entry list plus a test that reads the folder
 // costs less than depending on a behaviour that is not promised.
 //
-// `state.py`'s MODES lists six modes; koth has no art yet (FOLLOWUPS: "mode art for koth (MC + phone),
-// melee weapon art"). Add the file AND the id here together.
-export const MODE_ART: ReadonlySet<string> = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);
+// `state.py`'s MODES lists six modes; all six have art now (S32 closed the koth gap). melee is not a
+// mode, so it is never in this set.
+export const MODE_ART: ReadonlySet<string> = new Set(['tdm', 'ffa', 'koth', 'infection', 'lms', 'extraction']);

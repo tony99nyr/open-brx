@@ -175,7 +175,7 @@ def test_ui_art_coverage_and_weapon_tree_parity():
     modes = set(re.findall(r'\{"mode":\s*"([a-z0-9_]+)"', mode_block))
     assert modes, "MODES list changed shape; update the asset coverage guard"
     weapons = json.loads(WEAPONS_JSON.read_text(encoding="utf-8"))["weapons"]
-    mode_gaps = {"koth"}
+    mode_gaps: set[str] = set()
     weapon_gaps = {"melee"}
     for mode in sorted(modes - mode_gaps):
         assert (app / "modes" / f"{mode}.jpg").is_file(), f"app missing mode art: {mode}"

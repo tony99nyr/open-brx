@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-26 (F415 filed: per-mode MATCH SETTINGS, KOTH hold target, MVP after the bench; F414 filed to post-mvp.md: a reliable Codex delegation path; F413 filed: teams default red + blue, operator picks team count and colours, MVP after the bench; F412 filed to post-mvp.md: a melee toggle or damage preset; F372 closed, powerups on by default; F221 closed: Tony approved the alert colours gallery; F390 to post-mvp.md: HELD is MVP, MUSTER post-launch; F282: Tony keeps the USP-S on its own Q04 under SILENCED; F400 desk lows fixed (11px label, CONFIRMED bubble), moved MVP DESK to MVP BENCH for its bench check. F394 built at the desk, bench check left; F380 row marked built; F410 closed: MVP is outdoors-only server-side already (compile.play_volume, default_config default outdoor, unchanged), docs/platform and docs/manual brought in line, quiet fallback for an unrecognised venue kept; hiding the venue picker in the console is F411's own work, not repeated here. F282 moved from MVP DESK to MVP BENCH: build is done, only the bench eyes-and-ears pass is left. F411 brief written, spec/design/games-redesign.md, route brx3; F403 closed; F402 closed; F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F406 filed to post-mvp.md).
+Updated: 2026-09-26 (S32 closed: koth mode art shipped, direction C; F415 filed: per-mode MATCH SETTINGS, KOTH hold target, MVP after the bench; F414 filed to post-mvp.md: a reliable Codex delegation path; F413 filed: teams default red + blue, operator picks team count and colours, MVP after the bench; F412 filed to post-mvp.md: a melee toggle or damage preset; F372 closed, powerups on by default; F221 closed: Tony approved the alert colours gallery; F390 to post-mvp.md: HELD is MVP, MUSTER post-launch; F282: Tony keeps the USP-S on its own Q04 under SILENCED; F400 desk lows fixed (11px label, CONFIRMED bubble), moved MVP DESK to MVP BENCH for its bench check. F394 built at the desk, bench check left; F380 row marked built; F410 closed: MVP is outdoors-only server-side already (compile.play_volume, default_config default outdoor, unchanged), docs/platform and docs/manual brought in line, quiet fallback for an unrecognised venue kept; hiding the venue picker in the console is F411's own work, not repeated here. F282 moved from MVP DESK to MVP BENCH: build is done, only the bench eyes-and-ears pass is left. F411 brief written, spec/design/games-redesign.md, route brx3; F403 closed; F402 closed; F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F406 filed to post-mvp.md).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,7 +9,7 @@ Updated: 2026-09-26 (F415 filed: per-mode MATCH SETTINGS, KOTH hold target, MVP 
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 74.** Desk 4 · bench 69 · decision 1.
+**MVP open: 73.** Desk 4 · bench 69 · decision 0.
 
 **MVP DESK (4),** a keyboard is enough:
 - 🔴 **F411**
@@ -21,8 +21,7 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟡 **Q13** · **F333** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F381** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398** · **F282**
 - 🟢 **F339**
 
-**MVP DECISION (1),** awaiting Tony:
-- 🟡 **S32**
+**MVP DECISION (0),** awaiting Tony:
 
 The index lists are guarded (`test_docs_hygiene`): every row is listed once, under its own group, with its own
 marker. If a list disagrees with a row, the ROW is right.
@@ -385,7 +384,6 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 
 Tony's call. Each row says what the answer unblocks.
 
-- **S32 🟡 MODE ART FOR koth AND MELEE: TONY'S TWO RENDERS.** The fallback shipped 2026-09-25 (`d79a268e`): the phone briefing draws mode art as an `<img>` with a glyph fallback, as MC and weapon art already do. `mcp/tests/test_ui_contract.py` pins art for every mode and weapon in both trees, with koth and melee as the known gaps (the test fails once the art lands, so remove the gap then). D7 decided: keep both trees; weapon art stays byte-identical (guarded), mode art is encoded per tree. Needs: a koth render and a melee render from Tony, converted to 640x350 JPEGs in `app/www/assets/` and `webapp/mc/public/assets/`. `decision`.
 
 
 
