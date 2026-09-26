@@ -18,8 +18,12 @@ import { LifeFields, MiscLoadoutsFields, SlotFields, SpawnFields, type Catalogue
 import { PieceCard } from './presets/PieceCard';
 
 const weaponCatalogue = (weapons: WeaponView[], slot: 'primary' | 'secondary'): CatalogueRow[] =>
-  weapons.filter(w => !w.pickup_only).filter(w => slot === 'secondary' || w.role !== 'sidearm')
-    .map(w => ({ id: w.weapon_id, name: w.name, role: w.role, tags: w.tags }));
+  weapons.filter(w => !w.pickup_only)
+    // PRIMARY excludes the sidearm role (no pistol is ever a primary) AND a `lethal: false` support
+    // weapon (weapons.json's own placement rule -- a support weapon may never be a PRIMARY, so its
+    // TYPE toggle and its FIXED ITEM list must never offer one there either).
+    .filter(w => slot === 'secondary' || (w.role !== 'sidearm' && w.lethal !== false))
+    .map(w => ({ id: w.weapon_id, name: w.name, types: w.types ?? [] }));
 const perkCatalogue = (perks: PerkView[]): CatalogueRow[] =>
   perks.filter(p => !p.hidden).map(p => ({ id: p.perk_id, name: p.name }));
 

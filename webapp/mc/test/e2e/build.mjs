@@ -4,7 +4,7 @@
 // reaches BUILD the way an operator does: PLAY's `BUILD ▸` link. Only the save-error step swaps one route.
 //
 //   node test/e2e/build.mjs
-//   ONLY=<step> node test/e2e/build.mjs   # tabs | life | spawn | delete | save-error | leave-confirm
+//   ONLY=<step> node test/e2e/build.mjs   # tabs | life | spawn | type-toggle | delete | save-error | leave-confirm
 //   HEADED=1 / KEEP_SHOTS=1 / VITE_PORT=…
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -141,6 +141,69 @@ step('spawn', async ({ browser, base }) => {
   await until(() => delay.inputValue().then(v => v === '0' || v === '3'), 3000, 'the delay to snap away from 1-2s');
   ok(`a 1s delay is refused by the guard (now ${await delay.inputValue()})`);
   ok(`AUTO→STATION delay + the 1-2s guard   ${await shot(pg, 'spawn-guard')}`);
+  await pg.context().close();
+});
+
+step('type-toggle', async ({ browser, base }) => {
+  // F411 type toggles (games-presets.md, docs/spec/design/games-presets.md §5): building a PRIMARY
+  // preset from RIFLES + LONG RANGE must select exactly the union of both types, save, and land the
+  // new preset on the BUILD shelf — screen-truth, not internal state (ui-build-verify §4).
+  const pg = await open(browser, base, 1280);
+  await tab(pg, 'primary').click();
+  await until(() => pg.locator('[data-testid="piece-card-builtin:primary:all"]').count().then(n => n === 1), 4000, 'the ALL card');
+  await pg.locator('[data-testid="piece-card-builtin:primary:all"]').click();
+  await pg.getByRole('button', { name: 'NEW ▸' }).click();
+  await until(() => pg.locator('[data-testid="slot-type-row"]').count().then(n => n === 1), 4000, 'the TYPE row');
+  await pg.locator('input[aria-label="preset name"]').fill('RIFLES PRESET');
+
+  const typeRow = pg.locator('[data-testid="slot-type-row"]');
+  const onlyRow = pg.locator('[data-testid="slot-only-row"]');
+  // strip the locked chip's "🔒 " prefix (games-presets.md's own note: a weapon covered by an active
+  // type toggle cannot be un-picked by its own chip) so a name still compares exactly
+  const selectedNames = () => onlyRow.locator('button[aria-pressed="true"]').allInnerTexts()
+    .then(texts => texts.map(t => t.replace(/^🔒\s*/, '')));
+
+  expect((await selectedNames()).length === 0, 'ALL starts with no weapon chip selected (empty = any of the above)');
+  await typeRow.getByRole('button', { name: 'RIFLES', exact: true }).click();
+  await until(() => selectedNames().then(n => n.length === 7), 3000, 'RIFLES alone to select 7 weapons');
+  ok('RIFLES alone selects its 7 weapons');
+  // LONG RANGE now reads PARTIAL (2 of its 3 ids already selected via RIFLES: SNIPER RIFLE and CHARGE
+  // RIFLE are both `rifle` and `long`) -- its label is `◐ LONG RANGE 2/3`, so match loosely rather
+  // than by the exact OFF-state text.
+  await typeRow.getByRole('button', { name: /LONG RANGE/ }).click();
+  await until(() => selectedNames().then(n => n.length === 8), 3000, 'RIFLES + LONG RANGE to union to 8 weapons');
+  const names = await selectedNames();
+  expect(names.includes('AMR'), `AMR (long-only) joins the union (saw ${JSON.stringify(names)})`);
+  expect(names.includes('ASSAULT RIFLE'), 'ASSAULT RIFLE (rifle) stays selected');
+  expect(!names.includes('SMG'), 'SMG (neither type) is never selected');
+  expect((await typeRow.getByRole('button', { name: 'RIFLES', exact: true }).getAttribute('aria-pressed')) === 'true', 'RIFLES toggle itself reads ON');
+  expect((await typeRow.getByRole('button', { name: /LONG RANGE/ }).getAttribute('aria-pressed')) === 'true', 'LONG RANGE toggle itself reads ON');
+  ok(`RIFLES + LONG RANGE unions to 8 weapons on screen   ${await shot(pg, 'type-toggle-union')}`);
+
+  // turning RIFLES back off must drop the rifle-only weapons but keep the ones LONG RANGE still covers
+  await typeRow.getByRole('button', { name: 'RIFLES', exact: true }).click();
+  await until(() => selectedNames().then(n => n.length === 3), 3000, 'RIFLES off to drop to LONG RANGE\'s own 3');
+  const afterOff = await selectedNames();
+  expect(afterOff.includes('AMR') && afterOff.includes('SNIPER RIFLE') && afterOff.includes('CHARGE RIFLE'),
+    `LONG RANGE still covers AMR/SNIPER RIFLE/CHARGE RIFLE (saw ${JSON.stringify(afterOff)})`);
+  expect(!afterOff.includes('ASSAULT RIFLE'), 'ASSAULT RIFLE (rifle-only) is dropped once RIFLES is off');
+  ok('toggling RIFLES off keeps only the weapons LONG RANGE still covers');
+
+  await pg.getByRole('button', { name: 'SAVE ▸' }).click();
+  await until(() => pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'RIFLES PRESET' }).count().then(n => n === 1), 4000, 'the saved preset back on the BUILD shelf');
+  ok(`RIFLES PRESET lands on the PRIMARY shelf   ${await shot(pg, 'type-toggle-saved')}`);
+  await pg.context().close();
+});
+
+step('type-toggle-narrow', async ({ browser, base }) => {
+  // The same editor at 900px — the toggle row must still lay out with no page scroll (checklist §6).
+  const pg = await open(browser, base, 900);
+  await tab(pg, 'primary').click();
+  await pg.locator('[data-testid="piece-card-builtin:primary:all"]').click();
+  await pg.getByRole('button', { name: 'NEW ▸' }).click();
+  await until(() => pg.locator('[data-testid="slot-type-row"]').count().then(n => n === 1), 4000, 'the TYPE row at 900px');
+  expect(!(await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), '900px: no sideways page scroll with the TYPE row shown');
+  ok(`the TYPE row at 900px   ${await shot(pg, 'type-toggle-900')}`);
   await pg.context().close();
 });
 

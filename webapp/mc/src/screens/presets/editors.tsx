@@ -2,7 +2,7 @@
 // `value` shape — LIFE's three numbers, SPAWN's respawn block, the three slot kinds (PRIMARY/
 // SECONDARY/PERKS share one shape, `SlotRule`), and MISC LOADOUTS' blanket. GAME MODE and GAMEPLAY get
 // no editor at all (read-only, brief §3).
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type {
   GamePiece, ItemKind, LifePiece, MiscLoadoutsPiece, Respawn, SlotChoice, SlotRule,
   StationProtectS, TimedProtectS, WeaponDelayMs,
@@ -10,16 +10,18 @@ import type {
 import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../../api/contract.gen';
 import { BTN_RESET, Micro, OutlineTag, Seg, Toggle, ValueBox } from '../../ui';
 import { F, T } from '../../tokens';
-import { roleOf } from '../../tokens';
-import { classesOf, guardSpawnDelay, onlyIdsForClass, spawnBuiltinValue, type ClassableItem } from './helpers';
+import {
+  deriveTypeSelection, guardSpawnDelay, idsCoveredByActiveTypes, idsForType, spawnBuiltinValue,
+  toggleManualId, toggleType, typeSelectionIds, typesOf, WEAPON_TYPES, type ClassableItem, type TypeSelection,
+} from './helpers';
 
 /** A catalogue row an editor can show (a weapon or a perk) — id, a display name, and whatever
  *  `ClassableItem` needs for the class shortcuts (weapons only; perks carry no `role`). */
 export interface CatalogueRow extends ClassableItem { name: string }
 
-function Row({ label, children, note }: { label: string; children: ReactNode; note?: string }) {
+function Row({ label, children, note, testId }: { label: string; children: ReactNode; note?: string; testId?: string }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderBottom: `1px solid ${T.line}`, padding: '10px 0' }}>
+    <div data-testid={testId} style={{ display: 'flex', flexDirection: 'column', gap: 6, borderBottom: `1px solid ${T.line}`, padding: '10px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(600, 11), letterSpacing: '.14em', color: T.micro, minWidth: 150 }}>{label}</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{children}</span>
@@ -29,12 +31,31 @@ function Row({ label, children, note }: { label: string; children: ReactNode; no
   );
 }
 
-function Chip({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
+function Chip({ label, on, locked, onClick }: { label: string; on: boolean; locked?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="hov-acc" aria-pressed={on} disabled={locked} onClick={onClick}
+      title={locked ? 'COVERED BY A TYPE TOGGLE ABOVE — TURN THAT OFF TO EDIT THIS ONE' : undefined}
+      style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: 36,
+        border: `1px solid ${on ? T.acc : T.line}`, background: on ? 'rgba(57,180,255,.1)' : 'transparent',
+        color: on ? T.acc : T.dim, cursor: locked ? 'default' : 'pointer', opacity: locked ? 0.6 : 1 }}>
+      {locked && '🔒 '}{label}
+    </button>
+  );
+}
+
+/** A type toggle shows a third, PARTIAL state (ui-build-verify §2: "partial states need their own
+ *  look") when some but not all of its ids are already selected by hand — distinct from ON (every id
+ *  selected because the toggle itself is active) so the operator never reads "some" as "all". */
+function TypeChip({ label, state, count, total, onClick }:
+  { label: string; state: 'on' | 'partial' | 'off'; count: number; total: number; onClick: () => void }) {
+  const on = state === 'on';
+  const partial = state === 'partial';
   return (
     <button type="button" className="hov-acc" aria-pressed={on} onClick={onClick}
       style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: 36,
-        border: `1px solid ${on ? T.acc : T.line}`, background: on ? 'rgba(57,180,255,.1)' : 'transparent', color: on ? T.acc : T.dim, cursor: 'pointer' }}>
-      {label}
+        border: `1px solid ${on || partial ? T.acc : T.line}`, background: on ? 'rgba(57,180,255,.1)' : 'transparent',
+        color: on ? T.acc : partial ? T.dim : T.micro, cursor: 'pointer' }}>
+      {partial ? `◐ ${label} ${count}/${total}` : label}
     </button>
   );
 }
@@ -108,14 +129,30 @@ const KINDS_FOR: Record<'primary' | 'secondary' | 'perks', ItemKind[]> = {
 
 /** PRIMARY / SECONDARY / PERKS share one shape (`SlotRule`, games-presets.md §1). `offAllowed` is
  *  false for PRIMARY: every mode needs a primary weapon (brief §3's "off where legal"). */
+/** PRIMARY / SECONDARY / PERKS share one shape (`SlotRule`, games-presets.md §1). `offAllowed` is
+ *  false for PRIMARY: every mode needs a primary weapon (brief §3's "off where legal").
+ *
+ *  F411: the TYPE row replaces the old CLASS shortcut (one mechanism, not two). `sel` is local,
+ *  ephemeral toggle state seeded ONCE from the piece's saved `only_ids` on mount (`helpers.ts
+ *  deriveTypeSelection`) — a fresh mount happens every time BUILD opens a different piece, since the
+ *  whole editor un-renders on close (Build.tsx), so re-opening always starts from a clean read of
+ *  what is actually saved. */
 export function SlotFields({ slotKind, value, onChange, catalogue, offAllowed }:
   { slotKind: 'primary' | 'secondary' | 'perks'; value: SlotRule; onChange: (v: SlotRule) => void; catalogue: CatalogueRow[]; offAllowed: boolean }) {
   const options = [{ value: 'player', label: 'PLAYERS' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(offAllowed ? [OFF] : [])] as { value: SlotChoice; label: string }[];
-  const classes = classesOf(catalogue);
-  const toggleOnly = (id: string) => {
-    const has = value.only_ids.includes(id);
-    onChange({ ...value, only_ids: has ? value.only_ids.filter(x => x !== id) : [...value.only_ids, id] });
+  const types = typesOf(catalogue);
+  const [sel, setSel] = useState<TypeSelection>(() => deriveTypeSelection(value.only_ids, catalogue));
+  const covered = idsCoveredByActiveTypes(sel, catalogue);
+
+  const applyType = (next: TypeSelection) => {
+    setSel(next);
+    onChange({ ...value, only_ids: typeSelectionIds(next, catalogue) });
   };
+  const toggleOnly = (id: string) => {
+    if (covered.has(id)) return;   // locked chip, disabled — belt and braces against a stray click
+    applyType(toggleManualId(sel, id));
+  };
+
   return (
     <>
       <Row label="WHO PICKS">
@@ -130,16 +167,21 @@ export function SlotFields({ slotKind, value, onChange, catalogue, offAllowed }:
       )}
       {(value.choice === 'player' || value.choice === 'host') && (
         <>
-          {classes.length > 0 && (
-            <Row label="CLASS" note="A SNAPSHOT — IT WILL NOT AUTO-UPDATE IF THE CATALOGUE GAINS A WEAPON LATER (games-presets.md §14)">
-              {classes.map(c => (
-                <Chip key={c} label={roleOf(c).label} on={false} onClick={() => onChange({ ...value, only_ids: onlyIdsForClass(catalogue, c) })} />
-              ))}
+          {types.length > 0 && (
+            <Row label="TYPE" testId="slot-type-row" note="A SNAPSHOT — A TYPE WILL NOT AUTO-UPDATE IF THE CATALOGUE GAINS A WEAPON OF IT LATER (games-presets.md §14)">
+              {types.map(t => {
+                const meta = WEAPON_TYPES.find(w => w.id === t)!;
+                const ids = idsForType(catalogue, t);
+                const count = ids.filter(id => value.only_ids.includes(id)).length;
+                const state: 'on' | 'partial' | 'off' = sel.active.includes(t) ? 'on' : count > 0 ? 'partial' : 'off';
+                return <TypeChip key={t} label={meta.label} state={state} count={count} total={ids.length}
+                  onClick={() => applyType(toggleType(sel, t))} />;
+              })}
             </Row>
           )}
-          <Row label="ONLY THESE" note={value.only_ids.length === 0 ? 'EMPTY = ANY OF THE ABOVE' : undefined}>
+          <Row label="ONLY THESE" testId="slot-only-row" note={value.only_ids.length === 0 ? 'EMPTY = ANY OF THE ABOVE' : undefined}>
             {catalogue.map(c => (
-              <Chip key={c.id} label={c.name.toUpperCase()} on={value.only_ids.includes(c.id)} onClick={() => toggleOnly(c.id)} />
+              <Chip key={c.id} label={c.name.toUpperCase()} on={value.only_ids.includes(c.id)} locked={covered.has(c.id)} onClick={() => toggleOnly(c.id)} />
             ))}
           </Row>
         </>
