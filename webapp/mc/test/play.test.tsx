@@ -382,3 +382,41 @@ describe('PLAY — Lows', () => {
     m.unmount();
   });
 });
+
+describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ truly cancels', () => {
+  it('✓ commits the typed name', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getFavourites settles
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'New Name');
+    const saveBtn = m.find('button[aria-label="save rename"]')[0] as HTMLButtonElement;
+    await act(async () => { saveBtn.click(); });
+    // renameFavourite's own chain (updateFavourite, then refreshFavourites -> getFavourites ->
+    // setFavourites) is a few promise hops deep -- flush it fully while still MOUNTED, or its last
+    // `setFavourites` lands on an unmounted Games in whichever test runs next.
+    await act(async () => { await new Promise(r => setTimeout(r, 10)); });
+    const favs = await api.getFavourites();
+    expect(favs[0].name).toBe('New Name');
+    m.unmount();
+  });
+
+  it('✕ discards the typed name, even though the click blurs the input first', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'Should Not Save');
+    const cancelBtn = m.find('button[aria-label="cancel rename"]')[0] as HTMLButtonElement;
+    await act(async () => { cancelBtn.click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const favs = await api.getFavourites();
+    expect(favs[0].name, 'cancel must not have sent the typed name to the server').toBe('Old Name');
+    m.unmount();
+  });
+});
