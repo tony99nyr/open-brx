@@ -87,7 +87,7 @@ below (powerups, Shields, KOTH, the Stick) is next.
 
 Running total: 55 min.
 
-### Group 1: two phones, two guns, powerups and a real fight (about 215 min; the highest value)
+### Group 1: two phones, two guns, powerups (about 120 min; the highest value)
 
 Kit: both guns and headsets, the Pixel 5 and the iPhone X (or the green Pixel, per STOP POINT 1), MC as
 restarted at setup, the black Pixel and the Stick as stations, a tape measure.
@@ -117,50 +117,12 @@ restarted at setup, the black Pixel and the Stick as stations, a tape measure.
      the overshield first, it survives a respawn's `spawned` state.
    - Log: a pass/fail per item, in `bench-2026-09-24.md`'s own tables.
 
-STOP POINT 3, THE 3 H LINE: if cut here, the new console, the iPhone build, the release loop, F348, F394,
-station ids and the whole powerup setup (S58, the shipped F372 default) are all proven, the single biggest and
-most valuable block. Everything after this is next sitting's priority list, already ordered below.
+STOP POINT 3: if cut here, the new console, the iPhone build, the release loop, F348, F394, station ids and the
+whole powerup setup (S58, the shipped F372 default) are all proven, the single biggest and most valuable block.
+**KOTH is next, ahead of the rest of sitting C's tail**: it is MVP, being built right now (F382-F386), and costs
+only 15 min for high value, so it must land inside the 3 h rather than after it.
 
-Running total: 180 min.
-
-6. **11.4, the phone station's range edit (F365; 10 min).** Control: a tap and a knock do nothing. Pass: a 1.5 s
-   hold opens RANGE, the edit reaches MC (EDITED ON STATION) and the walking phone's threshold changes. Log:
-   MC's feed lines; the walk-in RSSI is Pixel-side, or judge the iPhone's own screen by eye.
-7. **F400, the pickup switch card (10 min).** Take a heavy pickup. Pass: the full switch-card callout shows on
-   the grant, on both SELECT directions and on the empty switch-back; ALT still holds its own time; SELECT works
-   at once while the card is up. Then the two 0.4.14 lows: the STOWING/DRAWING/ACTIVE label reads at a legible
-   size (was 10 px, under the 11 px floor); the ACTIVE bubble closes on the equip echo, not just its timer (was
-   stuck on READY). **Ask Tony** whether a kill card should wait under the switch card (his lean, unconfirmed;
-   see "Decisions for Tony" below). Log: a pass/fail per sub-check, and Tony's answer.
-8. **F381, a same-weapon pickup stacks (5 min).** Take Rockets, fire once, take Rockets again. Pass: 3 held, a
-   third take caps at 4 (`PU_STACK_CAP_X`). Log: the count after each take.
-9. **The pickup voice audition (10 min).** `$VOL,69`, arm's length, one gun. Play VA56 "Rocket Launcher!" and
-   VX0S "Weapon Swap" alone, each twice. Then take a real Rockets pickup in a match and listen for what actually
-   plays on the equip (today suspected to be the shotgun-like sound riding in the captured `$WEAP` head). Take
-   an Overshield and confirm it plays the shield-charge cue (N102) with no voice line. Log: Tony's pick, and
-   what actually played on each real pickup.
-10. **F380, pickup timings with the phone log on (10 min).** Repeat several claims with MC's session log running
-    (`python -m brx_mcp.mc.diag <session.sqlite>`; this reads MC's own record, so it works for both phones).
-    Pass: no claim reads NOT ANSWERING while a grant is still on its way (the `POWERUP_NO_ANSWER_MS` window).
-    Log: each claim's dwell-to-grant time.
-11. **F399, the Stick claim-latency re-run (10 min).** Nine claims at the Stick station. Pass: claim-ready to
-    grant lands close to 1 s, not the old 2-13 s, median 9 s. Log: MC's session log, same tool as F380.
-12. **F374, the HELD Stick carried out of Wi-Fi before START (10 min).** Arm the Stick as a pickup, carry it out
-    of Wi-Fi, then push START. Control: part 1 (LOBBY/countdown) already CONFIRMED. Pass: the Stick reads READY
-    within a second of `first_at_s`, and no phone claims before it.
-13. **The kill-cue A/B/A (F347, closed: confirm on 0.4.14; 10 min).** t23 EMPTY. A kill confirm with the shield
-    up, then at 0, then up again. Pass: on time, all three.
-14. **11.8, death first (F158, F3, F21, F375 step 6; 15 min).** The scream and the death stop are never cut; a
-    kill confirm, a medal or a hill line queues after it. Step 6 (F375, fixed in code, bench pending): take a
-    player under 15 HP, then kill within about 1 s, three times normal and three times with a Shields life
-    broken first. Pass: "Health critical" never plays after the scream.
-15. **F298, a real Shields fight (10 min), the announcer and medal audio (S57).** A kill confirm, first blood, a
-    double kill, a lead change. Watch for a wrong IR magnitude (S57: 22 read as 28).
-- **Log:** each item against its own pass rule, in `docs/experiment-log/2026-09.md`.
-
-STOP POINT 4: sitting C's whole list, above, is proven. KOTH and the Stick-alone work below are next.
-
-Running total: 270 min.
+Running total: 175 min.
 
 ### Group 2: KOTH, phone hill then Stick hill (about 15 min; same hardware, no change)
 
@@ -173,9 +135,9 @@ Running total: 270 min.
    hold; Pixel-side).
 - **Log:** the times to CAPTURING, HELD, CONTESTED and neutral; both phones' read of the point.
 
-STOP POINT 5: KOTH is proven on both hill sources. The Stick-alone and field-walk checks below are polish.
+STOP POINT 4: KOTH is proven on both hill sources. The Stick-alone checks share this setup and are next.
 
-Running total: 285 min.
+Running total: 190 min.
 
 ### Group 3: the Stick alone (about 15 min; no guns, no match)
 
@@ -185,20 +147,74 @@ Running total: 285 min.
    CONTESTED, LOSING (MATCH OVER was already seen in Group 2, game 2). Pass: each reads clearly, no clipped text.
 - **Log:** a pass/fail per screen and per gesture.
 
-STOP POINT 6.
+STOP POINT 5, THE 3 H LINE: the new console, the release, F348, F394, station ids, the whole powerup setup and
+KOTH on both hill sources are all proven, plus the Stick's range-edit gesture and its screen walk. Everything
+after this is next sitting's priority list, already ordered below.
 
-Running total: 300 min.
+Running total: 205 min.
 
-### Group 4: a field walk (about 15 min; the Stick and one phone)
+### Group 4: two phones, two guns, the rest of sitting C (about 70 min; same hardware, no change)
+
+Kit: as Group 1.
+
+1. **11.4, the phone station's range edit (F365; 10 min).** Control: a tap and a knock do nothing. Pass: a 1.5 s
+   hold opens RANGE, the edit reaches MC (EDITED ON STATION) and the walking phone's threshold changes. Log:
+   MC's feed lines; the walk-in RSSI is Pixel-side, or judge the iPhone's own screen by eye.
+2. **F400, the pickup switch card (10 min).** Take a heavy pickup. Pass: the full switch-card callout shows on
+   the grant, on both SELECT directions and on the empty switch-back; ALT still holds its own time; SELECT works
+   at once while the card is up. Then the two 0.4.14 lows: the STOWING/DRAWING/ACTIVE label reads at a legible
+   size (was 10 px, under the 11 px floor); the ACTIVE bubble closes on the equip echo, not just its timer (was
+   stuck on READY). **Ask Tony** whether a kill card should wait under the switch card (his lean, unconfirmed;
+   see "Decisions for Tony" below). Log: a pass/fail per sub-check, and Tony's answer.
+3. **F381, a same-weapon pickup stacks (5 min).** Take Rockets, fire once, take Rockets again. Pass: 3 held, a
+   third take caps at 4 (`PU_STACK_CAP_X`). Log: the count after each take.
+4. **F380, pickup timings with the phone log on (10 min).** Repeat several claims with MC's session log running
+   (`python -m brx_mcp.mc.diag <session.sqlite>`; this reads MC's own record, so it works for both phones).
+   Pass: no claim reads NOT ANSWERING while a grant is still on its way (the `POWERUP_NO_ANSWER_MS` window).
+   Log: each claim's dwell-to-grant time.
+5. **F399, the Stick claim-latency re-run (10 min).** Nine claims at the Stick station. Pass: claim-ready to
+   grant lands close to 1 s, not the old 2-13 s, median 9 s. Log: MC's session log, same tool as F380.
+6. **F374, the HELD Stick carried out of Wi-Fi before START (10 min).** Arm the Stick as a pickup, carry it out
+   of Wi-Fi, then push START. Control: part 1 (LOBBY/countdown) already CONFIRMED. Pass: the Stick reads READY
+   within a second of `first_at_s`, and no phone claims before it.
+7. **11.8, death first (F158, F3, F21, F375 step 6; 15 min).** The scream and the death stop are never cut; a
+   kill confirm, a medal or a hill line queues after it. Step 6 (F375, fixed in code, bench pending): take a
+   player under 15 HP, then kill within about 1 s, three times normal and three times with a Shields life
+   broken first. Pass: "Health critical" never plays after the scream.
+- **Log:** each item against its own pass rule, in `docs/experiment-log/2026-09.md`.
+
+STOP POINT 6: sitting C's higher-value checks are all done. The Shields fight, the kill-cue retest and the
+voice audition are the lowest value per minute of the two-phone work and are next.
+
+Running total: 275 min.
+
+### Group 5: the Shields fight, the kill-cue retest and the voice audition (about 30 min; same hardware, no change)
+
+1. **The pickup voice audition (10 min).** `$VOL,69`, arm's length, one gun. Play VA56 "Rocket Launcher!" and
+   VX0S "Weapon Swap" alone, each twice. Then take a real Rockets pickup in a match and listen for what actually
+   plays on the equip (today suspected to be the shotgun-like sound riding in the captured `$WEAP` head). Take
+   an Overshield and confirm it plays the shield-charge cue (N102) with no voice line. Log: Tony's pick, and
+   what actually played on each real pickup.
+2. **The kill-cue A/B/A (F347, closed: confirm on 0.4.14; 10 min).** t23 EMPTY. A kill confirm with the shield
+   up, then at 0, then up again. Pass: on time, all three.
+3. **F298, a real Shields fight (10 min), the announcer and medal audio (S57).** A kill confirm, first blood, a
+   double kill, a lead change. Watch for a wrong IR magnitude (S57: 22 read as 28).
+- **Log:** each item against its own pass rule, in `docs/experiment-log/2026-09.md`.
+
+STOP POINT 7.
+
+Running total: 305 min.
+
+### Group 6: a field walk (about 15 min; the Stick and one phone)
 
 1. **F383, Stick-hears-phone at 3, 5 and 7 m (15 min).** The -75 dBm default. Walk a phone in from beyond 7 m.
    Pass: a clean present/absent read at each of 3, 5 and 7 m, with no flapping. Log: the RSSI at each mark.
 
-STOP POINT 7.
+STOP POINT 8.
 
-Running total: 315 min.
+Running total: 320 min.
 
-### Group 5: one gun, no phone (about 15 min; lowest priority)
+### Group 7: one gun, no phone (about 15 min; lowest priority)
 
 1. **The `$PLAY` spacing check (5 min).** One gun on the laptop MCP, the phone app force-stopped. `send_batch` at
    `gap_ms=150`, then `gap_ms=300`. Pass: all four clips play, in order, at both gaps.
@@ -207,7 +223,8 @@ Running total: 315 min.
    muzzle-flash and loudness difference, or none, is agreed on both readings, not just the first.
 - **Log:** what Tony saw and heard, per pass.
 
-**Total across every group: about 330 min (5 h 30 min). The 3 h line is STOP POINT 3, inside Group 1.**
+**Total across every group: about 335 min (5 h 35 min). The 3 h line is STOP POINT 5, at the end of Group 3
+(the Stick alone), right after KOTH.**
 
 Rules for every sitting: the preflight in [`gotchas.md`](gotchas.md) ("Before a bench session", which holds the rig
 check), `$VOL,65`, and never end on a bare `$CLEAR` (F11). Close every
