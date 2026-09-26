@@ -311,15 +311,17 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     const g = await games({ load: true });
     await openEdit(g);
     await tap(g.q('[data-testid="pick-another"]'));   // shows the shelves next to the open draft
-    // INFECTION shares TDM's own default teams (mock/data.ts), so this pick needs no reshape confirm
-    // either — the one tap proves the draft's discard, not a second, unrelated confirm mechanic.
-    const other = g.modes.find(mm => mm.mode === 'infection')!;
+    // F-scope A (2026-09-25): the STOCK MODES shelf now offers only TDM/FFA/KOTH. FFA's single team
+    // (`newTeams.length < 2`) needs no reshape confirm regardless of the roster, unlike KOTH against
+    // TDM's default teams -- so it still proves the draft's discard with one tap, not a second,
+    // unrelated confirm mechanic.
+    const other = g.modes.find(mm => mm.mode === 'ffa')!;
     const card = g.q(`[aria-label="play ${other.name}"]`);
     expect(card, 'control: the shelf offers a different mode to tap').toBeTruthy();
     await tap(card);
     expect(g.q('[data-testid="game-edit-panel"]'), 'the draft is gone — discarded, not left open').toBeFalsy();
     expect(g.calls.putConfig.length, 'the pick itself goes straight through').toBe(1);
-    expect(g.calls.putConfig[0].mode).toBe('infection');
+    expect(g.calls.putConfig[0].mode).toBe('ffa');
     g.m.unmount();
   });
 
@@ -327,7 +329,7 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     const g = await games({ load: true });
     await openEdit(g);   // seeded, untouched — `dirty` is false
     await tap(g.q('[data-testid="pick-another"]'));
-    const other = g.modes.find(mm => mm.mode === 'infection')!;
+    const other = g.modes.find(mm => mm.mode === 'ffa')!;
     await tap(g.q(`[aria-label="play ${other.name}"]`));
     expect(g.m.text(), 'nothing changed, so nothing is worth announcing').not.toContain('DISCARDED');
     g.m.unmount();
@@ -354,12 +356,12 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     await tap(nightSwitch);
     expect(m.el.querySelector('[data-testid="game-edit-dirty"]')!.textContent, 'control: the draft really changed').toContain('UNSAVED');
     await tap(q('[data-testid="pick-another"]'));
-    const other = modes.find(mm => mm.mode === 'infection')!;
+    const other = modes.find(mm => mm.mode === 'ffa')!;
     await tap(q(`[aria-label="play ${other.name}"]`));
     expect(q('[data-testid="game-edit-panel"]'), 'the draft is gone').toBeFalsy();
     // the draft's own NIGHT toggle never reaches the server — only the pick itself does
     expect(calls.length, 'one request: the pick, not the discarded edit').toBe(1);
-    expect(calls[0].mode).toBe('infection');
+    expect(calls[0].mode).toBe('ffa');
     expect(m.text(), 'a plain notice, never the old refusal').toContain('UNSAVED EDITS DISCARDED');
     expect(m.text()).not.toContain('FINISH EDITING FIRST');
     // it is not an error strip: the bar renders a notice styled `bad`, and this one is not
@@ -392,7 +394,7 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     });
     expect(g.q('[data-testid="game-edit-panel"]'), 'no draft UI left to finish or cancel').toBeFalsy();
     expect(g.q('[data-testid="active-game-config"]'), 'back to picking a game, not the active state').toBeFalsy();
-    const other = g.modes.find(mm => mm.mode === 'infection')!;
+    const other = g.modes.find(mm => mm.mode === 'ffa')!;
     const card = g.q(`[aria-label="play ${other.name}"]`);
     expect(card, 'control: a pick is on screen').toBeTruthy();
     await tap(card);

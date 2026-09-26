@@ -84,12 +84,20 @@ export function ItemStationRow({ s, item, canReset, inline = false }: { s: Stati
   );
 }
 
+type ArmedPowerup = StationView & { assigned: NonNullable<StationView['assigned']> & { item: StationItem } };
+
+/** Every armed powerup station, from `state.stations` -- the one filter `PowerupStrip` and
+ *  `PowerupsLobbyLine` both read, so LOBBY and ARMED/LIVE can never disagree about what is armed. */
+function powerupRows(state: ReturnType<typeof useStore>['state']): ArmedPowerup[] {
+  return (state?.stations ?? []).filter((s): s is ArmedPowerup => s.assigned?.kind === 'powerup' && !!s.assigned.item);
+}
+
 /** M3: the compact powerup rows on ARMED and LIVE. Present only when a powerup station holds an item, and
  *  (F331) never when MC says the flag is off: a restored item is inert then, and MC schedules nothing for it. */
 export function PowerupStrip({ compact = false }: { compact?: boolean }) {
   const { state } = useStore();
   const pu = usePowerups();
-  const rows = (state?.stations ?? []).filter(s => s.assigned?.kind === 'powerup' && s.assigned.item);
+  const rows = powerupRows(state);
   if (!state || !rows.length || (pu.s === 'ok' && !pu.v.enabled)) return null;
   const inPlay = state.phase === 'armed' || state.phase === 'live';
   const enabled = pu.s === 'ok' && pu.v.enabled;
@@ -111,6 +119,27 @@ export function PowerupStrip({ compact = false }: { compact?: boolean }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** F404 (2026-09-25): Tony -- pickups are set up in ARMORY only, and he wants to see them before the
+ *  match; LOBBY had no view at all of what is armed. ONE read-only line, reusing the same rows and the
+ *  same enabled-flag rule `PowerupStrip` uses (never build a second data path for this): the item names,
+ *  each with its station -- "PICKUPS: ROCKETS · STICK 1 · OVERSHIELD · PHONE 2" -- grey "NO PICKUPS" when
+ *  the flag is on but nothing is armed yet, and nothing at all while the flag is off (an armed item is
+ *  inert then, same as the strip). */
+export function PowerupsLobbyLine() {
+  const { state } = useStore();
+  const pu = usePowerups();
+  if (!state || (pu.s === 'ok' && !pu.v.enabled)) return null;
+  const rows = powerupRows(state);
+  const items = rows.map(s => `${s.assigned.item.name.toUpperCase()} · ${s.platform === 'esp32' ? 'STICK' : 'PHONE'} ${s.assigned.id}`);
+  return (
+    <div data-testid="powerups-lobby-line" style={{ margin: '0 0 12px', font: F.chk(600, 12), letterSpacing: '.08em' }}>
+      {items.length
+        ? <span style={{ color: T.dim }}>PICKUPS: {items.join(' · ')}</span>
+        : <span style={{ color: T.micro }}>NO PICKUPS</span>}
     </div>
   );
 }

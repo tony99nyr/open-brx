@@ -997,7 +997,8 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. The highest score at the time limit takes the match; the operator can also set an optional score cap.",
     "teams_text": "2–4 TEAMS",
     "win_text": "TIME · OPTIONAL SCORE CAP",
-    "respawn_text": "ON · TIMED"
+    "respawn_text": "ON · TIMED",
+    "mvp": true
   },
   "ffa": {
     "mode": "ffa",
@@ -1007,7 +1008,8 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "brief": "No teams — everyone is a target. Each elimination scores a point. The top score when time expires wins; the operator can also set an optional frag limit.",
     "teams_text": "NONE · ALL VS ALL",
     "win_text": "TIME · OPTIONAL FRAG LIMIT",
-    "respawn_text": "ON · TIMED"
+    "respawn_text": "ON · TIMED",
+    "mvp": true
   },
   "infection": {
     "mode": "infection",
@@ -1017,7 +1019,8 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "brief": "One operator starts infected. Survivors who go down switch sides and hunt their old squad. Survivors win by outlasting the clock; the infected win by converting everyone.",
     "teams_text": "SURVIVORS VS INFECTED",
     "win_text": "SURVIVE THE CLOCK",
-    "respawn_text": "INFECTED ONLY"
+    "respawn_text": "INFECTED ONLY",
+    "mvp": false
   },
   "lms": {
     "mode": "lms",
@@ -1027,7 +1030,8 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "brief": "Every operator carries a fixed pool of lives. Once they are spent there is no respawn. The last operator — or last squad — still standing takes the match.",
     "teams_text": "SOLO OR SQUADS",
     "win_text": "LAST ALIVE",
-    "respawn_text": "OFF · LIVES"
+    "respawn_text": "OFF · LIVES",
+    "mvp": false
   },
   "extraction": {
     "mode": "extraction",
@@ -1037,7 +1041,8 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "brief": "Gather loot, then reach an extraction point and channel the extract. It is loud: everyone hears the chopper coming and converges on you. Survive the timer and your loot is banked. Die and you drop it all for someone else to take.",
     "teams_text": "SOLO OR SQUADS",
     "win_text": "BANKED LOOT",
-    "respawn_text": "ON · TIMED"
+    "respawn_text": "ON · TIMED",
+    "mvp": false
   },
   "koth": {
     "mode": "koth",
@@ -1047,7 +1052,8 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
     "teams_text": "2 TEAMS",
     "win_text": "POSSESSION TIME · HOST CALL",
-    "respawn_text": "ON · TIMED"
+    "respawn_text": "ON · TIMED",
+    "mvp": true
   }
 };
 // GENERATED-END modes

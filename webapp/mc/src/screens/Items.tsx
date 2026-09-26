@@ -22,6 +22,10 @@ import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, batteryColour, colourOf, s
 const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 /** the picker's labels: short enough for five in a card row */
 const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'CONTROL' };
+// F405 (2026-09-25): Tony -- "so mvp for utility is respawn station, pickup, hill". `extraction` and
+// `bomb` keep their code, their type and their recap label (`KIND_LABEL` above) so an OLD assignment of
+// either still renders -- they just drop off the kind picker a host assigns a NEW station from.
+const MVP_STATION_KINDS: StationKind[] = STATION_KINDS.filter(k => k !== 'extraction' && k !== 'bomb');
 const TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
 /** H1: what threshold 0 resolves to, as the server resolves it (state.py `_wire_threshold`, F345) and the phone
  *  applies it (app/src/beacon.js `phoneStationThreshold`): a phone respawn station -70, a phone powerup station
@@ -115,6 +119,10 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
   // `Games.tsx` uses before it moves the roster (`SwitchConfirm`), not just matching CLEAR's look.
   const [confirmRelease, setConfirmRelease] = useState(false);
   const control = kind === 'control';
+  // F405: the picker offers only the MVP kinds -- unless the draft is ALREADY on a hidden one (an old
+  // extraction/bomb assignment), in which case its own card keeps that option so it still shows
+  // selected instead of reading as unset.
+  const kindOptions = MVP_STATION_KINDS.includes(kind) ? MVP_STATION_KINDS : [...MVP_STATION_KINDS, kind];
   // A56: the powerup item. `itemPick` is the operator's draft; null = whatever the assignment already has.
   const [itemPick, setItemPick] = useState<string | null>(null);
   const presets = pu.s === 'ok' && pu.v.enabled ? pu.v.presets : null;
@@ -244,7 +252,7 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
         <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHAT IS THIS {deviceOf(s)}?</div>
         <Seg label={`kind for ${s.node_id}`} value={kind} size={11} pad="5px 8px" wrap
-          options={STATION_KINDS.map(k => ({ value: k, label: KIND_SHORT[k] }))} titles={Object.fromEntries(STATION_KINDS.map(k => [k, KIND_LABEL[k]]))}
+          options={kindOptions.map(k => ({ value: k, label: KIND_SHORT[k] }))} titles={Object.fromEntries(kindOptions.map(k => [k, KIND_LABEL[k]]))}
           onChange={k => { setKind(k); if (k === 'control') setTeam(255); }} />
         {kind === 'powerup' && <ItemPicker node={s.node_id} pu={pu} chosen={chosen} locked={locked} onPick={setItemPick} />}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>

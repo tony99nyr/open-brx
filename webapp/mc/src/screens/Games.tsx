@@ -67,6 +67,10 @@ export function lockedReason(phase: string): string {
 
 export function Games() {
   const { state, modes, weapons, perks, run, api, setView, openDesigner } = useStore();
+  // F-scope A (2026-09-25): MVP is TDM/FFA/KotH only. `modes` stays the full server list (an old saved
+  // game or a config off the wire still resolves its mode row for a name/brief); `stockModes` is what a
+  // host is OFFERED to start a NEW game from -- server-flagged (`ModeInfo.mvp`), not a console name list.
+  const stockModes = modes.filter(m => m.mvp);
   const [games, setGames] = useState<SavedGame[]>([]);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [confirmSwitch, setConfirmSwitch] = useState<string | null>(null);   // tapping a card while the draft is TUNED — NOT SAVED (review #16)
@@ -352,7 +356,7 @@ export function Games() {
       <div>
         <SectionRule label="STOCK MODES" hint="TAP TO PLAY WITH DEFAULTS · CUSTOMIZE TO MAKE YOUR OWN" style={{ marginBottom: 12 }} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10 }}>
-          {modes.map(m => {
+          {stockModes.map(m => {
             const on = activeStock?.mode === m.mode;
             const base = !on && cfg.mode === m.mode;   // the current game (saved or tuned) is built on this mode
             return (

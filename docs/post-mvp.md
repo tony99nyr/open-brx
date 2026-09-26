@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed).
+Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -29,7 +29,20 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 - **S3 🟠** extraction on the phone path, HUD-driven (ARC Raiders / Fortnite Sprite reference): zone presence from the
   station beacon on the player's own gun; call → window → close timers on the node with `extraction_tick`; a wallet;
   hard end at expiry (`raid_ending` → `raid_over`); MC reconciles wallets at recap. Port `modes/extraction.py`'s rules,
-  not its transport. `last_survivor` stays opt-in. `build`.
+  not its transport. `last_survivor` stays opt-in. `build`. **Note (2026-09-25, F405):** the `extraction` and `bomb`
+  station kinds are hidden from the ARMORY kind picker for MVP (Tony: "so mvp for utility is respawn station,
+  pickup, hill"); both keep their code, their type and their recap label, so an old assignment of either still
+  renders.
+
+- **F377 🟡 SOLO LMS NEVER PICKS A WINNER.** Found by the Q13 polish (Codex Sol, 2026-09-25): solo LMS now
+  registers hits and credits kills, but survival scoring (`scoring.py` ~974) decides by team, so a one-team match
+  ends `undecided` even with one player alive. Decide the last survivor by player in a one-team game. Predates
+  Q13; LMS is still `proven: False`. Moved here 2026-09-25 with Last Man Standing itself: Tony, on the MVP mode
+  list, "Last Man Standing is post-MVP too" — do not build this fix for MVP. `build` (post-MVP).
+
+  **LMS, post-MVP: two more open gaps**, noted here rather than as rows of their own:
+  - the match does not end automatically when one player or team is left.
+  - there is no tie rule for simultaneous deaths or for the time limit with several players alive.
 
 - **S60 🟡 POST-MVP MODE: GUN GAME.** Tony 2026-09-24: "game mode where every time you spawn you get a new gun. you have to get a kill with each gun to win". Each spawn arms the next gun in a set (no repeats, only the guns you still need); a kill with the current gun ticks it off; the first player to tick off the whole set wins. Design questions for later: the set (every catalogue weapon, or a host-picked list), order (fixed or random), whether a death without a kill keeps or skips the gun, and the HUD tracker. Needs no props (Tier 0): the phone writes the life's `$WEAP` at spawn. Voice line VA8O "GUN GAME!" exists. Listed in docs/game-modes.md. `design` (post-MVP).
 

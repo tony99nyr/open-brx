@@ -151,6 +151,9 @@ class ModeRow(TypedDict):
     respawn: Respawn
     preset: str                         # led-language.md §4 / G3: the presentation preset the mode resolves to
     proven: bool
+    mvp: bool                           # F405-adjacent scope cut (2026-09-25): MVP is TDM/FFA/KotH only; a
+                                         # False row keeps its engine, config and tests -- `modes()` just
+                                         # tells the console to hide it from the STOCK MODES picker
     station_source: NotRequired[str]    # F70: only the modes with an objective emitter carry one
 
 
@@ -159,27 +162,32 @@ MODES: list[ModeRow] = [
      "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. The highest score at the time limit takes the match; the operator can also set an optional score cap.",
      "teams_text": "2–4 TEAMS", "win_text": "TIME · OPTIONAL SCORE CAP", "respawn_text": "ON · TIMED",
      "teams": ["blue", "yellow"], "win_by": "kills", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "proven": True},
+     "preset": "standard", "proven": True, "mvp": True},
     {"mode": "ffa", "name": "FREE-FOR-ALL", "abbr": "FFA", "desc": "Every operator for themselves",
      "brief": "No teams — everyone is a target. Each elimination scores a point. The top score when time expires wins; the operator can also set an optional frag limit.",
      "teams_text": "NONE · ALL VS ALL", "win_text": "TIME · OPTIONAL FRAG LIMIT", "respawn_text": "ON · TIMED",
      "teams": ["ffa"], "win_by": "kills", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "proven": True},
+     "preset": "standard", "proven": True, "mvp": True},
+    # F-scope A (2026-09-25): Tony -- "infection can be post mvp". Engine, config and tests stay; the row
+    # just drops off the console's STOCK MODES picker (`mvp: False`, `state.modes()`).
     {"mode": "infection", "name": "INFECTION", "abbr": "INF", "desc": "One infected; survive the spread",
      "brief": "One operator starts infected. Survivors who go down switch sides and hunt their old squad. Survivors win by outlasting the clock; the infected win by converting everyone.",
      "teams_text": "SURVIVORS VS INFECTED", "win_text": "SURVIVE THE CLOCK", "respawn_text": "INFECTED ONLY",
      "teams": ["blue", "red"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 10},
-     "preset": "infection", "proven": False},
+     "preset": "infection", "proven": False, "mvp": False},
+    # F-scope A (2026-09-25): Tony -- Last Man Standing is post-MVP too (F377 solo-winner gap moved to
+    # post-mvp.md with it). Same treatment: `mvp: False`, everything else unchanged.
     {"mode": "lms", "name": "LAST MAN STANDING", "abbr": "LMS", "desc": "Limited lives, last alive wins",
      "brief": "Every operator carries a fixed pool of lives. Once they are spent there is no respawn. The last operator — or last squad — still standing takes the match.",
      "teams_text": "SOLO OR SQUADS", "win_text": "LAST ALIVE", "respawn_text": "OFF · LIVES",
      "teams": ["ffa"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "none", "delay_s": 0},
-     "preset": "last_stand", "proven": False},
+     "preset": "last_stand", "proven": False, "mvp": False},
+    # F-scope A (2026-09-25): Tony -- "i think extraction is probably post mvp". Same treatment.
     {"mode": "extraction", "name": "EXTRACTION", "abbr": "EXT", "desc": "Loot, reach the extract, survive the channel",
      "brief": "Gather loot, then reach an extraction point and channel the extract. It is loud: everyone hears the chopper coming and converges on you. Survive the timer and your loot is banked. Die and you drop it all for someone else to take.",
      "teams_text": "SOLO OR SQUADS", "win_text": "BANKED LOOT", "respawn_text": "ON · TIMED",
      "teams": ["blue", "yellow"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "extraction", "proven": False},
+     "preset": "extraction", "proven": False, "mvp": False},
     # F70 (bench-proven end to end 2026-09-10): the hill is a BRX Smart Grenade in hill mode. It
     # broadcasts protocol-15 beacons carrying its OWNER's team, `hillbeacon.py` reads them and
     # `DominationEngine` scores possession, so the mode needs no station hardware at all -- hence
@@ -202,7 +210,7 @@ MODES: list[ModeRow] = [
      # (operator review 2026-09-10). ➡ Drop "· HOST CALL" when the phone ships the fact.
      "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME · HOST CALL", "respawn_text": "ON · TIMED",
      "teams": ["blue", "green"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "station_source": "phone", "proven": True},
+     "preset": "standard", "station_source": "phone", "proven": True, "mvp": True},
 ]
 
 
@@ -2277,6 +2285,7 @@ class Session:
             row: ModeInfo = {"mode": m["mode"], "name": m["name"], "abbr": m["abbr"],
                              "desc": m["desc"], "brief": m["brief"], "teams_text": m["teams_text"],
                              "win_text": m["win_text"], "respawn_text": m["respawn_text"],
+                             "mvp": m["mvp"],
                              "defaults": default_config(m["mode"]),
                              "params": _params_schema_json(m["mode"])}
             rows.append(row)

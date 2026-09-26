@@ -1218,6 +1218,10 @@ export interface ModeInfo {
   teams_text: string;
   win_text: string;
   respawn_text: string;
+  /** F-scope A (2026-09-25): MVP is TDM/FFA/KotH only. `mvp: False` keeps a mode buildable, catalogued
+   *  and loadable (an old saved game or API config with that mode still works) while telling the console
+   *  to hide it from a host's STOCK MODES picker -- one server flag, not a console-side name list. */
+  mvp: boolean;
   defaults: GameConfig;
   params: ModeParamSpec[];
 }
