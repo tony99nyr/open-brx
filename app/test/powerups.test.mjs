@@ -1037,3 +1037,78 @@ test('F416 part 2: a pickup grant write opens the radio-quiet window (a scan flo
   h.adv(E.RADIO_QUIET_AFTER_MS + 600);
   assert.equal(h.eng.state().radioQuiet, false, 'and reopens after it settles');
 });
+
+// ---- F417 part 1 and F418 (bench 2026-09-26): a held heavy ended as "empty" with no round fired, three ways, all a
+// slot-2 read of 0 the node did not cause by a trigger pull: a grant whose `$AMMO` was lost (ROBAS), a stack whose
+// `$AMMO` was lost (F381: 2 on the gun, not 3), and a late or lost reconcile after an app restart (ROBP1). ----
+
+const tick = () => new Promise(r => setImmediate(r));
+
+test('F418: a late disarm echo after an app restart and reconcile does not end a held heavy; the counts are re-sent', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  h.restart();
+  h.adv(3000);                                   // the reconcile ends and re-arms slot 2
+  h.adv(1000);                                   // its echo window lapses
+  const n = h.mark();
+  h.frame('$ALCD,0,100,2,0,0,*');                // the ORIGINAL disarm's echo, late (or a re-arm that never landed)
+  assert.ok(h.eng._puHeld, 'no trigger pull, so no round left: the Rockets are still held');
+  assert.equal(h.eng._puHeld.left, 2);
+  assert.ok(h.since(n).includes('$AMMO,2,2,0,1,*'), `the node re-sent the held counts: ${JSON.stringify(puw(h.since(n)))}`);
+});
+
+test('F417: a grant whose $AMMO never landed (slot 2 reads 0, no pull) is re-sent, not ended as empty', () => {
+  const h = armed(); h.take(4); h.away();
+  const n = h.mark();
+  h.frame('$ALCD,0,100,2,0,0,*');                // the `$WEAP` reset landed, the `$AMMO` did not
+  assert.ok(h.eng._puHeld, 'still held');
+  assert.ok(puw(h.since(n)).some(f => f === '$AMMO,2,2,0,1,*'), 'the grant counts went again');
+});
+
+test('F417: a real last round (a trigger pull) still ends the heavy as empty', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  assert.equal(h.eng._puHeld, null);
+});
+
+test('F417: repairs are bounded: a gun that keeps reading 0 with no pull ends the item after PU_COUNT_REPAIRS', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  for (let i = 1; i <= E.PU_COUNT_REPAIRS; i++) {
+    h.adv(E.ACC_ECHO_MS + 100); h.frame('$ALCD,2,100,2,0,0,*');
+    const n = h.mark(); h.frame('$ALCD,0,100,2,0,0,*');
+    assert.ok(h.eng._puHeld, `read ${i}: still held`);
+    assert.ok(h.since(n).includes('$AMMO,2,2,0,1,*'), `read ${i}: the counts went again`);
+  }
+  h.adv(E.ACC_ECHO_MS + 100); h.frame('$ALCD,2,100,2,0,0,*'); h.frame('$ALCD,0,100,2,0,0,*');
+  assert.equal(h.eng._puHeld, null, 'past the bound it ends, as today');
+});
+
+test('F417 r1: a trigger pull on the PRIMARY does not stop the repair of a lost grant', () => {
+  const h = armed(); h.take(4); h.away();
+  h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame('$BUT,0,0,*');   // a pull, but the heavy's own switch has not happened on the gun
+  h.eng._pull = { at: h.eng.now(), slot: 0 };
+  h.frame('$ALCD,0,100,2,0,0,*');
+  assert.ok(h.eng._puHeld, 'a pull on slot 0 is not a rocket leaving slot 2');
+});
+
+test('F417: a lost equip write is re-sent once when nothing moved since', async () => {
+  const h = armed();
+  h.failNext(fr => fr.some(f => f.startsWith('$WEAP,2,')), 1);
+  const n = h.mark(); h.take(4); await tick(); h.adv(50);
+  assert.equal(puw(h.since(n)).filter(f => f.startsWith('$WEAP,2,')).length, 2, `the equip went twice: ${JSON.stringify(puw(h.since(n)))}`);
+});
+
+test('F418: the trigger slot survives an app restart (a held heavy on the trigger stays on it)', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  assert.equal(h.eng.activeSlot, 2, 'setup');
+  h.restart();
+  assert.equal(h.eng.activeSlot, 2);
+});
+
+test('F417: every change of a station\'s advertised state or taker is logged once (the bench can trace a race)', () => {
+  const logs = [];
+  const h = armed(); h.eng.log = m => logs.push(String(m));
+  h.near(4); h.near(4); h.near(4, { state: 0, value: 110, taker: 19 }); h.near(4, { state: 0, value: 110, taker: 19 });
+  const lines = logs.filter(l => /^powerup: station 4 advert/.test(l));
+  assert.equal(lines.length, 2, `one per change, not per advert: ${JSON.stringify(lines)}`);
+  assert.match(lines[1], /state 0 taker 19/);
+});

@@ -342,7 +342,8 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
    adjusted since the user was in that overlay. This should be true for regular alt weapon switches too." The card
    is SWITCHING and then its ACTIVE bubble, for ALT and every pickup equip alike. While it is up, the alert lanes are
    hidden and their clocks stop: a kill card, a feed row and a badge each get their full time once it leaves, and an
-   event that arrives under it shows afterwards. See `docs/announcer.md` "Layering and priority on the phone HUD".
+   event that arrives under it shows afterwards. The persistent lead badge hides too (Tony, 2026-09-26: "yes it should
+   behave like the KC and events"). See `docs/announcer.md` "Layering and priority on the phone HUD".
 5. **The Overshield is not a weapon: no switch card, ever.** Its grant already animates the shield bar (the
    existing gain animation on `.svos`, `shieldmeter.js`) via the same width transition a hit's drain uses; it now
    also plays the shield-recharge sound again -- `_announceStatus('shield_charging')`, the exact clip the ordinary
