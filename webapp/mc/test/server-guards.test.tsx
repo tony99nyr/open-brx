@@ -97,7 +97,7 @@ describe('A27 · CONTINUE against a server that guards the phase', () => {
     const state: State = { ...d.state, players: d.state.players.map(p => ({ ...p, ready: p.display !== 'SABLE' })) };
     const views: string[] = [];
     const store = makeStore({ ...d, state, view: 'kit' }, {
-      api, setView: v => views.push(v),
+      api, setView: v => { views.push(v); return true; },
       run: async fn => { try { return await fn(); } catch { return undefined; } },
     });
     const m = await mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);

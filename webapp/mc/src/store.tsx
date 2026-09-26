@@ -51,7 +51,10 @@ export interface Store {
   perks: PerkView[];
   /** the screen the operator is looking at (free navigation); `state.phase` is the server's phase */
   view: View;
-  setView: (p: View) => void;
+  /** Polish round 2: returns whether it actually navigated (`false` on a first tap the dirty guard
+   *  blocked, or a latched spectator tab that only recorded what it was asked for). A caller with its
+   *  own follow-up step (`ReportPanel`'s `goToToken`) checks this instead of assuming success. */
+  setView: (p: View) => boolean;
   /** this tab LOADED at `#spectate`: it is the projector, and it refuses every other view (S25) */
   latched: boolean;
   /** the view this latched tab was last asked for — it opens on the next reload, and the board says so */
@@ -73,6 +76,11 @@ export interface Store {
   /** the view a nav attempt was blocked to while `dirty`: BUILD renders its confirm banner off this,
    *  and tapping the SAME control again (which calls `setView` with this same target) proceeds. */
   navBlockedTo: View | null;
+  /** Round 2 Low: BUILD calls this whenever the draft changes WHILE a block is already showing -- a
+   *  further edit made the pending confirm stale (it was about the draft as it stood a moment ago), so
+   *  the SAME target must ask again rather than silently reusing an old "tap again" as a confirm for a
+   *  never-shown edit. */
+  clearNavBlock: () => void;
   selPlayer: string | null;
   setSelPlayer: (id: string | null) => void;
   error: string | null;
@@ -154,21 +162,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // what a latched tab was last asked for, so the board can say how to get there (nothing is rendered
   // until somebody actually tries)
   const [wanted, setWanted] = useState<View | null>(null);
-  // Polish round 1 M6: `dirty`/`navBlockedTo` below.
+  // Polish round 1 M6 / round 2: `dirty`/`navBlockedTo` below. `dirtyRef`/`navBlockedRef`/`viewRef`
+  // mirror the matching state SYNCHRONOUSLY (inside the setter that changes it, not a separate effect
+  // reacting to it a render later) — round 2's H1 found that a `useEffect`-only mirror is one render
+  // too slow: BUILD's confirmed "leave anyway" tap called `setDirty(false)` then `setView(...)` in the
+  // SAME synchronous handler, and `setView` still read the OLD (still-true) ref, blocking a THIRD time.
   const [dirty, setDirtyRaw] = useState(false);
   const dirtyRef = useRef(false);
-  useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
   const [navBlockedTo, setNavBlockedTo] = useState<View | null>(null);
-  const setDirty = useCallback((v: boolean) => { setDirtyRaw(v); if (!v) setNavBlockedTo(null); }, []);
-  const setView = useCallback((v: View) => {
-    if (dirtyRef.current && v !== view) {
-      // a second tap at the SAME target is the confirm; a different target re-blocks on the new one
-      if (navBlockedTo === v) { setDirtyRaw(false); setNavBlockedTo(null); }
-      else { setNavBlockedTo(v); return; }
-    } else if (navBlockedTo !== null) setNavBlockedTo(null);
-    if (spectatorTab.current) { setWanted(v === 'spectate' ? null : v); writeHash('spectate', v === 'spectate' ? null : v); return; }
+  const navBlockedRef = useRef<View | null>(null);
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
+  const setNavBlocked = useCallback((v: View | null) => { navBlockedRef.current = v; setNavBlockedTo(v); }, []);
+  const setDirty = useCallback((v: boolean) => { dirtyRef.current = v; setDirtyRaw(v); if (!v) setNavBlocked(null); }, [setNavBlocked]);
+  // A stable identity matters here specifically: BUILD puts this in a `useEffect` dependency array
+  // (round 2 Low, clearing a stale block when the draft changes), and the store's own `useMemo` below
+  // rebuilds on nearly every snapshot -- an inline `() => setNavBlocked(null)' there would have gotten a
+  // FRESH identity on every tick, re-firing that effect (and clearing a block that had nothing to do
+  // with the draft) far more often than intended.
+  const clearNavBlock = useCallback(() => setNavBlocked(null), [setNavBlocked]);
+  // The one gate every navigation attempt goes through — `setView`, browser back/forward (`onHash`)
+  // and the server phase catching up (`followPhase`) alike, so an unsaved BUILD edit is asked about
+  // once, not lost to whichever of the three got there first. `debug` (the token screen) is exempt:
+  // auth is never something a "tap again to confirm" can be waved past, and everything ELSE — saving
+  // the very edit this guard is protecting — needs it reachable first.
+  const guardNav = useCallback((v: View): 'blocked' | 'go' => {
+    if (v === 'debug') { if (navBlockedRef.current !== null) setNavBlocked(null); return 'go'; }
+    if (dirtyRef.current && v !== viewRef.current) {
+      // a second attempt at the SAME target is the confirm; a different target re-blocks on the new one
+      if (navBlockedRef.current === v) { setDirty(false); return 'go'; }
+      setNavBlocked(v);
+      return 'blocked';
+    }
+    if (navBlockedRef.current !== null) setNavBlocked(null);
+    return 'go';
+  }, [setDirty, setNavBlocked]);
+  const setView = useCallback((v: View): boolean => {
+    if (guardNav(v) === 'blocked') return false;
+    if (spectatorTab.current) { setWanted(v === 'spectate' ? null : v); writeHash('spectate', v === 'spectate' ? null : v); return false; }
     writeHash(v); setViewRaw(v);
-  }, [view, navBlockedTo]);
+    return true;
+  }, [guardNav]);
   // back/forward and a hand-edited hash both move the console
   useEffect(() => {
     const onHash = () => {
@@ -179,11 +213,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         writeHash('spectate', want);      // the board stays the board; the request survives a reload
         return;
       }
-      const v = viewFromHash(); if (v) setViewRaw(v);
+      const v = viewFromHash(); if (!v) return;
+      // Round 2 (2): the address bar moves BEFORE this fires (a back/forward jump, or a typed hash) --
+      // unlike a button's `setView` call, there is no "don't navigate" here, only "put it back". A
+      // blocked attempt restores the CURRENT view's hash so the URL never lies about what is on screen;
+      // BUILD's own banner (off `navBlockedTo`, set by `guardNav`) says why.
+      if (guardNav(v) === 'blocked') { writeHash(viewRef.current); return; }
+      setViewRaw(v);
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  }, [guardNav]);
   const [selPlayer, setSelPlayer] = useState<string | null>(null);
   const [focusHill, setFocusHill] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -217,8 +257,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // S25: a tab left on #spectate is pointed at a ROOM. The phase-follow that is right for the
     // operator's console would swap it to KIT the moment the host moved on, so the spectator
     // view opts out and keeps showing the board (which handles live / recap / neither itself).
-    if (!seeding && !spectatorTab.current && viewFromHash() !== 'spectate') { writeHash(s.phase); setViewRaw(s.phase); }
-  }, []);
+    if (seeding || spectatorTab.current || viewFromHash() === 'spectate') return;
+    // Round 2 (2): this used to move the screen out from under an unsaved BUILD edit the instant the
+    // match armed/went live, with no warning at all. `guardNav` keeps the operator on BUILD instead and
+    // names the phase that is waiting (`navBlockedTo`) -- tapping that SAME tab again is still the way
+    // through, exactly as if they had tried to navigate there themselves.
+    if (guardNav(s.phase) === 'blocked') return;
+    writeHash(s.phase); setViewRaw(s.phase);
+  }, [guardNav]);
 
   useEffect(() => {
     api.getModes().then(setModes).catch(() => {});
@@ -282,13 +328,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     latched: spectatorTab.current, wantedView: wanted,
     openBuild: () => setView('designer'),
     focusHill, setFocusHill,
-    dirty, setDirty, navBlockedTo,
+    dirty, setDirty, navBlockedTo, clearNavBlock,
     connected: mock ? true : connected, authRequired, serverOld, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setError(null); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, serverOld, focusHill, dirty, setDirty, navBlockedTo]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, serverOld, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

@@ -21,7 +21,7 @@ const RECAP: RecapView = { winner: { player_id: 'p1' }, score: {}, provisional: 
 /** Mount a screen with a store whose `setView` is observable (the harness's is a no-op). */
 async function mountWithView(screen: React.ReactNode, f: Parameters<typeof makeStore>[0]) {
   const views: string[] = [];
-  const store = makeStore(f, { setView: (v: View) => { views.push(v); } });
+  const store = makeStore(f, { setView: (v: View) => { views.push(v); return true; } });
   const m = await mount(<StoreCtx.Provider value={store}>{screen}</StoreCtx.Provider>);
   return Object.assign(m, { views });
 }

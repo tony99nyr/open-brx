@@ -35,7 +35,7 @@ interface Editing {
 }
 
 export function Build() {
-  const { api, run, setView, weapons, perks, state, connected, setDirty, navBlockedTo } = useStore();
+  const { api, run, setView, weapons, perks, state, connected, setDirty, navBlockedTo, clearNavBlock } = useStore();
   const [pieces, setPieces] = useState<GamePiece[] | null>(null);
   const [stale, setStale] = useState(false);
   // Polish round 1 H3: a `GET /api/pieces` failure that is NOT the older-console 404 used to fall
@@ -79,6 +79,11 @@ export function Build() {
   // EVERY navigation attempt the same way (store.tsx); `navBlockedTo` comes back non-null while blocked,
   // so the SAME inline banner below covers both paths.
   useEffect(() => { setDirty(dirty); return () => setDirty(false); }, [dirty, setDirty]);
+  // Round 2 Low: a further edit while a nav attempt is already blocked (`navBlockedTo` showing its
+  // banner) makes that pending "tap again to leave" stale -- it was about the draft as it stood a
+  // moment ago. `editing?.draft` gets a new object identity on every `setDraft` call, so this fires on
+  // each keystroke while an editor is open, and is a no-op the rest of the time.
+  useEffect(() => { clearNavBlock(); }, [editing?.draft, clearNavBlock]);
   // QA-14 (visual QA round 1): FIXED with no item picked used to reach SAVE and come back as the
   // server's own field name. `SlotFields` preselects the first catalogue item the moment FIXED is
   // chosen, so this only bites an editor opened on an empty catalogue — belt and braces, not the
@@ -99,6 +104,10 @@ export function Build() {
   const backToPlay = () => {
     if (editing && dirty && !confirmLeave) { setConfirmLeave(true); return; }
     setEditing(null); setConfirmLeave(false); setConfirmDelete(false);
+    // Round 2 (1): this confirmed tap must actually leave. `dirty` (this render's value) has not
+    // reached the store yet -- the effect below only fires after this handler returns -- so `setView`
+    // would still see the OLD (true) value and block a THIRD time. Clear it here first.
+    setDirty(false);
     setView('build');
   };
 
@@ -182,7 +191,11 @@ export function Build() {
 
       {(confirmLeave || navBlockedTo) && (
         <div role="status" data-testid="build-confirm-leave" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn, marginBottom: 12 }}>
-          ▲ UNSAVED CHANGES — TAP AGAIN TO LEAVE WITHOUT SAVING
+          {/* Round 2 (2): `navBlockedTo` covers a nav attempt from ANYWHERE (a CommandBar tab, browser
+              back, or the server's own phase advancing under an unattended tab) -- naming what it is
+              says what tapping again actually leaves for, which a bare "leave" does not. `confirmLeave`
+              (BUILD's own kind-tab/back-button confirm) has no other view to name. */}
+          ▲ UNSAVED CHANGES{navBlockedTo ? ` — TAP AGAIN TO LEAVE FOR ${navBlockedTo.toUpperCase()} WITHOUT SAVING` : ' — TAP AGAIN TO LEAVE WITHOUT SAVING'}
         </div>
       )}
 
