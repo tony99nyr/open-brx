@@ -78,6 +78,35 @@ def test_a_snapshot_from_before_max_shield_existed_loads_as_custom():
     assert s2.config["health"] == {"max_hp": 45, "max_armor": 70, "max_shield": 0, "preset": "custom"}
 
 
+def test_a_snapshot_with_the_old_green_team_migrates_to_purple():
+    """F423/F432 (2026-09-26): tid 3's team_id/name/colour was renamed GREEN -> PURPLE end to end, but
+    `self.teams` and `config["teams"]` are both COPIES of `TEAM_DEFS` frozen into the session, not a live
+    lookup -- a `session.json` written before the rename still carries the old GREEN row verbatim, and
+    `restore_snapshot` took it back exactly as saved. Both copies must migrate on load."""
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    s.set_config({"mode": "koth", "teams": [
+        {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
+        {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3},
+    ]})
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(tmp.read_text())
+    # the fixture really is the pre-migration shape before it is restored
+    assert any(t["team_id"] == "green" for t in snap["teams"])
+    assert any(t["team_id"] == "green" for t in snap["config"]["teams"])
+
+    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    s2._persist_path = tmp
+    s2.restore_snapshot()
+    assert [t["team_id"] for t in s2.teams] == ["blue", "purple"], s2.teams
+    purple = next(t for t in s2.teams if t["team_id"] == "purple")
+    assert purple["name"] == "PURPLE TEAM" and purple["color"] == "#bf4ce6" and purple["tid"] == 3
+    cfg_purple = next(t for t in s2.config["teams"] if t["team_id"] == "purple")
+    assert cfg_purple["name"] == "PURPLE TEAM" and cfg_purple["color"] == "#bf4ce6"
+
+
 def test_fresh_session_clears_snapshot():
     r = mk(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"

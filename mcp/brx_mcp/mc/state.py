@@ -115,9 +115,35 @@ TEAM_DEFS: dict[str, Team] = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i);
     # but the gun and headset PAINT it purple (`poolgauge.TEAM_DISPLAY_COLOURS`, `protocol/brx-protocol.md`
     # `$GLED`/`$HLED` rows). MC and the HUD used to call it GREEN TEAM too, which read wrong against the
     # gun in hand -- renamed to match what the gun actually shows. The wire tid (3) is unchanged.
-    "purple": {"team_id": "purple", "name": "PURPLE TEAM", "color": "#7b2cbf", "tid": 3},
+    # F427 (2026-09-26): #7b2cbf read ~2.4-2.8:1 against MC's dark panels, under the 4.5:1 floor the
+    # other three teams clear. Moved to #bf4ce6 (4.9-5.0:1 against panel and team-ink) -- a same-hue
+    # lighten cleared contrast but landed too close, in RGB space, to CLASS_TAG's muted sniper/assault
+    # tones (webapp/mc/test/tokens.test.ts), so the hue shifted a little too (272 -> 285 degrees).
+    "purple": {"team_id": "purple", "name": "PURPLE TEAM", "color": "#bf4ce6", "tid": 3},
     "ffa": {"team_id": "ffa", "name": "FREE-FOR-ALL", "color": "#e8eef5", "tid": 1},
 }
+
+
+def _migrate_green_team_rows(teams: Any) -> list[Team]:
+    """F423 (2026-09-26) renamed tid 3's team_id/name/colour from GREEN to PURPLE. A preset, saved game
+    or session snapshot written before that migration still carries the old identity in its own frozen
+    `teams` list (a config copy, not a live lookup into `TEAM_DEFS`) -- this rewrites any such row on
+    load, so `team_id: "green"` never reaches a player phone, the console or a fresh recap again.
+    `sanitize_config` calls this for every preset/saved-game load; `restore_snapshot` calls it directly
+    for `self.teams`/`self.config["teams"]`, which are restored outside `sanitize_config` entirely.
+
+    `teams` is untrusted (raw JSON off disk, or a client PUT), same as every other caller of this data
+    before it reaches `sanitize_config`'s own shape checks -- this only ever rewrites a `team_id` it
+    recognises as the old name and passes every row through untouched otherwise, so a malformed row is
+    still refused downstream exactly as it was before this migration existed."""
+    if not isinstance(teams, list):
+        return cast(list[Team], teams)
+    out: list[Team] = []
+    for t in teams:
+        if isinstance(t, dict) and str(t.get("team_id", "")).lower() == "green":
+            t = {**t, "team_id": "purple", "name": "PURPLE TEAM", "color": TEAM_DEFS["purple"]["color"]}
+        out.append(cast(Team, t))
+    return out
 
 # Briefing copy verbatim from the Mission Control design export (A2 mode briefing panel).
 # `preset` (led-language.md §4, mode-extensibility G3, 2026-09-07): the presentation preset each
@@ -953,9 +979,13 @@ class Session:
                                                      invalid_parked, self._persist_path)
             self.standby = parked
             if snap.get("teams"):
-                self.teams = snap["teams"]
+                # F423/F432: a snapshot saved before tid 3 was renamed GREEN -> PURPLE still carries the
+                # old team_id/name/colour in its frozen `teams` row; migrated on load, same as a preset.
+                self.teams = _migrate_green_team_rows(snap["teams"])
             if snap.get("config"):
                 self.config = snap["config"]
+                if isinstance(self.config.get("teams"), list):
+                    self.config["teams"] = _migrate_green_team_rows(self.config["teams"])
                 # K8 (polish round 2): a hand-edited volume outside the range is dropped at load (the venue
                 # default), rather than raising later, inside a compile.
                 try:
@@ -2573,6 +2603,8 @@ class Session:
         mode = raw.get("mode", "tdm")
         if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
             raise ValueError(f"unknown mode {mode!r}")
+        if "teams" in raw:
+            raw = {**raw, "teams": _migrate_green_team_rows(raw["teams"])}   # F423/F432: a pre-migration preset/saved game
         cfg = self._merge_config(default_config(mode), raw, mode)
         cfg.pop("config_id", None)
         cfg.pop("vip_player_id", None)       # A19: a saved game names no person; the VIP is picked per session
@@ -3725,14 +3757,16 @@ class Session:
         to arming to seed the tally (that beat's raw `control` still passes straight through to `rep`)."""
         armed = st.get("armed") or {}
         game, rep = armed.get("game"), st["report"]
+        rostered = {t["tid"] for t in self.teams}
+
+        def _rostered_tid(k: str) -> bool:
+            try:
+                return int(k) in rostered
+            except (TypeError, ValueError):
+                return False
+
         control = rep.get("control")
         if isinstance(control, dict) and isinstance(control.get("hold_ms"), dict):
-            rostered = {t["tid"] for t in self.teams}
-            def _rostered_tid(k: str) -> bool:
-                try:
-                    return int(k) in rostered
-                except (TypeError, ValueError):
-                    return False
             rep["control"] = control = {**control, "hold_ms": {tid: ms for tid, ms in control["hold_ms"].items()
                                                                 if _rostered_tid(tid)}}
         if game is None or t_recv < (armed.get("at") or 0) + STATUS_HEARTBEAT_MS:
@@ -3747,7 +3781,13 @@ class Session:
             for tid, ms in hold.items():
                 if isinstance(ms, int) and not isinstance(ms, bool) and ms > tally["hold_ms"].get(tid, -1):
                     tally["hold_ms"][tid] = ms
-            rep["control"] = {**control, "hold_ms": {**hold, **tally["hold_ms"]}}
+            # F431 (2026-09-26): `hold` above is filtered to rostered tids (F426), but `tally["hold_ms"]`
+            # is RESTORED from `session.json` on a resume (`_tally_ok`, no rostered check at all) and
+            # only ever grows -- an unrostered tid a past roster edit or an old snapshot left in there
+            # would keep riding back into `rep["control"]` forever, unfiltered, because this merge puts
+            # `tally["hold_ms"]` LAST. The same rostered-tid filter applies to it here too.
+            rostered_tally = {tid: ms for tid, ms in tally["hold_ms"].items() if _rostered_tid(tid)}
+            rep["control"] = {**control, "hold_ms": {**hold, **rostered_tally}}
         rv = rep.get("revives")
         if isinstance(rv, int) and not isinstance(rv, bool):
             tally["revives"] = max(rv, tally["revives"] or 0)

@@ -98,6 +98,11 @@ export function clearConsumedPriorUtilityHandoff(transport, storage = defaultSto
   try { storage.removeItem(PRIOR_UTILITY_KEY); return true; } catch (_) { return false; }
 }
 
+/** F430 (review, 2026-09-26): a prior-utility handoff (`PRIOR_UTILITY_KEY`) older than this is never
+ *  dialled by `priorUtilityReconnectUrl` below, even if its `mc_url` still parses fine -- a station that
+ *  moved networks or was decommissioned must not sit in `localStorage` as a standing dial target. */
+export const PRIOR_UTILITY_HANDOFF_MAX_AGE_MS = 60 * 60 * 1000;   // about 1 hour
+
 /** F421 (bench 2026-09-26): the address a phone just RELEASED from utility mode should dial first, before
  *  falling back to mDNS/sweep discovery. `utility.js exitToHud` already writes the MC url it was bound to
  *  as a station into the handoff (`PRIOR_UTILITY_KEY`) alongside the takeover proof — a released phone has
@@ -105,10 +110,40 @@ export function clearConsumedPriorUtilityHandoff(transport, storage = defaultSto
  *  which can simply miss (bench: one phone sat on "NOT JOINED YET" with no discovered row for the rest of
  *  the sitting). A remembered address (named by the player, or one that already bound this phone as a HUD)
  *  always wins over the handoff, which is why `remembered` gates this.
- * @param {{mc_url?:string}|null} priorUtility @param {string|null|undefined} remembered @returns {string|null}
+ *
+ *  F430 (review, 2026-09-26): the handoff never expired, so an old `mc_url` (a station that moved networks,
+ *  or was decommissioned) could sit in `localStorage` and be dialled indefinitely. `exitToHud` now stamps
+ *  the handoff with `at` only when it actually wrote an `mc_url` (only a phone that was really `bound`
+ *  does), and this refuses one older than `PRIOR_UTILITY_HANDOFF_MAX_AGE_MS`.
+ * @param {{mc_url?:string, at?:number}|null} priorUtility
+ * @param {string|null|undefined} remembered
+ * @param {number} [now]
+ * @returns {string|null}
  */
-export function priorUtilityReconnectUrl(priorUtility, remembered) {
-  return !remembered && priorUtility && typeof priorUtility.mc_url === 'string' && priorUtility.mc_url ? priorUtility.mc_url : null;
+export function priorUtilityReconnectUrl(priorUtility, remembered, now = Date.now()) {
+  if (remembered || !priorUtility || typeof priorUtility.mc_url !== 'string' || !priorUtility.mc_url) return null;
+  // No `at` at all is an old-format handoff (written before F430) or a hand-edited one — either way its
+  // age cannot be proven, so it is treated the same as one that is too old, not one with no expiry.
+  if (typeof priorUtility.at !== 'number' || now - priorUtility.at > PRIOR_UTILITY_HANDOFF_MAX_AGE_MS) return null;
+  return priorUtility.mc_url;
+}
+
+/** F428 (2026-09-26): `hud.sync.bound` used to mirror `transport.state === 'bound'` on every poll
+ *  (`app.js`, 1 s), so a brief reconnect (JOINED -> NOT JOINED -> JOINED, one or two missed polls) flipped
+ *  it twice, and `hud.js`'s render signature carries `sync.bound` as structure, so each flip rebuilt the
+ *  whole idle screen. A candidate value must hold for `BOUND_DEBOUNCE_POLLS` consecutive polls before it
+ *  is let through; the very first poll (no `run` yet) commits immediately, so the app does not open on a
+ *  fake "not joined" screen while it waits out the debounce. */
+export const BOUND_DEBOUNCE_POLLS = 3;
+
+/** @param {{value:boolean, streak:number, committed:boolean}|null} run the previous call's return, or null on the first poll
+ *  @param {boolean} raw this poll's un-debounced reading
+ *  @returns {{value:boolean, streak:number, committed:boolean}} `committed` is what the caller should show */
+export function debounceBound(run, raw) {
+  const prev = run || { value: null, streak: 0, committed: null };
+  const streak = prev.value === raw ? prev.streak + 1 : 1;
+  const committed = prev.committed === null || streak >= BOUND_DEBOUNCE_POLLS ? raw : prev.committed;
+  return { value: raw, streak, committed };
 }
 
 /** F346 (a): at most this many MC hosts keep a pending enrol nonce; a new host evicts the oldest. */

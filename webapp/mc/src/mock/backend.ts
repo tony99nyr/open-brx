@@ -22,7 +22,7 @@ const now = () => Date.now();
 const POWERUP_PRESETS: PowerupPreset[] = [
   { preset: 'rockets', item: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff6a2b' } },
   { preset: 'rail_gun', item: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#38b6ff' } },
-  { preset: 'overshield', item: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#b58cff' } },
+  { preset: 'overshield', item: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#ff4fd8' } },   // F427: off the team-purple hue family
 ];
 const mockPowerups = (): 'on' | 'off' | 'old' => {
   const v = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('powerups') : null;

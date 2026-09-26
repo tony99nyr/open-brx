@@ -27,6 +27,8 @@ import ast
 import pathlib
 import re
 
+from brx_mcp.mc.state import TEAM_DEFS
+
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
 # The four ids every other source repeats. PALETTE also carries purple/teal/white/pink/orange (4-8),
@@ -102,3 +104,33 @@ def test_team_colours_match_the_server_palette():
         if got != want:
             mismatches.append(f"{name}: has {got}, want {want}")
     assert not mismatches, "a team id maps to a different colour than expected:\n" + "\n".join(mismatches)
+
+
+def _relative_luminance(hex_color: str) -> float:
+    hex_color = hex_color.lstrip("#")
+    r, g, b = (int(hex_color[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+    def lin(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = lin(r), lin(g), lin(b)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast_ratio(hex_a: str, hex_b: str) -> float:
+    la, lb = _relative_luminance(hex_a), _relative_luminance(hex_b)
+    lighter, darker = max(la, lb), min(la, lb)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_team_purple_clears_the_contrast_floor():
+    """F427 (2026-09-26): #7b2cbf read ~2.4-2.8:1 against MC's dark panel and the phone's chip ink,
+    under the 4.5:1 floor every other team colour clears. Pins the *hex* MC serves (`state.py`
+    TEAM_DEFS) against MC's panel background and the phone's purple-chip ink so a future edit cannot
+    quietly slide the colour back into fail range."""
+    purple = TEAM_DEFS["purple"]["color"]
+    mc_panel = "#0c1016"        # webapp/mc/src/tokens.ts T.panel
+    phone_chip_ink = "#140a1c"  # app/www/index.html [data-team="purple"] --team-ink
+    for background, label in ((mc_panel, "MC panel"), (phone_chip_ink, "phone chip ink")):
+        ratio = _contrast_ratio(purple, background)
+        assert ratio >= 4.5, f"team purple {purple} against {label} {background} is {ratio:.2f}:1, under the 4.5:1 floor"

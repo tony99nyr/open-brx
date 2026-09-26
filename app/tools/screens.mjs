@@ -1472,7 +1472,7 @@ for (const view of VIEWS) {
     must(day.present, 'no PICKUPS line on the pickups briefing');
     must(day.items.map(i => i.name).join(' · ') === 'ROCKETS · RAIL GUN · OVERSHIELD', 'item names/order: ' + JSON.stringify(day.items));
     must(!day.clipped && !day.wrapped && !day.overlapsFoot, 'the PICKUPS line does not fit cleanly: ' + JSON.stringify(day));
-    must(day.items[0].color === 'rgb(255, 122, 26)' && day.items[1].color === 'rgb(34, 211, 238)' && day.items[2].color === 'rgb(179, 107, 255)',
+    must(day.items[0].color === 'rgb(255, 122, 26)' && day.items[1].color === 'rgb(34, 211, 238)' && day.items[2].color === 'rgb(255, 79, 216)',
       'each item is not painted in its own day colour: ' + JSON.stringify(day.items));
 
     const nightPg = await open(view, 'briefing-pu', '&night'); const night = await read(nightPg); await nightPg.close();
@@ -3729,6 +3729,9 @@ await step('se scores overlay KOTH F424: the clock opens TEAMS showing hold time
   must(secs.every(s => s != null), `every KOTH team chip must read a mm:ss hold, never MC's bare kill number: ${JSON.stringify(r.teams)}`);
   must(secs[0] > 0 && secs[0] < 30, `our own team (holding the hill since t=2200) must show real accrued hold time: ${JSON.stringify(r.teams)}`);
   must(cap && /HOLD TIME/.test(cap), `the footer must read HOLD TIME, never a kill cap ("FIRST TO N · K · D · A"): ${cap}`);
+  // F429 (review, 2026-09-26): the per-player rows below still show K · D · A -- the caption used to
+  // drop that legend entirely for KOTH, rather than keep a short tag alongside HOLD TIME.
+  must(/K\s*·\s*D\s*·\s*A/.test(cap), `the K · D · A legend for the per-player rows must survive on the KOTH caption too: ${cap}`);
 });
 for (const view of VIEWS) {
   await step(`${view.name} scores overlay night: dim panel, and the day/night switch still works with it open`, async () => {

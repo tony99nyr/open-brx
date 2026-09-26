@@ -173,7 +173,7 @@ async function startAdvert(quiet = false) {
 }
 // ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
 let transport = null, mcState = 'offline', mcFormOpen = false, _wasLinked = false;   // mcFormOpen: CHANGE unfolded the linked MC panel
-const TEAM_ID_TO_TID = { blue: 1, yellow: 2, red: 0, green: 3, any: TEAM_ANY, ffa: TEAM_ANY };
+const TEAM_ID_TO_TID = { blue: 1, yellow: 2, red: 0, purple: 3, any: TEAM_ANY, ffa: TEAM_ANY };   // F423/F432: MC's roster team_id for tid 3 is "purple" now
 function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } }
 /** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
 async function applyStationConfig(body) {
@@ -384,7 +384,14 @@ async function exitToHud() {
     // its takeover key to the HUD so MC can authenticate the physical role transition, consume the old
     // ITEMS row, then acknowledge that consumption. A node that was never welcomed has no proof to hand on.
     if (transport && transport.nodeId && transport.nodeKey) {
-      localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify({ node_id: transport.nodeId, node_key: transport.nodeKey, mc_url: transport.url }));
+      // F430 (review, 2026-09-26): `mc_url` used to be written whenever a takeover proof existed, even if
+      // THIS phone never actually bound to that MC (a dial that never completed still carries `nodeId`/
+      // `nodeKey` from an earlier session) — a stale or wrong address the HUD side would dial as fact.
+      // Only a phone that is actually `bound` right now has proof the url is live. `at` timestamps the
+      // handoff so `priorUtilityReconnectUrl` can refuse to dial one that has sat unconsumed too long.
+      const handoff = { node_id: transport.nodeId, node_key: transport.nodeKey };
+      if (transport.state === 'bound') { handoff.mc_url = transport.url; handoff.at = Date.now(); }
+      localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify(handoff));
     }
     localStorage.setItem('brx.role', 'hud');
   } catch (_) { /* ignore */ }
