@@ -26,7 +26,7 @@ Mission Control runs on the laptop. It sees every tagger's headset, battery and 
 ![Mission Control readiness board: eight taggers with headset, battery and link state for each](/shots/mc-armory.jpg)
 
 - **Readiness board.** A headset that is off, a battery that is low or a phone that is missing shows up before the match, not during it.
-- **Pick or write the game.** Start from a stock mode. Set the rules, the venue and who carries what. Save it under a name.
+- **Pick or write the game.** Start from a stock mode. Set the rules and who carries what. Save it under a name. MVP games run outdoors only; indoor play is a post-launch feature.
 - **The match, added up.** Scores, kills and the winner, collected from every phone as it comes back into range. Export the sheet.
 
 ![Pick the game: stock modes and saved games](/shots/mc-games.jpg) ![Kit: assign taggers, teams and loadout policy](/shots/mc-kit.jpg)
