@@ -139,3 +139,39 @@ same phase gating, the same RECAP roll-forward, the same re-announce while LOADE
 
 **Stale server:** `game_pick` absent from the snapshot, or `GET /api/pieces` 404, shows a banner:
 `THE SERVER PREDATES THIS CONSOLE. RESTART MISSION CONTROL (./start.sh).` PLAY still renders.
+
+## 6. FAVOURITES
+
+Tony: "bundle everything on PLAY under a name, like a named LAST MATCH." A **favourite** bundles the WHOLE
+PLAY pick — all eight pieces plus the MATCH SETTINGS strip and a COUNTDOWN — under one name, so a whole
+night's setup (SNIPERS + STATION + SILENCED + a 15-kill limit + a 15 s countdown) is one tap, not the four
+taps §16's silent-snipers example takes. It is not a ninth picker and it is not a preset: BUILD still makes
+pieces one kind at a time, and a favourite has no fields of its own to edit beyond its name.
+
+`Favourite = {favourite_id, name (<= 24 chars, unique case-insensitive), created_t, updated_t, pick: GamePick,
+countdown_s: int}`. It stores piece **references** (the ids inside `pick.pieces`), not copies of their
+values — editing a piece in BUILD changes what every favourite naming it loads next, exactly like editing a
+piece changes what the live `game_pick` composes. The store is `home_dir()/favourites.json`
+(`{"v": 1, "favourites": [...]}`, atomic write); a corrupt file moves aside and MC starts with an empty
+shelf, as `pieces.json` does.
+
+**Routes** (`mc/favourites.py`, `mc/api.py`):
+
+| Route | Body → answer | Errors |
+|---|---|---|
+| `GET /api/favourites` | → `Favourite[]`, by `created_t` | |
+| `POST /api/favourites` | `{name, countdown_s, pick?}` → `Favourite`. `pick` defaults to the CURRENT `game_pick` (the ordinary way: build the game on PLAY, then SAVE AS A FAVOURITE) | `400` bad name/countdown_s/pick shape · `409` name clash |
+| `PUT /api/favourites/{id}` | `{name}` → `Favourite` (rename only) | `404` · `409` clash |
+| `DELETE /api/favourites/{id}` | → `{ok: true}` | `404` |
+| `POST /api/favourites/{id}/load` | `{}` → `{ok, errors, config, pick, countdown_s, fallbacks: PieceKind[]}` — applies the favourite's pieces and match through the SAME `compose`/`set_config` path `POST /api/play/pick` uses: same phase gating, same RECAP roll-forward, same re-announce while LOADED, and the same **`ok: false` changes nothing** rule (checked before anything is applied; `config`/`pick` in that reply are the unchanged current ones). A piece id the favourite named that no longer exists, or that turned `post_mvp` since, falls back to that kind's first builtin and is named in `fallbacks` — never a 404 for the whole favourite, only for an unknown favourite id itself | `404` unknown favourite |
+
+`countdown_s` is the same 5–900 s arm-runway range `POST /api/start`/`POST /api/start/reschedule` already
+enforce — a favourite's countdown is that same knob, saved under a name. It is never part of `GamePick`
+itself (§2: the runway is the console's own `RUNWAYS` store, not server session state) — LOAD hands it back
+in the response so the console can set the runway store the same way LAST MATCH does.
+
+**The console:** a FAVOURITES row on PLAY (name chips, most-recently-loaded or alphabetical), a
+`☆ SAVE AS A FAVOURITE` action next to LOAD (name-only inline form; countdown defaults to the current
+runway store value), tap a chip to LOAD, delete behind the two-step confirm. A `fallbacks` reply shows one
+line per replaced kind (`SPAWN — STATION IS GONE, USING AUTO`) so the operator is never surprised by a
+silent substitution; the load still succeeds.
