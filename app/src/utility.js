@@ -64,6 +64,19 @@ const a58Locked = () => Number.isFinite(+settings.lockUntil) && +settings.lockUn
 // ---------- plugins ----------
 const plugins = {};
 const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+/** F420 (bench 2026-09-26, green Pixel 5 on 0.4.13): Android 15's edge-to-edge WebView reports
+ *  `env(safe-area-inset-top)` as 0 (hud.js's `fit()` hit the identical bug first, on the HUD's own ⓘ),
+ *  so the ⓘ that opens the exit drawer sat under the status bar with no way to tap it — with this phone
+ *  MC-armed, that made an MC release the ONLY way out of utility mode. A native build gets the same
+ *  fixed floor the HUD uses (28px); the browser / `?stage` harness keeps the plain CSS `env()` value,
+ *  which already renders correctly there. */
+function applyNativeInset() {
+  if (!isNative()) return;
+  const top = 'max(env(safe-area-inset-top, 0px), 28px)';
+  document.body.style.paddingTop = top;
+  const cfg = $('cfg'); if (cfg) cfg.style.paddingTop = top;
+}
 async function loadPlugins() {
   const tryImport = async (name, fn) => { try { plugins[name] = (await fn()).v; } catch (e) { log(`plugin ${name} unavailable: ${e && e.message || e}`); } };
   const jobs = [
@@ -1030,7 +1043,7 @@ function wireExit() {
 }
 
 (async () => {
-  wire(); render();
+  applyNativeInset(); wire(); render();
   await loadPlugins();
   try { if (plugins.keepAwake) await plugins.keepAwake.keepAwake(); } catch (_) { /* ignore */ }
   try { if (plugins.beacon) support = await plugins.beacon.isSupported(); } catch (e) { log('isSupported: ' + (e && e.message || e)); }
@@ -1056,7 +1069,8 @@ function wireExit() {
     // F365 / A67 test seams: the edit model, one on-station edit, the status body a heartbeat sends, the hold's need
     range, stationEdit, statusBody: utilityStatusBody, a58Locked, holdMs: () => rangeHoldMs(a58Locked()),
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
-    get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); } };
+    get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
+    applyNativeInset };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
   window.brxUtil = window.brxUtility;
 })();
 

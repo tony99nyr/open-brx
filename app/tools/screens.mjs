@@ -79,7 +79,7 @@ const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });  
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live-spawn-lost', 'live-switch-kill', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap', 'down-full', 'down-partial', 'down-unclear', 'down-zero-dealt', 'down-pickup', 'down-ffa', 'down-hill', 'down-stale', 'down-old-mc']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-scores-koth', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap', 'down-full', 'down-partial', 'down-unclear', 'down-zero-dealt', 'down-pickup', 'down-ffa', 'down-hill', 'down-stale', 'down-old-mc']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
@@ -929,6 +929,23 @@ for (const view of VIEWS) {
     const pg = await open(view, 'idle'); const r = await pg.evaluate(() => { const b = document.querySelector('[data-act="onUtility"]'); if (!b) return null; const rc = b.getBoundingClientRect(); const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1); return { txt: b.textContent.trim(), h: rc.height / sc }; }); await pg.close();
     must(r && /UTILITY MODE/.test(r.txt) && r.h >= 38, JSON.stringify(r));
   });
+  // F422 (bench 2026-09-26, 11.7): MC can bind this phone before any gun is picked (an mDNS auto-join
+  // over Wi-Fi) and the SET MY GUN screen said nothing about it ("no idea, no indication" — Tony).
+  // `hud._idleMcLine` must show BOTH states, never just the good one.
+  await step(`${view.name} #47 idle F422: SET MY GUN shows whether MC has joined, in both states`, async () => {
+    const pg = await open(view, 'idle');
+    const line = () => pg.evaluate(() => { const el = document.querySelector('.idle .mcline'); return el ? { text: el.textContent.trim(), on: el.classList.contains('on'), dotOff: !!el.querySelector('.dot.off') } : null; });
+    const before = await line();
+    // The stage has no real Transport, so `hud.sync` (app.js's 1 s poll) reads the engine's own wsState in
+    // DEMO mode instead (the same seam a bound-vs-not-bound RESULT screen relies on) — setting `hud.sync`
+    // directly here would just be overwritten by that poll within a second.
+    await pg.evaluate(() => { window.brx.engine.setWsState('bound'); }); await pg.waitForTimeout(1300);
+    const after = await line();
+    await pg.screenshot({ path: `${OUT}/${view.name}-idle-mcjoin.png` });
+    await pg.close();
+    must(before && before.text === 'MC NOT JOINED' && !before.on && before.dotOff, `SET MY GUN must say MC is NOT joined by default, not stay silent: ${JSON.stringify(before)}`);
+    must(after && after.text === 'MC JOINED' && after.on && !after.dotOff, `once MC binds, SET MY GUN must say so: ${JSON.stringify(after)}`);
+  });
   await step(`${view.name} #48 utility phone: status only; ⓘ ×7 opens the settings; START sticks across a reload`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
     await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }).catch(() => {});
@@ -943,6 +960,23 @@ for (const view of VIEWS) {
     must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 4 && s1.team === 'BLUE' && s1.status === 'NOT LIVE', 'status screen: ' + JSON.stringify(s1));   // four fake phones: three for the respawn demo + the opposing team a control point needs (F82 bars tid 2)
     must(six, 'six taps opened the settings'); must(!s2.hidden && s2.defaults >= 6 && s2.pressed === 3 && s2.rangeLabel, 'settings: ' + JSON.stringify(s2));
     must(s3.status === 'LIVE' && s3.hidden, 'after START + close: ' + JSON.stringify(s3)); must(s4.status === 'LIVE' && s4.hidden, 'after reload: ' + JSON.stringify(s4));
+  });
+  // F420 (bench 2026-09-26, green Pixel 5): Android 15's edge-to-edge WebView reported env(safe-area-inset-top)
+  // as 0, so the ⓘ that opens the exit drawer sat under the status bar and could not be tapped — with this
+  // phone MC-armed, an MC release was the ONLY way out. `applyNativeInset` (utility.js) floors the top
+  // padding on a native build; the plain browser / `?stage` harness (env() genuinely 0, no real status
+  // bar) must be untouched, which is also the pre-condition proving this test would fail without the fix.
+  await step(`${view.name} #69 F420: a native build floors the ⓘ's top inset so the status bar cannot cover it`, async () => {
+    const pg = await b.newPage({ viewport: { width: 411, height: 891 } });
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.waitForTimeout(600);
+    const before = await pg.evaluate(() => ({ padTop: getComputedStyle(document.body).paddingTop, infoTop: document.getElementById('info').getBoundingClientRect().top }));
+    await pg.evaluate(() => { window.Capacitor = { isNativePlatform: () => true }; window.brxUtility.applyNativeInset(); });
+    const after = await pg.evaluate(() => ({ padTop: getComputedStyle(document.body).paddingTop, infoTop: document.getElementById('info').getBoundingClientRect().top }));
+    await pg.screenshot({ path: `${OUT}/${view.name}-utility-native-inset.png` });
+    await pg.close();
+    must(parseFloat(before.padTop) < 20, `pre-condition: the browser/?stage default must be the plain 14px CSS floor, not already raised: ${JSON.stringify(before)}`);
+    must(parseFloat(after.padTop) >= 28, `a native build must floor the top padding at 28px: ${JSON.stringify(after)}`);
+    must(after.infoTop > before.infoTop, `the ⓘ button must move clear of where a status bar would sit once the native floor applies: ${JSON.stringify({ before, after })}`);
   });
   await step(`${view.name} #49 utility phone: a station_config push arms it (MC ✓ GAME n, re-keyed advert, live, drawer shut, survives reload)`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
@@ -3679,6 +3713,22 @@ await step('se scores overlay FFA: the clock opens STANDINGS, a kills ranking wi
   await pg.close();
   must(r.open && r.tab === 'STANDINGS' && r.rows === 4 && r.teams.length === 0, `FFA has no teams: the TEAM tab is the standings: ${JSON.stringify(r)}`);
   must(r.me.length === 1 && /REAPER/.test(r.me[0]), `my row is highlighted: ${JSON.stringify(r.me)}`);
+});
+// ---------- F424: KOTH is not scored on kills — the board's team chip must show HOLD TIME, from this
+// phone's own possession tally (engine.js `_accrueHold`/`state().possession`), never MC's kills-only push. ----------
+await step('se scores overlay KOTH F424: the clock opens TEAMS showing hold time, never a bare kill count', async () => {
+  const pg = await open(VIEWS[1], 'live-scores-koth');
+  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  const r = await boardState(pg);
+  const cap = await pg.evaluate(() => (document.querySelector('.bdcap') || {}).textContent || null);
+  await pg.screenshot({ path: `${OUT}/se-scores-koth.png` });
+  await pg.close();
+  must(r.open && r.tab === 'TEAMS', `the clock must open the TEAMS tab: ${JSON.stringify(r)}`);
+  must(r.teams.length === 2, `both team chips must show: ${JSON.stringify(r.teams)}`);
+  const secs = r.teams.map(t => { const m = /(\d\d):(\d\d)$/.exec(t); return m ? (+m[1]) * 60 + (+m[2]) : null; });
+  must(secs.every(s => s != null), `every KOTH team chip must read a mm:ss hold, never MC's bare kill number: ${JSON.stringify(r.teams)}`);
+  must(secs[0] > 0 && secs[0] < 30, `our own team (holding the hill since t=2200) must show real accrued hold time: ${JSON.stringify(r.teams)}`);
+  must(cap && /HOLD TIME/.test(cap), `the footer must read HOLD TIME, never a kill cap ("FIRST TO N · K · D · A"): ${cap}`);
 });
 for (const view of VIEWS) {
   await step(`${view.name} scores overlay night: dim panel, and the day/night switch still works with it open`, async () => {

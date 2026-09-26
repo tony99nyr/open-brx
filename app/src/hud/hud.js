@@ -10,6 +10,11 @@ import { medalIcon, medalChip } from './medalicons.js';   // the RECAP icons onl
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
 const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
+// F424: engine.js's own possession tally (`st.possession.by_site`) is keyed by the raw numeric tid the
+// beacon carries (TEAM_KEY in engine.js, 0..3), but the board's teams (MC's `score.board`) come back
+// keyed by the colour string (`t.team_id`, e.g. "blue"). This is the same table, reversed, so a KOTH
+// board can look a team's hold up by its colour.
+const TEAM_TID = { red: 0, blue: 1, yellow: 2, green: 3 };
 const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 /** A countdown as one fixed-width cell per digit (F115). Saira Condensed has no tabular figures, so
  *  `font-variant-numeric:tabular-nums` silently does nothing and every value is a different width:
@@ -739,9 +744,19 @@ export class Hud {
       <div class="others" hidden></div></div>`;
   }
 
+  // F422 (bench 2026-09-26, 11.7): MC can bind this phone before the gun is ever picked (an mDNS
+  // auto-join over Wi-Fi, no tap needed — `app.js`'s boot sweep) and the SET MY GUN screen said nothing
+  // about it: "no idea, no indication" (Tony). `this.sync.bound` (app.js, the same 1 s poll the results
+  // screen's SENDING SCORES line already reads) is the one fact this screen can show with no new wiring;
+  // both states are shown, never just the good one, so a phone that has NOT joined says so too.
+  _idleMcLine() {
+    const bound = !!(this.sync && this.sync.bound);
+    return `<span class="mcline ${bound ? 'on' : ''}"><i class="dot ${bound ? '' : 'off'}"></i>${bound ? 'MC JOINED' : 'MC NOT JOINED'}</span>`;
+  }
   _idle(st = {}) {
     return `<div class="idle"><div class="scan"></div>
       <div class="l"><span class="wm">BRX<b>/</b></span><span class="sub">COMBAT HUD</span>
+        ${this._idleMcLine()}
         ${st.rejoin ? '<span class="note" style="color:var(--warn)">MATCH IN PROGRESS — SET YOUR GUN TO REJOIN</span>' : ''}
         <button class="bigbtn" data-act="onSetGun"><span class="unskew">SET MY GUN ▸</span></button>
         <button class="bigbtn ghost" data-act="onDemo"><span class="unskew">DESKTOP DEMO</span></button>
@@ -1156,6 +1171,29 @@ export class Hud {
     const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
     return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${esc(String(t.name || k || '—').toUpperCase())} <b>${num(t.score) == null ? '—' : t.score}</b></span></span>`;
   }
+  /** F424: this phone's own possession tally (engine.js `_accrueHold`), summed across every site into
+   *  {tid -> ms}. MC's live `score` push carries KILLS only (`_score_board` always uses `team_scores()`),
+   *  never a merged hold total — that only exists in the END-of-match recap (`_resultHold`). Mid-match,
+   *  the one number this phone actually has for KOTH is what IT observed, which is why this reads
+   *  `st.possession.by_site` (engine.js `state()`) rather than `st.board`: a stated lower bound, same
+   *  spirit as the recap's own possession fact, never a guess at what other phones saw. */
+  _liveHold(st) {
+    const p = st.possession && typeof st.possession === 'object' ? st.possession : null;
+    const bySite = p && p.by_site && typeof p.by_site === 'object' ? p.by_site : null;
+    if (!bySite) return null;
+    const out = {};
+    for (const site of Object.values(bySite)) { if (!site || typeof site !== 'object') continue;
+      for (const [tid, v] of Object.entries(site)) out[tid] = (out[tid] || 0) + (num(v) || 0); }
+    return out;
+  }
+  /** The KOTH board's team chip: HOLD TIME (mm:ss), not the kill count `_teamChip` shows — F424. `data-tid`
+   *  lets `_patch` update the number in place every tick without a full board rebuild (the hold climbs
+   *  continuously, not just on a fresh MC push). */
+  _teamChipKoth(t, ms) {
+    const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
+    const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
+    return `<span class="tm koth" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${esc(String(t.name || k || '—').toUpperCase())} <b class="tab">${mmss(ms || 0)}</b></span></span>`;
+  }
 
   /** THE FINAL RESULTS SCREEN.
    *
@@ -1556,13 +1594,21 @@ export class Hud {
           : `<span class="tab">${v(r.kills)}</span>`}</div>`).join('')}
         ${rows.length ? '' : '<div class="bdnone">YOUR OWN LINE · MISSION CONTROL HAS SENT NO SCORES</div>'}</div>`;
     } else {
+      // F424: KOTH is not scored on kills, so the board's team chip shows HOLD TIME instead of the
+      // (always-kills) `t.score` MC's live push carries — read from THIS phone's own possession tally
+      // (`_liveHold`, engine.js `state().possession`), the one number available mid-match without an
+      // MC-side change (the merged, all-phones total exists only in the end-of-match recap).
+      const koth = st.mode === 'KOTH';
+      const holdByTid = koth ? this._liveHold(st) : null;
       const teams = st.board && Array.isArray(st.board.teams) ? st.board.teams.filter(t => t && typeof t === 'object') : [];
       body = teams.length ? `<div class="bdteams">${teams.map(t => {
         const k = String(t.team_id == null ? '' : t.team_id).toLowerCase(); const mine = !!(st.teamKey && k === st.teamKey);
         const ps = rows.filter(r => String(r.team_id == null ? '' : r.team_id).toLowerCase() === k);
-        return `<div class="bdteam ${mine ? 'mine' : ''}">${this._teamChip(t, mine)}
+        const chip = koth ? this._teamChipKoth(t, holdByTid && TEAM_TID[k] != null ? holdByTid[TEAM_TID[k]] : 0) : this._teamChip(t, mine);
+        return `<div class="bdteam ${mine ? 'mine' : ''}">${chip}
           ${ps.map(r => `<div class="bdr tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${name(r)}</span><span class="tab">${v(r.kills)} · ${v(r.deaths)} · ${v(r.assists)}</span></div>`).join('')}</div>`; }).join('')}</div>
-        ${st.board && num(st.board.cap) != null ? `<div class="bdcap">FIRST TO ${st.board.cap} · K · D · A</div>` : ''}`
+        ${koth ? '<div class="bdcap">HOLD TIME · A LOWER BOUND</div>'
+          : st.board && num(st.board.cap) != null ? `<div class="bdcap">FIRST TO ${st.board.cap} · K · D · A</div>` : ''}`
         : '<div class="bdnone">NO TEAM TOTALS FROM MISSION CONTROL YET</div>';
     }
     return `<div class="bdscrim"></div><div class="bdpanel" role="dialog" aria-label="Match scores">
@@ -1763,7 +1809,19 @@ export class Hud {
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
       const dot = q('linkdot'); if (dot) { const cls = gunDot(st); if (dot.className !== cls) dot.className = cls; }
       set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
-      if (this.board) { set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', this._boardStale(st)); }
+      if (this.board) {
+        set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', this._boardStale(st));
+        // F424: the hold climbs every tick, not just on a fresh MC score push (which is what the sig
+        // watches) — patch it directly so the board's own numbers do not sit stale while it is open.
+        if (st.mode === 'KOTH') {
+          const holdByTid = this._liveHold(st);
+          for (const el of this.hudEl.querySelectorAll('.bdteam .tm.koth[data-tid]')) {
+            const tid = el.dataset.tid; if (tid === '') continue;
+            const b = el.querySelector('b'); const txt = mmss((holdByTid && holdByTid[tid]) || 0);
+            if (b && b.textContent !== txt) b.textContent = txt;
+          }
+        }
+      }
       const md = q('mcdot'); if (md) { const cls = 'dot ' + (st.wsState === 'bound' ? '' : 'ws'); if (md.className !== cls) md.className = cls; }
     }
   }
