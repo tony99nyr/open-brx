@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-26 (F411 brief written, spec/design/games-redesign.md, route brx3; F410 filed: MVP is outdoors only; F403 closed; F402 closed; F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F282 back from post-mvp.md into MVP DESK -- Tony: yes, MVP, silenced must silence the weapons -- built at the desk, `silent_weapons` bench check left; F406 filed to post-mvp.md).
+Updated: 2026-09-26 (F410 closed: MVP is outdoors-only server-side already (compile.play_volume, default_config default outdoor, unchanged), docs/platform and docs/manual brought in line, quiet fallback for an unrecognised venue kept; hiding the venue picker in the console is F411's own work, not repeated here. F282 moved from MVP DESK to MVP BENCH: build is done, only the bench eyes-and-ears pass is left. F411 brief written, spec/design/games-redesign.md, route brx3; F403 closed; F402 closed; F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F406 filed to post-mvp.md).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,17 +9,16 @@ Updated: 2026-09-26 (F411 brief written, spec/design/games-redesign.md, route br
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 76.** Desk 6 · bench 67 · decision 3.
+**MVP open: 75.** Desk 4 · bench 68 · decision 3.
 
-**MVP DESK (6),** a keyboard is enough:
+**MVP DESK (4),** a keyboard is enough:
 - 🔴 **F411**
-- 🟠 **B21** · **F372** · **F400** · **F410**
-- 🟡 **F282**
+- 🟠 **B21** · **F372** · **F400**
 
-**MVP BENCH (67),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (68),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
 - 🟠 **F349** · **F308** · **F374** · **S58** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F382** · **F383** · **F384** · **F385** · **F387** · **F388** · **F389** · **F391** · **F393** · **F394** · **F399**
-- 🟡 **Q13** · **F333** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F381** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398**
+- 🟡 **Q13** · **F333** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F381** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398** · **F282**
 - 🟢 **F339**
 
 **MVP DECISION (3),** awaiting Tony:
@@ -54,7 +53,6 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F410 🟠 MVP IS OUTDOORS ONLY.** Tony 2026-09-25 (via brx2): "we dont even support indoor for mvp". Every MVP mode and preset defaults to `outdoor` (play volume 90, `compile.play_volume`), and MC hides the indoor/outdoor choice. Keep `play_volume`'s quiet fallback for an unknown venue (a safety net, not a choice). Indoor play is post-launch. Check every "indoor" line in the console, the docs and the manual. Bench runs keep `--bench-volume`. `build`.
 - **F411 🔴 MC GAMES REDESIGN: PICK GAME AND BUILD (the storyboard's option A).** Tony approved the direction,
   2026-09-26: "yeah this makes sense"; "not gunna bench until new mc games tab is ready" — this blocks the next
   bench sitting. GAMES splits into PLAY (PICK GAME: pick saved presets, LOAD, no editing, no "tuned, not saved"
@@ -78,33 +76,6 @@ A keyboard is enough. Highest value first.
 - **F372 🟠 TURN POWERUPS ON BY DEFAULT ONCE THE POWERUP BENCH PASSES.** Tony 2026-09-25: "yes powerups an mvp feature, lets bench it". Today MC grants items only with `--powerups` (`mc/__main__.py`), and the banner says "not bench-proven yet". Gate: every step of the powerups setup in [`bench-2026-09-25.md`](bench-2026-09-25.md) passes (3.4, 3.5, 11.2 and 4.11 for the phone station and the Stick). Then: make powerups the default (keep a way to switch them off), replace the -55 claim placeholder (`POWERUP_THRESHOLD_DEFAULT`, `beacon.js POWERUP_RSSI_DBM`) and the Stick's -57 with the calibrated values, and update [`spec/powerups.md`](spec/powerups.md) "Bench gate". `build`.
 
 - **F400 🟠 A POWERUP PICKUP MUST SHOW THE FULL ALT SWITCH SCREEN, NOT ONLY THE SMALL HINT CHIP.** Tony, 2026-09-25: "we need a louder rockets have the trigger alert on hud. that is pretty small. we probably need the switching screen like the alt button. players need to know their active switched." Today a powerup weapon landing on the trigger shows only the small hint chip (`<ITEM> ON TRIGGER`, `_puHint`, `spec/powerups.md` §"The mechanism"). Proposal: reuse the same full weapon-switch callout an ALT press shows, both when the pickup lands on the trigger and on the switch-back to the player's own weapon (charges run out, and the SELECT toggle). Tony also flagged the pickup's sound, 2026-09-25: "we didnt have the proper rockets pickup sound... it sounded like the shotgun. is there a voice callout for Rockets or Rocket Launcher?" (today's shotgun-like sound is suspected to be the equip sound riding inside the rocket's captured `$WEAP` head, unverified); the storyboard adds an AUDIO panel proposing VA56 "Rocket Launcher!" on the trigger landing, V130 "Overshield" on an Overshield pickup and VX0S "Weapon Swap" on the switch-back, with VZ10 "Mini Rocket Launcher" and VA9T "One more weapon ready for duty." as Rail Gun alternatives (`docs/reference/sound-catalog.md`; all unconfirmed community labels, audition on the gun first). Storyboard first: brx2 builds the options at `C:\Users\Tony\brx-pu-switch` from the real HUD (`ui:stage`), Tony picks, then brx5 builds it. Owner: brx5 (build), brx2 (storyboard). `eyes` + `build`. **→ 2026-09-25 built (brx5):** the full switch card ships for the grant, a same-weapon stack, both SELECT directions and the empty switch-back (`docs/spec/powerups.md` "The switch card"); the small hint chip hides while it is up. The Overshield stays card-free, and now replays the S29 recharge's own cue (N102) on its grant. The clash (a kill card waits under the card) is Tony's LEAN via F368's own takeover rule, not yet checked on a storyboard. Not built: that storyboard, and the AUDIO panel's voice lines (VA56/VX0S/V130, still unaudited). Polish lows left: the card's STOWING/DRAWING/ACTIVE label is 10 px (under the 11 px floor, pre-existing, now seen at every pickup); a pickup card's ACTIVE bubble reads READY (it closes on its timer, never on the equip echo). `bench`: on the gun, the card holds ALT's time and SELECT works at once while it is up.
-
-- **F282 🟡 CAN WE ACTUALLY SUPPRESS THE MUZZLE FLASH, AND IS THE SUPPRESSOR AUDIBLY QUIETER?** Tony, 2026-09-18,
-  reading the arsenal page: "are you sure we can suppress the muzzle flash?" **No, and the claim has been withdrawn
-  from the player copy.** `$WEAP` **t25/t26 are NOT in the APK field table** (`protocol-classes.md` jumps 24
-  `overheat` to 27 `primaryFire_SoundName`), and the only thing naming them muzzle flash is an unsourced comment in
-  `mc/compile.py`. We never write them: they are inherited verbatim from each capture, where the Suppressor carries
-  **2 and 50** and the assault rifle carries **none**. Set-versus-empty is suggestive of something, but says nothing
-  about direction, and 2/50 could be a reduced flash as easily as no flash. The "quiet" half is better grounded but
-  also unjudged: t27 is `Q06` on the Suppressor against `R01` on the AR, so it genuinely plays a different
-  sound, but nobody has heard our two COMPILED weapons back to back. **Bench, 5 minutes, needs only eyes and ears:**
-  arm one gun with the compiled Suppressor and one with the compiled AR, fire each in a DARK room, and (1) say
-  whether either shows a visible flash at the muzzle and whether they differ, (2) judge by ear which is quieter and
-  by how much. Then a second pass writing t25/t26 to 0 and to a large value on the SAME weapon, to find out what
-  they do at all. ⚠️ Until then no public page may claim a stealth property. Same evidence fault the polish loop
-  caught four times on 2026-09-18, this time in copy I wrote myself. **→ Tony 2026-09-25: yes, MVP; the silenced
-  preset must silence the weapons.** Built: a `presentation.silent_weapons` switch (true only in the "silenced"
-  preset, false elsewhere, absent-means-false on an older saved game) makes `compile.py` give EVERY compiled
-  weapon's `$WEAP` the Suppressor's own captured t25/t26/t27 (`2`, `50`, `Q06`, read from its `weapons.json` row,
-  not hard-coded), written LAST, after a weapon's own `overrides`; a weapon that already carries that t25/t26 pair
-  (the Suppressor, the USP-S) keeps its own quiet t27 (the USP-S plays `Q04`). The phone try-out uses it too. The
-  host sees only the existing SILENCED choice (Tony: "we only need one switch"). The
-  standard preset is unchanged. t25/t26 are still UNPROVEN, not "no muzzle flash" — see the code comment on
-  `WeaponCatalog.resolve()`. Left for the bench (sitting C, [`bench-2026-09-25.md`](bench-2026-09-25.md)): the
-  A/B/A eyes-and-ears pass this row always asked for, now run through `compile.resolve()` with the preset, plus
-  a once-only try of an empty t27. `build` + `bench`.
-
-
 
 ## MVP BENCH
 
@@ -201,6 +172,31 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 - **F395 🟡 THE APP'S LAUNCH SPLASH RENDERS STRETCHED AND BROKEN.** Tony, sitting B, 2026-09-25: the white BRX-logo loading screen always looks stretched on the phone HUD. Owner: brx-hud session. `eyes`.
 
 - **F396 🟡 THE ROCKET TIMER JUMPS AFTER A SPAWN.** brx-hud finding, sitting B, 2026-09-25: after a spawn the rocket cooldown timer rendered at the bottom of the HUD, hung off the bottom edge, vanished, then came back. Owner: brx-hud session. `eyes`.
+
+- **F282 🟡 CAN WE ACTUALLY SUPPRESS THE MUZZLE FLASH, AND IS THE SUPPRESSOR AUDIBLY QUIETER?** Tony, 2026-09-18,
+  reading the arsenal page: "are you sure we can suppress the muzzle flash?" **No, and the claim has been withdrawn
+  from the player copy.** `$WEAP` **t25/t26 are NOT in the APK field table** (`protocol-classes.md` jumps 24
+  `overheat` to 27 `primaryFire_SoundName`), and the only thing naming them muzzle flash is an unsourced comment in
+  `mc/compile.py`. We never write them: they are inherited verbatim from each capture, where the Suppressor carries
+  **2 and 50** and the assault rifle carries **none**. Set-versus-empty is suggestive of something, but says nothing
+  about direction, and 2/50 could be a reduced flash as easily as no flash. The "quiet" half is better grounded but
+  also unjudged: t27 is `Q06` on the Suppressor against `R01` on the AR, so it genuinely plays a different
+  sound, but nobody has heard our two COMPILED weapons back to back. **Bench, 5 minutes, needs only eyes and ears:**
+  arm one gun with the compiled Suppressor and one with the compiled AR, fire each in a DARK room, and (1) say
+  whether either shows a visible flash at the muzzle and whether they differ, (2) judge by ear which is quieter and
+  by how much. Then a second pass writing t25/t26 to 0 and to a large value on the SAME weapon, to find out what
+  they do at all. ⚠️ Until then no public page may claim a stealth property. Same evidence fault the polish loop
+  caught four times on 2026-09-18, this time in copy I wrote myself. **→ Tony 2026-09-25: yes, MVP; the silenced
+  preset must silence the weapons.** Built: a `presentation.silent_weapons` switch (true only in the "silenced"
+  preset, false elsewhere, absent-means-false on an older saved game) makes `compile.py` give EVERY compiled
+  weapon's `$WEAP` the Suppressor's own captured t25/t26/t27 (`2`, `50`, `Q06`, read from its `weapons.json` row,
+  not hard-coded), written LAST, after a weapon's own `overrides`; a weapon that already carries that t25/t26 pair
+  (the Suppressor, the USP-S) keeps its own quiet t27 (the USP-S plays `Q04`). The phone try-out uses it too. The
+  host sees only the existing SILENCED choice (Tony: "we only need one switch"). The
+  standard preset is unchanged. t25/t26 are still UNPROVEN, not "no muzzle flash" — see the code comment on
+  `WeaponCatalog.resolve()`. Left for the bench (sitting C, [`bench-2026-09-25.md`](bench-2026-09-25.md)): the
+  A/B/A eyes-and-ears pass this row always asked for, now run through `compile.resolve()` with the preset, plus
+  a once-only try of an empty t27. `bench`.
 
 ### Later: one or two guns, the rig and the laptop
 

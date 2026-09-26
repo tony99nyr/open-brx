@@ -51,7 +51,7 @@ a game you can save and run again.
 | Respawn | Timed (the phone counts a delay and re-arms the tagger), station (walk back to a respawn station and it re-arms you), or none (Last Man Standing lives). |
 | Health pool | One of three presets: Standard (45 health, 70 armour, the default), Shields (45 health, 105 shield) or Hardcore (45 health only). Shield soaks first, then armour. You can raise or lower it per player, which is how you handicap a strong player or help a small one. |
 | Loadout policy | Who picks the weapons: the operator, the players, or nobody (see below). |
-| Venue | Indoor or outdoor sets the tagger's IR range profile and the game volume (80 indoors, 90 outdoors). Night dims the LEDs instead of lighting the field up. |
+| Venue | Every MVP game runs outdoors: the tagger's IR range profile and the game volume (90) are fixed to it. Indoor play is a post-launch feature; an unrecognised venue still falls back to the quieter indoor volume (80) as a safety net, not a choice. Night dims the LEDs instead of lighting the field up. |
 | Friendly fire and critical hits | Both are tagger settings, both are per game. Free-for-all forces friendly fire on, since everyone is an enemy. |
 
 Because the clock is the only ending that reaches everyone, a game with no time limit is refused
