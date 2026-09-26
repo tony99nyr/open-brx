@@ -341,14 +341,31 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
    S29 recharge plays on its first grant (N102 in the golden bundle; F349: no separate "Shields Online" voice).
 6. **No new voice lines.** VA56 ("Rocket Launcher!"), VX0S ("Weapon Swap") and V130 ("Overshield") from the F400
    FOLLOWUPS row's AUDIO panel are unaudited community labels and stay out of scope.
+7. **The ACTIVE bubble's sub-line reads CONFIRMED for a pickup switch, never READY nor CONFIRMED BY YOUR GUN**
+   (desk fix, 2026-09-26). `_puSwitchCard` sets `this.switching.pu = true` precisely so a pickup equip is
+   display-only for `_onAmmo`'s confirm-by-shot code (below): the card can never close early on the gun's own
+   echo, so it always reaches the ACTIVE bubble by way of the tick's assumed-timeout. For an ALT swap that path
+   means "we never got a shot to prove it, but the window has passed" -- an honest guess, so the bubble says
+   READY. A pickup switch is not a guess: the phone's own equip write (`_puEquip`) already settled the trigger
+   before the card even opened, so `assumed: true` on this moment's data is true only in the sense of "closed by
+   the timer", not "unproven". READY would undersell that; CONFIRMED BY YOUR GUN would claim a mechanism
+   (the gun's echo) that this path deliberately never uses. CONFIRMED, on its own, is the state the bubble now
+   shows (`hud.js` `_switched`, keyed on a new `pu` flag the moment's `data` carries alongside `assumed`).
 
-Engine mechanism: `_puSwitchCard(from, to, going?)` sets `this.switching = {at, from, to}` verbatim, the SAME field
-and shape an ALT press sets (`engine.js` around the `$BUT,1,1` handler). The gun's own echo of the equip write
-confirms it through the existing ALT-confirm code in `_onAmmo`, or the existing tick assumed-timeout does when
-nothing echoes -- both paths, and the takeover flag, are ALT's own, untouched. `going` is `{name, color, weapon_id,
-charges}` for a slot about to lose its identity this call (the empty switch-back's heavy, whose `_puHeld` is cleared
-before the equip): the HUD's tile still needs to name it on the render after that, so it rides on
-`state().powerup.going` until the card's own window has passed. The tick's assumed-timeout path never lets a
-pickup slot (2 or 3) become `_altPtr`: that field is the gun's OWN ALT-cycle position (always 0 or 1), and a
-powerup equip never touches ALT's `$BMAP` row (see "The mechanism" above).
-Not built: a storyboard for the clash lean, and the AUDIO panel's voice lines (decision 6).
+Engine mechanism: `_puSwitchCard(from, to, going?)` sets `this.switching = {at, from, to, pu: true}`, the SAME
+`at`/`from`/`to` shape an ALT press sets (`engine.js` around the `$BUT,1,1` handler), plus the `pu` flag. `_onAmmo`'s
+confirm-by-shot code explicitly excludes a `pu` switch (`this.switching && !this.switching.pu`, so it can only ever
+close on the tick's assumed-timeout, never early on the gun's echo of the equip write itself -- decision 7 is why
+that is the right call, not a gap. `going` is `{name, color, weapon_id, charges}` for a slot about to lose its
+identity this call (the empty switch-back's heavy, whose `_puHeld` is cleared before the equip): the HUD's tile
+still needs to name it on the render after that, so it rides on `state().powerup.going` until the card's own
+window has passed. The tick's assumed-timeout path never lets a pickup slot (2 or 3) become `_altPtr`: that field
+is the gun's OWN ALT-cycle position (always 0 or 1), and a powerup equip never touches ALT's `$BMAP` row (see
+"The mechanism" above).
+
+The STOWING/DRAWING/ACTIVE label (`.wt .wl`, shared with ALT's own card) rendered at 10px, under the 11px type
+floor (desk fix, 2026-09-26): raised to 11px in `www/index.html`. The tile is 220px wide with plenty of headroom,
+so the extra pixel does not wrap or clip either tile at either phone width.
+
+Not built: a storyboard for the clash lean, and the AUDIO panel's voice lines (decision 6). Bench check, the
+unbuilt voice lines and the clash storyboard are still open on the F400 row (`docs/FOLLOWUPS.md`).

@@ -477,7 +477,7 @@ test('F400: the trigger grant sets the switch card (SWITCHING, ALT\'s own from/t
   h.adv(h.eng.switchWindowMs() + 50);
   assert.equal(h.eng.switching, null, 'ALT\'s own window has passed with no echo');
   assert.equal(h.eng.moment && h.eng.moment.kind, 'switched');
-  assert.deepEqual(h.eng.moment.data, { slot: 2, assumed: true });
+  assert.deepEqual(h.eng.moment.data, { slot: 2, assumed: true, pu: true });
   assert.equal(h.eng.activeSlot, 2, 'the equip itself was never in doubt -- only the CARD waited');
   assert.equal(h.eng._altPtr, 0, 'F400: a pickup slot (2) never becomes the gun\'s own ALT cycle pointer');
 });
