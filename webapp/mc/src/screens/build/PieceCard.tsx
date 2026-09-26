@@ -1,0 +1,26 @@
+// F411 BUILD: one card in a kind's shelf (games-presets.md §5: "name, note, a BUILT-IN tag").
+import type { GamePiece } from '../../api/contract.gen';
+import { onKey, OutlineTag, Tag } from '../../ui';
+import { F, T } from '../../tokens';
+
+export function PieceCard({ piece, selected, subtitle, onSelect, onOpen }:
+  { piece: GamePiece; selected: boolean; subtitle?: string; onSelect?: () => void; onOpen?: () => void }) {
+  const clickable = !!(onSelect || onOpen);
+  const activate = () => { onSelect?.(); onOpen?.(); };
+  return (
+    <div role={clickable ? 'button' : undefined} tabIndex={clickable ? 0 : undefined}
+      aria-pressed={clickable ? selected : undefined} aria-label={clickable ? `${onOpen ? 'edit' : 'select'} ${piece.name}` : undefined}
+      onClick={clickable ? activate : undefined} onKeyDown={clickable ? onKey(activate) : undefined}
+      data-testid={`piece-card-${piece.piece_id}`}
+      style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 14px', minHeight: 44, flex: '0 0 200px',
+        background: selected ? 'rgba(57,180,255,.07)' : T.panel, border: `1px solid ${selected ? T.acc : T.line}`,
+        opacity: piece.post_mvp ? 0.55 : 1, cursor: clickable ? 'pointer' : 'default' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ font: F.osw(600, 15), letterSpacing: '.04em', lineHeight: 1.2 }}>{piece.name.toUpperCase()}</span>
+        {piece.builtin && <Tag size={10} color={T.panelAlt} ink={T.dim}>BUILT-IN</Tag>}
+      </div>
+      <span style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.4, minHeight: 15 }}>{piece.note || subtitle || ''}</span>
+      {piece.post_mvp && <OutlineTag color={T.warn} border={T.line2}>POST-MVP</OutlineTag>}
+    </div>
+  );
+}
