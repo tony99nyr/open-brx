@@ -9,11 +9,11 @@ Updated: 2026-09-25 (F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 77.** Desk 7 · bench 67 · decision 3.
+**MVP open: 79.** Desk 9 · bench 67 · decision 3.
 
-**MVP DESK (7),** a keyboard is enough:
+**MVP DESK (9),** a keyboard is enough:
 - 🟠 **B21** · **F372** · **F400** · **F402** · **F403**
-- 🟡 **F377** · **F282**
+- 🟡 **F377** · **F282** · **F404** · **F405**
 
 **MVP BENCH (67),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F404 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F406 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -52,6 +52,10 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 ## MVP DESK
 
 A keyboard is enough. Highest value first.
+
+- **F404 🟡 MC LOBBY SHOWS WHICH PICKUPS ARE ARMED.** Tony 2026-09-25: pickups are set up in the ARMORY only and he wants to see them before the match; today the powerup strip shows on ARMED and LIVE, not LOBBY. Build: one read-only LOBBY line ("PICKUPS: ROCKETS · STICK 1 · OVERSHIELD · PHONE 2"), grey "NO PICKUPS" when none is armed, nothing when the powerups flag is off; reuse `ui/Powerups.tsx`. Owner: brx3. `build`.
+
+- **F405 🟡 THE ARMORY OFFERS ONLY THE MVP STATION KINDS.** Tony 2026-09-25: "so mvp for utility is respawn station, pickup, hill". Hide `extraction` and `bomb` from the ARMORY ITEMS kind picker and any other place a host assigns a kind; keep the code, the types and the recap labels so an old assignment still renders. Owner: brx3. `build`.
 
 - **F402 🟠 KING OF THE HILL CANNOT LOAD WITHOUT A HILL STATION.** Tony 2026-09-25: "KOTH should require utility in the armory. no way to play it without it." Today (checked on main): a KOTH game with no control station LOADs; MC shows only an amber advisory line (`_station_warnings`, "SETUP: NO CONTROL STATION IS ASSIGNED ..."). Build: LOAD is BLOCKED, on the server and the console, until a phone or Stick is assigned as a hill (the grenade hill is post-MVP and does not count), with one red F221 line that says what to do and jumps to the ARMORY; an amber warning at START if the hill station went offline after LOAD. Owner: brx3. `build`.
 
