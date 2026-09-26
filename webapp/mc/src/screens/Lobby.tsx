@@ -4,7 +4,7 @@ import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_I
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, fmtClock, teamColor } from '../tokens';
-import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, coverageColor, useNarrow } from '../ui';
+import { BTN_RESET, InfoIcon, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, coverageColor, useNarrow } from '../ui';
 import { Alert } from '../ui/Alert';
 import { GLYPH, alertWords, colourOf, glyphed, sevOf, serverLine } from '../alerts';
 import { SetupSteps } from '../ui/SetupSteps';
@@ -15,6 +15,7 @@ import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
 import { PowerupsLobbyLine } from '../ui/Powerups';
 import { ARM_TIMEOUT_MS } from './OperatorMenu';
+import { operatorNote } from './operatorNote';
 
 /** H5 (visual QA 2026-09-23): the phases the server refuses every LOBBY write in. `push_config`
  *  (`_refuse_push_in_play`), `ready_all` and a re-team all refuse in ARMED and LIVE, so LOBBY there is
@@ -227,6 +228,24 @@ export function Lobby() {
   // take it away.
   const override = armOverrideCopy(state.sync);
 
+  // QA-04 (visual QA round 1, 2026-09-26): the same operator note PLAY shows beside the mode picker
+  // (`Games.tsx`) -- "the last reminder before players scatter" (games-redesign.md §9) -- so it has to
+  // survive the tab switch too, not just be true the moment the game was picked.
+  const note = operatorNote(state.config);
+
+  // QA-02 (visual QA round 1, 2026-09-26): ONE outcome line for "are the guns ready", read straight off
+  // the readiness board -- the same rows `faults`/`redRows`/`waitRows` above already read, so this can
+  // never disagree with what actually blocks ARM. It does not replace those gates (`armDisabled` etc.,
+  // untouched above) or the detailed PRE-ARM CHECK / rail counts elsewhere on this screen -- it adds the
+  // single headline the audit found missing, naming a no-phone gun as NO PHONE, never as "has not
+  // confirmed" (a fact about a phone that was never here, not about a config it never answered).
+  const board = readiness.board ?? [];
+  const gunsTotal = board.length;
+  const notReadyGuns = board.filter(r => r.status === 'red' || r.status === 'waiting');
+  const gunsReady = gunsTotal - notReadyGuns.length;
+  const gunsAllReady = gunsTotal > 0 && notReadyGuns.length === 0;
+  const notReadyReason = (r: { present: boolean }): string => (r.present ? 'CHECK IT IS ON AND RECONNECT IT' : 'NO PHONE: CONNECT IT');
+
   return (
     <div className="screen">
       <ScreenHeader kicker="[ A5 // LOBBY ]" title="Team Assignment" right={
@@ -276,6 +295,17 @@ export function Lobby() {
         <InPlayBanner screen="lobby" phase={state.phase} onGo={() => setView(state.phase)}
           headline="THIS LOBBY IS READ-ONLY."
           why="Every gun already holds this match's config, and MC refuses a push, a READY change or a team move until the match ends." />
+      )}
+      {/* QA-04: the same note PLAY shows -- an SVG icon, never the ⓘ glyph (QA-05, no bundled face
+          carries U+24D8). */}
+      {note.length > 0 && (
+        <div data-testid="operator-note" role="status" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {note.map((l, i) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: F.chk(600, 12), lineHeight: 1.5, color: T.dim }}>
+              <InfoIcon size={14} />{l}
+            </span>
+          ))}
+        </div>
       )}
       {rosterFault && (
         <Alert id="lobby-roster-fault-tag" testid="roster-fault" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -414,6 +444,23 @@ export function Lobby() {
             </PrimaryButton>
           </span>
         </div>
+
+        {/* QA-02 (visual QA round 1, 2026-09-26): one outcome line, read off the readiness board --
+            never a second count that can disagree with GUNS PUSHED (PRE-ARM CHECK) or the ACKED count
+            above. A no-phone gun says NO PHONE, not "has not confirmed" (it was never sent anything
+            to confirm). Purely additive: `armDisabled`/`gate` above still decide what blocks ARM. */}
+        {lobby.pushed && gunsTotal > 0 && (
+          <div data-testid="lobby-guns-ready" role="status" style={{ borderTop: `1px solid ${T.line}`, padding: '10px 20px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ font: F.chk(700, 13), letterSpacing: '.06em', color: gunsAllReady ? T.ok : colourOf('lobby-guns-ready-line') }}>
+              {gunsAllReady ? `GUNS READY ${gunsReady}/${gunsTotal}` : glyphed('amber', `GUNS READY ${gunsReady}/${gunsTotal}`)}
+            </span>
+            {!gunsAllReady && notReadyGuns.map(r => (
+              <span key={r.player_id} data-not-ready-gun={r.sticker} style={{ font: F.chk(600, 12), letterSpacing: '.04em', color: colourOf('lobby-guns-not-ready-line') }}>
+                {glyphed('amber', `${r.sticker} NOT READY: ${notReadyReason(r)}`)}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* F221 polish r1: text and colour used to come from two DIFFERENT condition trees (the colour
             checked `armDisabled`, a fact the text never looked at), so a line could be worded as good

@@ -56,6 +56,10 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   'lobby-no-phone-chip': { sev: 'neutral', text: 'NO PHONE' },
   'lobby-reach-lan-chip': { sev: 'neutral', text: 'LAN / INTERNET' },
 
+  // ---- GUNS READY (QA-02, visual QA round 1, 2026-09-26) ----------------------------------------
+  'lobby-guns-ready-line': { sev: 'amber', text: 'GUNS READY {N}/{M}' },
+  'lobby-guns-not-ready-line': { sev: 'amber', text: '{STICKER} NOT READY: {WHAT}' },
+
   // ---- PreArmSummary ------------------------------------------------------------------------------
   'frame-prearm-action': { sev: 'amber', text: '{N} OF {M} PLAYER(S) NEED(S) ACTION: SEE BELOW' },
   'frame-prearm-no-game': { sev: 'neutral', text: 'NO GAME LOADED' },
