@@ -983,6 +983,7 @@ export class Hud {
         ${g.desc ? `<div class="bfdesc r r2">${esc(g.desc)}</div>` : ''}
         <div class="bfrules r r3">${rows.map(([k, v]) => `<div class="cell"><span class="k">${k}</span><span class="v">${esc(String(v))}</span></div>`).join('')}</div>
         ${g.loadout_line ? `<div class="bfload r r4"><span class="k">LOADOUT</span><span class="v">${esc(g.loadout_line)}</span></div>` : ''}
+        ${g.pickups && g.pickups.length ? `<div class="bfpu r r4b"><span class="k">PICKUPS</span><span class="v">${g.pickups.map(p => `<span class="pun" style="--item:${esc(p.color)}">${esc(String(p.name).toUpperCase())}</span>`).join('')}</span></div>` : ''}
       </div>
       <div class="bffoot r r5"><span class="who"><span class="cs">${esc(st.callsign || '')}</span>${st.playerNum ? `<span class="num">#${st.playerNum}</span>` : ''}</span>
         <div class="cta"><button class="ready go" data-act="onBriefDone"><span class="unskew">${cta}</span></button><div class="note">${sub}</div></div></div></div>`;

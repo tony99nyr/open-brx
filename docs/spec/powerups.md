@@ -46,6 +46,11 @@ The HUD's grant hint is `<ITEM> ON TRIGGER` with the shots (for example 2 SHOTS)
 the heavy, its charges and SELECT on one line, lit while the heavy is on the trigger. Everything stays behind the
 powerups flag. The overshield is unchanged by this section.
 
+**F403 (2026-09-25):** the BRIEFING screen (`app/src/hud/hud.js _briefing`) adds one PICKUPS line, naming each
+distinct item the game's powerup stations carry (the same station config `engine.js _puItems()` reads), in station
+order and each in its own colour by day, collapsing to the one night accent at night; a game with no items shows
+no line. Storyboard: `C:\Users\Tony\brx-brief-pickups`, awaiting Tony's look.
+
 **Decided by the lead, 2026-09-24, then overridden the same day:** a first draft blocked ALT (`$BMAP,1,98`) while the
 heavy was on the trigger. Tony's SELECT decision dropped the block: ALT keeps its normal job.
 
