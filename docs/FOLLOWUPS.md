@@ -83,8 +83,9 @@ A keyboard is enough. Highest value first.
   preset must silence the weapons.** Built: a `presentation.silent_weapons` switch (true only in the "silenced"
   preset, false elsewhere, absent-means-false on an older saved game) makes `compile.py` give EVERY compiled
   weapon's `$WEAP` the Suppressor's own captured t25/t26/t27 (`2`, `50`, `Q06`, read from its `weapons.json` row,
-  not hard-coded), written LAST so it wins even over a weapon's own `overrides` (the USP-S already overrides
-  t25/t26 to this same pair, so this only moves its t27 from its own `Q04` to the Suppressor's `Q06`). The
+  not hard-coded), written LAST, after a weapon's own `overrides`; a weapon that already carries that t25/t26 pair
+  (the Suppressor, the USP-S) keeps its own quiet t27 (the USP-S plays `Q04`). The phone try-out uses it too. The
+  host sees only the existing SILENCED choice (Tony: "we only need one switch"). The
   standard preset is unchanged. t25/t26 are still UNPROVEN, not "no muzzle flash" — see the code comment on
   `WeaponCatalog.resolve()`. Left for the bench (sitting C, [`bench-2026-09-25.md`](bench-2026-09-25.md)): the
   A/B/A eyes-and-ears pass this row always asked for, now run through `compile.resolve()` with the preset, plus

@@ -6415,7 +6415,8 @@ class Session:
         w = next((w for w in self.compiler.weapon_catalog() if w["weapon_id"] == weapon_id), None)
         if not w:
             raise KeyError(weapon_id)
-        frames = self.compiler.tutorial_frames(w, self.config["environment"])
+        frames = self.compiler.tutorial_frames(w, self.config["environment"],   # F282: a silenced game tries the quiet frame
+                                               silent=bool(_pres.resolve(self.config).get("silent_weapons")))
         self.trying[pid] = weapon_id
         if p.get("node_id"):
             # A WeaponView, not the raw catalog row: the HUD's stat block draws from `bars`, which only

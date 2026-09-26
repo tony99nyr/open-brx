@@ -302,7 +302,7 @@ export function Designer() {
             </div>
           </section>
 
-          <AdvancedPresentation draft={cfg} onSilentWeaponsChange={v => put({ presentation: { ...(cfg.presentation ?? {}), silent_weapons: v } })} />
+          <AdvancedPresentation draft={cfg} />
         </div>
 
         {/* summary rail */}

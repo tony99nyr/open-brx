@@ -2793,7 +2793,7 @@ class Compiler:
         assert_no_denied_frames(bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses
         return bundle
 
-    def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
+    def tutorial_frames(self, weapon: Weapon, environment: str, silent: bool = False) -> list[str]:
         """§4 private try-out: one weapon, identity 0 (uncredited), audible (VOL_TRYOUT). Needs $START + a $TID to
         actually fire (bench 2026-08-25); identity 0 keeps any stray hit off the scoreboard.
 
@@ -2815,7 +2815,7 @@ class Compiler:
             pset,
             *sir,                                    # every stock row + this weapon's conditional row (Breacher/Toxin/Haze)
             "$TID,1,*",                            # a team is needed to spawn-to-live (identity stays 0 → uncredited)
-            self.catalog.resolve(wid, 0, environment=environment),   # the one weapon, slot 0
+            self.catalog.resolve(wid, 0, {"silent_weapons": True} if silent else None, environment=environment),   # the one weapon, slot 0 (F282: silenced as in the match)
             "$SPAWN,,*", "$PLAYX,0,*",              # live, then silence the spawn chirp
             f"$AMMO,0,{mag},{reserve},1,*",
             "$BMAP,0,0,,,,,*",

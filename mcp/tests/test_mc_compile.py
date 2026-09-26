@@ -2119,3 +2119,14 @@ def test_f312_the_bench_flag_reaches_the_class_sound_takes_too():
     default = C.compile(cfg, _player(), _TEAMS)
     for take in default["sir_pool"]:
         assert [f for f in take if f.startswith("$SIR,15,0,")] == ["$SIR,15,0,,28,0,0,1,,*"], take
+
+
+def test_f282_the_tryout_fires_the_silenced_weapon_too():
+    """F282 polish: the phone try-out builds its $WEAP on a separate path (`tutorial_frames`); in a silenced
+    game it must fire the same quiet frame the match will."""
+    cat = WeaponCatalog()
+    t25, t26, t27 = cat._silent_weapon_tokens()
+    w = next(x for x in C.weapon_catalog() if x["weapon_id"] == "assault_rifle")
+    loud = next(f for f in C.tutorial_frames(w, "indoor") if f.startswith("$WEAP")).split(",")
+    quiet = next(f for f in C.tutorial_frames(w, "indoor", silent=True) if f.startswith("$WEAP")).split(",")
+    assert loud[26:29] != [t25, t26, t27] and quiet[26:29] == [t25, t26, t27]

@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react';
 import type { PresentationRow, PresentationView } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
-import { BTN_RESET, SectionRule, Toggle } from '../ui';
+import { BTN_RESET, SectionRule } from '../ui';
 import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, colourOf, glyphed, sevOf } from '../alerts';
 
 const PALETTE = ['RED', 'BLUE', 'YELLOW', 'GREEN', 'PURPLE', 'TEAL', 'WHITE', 'PINK', 'ORANGE'];
@@ -51,20 +51,11 @@ const stable = (v: unknown): string => Array.isArray(v) ? `[${v.map(stable).join
 /** M16 (visual QA 2026-09-23): the DESIGNER edits a draft, and this panel showed tonight's APPLIED
  *  game under it. `/api/presentation` resolves only the applied config, so the table is shown only
  *  while the draft carries the same profile. When the draft's profile differs, the panel names the
- *  draft's preset and says the table arrives once the game is played, never someone else's table.
- *
- *  F282 (Tony, 2026-09-25): `onSilentWeaponsChange`, when the caller passes it (the DESIGNER, editing
- *  a draft — not the read-only recap/live views), puts ONE live control next to the other presentation
- *  switches: QUIET WEAPONS. It edits `draft.presentation.silent_weapons` directly, so it works on any
- *  draft regardless of whether the draft's profile currently matches tonight's applied game (the
- *  server-resolved SWITCHES row below stays read-only and gated on that match, same as before). */
-export function AdvancedPresentation({ draft, onSilentWeaponsChange }:
-  { draft?: { presentation?: Record<string, unknown> }; onSilentWeaponsChange?: (v: boolean) => void } = {}) {
+ *  draft's preset and says the table arrives once the game is played, never someone else's table. */
+export function AdvancedPresentation({ draft }: { draft?: { presentation?: Record<string, unknown> } } = {}) {
   const { api, state } = useStore();
   const draftDiffers = !!draft && !!state && stable(draft.presentation) !== stable(state.config.presentation);
   const draftPreset = String((draft?.presentation as { preset?: unknown } | undefined)?.preset ?? 'default').replace('_', ' ').toUpperCase();
-  // absent -> false: an older saved game, or a draft that never touched this field, is not silenced.
-  const silentWeapons = Boolean((draft?.presentation as { silent_weapons?: unknown } | undefined)?.silent_weapons);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<PresentationView | null>(null);
   const [err, setErr] = useState<{ status?: number; msg: string } | null>(null);
@@ -105,17 +96,6 @@ export function AdvancedPresentation({ draft, onSilentWeaponsChange }:
                 ? <>Read only. The draft above uses the <b data-testid="presentation-draft-preset">{draftPreset}</b> profile, and tonight's applied game uses a different one. The server resolves the full table for the applied game only, so it shows here once you play this game.</>
                 : <>Read only. These are the sounds and lights of the draft above, which shares its profile with tonight's applied game. The designer does not change them.</>}
           </div>
-          {/* F282: the one LIVE control in this panel — everything else here is read only (see the
-              scope line above). */}
-          {onSilentWeaponsChange && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <Toggle on={silentWeapons} onChange={onSilentWeaponsChange} label="quiet weapons" />
-              <span style={{ font: F.chk(700, 11), letterSpacing: '.1em' }}>QUIET WEAPONS</span>
-              <span style={{ font: F.chk(500, 12), color: T.micro, lineHeight: 1.45 }}>
-                Every weapon uses the Suppressor's fire sound. The flash effect is unproven.
-              </span>
-            </div>
-          )}
           {loading && <div role="status" data-alert="adv-loading" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: colourOf('adv-loading') }}>LOADING…</div>}
           {stale && <div role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('adv-server-old') }}>
             {glyphed('amber', `${MC_OLDER.what}: ${MC_OLDER.act}`)}. IT HAS NO <code>/api/presentation</code>. RESTART WITH <code>{MC_RESTART_CMD}</code>.
