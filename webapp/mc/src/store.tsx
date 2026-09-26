@@ -64,6 +64,15 @@ export interface Store {
    *  cleared by that button — never a second source of truth for anything server-side. */
   focusHill: boolean;
   setFocusHill: (v: boolean) => void;
+  /** Polish round 1 M6: an open BUILD editor with an unsaved change sets this. `setView` reads it and
+   *  gates EVERY navigation attempt (the CommandBar stepper, the ☰ menu, not just BUILD's own back
+   *  button) behind one inline "tap again to leave" confirm — the same two-tap shape the rest of the
+   *  console already uses for a destructive action. */
+  dirty: boolean;
+  setDirty: (v: boolean) => void;
+  /** the view a nav attempt was blocked to while `dirty`: BUILD renders its confirm banner off this,
+   *  and tapping the SAME control again (which calls `setView` with this same target) proceeds. */
+  navBlockedTo: View | null;
   selPlayer: string | null;
   setSelPlayer: (id: string | null) => void;
   error: string | null;
@@ -145,10 +154,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // what a latched tab was last asked for, so the board can say how to get there (nothing is rendered
   // until somebody actually tries)
   const [wanted, setWanted] = useState<View | null>(null);
+  // Polish round 1 M6: `dirty`/`navBlockedTo` below.
+  const [dirty, setDirtyRaw] = useState(false);
+  const dirtyRef = useRef(false);
+  useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
+  const [navBlockedTo, setNavBlockedTo] = useState<View | null>(null);
+  const setDirty = useCallback((v: boolean) => { setDirtyRaw(v); if (!v) setNavBlockedTo(null); }, []);
   const setView = useCallback((v: View) => {
+    if (dirtyRef.current && v !== view) {
+      // a second tap at the SAME target is the confirm; a different target re-blocks on the new one
+      if (navBlockedTo === v) { setDirtyRaw(false); setNavBlockedTo(null); }
+      else { setNavBlockedTo(v); return; }
+    } else if (navBlockedTo !== null) setNavBlockedTo(null);
     if (spectatorTab.current) { setWanted(v === 'spectate' ? null : v); writeHash('spectate', v === 'spectate' ? null : v); return; }
     writeHash(v); setViewRaw(v);
-  }, []);
+  }, [view, navBlockedTo]);
   // back/forward and a hand-edited hash both move the console
   useEffect(() => {
     const onHash = () => {
@@ -262,12 +282,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     latched: spectatorTab.current, wantedView: wanted,
     openBuild: () => setView('designer'),
     focusHill, setFocusHill,
+    dirty, setDirty, navBlockedTo,
     connected: mock ? true : connected, authRequired, serverOld, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setError(null); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, serverOld, focusHill]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, serverOld, focusHill, dirty, setDirty, navBlockedTo]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
