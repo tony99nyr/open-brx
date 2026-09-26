@@ -560,6 +560,10 @@ def test_low_looks_like_pick_checks_match_shape_too():
     assert not G.looks_like_pick({**good, "match": {**good["match"], "silenced": 1}})
     assert not G.looks_like_pick({**good, "match": {**good["match"], "frag_limit": "15"}})
     assert not G.looks_like_pick({**good, "match": {**good["match"], "time_limit_s": "600"}})
+    # round 2: a bool is an int in Python but never a legal time_limit_s/frag_limit -- favourites'
+    # own _check_match already excluded it, looks_like_pick did not
+    assert not G.looks_like_pick({**good, "match": {**good["match"], "frag_limit": True}})
+    assert not G.looks_like_pick({**good, "match": {**good["match"], "time_limit_s": False}})
 
 
 def test_low_clean_row_keeps_updated_t_and_drops_a_duplicate_piece_id():
@@ -574,3 +578,87 @@ def test_low_clean_row_keeps_updated_t_and_drops_a_duplicate_piece_id():
     rows = [r for r in st.list() if not r["builtin"]]
     assert len(rows) == 1 and rows[0]["name"] == "First"
     assert rows[0]["updated_t"] == 500
+
+
+# ================================================================== polish round 2 (M-a/M-b/Lows)
+def test_ma_a_refused_pick_leaves_no_candidate_errors_on_the_live_session():
+    """M-a: a refused pick or piece edit must leave no candidate errors/warnings on the live session --
+    _compose_precheck's `finally` now restores config_errors/config_warnings alongside the config."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    before_errors = list(s.config_errors)
+    before_warnings = list(s.config_warnings)
+    r = c.post("/api/pieces", json={"kind": "primary", "name": "Ghost Gun", "note": "",
+                                    "value": {"choice": "fixed", "fixed_id": "not_a_real_weapon"}})
+    pid = r.json()["piece_id"]
+    r2 = c.post("/api/play/pick", json={"pieces": {"primary": pid}})
+    assert r2.json()["ok"] is False
+    assert s.config_errors == before_errors
+    assert s.config_warnings == before_warnings
+    live = c.get("/api/state").json()
+    assert not any("not_a_real_weapon" in e for e in live["config_errors"])
+
+
+def test_mb_editing_an_unrelated_piece_survives_an_inherited_post_mvp_mode():
+    """M-b: an inherited post-MVP mode (H2's own _sync_game_pick_from_config can point game_pick at
+    one through a plain PUT /api/config) must not refuse an edit to an unrelated picked piece.
+
+    The mode switch has to come AFTER the life piece is picked and via a plain config edit, not a
+    pick: `POST /api/play/pick` itself already heals a stale/post-MVP inherited kind on the way past
+    (M1), which would silently fix `game_pick.pieces.mode` before ever reaching `pieces_update` and
+    hide the very bug this test exists to catch."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/pieces", json={"kind": "life", "name": "Glass Cannon", "note": "",
+                                    "value": {"max_hp": 30, "max_armor": 0, "max_shield": 0}})
+    pid = r.json()["piece_id"]
+    assert c.post("/api/play/pick", json={"pieces": {"life": pid}}).json()["ok"]
+    assert c.put("/api/config", json={"mode": "infection"}).status_code == 200
+    assert s.game_pick["pieces"]["mode"] == "builtin:mode:infection"   # post_mvp, but a valid live config
+    r2 = c.put(f"/api/pieces/{pid}", json={"value": {"max_hp": 45, "max_armor": 0, "max_shield": 0}})
+    assert r2.status_code == 200, r2.json()
+    assert r2.json()["ok"] is True
+    # a name-only edit on the same picked piece must ALSO survive (the other bug on the same lines --
+    # resolving outside the try used to turn this into an unhandled 500 the moment it failed at all)
+    r3 = c.put(f"/api/pieces/{pid}", json={"name": "Glass Cannon Mk2"})
+    assert r3.status_code == 200, r3.json()
+
+
+def test_low_play_pick_reports_fallbacks_for_an_inherited_kind():
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    s.game_pick["pieces"]["spawn"] = "gone-id"
+    r = c.post("/api/play/pick", json={"match": {"frag_limit": 10}})
+    assert r.status_code == 200 and r.json()["ok"], r.json()
+    assert r.json()["fallbacks"] == ["spawn"]
+
+
+def test_low_attach_pieces_also_syncs_match_and_mode_from_the_restored_config():
+    path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    cfg = default_config("ffa")
+    cfg["scoring"]["frag_limit"] = 12
+    cfg["night"] = True
+    stale_pick = {"pieces": dict(BUILTIN_IDS),   # mode "tdm" here, config mode "ffa" below: deliberately stale
+                 "match": {"time_limit_s": 600, "frag_limit": None, "night": False, "silenced": False}}
+    snap = {"v": 1, "saved_ms": 0, "players": [], "standby": [], "teams": [], "config": cfg, "game_pick": stale_pick}
+    path.write_text(json.dumps(snap))
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    s._persist_path = path
+    s.restore_snapshot()
+    assert s.game_pick["pieces"]["mode"] == "builtin:mode:tdm"    # trusted verbatim right after restore
+    s.attach_pieces(PieceStore(None))
+    assert s.game_pick["pieces"]["mode"] == "builtin:mode:ffa"    # now synced to the restored config
+    assert s.game_pick["match"]["frag_limit"] == 12 and s.game_pick["match"]["night"] is True
+
+
+def test_low_pieces_update_rolls_recap_forward_before_the_precheck():
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/pieces", json={"kind": "life", "name": "Custom Life", "note": "",
+                                    "value": {"max_hp": 45, "max_armor": 20, "max_shield": 0}})
+    pid = r.json()["piece_id"]
+    assert c.post("/api/play/pick", json={"pieces": {"life": pid}}).json()["ok"]
+    s.phase = "recap"
+    r2 = c.put(f"/api/pieces/{pid}", json={"value": {"max_hp": 45, "max_armor": 30, "max_shield": 0}})
+    assert r2.status_code == 200, r2.json()
+    assert s.phase != "recap"
