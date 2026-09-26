@@ -42,7 +42,7 @@ reach — each one exists because a screen was unverifiable by eye without it.
 | `?mock&laststale=1` | a node that WAS reached over the internet tunnel and has since gone dark (F155) |
 | `?mock&nossid=1` | MC could not read the phone's Wi-Fi name — the REACH block must print `LAN · ip:port` |
 | `?mock&restored=1` | a persisted session silently restored, two ghost players with no phone ever bound (F142) |
-| `?mock&powerups=off` / `=old` | A56 powerups: MC started without `--powerups` (the ITEMS picker is replaced by a one-line note, and an `item_preset` is refused), or an MC that predates `GET /api/powerups` (404). With neither, the demo has powerups ON |
+| `?mock&powerups=off` / `=old` | A56 powerups: MC started with `--no-powerups` (the ITEMS picker is replaced by a one-line note, and an `item_preset` is refused), or an MC that predates `GET /api/powerups` (404). With neither, the demo has powerups ON (F372: the real default) |
 | `?mock&tunnelfail=1` | the next TURN ON of the tunnel fails instead of coming up (A28) |
 | `?mock&stationlock=1` | A58: the seeded ASSIGNED station carries a live tamper lock and a RESTARTED attention line, so `StationAlerts`, UNLOCK STATIONS and the ITEMS card's LOCKED tag can be seen without a real station |
 

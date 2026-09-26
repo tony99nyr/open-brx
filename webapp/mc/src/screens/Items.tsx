@@ -359,7 +359,7 @@ function ItemPicker({ node, pu, chosen, locked, onPick }:
   // F221: use the shared MC_OLDER words — the head stays 'MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC'.
   if (pu.s === 'old') return note(<>{GLYPH} {MC_OLDER.what}: {MC_OLDER.act} (<code>{MC_RESTART_CMD}</code>) TO GIVE A STATION AN ITEM. NO ITEM PICKER UNTIL THEN.</>, colourOf('items-itempicker-old-mc'));
   if (pu.s === 'err') return note(<>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</>, colourOf('items-itempicker-err'));
-  if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC: THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC WITH ${POWERUPS_RESTART}`, colourOf('items-itempicker-powerups-off'));
+  if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC (--no-powerups): THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC: ${POWERUPS_RESTART}`, colourOf('items-itempicker-powerups-off'));
   return (
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Micro>ITEM · ONE PER STATION</Micro>

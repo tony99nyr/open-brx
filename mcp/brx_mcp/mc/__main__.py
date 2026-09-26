@@ -177,8 +177,9 @@ def build(args):
     # T3-A / field 2026-09-12: WSL2's own NAT address advertised in the QR/mDNS looked identical to a
     # real LAN address, so no phone could connect and MC never said why. LOUD on purpose -- this is the
     # one line an operator glancing at a scrolling boot log must not be able to miss.
-    # A56 (S58): the powerups flag. Off, MC refuses an item preset, compiles no spare slot and sends no item.
-    session.powerups_enabled = bool(getattr(args, "powerups", False))
+    # A56 (S58, F372): powerups are ON by default. --no-powerups is the opt-out; a stored item then
+    # refuses, compiles no spare slot and sends no item. `--powerups` is kept as a no-op for old commands.
+    session.powerups_enabled = not bool(getattr(args, "no_powerups", False))
     lan_warning = session.lan.get("warning")
     if lan_warning:
         _rule = "!" * 78
@@ -433,8 +434,10 @@ def parser() -> argparse.ArgumentParser:
                          "row, so a victim's phone can name it. Not for a real game until a bench step proves a "
                          "<0,2> word registers")
     ap.add_argument("--powerups", action="store_true",
-                    help="A56 (S58): let powerup stations carry an item (Rockets, Rail Gun, Overshield). OFF until "
-                         "bench Sitting A passes (docs/spec/powerups.md)")
+                    help="A56 (S58): no-op. Powerup stations (Rockets, Rail Gun, Overshield) are ON by default "
+                         "(F372, Tony 2026-09-25); this flag is kept so an old command line still works")
+    ap.add_argument("--no-powerups", action="store_true",
+                    help="A56 (S58, F372): turn OFF powerup stations (Rockets, Rail Gun, Overshield)")
     ap.add_argument("-v", "--verbose", action="store_true")
     return ap
 
@@ -487,8 +490,8 @@ def main(argv=None):
         print(_rule, flush=True)
         print("  DISTINCT WEAPON CELLS: same-cell, same-magnitude weapons move to a free cell (F315). Not for a real game", flush=True)
         print(_rule, flush=True)
-    if args.powerups:
-        print("  POWERUPS ON (--powerups): powerup stations may carry an item; not bench-proven yet (powerups.md)", flush=True)
+    if not session.powerups_enabled:
+        print("  POWERUPS OFF (--no-powerups): powerup stations will not carry an item", flush=True)
     if not inspect.iscoroutinefunction(getattr(net, "start", None)):
         # sync/fake net is already bound → its ws_url is real now. The async NetServer prints the nodes
         # line from _start_net once it binds (avoids the stale ws://<ip>:0 placeholder before the bind).

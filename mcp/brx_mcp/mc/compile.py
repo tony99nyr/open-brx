@@ -2462,7 +2462,7 @@ class Compiler:
         # nothing re-keyed, so a per-player plan can never disagree about which cells exist.
         hits_rng = roll if roll is not None else _random.Random(0)     # None = deterministic, for the golden bundle
         # A56 (S58): the pickup weapons MC armed for this game (`GameConfig.powerups`, set by the session only
-        # under `--powerups`). Absent = none, and then nothing below changes a single frame.
+        # while powerups are enabled, F372). Absent = none, and then nothing below changes a single frame.
         pickups = self._pickup_slots(config)
         if plan is None:
             plan = self.hit_plan([player, *self._pickup_carrier(pickups)], rekey=False)

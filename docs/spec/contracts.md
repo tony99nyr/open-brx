@@ -164,7 +164,7 @@ GameConfig {
                                       //   `StationAssignment.item`: {kind: "weapon"|"overshield", weapon_id?, charges?, amount?,
                                       //   spawn_every_s, first_at_s, name, color}. Design and defaults: docs/spec/powerups.md.
   powerups?:   [ { weapon_id: string, slot: 2|3 } ],   // [A56] the pickup weapons armed at start (empty magazine, out of
-                                      //   the ALT cycle); absent = none, or MC runs without `--powerups`
+                                      //   the ALT cycle); absent = none, or MC runs with `--no-powerups` (F372: on by default)
   game_byte?:  number,                // [A59] 1..255, the advert `game` byte MC arms its stations with this match
                                       //   (= station_config.game). Derived in `_wire_config`, never set by the operator.
                                       //   A player phone scopes presence and its own advert by it; absent (an older MC) = 0, any game.

@@ -446,9 +446,10 @@ class Session:
         # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
         # an MC restart. `_auto_station_id` reads it; the operator never types an id.
         self._station_id_of: dict[str, int] = {}
-        # A56 (S58): `--powerups`. Off (the default), MC refuses an item preset, compiles no spare slot, sends no
-        # `item` and runs no spawn schedule; a stored item (a restored snapshot) is inert. `__main__` sets it.
-        self.powerups_enabled = False
+        # A56 (S58, F372): on by default. With `--no-powerups`, MC refuses an item preset, compiles no spare
+        # slot, sends no `item` and runs no spawn schedule; a stored item (a restored snapshot) is inert.
+        # `__main__` sets it from the CLI; a bare `Session()` (tests, callers with no CLI) still starts on.
+        self.powerups_enabled = True
         # A56: the spawn schedule of the match in play, on MC's own clock: {"match_id", "go", "st": {nid: {...}}}.
         self._pu_sched: dict = {}
         # ...and the schedule a restarted MC read back from its snapshot (M1): adopted by `_powerup_tick` for

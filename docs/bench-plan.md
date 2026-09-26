@@ -279,7 +279,7 @@ and Block 9 steps 3 and 4 (H9, H8, found F383-F386); it left F374's carry-out A/
 F365's Stick half PARTIAL (RADIUS/STRENGTH confirmed, the 5 s gesture REFUTED as F387, F388 filed; the phone
 station half, 11.4, did not run). **Stop point 2 is DONE**: all three Pixels are on app 0.4.12; the grey Pixel
 has not been opened since that install, so 11.7's auto-join must be sitting C's first step; MC runs from `main`
-with `--powerups`.
+(powerups on by default, F372).
 
 ## Sittings, in priority order
 
