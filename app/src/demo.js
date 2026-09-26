@@ -165,7 +165,9 @@ export function startDemo({ engine, log }) {
   // and never `$HP`. Without this the stage would show a poison stack whose ticks change nothing.
   const DEMO_DOT = { 11: { weapon_id: 'toxin_rifle', per_tick: 4, tick_ms: 1000, duration_ms: 5000 } };
   const gunWriter = engine.writer;
+  let failRe = null, failLeft = 0;   // F416: the next `failLeft` writes carrying a frame that matches `failRe` resolve false, as BrxLink's do
   engine.writer = fr => {
+    if (failLeft > 0 && fr.some(f => failRe.test(f))) { failLeft--; return false; }
     gunWriter(fr);
     for (const f of fr) {
       // S55: the stage gun applies the same absolute t4 accuracy modifier as hardware. This keeps
@@ -412,6 +414,7 @@ export function startDemo({ engine, log }) {
       // 2026-09-19 station respawn: the bundle's respawn_profile gives a station life 2 s of visible protection (`shielded`).
       stationRespawn: () => { if (engine.alive) return; engine._revive(false, 3); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
       chargeAmmo: (ammo, reserve = 80) => { engine.feedFrame(`$ALCD,40,100,${gunSlot},80,0,*`); engine.feedFrame(`$ALCD,${ammo},100,${gunSlot},${reserve},0,*`); },
+      failWrites: (re, n = 1) => { failRe = re; failLeft = n; },   // F416: BrxLink resolving a batch false
       alt: () => { if (engine._slotCount() >= 2) gunAlt(); engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // F394: the gun's pointer moves, and it reports nothing   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT and NO report (F394); the next shot reports the new slot
         if (engine._slotCount() < 2) ev.twoWeapons();
@@ -703,6 +706,8 @@ export function startDemo({ engine, log }) {
       // F394: the real gun reports nothing on ALT, so only a shot inside the swap window reaches CONFIRMED BY YOUR GUN
       // F400 final (Tony 2026-09-26): a kill 0.5 s into the switch card waits under it, then gets its full time
       'live-switch-kill':  [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle'], [3150, 'killConfirm']],
+      // F416: the revive write is lost and the demo gun (like a silent one) never answers the check: GUN MAY NOT BE SPAWNED
+      'live-spawn-lost':   [...live, [2300, 'die'], [2500, () => { ev.failWrites(/^\$SPAWN/, 1); engine._revive(false); }]],
       'live-switch-shot':  [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle'], [3000, () => ev.fire(1)]],
       'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
       'down-hold':         [[0, () => ev.scanner(8)], ...live, [2300, 'die'], [2400, () => ev.station(-70, true)]],

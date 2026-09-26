@@ -151,6 +151,23 @@ export const SHIELD_REASSERT_MS = 500;
  *  start everyone is equal: the live `$SIR` table goes on the gun this long before go-live, while the head still
  *  holds every trigger, so every player is hittable AND can fire at the same moment. The T-0 spawn carries no t8. */
 export const PRE_ARM_TABLE_MS = 3000;
+// F416 (P0, bench part 1, 2026-09-26): a spawn or revive write that fails is CHECKED, never left. See `_writeLife`.
+export const SPAWN_CHECK_MS = 400;        // after the failed write, this long before the node asks the gun
+export const SPAWN_ASKS = 2;              // probe writes before the check says the gun cannot be asked (HUD warning)
+export const SPAWN_ASK_GAP_MS = 1000;
+export const SPAWN_ANSWER_MS = 1500;       // a delivered probe that gets no `$HP` in this long counts as unanswered
+export const SPAWN_RESENDS = 2;           // re-sends to a gun that read an unspawned 0 pool, before today's death + respawn
+export const SPAWN_RESEND_WAIT_MS = 1500; // a re-send's own answer gets this long before the next one
+// Review r1: the check holds a 0-pool death at most this long from the first lost write. Past it the pool books as it
+// always did (the auto-respawn is the cure), so a gun that never answers can never leave an undying player at 0.
+export const SPAWN_CHECK_MAX_MS = 8000;
+// F416 part 2: a continuous station scan starves GATT writes on Android (F342, brxlink.js header). The scan closes
+// from T-PRE_ARM_TABLE_MS until this long after the spawn or revive write settles (`state().radioQuiet`), and while a
+// spawn check is open. Each part is bounded: a write's window by RADIO_QUIET_MAX_MS, a check by SPAWN_CHECK_MAX_MS.
+// The player advert (app.js `syncPlayerAdvert`) keeps running: it is an advertise, not scan results on the JS bridge,
+// which is the load F342 measured.
+export const RADIO_QUIET_AFTER_MS = 1500;
+export const RADIO_QUIET_MAX_MS = 10000;  // a write whose promise never settles cannot hold the scan shut for ever
 /** compile.py `TRIGGER_AFTER_PROTECT_MS` (types.py): a timed trigger goes live at least this long after
  *  protection ends. Mirrored here so a retried protection-off write can push `_triggerPending.due` out by
  *  the same margin -- the trigger must never go live while t8 is still -100 (review finding, 2026-09-19). */
@@ -950,6 +967,8 @@ export class Engine {
     this._shieldRegen = null; this._shieldQuietAt = 0; this._shieldLoopAt = 0; this._shieldDown = false; this._shieldGaveUp = false;
     this._actSeq = 0;               // pl4: shots and hits seen, so `_writeMust` can tell the life moved on
     this._writeLost = null;         // pl4: the `_lifeSeq` whose spawn/revive write resolved false (pool `write_lost`)
+    this._spawnCheck = null;        // F416: {life, frames, why, writeAt, asks, heardAt, resends, resentAt, lost} while a lost spawn/revive write is checked
+    this._quietFrom = 0; this._quietUntil = 0; this._quietOpen = 0;   // F416 part 2: the radio-quiet window around a must-land write
     this._poolCheck = null;         // F341: {life} while the spawn read-back's answer is owed a pool comparison
     this._poolRepair = null;        // F341: {life, attempts, dueAt, readAt, wrote} while the node repairs pools above their ceilings
     this.poolWrong = null;          // F341: {life, at, hp, armor, shield} once POOL_REPAIR_TRIES repairs did not hold (pool `pool_wrong`)
@@ -1399,13 +1418,115 @@ export class Engine {
    *  leave the gun unhittable for the life (F11).
    *  On a false resolve for THIS life: log loudly, make sure a live take is pending or written, and flag the
    *  pool `write_lost` so MC shows it and the operator's RESYNC GUN is the cure. */
-  _writeLife(frames, why, life) {
-    const r = this._write(frames, why);
+  _writeLife(frames, why, life, check = null) {
+    const at = this.now();
+    const r = this._quietWrite(frames, why);   // F416 part 2: no station scan while this write is on the radio
     Promise.resolve(r).then(ok => {
-      if (ok !== false) return;
-      this.log(`*** write ${why} failed -- not re-sent; the gun may be out of step (RESYNC GUN) ***`, 'le');
-      if (this._lifeSeq !== life || !this.alive || this.phase !== 'live' || this.ended) return;
+      if (ok !== false) {
+        if (check) {   // a re-send landed. Its own `$LCD` can close the check before this promise settles, so do not ask
+          if (this._spawnCheck === check) this._spawnCheck = null;
+          if (this._writeLost === check.life) this._writeLost = null;
+          this.log(`F416: ${why} landed`, 'lk');
+          this._spawnLanded(check);   // the burst re-applied spawn protection: end it as the first repair did (F11)
+          this._changed();
+        }
+        return;
+      }
+      if (this._lifeSeq !== life || !this.alive || this.phase !== 'live' || this.ended) {
+        this.log(`*** write ${why} failed -- the life moved on, nothing to check ***`, 'le'); return;
+      }
       this._writeLost = life;
+      // F416 (bench part 1, 2026-09-26): this used to stop here, "not re-sent", and the gun stayed unspawned until the
+      // node booked a death on its 0 pool. A blind second burst is still unsafe (pl4, above), so ASK the gun first.
+      this.log(`*** write ${why} failed -- asking the gun before any re-send (F416) ***`, 'le');
+      const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: at };
+      Object.assign(c, { writeAt: at, asks: 0, lost: false, heardAt: 0, resentAt: c.resentAt || 0 });
+      this._spawnCheck = c;
+      this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
+      // The repair runs NOW, as it always did, whatever the check finds: ending spawn protection must never wait on
+      // an answer that may not come (F11: an unhittable player). On a gun that never spawned it is a harmless config write.
+      this._spawnLanded(c);
+    }).catch(e => this.log(`write ${why} failed: ${e && e.message || e}`, 'le'));
+    return r;
+  }
+  /** F416 part 2: a write the player cannot play without (a spawn or revive burst, a pickup equip) opens the radio-quiet
+   *  window, so the station scan (scanwatch.js) is shut while it is on the radio and for RADIO_QUIET_AFTER_MS after it
+   *  settles. Bench part 1 (brx2): both lost writes that day (the go-live spawn, a Rockets grant) followed a scan flood. */
+  _quietWrite(frames, why) {
+    // Review r2: COUNTED, not one timer. Two overlapping writes (a revive beside a grant) must hold the radio until the
+    // LAST settles; one shared timer let the first settle reopen the scan while the second was still on the radio.
+    this._quietFrom = this.now(); this._quietOpen = (this._quietOpen || 0) + 1;
+    const done = () => { this._quietOpen = Math.max(0, this._quietOpen - 1); this._quietUntil = this.now() + RADIO_QUIET_AFTER_MS; };
+    const r = this._write(frames, why);
+    Promise.resolve(r).then(done, done);
+    return r;
+  }
+  /** F416: ask the gun (`PROBE_LIFE`, the all-zero read) whether the lost spawn/revive write landed. The answer lands
+   *  through the ordinary `$HP` handler, which calls `_spawnCheckSeen`. A probe the BLE layer cannot deliver either is
+   *  asked once more, and then the check is `lost`: the HUD says the gun may not be spawned and names the cure, FORCE
+   *  RESPAWN (a revive burst). RESYNC GUN cannot cure it: it re-sends counts and never `$SPAWN` (`_operatorResync`). */
+  _spawnAsk(c) {
+    if (this._spawnCheck !== c) return;
+    if (c.life !== this._lifeSeq || !this.alive || this.phase !== 'live' || !this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }
+    if (!this.bleUp) return;   // the relink's reconcile probes on its own, and its answer reaches `_spawnCheckSeen`
+    c.asks++;
+    const asked = this.now();
+    const next = () => {   // no delivery, or no answer: ask again, then say so
+      if (this._spawnCheck !== c || c.heardAt > asked) return;
+      if (c.asks < SPAWN_ASKS) { this._spawnAsk(c); return; }
+      c.lost = true;
+      this.log('*** F416: the gun did not answer the spawn check -- it may not be spawned (HOST: FORCE RESPAWN) ***', 'le');
+      this._changed();
+    };
+    Promise.resolve(this._write([PROBE_LIFE], `F416 spawn check ${c.asks}/${SPAWN_ASKS}`)).then(ok => {
+      if (this._spawnCheck !== c) return;
+      this.delay(ok === false ? SPAWN_ASK_GAP_MS : SPAWN_ANSWER_MS, next);   // a delivered probe gets its answer time first
+    });
+  }
+  /** F416: is the check still inside SPAWN_CHECK_MAX_MS of the first lost write? PURE. */
+  _spawnCheckLive(c, now = this.now()) { return !!c && now - c.firstAt < SPAWN_CHECK_MAX_MS; }
+  /** F416: a pool report (`$HP` or `$LCD`) while a spawn check is open. Pools up: the spawn landed and the check
+   *  closes (the repair already ran). All zero: `_death` asks `_spawnIntercept` before booking. */
+  _spawnCheckSeen(hp, armor, shield) {
+    const c = this._spawnCheck;
+    if (!c || c.life !== this._lifeSeq || !(this.now() > c.writeAt)) return;
+    c.heardAt = this.now(); c.lost = false;
+    if (hp > 0 || armor > 0 || shield > 0) { this._spawnCheck = null; this.log(`F416: the gun reads its pools, so ${c.why} landed; no re-send`, 'lk'); this._changed(); }
+  }
+  /** F416: `_death` asks this first. True = do NOT book a death: the 0 pool is a gun that never spawned (no `$HIR`
+   *  since the write), so the burst goes again, or a re-send or the check is still in flight. After SPAWN_RESENDS the
+   *  node gives up and books it, so today's auto-respawn is the cure, never a zombie at 0.
+   *  Why "no `$HIR`" is enough (review r1): an unspawned gun ignores IR (docs/manual/dev.md), and a spawn that lands
+   *  answers at once with its own `$LCD`, which closes the check. The residue is a spawn that landed, lost that `$LCD`
+   *  too, and died with no `$HIR` (grenade or station damage) inside SPAWN_CHECK_MAX_MS: that player is re-spawned
+   *  (a free respawn), and the repair ends the protection the burst re-applied (F11). Never an undying player. */
+  _spawnIntercept() {
+    const c = this._spawnCheck;
+    if (!c) return false;
+    if (c.life !== this._lifeSeq || this.phase !== 'live' || !this._spawnCheckLive(c)) {
+      if (c.life === this._lifeSeq) this.log(`F416: the check of ${c.why} ran out -- the 0 pool books as usual`, 'le');
+      this._spawnCheck = null; return false;
+    }
+    if (this.hp > 0 || this.armor > 0 || this.shield > 0) return false;
+    if (this.lastHitAt > c.writeAt) { this._spawnCheck = null; return false; }   // a hit since the write: a real death
+    const now = this.now();
+    if (!(c.heardAt > c.writeAt)) return true;                                  // no answer to the check yet: no evidence either way
+    if (c.resentAt && now - c.resentAt < SPAWN_RESEND_WAIT_MS) return true;     // the re-send is in flight
+    if (c.resends >= SPAWN_RESENDS) {
+      this._spawnCheck = null;
+      this.log(`*** F416: ${c.resends} re-sends and the gun still reads 0 -- booking it, the respawn is the cure ***`, 'le');
+      return false;
+    }
+    c.resends++; c.resentAt = now;
+    this.log(`F416: the gun reads a 0 pool with no hit since ${c.why} -- it never spawned; re-sending (${c.resends}/${SPAWN_RESENDS})`, 'le');
+    this._writeLife(c.frames, `${c.why} (re-sent ${c.resends}: the gun was not spawned)`, c.life, c);
+    return true;
+  }
+  /** The repair after a lost spawn/revive write (pl4): the take that ends spawn protection, and the hit table. It runs at
+   *  once on the loss and again after a re-send lands (F416), so a protection a burst applied is always ended. */
+  _spawnLanded({ life, frames, why }) {
+    {
+      if (this._lifeSeq !== life || !this.alive || this.phase !== 'live' || this.ended) return;
       if (this._protectsSpawn()) {
         if (this._armPending) return;   // the take still follows the first shot or the cap
         this._armPending = this._repairArm();
@@ -1415,8 +1536,16 @@ export class Engine {
         if (sir.length && this.bleUp && !this.reconciling) this._write(sir, `${why} lost: hit table again`);   // F11 repair: rows only
       }
       this._changed();
-    }).catch(e => this.log(`write ${why} failed: ${e && e.message || e}`, 'le'));
-    return r;
+    }
+  }
+  /** F416 part 2: the station scan stays shut (scanwatch.js) from T-PRE_ARM_TABLE_MS until the spawn or revive write
+   *  has settled, and while a spawn check is open. PURE. */
+  radioQuiet(now = this.now()) {
+    if (this.phase === 'armed' && this.start && this.goLiveT - now <= PRE_ARM_TABLE_MS) return true;
+    const c = this._spawnCheck;
+    if (c && !c.lost && c.life === this._lifeSeq && this._spawnCheckLive(c, now)) return true;
+    if (this._quietOpen > 0 && now - this._quietFrom < RADIO_QUIET_MAX_MS) return true;   // a write still on the radio
+    return now < (this._quietUntil || 0);
   }
   /** F206 (bench 2026-09-16): any `$PSET` clears the gun's team (its shots carry `$HIR` t4 = 0) until a `$TID`
    *  follows; `$SPAWN` and `$SIR` do not. So every write is checked HERE, the one door to the gun: a `$PSET` with
@@ -5320,6 +5449,7 @@ export class Engine {
         if (t[5] !== undefined) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);   // $LCD carries no heat token — leave it untouched this frame
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         const wasResync = !!this.resync;
+        this._spawnCheckSeen(this.hp, this.armor, this.shield);   // F416: a `$SPAWN`'s own `$LCD` answers a spawn check too
         if (this.resync) this._resyncEvidence('lcd');
         // F264: a SOLICITED zero is a `desync` death by the §3.3 definition -- the node learned the `$HP,0` out of
         // band, from its own question, rather than from a live hit sequence. There is ONE death path and this is
@@ -5603,7 +5733,7 @@ export class Engine {
     if (!weap) { this.log(`powerup: the head carries no $WEAP for slot ${slot}; nothing equipped (${why})`, 'le'); return false; }
     this._acctWrote(slot, mag, res);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot
     this._prevAmmo[slot] = mag; this._prevReserve[slot] = res;   // what the slot holds now, should the echo never come back
-    this._write([...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], why);
+    this._quietWrite([...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], why);   // F416 part 2: a grant is a must-land write too
     this._holdAccuracyWrites('powerup equip');
     if (this.reloading) this._endReload('swapped');
     this.switching = null; this.activeSlot = slot;
@@ -7004,6 +7134,7 @@ export class Engine {
     this._audioSync();
     if (hp > 0) this._gunPoolPaint(movedPool);   // A16 §3.1 (readout) / A11.7 legacy (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
     const wasResync = !!this.resync || !!this.reconciling;
+    this._spawnCheckSeen(hp, armor, shield);   // F416: the answer to a spawn check, before any death is weighed
     if (this.resync) this._resyncEvidence('hp');
     // F264: `solicited` means this `$HP` answers our own `$LIFE,0,0,0,*` probe, so the node learned the zero out
     // of band rather than from a live hit sequence -- a desync death by §3.3's definition, same as a reconcile's.
@@ -7036,6 +7167,7 @@ export class Engine {
     // F209: one death per life. Every caller checks `alive` too; this makes it hold for any future caller, so a
     // burst of lethal frames can never book a second death fact, a second deaths++ or a new respawn clock.
     if (!this.alive) return;
+    if (reason !== 'gun_recovery' && this._spawnIntercept()) return;   // F416: an unspawned gun's 0 pool is not a death
     this._armPending = null; this._triggerPending = null;   // F209: never arm a dead gun; the revive protects and arms again
     // The gun screams on its own: it joins the FIFO. `screamAhead` = the clips the model says the gun holds ahead of it.
     // The scream joins the model below, right after the stops that take off what is ahead of it.
@@ -7489,6 +7621,8 @@ export class Engine {
       // Published for MC and the bench (`statusBody` carries `pool_stale`/`cure` too); F288 also renders
       // `no_fire` / `no_answer` on the live phone HUD so the player can bring the host the proven failure.
       poolStale: this.poolStale(now), cure: this.cure, gunLocked: !!this.gunLocked,
+      spawnLost: !!(this._spawnCheck && this._spawnCheck.lost && this._spawnCheck.life === this._lifeSeq && this.alive),   // stays up until the gun answers: never silent   // F416: the HUD's GUN MAY NOT BE SPAWNED
+      radioQuiet: this.radioQuiet(now),   // F416 part 2: scanwatch.js keeps the station scan shut
       gunRecovery: this._gunRecovery ? (this._gunRecovery.nextAt == null && !this._gunRecovery.writing ? 'retry_exhausted' : 'rearming') : null,
       respawnType: this.respawnType, respawnAuto: this.timedRespawn, killedBy: this.killedBy, downReason: this.downReason, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.timedRespawn) ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,
       // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say

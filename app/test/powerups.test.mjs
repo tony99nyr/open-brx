@@ -1027,3 +1027,13 @@ test('F400 final r1: the granted hint waits out a second card too (ALT right aft
   h.adv(E.PU_READY_MS);
   assert.notEqual((h.eng.state().powerup.hint || {}).kind, 'granted', 'and then it is done');
 });
+
+test('F416 part 2: a pickup grant write opens the radio-quiet window (a scan flood lost a Rockets grant on bench part 1)', async () => {
+  const h = armed();
+  assert.equal(h.eng.state().radioQuiet, false, 'setup: quiet before the grant');
+  h.take(4);
+  assert.equal(h.eng.state().radioQuiet, true, 'the station scan shuts while the equip write is on the radio');
+  await new Promise(r => setImmediate(r));   // the write settles (this harness's adv is synchronous)
+  h.adv(E.RADIO_QUIET_AFTER_MS + 600);
+  assert.equal(h.eng.state().radioQuiet, false, 'and reopens after it settles');
+});

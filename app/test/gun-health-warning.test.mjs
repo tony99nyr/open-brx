@@ -44,3 +44,11 @@ test('F288: cure and poolStale verdicts invalidate the HUD structure', () => {
   assert.match(signature, /st\.cure\s*&&\s*st\.cure\.verdict/);
   assert.match(signature, /st\.poolStale\s*&&\s*st\.poolStale\.why/);
 });
+
+test('F416: a spawn the node could not confirm is a strong warning that names the host\'s cure', () => {
+  const html = warning({ alive: true, bleUp: true, spawnLost: true, cure: null, poolStale: { why: 'write_lost' } });
+  assert.match(html, /gunwarn danger/);
+  assert.match(html, /GUN MAY NOT BE SPAWNED/);
+  assert.match(html, /HOST: FORCE RESPAWN/);   // review r1: RESYNC GUN never writes $SPAWN, so it cannot cure this
+  assert.equal(warning({ alive: true, bleUp: true, spawnLost: false, cure: null, poolStale: { why: 'write_lost' } }), '', 'gone once the gun answers');
+});

@@ -204,6 +204,7 @@ const WARN = {
   gun_lost: { full: 'GUN LINK LOST — TAP TO RECONNECT', short: 'GUN LINK LOST · TAP', down: 'GUN LINK LOST — TAP TO RECONNECT' },
   no_answer: { head: 'GUN NOT ANSWERING', sub: 'HOST: FORCE RESPAWN OR RELINK' },
   no_fire: { head: 'GUN NOT REPORTING SHOTS', sub: 'PULL TRIGGER AGAIN · THEN TELL HOST' },
+  spawn_lost: { head: 'GUN MAY NOT BE SPAWNED', sub: 'HOST: FORCE RESPAWN' },   // F416: a lost spawn write the node could not check. RESYNC GUN never writes `$SPAWN`; FORCE RESPAWN does
 };
 const warnFull = w => w.full || `${w.head} · ${w.sub}`;
 const secsLeft = ms => Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
@@ -537,7 +538,7 @@ export class Hud {
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
       // would turn every non-null value into the same "[object Object]" and miss no_fire → no_answer.
-      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, st.headsetJoin && st.headsetJoin.state, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
+      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.spawnLost, !!st.gunFlapping, st.headsetJoin && st.headsetJoin.state, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
       // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
       !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
       SV.meterShown(st), hasArmor(st),   // the shield meter exists or not; the armour number and bar exist or not
@@ -1477,10 +1478,11 @@ export class Hud {
    *  alone is intentionally omitted because the existing GUN LINK state owns connectivity. */
   _gunHealthActive(st) {
     if (!st.alive || !st.bleUp || st.gunFlapping || st.resync || st.reconciling) return false;
-    return !!((st.cure && st.cure.verdict === 'no_answer') || (st.poolStale && st.poolStale.why === 'no_fire'));
+    return !!(st.spawnLost || (st.cure && st.cure.verdict === 'no_answer') || (st.poolStale && st.poolStale.why === 'no_fire'));
   }
   _gunHealthWarning(st) {
     if (!this._gunHealthActive(st)) return '';
+    if (st.spawnLost) return `<div class="gunwarn danger" role="alert"><b>${WARN.spawn_lost.head}</b> <span>${WARN.spawn_lost.sub}</span></div>`;
     if (st.cure && st.cure.verdict === 'no_answer') {
       return `<div class="gunwarn danger" role="alert"><b>${WARN.no_answer.head}</b> <span>${WARN.no_answer.sub}</span></div>`;
     }
@@ -1820,7 +1822,8 @@ export class Hud {
     // the bottom centre. While a kill card is up each shows its short headline (`data-short`, drawn by CSS); the ⓘ
     // panel's WARNINGS section always has every warning's full sentence.
     if (typeof this._gunHealthActive === 'function' && this._gunHealthActive(st)) {
-      if (st.cure && st.cure.verdict === 'no_answer') full.push(warnFull(WARN.no_answer));
+      if (st.spawnLost) full.push(warnFull(WARN.spawn_lost));
+      else if (st.cure && st.cure.verdict === 'no_answer') full.push(warnFull(WARN.no_answer));
       else if (st.poolStale && st.poolStale.why === 'no_fire') full.push(warnFull(WARN.no_fire));
     }
     const warn = full.length ? full.map(t => `<span>${esc(t)}</span>`).join('') : '<span class="mut">NONE</span>';

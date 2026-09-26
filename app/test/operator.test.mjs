@@ -358,7 +358,7 @@ test('pl4: a false revive write never re-sends $SPAWN, and the live take is writ
   const t = tmpRows(h.since(w0));
   assert.equal(t[t.length - 1], OFF, 'the last $TMP on the gun is t8 = 0, not the protection');
   assert.ok(sirRows(h.since(w0)).every(f => !isTwin(f)), 'no fn-28 twin reached the live gun');
-  assert.ok(h.logs.some(([l, c]) => /\*\*\* write revive.* failed -- not re-sent/.test(l) && c === 'le'));
+  assert.ok(h.logs.some(([l, c]) => /\*\*\* write revive.* failed -- asking the gun before any re-send/.test(l) && c === 'le'));
   assert.equal(h.eng.state().poolStale && h.eng.state().poolStale.why, 'write_lost', 'MC is told');
   h.op('resync');
   h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
