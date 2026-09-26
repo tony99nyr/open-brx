@@ -1317,7 +1317,9 @@ class WeaponCatalog:
         out of `protocol/captures/raw/` (see `weapons.json._note`). Emitting it verbatim inherits every
         native behaviour we cannot synthesise from a template: the 3-round burst (tok23), bolt/single
         shot, charge, overheat (tok24/35), the per-weapon reload chain, damage type (tok3), reload type
-        (tok19) and muzzle flash (tok25/26). On top of that we write ONLY the balance tokens — damage,
+        (tok19) and the UNPROVEN tok25/26 pair (F282: not in the APK field table, which jumps 24
+        `overheat` to 27 `primaryFire_SoundName` — an old comment here called them "muzzle flash" with
+        no source; do not repeat that claim). On top of that we write ONLY the balance tokens — damage,
         fire interval, the ammo/reload trio, and t2 (range, via `gun_range_outdoor_pct` — F234) —
         preserving the two invariants every captured frame obeys: `tok39 == tok16` (clip start == max
         clip) and `tok17 == 2 * tok40`. **t41 is never written here** — it is left exactly as the
@@ -1344,6 +1346,15 @@ class WeaponCatalog:
         A weapon may additionally declare `overrides` — an explicit, per-token escape hatch for bench
         findings that contradict a stock value (see `_override_index`). Each entry must name a
         documented token and carry a `why`; nothing else in the frame can move.
+
+        F282 (Tony, 2026-09-25: the "silenced" presentation preset must actually silence the weapons):
+        `mods["silent_weapons"]` (set by `compile()` from `presentation.resolve(config)["silent_weapons"]`)
+        writes tok25/tok26/tok27 from the SUPPRESSOR'S OWN captured frame onto every weapon, LAST — after
+        the per-weapon `overrides` loop. A weapon that already carries the Suppressor's tok25/tok26 (the
+        Suppressor, the USP-S) keeps its own quiet tok27. tok25/tok26 are the UNPROVEN pair above, not a confirmed muzzle-flash
+        switch; tok27 genuinely does change the fire SOUND (the one bench-confirmed half of F282). Read
+        from the Suppressor's row rather than hard-coded, so a re-capture updates every silenced weapon
+        with it. Every other token is untouched.
 
         Rows without a `capture` block fall back to the old template path (synthetic test catalogs)."""
         w = self._row(weapon_id)
@@ -1502,7 +1513,31 @@ class WeaponCatalog:
                 continue
             idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
             p[idx + 1] = str(ov["value"])
+        if (mods or {}).get("silent_weapons"):
+            # F282: LAST, after the per-weapon `overrides`. A weapon that already carries the Suppressor's
+            # t25/t26 pair is a suppressed weapon by design (the Suppressor itself, the USP-S) and keeps its
+            # OWN quiet fire sound (the USP-S plays Q04, not the Suppressor's Q06); every other weapon takes
+            # all three tokens.
+            t25, t26, t27 = self._silent_weapon_tokens()
+            already_quiet = (p[26], p[27]) == (t25, t26)
+            p[26], p[27] = t25, t26
+            if not already_quiet:
+                p[28] = t27
         return ",".join(p)
+
+    def _silent_weapon_tokens(self) -> tuple[str, str, str]:
+        """F282: the Suppressor's OWN captured tok25/tok26 (the UNPROVEN pair -- see the comment on
+        `resolve()`, do not call this "muzzle flash") and its tok27 fire sound, read from the
+        Suppressor's own `weapons.json` row rather than hard-coded so a re-capture of the Suppressor
+        updates every weapon `silent_weapons` silences without a code change. Expected today: 2, 50,
+        Q06 (checked once by `test_presentation_silent_weapons` against a hard-coded expectation, so a
+        surprise value here fails a test instead of shipping quietly)."""
+        frame = (self._row("suppressor").get("capture") or {}).get("frame")
+        if not frame:
+            raise ValueError("F282: the Suppressor's own weapons.json row has no capture.frame to read "
+                              "tok25/tok26/tok27 from -- silent_weapons cannot be compiled")
+        p = frame.split(",")
+        return p[26], p[27], p[28]
 
     @staticmethod
     def _override_index(weapon_id: str, key: str, ov) -> int:
@@ -2385,6 +2420,10 @@ class Compiler:
         fx = self.perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
         mods = {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult", "switch_mult") if fx.get(k)}
         swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
+        if prof.get("silent_weapons"):
+            # F282: EVERY compiled weapon (primary, secondary, melee, any pickup), not just the primary
+            # `mods` slot -- `resolve()` applies it last, see its docstring.
+            mods["silent_weapons"] = swap_mods["silent_weapons"] = True
         # S50 (Armour Piercing perk): PRIMARY ONLY. `_refuse_if_ap_ineligible` raises before anything
         # is written for a weapon whose damage key is already special (a charge weapon, or a stock
         # grant/heal/status cell); `dmg_mult` rides in `mods` so `resolve()` cuts t5, and the frame's

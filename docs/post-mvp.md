@@ -432,21 +432,6 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 
 - **F315 🟡 SAME-MAGNITUDE WEAPONS SHARE A HIT TAG.** The Assault Rifle, USP-S, Energy Rifle and Breacher all send magnitude 9, so the S56 resolver (magnitude only) names a hit "A / B" when the shooter carries two of them; the Suppressor and Toxin Rifle share 8. Tony 2026-09-23: "1, fallback to 3": tell weapons apart by IR cell (protocol, subtype), and keep "A / B" where no distinct cell exists. brx5 first logged the collision as a Low under F313. Plan: (a) the roster and catalogue carry each weapon's cell, and the phone matches cell + magnitude, then cell, then magnitude, which fixes every visible pair except the AR and Energy Rifle (both (0,0)); (b) behind a flag, off by default, move the Energy Rifle to the one free proto-0 cell (0,2) with a fn-1 `$SIR` row, after a bench step proves a (0,2) word registers (`bench-2026-09-24.md` 4.10). `build` + `bench`. **→ 2026-09-23, built:** (a) `RosterWeapon`/`WeaponView` carry `cells` ({proto, subtype, mag}, from the compiled frame) and the phone's `_resolveHitWeapon` tries cell + magnitude, then cell, then magnitude, each on the loadout then the catalogue; AR + USP-S, AR + Breacher and Suppressor + Toxin now resolve. (b) MC `--distinct-weapon-cells` (off) moves the Energy Rifle to (0,2) with a fn-1 row when it shares a cell and magnitude with another weapon in play. Open: bench 4.10, then default the flag on.
 
-- **F282 🟡 CAN WE ACTUALLY SUPPRESS THE MUZZLE FLASH, AND IS THE SUPPRESSOR AUDIBLY QUIETER?** Tony, 2026-09-18,
-  reading the arsenal page: "are you sure we can suppress the muzzle flash?" **No, and the claim has been withdrawn
-  from the player copy.** `$WEAP` **t25/t26 are NOT in the APK field table** (`protocol-classes.md` jumps 24
-  `overheat` to 27 `primaryFire_SoundName`), and the only thing naming them muzzle flash is an unsourced comment in
-  `mc/compile.py`. We never write them: they are inherited verbatim from each capture, where the Suppressor carries
-  **2 and 50** and the assault rifle carries **none**. Set-versus-empty is suggestive of something, but says nothing
-  about direction, and 2/50 could be a reduced flash as easily as no flash. The "quiet" half is better grounded but
-  also unjudged: t27 is `Q06` on the Suppressor against `R01` on the AR, so it genuinely plays a different
-  sound, but nobody has heard our two COMPILED weapons back to back. **Bench, 5 minutes, needs only eyes and ears:**
-  arm one gun with the compiled Suppressor and one with the compiled AR, fire each in a DARK room, and (1) say
-  whether either shows a visible flash at the muzzle and whether they differ, (2) judge by ear which is quieter and
-  by how much. Then a second pass writing t25/t26 to 0 and to a large value on the SAME weapon, to find out what
-  they do at all. ⚠️ Until then no public page may claim a stealth property. Same evidence fault the polish loop
-  caught four times on 2026-09-18, this time in copy I wrote myself. `bench` + `eyes` + `ears`.
-
 - **S-A12 sidearms 🟡** .1 ✅ **CLOSED 2026-09-11 (evening, bench):** P09 reads as "a pronounced shot, could be the Deagle"; P16 preferred for the GLOCK ("I like the deagle sound for the glock"); Q04 confirmed silenced, for the USP-S; **Deagle = X14** ("heavy rifle shot", "that could work"); reload chain D08->D07->D06 at 400 ms confirmed working. Wired in `weapons.json`: glock t27 = P16, deagle t27 = X14; usp keeps Q04.
   .2 semi-auto cadence on hardware (t20 = 7, t14 150/200/375; USP-S t25=2/t26=50 = no flash + half loudness?) `trigger`;
   .3 real Counter-Strike audio stays out of the repo (convert with `ltp_convert.py`, copy over the data port) `build`;

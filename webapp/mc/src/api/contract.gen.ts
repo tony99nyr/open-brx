@@ -1472,6 +1472,7 @@ export interface PresentationSummary {
   mc_events: boolean;
   mc_confidence: boolean;
   blackout: boolean;
+  silent_weapons: boolean;
   voice: 'on' | 'hits_only' | 'off';
   headset: HeadsetSummary;
   gun: GunSummary;

@@ -1429,6 +1429,7 @@ class PresentationSummary(TypedDict):
     mc_events: bool
     mc_confidence: bool
     blackout: bool
+    silent_weapons: bool
     voice: Literal["on", "hits_only", "off"]
     headset: HeadsetSummary
     gun: GunSummary

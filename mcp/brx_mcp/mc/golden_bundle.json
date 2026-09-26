@@ -904,6 +904,7 @@
     "mc_events": true,
     "mc_confidence": true,
     "blackout": false,
+    "silent_weapons": false,
     "voice": "on",
     "headset": {
       "pregame": "team",

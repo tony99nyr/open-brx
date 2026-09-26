@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed).
+Updated: 2026-09-25 (F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F282 back from post-mvp.md into MVP DESK -- Tony: yes, MVP, silenced must silence the weapons -- built at the desk, `silent_weapons` bench check left).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,11 +9,11 @@ Updated: 2026-09-25 (F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 76.** Desk 6 · bench 67 · decision 3.
+**MVP open: 77.** Desk 7 · bench 67 · decision 3.
 
-**MVP DESK (6),** a keyboard is enough:
+**MVP DESK (7),** a keyboard is enough:
 - 🟠 **B21** · **F372** · **F400** · **F402** · **F403**
-- 🟡 **F377**
+- 🟡 **F377** · **F282**
 
 **MVP BENCH (67),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
@@ -66,6 +66,29 @@ A keyboard is enough. Highest value first.
 
 - **F403 🟠 THE PHONE BRIEFING NAMES THE GAME'S PICKUPS BEFORE IT STARTS.** Tony, 2026-09-25 (via brx1): one line on the BRIEFING, for example `PICKUPS: ROCKETS · OVERSHIELD`, each item in its own colour, from the items the bundle already carries; no line when the game has no items. Storyboard frame first, then build. Owner: brx5. `build`.
 
+- **F282 🟡 CAN WE ACTUALLY SUPPRESS THE MUZZLE FLASH, AND IS THE SUPPRESSOR AUDIBLY QUIETER?** Tony, 2026-09-18,
+  reading the arsenal page: "are you sure we can suppress the muzzle flash?" **No, and the claim has been withdrawn
+  from the player copy.** `$WEAP` **t25/t26 are NOT in the APK field table** (`protocol-classes.md` jumps 24
+  `overheat` to 27 `primaryFire_SoundName`), and the only thing naming them muzzle flash is an unsourced comment in
+  `mc/compile.py`. We never write them: they are inherited verbatim from each capture, where the Suppressor carries
+  **2 and 50** and the assault rifle carries **none**. Set-versus-empty is suggestive of something, but says nothing
+  about direction, and 2/50 could be a reduced flash as easily as no flash. The "quiet" half is better grounded but
+  also unjudged: t27 is `Q06` on the Suppressor against `R01` on the AR, so it genuinely plays a different
+  sound, but nobody has heard our two COMPILED weapons back to back. **Bench, 5 minutes, needs only eyes and ears:**
+  arm one gun with the compiled Suppressor and one with the compiled AR, fire each in a DARK room, and (1) say
+  whether either shows a visible flash at the muzzle and whether they differ, (2) judge by ear which is quieter and
+  by how much. Then a second pass writing t25/t26 to 0 and to a large value on the SAME weapon, to find out what
+  they do at all. ⚠️ Until then no public page may claim a stealth property. Same evidence fault the polish loop
+  caught four times on 2026-09-18, this time in copy I wrote myself. **→ Tony 2026-09-25: yes, MVP; the silenced
+  preset must silence the weapons.** Built: a `presentation.silent_weapons` switch (true only in the "silenced"
+  preset, false elsewhere, absent-means-false on an older saved game) makes `compile.py` give EVERY compiled
+  weapon's `$WEAP` the Suppressor's own captured t25/t26/t27 (`2`, `50`, `Q06`, read from its `weapons.json` row,
+  not hard-coded), written LAST so it wins even over a weapon's own `overrides` (the USP-S already overrides
+  t25/t26 to this same pair, so this only moves its t27 from its own `Q04` to the Suppressor's `Q06`). The
+  standard preset is unchanged. t25/t26 are still UNPROVEN, not "no muzzle flash" — see the code comment on
+  `WeaponCatalog.resolve()`. Left for the bench (sitting C, [`bench-2026-09-25.md`](bench-2026-09-25.md)): the
+  A/B/A eyes-and-ears pass this row always asked for, now run through `compile.resolve()` with the preset, plus
+  a once-only try of an empty t27. `build` + `bench`.
 
 
 
