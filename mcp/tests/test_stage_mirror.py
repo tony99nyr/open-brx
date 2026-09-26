@@ -1788,8 +1788,8 @@ KNOWN_UNMIRRORED = {
     # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.
     "_puHeadWeap", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puRearmRows", "_puBackResend", "_puBackTick",
     # F400 (docs/spec/powerups.md "The switch card"): the pickup-driven weapon-switch card, reusing `switching`'s own
-    # timing/confirm/takeover machinery (already unportable, above). PRESENTATION only (the HUD's card); the equip
-    # itself (`_puEquip`, mirrored... not yet, see above) is unaffected by whether a card shows for it.
+    # timing and takeover (a `pu` card: no echo confirm, no SELECT or re-send gate, no ALT pointer move). It hangs off
+    # the unmirrored pickup mechanic (`_puEquip`, `_puSelectPressed`, `_puEnd`, above), so it has nothing to mirror onto.
     "_puSwitchCard",
     # Tony 2026-09-24, the overshield: the grant burst (spawn protection, the raised `$PSET`, the `$LIFE`), its protection
     # end, and the `$PSET` restore. They hang off a granted overshield, which only the station grant above creates.

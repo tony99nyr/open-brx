@@ -3857,12 +3857,13 @@ export class Engine {
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
       if (this.switching && now - this.switching.at > this.switchWindowMs()) {
-        const to = this.switching.to != null ? this.switching.to : this._nextAltSlot(); this.switching = null; this.activeSlot = to;
-        if (to === 0 || to === 1) this._altPtr = to;   // F400: a powerup equip's "to" can be a pickup slot (2/3), never a real ALT cycle position
+        const to = this.switching.to != null ? this.switching.to : this._nextAltSlot(); this.activeSlot = to;
+        const pu = !!this.switching.pu; this.switching = null;
+        if (!pu) this._altPtr = to;   // F400 r1: a pickup card is a phone equip, which moves the trigger and never the gun's ALT pointer
         if (this._puHeld) this._puHeld.trig = to;   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
-        this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
+        if (!pu) this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile (`_puEquip` already armed a pickup card's)
         this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true } };
-        this.log(`swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
+        this.log(pu ? `pickup switch card to slot ${to} closed after ${this.switchWindowMs()}ms` : `swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
       }
       this._changed();
     }
@@ -5557,7 +5558,7 @@ export class Engine {
    *  `state().powerup.going` so the HUD's tile can still name it after `_puHeld` is gone. */
   _puSwitchCard(from, to, going = null) {
     const now = this.now();
-    this.switching = { at: now, from, to };
+    this.switching = { at: now, from, to, pu: true };   // r1: `pu` = display only: the phone already equipped, so it never gates SELECT, the re-send or ALT's pointer
     if (going) this._puGoing = { slot: from, ...going, until: now + this.switchWindowMs() + 1400 };
   }
   /** Called from `setStations`: remember each powerup station's advert (the "taken early" relay reaches phones this way). */
@@ -5785,7 +5786,7 @@ export class Engine {
   _puSelectPressed() {
     this._puBackPending = null;   // F379 (bench B): a SELECT press is the player's choice, so a stale switch-back never follows it
     const h = this._puHeld; if (!h) return;
-    if (this.phase !== 'live' || !this.alive || this.tutorial || !this.bleUp || this.stunned || this.reconciling || this.resync || this.switching) {
+    if (this.phase !== 'live' || !this.alive || this.tutorial || !this.bleUp || this.stunned || this.reconciling || this.resync || (this.switching && !this.switching.pu)) {
       this.log('SELECT ignored (dead, stunned, reconciling or a swap pending)', 'li'); return;
     }
     const now = this.now();
@@ -5816,7 +5817,7 @@ export class Engine {
   _puBackTick(now) {
     const bp = this._puBackPending; if (!bp || now - bp.at < PU_BACK_RETRY_MS) return;
     if (this.phase !== 'live' || !this.alive) { this._puBackPending = null; return; }
-    if (!this.bleUp || this.stunned || this.reconciling || this.switching) return;   // r3: never fight an ALT swap in flight
+    if (!this.bleUp || this.stunned || this.reconciling || (this.switching && !this.switching.pu)) return;   // r3: never fight an ALT swap in flight (F400 r1: a pickup card is no swap)
     this._puBackResend(now, 'no answer');
   }
   /** The end of a weapon item. Empty: the saved weapon back on the trigger with its saved counts (`$WEAP` then `$AMMO`),
@@ -6623,7 +6624,7 @@ export class Engine {
     // on the wire -- a shell-by-shell shotgun chain, a swap onto a loaded slot and a spawn refill all land here.
     if (prev != null && mag > prev) this._dryPulls = 0;
     const puBack = this._puAmmo(slot, mag, prev);   // A56: the held item's magazine; empty ends the item and switches back
-    if (this.switching && slot !== this.switching.from && (slot < 2 || (this._puHeld && slot === this._puHeld.slot))) {
+    if (this.switching && !this.switching.pu && slot !== this.switching.from && (slot < 2 || (this._puHeld && slot === this._puHeld.slot))) {
       // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
       // NB this interval is ALT-press -> next SHOT, so it includes the player's reaction time. It is a
       // lower bound on "the swap had finished by", NOT a measurement of the swap itself (FOLLOWUPS F4).

@@ -482,14 +482,29 @@ test('F400: the trigger grant sets the switch card (SWITCHING, ALT\'s own from/t
   assert.equal(h.eng._altPtr, 0, 'F400: a pickup slot (2) never becomes the gun\'s own ALT cycle pointer');
 });
 
-test('F400: the trigger grant\'s card confirms fast off the gun\'s own echo of the equip write (echo mode)', () => {
-  const h = armed({ echo: true }); const n = h.mark(); h.take(4);
+test('F400 r1: the gun\'s echo of the equip does not cut the pickup card short: it runs ALT\'s full window', () => {
+  const h = armed({ echo: true }); h.take(4);
   assert.ok(h.eng.switching, 'setup: the card opened');
   h.flush();   // the fake gun echoes the $WEAP/$AMMO write with an $ALCD for slot 2 at once
-  assert.equal(h.eng.switching, null, 'confirmed by the echo, well inside the assumed window');
-  assert.equal(h.eng.moment.kind, 'switched'); assert.equal(h.eng.moment.data.slot, 2); assert.equal(h.eng.moment.data.assumed, undefined);
+  assert.ok(h.eng.switching, 'the echo is our own write, not a swap finishing');
+  h.adv(h.eng.switchWindowMs() + 100);
+  assert.equal(h.eng.switching, null);
+  assert.equal(h.eng.moment.kind, 'switched'); assert.equal(h.eng.moment.data.slot, 2);
 });
 
+test('F400 r1: SELECT acts while a pickup card is up (the gun can already fire)', () => {
+  const h = armed(); h.take(4);
+  assert.ok(h.eng.switching && h.eng.switching.pu, 'setup: the pickup card is up');
+  const n = h.mark(); h.adv(500); h.select();
+  assert.ok(h.since(n).some(f => f === WEAP0), 'SELECT put the player\'s own weapon back');
+});
+
+test('F400 r1: a pickup card closing never moves the gun\'s ALT pointer', () => {
+  const h = armed(); h.eng._altPtr = 1; h.take(4); h.adv(500); h.select();
+  h.adv(h.eng.switchWindowMs() + 100);
+  assert.equal(h.eng.activeSlot, 0, 'setup: SELECT went back to slot 0');
+  assert.equal(h.eng._altPtr, 1, 'a phone equip moves the trigger, not ALT');
+});
 test('F400: a same-weapon stack re-equip shows the card too, from and to the same slot', () => {
   const h = armed(); h.take(4); h.eng._puHeld.left = 1;
   h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
