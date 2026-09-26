@@ -77,7 +77,7 @@ let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live-switch-kill', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
+const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live-spawn-lost', 'live-switch-kill', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
   'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap', 'down-full', 'down-partial', 'down-unclear', 'down-zero-dealt', 'down-pickup', 'down-ffa', 'down-hill', 'down-stale', 'down-old-mc']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
@@ -815,6 +815,14 @@ for (const view of VIEWS) {
     must(under.card && under.killed && under.held && !under.hero, `under the card: ${JSON.stringify(under)}`);
     must(drawn.hero && !drawn.card, `after the card: ${JSON.stringify(drawn)}`);
     must(still, `the kill card left before its ${LANE_HERO_MS} ms after the switch card (${Date.now() - t0} ms)`);
+  });
+  await step(`${view.name} F416: a lost revive write the gun never confirms says GUN MAY NOT BE SPAWNED and names the host's cure`, async () => {
+    const pg = await open(view, 'live-spawn-lost', '', 2600);
+    await pg.waitForFunction(() => !!document.querySelector('.gunwarn'), null, { timeout: 8000 }).catch(() => {});
+    const r = await pg.evaluate(() => { const w = document.querySelector('.gunwarn'); const b = w && w.getBoundingClientRect();
+      return { text: w ? w.textContent : null, danger: !!(w && w.classList.contains('danger')), shown: !!(b && b.width > 0 && b.height > 0), lost: window.brx.engine.state().spawnLost }; });
+    await pg.close();
+    must(r.lost && r.danger && r.shown && /GUN MAY NOT BE SPAWNED/.test(r.text) && /HOST: FORCE RESPAWN/.test(r.text), JSON.stringify(r));
   });
   await step(`${view.name} #40b F394: after ALT (the gun reports nothing), the number, reserve and pips are all the secondary's`, async () => {
     // The demo gun fires 3 AR rounds (29 left), then ALT. The secondary's own counts are the bundle's spawn `$AMMO,1`.

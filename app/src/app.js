@@ -202,7 +202,7 @@ const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit =>
 setInterval(() => {
   const st = engine.state();
   presence.game = configGameByte(engine.config);   // scope presence to this game (best-effort; §utility)
-  beaconWatch.tick(st, { pickerOpen: scanning || link.connecting, config: engine.config });   // no stations: no scan (bench 2026-09-17 flood); app 0.4.2: none while a connect is in flight
+  beaconWatch.tick(st, { pickerOpen: scanning || link.connecting, config: engine.config, radioQuiet: !!st.radioQuiet });   // no stations: no scan (bench 2026-09-17 flood); app 0.4.2: none while a connect is in flight
 }, 1000);
 async function stopAnyScan() {   // the picker owns the radio from here: `scanning` is already set, so the watch will not reopen
   await beaconWatch.release();

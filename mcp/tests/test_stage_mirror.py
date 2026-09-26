@@ -1757,6 +1757,10 @@ KNOWN_UNMIRRORED = {
     # pl4 (2026-09-17): what a spawn/revive batch that resolved false leaves behind (no repeat, re-arm, pool
     # `write_lost`). The stage's batches never resolve false, for the same reason as `_writeMust`.
     "_writeLife",
+    # F416 (2026-09-26): the check that follows such a batch (ask the gun, re-send to an unspawned one) and the radio-quiet
+    # window that keeps the phone's station scan off the spawn write. The stage's batches never resolve false, and it
+    # runs no station scan of its own.
+    "_spawnAsk", "_spawnCheckSeen", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "radioQuiet", "_quietWrite",
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
     # Maint review 2026-09-17 renamed the pair so the names say which is which: `_heatBlocksFire` is the
