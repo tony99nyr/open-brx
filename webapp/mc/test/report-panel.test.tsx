@@ -139,7 +139,7 @@ describe('Report a problem', () => {
   // itself, not strand them behind an overlay pointed at a control they cannot reach.
   it('a 401 sends the operator to the token control instead of a dead-end retry', async () => {
     const seenViews: string[] = [];
-    const m = await openPanel(async () => { throw new AuthError(); }, 'muster', { setView: v => seenViews.push(v) });
+    const m = await openPanel(async () => { throw new AuthError(); }, 'muster', { setView: v => { seenViews.push(v); return true; } });
     await m.click('MAKE REPORT');
     const p = panel(m);
     expect(p.getAttribute('data-report-phase')).toBe('auth');
@@ -149,6 +149,19 @@ describe('Report a problem', () => {
     await m.click('ENTER OPERATOR TOKEN');
     expect(seenViews).toContain('debug');           // sent to the screen that holds the token control
     expect(panel(m)).toBeFalsy();                    // and the overlay that was hiding it is gone
+    m.unmount();
+  });
+
+  // Round 2 (3): a LATCHED spectator tab (S25) never actually becomes `debug` -- `setView` just
+  // records what it was asked for and stays on the board. This used to close the panel regardless,
+  // stranding that tab behind no overlay and no token control at all, with nothing said about it.
+  it('a 401, when setView could not actually get there, shows why instead of closing silently', async () => {
+    const m = await openPanel(async () => { throw new AuthError(); }, 'muster', { setView: () => false });
+    await m.click('MAKE REPORT');
+    await m.click('ENTER OPERATOR TOKEN');
+    expect(panel(m), 'the panel must still be up, with something the operator can read').toBeTruthy();
+    expect(panel(m).getAttribute('data-report-phase')).toBe('error');
+    expect((panel(m).textContent ?? '').toLowerCase()).toMatch(/could not open the token screen/);
     m.unmount();
   });
 

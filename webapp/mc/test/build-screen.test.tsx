@@ -42,6 +42,28 @@ function Screen() {
   return <div data-testid="other-screen">{view}</div>;
 }
 
+describe('round 2 (1): BUILD’s own ◂ BACK TO PLAY leaves on the SECOND tap, not a third', () => {
+  it('confirming once actually leaves', async () => {
+    history.replaceState(null, '', '/?mock#designer');
+    const m = await mount(<StoreProvider><Screen /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getPieces settles
+    await m.click('LIFE');
+    await m.click('NEW ▸');
+    const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput, `${nameInput.value} TWO`);
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await m.click('◂ BACK TO PLAY');   // tap 1: BUILD's own local confirm
+    expect(m.text(), 'tap 1 shows the confirm and stays put').toContain('UNSAVED CHANGES');
+    expect(m.find('[data-testid="other-screen"]').length).toBe(0);
+    await m.click('◂ BACK TO PLAY');   // tap 2: confirmed -- this used to still be blocked by the
+                                       // store's OWN guard (dirty had not reached it yet) and need a third
+    expect(m.find('[data-testid="other-screen"]').length, 'the second tap must actually leave').toBe(1);
+    m.unmount();
+  });
+});
+
 describe('M6 — an unsaved BUILD edit blocks navigation from OUTSIDE BUILD too', () => {
   it('the CommandBar stepper needs a second tap while an edit is unsaved, the same as BUILD’s own back button', async () => {
     history.replaceState(null, '', '/?mock#designer');
@@ -61,6 +83,31 @@ describe('M6 — an unsaved BUILD edit blocks navigation from OUTSIDE BUILD too'
     expect(m.text()).toContain('UNSAVED CHANGES');
     await m.click('KIT');
     expect(m.find('[data-testid="other-screen"]').length, 'a second tap at the same target confirms it').toBe(1);
+    m.unmount();
+  });
+
+  // Round 2 Low: a further edit after being blocked made the pending "tap again" stale -- it was a
+  // confirm for the draft as it stood a MOMENT AGO, not for the one just typed.
+  it('a further edit after being blocked clears the pending confirm, so KIT needs asking again', async () => {
+    history.replaceState(null, '', '/?mock#designer');
+    const m = await mount(<StoreProvider><CommandBar /><Screen /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('LIFE');
+    await m.click('NEW ▸');
+    const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
+    const type = async (v: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput, v);
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await type('FIRST DRAFT');
+    await m.click('KIT');   // blocked, navBlockedTo = 'kit'
+    expect(m.find('[data-testid="other-screen"]').length).toBe(0);
+    await type('SECOND DRAFT');   // a further edit -- the pending block is now stale
+    await m.click('KIT');   // must re-block (not silently confirm off the STALE navBlockedTo)
+    expect(m.find('[data-testid="other-screen"]').length, 'one tap after a further edit must not be enough').toBe(0);
+    expect(m.text()).toContain('UNSAVED CHANGES');
+    await m.click('KIT');   // now this really is the second tap
+    expect(m.find('[data-testid="other-screen"]').length).toBe(1);
     m.unmount();
   });
 });

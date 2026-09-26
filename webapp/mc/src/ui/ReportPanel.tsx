@@ -64,9 +64,18 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
 
   /** The header's own token control (`CommandBar`'s "Operator token needed") is real, but it sits
    *  BEHIND this modal overlay — a 401 here must not strand the operator looking at a "try again"
-   *  that can only 401 again. Send them to it directly instead. */
+   *  that can only 401 again. Send them to it directly instead.
+   *
+   *  Round 2: `setView` says whether it actually navigated -- `debug` is exempt from the unsaved-edit
+   *  guard, but a LATCHED spectator tab still only records what it was asked for (S25) and never
+   *  becomes `debug` at all. This used to close the panel regardless, stranding that tab with no token
+   *  screen behind it and no word that anything went wrong. */
   function goToToken() {
-    setView('debug');
+    if (!setView('debug')) {
+      setError('Could not open the token screen from this tab — enter the token from another tab, then try again.');
+      setPhase('error');
+      return;
+    }
     onClose();
     requestAnimationFrame(() => requestAnimationFrame(() => {
       (document.getElementById('dbg-tok') as HTMLInputElement | null)?.focus();

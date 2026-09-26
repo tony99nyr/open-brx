@@ -9,7 +9,7 @@
 // below follows the storyboard directly — pickers in one wrapping row (a label above a Seg group, not
 // a full-width bar each), the MATCH SETTINGS strip as one bordered row with no per-control caption
 // (each control's own value already names it), LOAD under the strip, right-aligned.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CONFIG_ERRORS_ALERT_ID } from '../api/derive';
@@ -24,7 +24,7 @@ import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
 import { operatorNote } from './operatorNote';
 import { type MatchItemKey, matchItems } from './matchItems';
 import { kindLabel } from './presets/kinds';
-import { RUNWAYS, getRunway, nearestRunway, setRunway, useRunway } from '../runway';
+import { RUNWAYS, getRunway, setRunway, useRunway } from '../runway';
 import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { MODE_ART } from '../modeArt';
 import { ModeEmblem } from './ModeEmblem';
@@ -85,7 +85,21 @@ export function Games() {
       if ((e as { status?: number }).status === 404) { setFavouritesError(null); return; }
       setFavouritesError((e as Error)?.message || 'could not load favourites');
     });
-  useEffect(() => { refreshFavourites(); }, [api, connected, retryTick]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // Round 2 Low: this had no `cancelled` guard at all (unlike the pieces-fetch effect just above it) --
+  // a stale response landing after `api`/`retryTick` moved on could still clobber newer state, or update
+  // state past unmount. And it used to refetch on EVERY `connected` change, including the DISCONNECT
+  // itself, which can only fail or race the reconnect fetch that follows it -- skip while known offline.
+  useEffect(() => {
+    if (!connected) return;
+    let cancelled = false;
+    api.getFavourites().then(fs => { if (cancelled) return; setFavourites(fs); setFavouritesError(null); })
+      .catch(e => {
+        if (cancelled) return;
+        if ((e as { status?: number }).status === 404) { setFavouritesError(null); return; }
+        setFavouritesError((e as Error)?.message || 'could not load favourites');
+      });
+    return () => { cancelled = true; };
+  }, [api, connected, retryTick]);
   const [savingFav, setSavingFav] = useState(false);
   const [favNameDraft, setFavNameDraft] = useState('');
   const [renamingFav, setRenamingFav] = useState<string | null>(null);
@@ -147,17 +161,15 @@ export function Games() {
   const assignAHill = () => { setFocusHill(true); setView('muster'); };
 
   // ---- FAVOURITES actions (games-presets.md §6) ----------------------------------------------------
-  // Polish round 1 Lows: (1) `submittingFav` (declared above, with the other hooks) guards against a
+  // Polish round 1 Low: `submittingFav` (declared above, with the other hooks) guards against a
   // double Enter/click firing two `createFavourite` calls, the second landing as the 409 "already
-  // exists" refusal for what looked like one tap. (2) the runway can be a non-RUNWAYS value by the time
-  // this runs (a FAVOURITE or LAST MATCH load can set it to whatever it was actually armed with) --
-  // snap it, so a newly saved favourite never carries a countdown the COUNTDOWN control itself could
-  // not have picked.
+  // exists" refusal for what looked like one tap. `runwayVal` no longer needs snapping here (round 2):
+  // `setRunway` itself snaps now, so the screen and the saved favourite already agree.
   const saveFavourite = async (name: string) => {
     if (submittingFav) return;
     setSubmittingFav(true);
     try {
-      const r = await run(() => api.createFavourite({ name, countdown_s: nearestRunway(runwayVal) }));
+      const r = await run(() => api.createFavourite({ name, countdown_s: runwayVal }));
       if (r) { setSavingFav(false); setFavNameDraft(''); await refreshFavourites(); }
     } finally { setSubmittingFav(false); }
   };
@@ -475,15 +487,29 @@ function FavouriteChip({ fav, renaming, confirmingDelete, onLoad, onRenameStart,
   // onBlur) and only THEN runs the button's onClick, so ✕ used to "cancel" an edit it had already sent.
   const [draft, setDraftMirror] = useState(fav.name);
   useEffect(() => { if (renaming) setDraftMirror(fav.name); }, [renaming, fav.name]);
+  // Round 2 (4): Tab (not a mouse click) moves focus to ✓/✕ the same way blur/Enter does everywhere
+  // else -- `onMouseDown`'s preventDefault above only ever stopped a MOUSE click from blurring first,
+  // so a keyboard user tabbing to ✕ still committed the draft via `DraftText`'s own onBlur before ✕'s
+  // Enter ever ran. `suppressCommit` covers Escape too (which does not move focus to a sibling at all,
+  // so `relatedTarget` alone cannot catch it): both stop the blur reaching `DraftText`'s onCommit by
+  // intercepting it in the CAPTURE phase, before the input's own onBlur (the bubble-phase target) fires.
+  const suppressCommit = useRef(false);
   if (renaming) {
     const save = () => { const v = draft.trim(); if (v && v !== fav.name) onRenameCommit(v); else onRenameCancel(); };
+    const cancel = () => { suppressCommit.current = true; onRenameCancel(); };
     return (
-      <span data-testid={`favourite-rename-${fav.favourite_id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${T.line2}`, padding: '4px 8px', minHeight: 44 }}>
+      <span data-testid={`favourite-rename-${fav.favourite_id}`}
+        onBlurCapture={e => {
+          const rt = e.relatedTarget as Node | null;
+          if (suppressCommit.current || (rt && e.currentTarget.contains(rt))) e.stopPropagation();
+        }}
+        onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); cancel(); } }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${T.line2}`, padding: '4px 8px', minHeight: 44 }}>
         <DraftText value={fav.name} onCommit={onRenameCommit} onDraft={setDraftMirror} ariaLabel={`rename ${fav.name}`} maxLength={24}
           style={{ font: F.chk(700, 14), minWidth: 120, borderBottomColor: T.line2 }} />
         <button type="button" onMouseDown={e => e.preventDefault()} onClick={save} aria-label="save rename" className="hit44"
           style={{ ...BTN_RESET, cursor: 'pointer', color: T.ok, padding: '0 8px', minHeight: 44 }}>✓</button>
-        <button type="button" onMouseDown={e => e.preventDefault()} onClick={onRenameCancel} aria-label="cancel rename" className="hit44"
+        <button type="button" onMouseDown={e => e.preventDefault()} onClick={cancel} aria-label="cancel rename" className="hit44"
           style={{ ...BTN_RESET, cursor: 'pointer', color: T.micro, padding: '0 8px', minHeight: 44 }}>✕</button>
       </span>
     );

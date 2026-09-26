@@ -39,7 +39,7 @@ async function kitScreen(mutate: (s: State) => State = s => s, opts: { failPhase
     },
   });
   const render = (s: State) => {
-    const store = makeStore({ ...d, state: s, view: 'kit', selPlayer: 'p1' }, { api, setView: v => views.push(v) });
+    const store = makeStore({ ...d, state: s, view: 'kit', selPlayer: 'p1' }, { api, setView: v => { views.push(v); return true; } });
     return <StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>;
   };
   const m = await mount(render(mutate(d.state)));
