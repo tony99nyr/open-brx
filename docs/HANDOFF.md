@@ -1,32 +1,28 @@
-# Handoff: Open BRX, state after the 2026-09-25 final docs pass
-**State as of 2026-09-25 (before Tony clears every session).** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
+# Handoff: Open BRX, state after the 2026-09-26 0.4.14 cut
+**State as of 2026-09-26.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 Open MVP work is [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench, decision); ideas and the roadmap are [`post-mvp.md`](post-mvp.md);
 what is done is [`archive/followups-closed.md`](archive/followups-closed.md). The bench order is [`bench-plan.md`](bench-plan.md).
 What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is [`post-launch.md`](post-launch.md).
 Update only the lane you worked.
-## State of main (2026-09-25)
-**App 0.4.11 is published** (`app-v0.4.11`, release-signed; a phone on a debug build must uninstall once). Main is
-ahead of 0.4.11 with: the announcer queue and "my death wins" (F351, F149), the gun audio-queue model (F347), a Shields
-spawn at full shield (F348), the Android 11 Location gate (F340), the pool repair after a lost chunk (F341), the
-station scan and revive fixes (F342 part, F344, F345), A60 auto-join with first contact (F346 d), the A61-A63 medals
-and awards, A64/A65 no kill cue after any whistle and team-only credit (F357, F354), A66 MC-assigned station ids
-(F364), A67 the station range edit on all three halves (F365), the F231 ranges (SMG and rockets 40, rail 100) and
-F308's AR heavy 45. **0.4.12 waits on sitting A** of [`bench-2026-09-25.md`](bench-2026-09-25.md): screamers A4 (F341's
-`$*` reset) and F347's two answers. **Powerups are ON by default** (Tony, 2026-09-25, F372 closed): sitting C's
-powerup setup now runs as verification, not a gate. Still P0: the link loop under load (**F293**) and BLE setup metrics (**F297**).
+## State of main (2026-09-26)
+**App 0.4.14 is published** (`app-v0.4.14`, release-signed, main 56fbece4) and installed on the three bench Pixel 5s.
+It carries powerups on by default (F372), the go-live spawn check (F416), held pickups that survive a resume (F418,
+F417 part 1), the switch card with paused lanes (F400), no pickup countdown (F425), F394, F420-F424 and mode art C.
+Three polish rounds ran before the cut. **MC GAMES (F411, brx3) with FAVOURITES is not on main yet;** F413 (teams)
+and F415 (per-mode match settings) follow it. The iPhone X build (B21 iOS half, uncompiled Swift) is Tony's MacBook
+step, `.claude/skills/iphone-build`. Bench part 2 is at the top of [`bench-plan.md`](bench-plan.md).
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: brx1, orchestration
-2026-09-25 close: every session lane is pushed with CI green (main 93cc339a, run 36152678385). FOLLOWUPS holds 56
-open MVP rows (desk 3, bench 51, decision 2). Built today after the docs pass: F368/F370/F371 alert layering, F221 MC
-alert colours, F366 gamertag limit, D5 pistol Extended Mags (+50%), B6 and I2b recap icons, F375 no critical line after
-the death scream, F374 a pickup Stick waits for START, F164 reconcile ammo, F319, Q13's solo-game fix, B21's Android
-switch. Decided and recorded (do not re-ask): everything in the FOLLOWUPS rows, plus D5, F366 and F317 (post-MVP).
-- **Next:** run [`bench-2026-09-25.md`](bench-2026-09-25.md) with Tony. Sitting A's audio results are built (brx5,
-  t23 empty and the shield-hit clip); cut 0.4.12 after A4 (RELEASING.md); sitting C's powerup setup verifies F372 (closed).
-- **Desk:** F377 (solo LMS picks no winner), B21's iOS half (needs the MacBook).
-- **Awaiting Tony:** F221 (look at `C:\Users\Tony\brx-mc-alerts\index.html`). S32 closed: Tony picked direction C.
-- **Parked, not merged:** `pu-select` 1fb1aec9 (brx5, SELECT swap; later powerup work on main likely supersedes it).
+2026-09-26 close: 0.4.14 cut and published (e52f965e bump, 56fbece4 sidecar), CI green. Polish loop: 3 rounds over
+bb361d82..cb8413a6; every Critical/High/Medium fixed (4da60f94, 2ae27937, ece991b1, 0191cc8a); Lows are in the F416 row.
+Site shots: CI alone owns staleness now (858b4d1e), and an overlap race exits green. Decided today (do not re-ask):
+melee always on, gyro only, never a pick (F412 post-mvp for a toggle); teams red + blue by default (F413); per-mode
+MATCH SETTINGS and the KOTH hold target (F415); FAVOURITES in F411; mode art C; F425 option A (the HUD never says a
+pickup was taken, or by whom); the lead badge hides under the switch card; USP-S keeps Q04; iOS is MVP.
+- **Next:** land F411 (brx3), then F413 + F415 (brx3); re-run brx2's desk-prep audit; Tony builds the iPhone.
+- **Open:** F414 (a Codex delegation that reports back: background Codex jobs vanished today).
+- **Ask Tony:** the station phone (utility screen) still shows TAKEN and a NEXT countdown; F425's rule covers the HUD only.
 ## Lane: brx2, bench, audio, utility and docs
 **2026-09-26, short bench part 1 DONE** (1.5 h, [`bench-plan.md`](bench-plan.md) "NOW: part 1"; the Stick and app
 0.4.13, MC `main`). KOTH's Stick-hill half ran clean (F382, F384, F385 CONFIRMED and closed); the phone-hill half
