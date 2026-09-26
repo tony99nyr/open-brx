@@ -3,7 +3,6 @@
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Loadout, Player } from '../src/api/types';
-import { Designer } from '../src/screens/Designer';
 import { Kit } from '../src/screens/Kit';
 import { demo, mountScreen } from './harness';
 
@@ -120,13 +119,5 @@ describe('KIT · perk slot (A14)', () => {
   });
 });
 
-describe('DESIGNER · perk rule (A14)', () => {
-  it('renders a third PERK column with its own pool summary', async () => {
-    const d = await demo();
-    const m = await mountScreen(<Designer />, { ...d, view: 'designer' });
-    expect(m.find('[aria-label="perk slot rules"]').length).toBe(1);
-    expect(m.find('[data-testid="perk-summary"]')[0]?.textContent).toBe('5 OF 5 PERKS');
-    expect(m.find('[data-testid="secondary-summary"]')[0]?.textContent).not.toContain('PERK');
-    m.unmount();
-  });
-});
+// F411: the GAME DESIGNER is retired (docs/spec/design/games-presets.md) — its own perk-slot-rule
+// test went with it. BUILD (screens/Build.tsx) replaces it; that lane owns its own tests.

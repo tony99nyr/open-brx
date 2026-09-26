@@ -26,11 +26,8 @@ describe('the venue-mode manual link', () => {
     // whole attribute string.
     expect((link!.getAttribute('rel') ?? '').split(/\s+/)).toContain('noopener');
     expect(link!.getAttribute('aria-label')).toBe("How to set the gun's mode (opens in a new tab)");
-    // it sits BESIDE the venue control group, not inside it -- the group is a real `fieldset disabled`
-    // when the venue is locked, and the link must not fade with it (review 2026-09-16).
-    const venueGroup = m.find('[role="group"][aria-label="venue"]')[0];
-    expect(venueGroup, 'no venue control group found').toBeTruthy();
-    expect(venueGroup!.contains(link!), 'the link must not be inside the dimmable group').toBe(false);
+    // F411: PLAY's DAY/NIGHT is one MATCH SETTINGS control now, never its own dimmable fieldset — the
+    // link just needs to sit outside any fieldset that could fade it.
     expect(link!.closest('fieldset'), 'the link must not be inside any fieldset that can be disabled').toBeFalsy();
     m.unmount();
   });
