@@ -44,9 +44,15 @@ def looks_like_pick(gp: object) -> bool:
            and all(k in gp["pieces"] and isinstance(gp["pieces"][k], str) for k in PIECE_KINDS)):
         return False
     match = gp.get("match")
-    return (isinstance(match, dict) and isinstance(match.get("night"), bool) and isinstance(match.get("silenced"), bool)
-           and (match.get("time_limit_s") is None or isinstance(match.get("time_limit_s"), int))
-           and (match.get("frag_limit") is None or isinstance(match.get("frag_limit"), int)))
+    if not (isinstance(match, dict) and isinstance(match.get("night"), bool) and isinstance(match.get("silenced"), bool)):
+        return False
+    # A bool is an int in Python, but never a legal time_limit_s/frag_limit -- `favourites._check_match`
+    # already excludes it the same way (Low, round 2).
+    for k in ("time_limit_s", "frag_limit"):
+        v = match.get(k)
+        if v is not None and not (isinstance(v, int) and not isinstance(v, bool)):
+            return False
+    return True
 
 
 def derive_pick_from_config(config: Mapping[str, Any], mvp_modes: frozenset[str]) -> GamePick:
@@ -112,14 +118,18 @@ def resolve_pieces_with_fallback(store: PieceStore, ids: Mapping[str, str]) -> t
     return resolved, fallbacks
 
 
-def resolve_pieces_mixed(store: PieceStore, ids: Mapping[str, str], strict_kinds: Container[str]) -> dict[PieceKind, GamePiece]:
+def resolve_pieces_mixed(store: PieceStore, ids: Mapping[str, str],
+                         strict_kinds: Container[str]) -> tuple[dict[PieceKind, GamePiece], list[PieceKind]]:
     """M1 (polish round 1): `POST /api/play/pick` resolves a kind the REQUEST itself named (`strict_kinds`)
     exactly like `resolve_pieces` -- an unknown/wrong-kind/post_mvp id there is still a 400/404, the
     operator's own mistake to fix. A kind merely INHERITED from the previous `game_pick` (a session/
-    snapshot that drifted from the pieces shelf) falls back to that kind's first builtin instead, same
-    grace as `resolve_pieces_with_fallback` -- a stale id nobody asked to change must never 404 an
-    unrelated pick."""
+    snapshot that drifted from the pieces shelf, or one H2's own `_sync_game_pick_from_config` pointed
+    at a post_mvp mode via a plain `PUT /api/config`) falls back to that kind's first builtin instead,
+    same grace as `resolve_pieces_with_fallback` -- a stale id nobody asked to change must never 404 an
+    unrelated pick. Returns the fallen-back kinds too (Low, round 2): `POST /api/play/pick` reports them
+    in `fallbacks`, the same as FAVOURITES LOAD, so the console can say so."""
     resolved: dict[PieceKind, GamePiece] = {}
+    fallbacks: list[PieceKind] = []
     for kind in PIECE_KINDS:
         pid = ids.get(kind)
         if kind in strict_kinds:
@@ -140,8 +150,11 @@ def resolve_pieces_mixed(store: PieceStore, ids: Mapping[str, str], strict_kinds
                     piece = candidate
             except PieceError:
                 piece = None
-        resolved[kind] = piece if piece is not None else store.get(BUILTIN_IDS[kind])
-    return resolved
+        if piece is None:
+            piece = store.get(BUILTIN_IDS[kind])
+            fallbacks.append(kind)
+        resolved[kind] = piece
+    return resolved, fallbacks
 
 
 def _opt_int(v: object, field: str) -> int | None:

@@ -2325,7 +2325,12 @@ class Session:
         so a snapshot's pick can name a piece the shelf no longer has, or one that turned `post_mvp`
         since. Replace any such id with that kind's own first builtin, the SAME grace `resolve_pieces_
         with_fallback`/`resolve_pieces_mixed` give a stale id elsewhere -- a session must never sit on
-        a pick `POST /api/play/pick` itself would refuse to resolve."""
+        a pick `POST /api/play/pick` itself would refuse to resolve.
+
+        Low (round 2): finishes with `_sync_game_pick_from_config()` -- the reconciliation above only
+        catches an id that no longer RESOLVES; a restored `game_pick` whose (valid) mode piece simply
+        disagrees with the restored `self.config["mode"]` needs the SAME truthful-to-the-config sync
+        `set_config` runs on every edit, or PLAY shows a mode/match the config does not."""
         self.pieces = store
         from .pieces import BUILTIN_IDS
         for kind in self.game_pick["pieces"]:
@@ -2339,6 +2344,7 @@ class Session:
                     ok = False
             if not ok and kind in BUILTIN_IDS:
                 self.game_pick["pieces"][kind] = BUILTIN_IDS[kind]
+        self._sync_game_pick_from_config()
 
     def _compose_precheck(self, patch: dict) -> dict:
         """F411: does this GAMES pick compose a config `_validate()` accepts, WITHOUT leaving any
@@ -2356,8 +2362,11 @@ class Session:
           * `_reteam_for_config` has no network side effect -- safe to run for real, then undo.
           * `apply_policy()` does (`_resend`, `tryout` teardown) -- so its PURE half (`_policy.apply`)
             runs into a throwaway roster instead, never touching a real player or a real gun.
-        `_validate` also refreshes `config_errors`/`config_warnings` as a side effect, which is fine: a
-        real read recomputes both before anyone sees them."""
+        `_validate` also refreshes `config_errors`/`config_warnings` as a side effect -- M-a (polish
+        round 2): those are session state too, and a REFUSED pick or piece edit must leave no
+        candidate's errors sitting on the live session (a `GET /api/state` right after would otherwise
+        show the rejected candidate's complaints, not the real config's, until something else happened
+        to `_validate()` again). Saved and restored here alongside the config/teams/team_ids."""
         mode = patch.get("mode", self.config["mode"])
         if mode != self.config["mode"]:
             cfg = default_config(mode)
@@ -2381,6 +2390,8 @@ class Session:
         saved_teams = list(self.teams)
         prev_teams = list(self.teams)                              # captured BEFORE the swap, as set_config does
         saved_team_ids = {pid: p.get("team_id") for pid, p in self.players.items()}
+        saved_config_errors = list(self.config_errors)
+        saved_config_warnings = list(self.config_warnings)
         self.config = cfg
         self.teams = list(cfg["teams"])
         try:
@@ -2394,6 +2405,8 @@ class Session:
         finally:
             self.config = saved_config
             self.teams = saved_teams
+            self.config_errors = saved_config_errors
+            self.config_warnings = saved_config_warnings
             for pid, tid in saved_team_ids.items():
                 if pid in self.players:
                     self.players[pid]["team_id"] = tid
