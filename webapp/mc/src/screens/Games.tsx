@@ -23,17 +23,16 @@ import { alertWords, serverLine } from '../alerts';
 import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
 import { operatorNote } from './operatorNote';
 import { type MatchItemKey, matchItems } from './matchItems';
-import { RUNWAYS, getRunway, setRunway, useRunway } from '../runway';
+import { kindLabel } from './presets/kinds';
+import { RUNWAYS, getRunway, nearestRunway, setRunway, useRunway } from '../runway';
 import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { MODE_ART } from '../modeArt';
 import { ModeEmblem } from './ModeEmblem';
 
 /** F411 games-presets.md §5: PLAY's picker order. GAMEPLAY is always hidden for MVP (§3/§13/§15). */
 const PICKER_ORDER: Exclude<PieceKind, 'gameplay'>[] = ['mode', 'life', 'spawn', 'primary', 'secondary', 'perks', 'misc_loadouts'];
-const KIND_LABEL: Record<PieceKind, string> = {
-  mode: 'GAME MODE', life: 'LIFE', spawn: 'SPAWN', primary: 'PRIMARY', secondary: 'SECONDARY',
-  perks: 'PERKS', misc_loadouts: 'MISC LOADOUTS', gameplay: 'GAMEPLAY',
-};
+// Polish round 1 Low: this duplicated BUILD's own `kindLabel` (screens/presets/kinds.ts) under a
+// second name with the same eight strings -- one table now, imported.
 
 const TIME_QUICK_MIN = [5, 10, 15, 20, 30];
 // VQA QA-08: the server's own cap on a match's time limit (2 hours) — the stepper never sends past it.
@@ -76,13 +75,25 @@ export function Games() {
 
   // ---- F411 §6 FAVOURITES: a named bundle of the whole PLAY pick, like a named LAST MATCH ---------
   const [favourites, setFavourites] = useState<Favourite[]>([]);
-  const refreshFavourites = () => api.getFavourites().then(setFavourites).catch(() => {});
-  useEffect(() => { refreshFavourites(); }, [api]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // Polish round 1 M5: a 404 (an older MC, no FAVOURITES route) is stale, same as `piecesError`'s own
+  // 404 case -- silent. Any OTHER failure used to be swallowed the same way, hiding a real fetch
+  // problem behind an empty shelf that looked like "no favourites saved yet". The effect used to run
+  // once, off `[api]` only, so a reconnect after the server came back never tried again.
+  const [favouritesError, setFavouritesError] = useState<string | null>(null);
+  const refreshFavourites = () => api.getFavourites().then(fs => { setFavourites(fs); setFavouritesError(null); })
+    .catch(e => {
+      if ((e as { status?: number }).status === 404) { setFavouritesError(null); return; }
+      setFavouritesError((e as Error)?.message || 'could not load favourites');
+    });
+  useEffect(() => { refreshFavourites(); }, [api, connected, retryTick]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [savingFav, setSavingFav] = useState(false);
   const [favNameDraft, setFavNameDraft] = useState('');
   const [renamingFav, setRenamingFav] = useState<string | null>(null);
   const [confirmDeleteFav, setConfirmDeleteFav] = useState<string | null>(null);
   const [fallbackNote, setFallbackNote] = useState<string[] | null>(null);
+  // Polish round 1 Low: guards SAVE AS A FAVOURITE against a double submit (declared up here with
+  // every other hook -- a hook after the `if (!state) return null` below breaks the rules of hooks).
+  const [submittingFav, setSubmittingFav] = useState(false);
 
   if (!state) return null;
   const cfg = state.config;
@@ -106,10 +117,13 @@ export function Games() {
   const blocked = realFault || kothNoHill;
   const realFaultReason = locked ? lockedReason(state.phase) : poolEmptyReason;
 
-  const pickPiece = (kind: PieceKind, piece_id: string) => run(() => api.pick({ pieces: { [kind]: piece_id } }))
-    .then(r => { if (r && !r.ok) setNotice(r.errors.join(' · '), true); });
-  const pickMatch = (patch: Partial<MatchSettings>) => run(() => api.pick({ match: patch }))
-    .then(r => { if (r && !r.ok) setNotice(r.errors.join(' · '), true); });
+  // Polish round 1 Low: a FAVOURITE's fallback note ("SPAWN — ITS SAVED PICK IS GONE…") used to sit on
+  // screen until the NEXT favourite load, surviving every ordinary tap in between and describing a load
+  // that was no longer the reason anything on screen looked the way it did.
+  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
+    .then(r => { if (r && !r.ok) setNotice(r.errors.join(' · '), true); }); };
+  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); return run(() => api.pick({ match: patch }))
+    .then(r => { if (r && !r.ok) setNotice(r.errors.join(' · '), true); }); };
 
   const load = async () => {
     if (busy) return;
@@ -121,14 +135,31 @@ export function Games() {
   const loaded = !!state.game?.loaded;
   const gameSent = state.game?.sent ?? 0;
   const gameTotal = state.game?.total ?? state.players.length;
-  const continueToKit = async () => { await run(() => api.setPhase('kit')); setView('kit'); };
+  // Polish round 1 H1: `setPhase` used to be navigated PAST regardless of what it answered -- a refused
+  // A27 not-ready guard (409) still landed on KIT, showing a screen for a phase the server never moved
+  // to. Also a `busy` guard: a second tap before the first round-trip lands used to fire the request twice.
+  const continueToKit = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { const r = await run(() => api.setPhase('kit')); if (r) setView('kit'); } finally { setBusy(false); }
+  };
 
   const assignAHill = () => { setFocusHill(true); setView('muster'); };
 
   // ---- FAVOURITES actions (games-presets.md §6) ----------------------------------------------------
+  // Polish round 1 Lows: (1) `submittingFav` (declared above, with the other hooks) guards against a
+  // double Enter/click firing two `createFavourite` calls, the second landing as the 409 "already
+  // exists" refusal for what looked like one tap. (2) the runway can be a non-RUNWAYS value by the time
+  // this runs (a FAVOURITE or LAST MATCH load can set it to whatever it was actually armed with) --
+  // snap it, so a newly saved favourite never carries a countdown the COUNTDOWN control itself could
+  // not have picked.
   const saveFavourite = async (name: string) => {
-    const r = await run(() => api.createFavourite({ name, countdown_s: runwayVal }));
-    if (r) { setSavingFav(false); setFavNameDraft(''); await refreshFavourites(); }
+    if (submittingFav) return;
+    setSubmittingFav(true);
+    try {
+      const r = await run(() => api.createFavourite({ name, countdown_s: nearestRunway(runwayVal) }));
+      if (r) { setSavingFav(false); setFavNameDraft(''); await refreshFavourites(); }
+    } finally { setSubmittingFav(false); }
   };
   const renameFavourite = async (id: string, name: string) => {
     const r = await run(() => api.updateFavourite(id, { name }));
@@ -142,11 +173,16 @@ export function Games() {
   const loadFavourite = async (id: string) => {
     const r = await run(() => api.loadFavourite(id));
     if (!r) return;
+    // Polish round 1 H2: `ok: false` is a REFUSED load (a bench-gate refusal, same as any other pick) --
+    // the mock changes nothing behind it (backend.ts's own "ok:false changes nothing" rule), so the
+    // console must not either. This used to apply the runway and the fallback note regardless, showing
+    // a countdown and a fallback list for a favourite that was never actually loaded.
+    if (!r.ok) { setNotice(r.errors.join(' · '), true); return; }
     setRunway(r.countdown_s);
     // "SPAWN — STATION IS GONE, USING AUTO" (games-presets.md §6) needs the OLD piece's name, which a
     // fallback means we no longer have -- say what it is USING instead, always true, never invented.
     setFallbackNote(r.fallbacks.length
-      ? r.fallbacks.map(k => `${KIND_LABEL[k]} — ITS SAVED PICK IS GONE, USING ${pieces.find(p => p.piece_id === r.pick.pieces[k])?.name ?? 'ITS DEFAULT'}`)
+      ? r.fallbacks.map(k => `${kindLabel(k)} — ITS SAVED PICK IS GONE, USING ${pieces.find(p => p.piece_id === r.pick.pieces[k])?.name ?? 'ITS DEFAULT'}`)
       : null);
   };
 
@@ -232,6 +268,16 @@ export function Games() {
           </span>
         </Alert>
       )}
+      {/* Polish round 1 M5: a real FAVOURITES fetch failure (not the older-MC 404) is shown, not
+          swallowed -- the shelf otherwise looks the same as "no favourites saved yet". */}
+      {!staleServer && favouritesError && (
+        <Alert id="games-favourites-error" testid="play-favourites-error" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ lineHeight: 1.5 }}>{alertWords(`COULD NOT LOAD FAVOURITES: ${favouritesError}`)}</span>
+          <span data-testid="favourites-retry">
+            <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setRetryTick(t => t + 1)}>RETRY ▸</GhostButton>
+          </span>
+        </Alert>
+      )}
 
       {!staleServer && realFault && (
         <Alert id="games-locked-banner" testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -288,7 +334,7 @@ export function Games() {
               const selected = pick.pieces[kind];
               return (
                 <div key={kind} data-testid={`picker-${kind}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.micro }}>{KIND_LABEL[kind]}</div>
+                  <div style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.micro }}>{kindLabel(kind)}</div>
                   {kind === 'mode' ? (
                     // Tony, 2026-09-26: "on play mode picker would be great" -- each option carries its
                     // own mark, so this is a bespoke row (Seg has no per-option slot for one), styled to
@@ -311,7 +357,7 @@ export function Games() {
                       })}
                     </span>
                   ) : (
-                    <Seg wrap size={14} label={KIND_LABEL[kind].toLowerCase()} value={selected} pad="10px 16px"
+                    <Seg wrap size={14} label={kindLabel(kind).toLowerCase()} value={selected} pad="10px 16px"
                       options={options.map(p => ({ value: p.piece_id, label: p.name }))}
                       titles={Object.fromEntries(options.map(p => [p.piece_id, p.note || p.name]))}
                       onChange={id => pickPiece(kind, id)} />
@@ -362,9 +408,15 @@ export function Games() {
             <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0 }}>
               {state.last_match && (
                 <span data-testid="last-match">
-                  <GhostButton size={14} pad="10px 16px" onClick={() => {
-                    setRunway(state.last_match!.countdown_s);
-                    run(() => api.pick({ match: { time_limit_s: state.last_match!.time_limit_s, frag_limit: state.last_match!.frag_limit, night: state.last_match!.night, silenced: state.last_match!.silenced } }));
+                  {/* Polish round 1 M4: the runway used to be set (and the note treated as "applied")
+                      before the pick round-trip had even answered -- a refused pick (e.g. a bench-gate
+                      time_limit_s) still left the countdown control showing LAST MATCH's value with
+                      the STRIP itself unchanged, disagreeing with each other on screen. */}
+                  <GhostButton size={14} pad="10px 16px" onClick={async () => {
+                    const lm = state.last_match!;
+                    const r = await run(() => api.pick({ match: { time_limit_s: lm.time_limit_s, frag_limit: lm.frag_limit, night: lm.night, silenced: lm.silenced } }));
+                    if (r?.ok) setRunway(lm.countdown_s);
+                    else if (r) setNotice(r.errors.join(' · '), true);
                   }}>LAST MATCH ▸</GhostButton>
                 </span>
               )}
@@ -373,8 +425,8 @@ export function Games() {
                   <input className="textbox" value={favNameDraft} onChange={e => setFavNameDraft(e.target.value)}
                     placeholder="FAVOURITE NAME" maxLength={24} aria-label="favourite name"
                     style={{ font: F.chk(700, 14), minHeight: 44, minWidth: 160, borderBottomColor: T.line2 }}
-                    onKeyDown={e => { if (e.key === 'Enter' && favNameDraft.trim()) saveFavourite(favNameDraft.trim()); }} />
-                  <GhostButton size={14} pad="10px 14px" disabled={!favNameDraft.trim()} onClick={() => saveFavourite(favNameDraft.trim())}>SAVE ▸</GhostButton>
+                    onKeyDown={e => { if (e.key === 'Enter' && favNameDraft.trim() && !submittingFav) saveFavourite(favNameDraft.trim()); }} />
+                  <GhostButton size={14} pad="10px 14px" disabled={!favNameDraft.trim() || submittingFav} onClick={() => saveFavourite(favNameDraft.trim())}>SAVE ▸</GhostButton>
                   <GhostButton size={14} pad="10px 14px" onClick={() => { setSavingFav(false); setFavNameDraft(''); }}>CANCEL</GhostButton>
                 </span>
               ) : (
@@ -385,8 +437,12 @@ export function Games() {
             </fieldset>
             {loaded ? (
               <span data-testid="game-continue-kit">
-                <PrimaryButton size={14} disabled={locked} title={locked ? realFaultReason : 'Takes the phones to their kit screens. The guns are configured at the lobby push, after kitting.'}
-                  onClick={() => continueToKit()}>CONTINUE TO KIT ▸</PrimaryButton>
+                {/* Polish round 1 Low: this used to check `locked` alone, so an empty required loadout
+                    slot (`poolEmpty.any`, part of `realFault` but not `locked`) still let CONTINUE TO
+                    KIT through -- KIT would then have nobody to kit into that slot. `busy` matches
+                    LOAD's own guard against a second tap before the first round-trip lands. */}
+                <PrimaryButton size={14} disabled={realFault || busy} title={realFault ? realFaultReason : 'Takes the phones to their kit screens. The guns are configured at the lobby push, after kitting.'}
+                  onClick={() => continueToKit()}>{busy ? 'MOVING TO KIT…' : 'CONTINUE TO KIT ▸'}</PrimaryButton>
               </span>
             ) : (
               <span data-testid="game-load">

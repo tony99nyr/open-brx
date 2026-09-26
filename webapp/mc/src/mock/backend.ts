@@ -1275,8 +1275,8 @@ export class MockBackend implements Api {
     for (const [kind, id] of Object.entries(nextPieceIds)) {
       const piece = this.pieces.find(x => x.piece_id === id);
       if (!piece) throw Object.assign(new Error(`unknown piece id '${id}'`), { status: 404 });
-      if (piece.kind !== kind) throw new Error(`piece '${id}' is a ${piece.kind} piece, not ${kind}`);
-      if (piece.post_mvp) throw new Error(`'${piece.name}' is post-MVP and cannot be picked yet`);
+      if (piece.kind !== kind) throw Object.assign(new Error(`piece '${id}' is a ${piece.kind} piece, not ${kind}`), { status: 400 });
+      if (piece.post_mvp) throw Object.assign(new Error(`'${piece.name}' is post-MVP and cannot be picked yet`), { status: 400 });
     }
     const modeChanged = !!p.pieces?.mode && p.pieces.mode !== this.gamePick.pieces.mode;
     const modePiece = this.pieces.find(x => x.piece_id === nextPieceIds.mode)!;
@@ -1285,11 +1285,11 @@ export class MockBackend implements Api {
     if (modeChanged) { match.time_limit_s = modeInfo.defaults.time_limit_s; match.frag_limit = modeInfo.defaults.scoring.frag_limit ?? null; }
     const pm = p.match ?? {};
     if ('time_limit_s' in pm) {
-      if (pm.time_limit_s != null && (!Number.isInteger(pm.time_limit_s) || pm.time_limit_s <= 0)) throw new Error('match.time_limit_s must be a positive integer of seconds, or null');
+      if (pm.time_limit_s != null && (!Number.isInteger(pm.time_limit_s) || pm.time_limit_s <= 0)) throw Object.assign(new Error('match.time_limit_s must be a positive integer of seconds, or null'), { status: 400 });
       match.time_limit_s = pm.time_limit_s ?? null;
     }
     if ('frag_limit' in pm) {
-      if (pm.frag_limit != null && (!Number.isInteger(pm.frag_limit) || pm.frag_limit <= 0)) throw new Error('match.frag_limit must be a positive integer, or null');
+      if (pm.frag_limit != null && (!Number.isInteger(pm.frag_limit) || pm.frag_limit <= 0)) throw Object.assign(new Error('match.frag_limit must be a positive integer, or null'), { status: 400 });
       match.frag_limit = pm.frag_limit ?? null;
     }
     if ('night' in pm) match.night = !!pm.night;
@@ -1534,6 +1534,24 @@ export class MockBackend implements Api {
       }, this.repushAckMs);   // long enough for a real-browser poll to see the transitional "re-pushing" state
     }
     if (rolled) this.phase = 'build';   // `set_config` moves muster -> build once a game is picked
+    // Polish round 1 H2 parity: `pick()`/`loadFavourite()` already set the WHOLE `gamePick` themselves,
+    // right after this call succeeds -- this covers the caller that does not, `GameEditPanel`'s inline
+    // KIT/LOBBY edit (`PUT /api/config` direct), which used to leave PLAY's marks (and a later FAVOURITE
+    // save) describing a pick the field no longer matches. The server now keeps `game_pick`'s mode and
+    // match settings following the played config the same way (mcp/brx_mcp/mc/state.py set_config).
+    if (!errors.length) {
+      const curModePiece = this.pieces.find(x => x.piece_id === this.gamePick.pieces.mode);
+      if (!curModePiece || (curModePiece.value as { mode: string }).mode !== this.config.mode) {
+        const modePiece = this.pieces.find(x => x.kind === 'mode' && !x.post_mvp && (x.value as { mode: string }).mode === this.config.mode);
+        if (modePiece) this.gamePick.pieces.mode = modePiece.piece_id;
+      }
+      this.gamePick.match = {
+        time_limit_s: this.config.time_limit_s ?? null,
+        frag_limit: this.config.scoring.frag_limit ?? null,
+        night: !!this.config.night,
+        silenced: this.config.presentation?.preset === 'silenced',
+      };
+    }
     this.cfgErrors = errors;
     this.emit();
     return { ok: errors.length === 0, errors, config: clone(this.config) };

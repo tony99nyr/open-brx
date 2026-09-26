@@ -35,9 +35,14 @@ interface Editing {
 }
 
 export function Build() {
-  const { api, run, setView, weapons, perks, state } = useStore();
+  const { api, run, setView, weapons, perks, state, connected, setDirty, navBlockedTo } = useStore();
   const [pieces, setPieces] = useState<GamePiece[] | null>(null);
   const [stale, setStale] = useState(false);
+  // Polish round 1 H3: a `GET /api/pieces` failure that is NOT the older-console 404 used to fall
+  // through silently, leaving `pieces` null for ever and the shelf stuck on "LOADING…" with nothing an
+  // operator could do about it. Mirrors `Games.tsx`'s own `piecesError`/`retryTick` pair exactly.
+  const [piecesError, setPiecesError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [kind, setKind] = useState<PieceKind>('mode');
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -50,11 +55,14 @@ export function Build() {
       const p = await api.getPieces();
       setPieces(p);
       setStale(false);
+      setPiecesError(null);
     } catch (e) {
-      if ((e as { status?: number }).status === 404) setStale(true);
+      if ((e as { status?: number }).status === 404) { setStale(true); setPiecesError(null); }
+      else setPiecesError((e as Error)?.message || 'could not load the game pieces');
     }
   }, [api]);
-  useEffect(() => { load(); }, [load]);
+  // `connected` retries on a real reconnect (mock mode holds it true); `retryTick` is the RETRY control.
+  useEffect(() => { load(); }, [load, connected, retryTick]);
 
   const list = (pieces ?? []).filter(p => p.kind === kind);
   useEffect(() => {
@@ -65,6 +73,12 @@ export function Build() {
 
   const meta = KIND_TABS.find(t => t.kind === kind)!;
   const dirty = editing ? isDirty(editing.draft, editing.initial) : false;
+  // Polish round 1 M6: this used to gate ONLY BUILD's own back button and its kind tabs -- the
+  // CommandBar stepper (and anything else that calls the store's `setView`) reached straight past it,
+  // silently discarding an unsaved edit. `dirty` is mirrored into the store, whose `setView` now blocks
+  // EVERY navigation attempt the same way (store.tsx); `navBlockedTo` comes back non-null while blocked,
+  // so the SAME inline banner below covers both paths.
+  useEffect(() => { setDirty(dirty); return () => setDirty(false); }, [dirty, setDirty]);
   // QA-14 (visual QA round 1): FIXED with no item picked used to reach SAVE and come back as the
   // server's own field name. `SlotFields` preselects the first catalogue item the moment FIXED is
   // chosen, so this only bites an editor opened on an empty catalogue — belt and braces, not the
@@ -144,6 +158,17 @@ export function Build() {
         BUILD CREATES PRESETS. PLAY PICKS THEM.
       </p>
 
+      {piecesError && (
+        <div role="alert" data-alert="build-pieces-error" data-testid="build-pieces-error"
+          style={{ font: F.chk(600, 12), letterSpacing: '.02em', color: T.warn, border: `1px solid ${T.warn}`,
+            padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span>▲ COULD NOT LOAD THE GAME PIECES: {piecesError}</span>
+          <span data-testid="build-pieces-retry">
+            <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.warn} onClick={() => setRetryTick(t => t + 1)}>RETRY ▸</GhostButton>
+          </span>
+        </div>
+      )}
+
       <div role="tablist" aria-label="preset kind" style={{ display: 'flex', flexWrap: 'wrap', gap: 2, borderBottom: `1px solid ${T.line}`, marginBottom: 18 }}>
         {KIND_TABS.map(t => (
           <button key={t.kind} type="button" role="tab" aria-selected={kind === t.kind} data-testid={`build-tab-${t.kind}`}
@@ -155,7 +180,7 @@ export function Build() {
         ))}
       </div>
 
-      {confirmLeave && (
+      {(confirmLeave || navBlockedTo) && (
         <div role="status" data-testid="build-confirm-leave" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn, marginBottom: 12 }}>
           ▲ UNSAVED CHANGES — TAP AGAIN TO LEAVE WITHOUT SAVING
         </div>
@@ -173,7 +198,7 @@ export function Build() {
                 onSelect={meta.readOnly ? undefined : () => setSelected(p.piece_id)}
                 onOpen={!meta.readOnly && !p.builtin ? () => openEdit(p) : undefined} />
             ))}
-            {pieces === null && <span style={{ font: F.mono(500, 11), color: T.micro }}>LOADING…</span>}
+            {pieces === null && !piecesError && <span style={{ font: F.mono(500, 11), color: T.micro }}>LOADING…</span>}
           </Shelf>
           {!meta.readOnly && (
             <div style={{ marginTop: 16 }}>
