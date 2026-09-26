@@ -1015,3 +1015,15 @@ test('R2-21: an echo equal to the grant pools is no gain moment; CONTROL: a real
   assert.equal(h.eng.moment && h.eng.moment.kind, 'gain');
   assert.equal(h.eng.moment.data.pool, 'health');
 });
+
+test('F400 final r1: the granted hint waits out a second card too (ALT right after the pickup card)', () => {
+  const h = armed(); h.take(4); h.away();
+  h.adv(2100);                                     // the pickup's own switch card has gone
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');       // ALT off the heavy: a second card
+  h.adv(2100);
+  h.adv(1500);                                     // 1.5 s of hint time after the second card
+  const hint = h.eng.state().powerup.hint;
+  assert.equal(hint && hint.kind, 'granted', `the hint still has ${E.PU_READY_MS - 1500} ms to run: ${JSON.stringify(hint)}`);
+  h.adv(E.PU_READY_MS);
+  assert.notEqual((h.eng.state().powerup.hint || {}).kind, 'granted', 'and then it is done');
+});

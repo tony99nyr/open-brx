@@ -2106,7 +2106,12 @@ export class Hud {
     // one is up the kill card is not drawn; a kill that is due WAITS, and draws when the takeover ends with a full
     // LANE_HERO_MS hold from then. Nothing is lost, and the voice is not touched (the queue says the line on time).
     const rd = this._overlays && this._overlays.redeploy;
-    const takeover = !!this.frame.dataset.takeover || !!(rd && rd.el.isConnected && !rd.el.classList.contains('out'));
+    const cardUp = !!st.switchCard || this._puCardUp();   // the engine's clock (the ACTIVE bubble's full PU_ACTIVE_CARD_MS), or the DOM
+    const takeover = !!this.frame.dataset.takeover || !!(rd && rd.el.isConnected && !rd.el.classList.contains('out')) || cardUp;
+    // F400 final (Tony, 2026-09-26): "Not stacked. The weapon switch overlay is on top. When it finishes then the rest of
+    // ui is shown." While the card (SWITCHING, then ACTIVE) is up the lanes are hidden, and the engine stops their clocks
+    // (`_lanesShown`), so each row and badge still gets its full time once the card has gone. ALT and pickups alike.
+    root.classList.toggle('held', cardUp);
     const srcl = t => t ? `<span class="lsrc">${esc(t)}</span>` : '';
     const kindOf = k => { const m = MEDAL_ROWS.find(x => x.key === k); return m ? m.kind : 'multi'; };
     // HERO
@@ -2180,6 +2185,7 @@ export class Hud {
     // draw again at the next change (the hero fading and gone, a feed row leaving, a badge settling or leaving)
     const due = [heroUntil, heroUntil + FADE, this._laneTellUntil || 0,
       takeover && this._heroWait ? now + 200 : 0,   // F368: REDEPLOYED ends on a timer, not a state change
+      cardUp ? now + 200 : 0,                       // F400 final: the ACTIVE bubble ends on a timer too
       ...(L.feed || []).flatMap(f => [f.at + LANE_FEED_MS, f.at + LANE_FEED_MS + FADE]),
       ...Object.values(O).map(o => o.at + LANE_SETTLE_MS)].filter(t => t > now);
     if (due.length) this._lanesT = setTimeout(() => this._lanes(this._lastSt || st), Math.min(...due) - now + 10);

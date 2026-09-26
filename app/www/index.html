@@ -575,6 +575,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    stats, the ammo column (and the held-item chip over it) and the powerup hint; the hero may cover the centre of the HUD. */
 #lanes{position:absolute;inset:0;pointer-events:none;z-index:5;--lk:var(--ok);--ln-bg:rgba(4,7,12,.9)}
 #frame[data-board] #lanes{opacity:0}
+#lanes.held{visibility:hidden}   /* F400 final: the weapon-switch card is on top, not stacked; the engine pauses the lanes' clocks meanwhile */
 @keyframes lanein{from{opacity:0}to{opacity:1}}
 #lanes .lh{position:absolute;left:50%;top:86px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:3px;animation:lanein .15s ease-out;transition:opacity .3s}
 #lanes .lh.out{opacity:0}

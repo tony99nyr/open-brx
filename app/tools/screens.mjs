@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DEMO_PERKS, DEMO_WEAPONS } from '../src/demo-catalog.js';
 import { MAX_TAG_LEN } from '../src/transport/contract.gen.js';
+import { LANE_HERO_MS } from '../src/lanes.js';
 // Derived, never typed: `demo-catalog.js` is the artefact the PHONE reads (generated from weapons.json
 // by mcp/tools/gen_ui_catalog.py), and a row is IN it only when it is not `hidden`. `sidearm` is the
 // same predicate DESIGNER counts PISTOLS with (Designer.tsx SlotEditor); a `pickup_only` sidearm is
@@ -76,7 +77,7 @@ let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
+const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live-switch-kill', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
   'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap', 'down-full', 'down-partial', 'down-unclear', 'down-zero-dealt', 'down-pickup', 'down-ffa', 'down-hill', 'down-stale', 'down-old-mc']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
@@ -800,6 +801,20 @@ for (const view of VIEWS) {
     must(r.fromLabPx >= 11 && r.toLabPx >= 11, `STOWING/DRAWING label under the 11 px floor: ${JSON.stringify(r)}`);
     must(!r2.sw && r2.on === 'SMG' && /ACTIVE/.test(r2.lab) && /SMG/.test(r2.corner) && r2.chips === '1', JSON.stringify(r2));
     must(r2.labPx >= 11, `ACTIVE label under the 11 px floor: ${r2.labPx}`);
+  });
+  await step(`${view.name} #40c F400 final: a kill 0.5 s into the switch card waits under it, then shows its full time`, async () => {
+    // Tony 2026-09-26: "Not stacked. The weapon switch overlay is on top. When it finishes then the rest of ui is shown."
+    const pg = await open(view, 'live-switch-kill', '', 2600);
+    await pg.waitForFunction(() => !!(window.brx.engine.state().lanes || {}).hero, null, { timeout: 5000 }).catch(() => {});   // the kill has landed
+    const under = await pg.evaluate(() => ({ card: !!document.querySelector('.mo.switching, .mo.switched'), held: document.getElementById('lanes').classList.contains('held'),
+      hero: !!document.querySelector('#lanes .lh:not(.out)'), killed: !!(window.brx.engine.state().lanes || {}).hero }));
+    await pg.waitForFunction(() => !document.getElementById('lanes').classList.contains('held') && !!document.querySelector('#lanes .lh:not(.out)'), null, { timeout: 6000 }).catch(() => {});
+    const t0 = Date.now(); const drawn = await pg.evaluate(() => ({ card: !!document.querySelector('.mo.switching, .mo.switched:not(.out)'), hero: !!document.querySelector('#lanes .lh:not(.out)') }));
+    await pg.waitForTimeout(LANE_HERO_MS - 700);
+    const still = await pg.evaluate(() => !!document.querySelector('#lanes .lh:not(.out)')); await pg.close();
+    must(under.card && under.killed && under.held && !under.hero, `under the card: ${JSON.stringify(under)}`);
+    must(drawn.hero && !drawn.card, `after the card: ${JSON.stringify(drawn)}`);
+    must(still, `the kill card left before its ${LANE_HERO_MS} ms after the switch card (${Date.now() - t0} ms)`);
   });
   await step(`${view.name} #40b F394: after ALT (the gun reports nothing), the number, reserve and pips are all the secondary's`, async () => {
     // The demo gun fires 3 AR rounds (29 left), then ALT. The secondary's own counts are the bundle's spawn `$AMMO,1`.
@@ -5493,15 +5508,16 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: a second weapon pickup swaps: the feed row says RAIL GUN, REPLACES ROCKETS, and the chip follows`, async () => {
     const pg = await open(view, 'live-pu-swap', N, 4300);
-    const r = await puWait(pg, r => r.card && r.card.kind === 'powerup_swap', 2500); await shot(pg, 'swap');
-    must(r.card && r.card.kind === 'powerup_swap' && r.card.name === 'RAIL GUN' && r.card.sub === 'REPLACES ROCKETS · BLE', `the row: ${JSON.stringify(r.card)}`);
-    must(r.card.px >= 15 && vclear(r.card.box, r) && apart(r.card.box, r.ammo), `the row: ${JSON.stringify(r.card)}`);
-    // F400: the swap also opens the same full switch card, at the same instant as the feed row (both fire off the
-    // grant directly); decision 3 hides the small hint chip while it is up, so this checks the card, not the hint.
+    // F400: the swap opens the same full switch card; decision 3 hides the small hint chip while it is up.
+    // F400 final (Tony 2026-09-26): "Not stacked": the feed row fires at the same instant but waits under the card.
+    const r = await puWait(pg, r => r.switching && r.switching.to && r.switching.to.name === 'RAIL GUN', 2500); await shot(pg, 'swap');
     must(r.switching && r.switching.to && r.switching.to.name === 'RAIL GUN' && r.switching.to.pu && r.switching.to.charges === '2', `the card draws RAIL GUN with its charges: ${JSON.stringify(r.switching)}`);
     must(inside(r.switching.to.box, r.frame), `the RAIL GUN tile is on screen: ${JSON.stringify([r.switching.to.box, r.frame])}`);
     must(!r.switching.to.clipped, 'the longest pickup name is not cut off in its tile');
-    must(r.switching.from && apart(r.card.box, r.switching.to.box) && apart(r.card.box, r.switching.from.box), `the switch tiles are clear of the feed row: ${JSON.stringify([r.card.box, r.switching.from.box, r.switching.to.box])}`);
+    must(!r.card, `the feed row waits under the switch card: ${JSON.stringify(r.card)}`);
+    const rr = await puWait(pg, x => x.card && x.card.kind === 'powerup_swap' && !x.switching, 5000);
+    must(rr.card && rr.card.kind === 'powerup_swap' && rr.card.name === 'RAIL GUN' && rr.card.sub === 'REPLACES ROCKETS · BLE', `the row after the card: ${JSON.stringify(rr.card)}`);
+    must(rr.card.px >= 15 && vclear(rr.card.box, rr) && apart(rr.card.box, rr.ammo), `the row: ${JSON.stringify(rr.card)}`);
     const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2 SELECT', 1500);
     must(after.chip && after.chip.text === 'RAIL GUN 2 SELECT' && after.chip.on && after.chip.rows === 1, `the chip: ${JSON.stringify(after.chip)}`);
     // F400 r1: the hint's own time starts when the card has left, so the longest ON TRIGGER hint still shows and must fit
