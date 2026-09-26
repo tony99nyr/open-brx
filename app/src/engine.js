@@ -5702,12 +5702,6 @@ export class Engine {
     if (a) return a.state === 1 && puSpawnIndex(item, el) >= 0;   // F374: never before the first spawn, whatever a station says
     return puSpawnIndex(item, el) >= 0;
   }
-  /** ms until the next spawn at station `id` on the phone's own schedule, or null. */
-  _puNextInMs(item, now) {
-    const el = this._puElapsed(now); if (el == null) return null;
-    const k = puSpawnIndex(item, el);
-    return Math.max(0, puSpawnAt(item, k + 1) - el);
-  }
   /** The claim's range reading for a station entry: the median of its last three samples (beacon.js). */
   _puMedian(e) { return Number.isFinite(e.median) ? e.median : Number.isFinite(e.raw) ? e.raw : e.rssi; }
   _puThreshold(e) { return e.threshold || POWERUP_THRESHOLD_DEFAULT; }
@@ -6144,12 +6138,11 @@ export class Engine {
         hint = cl.readyAt != null && now - cl.readyAt >= POWERUP_NO_ANSWER_MS ? { kind: 'no_answer', ...base }
           : { kind: 'claiming', ...base, progress: Math.min(1, (now - cl.since) / POWERUP_DWELL_MS), ready: cl.readyAt != null };
       } else if (st) {
+        // F425 (Tony, 2026-09-26): drop the always-on TAKEN/countdown hint here -- an unclaimable near station
+        // now shows nothing; the left-side "<ITEM> AVAILABLE" feed alert (unchanged) is the only spawn signal.
         const item = items[st.id], base = { name: nameOf(item), color: item.color || null, station: st.id };
         const med = this._puMedian(st), near = Number.isFinite(med) && med >= this._puThreshold(st) - PU_NEAR_DB;
-        const a = this._puAdvertOf(st.id, now), me = this.player ? this.player.player_num : null;
         if (near && this._puClaimable(st.id, item, now)) hint = { kind: 'approach', ...base };
-        else if (near && a && a.state === 0 && a.taker && a.taker !== me) hint = { kind: 'taken_by', ...base, by: String(this.nameOf(a.taker) || `PLAYER ${a.taker}`).toUpperCase(), nextInMs: this._puNextInMs(item, now) };
-        else if (near) hint = { kind: 'taken', ...base, nextInMs: this._puNextInMs(item, now) };
       }
     }
     return { hint, held, overshield, going };

@@ -5598,22 +5598,18 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const h = await puWait(pg, r => r.obar && r.obar.left === 45, 2500); await pg.waitForTimeout(400); const h2 = await puRead(pg); await puClose(pg, night);
     must(h.obar && h2.obar && h2.obar.left === 45 && h2.obar.w < r.obar.w, `after a 30-damage hit: ${JSON.stringify(h2.obar)} (was ${JSON.stringify(r.obar)})`);
   });
-  await step(`${tag}: another player won it: TAKEN BY VIPER, with the countdown to the next spawn`, async () => {
-    const pg = await open(view, 'live-pu-taken-by', N, 3300); const r = await puWait(pg, r => r.hint && r.hint.kind === 'taken_by', 2000); await shot(pg, 'taken-by'); await puClose(pg, night);
-    // F374: the stage's items spawned half an interval before go-live (demo.js powerups), so the next spawn is ~1:00 out.
-    must(r.hint && /^ROCKETS TAKEN · 0:5\d$/.test(r.hint.act) && r.hint.lab === 'BY VIPER', `the countdown is in the action line: ${JSON.stringify(r.hint)}`);
-    must(r.hint.actPx >= 14 && r.hint.labPx >= 11, `type floors: ${r.hint.actPx}/${r.hint.labPx}`);
-    must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `a long line wraps, it never reaches the vitals: ${JSON.stringify(r.hint.box)} vitals ${JSON.stringify(r.vitals)}`);
-  });
   await step(`${tag}: ready for 15 s (F380) and the station never answers: STATION NOT ANSWERING`, async () => {
     const pg = await open(view, 'live-pu-no-answer', N, 17600); const r = await puWait(pg, r => r.hint && r.hint.kind === 'no_answer', 2500); await shot(pg, 'no-answer'); await puClose(pg, night);
     must(r.hint && r.hint.act === 'NOT ANSWERING' && r.hint.lab === 'ROCKETS STATION' && r.hint.actPx >= 14, `the hint: ${JSON.stringify(r.hint)}`);
     must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the widest hint must still fit: ${JSON.stringify(r.hint.box)}`);
   });
-  await step(`${tag}: the item is not there: the countdown to the next spawn`, async () => {
-    const pg = await open(view, 'live-pu-taken', N, 2800); const r = await puWait(pg, r => r.hint, 1500); await puClose(pg, night);
-    must(r.hint && r.hint.kind === 'taken' && /^ROCKETS IN 0:5\d$/.test(r.hint.act) && r.hint.lab === 'NEXT SPAWN', `the hint: ${JSON.stringify(r.hint)}`);
-    must(vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the hint: ${JSON.stringify(r.hint.box)}`);
+  // F425 (Tony, 2026-09-26, "use the left-side game alert 'X AVAILABLE' when a pickup spawns"): the always-on
+  // countdown and the TAKEN hint are GONE from the near-station hint (`_puHint`'s removed 'taken'/'taken_by'
+  // cases). Standing at a cooling (just-taken) station now shows no hint at all; the spawn step above already
+  // proves the left feed's <ITEM> AVAILABLE row is unchanged, so between the two this row is fully covered.
+  await step(`${tag}: near a cooling (just-taken) station: no countdown, no TAKEN hint -- the AVAILABLE feed alert is the only signal now`, async () => {
+    const pg = await open(view, 'live-pu-taken', N, 2800); const r = await puWait(pg, r => r.puDom, 1500); await puClose(pg, night);
+    must(!r.hint, `F425: no puhint at a cooling station (the countdown/TAKEN hint must be gone): ${JSON.stringify(r.hint)}`);
   });
   await step(`${tag}: both rockets fired: the phone puts the loadout weapon back on the trigger, and the hint says so briefly`, async () => {
     const pg = await open(view, 'live-pu-empty', N, 5200); const r = await puWait(pg, r => r.hint && r.hint.kind === 'switched_back', 2500); await shot(pg, 'empty'); await puClose(pg, night);
@@ -6137,7 +6133,7 @@ for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${
 // alert redesign owns it: R2-01/03/10/11/22), and F396's `.repin` -- the powerup hint/NIGHT OPS label's brief re-pin
 // dip when the warning rail's height changes underneath them (hud.js `_railFit`). It is a deliberate, ~260 ms transient,
 // the same kind of carve-out as the kill card's; the settled contrast on either side of it is what this gate protects.
-const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-pu-taken-by', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected',
+const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected',
   'live-kill-lead-hill', 'live-callout-by', 'live-pu-spawn', 'result-awards'];   // the three lanes and the AWARDS tab (round-3 M1, M2)
 const LANE_WAIT = { 'live-kill-lead-hill': 2800, 'live-callout-by': 2600, 'live-pu-spawn': 3600, 'result-awards': 4200 };   // until the lane item is up
 for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name} R2-12 night secondary tier ${stage}: text under 14 px reads at >= 4.5:1, nothing blinks`, async () => {
@@ -6162,7 +6158,7 @@ for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name}
 
 // R2-07 (QA-21 again): the SE type floor is ON SCREEN. Every painted text leaf of the in-game screens is >= 11 px after the
 // SE's 0.79 frame scale (14 frame px). Out of scope: the kill/callout card (the alert redesign owns it) and screen-reader text.
-const R2_TYPE = [['live', ''], ['live', '&night'], ['live-nogun', ''], ['live-pu-rockets', ''], ['live-pu-taken', ''], ['live-pu-taken-by', ''], ['live-shields-os', ''],
+const R2_TYPE = [['live', ''], ['live', '&night'], ['live-nogun', ''], ['live-pu-rockets', ''], ['live-pu-taken', ''], ['live-shields-os', ''],
   ['live-hill-captured', ''], ['down-recap', ''], ['down-full', ''], ['down-find', ''], ['down-hill', ''], ['down-pu-held', ''], ['live-pool-wrong', ''],
   ['live-kill-lead-hill', ''], ['live-kill-lead-hill', '&night'], ['live-callout-by', ''], ['live-pu-spawn', '']];   // the three lanes (round-3 M1); the AWARDS tab's own step gates its type
 for (const [stage, N] of R2_TYPE) await step(`se R2-07 type floor ${stage}${N ? ' night' : ''}: every in-game label is >= 11 px on the SE screen`, async () => {
@@ -6311,13 +6307,8 @@ for (const view of VIEWS) for (const night of [false, true]) await step(`${view.
   must(r.secs > r.word && r.secs >= 36, `the seconds must be the largest element of the tell: ${JSON.stringify(r)}`);
   must(r.mag <= 0.5, `the ammo must dim while the trigger does nothing: opacity ${r.mag}`);
 });
-// R2-16: the station hints name the item and the station
-await step('se R2-16 taken by VIPER: the line names the item, not only who took it', async () => {
-  const pg = await open(VIEWS[1], 'live-pu-taken-by', '', 2400);
-  let t = ''; for (let i = 0; i < 40 && !/TAKEN/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#puhint .pu') || {}).innerText || ''); }
-  await pg.close();
-  must(/ROCKETS/.test(t) && /TAKEN/.test(t) && /VIPER/.test(t), `the hint must say what VIPER took: ${JSON.stringify(t)}`);
-});
+// R2-16: the station hints name the item and the station (F425, 2026-09-26: the TAKEN-by-name hint is gone --
+// see the F425 no-hint step above -- so this gate now covers only the spawn feed row).
 await step('se R2-16 OVERSHIELD AVAILABLE: the feed row names the station', async () => {   // the three lanes: a spawn is a FEED row
   const pg = await open(VIEWS[1], 'live-pu-spawn', '', 1200);
   let t = ''; for (let i = 0; i < 40 && !/AVAILABLE/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#lanes .lf[data-kind="powerup_spawn"]') || {}).innerText || ''); }

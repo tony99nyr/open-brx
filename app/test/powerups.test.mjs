@@ -190,13 +190,14 @@ test('F374: an advert that says available before the first spawn is not claimabl
   assert.ok(h.eng.state().powerupClaim, 'CONTROL: the same advert after the first spawn starts the claim');
 });
 
-test('no grant without taker == me: the station named another player, so the HUD says who', () => {
+// F425 (Tony, 2026-09-26): "Halo never told you it was taken or who took it. I think not knowing is better for
+// gameplay." The HUD never names who took a station, or that it was taken at all -- see docs/spec/powerups.md.
+test('no grant without taker == me: the station named another player, and the HUD says nothing about it', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(121); const n = h.mark(); h.take(4, 19);
   assert.deepEqual(grants(h.since(n)), []);
   assert.equal(h.facts.filter(f => f.type === 'pickup').length, 0);
-  const hint = h.eng.state().powerup.hint;
-  assert.equal(hint.kind, 'taken_by'); assert.equal(hint.by, 'VIPER');
+  assert.equal(h.eng.state().powerup.hint, null, 'F425: no TAKEN/TAKEN BY hint');
 });
 
 test('no grant when the station names me but this phone was never claim_ready for it', () => {
@@ -219,16 +220,18 @@ test('STATION NOT ANSWERING: claim_ready for 15 s and the advert still says avai
   assert.equal(h.eng.state().powerupClaim, null, 'walking away ends the claim');
 });
 
-test('not there to take: the advert says taken, so the phone does not claim and the hint counts down to the next spawn', () => {
+// F425 (Tony, 2026-09-26): dropped the always-on countdown hint. Standing near a station the advert says is
+// taken no longer shows anything -- the phone does not claim, and the HUD stays silent until the next spawn's
+// own left-side AVAILABLE alert.
+test('not there to take: the advert says taken, so the phone does not claim, and the hint is gone', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(130); h.near(4, { state: 0, value: 110 }); h.adv(1500); h.near(4, { state: 0, value: 108 });
   assert.equal(h.eng.state().powerupClaim, null);
-  const hint = h.eng.state().powerup.hint;
-  assert.equal(hint.kind, 'taken'); assert.ok(hint.nextInMs > 100_000 && hint.nextInMs <= 110_000, JSON.stringify(hint));
+  assert.equal(h.eng.state().powerup.hint, null, 'F425: no TAKEN hint or countdown');
   const h2 = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h2.at(100); h2.near(4, { state: 0, value: 0 });
   assert.equal(h2.eng.state().powerupClaim, null, 'before the first spawn, a station that does not know yet is not claimable either');
-  assert.equal(h2.eng.state().powerup.hint.kind, 'taken');
+  assert.equal(h2.eng.state().powerup.hint, null);
 });
 
 test('a dead player does not claim', () => {

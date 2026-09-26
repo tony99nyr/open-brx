@@ -1828,12 +1828,14 @@ KNOWN_UNMIRRORED = {
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
     # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off). PRESENTATION only:
-    # the spawn announcer and the HUD's view (`_puTick`, `powerupView`, `_puNextInMs`). GAME STATE, but not portable
+    # the spawn announcer and the HUD's view (`_puTick`, `powerupView`). GAME STATE, but not portable
     # yet: the claim, the grant, the end of an item and the overshield all hang off a powerup station's advert (its
     # median RSSI and its `taker` byte, like `setStations` above) and the MATCH CLOCK's spawn schedule (like `goLiveT`
     # below), and the stage models neither. The gun-facing writes (`_puGrantWeapon`/`_puGrantShield`/`_puEnd`) are the
     # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
-    "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puNextInMs", "_puMedian", "_puThreshold",
+    # F425 (2026-09-26): `_puNextInMs` is GONE (the near-station TAKEN/countdown hint it fed is removed from the
+    # HUD), so it is dropped from this list too, not merely unmirrored.
+    "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puMedian", "_puThreshold",
     "_puStation", "_puObserve", "_puClaimTick",
     "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puZeroUnpulled", "_puEnd", "_puShieldFrame", "_puDeath",
     # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head

@@ -43,8 +43,6 @@ const armorPct = (st, peak = 0) => { const top = st.maxArmor > 0 ? st.maxArmor :
 /** Tony 2026-09-24: "If there is no armor we dont need the 0 or the empty armor bar. If we have armor then the number and
  *  bar show." A game with armour, or armour granted in a game without it (a perk, a pickup). */
 const hasArmor = st => st.maxArmor > 0 || st.armor > 0;
-/** A56: a spawn countdown the way Tony writes it, "1:40" (rounded UP: it never reads 0:00 while the item is still away). */
-const mss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
 /** A56: an item's own colour from the wire, only ever a literal `#rrggbb` (it lands in a style attribute). */
 const itemColor = c => (/^#[0-9a-f]{6}$/i.test(String(c || '')) ? c : 'var(--glow)');
 const clock12 = t => { const d = new Date(Number(t) || 0); const h = d.getHours(); return `${h % 12 === 0 ? 12 : h % 12}:${pad2(d.getMinutes())}${h < 12 ? 'AM' : 'PM'}`; };
@@ -1479,7 +1477,9 @@ export class Hud {
       <div class="nightlab${st.powerup && this._puHint(st) ? ' pu' : ''}">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
   }
   /** A56 (docs/spec/powerups.md): the powerup station hint, centre-bottom between the vitals and the ammo. A 1 s ring
-   *  while the player stands at the station (HOLD STILL), the item once granted, who took it, or the countdown. */
+   *  while the player stands at the station (HOLD STILL), or the item once granted. F425 (2026-09-26): the
+   *  always-on TAKEN hint and its countdown to the next spawn are gone; the left-side "<ITEM> AVAILABLE" feed
+   *  alert at each spawn is the only signal for an unclaimed or unclaimable station. */
   _puHint(st) {
     const h = st.powerup && st.powerup.hint; if (!h) return '';
     // F400 decision 3: while the switch card is up, hide the small hint chip for a weapon grant or a switch-back --
@@ -1500,9 +1500,6 @@ export class Hud {
       case 'granted': return h.itemKind === 'overshield' ? line(name, 'PICKED UP')
         : line(`${name} ON TRIGGER`, h.charges != null ? `${h.charges} SHOT${h.charges === 1 ? '' : 'S'}` : '');
       case 'approach': return line('GET CLOSER', name);
-      // HUD QA R2-16: the line names WHAT was taken, not only who took it
-      case 'taken_by': return line(h.nextInMs != null ? `${name} TAKEN · ${mss(h.nextInMs)}` : `${name} TAKEN`, `BY ${esc(h.by)}`);
-      case 'taken': return line(`${name} IN ${mss(h.nextInMs || 0)}`, 'NEXT SPAWN');
       case 'switched_back': return line(`${name} EMPTY`, `BACK TO ${esc(h.to || '')}`);   // the phone put the saved weapon back on the trigger
       default: return '';
     }
