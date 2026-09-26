@@ -53,7 +53,7 @@ const CASES: [string, 'blocker' | 'amber' | 'neutral', string, 'red' | 'amber' |
     'amber', 'frame-setup-conflict', 'amber',
   ],
   [
-    'SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SCANNER, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT',
+    'SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT',
     'amber', 'frame-setup-conflict', 'amber',
   ],
   // compile.py's own three physical-setup lines (Compiler.validate): the generic `SETUP:` fallback

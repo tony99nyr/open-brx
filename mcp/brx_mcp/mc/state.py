@@ -3146,7 +3146,7 @@ class Session:
             out.append(f"SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS {what} (EVERY PHONE "
                        "IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS")
         if (self.config.get("respawn") or {}).get("type") == "scanner" and "respawn" not in kinds:
-            out.append("SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SCANNER, SO A DOWNED PLAYER CAN ONLY COME "
+            out.append("SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME "
                        "BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT")
         if (self.config.get("respawn") or {}).get("type") == "scanner" and "respawn" in kinds:
             teams = self.config.get("teams") or []
