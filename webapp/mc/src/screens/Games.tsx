@@ -131,13 +131,21 @@ export function Games() {
   const blocked = realFault || kothNoHill;
   const realFaultReason = locked ? lockedReason(state.phase) : poolEmptyReason;
 
-  // Polish round 1 Low: a FAVOURITE's fallback note ("SPAWN — ITS SAVED PICK IS GONE…") used to sit on
-  // screen until the NEXT favourite load, surviving every ordinary tap in between and describing a load
-  // that was no longer the reason anything on screen looked the way it did.
+  // "SPAWN — ITS SAVED PICK IS GONE, USING AUTO" (games-presets.md §6) needs the OLD piece's name,
+  // which a fallback means we no longer have -- say what it is USING instead, always true, never
+  // invented. Shared by `loadFavourite` below and, round 2 (server review), `pick()` itself: a kind
+  // the request did not name (an INHERITED piece, e.g. a post-MVP mode set on KIT) can fall back to
+  // its builtin too now, shown the same way.
+  const fallbackNoteFor = (fallbacks: PieceKind[], pick: GamePick): string[] | null => (fallbacks.length
+    ? fallbacks.map(k => `${kindLabel(k)} — ITS SAVED PICK IS GONE, USING ${pieces.find(p => p.piece_id === pick.pieces[k])?.name ?? 'ITS DEFAULT'}`)
+    : null);
+  // Polish round 1 Low: a fallback note used to sit on screen until the NEXT favourite load, surviving
+  // every ordinary tap in between and describing a load that was no longer the reason anything on
+  // screen looked the way it did.
   const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
-    .then(r => { if (r && !r.ok) setNotice(r.errors.join(' · '), true); }); };
+    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(fallbackNoteFor(r.fallbacks, r.pick)); }); };
   const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); return run(() => api.pick({ match: patch }))
-    .then(r => { if (r && !r.ok) setNotice(r.errors.join(' · '), true); }); };
+    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(fallbackNoteFor(r.fallbacks, r.pick)); }); };
 
   const load = async () => {
     if (busy) return;
@@ -191,11 +199,7 @@ export function Games() {
     // a countdown and a fallback list for a favourite that was never actually loaded.
     if (!r.ok) { setNotice(r.errors.join(' · '), true); return; }
     setRunway(r.countdown_s);
-    // "SPAWN — STATION IS GONE, USING AUTO" (games-presets.md §6) needs the OLD piece's name, which a
-    // fallback means we no longer have -- say what it is USING instead, always true, never invented.
-    setFallbackNote(r.fallbacks.length
-      ? r.fallbacks.map(k => `${kindLabel(k)} — ITS SAVED PICK IS GONE, USING ${pieces.find(p => p.piece_id === r.pick.pieces[k])?.name ?? 'ITS DEFAULT'}`)
-      : null);
+    setFallbackNote(fallbackNoteFor(r.fallbacks, r.pick));
   };
 
   // ---- the operator note (games-redesign.md §9), derived off the composed config -----------------
@@ -425,9 +429,10 @@ export function Games() {
                       time_limit_s) still left the countdown control showing LAST MATCH's value with
                       the STRIP itself unchanged, disagreeing with each other on screen. */}
                   <GhostButton size={14} pad="10px 16px" onClick={async () => {
+                    setFallbackNote(null);
                     const lm = state.last_match!;
                     const r = await run(() => api.pick({ match: { time_limit_s: lm.time_limit_s, frag_limit: lm.frag_limit, night: lm.night, silenced: lm.silenced } }));
-                    if (r?.ok) setRunway(lm.countdown_s);
+                    if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(fallbackNoteFor(r.fallbacks, r.pick)); }
                     else if (r) setNotice(r.errors.join(' · '), true);
                   }}>LAST MATCH ▸</GhostButton>
                 </span>

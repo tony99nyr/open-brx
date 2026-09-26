@@ -1270,16 +1270,15 @@ export class MockBackend implements Api {
    *  disagreeing. A bad piece id/kind/post_mvp pick, or a bad match value, throws before anything is
    *  touched at all (the routes table's 400s); a phase refusal propagates from `putConfig` unchanged. */
   async pick(p: { pieces?: Partial<Record<PieceKind, string>>; match?: Partial<MatchSettings> }):
-    Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick }> {
-    const nextPieceIds = { ...this.gamePick.pieces, ...(p.pieces ?? {}) };
-    for (const [kind, id] of Object.entries(nextPieceIds)) {
-      const piece = this.pieces.find(x => x.piece_id === id);
-      if (!piece) throw Object.assign(new Error(`unknown piece id '${id}'`), { status: 404 });
-      if (piece.kind !== kind) throw Object.assign(new Error(`piece '${id}' is a ${piece.kind} piece, not ${kind}`), { status: 400 });
-      if (piece.post_mvp) throw Object.assign(new Error(`'${piece.name}' is post-MVP and cannot be picked yet`), { status: 400 });
-    }
-    const modeChanged = !!p.pieces?.mode && p.pieces.mode !== this.gamePick.pieces.mode;
-    const modePiece = this.pieces.find(x => x.piece_id === nextPieceIds.mode)!;
+    Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick; fallbacks: PieceKind[] }> {
+    const patchIds = p.pieces ?? {};
+    // Round 2 (server review): a kind the REQUEST itself names still 404s/400s on a bad id -- the
+    // operator's own mistake to fix. A kind merely INHERITED from the previous pick (a post-MVP mode
+    // set on KIT, say) falls back to that kind's builtin instead of 404ing an UNRELATED pick, named in
+    // the returned `fallbacks` -- the same grace `loadFavourite` already gives a saved pick.
+    const { ids: resolvedIds, fallbacks } = this.resolvePiecesMixed({ ...this.gamePick.pieces, ...patchIds }, new Set(Object.keys(patchIds)));
+    const modeChanged = resolvedIds.mode !== this.gamePick.pieces.mode;
+    const modePiece = this.pieces.find(x => x.piece_id === resolvedIds.mode)!;
     const modeInfo = MODES.find(m => m.mode === (modePiece.value as { mode: string }).mode)!;
     const match: MatchSettings = { ...this.gamePick.match };
     if (modeChanged) { match.time_limit_s = modeInfo.defaults.time_limit_s; match.frag_limit = modeInfo.defaults.scoring.frag_limit ?? null; }
@@ -1295,17 +1294,20 @@ export class MockBackend implements Api {
     if ('night' in pm) match.night = !!pm.night;
     if ('silenced' in pm) match.silenced = !!pm.silenced;
 
-    const partial = this.composePartial(nextPieceIds, match);
+    const partial = this.composePartial(resolvedIds, match);
     const before = clone(this.config);
     const r = await this.putConfig(partial);   // throws on a phase refusal — nothing to roll back, nothing was touched
     if (!r.ok) {
       this.config = before;   // "ok: false changes nothing" — not the pick, not the config
       this.emit();
-      return { ok: false, errors: r.errors, config: clone(this.config), pick: clone(this.gamePick) };
+      return { ok: false, errors: r.errors, config: clone(this.config), pick: clone(this.gamePick), fallbacks };
     }
-    this.gamePick = { pieces: nextPieceIds, match };
+    // From `resolvedIds`, not the raw merged ids (mirrors api.py play_pick exactly): a kind that fell
+    // back to its builtin must PERSIST that builtin's id, or the stale one sits right back in
+    // `game_pick` for the next request to trip over again.
+    this.gamePick = { pieces: resolvedIds, match };
     this.emit();
-    return { ok: true, errors: [], config: r.config, pick: clone(this.gamePick) };
+    return { ok: true, errors: [], config: r.config, pick: clone(this.gamePick), fallbacks };
   }
 
   // ---------- F411 §6: FAVOURITES ----------
@@ -1354,11 +1356,26 @@ export class MockBackend implements Api {
    *  404 for the whole favourite"). `this.pieces` always carries builtins first (never reordered), so
    *  the first non-post_mvp match of a kind IS that kind's shipped builtin — mirrors the server's own
    *  fixed `BUILTIN_IDS` table exactly. */
-  private resolvePiecesWithFallback(ids: Record<string, string>): { ids: Record<string, string>; fallbacks: PieceKind[] } {
+  /** Round 2: `POST /api/play/pick` calls this too now (mirrors `gamepick.py resolve_pieces_mixed`
+   *  exactly). A kind in `strictKinds` (the REQUEST itself named it) still 404s/400s on a bad id --
+   *  the operator's own mistake to fix. A kind merely INHERITED from the previous pick (or, for
+   *  `loadFavourite` below, EVERY kind: `strictKinds` empty) falls back to that kind's first builtin
+   *  instead, named in the returned `fallbacks` -- never a 404 for the whole request/favourite over a
+   *  piece nobody asked to change. */
+  private resolvePiecesMixed(ids: Record<string, string>, strictKinds: ReadonlySet<string>): { ids: Record<string, string>; fallbacks: PieceKind[] } {
     const out: Record<string, string> = {};
     const fallbacks: PieceKind[] = [];
     for (const kind of PICKER_KINDS) {
       const pid = ids[kind];
+      if (strictKinds.has(kind)) {
+        if (!pid) throw Object.assign(new Error(`no piece picked for '${kind}'`), { status: 400 });
+        const piece = this.pieces.find(x => x.piece_id === pid);
+        if (!piece) throw Object.assign(new Error(`unknown piece id '${pid}'`), { status: 404 });
+        if (piece.kind !== kind) throw Object.assign(new Error(`piece '${pid}' is a ${piece.kind} piece, not ${kind}`), { status: 400 });
+        if (piece.post_mvp) throw Object.assign(new Error(`'${piece.name}' is post-MVP and cannot be picked yet`), { status: 400 });
+        out[kind] = pid;
+        continue;
+      }
       const piece = pid ? this.pieces.find(x => x.piece_id === pid) : undefined;
       if (piece && piece.kind === kind && !piece.post_mvp) { out[kind] = pid; continue; }
       out[kind] = this.pieces.find(x => x.kind === kind && !x.post_mvp)!.piece_id;
@@ -1370,7 +1387,7 @@ export class MockBackend implements Api {
     Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick; countdown_s: number; fallbacks: PieceKind[] }> {
     const row = this.favourites.find(f => f.favourite_id === id);
     if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
-    const { ids, fallbacks } = this.resolvePiecesWithFallback(row.pick.pieces);
+    const { ids, fallbacks } = this.resolvePiecesMixed(row.pick.pieces, new Set());
     const match = clone(row.pick.match);
     const partial = this.composePartial(ids, match);
     const before = clone(this.config);

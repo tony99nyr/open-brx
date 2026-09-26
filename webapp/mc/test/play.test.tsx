@@ -261,7 +261,7 @@ describe('PLAY — M4: LAST MATCH awaits the pick before applying its countdown'
     const state = await real.getState();
     const weapons = await real.getWeapons(), perks = await real.getPerks();
     const api = fixtureApi({
-      pick: async () => ({ ok: false, errors: ['TIME LIMIT REFUSED BY THE BENCH GATE'], config: state.config, pick: state.game_pick! }),
+      pick: async () => ({ ok: false, errors: ['TIME LIMIT REFUSED BY THE BENCH GATE'], config: state.config, pick: state.game_pick!, fallbacks: [] }),
     }, real);
     const before = getRunway();
     const store = makeStore({ state, weapons, perks, view: 'build' }, { api });
@@ -385,6 +385,23 @@ describe('PLAY — Lows', () => {
     await m.click('KING OF THE HILL');
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(m.find('[data-testid="favourite-fallback-note"]').length, 'and is gone after the very next pick').toBe(0);
+    m.unmount();
+  });
+
+  // Round 2 (server review): pick() itself can now report a fallback too -- a kind the request did NOT
+  // name (here, MODE: an inherited post-MVP piece a KIT edit set, round 2 #6's own game_pick sync) can
+  // fall back to its builtin, shown the same way a favourite-load fallback already is.
+  it('an ordinary pick shows a fallback note for a kind it did not itself change', async () => {
+    const api = new MockBackend();
+    await api.putConfig({ mode: 'infection' });   // GameEditPanel's inline KIT edit
+    expect((await api.getState()).game_pick!.pieces.mode).toBe('builtin:mode:infection');
+    const { m } = await renderPlay(api);
+    await m.click('SHIELDS');   // picks LIFE, not MODE -- 'mode' is purely inherited on this request
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.find('[data-testid="favourite-fallback-note"]').length).toBe(1);
+    expect(m.text()).toContain('GAME MODE');
+    const after = await api.getState();
+    expect(after.game_pick!.pieces.mode).toBe('builtin:mode:tdm');
     m.unmount();
   });
 });

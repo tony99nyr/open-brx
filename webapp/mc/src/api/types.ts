@@ -104,7 +104,11 @@ export interface Api {
   updatePiece(id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }): Promise<GamePiece>;
   deletePiece(id: string): Promise<void>;
   /** F411: pick pieces and/or strip values; the server composes and applies the config. `ok: false` changed nothing. */
-  pick(p: { pieces?: Partial<Record<PieceKind, string>>; match?: Partial<MatchSettings> }): Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick }>;
+  /** `fallbacks`: kinds the request did NOT name that fell back to their builtin (a piece a kind
+   *  merely INHERITED from the previous pick had gone missing/wrong-kind/post-MVP under it) --
+   *  the same grace `loadFavourite` gives a saved pick, shown the same way. A kind the request
+   *  itself named still 404s/400s on a bad id: that is the operator's own mistake to fix. */
+  pick(p: { pieces?: Partial<Record<PieceKind, string>>; match?: Partial<MatchSettings> }): Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick; fallbacks: PieceKind[] }>;
   /** F411 §6: a named bundle of the whole PLAY pick, by created_t. */
   getFavourites(): Promise<Favourite[]>;
   /** `pick` defaults to the CURRENT game_pick (the ordinary way: build the game on PLAY, then save). */

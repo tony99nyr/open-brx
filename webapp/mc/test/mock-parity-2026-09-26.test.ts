@@ -83,3 +83,21 @@ describe('putConfig keeps game_pick following the played config, not just pick()
     expect(state.game_pick!.pieces.mode).toBe('builtin:mode:infection');
   });
 });
+
+describe('pick() falls back a kind the request did not name, and reports it (server review)', () => {
+  it('a post-MVP mode set on KIT (an INHERITED game_pick.pieces.mode) falls back to TDM on the next pick', async () => {
+    const b = new MockBackend();
+    await b.putConfig({ mode: 'infection' });   // GameEditPanel's inline KIT edit -- round 2 (6) syncs game_pick to it
+    expect((await b.getState()).game_pick!.pieces.mode).toBe('builtin:mode:infection');
+    const r = await b.pick({});   // a pick that names NO pieces at all -- 'mode' is purely inherited
+    expect(r.ok).toBe(true);
+    expect(r.fallbacks).toEqual(['mode']);
+    expect(r.pick.pieces.mode).toBe('builtin:mode:tdm');
+    expect((await b.getState()).game_pick!.pieces.mode).toBe('builtin:mode:tdm');   // and it PERSISTS
+  });
+
+  it('a kind the request DOES name still 404s/400s on a bad id -- never a silent fallback', async () => {
+    const b = new MockBackend();
+    await expect(b.pick({ pieces: { mode: 'nope' } })).rejects.toMatchObject({ status: 404 });
+  });
+});
