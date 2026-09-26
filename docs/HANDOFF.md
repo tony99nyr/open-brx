@@ -2,6 +2,7 @@
 **State as of 2026-09-25 (before Tony clears every session).** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 Open MVP work is [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench, decision); ideas and the roadmap are [`post-mvp.md`](post-mvp.md);
 what is done is [`archive/followups-closed.md`](archive/followups-closed.md). The bench order is [`bench-plan.md`](bench-plan.md).
+What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is [`post-launch.md`](post-launch.md).
 Update only the lane you worked.
 ## State of main (2026-09-25)
 **App 0.4.11 is published** (`app-v0.4.11`, release-signed; a phone on a debug build must uninstall once). Main is

@@ -1,10 +1,12 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed).
+Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
 files. To schedule a row for MVP, move it to `FOLLOWUPS.md` with its id and say why in the row.
+The readable roadmap over these rows, by theme, is [`post-launch.md`](post-launch.md); what 1.0.0 ships is
+[`release-1.0.md`](release-1.0.md).
 
 Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and the Stick · 3. Weapons, perks and balance · 4. Audio and voice · 5. Lights · 6. Phone HUD and Mission Control · 7. Protocol, firmware and research · 8. Hardware, tooling, the site and the docs · 9. Old bench rungs · 10. System proofs · 11. Low ledgers.
 

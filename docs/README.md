@@ -90,6 +90,9 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 
 ## Vision & plan
 - **[VISION.md](VISION.md)** — strategy + naming.
+- **[release-1.0.md](release-1.0.md)**: what ships in 1.0.0 (the MVP), feature by feature, each with its status and
+  evidence, the known limits, and the release gate (the MVP rows in `FOLLOWUPS.md` reach zero).
+- **[post-launch.md](post-launch.md)**: the roadmap after 1.0.0 by theme, pointing at the `post-mvp.md` rows.
 - **[game-modes.md](game-modes.md)** — the mode catalog, the infrastructure tiers, and the hard ceilings per mode.
 - **[extraction-design.md](extraction-design.md)** — the flagship Extraction mode: the event ladder, the BRX
   mechanic mapping, the tier ladder and the genre research.
