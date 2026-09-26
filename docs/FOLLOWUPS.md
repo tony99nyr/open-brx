@@ -9,10 +9,10 @@ Updated: 2026-09-25 (F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 75.** Desk 5 · bench 67 · decision 3.
+**MVP open: 76.** Desk 6 · bench 67 · decision 3.
 
-**MVP DESK (5),** a keyboard is enough:
-- 🟠 **B21** · **F372** · **F400** · **F402**
+**MVP DESK (6),** a keyboard is enough:
+- 🟠 **B21** · **F372** · **F400** · **F402** · **F403**
 - 🟡 **F377**
 
 **MVP BENCH (67),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F403 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F404 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -63,6 +63,8 @@ A keyboard is enough. Highest value first.
 - **F372 🟠 TURN POWERUPS ON BY DEFAULT ONCE THE POWERUP BENCH PASSES.** Tony 2026-09-25: "yes powerups an mvp feature, lets bench it". Today MC grants items only with `--powerups` (`mc/__main__.py`), and the banner says "not bench-proven yet". Gate: every step of the powerups setup in [`bench-2026-09-25.md`](bench-2026-09-25.md) passes (3.4, 3.5, 11.2 and 4.11 for the phone station and the Stick). Then: make powerups the default (keep a way to switch them off), replace the -55 claim placeholder (`POWERUP_THRESHOLD_DEFAULT`, `beacon.js POWERUP_RSSI_DBM`) and the Stick's -57 with the calibrated values, and update [`spec/powerups.md`](spec/powerups.md) "Bench gate". `build`.
 
 - **F400 🟠 A POWERUP PICKUP MUST SHOW THE FULL ALT SWITCH SCREEN, NOT ONLY THE SMALL HINT CHIP.** Tony, 2026-09-25: "we need a louder rockets have the trigger alert on hud. that is pretty small. we probably need the switching screen like the alt button. players need to know their active switched." Today a powerup weapon landing on the trigger shows only the small hint chip (`<ITEM> ON TRIGGER`, `_puHint`, `spec/powerups.md` §"The mechanism"). Proposal: reuse the same full weapon-switch callout an ALT press shows, both when the pickup lands on the trigger and on the switch-back to the player's own weapon (charges run out, and the SELECT toggle). Tony also flagged the pickup's sound, 2026-09-25: "we didnt have the proper rockets pickup sound... it sounded like the shotgun. is there a voice callout for Rockets or Rocket Launcher?" (today's shotgun-like sound is suspected to be the equip sound riding inside the rocket's captured `$WEAP` head, unverified); the storyboard adds an AUDIO panel proposing VA56 "Rocket Launcher!" on the trigger landing, V130 "Overshield" on an Overshield pickup and VX0S "Weapon Swap" on the switch-back, with VZ10 "Mini Rocket Launcher" and VA9T "One more weapon ready for duty." as Rail Gun alternatives (`docs/reference/sound-catalog.md`; all unconfirmed community labels, audition on the gun first). Storyboard first: brx2 builds the options at `C:\Users\Tony\brx-pu-switch` from the real HUD (`ui:stage`), Tony picks, then brx5 builds it. Owner: brx5 (build), brx2 (storyboard). `eyes` + `build`. **→ 2026-09-25 built (brx5):** the full switch card ships for the grant, a same-weapon stack, both SELECT directions and the empty switch-back (`docs/spec/powerups.md` "The switch card"); the small hint chip hides while it is up. The Overshield stays card-free, and now replays the S29 recharge's own cue (N102) on its grant. The clash (a kill card waits under the card) is Tony's LEAN via F368's own takeover rule, not yet checked on a storyboard. Not built: that storyboard, and the AUDIO panel's voice lines (VA56/VX0S/V130, still unaudited). Polish lows left: the card's STOWING/DRAWING/ACTIVE label is 10 px (under the 11 px floor, pre-existing, now seen at every pickup); a pickup card's ACTIVE bubble reads READY (it closes on its timer, never on the equip echo). `bench`: on the gun, the card holds ALT's time and SELECT works at once while it is up.
+
+- **F403 🟠 THE PHONE BRIEFING NAMES THE GAME'S PICKUPS BEFORE IT STARTS.** Tony, 2026-09-25 (via brx1): one line on the BRIEFING, for example `PICKUPS: ROCKETS · OVERSHIELD`, each item in its own colour, from the items the bundle already carries; no line when the game has no items. Storyboard frame first, then build. Owner: brx5. `build`.
 
 
 
