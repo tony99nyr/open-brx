@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (F402 closed; F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F282 back from post-mvp.md into MVP DESK -- Tony: yes, MVP, silenced must silence the weapons -- built at the desk, `silent_weapons` bench check left; F406 filed to post-mvp.md).
+Updated: 2026-09-26 (F410 filed: MVP is outdoors only).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,10 +9,10 @@ Updated: 2026-09-25 (F402 closed; F404 and F405 closed; MVP modes are TDM, FFA a
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 75.** Desk 5 · bench 67 · decision 3.
+**MVP open: 76.** Desk 6 · bench 67 · decision 3.
 
-**MVP DESK (5),** a keyboard is enough:
-- 🟠 **B21** · **F372** · **F400** · **F403**
+**MVP DESK (6),** a keyboard is enough:
+- 🟠 **B21** · **F372** · **F400** · **F403** · **F410**
 - 🟡 **F282**
 
 **MVP BENCH (67),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F410 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F411 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -52,6 +52,8 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 ## MVP DESK
 
 A keyboard is enough. Highest value first.
+
+- **F410 🟠 MVP IS OUTDOORS ONLY.** Tony 2026-09-25 (via brx2): "we dont even support indoor for mvp". Every MVP mode and preset defaults to `outdoor` (play volume 90, `compile.play_volume`), and MC hides the indoor/outdoor choice. Keep `play_volume`'s quiet fallback for an unknown venue (a safety net, not a choice). Indoor play is post-launch. Check every "indoor" line in the console, the docs and the manual. Bench runs keep `--bench-volume`. `build`.
 
 - **B21 🟠** **What is left: the iOS half (distribution, and the WebView debugging switch through WKWebView `isInspectable`; needs the MacBook).** Release-sign + distribute the Android app (history below; the Android half shipped 2026-09-24, see the last arrow; keystore out of repo, **→ 2026-09-19, this is no longer hypothetical: app 0.3.0 IS PUBLISHED and it is DEBUG-signed** (`app-v0.3.0`, F220 closed). It sideloads and it is what both phones run, but it carries the throwaway Android debug key, so the FIRST release-signed build will not upgrade over it and every player must uninstall once. That is a one-time cost that gets worse with every player who installs 0.3.x, and it is cheapest to pay before a public game rather than on a match day. **→ Tony 2026-09-23: release-sign at the NEXT APK cut, after the open desk fixes land.** The path is built: `npm run android:release` (app/README.md → *Release signing*); with no key it fails and names what is missing, and it refuses a version already tagged `app-v<version>`. **→ 2026-09-23/24: the key exists** (`~/.brx/openbrx-release.jks` and `~/.brx/keystore.properties`, outside the repo; Tony backs both up), and brx3 has built the release-signed 0.4.6 (held in `~/brx3-release`). The 0.4.6 go or no-go was the one blocker then (step 4.0 of [`bench-2026-09-24.md`](bench-2026-09-24.md)). Every player uninstalls the debug-signed app once: `adb install -r` over 0.4.5 fails on the signature. `build`.
   `assembleRelease`, version bump per build; iOS = TestFlight or source build). `build`. **→ Tony 2026-09-23:** release-sign at the NEXT APK cut, and cut only after the open desk fixes land. Testers uninstall once at that cut. `build`. **→ 2026-09-23: Tony created the release key outside the repo (`~/.brx/`, private, backed up).** The next cut is `npm run android:release` once the open desk fixes land. **→ 2026-09-24, the Android half shipped:** 0.4.6 was the first release-signed build (its release notes tell players to uninstall once), and 0.4.7 to 0.4.11 followed, each published as an `app-v<version>` release (`webapp/download/build.json` names 0.4.11). Open: `webContentsDebuggingEnabled` is still `true` in `app/capacitor.config.json`, and iOS has no distribution path yet. **→ Tony 2026-09-25, decided:** WebView debugging becomes a TOGGLE, not a removal ("can be a toggle to help dev and debugging. we may need that on as we build features"). Build: a runtime switch (the Android WebView `setWebContentsDebuggingEnabled`, called from a small native hook) in the app's ⓘ diag panel, persisted, defaulting ON while MVP features are still being built; the release build keeps the ability; the diag panel shows the current state. Flip the default to OFF for a public release later (a note on the row). `build`. **→ 2026-09-25, Android toggle built (brx5):** an in-app setting, not a build flag, because a tester must flip it on a release APK. `app/plugins/brx-debug` stores it in SharedPreferences and applies it at start (plugins load after Capacitor's config value). The ⓘ panel's DEVELOPER row shows it; default ON (`DEFAULT_ON`, flip for a public release: `app/RELEASING.md`). Not yet on a phone: it ships at the next cut.
