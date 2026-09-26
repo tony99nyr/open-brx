@@ -8,7 +8,7 @@ import type {
   StationProtectS, TimedProtectS, WeaponDelayMs,
 } from '../../api/contract.gen';
 import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../../api/contract.gen';
-import { BTN_RESET, Micro, OutlineTag, Seg, Toggle, ValueBox } from '../../ui';
+import { BTN_RESET, LockIcon, Micro, OutlineTag, Seg, Toggle, ValueBox } from '../../ui';
 import { F, T } from '../../tokens';
 import {
   deriveTypeSelection, guardSpawnDelay, idsCoveredByActiveTypes, idsForType, spawnBuiltinValue,
@@ -35,10 +35,10 @@ function Chip({ label, on, locked, onClick }: { label: string; on: boolean; lock
   return (
     <button type="button" className="hov-acc" aria-pressed={on} disabled={locked} onClick={onClick}
       title={locked ? 'COVERED BY A TYPE TOGGLE ABOVE — TURN THAT OFF TO EDIT THIS ONE' : undefined}
-      style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: 36,
+      style={{ ...BTN_RESET, display: 'flex', alignItems: 'center', gap: 6, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: 36,
         border: `1px solid ${on ? T.acc : T.line}`, background: on ? 'rgba(57,180,255,.1)' : 'transparent',
         color: on ? T.acc : T.dim, cursor: locked ? 'default' : 'pointer', opacity: locked ? 0.6 : 1 }}>
-      {locked && '🔒 '}{label}
+      {locked && <LockIcon size={11} />}{label}
     </button>
   );
 }

@@ -848,6 +848,17 @@ def test_pickup_only_weapons_carry_no_type():
     assert not wrong, f"pickup-only weapons must ship types: [] : {wrong}"
 
 
+def test_melee_carries_no_type():
+    """Tony's correction, 2026-09-26: melee is always on, a gyro swing, and never a weapon SELECTION
+    (compile hides it and always puts it in slot 4). It must never surface in a type toggle, the
+    picker's chip list, or FIXED ITEM, so it carries `types: []` same as the pickup-only heavies --
+    `hidden` already keeps it off every catalogue the client sees (`WeaponCatalog.all()`), and this is
+    the belt to that braces at the data layer."""
+    melee = next(w for w in ROWS if w["weapon_id"] == "melee")
+    assert melee.get("types") == [], f"melee must ship types: [], got {melee.get('types')!r}"
+    assert melee.get("hidden"), "melee must stay `hidden` -- that is what keeps it off the wire at all"
+
+
 def test_a_type_dependent_weapon_declares_it():
     """Spot-check a few rows against games-presets.md's proposed table, so a future edit to the
     vocabulary or a copy-paste slip in weapons.json is caught here rather than by an operator
@@ -855,7 +866,7 @@ def test_a_type_dependent_weapon_declares_it():
     expect = {
         "assault_rifle": {"rifle"}, "bolt_rifle": {"rifle", "long"}, "amr": {"long"},
         "smg": {"close"}, "usp": {"sidearm", "close"}, "stripper": {"support", "close"},
-        "smoke_gun": {"support"}, "rocket_launcher": set(),
+        "smoke_gun": {"support"}, "rocket_launcher": set(), "melee": set(),
     }
     by_id = {w["weapon_id"]: w for w in ROWS}
     wrong = [f"{wid}: got {set(by_id[wid]['types'])}, want {want}"

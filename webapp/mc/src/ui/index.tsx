@@ -45,6 +45,18 @@ export function InfoIcon({ size = 16, color = 'currentColor' }: { size?: number;
   );
 }
 
+/** A padlock, drawn inline — same reasoning as `InfoIcon`: an emoji glyph (🔒) depends on the
+ *  viewer's OS emoji font and can render as a stray box or the wrong colour. Decorative: the control
+ *  it sits in (or its `title`) carries the words. */
+export function LockIcon({ size = 12, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg data-icon="lock" aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 16 16" style={{ flexShrink: 0, display: 'block' }}>
+      <rect x="3" y="7" width="10" height="7" rx="1" fill="none" stroke={color} strokeWidth="1.4" />
+      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke={color} strokeWidth="1.4" />
+    </svg>
+  );
+}
+
 /** Screen header: mono accent kicker over a 30px Oswald title, with optional right-side content. */
 export function ScreenHeader({ kicker, title, right }: { kicker: string; title: string; right?: ReactNode }) {
   return (

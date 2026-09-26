@@ -158,10 +158,20 @@ step('type-toggle', async ({ browser, base }) => {
 
   const typeRow = pg.locator('[data-testid="slot-type-row"]');
   const onlyRow = pg.locator('[data-testid="slot-only-row"]');
-  // strip the locked chip's "🔒 " prefix (games-presets.md's own note: a weapon covered by an active
-  // type toggle cannot be un-picked by its own chip) so a name still compares exactly
-  const selectedNames = () => onlyRow.locator('button[aria-pressed="true"]').allInnerTexts()
-    .then(texts => texts.map(t => t.replace(/^🔒\s*/, '')));
+  // the locked chip's padlock is an SVG icon (aria-hidden), not text, so its label compares exactly
+  const selectedNames = () => onlyRow.locator('button[aria-pressed="true"]').allInnerTexts();
+
+  // F411 correction (Tony, 2026-09-26): melee is a gyro swing, always on, never a weapon SELECTION --
+  // it must never be offered anywhere in BUILD's weapon picker: not a TYPE toggle, not an ONLY THESE
+  // chip, not a FIXED ITEM option.
+  expect((await typeRow.getByRole('button', { name: 'MELEE' }).count()) === 0, 'MELEE is never a TYPE toggle');
+  expect((await onlyRow.getByRole('button', { name: 'MELEE', exact: true }).count()) === 0, 'MELEE is never an ONLY THESE chip');
+  await pg.getByRole('group', { name: 'who picks' }).getByRole('button', { name: 'FIXED' }).click();
+  await until(() => pg.getByRole('group', { name: 'fixed item' }).count().then(n => n === 1), 2000, 'the FIXED ITEM picker');
+  expect((await pg.getByRole('group', { name: 'fixed item' }).getByRole('button', { name: 'MELEE', exact: true }).count()) === 0, 'MELEE is never a FIXED ITEM option');
+  ok('MELEE is offered nowhere in the PRIMARY picker');
+  await pg.getByRole('group', { name: 'who picks' }).getByRole('button', { name: 'PLAYERS' }).click();
+  await until(() => pg.locator('[data-testid="slot-type-row"]').count().then(n => n === 1), 2000, 'back to the TYPE row after PLAYERS');
 
   expect((await selectedNames()).length === 0, 'ALL starts with no weapon chip selected (empty = any of the above)');
   await typeRow.getByRole('button', { name: 'RIFLES', exact: true }).click();
