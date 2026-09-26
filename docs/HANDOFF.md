@@ -46,17 +46,18 @@ Stick lock/link bugs F387-F392, F397; **F390** (MUSTER's no-way-back) to DECISIO
   authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
-APK 0.4.12 published 2026-09-25 (`app-v0.4.12`), release-signed, WebView debugging on. F319 closed, Q13 and S32 moved
-on; the stage flakes fixed; F384 and F385 built (bench checks left).
-- **Next:** the phone half of F382 (the hill tick pauses while contested; 3 s holding, 1.5 s losing), then F377.
-- **Desk (MVP):** the MC half of F372 after sitting C. S32 waits on Tony's two renders.
+APK 0.4.12 published 2026-09-25 (`app-v0.4.12`), release-signed, WebView debugging on. Built on 2026-09-25: F319 and
+F401 closed; F382 (phone half), F384 and F385 on the bench list; the stage flakes fixed.
+- **Next:** one shared drain helper for every stage-mirror test that reads the reserve (the stun test flaked on CI
+  36195523113), then F377.
+- **Desk (MVP):** the MC half of F372 after sitting C. S32 waits on Tony's two renders. Codex needs `codex login` (401).
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
-counting and the SETTINGS screen are post-MVP (F338, F314, F344). 2026-09-25: sitting B's Stick rows are built on main
-(A68: the hill counts from go-live to the whistle; a locked Stick refuses RANGE; the hill tally pauses while contested;
-a -78 dBm UNPROVEN hill default; the RANGE hold timer; a faster pickup award). The Stick is flashed from main, unlocked.
-- **Next bench task:** sitting C or later: F386, F387 (serial log on, read `RANGE opened after <N> ms`), F388, the F383
-  walk at 3, 5 and 7 m, and F399's nine-claim latency re-run.
+counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
+2026-09-25). On main: A68 (the hill counts from go-live to the whistle; `duration_ms` ends a Stick carried out of Wi-Fi
+before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392, F397, F398. Flashed from main, unlocked.
+- **Next bench task:** sitting C: the carried-out timed hill, F386-F388, the F383 3 m and 7 m readings, F399's claim
+  latency, F391's restart, F392's repro with the serial log, F397's MC restart.
 - **Next desk task:** F342 (a powerup or control-point game still floods the scan: a slower advert or a native filter).
 - **Resume:** a fresh worktree off `origin/main` (the old `/home/tony/brx4-l3` and `/home/tony/brx4-f333` are
   disposable). Native Windows MC for mDNS:

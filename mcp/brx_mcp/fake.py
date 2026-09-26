@@ -562,6 +562,24 @@ class FakeConnectionManager:
         replies = [s.record("rx", r).to_dict() for r in tagger.drain()]
         return {"sent": command, "replies_within_window": replies}   # the real manager's shape (ble.py send)
 
+    def pump(self) -> None:
+        """Deliver every tagger's now-ready delayed `$ALCD` replies into its session buffer, the way a real
+        BLE notification would land on its own -- not only as a side effect of the next unrelated write.
+
+        Without this, a delayed reply queued by an earlier `$AMMO` write sits in `tagger._pending` until
+        SOME LATER write's own `drain()` happens to pull it in, landing it out of the test's narrative
+        order and stomping a report the test injected in between (the flaky class this fixes). A test's
+        `flush_fake_ammo(st)` (test_stage_mirror.py) calls this explicitly, right before it injects a
+        fresher report, to force the round trip through on the spot instead of leaving it to surface later."""
+        for alias, s in self.sessions.items():
+            if alias in self.dropped:
+                continue
+            tagger = self.taggers.get(s.address)
+            if tagger is None:
+                continue
+            for r in tagger.drain():
+                s.record("rx", r)
+
     def get_events(self, alias: str, since_seq: int = 0, max_events: int = 200) -> dict:
         if alias in self.dropped:            # a dropped link goes silent (no new events)
             return {"events": []}

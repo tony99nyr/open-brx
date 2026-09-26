@@ -65,6 +65,12 @@ mDNS discovery is asynchronous, so the hill never waits on it.
 advert only then (`engine.js _hillSourceAllowed`); under `grenade` it follows the IR beacon instead.
 **IR receive is post-MVP (F314):** it drives only the bench HILL/BRIDGE below.
 
+## Timed HELD hills (A68)
+
+MC sends `duration_ms` for a timed game from LOAD onward. A HELD hill that leaves Wi-Fi before START anchors go-live on the first alive player advert with its game byte, at any RSSI, from a player it has already heard down in this game (`anchor_hill_on_advert`). Lobby phones advertise down, so arm the Stick at MC with the phones in the lobby. A phone still alive from the last match cannot anchor. Until the anchor the hill shows WAITING and counts nothing; the 60 s offline go-live is only for a config without a duration. The hill then counts to its local deadline and freezes its owner and hold tally at MATCH OVER. START timing overrides the fallback if the Stick hears it. A new game byte clears the anchor. The time left is saved in NVS (`hclk_*`, `SavedHillClock`) at the anchor, at most every 30 s, and as 0 at the whistle, so an offline restart resumes the whistle late by at most 30 s plus the time off. Untimed matches and operator or objective ends cannot reach an offline Stick. HELD is the MVP field mode and the boot default when no mode is saved; a saved `LINK MUSTER` still wins. A same-game config without START (MC in LOBBY, or an abort) stops an anchored or resumed hill and erases the saved clock.
+
+**Flash writes per match** (a 7200 s timed hill, the worst case): the hill clock 241 (the anchor, one per 30 s, 0 at the whistle); the A58 lock snapshot about 27 (LOAD, START, one per five minutes, the clear at END); the station config about 3 (LOAD, START, END); the typed MC URL 0 (only on `MC <url>`); range edits 0 (refused while the lock is on). The total is about 271, plus one SavedHill write per owner change and one at the whistle. Each clock save puts four keys, of which only `hclk_rem` changes.
+
 ## Status
 
 **2026-09-24, late afternoon: F314's root cause is found, and a workaround is proven.** The onboard receiver
@@ -264,7 +270,7 @@ dials the plain LAN socket a phone on the same Wi-Fi would use.
 | `WIFI <ssid> <pass>` | join and persist the Wi-Fi credentials |
 | `MC <ws://lan-ip:port/path>` | save and dial the typed MC LAN address |
 | `WIFI CLEAR` | erase the saved Wi-Fi credentials and typed MC address |
-| `LINK MUSTER` \| `LINK HELD` | the association mode (§5g.4), persisted. `MUSTER` (default) drops Wi-Fi for the match once armed; `HELD` stays linked and reconnects |
+| `LINK HELD` \| `LINK MUSTER` | the association mode (§5g.4), persisted. `HELD` (the default when nothing is saved, `boot_assoc_mode`) stays linked and reconnects; `MUSTER` drops Wi-Fi for the match once armed |
 | `LINK OFF` | drop the socket and Wi-Fi association now |
 | `LINK RECONNECT` | clear the MUSTER drop's latch (below) and rejoin Wi-Fi -- the operator action that brings a Stick back to the table between matches |
 | `ACTIONS ON` \| `ACTIONS OFF` | whether `station_action` (RESET, CLAIM's report) is sent to MC at all, persisted, **default ON** since MC accepts it (A56); `ACTIONS OFF` for an older MC -- see "RESET" below |
@@ -379,7 +385,7 @@ refuse/accept rule (polish round 2) -- built from the coordinator's brief alone,
    `first_at_s`, so state 0 with a value), then confirm the advert shows state 1 (available) at the spawn, then
    claim it from a player phone and confirm state flips to 0 with a plausible countdown in `value`
    and the taker's player_num in the last byte.
-6. Try `LINK HELD` vs the `LINK MUSTER` default and watch whether the advert stays live at go-live.
+6. Try the `LINK HELD` default vs `LINK MUSTER` and watch whether the advert stays live at go-live.
    Under `MUSTER`, confirm `STATUS` shows `dropped_for_match=1` right after the drop, that the Stick
    does NOT rejoin Wi-Fi on its own, and that `LINK RECONNECT` is what brings it back.
 7. (ACTIONS is on by default.) Hold B once (arms RESET) and again within 5 s (sends it) and confirm MC saw it

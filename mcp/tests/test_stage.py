@@ -1435,8 +1435,10 @@ HILL_ROSTER = [{"tid": 0, "team_id": "red", "name": "RED TEAM"},
 
 def mk_hill(tid: int = 1, **profile):
     """A stage with a driveable clock and a three-team roster. Returns (stage, mgr, clock)."""
-    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
     clock = _Clock()
+    # the fake's delayed $ALCD replies must age on the SAME clock the test drives (F259 flaky class),
+    # not the real wall clock -- see mk_reload/mk_stun/mk_gain in test_stage_mirror.py.
+    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     st.load_config({**st.config, "teams": [dict(t) for t in HILL_ROSTER]}, source="test")
     st.set_profile(tid=tid, **profile)

@@ -251,6 +251,13 @@ export function Games() {
           {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w)).map((w, i) => (
             <Alert key={i} id="games-loadouts-reset" what={w} style={{ alignSelf: 'flex-start' }} />
           ))}
+          {/* F401: a station of the last finished match MC has not heard from since the whistle --
+              the next LOAD's game byte would lose its result, so this is the one config-warnings line
+              the operator sees before a LOAD they would otherwise regret. Advisory, never a blocker. */}
+          {[...state.config_warnings!].filter(w => /HAS NOT SYNCED THE LAST MATCH/.test(w)).map((w, i) => {
+            const line = serverLine(w, 'amber');
+            return <Alert key={`sync-${i}`} id={line.id} sev={line.sev} testid="games-station-not-synced" style={{ alignSelf: 'flex-start' }}>{w}</Alert>;
+          })}
           {/* F221 polish r1: MC's own `SETUP:` lines used to render, unfiltered, as one flat amber
               chip, so the control-vs-grenade conflict (RED in the catalogue, the game will not play
               as set up) read exactly like an ordinary "no station assigned yet" reminder. Only the

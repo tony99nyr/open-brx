@@ -129,8 +129,10 @@ def test_a_released_live_station_recap_survives_an_mc_restart():
     assert s2.resume_match() == "live"
     s2.control("end")
 
+    # F401: a restart does not carry `self.nodes` forward, so the released station's node has no
+    # `last_seen_ms` here -- unsynced, same as any other node MC has not heard from yet this process.
     assert s2.last_recap["stations"] == [{"node_id": "brxu-live", "kind": "respawn", "id": 3,
-                                            "team": 1, "heard": True, "revives": 5}]
+                                            "team": 1, "heard": True, "revives": 5, "synced": False}]
 
 
 def test_the_snapshot_stops_naming_the_match_once_it_ended():

@@ -93,6 +93,13 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   'server-station-range-edited': { sev: 'neutral', text: '{RANGE|STRENGTH} EDITED ON STATION {FROM} → {TO} [(LOCKED)]' },
   'armory-stations-locked-banner': { sev: 'amber', text: 'STATIONS LOCKED FOR THE LOADED GAME', also: ['frame-station-locked-unlockonly'] },
   'frame-station-unlock-error': { sev: 'red', text: 'UNLOCK REFUSED: {ERR}' },
+  // F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of Wi-Fi
+  // range; MC only gets its result once it is heard again. Shown beside LOAD for any station of the
+  // LAST FINISHED match MC has not heard since that match's whistle -- advisory, clears on its own.
+  'server-station-not-synced': {
+    sev: 'amber',
+    text: '{KIND} {ID} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST',
+  },
 };
 
 /** Audit ids this lane retired as alerts: id -> why (removed, merged into another id's words, or now
@@ -151,6 +158,12 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'STATION #', id: 'station-attention-lock-expires', re: /^STATION #\d+ LOCK EXPIRES/ },
   { head: 'RANGE EDITED ON STATION', id: 'server-station-range-edited' },
   { head: 'STRENGTH EDITED ON STATION', id: 'server-station-range-edited' },
+  // one head per `StationKind` (state.py `_station_sync_warnings`: `f"{row['kind'].upper()} {row['id']} …"`)
+  { head: 'RESPAWN ', id: 'server-station-not-synced', re: /^RESPAWN \d+ HAS NOT SYNCED THE LAST MATCH/ },
+  { head: 'CONTROL POINT ', id: 'server-station-not-synced', re: /^CONTROL POINT \d+ HAS NOT SYNCED THE LAST MATCH/ },
+  { head: 'POWERUP ', id: 'server-station-not-synced', re: /^POWERUP \d+ HAS NOT SYNCED THE LAST MATCH/ },
+  { head: 'EXTRACTION ', id: 'server-station-not-synced', re: /^EXTRACTION \d+ HAS NOT SYNCED THE LAST MATCH/ },
+  { head: 'BOMB SITE ', id: 'server-station-not-synced', re: /^BOMB SITE \d+ HAS NOT SYNCED THE LAST MATCH/ },
 ];
 
 const hit = (line: string) => SERVER_LINES.find(r => (r.re ? r.re.test(line) : line.startsWith(r.head)));

@@ -2072,12 +2072,25 @@ export class Hud {
     const els = [...f.querySelectorAll('#chips .chipbar, .alive .gunwarn')].filter(e => e.offsetParent !== null && e.offsetHeight > 0 && (e.classList.contains('gunwarn') || e.children.length));
     const h = els.length ? Math.max(...els.map(e => e.offsetHeight + (parseFloat(getComputedStyle(e).bottom) || 0))) : 0;
     const v = h ? `${Math.ceil(h)}px` : '';
-    if (f.style.getPropertyValue('--rail') !== v) { if (v) f.style.setProperty('--rail', v); else f.style.removeProperty('--rail'); }
+    const hint = f.querySelector('#puhint'), lab = this.hudEl.querySelector('.nightlab');
+    if (f.style.getPropertyValue('--rail') !== v) {
+      // F396 (bench 2026-09-25): the rail (the warning pills' height) is volatile right after a spawn -- GUN LINK
+      // LOST/WEAPONS HOT trade places as the gun link settles -- and `bottom` (index.html `.puhint`/`.nightlab`) snaps
+      // to the new value the instant `--rail` does, so neither ever slides THROUGH the QA-04 hit-weapon line's fixed
+      // band (a slide would, and did, momentarily overlap it -- UX M1). Instead, whichever of the two is already
+      // showing gets a brief opacity dip (`.repin`) so it re-settles quietly rather than teleporting in front of the
+      // player; a hint with no value yet (still empty here) or a NIGHT OPS label hidden by day needs no dip -- there
+      // is nothing yet on screen to jump from.
+      for (const el of [hint, lab]) { if (el && (el === hint ? el.textContent.trim() : el.offsetParent !== null)) el.classList.add('repin'); }
+      clearTimeout(this._repinT);
+      this._repinT = setTimeout(() => { if (hint && hint.isConnected) hint.classList.remove('repin'); if (lab && lab.isConnected) lab.classList.remove('repin'); }, 140);
+      if (v) f.style.setProperty('--rail', v); else f.style.removeProperty('--rail');
+    }
     // review r2 M2: the hint rides 12 px above the rail but never over a centre tell (the accuracy pill, the OVERHEAT word,
     // TAKING FIRE: their band reaches frame y 252; RAIL_ROOM_PX is the 390 px frame less that and a 6 px margin). While a
     // tell is up and there is no room, the hint yields: the tell and the rail's warnings outrank it, and the held chip
     // still shows what the player carries. With no tell up the band is empty and the hint may use it.
-    const hint = f.querySelector('#puhint'), RAIL_ROOM_PX = 390 - 258, tell = !!f.querySelector('.alive .aimfx, .alive .heatword, .alive .takingfire');
+    const RAIL_ROOM_PX = 390 - 258, tell = !!f.querySelector('.alive .aimfx, .alive .heatword, .alive .takingfire');
     const full = !!(h && hint && tell && h + 12 + hint.offsetHeight > RAIL_ROOM_PX);
     if (!!f.dataset.railfull !== full) { if (full) f.dataset.railfull = '1'; else delete f.dataset.railfull; }
   }

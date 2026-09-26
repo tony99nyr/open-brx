@@ -1009,7 +1009,7 @@ void setup() {
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
   Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RXPIN 42|9|10 | BL <n> | RESET | r s c");
-  Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK MUSTER|HELD|OFF|RECONNECT | ACTIONS ON|OFF");
+  Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK HELD(default)|MUSTER|OFF|RECONNECT | ACTIONS ON|OFF");
   Serial.println("# A58: while MC's match lock is on, state-changing commands answer ERR locked; A+B held 7 s restarts");
   IR_RX_PIN = (settings.rxpin == IR_TX_GROVE || settings.rxpin == IR_TX_GROVE_ALT) ? settings.rxpin : IR_RX_ONBOARD;
   if (IR_RX_PIN == settings.txpin) IR_RX_PIN = IR_RX_ONBOARD;  // never receive on the transmit pin

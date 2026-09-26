@@ -683,6 +683,16 @@ function Stations({ rows }: { rows: RecapStationRow[] }) {
                 {r.heard ? 'REPORTED' : glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.')}
               </span>
             )}
+            {/* F401: a HELD station can end a timed match on its own clock while out of Wi-Fi range, so
+                MC gets its result only once it is brought back. Only for a row that DID report (`heard`):
+                a station that never heard from anyone at all already carries its own, stronger alert
+                above, and showing both would say the same thing twice. Absent `synced` (an older MC, or
+                a match still live) renders nothing. */}
+            {r.heard && r.synced === false && (
+              <Alert id="recap-station-not-synced" role="status" style={{ font: F.mono(600, 11), letterSpacing: '.06em' }}>
+                {STATION_KIND_LABEL[r.kind] ?? r.kind} {r.id} NEEDS SYNC: BRING IT INTO WI-FI
+              </Alert>
+            )}
           </div>
         ))}
       </div>

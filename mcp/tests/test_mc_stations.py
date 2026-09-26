@@ -151,8 +151,8 @@ def test_a_live_station_that_returns_to_hud_keeps_its_self_authoritative_recap_c
     s.net.simulate_hello("brx-live", player["gun_id"], prior_utility_node_id="brxu-live")
     s.control("end")
 
-    assert s.last_recap["stations"] == [{"node_id": "brxu-live", "kind": "respawn", "id": 3,
-                                          "team": 1, "heard": True, "revives": 4}]
+    rows = [{k: v for k, v in r.items() if k != "synced"} for r in s.last_recap["stations"]]
+    assert rows == [{"node_id": "brxu-live", "kind": "respawn", "id": 3, "team": 1, "heard": True, "revives": 4}]
 
 
 def test_an_accepted_live_release_keeps_recap_counts_even_if_the_hud_has_not_returned_yet():
@@ -200,9 +200,11 @@ def test_a_partial_final_control_heartbeat_preserves_the_last_complete_recap_tal
     assert s.release_station("brxu-live")
     s.net.simulate_status("brxu-live", {**common, "control": {"progress": 50}}, s.now_ms())
     s.control("end")
-    assert s.last_recap["stations"] == [{"node_id": "brxu-live", "kind": "control", "id": 3,
-                                          "team": 255, "heard": True,
-                                          "hold_ms": {"1": 12_000}, "owner": 1}]
+    # `synced` compares a heartbeat's ms with the whistle's on the real clock, so it is not pinned here
+    # (the F401 tests pin it on controlled times).
+    rows = [{k: v for k, v in r.items() if k != "synced"} for r in s.last_recap["stations"]]
+    assert rows == [{"node_id": "brxu-live", "kind": "control", "id": 3,
+                     "team": 255, "heard": True, "hold_ms": {"1": 12_000}, "owner": 1}]
 
 
 # --------------------------------------------------------------------------- arming
@@ -233,6 +235,7 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s.start_info = {"go_live_t": s.now_ms() - 1000}
     s.config["time_limit_s"] = 600
     s._arm_station("stick-1")
+    assert _pushed(s, "station_config", "stick-1")[-1].get("duration_ms") == 600000
     assert _pushed(s, "station_config", "stick-1")[-1].get("ends_in_ms") == 599000
     assert _pushed(s, "station_config", "stick-1")[-1].get("starts_in_ms") == -1000
     s.phase = "recap"
@@ -241,12 +244,14 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s.phase = "live"
     s.start_info["adopted"] = True
     s._arm_station("stick-1")
+    assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     assert "starts_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     s.start_info["adopted"] = False
     s.config["time_limit_s"] = None
     s._arm_station("stick-1")
     assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
 
 
 def test_station_config_carries_match_end_deadline_when_known():
@@ -846,7 +851,8 @@ def test_recap_carries_a_stations_row():
     s.start(runway_s=3, force=True)
     s.control("end")
     rows = s.recap()["stations"]
-    assert rows == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 4}], rows
+    assert rows == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True,
+                      "revives": 4, "synced": False}], rows
     # CONTROL: a station that said hello but was never assigned contributes no row
     s.net.simulate_utility_hello("util-2")
     assert all(r["node_id"] != "util-2" for r in s.recap()["stations"])
@@ -889,7 +895,8 @@ def test_a_late_fact_after_end_keeps_the_stations_rows_in_the_recap():
     p = next(pl for pl in s.players.values() if pl.get("node_id"))
     s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9, "t": s.now_ms(), "match_id": s.scorer.match_id}, s.now_ms())
     assert s.phase == "recap"
-    assert s.last_recap.get("stations") == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}], s.last_recap.get("stations")
+    assert s.last_recap.get("stations") == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1,
+                                              "heard": True, "revives": 2, "synced": False}], s.last_recap.get("stations")
 
 
 def test_a_late_fact_after_a_roll_keeps_match_1s_stations_not_match_2s():
@@ -919,7 +926,10 @@ def test_a_late_fact_after_a_roll_keeps_match_1s_stations_not_match_2s():
     s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9,
                                         "t": t_kill, "match_id": mid1}, s.now_ms())
     rows = s._ended[mid1]["recap"]["stations"]
-    assert rows == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}], rows
+    # F401: `revives` stays frozen at match 1's count, but `synced` is a LIVE question -- the node itself
+    # was heard again (for match 2's heartbeat), so match 1's debrief can say so too.
+    assert rows == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True,
+                      "revives": 2, "synced": True}], rows
 
 
 def test_a_late_fact_in_recap_before_any_roll_keeps_the_frozen_stations():
@@ -947,7 +957,11 @@ def test_a_late_fact_in_recap_before_any_roll_keeps_the_frozen_stations():
     s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
                                      "role": "utility", "kind": "respawn", "station_id": 2, "armed": True,
                                      "revives": 9}, s.now_ms())
-    frozen = [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}]
+    # F401: `revives` stays frozen at 2 (the reassigned heartbeat's count must not leak in), but the
+    # reassignment heartbeat IS proof the node itself came back into Wi-Fi, so `synced` flips true --
+    # it tracks the node, not which match's assignment last touched the row.
+    frozen = [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2,
+               "synced": True}]
     # the `recap()` accessor must not pick up the reassigned heartbeat either, with no late fact at all
     assert s.recap()["stations"] == frozen, s.recap()["stations"]
     # a fact for the finished match, flushed late from the phone's outbox, while still in RECAP
@@ -970,12 +984,14 @@ def test_a_same_assignment_late_station_heartbeat_in_recap_lands():
     s.control("end")
     assert s.phase == "recap"
     assert s.last_recap["stations"] == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1,
-                                          "heard": False, "revives": None}], "CONTROL: never heard from this station yet"
+                                          "heard": False, "revives": None, "synced": False}], \
+        "CONTROL: never heard from this station yet"
     # the station was out of Wi-Fi range at the whistle and only now reports in, SAME assignment
     s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
                                      "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
                                      "revives": 4}, s.now_ms())
-    landed = [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 4}]
+    landed = [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 4,
+               "synced": True}]
     assert s.recap()["stations"] == landed, s.recap()["stations"]
     assert s.last_recap["stations"] == landed, s.last_recap["stations"]
 
@@ -1238,3 +1254,69 @@ def test_f364_polish_a_new_session_without_the_roster_starts_at_1_and_one_with_i
     s.set_config({"mode": "tdm"})
     s.net.simulate_utility_hello("util-y")
     assert s.set_station("util-y", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 1
+
+
+def test_duration_ms_follows_a_time_limit_edited_after_load_and_stops_at_end():
+    """A68 review 2026-09-25: MC sends `duration_ms` from LOAD. An edit in LOBBY re-pushes the NEW limit
+    (`_repush_lobby_config` -> `arm_stations`), clearing the limit drops it, and END's recap push has none."""
+    s = _sess(time_limit_s=600)
+    s.net.simulate_utility_hello("stick-1")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]   # nothing LOADed yet
+    r = s.push_config(force=True)
+    assert s.lobby_pushed, r
+    assert _pushed(s, "station_config", "stick-1")[-1].get("duration_ms") == 600000
+    s.set_config({"time_limit_s": 900})
+    assert s.lobby_pushed
+    assert _pushed(s, "station_config", "stick-1")[-1].get("duration_ms") == 900000
+    s.set_config({"coverage": "full", "time_limit_s": None})
+    assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    s.phase = "recap"
+    s.lobby_pushed = False
+    s._arm_station("stick-1")
+    last = _pushed(s, "station_config", "stick-1")[-1]
+    assert last["ends_in_ms"] == 0 and "duration_ms" not in last
+
+
+def test_f401_the_load_warning_survives_an_mc_restart_and_clears_when_the_station_is_heard():
+    """F401 polish: restarting MC between matches is the house routine, so the list of stations the last match
+    still waits to hear from is in the snapshot. A heartbeat after the whistle clears it, once."""
+    import json, pathlib, tempfile
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    s.net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    common = {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+              "role": "utility", "kind": "control", "station_id": 3, "armed": True}
+    s.net.simulate_status("brxu-live", {**common, "control": {"hold_ms": {"1": 12_000}, "owner": 1}}, s.now_ms())
+    s.control("end")
+    s.nodes["brxu-live"]["last_seen_ms"] = s._match_end_t - 1          # it walked out of Wi-Fi before the whistle
+    s._validate()
+    assert any("HAS NOT SYNCED THE LAST MATCH" in w for w in s.config_warnings), s.config_warnings
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp; s._persist_last = 0.0; s._persist()
+    assert json.loads(tmp.read_text())["sync_pending"]["nodes"] == {"brxu-live": "CONTROL POINT 3"}
+    s2 = _sess(mode="koth", station_source="phone")
+    s2._persist_path = tmp
+    s2.restore_snapshot()                                             # no hand-run _validate: the restore must show it
+    assert any(w.startswith("CONTROL POINT 3 HAS NOT SYNCED") for w in s2.config_warnings), s2.config_warnings
+    s2.net.simulate_status("brxu-live", {**common, "control": {"hold_ms": {"1": 12_000}}}, s2._match_end_t + 5_000)
+    assert not any("HAS NOT SYNCED" in w for w in s2.config_warnings), "a heartbeat after the whistle clears it"
+    assert "brxu-live" not in s2._sync_pending
+
+
+def test_f401_the_sync_warning_stops_once_a_new_game_byte_has_reset_the_station():
+    """F401 polish: the next cycle's first push bumps the game byte (`_next_game_no`), which resets the station's
+    tally, so "BEFORE YOU LOAD" is stale from then on and the warning goes."""
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    s.net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    s.control("end")
+    s.nodes["brxu-live"]["last_seen_ms"] = s._match_end_t - 1
+    s._validate()
+    assert any("HAS NOT SYNCED" in w for w in s.config_warnings), s.config_warnings
+    s._next_game_no()
+    s._validate()
+    assert not any("HAS NOT SYNCED" in w for w in s.config_warnings), s.config_warnings
+

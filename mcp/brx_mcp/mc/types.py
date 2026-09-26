@@ -1214,6 +1214,7 @@ class StationAssignment(TypedDict):
     item: NotRequired[StationItem]   # A56 (S58): a powerup station's item and spawn schedule
     ends_in_ms: NotRequired[int]     # A68: station_config match-end duration from receipt; absent means unknown
     starts_in_ms: NotRequired[int]   # A68: station_config go-live relative to receipt (negative once live); absent = no match running
+    duration_ms: NotRequired[int]    # A68 extension: timed-match duration from first alive player advert when START was missed
 
 
 class StationUpdate(TypedDict):
@@ -1337,6 +1338,12 @@ class RecapStationRow(TypedDict):
     revives: NotRequired[int | None]
     hold_ms: NotRequired[dict[str, int] | None]
     owner: NotRequired[int | None]
+    # F401: absent while the match has not ended (sync is not a question yet); once it has, whether MC
+    # has heard this station's node since the whistle. A HELD station (e.g. a StickS3) can end a timed
+    # match on its own clock while out of Wi-Fi range, and MC only gets its result once it is heard
+    # again -- recomputed live from `last_seen_ms`, not frozen, so a station that comes back into range
+    # flips this true even long after `_finish` (see `Session._scorer_recap`).
+    synced: NotRequired[bool]
 
 
 class EndDeliveryRow(TypedDict):

@@ -200,6 +200,21 @@ def _fstring_lines() -> list[str]:
     return lines
 
 
+def _sync_warning_lines() -> list[str]:
+    """F401: LOAD warns about any station of the LAST FINISHED match MC has not heard from since the
+    whistle -- the StickS3-brought-back scenario. Checked here too, not just via the named constants."""
+    s, net, clock, ps = _session(2)
+    for i, p in enumerate(ps):
+        _online(s, net, clock, p, i)
+    net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    clock["t"] += 5_000                              # the station goes quiet before the whistle
+    s.control("end")
+    return list(s.config_warnings)
+
+
 def _problems(line: str) -> list[str]:
     bad = []
     if re.search(r"BLOCKS START|DOES NOT BLOCK", line):
@@ -256,6 +271,12 @@ def test_every_fstring_line_follows_the_wording_rule():
     _check(lines)
 
 
+def test_every_sync_warning_line_follows_the_wording_rule():
+    lines = _sync_warning_lines()
+    assert any("HAS NOT SYNCED THE LAST MATCH" in x for x in lines), lines
+    _check(lines)
+
+
 def test_the_phone_battery_rule_is_under_30():
     """F221: under 30 % is AMBER for the gun, the phone and the station alike (was < 20 for the phone)."""
     assert st.BATTERY_LOW_PCT == 30
@@ -285,6 +306,6 @@ def test_every_line_mc_writes_has_a_console_colour():
     lines MC really builds to the heads the console really reads."""
     heads = _console_heads()
     assert len(heads) > 20, heads
-    lines = _readiness_lines() + _named_lines() + _setup_lines() + _fstring_lines()
+    lines = _readiness_lines() + _named_lines() + _setup_lines() + _fstring_lines() + _sync_warning_lines()
     orphans = sorted({ln for ln in lines if not any(ln.startswith(h) for h in heads)})
     assert not orphans, "no SERVER_LINES head in webapp/mc/src/alerts/server.ts matches:\n" + "\n".join(orphans)

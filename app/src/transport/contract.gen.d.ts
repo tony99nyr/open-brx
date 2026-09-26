@@ -1251,6 +1251,8 @@ export interface StationAssignment {
   ends_in_ms?: number;
   /** A68: station_config go-live relative to receipt (negative once live); absent = no match running */
   starts_in_ms?: number;
+  /** A68 extension: timed-match duration from first alive player advert when START was missed */
+  duration_ms?: number;
 }
 
 /** A56: MC -> a powerup station, on a pickup and at each spawn time. `next_spawn_in_ms` is time REMAINING
@@ -1383,6 +1385,12 @@ export interface RecapStationRow {
   revives?: number | null;
   hold_ms?: Record<string, number> | null;
   owner?: number | null;
+  /** F401: absent while the match has not ended (sync is not a question yet); once it has, whether MC
+   *  has heard this station's node since the whistle. A HELD station (e.g. a StickS3) can end a timed
+   *  match on its own clock while out of Wi-Fi range, and MC only gets its result once it is heard
+   *  again -- recomputed live from `last_seen_ms`, not frozen, so a station that comes back into range
+   *  flips this true even long after `_finish` (see `Session._scorer_recap`). */
+  synced?: boolean;
 }
 
 export interface EndDeliveryRow {

@@ -515,15 +515,17 @@ class ReviveCounter {
 struct Sighting {
   Advert advert;
   int rssi = 0;
+  uint32_t seen_at = 0;
 };
 template <size_t N>
 class SightingRing {
  public:
-  bool push(const Advert& a, int rssi) {
+  bool push(const Advert& a, int rssi, uint32_t seen_at = 0) {
     const size_t next = (head_ + 1) % N;
     if (next == tail_) { overflow_++; return false; }
     buf_[head_].advert = a;
     buf_[head_].rssi = rssi;
+    buf_[head_].seen_at = seen_at;
     head_ = next;
     return true;
   }

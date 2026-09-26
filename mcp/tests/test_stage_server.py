@@ -13,7 +13,10 @@ from brx_mcp.stage.stage import GunStage
 
 def _client(**stage_options):
     from brx_mcp.stage.server import create_app
-    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+    # A test that fixes the stage's clock fixes the fake gun's too, so a delayed `$ALCD` reply can never come
+    # due from real CPU load and land after a report the test injected (the stage-mirror flake class).
+    tagger_opts = {"clock": stage_options["now"]} if "now" in stage_options else {}
+    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1, **tagger_opts)])
     return TestClient(create_app(GunStage(mgr, None, **stage_options)))
 
 

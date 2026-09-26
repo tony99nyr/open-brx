@@ -5998,8 +5998,10 @@ for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${
 
 
 // R2-12: the night SECONDARY tier. Every painted text leaf under 14 px on screen reads at >= 4.5:1 and holds still. Out of
-// scope on purpose: a disabled control and a gun another player holds (dimmed as a state), and the kill/callout card (the
-// alert redesign owns it: R2-01/03/10/11/22).
+// scope on purpose: a disabled control and a gun another player holds (dimmed as a state), the kill/callout card (the
+// alert redesign owns it: R2-01/03/10/11/22), and F396's `.repin` -- the powerup hint/NIGHT OPS label's brief re-pin
+// dip when the warning rail's height changes underneath them (hud.js `_railFit`). It is a deliberate, ~260 ms transient,
+// the same kind of carve-out as the kill card's; the settled contrast on either side of it is what this gate protects.
 const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-pu-taken-by', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected',
   'live-kill-lead-hill', 'live-callout-by', 'live-pu-spawn', 'result-awards'];   // the three lanes and the AWARDS tab (round-3 M1, M2)
 const LANE_WAIT = { 'live-kill-lead-hill': 2800, 'live-callout-by': 2600, 'live-pu-spawn': 3600, 'result-awards': 4200 };   // until the lane item is up
@@ -6008,7 +6010,7 @@ for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name}
   const bad = await pg.evaluate(src => { const ratio = eval(src)(); const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
     for (const e of document.querySelectorAll('#hud *, #chips *, #overlay *, #lanes *')) {
       if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
-      if (e.closest('.tagrow.used, [disabled], [aria-disabled="true"], .co, .sr')) continue;
+      if (e.closest('.tagrow.used, [disabled], [aria-disabled="true"], .co, .sr, .repin')) continue;
       const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
       let shown = true; for (let n = e; n && n !== f; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden') shown = false; }
       if (!shown) continue;
