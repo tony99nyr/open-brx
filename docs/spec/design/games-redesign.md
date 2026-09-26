@@ -178,8 +178,8 @@ on PLAY's sticky rail is the natural, low-cost place to add it later.
 - **The name is buried.** Today's Designer only lets you rename a game in section "4 // NAME & NOTES," the
   last section of a five-part scroll, while the name is shown at the top of the sticky rail and the loaded-game
   header — nowhere near an edit control (Tony: "the naming of the game is confusing... every time I go to edit
-  the name on the right panel"). Fix: each preset's own **name is its editor's title in BUILD**, editable inline
-  wherever it shows (the picker card, the loaded header, everywhere).
+  the name on the right panel"). Fix: each preset's own **name is its editor's title in BUILD**, and BUILD is the only
+  place it is renamed. PICK GAME never renames or edits (Tony, 2026-09-26, confirming §1 over this line).
 - **The gun-config line is confusing on PLAY.** Today's "GUNS NOT CONFIGURED YET: WEAPONS GO AT THE LOBBY PUSH,
   AFTER KITTING" (`webapp/mc/src/screens/Games.tsx:449`, `LoadStatus`) reads like a KIT fact to an operator
   (Tony: "this is confusing. isn't it at the kit?"). Fix: **remove this line from PICK GAME entirely.** LOBBY
