@@ -9,6 +9,7 @@ Run: python3 run_tests.py pieces
 """
 from __future__ import annotations
 
+import copy
 import json
 import pathlib
 import tempfile
@@ -439,3 +440,137 @@ def test_pick_forces_outdoor_and_reads_the_builtin_loadout_back_as_open():
     assert r["config"]["environment"] == "outdoor"
     assert r["config"]["loadout_policy"]["preset"] == "open"
     assert r["config"]["loadout_policy"]["primary"]["exclude_ids"] == []
+
+
+# ================================================================== polish round 1 (H1/H2/M1/M2/Lows)
+def test_h1_put_on_a_picked_piece_prechecks_before_saving_or_dropping_the_lobby():
+    """H1: a value that would empty the primary pool must not save, and must not silently drop an
+    already-pushed lobby."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/pieces", json={"kind": "primary", "name": "Fixed AR", "note": "",
+                                    "value": {"choice": "fixed", "fixed_id": "assault_rifle"}})
+    pid = r.json()["piece_id"]
+    assert c.post("/api/play/pick", json={"pieces": {"primary": pid}}).json()["ok"]
+    s.push_config()
+    assert s.lobby_pushed is True
+    r2 = c.put(f"/api/pieces/{pid}", json={"value": {"choice": "fixed", "fixed_id": "not_a_real_weapon"}})
+    assert r2.status_code == 400, r2.json()
+    unchanged = next(p for p in c.get("/api/pieces").json() if p["piece_id"] == pid)
+    assert unchanged["value"]["fixed_id"] == "assault_rifle"          # nothing saved
+    assert s.config["loadout_policy"]["primary"]["fixed_id"] == "assault_rifle"  # nothing composed
+    assert s.lobby_pushed is True                                     # nothing dropped
+
+
+def test_h2_put_config_syncs_game_pick_match_and_mode():
+    """H2: every successful set_config -- including PUT /api/config's inline KIT/LOBBY edit, not just
+    a pick -- keeps game_pick's MATCH fields and the picked MODE truthful to the live config."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.put("/api/config", json={"scoring": {"frag_limit": 20, "win_by": "kills"}, "night": True})
+    assert r.status_code == 200
+    assert s.game_pick["match"]["frag_limit"] == 20 and s.game_pick["match"]["night"] is True
+    r2 = c.put("/api/config", json={"mode": "ffa"})
+    assert r2.status_code == 200
+    assert s.game_pick["pieces"]["mode"] == "builtin:mode:ffa"
+    # a health/loadout KIT edit is allowed to diverge from the picked piece -- only mode + match sync
+    assert s.game_pick["pieces"]["life"] == BUILTIN_IDS["life"]
+
+
+def test_h2_last_match_reads_the_config_not_the_pick():
+    """H2: last_match is captured from self.config at _schedule, not from game_pick -- proven by
+    editing the config directly (bypassing set_config's own sync) and confirming START still reports
+    the CONFIG's own values."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    c.post("/api/play/pick", json={"match": {"frag_limit": 5}})
+    s.config["scoring"]["frag_limit"] = 99                # diverge the config from game_pick by hand
+    s.push_config()
+    s.start(runway_s=11, force=True)
+    assert s.last_match["frag_limit"] == 99
+
+
+def test_m1_a_stale_inherited_piece_id_does_not_404_an_unrelated_pick():
+    """M1: a kind the request does not name falls back to that kind's own builtin when its inherited
+    id has gone stale; a kind the request DOES name is still a strict 404."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    s.game_pick["pieces"]["spawn"] = "gone-id"
+    r = c.post("/api/play/pick", json={"match": {"frag_limit": 10}})
+    assert r.status_code == 200 and r.json()["ok"], r.json()
+    assert r.json()["pick"]["pieces"]["spawn"] == BUILTIN_IDS["spawn"]
+    r2 = c.post("/api/play/pick", json={"pieces": {"spawn": "still-gone"}})
+    assert r2.status_code == 404
+
+
+def test_m1_attach_pieces_reconciles_a_stale_restored_pick():
+    s2, net2, clock2, ps2 = mk(1)
+    s2.game_pick["pieces"]["primary"] = "gone-id"
+    s2.attach_pieces(PieceStore(None))
+    assert s2.game_pick["pieces"]["primary"] == BUILTIN_IDS["primary"]
+    # a post_mvp mode reference is reconciled the same way
+    s2.game_pick["pieces"]["mode"] = "builtin:mode:infection"
+    s2.attach_pieces(PieceStore(None))
+    assert s2.game_pick["pieces"]["mode"] == BUILTIN_IDS["mode"]
+
+
+def test_m2_compose_precheck_reteams_and_repolicies_for_real_then_restores_everything():
+    """M2: the precheck must run set_config's OWN reteam + policy-fit steps (so a validate() error that
+    only shows up post-reteam/post-refit is caught), but leave every real player, team and config
+    exactly as found -- and never send a single frame (apply_policy's pure half only)."""
+    s, net, clock, ps = mk(2, mode="tdm")
+    online(s, net, clock, ps[0], 0)
+    online(s, net, clock, ps[1], 1)
+    before_config = copy.deepcopy(s.config)
+    before_teams = copy.deepcopy(s.teams)
+    before_team_ids = {p["player_id"]: p.get("team_id") for p in s.players.values()}
+    pushes_before = len(net.pushes("assign", "node0")) + len(net.pushes("config", "node0"))
+    res = s._compose_precheck({"mode": "koth"})
+    assert isinstance(res.get("ok"), bool)
+    assert s.config == before_config
+    assert s.teams == before_teams
+    assert {p["player_id"]: p.get("team_id") for p in s.players.values()} == before_team_ids
+    assert len(net.pushes("assign", "node0")) + len(net.pushes("config", "node0")) == pushes_before
+
+
+def test_low_pick_refuses_armed_live_before_running_the_precheck():
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    s.push_config()
+    s.start(runway_s=5, force=True)
+    r = c.post("/api/play/pick", json={"match": {"frag_limit": 10}})
+    assert r.status_code == 400 and "match has started" in r.json()["error"].lower()
+
+
+def test_low_favourites_load_refuses_armed_live_too():
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    fav = c.post("/api/favourites", json={"name": "Any", "countdown_s": 30}).json()
+    s.push_config()
+    s.start(runway_s=5, force=True)
+    r = c.post(f"/api/favourites/{fav['favourite_id']}/load")
+    assert r.status_code == 400 and "match has started" in r.json()["error"].lower()
+
+
+def test_low_looks_like_pick_checks_match_shape_too():
+    good = {"pieces": dict(BUILTIN_IDS), "match": {"time_limit_s": 600, "frag_limit": None, "night": False, "silenced": False}}
+    assert G.looks_like_pick(good)
+    assert not G.looks_like_pick({**good, "match": "nope"})
+    assert not G.looks_like_pick({**good, "match": {**good["match"], "night": "yes"}})
+    assert not G.looks_like_pick({**good, "match": {**good["match"], "silenced": 1}})
+    assert not G.looks_like_pick({**good, "match": {**good["match"], "frag_limit": "15"}})
+    assert not G.looks_like_pick({**good, "match": {**good["match"], "time_limit_s": "600"}})
+
+
+def test_low_clean_row_keeps_updated_t_and_drops_a_duplicate_piece_id():
+    _, path = _store()
+    path.write_text(json.dumps({"v": 1, "pieces": [
+        {"piece_id": "dup1", "kind": "life", "name": "First", "created_t": 100, "updated_t": 500,
+         "value": {"max_hp": 45, "max_armor": 0, "max_shield": 0}},
+        {"piece_id": "dup1", "kind": "life", "name": "Second (same id)", "created_t": 200, "updated_t": 600,
+         "value": {"max_hp": 30, "max_armor": 0, "max_shield": 0}},
+    ]}))
+    st = PieceStore(path)
+    rows = [r for r in st.list() if not r["builtin"]]
+    assert len(rows) == 1 and rows[0]["name"] == "First"
+    assert rows[0]["updated_t"] == 500

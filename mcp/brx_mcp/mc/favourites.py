@@ -107,6 +107,7 @@ class FavouriteStore:
             log.error("favourites.json unreadable (%s) — moved aside to %s; starting empty", e, aside)
             return
         seen: set[str] = set()
+        seen_ids: set[str] = set()
         for r in rows:
             try:
                 row = self._clean_row(r)
@@ -114,10 +115,14 @@ class FavouriteStore:
                 log.warning("favourites.json: dropping favourite %r (%s)",
                            (r or {}).get("name") if isinstance(r, dict) else r, e)
                 continue
+            if row["favourite_id"] in seen_ids:
+                log.warning("favourites.json: dropping duplicate favourite_id %r", row["favourite_id"])
+                continue
             if row["name"].lower() in seen:
                 log.warning("favourites.json: dropping duplicate name %r", row["name"])
                 continue
             seen.add(row["name"].lower())
+            seen_ids.add(row["favourite_id"])
             self._rows.append(row)
 
     def _clean_row(self, r: object) -> Favourite:

@@ -2318,16 +2318,46 @@ class Session:
                     "station_source", "mode_params", "vip_player_id", "stun", "coverage", "recoil",
                     "volume"}
 
+    def attach_pieces(self, store: "PieceStore") -> None:
+        """F411 M1 (polish round 1): `__main__`/`api.py` call this instead of writing `self.pieces`
+        directly, because attaching the real store is also the first chance to check the RESTORED (or
+        bare-default) `game_pick` against it -- `pieces.json` is a separate file from `session.json`,
+        so a snapshot's pick can name a piece the shelf no longer has, or one that turned `post_mvp`
+        since. Replace any such id with that kind's own first builtin, the SAME grace `resolve_pieces_
+        with_fallback`/`resolve_pieces_mixed` give a stale id elsewhere -- a session must never sit on
+        a pick `POST /api/play/pick` itself would refuse to resolve."""
+        self.pieces = store
+        from .pieces import BUILTIN_IDS
+        for kind in self.game_pick["pieces"]:
+            pid = self.game_pick["pieces"].get(kind)
+            ok = False
+            if pid:
+                try:
+                    piece = store.get(pid)
+                    ok = piece["kind"] == kind and not piece.get("post_mvp")
+                except Exception:
+                    ok = False
+            if not ok and kind in BUILTIN_IDS:
+                self.game_pick["pieces"][kind] = BUILTIN_IDS[kind]
+
     def _compose_precheck(self, patch: dict) -> dict:
         """F411: does this GAMES pick compose a config `_validate()` accepts, WITHOUT leaving any
         session state changed? `POST /api/play/pick`'s own contract ("a pick with ok: false changes
         nothing") needs the answer before `set_config` commits it. Mirrors `set_config`'s own
         base-selection + merge (the mode-change venue carry-over included), then runs the SAME
-        `_validate()` `set_config` would (compiler errors AND `_primary_pool_refusal`'s own check,
-        which reads `self.config` rather than a config passed in) against the candidate, restoring
-        the real config again straight after -- `_validate` also refreshes `config_errors`/
-        `config_warnings` as a side effect, which is fine: a real read recomputes both before anyone
-        sees them."""
+        `_validate()` `set_config` would.
+
+        M2 (polish round 1): "the same `_validate()`" means matching set_config's WHOLE pipeline, not
+        just its final call -- a mode change reteams the roster first (F82/F97's checks read
+        `player.team_id`) and a `loadout_policy` change re-fits every player's loadout before
+        `compile.validate()` ever sees it (`_validate`'s own `compile.validate()` sees COMPILED
+        loadouts, not the rules that produced them). Both run for real against the CANDIDATE
+        config/teams, which `set_config` commits and this restores straight after:
+          * `_reteam_for_config` has no network side effect -- safe to run for real, then undo.
+          * `apply_policy()` does (`_resend`, `tryout` teardown) -- so its PURE half (`_policy.apply`)
+            runs into a throwaway roster instead, never touching a real player or a real gun.
+        `_validate` also refreshes `config_errors`/`config_warnings` as a side effect, which is fine: a
+        real read recomputes both before anyone sees them."""
         mode = patch.get("mode", self.config["mode"])
         if mode != self.config["mode"]:
             cfg = default_config(mode)
@@ -2347,12 +2377,26 @@ class Session:
             cfg = self._merge_config(cfg, patch, mode)
         except ValueError as e:
             return {"ok": False, "errors": [str(e)]}
-        saved = self.config
+        saved_config = self.config
+        saved_teams = list(self.teams)
+        prev_teams = list(self.teams)                              # captured BEFORE the swap, as set_config does
+        saved_team_ids = {pid: p.get("team_id") for pid, p in self.players.items()}
         self.config = cfg
+        self.teams = list(cfg["teams"])
         try:
-            return self._validate()
+            self._reteam_for_config(prev_teams)
+            weapons, perks = self._catalog_rows()
+            lp = self.loadout_pool()
+            pol = self.policy()
+            roster = [cast(Player, {**p, "loadout": _policy.apply(pol, lp, p.get("loadout") or {"weapons": []}, weapons, perks)})
+                     for p in self.players.values()]
+            return self._validate(roster)
         finally:
-            self.config = saved
+            self.config = saved_config
+            self.teams = saved_teams
+            for pid, tid in saved_team_ids.items():
+                if pid in self.players:
+                    self.players[pid]["team_id"] = tid
 
     def _reteam_for_config(self, prev_teams: list[Team]) -> None:
         """FIELD-1 (round-3 fix pass, 2026-09-13). Carry the operator's SPLIT across a mode pick.
@@ -2427,15 +2471,24 @@ class Session:
                 return
             max(movers, key=lambda q: q["player_num"])["team_id"] = emptiest
 
-    def set_config(self, patch: dict) -> dict:
-        if not isinstance(patch, dict):
-            raise ValueError("config must be an object")
+    def _refuse_config_locked(self) -> None:
+        """The exact phase gate `set_config` itself enforces (muster/build/kit/lobby only), pulled out
+        so a route that runs a `_compose_precheck` before touching anything (PICK, FAVOURITES LOAD, a
+        picked piece's PUT) can refuse an armed/live request BEFORE that precheck work, not only before
+        the real `set_config` call at the end (polish round 1, a Low: the precheck is otherwise wasted
+        work on a request that was always going to be refused). Idempotent with `set_config`'s own call:
+        `_roll_forward_from_recap` is a no-op once `self.phase` has left `recap`."""
         # The match is OVER: any config edit is the operator starting the next one. Tony, 2026-08-26:
         # "i get an error bc match in progress, but MC knows its over". Tony, 2026-09-16, on the
         # mode-only rule that followed: "why? just make a new one". Every edit rolls forward now.
         self._roll_forward_from_recap()
         if self.phase not in ("muster", "build", "kit", "lobby"):
             raise ValueError("cannot change config after the match has started")
+
+    def set_config(self, patch: dict) -> dict:
+        if not isinstance(patch, dict):
+            raise ValueError("config must be an object")
+        self._refuse_config_locked()
         mode = patch.get("mode", self.config["mode"])
         if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
             raise ValueError(f"unknown mode {mode!r}")
@@ -2526,8 +2579,27 @@ class Session:
                 self.lobby_pushed = False
                 self.acks = {}
                 self.arm_stations(relock=True)   # F337 (d): no pushed game any more, so the LOAD lock goes too
+        self._sync_game_pick_from_config()   # H2 (polish round 1): PLAY never shows a config KIT/LOBBY already moved past
         self._changed()
         return {"ok": res["ok"], "errors": res["errors"], "config": self.config}
+
+    def _sync_game_pick_from_config(self) -> None:
+        """H2 (polish round 1): every successful `set_config` -- including `PUT /api/config`'s inline
+        KIT/LOBBY edits, not just `POST /api/play/pick` -- keeps `game_pick`'s MATCH fields and the
+        picked MODE truthful to the config that is now live, so an operator edit on KIT is reflected
+        back on PLAY instead of drifting silently out of sync. The other seven kinds' piece ids are
+        LEFT ALONE: a KIT edit of health or a loadout rule is allowed to diverge from what PLAY shows
+        picked (games-presets.md §3) -- only the mode and the four MATCH SETTINGS fields are config
+        FACTS with exactly one truthful value, the others are still "whichever piece" until the
+        operator picks a different one.
+
+        No `PieceStore` lookup needed for the mode: `mode` is a kind BUILD can never create a piece
+        for (`pieces.check_value` 403s it), so the picked mode piece is always one of the builtins
+        named `builtin:mode:<mode>` -- recomputing that id from the config's own mode string is exact,
+        with or without a store attached."""
+        self.game_pick["match"] = _gamepick.match_from_config(self.config)
+        if mode := self.config.get("mode"):
+            self.game_pick["pieces"]["mode"] = f"builtin:mode:{mode}"
 
     def _repush_lobby_config(self) -> None:
         """B1/B3 (2026-09-12): a config / team / loadout edit made while the lobby is ALREADY pushed, in
@@ -2861,13 +2933,18 @@ class Session:
                 cfg["mode"] = v
         return cfg
 
-    def _validate(self) -> dict:
+    def _validate(self, roster: list[Player] | None = None) -> dict:
+        """`roster` defaults to the REAL live roster; `_compose_precheck` (M2, polish round 1) passes a
+        throwaway one whose loadouts have already been re-fit to a CANDIDATE policy, so a precheck sees
+        the same compiled loadouts `set_config`'s own `apply_policy()` -> `_validate()` pipeline would,
+        without touching a real player or sending a single frame."""
+        if roster is None:
+            roster = list(self.players.values())
         try:
             # A28.4: the DERIVED coverage rides on every validation (and so on the lobby push, which
             # calls this). `venue_coverage` — the assertion that would lift `time_limit_s` — is
             # deliberately NOT passed: nothing sets it today (compile.validate's docstring).
-            res = self.compiler.validate(self.config, list(self.players.values()),
-                                         {"coverage": self.coverage()["level"]})
+            res = self.compiler.validate(self.config, roster, {"coverage": self.coverage()["level"]})
         except Exception as e:  # a broken compiler must not take MC down
             res = {"ok": False, "errors": [f"validate failed: {e}"]}
         self.config_errors = list(res.get("errors", []))
@@ -7119,8 +7196,10 @@ class Session:
         self._game_no_started = True           # the next muster push is a NEW match to every station
         self._range_epoch += 1                 # A67: the last match's range-edit lines clear at this START
         # F411 LAST MATCH (games-presets.md §2): captured at every START, not just the first — a mode/
-        # preset change since the last game must not leave LAST MATCH offering stale values.
-        self.last_match = {**self.game_pick["match"], "countdown_s": runway_s}
+        # preset change since the last game must not leave LAST MATCH offering stale values. From
+        # `self.config` (H2, polish round 1), not `game_pick["match"]`: `set_config` keeps the two in
+        # sync already, but the config is the ground truth a match actually ran on.
+        self.last_match = {**_gamepick.match_from_config(self.config), "countdown_s": runway_s}
         now = self.now_ms()
         # A42: whether the LAST match's end reached every HUD is not a fact about THIS one. The operator
         # has moved on, and a straggler line left standing over a live board would be read as this match's.

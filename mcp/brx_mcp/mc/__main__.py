@@ -356,7 +356,7 @@ def build(args):
         log.info("pieces: throwaway shelf at %s (demo/ephemeral)", ppath)
     else:
         ppath = default_path()
-    session.pieces = PieceStore(ppath, now_ms=session.now_ms)
+    session.attach_pieces(PieceStore(ppath, now_ms=session.now_ms))   # M1: also reconciles a stale/restored game_pick
 
     # F411 §6 FAVOURITES: same real-shelf-vs-throwaway-demo split as BUILD pieces above.
     from .favourites import FavouriteStore, default_path as _fav_default_path

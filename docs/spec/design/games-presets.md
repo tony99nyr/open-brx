@@ -82,6 +82,14 @@ same phase gating, the same RECAP roll-forward, the same re-announce while LOADE
 **Mode change resets the strip's limits.** When a pick changes `mode`, `match.time_limit_s` and
 `match.frag_limit` take the new mode's defaults, unless the same request sets them. `night` and `silenced` stay.
 
+**`game_pick` stays truthful to whatever config is live** (polish round 1, H2): every successful `set_config`
+— including `PUT /api/config`'s own inline KIT/LOBBY edit, not only a pick — re-derives `game_pick.match`
+from the committed config and, if the config's mode no longer matches the picked mode piece, repoints
+`pieces.mode` at that mode's builtin. The other seven kinds' piece ids are left alone: a KIT edit of health
+or a loadout rule is allowed to diverge from what PLAY shows picked, since only the mode and the four MATCH
+SETTINGS fields are facts a config can state about itself — the rest is still "whichever piece" until the
+operator picks a different one.
+
 ## 4. Routes
 
 | Route | Body → answer | Errors | Phases |
