@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3).
+Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3; F407, F408 and F409 filed).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -39,6 +39,10 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   ends `undecided` even with one player alive. Decide the last survivor by player in a one-team game. Predates
   Q13; LMS is still `proven: False`. Moved here 2026-09-25 with Last Man Standing itself: Tony, on the MVP mode
   list, "Last Man Standing is post-MVP too" — do not build this fix for MVP. `build` (post-MVP).
+
+- **F407 🟡 INFECTION IS POST-MVP.** Tony, 2026-09-25: "infection can be post mvp". The mode exists in Mission Control's code (MODES row `mvp: false`, hidden from the picker; F319 (a)'s survivor-only alert stays built) but has never run a real match. Before it returns: a desk proof of its win paths (the last human, time expiry) with the chaos suite, then a bench match. `build` + `bench`.
+
+- **F409 🟡 CUSTOM GAMEPLAY PRESETS.** Tony, 2026-09-25: "post mvp we could enable some way of either loading or customizing the gameplay into presets". Today a host picks a stock mode or a saved game; gameplay rules cannot be loaded or edited as a named preset. Design first (what a preset holds beside a saved game), then build. `decision` + `build`.
 
   **LMS, post-MVP: two more open gaps**, noted here rather than as rows of their own:
   - the match does not end automatically when one player or team is left.
@@ -187,6 +191,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   buff writes it; `bench-firmware-levers-2026-09-19.md` §21 traces it. `build` + `bench`.
 
 ## 2. Stations, the grenade and the Stick
+
+- **F408 🟡 THE EXTRACTION AND BOMB-SITE STATION KINDS.** Tony, 2026-09-25: "so mvp for utility is respawn station, pickup, hill". F405 hid `extraction` and `bomb` from every place a host assigns a station kind; the types, the code and the recap labels stay, so an old assignment still renders. They return with their modes (Extraction, S3; a bomb mode), each with a station built and benched. `build` + `bench`.
 
 - **F338 🟡 POST-MVP: THE GRENADE HILL AND STICK IR RECEIVE.** Tony 2026-09-24: the MVP hill is a Bluetooth control point (`station_source: "phone"`, now KOTH's stock default): a phone station today, and a StickS3 once brx4's presence-capture port is bench-proven (it needs a reflash; older Stick firmware is an IR hill); StickS3 stations are Bluetooth-only for MVP (hill, pickup, respawn), and Stick IR TRANSMIT stays. **Do not build before MVP:** new grenade-hill features (the grenade stays selectable, marked POST-MVP, and bench-proven 2026-09-10) or Stick IR receive (the onboard receiver cannot hear BRX IR; an external VS1838B on Grove G9 decodes shots, `0f50605e`). A CONTROL station under a grenade objective raises a SETUP warning (`a4d2a1ee`). The Stick's SETTINGS screen waits with it (2026-09-25): it would edit MODE, ID, GAME and TXPIN, which only the IR hill and bridge use; `station_render.h` keeps the drawing, and MC assigns the station id (A66). `post-MVP`
 

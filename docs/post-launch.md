@@ -17,21 +17,19 @@ rules are in the `FOLLOWUPS.md` header.
 
 1.0.0 ships Team Deathmatch, Free For All and King of the Hill. Extraction is the flagship mode after launch:
 players carry loot to an extraction point before the zone closes ([`extraction-design.md`](extraction-design.md)).
-Infection and Last Man Standing already exist in Mission Control's code, but neither has run a real match, and
-neither has its own row yet. Gun Game hands each player a new weapon at every spawn. A tutorial mode, Syphon (the
+Infection and Last Man Standing already exist in Mission Control's code, but neither has run a real match. Gun Game hands each player a new weapon at every spawn. A tutorial mode, Syphon (the
 killer heals), and several hill variants (roaming hills, Territories, a rotating hill, a rate-of-fire boost for
 the holding team) are designed or partly specified in [`utility-roadmap.md`](utility-roadmap.md) and
 [`game-modes.md`](game-modes.md). Adding a mode is still harder than it should be; the extensibility rows fix that.
 
 Ids: S3 (Extraction on the phone), S60 (Gun Game), B17 (tutorial), S14 (Syphon), F95, F98, F83, F87, F93 (hill
-variants and proximity), E2, E3, E4, E6, E7 (extensibility). F377 (solo Last Man Standing picks no winner) is
-still an MVP row in `FOLLOWUPS.md` today.
+variants and proximity), E2, E3, E4, E6, E7 (extensibility), F407 (Infection), F377 (Last Man Standing: solo picks no winner, with its
+open end and tie gaps), F409 (custom gameplay presets).
 
 ## Station kinds and the Stick
 
 1.0.0 has three station kinds: respawn station, pickup and hill. The station advert already reserves an
-extraction point and a bomb site ([`spec/utility.md`](spec/utility.md)); neither is built as a station, and
-neither has its own row yet. The Stick is Bluetooth-only in 1.0.0, and two IR features wait. Stick IR receive
+extraction point and a bomb site ([`spec/utility.md`](spec/utility.md)); neither is built as a station (F408). The Stick is Bluetooth-only in 1.0.0, and two IR features wait. Stick IR receive
 would let a Stick hear a tagger's shot; the Stick's onboard receiver cannot decode a BRX shot, and an external one
 can. The grenade hill uses a BRX Smart Grenade as the hill; it ran through the gun on 2026-09-10 and stays
 selectable, but it is not a 1.0.0 feature. MUSTER, the Stick mode that drops Wi-Fi for the match, is post-launch; HELD is the 1.0.0 mode.
