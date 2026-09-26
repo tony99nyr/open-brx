@@ -28,38 +28,48 @@ switch. Decided and recorded (do not re-ask): everything in the FOLLOWUPS rows, 
 - **Awaiting Tony:** F221 (look at `C:\Users\Tony\brx-mc-alerts\index.html`). S32 closed: Tony picked direction C.
 - **Parked, not merged:** `pu-select` 1fb1aec9 (brx5, SELECT swap; later powerup work on main likely supersedes it).
 ## Lane: brx2, bench, audio, utility and docs
-2026-09-25 bench: **sitting A and sitting B both done** ([`bench-2026-09-25.md`](bench-2026-09-25.md)); **stop point
-2 done** (all three Pixels on app 0.4.12, release `3f9bf7fd`; MC restarted from `main` with `--powerups
---bench-volume 75`). Sitting A (gun Tactix-FE30, rig board B): A4 PASSES, F341 closed; F347's answer is t23 EMPTY;
-F350 picks H21; full write-up in `experiment-log/2026-09.md`. Sitting B (the Stick, 2 guns, 3 Pixels): F332, H9 and
-F333 closed; F374's LOBBY/countdown half and F365's RADIUS/STRENGTH edit half CONFIRMED, both stay open for their
-other halves; the STRENGTH A/B/A numbers and the presence RSSI asymmetry are promoted to
-`hardware/m5sticks3/README.md`. Filed F379-F398, the biggest being **F379** (a rocket pickup desyncs the gun's ALT
-pointer from the phone, file:line cause found) and its ammo-pips sibling **F394**; hill correctness bugs F382-F386;
-Stick lock/link bugs F387-F392, F397; **F390** (MUSTER's no-way-back) to DECISION. Full write-up:
-`experiment-log/2026-09.md`'s 2026-09-25 sitting B entry.
-**Stop point 2 done; sitting C is next.**
-- **Next bench task:** sitting C (two guns, both phones, powerups, a real fight),
-  [`bench-2026-09-25.md`](bench-2026-09-25.md). Then the LATER list, by setup: screamers A7/A8 (F269, F270), A1c/A13
-  (F272, F274), sitting 5 (F264, F277, F237).
-- **Next desk task:** F379/F394 (the rocket-pickup ALT/ammo desync) and F380 (the false NOT ANSWERING race) are
-  ready to build straight from their file:line causes, no bench needed to start. R4/T5 read-only research is
+**2026-09-26, short bench part 1 DONE** (1.5 h, [`bench-plan.md`](bench-plan.md) "NOW: part 1"; the Stick and app
+0.4.13, MC `main`). KOTH's Stick-hill half ran clean (F382, F384, F385 CONFIRMED and closed); the phone-hill half
+(S1) did not run, blocked by F420 below. Powerups core: F372's default confirmed; a P0 stayed open, **F416** (a
+failed spawn write at go-live leaves the gun unspawned, 1 of 3 starts today; brx5 shipped a fix the same day,
+moved to MVP BENCH for its check), and it surfaced two more: **F417** (one Stick station granted the same pickup
+to two players; part 1 fixed, part 2 traced) and **F418** (backgrounding the app mid-match drops a held pickup,
+built) — all three moved to MVP BENCH, owner brx5. The Stick alone:
+F387 and F333 CONFIRMED and closed; **F386's timed-whistle half PASSED**, but its match surfaced a NEW half of the
+same row, the powerup screen still counting after END; brx4 already shipped both fixes (the powerup-screen freeze
+and the idle-timeout cause of F387's confounded control) on `26084fcf`, bench check in part 2. One gun, no phone:
+F282's A/B/A CONFIRMED (its t25/t26 isolation stays open); the `$PLAY` queue slot drops and reorders clips fed
+faster than they play (**F419**, links F378/F347, brx5). Also filed at the desk, all bugs seen in passing: the ⓘ
+utility-mode icon sits behind the Android status bar (**F420**, blocked S1); `release_utility` does not rejoin MC
+(**F421**); SET MY GUN shows no join feedback (**F422**); team 3 paints purple on the gun but reads GREEN TEAM
+everywhere else (**F423**); the KOTH HUD has no hill-hold score panel (**F424**); Tony decided the always-on
+pickup countdown should become a left-side "X AVAILABLE" alert (**F425**, storyboard first); a phantom team-2 hill
+total (**F426**). F383's threshold stays at Tony's -75 default; a "-75 counts phones at 20 m" reading is VOID (the
+phones never left the room). Full write-up: `experiment-log/2026-09.md`'s 2026-09-26 entry.
+- **Next bench task:** part 2 of [`bench-plan.md`](bench-plan.md) ("after GAMES and 0.4.14"), once the MC GAMES tab
+  (F411) and app 0.4.14 land. It now carries every part-1 re-check: F381 after F417, the phone hill (KOTH game 1),
+  F374's carry-out, F399's nine claims, 11.6, F386's a/b/c, the Stick-serial two-player race on F417 (brx5's
+  detailed step), the queue-slot 2-then-3-cues variant (F419), F416's A/B/A (phones 10+ m from their guns), and
+  F348.
+- **Next desk task:** F420-F423 (app-lane fixes, no gun needed) are ready to build from today's evidence. F424/F425
+  want a storyboard first (`ui-storyboard` skill) before either gets built. R4/T5 read-only research is
   authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
 APK 0.4.12 published 2026-09-25 (release-signed, WebView debugging on). Since then on main: F282 (silenced weapons,
 MC-only: restart MC from main before the bench), F382 phone half, F384, F385, F401, F402, F404, F405, the MVP mode
 cut (TDM, FFA, KOTH), the TDM/FFA/KOTH chaos desk proofs and three flake fixes; F372 closed (powerups on by default).
-- **Next:** S32 closed, koth mode art shipped (direction C). The next APK carries F382, F384, F385 and the phone's
-  MVP-only utility drawer.
+- **Next:** S32 closed, koth mode art shipped (direction C); F382, F384 and F385 closed 2026-09-26, bench part 1.
+  The next APK already carries all three plus the phone's MVP-only utility drawer.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet agents did the work since.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
 2026-09-25). On main: A68 (the hill counts from go-live to the whistle; `duration_ms` ends a Stick carried out of Wi-Fi
 before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392, F397, F398. Flashed from main, unlocked.
-- **Next bench task:** sitting C: the carried-out timed hill, F386-F388, the F383 3 m and 7 m readings, F399's claim
-  latency, F391's restart, F392's repro with the serial log, F397's MC restart.
+- **Next bench task:** sitting C: the carried-out timed hill, F388 (F386 and F387 closed 2026-09-26, bench part 1),
+  the F383 3 m and 7 m readings, F399's claim latency, F391's restart, F392's repro with the serial log, F397's MC
+  restart.
 - **Next desk task:** F342 (a powerup or control-point game still floods the scan: a slower advert or a native filter).
 - **Resume:** a fresh worktree off `origin/main` (the old `/home/tony/brx4-l3` and `/home/tony/brx4-f333` are
   disposable). Native Windows MC for mDNS:
