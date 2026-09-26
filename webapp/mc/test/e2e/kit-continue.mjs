@@ -142,9 +142,12 @@ async function auditGate(pg, where) {
 const onKit = pg => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0);
 const onLobby = pg => pg.locator('main', { hasText: '[ A5 // LOBBY' }).count().then(n => n > 0);
 
-/** the operator's own path: ARMORY gate → GAMES CONTINUE → KIT.
+/** the operator's own path: ARMORY gate → PLAY LOAD ▸ → KIT (nav).
  *  `fromArmory` is false for the ?mock demo: its fixture board has one RED gun on purpose, so A1's
- *  gate is (correctly) disabled there and the walk starts at GAMES. */
+ *  gate is (correctly) disabled there and the walk starts at PLAY.
+ *
+ *  F411: matches on the PICK GAME heading, not the kicker (another lane is changing PLAY's kicker
+ *  from `[ A2 // PLAY ]` to `[ 02 // PLAY ]`, and koth.mjs/game-edit.mjs do the same). */
 async function walkToKit(pg, url, fromArmory = true) {
   await pg.goto(url, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header').count().then(n => n > 0), 10000, 'the command bar');
@@ -180,24 +183,16 @@ async function walkToKit(pg, url, fromArmory = true) {
     // ARMORY's gate reads HARDWARE READY ▸ or what it waits for (bench 2026-09-17): click it by id.
     await pg.locator('[data-testid="armory-gate"]').first().click();
   }
-  await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 10000, 'GAMES to open');
-  // GAMES has TWO states since 2026-09-13 (Tony: "instead of continue it should be Load"). Unloaded,
-  // the primary is LOAD and it pushes; loaded, the tab IS the active game config and the way on is
-  // CONTINUE TO KIT. A `--demo --fake-net` server can be in either (it boots into LOBBY, and whether
-  // a head has been pushed depends on what the run before it did), so the walk takes whichever door
-  // is actually on screen rather than assuming one — and LOADS when that is the door, because that
-  // is now the operator's own path to KIT.
-  const kitBtn = pg.locator('main [data-testid="game-continue-kit"] button');
-  if (await kitBtn.count() === 0) {
-    const load = pg.locator('main [data-testid="game-load"] button');
-    // the ?mock fixture ships one deliberately RED gun, so the unforced push is (correctly) refused
-    // there and the host's real path is the override beside it.
-    if (await load.isEnabled().catch(() => false)) await load.click();
-    else await pg.locator('main [data-load-force="1"]').click();
-    await until(() => kitBtn.count().then(n => n > 0), 12000, 'the LOADED GAME state after LOAD');
-  }
-  await kitBtn.click();
-  await until(() => onKit(pg), 10000, 'KIT to open from CONTINUE TO KIT');
+  await until(() => pg.locator('text=Pick Game').count().then(n => n > 0), 10000, 'PLAY to open');
+  // F411 (games-presets.md §1/§5): BUILD creates, PLAY only picks and LOADs — the old GAMES tab's
+  // "unloaded vs loaded, active game config" two-state UI and its CONTINUE TO KIT button are retired.
+  // LOAD ▸ now only announces the game to the phones (it never pushes a gun, so there is no forcing
+  // variant to fall back to here any more), and PLAY never navigates on its own: KIT is reached from
+  // the nav, exactly like every other tab.
+  const load = pg.locator('main [data-testid="game-load"] button');
+  if (await load.isEnabled().catch(() => false)) await load.click();
+  await pg.locator('header nav button:has-text("KIT")').first().click();
+  await until(() => onKit(pg), 10000, 'KIT to open from the nav');
 }
 
 /** The SECONDARY plate: `✕ CLEAR` is positioned in the card's bottom-right corner and the weapon's

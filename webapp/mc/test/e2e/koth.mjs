@@ -54,19 +54,6 @@ const expect = (cond, what) => {
 // summary at the bottom was honest, but anyone scanning the ticks read a pass. `ok` refuses.
 let stepFailedAt = 0;
 const ok = what => console.log(failures.length > stepFailedAt ? `    ⊘ ${what} (step already failed above)` : `    ✓ ${what}`);
-/** Like `until`, but returns false instead of RECORDING A FAILURE: for asking "which state is the
- *  screen in?" rather than "did the thing I require happen?". Using `until` to ask a question marks
- *  the step failed before anything is even decided. */
-const probe = async (pred, ms) => {
-  const end = Date.now() + ms;
-  for (;;) {
-    let v = false;
-    try { v = await pred(); } catch { v = false; }
-    if (v) return true;
-    if (Date.now() > end) return false;
-    await new Promise(r => setTimeout(r, 60));
-  }
-};
 const until = async (pred, ms, what) => {
   const end = Date.now() + ms;
   for (;;) {
@@ -218,25 +205,9 @@ async function go(pg, view) {
   await until(() => pg.locator('header').count().then(n => n > 0), 8000, 'the command bar to render');
   // the first snapshot has arrived when the screen is no longer the CONNECTING placeholder
   await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 12000, 'the first snapshot');
-  if (view === 'build') await showCards(pg);
   return pg;
 }
 
-/** Make the GAMES card shelves reachable, whichever of the tab's two states it is in.
- *
- *  Since 2026-09-13 (Tony: "the tab should then change state to active game config") a GAMES tab with
- *  a head already on the guns IS the active game config, and the shelves sit behind PLAY A DIFFERENT
- *  GAME. Every step here is about the CARDS, and they share ONE server — so a step that pushed leaves
- *  the next one looking at the other state. `go()` calls this; so must any step that navigates with a
- *  raw `goto` (`mode-card-host-call`, `mock-demo`). The `load-path` step drives both states
- *  deliberately and starts from a session nothing has been loaded into. */
-async function showCards(pg) {
-  const picker = pg.locator('[data-testid="pick-another"]');
-  if (await picker.count() > 0 && await pg.locator('div[role="button"][aria-label^="play "]').count() === 0) {
-    await picker.click();
-    await until(() => pg.locator('div[role="button"][aria-label^="play "]').count().then(n => n > 0), 6000, 'the card shelves to open');
-  }
-}
 /** close a page that has routes attached — an in-flight `route.fetch` after close throws globally */
 const closePage = async pg => {
   try { await pg.unrouteAll({ behavior: 'ignoreErrors' }); } catch { /* no routes */ }
@@ -251,60 +222,20 @@ const shot = async (pg, name) => {
   await pg.screenshot({ path: f, fullPage: false });
   return f;
 };
-/** the value cell of a "LABEL   value" row in the GAMES / rail grids */
-const railRow = (pg, label) => pg.locator(`main span:text-is("${label}") + span`).first();
-const kothCard = pg => pg.locator('div[role="button"][aria-label="play KING OF THE HILL"]');
-const tdmCard = pg => pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]');
-/** Pick a mode TILE the way the operator does — and PROVE what the first tap puts on screen.
- *
- *  T2-A (9a1570d, "GAMES confirms a mode/game switch that reshapes >=2 rostered players") made a
- *  tile that would move >=2 rostered players a TWO-tap control: tap one shows the resulting split and
- *  sends NOTHING, tap two commits. This suite picked with ONE tap, so from that commit onward every
- *  pick silently no-opped and ten assertions across this file cascaded off it — invisible to the
- *  lanes, because koth.mjs is the one suite that hardcodes :8765 and so the one nobody can run.
- *
- *  It asserts the confirm rather than blind-double-clicking: a double click would pass just as
- *  happily against a tile that had quietly gone back to one tap, which is exactly the false-pass the
- *  ui-build-verify skill names — assert the thing that CHANGES after the action. The 11px check rides
- *  along because this confirm is the newest meaning-bearing copy on the screen `audit-text` guards.
- *  `test/games-confirm-contract.test.tsx` is the fast (jsdom, binds nothing) twin of this contract. */
-async function pickTile(pg, card, { what = 'the mode tile', playing = true, ms = 8000, confirm = 'auto' } = {}) {
-  // ALREADY PLAYING: `Games.tsx tappable()` swallows the tap on purpose outside recap, so no confirm
-  // can ever arm and nothing changes. Several steps share ONE server and pick the same mode a second
-  // time (recap-coverage-floor's 2nd open, recap-settling's pg2) — waiting for a confirm there hangs
-  // on a screen that is already exactly right.
-  if ((await card.getAttribute('aria-pressed')) === 'true') {
-    if (confirm === 'required') expect(false, `${what}: expected a real switch, but the tile is already the playing game`);
-    return;
-  }
-  await card.click();
-  const box = card.locator('[data-testid="confirm-switch"]');
-  const armed = await probe(() => box.count().then(n => n > 0), 2500);
-  if (armed) {
-    // A RESHAPING switch: tap one shows the split and sends nothing.
-    expect(await box.isVisible(), `${what}: the confirm is visible before anything moves`);
-    const split = card.locator('[data-testid="confirm-split"]');
-    if (await split.count() > 0) {
-      const t = (await split.textContent()).trim();
-      expect(/^▲ \d+ PLAYERS? → [A-Z]+ \d+ \/ [A-Z]+ \d+$/.test(t),
-        `${what}: the confirm names the predicted split (saw ${JSON.stringify(t)})`);
-      const px = await split.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
-      expect(px >= 11, `${what}: the split line is legible (${px}px, must be >= 11px)`);
-    }
-    expect((await card.getAttribute('aria-pressed')) === 'false', `${what}: the first tap has NOT switched the game`);
-    await card.click();
-  } else {
-    // NO reshape to confirm: fewer than two rostered, or the target declares the same teams. One tap
-    // is then the CORRECT behaviour — and it must actually have applied, or the tap did nothing at all.
-    if (confirm === 'required') {
-      expect(false, `${what}: no confirm armed, but this step seeded a roster that must reshape — a two-tap tile has gone one-tap`);
-    }
-    expect(await probe(async () => (await card.getAttribute('aria-pressed')) === 'true', 5000),
-      `${what}: nothing to confirm here, so the single tap must have applied the pick`);
-  }
-  if (playing) await until(async () => (await card.getAttribute('aria-pressed')) === 'true', ms, what);
+/** F411: the mode picker on PLAY (`Games.tsx`'s `picker-mode` Seg) is one tap, immediate — the old
+ *  card-shelf UI's two-tap "this reshapes N players, confirm?" gate (T2-A) is retired along with it:
+ *  `POST /api/play/pick` just applies. No confirm to wait for or assert; the F82 re-team it used to
+ *  guard is still proven directly against the server (`teams-never-yellow`, `reteam-visible`). */
+const modeBtn = (pg, label) => pg.locator('[data-testid="picker-mode"]').getByRole('button', { name: label });
+const kothBtn = pg => modeBtn(pg, 'KING OF THE HILL');
+async function pickMode(pg, label, { ms = 8000 } = {}) {
+  const btn = modeBtn(pg, label);
+  if ((await btn.getAttribute('aria-pressed')) === 'true') return;   // already the picked mode: a re-tap is a no-op
+  await btn.click();
+  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', ms, `${label} picked`);
 }
-const pickKoth = (pg, opts = {}) => pickTile(pg, kothCard(pg), { what: 'KotH playing', ...opts });
+const pickKoth = (pg, opts = {}) => pickMode(pg, 'KING OF THE HILL', opts);
+const pickTdm = (pg, opts = {}) => pickMode(pg, 'TEAM DEATHMATCH', opts);
 /** put the shared server back on a blue/yellow TDM so "pick KotH" is a real transition, not a no-op */
 async function resetTdm(base) {
   // Every step shares ONE server, so a step that ARMS a match (setup-steps-prematch does) leaves
@@ -318,8 +249,15 @@ async function resetTdm(base) {
     const phase1 = (await (await fetch(`${base}/api/state`)).json()).phase;
     if (!['muster', 'build', 'kit', 'lobby'].includes(phase1)) throw new Error(`resetTdm: abort left phase ${phase1}, still not config-writable`);
   }
-  const r = await fetch(`${base}/api/config`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'tdm' }) });
-  if (!r.ok) throw new Error(`resetTdm: PUT /api/config ${r.status} ${(await r.text()).slice(0, 160)} (phase was ${phase0})`);
+  // F411: through `POST /api/play/pick`, not a raw `PUT /api/config` — PLAY's picker shows whichever
+  // piece `game_pick.pieces.mode` names as selected (Games.tsx's `Seg`), so a raw config PUT here used
+  // to leave the KING OF THE HILL button reading "already picked" from an EARLIER step's pick while the
+  // server's own config sat on tdm underneath it: `pickKoth`'s "already pressed, nothing to do" guard
+  // then no-opped for real, and every assertion downstream (F82 re-team, the koth SETUP step, …) failed
+  // against a config that had silently stayed on tdm. Picking through the same route the console uses
+  // keeps `game_pick` and `config` the same fact.
+  const r = await fetch(`${base}/api/play/pick`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pieces: { mode: 'builtin:mode:tdm' } }) });
+  if (!r.ok) throw new Error(`resetTdm: POST /api/play/pick ${r.status} ${(await r.text()).slice(0, 160)} (phase was ${phase0})`);
   await rebalance(base);
 }
 
@@ -336,7 +274,6 @@ async function resetTdm(base) {
  */
 // Tony 2026-09-24: KOTH's stock hill is a Bluetooth station (`station_source: "phone"`); the grenade is
 // POST-MVP but still selectable, so the grenade-specific steps pick it by hand.
-const OBJ_PHONE = 'BLUETOOTH HILL · PHONE · PRESENCE';
 const PHONE_STEP = 'BLUETOOTH STATION';
 async function setSource(base, station_source) {
   const r = await fetch(`${base}/api/config`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ station_source }) });
@@ -447,48 +384,50 @@ async function patchSnapshots(pg, patch) {
 const steps = [];
 const step = (name, fn) => steps.push({ name, fn });
 
+// F411: matches on the PICK GAME heading and the PLAY nav tab, not the kicker text — another lane is
+// changing PLAY's kicker from `[ A2 // PLAY ]` to `[ 02 // PLAY ]` (kit-continue.mjs does the same).
 step('boot', async ({ browser, base }) => {
   const pg = await go(await newPage(browser, base), 'build');
-  expect(await pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count() > 0, 'the GAMES screen renders its A2 header');
+  expect(await pg.locator('text=Pick Game').count() > 0, 'the header title reads PICK GAME');
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'no error-boundary crash on first paint');
-  expect(await pg.locator('nav button:has-text("GAMES")').count() > 0, 'the GAMES nav tab is present');
-  ok(`GAMES renders  ${await shot(pg, '01-games')}`);
+  expect(await pg.locator('nav button:has-text("PLAY")').count() > 0, 'the PLAY nav tab is present');
+  ok(`PLAY renders  ${await shot(pg, '01-play')}`);
   await closePage(pg);
 });
 
 step('koth-selectable', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  const card = kothCard(pg);
-  expect(await card.count() === 1, 'a KING OF THE HILL card exists in STOCK MODES');
-  expect((await card.getAttribute('aria-pressed')) === 'false', 'KotH is not already the playing game');
-  expect(await card.locator('text=KOTH').count() > 0, 'the card carries the KOTH abbreviation');
-  // 🔴 The SEEDED-ROSTER step: `resetTdm` above deals 8 demo players across blue/yellow, so a koth
-  // pick MUST reshape and MUST confirm. `confirm: 'required'` makes a tile that silently goes back to
-  // one tap fail HERE, which is the whole point of keeping a step that walks the real path.
-  await pickTile(pg, card, { what: 'the KotH card to report itself PLAYING', ms: 6000, confirm: 'required' });
-  expect(await card.locator('span:text-is("PLAYING")').count() > 0, 'the card shows the PLAYING tag');
-  const title = pg.getByTestId('playing-title');
-  await until(async () => (await title.textContent()).trim() === 'KING OF THE HILL', 6000, 'the rail title to name the game');
-  expect((await title.textContent()).trim() === 'KING OF THE HILL', 'the rail title reads KING OF THE HILL');
-  expect(await pg.locator('main', { hasText: 'STOCK MODE // PLAYING' }).count() > 0, 'the rail marks it a STOCK MODE (untuned defaults)');
-  ok(`KotH is selectable and becomes the playing game  ${await shot(pg, '02-koth-playing')}`);
+  const btn = kothBtn(pg);
+  expect(await btn.count() === 1, 'a KING OF THE HILL option exists in the GAME MODE picker');
+  expect((await btn.getAttribute('aria-pressed')) === 'false', 'KotH is not already picked');
+  // 🔴 the SEEDED-ROSTER step: `resetTdm` deals 8 demo players across blue/yellow, so this pick really
+  // does move the roster off yellow — proven on the server below, and directly in `teams-never-yellow`
+  // / `reteam-visible`. F411 dropped the old two-tap "this reshapes N players, confirm?" dialog: PLAY's
+  // `POST /api/play/pick` just applies on one tap.
+  await pickKoth(pg, { ms: 6000 });
+  expect((await btn.getAttribute('aria-pressed')) === 'true', 'KotH reports itself picked');
+  await until(async () => (await (await fetch(`${base}/api/state`)).json()).config.mode === 'koth', 6000, 'the server to hold the koth pick');
+  ok(`KotH is selectable and becomes the picked mode  ${await shot(pg, '02-koth-playing')}`);
   await closePage(pg);
 });
 
+// The retired GAMES rail's OBJECTIVE row is gone (games-presets.md §5); the operator's field-step
+// readout is now the operator note under the mode picker. Same property this step always protected:
+// a station-gated mode gets an on-screen readout, a mode with nothing to place gets none.
 step('objective-row', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
-  const row = railRow(pg, 'OBJECTIVE');
-  expect(await row.count() > 0, 'the rail has an OBJECTIVE row for a station-gated mode');
-  const v = (await row.textContent()).trim();
-  expect(v === OBJ_PHONE, `OBJECTIVE reads "${OBJ_PHONE}" (saw ${JSON.stringify(v)})`);
-  expect(await row.isVisible(), 'the OBJECTIVE row is visible, not merely in the DOM');
-  // and it must be ABSENT for a mode that has no station source — the row is not decoration
-  await pickTile(pg, tdmCard(pg), { what: 'TDM playing', playing: false });
-  await until(async () => (await railRow(pg, 'OBJECTIVE').count()) === 0, 6000, 'the OBJECTIVE row to disappear for TDM');
-  ok(`OBJECTIVE = ${OBJ_PHONE} on koth, absent on tdm  ${await shot(pg, '03-objective-row')}`);
+  await pickKoth(pg, { ms: 6000 });
+  const note = pg.getByTestId('operator-note');
+  expect(await note.count() > 0, 'the operator note shows for a station-gated mode');
+  const v = (await note.textContent()).trim();
+  expect(/PLACE THE HILL BEFORE START/.test(v), `the note names the field step (saw ${JSON.stringify(v)})`);
+  expect(await note.isVisible(), 'the note is visible, not merely in the DOM');
+  // and it must be ABSENT for a mode with nothing to place (FFA carries no note, games-redesign.md §9)
+  await pickMode(pg, 'FREE-FOR-ALL', { ms: 6000 });
+  await until(() => pg.getByTestId('operator-note').count().then(n => n === 0), 6000, 'the operator note to disappear for FFA');
+  ok(`operator note names the field step on koth, absent on ffa  ${await shot(pg, '03-objective-row')}`);
   await closePage(pg);
 });
 
@@ -497,27 +436,27 @@ step('setup-warning', async ({ browser, base }) => {
   const pg = await go(await newPage(browser, base), 'build');
   // it must NOT be on screen before a hill mode is picked
   expect(await pg.locator('text=POWER-CYCLE THE GRENADE').count() === 0, 'no grenade setup step is shown for the default mode');
-  await pickKoth(pg, { playing: false });
+  await pickKoth(pg);
   await setSource(base, 'grenade');           // post-MVP, picked by hand: its field step is still the operator's
   await until(async () => (await pg.locator('text=POWER-CYCLE THE GRENADE').count()) > 0, 8000, 'the SETUP warning to arrive with the snapshot');
   const warn = pg.locator('main div[role="status"] div', { hasText: 'POWER-CYCLE THE GRENADE' }).first();
-  expect(await warn.isVisible(), 'the SETUP warning is visible in the rail');
+  expect(await warn.isVisible(), 'the SETUP warning is visible on screen');
   const txt = (await warn.textContent()).toUpperCase();
   for (const frag of ['POWER-CYCLE THE GRENADE', 'STARTS NEUTRAL', 'HILL MODE', 'PLACE IT']) {
     expect(txt.includes(frag), `the SETUP warning says ${JSON.stringify(frag)}`);
   }
   expect(txt.includes('ONE POINT ONLY'), 'the SETUP warning carries F88 one-point-only');
   // it is an operator-visible warning, not a swallowed technical advisory: the $SIR/frag-limit
-  // warnings the server also sends must NOT be in this rail (mc/API.md)
-  const railText = await pg.locator('main').textContent();
-  expect(!/MULTIPLIER ROW|htk\/ttk_ms/i.test(railText), 'technical $SIR advisories stay out of the players-get rail');
+  // warnings the server also sends must NOT be on PLAY (mc/API.md)
+  const screenText = await pg.locator('main').textContent();
+  expect(!/MULTIPLIER ROW|htk\/ttk_ms/i.test(screenText), 'technical $SIR advisories stay off PLAY');
   const box = await warn.boundingBox();
   expect(box && box.height >= 14, 'the warning has real height on screen');
-  ok(`SETUP warning renders in the rail  ${await shot(pg, '04-setup-warning')}`);
+  ok(`SETUP warning renders on PLAY  ${await shot(pg, '04-setup-warning')}`);
   await closePage(pg);
 });
 
-// The step is only useful where it is ACTIONABLE. The operator reads "place the grenade" on GAMES,
+// The step is only useful where it is ACTIONABLE. The operator reads "place the grenade" on PLAY,
 // then walks out to place it from LOBBY (and during the runway, from ARMED) — and until 10437d6 it was
 // gone from both. `SetupSteps` is deliberately narrowed to /^SETUP:/, so this also asserts the
 // NEGATIVE: the $SIR multiplier rows and other technical advisories must NOT be on
@@ -525,7 +464,7 @@ step('setup-warning', async ({ browser, base }) => {
 step('setup-steps-prematch', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
+  await pickKoth(pg, { ms: 6000 });
   // CONTROL: the server really is sending advisories alongside the SETUP step, or "they are not on
   // screen" would pass on an empty list. A stale frag limit on an objective game is deliberately
   // ignored by the scorer and must not invent a coverage warning either.
@@ -566,18 +505,11 @@ step('setup-steps-prematch', async ({ browser, base }) => {
   const backTo = (await (await fetch(`${base}/api/state`)).json()).phase;
   expect(['muster', 'build', 'kit', 'lobby'].includes(backTo), `abort returns a config-writable phase (saw ${backTo})`);
   await go(pg, 'build');
-  // The frag_limit PUT above made this config a TUNED, UNSAVED draft, so Games.tsx `guarded` asks
-  // once before discarding it. That is the product working (skill: "confirm discards"), and it is
-  // worth an assertion of its own -- nothing else in this file covers the two-tap confirm.
-  const tdm = pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]');
-  await tdm.click();
-  const confirm = tdm.locator('div[role="status"]', { hasText: 'TAP AGAIN' });
-  await until(() => confirm.count().then(n => n > 0), 6000, 'the discard confirm on the first tap');
-  expect(await confirm.isVisible(), 'switching away from a tuned draft warns BEFORE it discards it');
-  expect(/THIS DROPS YOUR UNSAVED TUNED GAME/i.test(await confirm.textContent()), 'and the warning says what is lost');
-  expect((await tdm.getAttribute('aria-pressed')) === 'false', 'and the first tap has NOT switched the game');
-  await tdm.click();
-  await until(async () => (await tdm.getAttribute('aria-pressed')) === 'true', 8000, 'TDM playing');
+  // F411: PLAY has no draft/discard concept — every pick composes and applies immediately
+  // (games-presets.md §3), so the old "this discards your tuned, unsaved draft" two-tap confirm this
+  // block used to walk is retired along with the card-shelf UI it belonged to. Switching mode here is
+  // now a plain one-tap pick, same as every other step in this file.
+  await pickTdm(pg, { ms: 8000 });
   await go(pg, 'lobby');
   await until(() => pg.getByTestId('setup-steps').count().then(n => n === 0), 6000, 'the SETUP step to disappear for TDM');
   ok('no SETUP step on a LOBBY for a mode with nothing to place');
@@ -650,56 +582,38 @@ step('reteam-visible', async ({ browser, base }) => {
   await closePage(pg);
 });
 
-step('station-source-control', async ({ browser, base }) => {
-  await resetTdm(base);
-  const pg = await go(await newPage(browser, base), 'build');
-  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
-  // the operator opens the game in the designer — that is where every other rule is edited
-  await pg.locator('button[aria-label="customize KING OF THE HILL"]').click();
-  await until(() => pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count().then(n => n > 0), 8000, 'the designer');
-  const grp = pg.locator('span[role="group"][aria-label="objective source"]');
-  expect(await grp.count() === 1, 'the DESIGNER has an OBJECTIVE SOURCE control for a station-gated mode');
-  if (await grp.count() !== 1) { await shot(pg, '07-station-source-MISSING'); await closePage(pg); return; }
-  const labels = (await grp.locator('button').allTextContents()).map(s => s.trim());
-  expect(JSON.stringify(labels) === JSON.stringify(['GRENADE · POST-MVP', 'IR STATION', 'PHONE']), `it offers exactly the server vocabulary, the grenade marked post-MVP (saw ${JSON.stringify(labels)})`);
-  const on = await grp.locator('button[aria-pressed="true"]').textContent();
-  expect(on.trim() === 'PHONE', `koth defaults to PHONE (saw ${JSON.stringify(on.trim())})`);
-  // clicking the other value must visibly change the rail, not just the draft object
-  await grp.locator('button:text-is("IR STATION")').click();
-  await until(async () => /IR STATION/.test(await pg.locator('aside.designer-rail').textContent()), 4000, 'the designer rail to follow the pick');
-  expect((await grp.locator('button[aria-pressed="true"]').textContent()).trim() === 'IR STATION', 'the chip reports itself pressed');
-  const hint = await pg.locator('main').textContent();
-  expect(/UNPROVEN|NEVER HAD ONE|NOT CONFIRMED/i.test(hint), 'IR STATION is marked as never bench-proven');
-  await grp.locator('button:text-is("GRENADE · POST-MVP")').click();
-  await until(async () => /GRENADE HILL/.test(await railRow(pg, 'OBJECTIVE').textContent()), 4000, 'the rail to follow the grenade pick');
-  ok(`OBJECTIVE SOURCE is reachable and both values respond  ${await shot(pg, '07-station-source')}`);
-  await closePage(pg);
-});
+// `station-source-control` (the DESIGNER's OBJECTIVE SOURCE chip: grenade/ir_station/phone) is
+// DELETED here: that control lived in the retired GAME DESIGNER, and its F411 replacement is BUILD's
+// per-mode editor, which is a stub on this branch (`data-testid="build-screen"`, no controls at all —
+// the BUILD lane is finishing the real editor per its own brief). There is nothing in this worktree's
+// console to click through for OBJECTIVE SOURCE, so this coverage is deferred to the BUILD lane;
+// `station_source` itself is still exercised directly against the server (`setSource`, `vqa2.mjs`).
 
 // A refusal is only useful if the operator can READ it. The server's 400 names the whole vocabulary;
 // the strip that shows it used to be one nowrap line clipped at 420px, so the valid values were gone.
+// F411: the client that can 400 this way is `POST /api/play/pick` (PLAY's mode picker), not
+// `PUT /api/config` — the route intercepted below follows the wire the console actually calls.
 step('station-source-refused', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  const VOCAB = "station_source must be null or one of: grenade (a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)), ir_station (a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench))";
-  await pg.route('**/api/config', r => r.request().method() === 'PUT'
+  const VOCAB = "mode must be one of the pickable pieces: builtin:mode:tdm (TEAM DEATHMATCH), builtin:mode:ffa (FREE-FOR-ALL), builtin:mode:koth (KING OF THE HILL) — infection, lms and extraction are post_mvp and cannot be picked yet";
+  await pg.route('**/api/play/pick', r => r.request().method() === 'POST'
     ? r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: VOCAB }) })
     : r.continue());
-  // two taps: the confirm arms, the commit fires the PUT the route below refuses
-  await pickKoth(pg, { playing: false });
+  await kothBtn(pg).click();   // one tap: PLAY applies immediately, so this alone fires the refused POST
   const strip = errorStrip(pg);
   await until(() => strip.count().then(n => n > 0), 8000, 'the refusal to reach the error strip');
   expect(await strip.isVisible(), 'the refusal is VISIBLE, not swallowed');
   const txt = await strip.textContent();
-  expect(txt.includes('grenade') && txt.includes('ir_station'), `the strip carries both valid values (saw ${JSON.stringify(txt.slice(0, 120))}…)`);
+  expect(txt.includes('ffa') && txt.includes('extraction'), `the strip carries the whole vocabulary (saw ${JSON.stringify(txt.slice(0, 120))}…)`);
   // clipped text is not a message: the rendered box must actually fit what it holds
   const fit = await strip.evaluate(el => ({ sw: el.scrollWidth, cw: el.clientWidth, sh: el.scrollHeight, ch: el.clientHeight, title: el.getAttribute('title') }));
   expect(fit.sw <= fit.cw + 1 && fit.sh <= fit.ch + 1,
     `the refusal is not clipped (scroll ${fit.sw}x${fit.sh} vs client ${fit.cw}x${fit.ch}) — an ellipsised vocabulary names nothing`);
-  expect((fit.title || '').includes('ir_station'), 'the strip also carries the full text as its title attribute');
-  // a refused config must not leave the card claiming it is playing
-  expect((await kothCard(pg).getAttribute('aria-pressed')) === 'false', 'a refused mode pick does not show as PLAYING');
-  ok(`a refused station_source is readable on screen  ${await shot(pg, '08-refusal')}`);
+  expect((fit.title || '').includes('extraction'), 'the strip also carries the full text as its title attribute');
+  // a refused pick must not leave the button claiming it is picked
+  expect((await kothBtn(pg).getAttribute('aria-pressed')) === 'false', 'a refused mode pick does not show as picked');
+  ok(`a refused pick is readable on screen  ${await shot(pg, '08-refusal')}`);
   await closePage(pg);
 });
 
@@ -724,7 +638,7 @@ step('f88-multipoint-refused', async ({ browser, base }) => {
   await until(async () => (await pg.locator('text=F88').count()) > 0, 10000, 'the F88 refusal to reach the screen');
   const el = pg.locator('main', { hasText: 'F88' }).locator('text=/F88/').first();
   const shown = (await pg.locator('main').textContent());
-  expect(/F88/.test(shown), 'the F88 refusal is rendered in the GAMES rail, not swallowed');
+  expect(/F88/.test(shown), 'the F88 refusal is rendered on PLAY, not swallowed');
   expect(/NOT BUILDABLE/i.test(shown), 'the refusal keeps its reason (not buildable)');
   expect(/ONE POINT/i.test(shown), 'the refusal keeps its remedy (run ONE point)');
   const fs_ = await pg.locator('main div', { hasText: 'F88' }).last().evaluate(e => parseFloat(getComputedStyle(e).fontSize));
@@ -734,67 +648,35 @@ step('f88-multipoint-refused', async ({ browser, base }) => {
   await closePage(pg);
 });
 
-// F188 — PLAY THIS NOW owns the whole draft-to-field transition. Applying the config and jumping to
-// KIT without LOAD left the next screen truthfully saying NOT LOADED YET. Exercise the real server
-// contract here: apply, frameless phone announcement, then KIT; no gun head is written.
-step('designer-play-loads', async ({ browser, base }) => {
-  const fresh = await fetch(`${base}/api/session/new`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"keep_roster":true}' });
-  if (!fresh.ok) throw new Error(`designer-play-loads: POST /api/session/new ${fresh.status} ${(await fresh.text()).slice(0, 160)}`);
+// `designer-play-loads` (the GAME DESIGNER's "PLAY THIS NOW", which applied a draft and jumped
+// straight to KIT) is DELETED: games-presets.md §1's rule is "BUILD never starts a game", so that
+// transition has no home any more. PLAY's own LOAD ▸ is the one load path left, and `load-path` below
+// covers it end to end. `designer-play-stale-server` (LOAD refused by a stale server) is rewritten
+// below as `load-refused`, against PLAY's own LOAD ▸ instead of the retired DESIGNER's PLAY THIS NOW.
+step('load-refused', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await pg.locator('button[aria-label="customize KING OF THE HILL"]').click();
-  await until(() => pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count().then(n => n > 0), 8000, 'the designer');
-  await pg.locator('main button:has-text("PLAY THIS NOW")').click();
-  await until(async () => {
-    const s = await (await fetch(`${base}/api/state`)).json();
-    return s.phase === 'kit' && s.game?.loaded === true;
-  }, 10000, 'PLAY THIS NOW to load the game and enter KIT');
-  await until(() => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0), 8000, 'the KIT screen');
-  const st = await (await fetch(`${base}/api/state`)).json();
-  expect(st.game?.loaded === true, 'the server says the applied Designer game is loaded');
-  expect(st.lobby?.pushed === false, 'Designer PLAY writes no gun head before the LOBBY push');
-  expect(new URL(pg.url()).hash === '#kit', `PLAY THIS NOW moved the URL to #kit (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
-  expect(await pg.locator('text=NOT LOADED YET').count() === 0, 'KIT never lands on the stale NOT LOADED YET state');
-  expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'the transition renders without a console error');
-  ok(`DESIGNER → PLAY THIS NOW → loaded KIT  ${await shot(pg, '09b-designer-play')}`);
-  await closePage(pg);
-});
-
-step('designer-play-stale-server', async ({ browser, base }) => {
-  const fresh = await fetch(`${base}/api/session/new`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"keep_roster":true}' });
-  if (!fresh.ok) throw new Error(`designer-play-stale-server: POST /api/session/new ${fresh.status} ${(await fresh.text()).slice(0, 160)}`);
-  await resetTdm(base);
-  const pg = await go(await newPage(browser, base), 'build');
-  await pg.locator('button[aria-label="customize KING OF THE HILL"]').click();
-  await until(() => pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count().then(n => n > 0), 8000, 'the designer');
   await pg.route('**/api/games/load', r => r.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'THIS MC SERVER CANNOT LOAD A GAME — RESTART IT' }) }));
-  await pg.locator('main button:has-text("PLAY THIS NOW")').click();
+  await pg.locator('[data-testid="game-load"] button').click();
   const strip = errorStrip(pg);
-  await until(() => strip.count().then(n => n > 0), 8000, 'the stale-server refusal');
+  await until(() => strip.count().then(n => n > 0), 8000, 'the LOAD refusal to reach the error strip');
+  expect((await strip.textContent()).includes('RESTART IT'), 'the refusal names the remedy');
   const st = await (await fetch(`${base}/api/state`)).json();
-  expect(st.phase === 'build', `a failed LOAD leaves the server in BUILD (saw ${st.phase})`);
   expect(st.game?.loaded === false, 'a failed LOAD never claims the game is loaded');
-  expect(new URL(pg.url()).hash === '#designer', `the operator stays in Designer (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
-  expect((await strip.textContent()).includes('RESTART IT'), 'the refusal names the stale server remedy');
-  expect(await pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count() === 1, 'the draft remains on screen');
-  ok(`stale server: PLAY stays in Designer and names the refusal  ${await shot(pg, '09c-designer-stale')}`);
+  expect(new URL(pg.url()).hash === '#build', `the operator stays on PLAY (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
+  ok(`a refused LOAD is readable and does not navigate  ${await shot(pg, '09c-load-refused')}`);
   await closePage(pg);
 });
 
-// The operator's own walk, 2026-09-13: LOAD (which announces the game to the PHONES and writes no
-// gun), the LOADED GAME state it lands in, an EDIT that sends nothing until SAVE AND LOAD,
-// the LOBBY push that actually configures the guns, and only then CONTINUE TO KIT.
+// The operator's own walk: pick, LOAD (which announces the game to the PHONES and writes no gun), an
+// edit that re-announces at once (PLAY has no draft/SAVE step — every pick applies immediately,
+// games-presets.md §3, unlike the retired GAMES tab's own inline editor), the LOBBY push that actually
+// configures the guns, and only then KIT.
 //
 // "Weapons have to go with the arm" (Tony). The first cut of LOAD called the real config push, which
 // compiles a weapon head per player -- and nobody has kitted at that point, so it wrote policy-DEFAULT
-// loadouts to every gun and re-pushed on every kit pick. The assertions below pin BOTH halves: that
-// LOAD reaches the phones, and that it reaches nothing else.
-//
-// The step this replaces clicked `CONTINUE ▸` and asserted the phase moved to kit — which is exactly
-// what the field complained about: "several times while players were kitting I wanted to make
-// adjustments and I would have to remake a game type and hit continue hoping it pushed the updates".
-// CONTINUE pushed NOTHING (a bare `setPhase`), so a suite that asserted it worked was asserting the
-// defect. Every line below is about the thing the operator could not see: whether the guns have it.
+// loadouts to every gun and then re-pushed on every kit pick. The assertions below pin both halves:
+// that LOAD reaches the phones, and that it reaches nothing else.
 step('load-path', async ({ browser, base }) => {
   // Every step shares ONE server, and a step that pushed (`setup-steps-prematch` arms a match) leaves
   // the session LOADED — which is the other state of this tab. The un-loaded half of this walk needs a
@@ -804,14 +686,14 @@ step('load-path', async ({ browser, base }) => {
   if (!fresh.ok) throw new Error(`load-path: POST /api/session/new ${fresh.status} ${(await fresh.text()).slice(0, 160)}`);
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
+  await pickKoth(pg, { ms: 6000 });
   await assignHillStation(base, 'e2e-hill-load');   // F402: the LOBBY push below refuses koth without one
   const before = await (await fetch(`${base}/api/state`)).json();
   expect(before.lobby.pushed === false, `CONTROL: nothing is loaded yet (saw pushed=${before.lobby.pushed})`);
 
-  // --- LOAD: it PUSHES, and it does not navigate away -----------------------------------------
-  const load = pg.locator('main [data-testid="game-load"] button');
-  expect(await load.count() === 1, 'the primary control on an un-loaded GAMES tab is LOAD');
+  // --- LOAD: it announces to the phones, and it does not navigate away -------------------------
+  const load = pg.locator('[data-testid="game-load"] button');
+  expect(await load.count() === 1, 'the LOAD control is on PLAY');
   expect((await load.innerText()).includes('LOAD'), `it says LOAD (saw ${JSON.stringify(await load.innerText())})`);
   await load.click();
   await until(async () => (await (await fetch(`${base}/api/state`)).json()).game?.loaded === true, 10000, 'the server to report the game loaded');
@@ -828,76 +710,43 @@ step('load-path', async ({ browser, base }) => {
     `the phone count is the phones actually connected (saw ${loaded.game?.sent}, bound ${boundNow})`);
   expect((loaded.game?.total ?? -1) === loaded.players.length,
     `…stated against the whole roster (saw ${loaded.game?.total}/${loaded.players.length})`);
-  // ...and the TAB stays. This is the whole reversal: a tab cannot "change state to active game
-  // config" if its own success navigates it to the LOBBY screen (store.holdPhase).
-  await until(() => pg.locator('[data-testid="active-game-config"]').count().then(n => n > 0), 8000, 'the LOADED GAME state');
-  expect(new URL(pg.url()).hash === '#build', `LOAD left the console on GAMES (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
-  expect(await pg.locator('main', { hasText: 'LOADED GAME' }).count() > 0, 'the tab says which state it is in');
-
-  // --- every setting, and the id the guns must echo --------------------------------------------
-  const cfgId = await railRow(pg, 'CONFIG ID').innerText();
-  expect(cfgId.trim() === loaded.config.config_id, `the CONFIG ID on screen is the server's (saw ${JSON.stringify(cfgId.trim())}, server ${loaded.config.config_id})`);
-  const settings = (await pg.locator('[data-testid="game-settings"]').innerText()).replace(/\s+/g, ' ');
-  for (const label of ['TEAMS', 'RESPAWN', 'HEALTH', 'LOADOUT', 'VENUE', 'STUN (EMP)', 'SIPHON', 'HIT AUDIO', 'MODE RULES', 'PRESENTATION']) {
-    expect(settings.includes(label), `the loaded config names ${label} (saw ${JSON.stringify(settings.slice(0, 160))}…)`);
-  }
-  const status = (await pg.locator('[data-testid="game-load-status"]').innerText()).replace(/\s+/g, ' ');
-  expect(/GAME SENT TO/.test(status), `the phone count is worded as DELIVERY (saw ${JSON.stringify(status)})`);
-  const gunLine = (await pg.locator('[data-testid="game-gun-status"]').innerText()).replace(/\s+/g, ' ');
-  expect(/NOT CONFIGURED YET/.test(gunLine), `and the gun count says what it truly is (saw ${JSON.stringify(gunLine)})`);
+  // ...and the TAB stays: LOAD's own success does not navigate the console anywhere.
+  expect(new URL(pg.url()).hash === '#build', `LOAD left the console on PLAY (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
+  expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'LOAD renders without a console error');
   ok(`LOAD told the phones and left the guns alone  ${await shot(pg, '10-loaded')}`);
 
-  // --- EDIT is a DRAFT: nothing is sent until SAVE AND LOAD ------------------------------------
-  await pg.locator('[data-testid="game-edit-open"] button').click();
-  const nightSwitch = pg.locator('[data-testid="game-edit-panel"] [role="switch"]');
-  const nightBefore = (await (await fetch(`${base}/api/state`)).json()).config.night;
-  await nightSwitch.click();
-  await pg.waitForTimeout(400);
-  const midEdit = await (await fetch(`${base}/api/state`)).json();
-  expect(midEdit.config.night === nightBefore, `a tap in the draft sends NOTHING (server night still ${nightBefore})`);
-  const save = pg.locator('[data-testid="game-edit-save"] button');
-  // A plain SAVE, deliberately: nothing has been pushed to a gun yet, so there is no head to re-load
-  // and the button must not promise one. It becomes SAVE AND LOAD once the lobby push has happened
-  // (both labels are pinned in `test/game-edit-panel.test.tsx`).
-  const saveLabel = (await save.innerText()).replace(/\s+/g, ' ').trim();
-  expect(/^SAVE\b/.test(saveLabel) && !/AND LOAD/.test(saveLabel),
-    `with no head on the guns the button is a plain SAVE (saw ${JSON.stringify(saveLabel)})`);
-  await save.click();
-  await until(async () => (await (await fetch(`${base}/api/state`)).json()).config.night !== nightBefore, 8000, 'the server to take the whole edit at SAVE');
+  // --- EDIT: PLAY has no draft — a pick re-announces to the phones immediately ------------------
+  const nightBtn = pg.locator('[data-testid="match-settings"]').getByRole('button', { name: 'NIGHT' });
+  await nightBtn.click();
+  await until(async () => (await (await fetch(`${base}/api/state`)).json()).config.night === true, 8000, 'the server to take the NIGHT pick');
   const afterEdit = await (await fetch(`${base}/api/state`)).json();
   expect(afterEdit.config.config_id !== loaded.config.config_id, 'a fresh config_id');
   expect(afterEdit.game?.config_id === afterEdit.config.config_id, 'the phones were re-told about the edited game');
-  expect(afterEdit.lobby.pushed === false, 'and SAVE still writes no gun before the lobby push');
-  ok(`EDIT → SAVE re-announced, guns still untouched  ${await shot(pg, '10b-saved')}`);
+  expect(afterEdit.lobby.pushed === false, 'and the edit still writes no gun before the lobby push');
+  ok(`match settings edit re-announced, guns still untouched  ${await shot(pg, '10b-saved')}`);
 
   // --- the LOBBY push is what configures a gun, and only then is the field in sync ---------------
   await pg.locator('header nav button:has-text("LOBBY")').first().click();
   await until(() => pg.locator('main', { hasText: '[ A5 // LOBBY' }).count().then(n => n > 0), 8000, 'the LOBBY');
-  // the pre-arm check is the operator's one place to look, and it must NOT read as ready yet
-  const preArm = pg.locator('[data-testid="pre-arm-summary"]');
-  if (await preArm.count() > 0) {
-    const verdict = (await pg.locator('[data-testid="pre-arm-verdict"]').innerText()).replace(/\s+/g, ' ');
-    expect(!/IN SYNC/.test(verdict), `before the push the pre-arm check is not satisfied (saw ${JSON.stringify(verdict)})`);
-  }
   const pushBtn = pg.locator('main [data-lobby-primary="push"] button');
   if (await pushBtn.isEnabled().catch(() => false)) await pushBtn.click();
   else await pg.locator('main [data-override="1"] button').first().click();
   await until(async () => (await (await fetch(`${base}/api/state`)).json()).lobby.pushed === true, 10000, 'the LOBBY push to configure the guns');
   const pushed = await (await fetch(`${base}/api/state`)).json();
   expect((pushed.sync?.totals?.gun_sent ?? 0) > 0, `the guns have a head NOW (saw ${pushed.sync?.totals?.gun_sent})`);
-  ok(`the LOBBY push is what wrote the guns  ${await shot(pg, '10c-pushed')}`);
-  await pg.locator('header nav button:has-text("GAMES")').first().click();
-  await until(() => pg.locator('[data-testid="active-game-config"]').count().then(n => n > 0), 8000, 'back on the loaded game');
+  // F411: the push itself moves the phase straight to lobby — there is no separate build-to-kit phase
+  // step any more (that was the retired GAMES tab's own CONTINUE TO KIT button; PLAY has no equivalent,
+  // and KIT is reachable from the nav at any point regardless of phase, proven next).
+  expect(pushed.phase === 'lobby', `the push advances the phase to lobby (saw ${pushed.phase})`);
+  ok(`the LOBBY push is what wrote the guns and advanced the phase  ${await shot(pg, '10c-pushed')}`);
 
-  // --- and only THEN, KIT ----------------------------------------------------------------------
-  await pg.locator('[data-testid="game-continue-kit"] button').click();
-  await until(() => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0), 8000, 'KIT to open from CONTINUE TO KIT');
+  // --- and KIT, reachable from the nav like every other tab --------------------------------------
+  await pg.locator('header nav button:has-text("KIT")').first().click();
+  await until(() => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0), 8000, 'KIT to open from the nav');
   expect(await pg.locator('main', { hasText: 'Kit Each Player' }).count() > 0, 'the KIT screen title is on screen');
-  expect(new URL(pg.url()).hash === '#kit', `CONTINUE TO KIT moved the URL to #kit (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
+  expect(new URL(pg.url()).hash === '#kit', `the KIT tab moved the URL to #kit (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'KIT does not crash for a koth game');
-  const st = await (await fetch(`${base}/api/state`)).json();
-  expect(st.phase === 'kit', `CONTINUE TO KIT advanced the server phase to kit (saw ${st.phase})`);
-  ok(`GAMES → LOAD ▸ → EDIT → SAVE AND LOAD ▸ → CONTINUE TO KIT ▸  ${await shot(pg, '10-continue-kit')}`);
+  ok(`PLAY → LOAD ▸ → NIGHT (re-announced) → LOBBY push (guns configured) → KIT  ${await shot(pg, '10-continue-kit')}`);
   await closePage(pg);
 });
 
@@ -1020,28 +869,12 @@ step('recap-settling', async ({ browser, base }) => {
   await closePage(pg2);
 });
 
-// The card is a PROMISE about the result screen. MC scores possession the moment a node reports one,
-// but nothing on `app/src` sends the fact yet (state.py), so a card reading plain "POSSESSION TIME"
-// promises a number that does not exist and hands the operator a kills table. `?mock` has to say the
-// same thing, or the demo the console is iterated on predicts a console that does not exist.
-step('mode-card-host-call', async ({ browser, base }) => {
-  await resetTdm(base);
-  const WIN = 'POSSESSION TIME · HOST CALL';
-  const server = (await (await fetch(`${base}/api/modes`)).json()).find(m => m.mode === 'koth');
-  expect(server?.win_text === WIN, `the server's koth win_text is ${JSON.stringify(WIN)} (saw ${JSON.stringify(server?.win_text)})`);
-  for (const url of [`${base}/#build`, `${base}/?mock#build`]) {
-    const pg = await newPage(browser, base);
-    await pg.goto(url, { waitUntil: 'domcontentloaded' });
-    await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 12000, `the GAMES screen (${url})`);
-    await showCards(pg);
-    await pickKoth(pg, { ms: 8000, what: `KotH playing (${url})` });
-    const win = (await railRow(pg, 'WIN').textContent()).trim();
-    expect(win === WIN, `${url.includes('mock') ? '?mock' : 'server'}: the WIN row reads ${JSON.stringify(WIN)} (saw ${JSON.stringify(win)})`);
-    await shot(pg, `20-win-text-${url.includes('mock') ? 'mock' : 'server'}`);
-    await closePage(pg);
-  }
-  ok('the koth card says the winner is the HOST CALL until a phone sends a possession fact');
-});
+// `mode-card-host-call` is DELETED: it proved the retired mode CARD's WIN row against `win_text` ("the
+// winner is a HOST CALL until a phone sends a possession fact"). PLAY has no WIN row or any other
+// on-screen readout of `win_text` (games-presets.md §5 lists PLAY's whole surface: pickers, PICKUPS,
+// MATCH SETTINGS, LAST MATCH, LOAD — nothing about the win condition). The server fact itself
+// (`/api/modes`'s `win_text`) is unrelated to this file's job and is not this suite's concern; there is
+// nothing left in the browser to click through for it.
 
 // F272: a gun whose MCU has stopped can keep the BLE radio and the phone heartbeat alive. The phone's
 // durable `gun_locked` verdict therefore has to reach the LIVE board, but only while that node itself is
@@ -1097,8 +930,10 @@ step('f272-gun-lock-board', async ({ browser, base }) => {
   }
 });
 
-// A stale server: the new fields are gone from REST *and* from the pushed snapshots, and the A10
-// routes 404. Every page must still render and the skew must be explained on screen.
+// A stale server: the new fields are gone from REST *and* from the pushed snapshots, the A10 routes
+// 404, and (F411) `game_pick` is stripped too with `/api/pieces` 404'd — the shape of a server old
+// enough to predate PLAY/BUILD entirely. Every page must still render and BOTH staleness banners must
+// be explained on screen.
 step('stale-server', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await newPage(browser, base);
@@ -1106,6 +941,7 @@ step('stale-server', async ({ browser, base }) => {
     if (o && typeof o === 'object') {
       delete o.station_source;
       delete o.gun_locked;                 // F272: an older node/server omits the optional verdict
+      delete o.game_pick;                  // F411: a pre-PLAY/BUILD server never sent a pick at all
       if (Array.isArray(o.config_warnings)) o.config_warnings = o.config_warnings.filter(w => !/^SETUP:/i.test(String(w)));
       for (const k of Object.keys(o)) strip(o[k]);
     }
@@ -1114,7 +950,7 @@ step('stale-server', async ({ browser, base }) => {
   let stripped = 0, wsStripped = 0;
   await pg.route('**/api/**', async r => {
     const u = r.request().url();
-    if (/\/api\/(perks|presets)/.test(u)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' });
+    if (/\/api\/(perks|presets|pieces)/.test(u)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' });
     const res = await r.fetch(); let body = await res.text();
     try { body = JSON.stringify(strip(JSON.parse(body))); stripped++; } catch { /* not json */ }
     await r.fulfill({ response: res, body, headers: { ...res.headers(), 'content-length': String(Buffer.byteLength(body)) } });
@@ -1130,38 +966,39 @@ step('stale-server', async ({ browser, base }) => {
   await until(() => pg.locator('header [role="alert"]:has-text("MC SERVER IS OLDER THAN THIS CONSOLE")').count().then(n => n > 0), 8000, 'the version-skew banner');
   const banner = await pg.locator('header [role="alert"]:has-text("MC SERVER IS OLDER THAN THIS CONSOLE")').first().textContent();
   expect(/\.\/start\.sh/.test(banner), 'the banner gives the restart command');
-  // picking KotH must still work locally, and the missing field must simply not render
-  await pickKoth(pg, { ms: 8000, what: 'KotH selectable against a stale server' });
-  expect(await railRow(pg, 'OBJECTIVE').count() === 0, 'no OBJECTIVE row is invented when the server sends no station_source');
-  expect(await pg.locator('text=POWER-CYCLE THE GRENADE').count() === 0, 'no SETUP warning is invented when the server sends none');
-  expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'GAMES survives a missing station_source (no undefined.something)');
+  // F411's OWN staleness banner: no game_pick, no /api/pieces — PLAY has nothing pickable to show, but
+  // it renders that fact rather than a blank screen or a crash (games-presets.md §5, "stale server").
+  await until(() => pg.getByTestId('play-stale-server').count().then(n => n === 1), 8000, 'the PLAY stale-server banner');
+  expect(/THE SERVER PREDATES THIS CONSOLE/.test(await pg.getByTestId('play-stale-server').textContent()), 'the PLAY banner names the fix');
+  expect(await pg.locator('text=POWER-CYCLE THE GRENADE').count() === 0, 'no SETUP warning is invented when there is nothing to pick');
+  expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'PLAY survives a missing station_source and game_pick (no undefined.something)');
   for (const v of ['muster', 'kit', 'lobby', 'live', 'recap', 'catalog', 'debug', 'designer']) {
     await go(pg, v);
     expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, `${v} renders against a stale server`);
   }
   expect(wsStripped > 0, 'the WebSocket was stripped too — a REST-only "stale" run is a lie');
-  ok(`stale server: every page renders, skew banner shown, ${wsStripped} snapshots stripped  ${await shot(pg, '11-stale')}`);
+  ok(`stale server: every page renders, both skew banners shown, ${wsStripped} snapshots stripped  ${await shot(pg, '11-stale')}`);
   await closePage(pg);
 });
 
+// F411: the client that can 500 this way is `POST /api/play/pick`, not `PUT /api/config` — same wire
+// change as `station-source-refused` above.
 step('failure-path', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  const puts = [];
-  await pg.route('**/api/config', r => {
-    if (r.request().method() !== 'PUT') return r.continue();
-    puts.push(JSON.parse(r.request().postData() || '{}'));
+  const posts = [];
+  await pg.route('**/api/play/pick', r => {
+    if (r.request().method() !== 'POST') return r.continue();
+    posts.push(JSON.parse(r.request().postData() || '{}'));
     return r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"compiler exploded"}' });
   });
-  // the first tap only arms the confirm, so exactly ONE PUT goes out — the commit's
-  await pickKoth(pg, { playing: false });
+  await kothBtn(pg).click();   // one tap: PLAY applies immediately, so this alone fires the refused POST
   await until(() => errorStrip(pg).count().then(n => n > 0), 8000, 'the 500 to surface in the strip');
   expect(/COMPILER EXPLODED|compiler exploded/.test(await errorStrip(pg).textContent()), 'the server message is shown verbatim, not "something went wrong"');
   await new Promise(r => setTimeout(r, 700));
-  expect(puts.length === 1, `no follow-on config PUT fired after the failure (saw ${puts.length}: ${JSON.stringify(puts.map(p => Object.keys(p)))})`);
-  expect((await kothCard(pg).getAttribute('aria-pressed')) === 'false', 'the card does not claim PLAYING after a 500');
-  expect(await railRow(pg, 'OBJECTIVE').count() === 0, 'the rail does not show a hill objective for a config the server rejected');
-  ok(`a 500 on PUT /api/config is visible and stops the flow  ${await shot(pg, '12-failure')}`);
+  expect(posts.length === 1, `no follow-on pick fired after the failure (saw ${posts.length})`);
+  expect((await kothBtn(pg).getAttribute('aria-pressed')) === 'false', 'the button does not claim picked after a 500');
+  ok(`a 500 on POST /api/play/pick is visible and stops the flow  ${await shot(pg, '12-failure')}`);
   await closePage(pg);
 });
 
@@ -1170,7 +1007,7 @@ for (const [name, vp] of [['pixel4', { width: 393, height: 830 }], ['tablet', { 
   step(`viewport-${name}`, async ({ browser, base }) => {
     await resetTdm(base);
     const pg = await go(await newPage(browser, base, vp), 'build');
-    await pickKoth(pg, { ms: 8000, what: 'KotH playing' });
+    await pickKoth(pg, { ms: 8000 });
     for (const view of ['build', 'kit']) {
       await go(pg, view);
       const over = await pg.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: window.innerWidth,
@@ -1179,59 +1016,65 @@ for (const [name, vp] of [['pixel4', { width: 393, height: 830 }], ['tablet', { 
       expect(over.doc <= over.win + 1, `${view} at ${vp.width}x${vp.height} does not scroll sideways (${over.doc} > ${over.win}; ${JSON.stringify(over.wide)})`);
     }
     await go(pg, 'build');
-    // the two things this flow exists to say must survive the narrow layout: still rendered, still
+    // the thing this flow exists to say must survive the narrow layout: still rendered, still
     // unclipped. (`isVisible()` is not "in the viewport" — the width check is what proves nothing is
-    // cut off, and the rail is below the fold at 393px by design.)
+    // cut off, and this warning sits below the fold at 393px by design.)
     const warn = pg.locator('main div[role="status"] div', { hasText: PHONE_STEP }).first();
     expect(await warn.isVisible(), `the SETUP warning is still rendered at ${vp.width}px`);
     const wb = await warn.boundingBox();
     expect(wb && wb.x >= -1 && wb.x + wb.width <= vp.width + 1, `the SETUP warning fits the ${vp.width}px width (${JSON.stringify(wb)})`);
-    expect((await railRow(pg, 'OBJECTIVE').textContent()).includes('BLUETOOTH HILL'), `the OBJECTIVE row survives at ${vp.width}px`);
     ok(`${vp.width}x${vp.height} clean  ${await shot(pg, `13-${name}`)}`);
     await closePage(pg);
   });
 }
 
+// F411: the DESIGNER's per-mode "customize" screen is retired; the tap-target scan now covers PLAY,
+// KIT and BUILD (`openBuild` — the `BUILD ▸` header link) instead. BUILD is a stub on this branch
+// (`data-testid="build-screen"`, no controls), so its scan is trivially clean today and starts
+// protecting for real the moment the BUILD lane lands its editor.
 step('audit-taps', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
+  await pickKoth(pg, { ms: 6000 });
+  // `.hit44` (styles.css) grows a control's real tap area to 44px with an invisible `::before`
+  // without changing its visual box — PLAY's own `−`/`+` steppers are drawn at 32px and rely on
+  // exactly this (`StepBtn`), the same convention `game-edit.mjs`'s `auditRail` already accounts for.
+  // Measuring the visual box alone would fail a control that is actually a full 44px to the thumb.
   const scan = async where => pg.evaluate(() => [...document.querySelectorAll('main button, main [role="button"], main [role="switch"], main [role="radio"]')]
     .filter(el => el.offsetParent !== null)
-    .map(el => { const r = el.getBoundingClientRect(); return { t: (el.getAttribute('aria-label') || el.textContent || '?').trim().slice(0, 34), h: Math.round(r.height), w: Math.round(r.width) }; })
+    .map(el => { const r = el.getBoundingClientRect(); return { t: (el.getAttribute('aria-label') || el.textContent || '?').trim().slice(0, 34), h: el.classList.contains('hit44') ? 44 : Math.round(r.height), w: Math.round(r.width) }; })
     .filter(x => x.h > 0)).then(rows => ({ where, rows }));
   const pages = [];
-  pages.push(await scan('games'));
+  pages.push(await scan('play'));
   await go(pg, 'kit'); pages.push(await scan('kit'));
-  await pg.locator('button[aria-label="customize KING OF THE HILL"]').count();   // keep designer reachable from games
   await go(pg, 'build');
-  await pg.locator('button[aria-label="customize KING OF THE HILL"]').click();
-  await until(() => pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count().then(n => n > 0), 8000, 'the designer');
-  pages.push(await scan('designer'));
+  await pg.getByRole('button', { name: 'BUILD ▸' }).click();
+  await until(() => pg.getByTestId('build-screen').count().then(n => n > 0), 8000, 'BUILD');
+  pages.push(await scan('build'));
   for (const { where, rows } of pages) {
     const small = rows.filter(r => r.h < 36);
     // every one of these is a control an operator taps to set up the match — no decorative buttons
     // live in `main` on these three pages, so an undersized one FAILS rather than printing a finding.
     expect(small.length === 0, `${where}: undersized tap targets ${JSON.stringify(small)}`);
-    console.log(`      ${where}: ${rows.length} controls, smallest ${Math.min(...rows.map(r => r.h))}px`);
+    console.log(`      ${where}: ${rows.length} controls, smallest ${rows.length ? Math.min(...rows.map(r => r.h)) : 'n/a'}px`);
   }
-  ok('tap targets >= 36px on GAMES, KIT and the DESIGNER');
+  ok('tap targets >= 36px on PLAY, KIT and BUILD');
   await closePage(pg);
 });
 
 step('audit-text', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await pickKoth(pg, { playing: false });
+  await pickKoth(pg);
   await until(async () => (await pg.locator(`text=${PHONE_STEP}`).count()) > 0, 8000, 'the SETUP warning');
-  // meaning-carrying text only: the nav's 01..05 digits and the mode-card abbreviations are decorative
+  // meaning-carrying text only: the nav's 01..05 digits and the mode-picker abbreviations are decorative
   const tiny = await pg.evaluate(() => [...document.querySelectorAll('main *')]
     .filter(el => el.children.length === 0 && (el.textContent || '').trim().length > 3)
     .map(el => ({ t: el.textContent.trim().slice(0, 42), px: Math.round(parseFloat(getComputedStyle(el).fontSize) * 10) / 10 }))
     .filter(x => x.px < 11));
   const hard = tiny.filter(x => /GRENADE|SETUP|POWER-CYCLE|OBJECTIVE|F8\d|ERROR|▲/.test(x.t));
   expect(hard.length === 0, `text carrying the KotH setup meaning is >= 11px ${JSON.stringify(hard)}`);
-  if (tiny.length) console.log(`      ${tiny.length} sub-11px string(s) on GAMES (non-blocking): ${JSON.stringify(tiny.slice(0, 6))}`);
+  if (tiny.length) console.log(`      ${tiny.length} sub-11px string(s) on PLAY (non-blocking): ${JSON.stringify(tiny.slice(0, 6))}`);
   ok('the KotH setup copy is legible (>= 11px)');
   await closePage(pg);
 });
@@ -1241,10 +1084,8 @@ step('audit-text', async ({ browser, base }) => {
 step('mock-demo', async ({ browser, base }) => {
   const pg = await newPage(browser, base);
   await pg.goto(`${base}/?mock#build`, { waitUntil: 'domcontentloaded' });
-  await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 10000, 'the mock GAMES screen');
-  await showCards(pg);
-  await pickKoth(pg, { ms: 6000, what: 'KotH playing in the demo' });
-  expect((await railRow(pg, 'OBJECTIVE').textContent()).trim() === OBJ_PHONE, 'the demo shows the same OBJECTIVE row');
+  await until(() => pg.locator('text=Pick Game').count().then(n => n > 0), 10000, 'the mock PLAY screen');
+  await pickKoth(pg, { ms: 6000 });
   expect(await pg.locator(`text=${PHONE_STEP}`).first().isVisible(), 'the demo shows the same SETUP step');
   // The demo backend lives in the page, so a reload restarts it: `go()` is out, and the walk has to
   // be a real click. The nav tab is the right one here — this step is about the KIT team chips, not
