@@ -36,7 +36,7 @@ export const PROBE_VOLTS = ['$PHONE,*'];
 export const PROBE_FW = ['$STOP,*', '$PHONE,*', '$VERSION,*'];
 
 const PHASES = ['idle', 'connected', 'kitted', 'lobby', 'armed', 'live'];
-const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' };
+const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE' };   // F423: tid 3 paints purple, not green
 // How long the HUD shows the ALT indicator before giving up on a confirmation.
 // The gun only volunteers $ALCD on a SHOT, so a swap is confirmed by the next trigger pull and this
 // window is a display timeout, nothing more. On expiry the indicator simply clears — the HUD keeps
@@ -502,7 +502,7 @@ export const RECOIL_REF_DMG = 8;
 export const ACC_ECHO_MS = 700;
 // $BUT ids (protocol §$BUT — `$BUT,<id>,<state>`; state 1 press / 0 release).
 const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2, BTN_SELECT = 3;
-const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
+const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple' };   // F423: tid 3 paints purple, not green
 // A16.5 (2026-09-09): outermost -> innermost, the order BRX depletes -- shield goes, then armour, then
 // health. Mirrors `poolgauge.py`'s `READOUT_POOL_INWARD`; kept as its own constant here too rather than
 // shipped through the bundle, so the phone and the bench stage can never silently disagree on it.

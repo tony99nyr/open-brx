@@ -11,8 +11,12 @@ export const T = {
   ok: '#2ecc71', warn: '#ffb020', bad: '#ff5252',
 } as const;
 
+// F423 (bench part 1, 2026-09-26): team 3 fights as "green" on the wire (its combat identity, F35 --
+// green is reserved for the headset's own death out-blink) but the gun and headset PAINT it purple
+// (mc/poolgauge.py TEAM_DISPLAY_COLOURS, protocol/brx-protocol.md $GLED/$HLED). MC's own team_id for
+// it is "purple" now (`state.py` TEAM_DEFS), matching what the gun actually shows.
 export const TEAM: Record<string, string> = {
-  blue: '#3a86ff', yellow: '#ffd23f', red: '#ff5252', green: '#2ecc71', ffa: '#e8eef5',
+  blue: '#3a86ff', yellow: '#ffd23f', red: '#ff5252', purple: '#7b2cbf', ffa: '#e8eef5',
 };
 export const teamColor = (id: string | null | undefined) => (id ? TEAM[id] ?? TEAM.ffa : TEAM.ffa);
 

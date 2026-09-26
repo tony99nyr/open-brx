@@ -1,6 +1,6 @@
 // F-6 (2026-09-13). `Games.tsx guarded()` only confirmed a TUNED (unsaved) draft — a mode-tile switch
 // with a rostered game was one unconfirmed tap, even though round-3 FIELD-1's index-map + rebalance
-// still MOVES players between teams (TDM's BLUE/YELLOW to KOTH's BLUE/GREEN). This is the new gate:
+// still MOVES players between teams (TDM's BLUE/YELLOW to KOTH's BLUE/PURPLE). This is the new gate:
 // confirm whenever the switch would reshape ≥2 rostered players, and show the resulting split.
 import { describe, expect, it } from 'vitest';
 import type { ModeInfo, State } from '../src/api/types';
@@ -30,7 +30,7 @@ describe('GAMES mode-tile switch confirms a roster reshape', () => {
     expect((await g.api.getState()).config.mode, 'no silent switch — the first tap only confirms').toBe('tdm');
     const confirm = g.m.find('[data-testid="confirm-split"]')[0];
     expect(confirm, 'the resulting split is on screen before the second tap').toBeTruthy();
-    expect(confirm.textContent).toMatch(/\d+ PLAYERS? → BLUE \d+ \/ GREEN \d+/);
+    expect(confirm.textContent).toMatch(/\d+ PLAYERS? → BLUE \d+ \/ PURPLE \d+/);
     // second tap on the same card actually plays it
     await g.m.click('KING OF THE HILL');
     await g.settle();
@@ -50,10 +50,10 @@ describe('GAMES mode-tile switch confirms a roster reshape', () => {
 });
 
 describe('splitLine — the pure predicate behind the gate', () => {
-  const blue = { team_id: 'blue' }, yellow = { team_id: 'yellow' }, green = { team_id: 'green' };
+  const blue = { team_id: 'blue' }, yellow = { team_id: 'yellow' }, purple = { team_id: 'purple' };
   it('nothing to confirm with fewer than two players rostered', () => {
-    expect(splitLine([{ player_num: 1, team_id: 'blue' }], [blue, yellow], [blue, green])).toBe('');
-    expect(splitLine([], [blue, yellow], [blue, green])).toBe('');
+    expect(splitLine([{ player_num: 1, team_id: 'blue' }], [blue, yellow], [blue, purple])).toBe('');
+    expect(splitLine([], [blue, yellow], [blue, purple])).toBe('');
   });
   it('nothing to confirm when the target has fewer than two teams (FFA)', () => {
     const players = [{ player_num: 1, team_id: 'blue' }, { player_num: 2, team_id: 'yellow' }];
@@ -63,11 +63,11 @@ describe('splitLine — the pure predicate behind the gate', () => {
     const players = [{ player_num: 1, team_id: 'blue' }, { player_num: 2, team_id: 'yellow' }];
     expect(splitLine(players, [blue, yellow], [blue, yellow])).toBe('');
   });
-  it('"N PLAYERS → BLUE n / GREEN n" when the layout actually changes, in the NEW mode\'s team order', () => {
+  it('"N PLAYERS → BLUE n / PURPLE n" when the layout actually changes, in the NEW mode\'s team order', () => {
     const players = [
       { player_num: 1, team_id: 'blue' }, { player_num: 2, team_id: 'yellow' },
       { player_num: 3, team_id: 'blue' }, { player_num: 4, team_id: 'yellow' },
     ];
-    expect(splitLine(players, [blue, yellow], [blue, green])).toBe('4 PLAYERS → BLUE 2 / GREEN 2');
+    expect(splitLine(players, [blue, yellow], [blue, purple])).toBe('4 PLAYERS → BLUE 2 / PURPLE 2');
   });
 });

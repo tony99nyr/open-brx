@@ -57,7 +57,7 @@ describe('the GAMES mode tile is a TWO-TAP control', () => {
     expect(split, 'the split line carries its own testid').toBeTruthy();
     // the e2e and the operator both read this line; its shape is a contract, not an implementation detail
     expect(split.textContent).toMatch(/^▲ \d+ PLAYERS? → [A-Z]+ \d+ \/ [A-Z]+ \d+$/);
-    expect(split.textContent, 'the demo roster is 8, split 4/4 across the koth sides').toBe('▲ 8 PLAYERS → BLUE 4 / GREEN 4');
+    expect(split.textContent, 'the demo roster is 8, split 4/4 across the koth sides').toBe('▲ 8 PLAYERS → BLUE 4 / PURPLE 4');
     // and the block tells the operator what to do with it
     expect(g.m.find('[data-testid="confirm-switch"]')[0].textContent).toMatch(/TAP AGAIN/);
     g.m.unmount();

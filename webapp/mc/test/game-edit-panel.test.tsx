@@ -269,7 +269,7 @@ describe('GameEditPanel — a reshaping SAVE confirms once, at the moment it wou
   it('shows the predicted split on the first SAVE tap and commits on the second', async () => {
     const { m, calls, open, save, panel } = await gameScreen('lobby');
     await open();
-    // KOTH declares BLUE+GREEN against the demo's TDM BLUE+YELLOW: an 8-player roster really moves.
+    // KOTH declares BLUE+PURPLE against the demo's TDM BLUE+YELLOW: an 8-player roster really moves.
     await m.click('KOTH');
     expect(calls, 'picking the mode sends nothing').toEqual([]);
     await click(save());

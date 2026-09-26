@@ -13,7 +13,7 @@
 /* ============ tokens (Phone HUD v2 holo theme) ============ */
 :root{
   /* team-red is a crimson-rose, hue-shifted off the alarm red (--bad #ff5252) so a red-team player's accents don't read as danger (design review #14) */
-  --team-blue:#3a86ff;--team-yellow:#ffd23f;--team-red:#f43f5e;--team-green:#2ecc71;
+  --team-blue:#3a86ff;--team-yellow:#ffd23f;--team-red:#f43f5e;--team-purple:#7b2cbf;   /* F423: team 3 paints purple, not green */
   --team:var(--team-blue);--team-ink:#04121e;
   --num:#eef9ff;--glow:#5fd6ff;--mut:#7fa0b8;
   --plate:rgba(12,28,44,.85);--plate2:rgba(4,12,20,.9);--edge:#2a4e6e;
@@ -36,7 +36,7 @@
 [data-team="blue"]{--team:var(--team-blue);--team-ink:#04121e}
 [data-team="yellow"]{--team:var(--team-yellow);--team-ink:#1a1400}
 [data-team="red"]{--team:var(--team-red);--team-ink:#1a0404}
-[data-team="green"]{--team:var(--team-green);--team-ink:#041a0c}
+[data-team="purple"]{--team:var(--team-purple);--team-ink:#140a1c}
 [data-env="night"][data-team]{--team:#5a2222;--team-ink:#f08080}   /* R2-12: black on the night team fill was 1.7:1 */
 [data-env="night"] .plate{background:#0a0303;border-color:#3a1414}[data-env="night"] .plate.slot .thumb{border-color:#3a1414}   /* the kit stays readable at night (#24) */
 

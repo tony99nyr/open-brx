@@ -85,7 +85,7 @@
     // the UTILITY role: a spare phone as an item on the field (www/utility.html, its own page; no brxDemo events)
     ['Utility phone', [['util:respawn:1:1', 'respawn station · blue #1'], ['util:respawn:255:2', 'respawn station · any team #2'], ['util:powerup:2:1', 'powerup · yellow'], ['util:extraction:255:1', 'extraction zone'], ['util:bomb:0:1', 'bomb · red'], ['util:control:255:1', 'control point']]],
   ];
-  const UTIL_TEAM = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green', 255: 'any' };
+  const UTIL_TEAM = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple', 255: 'any' };   // F423: tid 3 paints purple, not green
   const $ = id => document.getElementById(id);
   const list = $('stages');
   for (const [grp, items] of STAGES) { const h = document.createElement('h2'); h.textContent = grp; list.appendChild(h);

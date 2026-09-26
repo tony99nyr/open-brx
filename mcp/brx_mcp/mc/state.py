@@ -106,11 +106,16 @@ class CoverageRequired(ValueError):
         self.coverage = coverage
         self.status = 409
 
-TEAM_DEFS: dict[str, Team] = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); green provisional 3
+TEAM_DEFS: dict[str, Team] = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); tid 3 painted purple
     "blue": {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
     "yellow": {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2},
     "red": {"team_id": "red", "name": "RED TEAM", "color": "#ff5252", "tid": 0},
-    "green": {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3},
+    # F423 (bench part 1, 2026-09-26): tid 3 stays GREEN on the wire (its combat identity, F35 -- green
+    # is reserved for the headset's own death out-blink, so the wire cannot use it as a paint colour),
+    # but the gun and headset PAINT it purple (`poolgauge.TEAM_DISPLAY_COLOURS`, `protocol/brx-protocol.md`
+    # `$GLED`/`$HLED` rows). MC and the HUD used to call it GREEN TEAM too, which read wrong against the
+    # gun in hand -- renamed to match what the gun actually shows. The wire tid (3) is unchanged.
+    "purple": {"team_id": "purple", "name": "PURPLE TEAM", "color": "#7b2cbf", "tid": 3},
     "ffa": {"team_id": "ffa", "name": "FREE-FOR-ALL", "color": "#e8eef5", "tid": 1},
 }
 
@@ -194,8 +199,9 @@ MODES: list[ModeRow] = [
     # `station_source: "phone"` on the row (Tony 2026-09-24: the MVP hill is a Bluetooth control point, a phone
     # station today and a StickS3 once its presence capture is bench-proven; the grenade hill is POST-MVP but
     # stays selectable, `_CONFIG_KEYS`).
-    # 🔴 `teams` is BLUE + GREEN, tids 1 and 3, and the choice is load-bearing: YELLOW is tid 2,
-    # which is the team a NEUTRAL hill broadcasts, so a yellow roster would read every uncaptured
+    # 🔴 `teams` is BLUE + PURPLE, tids 1 and 3 (F423: team_id "purple", still tid 3 -- the gun paints
+    # it purple, not the GREEN name MC used to give it), and the choice is load-bearing: YELLOW is tid
+    # 2, which is the team a NEUTRAL hill broadcasts, so a yellow roster would read every uncaptured
     # point as its own and take no hill damage (F82). `assign_teams` defaults the same 1/3 pair, and
     # both `DominationEngine.add_player` and `Compiler.validate` refuse a tid-2 hill roster outright.
     # `win_by` is "objective" (possession time), the same value extraction already uses: MC has no
@@ -209,7 +215,7 @@ MODES: list[ModeRow] = [
      # "POSSESSION TIME" promises a number that does not exist and the operator gets a kills table
      # (operator review 2026-09-10). ➡ Drop "· HOST CALL" when the phone ships the fact.
      "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME · HOST CALL", "respawn_text": "ON · TIMED",
-     "teams": ["blue", "green"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
+     "teams": ["blue", "purple"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
      "preset": "standard", "station_source": "phone", "proven": True, "mvp": True},
 ]
 
@@ -3708,9 +3714,27 @@ class Session:
         `control.hold_ms` and the largest `revives` for the game the station is armed with, and writes them back
         into the report. A new game or a new assignment starts clean; a beat within one heartbeat of that arming may
         still carry the old tally, so it passes through without seeding the new one (a beat later than that, from a
-        station slow to apply the arming, can still seed it: a small race the self-authoritative design accepts)."""
+        station slow to apply the arming, can still seed it: a small race the self-authoritative design accepts).
+
+        F426: `hold_ms`'s keys are the STATION's own tids, and a tid nobody is ROSTERED on is nobody's team --
+        most often 2, the sentinel a hill passes through on its way to a real owner (F82) and the same field
+        `Scorer.possession()` already excludes from every team's total (`test_a_hills_neutral_time_is_nobodys`).
+        Left in here, that neutral time rode the tally into the recap and the ITEMS panel read it back as a
+        phantom team nobody picked. Only a rostered tid's ms is kept, mirroring `possession()`'s own rule for
+        the same field -- and this runs BEFORE the timing gate below, so it applies even to a beat too close
+        to arming to seed the tally (that beat's raw `control` still passes straight through to `rep`)."""
         armed = st.get("armed") or {}
         game, rep = armed.get("game"), st["report"]
+        control = rep.get("control")
+        if isinstance(control, dict) and isinstance(control.get("hold_ms"), dict):
+            rostered = {t["tid"] for t in self.teams}
+            def _rostered_tid(k: str) -> bool:
+                try:
+                    return int(k) in rostered
+                except (TypeError, ValueError):
+                    return False
+            rep["control"] = control = {**control, "hold_ms": {tid: ms for tid, ms in control["hold_ms"].items()
+                                                                if _rostered_tid(tid)}}
         if game is None or t_recv < (armed.get("at") or 0) + STATUS_HEARTBEAT_MS:
             return
         key = [game, armed.get("kind"), armed.get("id")]   # a re-assigned station is a new tally, same game or not

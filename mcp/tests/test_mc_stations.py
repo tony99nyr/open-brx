@@ -207,6 +207,28 @@ def test_a_partial_final_control_heartbeat_preserves_the_last_complete_recap_tal
                      "team": 255, "heard": True, "hold_ms": {"1": 12_000}, "owner": 1}]
 
 
+def test_f426_a_hills_neutral_tid_is_dropped_from_the_stations_recap_not_shown_as_a_phantom_team():
+    """F426 (bench part 1, 2026-09-26): a KOTH match rosters only blue (tid 1) and green (tid 3), but the
+    control station's own `hold_ms` still carries tid 2 -- the sentinel a hill passes through on its way
+    to a real owner (F82) -- because the station counts every tid it ever saw, not just the roster.
+    `Scorer.possession()` already excludes that tid from every team's total
+    (`test_a_hills_neutral_time_is_nobodys`); this is the same rule for the station's own
+    self-authoritative recap row, which used to pass tid 2 straight through as if it were a rostered
+    team (122_744 ms, this row's own bench number)."""
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    s.net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    common = {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+              "role": "utility", "kind": "control", "station_id": 3, "armed": True}
+    s.net.simulate_status("brxu-live", {**common, "control": {
+        "hold_ms": {"1": 12_000, "2": 122_744, "3": 4_000}, "owner": 1}}, s.now_ms())
+    s.control("end")
+    rows = [{k: v for k, v in r.items() if k != "synced"} for r in s.last_recap["stations"]]
+    assert rows == [{"node_id": "brxu-live", "kind": "control", "id": 3, "team": 255, "heard": True,
+                     "hold_ms": {"1": 12_000, "3": 4_000}, "owner": 1}], rows
+
+
 # --------------------------------------------------------------------------- arming
 def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list():
     s = _sess()

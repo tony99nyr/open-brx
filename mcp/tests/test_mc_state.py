@@ -583,7 +583,7 @@ def test_round3_merge0_the_team_fault_is_tid_based_and_allows_a_third_empty_team
     s, net, clock, ps = mk(4)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
-    three = [TEAM_DEFS["blue"], TEAM_DEFS["yellow"], TEAM_DEFS["green"]]
+    three = [TEAM_DEFS["blue"], TEAM_DEFS["yellow"], TEAM_DEFS["purple"]]
     s.set_config({"mode": "tdm", "time_limit_s": 60, "teams": three})
     for p, t in zip(ps, ("blue", "blue", "yellow", "yellow")):
         s.players[p["player_id"]]["team_id"] = t
@@ -641,14 +641,14 @@ def test_round3_field1_a_mode_pick_reteams_by_index_and_rebalances():
     for p, t in zip(ps, ("blue", "blue", "yellow", "yellow")):
         s.players[p["player_id"]]["team_id"] = t
 
-    # (1) tdm 2 v 2 -> koth: the operator's split SURVIVES, yellow -> green by index.
+    # (1) tdm 2 v 2 -> koth: the operator's split SURVIVES, yellow -> purple by index.
     s.set_config({"mode": "koth", "time_limit_s": 60})
-    assert tids() == ["blue", "blue", "green", "green"], tids()
+    assert tids() == ["blue", "blue", "purple", "purple"], tids()
     assert s.readiness()["roster_faults"] == [], "the pick does not strand the roster on one side"
 
     # (2) a switch that changes nothing leaves the teams alone.
     s.set_config({"mode": "koth", "time_limit_s": 45})
-    assert tids() == ["blue", "blue", "green", "green"], tids()
+    assert tids() == ["blue", "blue", "purple", "purple"], tids()
 
     # (3) ffa (one team) -> tdm: everyone lands on index 0, so the rebalance splits them 2/2.
     s.set_config({"mode": "ffa", "time_limit_s": 60})
@@ -663,11 +663,11 @@ def test_round3_field1_a_mode_pick_reteams_by_index_and_rebalances():
     # (4) three declared teams -> two: the third team's players are least-count filled, and a 2/2/0
     #     that already plays is NEVER rebalanced.
     s.set_config({"mode": "tdm", "time_limit_s": 60,
-                  "teams": [TEAM_DEFS["blue"], TEAM_DEFS["yellow"], TEAM_DEFS["green"]]})
-    for p, t in zip(ps, ("blue", "blue", "green", "green")):
+                  "teams": [TEAM_DEFS["blue"], TEAM_DEFS["yellow"], TEAM_DEFS["purple"]]})
+    for p, t in zip(ps, ("blue", "blue", "purple", "purple")):
         s.players[p["player_id"]]["team_id"] = t
     assert s.readiness()["roster_faults"] == [], "2/2/0 is left alone"
-    assert tids() == ["blue", "blue", "green", "green"], tids()
+    assert tids() == ["blue", "blue", "purple", "purple"], tids()
     s.set_config({"mode": "tdm", "time_limit_s": 60,
                   "teams": [TEAM_DEFS["blue"], TEAM_DEFS["yellow"]]})
     assert tids() == ["blue", "blue", "yellow", "yellow"], tids()

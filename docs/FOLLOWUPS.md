@@ -33,12 +33,12 @@ and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; 
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 79.** Desk 11 · bench 68 · decision 0.
+**MVP open: 77.** Desk 9 · bench 68 · decision 0.
 
-**MVP DESK (11),** a keyboard is enough:
+**MVP DESK (9),** a keyboard is enough:
 - 🔴 **F411** · **F420**
-- 🟠 **B21** · **F413** · **F415** · **F421** · **F423** · **F425**
-- 🟡 **F422** · **F424** · **F426**
+- 🟠 **B21** · **F413** · **F415** · **F421** · **F425**
+- 🟡 **F422** · **F424**
 
 **MVP BENCH (68),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F417** · **F416** · **F418** · **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
@@ -78,7 +78,7 @@ A keyboard is enough. Highest value first.
 
 - **F415 🟠 MATCH SETTINGS CARRY PER-MODE SETTINGS; KOTH GETS A HOLD TARGET.** Tony 2026-09-26: "We may have settings per mode... hill could be hold for 5 minutes to win to time limit. Or it could be highest held time in a time limit"; "There are some mode related match settings... We need to be able to support that. Just like extra teams for tdm". Today a mode row in `state.py` carries its settings (`time_limit_s`, `frag_limit`, `respawn`), and KOTH wins only on the most possession at the clock (`scoring.py`), with no hold target. Build, after the bench, with F413: (1) each mode row declares the MATCH SETTINGS items it offers (a schema the F411 strip renders, so a new mode setting needs no new console code); (2) KOTH: `hold_target_s` (optional; the first team to reach it wins, else the most possession at the clock), enforced by MC's scorer like the frag limit and shown on the phone briefing; (3) TDM's team count and colours (F413) ride the same mechanism. Also check the KOTH card's "POSSESSION TIME · HOST CALL" label: `app/src/engine.js` now sends `possession`, so HOST CALL may be stale. `build`.
 
-- **F413 🟠 TEAMS: RED + BLUE BY DEFAULT, AND THE OPERATOR PICKS THE COUNT AND THE COLOURS.** Tony 2026-09-26: "Lets default teams in all modes to red and blue like halo. Should probably allow operator to change each team color and allow edit number of teams in match-settings too. MVP. Can be post bench". Today each mode row in `state.py` fixes its teams (TDM blue + yellow, KOTH blue + green, extraction blue + red) and no console control changes the count or the colours, although the TDM card says "2–4 TEAMS". Build, after the bench and after F411: (1) every team mode defaults to red (tid 0) + blue (tid 1); (2) a TEAMS control in the F411 MATCH SETTINGS strip: 2, 3 or 4 teams, and each team's colour from the four native teams only (red 0, blue 1, yellow 2, green 3; `$TID` 4-7 do not work in combat, `protocol/brx-protocol.md` `$HLED` row); (3) LOBBY splits the roster evenly on a change; (4) KOTH never offers yellow (a neutral hill broadcasts tid 2, F82) and stays at 2 teams. Check KOTH, the hill scorer, stations and the `$SIR` team table with tid 0 on a team before calling it done. `build`.
+- **F413 🟠 TEAMS: RED + BLUE BY DEFAULT, AND THE OPERATOR PICKS THE COUNT AND THE COLOURS.** Tony 2026-09-26: "Lets default teams in all modes to red and blue like halo. Should probably allow operator to change each team color and allow edit number of teams in match-settings too. MVP. Can be post bench". Today each mode row in `state.py` fixes its teams (TDM blue + yellow, KOTH blue + purple, extraction blue + red) and no console control changes the count or the colours, although the TDM card says "2–4 TEAMS". Build, after the bench and after F411: (1) every team mode defaults to red (tid 0) + blue (tid 1); (2) a TEAMS control in the F411 MATCH SETTINGS strip: 2, 3 or 4 teams, and each team's colour from the four native teams only (red 0, blue 1, yellow 2, purple 3; `$TID` 4-7 do not work in combat, `protocol/brx-protocol.md` `$HLED` row); (3) LOBBY splits the roster evenly on a change; (4) KOTH never offers yellow (a neutral hill broadcasts tid 2, F82) and stays at 2 teams. Check KOTH, the hill scorer, stations and the `$SIR` team table with tid 0 on a team before calling it done. `build`.
 
 - **F411 🔴 MC GAMES REDESIGN: PICK GAME AND BUILD (the storyboard's option A).** Tony approved the direction,
   2026-09-26: "yeah this makes sense"; "not gunna bench until new mc games tab is ready" — this blocks the next
@@ -123,14 +123,6 @@ A keyboard is enough. Highest value first.
   but the phone's own SET MY GUN screen showed nothing to say so (Tony: "no idea, no indication"). Add a visible
   joined/not-joined state to that screen. Owner: app lane. `build`.
 
-- **F423 🟠 TEAM 3 PAINTS PURPLE ON THE GUN, BUT MC AND THE HUD CALL IT GREEN TEAM.** Bench part 1, 2026-09-26: a
-  KOTH match had ROBP1 on MC's team 'green' (tid 3, #2ecc71); the tagger and headset LED for tid 3 paint PURPLE,
-  and Tony read the player as purple, not green. Cause: by design (`compile.py:263-279`, F35), tid 3 stays 'green'
-  on the wire because 'green' is reserved for the headset's own death out-blink, but it PAINTS PURPLE on the gun.
-  MC and the HUD still name and colour it GREEN TEAM. Cf. `led-language.md`'s F33 team table. Fix: rename team 3 to
-  PURPLE, name and colour, in MC and the HUD, to match what the gun actually shows; the wire value (tid 3) is
-  unchanged. Owner: brx3 (`compile.py`, MC, console) with the HUD side. `build`.
-
 - **F424 🟡 THE HUD SCORE PANEL SHOWS TDM-STYLE KILLS ONLY, NEVER THE KOTH HILL HOLD.** Bench part 1, 2026-09-26:
   tapping the clock in a KOTH match shows kills/deaths only, with no hold-time-per-team board. Needs a KOTH-shaped
   score panel. Storyboard first. Owner: brx2 (storyboard) then the HUD lane. `build`.
@@ -142,11 +134,6 @@ A keyboard is enough. Highest value first.
   countdown; keep the at-station claim feedback (HOLD STILL / CONFIRMING / ON TRIGGER) as is; this also answers
   the multi-pickup display question (each spawn gets its own alert, not a shared timer). Storyboard first. Owner:
   brx2 (storyboard) then the HUD lane. `build`.
-
-- **F426 🟡 A PHANTOM TEAM 2 SHOWED IN THE HILL-HOLD TOTALS OF A TWO-TEAM GAME.** Bench part 1, 2026-09-26: a KOTH
-  match with only teams 1 and 3 in play logged `e.hold` team 2 = 122744 ms; an earlier line in the same match also
-  read `hill_captured team 2 -> 1`. No team 2 existed in this game. Read the session log and the scoring code for
-  where a hill-hold or capture event can be stamped with an unused team id. Owner: brx3 (`scoring.py`). `build`.
 
 ## MVP BENCH
 

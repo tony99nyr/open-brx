@@ -4308,7 +4308,7 @@ const ugRead = pg => pg.evaluate(() => {
   }
   const u0 = window.brxUtility;
   if (!cfgOpen && u0.settings.kind === 'control') {
-    const v = u0.point.advert(), p = u0.point, names = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' }, keys = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
+    const v = u0.point.advert(), p = u0.point, names = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE' }, keys = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple' };   // F423: tid 3 paints purple, not green
     const holder = v.team !== 255 && v.value > 0 ? v.team : null, held = (v.state & 1) === 1;
     const word = document.getElementById('team').textContent, pct = document.getElementById('cpct'), flashing = !document.getElementById('cflash').hidden;
     const aura = document.getElementById('aura'), cstate = document.documentElement.dataset.cstate;

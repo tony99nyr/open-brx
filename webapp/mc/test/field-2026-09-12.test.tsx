@@ -160,7 +160,7 @@ describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits i
     // the screen is FOR any more — and this test is about the tap being taken, not about where it is.
     await act(async () => { (g.m.find('[data-testid="pick-another"]')[0] as HTMLElement).click(); });
     // F-6 (2026-09-13): an 8-player roster switching family reshapes teams (TDM's BLUE/YELLOW to
-    // KOTH's BLUE/GREEN), so the first tap is now the confirm — same one-more-tap pattern a TUNED
+    // KOTH's BLUE/PURPLE), so the first tap is now the confirm — same one-more-tap pattern a TUNED
     // draft already used — never a silent reshape.
     await g.m.click('KING OF THE HILL');
     expect((await g.backend.getState()).config.mode, 'the first tap only confirms — nothing reaches the server yet').toBe('tdm');

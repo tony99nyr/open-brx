@@ -29,7 +29,7 @@ export function startDemo({ engine, log }) {
   const kitOnly = q.has('kit'), locked = q.has('locked'), reject = q.has('reject'), setup = q.has('setup'), brief = q.has('brief');
   if (q.has('night')) engine.night = true;
   const TEAMS = { blue: { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, yellow: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 },
-    red: { team_id: 'red', name: 'RED', color: 'red', tid: 0 }, green: { team_id: 'green', name: 'GREEN', color: 'green', tid: 3 } };   // tids as MC's TEAM_DEFS / engine TEAM_KEY
+    red: { team_id: 'red', name: 'RED', color: 'red', tid: 0 }, purple: { team_id: 'purple', name: 'PURPLE', color: 'purple', tid: 3 } };   // tids as MC's TEAM_DEFS / engine TEAM_KEY (F423: purple, not green)
   const teamKey = TEAMS[q.get('team')] ? q.get('team') : 'blue', foeKey = teamKey === 'yellow' ? 'blue' : 'yellow';
   const player = { player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: teamKey, node_id: null, gun_id: 'GUN-A',
     loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male', ready: false };

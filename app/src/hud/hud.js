@@ -8,8 +8,10 @@ import { LANE_FEED_MS, LANE_HERO_MS, LANE_SETTLE_MS, redeployOutMs } from '../la
 import { MEDALS, AWARDS, MAX_TAG_LEN } from '../transport/contract.gen.js';
 import { medalIcon, medalChip } from './medalicons.js';   // the RECAP icons only (Tony 2026-09-25): never in the in-game lanes   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
-const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
-const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
+// F423: tid 3 paints purple, not green (the gun/headset paint) -- MC's roster names it team_id
+// "purple" now (state.py TEAM_DEFS), and `st.teamKey` (engine.js TEAM_KEY) tracks that.
+const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', purple: 'var(--team-purple)' };
+const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', purple: '#140a1c' };
 const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 /** A countdown as one fixed-width cell per digit (F115). Saira Condensed has no tabular figures, so
  *  `font-variant-numeric:tabular-nums` silently does nothing and every value is a different width:

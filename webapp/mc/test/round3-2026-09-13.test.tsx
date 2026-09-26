@@ -165,7 +165,7 @@ describe('MERGE-0 / FIELD-1 — the mock mirrors the server', () => {
     await b.putConfig({ mode: 'tdm', teams: [
       { team_id: 'blue', name: 'BLUE TEAM', color: '#3a86ff', tid: 1 },
       { team_id: 'yellow', name: 'YELLOW TEAM', color: '#ffd23f', tid: 2 },
-      { team_id: 'green', name: 'GREEN TEAM', color: '#2ecc71', tid: 3 },
+      { team_id: 'purple', name: 'PURPLE TEAM', color: '#7b2cbf', tid: 3 },
     ] });
     const st = await b.getState();
     await Promise.all(st.players.map((p, i) => b.patchPlayer(p.player_id, { team_id: i % 2 ? 'yellow' : 'blue' })));
@@ -192,7 +192,7 @@ describe('MERGE-0 / FIELD-1 — the mock mirrors the server', () => {
     await b.putConfig({ ...m.defaults });
   };
 
-  it('a KOTH pick keeps the operator\'s split (yellow -> green), it does not collapse onto teams[0]', async () => {
+  it('a KOTH pick keeps the operator\'s split (yellow -> purple), it does not collapse onto teams[0]', async () => {
     const b = new MockBackend();
     await playStock(b, 'tdm');
     const st = await b.getState();

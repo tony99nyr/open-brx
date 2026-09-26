@@ -6,9 +6,11 @@
 // Nothing here invents a number. Dealt and kills come from MC's best-effort relays: a count that may be missing a
 // relay carries "+", and nothing reported is "–", never a confident 0.
 
-const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
-const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
-const TID_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
+// F423: tid 3 paints purple, not green (the gun/headset paint) -- MC's roster names it team_id
+// "purple" now (state.py TEAM_DEFS), and `st.teamKey` (engine.js TEAM_KEY) tracks that.
+const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', purple: 'var(--team-purple)' };
+const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', purple: '#140a1c' };
+const TID_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple' };
 const HILL_NEUTRAL_TID = 2;   // engine.js HILL_NEUTRAL_TEAM: a neutral point broadcasts team 2
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

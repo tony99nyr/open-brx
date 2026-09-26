@@ -1,15 +1,23 @@
 """Team id -> colour is written in three languages, with no guard until now (DRY drift, 2026-09-17).
 
 `mcp/brx_mcp/mc/presentation.py`'s `PALETTE` (colour -> id: 0 red, 1 blue, 2 yellow, 3 green, plus five
-unused colours) is the canonical mapping. `app/src/engine.js` (`TEAM_KEY`), `app/src/utility.js`
-(`TEAM_KEYS`) and `webapp/mc/src/mock/data.ts` (`TEAMS`) each repeat the same four ids by hand. They
-agree today, but nothing stops one of them drifting the way FFA's frag limit did (see
-`test_ui_catalog_generated.py`). F82 (2026-09-10) is a live example of why this matters: KOTH's teams
-are BLUE/GREEN specifically because tid 2 is what a NEUTRAL hill broadcasts, so a wrong colour-to-id
-mapping anywhere silently breaks that rule.
+unused colours) is the canonical WIRE/LED palette. `app/src/engine.js` (`TEAM_KEY`), `app/src/utility.js`
+(`TEAM_KEYS`) and `webapp/mc/src/mock/data.ts` (`TEAMS`) each repeat team colour-keys by hand, and
+nothing stops one of them drifting the way FFA's frag limit did (see `test_ui_catalog_generated.py`).
+F82 (2026-09-10) is a live example of why this matters: KOTH's teams are BLUE/PURPLE specifically
+because tid 2 is what a NEUTRAL hill broadcasts, so a wrong colour-to-id mapping anywhere silently
+breaks that rule.
 
-This reads all four sources as plain text (no browser, no TS/JS runtime) and pins them against
-`PALETTE`.
+**F423 (bench part 1, 2026-09-26) split tid 3 off from the palette on purpose.** Team 3 still fights as
+GREEN on the wire (`PALETTE[3]`, its combat identity, F35 -- green is reserved for the headset's own
+death out-blink) but the gun and headset PAINT it purple, and MC's own roster (`state.py` TEAM_DEFS)
+now names it team_id "purple" to match. The three colour-key sources below are read by the PLAYER and
+OPERATOR facing UI -- they must track MC's roster team_id (so `team_id === teamKey` comparisons in
+`hud.js`/`deathscreen.js` keep working), not the raw wire palette, so tid 3 is pinned to "purple" here
+while 0/1/2 still track `PALETTE` exactly.
+
+This reads all four sources as plain text (no browser, no TS/JS runtime) and pins them against the
+expected team colour table (`PALETTE`, with tid 3 overridden to "purple").
 
 Run: python3 run_tests.py team_color
 """
@@ -81,10 +89,16 @@ SOURCES = {
 def test_team_colours_match_the_server_palette():
     canonical = _server_palette()
     want = {tid: canonical[tid] for tid in TEAM_IDS}
+    want[3] = "purple"   # F423: MC's roster (state.py TEAM_DEFS) renamed tid 3 to team_id "purple";
+                          # PALETTE[3] stays "green" (the wire/combat identity, F35) and is checked on
+                          # its own further down -- this table is what the PLAYER/OPERATOR UI must say.
+    assert canonical[3] == "green", (
+        "F35: tid 3's WIRE/combat identity is green (presentation.PALETTE) -- if this ever changes, "
+        "the F423 override above (want[3] = 'purple') needs a second look, not a silent pass")
     mismatches = []
     for name, load in SOURCES.items():
         got_full = load()
         got = {tid: got_full.get(tid) for tid in TEAM_IDS}
         if got != want:
-            mismatches.append(f"{name}: has {got}, presentation.PALETTE has {want}")
-    assert not mismatches, "a team id maps to a different colour than presentation.PALETTE:\n" + "\n".join(mismatches)
+            mismatches.append(f"{name}: has {got}, want {want}")
+    assert not mismatches, "a team id maps to a different colour than expected:\n" + "\n".join(mismatches)

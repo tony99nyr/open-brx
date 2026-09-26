@@ -253,7 +253,7 @@ async function runMock(browser, viteBase) {
   // ...and now a switch that DOES reshape the roster, so the confirm itself is walked rather than
   // skipped. The step above picks the first unselected mode, which is FFA -- one declared team, so
   // `splitLine` has nothing to say and one tap is correct. That means it proves the no-confirm
-  // branch only. KOTH declares BLUE+GREEN, so an 8-player roster really moves and the gate fires.
+  // branch only. KOTH declares BLUE+PURPLE, so an 8-player roster really moves and the gate fires.
   // The confirm now belongs to SAVE, not to the mode chip: the tap that MOVES people is the one that
   // asks. (The chip moves nobody — it edits a draft.)
   const kothBtn = panel(pg).locator('[aria-label="mode"] button').filter({ hasText: /^KOTH$/ }).first();

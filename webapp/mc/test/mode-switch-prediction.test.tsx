@@ -41,12 +41,12 @@ describe('the GAMES confirm line predicts exactly what the switch then does', ()
   it('an EVEN TDM split carries across to KOTH by index, predicted and performed alike', async () => {
     const r = await predictThenDo('tdm', i => (i % 2 === 0 ? 'blue' : 'yellow'), 'koth');
     expect(r.actual, 'the mock re-teamed by index, as the server does').toEqual(r.predicted);
-    expect(Object.keys(r.actual).sort()).toEqual(['blue', 'green']);
+    expect(Object.keys(r.actual).sort()).toEqual(['blue', 'purple']);
   });
 
   it('an UNEVEN split is left uneven — the preview must not promise a rebalance that never comes', async () => {
     // The divergence itself: 3/1 over two populated sides is not `one_team_fault()`, so the server
-    // leaves it exactly as the operator built it. A preview reading "BLUE 2 / GREEN 2" here would be
+    // leaves it exactly as the operator built it. A preview reading "BLUE 2 / PURPLE 2" here would be
     // a lie the operator only discovers on the LOBBY board.
     const r = await predictThenDo('tdm', i => (i === 0 ? 'yellow' : 'blue'), 'koth');
     expect(r.actual).toEqual(r.predicted);

@@ -69,7 +69,7 @@ describe('KING OF THE HILL — GAMES', () => {
     g.m.unmount();
   });
 
-  it('never offers the neutral team: the hill defaults are BLUE + GREEN, never tid 2 (F82)', async () => {
+  it('never offers the neutral team: the hill defaults are BLUE + PURPLE, never tid 2 (F82)', async () => {
     // A NEUTRAL hill broadcasts team 2, so a yellow (tid 2) roster reads every uncaptured point as its
     // own and takes no hill damage. The server refuses such a roster; the mode's own defaults must not
     // hand the operator one in the first place.
@@ -96,7 +96,7 @@ describe('KING OF THE HILL — GAMES', () => {
     await g.settle();
     const after = await g.api.getState();
     const tid = Object.fromEntries(after.config.teams.map(t => [t.team_id, t.tid]));
-    expect(after.config.teams.map(t => t.team_id)).toEqual(['blue', 'green']);
+    expect(after.config.teams.map(t => t.team_id)).toEqual(['blue', 'purple']);
     expect(after.players.some(p => p.team_id === 'yellow')).toBe(false);
     expect(after.players.some(p => tid[p.team_id ?? ''] === 2)).toBe(false);
     g.m.unmount();

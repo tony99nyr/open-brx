@@ -25,9 +25,12 @@ const UTIL_VER = APP_VER;
 const PRIOR_UTILITY_KEY = 'brx.prior_utility';
 
 const $ = id => document.getElementById(id);
-const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', [TEAM_ANY]: 'ANY TEAM' };
-const TEAM_ABBR = { 0: 'RED', 1: 'BLU', 2: 'YEL', 3: 'GRN', [TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
-const TEAM_KEYS = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green', [TEAM_ANY]: 'any' };
+// F423: tid 3 paints purple, not green (the gun/headset paint, `poolgauge.TEAM_DISPLAY_COLOURS`) --
+// MC's own roster names it team_id "purple" now (state.py TEAM_DEFS), and these three maps must track
+// that (`test_team_color_consistency.py`), even though the WIRE identity stays green (F35).
+const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE', [TEAM_ANY]: 'ANY TEAM' };
+const TEAM_ABBR = { 0: 'RED', 1: 'BLU', 2: 'YEL', 3: 'PUR', [TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
+const TEAM_KEYS = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple', [TEAM_ANY]: 'any' };
 const KIND_LABEL = { respawn: 'RESPAWN STATION', powerup: 'POWERUP', extraction: 'EXTRACTION POINT', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 const TX_LEVELS = ['ultraLow', 'low', 'medium', 'high'];
 const TX_HINT = { ultraLow: '~ -21 dBm · a few metres', low: '~ -15 dBm', medium: '~ -7 dBm', high: '~ +1 dBm · whole room' };

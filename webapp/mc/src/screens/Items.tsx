@@ -26,7 +26,7 @@ const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: '
 // `bomb` keep their code, their type and their recap label (`KIND_LABEL` above) so an OLD assignment of
 // either still renders -- they just drop off the kind picker a host assigns a NEW station from.
 const MVP_STATION_KINDS: StationKind[] = STATION_KINDS.filter(k => k !== 'extraction' && k !== 'bomb');
-const TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
+const TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE', 255: 'ANY' };   // F423: tid 3 paints purple, not green
 /** H1: what threshold 0 resolves to, as the server resolves it (state.py `_wire_threshold`, F345) and the phone
  *  applies it (app/src/beacon.js `phoneStationThreshold`): a phone respawn station -70, a phone powerup station
  *  -55 (S58), any other phone kind -74, a StickS3 its own. `start` is where an edit begins: that number, or for a Stick its respawn default

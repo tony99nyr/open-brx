@@ -6,7 +6,7 @@ export const TEAMS: Team[] = [
   { team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 },
   { team_id: 'yellow', name: 'YELLOW TEAM', color: 'yellow', tid: 2 },
   { team_id: 'red', name: 'RED TEAM', color: 'red', tid: 0 },
-  { team_id: 'green', name: 'GREEN TEAM', color: 'green', tid: 3 },
+  { team_id: 'purple', name: 'PURPLE TEAM', color: 'purple', tid: 3 },   // F423: paints purple, not green
 ];
 
 // GENERATED-START weapons
@@ -1069,8 +1069,9 @@ export const MODES: ModeInfo[] = [
   { ...MODE_TEXT.extraction, params: EXTRACTION_PARAMS,
     defaults: base('extraction', { scoring: { frag_limit: null, win_by: 'objective' },
       mode_params: { channel_s: 45.0, win_target: 0, loot_per_kill: 10, drop_policy: 'ground', extract_removes_player: true } }) },
-  // F82: BLUE + GREEN (tids 1 and 3). Yellow is tid 2, which is what a NEUTRAL hill broadcasts, so a
-  // yellow roster would read every uncaptured point as its own — the server refuses it outright.
+  // F82: BLUE + PURPLE (tids 1 and 3; F423 renamed the tid-3 team from GREEN to PURPLE, matching what
+  // the gun paints). Yellow is tid 2, which is what a NEUTRAL hill broadcasts, so a yellow roster
+  // would read every uncaptured point as its own — the server refuses it outright.
   { ...MODE_TEXT.koth, params: KOTH_PARAMS,
     defaults: base('koth', { teams: [TEAMS[0], TEAMS[3]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'phone',
       mode_params: { score_target: 0, points_per_s: 1.0 } }) },
