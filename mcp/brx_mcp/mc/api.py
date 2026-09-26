@@ -292,6 +292,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                 return _err("IN USE BY THE RUNNING GAME", 409)
         value = b.get("value")
         patch = None
+        fallbacks: list = []
         if picked and value is not None:
             # H1 (polish round 1): precheck the RECOMPOSED config BEFORE saving anything -- a value
             # such as `fixed_id: "not_a_real_weapon"` must not drop a pushed lobby silently.
@@ -300,7 +301,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                 # M-b (round 2): resolve_pieces_mixed, not the strict resolve_pieces -- an INHERITED
                 # post-MVP mode (H2's `_sync_game_pick_from_config` can point `game_pick` at one via a
                 # plain `PUT /api/config`) must not refuse an edit to an unrelated piece.
-                resolved, _fallbacks = _gamepick.resolve_pieces_mixed(_pieces(s), s.game_pick["pieces"], {piece["kind"]})
+                resolved, fallbacks = _gamepick.resolve_pieces_mixed(_pieces(s), s.game_pick["pieces"], {piece["kind"]})
             except PieceError as e:
                 return _perr(e)
             resolved[piece["kind"]] = {**piece, "value": checked}
@@ -313,21 +314,18 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except PieceError as e:
             return _perr(e)
         out: dict = dict(row)
-        if picked:
+        if patch is not None:
+            # round 3: ONLY a value change recomposes -- a name/note-only edit changes no game value
+            # and must not touch the config at all. This used to run for EVERY picked-piece edit
+            # (recomposing "so game_cfg/the lobby repush stay in step"), which is exactly what broke:
+            # pick a custom LIFE piece, `PUT /api/config {"mode": "infection"}` (a legal, non-pick config
+            # edit), then just rename the LIFE piece -- the unconditional recompose re-resolved every
+            # kind including the now-inherited post-MVP mode, which `resolve_pieces_mixed` correctly
+            # falls back to TDM, and `set_config` applied THAT for real. A rename silently reverted the
+            # game's mode. `fallbacks` (the fallen-back kinds from the resolve above) rides the reply
+            # the same way `POST /api/play/pick` reports its own.
             try:
-                # `patch` is already prechecked above (against the SAME value just saved) whenever the
-                # value changed; a name/note-only edit still recomposes so `game_cfg`/the lobby repush
-                # stay in step, `compose()` just has nothing new to say about the pick itself. M-b
-                # (round 2): resolving inside this SAME try as `set_config` -- the piece is already
-                # saved by this point, so a `resolve_pieces_mixed` PieceError here (an unrelated picked
-                # piece vanished between the precheck and now) must still be a clean response, never an
-                # unhandled 500.
-                if patch is None:
-                    resolved, _fallbacks = _gamepick.resolve_pieces_mixed(_pieces(s), s.game_pick["pieces"], {piece["kind"]})
-                    patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]))
                 res = s.set_config(patch)
-            except PieceError as e:
-                return _perr(e)
             except ValueError as e:
                 return _err(str(e))
             if not res["ok"]:
@@ -335,6 +333,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                            "refused the same patch. errors=%r", res["errors"])
             out["ok"] = res["ok"]
             out["errors"] = res["errors"]
+            out["fallbacks"] = fallbacks
         return JSONResponse(out)
 
     async def pieces_delete(req):
@@ -364,7 +363,17 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             # merely inherited from a stale/restored pick falls back to that kind's own first builtin.
             resolved, fallbacks = _gamepick.resolve_pieces_mixed(_pieces(s), ids, set(patch_ids))
             mode = resolved["mode"]["value"]["mode"]
-            prev_mode = _pieces(s).get(s.game_pick["pieces"]["mode"])["value"]["mode"]
+            # round 3: `.get` here is the STRICT lookup (`PieceError` 404 on an unknown id), and the
+            # OLD `game_pick.pieces.mode` is exactly the kind of inherited id that can go stale (a
+            # session/store drift M1 already tolerates everywhere else). Left unguarded, that 404
+            # bubbled out and refused an otherwise unrelated pick that never named "mode" at all.
+            # Unresolvable -> treat it as a mode change: `prev_mode` can equal nothing, so `mode !=
+            # prev_mode` is true and the strip resets to the (real, current) mode's own defaults --
+            # the same safe assumption `resolve_pieces_mixed`'s own fallback makes elsewhere.
+            try:
+                prev_mode = _pieces(s).get(s.game_pick["pieces"]["mode"])["value"]["mode"]
+            except PieceError:
+                prev_mode = None
             match = cast(MatchSettings, dict(s.game_pick["match"]))
             if mode != prev_mode:
                 dc = default_config(mode)
