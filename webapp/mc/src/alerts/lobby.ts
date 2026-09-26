@@ -56,6 +56,10 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   'lobby-no-phone-chip': { sev: 'neutral', text: 'NO PHONE' },
   'lobby-reach-lan-chip': { sev: 'neutral', text: 'LAN / INTERNET' },
 
+  // ---- GUNS READY (QA-02, visual QA round 1, 2026-09-26) ----------------------------------------
+  'lobby-guns-ready-line': { sev: 'amber', text: 'GUNS READY {N}/{M}' },
+  'lobby-guns-not-ready-line': { sev: 'amber', text: '{STICKER} NOT READY: {WHAT}' },
+
   // ---- PreArmSummary ------------------------------------------------------------------------------
   'frame-prearm-action': { sev: 'amber', text: '{N} OF {M} PLAYER(S) NEED(S) ACTION: SEE BELOW' },
   'frame-prearm-no-game': { sev: 'neutral', text: 'NO GAME LOADED' },
@@ -90,6 +94,11 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
 
   // ---- PLAY (screens/Games.tsx, F411 rewrite) ------------------------------------------------------
   'games-locked-banner': { sev: 'red', text: 'GAME SETTINGS ARE LOCKED: {REASON}' },
+  // VQA round 1 (2026-09-26): QA-19 splits KOTH-with-no-hill-yet off the red banner above -- it is a
+  // setup step, not a fault (the storyboard draws it amber). QA-09: a `GET /api/pieces` failure that
+  // is not the older-console 404 is a real fetch problem, shown and retried on reconnect.
+  'games-koth-no-hill': { sev: 'amber', text: 'NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.' },
+  'games-pieces-error': { sev: 'amber', text: 'COULD NOT LOAD THE GAME PIECES: {msg}' },
   // Config-warning wording is server-authored (`state.py` validate), but this one line has always been
   // stable enough to catalogue directly rather than route through `serverLine` (which is for the
   // readiness board's blocker/amber lists, not `config_warnings`).

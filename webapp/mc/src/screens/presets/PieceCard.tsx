@@ -3,8 +3,8 @@ import type { GamePiece } from '../../api/contract.gen';
 import { onKey, OutlineTag, Tag } from '../../ui';
 import { F, T } from '../../tokens';
 
-export function PieceCard({ piece, selected, subtitle, onSelect, onOpen }:
-  { piece: GamePiece; selected: boolean; subtitle?: string; onSelect?: () => void; onOpen?: () => void }) {
+export function PieceCard({ piece, selected, onSelect, onOpen }:
+  { piece: GamePiece; selected: boolean; onSelect?: () => void; onOpen?: () => void }) {
   const clickable = !!(onSelect || onOpen);
   const activate = () => { onSelect?.(); onOpen?.(); };
   return (
@@ -17,9 +17,12 @@ export function PieceCard({ piece, selected, subtitle, onSelect, onOpen }:
         opacity: piece.post_mvp ? 0.55 : 1, cursor: clickable ? 'pointer' : 'default' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.osw(600, 15), letterSpacing: '.04em', lineHeight: 1.2 }}>{piece.name.toUpperCase()}</span>
-        {piece.builtin && <Tag size={10} color={T.panelAlt} ink={T.dim}>BUILT-IN</Tag>}
+        {/* QA-24 (visual QA round 1): 10px was under the console's 11px meaning-bearing-text floor */}
+        {piece.builtin && <Tag size={11} color={T.panelAlt} ink={T.dim}>BUILT-IN</Tag>}
       </div>
-      <span style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.4, minHeight: 15 }}>{piece.note || subtitle || ''}</span>
+      {/* QA-24: a read-only card (GAME MODE, GAMEPLAY) shows its name and BUILT-IN only -- no long
+          mixed-case paragraph. A host-added piece still shows its own one-line note. */}
+      {piece.note && <span style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.4, minHeight: 15 }}>{piece.note}</span>}
       {piece.post_mvp && <OutlineTag color={T.warn} border={T.line2}>POST-MVP</OutlineTag>}
     </div>
   );

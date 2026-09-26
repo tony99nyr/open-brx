@@ -387,6 +387,65 @@ test('F381: a same-weapon stack is capped at twice the item charges (Tony: Rocke
   assert.equal(h.eng.state().powerup.held.charges, 4, 'the HUD denominator is the stacked count');
 });
 
+// ---- F394 (sitting B, 2026-09-25): the gun sends no `$ALCD` on ALT, so an assumed swap must show the NEW slot's
+// own count. Before the fix the number kept the old slot's count while the pips took the new slot's size. ----
+const alt = h => { h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(1000); return h; };   // ALT, then past the swap window
+const shown = h => { const s = h.eng.state(); return { slot: s.activeSlot, ammo: s.ammo, reserve: s.reserve, mag: s.mag }; };
+
+test('F394: an assumed ALT swap shows the secondary\'s own magazine, reserve and pip size', () => {
+  const h = alt(armed());
+  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 24, mag: 6 }, 'the spawn counts of slot 1, not the AR\'s 30/190');
+  alt(h);
+  assert.deepEqual(shown(h), { slot: 0, ammo: 30, reserve: 190, mag: 32 }, 'back on the AR: its own account');
+});
+
+test('F394: the second ALT onto a part-fired secondary shows what it had left, before any shot', () => {
+  const h = alt(armed());
+  h.fire(1, 5, 24); h.adv(300); h.fire(1, 4, 24);
+  alt(h);
+  assert.deepEqual(shown(h), { slot: 0, ammo: 30, reserve: 190, mag: 32 }, 'on the AR, not the USP\'s 4 left over');
+  alt(h);
+  assert.deepEqual(shown(h), { slot: 1, ammo: 4, reserve: 24, mag: 6 });
+});
+
+test('F394: a reload pull on a full secondary after ALT is not a takeover, and the number stays full', () => {
+  const h = alt(armed());
+  h.frame('$BUT,2,1,*').frame('$BUT,2,0,*');
+  assert.equal(h.eng.reloading, null, 'the gun ignores a pull on a full magazine, so the phone must too');
+  h.adv(4000);
+  assert.equal(h.eng.state().ammo, 6);
+});
+
+test('F394: a reload on the secondary after ALT refills the number and the pips together', () => {
+  const h = alt(armed());
+  h.fire(1, 5, 24); h.adv(300); h.fire(1, 4, 24);
+  h.frame('$BUT,2,1,*').frame('$BUT,2,0,*');
+  assert.ok(h.eng.reloading, 'a part-empty magazine takes the pull');
+  h.adv(500); h.frame('$ALCD,6,100,1,22,0,*');
+  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 22, mag: 6 });
+  h.adv(300); h.fire(1, 5, 22);
+  assert.deepEqual(shown(h), { slot: 1, ammo: 5, reserve: 22, mag: 6 }, 'one shot after the reload: 5 of 6');
+});
+
+test('F394: an echo of a slot that is not on the trigger never changes the number on the screen', () => {
+  const h = alt(armed());
+  h.eng._acctWrote(0, 29, 189);
+  h.frame('$ALCD,32,100,0,192,0,*');   // the `$WEAP` reset of slot 0, inside its echo window
+  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 24, mag: 6 });
+  h.frame('$ALCD,29,100,0,189,0,*');   // ...and the restore landing
+  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 24, mag: 6 });
+});
+
+test('F394 r2: a real shot on the ALT target confirms the swap, even inside the echo window a relink opened', () => {
+  const h = armed();
+  h.eng._acctWrote(1, 6, 24);   // `_endReconcile` re-arms both loadout slots and opens both echo windows
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.fire(1, 5, 24);
+  assert.equal(h.eng.switching, null, 'the shot confirmed the swap');
+  assert.ok(h.eng.lastSwitchMs != null, 'and timed it');
+  assert.deepEqual(shown(h), { slot: 1, ammo: 5, reserve: 24, mag: 6 });
+});
+
 test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile keeps the pointer', () => {
   const h = armed();
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');

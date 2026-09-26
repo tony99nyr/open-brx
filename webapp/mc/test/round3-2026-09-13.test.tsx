@@ -30,7 +30,7 @@ describe('UX-1 — the recap advertises the play-again path (NEXT MATCH since 20
   // Tony, bench 2026-09-16: "why? just make a new one". The recap's KEEP THIS ROSTER? PICK A MODE ON
   // GAMES pointed at a banner that said the same thing again. The primary action now starts the next
   // match itself, roster and game kept, and lands on GAMES with the game loaded.
-  it('the primary action is NEXT MATCH ▸, it calls the server, and it lands on GAMES', async () => {
+  it('the primary action is PLAY AGAIN ▸, it calls the server, and it lands on GAMES', async () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'recap', recap: RECAP };
     const nextMatch = vi.fn(async () => ({ ...state, phase: 'build' }) as State);
@@ -39,7 +39,7 @@ describe('UX-1 — the recap advertises the play-again path (NEXT MATCH since 20
     expect(m.text()).not.toMatch(/PICK A MODE/);
     const btn = m.find('[data-testid="recap-next-match"] button')[0] as HTMLButtonElement;
     expect(btn, `saw: ${m.text()}`).toBeTruthy();
-    expect(btn.textContent).toBe('NEXT MATCH ▸');
+    expect(btn.textContent).toBe('PLAY AGAIN ▸');
     expect(btn.disabled).toBe(false);
     expect(parseFloat(getComputedStyle(btn).fontSize || '0') >= 11).toBe(true);
     await act(async () => { btn.click(); });
@@ -48,7 +48,7 @@ describe('UX-1 — the recap advertises the play-again path (NEXT MATCH since 20
     m.unmount();
   });
 
-  it('a refused NEXT MATCH stays on the recap and does not navigate', async () => {
+  it('a refused PLAY AGAIN stays on the recap and does not navigate', async () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'recap', recap: RECAP };
     const nextMatch = vi.fn(async () => { throw new Error('THIS MC PREDATES NEXT MATCH: RESTART IT, OR USE NEW SESSION (TOP RIGHT)'); });

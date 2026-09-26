@@ -45,6 +45,18 @@ export function InfoIcon({ size = 16, color = 'currentColor' }: { size?: number;
   );
 }
 
+/** A padlock, drawn inline — same reasoning as `InfoIcon`: an emoji glyph (🔒) depends on the
+ *  viewer's OS emoji font and can render as a stray box or the wrong colour. Decorative: the control
+ *  it sits in (or its `title`) carries the words. */
+export function LockIcon({ size = 12, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg data-icon="lock" aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 16 16" style={{ flexShrink: 0, display: 'block' }}>
+      <rect x="3" y="7" width="10" height="7" rx="1" fill="none" stroke={color} strokeWidth="1.4" />
+      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke={color} strokeWidth="1.4" />
+    </svg>
+  );
+}
+
 /** Screen header: mono accent kicker over a 30px Oswald title, with optional right-side content. */
 export function ScreenHeader({ kicker, title, right }: { kicker: string; title: string; right?: ReactNode }) {
   return (
@@ -178,12 +190,27 @@ export function Seg<V extends string>({ value, options, onChange, size = 11, pad
 }
 
 /** Square toggle. */
+/** F411 VQA round 1 (QA-11): the switch's own hit area was 48 × 36 -- under the 44 px floor. The
+ *  track/thumb keep their drawn size; only the button's own box (and so the tap target) grew. */
 export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label?: string }) {
   return (
     <button type="button" onClick={() => onChange(!on)} role="switch" aria-checked={on} aria-label={label}
-      style={{ ...BTN_RESET, width: 48, height: 36, position: 'relative', display: 'inline-block', cursor: 'pointer' }}>
-      <span style={{ position: 'absolute', left: 4, top: 8, width: 40, height: 20, background: T.inset, border: `1px solid ${on ? T.acc : T.line2}`, boxSizing: 'border-box' }} />
-      <span style={{ position: 'absolute', top: 11, left: on ? 27 : 7, width: 14, height: 14, background: on ? T.acc : T.micro, transition: 'left .12s' }} />
+      style={{ ...BTN_RESET, width: 48, height: 44, minHeight: 44, position: 'relative', display: 'inline-block', cursor: 'pointer' }}>
+      <span style={{ position: 'absolute', left: 4, top: 12, width: 40, height: 20, background: T.inset, border: `1px solid ${on ? T.acc : T.line2}`, boxSizing: 'border-box' }} />
+      <span style={{ position: 'absolute', top: 15, left: on ? 27 : 7, width: 14, height: 14, background: on ? T.acc : T.micro, transition: 'left .12s' }} />
+    </button>
+  );
+}
+
+/** F411 VQA round 1 (QA-11): PLAY's MATCH SETTINGS − / + steppers. A shared primitive (Games.tsx's
+ *  own copy was 32 px tall) so any other screen that needs the same stepper gets the same 44 px
+ *  target, not a second, smaller one. */
+export function StepBtn({ onClick, disabled, children, label }: { onClick: () => void; disabled?: boolean; children: ReactNode; label?: string }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} className="hit44"
+      style={{ ...BTN_RESET, font: F.chk(700, 16), width: 44, height: 44, minHeight: 44, cursor: disabled ? 'not-allowed' : 'pointer',
+               background: T.panelDeep, border: `1px solid ${T.line}`, color: disabled ? T.micro : T.ink }}>
+      {children}
     </button>
   );
 }

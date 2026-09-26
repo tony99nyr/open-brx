@@ -1447,6 +1447,39 @@ def test_f379_alt_target_uses_the_gun_pointer_after_a_trigger_only_equip():
     asyncio.run(go())
 
 
+def test_f394_an_assumed_swap_shows_the_new_slots_own_counts():
+    """engine.js `_showSlotAmmo`: the gun sends no $ALCD on ALT, so the assumed swap puts the new slot's counts on
+    the screen. Before it, the number kept the old slot's count until the next shot (sitting B, 2026-09-25)."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        want = list(st._live_ammo()[1])
+        assert want != [10, 20], want   # CONTROL: the two slots differ, or the check proves nothing
+        st._on_rx("$BUT,1,1,*")
+        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
+        assert st.active_slot == 1 and [st.ammo, st.reserve] == want, (st.active_slot, st.ammo, st.reserve, want)
+    asyncio.run(go())
+
+
+def test_f394_the_echo_of_a_slot_not_on_the_trigger_never_reaches_the_screen():
+    """engine.js `_onAmmo`: the node's write to the other slot (a switch-back resend, a restore) comes back as that
+    slot's $ALCD. It is bookkeeping: it must not change the number or move `active_slot`. A real shot on the slot
+    ALT is switching TO still confirms the swap inside the same window."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st._acct_wrote(1, 5, 9)
+        st._on_rx("$ALCD,5,100,1,9,0,*")      # the restore landing on slot 1
+        assert st.active_slot == 0 and [st.ammo, st.reserve] == [10, 20], (st.active_slot, st.ammo, st.reserve)
+        st._acct_wrote(1, 5, 9)
+        st._on_rx("$BUT,1,1,*")               # ALT to slot 1, then a real round out of it inside the window
+        st._on_rx("$ALCD,4,100,1,9,0,*")
+        assert st.switching is None and st.active_slot == 1 and st.ammo == 4, (st.switching, st.active_slot, st.ammo)
+    asyncio.run(go())
+
+
 def test_f393_poison_damage_ignores_the_audio_gate_but_its_sound_waits():
     """engine.js `_poisonStrike`: `$LIFE` is gameplay; a poison `$PLAY` waits behind must-hear audio. The stage models
     only the hill callout of that audio (it has no gun cue or announcer queue), so that is the gate it proves."""

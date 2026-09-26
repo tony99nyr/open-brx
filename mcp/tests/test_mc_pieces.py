@@ -162,6 +162,24 @@ def test_bench_gate_refuses_every_unproven_value():
     assert check_value("spawn", {"type": "scanner", "delay_s": 10, "station_protect_s": 2, "gate": "trigger"})
 
 
+def test_station_source_is_refused_on_any_piece():
+    """QA-25 (visual QA round 1): `station_source` used to be silently dropped rather than refused —
+    a 200 that hid a real mistake. games-presets.md §1 says a piece never carries it (the mode's own
+    default and ARMORY decide it), so every kind must 400, not just the kind the finding happened to
+    be reproduced on."""
+    for kind, ok_value in [
+        ("spawn", {"type": "auto", "delay_s": 15}),
+        ("life", {"max_hp": 45, "max_armor": 0, "max_shield": 0}),
+        ("misc_loadouts", {"hud_select": True, "heavies": True}),
+    ]:
+        try:
+            check_value(kind, {**ok_value, "station_source": "phone"})
+            assert False, f"{kind} silently accepted station_source"
+        except PieceError as e:
+            assert e.status == 400 and "station_source" in str(e)
+        assert check_value(kind, ok_value)   # the same value with the field stripped still passes
+
+
 def test_no_stored_piece_can_carry_an_unproven_value():
     """A hand-written pieces.json is re-validated on load exactly like the old presets.json was —
     a row the server would now refuse is DROPPED, never fatal, and never reaches `list()`."""
@@ -412,6 +430,7 @@ def test_last_match_captured_at_start_and_survives_a_restart():
 def test_pick_forces_outdoor_and_reads_the_builtin_loadout_back_as_open():
     """F410 + compose §3: a pick always plays outdoors, and the all-builtin loadout reads back OPEN, not CUSTOM.
     A slot piece that leaves a key out must not inherit the previous game's value for it."""
+    needs(HAVE, "starlette + httpx")
     c, s, *_ = _pclient()
     s.config["environment"] = "indoor"
     s.config["loadout_policy"]["primary"]["exclude_ids"] = ["sniper_rifle"]

@@ -4,7 +4,7 @@
 // render sites).
 import type { GameConfig } from '../api/types';
 
-type NoteConfig = Pick<GameConfig, 'mode' | 'time_limit_s'> & {
+type NoteConfig = Pick<GameConfig, 'mode'> & {
   respawn: Pick<GameConfig['respawn'], 'type'>;
   scoring: Pick<GameConfig['scoring'], 'frag_limit'>;
 };
@@ -16,6 +16,7 @@ export function operatorNote(cfg: NoteConfig): string[] {
   // ffa: no note (games-redesign.md §9)
   if (cfg.respawn.type === 'scanner') lines.push('RESPAWN AT STATIONS');
   if (cfg.scoring.frag_limit) lines.push('WIN: PLAYERS CONFIRM AT MC');
-  if (cfg.time_limit_s == null) lines.push('TIME: RUNS UNTIL YOU END IT');
+  // VQA round 1 QA-28: "TIME: RUNS UNTIL YOU END IT" could never show -- PLAY's TIME control has no
+  // "no limit" quick-pick, so time_limit_s is never null in practice. Dropped rather than left dead.
   return lines.slice(0, 2);
 }
