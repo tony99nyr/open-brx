@@ -216,10 +216,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     # ---- F411: BUILD's pieces + PLAY's pick (docs/spec/design/games-presets.md) ----
     from . import gamepick as _gamepick
-    from .pieces import PieceError, PieceStore
+    from .pieces import PieceError, PieceStore, check_value
     from .state import MODES, ModeRow, default_config
     if getattr(s, "pieces", None) is None:
-        s.pieces = PieceStore(None, now_ms=s.now_ms)   # memory-only
+        s.attach_pieces(PieceStore(None, now_ms=s.now_ms))   # memory-only; M1 reconciles a stale game_pick too
 
     def _perr(e: PieceError):
         return _err(str(e), e.status)
@@ -236,14 +236,27 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     def _mode_row(mode: str) -> ModeRow:
         return next(m for m in MODES if m["mode"] == mode)
 
-    def _recompose_if_picked(piece_id: str) -> None:
-        """PUT /api/pieces/{id}: when the edited piece is in the current pick, MC recomposes the config
-        (games-presets.md §4) -- the SAME piece ids, re-resolved, so the edited value takes effect at once."""
-        if piece_id not in s.game_pick["pieces"].values():
-            return
-        resolved = _gamepick.resolve_pieces(_pieces(s), s.game_pick["pieces"])
-        patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]))
-        s.set_config(patch)
+    def _apply_patch(patch: dict) -> dict:
+        """Precheck -> `set_config`, shared by PICK, FAVOURITES LOAD and a picked piece's PUT.
+        `ok: false` (from either the precheck or the M2 backstop below) means the caller must NOT
+        commit `game_pick` -- `config` in that reply is the unchanged current one, since neither path
+        touches `self.config` when it returns false. May raise `ValueError` (a phase 400: the caller's
+        own `_refuse_config_locked()` call should have already caught this, but a race is still
+        possible between the two)."""
+        precheck = s._compose_precheck(patch)
+        if not precheck["ok"]:
+            return {"ok": False, "errors": precheck["errors"], "config": s.config}
+        res = s.set_config(patch)
+        if not res["ok"]:
+            # M2 backstop (polish round 1): the precheck said this patch would validate and
+            # `set_config`'s own `_validate()` just disagreed. That is a real bug in the precheck (it
+            # is meant to run the SAME pipeline) -- config_id was still minted and the config WAS
+            # committed (set_config always commits, errors and all: PUT /api/config's own long-standing
+            # rule, "show the red instead of silently reverting"), but the CALLER must not also commit
+            # `game_pick` over a config nobody actually chose to load into that state.
+            log.warning("F411 M2: _compose_precheck passed but set_config's own validate refused the "
+                       "same patch -- game_pick will NOT be updated. errors=%r", res["errors"])
+        return res
 
     async def pieces_list(_):
         return JSONResponse(_pieces(s).list())
@@ -262,17 +275,46 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             piece = _pieces(s).get(pid)   # 404/403(builtin) before the in-use check
         except PieceError as e:
             return _perr(e)
-        if not piece["builtin"] and pid in s.game_pick["pieces"].values() and s.phase in ("armed", "live"):
+        picked = not piece["builtin"] and pid in s.game_pick["pieces"].values()
+        if picked and s.phase in ("armed", "live"):
             return _err("IN USE BY THE RUNNING GAME", 409)
+        value = b.get("value")
+        patch = None
+        if picked and value is not None:
+            # H1 (polish round 1): precheck the RECOMPOSED config BEFORE saving anything -- a value
+            # such as `fixed_id: "not_a_real_weapon"` must not drop a pushed lobby silently.
+            try:
+                checked = check_value(piece["kind"], value)
+                resolved = _gamepick.resolve_pieces(_pieces(s), s.game_pick["pieces"])
+            except PieceError as e:
+                return _perr(e)
+            resolved[piece["kind"]] = {**piece, "value": checked}
+            patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]))
+            precheck = s._compose_precheck(patch)
+            if not precheck["ok"]:
+                return JSONResponse({"errors": precheck["errors"]}, status_code=400)
         try:
-            row = _pieces(s).update(pid, name=b.get("name"), note=b.get("note"), value=b.get("value"))
+            row = _pieces(s).update(pid, name=b.get("name"), note=b.get("note"), value=value)
         except PieceError as e:
             return _perr(e)
-        try:
-            _recompose_if_picked(pid)
-        except ValueError as e:
-            return _err(str(e))
-        return JSONResponse(row)
+        out: dict = dict(row)
+        if picked:
+            # `patch` is already prechecked above (against the SAME value just saved) whenever the
+            # value changed; a name/note-only edit still recomposes so `game_cfg`/the lobby repush stay
+            # in step, `compose()` just has nothing new to say about the pick itself.
+            if patch is None:
+                resolved = _gamepick.resolve_pieces(_pieces(s), s.game_pick["pieces"])
+                patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]))
+            try:
+                res = s.set_config(patch)
+            except ValueError as e:
+                return _err(str(e))
+            if not res["ok"]:
+                log.warning("F411 M2: pieces_update's own precheck said ok but set_config's validate "
+                           "refused the same patch. errors=%r", res["errors"])
+            out["ok"] = res["ok"]
+            out["errors"] = res["errors"]
+        return JSONResponse(out)
 
     async def pieces_delete(req):
         pid = req.path_params["pid"]
@@ -289,10 +331,17 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return JSONResponse({"ok": True})
 
     async def play_pick(req):
+        try:
+            s._refuse_config_locked()   # Low (polish round 1): refuse an armed/live pick before the precheck work
+        except ValueError as e:
+            return _err(str(e))
         b = await body(req)
         try:
-            ids = _gamepick.merge_piece_ids(s.game_pick["pieces"], b.get("pieces") or {})
-            resolved = _gamepick.resolve_pieces(_pieces(s), ids)
+            patch_ids = b.get("pieces") or {}
+            ids = _gamepick.merge_piece_ids(s.game_pick["pieces"], patch_ids)
+            # M1 (polish round 1): a kind the REQUEST itself names still 404s/400s on a bad id; a kind
+            # merely inherited from a stale/restored pick falls back to that kind's own first builtin.
+            resolved = _gamepick.resolve_pieces_mixed(_pieces(s), ids, set(patch_ids))
             mode = resolved["mode"]["value"]["mode"]
             prev_mode = _pieces(s).get(s.game_pick["pieces"]["mode"])["value"]["mode"]
             match = cast(MatchSettings, dict(s.game_pick["match"]))
@@ -303,17 +352,20 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             match = _gamepick.merge_match(match, b.get("match") or {})
         except PieceError as e:
             return _perr(e)
+        # From `resolved`, not the raw merged `ids` (M1, polish round 1): a kind that fell back to its
+        # builtin must PERSIST that builtin's id, or the stale one just resolved past would sit right
+        # back in `game_pick` for the next request to trip over again.
+        ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
         patch = _gamepick.compose(resolved, match, _mode_row(mode))
-        precheck = s._compose_precheck(patch)
-        if not precheck["ok"]:
-            # games-presets.md §4: "a pick with ok: false changes nothing" -- neither the config nor the pick.
-            return JSONResponse({"ok": False, "errors": precheck["errors"], "config": s.config, "pick": s.game_pick})
         try:
-            res = s.set_config(patch)
+            res = _apply_patch(patch)
         except ValueError as e:
             return _err(str(e))
-        s.game_pick = {"pieces": ids, "match": match}
-        s._changed()
+        if res["ok"]:
+            # games-presets.md §4: "a pick with ok: false changes nothing" -- neither the config nor the
+            # pick; `_apply_patch` already refused to commit the config, so `game_pick` must not move either.
+            s.game_pick = {"pieces": ids, "match": match}
+            s._changed()
         return JSONResponse({"ok": res["ok"], "errors": res["errors"], "config": res["config"], "pick": s.game_pick})
 
     # ---- F411 §6: FAVOURITES -- a named bundle of the whole PLAY pick ----
@@ -366,21 +418,22 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             fav = _favourites(s).get(req.path_params["fid"])
         except FavouriteError as e:
             return _ferr(e)
+        try:
+            s._refuse_config_locked()   # Low (polish round 1): refuse an armed/live load before the precheck work
+        except ValueError as e:
+            return _err(str(e))
         resolved, fallbacks = _gamepick.resolve_pieces_with_fallback(_pieces(s), fav["pick"]["pieces"])
         mode = resolved["mode"]["value"]["mode"]
         match = fav["pick"]["match"]
         ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
         patch = _gamepick.compose(resolved, match, _mode_row(mode))
-        precheck = s._compose_precheck(patch)
-        if not precheck["ok"]:
-            return JSONResponse({"ok": False, "errors": precheck["errors"], "config": s.config, "pick": s.game_pick,
-                                 "countdown_s": fav["countdown_s"], "fallbacks": fallbacks})
         try:
-            res = s.set_config(patch)
+            res = _apply_patch(patch)
         except ValueError as e:
             return _err(str(e))
-        s.game_pick = {"pieces": ids, "match": match}
-        s._changed()
+        if res["ok"]:
+            s.game_pick = {"pieces": ids, "match": match}
+            s._changed()
         return JSONResponse({"ok": res["ok"], "errors": res["errors"], "config": res["config"], "pick": s.game_pick,
                              "countdown_s": fav["countdown_s"], "fallbacks": fallbacks})
 

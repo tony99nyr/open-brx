@@ -7,7 +7,7 @@ argument from the caller (`api.py`'s `/api/play/pick` route), which already owns
 """
 from __future__ import annotations
 
-from typing import Any, Mapping, cast
+from typing import Any, Container, Mapping, cast
 
 from . import presentation as _pres
 from .pieces import BUILTIN_IDS, PieceError, PieceStore
@@ -25,9 +25,28 @@ def default_pick(default_config: Any) -> GamePick:
             "match": default_match(cfg["time_limit_s"], (cfg.get("scoring") or {}).get("frag_limit"))}
 
 
+def match_from_config(config: Mapping[str, Any]) -> MatchSettings:
+    """The MATCH SETTINGS strip a `GameConfig` implies (H2, polish round 1) -- used both to derive a
+    pick from a pre-F411 config (`derive_pick_from_config`) and to keep a live `game_pick.match` truthful
+    to whatever `set_config` just committed (`Session._sync_game_pick_from_config`), so the two never
+    drift into two different call sites disagreeing about the same four fields."""
+    return {"time_limit_s": config.get("time_limit_s"),
+            "frag_limit": (config.get("scoring") or {}).get("frag_limit"),
+            "night": bool(config.get("night")),
+            "silenced": (config.get("presentation") or {}).get("preset") == "silenced"}
+
+
 def looks_like_pick(gp: object) -> bool:
-    return (isinstance(gp, dict) and isinstance(gp.get("pieces"), dict)
-            and all(k in gp["pieces"] for k in PIECE_KINDS) and isinstance(gp.get("match"), dict))
+    """Shape only, for trusting a persisted/restored `game_pick` (M1, polish round 1: piece EXISTENCE
+    is never checked here -- that is `Session.attach_pieces`'s own job, with a fallback, not a reason
+    to distrust the pick's shape)."""
+    if not (isinstance(gp, dict) and isinstance(gp.get("pieces"), dict)
+           and all(k in gp["pieces"] and isinstance(gp["pieces"][k], str) for k in PIECE_KINDS)):
+        return False
+    match = gp.get("match")
+    return (isinstance(match, dict) and isinstance(match.get("night"), bool) and isinstance(match.get("silenced"), bool)
+           and (match.get("time_limit_s") is None or isinstance(match.get("time_limit_s"), int))
+           and (match.get("frag_limit") is None or isinstance(match.get("frag_limit"), int)))
 
 
 def derive_pick_from_config(config: Mapping[str, Any], mvp_modes: frozenset[str]) -> GamePick:
@@ -37,11 +56,7 @@ def derive_pick_from_config(config: Mapping[str, Any], mvp_modes: frozenset[str]
     mode = config.get("mode")
     ids = dict(BUILTIN_IDS)
     ids["mode"] = f"builtin:mode:{mode if mode in mvp_modes else 'tdm'}"
-    match: MatchSettings = {"time_limit_s": config.get("time_limit_s"),
-                            "frag_limit": (config.get("scoring") or {}).get("frag_limit"),
-                            "night": bool(config.get("night")),
-                            "silenced": (config.get("presentation") or {}).get("preset") == "silenced"}
-    return {"pieces": ids, "match": match}
+    return {"pieces": ids, "match": match_from_config(config)}
 
 
 # ---------- resolving a POST /api/play/pick body ----------
@@ -95,6 +110,38 @@ def resolve_pieces_with_fallback(store: PieceStore, ids: Mapping[str, str]) -> t
             fallbacks.append(kind)
         resolved[kind] = piece
     return resolved, fallbacks
+
+
+def resolve_pieces_mixed(store: PieceStore, ids: Mapping[str, str], strict_kinds: Container[str]) -> dict[PieceKind, GamePiece]:
+    """M1 (polish round 1): `POST /api/play/pick` resolves a kind the REQUEST itself named (`strict_kinds`)
+    exactly like `resolve_pieces` -- an unknown/wrong-kind/post_mvp id there is still a 400/404, the
+    operator's own mistake to fix. A kind merely INHERITED from the previous `game_pick` (a session/
+    snapshot that drifted from the pieces shelf) falls back to that kind's first builtin instead, same
+    grace as `resolve_pieces_with_fallback` -- a stale id nobody asked to change must never 404 an
+    unrelated pick."""
+    resolved: dict[PieceKind, GamePiece] = {}
+    for kind in PIECE_KINDS:
+        pid = ids.get(kind)
+        if kind in strict_kinds:
+            if not pid:
+                raise PieceError(400, f"no piece picked for {kind!r}")
+            piece = store.get(pid)                        # PieceError(404) if the id is unknown
+            if piece["kind"] != kind:
+                raise PieceError(400, f"{pid} is a {piece['kind']} piece, not {kind}")
+            if piece.get("post_mvp"):
+                raise PieceError(400, f"{piece['name']} is post-MVP and not offered on PLAY")
+            resolved[kind] = piece
+            continue
+        piece = None
+        if pid:
+            try:
+                candidate = store.get(pid)
+                if candidate["kind"] == kind and not candidate.get("post_mvp"):
+                    piece = candidate
+            except PieceError:
+                piece = None
+        resolved[kind] = piece if piece is not None else store.get(BUILTIN_IDS[kind])
+    return resolved
 
 
 def _opt_int(v: object, field: str) -> int | None:

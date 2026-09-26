@@ -66,9 +66,10 @@ class PieceError(ValueError):
 
 
 def _piece(piece_id: str, kind: PieceKind, name: str, value: Mapping[str, Any], *, note: str = "",
-          builtin: bool = True, post_mvp: bool = False, t: int = 0) -> GamePiece:
+          builtin: bool = True, post_mvp: bool = False, t: int = 0, updated_t: int | None = None) -> GamePiece:
     return {"piece_id": piece_id, "kind": kind, "name": name, "note": note, "builtin": builtin,
-            "post_mvp": post_mvp, "created_t": t, "updated_t": t, "value": dict(value)}
+            "post_mvp": post_mvp, "created_t": t, "updated_t": t if updated_t is None else updated_t,
+            "value": dict(value)}
 
 
 def _builtin_pieces() -> list[GamePiece]:
@@ -209,17 +210,25 @@ class PieceStore:
             log.error("pieces.json unreadable (%s) — moved aside to %s; starting with the builtins only", e, aside)
             return
         seen: set[tuple[str, str]] = set()
+        seen_ids: set[str] = set()
         for r in rows:
             try:
                 row = self._clean_row(r)
             except Exception as e:
                 log.warning("pieces.json: dropping piece %r (%s)", (r or {}).get("name") if isinstance(r, dict) else r, e)
                 continue
+            if row["piece_id"] in seen_ids:
+                # A hand-edited/duplicated file can carry two rows sharing an id -- `get`/`update`/
+                # `delete` all resolve the FIRST match, so a silent second row is a live footgun
+                # (edit ends up on the wrong one). Keep the first, drop the rest, same as a name clash.
+                log.warning("pieces.json: dropping duplicate piece_id %r", row["piece_id"])
+                continue
             key = (row["kind"], row["name"].lower())
             if key in seen or self._is_builtin_name(row["kind"], row["name"]):
                 log.warning("pieces.json: dropping duplicate %s named %r", row["kind"], row["name"])
                 continue
             seen.add(key)
+            seen_ids.add(row["piece_id"])
             self._rows.append(row)
 
     def _clean_row(self, r: object) -> GamePiece:
@@ -235,7 +244,7 @@ class PieceStore:
         pid = raw_pid if isinstance(raw_pid, str) and raw_pid and not raw_pid.startswith("builtin:") else uuid.uuid4().hex[:8]
         now = self.now_ms()
         return _piece(pid, kind, name, value, note=note, builtin=False, post_mvp=False,
-                     t=int(r.get("created_t") or now))
+                     t=int(r.get("created_t") or now), updated_t=int(r.get("updated_t") or r.get("created_t") or now))
 
     def _save(self) -> None:
         if not self.path:
