@@ -1,5 +1,5 @@
 // RECAP, clicked in a real browser against a real demo MC (MC visual QA 2026-09-23: M1, M23, and the
-// NEXT MATCH ▸ path, which the older suites reached only by calling `/api/session/new` directly).
+// PLAY AGAIN ▸ path (formerly NEXT MATCH), which the older suites reached only by calling `/api/session/new` directly).
 //
 //   node test/e2e/recap-next.mjs
 //   ONLY=real|stale  MC_PORT=… MC_WS_PORT=… VITE_PORT=… MC_PY=…   SHOTS_DIR=…   HEADED=1
@@ -9,7 +9,7 @@
 //          - one honest thing about the END: no "NEVER" while MC is still re-delivering, and REACHED
 //            kept apart from CONFIRMED (M1),
 //          - the match's real length, which the server's own clock gives, not the 10:00 limit (M23);
-//          then NEXT MATCH ▸ is CLICKED: the console lands on GAMES with the same game loaded, and the
+//          then PLAY AGAIN ▸ is CLICKED: the console lands on GAMES with the same game loaded, and the
 //          server has left RECAP.
 //   stale  the same RECAP with `since_end_ms` and `end_delivery` stripped over REST AND the WebSocket
 //          (an MC that predates them): the header says LIMIT, not a length, and nothing crashes.
@@ -107,10 +107,10 @@ try {
     await pg.setViewportSize({ width: 1440, height: 900 });
 
     c.step = 'real/next-match';
-    console.log(`\n[${c.step}] NEXT MATCH ▸, clicked`);
+    console.log(`\n[${c.step}] PLAY AGAIN ▸, clicked`);
     const before = await srv.get('/api/state');
-    const btn = pg.getByRole('button', { name: 'NEXT MATCH ▸' });
-    c.expect(await btn.count() === 1, 'RECAP shows one NEXT MATCH ▸ button');
+    const btn = pg.getByRole('button', { name: 'PLAY AGAIN ▸' });
+    c.expect(await btn.count() === 1, 'RECAP shows one PLAY AGAIN ▸ button');
     await btn.click();
     await c.until(async () => new URL(pg.url()).hash === '#build', 10000, 'the console to land on GAMES (#build)');
     await c.until(async () => /LOADED GAME/.test(await H.bodyText(pg)), 10000, 'GAMES to show the LOADED GAME');
@@ -163,7 +163,7 @@ try {
     console.log(`      header "${head}"`);
     c.expect(/^· LIMIT \d+:\d\d$/.test(head), 'with nothing to measure from, the header says LIMIT, not a length');
     c.expect(await pg.locator('[data-testid="end-delivery-recap"]').count() === 0, 'no END block is invented for a server that sends none');
-    c.expect(await pg.getByRole('button', { name: 'NEXT MATCH ▸' }).count() === 1, 'NEXT MATCH ▸ is still there');
+    c.expect(await pg.getByRole('button', { name: 'PLAY AGAIN ▸' }).count() === 1, 'PLAY AGAIN ▸ is still there');
     await H.shot(pg, SHOTS, 'recap-stale-1280');
     await pg.context().close();
   }
