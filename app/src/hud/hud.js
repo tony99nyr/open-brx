@@ -2401,16 +2401,19 @@ export class Hud {
     if (mcInp && document.activeElement !== mcInp && mcInp.value !== (this.mcUrl || '')) mcInp.value = this.mcUrl || '';
     put('dg-pf', kv(pf));
     put('dg-link', kv(d.link || {}));
-    // B21: the WebView debugging switch. `webDebug` is null where there is no switch (iOS, the browser stage), so the
-    // section stays hidden; 'forced' is a debuggable APK, which Chromium keeps inspectable, so the button is disabled. The button is a permanent node and only its label changes (F122: a rebuilt button eats a tap).
+    // B21: the WebView debugging switch. `webDebug` is null where there is no switch (the browser stage), so the
+    // section stays hidden; 'forced' is a debuggable APK, which Chromium keeps inspectable; 'unsupported' is a real
+    // switch this OS/build cannot offer (iOS below 16.4, or a native call that failed) — both disable the button.
+    // The button is a permanent node and only its label changes (F122: a rebuilt button eats a tap).
     const dev = this.diag.querySelector('#dg-dev'), wd = d.webDebug;
     if (dev) {
-      const show = wd === true || wd === false || wd === 'forced';
+      const show = wd === true || wd === false || wd === 'forced' || wd === 'unsupported';
       if (dev.hidden === show) dev.hidden = !show;
       if (show) {
         put('dg-webdebug-state', wd === 'forced' ? 'WEBVIEW DEBUGGING <span class="ok">ALWAYS ON (DEBUG BUILD)</span>'
+          : wd === 'unsupported' ? 'WEBVIEW DEBUGGING <span class="mut">UNSUPPORTED ON THIS PHONE</span>'
           : wd ? 'WEBVIEW DEBUGGING <span class="ok">ON</span>' : 'WEBVIEW DEBUGGING <span class="mut">OFF</span>');
-        const wb = this.diag.querySelector('#dg-webdebug'), label = wd === false ? 'TURN ON' : 'TURN OFF', off = wd === 'forced';
+        const wb = this.diag.querySelector('#dg-webdebug'), label = wd === false ? 'TURN ON' : 'TURN OFF', off = wd === 'forced' || wd === 'unsupported';
         if (wb && wb.textContent !== label) wb.textContent = label;
         if (wb && wb.disabled !== off) wb.disabled = off;
       }

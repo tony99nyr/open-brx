@@ -642,7 +642,7 @@ Object.assign(hud.h, {
     else connectMc(v, true, { user: true });   // not a recognised join code — let it through as a bare address (the mandatory floor, §5)
   },
   onToggleWebDebug: () => {
-    webDebug.toggle().then(on => { log(`WebView debugging ${on ? 'ON' : 'OFF'} (stored on this phone)`, 'lk'); scheduleRender(); })
+    webDebug.toggle().then(on => { log(on === 'unsupported' ? 'WebView debugging is unsupported on this phone' : `WebView debugging ${on ? 'ON' : 'OFF'} (stored on this phone)`, 'lk'); scheduleRender(); })
       .catch(e => log('WebView debugging switch failed: ' + (e && e.message || e), 'le'));
   },
   onToggleNight: () => { engine.setNight(!engine.night); hud.sig = null; scheduleRender(); },   // the header ☾/☀ and the diag NIGHT button

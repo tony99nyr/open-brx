@@ -1488,11 +1488,18 @@ for (const view of VIEWS) {
     await pg.waitForTimeout(400);
     const forced = await read(); const dis = await pg.evaluate(() => document.getElementById('dg-webdebug').disabled);
     await pg.click('#dg-webdebug', { force: true }); await pg.waitForTimeout(300);
-    const after = await pg.evaluate(() => window.__sets); await pg.close();
+    const after = await pg.evaluate(() => window.__sets);
+    // Stand in for an iOS build below 16.4 (no isInspectable): the plugin reports supported:false and the
+    // panel must say UNSUPPORTED, never ON/OFF/an error.
+    await pg.evaluate(() => { window.brx.webDebug.plugin.get = async () => ({ enabled: false, supported: false }); return window.brx.webDebug.load(); });
+    await pg.waitForTimeout(400);
+    const unsupported = await read(); const dis2 = await pg.evaluate(() => document.getElementById('dg-webdebug').disabled);
+    await pg.close();
     must(JSON.stringify(sets) === '[false]', 'the tap did not write OFF once: ' + JSON.stringify(sets));
     must(/OFF$/.test(off.state) && off.label === 'TURN ON' && off.desc === off.state, 'the panel still shows the old state: ' + JSON.stringify(off));
     must(/ALWAYS ON/.test(forced.state) && dis, 'a debuggable build does not show ALWAYS ON with a disabled button: ' + JSON.stringify(forced));
     must(JSON.stringify(after) === '[false]', 'a tap on the forced switch wrote to the phone: ' + JSON.stringify(after));
+    must(unsupported.shown && /UNSUPPORTED/.test(unsupported.state) && dis2, 'an unsupported switch does not show UNSUPPORTED with a disabled button: ' + JSON.stringify(unsupported));
   });
   await step(`${view.name} F122 diag: the reader's scroll position survives the render churn`, async () => {
     const pg = await open(view, 'diag-live', '', 5200);
