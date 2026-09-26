@@ -950,7 +950,7 @@ step('stale-server', async ({ browser, base }) => {
   let stripped = 0, wsStripped = 0;
   await pg.route('**/api/**', async r => {
     const u = r.request().url();
-    if (/\/api\/(perks|presets|pieces)/.test(u)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' });
+    if (/\/api\/(perks|pieces)/.test(u)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' });
     const res = await r.fetch(); let body = await res.text();
     try { body = JSON.stringify(strip(JSON.parse(body))); stripped++; } catch { /* not json */ }
     await r.fulfill({ response: res, body, headers: { ...res.headers(), 'content-length': String(Buffer.byteLength(body)) } });
