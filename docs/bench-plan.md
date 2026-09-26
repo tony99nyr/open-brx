@@ -168,10 +168,14 @@ Kit: as Group 1.
    see "Decisions for Tony" below). Log: a pass/fail per sub-check, and Tony's answer.
 3. **F381, a same-weapon pickup stacks (5 min).** Take Rockets, fire once, take Rockets again. Pass: 3 held, a
    third take caps at 4 (`PU_STACK_CAP_X`). Log: the count after each take.
-4. **F380, pickup timings with the phone log on (10 min).** Repeat several claims with MC's session log running
-   (`python -m brx_mcp.mc.diag <session.sqlite>`; this reads MC's own record, so it works for both phones).
-   Pass: no claim reads NOT ANSWERING while a grant is still on its way (the `POWERUP_NO_ANSWER_MS` window).
-   Log: each claim's dwell-to-grant time.
+4. **F380, the false NOT ANSWERING is fixed (10 min; built at the desk in 58003151, ships in 0.4.14).**
+   `POWERUP_NO_ANSWER_MS` is now 15000 (was 3000), and until it runs out the HUD shows CONFIRMING. Stand at the
+   Stick until the claim is ready, several times. Pass: CONFIRMING shows, then the grant lands with no NOT
+   ANSWERING, even when the Stick takes 2-13 s. Fail: NOT ANSWERING before 15 s after claim ready. Control (A/B):
+   the 2026-09-25 sighting, where NOT ANSWERING showed on 3 of 5 granted pickups at 3 s. Log: the phone line
+   `powerup: claim ready at station <id>` (the clock start; Pixel only), the grant as MC's feed row
+   `<GUN> TOOK <ITEM> · STATION #<id>` (`python -m brx_mcp.mc.diag <session.sqlite>`, both phones), and the
+   taker advert's time from the Stick serial (the phone does not log it).
 5. **F399, the Stick claim-latency re-run (10 min).** Nine claims at the Stick station. Pass: claim-ready to
    grant lands close to 1 s, not the old 2-13 s, median 9 s. Log: MC's session log, same tool as F380.
 6. **F374, the HELD Stick carried out of Wi-Fi before START (10 min).** Arm the Stick as a pickup, carry it out
