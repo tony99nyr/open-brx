@@ -78,7 +78,7 @@ and no card; the kill-card clash is Tony's lean). 2026-09-26: F403, the BRIEFING
 
 1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
    evidence and promote or close each row from the result.
-2. **Desk:** the FOLLOWUPS MVP DESK group, highest value first (B21, F400, F402).
+2. **Desk:** the FOLLOWUPS MVP DESK group, highest value first (F411, B21, F400, F410).
 3. **Decisions for Tony:** the FOLLOWUPS MVP DECISION group.
 4. **Only after MVP:** [`post-mvp.md`](post-mvp.md) is the roadmap; nothing there is scheduled.
 
