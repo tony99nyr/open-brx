@@ -1,6 +1,6 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, GameConfig, GamePick, GamePiece, LanPublic, LastMatch, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView,
+  Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, Favourite, GameConfig, GamePick, GamePiece, LanPublic, LastMatch, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView,
   MatchHistoryRow, MatchSettings, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, PieceKind, Player,
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, TxPower, WeaponView,
@@ -123,6 +123,9 @@ export class MockBackend implements Api {
   private pieces: GamePiece[] = BUILTIN_PIECES();
   private gamePick: GamePick = this.defaultPick();
   private lastMatch?: LastMatch;
+  // F411 §6 FAVOURITES: a named bundle of the whole PLAY pick. Memory-only here (as the real
+  // `FavouriteStore(None, ...)` fallback is), by `created_t`.
+  private favourites: Favourite[] = [];
   private evicted = new Set<string>();
   // A13.5: one utility phone that said hello and is waiting to be assigned (the ITEMS panel demo). Mirrors
   // `Session.stations` / `_station_view` in state.py, including the attention flags the server derives.
@@ -1304,6 +1307,84 @@ export class MockBackend implements Api {
     this.emit();
     return { ok: true, errors: [], config: r.config, pick: clone(this.gamePick) };
   }
+
+  // ---------- F411 §6: FAVOURITES ----------
+  async getFavourites(): Promise<Favourite[]> {
+    return clone([...this.favourites].sort((a, b) => a.created_t - b.created_t));
+  }
+  async createFavourite(p: { name: string; countdown_s: number; pick?: GamePick }): Promise<Favourite> {
+    const name = (p.name ?? '').trim().replace(/\s+/g, ' ');
+    if (!name || name.length > 24) throw new Error('name must be 24 characters or fewer');
+    if (this.favourites.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+      throw Object.assign(new Error(`a favourite named "${name}" already exists`), { status: 409 });
+    }
+    if (!Number.isInteger(p.countdown_s) || p.countdown_s < 5 || p.countdown_s > 900) {
+      throw new Error('countdown_s must be an integer 5..900');
+    }
+    const pick = p.pick ?? this.gamePick;   // default: the current pick (games-presets.md §6)
+    if (!pick?.pieces || PICKER_KINDS.some(k => typeof pick.pieces[k] !== 'string' || !pick.pieces[k])) {
+      throw new Error(`pick.pieces must carry a piece id for every kind (${PICKER_KINDS.join(', ')})`);
+    }
+    const t = now();
+    const row: Favourite = { favourite_id: uid('fav'), name, created_t: t, updated_t: t, pick: clone(pick), countdown_s: p.countdown_s };
+    this.favourites = [...this.favourites, row];
+    this.emit();
+    return clone(row);
+  }
+  async updateFavourite(id: string, p: { name: string }): Promise<Favourite> {
+    const row = this.favourites.find(f => f.favourite_id === id);
+    if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
+    const name = (p.name ?? '').trim().replace(/\s+/g, ' ');
+    if (!name || name.length > 24) throw new Error('name must be 24 characters or fewer');
+    if (this.favourites.some(f => f !== row && f.name.toLowerCase() === name.toLowerCase())) {
+      throw Object.assign(new Error(`a favourite named "${name}" already exists`), { status: 409 });
+    }
+    row.name = name; row.updated_t = now();
+    this.emit();
+    return clone(row);
+  }
+  async deleteFavourite(id: string): Promise<void> {
+    const row = this.favourites.find(f => f.favourite_id === id);
+    if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
+    this.favourites = this.favourites.filter(f => f !== row);
+    this.emit();
+  }
+  /** Like the pick-id loop in `pick()` above, but a missing/wrong-kind/post_mvp id falls back to that
+   *  kind's first builtin instead of throwing (games-presets.md §6: "stores piece references... never a
+   *  404 for the whole favourite"). `this.pieces` always carries builtins first (never reordered), so
+   *  the first non-post_mvp match of a kind IS that kind's shipped builtin — mirrors the server's own
+   *  fixed `BUILTIN_IDS` table exactly. */
+  private resolvePiecesWithFallback(ids: Record<string, string>): { ids: Record<string, string>; fallbacks: PieceKind[] } {
+    const out: Record<string, string> = {};
+    const fallbacks: PieceKind[] = [];
+    for (const kind of PICKER_KINDS) {
+      const pid = ids[kind];
+      const piece = pid ? this.pieces.find(x => x.piece_id === pid) : undefined;
+      if (piece && piece.kind === kind && !piece.post_mvp) { out[kind] = pid; continue; }
+      out[kind] = this.pieces.find(x => x.kind === kind && !x.post_mvp)!.piece_id;
+      fallbacks.push(kind);
+    }
+    return { ids: out, fallbacks };
+  }
+  async loadFavourite(id: string):
+    Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick; countdown_s: number; fallbacks: PieceKind[] }> {
+    const row = this.favourites.find(f => f.favourite_id === id);
+    if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
+    const { ids, fallbacks } = this.resolvePiecesWithFallback(row.pick.pieces);
+    const match = clone(row.pick.match);
+    const partial = this.composePartial(ids, match);
+    const before = clone(this.config);
+    const r = await this.putConfig(partial);
+    if (!r.ok) {
+      this.config = before;   // "ok: false changes nothing" -- same rule as pick()
+      this.emit();
+      return { ok: false, errors: r.errors, config: clone(this.config), pick: clone(this.gamePick), countdown_s: row.countdown_s, fallbacks };
+    }
+    this.gamePick = { pieces: ids, match };
+    this.emit();
+    return { ok: true, errors: [], config: r.config, pick: clone(this.gamePick), countdown_s: row.countdown_s, fallbacks };
+  }
+
   /** A11: the demo's presentation profile — a few representative rows so the ADVANCED view has something to show. */
   async getPresentation() {
     const rows = [

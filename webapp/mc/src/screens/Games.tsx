@@ -13,11 +13,11 @@ import { useEffect, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CONFIG_ERRORS_ALERT_ID } from '../api/derive';
-import type { GamePick, GamePiece, MatchSettings, PieceKind } from '../api/types';
+import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
-import { BTN_RESET, GhostButton, InfoIcon, PrimaryButton, Seg, StepBtn, Toggle } from '../ui';
+import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, StepBtn, Toggle } from '../ui';
 import { Alert } from '../ui/Alert';
 import { alertWords, serverLine } from '../alerts';
 import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
@@ -74,6 +74,16 @@ export function Games() {
     // or a future reconnect against a real server — is what fires there).
   }, [api, connected, retryTick]);
 
+  // ---- F411 §6 FAVOURITES: a named bundle of the whole PLAY pick, like a named LAST MATCH ---------
+  const [favourites, setFavourites] = useState<Favourite[]>([]);
+  const refreshFavourites = () => api.getFavourites().then(setFavourites).catch(() => {});
+  useEffect(() => { refreshFavourites(); }, [api]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const [savingFav, setSavingFav] = useState(false);
+  const [favNameDraft, setFavNameDraft] = useState('');
+  const [renamingFav, setRenamingFav] = useState<string | null>(null);
+  const [confirmDeleteFav, setConfirmDeleteFav] = useState<string | null>(null);
+  const [fallbackNote, setFallbackNote] = useState<string[] | null>(null);
+
   if (!state) return null;
   const cfg = state.config;
   const pick = state.game_pick;
@@ -114,6 +124,31 @@ export function Games() {
   const continueToKit = async () => { await run(() => api.setPhase('kit')); setView('kit'); };
 
   const assignAHill = () => { setFocusHill(true); setView('muster'); };
+
+  // ---- FAVOURITES actions (games-presets.md §6) ----------------------------------------------------
+  const saveFavourite = async (name: string) => {
+    const r = await run(() => api.createFavourite({ name, countdown_s: runwayVal }));
+    if (r) { setSavingFav(false); setFavNameDraft(''); await refreshFavourites(); }
+  };
+  const renameFavourite = async (id: string, name: string) => {
+    const r = await run(() => api.updateFavourite(id, { name }));
+    if (r) { setRenamingFav(null); await refreshFavourites(); }
+  };
+  const deleteFavourite = async (id: string) => {
+    await run(() => api.deleteFavourite(id));
+    setConfirmDeleteFav(null);
+    await refreshFavourites();   // harmless even on a refused delete — just re-syncs the shelf
+  };
+  const loadFavourite = async (id: string) => {
+    const r = await run(() => api.loadFavourite(id));
+    if (!r) return;
+    setRunway(r.countdown_s);
+    // "SPAWN — STATION IS GONE, USING AUTO" (games-presets.md §6) needs the OLD piece's name, which a
+    // fallback means we no longer have -- say what it is USING instead, always true, never invented.
+    setFallbackNote(r.fallbacks.length
+      ? r.fallbacks.map(k => `${KIND_LABEL[k]} — ITS SAVED PICK IS GONE, USING ${pieces.find(p => p.piece_id === r.pick.pieces[k])?.name ?? 'ITS DEFAULT'}`)
+      : null);
+  };
 
   // ---- the operator note (games-redesign.md §9), derived off the composed config -----------------
   const note = operatorNote(cfg);
@@ -217,6 +252,31 @@ export function Games() {
 
       {!staleServer && pick && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* ---- FAVOURITES (games-presets.md §6): a named bundle of the whole pick, hidden when empty --- */}
+          {favourites.length > 0 && (
+            <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, opacity: locked ? 0.5 : 1, display: 'contents' }}>
+              <div data-testid="favourites-row" role="group" aria-label="favourites" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {favourites.map(f => (
+                  <FavouriteChip key={f.favourite_id} fav={f}
+                    renaming={renamingFav === f.favourite_id}
+                    confirmingDelete={confirmDeleteFav === f.favourite_id}
+                    onLoad={() => loadFavourite(f.favourite_id)}
+                    onRenameStart={() => setRenamingFav(f.favourite_id)}
+                    onRenameCommit={name => renameFavourite(f.favourite_id, name)}
+                    onRenameCancel={() => setRenamingFav(null)}
+                    onDeleteStart={() => setConfirmDeleteFav(f.favourite_id)}
+                    onDeleteConfirm={() => deleteFavourite(f.favourite_id)}
+                    onDeleteCancel={() => setConfirmDeleteFav(null)} />
+                ))}
+              </div>
+            </fieldset>
+          )}
+          {fallbackNote && (
+            <div data-testid="favourite-fallback-note" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 2, font: F.chk(600, 12), color: T.warn }}>
+              {fallbackNote.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          )}
+
           {/* ---- the pickers, one wrapping row (§4's one-choice hiding rule: hidden with one piece) --- */}
           {/* VQA QA-07: every control here is a real HTML `disabled` (a fieldset), not merely a banner
               claiming it — while `locked`, nothing here can silently reach the server any more. */}
@@ -308,6 +368,20 @@ export function Games() {
                   }}>LAST MATCH ▸</GhostButton>
                 </span>
               )}
+              {savingFav ? (
+                <span data-testid="save-favourite-form" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <input className="textbox" value={favNameDraft} onChange={e => setFavNameDraft(e.target.value)}
+                    placeholder="FAVOURITE NAME" maxLength={24} aria-label="favourite name"
+                    style={{ font: F.chk(700, 14), minHeight: 44, minWidth: 160, borderBottomColor: T.line2 }}
+                    onKeyDown={e => { if (e.key === 'Enter' && favNameDraft.trim()) saveFavourite(favNameDraft.trim()); }} />
+                  <GhostButton size={14} pad="10px 14px" disabled={!favNameDraft.trim()} onClick={() => saveFavourite(favNameDraft.trim())}>SAVE ▸</GhostButton>
+                  <GhostButton size={14} pad="10px 14px" onClick={() => { setSavingFav(false); setFavNameDraft(''); }}>CANCEL</GhostButton>
+                </span>
+              ) : (
+                <span data-testid="save-favourite">
+                  <GhostButton size={14} pad="10px 16px" onClick={() => setSavingFav(true)}>☆ SAVE AS A FAVOURITE ▸</GhostButton>
+                </span>
+              )}
             </fieldset>
             {loaded ? (
               <span data-testid="game-continue-kit">
@@ -327,6 +401,46 @@ export function Games() {
         </div>
       )}
     </div>
+  );
+}
+
+/** One FAVOURITES chip (games-presets.md §6): tap the name to LOAD it, ✎ to rename inline (DraftText,
+ *  commits on blur/Enter), ✕ for the two-tap delete confirm. */
+function FavouriteChip({ fav, renaming, confirmingDelete, onLoad, onRenameStart, onRenameCommit, onRenameCancel, onDeleteStart, onDeleteConfirm, onDeleteCancel }: {
+  fav: Favourite; renaming: boolean; confirmingDelete: boolean;
+  onLoad: () => void; onRenameStart: () => void; onRenameCommit: (name: string) => void; onRenameCancel: () => void;
+  onDeleteStart: () => void; onDeleteConfirm: () => void; onDeleteCancel: () => void;
+}) {
+  if (renaming) {
+    return (
+      <span data-testid={`favourite-rename-${fav.favourite_id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${T.line2}`, padding: '4px 8px', minHeight: 44 }}>
+        <DraftText value={fav.name} onCommit={onRenameCommit} ariaLabel={`rename ${fav.name}`} maxLength={24}
+          style={{ font: F.chk(700, 14), minWidth: 120, borderBottomColor: T.line2 }} />
+        <button type="button" onClick={onRenameCancel} aria-label="cancel rename" className="hit44"
+          style={{ ...BTN_RESET, cursor: 'pointer', color: T.micro, padding: '0 8px', minHeight: 44 }}>✕</button>
+      </span>
+    );
+  }
+  if (confirmingDelete) {
+    return (
+      <span data-testid={`favourite-confirm-delete-${fav.favourite_id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${T.bad}`, padding: '4px 8px', minHeight: 44 }}>
+        <span style={{ font: F.chk(700, 12), color: T.bad, letterSpacing: '.04em' }}>DELETE {fav.name.toUpperCase()}?</span>
+        <GhostButton size={12} pad="8px 10px" color={T.bad} border={T.bad} onClick={onDeleteConfirm}>CONFIRM</GhostButton>
+        <GhostButton size={12} pad="8px 10px" onClick={onDeleteCancel}>CANCEL</GhostButton>
+      </span>
+    );
+  }
+  return (
+    <span data-testid={`favourite-chip-${fav.favourite_id}`} style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${T.line2}` }}>
+      <button type="button" className="hit44" onClick={onLoad} title={`Load ${fav.name}`}
+        style={{ ...BTN_RESET, font: F.chk(700, 14), letterSpacing: '.04em', padding: '10px 4px 10px 12px', cursor: 'pointer', color: T.acc, minHeight: 44 }}>
+        ☆ {fav.name}
+      </button>
+      <button type="button" onClick={onRenameStart} aria-label={`rename ${fav.name}`} title="Rename" className="hit44"
+        style={{ ...BTN_RESET, cursor: 'pointer', color: T.micro, padding: '0 8px', minHeight: 44 }}>✎</button>
+      <button type="button" onClick={onDeleteStart} aria-label={`delete ${fav.name}`} title="Delete" className="hit44"
+        style={{ ...BTN_RESET, cursor: 'pointer', color: T.micro, padding: '0 10px', minHeight: 44 }}>✕</button>
+    </span>
   );
 }
 

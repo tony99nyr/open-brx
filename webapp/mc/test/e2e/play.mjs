@@ -10,6 +10,9 @@
 //                                              #   lastmatch | koth | pick-fail | stale | widths |
 //                                              #   load-feedback | locked | refusal-and-cap |
 //                                              #   pieces-failure | hit-areas | silenced-onoff |
+//                                              #   favourites-save | favourites-load |
+//                                              #   favourites-fallback | favourites-rename |
+//                                              #   favourites-delete | real-favourites |
 //                                              #   real-fresh | real-silent-snipers | real-load-feedback |
 //                                              #   real-last-match-restart
 //   HEADED=1   KEEP_SHOTS=1   MC_PY=…
@@ -479,6 +482,152 @@ step('real-last-match-restart', async () => {
   // (like koth.mjs's own `sessionFile` option) would be needed for the other half, left for whoever
   // owns that infrastructure next -- flagged, not silently skipped.
   ok('last_match is set once a match starts, against a real MC (the restart-and-restore half needs a --session-file MC; not run here, see the comment above)');
+});
+
+// ---------------------------------------------------------------- FAVOURITES (games-presets.md §6)
+
+step('favourites-save', async ({ browser, base }) => {
+  const pg = await open(browser, base, '?mock#build', 1280);
+  expect(await pg.getByTestId('favourites-row').count() === 0, 'the FAVOURITES row is hidden with none saved');
+  await pg.getByTestId('save-favourite').getByRole('button').click();
+  await pg.getByLabel('favourite name').fill('Silent Snipers');
+  await pg.getByRole('button', { name: 'SAVE ▸' }).click();
+  await until(() => pg.locator('text=☆ Silent Snipers').count().then(n => n > 0), 4000, 'the new chip');
+  expect(await pg.getByTestId('favourites-row').count() === 1, 'the row appears once a favourite exists');
+  const saved = await pg.evaluate(() => window.__MC_MOCK__.getFavourites());
+  expect(saved.length === 1 && saved[0].name === 'Silent Snipers' && saved[0].countdown_s === 30, `the favourite is saved with the current countdown (saw ${JSON.stringify(saved)})`);
+  ok(`SAVE AS A FAVOURITE: hidden when empty, then one tap saves and shows a chip   ${await shot(pg, 'favourites-save')}`);
+  await pg.context().close();
+});
+
+step('favourites-load', async ({ browser, base }) => {
+  const pg = await open(browser, base, '?mock#build', 1280);
+  // build a distinctive pick, save it, then change EVERYTHING before loading it back
+  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await pg.getByRole('button', { name: 'SHIELDS' }).click();
+  await pg.getByRole('button', { name: 'STATION' }).click();
+  await pg.getByRole('switch', { name: 'silenced' }).click();
+  await pg.getByTestId('match-countdown-value').click();
+  await pg.getByRole('button', { name: '60 S' }).click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'the built pick settles');
+  await pg.getByTestId('save-favourite').getByRole('button').click();
+  await pg.getByLabel('favourite name').fill('Round One');
+  await pg.getByRole('button', { name: 'SAVE ▸' }).click();
+  await until(() => pg.locator('text=☆ Round One').count().then(n => n > 0), 4000, 'saved');
+
+  await pg.getByRole('button', { name: 'TEAM DEATHMATCH' }).click();
+  await pg.getByRole('button', { name: 'STANDARD' }).click();
+  await pg.getByRole('button', { name: 'AUTO' }).click();
+  await pg.getByRole('switch', { name: 'silenced' }).click();
+  await pg.getByTestId('match-countdown-value').click();
+  await pg.getByRole('button', { name: '10 S' }).click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 4000, 'changed away from it');
+
+  await pg.locator('text=☆ Round One').click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 6000, 'LOAD restores the mode');
+  const after = await pg.evaluate(() => window.__MC_MOCK__.getState());
+  expect(after.config.mode === 'koth', 'GAME MODE restored');
+  expect(after.config.health.max_shield === 105, 'LIFE restored');
+  expect(after.config.respawn.type === 'scanner', 'SPAWN restored');
+  expect(after.game_pick.match.silenced === true, 'SILENCED restored');
+  const t = await text(pg);
+  expect(/COUNTDOWN 60 S/.test(t), `the strip shows the restored countdown (saw the runway store, ${JSON.stringify(t.match(/COUNTDOWN \d+ S/))})`);
+  ok(`FAVOURITES LOAD restores every picker and the strip, including the countdown   ${await shot(pg, 'favourites-load')}`);
+  await pg.context().close();
+});
+
+step('favourites-fallback', async ({ browser, base }) => {
+  const pg = await open(browser, base, '?mock#build', 1280);
+  const primaryId = await pg.evaluate(async () => {
+    const api = window.__MC_MOCK__;
+    const piece = await api.createPiece({ kind: 'primary', name: 'SNIPERS', value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' } });
+    return piece.piece_id;
+  });
+  await pg.evaluate(() => { location.hash = '#muster'; });
+  await pg.evaluate(() => { location.hash = '#build'; });
+  await until(() => pg.getByTestId('picker-primary').count().then(n => n === 1), 6000, 'PRIMARY appears');
+  await pg.getByRole('button', { name: 'SNIPERS' }).click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.pieces.primary, 4000, 'SNIPERS picked');
+  await pg.getByTestId('save-favourite').getByRole('button').click();
+  await pg.getByLabel('favourite name').fill('Gone Tomorrow');
+  await pg.getByRole('button', { name: 'SAVE ▸' }).click();
+  await until(() => pg.locator('text=☆ Gone Tomorrow').count().then(n => n > 0), 4000, 'saved');
+  // switch PLAY off the SNIPERS piece, then delete it out from under the favourite that named it
+  await pg.getByRole('button', { name: 'ALL', exact: true }).first().click();
+  await pg.evaluate(async pid => { await window.__MC_MOCK__.deletePiece(pid); }, primaryId);
+  await pg.evaluate(() => { location.hash = '#muster'; });
+  await pg.evaluate(() => { location.hash = '#build'; });
+  await until(() => pg.locator('text=☆ Gone Tomorrow').count().then(n => n > 0), 6000, 'the favourite survives its piece being deleted');
+  await pg.locator('text=☆ Gone Tomorrow').click();
+  await until(() => pg.getByTestId('favourite-fallback-note').count().then(n => n === 1), 6000, 'the fallback line');
+  const t = await text(pg);
+  expect(/PRIMARY.*GONE.*USING ALL/i.test(t), `the fallback line names the kind and what it is using now (saw ${JSON.stringify(t.slice(t.indexOf('PRIMARY'), t.indexOf('PRIMARY') + 60))})`);
+  ok(`a favourite whose piece is gone still loads, and says what it used instead (never a 404)   ${await shot(pg, 'favourites-fallback')}`);
+  await pg.context().close();
+});
+
+step('favourites-rename', async ({ browser, base }) => {
+  const pg = await open(browser, base, '?mock#build', 1280);
+  await pg.evaluate(async () => { await window.__MC_MOCK__.createFavourite({ name: 'Old Name', countdown_s: 30 }); });
+  await pg.evaluate(() => { location.hash = '#muster'; });
+  await pg.evaluate(() => { location.hash = '#build'; });
+  await until(() => pg.getByTestId('favourites-row').count().then(n => n === 1), 4000, 'the chip');
+  await pg.getByLabel('rename Old Name').click();
+  const input = pg.getByLabel('rename Old Name');
+  await input.fill('New Name');
+  await input.press('Enter');
+  await until(() => pg.locator('text=☆ New Name').count().then(n => n > 0), 4000, 'the rename lands');
+  const row = await pg.evaluate(async () => (await window.__MC_MOCK__.getFavourites())[0]);
+  expect(row.name === 'New Name', `the server holds the new name too (saw ${JSON.stringify(row.name)})`);
+  ok('rename is inline (DraftText, commits on Enter) and reaches the server');
+  await pg.context().close();
+});
+
+step('favourites-delete', async ({ browser, base }) => {
+  const pg = await open(browser, base, '?mock#build', 1280);
+  await pg.evaluate(async () => { await window.__MC_MOCK__.createFavourite({ name: 'Delete Me', countdown_s: 30 }); });
+  await pg.evaluate(() => { location.hash = '#muster'; });
+  await pg.evaluate(() => { location.hash = '#build'; });
+  await until(() => pg.locator('text=☆ Delete Me').count().then(n => n > 0), 4000, 'the chip');
+  await pg.getByLabel('delete Delete Me').click();
+  await until(() => pg.locator('text=DELETE DELETE ME?').count().then(n => n === 1), 4000, 'the confirm row');
+  await pg.getByRole('button', { name: 'CANCEL' }).last().click();
+  expect(await pg.evaluate(() => window.__MC_MOCK__.getFavourites()).then(f => f.length === 1), 'CANCEL keeps it — one tap never deletes');
+  await pg.getByLabel('delete Delete Me').click();
+  await pg.getByRole('button', { name: 'CONFIRM' }).click();
+  await until(() => pg.locator('text=☆ Delete Me').count().then(n => n === 0), 4000, 'the chip is gone');
+  const left = await pg.evaluate(() => window.__MC_MOCK__.getFavourites());
+  expect(left.length === 0, 'the server holds none left');
+  ok('delete is a real two-tap: CANCEL keeps it, CONFIRM removes it from the server too');
+  await pg.context().close();
+});
+
+step('real-favourites', async ({ browser }) => {
+  const mc = await startRealMC();
+  const vite = await startVite(mc.port);
+  try {
+    const pg = await openReal(browser, vite.base, '#build', 1280);
+    await pg.getByTestId('save-favourite').getByRole('button').click();
+    await pg.getByLabel('favourite name').fill('Baseline');
+    await pg.getByRole('button', { name: 'SAVE ▸' }).click();
+    await until(() => pg.locator('text=☆ Baseline').count().then(n => n > 0), 6000, 'saved against a real MC');
+
+    // change everything
+    await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+    await pg.getByRole('button', { name: 'HARDCORE' }).click();
+    await pg.getByRole('button', { name: 'STATION' }).click();
+    await pg.getByRole('switch', { name: 'silenced' }).click();
+    await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'koth', 6000, 'the changes reach the real server');
+
+    await pg.locator('text=☆ Baseline').click();
+    await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'tdm', 8000, 'LOAD restores the baseline on the real server');
+    const after = await fetch(`${mc.base}/api/state`).then(r => r.json());
+    expect(after.config.mode === 'tdm' && after.config.health.max_shield === 0 && after.config.health.max_armor === 70, `every picker restored (saw ${JSON.stringify(after.config.mode)}/${JSON.stringify(after.config.health)})`);
+    expect(after.config.respawn.type === 'auto', 'SPAWN restored');
+    expect(after.game_pick.match.silenced === false, 'the strip restored too');
+    ok('save, change everything, LOAD: every picker and the strip come back, against a real MC');
+    await pg.context().close();
+  } finally { await vite.stop(); await mc.stop(); }
 });
 
 step('widths', async ({ browser, base }) => {
