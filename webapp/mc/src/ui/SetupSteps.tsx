@@ -53,7 +53,10 @@ export function friendlySetupLine(raw: string): string {
 /** H2 (visual QA 2026-09-24): the SETUP lines where the game and the ITEMS assignments disagree. They are
  *  not a field step to remember: the match will not play as set up until one side changes, so LOBBY and
  *  ARMED show them as an amber conflict block that stays up, and ARMORY names them in its header (M11). */
-export const STATION_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT|NO CONTROL STATION IS ASSIGNED|NO RESPAWN STATION IS ASSIGNED/i;
+// F402 item 2: "THE HILL IS OFFLINE" is not a config/ITEMS DISAGREEMENT like the other three -- it is
+// a liveness fact (the assigned hill has gone quiet) -- but it gets the same treatment: a standing,
+// AMBER, never-a-banner line here, on both LOBBY and ARMED, where START's other warnings show.
+export const STATION_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT|NO CONTROL STATION IS ASSIGNED|NO RESPAWN STATION IS ASSIGNED|THE HILL IS OFFLINE/i;
 /** the conflict the CONTROL station's own card carries on ITEMS */
 export const CONTROL_CONFLICT = /A CONTROL STATION IS ASSIGNED BUT/i;
 export const setupLines = (warnings: string[] | undefined) => (warnings ?? []).filter(w => /^SETUP:/i.test(w));

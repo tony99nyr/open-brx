@@ -26,6 +26,10 @@ def _live(mode="koth", n=2, heard=None):
     heard = range(n) if heard is None else heard
     for i in heard:
         online(s, net, clock, ps[i], i)
+    if mode == "koth":
+        # F402: push/start refuses a koth game with nothing on the field that IS the hill.
+        net.simulate_utility_hello("util-hill")
+        s.set_station("util-hill", {"kind": "control"})
     s.push_config(force=True)
     s.start(force=True)
     clock["t"] = s.start_info["go_live_t"] + 10

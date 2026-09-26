@@ -70,6 +70,15 @@ class Stack:
         patch = {"mode": self._mode, "time_limit_s": self._time_limit_s}
         patch.update(self._cfg)
         self.session.set_config(patch)
+        # F402 (2026-09-25): koth refuses push/start with nothing on the field that IS the hill, and
+        # `force` does not open it. Chaos already models the whole station layer as a proxy rather than
+        # a real utility hello (`actions.py _pick_possession_station`'s own comment: a bound player node
+        # stands in for a Stick, faithfully, for the merge/reconnect/contested behaviour under test) --
+        # this does the same for the ITEMS assignment `_koth_hill_fault` looks for, direct on the
+        # Session the way `net.py _on_hello` would populate it for a real one.
+        if self.session.config.get("mode") == "koth" and self.session.config.get("station_source") == "phone":
+            self.session.nodes.setdefault("chaos-hill", {"node_type": "utility"})
+            self.session.set_station("chaos-hill", {"kind": "control"})
         return self
 
     async def __aexit__(self, *a):

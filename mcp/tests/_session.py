@@ -30,6 +30,16 @@ def mc_session(mode="koth", n=2, **cfg):
     return s
 
 
+def assign_koth_hill(s, nid: str = "util-hill") -> str:
+    """F402 (2026-09-25): a koth `push_config`/`load_game` is now refused with nothing on the field
+    that IS the hill (`Session._refuse_koth_hill`) -- `force` does not open it, the same as the F82
+    roster gate. A test that wants to reach anything BEYOND that gate assigns one first, the way a
+    real host assigns a phone or Stick as CONTROL in ITEMS."""
+    s.net.simulate_utility_hello(nid)
+    s.set_station(nid, {"kind": "control"})
+    return nid
+
+
 def match_config(mode="tdm", *, teams=None, max_hp=45, max_armor=70, max_shield=0, frag=0,
                  time_limit_s=600, night=False, led=None, **extra):
     """The canonical compile-input config: indoor, auto respawn at 15 s, win by kills. `max_shield`

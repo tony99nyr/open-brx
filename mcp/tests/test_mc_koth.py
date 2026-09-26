@@ -12,7 +12,7 @@ Run: python3 run_tests.py mc_koth
 from brx_mcp.mc.compile import STATION_SOURCES, Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.state import MODES, Session, default_config
-from _session import mc_session
+from _session import assign_koth_hill, mc_session
 
 C = Compiler()
 
@@ -45,6 +45,7 @@ def test_a_koth_game_compiles_and_its_head_can_hear_the_hill():
     feedback, F73) — without it the firmware discards the beacon in silence and the node never sees
     the point at all (F60/F70/F72)."""
     s = _sess("koth")
+    assign_koth_hill(s)          # F402: push refuses a koth game with no hill on the field
     assert s.config["mode"] == "koth"
     res = s._validate()
     assert res["ok"], res["errors"]
@@ -92,6 +93,7 @@ def test_a_hill_config_cannot_even_HOLD_a_neutral_team():
     left. The team must therefore not exist in the config at all.
     """
     s = _sess("koth")
+    assign_koth_hill(s)          # F402: push refuses a koth game with no hill on the field
     teams = [{"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
              {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2}]
     try:
@@ -155,6 +157,7 @@ def test_a_restored_session_on_tid_two_still_cannot_be_pushed_even_with_force():
     assert any("F82" in e and "cannot roster players" in e and _roster(s)[0]["player_id"] in e
                for e in res["errors"]), res["errors"]
     assert any("F82" in e and "cannot have a team" in e and "yellow" in e for e in res["errors"]), res["errors"]
+    assign_koth_hill(s2)              # F402: reach the F82 refusal, not the hill-required one, below
     try:
         s2.push_config(force=True)
         raise AssertionError("F82: MC pushed a koth game with a roster on tid 2")
@@ -170,6 +173,7 @@ def test_a_restored_session_on_tid_two_still_cannot_be_pushed_even_with_force():
     s3.restore_snapshot()
     assert s3._validate()["ok"], s3.config_errors
     _rebalance(s3)                # the snapshot puts both restored players on GREEN (round-2 B)
+    assign_koth_hill(s3)          # F402: push refuses a koth game with no hill on the field
     s3.push_config(force=True)
 
 
@@ -249,6 +253,9 @@ def test_the_config_put_refuses_an_unknown_station_source():
 
 
 def test_clearing_the_source_leaves_a_koth_game_unpushable_with_a_useful_error():
+    """F402 (2026-09-25): a koth `station_source` that is not "phone" -- including cleared -- is now
+    caught by the hill-required gate (`Session._refuse_koth_hill`) before the compiler's own "no
+    station_source" validation ever runs, and `force` does not open it either."""
     s = _sess("koth")
     s.set_config({"station_source": None})
     assert "station_source" not in s.config
@@ -256,7 +263,7 @@ def test_clearing_the_source_leaves_a_koth_game_unpushable_with_a_useful_error()
         s.push_config(force=True)
         raise AssertionError("MC pushed a koth game with no objective source")
     except ValueError as e:
-        assert "station_source" in str(e) and "grenade" in str(e), e
+        assert "KING OF THE HILL NEEDS A HILL" in str(e) and "OBJECTIVE SOURCE TO PHONE" in str(e), e
 
 
 # --------------------------------------------------------------------------- #

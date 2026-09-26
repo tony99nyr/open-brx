@@ -65,6 +65,23 @@ describe('the grenade step follows the operator to the screens where it is actio
     m.unmount();
   });
 
+  it('F402 item 2: the hill going offline after LOAD renders AMBER on the conflict strip, not the neutral reminders panel', async () => {
+    // F402 (2026-09-25): `_koth_hill_offline_warning` is a LIVENESS fact ("bring it back"), not the
+    // "SETUP: FIX BEFORE ARM" config/ITEMS disagreement the strip was built for -- but it warns; it
+    // does not block, so it gets the same amber, never-a-banner treatment (`STATION_CONFLICT`).
+    const d = await demo();
+    const OFFLINE = 'SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START';
+    const m = await mountScreen(<Lobby />, { state: withWarnings(d.state, [OFFLINE]), view: 'lobby' });
+    const conflict = m.find('[data-testid="setup-conflict"]');
+    expect(conflict.length).toBe(1);
+    expect(conflict[0].textContent).toMatch(/THE HILL IS OFFLINE/);
+    expect(conflict[0].querySelector('[data-sev="amber"]'), 'amber, never red -- it warns, it does not block').toBeTruthy();
+    expect(conflict[0].querySelector('[data-sev="red"]')).toBeFalsy();
+    // it must not ALSO land in the neutral "Match reminders" panel -- one line, one place, one colour
+    expect(m.find('[data-testid="setup-steps"]').length).toBe(0);
+    m.unmount();
+  });
+
   it('an ir_station game says on the same strip that the source is unproven', async () => {
     const api = new MockBackend();
     await api.putConfig({ mode: 'koth' });

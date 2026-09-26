@@ -59,7 +59,12 @@ describe('KING OF THE HILL — GAMES', () => {
     expect(t).toMatch(/BLUETOOTH HILL · PHONE · PRESENCE/);
     expect(t).not.toMatch(/GRENADE HILL/);
     expect(t).toMatch(/control point is a Bluetooth station/i);
-    expect(t).toMatch(/No control station is assigned/i);
+    // F402 (2026-09-25): "no control station is assigned" is no longer an amber advisory for koth --
+    // it is now the hard LOAD refusal below, so the OLD line must not also still be on screen (do not
+    // show both).
+    expect(t).not.toMatch(/No control station is assigned/i);
+    expect(t).toMatch(/KING OF THE HILL NEEDS A HILL/);
+    expect(t).toMatch(/ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY/);
     expect(t).not.toMatch(/POWER-CYCLE THE GRENADE/i);
     g.m.unmount();
   });

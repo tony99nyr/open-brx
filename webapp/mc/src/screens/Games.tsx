@@ -103,8 +103,18 @@ export function Games() {
        poolEmpty.secondary && poolEmptyMessage('SECONDARY', state.loadout_pool.reasons!.secondary_weapons!),
        poolEmpty.perk && poolEmptyMessage('PERK', state.loadout_pool.reasons!.perks!)].filter(Boolean).join(' ')
     : '';
-  const blocked = locked || poolEmpty.any;
-  const blockedReason = locked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : undefined;
+  // F402 (Tony 2026-09-25): "no way to play it without it" — the server refuses a koth LOAD/push
+  // outright with nothing on the field that IS the hill (`state.py _koth_hill_fault`, `force` does
+  // not open it either). Predicted here, in the SAME words, so LOAD is visibly disabled before the
+  // operator ever presses it rather than only after a caught refusal. `state.stations` is optional
+  // (absent from an older server's snapshot) — absent reads as "nothing assigned", never a crash.
+  const kothHillFault = cfg.mode !== 'koth' ? undefined
+    : cfg.station_source !== 'phone'
+      ? 'KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY'
+      : (state.stations ?? []).some(s => s.assigned?.kind === 'control') ? undefined
+        : 'KING OF THE HILL NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY';
+  const blocked = locked || poolEmpty.any || !!kothHillFault;
+  const blockedReason = locked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : kothHillFault;
   const sig = gameSig(cfg);
   // identity = the game the server APPLIED (a duplicate is content-identical to its source — review #0); content match is the fallback for an older MC
   const activeSaved = (state.active_preset_id ? games.find(g => g.preset_id === state.active_preset_id) : null) ?? (state.active_preset_id === undefined ? games.find(g => gameSig(g.config) === sig) : null) ?? null;
@@ -422,6 +432,11 @@ export function Games() {
               itself an alert — its border no longer borrows T.bad. */}
           {(state.phase === 'armed' || state.phase === 'live') && (
             <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView(state.phase)}>JUMP TO MATCH ▸</GhostButton>
+          )}
+          {/* F402: the ARMORY is where ITEMS lives — the tap that actually cures this one. `muster` is
+              the view id the nav bar renders as ARMORY (`case 'muster': return <Armory />`). */}
+          {kothHillFault && (
+            <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView('muster')}>ASSIGN A HILL IN ARMORY ▸</GhostButton>
           )}
         </Alert>
       )}

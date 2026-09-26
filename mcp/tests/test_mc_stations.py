@@ -579,18 +579,30 @@ def test_the_utility_heartbeat_is_kept_as_the_stations_report():
 
 
 def test_a_station_gated_game_with_nothing_assigned_says_so_in_config_warnings():
+    """F402 (2026-09-25): for KOTH this is no longer an advisory in `config_warnings` -- it is a hard
+    LOAD/push refusal (`Session._koth_hill_fault`), so the amber SETUP line is gone for this mode and
+    the fault lives on `_koth_hill_fault()` / the refusal itself instead."""
     s = _sess("koth", station_source="phone")
     s._validate()
-    assert any("NO CONTROL STATION IS ASSIGNED" in w for w in s.config_warnings), s.config_warnings
+    assert not any("NO CONTROL STATION IS ASSIGNED" in w for w in s.config_warnings), \
+        "F402: the amber advisory is retired for koth, replaced by the hard refusal"
+    assert s._koth_hill_fault() == Session._KOTH_HILL_FAULT_NONE, s._koth_hill_fault()
+    try:
+        s.push_config(force=True)
+        raise AssertionError("F402: MC pushed a koth game with no hill on the field")
+    except ValueError as e:
+        assert str(e) == Session._KOTH_HILL_FAULT_NONE, e
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 9})
-    assert not any("NO CONTROL STATION IS ASSIGNED" in w for w in s.config_warnings), "assigning one clears it"
+    assert s._koth_hill_fault() is None, "assigning a hill clears the fault"
+    s.push_config(force=True)
     # scanner respawn wants a respawn station the same way
     t = _sess(respawn={"type": "scanner", "delay_s": 15})
     assert any("NO RESPAWN STATION" in w for w in t.config_warnings), t.config_warnings
     # CONTROL: a grenade objective wants no phone, and auto respawn wants no station
     u = _sess("koth", station_source="grenade")
     assert not any("PHONE IS ASSIGNED" in w or "RESPAWN STATION" in w for w in u.config_warnings)
+    assert u._koth_hill_fault() == Session._KOTH_HILL_FAULT_SOURCE, u._koth_hill_fault()
 
 
 def test_scanner_respawn_warns_when_one_team_has_no_station():

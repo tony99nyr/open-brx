@@ -1552,6 +1552,7 @@ class Session:
         """
         if self.in_play():
             raise ValueError("cannot load a game once the match has started - ABORT or RECALL first")
+        self._refuse_koth_hill()               # F402: before any side effect, an API LOAD cannot bypass it
         self._roll_forward_from_recap()        # a LOAD after the whistle loads the NEXT match
         cfg_id = self.config["config_id"]
         self.game_loaded = True
@@ -3080,7 +3081,11 @@ class Session:
         out: list[str] = []
         kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
         src = self.config.get("station_source")
-        if src == "phone" and "control" not in kinds:
+        # F402 (Tony 2026-09-25): "no way to play it without it" — for KOTH this is no longer an
+        # advisory, it is a hard LOAD/push refusal (`_koth_hill_fault`), so the amber line below would
+        # otherwise say the same fact twice in two colours. Left in place for any OTHER mode that ever
+        # sets `station_source: "phone"` without F402's own gate.
+        if src == "phone" and "control" not in kinds and self.config.get("mode") != "koth":
             out.append("SETUP: NO CONTROL STATION IS ASSIGNED (THE OBJECTIVE IS A BLUETOOTH CONTROL POINT, SO "
                        "NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT")
         # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
@@ -3106,6 +3111,50 @@ class Session:
                                + " (THOSE PLAYERS USE TIMED AUTO RESPAWN): ASSIGN ANOTHER RESPAWN STATION FOR "
                                "STATION RESPAWN ON BOTH TEAMS")
         return out
+
+    # F402 wording, shared by the hard refusal and the console (mcp/tests/test_mc_alert_wording.py /
+    # webapp/mc/src/alerts/server.ts SERVER_LINES both key on these exact heads).
+    _KOTH_HILL_FAULT_NONE = "KING OF THE HILL NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY"
+    _KOTH_HILL_FAULT_SOURCE = ("KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A "
+                                "PHONE OR STICK AS A HILL IN THE ARMORY")
+
+    def _koth_hill_fault(self) -> str | None:
+        """F402 (Tony 2026-09-25): "KOTH should require utility in the armory. no way to play it
+        without it." Unlike `_station_warnings()` (advisory — a station may be armed by hand behind
+        the phone's seven-tap gate), this is a HARD refusal: a hill mode with nothing on the field
+        that IS the hill cannot be played at all, not merely a readiness judgement an operator could
+        see and accept. Both a phone utility and a Stick advertise the same kind-5 `control` point
+        (`station_source: "phone"` covers both — spec/utility.md §5b), so this asks ITEMS, never the
+        device type. The grenade and IR-station sources are POST-MVP and never satisfy it."""
+        if self.config.get("mode") != "koth":
+            return None
+        if self.config.get("station_source") != "phone":
+            return self._KOTH_HILL_FAULT_SOURCE
+        kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
+        if "control" not in kinds:
+            return self._KOTH_HILL_FAULT_NONE
+        return None
+
+    def _refuse_koth_hill(self) -> None:
+        """Deliberately NOT bypassable by `force`, the same reason as `_refuse_push_in_play` /
+        `_refuse_one_team`: this is a statement about what the field can physically do (nothing on it
+        is the hill), not a readiness judgement the operator can see and accept instead."""
+        if fault := self._koth_hill_fault():
+            raise ValueError(fault)
+
+    def _koth_hill_offline_warning(self) -> list[str]:
+        """F402 item 2: the assigned hill can go OFFLINE after LOAD with nothing else changing to
+        re-run `_validate()` (a silent node, not an edit) — so this is computed fresh at snapshot
+        time, exactly like `_station_view`'s own `online`, and never cached in `config_warnings`
+        alongside `_station_warnings()`. Advisory only: START is still allowed, unlike
+        `_koth_hill_fault` above, which `force` cannot open either."""
+        if self.config.get("mode") != "koth" or self.config.get("station_source") != "phone":
+            return []
+        for nid, st in self.stations.items():
+            a = st.get("assigned")
+            if a and a.get("kind") == "control" and not self._station_view(nid)["online"]:
+                return ["SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START"]
+        return []
 
     def _station_sync_warnings(self) -> list[str]:
         """F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of
@@ -6703,6 +6752,9 @@ class Session:
         ⚠ NOT in ARMED or LIVE, and `force` does not open that door (`_refuse_push_in_play`).
         """
         self._refuse_push_in_play()       # before any side effect: a refused push must change nothing
+        # F402: chaos/the CLI/an older console can reach this without ever calling `load_game()`, so the
+        # hard hill gate has to live here too, or a direct push is the bypass LOAD itself was closed against.
+        self._refuse_koth_hill()
         # A push after the whistle is for the NEXT match. The roll is the one side effect that may come
         # before a refusal below: the operator has already moved on, and the roll is what they asked for.
         self._roll_forward_from_recap()
@@ -7940,7 +7992,10 @@ class Session:
                 "readiness": self.readiness(), "config": self._snapshot_config(), "config_errors": self.config_errors,
                 "options": self._snapshot_options(),      # A25: session options (log_sync)
                 "versions": self.versions(),        # A29: the muster version header
-                "config_warnings": self.config_warnings,
+                # F402 item 2: appended fresh here, never cached in `self.config_warnings` (see
+                # `_koth_hill_offline_warning`'s docstring) -- a silent station going quiet has no edit
+                # to re-run `_validate()` on.
+                "config_warnings": self.config_warnings + self._koth_hill_offline_warning(),
                 "players": list(self.players.values()), "teams": self.teams,
                 "standby": list(self.standby.values()),      # STANDBY: parked players, never counted above
                 "kit": self._snapshot_kit(kitted),

@@ -74,7 +74,9 @@ def _setup_lines() -> list[str]:
     # physical-setup checklist, one per `station_source`). `_session`'s default stays `FakeCompiler()`
     # for the other callers; this one asks for the real `Compiler()` so those lines build for real.
     s, *_ = _session(2, compiler=Compiler())
-    s.set_config({"mode": "koth", "station_source": "phone"})           # NO CONTROL STATION + the phone step
+    # F402 (2026-09-25): "NO CONTROL STATION IS ASSIGNED" is retired as an amber advisory for koth --
+    # it is the hard LOAD/push refusal now (`Session._koth_hill_fault`), so it no longer builds here.
+    s.set_config({"mode": "koth", "station_source": "phone"})           # the phone step
     out = list(s.config_warnings)
     s.set_config({"respawn": {"type": "scanner"}})                     # NO RESPAWN STATION
     out += list(s.config_warnings)
@@ -254,7 +256,10 @@ def test_every_named_line_follows_the_wording_rule():
 
 def test_every_setup_line_follows_the_wording_rule():
     lines = _setup_lines()
-    assert any("NO CONTROL STATION" in x for x in lines) and any("NO RESPAWN STATION" in x for x in lines), lines
+    # F402: "NO CONTROL STATION IS ASSIGNED" no longer builds for koth (the only mode that ever set
+    # `station_source: "phone"`) -- assert its ABSENCE rather than drop the coverage silently.
+    assert not any("NO CONTROL STATION" in x for x in lines), lines
+    assert any("NO RESPAWN STATION" in x for x in lines), lines
     # the three physical-setup lines compile.py's real `Compiler.validate()` writes (F221 round 1: the
     # harness used `FakeCompiler()` before, so these never built)
     for head in ("POWER-CYCLE THE GRENADE", "THE CONTROL POINT IS A BLUETOOTH STATION", "THE IR STATION IS UNPROVEN"):
