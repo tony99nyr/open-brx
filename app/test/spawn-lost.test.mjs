@@ -171,3 +171,43 @@ test('F416 r2: two overlapping quiet writes keep the radio quiet until the LAST 
     assert.equal(h.eng.radioQuiet(), true, 'and the window runs its RADIO_QUIET_AFTER_MS from the last settle');
   })();
 });
+
+// Review 2026-09-26 (three verified findings).
+test('F416 review: a re-sent TIMED revive that lands after the weapon delay maps the trigger again', async () => {
+  let n = 0;   // the T-0 spawn lands; the first revive is lost
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && n++ === 1 }).live();
+  await h.adv(4000 + 1000);
+  h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); h.gun.spawned = false;
+  await h.adv(200);
+  assert.equal(h.eng.state().alive, false, 'setup: the hit killed the player');
+  h.gun.answer = false;                            // the gun answers only after the weapon delay has run out
+  await h.adv(8000 + 1000);
+  assert.equal(h.spawns(), 2, 'setup: the revive went out once');
+  h.gun.answer = true;
+  await h.adv(4000);
+  const sp = h.writes.filter(w => w.f.startsWith('$SPAWN'));
+  assert.equal(sp.length, 3, 'setup: the revive was re-sent');
+  const liveAt = h.writes.find(w => w.t > sp[1].t && w.f === golden.respawn_profile.trigger_live);
+  assert.ok(liveAt && liveAt.t < sp[2].t, 'setup: the weapon delay ran out before the re-send');
+  const bmap = h.writes.filter(w => w.t >= sp[2].t && w.f.startsWith('$BMAP,0,')).map(w => w.f);
+  assert.equal(bmap[bmap.length - 1], golden.respawn_profile.trigger_live, `the last $BMAP after the re-send maps the trigger: ${JSON.stringify(bmap)}`);
+});
+
+test('F416 review: a lost re-send does not leave the check deaf; the next $HP,0 answer re-sends at once', async () => {
+  let n = 0;   // the first write and the first re-send are lost; the second re-send lands
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && n++ < 2 }).live();
+  await h.adv(4000 + 3000);
+  assert.equal(h.spawns(), 3, 'the answer to the probe after the lost re-send sent the burst again');
+  assert.equal(h.eng.state().hp, 45, 'the second re-send armed the pools');
+  assert.equal(h.eng.state().alive, true);
+});
+
+test('F416 review: an $LCD 0/0 does not close the check on the engine\'s own shield', async () => {
+  const h = harness({ fail: spawnOnce() }).live();
+  h.gun.answer = false;
+  await h.adv(4000 + 100);
+  h.eng.shield = 20;                               // an overshield or regen the engine holds; `$LCD` carries none
+  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  assert.ok(!h.logs.some(l => /the gun reads its pools/.test(l)), 'the check stays open');
+  assert.ok(h.eng._spawnCheck, 'the spawn check is still open');
+});

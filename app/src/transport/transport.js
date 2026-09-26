@@ -98,6 +98,19 @@ export function clearConsumedPriorUtilityHandoff(transport, storage = defaultSto
   try { storage.removeItem(PRIOR_UTILITY_KEY); return true; } catch (_) { return false; }
 }
 
+/** F421 (bench 2026-09-26): the address a phone just RELEASED from utility mode should dial first, before
+ *  falling back to mDNS/sweep discovery. `utility.js exitToHud` already writes the MC url it was bound to
+ *  as a station into the handoff (`PRIOR_UTILITY_KEY`) alongside the takeover proof — a released phone has
+ *  no remembered HUD address (it never dialled MC as a HUD before) and used to depend on rediscovery alone,
+ *  which can simply miss (bench: one phone sat on "NOT JOINED YET" with no discovered row for the rest of
+ *  the sitting). A remembered address (named by the player, or one that already bound this phone as a HUD)
+ *  always wins over the handoff, which is why `remembered` gates this.
+ * @param {{mc_url?:string}|null} priorUtility @param {string|null|undefined} remembered @returns {string|null}
+ */
+export function priorUtilityReconnectUrl(priorUtility, remembered) {
+  return !remembered && priorUtility && typeof priorUtility.mc_url === 'string' && priorUtility.mc_url ? priorUtility.mc_url : null;
+}
+
 /** F346 (a): at most this many MC hosts keep a pending enrol nonce; a new host evicts the oldest. */
 const ENROLL_NONCE_HOSTS_MAX = 8;
 

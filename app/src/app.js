@@ -8,7 +8,7 @@ import jsQR from 'jsqr';
 import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
-import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey } from './transport/transport.js';
+import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl } from './transport/transport.js';
 import { McAutoJoin, offerText, hostOf, urlKey, namedDialPending } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
@@ -1038,6 +1038,20 @@ async function sweepForMc() {
     // remembered address: CONNECT now — a gunless hello is fine (late-bind), and waiting for a gun left
     // mc_reachable=false with MC right there (Tony, 2026-08-26)
     if (settings.mcUrl && !transport) { log(`MC address remembered — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); }
+    else if (!transport) {
+      // F421 (bench 2026-09-26): a phone RELEASED from utility mode (`utility.js exitToHud`) has no
+      // remembered HUD address — it never dialled MC as a HUD before — so it fell back to pure mDNS/sweep
+      // discovery, which can simply miss (green Pixel: no discovered row, no join, for the whole sitting;
+      // the typed address was the only way back in). But it already knows exactly where MC is: it was
+      // JUST bound to it as a utility node, and `exitToHud` wrote that url into `brx.prior_utility`
+      // (`PRIOR_UTILITY_KEY`) alongside the takeover proof. Dial it directly instead of waiting on
+      // rediscovery. Untrusted-by-default is wrong here too (`connectMc`'s default `trusted:true`,
+      // `firstContact:false` is exactly what `_priorUtilityHello()` requires to attach the proof — see
+      // its own url-match guard), so this also fixes the stale ITEMS row MC could never clean up without
+      // that proof reaching it.
+      const priorMc = priorUtilityReconnectUrl(priorUtilityHandoff(), settings.mcUrl);
+      if (priorMc) { log(`released from utility mode — reconnecting to ${priorMc}`, 'lk'); connectMc(priorMc, false); }
+    }
     lockLandscape();
     startDiscovery();
     if (!settings.mcUrl) setTimeout(() => { sweepForMc().catch(() => {}); }, 5000);   // fallback only when NO explicit target (typed/QR wins)
