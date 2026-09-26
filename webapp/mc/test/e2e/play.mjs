@@ -162,7 +162,7 @@ step('fresh', async ({ browser, base }) => {
     const pg = await open(browser, base, '?mock#build', w);
     const t = await text(pg);
     expect(/GAME MODE/.test(t), `${w}px: GAME MODE shows`);
-    expect(/^LIFE|\nLIFE\n/m.test(t) || /LIFE/.test(t), `${w}px: LIFE shows`);
+    expect(/LIFE/.test(t), `${w}px: LIFE shows`);
     expect(/SPAWN/.test(t), `${w}px: SPAWN shows`);
     expect(!/PRIMARY/.test(t), `${w}px: PRIMARY hidden (one built-in)`);
     expect(!/SECONDARY/.test(t), `${w}px: SECONDARY hidden (one built-in)`);
