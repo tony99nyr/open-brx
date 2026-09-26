@@ -3857,7 +3857,8 @@ export class Engine {
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
       if (this.switching && now - this.switching.at > this.switchWindowMs()) {
-        const to = this.switching.to != null ? this.switching.to : this._nextAltSlot(); this.switching = null; this.activeSlot = to; this._altPtr = to;
+        const to = this.switching.to != null ? this.switching.to : this._nextAltSlot(); this.switching = null; this.activeSlot = to;
+        if (to === 0 || to === 1) this._altPtr = to;   // F400: a powerup equip's "to" can be a pickup slot (2/3), never a real ALT cycle position
         if (this._puHeld) this._puHeld.trig = to;   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
         this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
         this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true } };
@@ -5452,6 +5453,8 @@ export class Engine {
     this._puReequip = false;    // a heavy was held at the death: re-equip slot 0 behind the revive burst
     this._puSelectAt = 0;       // now() of the last SELECT that acted (the debounce)
     this._puBackPending = null; // {slot, mag, res, at, tries}: a switch-back not yet answered by an `$ALCD` for that slot
+    this._puGoing = null;       // F400: {slot, name, color, weapon_id, charges, until} -- a slot losing its identity THIS call
+                                 // (the empty switch-back's heavy), kept for the HUD's SWITCHING card past the moment `_puHeld` moves on
     this._puHpAt = 0;           // now() of the last `$HP` (polish M1: a `$HIR` after it holds the overshield grant)
     this._psetNow = null;       // the `$PSET` the gun holds (the life's pool take); the next spawn sets it
     this.powerupSpawn = null;   // {name, color, at, station}: the "<ITEM> AVAILABLE" card (presentation only)
@@ -5542,6 +5545,20 @@ export class Engine {
     if (this._puHeld) this._puHeld.trig = slot;
     this._recoilArm('powerup equip');   // S42: as a confirmed ALT swap, the slot's own profile
     return true;
+  }
+  /** F400 (docs/spec/powerups.md "The switch card"): a pickup-driven equip (a grant, a same-weapon stack, a SELECT
+   *  toggle either way, or the empty switch-back) shows the SAME full weapon-switch card an ALT press does, with
+   *  ALT's own timing -- it sets `this.switching` verbatim, so the gun's own echo of the equip write confirms it
+   *  through `_onAmmo`'s existing ALT-confirm code, or the tick's existing assumed-timeout does, exactly as ALT.
+   *  That also makes it a `data-takeover` (hud.js `switchUp`), which is what makes it a takeover for F368's clash
+   *  rule (docs/announcer.md) with no HUD change at all. Call AFTER `_puEquip` (which clears a stale ALT swap in
+   *  flight; this card always wins). `going`, when given, is `{name, color, weapon_id, charges}` for `from`: a slot
+   *  about to lose its identity this call (the empty switch-back's heavy, cleared before the equip), kept on
+   *  `state().powerup.going` so the HUD's tile can still name it after `_puHeld` is gone. */
+  _puSwitchCard(from, to, going = null) {
+    const now = this.now();
+    this.switching = { at: now, from, to };
+    if (going) this._puGoing = { slot: from, ...going, until: now + this.switchWindowMs() + 1400 };
   }
   /** Called from `setStations`: remember each powerup station's advert (the "taken early" relay reaches phones this way). */
   _puObserve(now) {
@@ -5688,6 +5705,7 @@ export class Engine {
       const stacked = Math.min(PU_STACK_CAP_X * charges, old.left + charges);   // Rockets (2): 1 + 2 = 3; 3 + 2 = 4, capped
       old.left = stacked; old.charges = stacked; old.station = id; old.at = now;
       this._puEquip(old.slot, stacked, PU_RESERVE, `powerup: ${old.name} charges stacked (${stacked})`);
+      this._puSwitchCard(old.slot, old.slot);   // F400: a re-equip still shows the full card (Tony's decision 1), the ACTIVE tile carrying the new count
       this.powerupGrant = { kind: 'weapon', name: old.name, color: old.color, charges: stacked, at: now };
       return true;
     }
@@ -5702,6 +5720,7 @@ export class Engine {
     this._puHeld = { station: id, weapon_id: item.weapon_id, slot, charges, left: charges, name, color: item.color || null, at: now, back, trig: back.slot };
     this._puBack = null;
     this._puEquip(slot, charges, PU_RESERVE, `powerup: ${name} on the trigger (${charges} in slot ${slot}; back to slot ${back.slot} at ${back.mag}/${back.res})${old ? ` replaces ${old.name}` : ''}`, pre);
+    this._puSwitchCard(back.slot, slot);   // F400: the same full weapon-switch card an ALT press shows, ALT's own timing
     this.powerupGrant = { kind: 'weapon', name, color: item.color || null, charges, at: now, ...(old ? { replaced: old.name } : {}) };
     if (old) {   // docs/announcer.md: "<NEW> REPLACES <OLD>" is an announcer card, so it waits its turn like the rest
       const swap = { name, color: item.color || null, replaced: old.name };
@@ -5728,6 +5747,11 @@ export class Engine {
     const name = String(item.name || 'OVERSHIELD').toUpperCase();
     this._overshield = { station: id, base, amount: to - base, name, color: item.color || null, at: now, max, hp: this.hp, armor: this.armor };   // hp/armor: the pools the grant wrote (R2-21: its echo is no pickup)
     this.powerupGrant = { kind: 'overshield', name, color: item.color || null, at: now };
+    // F400 decision 5: the Overshield is not a weapon (no switch card); it plays the SAME clip the ordinary S29 recharge
+    // plays on its first grant (`shield_charging`, N102 in the golden bundle -- F349: its own loud tail already reads as
+    // "shields full", and Tony's decision there was no separate "Shields Online" voice). The Visor's shield bar (the
+    // existing gain animation, shieldmeter.js `.svos`) already grows from `state().powerup.overshield` on the next render.
+    this._announceStatus('shield_charging');
     return true;
   }
   /** The overshield is over: the `$PSET` back at the preset shield max, so no later spawn or refill fills to the raised one. */
@@ -5771,10 +5795,12 @@ export class Engine {
       h.left = this._puCounts(h.slot)[0];
       const b = h.back || { slot: 0, mag: this._puCounts(0)[0], res: this._puCounts(0)[1] };
       this._puEquip(b.slot, b.mag, b.res, `SELECT: ${h.name} off the trigger (${h.left} left), slot ${b.slot} back at ${b.mag}/${b.res}`);
+      this._puSwitchCard(h.slot, b.slot);   // F400 decision 2: every SELECT toggle shows the switch card, naming the player's own weapon
     } else {
       const t = this._puLoadoutSlot(h.trig), [mag, res] = this._puCounts(t);
       h.back = { slot: t, mag, res };
       this._puEquip(h.slot, h.left, PU_RESERVE, `SELECT: ${h.name} on the trigger (${h.left} left), slot ${t} saved at ${mag}/${res}`);
+      this._puSwitchCard(t, h.slot);   // F400 decision 2: the same card, this direction naming the heavy
     }
     this._save();
   }
@@ -5802,6 +5828,9 @@ export class Engine {
     if (why === 'death' && PU_LOST_AT_DEATH) { this._puReequip = true; this.puLost = { name: h.name, color: h.color, at: this.now() }; this.log(`powerup: ${h.name} lost at the death`, 'li'); this._save(); return; }   // HUD QA R2-17: the DOWN screen says so
     const b = h.back || { slot: 0, mag: this._puCounts(0)[0], res: this._puCounts(0)[1] };
     this._puEquip(b.slot, b.mag, b.res, `powerup: ${h.name} over (${why}), slot ${b.slot} back on the trigger at ${b.mag}/${b.res}`);
+    // F400 decision 2: the empty switch-back plays the full card too, naming the player's own weapon on the ACTIVE tile;
+    // `going` keeps the heavy's name/colour on the STOWING tile past this call, since `_puHeld` is already gone above.
+    this._puSwitchCard(h.slot, b.slot, { name: h.name, color: h.color, weapon_id: h.weapon_id, charges: 0 });
     this._puBackPending = { slot: b.slot, mag: b.mag, res: b.res, at: this.now(), tries: 0 };   // polish M3: until the gun answers for that slot
     this._puBack = { name: h.name, to: this.weaponName, at: this.now() };
     this._save();
@@ -5849,6 +5878,10 @@ export class Engine {
     const h = this._puHeld, o = this._overshield;
     const held = h ? { name: h.name, color: h.color, weapon_id: h.weapon_id, slot: h.slot, charges: h.charges, left: h.left, active: this._puOnHeavy(), back: h.back ? { ...h.back } : null } : null;
     const overshield = o ? { name: o.name, color: o.color, amount: o.amount, left: Math.max(0, Math.min(o.amount, this.shield - o.base)), base: o.base } : null;
+    // F400: a slot that lost its identity to a switch-back THIS life, so the HUD's switch card can still name it
+    // on the render after `_puHeld` moved on (see `_puSwitchCard`). Gone once its own card's window has passed.
+    const going = this._puGoing && now < this._puGoing.until
+      ? { slot: this._puGoing.slot, name: this._puGoing.name, color: this._puGoing.color, weapon_id: this._puGoing.weapon_id, charges: this._puGoing.charges } : null;
     let hint = null;
     if (this.phase === 'live' && this.alive) {
       const st = this._puStation(items), g = this.powerupGrant, cl = this._puClaim;
@@ -5870,7 +5903,7 @@ export class Engine {
         else if (near) hint = { kind: 'taken', ...base, nextInMs: this._puNextInMs(item, now) };
       }
     }
-    return { hint, held, overshield };
+    return { hint, held, overshield, going };
   }
   /** THE MECHANIC. Bench 2026-09-17 (match 592e444eff): a charge rifle in OVERHEAT lockout will not fire no
    *  matter how many times the trigger is pulled -- that is the mechanic working, not a stale pool. True once

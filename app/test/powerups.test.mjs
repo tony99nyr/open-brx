@@ -95,6 +95,8 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
     fire(slot, mag, res = 0) { eng.feedFrame('$BUT,0,1,*'); eng.feedFrame(`$ALCD,${mag},100,${slot},${res},0,*`); eng.feedFrame('$BUT,0,0,*'); return h; },
     /** The app process restarts mid-match: a new Engine on the same storage, the gun reconnects, the reconcile runs out. */
     restart() { eng = mk(); h.eng = eng; eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); eng.feedFrame(`$HP,${45},${70},0,*`); return h; },
+    /** F400: how many times the announcer wrote `key`'s cue frame since mark `n` (shield-spawn.test.mjs's own pattern). */
+    cues(n, key) { const f = golden.cues[key]; return h.since(n).filter(w => w === f).length; },
   };
   h.adv(10); h.adv(3000);   // T-0 spawn, then the live life settles
   eng.feedFrame('$HP,45,70,0,*');
@@ -461,6 +463,67 @@ test('a second heavy swaps: zero the old slot, the new slot\'s $WEAP and $AMMO; 
   assert.equal(h.facts.filter(f => f.type === 'pickup').length, 2);
   h.away(); h.adv(800); h.fire(3, 1); h.adv(300); const m = h.mark(); h.fire(3, 0);
   assert.deepEqual(puw(h.since(m)), [WEAP0, '$AMMO,0,30,190,1,*'], 'the rail runs dry back to the AR, not to the rockets');
+});
+
+// ---- F400 (docs/spec/powerups.md "The switch card"): a pickup-driven equip shows the SAME full weapon-switch card
+// an ALT press shows, with ALT's own timing -- it sets `this.switching` verbatim, so the gun's own echo confirms it
+// through the same code ALT's own confirm-by-shot uses, or the same assumed-timeout does when nothing echoes. ----
+test('F400: the trigger grant sets the switch card (SWITCHING, ALT\'s own from/to shape), assumed after ALT\'s own window with no echo', () => {
+  const h = armed(); const n = h.mark(); h.take(4);
+  assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,2,0,1,*'], 'setup: the grant itself is unchanged');
+  assert.ok(h.eng.switching, 'the grant opens the same card an ALT press would');
+  assert.equal(h.eng.switching.from, 0); assert.equal(h.eng.switching.to, 2);
+  assert.equal(h.eng.state().switchingMs, 0);
+  h.adv(h.eng.switchWindowMs() + 50);
+  assert.equal(h.eng.switching, null, 'ALT\'s own window has passed with no echo');
+  assert.equal(h.eng.moment && h.eng.moment.kind, 'switched');
+  assert.deepEqual(h.eng.moment.data, { slot: 2, assumed: true });
+  assert.equal(h.eng.activeSlot, 2, 'the equip itself was never in doubt -- only the CARD waited');
+  assert.equal(h.eng._altPtr, 0, 'F400: a pickup slot (2) never becomes the gun\'s own ALT cycle pointer');
+});
+
+test('F400: the trigger grant\'s card confirms fast off the gun\'s own echo of the equip write (echo mode)', () => {
+  const h = armed({ echo: true }); const n = h.mark(); h.take(4);
+  assert.ok(h.eng.switching, 'setup: the card opened');
+  h.flush();   // the fake gun echoes the $WEAP/$AMMO write with an $ALCD for slot 2 at once
+  assert.equal(h.eng.switching, null, 'confirmed by the echo, well inside the assumed window');
+  assert.equal(h.eng.moment.kind, 'switched'); assert.equal(h.eng.moment.data.slot, 2); assert.equal(h.eng.moment.data.assumed, undefined);
+});
+
+test('F400: a same-weapon stack re-equip shows the card too, from and to the same slot', () => {
+  const h = armed(); h.take(4); h.eng._puHeld.left = 1;
+  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  assert.equal(h.eng.switching.from, 2); assert.equal(h.eng.switching.to, 2);
+});
+
+test('F400: SELECT toggles the card both ways -- naming the heavy off the trigger, then the player\'s own weapon', () => {
+  const h = armed(); h.take(4); h.adv(h.eng.switchWindowMs() + 50);   // past the grant's own card
+  h.select();
+  assert.equal(h.eng.switching.from, 2, 'off the heavy'); assert.equal(h.eng.switching.to, 0);
+  h.adv(h.eng.switchWindowMs() + 50);
+  assert.equal(h.eng.moment.data.slot, 0);
+  h.select();
+  assert.equal(h.eng.switching.from, 0, 'back onto the heavy'); assert.equal(h.eng.switching.to, 2);
+});
+
+test('F400: the empty switch-back shows the card too, naming the player\'s own weapon on the ACTIVE tile', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  assert.equal(h.eng.state().powerup.held, null, 'setup: the item is over');
+  assert.ok(h.eng.switching, 'the empty switch-back opens the same card');
+  assert.equal(h.eng.switching.from, 2); assert.equal(h.eng.switching.to, 0);
+  const going = h.eng.state().powerup.going;
+  assert.equal(going && going.slot, 2, '`going` keeps the heavy\'s identity for the STOWING tile past `_puHeld` going null');
+  assert.equal(going.name, 'ROCKETS'); assert.equal(going.charges, 0);
+});
+
+test('F400: the Overshield is not a weapon -- no switch card, ever; it plays the SAME cue the S29 recharge plays', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); const n = h.mark(); h.take(6);
+  assert.equal(h.eng.switching, null, 'no card for an overshield grant');
+  assert.ok(!(h.eng.moment && h.eng.moment.kind === 'switched'), 'no switch card moment for an overshield grant either');
+  h.adv(3000);   // the item's own "OVERSHIELD AVAILABLE" spawn card (t=60s) outranks the status line and plays first
+  assert.ok(h.cues(n, 'shield_charging') >= 1, 'F349: N102, the same clip the ordinary recharge plays on its first grant');
+  assert.equal(h.cues(n, 'shield_online'), 0, 'F349: no separate "Shields Online" voice');
 });
 
 test('a death with the heavy held: the item is lost, and after the revive burst slot 0\'s head $WEAP and spawn $AMMO re-equip it', () => {

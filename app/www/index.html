@@ -541,6 +541,12 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .wt.from{opacity:.45;filter:grayscale(.6)}
 .wt.to{border-color:var(--warn);box-shadow:0 0 28px -8px var(--warn)}.wt.to .wl{color:var(--warn)}
 .wt.on{border-color:var(--ok);box-shadow:0 0 34px -6px var(--ok)}.wt.on .wl{color:var(--ok)}
+/* F400 (docs/spec/powerups.md "The switch card"): the item's own colour, an ACCENT on the ring round the icon and the
+   charges badge -- it never overrides the STOWING/DRAWING/ACTIVE state colour the tile already carries. */
+.wt.pu .th{box-shadow:inset 0 0 0 2px var(--item)}
+.wt .wc{font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.05em;color:var(--item)}
+.wt .wc::before{content:"×"}
+[data-env="night"] .wt.pu .th{box-shadow:none;border-color:var(--num)}[data-env="night"] .wt .wc{color:var(--num)}
 .switching .track{width:360px;height:10px;background:rgba(255,255,255,.1);border:1px solid var(--edge);transform:skewX(-14deg);overflow:hidden}
 .switching .track i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--warn) 0 18px,color-mix(in srgb,var(--warn) 55%,transparent) 18px 22px);width:0;transition:width .12s linear}
 .switched{background:rgba(3,5,10,.7);animation:hitin .1s ease-out;pointer-events:none}

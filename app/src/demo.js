@@ -764,6 +764,9 @@ export function startDemo({ engine, log }) {
       'live-pu-overshield':  [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(6)]],                           // +75 on the shield bar
       'live-pu-overshield-hit': [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(6)], [4800, () => ev.hit(30)]],   // hits take the overshield first (after the 1 s protected grant)
       'live-pu-select':      [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [6300, 'puSelect']],       // SELECT: the AR back on the trigger, the rockets kept
+      // F400: SELECT the OTHER way too, back onto the heavy -- the same card, this time naming ROCKETS again.
+      // The second SELECT waits 3 s after the first: past its own card's window (850 ms) and confirm bubble (1200 ms).
+      'live-pu-select-back': [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [6300, 'puSelect'], [9300, 'puSelect']],
       'live-pu-empty':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [4700, 'puFire'], [4800, 'puFire']],   // both rockets fired: the AR back on the trigger
       'down-pu-held':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, 'die']],           // a death with an item held: it is gone
       'live-pu-taken-by':    [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4, 19)]],                      // VIPER won it: TAKEN BY VIPER

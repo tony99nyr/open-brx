@@ -308,3 +308,42 @@ Defaults still to confirm (named constants, easy to change):
 - **Charges:** `item.charges` is the rounds granted to the player who takes it (the magazine, no reserve), never a count of pickups left: a station holds at most one item. MC decides it per game, in the item it sends. The default is the weapon's own magazine (Rockets: 2) until a balance decision (Tony, 2026-09-24: "2 rockets, or 4 shots"); an operator control to change it is later. The Stick shows no charges count.
 - **Lost at death:** a weapon item's unused charges do not carry into the next life.
 - *(decided, see above: the same weapon adds charges; a different weapon SWAPS.)*
+
+## The switch card (F400, 2026-09-25)
+
+Tony, 2026-09-25: "we need a louder rockets have the trigger alert on hud. that is pretty small. we probably need
+the switching screen like the alt button. players need to know their active switched." Before this, a powerup
+weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGER`, "The mechanism" above). Built:
+
+1. **A weapon item landing on the trigger** (the first grant, and a same-weapon stack that re-equips it) shows the
+   same full weapon-switch card an ALT press shows, with ALT's own timing. The tile names the pickup weapon; the
+   item's colour is an accent (a ring round the icon, never overriding the STOWING/DRAWING/ACTIVE state colour) and
+   its charges show on the card (`app/src/hud/hud.js` `_wtile`'s `.wc` badge).
+2. **Every SELECT toggle**, both directions (to the heavy, and back to the player's own weapon), plays the same
+   card. The switch-back when the heavy's charges run out also plays it, naming the player's own weapon on the
+   ACTIVE tile.
+3. **While the card is up, the small hint chip is hidden** for a weapon grant or a switch-back (`_puHint`'s own
+   `granted`/`switched_back` kinds); the held chip beside the ammo is untouched. The hint still computes the same
+   way underneath, so it resumes for whatever is left of its own window once the card has gone.
+4. **Clash (Tony's LEAN, not final; he will review a storyboard):** the switch card goes on top; a kill card that is
+   due waits underneath, its display timer does not run while hidden, and it shows for its own full time when the
+   switch card leaves. This is exactly F368's own takeover rule (`docs/announcer.md` "Layering and priority on the
+   phone HUD"): the pickup switch card IS `this.switching` (the engine field an ALT press sets), so it inherits the
+   rule with no new HUD code at all; see the dated note there.
+5. **The Overshield is not a weapon: no switch card, ever.** Its grant already animates the shield bar (the
+   existing gain animation on `.svos`, `shieldmeter.js`) via the same width transition a hit's drain uses; it now
+   also plays the shield-recharge sound again -- `_announceStatus('shield_charging')`, the exact clip the ordinary
+   S29 recharge plays on its first grant (N102 in the golden bundle; F349: no separate "Shields Online" voice).
+6. **No new voice lines.** VA56 ("Rocket Launcher!"), VX0S ("Weapon Swap") and V130 ("Overshield") from the F400
+   FOLLOWUPS row's AUDIO panel are unaudited community labels and stay out of scope.
+
+Engine mechanism: `_puSwitchCard(from, to, going?)` sets `this.switching = {at, from, to}` verbatim, the SAME field
+and shape an ALT press sets (`engine.js` around the `$BUT,1,1` handler). The gun's own echo of the equip write
+confirms it through the existing ALT-confirm code in `_onAmmo`, or the existing tick assumed-timeout does when
+nothing echoes -- both paths, and the takeover flag, are ALT's own, untouched. `going` is `{name, color, weapon_id,
+charges}` for a slot about to lose its identity this call (the empty switch-back's heavy, whose `_puHeld` is cleared
+before the equip): the HUD's tile still needs to name it on the render after that, so it rides on
+`state().powerup.going` until the card's own window has passed. The tick's assumed-timeout path never lets a
+pickup slot (2 or 3) become `_altPtr`: that field is the gun's OWN ALT-cycle position (always 0 or 1), and a
+powerup equip never touches ALT's `$BMAP` row (see "The mechanism" above).
+Not built: a storyboard for the clash lean, and the AUDIO panel's voice lines (decision 6).

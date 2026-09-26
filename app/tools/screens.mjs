@@ -5355,8 +5355,20 @@ const puRead = pg => pg.evaluate(() => {
     armorBarW: (e => e ? e.getBoundingClientRect().width : null)(document.getElementById('shbar')),
     switchedUp: !!document.querySelector('#overlay .mo.switched'), ammoText: (document.getElementById('mag') || {}).textContent,
     hintLines: hint && vis(hint) ? [pua, pul].filter(Boolean).map(e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top / 4))).size; }) : null,
+    // F400 (docs/spec/powerups.md "The switch card"): the pickup-driven SWITCHING/ACTIVE card is the same ALT one, so it
+    // reads the same DOM the ALT gallery already reads -- `.wt.from`/`.wt.to`/`.wt.on`, each carrying `.wc` (charges) and
+    // `.pu` (the item colour accent) only when the tile is a powerup item.
+    takeover: document.getElementById('frame').dataset.takeover || '',
+    switching: (() => { const sw = document.querySelector('#overlay .mo.switching'); if (!sw || !vis(sw)) return null;
+      const tile = cls => { const t = sw.querySelector(`.wt.${cls}`); if (!t) return null;
+        const wc = t.querySelector('.wc'); return { name: (t.querySelector('.wn') || {}).textContent, pu: t.classList.contains('pu'), charges: wc ? wc.textContent.trim() : null }; };
+      return { from: tile('from'), to: tile('to') }; })(),
+    active: (() => { const el = document.querySelector('#overlay .mo.switched .wt.on'); if (!el || !vis(el)) return null;
+      const wc = el.querySelector('.wc'); return { name: (el.querySelector('.wn') || {}).textContent, pu: el.classList.contains('pu'), charges: wc ? wc.textContent.trim() : null }; })(),
     // every colour the powerup pieces paint (text, fill, border), for the night check: no green, no white
-    paints: [...document.querySelectorAll('#puhint *, #puheld *, #svm, #svm *, #lanes .lf[data-kind^="powerup"], #lanes .lf[data-kind^="powerup"] *')].filter(vis)
+    // F400: only the card's OWN item-coloured parts (`.wt.pu` and its children) join the night scan -- the rest of the
+    // SWITCHING/ACTIVE chrome (the track, the arrow, the ok/warn tile borders) is ALT's own, checked by its own gallery.
+    paints: [...document.querySelectorAll('#puhint *, #puheld *, #svm, #svm *, #lanes .lf[data-kind^="powerup"], #lanes .lf[data-kind^="powerup"] *, .wt.pu, .wt.pu *')].filter(vis)
       .flatMap(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor].map(v => [e.className || e.tagName, v]); }),
   };
 });
@@ -5404,7 +5416,9 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: the station names me: ROCKETS ON TRIGGER, 2 SHOTS, and the lit held chip beside the ammo shows 2 charges and SELECT on one line`, async () => {
     const pg = await open(view, 'live-pu-rockets', N, 3000);
-    const r = await puWait(pg, r => r.chip && r.hint && r.hint.kind === 'granted', 2500); await shot(pg, 'rockets'); await puClose(pg, night);
+    // F400: the grant now opens the full switch card first (SWITCHING ~850 ms, then the ACTIVE confirm ~1200 ms); the
+    // small hint this step reads only returns once that card has left, so the poll budget covers both plus margin.
+    const r = await puWait(pg, r => r.chip && r.hint && r.hint.kind === 'granted', 4000); await shot(pg, 'rockets'); await puClose(pg, night);
     must(r.hint && r.hint.kind === 'granted' && r.hint.act === 'ROCKETS ON TRIGGER' && r.hint.lab === '2 SHOTS', `Tony 2026-09-24, straight to trigger: ${JSON.stringify(r.hint)}`);
     must(r.hint.actPx >= 14 && r.hint.labPx >= 11, `type floors: action ${r.hint.actPx}px, label ${r.hint.labPx}px`);
     must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the hint: ${JSON.stringify(r.hint.box)}`);
@@ -5419,12 +5433,13 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: a second weapon pickup swaps: the feed row says RAIL GUN, REPLACES ROCKETS, and the chip follows`, async () => {
     const pg = await open(view, 'live-pu-swap', N, 4300);
     const r = await puWait(pg, r => r.card && r.card.kind === 'powerup_swap', 2500); await shot(pg, 'swap');
-    const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2 SELECT', 1000); await puClose(pg, night);
     must(r.card && r.card.kind === 'powerup_swap' && r.card.name === 'RAIL GUN' && r.card.sub === 'REPLACES ROCKETS · BLE', `the row: ${JSON.stringify(r.card)}`);
-    must(r.card.px >= 15 && vclear(r.card.box, r) && apart(r.card.box, r.ammo) && apart(r.card.box, r.hint.box), `the row: ${JSON.stringify(r.card)}`);
+    must(r.card.px >= 15 && vclear(r.card.box, r) && apart(r.card.box, r.ammo), `the row: ${JSON.stringify(r.card)}`);
+    // F400: the swap also opens the same full switch card, at the same instant as the feed row (both fire off the
+    // grant directly); decision 3 hides the small hint chip while it is up, so this checks the card, not the hint.
+    must(r.switching && r.switching.to && r.switching.to.name === 'RAIL GUN' && r.switching.to.pu && r.switching.to.charges === '2', `the card draws RAIL GUN with its charges: ${JSON.stringify(r.switching)}`);
+    const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2 SELECT', 1500); await puClose(pg, night);
     must(after.chip && after.chip.text === 'RAIL GUN 2 SELECT' && after.chip.on && after.chip.rows === 1, `the chip: ${JSON.stringify(after.chip)}`);
-    must(r.hint && r.hint.act === 'RAIL GUN ON TRIGGER' && r.hint.lab === '2 SHOTS', `the card says the swap, the hint says it is on the trigger: ${JSON.stringify(r.hint)}`);
-    must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the longest ON TRIGGER hint still fits: ${JSON.stringify(r.hint.box)}`);
   });
   await step(`${tag}: a spawn announces <ITEM> AVAILABLE on a feed row in the item's colour, clear of the vitals and the ammo`, async () => {
     const pg = await open(view, 'live-pu-spawn', N, 2000);
@@ -5493,6 +5508,86 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const r = await puWait(pg, r => r.hint, 1500); await shot(pg, 'easy-reload'); await puClose(pg, night);
     must(r.hint && r.hint.kind === 'claiming' && r.hint.act === 'HOLD STILL' && r.hint.lab === 'ROCKETS', `the hint: ${JSON.stringify(r.hint)}`);
     must(r.hint.actPx >= 14 && r.hint.labPx >= 11 && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `floors and room: ${JSON.stringify(r.hint)}`);
+  });
+  // ---- F400 (docs/spec/powerups.md "The switch card"): the same full ALT weapon-switch card for a pickup, ALT's own
+  // timing, decisions 1-3. `puRead`'s `takeover`/`switching`/`active` fields read the exact DOM the ALT gallery reads. ----
+  await step(`${tag}: the pickup lands with the SAME full switch card ALT shows -- DRAWING ROCKETS with its charges and colour, then ACTIVE; the small hint hides meanwhile`, async () => {
+    const pg = await open(view, 'live-pu-rockets', N, 3000);
+    await puWait(pg, r => r.takeover === 'switch', 1200);
+    await pg.waitForTimeout(150);   // past the card's own 120ms entrance fade (`.switching{animation:hitin .12s}`)
+    const during = await puRead(pg);
+    await shot(pg, 'grant-switching');
+    must(during && during.switching, `the grant opens the same card an ALT press would: ${JSON.stringify(during && during.takeover)}`);
+    must(during.switching.to && during.switching.to.name === 'ROCKETS' && during.switching.to.pu && during.switching.to.charges === '2', `DRAWING the pickup, its colour and charges: ${JSON.stringify(during.switching.to)}`);
+    must(!during.hint, `decision 3: the small hint chip is hidden while the card is up: ${JSON.stringify(during.hint)}`);
+    const active = await puWait(pg, r => r.active, 1500);
+    await shot(pg, 'grant-active');
+    must(active.active && active.active.name === 'ROCKETS' && active.active.pu && active.active.charges === '2', `the ACTIVE confirm still carries the item and its charges: ${JSON.stringify(active.active)}`);
+    const after = await puWait(pg, r => r.hint && r.hint.kind === 'granted', 2000);
+    await puClose(pg, night);
+    must(after && after.hint && after.hint.kind === 'granted', `the small hint returns once the card has left, inside its own window: ${JSON.stringify(after && after.hint)}`);
+  });
+  await step(`${tag}: SELECT off the heavy opens the same card, STOWING the item and DRAWING the player's own weapon (no colour, no charges)`, async () => {
+    const pg = await open(view, 'live-pu-select', N, 6350);
+    await puWait(pg, r => r.takeover === 'switch', 1200);
+    await pg.waitForTimeout(150);
+    const during = await puRead(pg);
+    await shot(pg, 'select-off-switching');
+    must(during && during.switching, `SELECT opens the card: ${JSON.stringify(during && during.takeover)}`);
+    must(during.switching.from && during.switching.from.name === 'ROCKETS' && during.switching.from.pu, `STOWING the heavy: ${JSON.stringify(during.switching.from)}`);
+    must(during.switching.to && !during.switching.to.pu, `DRAWING the player's own weapon, no item accent: ${JSON.stringify(during.switching.to)}`);
+    const active = await puWait(pg, r => r.active, 1500);
+    await puClose(pg, night);
+    must(active.active && !active.active.pu, `the ACTIVE confirm names the player's own weapon: ${JSON.stringify(active.active)}`);
+  });
+  await step(`${tag}: SELECT back onto the heavy opens the card again, DRAWING the item with its charges left`, async () => {
+    const pg = await open(view, 'live-pu-select-back', N, 9350);
+    await puWait(pg, r => r.takeover === 'switch', 1200);
+    await pg.waitForTimeout(150);
+    const during = await puRead(pg);
+    await shot(pg, 'select-on-switching');
+    must(during && during.switching, `the second SELECT opens the card too: ${JSON.stringify(during && during.takeover)}`);
+    must(during.switching.to && during.switching.to.name === 'ROCKETS' && during.switching.to.pu && during.switching.to.charges === '2', `back onto the heavy, its charges kept: ${JSON.stringify(during.switching.to)}`);
+    await puClose(pg, night);
+  });
+  await step(`${tag}: the empty switch-back shows the card too -- STOWING the spent item at 0, DRAWING the player's own weapon; the small hint stays hidden meanwhile`, async () => {
+    // Opened well before the grant, and waited for the SPECIFIC leaving-a-pickup transition rather than a fixed
+    // timestamp: two absolute-time `puFire` steps 100 ms apart (docs' own timing budget) leave little room for a
+    // slow shard, and the grant's OWN card (STOWING the AR, DRAWING ROCKETS) would otherwise satisfy a looser wait.
+    const pg = await open(view, 'live-pu-empty', N, 3200);
+    const during = await puWait(pg, r => r.switching && r.switching.from && r.switching.from.pu && r.switching.to && !r.switching.to.pu, 3000);
+    await shot(pg, 'empty-switching');
+    must(during && during.switching, `the empty switch-back opens the card: ${JSON.stringify(during && during.takeover)}`);
+    must(during.switching.from && during.switching.from.name === 'ROCKETS' && during.switching.from.pu && during.switching.from.charges === '0', `STOWING the spent item at 0: ${JSON.stringify(during.switching.from)}`);
+    must(during.switching.to && !during.switching.to.pu, `DRAWING the player's own weapon: ${JSON.stringify(during.switching.to)}`);
+    must(!during.hint, 'the small switched_back hint is hidden while the card is up');
+    await puClose(pg, night);
+  });
+  await step(`${tag}: the Overshield is not a weapon -- no switch card, ever, while the shield bar still shows the grant`, async () => {
+    const pg = await open(view, 'live-pu-overshield', N, 3000);
+    await puWait(pg, r => r.obar, 2500);
+    await pg.waitForTimeout(1200);   // long past ALT's own switch window: if a card were coming, it would be here by now
+    const r = await puRead(pg); await shot(pg, 'overshield-no-card'); await puClose(pg, night);
+    must(r.takeover !== 'switch' && !r.switching && !r.active, `no switch card for an overshield grant: ${JSON.stringify({ takeover: r.takeover, switching: r.switching, active: r.active })}`);
+    must(r.obar && r.obar.left === 75, `the shield bar still shows the grant: ${JSON.stringify(r.obar)}`);
+  });
+  await step(`${tag}: clash (Tony's LEAN, not final): a kill card due while the switch card is up waits, and draws for its own full time once the card leaves (F368's own rule, inherited)`, async () => {
+    const pg = await open(view, 'live-pu-rockets', N, 2500);
+    // wait for the grant's own card, whenever it actually lands (the claim dwell + the taker advert), then fire the
+    // kill confirm right on top of it -- robust to exactly when the card opened, unlike a second fixed stage timer.
+    await pg.waitForFunction(() => document.getElementById('frame').dataset.takeover === 'switch', null, { timeout: 6000 });
+    await pg.evaluate(() => window.brxDemo.killMedals(['first_blood'], 'VIPER'));
+    await pg.waitForTimeout(150);
+    const during = await lnRead(pg); await shot(pg, 'clash-during');
+    const tkDuring = await pg.evaluate(() => document.getElementById('frame').dataset.takeover || '');
+    must(tkDuring === 'switch', `setup: the switch card must still be up when the kill lands: ${tkDuring}`);
+    must(!during.hero, `the kill card must not draw under the switch takeover: ${JSON.stringify(during.hero)}`);
+    await pg.waitForFunction(() => !document.getElementById('frame').dataset.takeover, null, { timeout: 4000 });
+    await pg.waitForTimeout(150);
+    const after = await lnWait(pg, r => r.hero && !r.hero.out, 2000);
+    await shot(pg, 'clash-after'); await puClose(pg, night);
+    must(after && after.hero && after.hero.name === 'VIPER' && !after.hero.out, `the kill card draws once the switch card has left: ${JSON.stringify(after && after.hero)}`);
+    must(lnCovers(after).length === 0, lnCovers(after).join(' | '));
   });
 }
 // The powerup STATION (utility.html, kind 2): its item's name, AVAILABLE, the 1 s ring from the first claiming advert,

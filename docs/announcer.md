@@ -198,6 +198,12 @@ Rules:
   REDEPLOYED's end from the same `redeployOutMs` (`app/src/lanes.js`) as the HUD's overlay. The words of every warning
   have one source, `hud.js` `WARN`.
   The OBJECTIVE and FEED lanes keep drawing at the sides, and the hit number still shows.
+- **2026-09-25 (F400): the pickup switch card is the SWITCHING takeover, not a new one.** A powerup weapon landing on
+  the trigger, a same-weapon stack, either direction of SELECT, and the empty switch-back all open the exact takeover
+  item 3 already names (`docs/spec/powerups.md` "The switch card"), so it inherits every rule above with no new code:
+  a kill card due while it is up waits and draws in full once it leaves. This is Tony's LEAN (not yet reviewed on a
+  storyboard); the brief ACTIVE confirm bubble after it is not itself gated (neither is ALT's own), so a kill can in
+  principle land on top of that one small moment.
 - **The warnings live in a status rail** at the bottom centre, 150 px wide (x 347-497), between the vitals and the
   ammo, never in the kill card's band: GUN LINK LOST, HEADSET NOT JOINED or JOINING, HEADSET OFF?, GUN KEEPS DROPPING,
   MC out of range, ASK THE HOST, and the other pill-bar chips (WEAPONS HOT, ALT = RELOAD, RECONNECT NOW). Each stays

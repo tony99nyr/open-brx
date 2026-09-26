@@ -1440,6 +1440,13 @@ export class Hud {
    *  while the player stands at the station (HOLD STILL), the item once granted, who took it, or the countdown. */
   _puHint(st) {
     const h = st.powerup && st.powerup.hint; if (!h) return '';
+    // F400 decision 3: while the switch card is up, hide the small hint chip for a weapon grant or a switch-back --
+    // the card says the same thing, louder. The Overshield never gets a card (decision 5), so its own `granted`
+    // hint (PICKED UP) is never hidden; the held chip beside the ammo is untouched either way. Read `st.switching`
+    // directly (not `this.frame.dataset.takeover`, which `_moments` sets AFTER this same render's `_patch` call --
+    // a DOM-attribute check here would lag the card's own opening render by one pass) for the SWITCHING phase; the
+    // brief ACTIVE confirm bubble is still read off the overlay, `_puCardUp()`'s own job.
+    if ((h.kind === 'switched_back' || (h.kind === 'granted' && h.itemKind !== 'overshield')) && (!!st.switching || this._puCardUp())) return '';
     const name = esc(h.name || ''), c = itemColor(h.color);
     const ring = p => `<span class="puring" style="--p:${Math.max(0, Math.min(1, p)).toFixed(3)}" aria-hidden="true"><i></i></span>`;
     const line = (act, lab, extra = '', ready = false) => `<span class="pu" data-kind="${esc(h.kind)}"${ready ? ' data-ready="1"' : ''} style="--item:${c}">${extra}<span class="put"><span class="pua">${act}</span>${lab ? `<span class="pul">${lab}</span>` : ''}</span></span>`;
@@ -2019,6 +2026,14 @@ export class Hud {
     return node;   // the node actually on screen (a reused one is NOT `el`)
   }
 
+  /** F400: is the SWITCHING/ACTIVE weapon-switch card on screen right now (ALT's own or a pickup's, the same card)?
+   *  `data-takeover="switch"` covers the SWITCHING phase; the brief ACTIVE confirm bubble is checked the same way
+   *  `_lanes`' own redeploy check is (connected and not yet `.out`). Used to hide the small hint chip (decision 3). */
+  _puCardUp() {
+    const sw = this._overlays && this._overlays.switched;
+    return this.frame.dataset.takeover === 'switch' || !!(sw && sw.el.isConnected && !sw.el.classList.contains('out'));
+  }
+
   _flash() {
     if (this.frame.dataset.env === 'night') return;
     const now = Date.now(); if (this._flashAt && now - this._flashAt < 500) return; this._flashAt = now;   // ≤2 flashes/s whatever the event burst (WCAG 2.3.1)
@@ -2227,13 +2242,21 @@ export class Hud {
     const lo = st.loadout || {};
     if (slot === 0 || slot === 1) return [lo.primary, lo.secondary][slot] || null;
     const h = st.powerup && st.powerup.held;
-    if (h && h.slot === slot) return { kind: 'weapon', weapon_id: h.weapon_id, name: h.name };
+    if (h && h.slot === slot) return { kind: 'weapon', weapon_id: h.weapon_id, name: h.name, color: h.color, charges: h.left };
+    // F400: a slot the switch-back just left (the empty heavy) -- `_puHeld` is already gone by the time this renders,
+    // so the engine keeps its name/colour on `state().powerup.going` for exactly this.
+    const g = st.powerup && st.powerup.going;
+    if (g && g.slot === slot) return { kind: 'weapon', weapon_id: g.weapon_id, name: g.name, color: g.color, charges: g.charges };
     return slot != null && slot >= 2 ? { kind: 'weapon', weapon_id: st.weaponId, name: st.weapon || 'PICKUP' } : null;
   }
+  /** F400 (docs/spec/powerups.md "The switch card"): a powerup tile carries `color` (the item's own colour, an accent)
+   *  and `charges` (shown on the card, decision 1); a loadout tile carries neither, so it renders exactly as before. */
   _wtile(it, label, cls) {
     if (!it) return `<span class="wt ${cls}"><span class="th none">—</span><span class="wl">${label}</span><span class="wn">NONE</span></span>`;
     const th = it.kind === 'perk' ? `<span class="th perk">${perkGlyph(it.perk_id)}</span>` : `<span class="th">${weaponArt(it.weapon_id)}</span>`;
-    return `<span class="wt ${cls}">${th}<span class="wl">${label}</span><span class="wn">${esc(it.name).toUpperCase()}</span></span>`;
+    const pu = it.color != null, style = pu ? ` style="--item:${itemColor(it.color)}"` : '';
+    const chg = it.charges != null ? `<span class="wc tab">${esc(it.charges)}</span>` : '';
+    return `<span class="wt ${cls}${pu ? ' pu' : ''}"${style}>${th}<span class="wl">${label}</span><span class="wn">${esc(it.name).toUpperCase()}</span>${chg}</span>`;
   }
   /** The swap confirmed (by the next shot's $ALCD) or assumed (window expired): the new weapon, marked ACTIVE. */
   _switched(st, m) {
