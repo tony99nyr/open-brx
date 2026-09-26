@@ -2455,9 +2455,19 @@ class Session:
         # SAVE AND LOAD: a game that has been ANNOUNCED is re-announced on every edit, so the phones'
         # briefing never describes a game nobody is playing. Independent of the frames re-push below:
         # after a real LOBBY push both happen; before one, only this does.
+        # F402: an edit that leaves a LOADED koth game without its hill (the mode switched to koth, the source
+        # moved off phone) must not raise half-way through this edit; the game simply stops being loaded, and
+        # LOAD shows the red block until the host assigns a hill.
+        hill_fault = self._koth_hill_fault() if self.game_loaded else None
+        if hill_fault:
+            self.game_loaded = False
         if self.game_loaded and res["ok"]:
             self.load_game()
-        if repush:
+        if repush and hill_fault:
+            self.lobby_pushed = False
+            self.acks = {}
+            self.arm_stations(relock=True)
+        elif repush:
             # B1/B3 (2026-09-12): editing a LOADED game in KIT/LOBBY used to silently drop the push here
             # (`lobby_pushed=False`, acks cleared) and NEVER re-compile -- every gun kept the STALE head
             # (old $TID/mode/health/weapons) with nothing on screen saying so. A TDM whose teams, mode or
@@ -3150,11 +3160,14 @@ class Session:
         `_koth_hill_fault` above, which `force` cannot open either."""
         if self.config.get("mode") != "koth" or self.config.get("station_source") != "phone":
             return []
-        for nid, st in self.stations.items():
-            a = st.get("assigned")
-            if a and a.get("kind") == "control" and not self._station_view(nid)["online"]:
-                return ["SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START"]
-        return []
+        hills = [self._station_view(nid) for nid, st in self.stations.items()
+                 if (a := st.get("assigned")) and a.get("kind") == "control"]
+        if not hills or any(v["online"] for v in hills):
+            return []               # one hill online is enough (several control points are allowed)
+        # A muster or HELD Stick is out of Wi-Fi by design (A58/A68); the tamper flags speak for it.
+        if any((v.get("report") or {}).get("assoc") in ("muster", "held") for v in hills):
+            return []
+        return ["SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START"]
 
     def _station_sync_warnings(self) -> list[str]:
         """F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of
@@ -7026,6 +7039,7 @@ class Session:
         if not self.lobby_pushed:
             raise ValueError("push config first")
         self._refuse_one_team()           # round-2 B: a team can empty out between the push and the whistle
+        self._refuse_koth_hill()          # F402: the hill can be unassigned in LOBBY after a legit LOAD; force-proof
         self._refuse_stale_ack()          # A36: and a gun can answer for LAST game's head at any moment
         self._refuse_incompatible_app()   # F121: and a gun can arrive on an old app at any moment too
         self._refuse_gun_config_mismatch() # F271: direct gun read-back is force-proof like a stale ack

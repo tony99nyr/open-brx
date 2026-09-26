@@ -1332,3 +1332,42 @@ def test_f401_the_sync_warning_stops_once_a_new_game_byte_has_reset_the_station(
     s._validate()
     assert not any("HAS NOT SYNCED" in w for w in s.config_warnings), s.config_warnings
 
+
+
+def test_f402_start_refuses_a_koth_whose_hill_was_unassigned_after_load():
+    """F402 polish: LOAD passed with a hill, then the host cleared it in LOBBY; START must refuse (force too)."""
+    from _session import assign_koth_hill
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    nid = assign_koth_hill(s)
+    s.push_config(force=True)
+    assert s.clear_station(nid)
+    for force in (False, True):
+        try:
+            s.start(runway_s=3, force=force)
+            raise AssertionError("a koth with no hill reached START")
+        except ValueError as e:
+            assert "KING OF THE HILL NEEDS A HILL" in str(e), e
+
+
+def test_f402_the_hill_offline_warning_skips_a_held_stick_and_a_second_online_hill():
+    """F402 polish: a HELD or muster Stick is out of Wi-Fi by design (A68), and one online hill is enough."""
+    from _session import assign_koth_hill
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    a = assign_koth_hill(s, "hill-a")
+    offline = lambda: [w for w in s.snapshot()["config_warnings"] if "THE HILL IS OFFLINE" in w]
+    s.nodes[a]["stale"] = True                                  # its link has gone stale
+    assert offline(), "CONTROL: a plain hill gone quiet is warned"
+    s.stations[a].setdefault("report", {})["assoc"] = "held"
+    assert not offline(), "a HELD Stick carried out of Wi-Fi is not 'offline' news"
+    s.stations[a]["report"].pop("assoc")
+    b = assign_koth_hill(s, "hill-b")                          # a second hill, heard just now
+    assert not offline(), "one online hill is enough"
+
+
+def test_f402_switching_a_loaded_game_to_koth_without_a_hill_unloads_it_instead_of_raising():
+    s = _joined(_sess(mode="tdm"))
+    s.push_config(force=True)
+    s.load_game()
+    assert s.game_loaded
+    r = s.set_config({"mode": "koth", "station_source": "phone"})    # must not raise half-way
+    assert s.game_loaded is False and s.config["mode"] == "koth", r
