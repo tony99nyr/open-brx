@@ -230,7 +230,7 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 **Practical levels**
 
-- **Play:** the Open BRX game default above. An unknown venue gets the indoor level, the quieter one.
+- **Play:** the Open BRX game default above. MVP games run outdoors only, so every match plays at 90; indoor play is a post-launch feature. The quieter indoor level (80) stays as the fallback for a venue the software does not recognise, a safety net rather than a choice.
 - **Try-outs:** 69. A try-out is fired at arm's length from the player's own head, so it stays quiet.
 - **Bench / diagnostics:** 30 or lower keeps the neighbors happy and still confirms the command path (the gun echoes its state, you just won't hear it).
 

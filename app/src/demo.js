@@ -128,6 +128,14 @@ export function startDemo({ engine, log }) {
   let misread = false;   // F341 x HUD QA R2-02: the gun misread its `$PSET` (4545/7070) and never takes a repair
   let acc = 100;   // S53: the gun's live accuracy ($ALCD token 2). A smoke holds it at 0 for SMOKE_MS, like the bench gun
   const lcd = () => engine.feedFrame(`$LCD,${hp},${armor},0,0,${mag},${reserve},*`);
+  // F394: the demo gun keeps a magazine per slot and a pointer that ALT moves, as the real gun does. ALT itself reports
+  // NOTHING (the real gun sends no `$ALCD` on a swap), so the engine has to show the new slot's counts on its own; the
+  // next shot or reload reports the slot the gun is on. `mag`/`reserve` are always the slot on the trigger.
+  let gunSlot = 0, bank = {};
+  const spawnCounts = slot => { const f = (bundle.spawn || []).find(x => x.startsWith(`$AMMO,${slot},`)); const t = f ? f.split(',') : []; return { mag: +t[2] || 0, reserve: +t[3] || 0 }; };
+  const capOf = slot => spawnCounts(slot).mag || 32;
+  const gunAlt = () => { bank[gunSlot] = { mag, reserve }; gunSlot = gunSlot === 0 ? 1 : 0; ({ mag, reserve } = bank[gunSlot] || spawnCounts(gunSlot)); };
+  const gunSpawn = () => { gunSlot = 0; bank = {}; };
   // S54 (2026-09-23): one continuous trigger pull for the whole burst, not a press-shot-release per
   // round -- a full-auto weapon does not release between rounds, and the engine now reads a real
   // release edge (`$BUT,0,0`) as evidence a still-CRISP burst has stopped (`_onButton`). A release after
@@ -135,7 +143,7 @@ export function startDemo({ engine, log }) {
   const fire = n => {
     if (n <= 0 || mag <= 0) return;
     engine.feedFrame('$BUT,0,1,*');
-    for (let i = 0; i < n && mag > 0; i++) { mag--; engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); }
+    for (let i = 0; i < n && mag > 0; i++) { mag--; engine.feedFrame(`$ALCD,${mag},${acc},${gunSlot},${reserve},0,*`); }
     engine.feedFrame('$BUT,0,0,*');
   };
   // Aim tells x lanes (docs/announcer.md "Aim tells and the lanes"): the same ONE held pull as `fire`, but paced in
@@ -147,11 +155,11 @@ export function startDemo({ engine, log }) {
     let i = 0;
     const round = () => {
       if (i >= n || mag <= 0) { engine.feedFrame('$BUT,0,0,*'); return; }
-      i++; mag--; engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); setTimeout(round, gapMs);
+      i++; mag--; engine.feedFrame(`$ALCD,${mag},${acc},${gunSlot},${reserve},0,*`); setTimeout(round, gapMs);
     };
     round();
   };
-  const reload = () => { const need = 32 - mag; const take = Math.min(need, reserve); reserve -= take; mag += take; engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); };
+  const reload = () => { const need = capOf(gunSlot) - mag; const take = Math.min(need, reserve); reserve -= take; mag += take; engine.feedFrame(`$ALCD,${mag},${acc},${gunSlot},${reserve},0,*`); };
   // S16: the demo gun answers the node's own poison ticks the way the bench measured (2026-09-09): a negative `$LIFE`
   // is per pool with no spill and floors at 0, a non-lethal one self-emits `$HP`, and a lethal one answers `$LCD`
   // and never `$HP`. Without this the stage would show a poison stack whose ticks change nothing.
@@ -398,21 +406,21 @@ export function startDemo({ engine, log }) {
       // OVERHEAT: the charge rifle, then the gun's own $ALCD at heat 108 (past the lockout), fed until the engine
       // takes it (F259's echo window can swallow a single frame, see screens.mjs `setAmmo`).
       overheat: () => { engine.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; let n = 0;
-        const feed = () => { engine.feedFrame('$ALCD,3,100,0,80,108,*'); if (!engine.state().overheatShown && ++n < 25) setTimeout(feed, 200); }; feed(); },
+        const feed = () => { engine.feedFrame(`$ALCD,3,100,${gunSlot},80,108,*`); if (!engine.state().overheatShown && ++n < 25) setTimeout(feed, 200); }; feed(); },
       // F15 stun: the host's `config.stun` on (set before the bundle, see the stage), then one EMP word (proto 8) from VIPER.
       stun: () => { if (engine.config && !engine.config.stun) engine.config.stun = { duration_s: 10 }; engine.feedFrame(`$HIR,4,8,19,${foe.tid},8,0,0,*`); },   // the button turns the host's stun on first
       // 2026-09-19 station respawn: the bundle's respawn_profile gives a station life 2 s of visible protection (`shielded`).
-      stationRespawn: () => { if (engine.alive) return; engine._revive(false, 3); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
-      chargeAmmo: (ammo, reserve = 80) => { engine.feedFrame('$ALCD,40,100,0,80,0,*'); engine.feedFrame(`$ALCD,${ammo},100,0,${reserve},0,*`); },
-      alt: () => { engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // the ALT button: a swap with two weapons, a reload with one
-      altCycle: () => {                                     // what a real swap looks like: ALT, then the next shot reports the new slot
+      stationRespawn: () => { if (engine.alive) return; engine._revive(false, 3); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
+      chargeAmmo: (ammo, reserve = 80) => { engine.feedFrame(`$ALCD,40,100,${gunSlot},80,0,*`); engine.feedFrame(`$ALCD,${ammo},100,${gunSlot},${reserve},0,*`); },
+      alt: () => { if (engine._slotCount() >= 2) gunAlt(); engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // F394: the gun's pointer moves, and it reports nothing   // the ALT button: a swap with two weapons, a reload with one
+      altCycle: () => {                                     // what a real swap looks like: ALT and NO report (F394); the next shot reports the new slot
         if (engine._slotCount() < 2) ev.twoWeapons();
-        setTimeout(() => { ev.alt(); setTimeout(() => { const to = engine.activeSlot === 0 ? 1 : 0; engine.feedFrame(`$ALCD,${to === 1 ? 71 : mag},100,${to},${to === 1 ? 288 : reserve},0,*`); }, 700); }, 50);
+        setTimeout(() => ev.alt(), 50);
       },
       reloadCycle: () => {                                  // what a real reload looks like: handle pull, then the refill after the weapon's reload_s
-        if (mag >= 32) { log('demo: mag is full — fire first, then reload', 'li'); return; }
+        if (mag >= capOf(gunSlot)) { log('demo: mag is full — fire first, then reload', 'li'); return; }
         engine.feedFrame('$BUT,2,1,*'); engine.feedFrame('$BUT,2,0,*');
-        const w = DEMO_WEAPONS.find(x => x.weapon_id === ((player.loadout.weapons[0] || {}).weapon_id));
+        const w = DEMO_WEAPONS.find(x => x.weapon_id === ((player.loadout.weapons[gunSlot] || player.loadout.weapons[0] || {}).weapon_id));
         setTimeout(reload, Math.round(((w && w.reload_s) || 1.5) * 1000));
       },
       alert: (kind = 'next_kill_wins', text) => engine.onMcMessage({ kind: 'alert', body: { kind, text: text || ({ next_kill_wins: 'NEXT KILL WINS', bomb_planted: 'BOMB PLANTED', point_captured: 'POINT CAPTURED', lead_taken: 'YOUR TEAM LEADS', time_60: 'ONE MINUTE LEFT', vip_down: 'VIP DOWN' })[kind] || kind.replace(/_/g, ' ').toUpperCase(), t: Date.now() } }),
@@ -421,9 +429,9 @@ export function startDemo({ engine, log }) {
       killConfirm: (victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim: 'p-' + String(victim).toLowerCase(), victim_display: victim } }),
       // the gun (what the tagger would report)
       fire: n => fire(n == null ? 1 : n), holdFire, reload, hit: d => hit(d == null ? 9 : d),
-      spawnEcho: () => { hp = engine.maxHp; armor = engine.maxArmor; mag = 32; reserve = 384; lcd(); },
+      spawnEcho: () => { gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; mag = 32; reserve = 384; lcd(); },
       die: () => { armor = 0; hp = 0; shield = 0; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
-      respawn: () => { if (engine.alive) return; engine._revive(false); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
+      respawn: () => { if (engine.alive) return; engine._revive(false); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
       heal: (n = 15) => { hp = Math.min(engine.maxHp, hp + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       armorUp: (n = 30) => { armor = Math.min(engine.maxArmor, armor + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       discovered: (reason, url, source) => { const h = hud(); if (!h) return; h.setDiscovered({ url, at: Date.now(), source, reason, text: offerText(reason, url) }); h.render(engine.state()); },
@@ -435,8 +443,8 @@ export function startDemo({ engine, log }) {
       poisonLethal: (shooter = 19) => { armor = 0; hp = 12; engine.feedFrame(`$HP,${hp},${armor},0,*`); ev.poison(shooter); },
       // S53: a Haze word (fn 23 on <7,0>): no pool moves, and the gun's accuracy drops to 0 in the same millisecond
       smoke: () => { acc = 0; engine.feedFrame(`$HIR,0,7,19,${foe.tid},6,0,0,*`); engine.feedFrame(`$ALCD,${mag},0,0,${reserve},0,*`); setTimeout(() => { acc = 100; }, 6000); },
-      lowAmmo: () => { mag = 3; reserve = 0; engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); },
-      emptyMag: () => { mag = 0; engine.feedFrame(`$ALCD,0,100,0,${reserve},0,*`); },
+      lowAmmo: () => { mag = 3; reserve = 0; engine.feedFrame(`$ALCD,${mag},100,${gunSlot},${reserve},0,*`); },
+      emptyMag: () => { mag = 0; engine.feedFrame(`$ALCD,0,100,${gunSlot},${reserve},0,*`); },
       // F288: deterministic screen truth for the gun-health lane. Use the engine's real state() and
       // poolStale() paths; only the measured facts are injected, as hardware would have established them.
       gunNoAnswer: () => { engine._noFirePulls = 3; engine._cureLife = engine._lifeSeq; engine._cureAt = Date.now(); engine.cure = { verdict: 'no_answer', at: Date.now() }; engine._changed(); },
@@ -692,6 +700,8 @@ export function startDemo({ engine, log }) {
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-reload-overrun': [[0, () => { player.loadout = { weapons: [{ weapon_id: 'shotgun' }] }; }], ...live, [2300, () => ev.fire(20)], [2600, () => ev.reloadChain(18, 800)]],   // F123: the chain reload — nominal is the PER-SHELL time, so the bar is in overrun for the whole reload
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],
+      // F394: the real gun reports nothing on ALT, so only a shot inside the swap window reaches CONFIRMED BY YOUR GUN
+      'live-switch-shot':  [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle'], [3000, () => ev.fire(1)]],
       'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
       'down-hold':         [[0, () => ev.scanner(8)], ...live, [2300, 'die'], [2400, () => ev.station(-70, true)]],
       'down-find':         [[0, () => ev.scanner(3)], ...live, [2300, 'die'], [2400, () => ev.station(null)]],

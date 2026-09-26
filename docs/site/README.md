@@ -18,8 +18,9 @@ block-DSL generator cost, what was cut, what was measured): history, not instruc
   run build`. `site/build.mjs` fails if `app/www` is missing.
 - `npm run build` renders `docs/platform/*.md` and `docs/manual/*.md` into `webapp/`.
 - `npm run shots` drives the built MC UI (`?mock`) and the HUD (`?demo`) with Playwright into
-  `site/shots/` (committed, content-hashed on publish); `mcp/tests/test_site_shots.py` fails once
-  `webapp/mc/src` or `app/src` has moved past `site/shots/manifest.json`.
+  `site/shots/` (committed, content-hashed on publish). Do not run it after a UI change: the
+  `site-shots` CI job re-captures on `main` whenever `webapp/mc/src` or `app/src` moves past
+  `site/shots/manifest.json`.
 - `npm test` builds first (with the app build above as its own prerequisite), then runs the
   Playwright gate: every page renders, landing pages carry no dates or status language, internal
   links resolve, the markdown twins keep their tables, both generated `data` tables load and filter,
