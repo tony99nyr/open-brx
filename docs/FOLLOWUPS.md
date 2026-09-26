@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-26 (F414 filed to post-mvp.md: a reliable Codex delegation path; F413 filed: teams default red + blue, operator picks team count and colours, MVP after the bench; F412 filed to post-mvp.md: a melee toggle or damage preset; F372 closed, powerups on by default; F221 closed: Tony approved the alert colours gallery; F390 to post-mvp.md: HELD is MVP, MUSTER post-launch; F282: Tony keeps the USP-S on its own Q04 under SILENCED; F400 desk lows fixed (11px label, CONFIRMED bubble), moved MVP DESK to MVP BENCH for its bench check. F394 built at the desk, bench check left; F380 row marked built; F410 closed: MVP is outdoors-only server-side already (compile.play_volume, default_config default outdoor, unchanged), docs/platform and docs/manual brought in line, quiet fallback for an unrecognised venue kept; hiding the venue picker in the console is F411's own work, not repeated here. F282 moved from MVP DESK to MVP BENCH: build is done, only the bench eyes-and-ears pass is left. F411 brief written, spec/design/games-redesign.md, route brx3; F403 closed; F402 closed; F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F406 filed to post-mvp.md).
+Updated: 2026-09-26 (F415 filed: per-mode MATCH SETTINGS, KOTH hold target, MVP after the bench; F414 filed to post-mvp.md: a reliable Codex delegation path; F413 filed: teams default red + blue, operator picks team count and colours, MVP after the bench; F412 filed to post-mvp.md: a melee toggle or damage preset; F372 closed, powerups on by default; F221 closed: Tony approved the alert colours gallery; F390 to post-mvp.md: HELD is MVP, MUSTER post-launch; F282: Tony keeps the USP-S on its own Q04 under SILENCED; F400 desk lows fixed (11px label, CONFIRMED bubble), moved MVP DESK to MVP BENCH for its bench check. F394 built at the desk, bench check left; F380 row marked built; F410 closed: MVP is outdoors-only server-side already (compile.play_volume, default_config default outdoor, unchanged), docs/platform and docs/manual brought in line, quiet fallback for an unrecognised venue kept; hiding the venue picker in the console is F411's own work, not repeated here. F282 moved from MVP DESK to MVP BENCH: build is done, only the bench eyes-and-ears pass is left. F411 brief written, spec/design/games-redesign.md, route brx3; F403 closed; F402 closed; F404 and F405 closed; MVP modes are TDM, FFA and KOTH (F377 to post-mvp.md); F401 closed; F383 -75, F386 duration_ms, F389-F392, F397, F398 built at the desk; F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; F406 filed to post-mvp.md).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,11 +9,11 @@ Updated: 2026-09-26 (F414 filed to post-mvp.md: a reliable Codex delegation path
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 73.** Desk 3 · bench 69 · decision 1.
+**MVP open: 74.** Desk 4 · bench 69 · decision 1.
 
-**MVP DESK (3),** a keyboard is enough:
+**MVP DESK (4),** a keyboard is enough:
 - 🔴 **F411**
-- 🟠 **B21** · **F413**
+- 🟠 **B21** · **F413** · **F415**
 
 **MVP BENCH (69),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
@@ -30,7 +30,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F415 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F416 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -51,6 +51,8 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 ## MVP DESK
 
 A keyboard is enough. Highest value first.
+
+- **F415 🟠 MATCH SETTINGS CARRY PER-MODE SETTINGS; KOTH GETS A HOLD TARGET.** Tony 2026-09-26: "We may have settings per mode... hill could be hold for 5 minutes to win to time limit. Or it could be highest held time in a time limit"; "There are some mode related match settings... We need to be able to support that. Just like extra teams for tdm". Today a mode row in `state.py` carries its settings (`time_limit_s`, `frag_limit`, `respawn`), and KOTH wins only on the most possession at the clock (`scoring.py`), with no hold target. Build, after the bench, with F413: (1) each mode row declares the MATCH SETTINGS items it offers (a schema the F411 strip renders, so a new mode setting needs no new console code); (2) KOTH: `hold_target_s` (optional; the first team to reach it wins, else the most possession at the clock), enforced by MC's scorer like the frag limit and shown on the phone briefing; (3) TDM's team count and colours (F413) ride the same mechanism. Also check the KOTH card's "POSSESSION TIME · HOST CALL" label: `app/src/engine.js` now sends `possession`, so HOST CALL may be stale. `build`.
 
 - **F413 🟠 TEAMS: RED + BLUE BY DEFAULT, AND THE OPERATOR PICKS THE COUNT AND THE COLOURS.** Tony 2026-09-26: "Lets default teams in all modes to red and blue like halo. Should probably allow operator to change each team color and allow edit number of teams in match-settings too. MVP. Can be post bench". Today each mode row in `state.py` fixes its teams (TDM blue + yellow, KOTH blue + green, extraction blue + red) and no console control changes the count or the colours, although the TDM card says "2–4 TEAMS". Build, after the bench and after F411: (1) every team mode defaults to red (tid 0) + blue (tid 1); (2) a TEAMS control in the F411 MATCH SETTINGS strip: 2, 3 or 4 teams, and each team's colour from the four native teams only (red 0, blue 1, yellow 2, green 3; `$TID` 4-7 do not work in combat, `protocol/brx-protocol.md` `$HLED` row); (3) LOBBY splits the roster evenly on a change; (4) KOTH never offers yellow (a neutral hill broadcasts tid 2, F82) and stays at 2 teams. Check KOTH, the hill scorer, stations and the `$SIR` team table with tid 0 on a team before calling it done. `build`.
 
