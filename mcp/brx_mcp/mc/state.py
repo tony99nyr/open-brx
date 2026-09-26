@@ -3301,11 +3301,21 @@ class Session:
         Never in play: `_repush_stations_to_players` is lobby-only. `set_station`/`clear_station` refuse in
         play, but `release_station` does not: in play it drops the item's slot from `_powerup_slots()` at once,
         and the guns already armed keep the slot in their frames because nothing re-pushes a live gun here."""
+        self._resend_brief_pickups()
         if self._powerup_slots() != slots_before and self.lobby_pushed and not self.in_play():
             self._fresh_head_repush()              # re-arms the stations too
             return
         self.arm_stations()
         self._repush_stations_to_players()
+
+    def _resend_brief_pickups(self) -> None:
+        """F403: a bound phone's BRIEFING carries `game_brief()["pickups"]`, delivered by `assign`. An item added,
+        changed or cleared before the match re-sends `assign`, so the PICKUPS line never goes stale. Never in play."""
+        if self.in_play():
+            return
+        for p in self.players.values():
+            if p.get("node_id"):
+                self._send_assign(p)
 
     def _refuse_station_change_in_play(self) -> None:
         """An assignment or clear is a `config` re-push to every player (below), and the phone's

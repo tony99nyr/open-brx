@@ -662,8 +662,29 @@ def test_f403_the_game_brief_names_each_pickup_once_in_station_order():
     _station(s, "u2", 6, "overshield")
     _station(s, "u3", 7, "rockets")                      # the same item names once
     pk = s.game_brief()["pickups"]
-    assert [p["name"] for p in pk] == ["Rockets", "Overshield"] or [p["name"].upper() for p in pk] == ["ROCKETS", "OVERSHIELD"], pk
+    assert [p["name"] for p in pk] == ["ROCKETS", "OVERSHIELD"], pk
     assert all(isinstance(p.get("color"), str) and p["color"] for p in pk), pk
     off, _ = _sess(powerups=False)
     _station(off, "u1", 5)
     assert "pickups" not in off.game_brief(), "the flag off: items are inert, so no line"
+
+
+def test_f403_an_item_change_before_the_match_resends_the_brief_to_bound_phones():
+    s, _ = _sess(powerups=True)
+    before = len(_pushed(s, "assign"))
+    _station(s, "u1", 5, "rail_gun")
+    sent = _pushed(s, "assign")[before:]
+    assert sent, "the bound phones got a fresh assign"
+    assert all(m["game"].get("pickups") == [{"name": "RAIL GUN", "color": "#22d3ee"}] for m in sent), sent
+
+
+def test_f403_the_phone_demo_paints_each_item_in_mc_s_own_colour():
+    """The HUD stage (app/src/demo.js) is what every storyboard and screen gate renders: its items must carry the
+    preset colours MC ships, or Tony reviews the wrong hues (RAIL GUN and OVERSHIELD were swapped until F403)."""
+    import re
+    from pathlib import Path
+    from brx_mcp.mc import powerups as pu
+    demo = (Path(__file__).resolve().parents[2] / "app" / "src" / "demo.js").read_text()
+    shown = dict(re.findall(r"name: '([A-Z ]+)', color: '(#[0-9a-fA-F]{6})'", demo))
+    for row in pu._PRESETS.values():
+        assert shown.get(row["name"]) == row["color"], (row["name"], shown.get(row["name"]), row["color"])

@@ -479,8 +479,8 @@ export function startDemo({ engine, log }) {
     // through the same presence path the app uses, with the claim's median RSSI and the station's `taker` byte. ----
     const PU = {
       rockets: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' },
-      rail: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#b06cff' },
-      overshield: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#3ad6ff' },
+      rail: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#22d3ee' },
+      overshield: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#b36bff' },
     };
     const PU_WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*',
       3: '$WEAP,3,0,100,6,0,149,0,,,,,,,,1200,850,2,2,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,2,1,75,*' };
