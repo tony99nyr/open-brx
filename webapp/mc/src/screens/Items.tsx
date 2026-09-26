@@ -43,17 +43,43 @@ const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: '
 const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));
 
 export function Items() {
-  const { state, focusHill } = useStore();
+  const { state, focusHill, setFocusHill, setView } = useStore();
   const stations = state?.stations ?? [];
   const pu = usePowerups();   // A56
   // F411 §8: PLAY's ASSIGN A HILL ▸ lands here. Scroll the panel into view and call out the slot in
   // words (no station is pre-destined as "the hill" — the operator assigns one, any phone or Stick, to
   // the CONTROL kind below), rather than guessing which card to ring.
+  //
+  // QA-03 (visual QA round 1, 2026-09-26): this used to gate on `stations.length` too, so a host with
+  // NOTHING on the net yet never scrolled or saw the callout at all -- the one screen that should be
+  // telling them how to get a station onto the board said nothing and left BACK TO PLAY (Armory's own
+  // header button) as the only thing on screen.
   useEffect(() => {
-    if (!focusHill || !stations.length) return;
+    if (!focusHill) return;
     document.querySelector('[data-testid="items-panel"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [focusHill, stations.length]);
-  if (!state || !stations.length) return null;
+  if (!state) return null;
+  if (!stations.length && !focusHill) return null;
+  // QA-18: repeated here so it is still on screen once the scroll above has moved Armory's own header
+  // button (`armory-back-to-play`) off the top of the viewport.
+  const backToPlay = focusHill && (
+    <span data-testid="items-back-to-play">
+      <GhostButton onClick={() => { setFocusHill(false); setView('build'); }}>◂ BACK TO PLAY</GhostButton>
+    </span>
+  );
+  if (!stations.length) {
+    // QA-03: nobody has claimed a utility role yet, so there is no station card to carry the callout
+    // below -- render the instruction on its own rather than returning null with nothing to act on.
+    return (
+      <div style={{ marginTop: 20 }} data-testid="items-panel">
+        <div data-testid="items-hill-focus" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 10, font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
+          color: T.acc, border: `1px solid ${T.acc}`, background: 'rgba(57,180,255,.08)', padding: '9px 12px' }}>
+          <span>NO STATION HAS SAID HELLO YET. ON A PHONE, HOLD THE SEVEN-TAP GESTURE ON THE IDLE HUD TO SWITCH IT TO A UTILITY STATION, OR POWER ON A STICKS3. IT THEN APPEARS HERE TO ASSIGN AS CONTROL.</span>
+          {backToPlay}
+        </div>
+      </div>
+    );
+  }
   // M2 (visual QA 2026-09-24): ARMED is what each card's status says (MC-ARMED), counted apart from the
   // stations with an attention line. A BATTERY LOW used to drop an armed station out of the count, so
   // "1/3 ARMED" sat above three cards that all read MC-ARMED.
@@ -62,9 +88,10 @@ export function Items() {
   return (
     <div style={{ marginTop: 20 }} data-testid="items-panel">
       {focusHill && (
-        <div data-testid="items-hill-focus" role="status" style={{ font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
+        <div data-testid="items-hill-focus" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 10, font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
           color: T.acc, border: `1px solid ${T.acc}`, background: 'rgba(57,180,255,.08)', padding: '9px 12px', marginBottom: 10 }}>
-          ASSIGN A PHONE OR STICK AS CONTROL BELOW — THAT IS YOUR HILL FOR KING OF THE HILL.
+          <span>ASSIGN A PHONE OR STICK AS CONTROL BELOW: THAT IS YOUR HILL FOR KING OF THE HILL.</span>
+          {backToPlay}
         </div>
       )}
       <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
