@@ -22,22 +22,24 @@ try {
 
 const subs = new Set<(v: number) => void>();
 
-export function setRunway(v: number) {
-  current = v;
-  try { localStorage.setItem(KEY, String(v)); } catch { /* non-fatal */ }
-  subs.forEach(fn => fn(v));
-}
-
-export function getRunway(): number { return current; }
-
-/** Polish round 1 Low: LAST MATCH and a loaded FAVOURITE can both set the runway to whatever they were
- *  actually armed with, which need not be a RUNWAYS value (an older favourite, or a value another
- *  console version wrote). SAVE AS A FAVOURITE snaps to the nearest one so a newly saved favourite
- *  never drifts off the enumerated set. */
+/** Polish round 1 Low, round 2: LAST MATCH and a loaded FAVOURITE can both set the runway to whatever
+ *  they were actually armed with, which need not be a RUNWAYS value (an older favourite, or a value
+ *  another console version wrote). Round 2 moved the snap IN HERE, so it happens once, for every
+ *  caller, rather than only at the moment a favourite is saved -- the on-screen COUNTDOWN control and
+ *  its +/- stepper (which reads `RUNWAYS.indexOf(seconds)`, -1 and stuck for a non-member) now always
+ *  agree with what SAVE AS A FAVOURITE would write. */
 export function nearestRunway(v: number): number {
   if (RUNWAYS.includes(v)) return v;
   return RUNWAYS.reduce((best, r) => (Math.abs(r - v) < Math.abs(best - v) ? r : best), RUNWAYS[0]);
 }
+
+export function setRunway(v: number) {
+  current = nearestRunway(v);
+  try { localStorage.setItem(KEY, String(current)); } catch { /* non-fatal */ }
+  subs.forEach(fn => fn(current));
+}
+
+export function getRunway(): number { return current; }
 
 /** The armed-countdown length, shared by every screen and stable across remounts. */
 export function useRunway(): [number, (v: number) => void] {

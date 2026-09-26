@@ -205,20 +205,26 @@ describe('PLAY — MATCH SETTINGS strip', () => {
 });
 
 describe('PLAY — H1: CONTINUE TO KIT only follows a successful setPhase', () => {
-  it('a refused setPhase does not navigate, and busy blocks a second tap before it answers', async () => {
+  it('a refused setPhase does not navigate, and a real second tap before it answers does not double-fire', async () => {
     const real = new MockBackend();
     await real.loadGame();
     const state = await real.getState();
     const weapons = await real.getWeapons(), perks = await real.getPerks();
     let calls = 0;
-    const api = fixtureApi({ setPhase: async () => { calls++; throw Object.assign(new Error('2 PLAYERS ARE NOT READY'), { status: 409 }); } }, real);
+    // an artificial delay -- round 2: the OLD version of this test clicked once and awaited the whole
+    // round-trip before checking `calls`, which never actually raced a second tap against the first
+    // (nothing was still in flight for it to race). Two separate `act()` taps, each flushing React's
+    // state, is the same shape as two real, distinct clicks (play.test.tsx's own SAVE-guard test, above).
+    const api = fixtureApi({ setPhase: async () => { calls++; await new Promise(r => setTimeout(r, 15)); throw Object.assign(new Error('2 PLAYERS ARE NOT READY'), { status: 409 }); } }, real);
     const views: string[] = [];
-    const store = makeStore({ state, weapons, perks, view: 'build' }, { api, setView: v => views.push(v as string) });
+    const store = makeStore({ state, weapons, perks, view: 'build' }, { api, setView: v => { views.push(v as string); return true; } });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
-    await m.click('CONTINUE TO KIT');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const btn = () => m.find('[data-testid="game-continue-kit"] button')[0] as HTMLButtonElement;
+    await act(async () => { btn().click(); });
+    await act(async () => { btn().click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 25)); });
     expect(views, 'a refused setPhase must not navigate to KIT').toEqual([]);
-    expect(calls, 'one request, not a double-fire').toBe(1);
+    expect(calls, 'the busy guard must have blocked the second tap').toBe(1);
     m.unmount();
   });
 });
@@ -296,16 +302,16 @@ describe('PLAY — M5: a FAVOURITES fetch failure', () => {
     m.unmount();
   });
 
-  it('retries on its own once a real reconnect happens, not only off a RETRY tap', async () => {
+  it('does not fetch while known offline, and retries on its own once a real reconnect happens', async () => {
     const d = await demo();
     let calls = 0;
-    const api = fixtureApi({ getFavourites: async () => { calls++; if (calls === 1) throw new Error('down'); return []; } }, d.api);
+    const api = fixtureApi({ getFavourites: async () => { calls++; return []; } }, d.api);
     const m = await mount(<StoreCtx.Provider value={makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api, connected: false })}><Games /></StoreCtx.Provider>);
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(calls).toBe(1);
+    expect(calls, 'no point fetching while the console itself says offline').toBe(0);
     await m.update(<StoreCtx.Provider value={makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api, connected: true })}><Games /></StoreCtx.Provider>);
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(calls, 'connected flipping true must trigger its own retry').toBe(2);
+    expect(calls, 'connected flipping true must trigger its own fetch').toBe(1);
     m.unmount();
   });
 });
@@ -330,10 +336,11 @@ describe('PLAY — Lows', () => {
     m.unmount();
   });
 
-  it('a saved favourite’s countdown_s snaps to the nearest RUNWAYS value', async () => {
+  it('a saved favourite’s countdown_s agrees with the (now snapped) screen value', async () => {
     const api = new MockBackend();
     const restore = getRunway();
-    setRunway(40);   // not a RUNWAYS member (would come from a LAST MATCH/favourite that drifted)
+    setRunway(40);   // not a RUNWAYS member -- runway.ts's own setRunway snaps it immediately (round 2)
+    expect(getRunway(), 'the screen itself must already read the snapped value').toBe(45);
     try {
       const { m } = await renderPlay(api);
       await m.click('SAVE AS A FAVOURITE');
@@ -342,8 +349,7 @@ describe('PLAY — Lows', () => {
       await m.click('SAVE ▸');
       await act(async () => { await new Promise(r => setTimeout(r, 0)); });
       const favs = await api.getFavourites();
-      expect(favs.find(f => f.name === 'DRIFTED')?.countdown_s).toBe(45);   // nearest to 40
-      expect(getRunway()).toBe(40);   // the LIVE runway itself is never rewritten, only what gets saved
+      expect(favs.find(f => f.name === 'DRIFTED')?.countdown_s).toBe(45);
       m.unmount();
     } finally { setRunway(restore); }
   });
@@ -404,7 +410,12 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     m.unmount();
   });
 
-  it('✕ discards the typed name, even though the click blurs the input first', async () => {
+  // Round 2 (5): made real. A plain `.click()` (the old version of this test) fires only a 'click'
+  // event -- no mousedown, no blur -- so it never actually exercised the hazard at all: a REAL click
+  // moves focus (a native `focusout`, `relatedTarget` set to whatever is about to take it) BEFORE the
+  // click event reaches the button, and `DraftText`'s own onBlur used to commit on that focus shift,
+  // ahead of ✕'s own handler ever running.
+  it('✕ (mouse): focus, mousedown, blur (relatedTarget ✕), click, in that order — does not commit', async () => {
     const api = new MockBackend();
     await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
     const { m } = await renderPlay(api);
@@ -413,10 +424,52 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
     await typeInto(input, 'Should Not Save');
     const cancelBtn = m.find('button[aria-label="cancel rename"]')[0] as HTMLButtonElement;
-    await act(async () => { cancelBtn.click(); });
+    await act(async () => {
+      input.focus();
+      cancelBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: cancelBtn }));
+      cancelBtn.click();
+    });
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     const favs = await api.getFavourites();
-    expect(favs[0].name, 'cancel must not have sent the typed name to the server').toBe('Old Name');
+    expect(favs[0].name, 'the blur that focus-shift caused must not have committed the draft').toBe('Old Name');
+    m.unmount();
+  });
+
+  it('Tab to ✕ (a real blur, relatedTarget ✕) then Enter cancels', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'Should Not Save');
+    const cancelBtn = m.find('button[aria-label="cancel rename"]')[0] as HTMLButtonElement;
+    await act(async () => {
+      input.focus();
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: cancelBtn }));   // what Tab does
+      cancelBtn.focus();
+      cancelBtn.click();   // jsdom does not turn a keydown Enter on a button into a click on its own
+    });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const favs = await api.getFavourites();
+    expect(favs[0].name, 'Tab’s own blur must not have committed the draft either').toBe('Old Name');
+    m.unmount();
+  });
+
+  it('Escape cancels and leaves rename mode, without committing the draft', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    const input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'Should Not Save');
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.find('[data-testid^="favourite-rename-"]').length, 'Escape must leave rename mode').toBe(0);
+    const favs = await api.getFavourites();
+    expect(favs[0].name).toBe('Old Name');
     m.unmount();
   });
 });
