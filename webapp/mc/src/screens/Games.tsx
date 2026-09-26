@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CONFIG_ERRORS_ALERT_ID } from '../api/derive';
-import type { GamePiece, MatchSettings, PieceKind } from '../api/types';
+import type { GamePick, GamePiece, MatchSettings, PieceKind } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
@@ -22,8 +22,11 @@ import { Alert } from '../ui/Alert';
 import { alertWords, serverLine } from '../alerts';
 import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
 import { operatorNote } from './operatorNote';
+import { type MatchItemKey, matchItems } from './matchItems';
 import { RUNWAYS, getRunway, setRunway, useRunway } from '../runway';
 import { VenueModeManualLink } from '../ui/VenueModeReminder';
+import { MODE_ART } from '../modeArt';
+import { ModeEmblem } from './ModeEmblem';
 
 /** F411 games-presets.md §5: PLAY's picker order. GAMEPLAY is always hidden for MVP (§3/§13/§15). */
 const PICKER_ORDER: Exclude<PieceKind, 'gameplay'>[] = ['mode', 'life', 'spawn', 'primary', 'secondary', 'perks', 'misc_loadouts'];
@@ -153,9 +156,12 @@ export function Games() {
               </div>
             );
           })}
+          {/* QA-26: upper case, the same transform its STATION_CONFLICT sibling above already uses
+              (`conflictWords` = `friendlySetupLine(w).toUpperCase()`) -- this was the one setup line
+              left in mixed case, with internal terms, on an otherwise all-caps screen. */}
           {setupLines(state.config_warnings).filter(w => !STATION_CONFLICT.test(w)).map((w, i) => (
             <div key={`setup-step-${i}`} data-testid="games-setup-step" style={{ font: F.chk(500, 12), letterSpacing: '.02em', lineHeight: 1.5, color: T.body }}>
-              {friendlySetupLine(w)}
+              {friendlySetupLine(w).toUpperCase()}
             </div>
           ))}
         </div>
@@ -223,10 +229,33 @@ export function Games() {
               return (
                 <div key={kind} data-testid={`picker-${kind}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.micro }}>{KIND_LABEL[kind]}</div>
-                  <Seg wrap size={14} label={KIND_LABEL[kind].toLowerCase()} value={selected} pad="10px 16px"
-                    options={options.map(p => ({ value: p.piece_id, label: p.name }))}
-                    titles={Object.fromEntries(options.map(p => [p.piece_id, p.note || p.name]))}
-                    onChange={id => pickPiece(kind, id)} />
+                  {kind === 'mode' ? (
+                    // Tony, 2026-09-26: "on play mode picker would be great" -- each option carries its
+                    // own mark, so this is a bespoke row (Seg has no per-option slot for one), styled to
+                    // match it otherwise.
+                    <span role="group" aria-label="game mode" style={{ display: 'flex', flexWrap: 'wrap', border: `1px solid ${T.line}` }}>
+                      {options.map(p => {
+                        const on = p.piece_id === selected;
+                        const modeId = (p.value as { mode: string }).mode;
+                        return (
+                          <button key={p.piece_id} type="button" className="hit44" aria-pressed={on} title={p.note || p.name}
+                            onClick={() => pickPiece('mode', p.piece_id)}
+                            style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 14), letterSpacing: '.08em', padding: '8px 16px 8px 8px',
+                              background: on ? T.panelAlt : 'transparent', color: on ? T.acc : T.micro,
+                              boxShadow: on ? `inset 0 -2px 0 ${T.acc}` : undefined,
+                              cursor: on ? 'default' : 'pointer', minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+                            <ModeMark mode={modeId} />
+                            {p.name}
+                          </button>
+                        );
+                      })}
+                    </span>
+                  ) : (
+                    <Seg wrap size={14} label={KIND_LABEL[kind].toLowerCase()} value={selected} pad="10px 16px"
+                      options={options.map(p => ({ value: p.piece_id, label: p.name }))}
+                      titles={Object.fromEntries(options.map(p => [p.piece_id, p.note || p.name]))}
+                      onChange={id => pickPiece(kind, id)} />
+                  )}
                   {kind === 'mode' && note.length > 0 && (
                     <div data-testid="operator-note" role="status"
                       style={{ marginTop: 2, display: 'flex', flexDirection: 'column', gap: 3, font: F.chk(600, 12.5), lineHeight: 1.5, color: T.dim,
@@ -250,38 +279,18 @@ export function Games() {
           )}
 
           {/* ---- MATCH SETTINGS — not a picker, not a preset (games-redesign.md §5) ---- */}
-          {/* The manual link sits OUTSIDE the fieldset on purpose (review 2026-09-16, venue-mode-
-              reminder.test.tsx): it always works, so it must never fade or disable with the group.
-              The fieldset itself is `display: contents` — it still disables every descendant control
-              (an HTML behaviour, not a CSS one), but contributes no box of its own, so the outer div's
-              flex layout (and its dimming opacity) reaches every child the same way either side of it. */}
+          {/* team-lead 2026-09-26: rendered from a per-mode ITEM LIST (screens/matchItems.ts), not a
+              fixed set here — F413 (TEAMS) and F415 (a KOTH hold target) each add one key there, never
+              a rewrite of this strip. Every item wraps in its own `display: contents` fieldset, so
+              disabling stays per-control while the flex row (and the outer dimming) treats them alike;
+              an item's own EXTRAS (the manual link, the ON/OFF word) sit as siblings, never inside the
+              fieldset, on the same rule as before (venue-mode-reminder.test.tsx). */}
           <div data-testid="match-settings" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 20,
             background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${T.acc}`, padding: '14px 18px',
             opacity: locked ? 0.5 : 1 }}>
-            <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, display: 'contents' }}>
-              <TimeControl seconds={pick.match.time_limit_s} onChange={s => pickMatch({ time_limit_s: s })} />
-              {cfg.scoring.win_by === 'kills' && (
-                <KillsControl fragLimit={pick.match.frag_limit} onChange={n => pickMatch({ frag_limit: n })} />
-              )}
-              <CountdownControl seconds={runwayVal} onChange={setRunway} />
-            </fieldset>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, display: 'contents' }}>
-                <Seg size={14} value={pick.match.night ? 'night' : 'day'} pad="10px 14px"
-                  options={[{ value: 'day', label: 'DAY' }, { value: 'night', label: 'NIGHT' }]}
-                  onChange={v => pickMatch({ night: v === 'night' })} />
-              </fieldset>
-              <VenueModeManualLink />
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44 }}>
-              <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, display: 'contents' }}>
-                <Toggle on={pick.match.silenced} onChange={v => pickMatch({ silenced: v })} label="silenced" />
-              </fieldset>
-              {/* VQA QA-12: the switch alone (grey/blue) was the only sign of the state — add the word. */}
-              <span style={{ font: F.chk(700, 14), letterSpacing: '.04em', color: pick.match.silenced ? T.ink : T.dim }}>
-                SILENCED: {pick.match.silenced ? 'ON' : 'OFF'}
-              </span>
-            </span>
+            {matchItems(cfg.mode, cfg.scoring.win_by).map(key => (
+              <MatchItem key={key} itemKey={key} pick={pick} locked={locked} runwayVal={runwayVal} pickMatch={pickMatch} />
+            ))}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
@@ -319,6 +328,64 @@ export function Games() {
       )}
     </div>
   );
+}
+
+/** GAME MODE's own mark (Tony, 2026-09-26), beside its name in a FIXED box so the row never jumps.
+ *  `object-fit: contain` -- the whole mark shows, never a crop. A mode with no `<mode>.jpg` yet, or
+ *  whose image fails to load, falls back to ModeEmblem's line drawing (never a broken-image icon);
+ *  `MODE_ART` decides which modes have art, never a name hard-coded here, so a mode added later (or
+ *  koth, once its art lands) needs no change to this file. */
+function ModeMark({ mode }: { mode: string }) {
+  const [broken, setBroken] = useState(false);
+  const hasArt = MODE_ART.has(mode) && !broken;
+  return (
+    <span style={{ display: 'inline-block', width: 44, height: 28, flexShrink: 0, position: 'relative',
+      background: T.inset, border: `1px solid ${T.line2}`, overflow: 'hidden' }}>
+      {hasArt
+        ? <img src={`assets/modes/${mode}.jpg`} alt="" onError={() => setBroken(true)}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+        : <ModeEmblem mode={mode} />}
+    </span>
+  );
+}
+
+/** One MATCH SETTINGS strip item, by key (screens/matchItems.ts). Each wraps its own control in a
+ *  `display: contents` fieldset (disables with `locked`, contributes no box of its own); an item's
+ *  own extras (the manual link, the ON/OFF word) are siblings, never inside that fieldset. */
+function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch }:
+  { itemKey: MatchItemKey; pick: GamePick; locked: boolean; runwayVal: number; pickMatch: (p: Partial<MatchSettings>) => void }) {
+  const guarded = (child: React.ReactNode) => (
+    <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, display: 'contents' }}>{child}</fieldset>
+  );
+  switch (itemKey) {
+    case 'time':
+      return guarded(<TimeControl seconds={pick.match.time_limit_s} onChange={s => pickMatch({ time_limit_s: s })} />);
+    case 'kills':
+      return guarded(<KillsControl fragLimit={pick.match.frag_limit} onChange={n => pickMatch({ frag_limit: n })} />);
+    case 'countdown':
+      return guarded(<CountdownControl seconds={runwayVal} onChange={setRunway} />);
+    case 'daynight':
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {guarded(
+            <Seg size={14} value={pick.match.night ? 'night' : 'day'} pad="10px 14px"
+              options={[{ value: 'day', label: 'DAY' }, { value: 'night', label: 'NIGHT' }]}
+              onChange={v => pickMatch({ night: v === 'night' })} />,
+          )}
+          <VenueModeManualLink />
+        </span>
+      );
+    case 'silenced':
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44 }}>
+          {guarded(<Toggle on={pick.match.silenced} onChange={v => pickMatch({ silenced: v })} label="silenced" />)}
+          {/* VQA QA-12: the switch alone (grey/blue) was the only sign of the state — add the word. */}
+          <span style={{ font: F.chk(700, 14), letterSpacing: '.04em', color: pick.match.silenced ? T.ink : T.dim }}>
+            SILENCED: {pick.match.silenced ? 'ON' : 'OFF'}
+          </span>
+        </span>
+      );
+  }
 }
 
 /** Tapping the value opens a short quick-pick row; the steppers stay for fine adjustment beyond it
