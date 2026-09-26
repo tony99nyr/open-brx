@@ -171,12 +171,21 @@ jobs:
           # FETCH_HEAD, not origin/main: the checkout action configures a narrow refspec, so the
           # remote-tracking ref is not guaranteed to be the branch tip we just fetched.
           sync_onto_main() {
-            git fetch --quiet origin main
+            # Called as `sync_onto_main || rc=$?`, so errexit is OFF in here: check every step by hand. Only a
+            # genuine "a UI moved" may return 2 (green); any failure to read the manifest or main returns 1 (red).
+            if ! git fetch --quiet origin main; then
+              echo "::error::Could not fetch main to replay the refreshed shots. $HOWTO"
+              return 1
+            fi
             for pair in mc_src:webapp/mc/src hud_src:app/src mc_shell:webapp/mc/index.html hud_shell:app/www/index.html; do
               key=${pair%%:*}
               dir=${pair#*:}
-              captured=$(python3 -c "import json,sys; print(json.load(open('site/shots/manifest.json')).get(sys.argv[1], ''))" "$key")
-              tip=$(git rev-parse "FETCH_HEAD:$dir")
+              captured=$(python3 -c "import json,sys; print(json.load(open('site/shots/manifest.json')).get(sys.argv[1], ''))" "$key") || captured=""
+              tip=$(git rev-parse "FETCH_HEAD:$dir") || tip=""
+              if [ -z "$captured" ] || [ -z "$tip" ]; then
+                echo "::error::Could not read the $dir hash (manifest '$captured', main '$tip'). $HOWTO"
+                return 1
+              fi
               if [ "$captured" != "$tip" ]; then
                 # Not a fault: the push that moved $dir queued its own run of this job behind this one,
                 # and that run captures the newer UI. Going red here only sent a failure email for a
