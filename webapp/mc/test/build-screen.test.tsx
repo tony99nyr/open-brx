@@ -110,4 +110,48 @@ describe('M6 — an unsaved BUILD edit blocks navigation from OUTSIDE BUILD too'
     expect(m.find('[data-testid="other-screen"]').length).toBe(1);
     m.unmount();
   });
+
+  // Round 3 (2): the banner used to print the raw view id (MUSTER), not the label CommandBar itself
+  // shows for that tab (ARMORY) -- a different vocabulary for the exact same target on the exact same
+  // screen. 'muster'/ARMORY is the clearest case: 'kit' happens to equal its own label already.
+  it('names the target using CommandBar’s OWN label (ARMORY), never the raw view id (MUSTER)', async () => {
+    history.replaceState(null, '', '/?mock#designer');
+    const m = await mount(<StoreProvider><CommandBar /><Screen /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('LIFE');
+    await m.click('NEW ▸');
+    const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput, `${nameInput.value} TWO`);
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await m.click('ARMORY');
+    expect(m.text()).toContain('LEAVE FOR ARMORY');
+    expect(m.text()).not.toContain('MUSTER');
+    m.unmount();
+  });
+
+  // Round 3 (4): a draft keystroke must only invalidate a block IT could have caused (an operator's
+  // own nav attempt) -- never one `followPhase` set. The banner names the phase; continuing to edit
+  // must not make that warning vanish just because the operator kept typing.
+  it('a draft keystroke does not clear a block that came from the SERVER’s phase advancing', async () => {
+    history.replaceState(null, '', '/?mock#designer');
+    const m = await mount(<StoreProvider><Screen /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('LIFE');
+    await m.click('NEW ▸');
+    const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
+    const type = async (v: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput, v);
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await type('DIRTY DRAFT');
+    const api = (window as unknown as { __MC_MOCK__: { setPhase(p: string): Promise<unknown> } }).__MC_MOCK__;
+    await act(async () => { await api.setPhase('kit'); });   // the server advances the phase, not an operator tap
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.text(), 'the phase-follow banner must be up').toContain('LEAVE FOR KIT');
+    await type('DIRTY DRAFT, STILL EDITING');   // a further keystroke -- must NOT clear a follow-caused block
+    expect(m.text(), 'a draft keystroke must not clear a block it did not cause').toContain('LEAVE FOR KIT');
+    m.unmount();
+  });
 });

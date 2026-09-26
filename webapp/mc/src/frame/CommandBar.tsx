@@ -19,6 +19,22 @@ const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : p === '
 // Views that are not phases need their own label: viewIdx() returns -1 for them, and `PH[-1][1]`
 // threw, blanking the whole console (the WEAPONS tab rendered a black page, 2026-08-31).
 
+/** Round 3: BUILD's own unsaved-edit banner used to print a raw view id (`kit`, `armed`, `muster`) --
+ *  the same stepper label this bar itself shows, not a second vocabulary, says what tapping again
+ *  actually leaves for. Exported so store.tsx's own guard never needs to (it works in view ids, not
+ *  labels, on purpose — this is a presentation concern for whichever screen renders the banner). */
+export function viewLabel(v: View): string {
+  if (v === 'armed') return PH[3][1];
+  if (v === 'recap') return PH[4][1];
+  const row = PH.find(([id]) => id === v);
+  if (row) return row[1];
+  if (v === 'designer') return 'BUILD';
+  if (v === 'catalog') return 'ARSENAL';
+  if (v === 'debug') return 'DEBUG';
+  if (v === 'spectate') return 'THE PROJECTOR BOARD';
+  return v.toUpperCase();
+}
+
 export function CommandBar() {
   const notice = useNotice();   // survives the screen that raised it (see notice.ts)
   const [menu, setMenu] = useState(false);

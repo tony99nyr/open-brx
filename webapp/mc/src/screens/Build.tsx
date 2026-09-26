@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type {
   GamePiece, LifePiece, MiscLoadoutsPiece, PerkView, PieceKind, Respawn, SlotRule, WeaponView,
 } from '../api/contract.gen';
+import { viewLabel } from '../frame/CommandBar';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { GhostButton, PrimaryButton, ScreenHeader, SectionRule, Shelf } from '../ui';
@@ -195,7 +196,7 @@ export function Build() {
               back, or the server's own phase advancing under an unattended tab) -- naming what it is
               says what tapping again actually leaves for, which a bare "leave" does not. `confirmLeave`
               (BUILD's own kind-tab/back-button confirm) has no other view to name. */}
-          ▲ UNSAVED CHANGES{navBlockedTo ? ` — TAP AGAIN TO LEAVE FOR ${navBlockedTo.toUpperCase()} WITHOUT SAVING` : ' — TAP AGAIN TO LEAVE WITHOUT SAVING'}
+          ▲ UNSAVED CHANGES{navBlockedTo ? ` — TAP AGAIN TO LEAVE FOR ${viewLabel(navBlockedTo)} WITHOUT SAVING` : ' — TAP AGAIN TO LEAVE WITHOUT SAVING'}
         </div>
       )}
 

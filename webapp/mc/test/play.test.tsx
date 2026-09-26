@@ -489,4 +489,29 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     expect(favs[0].name).toBe('Old Name');
     m.unmount();
   });
+
+  // Round 3: `suppressCommit` was never reset after Escape/✕, so every LATER rename on that SAME chip
+  // started with it already true -- Enter (a real commit) saved nothing from then on.
+  it('a rename AFTER an Escape’d one still saves on Enter', async () => {
+    const api = new MockBackend();
+    await api.createFavourite({ name: 'Old Name', countdown_s: 30 });
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    // first session: Escape (discarded, but this is what used to poison the next one)
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    let input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    await typeInto(input, 'Discarded');
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    // second session on the SAME chip: type a name and commit it the normal way (Enter -> blur -> commit)
+    await act(async () => { (m.find('button[aria-label="rename Old Name"]')[0] as HTMLButtonElement).click(); });
+    input = m.find('input[aria-label="rename Old Name"]')[0] as HTMLInputElement;
+    input.focus();
+    await typeInto(input, 'New Name');
+    await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); input.blur(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const favs = await api.getFavourites();
+    expect(favs[0].name, 'the SECOND rename must not be poisoned by the first one’s Escape').toBe('New Name');
+    m.unmount();
+  });
 });
