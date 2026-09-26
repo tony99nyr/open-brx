@@ -3205,7 +3205,7 @@ class Session:
         if prev_a and prev_a["kind"] != kind and thr == prev_a["threshold"]:
             thr = 0                            # A67: a new kind starts at its own default, not the old kind's range
         rng = self._range_fields(prev_a, thr, a)   # A67: validates tx_power
-        slots_before = self._powerup_slots()
+        slots_before, pickups_before = self._powerup_slots(), self._brief_pickups()
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
         assignment: StationAssignment = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self.now_ms()}
         assignment.update(rng)
@@ -3215,7 +3215,7 @@ class Session:
         self._station_id_of[nid] = sid
         self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
-        self._after_station_change(slots_before)
+        self._after_station_change(slots_before, pickups_before)
         self._validate()
         self._changed()
         return self._station_view(nid)
@@ -3243,10 +3243,10 @@ class Session:
         if not st:
             return False
         self._refuse_station_change_in_play()
-        slots_before = self._powerup_slots()
+        slots_before, pickups_before = self._powerup_slots(), self._brief_pickups()
         st["assigned"] = None
         st["armed"] = None
-        self._after_station_change(slots_before)   # the survivors' valid_ids shrink
+        self._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
         self._validate()
         self._changed()
         return True
@@ -3285,23 +3285,24 @@ class Session:
                 rec = self._station_recap_row(self._station_view(nid))
                 if rec is not None:
                     self._departed_match_stations[nid] = rec
-            slots_before = self._powerup_slots()
+            slots_before, pickups_before = self._powerup_slots(), self._brief_pickups()
             st["assigned"], st["armed"], st["arm_pending"] = None, None, False
             for k in _STATION_LOCK_KEYS:
                 if k != "boot":                # the last boot seen stays: a restart is judged against it
                     st.pop(k, None)            # A58: a release unlocks the Stick too (utility.md)
-            self._after_station_change(slots_before)   # the survivors' valid_ids shrink
+            self._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
             self._validate()                       # ...and the SETUP warnings tell the truth again
             self._changed()
         return ok
 
-    def _after_station_change(self, slots_before: list[PowerupSlot]) -> None:
+    def _after_station_change(self, slots_before: list[PowerupSlot], pickups_before: list[dict] | None = None) -> None:
         """Re-arm every station and re-push the players' allow-list -- or, when the pickup weapons moved (A56),
         a fresh head for the whole roster, because the spare slots are in the FRAMES, not only the config.
         Never in play: `_repush_stations_to_players` is lobby-only. `set_station`/`clear_station` refuse in
         play, but `release_station` does not: in play it drops the item's slot from `_powerup_slots()` at once,
         and the guns already armed keep the slot in their frames because nothing re-pushes a live gun here."""
-        self._resend_brief_pickups()
+        if pickups_before is None or self._brief_pickups() != pickups_before:   # F403 r2: only when the line changed
+            self._resend_brief_pickups()
         if self._powerup_slots() != slots_before and self.lobby_pushed and not self.in_play():
             self._fresh_head_repush()              # re-arms the stations too
             return

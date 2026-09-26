@@ -688,3 +688,14 @@ def test_f403_the_phone_demo_paints_each_item_in_mc_s_own_colour():
     shown = dict(re.findall(r"name: '([A-Z ]+)', color: '(#[0-9a-fA-F]{6})'", demo))
     for row in pu._PRESETS.values():
         assert shown.get(row["name"]) == row["color"], (row["name"], shown.get(row["name"]), row["color"])
+
+
+def test_f403_a_station_edit_that_leaves_the_pickups_alone_sends_no_assign():
+    s, _ = _sess(powerups=True)
+    _station(s, "u1", 5, "rockets")
+    before = len(_pushed(s, "assign"))
+    _station(s, "u2", 6, kind="respawn")                  # no item: the PICKUPS line is unchanged
+    _station(s, "u3", 7, "rockets")                       # the same item again: still ROCKETS once
+    assert len(_pushed(s, "assign")) == before, "no brief change, no assign"
+    _station(s, "u4", 8, "overshield")                    # an overshield alone moves no weapon slot, but it IS a new line
+    assert len(_pushed(s, "assign")) > before
