@@ -2272,11 +2272,17 @@ export class Hud {
     const chg = it.charges != null ? `<span class="wc tab">${esc(it.charges)}</span>` : '';
     return `<span class="wt ${cls}${pu ? ' pu' : ''}"${style}>${th}<span class="wl">${label}</span><span class="wn">${esc(it.name).toUpperCase()}</span>${chg}</span>`;
   }
-  /** The swap confirmed (by the next shot's $ALCD) or assumed (window expired): the new weapon, marked ACTIVE. */
+  /** The swap confirmed (by the next shot's $ALCD) or assumed (window expired): the new weapon, marked ACTIVE.
+   *  F400 desk fix (docs/spec/powerups.md "The switch card"): a pickup switch (`m.data.pu`) never reaches this
+   *  bubble by the gun's echo -- `_puSwitchCard` sets it display-only, so `_onAmmo`'s confirm-by-shot code skips
+   *  it on purpose, and it always closes on its own timer. That is not the same "we're guessing" state ALT's own
+   *  READY is: the phone's equip write already settled it. READY would undersell it; CONFIRMED BY YOUR GUN would
+   *  claim a mechanism that never ran. CONFIRMED, alone, is the honest word. */
   _switched(st, m) {
     const it = this._slotItem(st, m.data && m.data.slot);
     const el = document.createElement('div'); el.className = 'mo switched';
-    el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, 'ACTIVE ✓', 'to on')}<span class="s">${m.data && m.data.assumed ? 'READY' : 'CONFIRMED BY YOUR GUN'}</span></div></div>`;
+    const sub = m.data && m.data.pu ? 'CONFIRMED' : (m.data && m.data.assumed ? 'READY' : 'CONFIRMED BY YOUR GUN');
+    el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, 'ACTIVE ✓', 'to on')}<span class="s">${sub}</span></div></div>`;
     this._swap('switched', el, 900, 1200);
   }
 

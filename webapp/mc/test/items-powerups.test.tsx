@@ -107,7 +107,7 @@ describe('ITEMS — the powerup item picker', () => {
   });
 
   it('a refusal from MC on the PUT reaches the operator, not a swallowed catch', async () => {
-    const REFUSAL = 'powerups are off on this MC: start it with --powerups to give a station an item';
+    const REFUSAL = 'powerups are off on this MC (--no-powerups): drop that flag to give a station an item';
     const { m, error } = await muster({ putStation: (async () => { throw new Error(REFUSAL); }) as Api['putStation'] });
     await m.click('POWERUP');
     await m.click(/^ROCKETS/);
@@ -410,7 +410,7 @@ describe('polish round 1: the lows on the ITEMS card', () => {
   it('the powerups-off note gives the one restart hint', async () => {
     const { m } = await muster({ getPowerups: async () => ({ enabled: false, presets: [] }) });
     await m.click('POWERUP');
-    expect(m.find('[data-testid="item-note"]')[0].textContent).toContain('./start.sh -- --powerups');
+    expect(m.find('[data-testid="item-note"]')[0].textContent).toContain('./start.sh (no --no-powerups flag)');
     m.unmount();
   });
 });

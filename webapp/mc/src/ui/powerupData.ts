@@ -5,8 +5,9 @@ import type { PowerupsView, StationItem } from '../api/types';
 import { useStore } from '../store';
 import { fmtDuration } from '../tokens';
 
-/** The one restart hint for a MC started without the flag. start.sh passes anything after `--` to MC. */
-export const POWERUPS_RESTART = './start.sh -- --powerups';
+/** The one restart hint for a MC started with `--no-powerups` (F372: powerups are ON by default). start.sh
+ *  passes anything after `--` to MC. */
+export const POWERUPS_RESTART = './start.sh (no --no-powerups flag)';
 
 /** What `GET /api/powerups` said. `old` = the route 404s (an MC that predates powerups); `err` = any
  *  other failure, shown where it matters, never swallowed. */

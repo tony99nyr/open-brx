@@ -77,7 +77,10 @@ export declare const STALE_LIVE_RETELL_MS: 10000;
  *  the pushed `$PSET` is the gun running a different game. */
 export declare const POOL_CHECK_SETTLE_MS: 2000;
 export declare const RESYNC_PROBE_S: 10;
-export declare const DEFAULT_RUNWAY_S: 120;
+/** Tony 2026-09-25: "default countdown 30s. 120s is generally too long." The ONE default for a START
+ *  with no runway_s (api.py start/reschedule, state.py Session.start, the console's runway.ts and the
+ *  generated contract all read this one constant). An explicit runway a host passes is unaffected. */
+export declare const DEFAULT_RUNWAY_S: 30;
 export declare const PROTOCOL_V: 1;
 /** The venue volume (field-corrected 2026-08-30: 80 = on-gun L3 indoors, 90 = L4 outdoors) and the
  *  bounds of the host's per-game knob, `GameConfig.volume`. The floor is on-gun L1: 30 is inaudible

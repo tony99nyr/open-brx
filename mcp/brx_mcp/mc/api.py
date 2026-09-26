@@ -18,7 +18,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .state import CoverageRequired, NotReadyError, Session
-from .types import MatchHistoryRow, MatchSettings, PerkView, PresentationView, VoiceList
+from .types import DEFAULT_RUNWAY_S, MatchHistoryRow, MatchSettings, PerkView, PresentationView, VoiceList
 from .tunnel import TunnelError
 
 log = logging.getLogger("brx.mc.api")
@@ -468,7 +468,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return JSONResponse(s.powerups_view())
 
     async def reset_station(req):
-        """A56: the operator reset of a powerup station's item (armed/live, `--powerups` only)."""
+        """A56: the operator reset of a powerup station's item (armed/live, only while powerups are on)."""
         try:
             return JSONResponse(s.reset_station(req.path_params["nid"]))
         except KeyError:
@@ -582,7 +582,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def reschedule(req):
         b = await body(req)
         try:
-            return JSONResponse(s.reschedule(_int(b.get("runway_s"), 120, 5, 900)))
+            return JSONResponse(s.reschedule(_int(b.get("runway_s"), DEFAULT_RUNWAY_S, 5, 900)))
         except ValueError as e:
             return _err(str(e))
 

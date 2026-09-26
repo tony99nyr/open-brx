@@ -792,12 +792,14 @@ for (const view of VIEWS) {
     const r = await pg.evaluate(() => ({ reload: !!document.querySelector('.mo.reloading'), prompt: !!document.querySelector('.prompt'), chips: getComputedStyle(document.getElementById('chips')).opacity })); await pg.close();
     must(!r.reload && r.prompt && r.chips === '1', JSON.stringify(r));
   });
-  await step(`${view.name} #40 SWITCHING takeover: from → to, then ACTIVE once the swap window closes`, async () => {
-    const pg = await open(view, 'live-switch', '', 3100); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.switching'); if (!m) return null; return { t: m.querySelector('.t').textContent, from: m.querySelector('.wt.from .wn').textContent, to: m.querySelector('.wt.to .wn').textContent, w: parseFloat(m.querySelector('#swbar').style.width), chips: getComputedStyle(document.getElementById('chips')).opacity }; });
+  await step(`${view.name} #40 SWITCHING takeover: from → to, then ACTIVE once the swap window closes; the STOWING/DRAWING/ACTIVE label stays at or above the 11 px floor`, async () => {
+    const pg = await open(view, 'live-switch', '', 3100); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.switching'); if (!m) return null; return { t: m.querySelector('.t').textContent, from: m.querySelector('.wt.from .wn').textContent, to: m.querySelector('.wt.to .wn').textContent, w: parseFloat(m.querySelector('#swbar').style.width), chips: getComputedStyle(document.getElementById('chips')).opacity, fromLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.from .wl')).fontSize), toLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.to .wl')).fontSize) }; });
     // F394: the demo gun now reports nothing on ALT (as the real gun), so ACTIVE comes from the engine's own swap window
-    await pg.waitForFunction(() => !!document.querySelector('.mo.switched'), null, { timeout: 5000 }).catch(() => {}); const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { sw: !!document.querySelector('.mo.switching'), on: m ? m.querySelector('.wt.on .wn').textContent : null, lab: m ? m.querySelector('.wl').textContent : null, corner: document.querySelector('.ammo .wn').textContent, chips: getComputedStyle(document.getElementById('chips')).opacity }; }); await pg.close();
+    await pg.waitForFunction(() => !!document.querySelector('.mo.switched'), null, { timeout: 5000 }).catch(() => {}); const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { sw: !!document.querySelector('.mo.switching'), on: m ? m.querySelector('.wt.on .wn').textContent : null, lab: m ? m.querySelector('.wl').textContent : null, labPx: m ? parseFloat(getComputedStyle(m.querySelector('.wl')).fontSize) : 0, corner: document.querySelector('.ammo .wn').textContent, chips: getComputedStyle(document.getElementById('chips')).opacity }; }); await pg.close();
     must(r, 'no SWITCHING overlay'); must(r.t === 'SWITCHING' && r.from === 'ASSAULT RIFLE' && r.to === 'SMG' && r.w > 0 && r.chips === '0', JSON.stringify(r));
+    must(r.fromLabPx >= 11 && r.toLabPx >= 11, `STOWING/DRAWING label under the 11 px floor: ${JSON.stringify(r)}`);
     must(!r2.sw && r2.on === 'SMG' && /ACTIVE/.test(r2.lab) && /SMG/.test(r2.corner) && r2.chips === '1', JSON.stringify(r2));
+    must(r2.labPx >= 11, `ACTIVE label under the 11 px floor: ${r2.labPx}`);
   });
   await step(`${view.name} #40b F394: after ALT (the gun reports nothing), the number, reserve and pips are all the secondary's`, async () => {
     // The demo gun fires 3 AR rounds (29 left), then ALT. The secondary's own counts are the bundle's spawn `$AMMO,1`.
@@ -5412,7 +5414,11 @@ const puRead = pg => pg.evaluate(() => {
       const b = sw.getBoundingClientRect();
       return { from: tile('from'), to: tile('to'), box: { l: b.left, r: b.right, t: b.top, b: b.bottom } }; })(),
     active: (() => { const el = document.querySelector('#overlay .mo.switched .wt.on'); if (!el || !vis(el)) return null;
-      const wc = el.querySelector('.wc'); return { name: (el.querySelector('.wn') || {}).textContent, pu: el.classList.contains('pu'), charges: wc ? wc.textContent.trim() : null }; })(),
+      const wc = el.querySelector('.wc'), card = document.querySelector('#overlay .mo.switched'), sub = card && card.querySelector('.s');
+      // F400 desk fix (docs/spec/powerups.md "The switch card" decision 7): the sub-line under the ACTIVE tile --
+      // CONFIRMED for a pickup switch, never READY or CONFIRMED BY YOUR GUN (that mechanism never runs for one).
+      return { name: (el.querySelector('.wn') || {}).textContent, pu: el.classList.contains('pu'), charges: wc ? wc.textContent.trim() : null,
+        sub: sub ? sub.textContent.trim() : null, labPx: parseFloat(getComputedStyle(el.querySelector('.wl')).fontSize) }; })(),
     // every colour the powerup pieces paint (text, fill, border), for the night check: no green, no white
     // F400: only the card's OWN item-coloured parts (`.wt.pu` and its children) join the night scan -- the rest of the
     // SWITCHING/ACTIVE chrome (the track, the arrow, the ok/warn tile borders) is ALT's own, checked by its own gallery.
@@ -5566,7 +5572,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   // ---- F400 (docs/spec/powerups.md "The switch card"): the same full ALT weapon-switch card for a pickup, ALT's own
   // timing, decisions 1-3. `puRead`'s `takeover`/`switching`/`active` fields read the exact DOM the ALT gallery reads. ----
-  await step(`${tag}: the pickup lands with the SAME full switch card ALT shows -- DRAWING ROCKETS with its charges and colour, then ACTIVE; the small hint hides meanwhile`, async () => {
+  await step(`${tag}: the pickup lands with the SAME full switch card ALT shows -- DRAWING ROCKETS with its charges and colour, then ACTIVE reading CONFIRMED (desk fix: never READY, never CONFIRMED BY YOUR GUN -- that echo path is decision 7); the small hint hides meanwhile; the STOWING/DRAWING/ACTIVE label stays at or above the 11 px floor`, async () => {
     const pg = await open(view, 'live-pu-rockets', N, 3000);
     await puWait(pg, r => r.takeover === 'switch', 1200);
     await pg.waitForTimeout(150);   // past the card's own 120ms entrance fade (`.switching{animation:hitin .12s}`)
@@ -5578,11 +5584,13 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const active = await puWait(pg, r => r.active, 1500);
     await shot(pg, 'grant-active');
     must(active.active && active.active.name === 'ROCKETS' && active.active.pu && active.active.charges === '2', `the ACTIVE confirm still carries the item and its charges: ${JSON.stringify(active.active)}`);
+    must(active.active.sub === 'CONFIRMED', `decision 7: a pickup switch reads CONFIRMED, not ${JSON.stringify(active.active.sub)}`);
+    must(active.active.labPx >= 11, `ACTIVE label under the 11 px floor: ${active.active.labPx}`);
     const after = await puWait(pg, r => r.hint && r.hint.kind === 'granted', 2000);
     await puClose(pg, night);
     must(after && after.hint && after.hint.kind === 'granted', `the small hint returns once the card has left, inside its own window: ${JSON.stringify(after && after.hint)}`);
   });
-  await step(`${tag}: SELECT off the heavy opens the same card, STOWING the item and DRAWING the player's own weapon (no colour, no charges)`, async () => {
+  await step(`${tag}: SELECT off the heavy opens the same card, STOWING the item and DRAWING the player's own weapon (no colour, no charges); the ACTIVE confirm still reads CONFIRMED, not READY (decision 7: this is a pickup-driven switch even though the tile itself carries no item accent)`, async () => {
     const pg = await open(view, 'live-pu-select', N, 6350);
     await puWait(pg, r => r.takeover === 'switch', 1200);
     await pg.waitForTimeout(150);
@@ -5594,6 +5602,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const active = await puWait(pg, r => r.active, 1500);
     await puClose(pg, night);
     must(active.active && !active.active.pu, `the ACTIVE confirm names the player's own weapon: ${JSON.stringify(active.active)}`);
+    must(active.active.sub === 'CONFIRMED', `decision 7: the switch-back is still a pickup-driven switch, so CONFIRMED not ${JSON.stringify(active.active.sub)}`);
   });
   await step(`${tag}: SELECT back onto the heavy opens the card again, DRAWING the item with its charges left`, async () => {
     const pg = await open(view, 'live-pu-select-back', N, 9350);

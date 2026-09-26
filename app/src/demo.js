@@ -483,7 +483,7 @@ export function startDemo({ engine, log }) {
       addMate: () => { if (!roster.some(r => r.player_num === 23)) roster.push({ player_id: 'p-4', player_num: 23, display: 'MAVERICK', team_id: teamKey }); },   // QA-05: a teammate the roster can name
     });
     // ---- A56 powerups (docs/spec/powerups.md): a powerup game through the REAL engine. The config carries the stations'
-    // items and the armed pickup slots exactly as MC's `--powerups` compile sends them; the stations are fake adverts fed
+    // items and the armed pickup slots exactly as MC's powerups compile sends them (ON by default, F372); the stations are fake adverts fed
     // through the same presence path the app uses, with the claim's median RSSI and the station's `taker` byte. ----
     const PU = {
       rockets: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' },

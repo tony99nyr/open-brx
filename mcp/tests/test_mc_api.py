@@ -230,6 +230,30 @@ def test_release_station_route_pushes_the_release_and_works_while_live():
     assert c.post("/api/stations/never/release").status_code == 404
 
 
+def test_start_and_reschedule_default_countdown_over_http():
+    """Tony 2026-09-25: "default countdown 30s. 120s is generally too long." Neither route may fall
+    back to a stale literal of its own -- both read the one `DEFAULT_RUNWAY_S` constant."""
+    needs(HAVE, "starlette + httpx")
+    from brx_mcp.mc.types import DEFAULT_RUNWAY_S
+    assert DEFAULT_RUNWAY_S == 30, "the default itself moved; update this test's expectation, not the constant"
+    from brx_mcp.mc.fakes import demo_armory
+    c, s, net = _client()
+    assert c.put("/api/config", json={"mode": "tdm", "time_limit_s": 60}).json()["ok"]
+    tail = demo_armory()[0]["ble"]["tail"]
+    for i, letter in enumerate("AB"):
+        c.post("/api/players", json={"display": f"p{i}", "gun_id": f"GUN-{letter}"})
+        net.simulate_hello(f"node{i}", f"GUN-{letter}-{tail}")
+    assert c.post("/api/lobby/push", json={"force": True}).status_code == 200
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "x"}, s.now_ms())
+    r = c.post("/api/start", json={"force": True})    # no runway_s at all
+    assert r.status_code == 200, r.text
+    assert s.snapshot()["start"]["countdown_s"] == DEFAULT_RUNWAY_S
+    r = c.post("/api/start/reschedule", json={})       # no runway_s at all
+    assert r.status_code == 200, r.text
+    assert s.snapshot()["start"]["countdown_s"] == DEFAULT_RUNWAY_S
+
+
 def test_the_kit_locks_at_start_over_http_with_a_409():
     """A30: a host kit edit during a running match is a CONFLICT (the request is fine, the moment is not),
     so the route answers 409 and not the blanket 400 every other player error gets. The fields that never

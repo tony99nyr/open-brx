@@ -164,7 +164,7 @@ GameConfig {
                                       //   `StationAssignment.item`: {kind: "weapon"|"overshield", weapon_id?, charges?, amount?,
                                       //   spawn_every_s, first_at_s, name, color}. Design and defaults: docs/spec/powerups.md.
   powerups?:   [ { weapon_id: string, slot: 2|3 } ],   // [A56] the pickup weapons armed at start (empty magazine, out of
-                                      //   the ALT cycle); absent = none, or MC runs without `--powerups`
+                                      //   the ALT cycle); absent = none, or MC runs with `--no-powerups` (F372: on by default)
   game_byte?:  number,                // [A59] 1..255, the advert `game` byte MC arms its stations with this match
                                       //   (= station_config.game). Derived in `_wire_config`, never set by the operator.
                                       //   A player phone scopes presence and its own advert by it; absent (an older MC) = 0, any game.
@@ -958,7 +958,7 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
   `STATUS_HEARTBEAT_MS = 2000`, `STALE_AFTER_MS = 8000`, `SYNC_FRESH_MS = 10000`, `LATE_ARM_GRACE_MS = 8000`,
   `CONFIG_TTL_MS = 1800000`, `MAX_PLAYERS = 63` (wire ids 1–63; 0 reserved), `DEATH_LATCH_MS = 2000`,
   `RESYNC_PROBE_S = 10` (the LOBBY/ARMED observe window), `RECONCILE_MS = 3000` (the LIVE rejoin window, A6.8),
-  `DEFAULT_RUNWAY_S = 120` (walk time on a park [A5.10]), `MAX_HP`/`MAX_AR` from GameConfig. All are tunable defaults.
+  `DEFAULT_RUNWAY_S = 30` (host-set per game; presets 60/120/180 still on the console [A5.10]), `MAX_HP`/`MAX_AR` from GameConfig. All are tunable defaults.
 
 ## 10. Amendment index (dates; what; where it now lives)
 

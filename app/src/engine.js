@@ -580,8 +580,9 @@ const CALLOUT_NAME_GAP_MS = 300; // the victim's DOWN word goes out this long af
 const CALLOUT_WINDOW_MS = 3000;  // kill-confirm first-to-arrive (Tony), and how long `state().callout` stays lit
 
 // ---------- A56 (S58): powerups (docs/spec/powerups.md) ----------
-// Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one only with
-// its `--powerups` flag on). Tony's defaults (2026-09-24), each a named constant so a change is one line:
+// Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one
+// unless it was started with `--no-powerups`; powerups are ON by default, F372). Tony's defaults (2026-09-24),
+// each a named constant so a change is one line:
 export const PU_RESERVE = 0;                // a weapon item grants its charges as the MAGAZINE and no reserve
 export const PU_LOST_AT_DEATH = true;       // a weapon item's unused charges do not carry into the next life
 export const PU_ACTIVE_CARD_MS = 1200;      // F400: the ACTIVE confirm bubble's life after SWITCHING (hud.js `_swap('switched', el, 900, 1200)`)
@@ -3865,7 +3866,11 @@ export class Engine {
         if (this._puHeld && !pu) this._puHeld.trig = to;   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
         if (!pu) this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile (`_puEquip` already armed a pickup card's)
         if (!pu) this._showSlotAmmo(to);   // F394: the gun sends no `$ALCD` on ALT, so the new slot's counts come from the node
-        this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true } };
+        // `pu` rides along so the HUD can tell a pickup's ACTIVE bubble from ALT's own (docs/spec/powerups.md
+        // "The switch card"): a pickup switch is never "assumed" the way an unconfirmed ALT swap is -- it is
+        // display-only for `_onAmmo`'s confirm-by-shot code (`_puSwitchCard`), so it always closes here, on its
+        // own timer, with the equip already a settled fact.
+        this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true, pu } };
         this.log(pu ? `pickup switch card to slot ${to} closed after ${this.switchWindowMs()}ms` : `swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
       }
       this._changed();

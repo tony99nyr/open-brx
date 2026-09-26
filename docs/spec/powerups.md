@@ -1,7 +1,9 @@
 # Powerups: a station grants an item (design, 2026-09-24)
 
-Status: **DESIGN, built behind MC's `--powerups` flag.** Sitting A's slot and button checks ran on 2026-09-24
-(bench 3.3, below). The flag stays off until steps 3.4, 3.5 and 4.11 pass and Tony decides (S58). Tony's model: a station (a utility phone or an M5Stick) is assigned a kind and its data by Mission Control
+Status: **BUILT, ON by default (F372, Tony 2026-09-25: "rockets, railgun, overshield as powerup/pickups. yes
+lets enable them").** `--no-powerups` is the opt-out. Sitting A's slot and button checks ran on 2026-09-24
+(bench 3.3, below); steps 3.4, 3.5 and 4.11 remain as verification, not as a condition for the default.
+Tony's model: a station (a utility phone or an M5Stick) is assigned a kind and its data by Mission Control
 (MC) per game. A powerup station grants an item, for example a pickup-only heavy (rockets). Contract row: A56.
 Roadmap entry it replaces: K3 in `docs/utility-roadmap.md`; the station half of S46.
 
@@ -54,13 +56,16 @@ no line. Storyboard: `C:\Users\Tony\brx-brief-pickups`, awaiting Tony's look.
 **Decided by the lead, 2026-09-24, then overridden the same day:** a first draft blocked ALT (`$BMAP,1,98`) while the
 heavy was on the trigger. Tony's SELECT decision dropped the block: ALT keeps its normal job.
 
-## Bench gate (before the flag turns on)
+## Bench gate (verification, not a condition for the default)
 
-Items 1 to 6 ran at bench 3.3 on 2026-09-24 (the next section), and so did item 7's clamp and death checks. Open:
-item 7's hit and dead-gun cases, item 8 (`bench-2026-09-24.md` step 4.11, the claim calibration for a phone station
-and the Stick) and item 9 (steps 3.4 and 3.5), plus the claim race and the respawn (step 11.2). Step 11.3 gives the
-order. **Powerups are MVP** (Tony, 2026-09-25): when those steps pass, the flag turns on by default and the
-calibrated thresholds replace the placeholders (FOLLOWUPS F372).
+**Powerups are ON by default** (Tony, 2026-09-25: "rockets, railgun, overshield as powerup/pickups. yes lets
+enable them", FOLLOWUPS F372). This section's steps are no longer a gate on the default; they stay as the bench
+plan that verifies the mechanism and calibrates the claim thresholds. Items 1 to 6 ran at bench 3.3 on 2026-09-24
+(the next section), and so did item 7's clamp and death checks. Open: item 7's hit and dead-gun cases, item 8
+(`bench-2026-09-24.md` step 4.11, the claim calibration for a phone station and the Stick) and item 9 (steps 3.4
+and 3.5), plus the claim race and the respawn (step 11.2). Step 11.3 gives the order. Once those steps pass, the
+calibrated thresholds replace the placeholders (`POWERUP_THRESHOLD_DEFAULT`, `beacon.js POWERUP_RSSI_DBM`, the
+Stick's -57).
 
 1. A `$WEAP` in slot 2 and 3 at arm time; `$ALCD` reports each slot; each fires and takes its own `$AMMO`.
 2. Slots 4 and 5: does a `$WEAP` take (Jay: "about 5 weapons")? Slot 4 is melee today.
@@ -134,10 +139,12 @@ behind the flag until the design catches up (open for Tony, S58).
   claimed station id in `value`; the station advert's reserved byte 15 becomes `taker` (the winner's
   `player_num`, 0 = none).
 
-## Mission Control side (built 2026-09-24, behind `--powerups`)
+## Mission Control side (built 2026-09-24, on by default since F372)
 
-- **The flag:** `python -m brx_mcp.mc --powerups`. Off (the default), MC refuses an `item_preset`, compiles no spare
-  slot, sends no `item` and runs no schedule; an item restored from an old session is inert.
+- **The flag:** powerups are on by default (`python -m brx_mcp.mc`); `--no-powerups` turns them off. `--powerups`
+  is still accepted, as a no-op, so an old command line does not break. With powerups off, MC refuses an
+  `item_preset`, compiles no spare slot, sends no `item` and runs no schedule; an item restored from an old
+  session is inert.
 - **Defaults** live in one place, `mcp/brx_mcp/mc/powerups.py`: the three presets, the intervals, `OVERSHIELD_AMOUNT`,
   and the rules the phone mirrors (`LOST_AT_DEATH`, `WEAPON_PICKUP_SWAPS`, `OVERSHIELD_DECAY_PER_S`,
   `OVERSHIELD_REGEN`). Those rules are constants, not item fields.
@@ -341,14 +348,31 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
    S29 recharge plays on its first grant (N102 in the golden bundle; F349: no separate "Shields Online" voice).
 6. **No new voice lines.** VA56 ("Rocket Launcher!"), VX0S ("Weapon Swap") and V130 ("Overshield") from the F400
    FOLLOWUPS row's AUDIO panel are unaudited community labels and stay out of scope.
+7. **The ACTIVE bubble's sub-line reads CONFIRMED for a pickup switch, never READY nor CONFIRMED BY YOUR GUN**
+   (desk fix, 2026-09-26). `_puSwitchCard` sets `this.switching.pu = true` precisely so a pickup equip is
+   display-only for `_onAmmo`'s confirm-by-shot code (below): the card can never close early on the gun's own
+   echo, so it always reaches the ACTIVE bubble by way of the tick's assumed-timeout. For an ALT swap that path
+   means "we never got a shot to prove it, but the window has passed" -- an honest guess, so the bubble says
+   READY. A pickup switch is not a guess: the phone's own equip write (`_puEquip`) already settled the trigger
+   before the card even opened, so `assumed: true` on this moment's data is true only in the sense of "closed by
+   the timer", not "unproven". READY would undersell that; CONFIRMED BY YOUR GUN would claim a mechanism
+   (the gun's echo) that this path deliberately never uses. CONFIRMED, on its own, is the state the bubble now
+   shows (`hud.js` `_switched`, keyed on a new `pu` flag the moment's `data` carries alongside `assumed`).
 
-Engine mechanism: `_puSwitchCard(from, to, going?)` sets `this.switching = {at, from, to}` verbatim, the SAME field
-and shape an ALT press sets (`engine.js` around the `$BUT,1,1` handler). The gun's own echo of the equip write
-confirms it through the existing ALT-confirm code in `_onAmmo`, or the existing tick assumed-timeout does when
-nothing echoes -- both paths, and the takeover flag, are ALT's own, untouched. `going` is `{name, color, weapon_id,
-charges}` for a slot about to lose its identity this call (the empty switch-back's heavy, whose `_puHeld` is cleared
-before the equip): the HUD's tile still needs to name it on the render after that, so it rides on
-`state().powerup.going` until the card's own window has passed. The tick's assumed-timeout path never lets a
-pickup slot (2 or 3) become `_altPtr`: that field is the gun's OWN ALT-cycle position (always 0 or 1), and a
-powerup equip never touches ALT's `$BMAP` row (see "The mechanism" above).
-Not built: a storyboard for the clash lean, and the AUDIO panel's voice lines (decision 6).
+Engine mechanism: `_puSwitchCard(from, to, going?)` sets `this.switching = {at, from, to, pu: true}`, the SAME
+`at`/`from`/`to` shape an ALT press sets (`engine.js` around the `$BUT,1,1` handler), plus the `pu` flag. `_onAmmo`'s
+confirm-by-shot code explicitly excludes a `pu` switch (`this.switching && !this.switching.pu`, so it can only ever
+close on the tick's assumed-timeout, never early on the gun's echo of the equip write itself -- decision 7 is why
+that is the right call, not a gap. `going` is `{name, color, weapon_id, charges}` for a slot about to lose its
+identity this call (the empty switch-back's heavy, whose `_puHeld` is cleared before the equip): the HUD's tile
+still needs to name it on the render after that, so it rides on `state().powerup.going` until the card's own
+window has passed. The tick's assumed-timeout path never lets a pickup slot (2 or 3) become `_altPtr`: that field
+is the gun's OWN ALT-cycle position (always 0 or 1), and a powerup equip never touches ALT's `$BMAP` row (see
+"The mechanism" above).
+
+The STOWING/DRAWING/ACTIVE label (`.wt .wl`, shared with ALT's own card) rendered at 10px, under the 11px type
+floor (desk fix, 2026-09-26): raised to 11px in `www/index.html`. The tile is 220px wide with plenty of headroom,
+so the extra pixel does not wrap or clip either tile at either phone width.
+
+Not built: a storyboard for the clash lean, and the AUDIO panel's voice lines (decision 6). Bench check, the
+unbuilt voice lines and the clash storyboard are still open on the F400 row (`docs/FOLLOWUPS.md`).

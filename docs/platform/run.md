@@ -107,7 +107,7 @@ This is the per-game arming, and it is where a bad start gets caught.
    sent a game and needs a re-push.
 5. **Check the board has no reds.** Amber never blocks a start. Reds do, and each one names its own
    fix.
-6. **Start with a runway.** The default is 120 seconds, which is walk-to-your-base time. Every phone
+6. **Start with a runway.** The default is 30 seconds; pick a longer one for walk-to-your-base time. Every phone
    counts its own tagger down and spawns it at zero, so no signal is needed at the moment of start.
    Confirm every player shows armed and counting. If you need to abort, do it **before** players
    scatter: a phone already out of range never hears the cancel.
