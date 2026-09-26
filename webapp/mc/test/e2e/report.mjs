@@ -27,7 +27,7 @@ const REPO = path.resolve(MC_DIR, '../..');
 const SHOTS = path.join(HERE, 'shots', 'report');   // one folder per script: a parallel run must not wipe another script's shots
 const DOWNLOADS = path.join(SHOTS, 'downloads');
 // Its own evidence dir AND its own BRX_MCP_HOME (2026-09-18): a real report reads the store, the
-// armory file and the presets shelf off disk, and every one of those otherwise falls back to
+// armory file and the pieces shelf off disk, and every one of those otherwise falls back to
 // `~/.brx-mcp` — a parallel run, or a run on Tony's own box, must never write there.
 const EVIDENCE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-report-evidence-'));
 const BRX_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-report-home-'));

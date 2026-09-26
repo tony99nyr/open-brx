@@ -1271,7 +1271,7 @@ export class MockBackend implements Api {
     const nextPieceIds = { ...this.gamePick.pieces, ...(p.pieces ?? {}) };
     for (const [kind, id] of Object.entries(nextPieceIds)) {
       const piece = this.pieces.find(x => x.piece_id === id);
-      if (!piece) throw new Error(`unknown piece id '${id}'`);
+      if (!piece) throw Object.assign(new Error(`unknown piece id '${id}'`), { status: 404 });
       if (piece.kind !== kind) throw new Error(`piece '${id}' is a ${piece.kind} piece, not ${kind}`);
       if (piece.post_mvp) throw new Error(`'${piece.name}' is post-MVP and cannot be picked yet`);
     }
