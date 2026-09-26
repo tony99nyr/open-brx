@@ -25,7 +25,7 @@ switch. Decided and recorded (do not re-ask): everything in the FOLLOWUPS rows, 
 - **Next:** run [`bench-2026-09-25.md`](bench-2026-09-25.md) with Tony. Sitting A's audio results are built (brx5,
   t23 empty and the shield-hit clip); cut 0.4.12 after A4 (RELEASING.md); sitting C's powerup setup verifies F372 (closed).
 - **Desk:** F377 (solo LMS picks no winner), B21's iOS half (needs the MacBook).
-- **Awaiting Tony:** F221 (look at `C:\Users\Tony\brx-mc-alerts\index.html`) and S32 (the koth and melee art).
+- **Awaiting Tony:** F221 (look at `C:\Users\Tony\brx-mc-alerts\index.html`). S32 closed: Tony picked direction C.
 - **Parked, not merged:** `pu-select` 1fb1aec9 (brx5, SELECT swap; later powerup work on main likely supersedes it).
 ## Lane: brx2, bench, audio, utility and docs
 2026-09-25 bench: **sitting A and sitting B both done** ([`bench-2026-09-25.md`](bench-2026-09-25.md)); **stop point
@@ -50,8 +50,8 @@ Stick lock/link bugs F387-F392, F397; **F390** (MUSTER's no-way-back) to DECISIO
 APK 0.4.12 published 2026-09-25 (release-signed, WebView debugging on). Since then on main: F282 (silenced weapons,
 MC-only: restart MC from main before the bench), F382 phone half, F384, F385, F401, F402, F404, F405, the MVP mode
 cut (TDM, FFA, KOTH), the TDM/FFA/KOTH chaos desk proofs and three flake fixes; F372 closed (powerups on by default).
-- **Next:** S32 waits on Tony's two renders. The next APK carries F382, F384, F385 and the phone's MVP-only utility
-  drawer.
+- **Next:** S32 closed, koth mode art shipped (direction C). The next APK carries F382, F384, F385 and the phone's
+  MVP-only utility drawer.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet agents did the work since.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
