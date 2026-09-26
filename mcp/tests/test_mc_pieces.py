@@ -620,8 +620,15 @@ def test_mb_editing_an_unrelated_piece_survives_an_inherited_post_mvp_mode():
     assert r2.json()["ok"] is True
     # a name-only edit on the same picked piece must ALSO survive (the other bug on the same lines --
     # resolving outside the try used to turn this into an unhandled 500 the moment it failed at all)
+    # NOTE: r2's own VALUE edit already recomposed (a value DID change), and that recompose's own
+    # resolve_pieces_mixed legitimately fell the inherited post-MVP mode piece back to TDM as a side
+    # effect -- so `s.config["mode"]` is "tdm" by this point, not "infection" any more. What round 3
+    # actually guards is the NEXT step: a rename must not recompose AGAIN and must not move it further.
+    mode_after_the_value_edit = s.config["mode"]
     r3 = c.put(f"/api/pieces/{pid}", json={"name": "Glass Cannon Mk2"})
     assert r3.status_code == 200, r3.json()
+    assert "ok" not in r3.json() and "fallbacks" not in r3.json()
+    assert s.config["mode"] == mode_after_the_value_edit
 
 
 def test_low_play_pick_reports_fallbacks_for_an_inherited_kind():
@@ -662,3 +669,42 @@ def test_low_pieces_update_rolls_recap_forward_before_the_precheck():
     r2 = c.put(f"/api/pieces/{pid}", json={"value": {"max_hp": 45, "max_armor": 30, "max_shield": 0}})
     assert r2.status_code == 200, r2.json()
     assert s.phase != "recap"
+
+
+# ================================================================== polish round 3
+def test_round3_a_name_only_edit_never_recomposes_or_touches_the_config():
+    """round 3: a name/note-only edit changes no game value and must not touch the config at all.
+    Probe (Tony's own repro): pick a custom LIFE piece, PUT /api/config {"mode": "infection"} (a
+    legal, non-pick config edit), then just rename the LIFE piece -- the mode used to silently revert
+    to TDM, because the unconditional recompose re-resolved every kind, including the now-inherited
+    post-MVP mode, which resolve_pieces_mixed correctly falls back to TDM -- and set_config applied it."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/pieces", json={"kind": "life", "name": "Glass Cannon", "note": "",
+                                    "value": {"max_hp": 30, "max_armor": 0, "max_shield": 0}})
+    pid = r.json()["piece_id"]
+    assert c.post("/api/play/pick", json={"pieces": {"life": pid}}).json()["ok"]
+    assert c.put("/api/config", json={"mode": "infection"}).status_code == 200
+    r2 = c.put(f"/api/pieces/{pid}", json={"name": "Glass Cannon Mk2"})
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["name"] == "Glass Cannon Mk2"
+    assert "ok" not in body and "errors" not in body and "fallbacks" not in body
+    assert s.config["mode"] == "infection"        # NOT reverted to tdm
+    r3 = c.put(f"/api/pieces/{pid}", json={"note": "one shot"})
+    assert r3.status_code == 200 and s.config["mode"] == "infection"
+
+
+def test_round3_play_pick_prev_mode_lookup_does_not_404_an_unrelated_pick():
+    """round 3: prev_mode's own PieceStore.get() used the STRICT lookup -- an unresolvable inherited
+    game_pick.pieces.mode id (the same kind of drift M1 already tolerates everywhere else) 404'd an
+    otherwise unrelated pick instead of being treated as a mode change."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    s.game_pick["pieces"]["mode"] = "gone-mode-id"
+    r = c.post("/api/play/pick", json={"match": {"frag_limit": 10}})
+    assert r.status_code == 200 and r.json()["ok"], r.json()
+    assert r.json()["pick"]["pieces"]["mode"] == BUILTIN_IDS["mode"]
+    assert r.json()["fallbacks"] == ["mode"]
+    # treated as a mode CHANGE: the strip resets to the (real) current mode's own defaults
+    assert r.json()["config"]["time_limit_s"] == default_config("tdm")["time_limit_s"]
