@@ -26,6 +26,9 @@ export const DEMO_WEAPONS = [
       "sniper"
     ],
     "role": "marksman",
+    "types": [
+      "long"
+    ],
     "htk": 6,
     "ttk_ms": 2000,
     "rounds_per_charge": 1,
@@ -76,6 +79,9 @@ export const DEMO_WEAPONS = [
       "assault"
     ],
     "role": "assault",
+    "types": [
+      "rifle"
+    ],
     "htk": 13,
     "ttk_ms": 1200,
     "rounds_per_charge": 1,
@@ -128,6 +134,9 @@ export const DEMO_WEAPONS = [
       "assault"
     ],
     "role": "assault",
+    "types": [
+      "rifle"
+    ],
     "htk": 12,
     "ttk_ms": 2530,
     "rounds_per_charge": 1,
@@ -179,6 +188,10 @@ export const DEMO_WEAPONS = [
       "sniper"
     ],
     "role": "marksman",
+    "types": [
+      "rifle",
+      "long"
+    ],
     "htk": 4,
     "ttk_ms": 855,
     "rounds_per_charge": 10,
@@ -235,6 +248,10 @@ export const DEMO_WEAPONS = [
       "pistol"
     ],
     "role": "sidearm",
+    "types": [
+      "sidearm",
+      "close"
+    ],
     "htk": 5,
     "ttk_ms": 2800,
     "rounds_per_charge": 1,
@@ -284,6 +301,9 @@ export const DEMO_WEAPONS = [
       "assault"
     ],
     "role": "assault",
+    "types": [
+      "rifle"
+    ],
     "htk": 13,
     "ttk_ms": 1800,
     "rounds_per_charge": 1,
@@ -335,6 +355,7 @@ export const DEMO_WEAPONS = [
       "heavy"
     ],
     "role": "power",
+    "types": [],
     "htk": 1,
     "ttk_ms": 1200,
     "rounds_per_charge": 1,
@@ -386,6 +407,7 @@ export const DEMO_WEAPONS = [
       "heavy"
     ],
     "role": "power",
+    "types": [],
     "htk": 1,
     "ttk_ms": 0,
     "rounds_per_charge": 1,
@@ -442,6 +464,9 @@ export const DEMO_WEAPONS = [
       "cqb"
     ],
     "role": "cqb",
+    "types": [
+      "close"
+    ],
     "htk": 3,
     "ttk_ms": 1400,
     "rounds_per_charge": 1,
@@ -491,6 +516,9 @@ export const DEMO_WEAPONS = [
       "cqb"
     ],
     "role": "cqb",
+    "types": [
+      "close"
+    ],
     "htk": 13,
     "ttk_ms": 1200,
     "rounds_per_charge": 1,
@@ -546,6 +574,9 @@ export const DEMO_WEAPONS = [
       "support"
     ],
     "role": "support",
+    "types": [
+      "support"
+    ],
     "htk": 20,
     "ttk_ms": 13300,
     "rounds_per_charge": 1,
@@ -598,6 +629,10 @@ export const DEMO_WEAPONS = [
       "sniper"
     ],
     "role": "marksman",
+    "types": [
+      "rifle",
+      "long"
+    ],
     "htk": 2,
     "ttk_ms": 1500,
     "rounds_per_charge": 1,
@@ -647,6 +682,10 @@ export const DEMO_WEAPONS = [
       "support"
     ],
     "role": "support",
+    "types": [
+      "support",
+      "close"
+    ],
     "htk": 13,
     "ttk_ms": 1320,
     "rounds_per_charge": 1,
@@ -697,6 +736,9 @@ export const DEMO_WEAPONS = [
       "assault"
     ],
     "role": "assault",
+    "types": [
+      "rifle"
+    ],
     "htk": 15,
     "ttk_ms": 1960,
     "rounds_per_charge": 1,
@@ -747,6 +789,9 @@ export const DEMO_WEAPONS = [
       "assault"
     ],
     "role": "assault",
+    "types": [
+      "rifle"
+    ],
     "htk": 15,
     "ttk_ms": 1540,
     "rounds_per_charge": 1,
@@ -797,6 +842,10 @@ export const DEMO_WEAPONS = [
       "pistol"
     ],
     "role": "sidearm",
+    "types": [
+      "sidearm",
+      "close"
+    ],
     "htk": 13,
     "ttk_ms": 1920,
     "rounds_per_charge": 1,

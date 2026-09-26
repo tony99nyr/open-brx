@@ -159,6 +159,12 @@ def _check_misc_loadouts(v: object) -> dict:
 
 def check_value(kind: PieceKind, value: object) -> dict:
     """The `PUT /api/config`-equivalent validator for one piece's `value`. Raises `PieceError`."""
+    if isinstance(value, dict) and "station_source" in value:
+        # games-presets.md §1: "a piece never carries `station_source` (the mode's own default and
+        # ARMORY decide it)". Every kind-specific checker below only reads its OWN known keys, so an
+        # extra `station_source` alongside them used to be silently dropped (QA-25, visual QA round 1)
+        # -- an operator who typed it got a 200 and never learned it did nothing.
+        raise PieceError(400, "a piece may not carry station_source — the mode's default and ARMORY decide it")
     if kind == "mode":
         raise PieceError(403, "GAME MODE has no host-added pieces")
     if kind == "gameplay":

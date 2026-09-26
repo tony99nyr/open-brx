@@ -815,6 +815,8 @@ export interface Weapon {
   /** A10 policy vocabulary (loadout.md §1.1) */
   tags?: string[];
   role?: string;
+  /** F411 (2026-09-26): the loadout-preset vocabulary BUILD's type toggles union over (games-presets.md) -- rifle|close|long|sidearm|support, several per row allowed, [] on a pickup-only heavy */
+  types?: string[];
   /** A10: human copy for a known LIVE problem (weapons.json `caution`) */
   caution?: string;
   /** 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py) */
@@ -864,6 +866,8 @@ export interface WeaponView {
   verified: boolean;
   tags: string[];
   role: string;
+  /** F411 (2026-09-26): rifle|close|long|sidearm|support, several allowed, [] on a pickup-only heavy -- NotRequired so a console reading an older server (games-presets.md's own stale-server rule) degrades to no type toggles rather than crashing on `undefined.includes` */
+  types?: string[];
   htk: number | null;
   /** older MC rows can omit this derived figure */
   ttk_ms?: number | null;
