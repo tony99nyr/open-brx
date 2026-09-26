@@ -1,21 +1,16 @@
 """K8 (Tony, field 2026-09-12): the host's per-game volume knob, `GameConfig.volume`.
 
 Absent or null = the venue volume (80 indoors, 90 outdoors), exactly as before. Set = an integer
-60..100 for the match head's `$VOL`. `--bench-volume` still wins, a try-out keeps 69, and a saved game
-keeps the knob (an older one with no key plays at the venue volume).
+60..100 for the match head's `$VOL`. `--bench-volume` still wins, a try-out keeps 69, and a GAMES pick
+never touches it (F411, games-presets.md §3.7: MVP is outdoors-only, so MATCH SETTINGS has no volume
+field at all).
 
 Run: python3 run_tests.py game_volume
 """
-import json
-import pathlib
-import tempfile
-
 from _skip import needs
-from brx_mcp.mc import policy as P
 from brx_mcp.mc.compile import GAME_VOLUME_MAX, GAME_VOLUME_MIN, Compiler, VOL_TRYOUT
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
-from brx_mcp.mc.presets import PresetStore
-from brx_mcp.mc.state import Session, default_config
+from brx_mcp.mc.state import Session
 from _session import match_config
 
 _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
@@ -109,39 +104,28 @@ def test_the_api_answers_400_naming_the_range():
     assert r.status_code == 200 and "volume" not in r.json()["config"]
 
 
-def test_a_saved_game_keeps_the_knob_and_an_old_one_is_the_venue_default():
+def test_a_games_pick_never_touches_the_volume_knob():
+    """F411 (games-presets.md §3.7): MATCH SETTINGS has no volume field -- `gamepick.compose()`'s patch
+    never carries the key, so a pick (even one that changes the mode) leaves the host's own venue-volume
+    knob exactly where `PUT /api/config` left it. Replaces the old whole-game-preset volume round-trip
+    test: `PresetStore` is gone with no migration (games-presets.md)."""
+    try:
+        from starlette.testclient import TestClient
+        import httpx  # noqa: F401
+    except Exception:
+        needs(False, "starlette + httpx")
+        return
+    from brx_mcp.mc.api import create_app
     s = _session()
-    path = pathlib.Path(tempfile.mkdtemp()) / "presets.json"
-    st = PresetStore(path, s.sanitize_config, default_config, P.merge, now_ms=s.now_ms)
-    s.presets = st
-    s.set_config({"mode": "tdm", "time_limit_s": 300, "volume": 70})
-    loud = st.create("Quiet TDM", "", s.config)
-    assert loud["config"]["volume"] == 70
-    # round trip through the file
-    reread = PresetStore(path, s.sanitize_config, default_config, P.merge, now_ms=s.now_ms)
-    row = next(r for r in reread.list() if r["name"] == "Quiet TDM")
-    assert row["config"]["volume"] == 70
-    # a hand-written file from before K8: no key at all
-    raw = json.loads(path.read_text())
-    rows = raw["presets"] if isinstance(raw, dict) else raw
-    old = json.loads(json.dumps(rows[0]))
-    old.update(name="Old TDM", preset_id="old1")
-    old["config"].pop("volume")
-    rows.append(old)
-    path.write_text(json.dumps(raw))
-    st2 = PresetStore(path, s.sanitize_config, default_config, P.merge, now_ms=s.now_ms)
-    old_row = next(r for r in st2.list() if r["name"] == "Old TDM")
-    assert "volume" not in old_row["config"]
-    # applying the old game after a game with the knob set must NOT inherit that knob
-    s.set_config({"volume": 95})
-    s.apply_preset(old_row["preset_id"], old_row["config"])
-    assert "volume" not in s.config
-    s.apply_preset(row["preset_id"], row["config"])
-    assert s.config["volume"] == 70
-    # a bad value in a stored file drops only that row, as every other bad value does
-    bad = json.loads(json.dumps(old)); bad.update(name="Bad", preset_id="bad1"); bad["config"]["volume"] = 20
-    rows.append(bad); path.write_text(json.dumps(raw))
-    assert "Bad" not in [r["name"] for r in PresetStore(path, s.sanitize_config, default_config, P.merge, now_ms=s.now_ms).list()]
+    s.set_config({"mode": "tdm", "volume": 70})
+    c = TestClient(create_app(s))
+    r = c.post("/api/play/pick", json={"pieces": {"life": "builtin:life:shields"}})
+    assert r.status_code == 200 and r.json()["ok"], r.text
+    assert r.json()["config"]["volume"] == 70
+    # a mode change composes through `default_config(mode)` + `set_config`'s own carry-over -- still kept
+    r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:ffa"}})
+    assert r.status_code == 200 and r.json()["ok"], r.text
+    assert r.json()["config"]["volume"] == 70
 
 
 def test_polish_round_2_a_mode_switch_keeps_the_knob():

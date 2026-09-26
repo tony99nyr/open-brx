@@ -141,8 +141,7 @@ def test_a_restored_session_on_tid_two_still_cannot_be_pushed_even_with_force():
             "players": [{**p, "team_id": "yellow", "node_id": None, "ready": False} for p in _roster(s)],
             "teams": [], "config": dict(s.config, teams=[
                 {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
-                {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2}]),
-            "active_preset_id": None}
+                {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2}])}
     path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     path.write_text(json.dumps(snap))
     s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
@@ -547,12 +546,14 @@ def _sess_koth_for_default():
     return s
 
 
-def test_a_koth_game_saved_before_the_phone_default_still_loads_on_the_grenade():
-    """Saved games carry their own `station_source`, so one saved while the stock card was the grenade
-    comes back on the grenade (it is still selectable), and the SETUP lines follow it."""
+def test_a_koth_config_from_before_the_phone_default_still_loads_on_the_grenade():
+    """F411: a whole config from before the phone became the default `station_source` (the old
+    `apply_preset`, now gone) still carries its own `station_source`, so one built while the stock
+    card was the grenade comes back on the grenade (it is still selectable), and the SETUP lines
+    follow it. `sanitize_config` + `set_config` is the whole of what `apply_preset` ever did here."""
     s = _sess_koth_for_default()
     old = s.sanitize_config(dict(default_config("koth"), station_source="grenade"))
     s.set_config({"mode": "tdm"})
-    s.apply_preset("saved-before", old)
+    s.set_config(old)
     assert s.config["mode"] == "koth" and s.config["station_source"] == "grenade"
     assert any("POWER-CYCLE" in w for w in s.config_warnings), s.config_warnings
