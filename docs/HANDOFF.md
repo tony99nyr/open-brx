@@ -69,7 +69,7 @@ before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392
 On main: S58 powerups ON by default (F372 closed, `--no-powerups` is the opt-out); S59 Visor; F348/F349; death first; the three-lane alerts; F347, F350, F378.
 2026-09-25: sitting B's F379, F380, F381 (a same-weapon stack capped at 2x the drop) and F393; F400, the pickup switch
 card (ALT's card and timing for a weapon pickup, SELECT and the switch-back; display only; the Overshield gets N102
-and no card; the kill-card clash is Tony's lean). 2026-09-26: F403, the BRIEFING's PICKUPS line (MC's brief carries `pickups`); F394, the ammo number and pips after ALT (built, bench check left).
+and no card). 2026-09-26: F403, the BRIEFING's PICKUPS line (MC's brief carries `pickups`); F394, the ammo number and pips after ALT (built, bench check left). F400 final: the switch card is on top and every lane waits (ALT too); ask Tony whether the lead badge should stay visible under it.
 - **Next desk task:** B21's iOS half on the MacBook; `PLAY_GAP_MS` from sitting C's spacing check (F372 closed).
 - **Next bench task:** sitting C: F394 (ALT to the secondary with no shot: number, pips and a reload pull), the powerup setup (11.3), F381 (Rockets twice: 3, then 4), F400 on the gun (the card
   holds ALT's time, SELECT works while it is up), the shield-up kill-cue A/B/A, the spacing check, 11.1 (c), 11.8.

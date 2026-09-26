@@ -337,11 +337,12 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
 3. **While the card is up, the small hint chip is hidden** for a weapon grant or a switch-back (`_puHint`'s own
    `granted`/`switched_back` kinds); the held chip beside the ammo is untouched. The hint still computes the same
    way underneath, so it resumes for whatever is left of its own window once the card has gone.
-4. **Clash (Tony's LEAN, not final; he will review a storyboard):** the switch card goes on top; a kill card that is
-   due waits underneath, its display timer does not run while hidden, and it shows for its own full time when the
-   switch card leaves. This is exactly F368's own takeover rule (`docs/announcer.md` "Layering and priority on the
-   phone HUD"): the pickup switch card IS `this.switching` (the engine field an ALT press sets), so it inherits the
-   rule with no new HUD code at all; see the dated note there.
+4. **Clash (Tony's final call, 2026-09-26):** "Not stacked. The weapon switch overlay is on top. When it finishes
+   then the rest of ui is shown. Events and streaks show. Anything which has a temporary show should have their timer
+   adjusted since the user was in that overlay. This should be true for regular alt weapon switches too." The card
+   is SWITCHING and then its ACTIVE bubble, for ALT and every pickup equip alike. While it is up, the alert lanes are
+   hidden and their clocks stop: a kill card, a feed row and a badge each get their full time once it leaves, and an
+   event that arrives under it shows afterwards. See `docs/announcer.md` "Layering and priority on the phone HUD".
 5. **The Overshield is not a weapon: no switch card, ever.** Its grant already animates the shield bar (the
    existing gain animation on `.svos`, `shieldmeter.js`) via the same width transition a hit's drain uses; it now
    also plays the shield-recharge sound again -- `_announceStatus('shield_charging')`, the exact clip the ordinary
@@ -374,5 +375,5 @@ The STOWING/DRAWING/ACTIVE label (`.wt .wl`, shared with ALT's own card) rendere
 floor (desk fix, 2026-09-26): raised to 11px in `www/index.html`. The tile is 220px wide with plenty of headroom,
 so the extra pixel does not wrap or clip either tile at either phone width.
 
-Not built: a storyboard for the clash lean, and the AUDIO panel's voice lines (decision 6). Bench check, the
-unbuilt voice lines and the clash storyboard are still open on the F400 row (`docs/FOLLOWUPS.md`).
+Not built: the AUDIO panel's voice lines (decision 6). The bench check and the unbuilt voice lines are still open on
+the F400 row (`docs/FOLLOWUPS.md`).

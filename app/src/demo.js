@@ -701,6 +701,8 @@ export function startDemo({ engine, log }) {
       'live-reload-overrun': [[0, () => { player.loadout = { weapons: [{ weapon_id: 'shotgun' }] }; }], ...live, [2300, () => ev.fire(20)], [2600, () => ev.reloadChain(18, 800)]],   // F123: the chain reload — nominal is the PER-SHELL time, so the bar is in overrun for the whole reload
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],
       // F394: the real gun reports nothing on ALT, so only a shot inside the swap window reaches CONFIRMED BY YOUR GUN
+      // F400 final (Tony 2026-09-26): a kill 0.5 s into the switch card waits under it, then gets its full time
+      'live-switch-kill':  [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle'], [3150, 'killConfirm']],
       'live-switch-shot':  [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle'], [3000, () => ev.fire(1)]],
       'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
       'down-hold':         [[0, () => ev.scanner(8)], ...live, [2300, 'die'], [2400, () => ev.station(-70, true)]],

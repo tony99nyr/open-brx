@@ -3471,7 +3471,7 @@ export class Engine {
    *  could never carry a 1 s cadence, and driving audio per beacon is exactly what F74 forbids. */
   _hillTick(now) {
     const hillBadge = this._lanes?.obj?.hill;
-    if (hillBadge && now - hillBadge.at >= LANE_HILL_CLEAR_MS) {
+    if (hillBadge && this._laneAge(hillBadge.at, now) >= LANE_HILL_CLEAR_MS) {
       const { hill: _hill, ...obj } = this._lanes.obj;
       this._lanes.obj = obj;
       this._changed();
@@ -3730,6 +3730,7 @@ export class Engine {
   tick() {
     const now = this.now();
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
+    this._cardTick(now);              // F400 final: the switch card's span, on EVERY tick so a death mid-card closes it at once
     this._gunRecoveryTick(now);       // F272: paced, bounded full-head retry while the durable instruction stays up
     this._gunLockTick(now);           // F272: silence -> two proved writes -> durable lock-up verdict
     // B4: the link watchdog. `bleUp` otherwise only ever goes false from the native disconnect callback —
@@ -3786,7 +3787,7 @@ export class Engine {
     if (this.phase === 'live') {
       if (this.endT && now >= this.endT) { this._endLocal('time-expiry'); return; }
       const hillBadge = this._lanes?.obj?.hill;
-      if (hillBadge && now - hillBadge.at >= LANE_HILL_CLEAR_MS) {
+      if (hillBadge && this._laneAge(hillBadge.at, now) >= LANE_HILL_CLEAR_MS) {
         const { hill: _hill, ...obj } = this._lanes.obj;
         this._lanes.obj = obj;
         this._changed();
@@ -4571,7 +4572,56 @@ export class Engine {
     if (this.phase !== 'live' || !this.alive) return false;   // review r2 M1: a takeover while down holds no card open
     if (this.gunLocked || this.reconciling) return true;
     if (this.bleUp && (this.reloading || this.switchingMs() != null)) return true;
+    if (this._switchCardUp(now)) return true;   // F400 final: the ACTIVE bubble is part of the switch card
     return !!this._redeployOutAt && now < this._redeployOutAt;
+  }
+  /** F400 final (Tony, 2026-09-26): "Not stacked. The weapon switch overlay is on top. When it finishes then the rest
+   *  of ui is shown ... Anything which has a temporary show should have their timer adjusted since the user was in
+   *  that overlay. This should be true for regular alt weapon switches too." The card is SWITCHING (`switching`, ALT's
+   *  or a pickup's), then its ACTIVE bubble (the `switched` moment, PU_ACTIVE_CARD_MS; hud.js `_swap('switched')`).
+   *  `_cardTick` records each card as a span `{from, to, until}`; a lane's clock does not run inside one. */
+  _cardTick(now = this.now()) {
+    const S = this._cardSpans || (this._cardSpans = []), last = S[S.length - 1], open = last && last.to == null ? last : null;
+    const live = this.phase === 'live' && this.alive, m = this.moment && this.moment.kind === 'switched' ? this.moment : null;
+    // Review r2: the bubble keeps its OWN deadline once seen. A hit or a gain overwrites `moment` inside it, and
+    // re-reading `moment` alone closed the card early while the ACTIVE bubble was still on screen.
+    const mEnd = live && m && now < m.at + PU_ACTIVE_CARD_MS ? m.at + PU_ACTIVE_CARD_MS : null;
+    const sw = live && this.switchingMs() != null, bubble = mEnd != null || (live && open && open.until != null && now < open.until);
+    if (sw || bubble) {
+      const span = open || (S.push({ from: sw ? this.switching.at : m.at, to: null, until: null }), S[S.length - 1]);
+      span.until = sw ? null : mEnd != null ? mEnd : span.until;
+    } else if (open) open.to = open.until != null ? Math.min(now, open.until) : now;
+    // Keep a closed span while anything that can still be on screen started before its end (review r1: a fixed cap
+    // could drop a span a live item still needed, and its age would jump).
+    const L = this._lanes, ats = [...(L ? [...(L.feed || []), ...Object.values(L.obj || {})] : []), this.powerupGrant, this._puBack].filter(Boolean).map(x => x.at).filter(at => now - at < 60000);   // a lead badge stays all match; no lane window is over 8 s
+    const oldest = ats.length ? Math.min(...ats) : Infinity;
+    while (S.length && S[0].to != null && S[0].to <= oldest) S.shift();
+  }
+  /** Is the switch card on screen? PURE (the open span, or a swap `_cardTick` has not seen yet). */
+  _switchCardUp(now = this.now()) {
+    if (this.phase !== 'live' || !this.alive) return false;
+    if (this.switchingMs() != null) return true;
+    const S = this._cardSpans, last = S && S[S.length - 1];
+    return !!(last && last.to == null && (last.until == null || now < last.until));
+  }
+  /** Milliseconds of the switch card between `at` and `now`: the time a lane item waited under it. PURE. */
+  _lanePaused(at, now = this.now()) {
+    let ms = 0;
+    for (const c of this._cardSpans || []) {
+      const to = Math.min(now, c.to != null ? c.to : c.until != null ? c.until : now);
+      ms += Math.max(0, to - Math.max(c.from, at));
+    }
+    return ms;
+  }
+  /** A lane item's age with the switch card's time taken out. PURE. */
+  _laneAge(at, now = this.now()) { return now - at - this._lanePaused(at, now); }
+  /** `state().lanes`: each feed row and badge stamped later by the card time it waited, so the HUD's own
+   *  `now - at` gives it its full time after the card (hud.js `_lanes`). PURE. */
+  _lanesShown(now) {
+    const L = this._lanes; if (!L) return null;
+    const shift = x => { const p = this._lanePaused(x.at, now); return p ? { ...x, at: x.at + p } : x; };
+    const obj = {}; for (const k of Object.keys(L.obj || {})) obj[k] = shift(L.obj[k]);
+    return { ...L, obj, feed: (L.feed || []).map(shift), heroUntil: this._heroUntil(now) };
   }
   _laneKill(k) {
     const L = this._lanesOf(), now = this.now();
@@ -5699,7 +5749,7 @@ export class Engine {
       play: () => { this.powerupSpawn = { ...next, at: this.now() }; this.log(`powerup: ${next.name} AVAILABLE (station ${next.station})`, 'li'); this._changed(); } });
     if (this.powerupSpawn && now - this.powerupSpawn.at > PU_ANNOUNCE_MS + 1000) this.powerupSpawn = null;
     if (this.powerupSwap && now - this.powerupSwap.at > PU_ANNOUNCE_MS + 1000) this.powerupSwap = null;
-    if (this.powerupGrant && now - this.powerupGrant.at > PU_READY_MS + this.switchWindowMs() + PU_ACTIVE_CARD_MS + 1000) this.powerupGrant = null;   // F400 r1: past the card, then the hint
+    if (this.powerupGrant && this._laneAge(this.powerupGrant.at, now) > PU_READY_MS + 1000) this.powerupGrant = null;   // F400 r1: past the card, then the hint
   }
   /** A weapon item goes STRAIGHT ONTO THE TRIGGER (Tony, 2026-09-24): save the slot the trigger is on and its counts
    *  (the switch-back target), then the pickup slot's head `$WEAP` and `$AMMO` with the charges. No ALT or SELECT write,
@@ -5904,9 +5954,9 @@ export class Engine {
       const st = this._puStation(items), g = this.powerupGrant, cl = this._puClaim;
       const nameOf = item => String(item.name || '').toUpperCase();
       const b = this._puBack;
-      const card = this.switchWindowMs() + PU_ACTIVE_CARD_MS;   // F400 r1: the hint's own PU_READY_MS starts when the switch card has left
-      if (b && now - b.at < PU_READY_MS + card) hint = { kind: 'switched_back', name: b.name, to: b.to, color: null };
-      else if (g && now - g.at < PU_READY_MS + (g.kind === 'weapon' ? card : 0) && !(this.lastHitAt > g.at)) hint = { kind: 'granted',   // HUD QA R2-18: a hit retires the pickup card: the hit stack owns the centre
+      // F400 final: the hint's own PU_READY_MS runs only while no switch card is up (its own card, and any after it)
+      if (b && this._laneAge(b.at, now) < PU_READY_MS) hint = { kind: 'switched_back', name: b.name, to: b.to, color: null };
+      else if (g && this._laneAge(g.at, now) < PU_READY_MS && !(this.lastHitAt > g.at)) hint = { kind: 'granted',   // HUD QA R2-18: a hit retires the pickup card: the hit stack owns the centre
         name: g.name, color: g.color, itemKind: g.kind, ...(g.charges != null ? { charges: g.charges } : {}), ...(g.replaced ? { replaced: g.replaced } : {}) };
       else if (cl && items[cl.station]) {
         const item = items[cl.station], base = { name: nameOf(item), color: item.color || null, station: cl.station };
@@ -7455,7 +7505,8 @@ export class Engine {
       // docs/announcer.md "The three lanes": {hero: {id, t0, kills: [{victim, team, medals, src, at}], lastAt}, heroUntil,
       // obj: {lead?, hill?: {id, kind, text?, src, at}}, feed: [{id, kind, alert?, name?, team?, by?, text?, sub?, color?, src, at}]}
       // `id` is unique per item (`_laneSeq`), the HUD's key: two items can share a ms
-      lanes: this._lanes ? { ...this._lanes, heroUntil: this._heroUntil(now) } : null,
+      lanes: this._lanesShown(now),
+      switchCard: this._switchCardUp(now),   // F400 final: the ONE clock the HUD hides the lanes by (hud.js `_lanes`)
       announcer: this._ann.view(now),   // docs/announcer.md: {kind, at, ms, queued: [kind…]}: what is on air and what waits (null when idle)
       // A56 (docs/spec/powerups.md): null unless the config carries powerup items. `powerup` = {hint, held, overshield};
       // `powerupSpawn` = {name, color, at} for the "<ITEM> AVAILABLE" card; `powerupGrant` = {name, color, kind, at, replaced?};
