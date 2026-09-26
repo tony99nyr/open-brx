@@ -321,7 +321,7 @@ test('security guard: no automatic dial is left anywhere — every connectMc cal
     return line;
   }).filter(l => !l.startsWith('*') && !l.startsWith('//'));
   for (const l of callers) {
-    assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|\bv\)|\bv, true, \{ user: true \}\)|\burl,|\burl\)/.test(l), `unexpected connectMc caller: ${l}`);
+    assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|priorMc|\bv\)|\bv, true, \{ user: true \}\)|\burl,|\burl\)/.test(l), `unexpected connectMc caller: ${l}`);
   }
   assert.ok(callers.length >= 4, 'the real callers are still there');
   // A60: the callers no person started (a discovery hit) are a verify dial and (F346 d) an untrusted
@@ -336,6 +336,17 @@ test('security guard: no automatic dial is left anywhere — every connectMc cal
   assert.match(t, /if \(!pu \|\| !this\.trusted \|\| this\._firstContact \|\| !pu\.mc_url \|\| normUrl\(pu\.mc_url\) !== normUrl\(this\.url\)\) return undefined;/,
     'the utility proof: trusted, not a first contact, and only to the MC url it came from (F346 d r1)');
   assert.match(t, /if \(this\.pub && !this\.verify\) this\._dialVia\('backhaul'/, 'and never goes to the trusted MC\'s tunnel');
+  // F421: the one other caller no person started — `connectMc(priorMc, false)`, a phone just RELEASED from
+  // utility mode reconnecting to the MC it was JUST bound to as a station. Unlike the two above this one IS
+  // trusted (`connectMc`'s own defaults: `trusted: true`, `firstContact: false`), which is what lets it carry
+  // the prior-utility takeover proof (the url-match guard just above) — safe because `priorMc` is never a
+  // discovery hit: `priorUtilityReconnectUrl` only ever returns the exact url `exitToHud` persisted at the
+  // moment this same phone was authenticated as that MC's utility node, and only when nothing is already
+  // remembered (a remembered address, named by the player or one that already bound us, always wins).
+  const priorMcCaller = callers.find(l => /connectMc\(priorMc, false\)/.test(l));
+  assert.ok(priorMcCaller, 'the F421 release-reconnect caller is gone — FIX this guard, do not delete it');
+  assert.match(t, /export function priorUtilityReconnectUrl\(priorUtility, remembered\) \{\s*\n\s*return !remembered && priorUtility/,
+    'the handoff url is only ever offered when nothing is already remembered');
 });
 
 test('A60 guard: the verify path processes nothing before the proof check', () => {

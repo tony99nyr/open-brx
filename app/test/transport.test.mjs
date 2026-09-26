@@ -7,7 +7,7 @@ import path from 'node:path';
 import * as E from '../src/transport/envelope.js';
 import { Ring, memoryStorage } from '../src/transport/ring.js';
 import { Clock } from '../src/transport/clock.js';
-import { Transport, DELIVERED, clearConsumedPriorUtilityHandoff } from '../src/transport/transport.js';
+import { Transport, DELIVERED, clearConsumedPriorUtilityHandoff, priorUtilityReconnectUrl } from '../src/transport/transport.js';
 import { APP_VER } from '../src/build.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -173,6 +173,40 @@ test('F184: an unconsumed welcome keeps the persisted utility proof retryable', 
   handoffStore.setItem('brx.prior_utility', proof);
   clearConsumedPriorUtilityHandoff({ priorUtilityConsumed: false }, handoffStore);
   assert.equal(handoffStore.getItem('brx.prior_utility'), proof);
+});
+
+test('F421: a released utility phone dials its prior MC directly instead of waiting on rediscovery', () => {
+  // Bench 2026-09-26: released from utility mode, a phone with no remembered HUD address (it never
+  // dialled MC as a HUD before) sat on "NOT JOINED YET" with no discovered MC row for a whole sitting —
+  // mDNS/sweep discovery simply missed. `exitToHud` had already written the MC url this phone was JUST
+  // bound to as a station into the handoff; nothing on the HUD side ever read it as a dial target.
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.168.0.55:8766/ws' }, null),
+    'ws://192.168.0.55:8766/ws', 'no remembered address: dial the handoff\'s mc_url');
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.168.0.55:8766/ws' }, ''),
+    'ws://192.168.0.55:8766/ws', 'an empty remembered address counts as none');
+  // A remembered address — named by the player, or one that already bound this phone as a HUD — always
+  // wins; the handoff is a fallback for the phone that has never been a HUD on this network before.
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.168.0.55:8766/ws' }, 'ws://remembered/ws'),
+    null, 'a remembered address is never overridden by the handoff');
+  assert.equal(priorUtilityReconnectUrl(null, null), null, 'no handoff at all: nothing to dial');
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k' }, null), null, 'a handoff with no mc_url names nowhere to dial');
+});
+
+test('F421: dialling the handoff\'s mc_url is a TRUSTED, non-first-contact hello, so it still carries the prior utility proof', async ctx => {
+  // `connectMc(url, false)` (app.js) leaves `trusted`/`firstContact` at their defaults — this pins that
+  // those defaults are exactly what `_priorUtilityHello()` requires (trusted, not first-contact, same
+  // url as the handoff), so the released phone's very first hello both rejoins MC AND hands over the
+  // takeover proof that lets it retire the old utility station row.
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    priorUtility: { node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://192.168.0.55:8766/ws' } });
+  ctx.after(() => t.close());
+  const url = priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://192.168.0.55:8766/ws' }, null);
+  const p = t.connect({ url }); sockets[0].open();
+  assert.deepEqual(sockets[0].sent[0].body.prior_utility, { node_id: 'brxu-old', node_key: 'utility-key' });
+  sockets[0].recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0, node_key: 'k-1', prior_utility_consumed: true }));
+  await p;
+  assert.equal(t.priorUtilityConsumed, true);
 });
 
 test('F184 security: an untrusted discovery peer never receives the prior utility takeover key', async ctx => {

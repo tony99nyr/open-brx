@@ -5,7 +5,8 @@ Updated: 2026-09-26 (short bench part 1: F387 and F333 closed; F382, F384 and F3
 SET MY GUN's no-join feedback, the team-3 PURPLE rename, the KOTH HUD score panel, the pickup-HUD storyboard
 decision, a phantom team-2 hill total]; F386's timed-whistle half passed, then brx4 extended it to the powerup
 screen and the idle-timeout fix, bench check left; F416 and F418 built at the desk, moved to MVP BENCH for their
-bench checks; F417 part 1 built, part 2 traced and also moved to MVP BENCH; F411 and F383 each get a dated arrow
+bench checks; F421 built (a released utility phone now dials its prior MC directly instead of depending on
+rediscovery alone), moved to MVP BENCH for its bench check; F417 part 1 built, part 2 traced and also moved to MVP BENCH; F411 and F383 each get a dated arrow
 with today's bench evidence; F282's A/B/A confirmed, its t25/t26 isolation stays open. F417 and F418 filed from
 bench part 1: a double pickup grant at one Stick, a held pickup lost on app resume; F400 clash confirmed by Tony
 and built: the switch card is on top and every lane waits; S32 closed: koth mode art shipped, direction C; F415
@@ -33,16 +34,16 @@ and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed; 
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 79.** Desk 11 · bench 68 · decision 0.
+**MVP open: 79.** Desk 10 · bench 69 · decision 0.
 
-**MVP DESK (11),** a keyboard is enough:
+**MVP DESK (10),** a keyboard is enough:
 - 🔴 **F411** · **F420**
-- 🟠 **B21** · **F413** · **F415** · **F421** · **F423** · **F425**
+- 🟠 **B21** · **F413** · **F415** · **F423** · **F425**
 - 🟡 **F422** · **F424** · **F426**
 
-**MVP BENCH (68),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (69),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F417** · **F416** · **F418** · **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
-- 🟠 **F349** · **F308** · **F374** · **S58** · **F400** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F383** · **F388** · **F389** · **F391** · **F393** · **F394** · **F399** · **F419**
+- 🟠 **F349** · **F308** · **F374** · **S58** · **F400** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F421** · **F375** · **F376** · **F380** · **F383** · **F388** · **F389** · **F391** · **F393** · **F394** · **F399** · **F419**
 - 🟡 **Q13** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F381** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398** · **F282**
 - 🟢 **F339**
 
@@ -110,13 +111,6 @@ A keyboard is enough. Highest value first.
   taps on ⓘ in 3 s (needs the icon), a hold-to-confirm exit shown only while NOT MC-armed, or an MC release. Today
   the phone was MC-armed (a respawn station) and the ⓘ bug blocked the first exit, so MC release was the ONLY way
   out — raising this from a cosmetic overlap to a real dead end. Owner: app lane. `build`.
-
-- **F421 🟠 AFTER MC's `release_utility`, THE PHONE DOES NOT REJOIN MC AS A HUD NODE.** Bench part 1, 2026-09-26:
-  after MC released the green Pixel from utility mode, MC saw it disconnect but the phone never sent a JOIN
-  request; it stayed on a "GUN CONNECTED ✓ · NOT JOINED YET" screen with no discovered MC row (the grey Pixel had
-  found MC by itself on first open; this one did not). The phone still held its `brxu.*` utility keys and
-  `brx.prior_utility`, which may be why it did not count as first contact. Workaround used today: a typed ws
-  address. Owner: app lane. `build`.
 
 - **F422 🟡 SET MY GUN GIVES NO SIGN THE PHONE HAS JOINED MISSION CONTROL.** Bench part 1, 2026-09-26, 11.7 (the
   grey Pixel's first open): MC saw the phone join and bind (`preflight.auto_join_ok true`) with no tap from Tony,
@@ -313,6 +307,24 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 - **F376 🟠 IR RIG BOARD B (COM8) NEEDS A REFLASH: `ir_emit.ino` IS OLD AND MISREADS `--gap`.** Bench 2026-09-25, sitting A: board B ran as the F341/F350 shooter with no problem, but `ir-emit --help` fired a live 6-bit IR frame instead of printing help (harmless; no pool moved), and the firmware on board B does not carry the current `--gap` handling, which is misread as a bit count rather than a timing value. Reflash board B from `hardware/esp32-ir-bridge/` `main`. `bench` + `hardware`.
 
 ### Later: two guns, phones and Mission Control
+
+- **F421 🟠 AFTER MC's `release_utility`, THE PHONE DOES NOT REJOIN MC AS A HUD NODE.** Bench part 1, 2026-09-26:
+  after MC released the green Pixel from utility mode, MC saw it disconnect but the phone never sent a JOIN
+  request; it stayed on a "GUN CONNECTED ✓ · NOT JOINED YET" screen with no discovered MC row (the grey Pixel had
+  found MC by itself on first open; this one did not). The phone still held its `brxu.*` utility keys and
+  `brx.prior_utility`, which may be why it did not count as first contact. Workaround used today: a typed ws
+  address. Owner: app lane. **→ 2026-09-26 built:** the root cause was narrower than the `brxu.*`/trust-key
+  theory. `utility.js exitToHud` already writes the MC url this phone was JUST bound to as a station into the
+  handoff (`PRIOR_UTILITY_KEY`, alongside the takeover proof), but nothing on the HUD side ever read it back as a
+  dial target — a released phone has no remembered HUD address (it never dialled MC as a HUD before), so it
+  depended on mDNS/sweep rediscovery alone, which can simply miss. `app.js`'s boot now dials the handoff's
+  `mc_url` directly (`transport.js priorUtilityReconnectUrl`) whenever no address is already remembered, ahead of
+  discovery; a remembered address still always wins. That dial is trusted and not first-contact by default, which
+  is exactly what `_priorUtilityHello()`'s own url-match guard needs to attach the prior-utility takeover proof —
+  so this also lets MC retire the stale ITEMS row it could not clean up before. Unit-tested
+  (`app/test/transport.test.mjs`, `priorUtilityReconnectUrl` + the hello it produces). Moved here for the check
+  the fix cannot give itself: release a utility phone that has never been a HUD on this MC and confirm it rejoins
+  as a HUD node within a few seconds, with no typed address needed. `bench`.
 
 - **Q13 🟡 TEAM DAMAGE: OFF, CHECK IT ON TWO GUNS.** Desk half built 2026-09-25 (`d79a268e`, `cb16c008`, `2232a4dd`): `compile.team_damage_on` turns `$GSET` friendly fire on only for a one-team game in a solo mode (FFA, solo LMS or extraction); every other game keeps it off, and MC, the console and the phone briefing say TEAM DAMAGE: OFF. The check found that a solo LMS match blocked every hit (one `$TID`, friendly fire off) and scored each kill as a team kill; both are fixed. Bench, two guns: (1) TDM, same team: no hit registers and neither gun takes damage; (2) solo LMS: hits register both ways; (3) FFA and solo LMS: a gun never hits itself off a reflection. `bench`.
 
