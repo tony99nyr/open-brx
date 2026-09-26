@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-25 (created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3; F407, F408 and F409 filed).
+Updated: 2026-09-26 (F390 moved from FOLLOWUPS.md: MUSTER is post-launch; created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3; F407, F408 and F409 filed).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -191,6 +191,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   buff writes it; `bench-firmware-levers-2026-09-19.md` §21 traces it. `build` + `bench`.
 
 ## 2. Stations, the grenade and the Stick
+
+- **F390 🟡 MUSTER HAS NO WAY BACK TO MC EXCEPT SERIAL OR A RESTART.** Tony, sitting B, 2026-09-25, after seeing a Stick stay dropped post-match: "will I have to restart it after every match?" A MUSTER station has only `LINK RECONNECT` over serial, or a full restart, to rejoin MC once it has dropped for a match; HELD mode needs nothing. Decide: does a MUSTER Stick get an operator button, or an automatic rejoin on the next LOAD, instead of a serial-only or restart-only path? `decision`. **→ 2026-09-25, Tony: HELD is the MVP mode, MUSTER post-MVP.** Built: HELD is the boot default; a dropped MUSTER Stick rejoins at its match deadline, and three B clicks force a rejoin while unlocked (`60a52f03`). **→ Tony 2026-09-26:** row moved here; MUSTER is post-launch, and the rejoin above is already built for when it returns.
 
 - **F408 🟡 THE EXTRACTION AND BOMB-SITE STATION KINDS.** Tony, 2026-09-25: "so mvp for utility is respawn station, pickup, hill". F405 hid `extraction` and `bomb` from every place a host assigns a station kind; the types, the code and the recap labels stay, so an old assignment still renders. They return with their modes (Extraction, S3; a bomb mode), each with a station built and benched. `build` + `bench`.
 
