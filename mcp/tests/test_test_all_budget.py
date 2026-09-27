@@ -64,3 +64,20 @@ def test_worker_count_respects_the_cap_and_the_memory_share():
     assert _call("workerCount", 300, 8, 32, 800) == 1
     # Never below 1, even with almost no budget or cores.
     assert _call("workerCount", 300, 8, 1, 1) == 1
+
+
+def test_derive_timeout_s_uses_3x_typical_in_the_ordinary_case():
+    assert _call("deriveTimeoutS", 600, 65) == 600      # 3*65=195 < the 600s floor
+    assert _call("deriveTimeoutS", 600, 300) == 900      # 3*300=900 > the floor, under the cap
+
+
+def test_derive_timeout_s_caps_the_derived_term_on_a_starved_box():
+    # 2026-09-27 review: 1 app-screens shard makes secs=6300, and 3x that (18900s, over 5 hours) must not become
+    # the actual kill timeout -- it is capped at 3600s here, well below the 5+ hour figure the bug produced.
+    assert _call("deriveTimeoutS", 600, 6300) == 3600
+    assert _call("deriveTimeoutS", 600, 6300) < 3 * 6300
+
+
+def test_derive_timeout_s_never_undercuts_an_explicit_job_timeout_s_floor():
+    # An operator's explicit JOB_TIMEOUT_S past the cap is never silently capped: only the DERIVED (3x) term is.
+    assert _call("deriveTimeoutS", 5000, 65) == 5000

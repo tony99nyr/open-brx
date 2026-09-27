@@ -27,7 +27,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { screensBudget, workerCount } from './lib/budget.mjs';
+import { deriveTimeoutS, screensBudget, workerCount } from './lib/budget.mjs';
 import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs } from './lib/changed.mjs';
 
@@ -287,10 +287,9 @@ await new Promise(done => {
       queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
-        // its estimate. Capped at 3600s: on a tiny/starved box (1 shard), app-screens' secs alone is 6300s, and
-        // 3x that would hold a hung job (and an agent) for over 5 hours. JOB_TIMEOUT_S itself is still an
-        // explicit floor, never capped -- an operator who raises it past 3600 on purpose keeps that value.
-        const timeoutS = Math.max(JOB_TIMEOUT_S, Math.min(Math.ceil(3 * j.secs), 3600));
+        // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot
+        // hold a hung job -- and an agent -- for hours. JOB_TIMEOUT_S itself is still an explicit floor, never capped.
+        const timeoutS = deriveTimeoutS(JOB_TIMEOUT_S, j.secs);
         let r;
         try { r = await run(j.name, j.cwd, j.cmd, typeof j.env === 'function' ? await j.env() : j.env, timeoutS); }
         catch (e) { r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' }; }

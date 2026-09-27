@@ -18,3 +18,11 @@ export function screensBudget(cpus, budgetMb) {
   const shards = Math.max(1, Math.min(16, Math.floor(cpus / 2), Math.floor(budgetMb / 2 / 240)));
   return { shards, mb: 100 + 240 * shards, secs: 6300 / shards };
 }
+
+/** A job's kill timeout: normally 3x its typical `secs`, but never less than the explicit JOB_TIMEOUT_S floor
+ *  (an operator's override is never silently capped) and never more than `capS` for the DERIVED (3x) term alone
+ *  (2026-09-27 review: on a tiny/starved box, 1 screens shard makes `secs` alone 6300s, and 3x that would hold a
+ *  hung job -- and an agent -- for over 5 hours). */
+export function deriveTimeoutS(jobTimeoutS, secs, capS = 3600) {
+  return Math.max(jobTimeoutS, Math.min(Math.ceil(3 * secs), capS));
+}
