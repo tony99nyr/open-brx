@@ -209,6 +209,20 @@ jobs:
             # because this job commits exactly once and never amends.
             if ! git rebase --onto FETCH_HEAD HEAD~1; then
               git rebase --abort || true
+              # A newer refresh already landed on main: if main's own manifest matches main's UI source,
+              # the shots there are current and this capture is redundant. Not a fault (2026-09-27).
+              current=1
+              for pair in mc_src:webapp/mc/src hud_src:app/src mc_shell:webapp/mc/index.html hud_shell:app/www/index.html; do
+                key=${pair%%:*}
+                dir=${pair#*:}
+                want=$(git rev-parse "FETCH_HEAD:$dir" 2>/dev/null) || want=""
+                have=$(git show "FETCH_HEAD:site/shots/manifest.json" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ''))" "$key" 2>/dev/null) || have=""
+                if ! [[ "$want" =~ ^[0-9a-f]{40}$ ]] || [ "$want" != "$have" ]; then current=0; fi
+              done
+              if [ "$current" = 1 ]; then
+                echo "::notice::Another run already refreshed site/shots on main for the current UI, so this capture is dropped."
+                return 2
+              fi
               echo "::error::The refreshed site/shots would not replay onto the tip of main, so something else changed site/shots. This job never force-pushes. $HOWTO"
               return 1
             fi
