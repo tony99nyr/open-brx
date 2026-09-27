@@ -697,11 +697,18 @@ class Scorer:
         report itself already is for the recap's own possession numbers.
 
         Only an OBJECTIVE-scored mode has a hold target at all (mirrors `win_by == "kills"` gating
-        `_check_frag_limit` above); a match with no target set (`hold_target_s` None/0) never fires."""
+        `_check_frag_limit` above); a match with no target set (`hold_target_s` None/0) never fires.
+
+        Low (brx1 review of e8811fea): compares RAW milliseconds against the target, not the SECONDS
+        `possession()` reports -- those are `round()`ed for display, so a team at 299_600 ms (299.6 s)
+        against a 300 s target read as "300" and fired half a second before it actually reached one."""
         if not self.hold_target_s or "hold_target" in self._announced or self.win_by != "objective":
             return
-        poss = self.possession()
-        if not poss or not any(secs >= self.hold_target_s for secs in poss["by_team"].values()):
+        if not self.possession_ms and not self.possession_observed:
+            return
+        by_team_ms, _neutral_ms = self._possession_ms()
+        target_ms = self.hold_target_s * 1000
+        if not any(ms >= target_ms for ms in by_team_ms.values()):
             return
         self._announced.add("hold_target")
         self.limit_reached_t = t
@@ -942,17 +949,10 @@ class Scorer:
             return "ignored"
         return "scored"
 
-    def possession(self) -> PossessionView | None:
-        """Merged possession, or None when nobody reported any (mc/API.md RecapView.possession).
-
-        Seconds per TEAM, the max reading per (site, team) — see `_possession`. A hill's NEUTRAL time
-        (tid 2, bench-measured 2026-09-10) belongs to no team and is reported separately rather than
-        being silently dropped or credited to a colour. `observed_s` is the BEST single observer's
-        coverage: possession from a grenade is only ever a lower bound, because the beacon is IR and
-        only a gun in range hears it (F92), so a match nobody watched reads as 0 rather than as a lie.
-        """
-        if not self.possession_ms and not self.possession_observed:
-            return None
+    def _possession_ms(self) -> tuple[dict[str, int], int]:
+        """The raw (unrounded) merge `possession()` reports in seconds, and `_check_hold_target` compares
+        against the target in -- one computation, so the two can never quietly disagree on what "reached"
+        means. Returns (by_team ms, neutral ms), the max reading per (site, team)."""
         tid_team = {t["tid"]: tid for tid, t in self.teams.items()}
         by_team: dict[str, int] = {tid: 0 for tid in self.teams}
         neutral_ms = 0
@@ -964,7 +964,21 @@ class Scorer:
                     neutral_ms += best
                 else:
                     by_team[team_id] += best
-        return {"by_team": {k: round(v / 1000) for k, v in by_team.items()},
+        return by_team, neutral_ms
+
+    def possession(self) -> PossessionView | None:
+        """Merged possession, or None when nobody reported any (mc/API.md RecapView.possession).
+
+        Seconds per TEAM, the max reading per (site, team) — see `_possession`. A hill's NEUTRAL time
+        (tid 2, bench-measured 2026-09-10) belongs to no team and is reported separately rather than
+        being silently dropped or credited to a colour. `observed_s` is the BEST single observer's
+        coverage: possession from a grenade is only ever a lower bound, because the beacon is IR and
+        only a gun in range hears it (F92), so a match nobody watched reads as 0 rather than as a lie.
+        """
+        if not self.possession_ms and not self.possession_observed:
+            return None
+        by_team_ms, neutral_ms = self._possession_ms()
+        return {"by_team": {k: round(v / 1000) for k, v in by_team_ms.items()},
                 "neutral_s": round(neutral_ms / 1000),
                 "sites": len(self.possession_ms),
                 "reports": len(set(self.possession_observed) | {n for s in self.possession_ms.values()

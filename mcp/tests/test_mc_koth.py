@@ -587,6 +587,27 @@ def test_koth_wins_at_once_when_a_team_reaches_the_hold_target():
     assert fired == [1_150_000], fired
 
 
+def test_hold_target_compares_raw_ms_not_the_rounded_display_seconds():
+    """Low (brx1 review of e8811fea): `possession()`'s `by_team` is `round()`ed for display, so a team
+    at 299_600 ms (299.6 s) against a 300 s target used to read as the string "300" and fire half a
+    second before the target was actually reached. `_check_hold_target` must compare raw ms."""
+    from brx_mcp.mc.scoring import Scorer
+    s = _sess("koth")
+    pid = _roster(s)[0]["player_id"]
+    red = s.config["teams"][0]
+    fired: list[int] = []
+    sc = Scorer("m1", 1_000_000, 600, "koth", s.players, s.teams, {"n1": pid}, {"n1": True},
+               now_ms=lambda: 1_100_000, win_by="objective", hold_target_s=300,
+               on_limit=lambda t: fired.append(t))
+    # 299.6 s rounds to "300" for display, but is still short of the target -- must not fire
+    sc.ingest("n1", _poss({str(red["tid"]): 299_600}, observed_ms=299_600), 1_100_000)
+    assert sc.possession()["by_team"][red["team_id"]] == 300, "control: this is what rounds to 300"
+    assert fired == [], "299_600 ms fired half a second before the 300 s target was actually reached"
+    # the real 300 s (or past it) does fire
+    sc.ingest("n1", _poss({str(red["tid"]): 300_000}, observed_ms=300_000), 1_150_000)
+    assert fired == [1_150_000], fired
+
+
 def test_koth_session_ends_live_the_moment_the_hold_target_is_reached():
     """The Session-level dispatch: `_on_scorer_limit` routes an objective-mode scorer's `on_limit` to
     `_on_hold_target`/`_end_on_hold_target` (the frag-limit path's own mirror), which flips the phase to
