@@ -72,8 +72,13 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
     names the jobs), or one file (`cd mcp && python3 run_tests.py <substring>`).
   - Before you commit any code change: `pnpm run test:all` (about 30 s; mcp, webapp/mc tsc + vitest, app tsc + tests, site).
   - Before you commit a change to `app/src`, `webapp/mc/src`, a UI gate or an e2e script: `pnpm run test:all -- --ui`
-    (about 2 min; adds the phone and Mission Control browser gates).
-  - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). A second run in the same checkout waits for the first.
+    (about 2 min; adds the phone and Mission Control browser gates). That full `--ui` gate stays the rule before
+    the FIRST push of a UI change; CI is the backstop either way.
+  - **After merging `origin/main`** into a branch that was already green, run
+    `pnpm run test:all -- --changed <the base you tested>` for the paths that just came in, not the full suite
+    again. If only docs came in, the hygiene test (the `mcp` job) is enough.
+  - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). The lock is machine-wide (per user, not per
+    checkout): a second run anywhere on the box waits for the first.
   - The per-suite detail and flags are in `CONTRIBUTING.md` → *Running things*. The pyright gate runs inside the mcp suite.
 - **When you add or change a test**, keep the suite parallel-safe. `test:all` runs every job at once, under load:
   - Bind a free port (listen on 0), or read the port from an env var. Never a literal port.

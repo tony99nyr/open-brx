@@ -39,9 +39,18 @@ suite on its own.
 
 **Everything at once:** `pnpm run test:all` from the repo root runs the unit gates of all four pieces in parallel
 (about 30 s). `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
-`webapp/mc` e2e script (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min). A second run in the same checkout waits for the first. `pnpm run test:all -- site mcp` runs only the jobs whose
+`webapp/mc` e2e script (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min). The lock is machine-wide, per user
+(under `$XDG_RUNTIME_DIR` or the OS temp dir, not the checkout): a run anywhere on the box waits for the first,
+so two worktrees never starve each other's budget. `pnpm run test:all -- site mcp` runs only the jobs whose
 names match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free
 ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
+
+**After merging `origin/main`** into a branch that was already green, re-run only what the merge could have
+touched: `pnpm run test:all -- --changed [base]` (default base: the merge-base with `origin/main`) diffs
+against that base, maps the changed paths to jobs (`scripts/lib/changed.mjs`), and prints the selection and why.
+If only docs came in, the hygiene test (the `mcp` job) is enough on its own. An unmapped path, or a change to
+`scripts/test-all.mjs`/a CI workflow file, selects everything: fail safe, never a narrower guess. The full
+`--ui` gate stays the rule before the FIRST push of a UI change in a branch; CI is the backstop either way.
 
 **After you edit `app/src/hud/medalicons.js`** (the recap medal icons), run `cd app && npm run gen:medalicons`. It
 rewrites MC's copy, `webapp/mc/src/api/medalicons.gen.ts`, and `webapp/mc/test/medalicons-gen.test.ts` fails until you do.
