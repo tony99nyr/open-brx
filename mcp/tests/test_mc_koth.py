@@ -104,7 +104,9 @@ def test_a_hill_config_cannot_even_HOLD_a_neutral_team():
         s.set_config({"teams": teams})
         raise AssertionError("F82: PUT /api/config accepted a tid-2 team for a hill mode")
     except ValueError as e:
-        assert "F82" in str(e) and "2" in str(e), e
+        # MEDIUM (brx1 review of e8811fea): the console-facing house-style copy, not the technical
+        # `F82:`/`$TID` sentence -- this same message reaches PICK/FAVOURITES too.
+        assert str(e) == "YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE", e
     assert all(t["tid"] != 2 for t in s.config["teams"]), s.config["teams"]
     # CONTROL 1: the same shape of PUT is fine in a mode with no hill, where 2 is an ordinary team.
     s.set_config({"mode": "tdm"})
