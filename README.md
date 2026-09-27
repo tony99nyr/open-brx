@@ -82,9 +82,9 @@ That README's CLI table is the canonical command list; bare `python -m brx_mcp` 
 > "System proofs"). See [`docs/architecture-topology.md`](docs/architecture-topology.md) §7 for the line-by-line.
 
 > **You do not need the phone app for any of the above.** The phone node is what lifts the BLE-range
-> limit later. A **debug-signed Android test build** is linked from
-> <https://open-brx.iamrossi.workers.dev/download/> (a later release-signed build will not upgrade
-> over it). iOS builds from source (`app/README.md`).
+> limit later. A **release-signed Android test build** (release-signed since 0.4.6; see
+> [`app/RELEASING.md`](app/RELEASING.md)) is linked from
+> <https://open-brx.iamrossi.workers.dev/download/>. iOS builds from source (`app/README.md`).
 
 ### Platform notes
 
