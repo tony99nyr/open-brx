@@ -239,7 +239,7 @@ const endTryout = async () => {
   await until(async () => !(await st()).kit.trying[pB.player_id], 6000, 'BRAVO try-out ended');
 };
 
-let guns = [], pA, pB;
+let guns = [], pA, pB, bravoTeam, bravoTid;
 const watchdog = setTimeout(() => { console.log('WATCHDOG: 7 min — aborting'); try { fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({ aborted: true, results, findings, jsErrors }, null, 1)); } catch {} process.exit(2); }, 420000);
 watchdog.unref && watchdog.unref();
 
@@ -367,8 +367,12 @@ await step('add ALPHA + BRAVO through the roster input', async () => {
     await until(async () => (await st()).players.some(p => p.display === nm), 5000, nm + ' added');
   }
 });
-await step('bind guns through the Kit gun picker; BRAVO to YELLOW via the team chip — rows leave NO GUN', async () => {
+await step('bind guns through the Kit gun picker; BRAVO to the OTHER team via the team chip — rows leave NO GUN', async () => {
   const s = await st(); pA = s.players.find(p => p.display === 'ALPHA'); pB = s.players.find(p => p.display === 'BRAVO');
+  // F413: every team mode defaults to RED + BLUE. BRAVO takes the team ALPHA is NOT on, so the two
+  // play on opposite sides (the recap below expects BRAVO's team to win); was a hard-coded YELLOW.
+  const other = s.config.teams.find(t => t.team_id !== pA.team_id);
+  bravoTeam = other.team_id; bravoTid = other.tid;   // fakeGun.hit/kill name the shooter's $TID
   const row = nm => mc.locator('div[role="button"]:has-text("' + nm + '")').first();
   await row('ALPHA').click();
   const sel = mc.locator('select[aria-label="gun for ALPHA"]');
@@ -378,9 +382,9 @@ await step('bind guns through the Kit gun picker; BRAVO to YELLOW via the team c
   await until(async () => { const t = await row('ALPHA').textContent(); return t.includes(guns[0].gun_id) && !t.includes('NO GUN'); }, 6000, 'ALPHA row shows its gun');
   await row('BRAVO').click();
   await mc.locator('select[aria-label="gun for BRAVO"]').selectOption(guns[1].gun_id);
-  await mc.locator('[role="group"][aria-label="team"] button:has-text("YELLOW")').click();
-  await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.gun_id === guns[1].gun_id && p.team_id === 'yellow'; }, 6000, 'BRAVO gun + team on the server');
-  expect((await mc.locator('[role="group"][aria-label="team"] button[aria-pressed="true"]').textContent()).includes('YELLOW'), 'YELLOW chip not pressed');
+  await mc.locator('[role="group"][aria-label="team"] button:has-text("' + bravoTeam.toUpperCase() + '")').click();
+  await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.gun_id === guns[1].gun_id && p.team_id === bravoTeam; }, 6000, 'BRAVO gun + team on the server');
+  expect((await mc.locator('[role="group"][aria-label="team"] button[aria-pressed="true"]').textContent()).includes(bravoTeam.toUpperCase()), bravoTeam + ' chip not pressed');
   await textAudit(mc, 'kit');
 });
 await step('KIT: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'kit', true); });
@@ -789,7 +793,7 @@ await step('(j) a REJECTED host pick shows the server\'s error — no "CHANGED F
 await step('restore OPEN rules + the run config so the match flow continues unchanged', async () => {
   const c = cfgBeforeRules;
   await api('PUT', '/api/config', { mode: c.mode, environment: c.environment, night: c.night, time_limit_s: c.time_limit_s, respawn: c.respawn, scoring: c.scoring, health: c.health, teams: c.teams, loadout_policy: { preset: 'open' } });
-  await api('PATCH', `/api/players/${pB.player_id}`, { team_id: 'yellow', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] } });
+  await api('PATCH', `/api/players/${pB.player_id}`, { team_id: bravoTeam, loadout: { weapons: [{ weapon_id: 'assault_rifle' }] } });
   await api('PATCH', `/api/players/${pA.player_id}`, { loadout: { weapons: [{ weapon_id: 'smg' }] } });
   await until(async () => { const s = await st(); return s.config.loadout_policy.preset === 'open' && s.players.find(p => p.player_id === pA.player_id).loadout.weapons[0].weapon_id === 'smg'; }, 6000, 'restored');
   await nav(2);
@@ -859,7 +863,7 @@ await step('WEAPONS HOT pill on go', async () => {
 await step('BRAVO fires; ALPHA takes hits → TAKING FIRE state', async () => {
   await hudB.evaluate(() => window.fakeGun.fire(3));
   const s0 = await hudState(hudA); const pool0 = (s0.hp || 0) + (s0.armor || 0);   // armor absorbs first: the POOL must drop
-  await hudA.evaluate(n => window.fakeGun.hit(6, n, 2), pB.player_num);
+  await hudA.evaluate(([n, tid]) => window.fakeGun.hit(6, n, tid), [pB.player_num, bravoTid]);
   let sawFire = false;
   await until(async () => { if ((await hudA.locator('.takingfire').count()) > 0) sawFire = true; const s1 = await hudState(hudA); return (s1.hp || 0) + (s1.armor || 0) < pool0; }, 3000, 'HP/armor dropped after the hit');
   for (let i = 0; i < 6 && !sawFire; i++) { await sleep(250); if ((await hudA.locator('.takingfire').count()) > 0) sawFire = true; }
@@ -928,7 +932,7 @@ await step('RELOAD warns only when actually low; pips track the real mag (loadou
   await until(async () => (await hudA.locator('.reload').count()) === 0, 3000, 'RELOAD clears on a fresh mag');
 });
 await step('kill → DOWN overlay names the killer; MC live rows score it exactly', async () => {
-  await hudA.evaluate(n => window.fakeGun.kill(n, 2), pB.player_num);
+  await hudA.evaluate(([n, tid]) => window.fakeGun.kill(n, tid), [pB.player_num, bravoTid]);
   await until(async () => (await hudA.locator('.mo.down').count()) > 0, 6000, 'DOWN overlay');
   await shot(hudA, 'hudA-down');
   await mc.click('text=LIVE');
@@ -1004,10 +1008,10 @@ await step('recap is FINAL with connected empty nodes; honors hidden; DATA SYNC 
   expect(ovr.length === 0, 'recap overlaps: ' + ovr.join('; '));
   await shot(mc, 'recap-final');
 });
-await step('MC recap: rows + yellow wins + CSV exports', async () => {
+await step("MC recap: rows + BRAVO's team wins + CSV exports", async () => {
   await until(async () => (await mc.locator('text=EXPORT CSV').count()) > 0, 8000, 'recap screen');
   const s = await st();
-  expect(s.recap.winner && s.recap.winner.team_id === 'yellow', 'yellow should win 1-0: ' + JSON.stringify(s.recap.winner));
+  expect(s.recap.winner && s.recap.winner.team_id === bravoTeam, bravoTeam + ' should win 1-0: ' + JSON.stringify(s.recap.winner));
   const href = await mc.locator('a:has-text("EXPORT CSV")').getAttribute('href');
   const csv = await (await fetch(MC + href)).text();
   expect(csv.includes('ALPHA') && csv.includes('BRAVO'), 'CSV missing players');
