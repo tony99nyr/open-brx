@@ -597,6 +597,75 @@ static void test_pickup_new_game_clears_match_over() {
   CHECK(!link.powerup_ended());
 }
 
+// Review round 2 (LOW #1): a single config can carry BOTH a fresh start and an immediate end (a
+// re-sent recap with `starts_in_ms` still present alongside `ends_in_ms:0`). Before the fix, the
+// freeze-setting line and the starts_known clearing line both fired on the same call, so the config
+// set MATCH OVER and then immediately cleared it again. Only a start that actually clears the
+// deadline (`ends_in_ms != 0`) may lift the freeze.
+static void test_pickup_start_and_end_zero_in_one_config_stays_match_over() {
+  StationLink link;
+  StationAssignment a = pickup_config(7);
+  a.starts_known = true;
+  a.starts_in_ms = 0;
+  a.ends_in_ms = 0;
+  link.apply_station_config(a, 1000);
+  CHECK(link.powerup_ended());
+}
+
+// Review round 2 (LOW #2): award_claim used to read only `powerup_ended()`, which only
+// `tick_powerup` sets on a passed deadline -- so a claim resolved between loop() calls (no
+// intervening tick_powerup) could still be awarded after the whistle. award_claim now checks the
+// deadline itself.
+static void test_pickup_award_claim_refuses_past_deadline_without_a_tick() {
+  StationLink link;
+  StationAssignment a = pickup_config(7);
+  a.starts_known = true;
+  a.starts_in_ms = 0;
+  a.ends_in_ms = 4000;
+  link.apply_station_config(a, 1000);  // deadline lands at t=5000
+  StationUpdateMsg u;
+  u.present = true; u.id = a.id; u.available = true;
+  link.apply_station_update(u, 1000);
+  CHECK(!link.powerup_ended());
+
+  // No tick_powerup call in between: the claim lands straight at/after the deadline.
+  size_t pending_before = link.pending_action_count();
+  ClaimWinner w{true, 4};
+  CHECK(!link.award_claim(w, 5000));
+  CHECK(link.powerup_ended());
+  CHECK_EQ(link.pending_action_count(), pending_before);
+}
+
+// Review round 2 (LOW #3): the raw schedule (`powerup().view()`) knows nothing of MATCH OVER, so
+// the BLE advert built straight from it could still say the item is available after the whistle --
+// a phone must never see an item it can never get. `powerup_advert_view()` gates that.
+static void test_pickup_advert_view_hides_availability_after_match_over() {
+  StationLink link;
+  StationAssignment a = pickup_config(7);
+  link.apply_station_config(a, 0);
+  StationUpdateMsg u;
+  u.present = true; u.id = a.id; u.available = true;
+  link.apply_station_update(u, 0);
+  CHECK_EQ(link.powerup().view(100).state, (uint8_t)1);  // the raw schedule: available
+
+  StationAssignment end = a;
+  end.ends_in_ms = 0;
+  link.apply_station_config(end, 5000);
+  CHECK(link.powerup_ended());
+  CHECK_EQ(link.powerup().view(600000).state, (uint8_t)1);  // the raw schedule never clears itself
+  CHECK_EQ(link.powerup_advert_view(600000).state, (uint8_t)0);  // the advert-facing view does
+}
+
+// Review round 2 (LOW #4): this freeze is RAM-only (no NVS write -- flash-write budget), so a
+// reboot after MATCH OVER shows the pickup live again until MC's next station_config. See the
+// README ("PICKUP_OVER"). Pinned here so a future change to this is deliberate, not accidental.
+static void test_pickup_restore_after_end_does_not_pin_match_over() {
+  StationLink link;
+  StationAssignment a = pickup_config(7);
+  link.restore_station_config(a);
+  CHECK(!link.powerup_ended());
+}
+
 // --- the claim gate (award logic only; no dwell timing here per brx5's clarification) ------------
 
 static void test_claim_gate_awards_the_first_ready_advert_for_its_own_id() {
@@ -2767,6 +2836,10 @@ int main(int argc, char** argv) {
   test_pickup_passed_deadline_freezes_it_the_same_way();
   test_pickup_same_game_restart_clears_match_over();
   test_pickup_new_game_clears_match_over();
+  test_pickup_start_and_end_zero_in_one_config_stays_match_over();
+  test_pickup_award_claim_refuses_past_deadline_without_a_tick();
+  test_pickup_advert_view_hides_availability_after_match_over();
+  test_pickup_restore_after_end_does_not_pin_match_over();
   test_claim_gate_awards_the_first_ready_advert_for_its_own_id();
   test_ready_claim_resolves_after_short_tie_window();
   test_claim_feed_pause_discards_a_pending_ready_candidate();
