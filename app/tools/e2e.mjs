@@ -340,10 +340,21 @@ await step('LOAD ▸ on PLAY shows LOADED · SENT n/n PHONES and swaps the contr
   await until(async () => (await mc.locator('text=KIT EACH PLAYER').count()) > 0 && (await mc.locator('input[aria-label="new operator callsign"]').count()) > 0, 6000, 'KIT screen rendered (header + roster input)');
 });
 await step('guard: the LOBBY push button exists AND is disabled with an empty roster', async () => {
+  // F1 flake (test:all --ui load, 2026-09-27): this used to wait 6 s for the button to render, then
+  // make ONE bare `isDisabled()` call with no retry, inheriting the page's blanket 6 s default
+  // (mkPage's setDefaultTimeout). Under ~30 concurrent jobs that single un-retried CDP round trip
+  // could itself exceed 6 s even once the button already existed and was already correctly disabled —
+  // "locator.isDisabled: Timeout 6000ms exceeded" on a passing page. Wait on the real conditions
+  // instead (LOBBY actually mounted, the roster read as empty, then the button), each through the
+  // polling `until()` helper with a load-tolerant ceiling, and poll the disabled check too rather than
+  // trust one shot. This does not weaken the assertion: it still fails if the button never appears or
+  // is ever not disabled — break the product (enable it with an empty roster) and this still times out.
   await nav(3);
+  await until(async () => (await mc.locator('text=A5 // LOBBY').count()) > 0, 20000, 'LOBBY screen mounted');
+  await until(async () => (await mc.locator('[data-roster-empty="1"]').count()) > 0, 20000, 'roster read as empty');
   const btn = mc.locator('[data-lobby-primary="push"] button').first();
-  await until(async () => (await btn.count()) > 0, 6000, 'PUSH button rendered');
-  expect((await btn.isDisabled()) === true, 'push button clickable with no players');
+  await until(async () => (await btn.count()) > 0, 20000, 'PUSH button rendered');
+  await until(async () => (await btn.isDisabled({ timeout: 5000 }).catch(() => false)) === true, 20000, 'push button disabled with empty roster');
   await nav(2);   // back to kit for the join flow
 });
 
