@@ -47,7 +47,7 @@ One-time: `cd app && npx playwright install chromium` (`playwright` is a devDepe
 Regression canary: if `?demo` never leaves phase `idle`, the boot hung (see the Capacitor thenable-proxy
 incident, FOLLOWUPS 2026-08-26).
 
-## `npm run ui:e2e` — the browser suite (app/tools/e2e.mjs)
+## `node tools/e2e.mjs` — the browser suite
 
 Pre-steps (the suite REFUSES to run on stale bundles — a stale dist once "passed" a whole run on old UI code):
 1. `cd webapp/mc && npm run build` — the MC bundle the suite serves (`webapp/mc/dist`).
@@ -55,7 +55,7 @@ Pre-steps (the suite REFUSES to run on stale bundles — a stale dist once "pass
 3. Nothing to free: the suite's MC, the old-session MC and the HUD static server take free ports, so two runs can go
    side by side. To pin a port, set `E2E_MC_PORT`, `E2E_MC_WS_PORT`, `E2E_OLD_MC_PORT`, `E2E_OLD_MC_WS_PORT` or
    `E2E_HUD_PORT`; the suite then refuses to start if an MC already answers on the pinned port.
-Then `npm run ui:e2e`. `ONLY=<step-substring> npm run ui:e2e` runs matching steps only (stand-alone steps such as
+Then `node tools/e2e.mjs`. `ONLY=<step-substring> node tools/e2e.mjs` runs matching steps only (stand-alone steps such as
 `designer-controls`, `compat-older-server`, `compat-old-session` self-navigate); the F9 rollup + report always run.
 `ALLOW_STALE=1` skips the bundle-freshness gate (mid-edit only). Shots + `report.md` land in `app/shots/e2e/` (`E2E_OUT=<dir>` to write elsewhere).
 

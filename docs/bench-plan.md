@@ -65,15 +65,14 @@ do not copy a procedure here.
 2. **IPHONE block (15 min).** Running total: 40.
 3. **GAMES CHECK: 11.7 + F422, PICK GAME, F402, FAVOURITES, the BUILD TypeChip guard (23 min), plus a short TEAMS
    re-split check (F413).** Skip PLAY AGAIN, LAST MATCH and the countdown default today. Running total: 63.
-4. **Group 1, items 1-5: the P0 block, F416 then F417/F381 (50 min).** Running total: 113.
-5. **Group 1, item 6: F348 (10 min).** Running total: 123.
-6. **Group 2: KOTH, plus F420, F421 and F424, plus F415's hold target (25 min).** Running total: 148.
-7. **Group 4, items 4-5 merged: F399 and F380 on an Overshield Stick, plus F425's silence check (12 min).**
-   Running total: 160.
-8. **Group 3, checks (a), (b) and (d): end the match (5 min).** Skip check (c) today. Running total: 165.
-9. **Group 1, item 7: F394 (5 min).** Running total: 170.
-10. **Group 1, item 8: 4.0, trimmed to the day/night launch only (10 min).** Skip the through-MC match today.
-    Running total: 180.
+4. **Group 1, item 0: F297 phone connect metrics (10 min).** Running total: 73.
+5. **Group 1, items 1-5: the P0 block, F416 then F417/F381 (50 min).** Running total: 123.
+6. **Group 1, item 6: F348 (10 min).** Running total: 133.
+7. **Group 2: KOTH, plus F420, F421 and F424, plus F415's hold target (25 min).** Running total: 158.
+8. **Group 4, items 4-5 merged: F399 and F380 on an Overshield Stick, plus F425's silence check (12 min).**
+   Running total: 170.
+9. **Group 3, checks (a), (b) and (d): end the match (5 min).** Skip check (c) today. Running total: 175.
+10. **Group 1, item 7: F394 (5 min).** Running total: 180.
 
 Stop at 180 min, with no slack. If short on time, drop the TEAMS and HOLD checks first: they are additions, not
 the core gate.
@@ -84,6 +83,8 @@ the core gate.
   and MC/Stick re-pointed after a restart for LAST MATCH).
 - 11.6 (Group 1, item 9).
 - The powerup setup: 4.11, 11.2, 3.4 and 3.5 (Group 1, item 10).
+- 4.0, trimmed to the day/night launch only (Group 1, item 8 today's cut dropped it to make room for F297's
+  phone connect metrics). Skip the through-MC match when it runs.
 - F386 check (c), the idle-timeout control (Group 3).
 - Groups 4-7, except the F399/F380/F425 block already run today (Group 4's items 4-5).
 
@@ -230,13 +231,27 @@ Stick) is next.
 
 Running total: 65 min.
 
-### Group 1: two phones, two guns, the P0s then powerups (about 170 min; the highest value)
+### Group 1: two phones, two guns, the P0s then powerups (about 180 min; the highest value)
 
 Kit: both guns and headsets, the Pixel 5 and the iPhone X (or the green Pixel, per STOP POINT 1), MC as
 restarted at setup, the black Pixel and the Stick as stations, a tape measure.
 
-**The P0 rows go first.** These are the three 🔴 rows still open from part 1 (F416, F417, F418), each run
-against its own FOLLOWUPS pass rule, not just carried as a note.
+**F297's phone connect metrics run first, then the three 🔴 rows still open from part 1 (F416, F417, F418)**,
+each against its own FOLLOWUPS pass rule, not just carried as a note.
+
+0. **F297 (🔴), phone connect metrics (10 min).** Pass rule, set BEFORE the run: 10/10 first-connect success on
+   every phone, a median at or under 3 s, and zero headset drops; anything worse is a FAIL, and feeds F297/F293
+   with the numbers, not an impression. A/B/A: **A** first, the laptop control (Windows Python; WSL has no
+   Bluetooth) — `cd mcp && python -m brx_mcp connect-metrics <gun-address> --runs 3 --cold warm --hold-s 60` — 3
+   quick re-runs of the existing control (10/10, median 1.37 s, p90 2.41 s, max 3.76 s, headset drops 0/10,
+   `bench-2026-09-24.md` Block 1.1) to catch drift before **B**. **B**, per Pixel (at least two: grey and
+   green), 10 cold connects under default phone settings (Fast Pair ON, as players carry them), gun and headset
+   paired as they are in play, not freshly bonded: force-stop the app, let the headset settle, reopen to SET MY
+   GUN, and log each run's connect time from the phone's own log (1 s resolution) plus a stopwatch — the tool
+   itself is laptop-only and cannot hold the link while a phone does, so this repeats Block 1.2's method, not the
+   CLI. Record per phone: connect time (median and max), first-connect success out of 10, and any headset drop
+   at connect or in the 60 s after it (this also watches for F293's 5-12 s loop). Close with **A** again, 3 more
+   laptop `connect-metrics` runs. Log every number against F297's row.
 
 1. **F416 (🔴), the A/B/A on phone-to-gun distance (15 min).** The one false start in part 1 had both guns
    carried away from their own phones; the clean starts had each phone with its gun. Go live three times: phones
@@ -270,7 +285,7 @@ against its own FOLLOWUPS pass rule, not just carried as a note.
 
 STOP POINT 3a: the three P0 rows from part 1 (F416, F417, F418) are proven or reopened. Powerups next.
 
-Running total: 115 min.
+Running total: 125 min.
 
 6. **F348 (🔴), a Shields spawn starts at full shield (10 min).** Arm a Shields-preset match (45/0/105).
    Control: a Standard-preset spawn shows no shield line. Read the gun's own `$HP,<hp>,0,105` read-back from the
@@ -307,7 +322,7 @@ whole powerup setup (S58, the shipped F372 default) are all proven. **KOTH is ne
 right now (F382-F386), and costs only 15 min for high value, so it must land inside this block rather than
 after it.
 
-Running total: 235 min.
+Running total: 245 min.
 
 ### Group 2: KOTH, phone hill then Stick hill (about 20 min; same hardware, no change)
 
@@ -335,7 +350,7 @@ Running total: 235 min.
 STOP POINT 4: this closes the P0-then-powerups-then-KOTH core of the sitting, about 3 h of bench time once
 setup is done. Everything after this is worth less per minute.
 
-Running total: 255 min.
+Running total: 265 min.
 
 ### Group 3: F386's powerup-station MATCH OVER checks (about 15 min; no guns, no match)
 
@@ -354,7 +369,7 @@ F387 and F333 are already CONFIRMED and closed (part 1); do not re-run them. F38
 
 STOP POINT 5.
 
-Running total: 270 min.
+Running total: 280 min.
 
 ### Group 4: two phones, two guns, the rest of sitting C (about 67 min; same hardware, no change)
 
@@ -398,7 +413,7 @@ Kit: as Group 1.
 STOP POINT 6: sitting C's higher-value checks are all done. The Shields fight, the kill-cue retest and the
 voice audition are the lowest value per minute of the two-phone work and are next.
 
-Running total: 337 min.
+Running total: 347 min.
 
 ### Group 5: the Shields fight, the kill-cue retest and the voice audition (about 30 min; same hardware, no change)
 
@@ -416,7 +431,7 @@ Running total: 337 min.
 
 STOP POINT 7.
 
-Running total: 367 min.
+Running total: 377 min.
 
 ### Group 6: a field walk (about 15 min; the Stick and one phone)
 
@@ -426,7 +441,7 @@ Running total: 367 min.
 
 STOP POINT 8.
 
-Running total: 382 min.
+Running total: 392 min.
 
 ### Group 7: one gun, no phone (about 15 min; lowest priority)
 
@@ -439,7 +454,7 @@ Running total: 382 min.
    muzzle-flash and loudness difference, or none, is agreed on both readings, not just the first.
 - **Log:** what Tony saw and heard, per pass.
 
-**Total across every group: about 397 min (6 h 37 min). The practical 3 h core is the P0 block, the powerup
+**Total across every group: about 407 min (6 h 47 min). The practical 3 h core is the P0 block, the powerup
 setup and KOTH (Groups 1 and 2): STOP POINT 4, above.**
 
 Rules for every sitting: the preflight in [`gotchas.md`](gotchas.md) ("Before a bench session", which holds the rig
@@ -465,7 +480,7 @@ Levers session 1 ran in three sittings on 2026-09-18 (the log's three "firmware 
 answered by §16), §12 steps 1 and 3 (answered by §23), §13 step 1 and step 3 (magnitudes 1-39), §16 steps 1-3 and
 6.1-6.2, §18, §19 step 15 (answered by F71 and F263: one Shotgun pull sends two words), §21 steps 1-10 and 15-18 (t4,
 t5, t6, t7, t8, t9), §22 steps 1-6, and §23 (all five steps). Screamers A1 and A2. F276 (the Shotgun words). The whole perks sheet
-([`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md), §1-§8). F230 closed, so levers §19 step 18 is dropped.
+(`bench-perks-2026-09-18.md`, §1-§8). F230 closed, so levers §19 step 18 is dropped.
 
 **Pre-game check, run 2026-09-19 (Saturday morning office test).** Tony installed the 0.4.0-0.4.2 APKs across the
 session. Levers §1 run f (a real TDM through Mission Control with two guns) **PASSED**: cross-team hits
@@ -484,7 +499,7 @@ eased `heavy` 40 to 45 and the Burst Rifle gap 550 to 540 ms, F308); Block 7 ste
 lost inside the headset's rate guard, and the wider gap is on main); and the evening audio A/B/A on one gun (F347:
 the native shield hum blocks the gun's audio queue). Off the plan the same day: melee (K4, closed) and F336.
 
-**The 2026-09-25 sitting, [`bench-2026-09-25.md`](bench-2026-09-25.md), sittings A and B and stop point 2.**
+**The 2026-09-25 sitting, `bench-2026-09-25.md`, sittings A and B and stop point 2.**
 Sitting A closed the 0.4.12 gate: A4, F341, F347 (t23 ships EMPTY, no restart delay needed), and F350 (H21 picked,
 playtest confirmation left to sitting C's 11.1(c)); 4.19 parts 2-3 and the Burst Rifle gap stayed INCONCLUSIVE.
 Sitting B closed F332, the Stick pickup online and offline (S58, found F380 and F381), F333 (reopened by Tony for a deliberate walk; F398 filed),
@@ -496,7 +511,7 @@ has not been opened since that install, so 11.7's auto-join must be sitting C's 
 
 ## Sittings, in priority order
 
-### Superseded: [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting C
+### Superseded: `bench-2026-09-25.md`, sitting C
 
 Folded into "Next sitting: after GAMES and 0.4.14" at the top of this file, which supersedes the list below, the
 "Carry into sitting C" list and the "Awaiting Tony" note that used to sit here. Kept only for the sheet's own
@@ -594,7 +609,7 @@ headset-word row was F254 before its renumber and is F275 now.
   post-MVP (**F338**, Tony 2026-09-24); the Stick MVP runs over Bluetooth, Block 9 of the runbook.
   Kit: a Stick, the rig, a laptop, one gun for gates 4 and 5.
 - [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, Z1-Z3, D, B, E, F (C is answered).
-- The unrun rungs of [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) that the table below does not mark as
+- The unrun rungs of `bench-queue-2026-09-09.md` that the table below does not mark as
   moved. Do not run BQ-A2 (`$AS,1`): it starts a native game, a screamer path.
 - Rows whose method is in the row itself: **F232** and the other "Later" rows of the FOLLOWUPS MVP BENCH group
   that no sheet names yet, and the post-MVP **F167**, **F168** and **F169**.
@@ -628,10 +643,10 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 |---|---|---|
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live | claims 1-27, §1-§26 |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0 | the screamers: Phases A-E (A1, A2 done) |
-| [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history | every section answered 2026-09-18 |
+| `bench-perks-2026-09-18.md` | history | every section answered 2026-09-18 |
 | [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live | the M5StickS3 bring-up gates (**F314**, H7); run with the `m5stick-bench` skill, no fixed sitting |
 | [`bench-grenade.md`](bench-grenade.md) | open, backlog | the grenade and hill rungs |
-| [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
+| `bench-queue-2026-09-09.md` | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
 | the 2026-09-05 flash-control, 2026-09-07 super-indoor and 2026-09-11 critical sheets | history | archived 2026-09-24: grep only. Critical: BC-A2 is levers §21 step 16 (done) plus grenade Z1; BC-B3 is grenade X; BC-C1 is levers §6; BC-C2 is answered (perks §2). Super-indoor: Q15; Tony defined S48 on 2026-09-23, and its sweep is Block 6 of the runbook. Flash-control: L1-L9 answered; BQ-D8 cites its rungs 9-10 |
 | [`capture-runbook.md`](capture-runbook.md) | method | how to take a capture; no status |
 | the 2026-09-13 runbook and the 2026-09-17 weapons sheet | history | already archived: grep only, open no step from them |

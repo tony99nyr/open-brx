@@ -9,15 +9,16 @@ for a reader who knows laser tag and the Battle Company BRX tagger, but not our 
 
 ## The version and the gate
 
-The phone app is at 0.4.x today (0.4.12 is the newest published build). The target is 1.0.0. The gate is simple:
+The phone app is at 0.4.x today; [`/download/`](/download/) names the newest published build. The target is
+1.0.0. The gate is simple:
 1.0.0 ships when the open MVP rows in [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench and decision) reach zero. A row
 leaves that file in one of two ways: it closes into [`archive/followups-closed.md`](archive/followups-closed.md), or
 Tony moves it to [`post-mvp.md`](post-mvp.md). This page names no date.
 
 ## What 1.0.0 is, in one paragraph
 
-Each player carries an Android phone clipped to a stock BRX tagger. The phone holds the Bluetooth link to that
-tagger and runs that player's game, so play does not depend on the laptop. Mission Control, on a laptop, sets
+Each player carries an Android phone or an iPhone clipped to a stock BRX tagger. The phone holds the Bluetooth
+link to that tagger and runs that player's game, so play does not depend on the laptop. Mission Control, on a laptop, sets
 up the game, starts it over the field Wi-Fi, and adds up the result afterwards. Stations (a spare phone or an
 M5StickS3) act as respawn points, pickups and hills. There are three game modes: Team Deathmatch, Free For All
 and King of the Hill. The stock tagger firmware is never changed. All control goes over the tagger's Bluetooth
@@ -44,7 +45,7 @@ A proven feature can still carry an open row for one part of it. The evidence co
 |---|---|---|
 | **Free For All.** Every player for themselves; kills score. | proven | 2026-08-30, the first full match on our stack (a 300 s FFA through Mission Control, `experiment-log/2026-08.md`); 2026-09-12, three FFA matches over mobile data |
 | **Team Deathmatch.** Two teams; kills score for the team. | proven | 2026-09-16, two guns through Mission Control, 43 or more hits all credited to the right team after the F206 team fix. Q13 (team damage stays off) is bench pending |
-| **King of the Hill.** Teams hold one hill; possession time scores. The hill is a phone or a Stick station. | building | F402: a KOTH game must not LOAD without a hill station. The hill rows F382, F383, F384, F385 and F386 are bench pending, and [`bench-2026-09-25.md`](bench-2026-09-25.md) sitting D is the first real KOTH bench. The chaos suite checks the win path at the desk for both hill sources ([`chaos-testing.md`](chaos-testing.md)). The mode itself ran through the gun on 2026-09-10 with the BRX grenade as the hill, which is post-launch |
+| **King of the Hill.** Teams hold one hill; possession time scores. The hill is a phone or a Stick station. | building | F402: a KOTH game must not LOAD without a hill station. A Stick hill has run a two-phone KOTH match on the bench (2026-09-26; F382, F384 and F385 closed). F383 (the 5-7 m threshold) and F386 (the hill freezes at the whistle) are bench pending, and the phone-hill half has not yet run. The chaos suite checks the win path at the desk for both hill sources ([`chaos-testing.md`](chaos-testing.md)). The mode itself ran through the gun on 2026-09-10 with the BRX grenade as the hill, which is post-launch |
 
 ## The phone app and HUD
 
