@@ -46,7 +46,7 @@ for mDNS: `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_m
 ## Lane: brx5, powerups, the HUD and gun audio
 **State:** powerups ON by default on main (F372); F416, F417 part 1 and F418 are shipped (spawn-write retry, lost
 equip re-send, a held heavy ends only on a trigger pull).
-**Next:** desk: B21's iOS half on the MacBook. Bench part 2: re-verify F416/F417/F418; sitting C's F394, F381,
+**Next:** desk: F419's engine side (space `$PLAY` queue-slot writes by the playing clip's length; model the gun's queue as one pending entry), then B21's iOS half on the MacBook. Bench part 2: re-verify F416/F417/F418; sitting C's F394, F381,
 F400 and spacing checks.
 **Blocked:** none.
 ## Start here
