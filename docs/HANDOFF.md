@@ -18,10 +18,9 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 **State:** 0.4.15 published (`efd1961c`). `test-all`'s memory headroom fixed (F429/F430's lead): `screensBudget`
 reserves room for the other UI jobs and the scheduler caps its plan at 85% of the memory budget, never the whole
 thing (measured on the 32-core/8000 MB box: planned peak 6760 MB, 1240 MB headroom, app-screens 445s at 14
-shards). Landed `a7b0c26f` → main. F432 filed: a one-off `waitForTimeout(200)` race in the same gate's
-scores-overlay check, unrelated to the memory fix (peak stayed 6760/6800 on that run too).
-**Next:** brx3 closes F429/F430 after 3 clean lander runs (their call, this lane's row above). F432 waits on the
-post-bench sleep cleanup.
+shards). Landed `a7b0c26f` → main. The one-off `waitForTimeout(200)` race in the same gate's scores-overlay
+check (unrelated to the memory fix) is fixed and closed.
+**Next:** brx3 closes F429/F430 after 3 clean lander runs (their call, this lane's row above).
 **Blocked:** none.
 ## Lane: brx2, bench, audio, utility and docs
 **State:** bench part 1 done 2026-09-26 (full write-up: `experiment-log/2026-09.md`'s 2026-09-26 brx2 entry). KOTH's

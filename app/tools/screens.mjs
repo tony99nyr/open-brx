@@ -3678,7 +3678,11 @@ await step('scores overlay: a hidden pill under the tab row cannot intercept the
 await step('scores overlay: the empty-board badge is short and stays clear of the ✕', async () => {
   const pg = await open(VIEWS[1], 'live-scores');
   await pg.evaluate(() => { window.brx.engine.scoreAt = null; });
-  await pg.click('.ident'); await pg.waitForTimeout(200);
+  await pg.click('.ident');
+  // F432: a fixed 200ms wait raced the render under load and could sample the badge mid-transition
+  // (still "LIVE"). Poll the real condition instead, with a load-tolerant ceiling; if the badge never
+  // gets there the must() below still fails, now showing the actual stuck text rather than a lucky sample.
+  await pg.waitForFunction(() => (document.getElementById('bdage') || {}).textContent === 'NO SCORES YET', null, { timeout: 3000 }).catch(() => {});
   const r = await pg.evaluate(() => {
     const rect = el => { const b = el.getBoundingClientRect(); return { l: b.left, r: b.right }; };
     const age = document.getElementById('bdage'), x = document.querySelector('.bdx');
