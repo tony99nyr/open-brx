@@ -69,45 +69,21 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   (`.github/ISSUE_TEMPLATE/bug_report.yml`). To read one: unzip, then `python -m brx_mcp.mc.diag session.sqlite`.
   The scrub's rules and its guard live in `report.py`'s docstring; a guard refusal means a scrub gap, never
   loosen the guard to get a zip out. Tests: `test_mc_report.py`, `test_launcher.py`, `test/e2e/report.mjs`.
-- **Which tests to run.** Run all of them from the repo root with `pnpm run test:all`. Do not run the suites one by one
-  as the final check. The script prints one table and a log path per job; open the log of a failed job.
-  - While you iterate: run only the suite you touch (`pnpm run test:all -- mcp`, `-- mc-vitest`, `-- site`; `-- --list`
-    names the jobs), or one file (`cd mcp && python3 run_tests.py <substring>`).
-  - Before you commit any code change: `pnpm run test:all` (about 30 s; mcp, webapp/mc tsc + vitest, app tsc + tests, site).
-  - Before you commit a change to `app/src`, `webapp/mc/src`, a UI gate or an e2e script: `pnpm run test:all -- --ui`
-    (about 2 min; adds the phone and Mission Control browser gates). That full `--ui` gate stays the rule before
-    the FIRST push of a UI change: **CI does NOT run app-screens, app-e2e or the `mc-*` e2e scripts** (`site` is
-    not wired into CI at all), so nothing else catches a regression in them.
-  - **After merging `origin/main`** into a branch that was already green, run
-    `pnpm run test:all -- --changed <base>` for the paths that just came in, not the full suite again (the base
-    goes right after `--changed` on the command line). Default base: `HEAD^1` if the merge just made HEAD a merge
-    commit (its first parent is the branch as it stood before that merge), else the merge-base with
-    `origin/main`. **After a fresh `git merge origin/main`, that merge-base IS origin/main's own tip, so pass the
-    base explicitly (the commit you last tested) if you are not running this immediately after the merge.**
-    If only docs came in, the `mcp` job (docs hygiene) AND `site` (renders `docs/platform`, `docs/manual`) are
-    both needed. `--changed` adds `--ui` itself when the selection includes a UI-only job, since CI cannot.
-    A job name typed after `--changed` (e.g. `--changed <base> mcp site`) ADDS to its pick, a union, never a
-    replacement: if the diff itself already picked "everything" (its fail-safe), naming jobs by hand adds
-    nothing. The final line before the jobs start lists the whole selection and why each job is in it.
-  - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). The lock is machine-wide (per user, not per
-    checkout): a second run anywhere on the box waits for the first.
-  - The per-suite detail and flags are in `CONTRIBUTING.md` → *Running things*. The pyright gate runs inside the mcp suite.
+- **Which tests to run.** Run `pnpm run test:all` from the repo root before committing (about 30 s), not the
+  suites one by one. Add `-- --ui` (about 2 min) before the FIRST push of a change to `app/src`, `webapp/mc/src`,
+  a UI gate or an e2e script: **CI does NOT run app-screens, app-e2e or the `mc-*` e2e scripts** (`site` isn't
+  wired into CI at all), so nothing else catches a regression in them. After merging `origin/main`, use
+  `pnpm run test:all -- --changed <base>` instead of the full suite. It runs inside a memory budget and a
+  machine-wide lock (per user, not per checkout): a second run anywhere on the box waits for the first. Full
+  detail and flags: `CONTRIBUTING.md` → *Running things*.
 - **Reaching main: the land lane.** Do not push to `main`. Commit on a branch, gate your own suites as above, then:
   1. `node scripts/land.mjs submit --owner <session> --note "<what>"` pushes the branch as `land/<id>`.
   2. `node scripts/land.mjs run` drives the lander. It exits at once if another lander is running; that lander
      picks your branch up.
-  3. `node scripts/land.mjs wait <id>` (run it in the background): exit 0 landed (it prints the main sha and the
-     CI link), 1 red (the failing jobs and the log), 2 conflict (the files), 3 timeout. For a red or a conflict,
-     merge `origin/main` into your branch, fix it, and submit again.
+  3. `node scripts/land.mjs wait <id>` (run it in the background): exit 0 landed, 1 red, 2 conflict, 3 timeout.
+     For a red or a conflict, merge `origin/main` into your branch, fix it, and submit again.
 
-  The lander merges each branch (merge commits, never a squash or a rebase), gates the batch once with
-  `test-all --changed --ui`, and pushes `main` fast-forward only. CI stays the post-push check. Docs-only and
-  session-close commits go through it too. How it works: `scripts/README.md`.
-  - **Git 2.38 or later** (`git --version`; the lander refuses an older git). Apple's git on the MacBook can be
-    older: `brew install git`, then check that `which git` is `/opt/homebrew/bin/git`, before you submit from the Mac.
-  - **Emergency only:** a direct `git push origin HEAD:main` is allowed when main is broken and the lander cannot
-    run, and for the app release (`app/RELEASING.md`: the bump and the sidecar in one push). Say so in the commit
-    message and in your HANDOFF lane. The lander adapts on its next push.
+  Full detail (how the lander works, the git-version requirement, the emergency direct-push path): `scripts/README.md`.
 - **When you add or change a test**, keep the suite parallel-safe. `test:all` runs every job at once, under load:
   - Bind a free port (listen on 0), or read the port from an env var. Never a literal port.
   - Write output to the test's own folder, never a folder another test writes.
@@ -132,7 +108,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 | Path | What | Where the detail lives |
 |---|---|---|
 | `mcp/` | Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/`**, the Mission Control server (M-MC) | A newcomer runs `./start.sh` (macOS/Linux) or `start.cmd` (Windows) from the repo root: it sets up Node, Python and the console, then starts MC. `mcp/brx_mcp/mc/README.md` → *Start it* (no-hardware demo: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth --ephemeral`, the WSL venv, not Windows Python; a busy :8765 exits 2 with "could not bind" before any banner, F108). `API.md` is the server⇄UI contract. `webapp/mc/src/api/contract.gen.ts` + `app/src/transport/contract.gen.js` (the node↔MC wire contract's shapes and tables) are generated from `mcp/brx_mcp/mc/types.py` + `envelope.py` by `mcp/tools/gen_contract.py` — regenerate after editing either; `mcp/tests/test_contract_generated.py` gates staleness |
-| `app/` | Native phone app (Capacitor → Android + iOS) | `app/README.md`; `npm run android:apk` cuts a build and publishes it to the `app-v<version>` GitHub Release, and the site links the releases page (not a pinned asset) so a new cut never stales a manual page |
+| `app/` | Native phone app (Capacitor → Android + iOS) | `app/README.md`; `app/RELEASING.md` is the release (`npm run android:release`, release-signed); `npm run android:apk` is a DEBUG build: run it with `APK_PUBLISH=0` |
 | `firmware/` | Does not exist yet | Companion/station firmware is still to write; the ESP32 code that exists is `hardware/esp32-ir-bridge/` and `hardware/m5sticks3/` |
 | `webapp/mc/` | The Mission Control web UI (Vite/React/TS) | `webapp/mc/README.md`: `npm run dev`, `?mock` for the in-browser demo, design brief `docs/spec/design/mission-control.md`. **Nothing to build to verify it in a real browser** — it's a web app, so run the dev server and drive it. (Unlike MC, the phone HUD drives a real tagger over BLE and needs its stage harness: `cd app && npm run ui:stage`.) Any UI change follows the `ui-build-verify` user skill; a repo-wide accuracy pass follows `doc-rot-review` (`.claude/skills/doc-rot-review/SKILL.md`) |
 | `webapp/` | **The Cloudflare deploy root**: the site generator's git-ignored output lands here beside the hand-kept `webapp/mc/` and `webapp/download/` | — |

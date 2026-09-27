@@ -1126,3 +1126,96 @@ def test_the_routing_rule_reads_post_mvp_rows_as_open():
     assert {"S14", "F285", "S50"} <= post, "the post-MVP probe ids moved: pick three rows that live in post-mvp.md"
     assert {"S14", "F285", "S50"} <= live, "the routing guard's open rows do not read post-mvp.md"
     assert not (post & _closed_ids()), "a post-MVP row reads as closed to the routing guard"
+
+
+# ---- The command table: brx-protocol.md owns the wire rows, the manual summarises them (2026-09-27) ----
+# The table existed three times and drifted (the manual's `$VOL` row lost "use >= 65"). The protocol reference is
+# now the owner. The manual keeps a reader-facing summary, and this guard checks the facts a script can check:
+#   1. every command the manual's command-reference tables name has a row in brx-protocol.md;
+#   2. the manual's signature for a command has a token count that some brx-protocol.md signature of that
+#      command also has (a `[,<opt>]` group counts both ways; a `…` or `..` signature is variadic and skipped);
+#   3. every literal frame the manual quotes in those rows (`$VOL,69,0,*`) appears verbatim in brx-protocol.md.
+PROTOCOL_DOC = REPO / "protocol" / "brx-protocol.md"
+MANUAL_DEV = DOCS / "manual" / "dev.md"
+_SIG = re.compile(r"`(\$[A-Z][A-Z0-9]*(?:,[^`]*)?\*)`")
+
+
+def _command_reference(manual: str) -> str:
+    """The manual's `## Command reference` section, up to the next `## ` heading."""
+    body = manual.split("\n## Command reference\n", 1)[1]
+    return body.split("\n## ", 1)[0]
+
+
+def _command_rows(text: str) -> dict[str, list[str]]:
+    """Table rows whose first cell names a `$COMMAND`, keyed by every command named in that cell."""
+    rows: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        if line.startswith("| `$"):
+            for name in re.findall(r"`\$([A-Z][A-Z0-9]*)", line.split("|")[1]):
+                rows.setdefault(name, []).append(line)
+    return rows
+
+
+def _sig_name(sig: str) -> str:
+    return sig[1:].split(",", 1)[0].rstrip("*")
+
+
+def _arities(sig: str) -> set[int] | None:
+    """The token counts a signature allows, or None for a variadic one. `[,<mode>]` is optional."""
+    if "…" in sig or ".." in sig:
+        return None
+    return {re.sub(r"\[[^\]]*\]", "", sig).count(","), sig.replace("[", "").replace("]", "").count(",")}
+
+
+def _is_literal(frame: str) -> bool:
+    return not any(c in frame for c in "<>[]…") and ".." not in frame
+
+
+def _command_table_problems(manual: str, protocol: str) -> list[str]:
+    problems: list[str] = []
+    manual_rows = _command_rows(_command_reference(manual))
+    protocol_rows = _command_rows(protocol)
+    protocol_arities: dict[str, set[int]] = {}
+    for sig in _SIG.findall(protocol):
+        if (a := _arities(sig)) is not None:
+            protocol_arities.setdefault(_sig_name(sig), set()).update(a)
+    for name, rows in sorted(manual_rows.items()):
+        if name not in protocol_rows:
+            problems.append(f"${name}: the manual's table names it, brx-protocol.md has no row for it")
+            continue
+        for row in rows:
+            for sig in _SIG.findall(row.split("|")[1]):
+                if _sig_name(sig) != name or _is_literal(sig):
+                    continue
+                a = _arities(sig)
+                if a is not None and name in protocol_arities and not a & protocol_arities[name]:
+                    problems.append(f"${name}: the manual's `{sig}` has {sorted(a)} tokens, "
+                                    f"brx-protocol.md only {sorted(protocol_arities[name])}")
+            for frame in _SIG.findall(row):
+                if _is_literal(frame) and frame not in protocol:
+                    problems.append(f"${name}: the manual quotes `{frame}`, brx-protocol.md does not")
+    return problems
+
+
+def test_the_manual_command_table_agrees_with_the_protocol_reference():
+    problems = _command_table_problems(MANUAL_DEV.read_text(encoding="utf-8"),
+                                       PROTOCOL_DOC.read_text(encoding="utf-8"))
+    assert not problems, ("docs/manual/dev.md's command table disagrees with protocol/brx-protocol.md "
+                          "(the protocol row is the owner: fix the manual, or the protocol row if it is wrong):\n"
+                          + "\n".join(problems))
+
+
+def test_the_command_table_check_can_actually_fail():
+    protocol = ("| `$VOL,<0-100>,<n2>,*` | Volume | iOS sends `$VOL,69,0,*`. |\n"
+                "| `$LIFE,<hp>,<armor>,<shields>[,<mode>],*` | Pools | x |\n| `$TMP,<t1>,…,<t11>,*` | Mods | x |\n")
+    good = ("x\n## Command reference\n\n| `$VOL,<0-100>,<n2>,*` | >> | v | iOS sends `$VOL,69,0,*`. |\n"
+            "| `$LIFE,<hp>,<armor>,<shields>,*` | >> | a | x |\n| `$TMP,<t1>..<t11>,*` | >> | t | x |\n"
+            "\n## Next\n\n| `$ZAP,*` | >> | outside the command reference, so not checked | x |\n")
+    assert _command_table_problems(good, protocol) == [], _command_table_problems(good, protocol)
+    bad = (good.replace("`$VOL,69,0,*`", "`$VOL,65,0,*`").replace("<n2>,*` | >>", "*` | >>")
+           .replace("| `$TMP", "| `$ZOOM,*` | >> | n | x |\n| `$TMP"))
+    assert _command_table_problems(bad, protocol) == [
+        "$VOL: the manual's `$VOL,<0-100>,*` has [2] tokens, brx-protocol.md only [3]",
+        "$VOL: the manual quotes `$VOL,65,0,*`, brx-protocol.md does not",
+        "$ZOOM: the manual's table names it, brx-protocol.md has no row for it",
+    ], _command_table_problems(bad, protocol)

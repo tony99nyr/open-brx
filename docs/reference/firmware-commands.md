@@ -5,6 +5,11 @@ R4/T3 from caller-supplied private stock images with `python3 mcp/tools/fw_comma
 disassembly, offset, or surrounding firmware string is stored here. The source is a community member's post;
 Battle Company has not licensed the images for redistribution, so the default remains **do not host them**.
 
+This page is a presence inventory, not a command reference. It records which image carries which word, the
+`protocol.py` safety class and the firmware gate. The shape, meaning and evidence of each command live in one
+place, [the protocol reference](../../protocol/brx-protocol.md), and the protocol discovery credit belongs to
+LaserTagMods (JEDGE / JBOX). The **bench** column below only summarises those protocol rows.
+
 The byte-level scan fixes the first `strings` pass: its four-character floor reported 103 v4.32 names but omitted
 short real commands such as `$AS` and `$SP`. The bounded scan finds 111 command-shaped names in v4.32 and 128
 across all seven images (a different corpus from the ten gun images behind the protocol reference's count of 145). “Present” means a bounded ASCII `$WORD` exists in the image; it does **not** prove the

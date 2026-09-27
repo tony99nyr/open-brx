@@ -63,9 +63,8 @@ VOL_PLAY = VOL_BY_ENV["indoor"]    # unknown venue -> the QUIETER of the two (se
 VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the player's own head,
                                    # so it keeps the quieter Callsign value (review 2026-08-31).
                                    # The field complaint was about hearing a game across a field.
-# `--bench-volume [N]` (bench 2026-09-16): a bench run plays every $VOL MC compiles at N. 30 is barely
-# audible and the venue value is too loud at a bench. Not for a real game.
-BENCH_VOLUME_DEFAULT = 55
+# `--bench-volume [N]` (bench 2026-09-16): a bench run plays every $VOL MC compiles at N (the bare flag means
+# 65, set in `__main__.py`). 30 is barely audible and the venue value is too loud at a bench. Not for a real game.
 
 
 # Q13 (Tony 2026-09-25): "you should not be able to hit or damage your teammates or yourself". Team damage is
