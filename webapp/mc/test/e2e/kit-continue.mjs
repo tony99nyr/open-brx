@@ -184,15 +184,18 @@ async function walkToKit(pg, url, fromArmory = true) {
     await pg.locator('[data-testid="armory-gate"]').first().click();
   }
   await until(() => pg.locator('text=Pick Game').count().then(n => n > 0), 10000, 'PLAY to open');
-  // F411 (games-presets.md §1/§5): BUILD creates, PLAY only picks and LOADs — the old GAMES tab's
-  // "unloaded vs loaded, active game config" two-state UI and its CONTINUE TO KIT button are retired.
-  // LOAD ▸ now only announces the game to the phones (it never pushes a gun, so there is no forcing
-  // variant to fall back to here any more), and PLAY never navigates on its own: KIT is reached from
-  // the nav, exactly like every other tab.
-  const load = pg.locator('main [data-testid="game-load"] button');
-  if (await load.isEnabled().catch(() => false)) await load.click();
-  await pg.locator('header nav button:has-text("KIT")').first().click();
-  await until(() => onKit(pg), 10000, 'KIT to open from the nav');
+  // F411 (games-presets.md §1/§5, VQA round 1 QA-01): PLAY keeps GAMES' old two-state door — LOAD ▸
+  // announces the game to the phones (never a gun push, so there is no forcing variant to fall back to
+  // here any more), and once `game.loaded` the same control becomes CONTINUE TO KIT ▸, which now sets
+  // the server phase to kit (`api.setPhase('kit')`) before moving the console there, same as the
+  // retired GAMES tab's button did.
+  const kitBtn = pg.locator('main [data-testid="game-continue-kit"] button');
+  if (await kitBtn.count() === 0) {
+    await pg.locator('main [data-testid="game-load"] button').click();
+    await until(() => kitBtn.count().then(n => n > 0), 12000, 'CONTINUE TO KIT after LOAD');
+  }
+  await kitBtn.click();
+  await until(() => onKit(pg), 10000, 'KIT to open from CONTINUE TO KIT');
 }
 
 /** The SECONDARY plate: `✕ CLEAR` is positioned in the card's bottom-right corner and the weapon's

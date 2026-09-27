@@ -584,10 +584,11 @@ step('reteam-visible', async ({ browser, base }) => {
 
 // `station-source-control` (the DESIGNER's OBJECTIVE SOURCE chip: grenade/ir_station/phone) is
 // DELETED here: that control lived in the retired GAME DESIGNER, and its F411 replacement is BUILD's
-// per-mode editor, which is a stub on this branch (`data-testid="build-screen"`, no controls at all —
-// the BUILD lane is finishing the real editor per its own brief). There is nothing in this worktree's
-// console to click through for OBJECTIVE SOURCE, so this coverage is deferred to the BUILD lane;
-// `station_source` itself is still exercised directly against the server (`setSource`, `vqa2.mjs`).
+// own per-mode editor (`screens/Build.tsx` + `screens/presets/`, real as of the BUILD lane's merge —
+// no longer the stub this file first shipped against). That editor has its own e2e suite,
+// `test/e2e/build.mjs`, owned by the BUILD lane; this file only proves BUILD is reachable and its tap
+// targets are real (`audit-taps`), not its per-kind editing behaviour. `station_source` itself is
+// still exercised directly against the server here (`setSource`) and in `vqa2.mjs`.
 
 // A refusal is only useful if the operator can READ it. The server's 400 names the whole vocabulary;
 // the strip that shows it used to be one nowrap line clipped at 420px, so the valid values were gone.
@@ -670,8 +671,10 @@ step('load-refused', async ({ browser, base }) => {
 
 // The operator's own walk: pick, LOAD (which announces the game to the PHONES and writes no gun), an
 // edit that re-announces at once (PLAY has no draft/SAVE step — every pick applies immediately,
-// games-presets.md §3, unlike the retired GAMES tab's own inline editor), the LOBBY push that actually
-// configures the guns, and only then KIT.
+// games-presets.md §3, unlike the retired GAMES tab's own inline editor), CONTINUE TO KIT (which sets
+// the server phase to kit and moves the console there — VQA round 1 QA-01 restored the old GAMES tab's
+// two-state door), the LOBBY push that actually configures the guns, and only then does the push
+// advance the field.
 //
 // "Weapons have to go with the arm" (Tony). The first cut of LOAD called the real config push, which
 // compiles a weapon head per player -- and nobody has kitted at that point, so it wrote policy-DEFAULT
@@ -687,7 +690,7 @@ step('load-path', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
   await pickKoth(pg, { ms: 6000 });
-  await assignHillStation(base, 'e2e-hill-load');   // F402: the LOBBY push below refuses koth without one
+  await assignHillStation(base, 'e2e-hill-load');   // F402: CONTINUE TO KIT / the LOBBY push refuse koth without one
   const before = await (await fetch(`${base}/api/state`)).json();
   expect(before.lobby.pushed === false, `CONTROL: nothing is loaded yet (saw pushed=${before.lobby.pushed})`);
 
@@ -710,8 +713,13 @@ step('load-path', async ({ browser, base }) => {
     `the phone count is the phones actually connected (saw ${loaded.game?.sent}, bound ${boundNow})`);
   expect((loaded.game?.total ?? -1) === loaded.players.length,
     `…stated against the whole roster (saw ${loaded.game?.total}/${loaded.players.length})`);
-  // ...and the TAB stays: LOAD's own success does not navigate the console anywhere.
+  // ...and the TAB stays: LOAD's own success does not navigate the console anywhere, but the control
+  // swaps to CONTINUE TO KIT and the status line names the delivery (QA-01).
   expect(new URL(pg.url()).hash === '#build', `LOAD left the console on PLAY (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
+  const kitBtn = pg.locator('[data-testid="game-continue-kit"] button');
+  await until(() => kitBtn.count().then(n => n > 0), 6000, 'LOAD to swap the control to CONTINUE TO KIT');
+  const status = (await pg.locator('[data-testid="game-loaded-status"]').innerText()).replace(/\s+/g, ' ');
+  expect(status.includes(`SENT ${loaded.game.sent}/${loaded.game.total} PHONES`), `the status names the delivery (saw ${JSON.stringify(status)})`);
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'LOAD renders without a console error');
   ok(`LOAD told the phones and left the guns alone  ${await shot(pg, '10-loaded')}`);
 
@@ -725,6 +733,14 @@ step('load-path', async ({ browser, base }) => {
   expect(afterEdit.lobby.pushed === false, 'and the edit still writes no gun before the lobby push');
   ok(`match settings edit re-announced, guns still untouched  ${await shot(pg, '10b-saved')}`);
 
+  // --- CONTINUE TO KIT: sets the server phase to kit, then moves the console there ---------------
+  await kitBtn.click();
+  await until(async () => (await (await fetch(`${base}/api/state`)).json()).phase === 'kit', 8000, 'CONTINUE TO KIT to advance the server phase');
+  await until(() => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0), 8000, 'KIT to open from CONTINUE TO KIT');
+  expect(new URL(pg.url()).hash === '#kit', `CONTINUE TO KIT moved the URL to #kit (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
+  expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'KIT does not crash for a koth game');
+  ok(`CONTINUE TO KIT advanced the server phase and opened KIT  ${await shot(pg, '10-continue-kit')}`);
+
   // --- the LOBBY push is what configures a gun, and only then is the field in sync ---------------
   await pg.locator('header nav button:has-text("LOBBY")').first().click();
   await until(() => pg.locator('main', { hasText: '[ A5 // LOBBY' }).count().then(n => n > 0), 8000, 'the LOBBY');
@@ -734,19 +750,8 @@ step('load-path', async ({ browser, base }) => {
   await until(async () => (await (await fetch(`${base}/api/state`)).json()).lobby.pushed === true, 10000, 'the LOBBY push to configure the guns');
   const pushed = await (await fetch(`${base}/api/state`)).json();
   expect((pushed.sync?.totals?.gun_sent ?? 0) > 0, `the guns have a head NOW (saw ${pushed.sync?.totals?.gun_sent})`);
-  // F411: the push itself moves the phase straight to lobby — there is no separate build-to-kit phase
-  // step any more (that was the retired GAMES tab's own CONTINUE TO KIT button; PLAY has no equivalent,
-  // and KIT is reachable from the nav at any point regardless of phase, proven next).
-  expect(pushed.phase === 'lobby', `the push advances the phase to lobby (saw ${pushed.phase})`);
+  expect(pushed.phase === 'lobby', `the push advances the phase from kit to lobby (saw ${pushed.phase})`);
   ok(`the LOBBY push is what wrote the guns and advanced the phase  ${await shot(pg, '10c-pushed')}`);
-
-  // --- and KIT, reachable from the nav like every other tab --------------------------------------
-  await pg.locator('header nav button:has-text("KIT")').first().click();
-  await until(() => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0), 8000, 'KIT to open from the nav');
-  expect(await pg.locator('main', { hasText: 'Kit Each Player' }).count() > 0, 'the KIT screen title is on screen');
-  expect(new URL(pg.url()).hash === '#kit', `the KIT tab moved the URL to #kit (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
-  expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'KIT does not crash for a koth game');
-  ok(`PLAY → LOAD ▸ → NIGHT (re-announced) → LOBBY push (guns configured) → KIT  ${await shot(pg, '10-continue-kit')}`);
   await closePage(pg);
 });
 
@@ -1029,9 +1034,7 @@ for (const [name, vp] of [['pixel4', { width: 393, height: 830 }], ['tablet', { 
 }
 
 // F411: the DESIGNER's per-mode "customize" screen is retired; the tap-target scan now covers PLAY,
-// KIT and BUILD (`openBuild` — the `BUILD ▸` header link) instead. BUILD is a stub on this branch
-// (`data-testid="build-screen"`, no controls), so its scan is trivially clean today and starts
-// protecting for real the moment the BUILD lane lands its editor.
+// KIT and BUILD (`openBuild` — the `BUILD ▸` header link) instead.
 step('audit-taps', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
@@ -1049,7 +1052,7 @@ step('audit-taps', async ({ browser, base }) => {
   await go(pg, 'kit'); pages.push(await scan('kit'));
   await go(pg, 'build');
   await pg.getByRole('button', { name: 'BUILD ▸' }).click();
-  await until(() => pg.getByTestId('build-screen').count().then(n => n > 0), 8000, 'BUILD');
+  await until(() => pg.locator('main', { hasText: '[ BUILD ]' }).count().then(n => n > 0), 8000, 'BUILD');
   pages.push(await scan('build'));
   for (const { where, rows } of pages) {
     const small = rows.filter(r => r.h < 36);
