@@ -86,7 +86,7 @@ and no card). 2026-09-26: F403, the BRIEFING's PICKUPS line (MC's brief carries 
 
 1. **Next sitting:** [`bench-plan.md`](bench-plan.md) part 2, the 3 h cut first; record evidence and promote or close
    each row from the result.
-2. **Desk:** F413 and F415 (brx3), then B21's iOS compile on the MacBook (`.claude/skills/iphone-build`).
+2. **Desk:** B21's iOS compile on the MacBook (`.claude/skills/iphone-build`).
 3. **Decisions for Tony:** the FOLLOWUPS MVP DECISION group.
 4. **Only after MVP:** [`post-mvp.md`](post-mvp.md) is the roadmap; nothing there is scheduled.
 
