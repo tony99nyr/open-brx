@@ -92,6 +92,22 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). The lock is machine-wide (per user, not per
     checkout): a second run anywhere on the box waits for the first.
   - The per-suite detail and flags are in `CONTRIBUTING.md` → *Running things*. The pyright gate runs inside the mcp suite.
+- **Reaching main: the land lane.** Do not push to `main`. Commit on a branch, gate your own suites as above, then:
+  1. `node scripts/land.mjs submit --owner <session> --note "<what>"` pushes the branch as `land/<id>`.
+  2. `node scripts/land.mjs run` drives the lander. It exits at once if another lander is running; that lander
+     picks your branch up.
+  3. `node scripts/land.mjs wait <id>` (run it in the background): exit 0 landed (it prints the main sha and the
+     CI link), 1 red (the failing jobs and the log), 2 conflict (the files), 3 timeout. For a red or a conflict,
+     merge `origin/main` into your branch, fix it, and submit again.
+
+  The lander merges each branch (merge commits, never a squash or a rebase), gates the batch once with
+  `test-all --changed --ui`, and pushes `main` fast-forward only. CI stays the post-push check. Docs-only and
+  session-close commits go through it too. How it works: `scripts/README.md`.
+  - **Git 2.38 or later** (`git --version`; the lander refuses an older git). Apple's git on the MacBook can be
+    older: `brew install git`, then check that `which git` is `/opt/homebrew/bin/git`, before you submit from the Mac.
+  - **Emergency only:** a direct `git push origin HEAD:main` is allowed when main is broken and the lander cannot
+    run, and for the app release (`app/RELEASING.md`: the bump and the sidecar in one push). Say so in the commit
+    message and in your HANDOFF lane. The lander adapts on its next push.
 - **When you add or change a test**, keep the suite parallel-safe. `test:all` runs every job at once, under load:
   - Bind a free port (listen on 0), or read the port from an env var. Never a literal port.
   - Write output to the test's own folder, never a folder another test writes.
