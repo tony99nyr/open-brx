@@ -39,18 +39,25 @@ suite on its own.
 
 **Everything at once:** `pnpm run test:all` from the repo root runs the unit gates of all four pieces in parallel
 (about 30 s). `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
-`webapp/mc` e2e script (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min). The lock is machine-wide, per user
-(under `$XDG_RUNTIME_DIR` or the OS temp dir, not the checkout): a run anywhere on the box waits for the first,
-so two worktrees never starve each other's budget. `pnpm run test:all -- site mcp` runs only the jobs whose
-names match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free
-ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
+`webapp/mc` e2e script (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time (capped at one hour) if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min floor). The
+lock is machine-wide, per user (a fixed path under `/tmp`, keyed by uid, not the checkout): a run anywhere on the
+box waits for the first, so two worktrees never starve each other's budget. `pnpm run test:all -- site mcp` runs
+only the jobs whose names match, and `-- --list` prints the names. It builds `app/www` once first, gives every
+e2e script its own free ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety
+rules it depends on).
 
 **After merging `origin/main`** into a branch that was already green, re-run only what the merge could have
-touched: `pnpm run test:all -- --changed [base]` (default base: the merge-base with `origin/main`) diffs
-against that base, maps the changed paths to jobs (`scripts/lib/changed.mjs`), and prints the selection and why.
-If only docs came in, the hygiene test (the `mcp` job) is enough on its own. An unmapped path, or a change to
-`scripts/test-all.mjs`/a CI workflow file, selects everything: fail safe, never a narrower guess. The full
-`--ui` gate stays the rule before the FIRST push of a UI change in a branch; CI is the backstop either way.
+touched: `pnpm run test:all -- --changed [base]` (the base, if given, goes right after `--changed`) diffs
+against `base` (tracked changes plus any untracked files), maps the changed paths to jobs (`scripts/lib/changed.mjs`),
+and prints the selection and why. Default base: `HEAD^1` if HEAD is a merge commit (its first parent is the
+branch before the merge), else the merge-base with `origin/main`. Right after `git merge origin/main`, though,
+that merge-base IS origin/main's own tip, so the default omits everything the merge just brought in: pass the
+base you last tested explicitly whenever you are not calling `--changed` immediately after the merge. If only docs
+came in, both the `mcp` job (docs hygiene) and `site` (it renders `docs/platform`/`docs/manual`) are needed. An
+unmapped path, or a change to `scripts/test-all.mjs`/a CI workflow file, selects everything: fail safe, never a
+narrower guess. `--changed` adds `--ui` itself whenever the selection includes a UI-only job: CI does **not**
+run `app-screens`, `app-e2e` or the `mc-*` e2e scripts (and does not run `site` at all), so nothing else would
+catch a regression in them. The full `--ui` gate stays the rule before the FIRST push of a UI change in a branch.
 
 **After you edit `app/src/hud/medalicons.js`** (the recap medal icons), run `cd app && npm run gen:medalicons`. It
 rewrites MC's copy, `webapp/mc/src/api/medalicons.gen.ts`, and `webapp/mc/test/medalicons-gen.test.ts` fails until you do.

@@ -76,10 +76,16 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   - Before you commit any code change: `pnpm run test:all` (about 30 s; mcp, webapp/mc tsc + vitest, app tsc + tests, site).
   - Before you commit a change to `app/src`, `webapp/mc/src`, a UI gate or an e2e script: `pnpm run test:all -- --ui`
     (about 2 min; adds the phone and Mission Control browser gates). That full `--ui` gate stays the rule before
-    the FIRST push of a UI change; CI is the backstop either way.
+    the FIRST push of a UI change: **CI does NOT run app-screens, app-e2e or the `mc-*` e2e scripts** (`site` is
+    not wired into CI at all), so nothing else catches a regression in them.
   - **After merging `origin/main`** into a branch that was already green, run
-    `pnpm run test:all -- --changed <the base you tested>` for the paths that just came in, not the full suite
-    again. If only docs came in, the hygiene test (the `mcp` job) is enough.
+    `pnpm run test:all -- --changed <base>` for the paths that just came in, not the full suite again (the base
+    goes right after `--changed` on the command line). Default base: `HEAD^1` if the merge just made HEAD a merge
+    commit (its first parent is the branch as it stood before that merge), else the merge-base with
+    `origin/main`. **After a fresh `git merge origin/main`, that merge-base IS origin/main's own tip, so pass the
+    base explicitly (the commit you last tested) if you are not running this immediately after the merge.**
+    If only docs came in, the `mcp` job (docs hygiene) AND `site` (renders `docs/platform`, `docs/manual`) are
+    both needed. `--changed` adds `--ui` itself when the selection includes a UI-only job, since CI cannot.
   - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). The lock is machine-wide (per user, not per
     checkout): a second run anywhere on the box waits for the first.
   - The per-suite detail and flags are in `CONTRIBUTING.md` → *Running things*. The pyright gate runs inside the mcp suite.
