@@ -129,6 +129,22 @@ behind it captures the newer UI. A red `site-shots` is therefore a real fault (t
 nothing, or could not push). Read the log, then run `cd app && npm run build && cd ../webapp/mc && npm run
 build`, then `cd site && npm run shots`, and commit `site/shots/` yourself.
 
+## Landing on main (the land lane)
+
+`scripts/land.mjs` is a queue for `main`. You submit a branch, and one lander at a time merges a batch of
+submitted branches, gates the batch once with `test-all --changed --ui`, and pushes `main` fast-forward only:
+
+```sh
+node scripts/land.mjs submit --owner <your lane name> --note "short description"
+node scripts/land.mjs wait <id>   # 0 landed, 1 red, 2 conflict, 3 timeout
+```
+
+The lander reruns a failed job once and records a flake if the rerun passes. It bisects a red batch, so one red
+branch does not hold back the others. A red or conflicting branch moves to `land-failed/<id>`: merge `origin/main`
+into it, fix it, and submit it again. CI still runs on every push to `main`. A direct `git push origin HEAD:main`
+is for emergencies only, for example a broken `main` that no gate can pass. The whole flow, the results, the flake
+log and the emergency path are in `scripts/README.md` → *The land lane*.
+
 ## The evidence culture
 
 The heart of this repo is that **a claim about the hardware needs provenance**, not just plausibility.
