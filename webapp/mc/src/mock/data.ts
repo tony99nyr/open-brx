@@ -1100,7 +1100,7 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "desc": "Hold the hill; possession scores",
     "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
     "teams_text": "2 TEAMS",
-    "win_text": "POSSESSION TIME · HOST CALL",
+    "win_text": "POSSESSION TIME",
     "respawn_text": "ON · TIMED",
     "mvp": true
   }
