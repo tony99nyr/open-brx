@@ -63,8 +63,10 @@ Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR rece
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
 2026-09-25). On main: A68 (the hill counts from go-live to the whistle; `duration_ms` ends a Stick carried out of Wi-Fi
 before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392, F397, F398. Flashed from main, unlocked.
-- **Next bench task:** bench part 2: F386's a/b/c on `26084fcf` (END freezes the powerup screen, no post-END grant,
-  STATS + 18 s wait + hold opens RANGE at 5 s; serial log on). Then sitting C: the carried-out timed hill, F388,
+- **Next bench task:** bench part 2: reflash from `6f042126`, then F386's a-d (END freezes the powerup screen, no
+  post-END grant, STATS + 18 s wait + hold opens RANGE at 5 s, no phone sees the pickup after END; serial log on).
+  Step 0.6 clears a stale on-Stick range: `python3 hardware/m5sticks3/tools/stick.py cmd 3 "RANGE CLEAR" STATUS`
+  (WSL python3; refused while locked). Then sitting C: the carried-out timed hill, F388,
   the F383 3 m and 7 m readings, F399's claim latency, F391's restart, F392's repro with the serial log, F397's MC
   restart.
 - **Decided:** the hill default is -75 dBm, hysteresis 6, until the outdoor walk (F383) (Tony, 2026-09-27).
