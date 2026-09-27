@@ -51,14 +51,14 @@ describe('F413: match.teams validation', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('KOTH never offers yellow, with the server\'s own F82 words (ok:false, not thrown)', async () => {
+  it('KOTH never offers yellow, with the server\'s own house-style words (ok:false, not thrown)', async () => {
     const b = new MockBackend();
     await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
     const bad = await b.pick({ match: { teams: ['blue', 'yellow'] } });
     expect(bad.ok).toBe(false);
-    expect(bad.errors).toEqual(["F82: mode 'koth' cannot have a team on $TID 2 at all — that is the value a NEUTRAL grenade hill "
-      + 'broadcasts, so anyone put on it later reads every uncaptured point as their own and takes no hill damage. '
-      + 'Use tid 0, 1 or 3.']);
+    // Low (f) correction (brx1, cc87483f): the ALL-CAPS house style, not the technical F82/$TID
+    // sentence a raw config PUT gets -- this reaches the console through PLAY/FAVOURITES too.
+    expect(bad.errors).toEqual(["YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE"]);
     expect((await b.getState()).config.teams.map(t => t.team_id), 'the refusal changed nothing').toEqual(['red', 'blue']);
   });
 });

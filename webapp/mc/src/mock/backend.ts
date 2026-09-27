@@ -566,7 +566,15 @@ export class MockBackend implements Api {
       else unplaced.push(p);
     }
     for (const p of unplaced) p.team_id = this.leastCountTeam();
-    if (this.oneTeamFault()) this.rebalanceSides();
+    // HIGH (brx1 review of e8811fea; server d6643ecf): rebalance whenever the DECLARED team SET
+    // changed too (a count or colour change, comparing team_id SETS, never order -- a same-set reorder
+    // changes nothing here), not only on the pre-existing one-team-fault trigger. Step 1 above leaves
+    // an ALREADY-legal player exactly where they are, so a 2-team 4/4 roster growing a third team left
+    // everyone put -- 4/4/0, not a fault (both original sides still populated), and nothing rebalanced
+    // it. An edit that leaves the team set alone still never rebalances an operator's own uneven split.
+    const prevIds = new Set(prevTeams.map(t => t.team_id));
+    const teamsChanged = prevIds.size !== legal.size || [...prevIds].some(id => !legal.has(id));
+    if (teamsChanged || this.oneTeamFault()) this.rebalanceSides();
   }
 
   private teamCounts(ids: string[]): Map<string, number> {
@@ -1660,10 +1668,11 @@ export class MockBackend implements Api {
     // `ok:false` refusal here, same as the two checks above, never a thrown exception (checkTeamsShape/
     // checkHoldTargetShape upstream only validate SHAPE now, matching gamepick.py's own split).
     if (this.config.mode === 'koth' && this.config.teams.length !== 2) errors.push('KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS');
+    // Low (f) correction (brx1, cc87483f): the house-style ALL-CAPS "WHAT: DO" wording, not the
+    // technical F82/$TID sentence meant for a raw config PUT -- this reaches the console through
+    // PLAY/FAVOURITES too, same as every other pieces/pick/favourites refusal (M5).
     if (this.config.mode === 'koth' && this.config.teams.some(t => t.team_id === 'yellow')) {
-      errors.push("F82: mode 'koth' cannot have a team on $TID 2 at all — that is the value a NEUTRAL "
-        + 'grenade hill broadcasts, so anyone put on it later reads every uncaptured point as their own and takes no '
-        + 'hill damage. Use tid 0, 1 or 3.');
+      errors.push("YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE");
     }
     { const hts = this.config.scoring.hold_target_s;
       if (hts != null) {

@@ -2965,10 +2965,15 @@ class Session:
                         f"hill broadcasts team {_NEUTRAL_TEAM} and the IR team field is 2 bits, so a "
                         "fourth player has to share a team -- an FFA hill caps at three players")
                 if mode in OBJECTIVE_MODES and any(t["tid"] == _NEUTRAL_TEAM for t in v):
-                    raise ValueError(
-                        f"F82: mode {mode!r} cannot have a team on $TID {_NEUTRAL_TEAM} at all — that "
-                        "is the value a NEUTRAL grenade hill broadcasts, so anyone put on it later reads "
-                        "every uncaptured point as their own and takes no hill damage. Use tid 0, 1 or 3.")
+                    # MEDIUM (brx1 review of e8811fea): this reaches the console through PLAY/FAVOURITES
+                    # too (`_merge_config` is shared by `PUT /api/config` and `set_config`'s own
+                    # compose/precheck path), so it needs the same ALL-CAPS "WHAT: DO" house style as
+                    # the rest of pieces/pick/favourites (M5) -- not the technical `F82:`/`$TID`-id
+                    # sentence meant for a raw config PUT. koth is the only OBJECTIVE_MODES row `mode`
+                    # can ever legally be here (domination has no MODES row, so `set_config` refuses it
+                    # as an unknown mode before this check is ever reached) -- naming it directly reads
+                    # better than the generic `{mode!r}`.
+                    raise ValueError("YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE")
                 cfg["teams"] = v
             elif k == "led":
                 if v is not None and not isinstance(v, dict):

@@ -321,7 +321,15 @@ export function predictedSplit(
   // A team with no `tid` on it falls back to its own id, which is what the mock's own fixtures carry.
   const tidOf = new Map(newTeams.map(t => [t.team_id, t.tid ?? t.team_id]));
   const oneSide = () => new Set(placed.filter(Boolean).map(t => tidOf.get(t))).size < 2;
-  if (ids.length >= 2 && ordered.length >= 2 && oneSide()) {
+  // HIGH (brx1 review of e8811fea; server d6643ecf): rebalance whenever the DECLARED team SET changed
+  // too (a count or colour change, comparing team_id SETS, never order), mirrored from
+  // `reteamForConfig`'s own same fix -- step 1 above leaves an ALREADY-legal player exactly where they
+  // are, so a 2-team 4/4 split growing a third team predicted 4/4/0 otherwise (never a one-side fault,
+  // since both original sides stayed populated). An edit that leaves the team set alone still never
+  // rebalances an operator's own uneven split.
+  const prevIds = new Set(prevTeams.map(t => t.team_id));
+  const teamsChanged = prevIds.size !== legal.size || [...prevIds].some(id => !legal.has(id));
+  if (ids.length >= 2 && ordered.length >= 2 && (teamsChanged || oneSide())) {
     for (let guard = ordered.length * ids.length + 1; guard > 0; guard--) {
       const fullest = ids.reduce((a, b) => (counts[b]! > counts[a]! ? b : a), ids[0]);
       const emptiest = ids.reduce((a, b) => (counts[b]! < counts[a]! ? b : a), ids[0]);
