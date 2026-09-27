@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-27 (see experiment-log/2026-09.md for the day's changes; F383's -75/6 hill default applied on
+Updated: 2026-09-27 (F411, F413 and F415 closed: GAMES is PLAY + BUILD with FAVOURITES, teams and the KOTH hold target, on main at `4275fad2`; see experiment-log/2026-09.md for the day's changes; F383's -75/6 hill default applied on
 every path, Stick, phone and MC's old-app fallback alike, each pinned by a test; F386's part 2 reflash is `6f042126`).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
@@ -10,11 +10,10 @@ every path, Stick, phone and MC's old-app fallback alike, each pinned by a test;
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 77.** Desk 4 · bench 73 · decision 0.
+**MVP open: 74.** Desk 1 · bench 73 · decision 0.
 
-**MVP DESK (4),** a keyboard is enough:
-- 🔴 **F411**
-- 🟠 **B21** · **F413** · **F415**
+**MVP DESK (1),** a keyboard is enough:
+- 🟠 **B21**
 
 **MVP BENCH (73),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F417** · **F416** · **F418** · **F420** · **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
@@ -52,11 +51,8 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F415 🟠 MATCH SETTINGS CARRY PER-MODE SETTINGS; KOTH GETS A HOLD TARGET.** Tony 2026-09-26: "We may have settings per mode... hill could be hold for 5 minutes to win to time limit. Or it could be highest held time in a time limit"; "There are some mode related match settings... We need to be able to support that. Just like extra teams for tdm". Today a mode row in `state.py` carries its settings (`time_limit_s`, `frag_limit`, `respawn`), and KOTH wins only on the most possession at the clock (`scoring.py`), with no hold target. Build, after the bench, with F413: (1) each mode row declares the MATCH SETTINGS items it offers (a schema the F411 strip renders, so a new mode setting needs no new console code); (2) KOTH: `hold_target_s` (optional; the first team to reach it wins, else the most possession at the clock), enforced by MC's scorer like the frag limit and shown on the phone briefing; (3) TDM's team count and colours (F413) ride the same mechanism. Also check the KOTH card's "POSSESSION TIME · HOST CALL" label: `app/src/engine.js` now sends `possession`, so HOST CALL may be stale. `build`.
 
-- **F413 🟠 TEAMS: RED + BLUE BY DEFAULT, AND THE OPERATOR PICKS THE COUNT AND THE COLOURS.** Tony 2026-09-26: "Lets default teams in all modes to red and blue like halo. Should probably allow operator to change each team color and allow edit number of teams in match-settings too. MVP. Can be post bench". Today each mode row in `state.py` fixes its teams (TDM blue + yellow, KOTH blue + purple, extraction blue + red) and no console control changes the count or the colours, although the TDM card says "2–4 TEAMS". Build, after the bench and after F411: (1) every team mode defaults to red (tid 0) + blue (tid 1); (2) a TEAMS control in the F411 MATCH SETTINGS strip: 2, 3 or 4 teams, and each team's colour from the four native teams only (red 0, blue 1, yellow 2, purple 3; `$TID` 4-7 do not work in combat, `protocol/brx-protocol.md` `$HLED` row); (3) LOBBY splits the roster evenly on a change; (4) KOTH never offers yellow (a neutral hill broadcasts tid 2, F82) and stays at 2 teams. Check KOTH, the hill scorer, stations and the `$SIR` team table with tid 0 on a team before calling it done. `build`.
 
-- **F411 🔴 MC GAMES REDESIGN: PICK GAME AND BUILD (the storyboard's option A).** Tony approved the direction,
   2026-09-26: "yeah this makes sense"; "not gunna bench until new mc games tab is ready" — this blocks the next
   bench sitting. GAMES splits into PLAY (PICK GAME: pick saved presets, LOAD, no editing, no "tuned, not saved"
   state) and BUILD (create/edit/rename/delete named presets, one section per picker; BUILD never starts a game)

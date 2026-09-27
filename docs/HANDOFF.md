@@ -52,12 +52,10 @@ phones never left the room). Full write-up: `experiment-log/2026-09.md`'s 2026-0
   authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
-APK 0.4.12 published 2026-09-25 (release-signed, WebView debugging on). Since then on main: F282 (silenced weapons,
-MC-only: restart MC from main before the bench), F382 phone half, F384, F385, F401, F402, F404, F405, the MVP mode
-cut (TDM, FFA, KOTH), the TDM/FFA/KOTH chaos desk proofs and three flake fixes; F372 closed (powerups on by default).
-- **Next:** S32 closed, koth mode art shipped (direction C); F382, F384 and F385 closed 2026-09-26, bench part 1.
-  The next APK already carries all three plus the phone's MVP-only utility drawer.
-- **Tools:** Codex returns 401 until `codex login`; Sonnet agents did the work since.
+APK 0.4.14 is current. MC GAMES is PLAY + BUILD (F411), with FAVOURITES, LAST MATCH, teams (F413) and the KOTH hold
+target (F415), all on main at `4275fad2` with green CI. The phone tid-0 kill-confirm fix (`f52d34dd`) rides the next APK.
+- **Next:** Tony's GAMES check at the bench (PLAY, BUILD, TEAMS, HOLD); the next APK cut for the phone fix.
+- **Tools:** Codex returns 401 until `codex login`; Sonnet lanes in worktrees did the build, Opus reviewed.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
