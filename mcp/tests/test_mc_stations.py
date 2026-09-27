@@ -466,10 +466,11 @@ def test_threshold_0_or_absent_means_the_stations_own_platform_default():
 def test_threshold_0_goes_out_explicit_to_a_phone_app_that_clamps_it():
     """F345 review H1: app 0.4.11 and older clamps a `station_config` threshold of 0 to -30 dBm (a few cm), so no
     revive is possible. Such a phone (or one whose version MC cannot parse) gets the explicit old value: -66 for a
-    respawn station (the new phone default), -74 for any other kind. 0.4.12 and later, and a StickS3, get 0."""
+    respawn station (the new phone default), F383's -75 for a control (hill) station, -74 for any other kind.
+    0.4.12 and later, and a StickS3, get 0."""
     s = _sess()
     for nid, ver, kind, team, sid, want in (("util-old", "0.4.11+f366156e", "respawn", "blue", 3, -70),
-                                            ("util-unk", "utility", "control", "any", 4, -74),
+                                            ("util-unk", "utility", "control", "any", 4, -75),
                                             ("util-new", "0.4.12+abc", "respawn", "blue", 5, 0)):
         s.net.simulate_utility_hello(nid, app_ver=ver)
         s.set_station(nid, {"kind": kind, "team": team, "id": sid})
@@ -1212,6 +1213,22 @@ def test_an_old_phone_powerup_station_gets_the_1ft_claim_default_not_the_3m_one(
     assert PHONE_POWERUP_THRESHOLD_DBM == -55
     got = Session._wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, {"threshold": 0, "kind": "powerup", "team": 255, "id": 9})
     assert got == -55, got
+
+
+def test_a_control_stations_threshold_defaults_to_75_on_an_old_phone_and_0_elsewhere():
+    """F383, Tony 2026-09-27: the hill's own default is -75 dBm (hysteresis 6, on every path) until the outdoor
+    walk measures a real one. A current phone and a StickS3 both read 0 (their own platform default); only a phone
+    too old to trust with 0 (F345) gets the explicit value."""
+    from brx_mcp.mc.state import Session
+    from brx_mcp.mc.types import PHONE_CONTROL_THRESHOLD_DBM
+    assert PHONE_CONTROL_THRESHOLD_DBM == -75
+    a = {"threshold": 0, "kind": "control", "team": 255, "id": 9}
+    got_old = Session._wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, a)
+    assert got_old == -75, got_old
+    got_new = Session._wire_threshold("util-new", {"app_ver": "0.4.12+abc"}, a)
+    assert got_new == 0, got_new
+    got_stick = Session._wire_threshold("stick-1", {"platform": "esp32", "app_ver": "1.0"}, a)
+    assert got_stick == 0, got_stick
 
 
 # --------------------------------------------------------------------------- F364: MC assigns the station id

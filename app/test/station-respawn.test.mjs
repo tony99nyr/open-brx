@@ -5,7 +5,7 @@
 // `present` on the station side, so the 0 -> 1 edge was never counted.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeUuid, Presence, PLAYER_STATE, TEAM_ANY, countRevives, REVIVE_MARGIN_DB, RESPAWN_RSSI_DBM, STATION_THRESHOLD_DBM, phoneStationThreshold, stationThreshold, applyThreshold, migrateThreshold } from '../src/beacon.js';
+import { encodeUuid, Presence, PLAYER_STATE, TEAM_ANY, countRevives, REVIVE_MARGIN_DB, RESPAWN_RSSI_DBM, STATION_THRESHOLD_DBM, CONTROL_RSSI_DBM, phoneStationThreshold, stationThreshold, applyThreshold, migrateThreshold } from '../src/beacon.js';
 
 const THR = -70;   // the phone respawn station's platform default (F345)
 const TEAM = 1;
@@ -73,17 +73,27 @@ test('the respawn threshold default is per platform: phone -70, StickS3 -57 (Ton
   assert.deepEqual({ ...RESPAWN_RSSI_DBM }, { phone: -70, sticks3: -57 });
   assert.ok(Object.isFrozen(RESPAWN_RSSI_DBM));
   assert.equal(phoneStationThreshold('respawn'), -70);
-  for (const kind of ['control', 'extraction', 'bomb']) assert.equal(phoneStationThreshold(kind), STATION_THRESHOLD_DBM, kind);
+  for (const kind of ['extraction', 'bomb']) assert.equal(phoneStationThreshold(kind), STATION_THRESHOLD_DBM, kind);
   // S58 (doc-rot 2026-09-24): a powerup station advertises its OWN ~1 ft default (the claim range), never the 3 m -74
   assert.equal(phoneStationThreshold('powerup'), -55);
   assert.equal(stationThreshold({ threshold: 0, kind: 'powerup' }), -55);
   assert.equal(STATION_THRESHOLD_DBM, -74, 'the other kinds keep the 2026-09-04 bench value');
 });
 
+// F383 (Tony, 2026-09-27): the hill (control station) default is its own -75 dBm on every path, hysteresis 6,
+// until the outdoor walk measures a real one. It is NOT the generic -74 the other kinds share.
+test('a control station defaults to -75 dBm, and Presence hysteresis defaults to 6 dB (F383, Tony 2026-09-27)', () => {
+  assert.deepEqual({ ...CONTROL_RSSI_DBM }, { phone: -75, sticks3: -75 });
+  assert.ok(Object.isFrozen(CONTROL_RSSI_DBM));
+  assert.equal(phoneStationThreshold('control'), -75);
+  assert.equal(stationThreshold({ threshold: 0, kind: 'control' }), -75);
+  assert.equal(new Presence().hysteresisDb, 6);
+});
+
 test('review M3: MC\'s threshold 0 means the platform default, never a -30 dBm bubble', () => {
   assert.equal(applyThreshold(0, -70), 0, '0 is "your own default" (0.4.11 and older clamped it to -30)');
   assert.equal(stationThreshold({ threshold: applyThreshold(0, -70), kind: 'respawn' }), -70);
-  assert.equal(stationThreshold({ threshold: applyThreshold(0, -70), kind: 'control' }), -74);
+  assert.equal(stationThreshold({ threshold: applyThreshold(0, -70), kind: 'control' }), -75);
   assert.equal(applyThreshold(-58, 0), -58, 'an override is kept');
   assert.equal(applyThreshold(-20, 0), -30); assert.equal(applyThreshold(-120, 0), -100);
   assert.equal(applyThreshold(-66.4, 0), -66);

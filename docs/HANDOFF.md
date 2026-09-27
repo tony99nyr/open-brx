@@ -43,11 +43,11 @@ utility-mode icon sits behind the Android status bar (**F420**, blocked S1); `re
 pickup countdown should become a left-side "X AVAILABLE" alert (**F425**, storyboard first); a phantom team-2 hill
 total (**F426**). The hill default is decided: -75 dBm, hysteresis 6 (Tony, until the outdoor walk); a "-75 counts phones at 20 m" reading is VOID (the
 phones never left the room). Full write-up: `experiment-log/2026-09.md`'s 2026-09-26 entry.
-- **Next bench task:** part 2 of [`bench-plan.md`](bench-plan.md): 0.4.14 is cut and F411 is on main (c2c51679), so it
-  runs once F411's CI is green. Reflash the Stick from `6f042126` or later and `RANGE CLEAR` it at setup. It now carries every part-1 re-check: F381 after F417, the phone hill (KOTH game 1),
-  F374's carry-out, F399's nine claims, 11.6, F386's a/b/c, the Stick-serial two-player race on F417 (brx5's
-  detailed step), the queue-slot 2-then-3-cues variant (F419), F416's A/B/A (phones 10+ m from their guns), and
-  F348.
+- **Next bench task:** part 2 of [`bench-plan.md`](bench-plan.md): 0.4.14 is cut and F411 IS on main (`c2c51679`),
+  CI green. Part 2 now opens with a 3 h cut (172 min, 8 min slack): Step 0, IPHONE, a trimmed GAMES CHECK, the P0
+  block, F348, KOTH plus F420/F421/F424, F399+F380 on an Overshield Stick, F386 a/b/d, F394, then 4.0's day/night
+  launch; everything else (PLAY AGAIN, LAST MATCH, 11.6, the powerup setup, F386 c, Groups 4-7) is the tomorrow
+  list. Reflash the Stick from `6f042126` or later and `RANGE CLEAR` it at setup.
 - **Next desk task:** none open: F420-F425 are built in 0.4.14 (F423 closed); their bench checks are in part 2. R4/T5 read-only research is
   authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
@@ -63,17 +63,18 @@ Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR rece
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
 2026-09-25). On main: A68 (the hill counts from go-live to the whistle; `duration_ms` ends a Stick carried out of Wi-Fi
 before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392, F397, F398. Flashed from main, unlocked.
-- **Next bench task:** bench part 2: F386's a/b/c on `26084fcf` (END freezes the powerup screen, no post-END grant,
-  STATS + 18 s wait + hold opens RANGE at 5 s; serial log on). Then sitting C: the carried-out timed hill, F388,
+- **Next bench task:** bench part 2: reflash from `6f042126`, then F386's a-d (END freezes the powerup screen, no
+  post-END grant, STATS + 18 s wait + hold opens RANGE at 5 s, no phone sees the pickup after END; serial log on).
+  Step 0.6 clears a stale on-Stick range: `python3 hardware/m5sticks3/tools/stick.py cmd 3 "RANGE CLEAR" STATUS`
+  (WSL python3; refused while locked). Then sitting C: the carried-out timed hill, F388,
   the F383 3 m and 7 m readings, F399's claim latency, F391's restart, F392's repro with the serial log, F397's MC
   restart.
-- **Decision for Tony:** the hill default. A -60 drop at median -62 is the 6 dB EMA hysteresis (`presence.h`), not
-  `near_floor` (-70 is the revive margin). brx2 proposes -75 until the outdoor walk, hysteresis 6.
+- **Decided:** the hill default is -75 dBm, hysteresis 6, until the outdoor walk (F383) (Tony, 2026-09-27).
 - **Next desk task:** F342 (a powerup or control-point game still floods the scan: a slower advert or a native filter).
 - **Resume:** a fresh worktree off `origin/main` (the old `/home/tony/brx4-l3` and `/home/tony/brx4-f333` are
   disposable). Native Windows MC for mDNS:
   `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785 --ws-port
-  8786 --ephemeral --powerups`.
+  8786 --ephemeral`.
 ## Lane: brx5, powerups, the HUD and gun audio
 On main: S58 powerups ON by default (F372 closed, `--no-powerups` is the opt-out); S59 Visor; F348/F349; death first; the three-lane alerts; F347, F350, F378.
 2026-09-25: sitting B's F379, F380, F381 (a same-weapon stack capped at 2x the drop) and F393; F400, the pickup switch
