@@ -11,29 +11,51 @@ from typing import Any, Container, Mapping, cast
 
 from . import presentation as _pres
 from .pieces import BUILTIN_IDS, PieceError, PieceStore
-from .types import GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS
+from .types import GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, Team, TeamColour
 
-
-def default_match(time_limit_s: int | None, frag_limit: int | None) -> MatchSettings:
-    return {"time_limit_s": time_limit_s, "frag_limit": frag_limit, "night": False, "silenced": False}
+# F413 (2026-09-27): the closed vocabulary `match.teams` picks from -- "ffa" is a pseudo-team (the
+# no-teams sentinel `state.TEAM_DEFS` also carries), never a real choice on the strip, so it is
+# deliberately left out here even though it lives in the same table on the state.py side.
+TEAM_COLOURS: frozenset[str] = frozenset({"red", "blue", "yellow", "purple"})
 
 
 def default_pick(default_config: Any) -> GamePick:
     """A fresh session: the first builtin of every kind, the strip at TDM's own defaults (§2)."""
-    cfg = default_config("tdm")
-    return {"pieces": dict(BUILTIN_IDS),
-            "match": default_match(cfg["time_limit_s"], (cfg.get("scoring") or {}).get("frag_limit"))}
+    return {"pieces": dict(BUILTIN_IDS), "match": match_from_config(default_config("tdm"))}
+
+
+def _teams_to_colours(config: Mapping[str, Any]) -> list[TeamColour]:
+    """F413: `config["teams"]` is a list of full `Team` dicts (`state.TEAM_DEFS` copies); a `team_id`
+    already IS the native colour name, so reading it back needs no `TEAM_DEFS` lookup (and so no import
+    of `state.py`) -- only `compose()`, which WRITES a colour name back into a full `Team` dict, needs
+    the table at all. The pseudo-team "ffa" is dropped, same reason `TEAM_COLOURS` leaves it out."""
+    out: list[TeamColour] = []
+    for t in config.get("teams") or []:
+        if isinstance(t, dict) and t.get("team_id") in TEAM_COLOURS:
+            out.append(cast(TeamColour, t["team_id"]))
+    return out
 
 
 def match_from_config(config: Mapping[str, Any]) -> MatchSettings:
     """The MATCH SETTINGS strip a `GameConfig` implies (H2, polish round 1) -- used both to derive a
     pick from a pre-F411 config (`derive_pick_from_config`) and to keep a live `game_pick.match` truthful
     to whatever `set_config` just committed (`Session._sync_game_pick_from_config`), so the two never
-    drift into two different call sites disagreeing about the same four fields."""
-    return {"time_limit_s": config.get("time_limit_s"),
-            "frag_limit": (config.get("scoring") or {}).get("frag_limit"),
-            "night": bool(config.get("night")),
-            "silenced": (config.get("presentation") or {}).get("preset") == "silenced"}
+    drift into two different call sites disagreeing about the same four (now six) fields.
+
+    F413/F415: `teams` is left OUT of the returned dict for a mode with no real teams (FFA/LMS) -- the
+    field is `NotRequired` for exactly this, and an empty list on a two-team game would be a lie, not a
+    fact. `hold_target_s` is left out the same way when the live config carries none."""
+    out: MatchSettings = {"time_limit_s": config.get("time_limit_s"),
+                         "frag_limit": (config.get("scoring") or {}).get("frag_limit"),
+                         "night": bool(config.get("night")),
+                         "silenced": (config.get("presentation") or {}).get("preset") == "silenced"}
+    teams = _teams_to_colours(config)
+    if teams:
+        out["teams"] = teams
+    hold = (config.get("scoring") or {}).get("hold_target_s")
+    if hold is not None:
+        out["hold_target_s"] = hold
+    return out
 
 
 def looks_like_pick(gp: object) -> bool:
@@ -46,13 +68,22 @@ def looks_like_pick(gp: object) -> bool:
     match = gp.get("match")
     if not (isinstance(match, dict) and isinstance(match.get("night"), bool) and isinstance(match.get("silenced"), bool)):
         return False
-    # A bool is an int in Python, but never a legal time_limit_s/frag_limit -- `favourites._check_match`
-    # already excludes it the same way (Low, round 2).
-    for k in ("time_limit_s", "frag_limit"):
+    # A bool is an int in Python, but never a legal time_limit_s/frag_limit/hold_target_s --
+    # `favourites._check_match` already excludes it the same way (Low, round 2).
+    for k in ("time_limit_s", "frag_limit", "hold_target_s"):
         v = match.get(k)
         if v is not None and not (isinstance(v, int) and not isinstance(v, bool)):
             return False
+    # F413: absent is fine (FFA/LMS carry no teams at all), but present must be 2-4 unique native colours.
+    if "teams" in match and not _valid_teams_list(match["teams"]):
+        return False
     return True
+
+
+def _valid_teams_list(v: object) -> bool:
+    return (isinstance(v, list) and 2 <= len(v) <= 4
+           and all(isinstance(c, str) and c in TEAM_COLOURS for c in v)
+           and len(set(v)) == len(v))
 
 
 def derive_pick_from_config(config: Mapping[str, Any], mvp_modes: frozenset[str]) -> GamePick:
@@ -196,16 +227,40 @@ def merge_match(prev: MatchSettings, patch: Mapping[str, Any]) -> MatchSettings:
             if not isinstance(patch[field], bool):
                 raise PieceError(400, f"{field.upper()} MUST BE ON OR OFF: CHECK THE VALUE")
             out[field] = patch[field]
+    # F413: 2-4 unique native colours, or null to drop back to the picked mode's own default (`compose()`
+    # then falls back to `mode_row["teams"]`) -- the mode-specific rules (koth exactly 2, never yellow)
+    # are `set_config`'s own `_merge_config` checks (F413/F82/F97), run on the composed patch, same split
+    # as every other field here.
+    if "teams" in patch:
+        v = patch["teams"]
+        if v is None:
+            out.pop("teams", None)
+        elif not _valid_teams_list(v):
+            raise PieceError(400, "TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE")
+        else:
+            out["teams"] = list(v)
+    # F415: shape-checked only, same split as `frag_limit` above -- the koth-only gate and the bound
+    # (<=7200) are `_merge_config`'s own checks on the composed patch.
+    if "hold_target_s" in patch:
+        hts = _opt_int(patch["hold_target_s"], "HOLD TARGET")
+        if hts is None:
+            out.pop("hold_target_s", None)
+        else:
+            out["hold_target_s"] = hts
     return cast(MatchSettings, out)
 
 
 # ---------- composing the GameConfig patch (§3) ----------
-def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_row: Mapping[str, Any]) -> dict:
+def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_row: Mapping[str, Any],
+           team_defs: Mapping[str, Team]) -> dict:
     """Pure: the `GameConfig` patch for `Session.set_config` (fed through the SAME phase gating, RECAP
     roll-forward and re-announce `PUT /api/config` already has). `mode_row` is the picked mode's own
     `state.MODES` row — used for the "respawn.type == 'none' keeps its own respawn" rule and the mode's
     day-mode presentation preset. Does not decide default_config(mode) vs the current config for an
-    unclaimed field (stations, powerups, vip, stun): `set_config` already does that (item 1, §3)."""
+    unclaimed field (stations, powerups, vip, stun): `set_config` already does that (item 1, §3).
+
+    `team_defs` is `state.TEAM_DEFS` (F413) -- this module cannot import `state.py` (see the module
+    docstring), so the caller (`api.py`) hands it over the same way it already hands over `mode_row`."""
     life = dict(resolved["life"]["value"])
     spawn = dict(resolved["spawn"]["value"])
     primary = dict(resolved["primary"]["value"])
@@ -232,8 +287,23 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
     patch["mode_params"] = dict(gameplay.get("mode_params") or {})
     patch["time_limit_s"] = match.get("time_limit_s")
     patch["scoring"] = {"frag_limit": match.get("frag_limit")}
+    # F415: only a mode that OFFERS a hold target ("hold" in its own `match_items`, i.e. koth) ever
+    # gets one written -- a stale `match.hold_target_s` left over from a mode switch away from koth
+    # must not reach `_merge_config`'s koth-only check as a 400 for an unrelated pick.
+    hold = match.get("hold_target_s")
+    if hold is not None and "hold" in (mode_row.get("match_items") or []):
+        patch["scoring"]["hold_target_s"] = hold
     patch["night"] = bool(match.get("night"))
     patch["presentation"] = (_pres.profile_from_preset("silenced") if match.get("silenced")
                              else _pres.profile_from_preset(mode_row.get("preset") or "standard"))
     patch["environment"] = "outdoor"   # F410: MVP is outdoors only, whatever the session held before
+    # F413: a mode with no real teams (FFA/LMS, `mode_row["teams"] == ["ffa"]`) leaves `teams` UNCLAIMED,
+    # the same "set_config decides" treatment `stations`/`powerups`/`vip`/`stun` already get above --
+    # writing an `["ffa"]`-derived team list here would be actively wrong (`state.TEAM_DEFS["ffa"]` is a
+    # display-only sentinel, not a real $TID row `_merge_config` should ever see as `config.teams`).
+    # `match.get("teams")` is the picked colours if the strip named any; absent (fresh pick, mode just
+    # changed) falls back to the mode's own default order (`state.MODES`' F413 comment on each row).
+    if mode_row.get("teams") != ["ffa"]:
+        colours = match.get("teams") or mode_row.get("teams") or []
+        patch["teams"] = [dict(team_defs[c]) for c in colours if c in team_defs]
     return patch

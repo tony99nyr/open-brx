@@ -383,7 +383,9 @@ def build(args):
             {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "deagle"}], "perk": "quick_switch"},   # A14: all three slots
         ]
         for i, name in enumerate(DEMO_NAMES):
-            session.add_player(name, team_id="blue" if i % 2 == 0 else "yellow", gun_id=f"GUN-{chr(65 + i)}",
+            # F413: TDM's own default teams (red + blue) -- was blue/yellow before every team mode
+            # defaulted to red+blue.
+            session.add_player(name, team_id="red" if i % 2 == 0 else "blue", gun_id=f"GUN-{chr(65 + i)}",
                                loadout=demo_loadouts[i % len(demo_loadouts)])
         # `fake_net` (set above from `net is None` before the FakeNet() fallback) means exactly this,
         # but re-checking it as an isinstance keeps the type narrowed for `DemoDriver` too.
