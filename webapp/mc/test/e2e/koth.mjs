@@ -222,17 +222,28 @@ const shot = async (pg, name) => {
   await pg.screenshot({ path: f, fullPage: false });
   return f;
 };
-/** F411: the mode picker on PLAY (`Games.tsx`'s `picker-mode` Seg) is one tap, immediate — the old
- *  card-shelf UI's two-tap "this reshapes N players, confirm?" gate (T2-A) is retired along with it:
- *  `POST /api/play/pick` just applies. No confirm to wait for or assert; the F82 re-team it used to
- *  guard is still proven directly against the server (`teams-never-yellow`, `reteam-visible`). */
+/** Round 4 (F-6's `splitLine` gate, retired with the old card-shelf UI's own two-tap confirm (T2-A),
+ *  restored on PLAY's own mode picker 2026-09-26): a mode switch that would reshape ≥2 rostered
+ *  players between teams asks first. The first tap shows the predicted split
+ *  (`data-testid="confirm-switch"`/`confirm-split`, `SwitchConfirm`) and sends nothing; the SAME mode
+ *  tapped again commits it. Re-picking the mode already applied, or one whose teams do not actually
+ *  move anyone, is still one tap (no confirm). This taps twice whenever a confirm appears, so most
+ *  callers do not need to know or care -- `koth-selectable` below asserts the confirm line itself; the
+ *  F82 re-team it (and this helper) guard is also proven directly against the server
+ *  (`teams-never-yellow`, `reteam-visible`). */
 const modeBtn = (pg, label) => pg.locator('[data-testid="picker-mode"]').getByRole('button', { name: label });
 const kothBtn = pg => modeBtn(pg, 'KING OF THE HILL');
+const modeConfirmLine = pg => pg.getByTestId('confirm-switch');
 async function pickMode(pg, label, { ms = 8000 } = {}) {
   const btn = modeBtn(pg, label);
   if ((await btn.getAttribute('aria-pressed')) === 'true') return;   // already the picked mode: a re-tap is a no-op
   await btn.click();
-  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', ms, `${label} picked`);
+  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true' || (await modeConfirmLine(pg).count()) > 0,
+    ms, `${label} picked, or its reshape confirm`);
+  if (await modeConfirmLine(pg).count() > 0) {
+    await btn.click();   // the reshape confirm was showing -- this second tap on the SAME mode commits it
+    await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', ms, `${label} picked (after confirming the reshape)`);
+  }
 }
 const pickKoth = (pg, opts = {}) => pickMode(pg, 'KING OF THE HILL', opts);
 const pickTdm = (pg, opts = {}) => pickMode(pg, 'TEAM DEATHMATCH', opts);
@@ -406,12 +417,18 @@ step('koth-selectable', async ({ browser, base }) => {
   expect((await btn.getAttribute('aria-pressed')) === 'false', 'KotH is not already picked');
   // 🔴 the SEEDED-ROSTER step: `resetTdm` deals 8 demo players across blue/yellow, so this pick really
   // does move the roster off yellow — proven on the server below, and directly in `teams-never-yellow`
-  // / `reteam-visible`. F411 dropped the old two-tap "this reshapes N players, confirm?" dialog: PLAY's
-  // `POST /api/play/pick` just applies on one tap.
-  await pickKoth(pg, { ms: 6000 });
+  // / `reteam-visible`. Round 4 (F-6's splitLine, restored): that reshape now asks first -- the FIRST
+  // tap only shows the predicted split and sends nothing; the SAME tap again commits it.
+  await btn.click();
+  await until(() => modeConfirmLine(pg).count().then(n => n > 0), 6000, 'the reshape confirm');
+  const split = (await pg.getByTestId('confirm-split').innerText()).trim();
+  expect(split === '▲ 8 PLAYERS → BLUE 4 / PURPLE 4', `the predicted split names the reshape (saw ${JSON.stringify(split)})`);
+  expect((await (await fetch(`${base}/api/state`)).json()).config.mode === 'tdm', 'the first tap must not have reached the server');
+  await btn.click();
+  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', 6000, 'KotH picked on the second tap');
   expect((await btn.getAttribute('aria-pressed')) === 'true', 'KotH reports itself picked');
   await until(async () => (await (await fetch(`${base}/api/state`)).json()).config.mode === 'koth', 6000, 'the server to hold the koth pick');
-  ok(`KotH is selectable and becomes the picked mode  ${await shot(pg, '02-koth-playing')}`);
+  ok(`KotH asks first (the reshape confirm), then becomes the picked mode on the second tap  ${await shot(pg, '02-koth-playing')}`);
   await closePage(pg);
 });
 
@@ -604,7 +621,12 @@ step('station-source-refused', async ({ browser, base }) => {
   await pg.route('**/api/play/pick', r => r.request().method() === 'POST'
     ? r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: VOCAB }) })
     : r.continue());
-  await kothBtn(pg).click();   // one tap: PLAY applies immediately, so this alone fires the refused POST
+  // round 4: TDM -> KOTH reshapes this seeded roster, so the FIRST tap only shows the confirm and
+  // sends nothing (asserted directly in `koth-selectable` above) -- the SECOND tap is the one that
+  // actually fires the POST this step is routing.
+  await kothBtn(pg).click();
+  await until(() => modeConfirmLine(pg).count().then(n => n > 0), 6000, 'the reshape confirm');
+  await kothBtn(pg).click();
   const strip = errorStrip(pg);
   await until(() => strip.count().then(n => n > 0), 8000, 'the refusal to reach the error strip');
   expect(await strip.isVisible(), 'the refusal is VISIBLE, not swallowed');
@@ -1000,7 +1022,11 @@ step('failure-path', async ({ browser, base }) => {
     posts.push(JSON.parse(r.request().postData() || '{}'));
     return r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"compiler exploded"}' });
   });
-  await kothBtn(pg).click();   // one tap: PLAY applies immediately, so this alone fires the refused POST
+  // round 4: same reshape confirm as `station-source-refused` -- the first tap sends nothing, the
+  // second is the one POST this step routes and counts.
+  await kothBtn(pg).click();
+  await until(() => modeConfirmLine(pg).count().then(n => n > 0), 6000, 'the reshape confirm');
+  await kothBtn(pg).click();
   await until(() => errorStrip(pg).count().then(n => n > 0), 8000, 'the 500 to surface in the strip');
   expect(/COMPILER EXPLODED|compiler exploded/.test(await errorStrip(pg).textContent()), 'the server message is shown verbatim, not "something went wrong"');
   await new Promise(r => setTimeout(r, 700));
