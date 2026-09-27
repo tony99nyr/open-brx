@@ -6158,6 +6158,33 @@ for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name}
   must(bad.length === 0, 'night text under 14 px below 4.5:1 or blinking: ' + bad.join(' ; '));
 });
 
+// F396 (bench 2026-09-25): R2-12 above carves `.repin` out on purpose, but nothing else exercised the mechanism it
+// carves out. hud.js's `_railFit()` (~line 2140) gives the powerup hint a brief `.repin` opacity dip whenever `--rail`
+// (the warning rail's real height) changes underneath it, so the hint re-settles quietly instead of sliding through
+// the QA-04 hit-weapon line. Drop then relink the gun, as the F396 bench diagnosis did, to force `--rail` to change
+// twice while the hint is already showing, and confirm the dip both appears and clears (a condition wait, not a fixed
+// sleep, since the clear timer in hud.js is ~140 ms).
+const repinState = pg => pg.evaluate(() => { const h = document.getElementById('puhint'); return !!(h && h.classList.contains('repin')); });
+await step('F396 layering: the powerup hint gets a brief .repin dip when the rail height changes under it, then clears it', async () => {
+  const pg = await open(VIEWS[1], 'live-pu-rockets', '', 3000);
+  await lnWait(pg, r => r.env.hint.length, 2500);
+  must(!(await repinState(pg)), 'pre-condition: the hint must not already be mid-repin');
+
+  await pg.evaluate(() => window.brxDemo.dropGun());   // GUN LINK LOST joins the rail: --rail goes from unset to a real height
+  const gotRepinDrop = await pg.waitForFunction(() => { const h = document.getElementById('puhint'); return h && h.classList.contains('repin'); }, null, { timeout: 2000 }).then(() => true, () => false);
+  const clearedDrop = await pg.waitForFunction(() => { const h = document.getElementById('puhint'); return h && !h.classList.contains('repin'); }, null, { timeout: 2000 }).then(() => true, () => false);
+
+  await pg.evaluate(() => window.brxDemo.relinkGun());   // the rail empties again: --rail changes a second time
+  const gotRepinRelink = await pg.waitForFunction(() => { const h = document.getElementById('puhint'); return h && h.classList.contains('repin'); }, null, { timeout: 2000 }).then(() => true, () => false);
+  const clearedRelink = await pg.waitForFunction(() => { const h = document.getElementById('puhint'); return h && !h.classList.contains('repin'); }, null, { timeout: 2000 }).then(() => true, () => false);
+  await pg.screenshot({ path: `${OUT}/pixel-f396-repin.png` }); await pg.close();
+
+  must(gotRepinDrop, 'dropGun() must give the powerup hint the .repin dip when the rail height changes under it');
+  must(clearedDrop, 'the .repin dip must clear again (hud.js clears it about 140 ms later)');
+  must(gotRepinRelink, 'relinkGun() must also give the hint a fresh .repin dip when the rail changes back');
+  must(clearedRelink, 'the second .repin dip must clear too');
+});
+
 
 // R2-07 (QA-21 again): the SE type floor is ON SCREEN. Every painted text leaf of the in-game screens is >= 11 px after the
 // SE's 0.79 frame scale (14 frame px). Out of scope: the kill/callout card (the alert redesign owns it) and screen-reader text.

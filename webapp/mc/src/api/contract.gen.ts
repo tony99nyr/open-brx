@@ -935,6 +935,14 @@ export interface GamePiece {
   created_t: number;
   updated_t: number;
   value: Record<string, unknown>;
+  /** F411 review round 3, HIGH 1: absent normally. Present (the plain ALL-CAPS reason, e.g. "NAMES
+   *  FORCE RIFLE, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK") when a rule change
+   *  elsewhere (a weapon hidden or turned pickup-only, a tightened check) makes `value` one the server
+   *  would now refuse. The piece is KEPT, never silently dropped: BUILD shows it read-only with this
+   *  reason, it is never pickable (PLAY/LOAD treat its id like a vanished one -- named = 400, inherited
+   *  = falls back), and it survives every future save untouched until a PUT supplies a value the
+   *  current rules accept, which clears this field. */
+  invalid?: string;
 }
 
 /** Per-game values on the PLAY strip. Never saved into a piece; kept by PLAY AGAIN. */

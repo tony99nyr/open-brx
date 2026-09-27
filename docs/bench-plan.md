@@ -64,10 +64,12 @@ F372 lands (already landing): pass no `--powerups` flag to MC anywhere below.
 - F348 (Group 1 item 1).
 - The queue-slot 2-then-3-cues-300ms-apart variant on the phone's own queue path (F419; Group 7's `$PLAY` spacing
   check).
-- **The Stick group, from brx4 (fixes on main at `26084fcf`, compiles clean): reflash the Stick from `main` at
-  setup.** Then: (a) END in a powerup match: the Stick shows the item plus MATCH OVER, and the countdown stops;
-  (b) stand at the Stick after END: no grant; (c) the F387 short-hold control, done this way: open STATS, wait
-  about 18 s, then hold A; RANGE opens at 5 s (a held button now counts as activity for the 20 s home timeout).
+- **The Stick group, from brx4 (fixes on main at `b79de96d` or later, compiles clean at 51%): reflash the Stick
+  from `main` at setup.** Then: (a) END in a powerup match: the Stick shows the item plus MATCH OVER, and the
+  countdown stops; (b) stand at the Stick after END: no grant; (c) the F387 short-hold control, done this way: open
+  STATS, wait about 18 s, then hold A; RANGE opens at 5 s (a held button now counts as activity for the 20 s home
+  timeout); (d) after END, the phone does not see the pickup as available. Known and documented: a Stick reboot
+  after END shows the pickup live again until MC re-sends END.
   Serial log on for (c).
 - **The Stick's double-grant race, from brx5 (F417 part 2, Sitting C): two phones walk into one Stick Rockets
   station together, with the Stick serial logging and both phones' logs on** (ROBP1 needs WebView debugging on,
@@ -107,7 +109,13 @@ itself receives from either phone.
 4. Restart Mission Control from the latest `main`, with no match ARMED or LIVE. Powerups are on by default
    (F372): pass no `--powerups` flag. Countdown default 30 s.
 5. The Stick: `stick.py cmd 10 "MC ws://<laptop LAN address>:8766/ws"`.
-- **Log:** each phone's `APP_VER` or iOS build marker, the Stick's STATUS line, MC's boot banner.
+6. **Reset the hill range to Tony's default, -75 dBm with hysteresis 6.** The 2026-09-26 bench left an indoor
+   RANGE of -66 in MC's station assignment. A station-side RANGE edit also survives a reboot and a reflash (the
+   Stick's own edit from 2026-09-25 was still `threshold=-77 threshold_src=station` after the 2026-09-26 reflash,
+   which erases no settings). So: PUT the Stick's assignment with `threshold: 0` (the platform default) from MC,
+   then read the Stick serial. Pass: `STATUS` shows `threshold=-75`, and a `PLAYERS STREAM 5` line shows `thr=-75`,
+   before the KOTH block. If it still reads a station value, edit RANGE on the Stick back to -75.
+- **Log:** each phone's `APP_VER` or iOS build marker, the Stick's STATUS line, MC's boot banner, the Stick's `thr`.
 
 Running total: 20 min.
 

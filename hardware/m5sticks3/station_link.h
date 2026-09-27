@@ -1056,6 +1056,15 @@ class StationLink {
   const StationUpdateMsg& last_update() const { return last_update_; }
   PowerupSchedule& powerup() { return powerup_; }
   const PowerupSchedule& powerup() const { return powerup_; }
+  // Review round 2 (LOW): the raw schedule (`powerup().view()`) knows nothing of MATCH OVER -- it
+  // still reports whatever it last held (possibly "available") after the whistle, since END only
+  // sets `powerup_ended_` here, not the schedule itself. The advert must never say a phone can claim
+  // an item it can no longer get, so any caller building the BLE advert bytes uses this instead of
+  // the raw schedule.
+  PowerupAdvertView powerup_advert_view(uint32_t now_ms) const {
+    if (powerup_ended()) return PowerupAdvertView();
+    return powerup_.view(now_ms);
+  }
   ClaimGate& claims() { return claims_; }
   void discard_claim_batch() { claims_.resolve_batch(); }
 
@@ -1275,6 +1284,48 @@ class StationLink {
     return true;
   }
 
+  // F365 RANGE CLEAR (the serial command; station_ui.h's default-deny keeps it out while the A58 lock
+  // is on, the same as RESET or MODE): drops whichever on-station edit(s) are standing, so
+  // threshold_dbm()/tx_power_level() fall straight back to MC's last value for this station, or the
+  // kind's own platform default when MC never sent one -- `mc_` already holds that (SyncedSetting::
+  // clear_edit() never touches it). Logged the same way an ordinary edit is: it IS an on-station change
+  // of the applied value, from the edit to whatever now applies, so a bench operator (and MC, via
+  // `range_edits`) can see a clear happened. The log itself is a history and is never wiped by a clear,
+  // only added to (see also SavedStationConfig et al.: only apply_release()'s reset() forgets the
+  // VALUE, and it too keeps the log). Returns false when there was nothing on-station to clear (no
+  // change made, nothing logged).
+  bool clear_range_edit(uint32_t now_ms) {
+    bool cleared = false;
+    if (threshold_.from_station()) {
+      const int from = threshold_.applied();
+      threshold_.clear_edit();
+      edits_.add(false, from, threshold_.applied(), lock_.locked(now_ms), now_ms);
+      cleared = true;
+    }
+    if (tx_power_.from_station()) {
+      const int from = tx_power_.applied();
+      tx_power_.clear_edit();
+      edits_.add(true, from, tx_power_.applied(), lock_.locked(now_ms), now_ms);
+      cleared = true;
+    }
+    return cleared;
+  }
+
+  // Local diagnostic only (STATUS's LINK line, the RANGE CLEAR confirmation) -- one step finer than
+  // the wire's SyncedSetting::src() ("station"/"mc", MC's own vocabulary per contracts.md, left
+  // untouched so MC's status parsing never sees a value it does not expect). "default" tells a bench
+  // operator that MC never actually sent this value at all (threshold 0/absent, or no tx_power);
+  // `assignment_` already carries that per field (threshold_defaulted; tx_power < 0), so nothing new
+  // needs to be stored to answer it.
+  const char* threshold_src_label() const {
+    if (threshold_.from_station()) return "station";
+    return (assignment_.present && assignment_.threshold_defaulted) ? "default" : "mc";
+  }
+  const char* tx_power_src_label() const {
+    if (tx_power_.from_station()) return "station";
+    return (assignment_.present && assignment_.tx_power < 0) ? "default" : "mc";
+  }
+
   // NVS (written by the glue on each edit only): the current on-station values, tagged with the station
   // id they were made on, and the edit log with its seq. `{"id":3,"thr":-60,"tx":1,"log":{...}}`.
   std::string range_storage_body() const {
@@ -1394,7 +1445,10 @@ class StationLink {
     // is a new match clock, whatever kind the station is, so it lifts the freeze; either edge beats the
     // kind/id/game reset above, since a same-game re-push (END then a later START) must still clear it.
     if (a.kind == "powerup" && a.ends_in_ms == 0) powerup_ended_ = true;
-    if (a.starts_known) powerup_ended_ = false;
+    // A config can carry a fresh start AND an immediate end in the same message (e.g. a re-sent
+    // recap): only a start that actually clears the deadline (`ends_in_ms != 0`) lifts the freeze,
+    // or the two lines above would set it and clear it in the same call and never freeze at all.
+    if (a.starts_known && a.ends_in_ms != 0) powerup_ended_ = false;
     // F365: a new station (kind or id) starts from MC's values (the log stays). A new GAME alone is the
     // same station in the same place for the next match: apply_mc below decides (the age rule, or the
     // ageless changed-value guard), so a pre-match edit survives arming.
@@ -1588,6 +1642,14 @@ class StationLink {
   bool award_claim(const ClaimWinner& w, uint32_t now_ms) {
     // F386 for a pickup: a claim after the whistle is refused -- no local award, no `taken` report
     // queued for MC. A player standing at the Stick after MATCH OVER gets nothing.
+    //
+    // Review round 2 (LOW): this used to read `powerup_ended()` alone, which only `tick_powerup`
+    // sets on a passed deadline -- so a caller that awards a claim without having ticked first (a
+    // claim resolved between loop() calls, or a test) could award past the whistle. Check the
+    // deadline here too, so the refusal never depends on loop order.
+    if (has_powerup_assignment() && deadline_known_ && (int32_t)(now_ms - hill_deadline_ms_) >= 0) {
+      powerup_ended_ = true;
+    }
     if (!w.won || w.player_num == 0 || !powerup_.available() || powerup_ended()) return false;
     uint32_t spawn_instant = powerup_.mark_taken(w.player_num, now_ms);
     pending_actions_.push(assignment_.id, w.player_num, spawn_instant, (int64_t)now_ms);

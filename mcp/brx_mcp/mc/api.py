@@ -230,7 +230,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Optional on `Session` (attached by `__main__`/here), so every route reads it through this
         rather than five copies of the same narrowing."""
         if s.pieces is None:
-            raise PieceError(409, "pieces are not available for this session")
+            raise PieceError(409, "PIECES NOT AVAILABLE: RESTART MISSION CONTROL")
         return s.pieces
 
     def _mode_row(mode: str) -> ModeRow:
@@ -413,7 +413,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         """Mirrors `_pieces` above: `s.favourites` is only ever None before the memory-only fallback
         just ran, but stays Optional on `Session` (attached by `__main__`/here)."""
         if s.favourites is None:
-            raise FavouriteError(409, "favourites are not available for this session")
+            raise FavouriteError(409, "FAVOURITES NOT AVAILABLE: RESTART MISSION CONTROL")
         return s.favourites
 
     async def favourites_list(_):

@@ -282,6 +282,24 @@ static void mcSaveRangeIfChanged(StationLink& link) {
   lastRangeSaved = body.c_str();
 }
 
+// F365 RANGE CLEAR (the serial command, m5sticks3.ino handleLine): drop the on-station edit and forget
+// the saved "range" key -- with the edit gone there is nothing left for that key to restore, and a
+// stray copy would only re-arm the very edit this just cleared on the next reboot. Removes ONLY
+// "range" (mcPrefs.remove, never a namespace erase); every other "brxmc" key (assoc, station_cfg,
+// hill_owner, the WELCOME/node identity, ...) is untouched. The edit LOG (edits_, RAM) is unaffected --
+// it is a history, and station_link.h's clear_range_edit() already logs the clear itself -- so a
+// following real edit or beat re-derives a fresh "range" body from that RAM state and writes it back
+// the normal way; only a reboot taken before that next write would start the log's seq over. Returns
+// whether there was anything on-station to clear (nothing written when there was not).
+static bool mcClearRangeEdit(StationLink& link) {
+  if (!link.clear_range_edit(millis())) return false;
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.remove("range");
+  mcPrefs.end();
+  lastRangeSaved = "";
+  return true;
+}
+
 static void mcEraseSavedHill() {
   mcPrefs.begin("brxmc", false);
   mcPrefs.remove("hill_owner");
@@ -665,7 +683,10 @@ static void mcPollPlayerScan(uint32_t now) {
   // `has_powerup_assignment()`'s own comment in station_link.h. A MUSTER station scans with Wi-Fi down.
   const StationAssignment& a = link.assignment();
   if (!a.present) return;
-  const bool powerupAvailable = link.has_powerup_assignment() && link.powerup().available();
+  // Review round 2 (LOW): also gated on !powerup_ended(), so a Stick stops scanning for claims once
+  // MATCH OVER has frozen the schedule, matching the advert (m5sticks3.ino's powerup_advert_view).
+  const bool powerupAvailable =
+      link.has_powerup_assignment() && !link.powerup_ended() && link.powerup().available();
   if (!station_needs_player_scan(a.kind, powerupAvailable)) return;
   if (now - lastScanMs < SCAN_PERIOD_MS) return;
   BLEScan* scan = BLEDevice::getScan();

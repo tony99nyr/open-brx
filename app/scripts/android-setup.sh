@@ -156,7 +156,15 @@ import sys, re
 p, bg = sys.argv[1], sys.argv[2]
 s = open(p, encoding="utf-8").read()
 
-launch_old = '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n        <item name="android:background">@drawable/splash</item>\n    </style>'
+# Two known "before" shapes: the pristine Capacitor stock template, and the intermediate F395
+# fix (4fb379d8) that this one supersedes -- a tree that already ran android-setup.sh once before
+# this fix landed has the intermediate shape, not the stock one, and must still upgrade cleanly.
+launch_variants = [
+    # pristine Capacitor stock template
+    '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n        <item name="android:background">@drawable/splash</item>\n    </style>',
+    # intermediate F395 fix (4fb379d8): centred-logo drawable, superseded by this plain-colour fix
+    '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n        <item name="android:background">@drawable/splash_background</item>\n    </style>',
+]
 launch_new = (
     '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n'
     f'        <item name="windowSplashScreenBackground">{bg}</item>\n'
@@ -164,10 +172,13 @@ launch_new = (
     '        <item name="windowSplashScreenAnimatedIcon">@android:color/transparent</item>\n'
     '    </style>'
 )
-if launch_old not in s:
-    print("   AppTheme.NoActionBarLaunch not found in the expected shape - set windowSplashScreenBackground/windowSplashScreenAnimatedIcon by hand", file=sys.stderr)
+for launch_old in launch_variants:
+    if launch_old in s:
+        s = s.replace(launch_old, launch_new, 1)
+        break
+else:
+    print("   AppTheme.NoActionBarLaunch not found in a known shape - set windowSplashScreenBackground/windowSplashScreenAnimatedIcon by hand", file=sys.stderr)
     sys.exit(1)
-s = s.replace(launch_old, launch_new, 1)
 
 m = re.search(r'(<style name="AppTheme\.NoActionBar"[^>]*>)', s)
 if not m:
