@@ -155,6 +155,22 @@ step('operator-note', async ({ browser, base }) => {
 
 // QA-03/QA-18: ASSIGN A HILL with NO station on the net at all must not be a dead end, and BACK TO
 // PLAY must be on screen once the panel scrolls into view.
+/** PLAY's mode picker asks first when a switch moves rostered players (the "moves players" confirm):
+ *  tap KING OF THE HILL, and tap it again if the confirm shows, until it is the picked mode. */
+async function pickKoth(pg) {
+  const btn = pg.getByRole('button', { name: 'KING OF THE HILL' });
+  const picked = async () => (await btn.getAttribute('aria-pressed')) === 'true';
+  for (let i = 0; i < 2 && !(await picked()); i++) {
+    await btn.click();
+    // wait for the result of THIS tap: the mode is picked, or the confirm asking for a second tap shows
+    await pg.waitForFunction(() => {
+      const b = [...document.querySelectorAll('button')].find(x => x.textContent?.includes('KING OF THE HILL'));
+      return b?.getAttribute('aria-pressed') === 'true' || /TAP AGAIN/.test(document.body.innerText);
+    }, null, { timeout: 8000 });
+  }
+  if (!(await picked())) throw new Error('KING OF THE HILL is not the picked mode after the confirm');
+}
+
 step('koth-no-stations', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280);
   await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 8000, 'PLAY');
@@ -162,7 +178,7 @@ step('koth-no-stations', async ({ browser, base }) => {
   // assignment (the phone keeps advertising, so it stays in `state.stations`) -- QA-03 is about NOTHING
   // on the net at all, so this reaches into the mock's own record the way `deleteStation` cannot.
   await pg.evaluate(() => { window.__MC_MOCK__.stations = {}; window.__MC_MOCK__.emit(); });
-  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await pickKoth(pg);
   await until(() => pg.locator('text=NO HILL STATION ASSIGNED').count().then(n => n > 0), 4000, 'the no-hill block');
   await pg.getByTestId('assign-a-hill').getByRole('button').click();
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 6000, 'ARMORY');
@@ -190,7 +206,7 @@ step('koth-no-stations', async ({ browser, base }) => {
 step('koth-with-stations', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280, 700);
   await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 8000, 'PLAY');
-  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await pickKoth(pg);
   await until(() => pg.locator('text=NO HILL STATION ASSIGNED').count().then(n => n > 0), 4000, 'the no-hill block');
   await pg.getByTestId('assign-a-hill').getByRole('button').click();
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 6000, 'ARMORY');
