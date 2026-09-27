@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
-import { PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
+import { PHONE_CONTROL_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtAge, teamColor } from '../tokens';
 import { ItemStationRow, Swatch } from '../ui/Powerups';
@@ -29,11 +29,13 @@ const MVP_STATION_KINDS: StationKind[] = STATION_KINDS.filter(k => k !== 'extrac
 const TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE', 255: 'ANY' };   // F423: tid 3 paints purple, not green
 /** H1: what threshold 0 resolves to, as the server resolves it (state.py `_wire_threshold`, F345) and the phone
  *  applies it (app/src/beacon.js `phoneStationThreshold`): a phone respawn station -70, a phone powerup station
- *  -55 (S58), any other phone kind -74, a StickS3 its own. `start` is where an edit begins: that number, or for a Stick its respawn default
+ *  -55 (S58), a phone control (hill) station -75 (F383, Tony 2026-09-27, until the outdoor walk), any other phone
+ *  kind -74, a StickS3 its own. `start` is where an edit begins: that number, or for a Stick its respawn default
  *  (-57, the F345 note in state.py) and the phone value otherwise. */
 export function bubbleDefault(kind: StationKind, stick: boolean): { label: string; start: number } {
   const phone = kind === 'respawn' ? PHONE_RESPAWN_THRESHOLD_DBM
-    : kind === 'powerup' ? PHONE_POWERUP_THRESHOLD_DBM : PHONE_STATION_THRESHOLD_DBM;
+    : kind === 'powerup' ? PHONE_POWERUP_THRESHOLD_DBM
+    : kind === 'control' ? PHONE_CONTROL_THRESHOLD_DBM : PHONE_STATION_THRESHOLD_DBM;
   return stick ? { label: "DEFAULT (the Stick's own)", start: kind === 'respawn' ? STICK_RESPAWN_DBM : phone }
     : { label: `DEFAULT (${phone}, phone)`, start: phone };
 }

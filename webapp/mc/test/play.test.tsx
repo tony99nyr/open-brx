@@ -114,7 +114,7 @@ describe('PLAY — round 4: a mode switch that reshapes the roster asks first (F
     expect(after.config.mode, 'the first tap must not reach the server').toBe('tdm');
     const split = m.find('[data-testid="confirm-split"]')[0];
     expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
-    expect(split.textContent).toBe('▲ 8 PLAYERS → BLUE 4 / RED 4');   // F413 scope decision: a mode change gives red+blue
+    expect(split.textContent).toBe('▲ 8 PLAYERS → RED 4 / BLUE 4');   // F413 scope decision: a mode change gives red+blue
     expect(m.text()).toContain('TAP AGAIN TO SWITCH');
     m.unmount();
   });
@@ -178,7 +178,7 @@ describe('PLAY — review follow-up: loading a FAVOURITE that reshapes the roste
     expect(after.config.mode, 'the first tap must not reach the server').toBe('tdm');
     const split = m.find('[data-testid="confirm-split"]')[0];
     expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
-    expect(split.textContent).toBe('▲ 8 PLAYERS → BLUE 4 / RED 4');
+    expect(split.textContent).toBe('▲ 8 PLAYERS → RED 4 / BLUE 4');
     m.unmount();
   });
 

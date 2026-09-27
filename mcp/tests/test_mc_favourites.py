@@ -95,6 +95,29 @@ def test_name_and_countdown_and_pick_shape_limits():
             assert e.status == 400
 
 
+def test_check_match_accepts_teams_and_hold_target_s_or_refuses_them():
+    """F413/F415: `_check_match` (this module's own copy of the shape check, not shared with
+    `gamepick.merge_match`) takes `teams`/`hold_target_s` the same way -- absent is fine, present must
+    be shaped right."""
+    st, _ = _store()
+    row = st.create("Custom Teams", 30, _pick(teams=["blue", "purple"], hold_target_s=240))
+    assert row["pick"]["match"]["teams"] == ["blue", "purple"]
+    assert row["pick"]["match"]["hold_target_s"] == 240
+    # absent is fine -- neither key rides along when the pick did not carry one
+    row2 = st.create("No Teams", 30, _pick())
+    assert "teams" not in row2["pick"]["match"] and "hold_target_s" not in row2["pick"]["match"]
+    for bad_teams in (["blue"], ["blue", "blue"], ["blue", "orange"], "blue"):
+        try:
+            st.create("Bad Teams", 30, _pick(teams=bad_teams)); assert False, bad_teams
+        except FavouriteError as e:
+            assert e.status == 400 and "TEAM COLOURS" in str(e), (bad_teams, e)
+    for bad_hold in ("240", 1.5, True):
+        try:
+            st.create("Bad Hold", 30, _pick(hold_target_s=bad_hold)); assert False, bad_hold
+        except FavouriteError as e:
+            assert e.status == 400 and "HOLD_TARGET_S" in str(e), (bad_hold, e)
+
+
 def test_persistence_across_a_restart():
     st, path = _store()
     row = st.create("Friday Sniper", 45, _pick(night=True))

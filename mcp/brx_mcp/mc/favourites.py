@@ -30,6 +30,10 @@ _NAME_MAX = 24
 # The same arm-runway range `POST /api/start`/`POST /api/start/reschedule` already enforce (`api.py`'s
 # `_int(..., 5, 900)`) -- a favourite's countdown is the same knob, just saved under a name.
 _COUNTDOWN_MIN, _COUNTDOWN_MAX = 5, 900
+# F413: the same closed vocabulary `gamepick.TEAM_COLOURS` names -- duplicated, not shared, the same way
+# every check in this module has its own copy rather than importing `gamepick.py`'s (a favourite outlives
+# the pick it was made from, so its own validation must not drift with a picker-side refactor).
+_TEAM_COLOURS = frozenset({"red", "blue", "yellow", "purple"})
 
 
 class FavouriteError(ValueError):
@@ -63,12 +67,24 @@ def _check_match(v: object) -> MatchSettings:
     for k in ("night", "silenced"):
         if not isinstance(v.get(k), bool):
             raise FavouriteError(400, f"{k.upper()} MUST BE ON OR OFF: CHECK THE VALUE")
-    for k in ("time_limit_s", "frag_limit"):
+    for k in ("time_limit_s", "frag_limit", "hold_target_s"):
         val = v.get(k)
         if val is not None and not (isinstance(val, int) and not isinstance(val, bool)):
             raise FavouriteError(400, f"{k.upper()} MUST BE A WHOLE NUMBER OR EMPTY: CHECK THE VALUE")
-    return {"time_limit_s": v.get("time_limit_s"), "frag_limit": v.get("frag_limit"),
-            "night": v["night"], "silenced": v["silenced"]}
+    out: MatchSettings = {"time_limit_s": v.get("time_limit_s"), "frag_limit": v.get("frag_limit"),
+                         "night": v["night"], "silenced": v["silenced"]}
+    if v.get("hold_target_s") is not None:
+        out["hold_target_s"] = v["hold_target_s"]
+    # F413: absent is fine (the pick it was saved from had no real teams), present must be 2-4 unique
+    # native colours -- same shape `gamepick.looks_like_pick` checks, this module's own copy of it.
+    if "teams" in v:
+        teams = v["teams"]
+        if not (isinstance(teams, list) and 2 <= len(teams) <= 4
+               and all(isinstance(c, str) and c in _TEAM_COLOURS for c in teams)
+               and len(set(teams)) == len(teams)):
+            raise FavouriteError(400, "TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE")
+        out["teams"] = list(teams)
+    return out
 
 
 def check_pick(v: object) -> GamePick:

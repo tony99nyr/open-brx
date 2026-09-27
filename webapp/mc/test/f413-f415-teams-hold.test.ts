@@ -14,50 +14,59 @@ describe('F413: match.teams validation', () => {
     expect((await b.getState()).config.teams.map(t => t.team_id)).toEqual(['red', 'blue', 'yellow']);
   });
 
-  it('refuses fewer than 2 or more than 4', async () => {
+  // team-lead (2026-09-27): the server's own strings, copied verbatim (gamepick.py/state.py) -- a shape
+  // violation (count, duplicate, or an unknown colour) is ONE generic message on the real server too,
+  // whichever specific defect it is.
+  const SHAPE_ERR = 'TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE';
+
+  it('refuses fewer than 2 or more than 4, with the server\'s own words', async () => {
     const b = new MockBackend();
-    await expect(b.pick({ match: { teams: ['red'] } })).rejects.toMatchObject({ status: 400 });
-    await expect(b.pick({ match: { teams: ['red', 'blue', 'yellow', 'purple', 'red'] } })).rejects.toMatchObject({ status: 400 });
+    await expect(b.pick({ match: { teams: ['red'] } })).rejects.toMatchObject({ status: 400, message: SHAPE_ERR });
+    await expect(b.pick({ match: { teams: ['red', 'blue', 'yellow', 'purple', 'red'] } })).rejects.toMatchObject({ status: 400, message: SHAPE_ERR });
   });
 
-  it('refuses a duplicate colour', async () => {
+  it('refuses a duplicate colour, with the server\'s own words', async () => {
     const b = new MockBackend();
-    await expect(b.pick({ match: { teams: ['red', 'red'] } })).rejects.toMatchObject({ status: 400 });
+    await expect(b.pick({ match: { teams: ['red', 'red'] } })).rejects.toMatchObject({ status: 400, message: SHAPE_ERR });
   });
 
-  it('refuses an unknown colour', async () => {
+  it('refuses an unknown colour, with the server\'s own words', async () => {
     const b = new MockBackend();
-    await expect(b.pick({ match: { teams: ['red', 'green'] as unknown as ['red'] } })).rejects.toMatchObject({ status: 400 });
+    await expect(b.pick({ match: { teams: ['red', 'green'] as unknown as ['red'] } })).rejects.toMatchObject({ status: 400, message: SHAPE_ERR });
   });
 
-  it('KOTH is exactly 2 teams', async () => {
+  it('KOTH is exactly 2 teams, with the server\'s own words', async () => {
     const b = new MockBackend();
     await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
-    await expect(b.pick({ match: { teams: ['blue', 'purple', 'red'] } })).rejects.toMatchObject({ status: 400 });
+    await expect(b.pick({ match: { teams: ['blue', 'purple', 'red'] } }))
+      .rejects.toMatchObject({ status: 400, message: 'KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS' });
     const r = await b.pick({ match: { teams: ['red', 'purple'] } });
     expect(r.ok).toBe(true);
   });
 
-  it('KOTH never offers yellow', async () => {
+  it('KOTH never offers yellow, with the server\'s own F82 words', async () => {
     const b = new MockBackend();
     await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
-    await expect(b.pick({ match: { teams: ['blue', 'yellow'] } })).rejects.toMatchObject({ status: 400 });
+    await expect(b.pick({ match: { teams: ['blue', 'yellow'] } })).rejects.toMatchObject({ status: 400,
+      message: "F82: mode 'koth' cannot have a team on $TID 2 at all — that is the value a NEUTRAL grenade hill "
+        + 'broadcasts, so anyone put on it later reads every uncaptured point as their own and takes no hill damage. '
+        + 'Use tid 0, 1 or 3.' });
   });
 });
 
 describe('F413: a mode change resets teams to red+blue, like the limits', () => {
   // Team-lead's scope decision (2026-09-27): TDM's and KOTH's own CATALOGUE `defaults.teams` are
-  // blue+red now, matching the server (mock/data.ts's `base()`/`RED_BLUE_TEAMS` comments have the full
-  // reasoning) -- a mode change through `pick()` reads that straight, one source of truth shared with
-  // `putConfig`'s own mode-changed base rebuild and the console's client-side prediction. Only the
-  // static DEMO's own starting session keeps the old blue/yellow, a deliberate, separate override.
-  it('TDM -> KOTH resets to blue+red', async () => {
+  // red+blue now, matching the server's own `default_config`/`MODES` rows (`mock/data.ts`'s `base()`) --
+  // a mode change through `pick()` reads that straight, one source of truth shared with `putConfig`'s
+  // own mode-changed base rebuild and the console's client-side prediction. Only the static DEMO's own
+  // starting session keeps the old blue/yellow, a deliberate, separate override (`DEMO_TEAMS`).
+  it('TDM -> KOTH resets to red+blue', async () => {
     const b = new MockBackend();
     await b.pick({ match: { teams: ['red', 'yellow', 'purple'] } });
     const r = await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
     expect(r.ok).toBe(true);
-    expect((await b.getState()).game_pick!.match.teams).toEqual(['blue', 'red']);
-    expect((await b.getState()).config.teams.map(t => t.team_id), 'the composed config agrees').toEqual(['blue', 'red']);
+    expect((await b.getState()).game_pick!.match.teams).toEqual(['red', 'blue']);
+    expect((await b.getState()).config.teams.map(t => t.team_id), 'the composed config agrees').toEqual(['red', 'blue']);
   });
 });
 
@@ -74,9 +83,10 @@ describe('F413: a TEAMS change that reshapes the roster goes through the SAME re
 });
 
 describe('F415: match.hold_target_s validation', () => {
-  it('is refused on any mode but KOTH', async () => {
+  it('is refused on any mode but KOTH, with the server\'s own words', async () => {
     const b = new MockBackend();
-    await expect(b.pick({ match: { hold_target_s: 300 } })).rejects.toMatchObject({ status: 400 });
+    await expect(b.pick({ match: { hold_target_s: 300 } })).rejects.toMatchObject({ status: 400,
+      message: 'A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL' });
   });
 
   it('null is always legal (no target)', async () => {
@@ -95,11 +105,15 @@ describe('F415: match.hold_target_s validation', () => {
     expect((await b.getState()).config.scoring.hold_target_s).toBe(300);
   });
 
-  it('refuses zero or a negative value', async () => {
+  it('refuses zero, a negative value, or a value past 2:00:00, with the server\'s own words', async () => {
     const b = new MockBackend();
     await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
-    await expect(b.pick({ match: { hold_target_s: 0 } })).rejects.toMatchObject({ status: 400 });
-    await expect(b.pick({ match: { hold_target_s: -5 } })).rejects.toMatchObject({ status: 400 });
+    const HOLD_ERR = 'HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET';
+    await expect(b.pick({ match: { hold_target_s: 0 } })).rejects.toMatchObject({ status: 400, message: HOLD_ERR });
+    await expect(b.pick({ match: { hold_target_s: -5 } })).rejects.toMatchObject({ status: 400, message: HOLD_ERR });
+    await expect(b.pick({ match: { hold_target_s: 7201 } })).rejects.toMatchObject({ status: 400, message: HOLD_ERR });
+    const r = await b.pick({ match: { hold_target_s: 7200 } });
+    expect(r.ok, '2:00:00 exactly is the ceiling, still legal').toBe(true);
   });
 
   it('resets to null on a mode change (like the limits)', async () => {

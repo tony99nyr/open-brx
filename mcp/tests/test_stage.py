@@ -278,7 +278,8 @@ def test_walkthrough_is_built_from_the_config_and_records_verdicts():
         assert plan[-2]["action"] == "game_end"
         # A16 §3.3: carrier is now ONE flat WHITE role (never the flag's team colour, finding #11), not
         # a step per team; infected is still per-team (the one role whose colour is a team fact).
-        assert "carrier" in ids and "carrier_off" in ids and "infected_1" in ids and "infected_2" in ids
+        # F413: the stage's own config is TDM's default, now red(tid 0)+blue(tid 1) (was blue(1)/yellow(2)).
+        assert "carrier" in ids and "carrier_off" in ids and "infected_0" in ids and "infected_1" in ids
         assert "medal_first_blood" in ids and "event_lead_taken" in ids and "event_time_60" in ids
         assert all(s["available"] for s in plan)                     # the fake gun can be shot
         # a silenced game has no medal / announcer steps; blackout (the EXPLICIT "no lights" switch --

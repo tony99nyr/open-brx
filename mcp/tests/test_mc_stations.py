@@ -208,13 +208,15 @@ def test_a_partial_final_control_heartbeat_preserves_the_last_complete_recap_tal
 
 
 def test_f426_a_hills_neutral_tid_is_dropped_from_the_stations_recap_not_shown_as_a_phantom_team():
-    """F426 (bench part 1, 2026-09-26): a KOTH match rosters only blue (tid 1) and green (tid 3), but the
-    control station's own `hold_ms` still carries tid 2 -- the sentinel a hill passes through on its way
-    to a real owner (F82) -- because the station counts every tid it ever saw, not just the roster.
-    `Scorer.possession()` already excludes that tid from every team's total
+    """F426 (bench part 1, 2026-09-26): a KOTH match rosters only red (tid 0) and blue (tid 1, F413's own
+    default), but the control station's own `hold_ms` still carries tid 2 -- the sentinel a hill passes
+    through on its way to a real owner (F82) -- because the station counts every tid it ever saw, not
+    just the roster. `Scorer.possession()` already excludes that tid from every team's total
     (`test_a_hills_neutral_time_is_nobodys`); this is the same rule for the station's own
     self-authoritative recap row, which used to pass tid 2 straight through as if it were a rostered
-    team (122_744 ms, this row's own bench number)."""
+    team (122_744 ms, this row's own bench number). tid 3 (purple) is not rostered either now (F413:
+    koth is exactly red+blue), so it is filtered out the same way -- the rule is "rostered tid", not a
+    hardcoded exception for tid 2."""
     s = _joined(_sess(mode="koth", station_source="phone"))
     s.net.simulate_utility_hello("brxu-live")
     s.set_station("brxu-live", {"kind": "control", "team": "any", "id": 3})
@@ -226,7 +228,7 @@ def test_f426_a_hills_neutral_tid_is_dropped_from_the_stations_recap_not_shown_a
     s.control("end")
     rows = [{k: v for k, v in r.items() if k != "synced"} for r in s.last_recap["stations"]]
     assert rows == [{"node_id": "brxu-live", "kind": "control", "id": 3, "team": 255, "heard": True,
-                     "hold_ms": {"1": 12_000, "3": 4_000}, "owner": 1}], rows
+                     "hold_ms": {"1": 12_000}, "owner": 1}], rows
 
 
 def test_f431_a_stale_unrostered_tid_already_in_the_restored_tally_is_still_dropped():
@@ -243,21 +245,23 @@ def test_f431_a_stale_unrostered_tid_already_in_the_restored_tally_is_still_drop
     common = {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
               "role": "utility", "kind": "control", "station_id": 3, "armed": True}
     t0 = s.now_ms()
+    # F413: koth's own default roster is red (tid 0) + blue (tid 1) now -- tid 2 stays the unrostered
+    # stale entry this test is about either way.
     # a first beat, well past the arming heartbeat gate, seeds the tally (rostered tids only -- F426
     # already filtered this one)
     s.net.simulate_status("brxu-live", {**common, "control": {
-        "hold_ms": {"1": 12_000, "3": 4_000}, "owner": 1}}, t0 + 60_000)
-    assert s.stations["brxu-live"]["tally"]["hold_ms"] == {"1": 12_000, "3": 4_000}, "the tally must be seeded by now"
+        "hold_ms": {"0": 12_000, "1": 4_000}, "owner": 1}}, t0 + 60_000)
+    assert s.stations["brxu-live"]["tally"]["hold_ms"] == {"0": 12_000, "1": 4_000}, "the tally must be seeded by now"
     # simulate a resumed snapshot: an unrostered tid 2 already sitting in the persisted tally, as it
     # could from before F426 existed, or a roster that has since changed
     s.stations["brxu-live"]["tally"]["hold_ms"]["2"] = 122_744
     # a later beat must not let that stale entry back into the report or the recap
     s.net.simulate_status("brxu-live", {**common, "control": {
-        "hold_ms": {"1": 13_000, "3": 4_500}, "owner": 1}}, t0 + 65_000)
+        "hold_ms": {"0": 13_000, "1": 4_500}, "owner": 1}}, t0 + 65_000)
     s.control("end")
     rows = [{k: v for k, v in r.items() if k != "synced"} for r in s.last_recap["stations"]]
     assert rows == [{"node_id": "brxu-live", "kind": "control", "id": 3, "team": 255, "heard": True,
-                     "hold_ms": {"1": 13_000, "3": 4_500}, "owner": 1}], rows
+                     "hold_ms": {"0": 13_000, "1": 4_500}, "owner": 1}], rows
 
 
 # --------------------------------------------------------------------------- arming
@@ -466,10 +470,11 @@ def test_threshold_0_or_absent_means_the_stations_own_platform_default():
 def test_threshold_0_goes_out_explicit_to_a_phone_app_that_clamps_it():
     """F345 review H1: app 0.4.11 and older clamps a `station_config` threshold of 0 to -30 dBm (a few cm), so no
     revive is possible. Such a phone (or one whose version MC cannot parse) gets the explicit old value: -66 for a
-    respawn station (the new phone default), -74 for any other kind. 0.4.12 and later, and a StickS3, get 0."""
+    respawn station (the new phone default), F383's -75 for a control (hill) station, -74 for any other kind.
+    0.4.12 and later, and a StickS3, get 0."""
     s = _sess()
     for nid, ver, kind, team, sid, want in (("util-old", "0.4.11+f366156e", "respawn", "blue", 3, -70),
-                                            ("util-unk", "utility", "control", "any", 4, -74),
+                                            ("util-unk", "utility", "control", "any", 4, -75),
                                             ("util-new", "0.4.12+abc", "respawn", "blue", 5, 0)):
         s.net.simulate_utility_hello(nid, app_ver=ver)
         s.set_station(nid, {"kind": kind, "team": team, "id": sid})
@@ -499,7 +504,7 @@ def test_the_assignment_is_validated_in_the_operators_voice():
     s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 5})
     s.net.simulate_utility_hello("util-2")
     try:
-        s.set_station("util-2", {"kind": "respawn", "team": "yellow", "id": 5})
+        s.set_station("util-2", {"kind": "respawn", "team": "red", "id": 5})
         raise AssertionError("a duplicate station id was accepted")
     except ValueError as e:
         assert "util-1" in str(e)
@@ -667,16 +672,16 @@ def test_scanner_respawn_warns_when_one_team_has_no_station():
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
     partial = [w for w in s.config_warnings if "SCANNER RESPAWN HAS NO STATION FOR" in w]
-    assert partial and "YELLOW" in partial[0], s.config_warnings
+    assert partial and "RED" in partial[0], s.config_warnings
     s.net.simulate_utility_hello("util-2")
-    s.set_station("util-2", {"kind": "respawn", "team": "yellow", "id": 4})
+    s.set_station("util-2", {"kind": "respawn", "team": "red", "id": 4})
     assert not [w for w in s.config_warnings if "SCANNER RESPAWN HAS NO STATION FOR" in w]
 
 
 def test_clearing_an_assignment_shrinks_the_allow_list_the_others_echo():
     s = _sess()
     s.net.simulate_utility_hello("util-1"); s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
-    s.net.simulate_utility_hello("util-2"); s.set_station("util-2", {"kind": "respawn", "team": "yellow", "id": 4})
+    s.net.simulate_utility_hello("util-2"); s.set_station("util-2", {"kind": "respawn", "team": "red", "id": 4})
     assert s.clear_station("util-2")
     assert _pushed(s, "station_config", "util-1")[-1]["valid_ids"] == [3]
     assert s._station_ids() == [{"id": 3, "kind": "respawn"}]
@@ -1212,6 +1217,22 @@ def test_an_old_phone_powerup_station_gets_the_1ft_claim_default_not_the_3m_one(
     assert PHONE_POWERUP_THRESHOLD_DBM == -55
     got = Session._wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, {"threshold": 0, "kind": "powerup", "team": 255, "id": 9})
     assert got == -55, got
+
+
+def test_a_control_stations_threshold_defaults_to_75_on_an_old_phone_and_0_elsewhere():
+    """F383, Tony 2026-09-27: the hill's own default is -75 dBm (hysteresis 6, on every path) until the outdoor
+    walk measures a real one. A current phone and a StickS3 both read 0 (their own platform default); only a phone
+    too old to trust with 0 (F345) gets the explicit value."""
+    from brx_mcp.mc.state import Session
+    from brx_mcp.mc.types import PHONE_CONTROL_THRESHOLD_DBM
+    assert PHONE_CONTROL_THRESHOLD_DBM == -75
+    a = {"threshold": 0, "kind": "control", "team": 255, "id": 9}
+    got_old = Session._wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, a)
+    assert got_old == -75, got_old
+    got_new = Session._wire_threshold("util-new", {"app_ver": "0.4.12+abc"}, a)
+    assert got_new == 0, got_new
+    got_stick = Session._wire_threshold("stick-1", {"platform": "esp32", "app_ver": "1.0"}, a)
+    assert got_stick == 0, got_stick
 
 
 # --------------------------------------------------------------------------- F364: MC assigns the station id

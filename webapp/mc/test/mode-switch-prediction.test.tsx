@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { MockBackend } from '../src/mock/backend';
 import { predictedSplit } from '../src/screens/gameSummary';
-import type { Player, Team } from '../src/api/contract.gen';
+import type { Player, Team, TeamColour } from '../src/api/contract.gen';
 
 /** The roster as the screen sees it, and the counts the write actually produced. */
 const countsOf = (players: Player[], teams: Team[]): Record<string, number> => {
@@ -20,10 +20,16 @@ const countsOf = (players: Player[], teams: Team[]): Record<string, number> => {
   return out;
 };
 
-/** Force the demo roster onto an exact split, then answer both questions about a mode switch. */
-async function predictThenDo(startMode: string, teamOf: (i: number) => string | null, targetMode: string) {
+/** Force the demo roster onto an exact split, then answer both questions about a mode switch.
+ *  `startTeams`, when given, forces the STARTING mode's own declared pair onto something else first
+ *  (a TEAMS-strip pick, F413's own feature) -- needed once TDM and KOTH share the SAME default pair
+ *  (team-lead's scope decision, 2026-09-27): the index map would otherwise leave every already-legal
+ *  player untouched and only remap the ONE now-illegal colour, which can collapse an intentionally
+ *  uneven split into a one-team fault the mock then rebalances away (verified by hand). */
+async function predictThenDo(startMode: string, teamOf: (i: number) => string | null, targetMode: string, startTeams?: TeamColour[]) {
   const api = new MockBackend();
   await api.putConfig({ mode: startMode });
+  if (startTeams) await api.pick({ match: { teams: startTeams } });
   let st = await api.getState();
   for (let i = 0; i < st.players.length; i++) {
     await api.patchPlayer(st.players[i].player_id, { team_id: teamOf(i) });
@@ -47,10 +53,13 @@ describe('the GAMES confirm line predicts exactly what the switch then does', ()
   });
 
   it('an UNEVEN split is left uneven — the preview must not promise a rebalance that never comes', async () => {
-    // The divergence itself: 3/1 over two populated sides is not `one_team_fault()`, so the server
-    // leaves it exactly as the operator built it. A preview reading "BLUE 2 / PURPLE 2" here would be
-    // a lie the operator only discovers on the LOBBY board.
-    const r = await predictThenDo('tdm', i => (i === 0 ? 'yellow' : 'blue'), 'koth');
+    // The divergence itself: 7/1 over two populated sides is not `one_team_fault()`, so the server
+    // leaves it exactly as the operator built it. A preview reading "RED 4 / BLUE 4" here would be a
+    // lie the operator only discovers on the LOBBY board. Starts from yellow/purple explicitly (neither
+    // is legal on KOTH), not TDM's own bare default -- TDM and KOTH share the SAME red/blue pair now, so
+    // an already-legal majority would be left untouched by the index map and only the minority remapped,
+    // which cannot produce an uneven-but-still-populated result any more (see `predictThenDo`'s comment).
+    const r = await predictThenDo('tdm', i => (i === 0 ? 'purple' : 'yellow'), 'koth', ['yellow', 'purple']);
     expect(r.actual).toEqual(r.predicted);
     const vals = Object.values(r.actual).sort();
     expect(Math.max(...vals) - Math.min(...vals), 'control: this case really is uneven').toBeGreaterThan(1);

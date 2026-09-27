@@ -123,7 +123,7 @@ class Scorer:
                  on_feedback: Feedback | None = None, on_feed: Callable[[Feed], None] | None = None,
                  now_ms: Callable[[], int] | None = None, win_by: WinBy | None = None,
                  on_alert: Callable[[str, str, dict], object] | None = None, frag_limit: int | None = None,
-                 on_limit: Callable[[int], None] | None = None):
+                 on_limit: Callable[[int], None] | None = None, hold_target_s: int | None = None):
         self.match_id = match_id
         self.go_live_t = go_live_t
         self.time_limit_s = time_limit_s
@@ -142,6 +142,7 @@ class Scorer:
         # `control('end')` takes (`set_end` + `_finish`), and pushes `control{end}` to the field.
         self.on_limit = on_limit or (lambda t: None)
         self.frag_limit = frag_limit
+        self.hold_target_s = hold_target_s        # F415: KOTH only -- the first team to reach it wins at once
         self.limit_reached_t: int | None = None    # when the cap was hit (None = it never was)
         self._leader: str | None = None            # team_id (or player_id in FFA) currently in the lead
         self._announced: set[str] = set()          # once-per-match alerts already sent (next_kill_wins, last_survivor)
@@ -435,7 +436,10 @@ class Scorer:
             if pid0 in self.stats:
                 self.stats[pid0].flushed = True
                 self.possession_pid[node_id] = pid0
-            return self._possession(node_id, ev)
+            result = self._possession(node_id, ev)
+            if result == "scored":
+                self._check_hold_target(t_recv)
+            return result
         pid = self._pid(node_id, ev)
         if not pid or pid not in self.stats:
             return "ignored"
@@ -679,6 +683,27 @@ class Scorer:
         if not scores or max(scores.values()) < self.frag_limit:
             return
         self._announced.add("frag_limit")
+        self.limit_reached_t = t
+        self.on_limit(t)
+
+    def _check_hold_target(self, t: int) -> None:
+        """F415: KOTH's hold target ends the match at once, the same shape as `_check_frag_limit` --
+        fires once, sets `limit_reached_t`, calls `on_limit(t)` (which the Session dispatches to
+        `_on_hold_target`/`_end_on_hold_target`, its own mirror of the frag-limit path).
+
+        `t` is the RECEIPT time of the possession report that crossed the target, not a moment the
+        target was actually reached: possession is a cumulative tally with no per-instant data (see
+        `_possession`'s own docstring), so this is the best approximation available, same as the
+        report itself already is for the recap's own possession numbers.
+
+        Only an OBJECTIVE-scored mode has a hold target at all (mirrors `win_by == "kills"` gating
+        `_check_frag_limit` above); a match with no target set (`hold_target_s` None/0) never fires."""
+        if not self.hold_target_s or "hold_target" in self._announced or self.win_by != "objective":
+            return
+        poss = self.possession()
+        if not poss or not any(secs >= self.hold_target_s for secs in poss["by_team"].values()):
+            return
+        self._announced.add("hold_target")
         self.limit_reached_t = t
         self.on_limit(t)
 

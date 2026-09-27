@@ -1128,12 +1128,10 @@ step('mock-demo', async ({ browser, base }) => {
   await pg.locator('header nav button:has-text("KIT")').first().click();
   await until(() => pg.locator('span[role="group"][aria-label="team"]').count().then(n => n > 0), 10000, 'the demo KIT team chips');
   const chips = (await pg.locator('span[role="group"][aria-label="team"] button').allTextContents()).map(x => x.trim());
-  // F413 scope decision (2026-09-27): every team mode's own catalogue default is blue+red now (blue
-  // kept at index 0, matching every mode's previous default -- mock/data.ts's own RED_BLUE_TEAMS
-  // comment) -- this step goes PLAY -> pick KOTH -> KIT, so it inherits that. Reads BLUE+RED against a
-  // REAL SERVER THAT STILL PREDATES THE SAME CHANGE (the server lane's half of F413, landing
-  // separately) -- flagged to team-lead, not silently decided here.
-  expect(JSON.stringify(chips) === JSON.stringify(['BLUE', 'RED']), `the demo offers BLUE+RED only (saw ${JSON.stringify(chips)})`);
+  // F413 scope decision (2026-09-27): every team mode's own catalogue default is red+blue now (mock and
+  // server alike, both merged into f413-games) -- this step goes PLAY -> pick KOTH -> KIT, so it
+  // inherits that. True against the real server too now, not just `?mock`.
+  expect(JSON.stringify(chips) === JSON.stringify(['RED', 'BLUE']), `the demo offers RED+BLUE only (saw ${JSON.stringify(chips)})`);
   const YELLOW = ['rgb(255, 210, 63)', 'rgb(255, 211, 63)'];
   const stripes = await pg.locator('.kit-row > span:first-child').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundColor));
   expect(stripes.length > 0 && !stripes.some(c => YELLOW.includes(c)), `🔴 F82: the DEMO re-teams its yellow half too (saw ${JSON.stringify([...new Set(stripes)])})`);

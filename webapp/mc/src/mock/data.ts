@@ -2,30 +2,15 @@
 import type { ConfigView, GameConfig, MatchItemKey, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
 import { defaultPolicy } from './policy';
 
+/** The demo's opening session: a TDM game already in progress, rostered blue/yellow (see `base()`). */
+export const DEMO_TEAMS = (): Team[] => [{ team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW TEAM', color: 'yellow', tid: 2 }];
+
 export const TEAMS: Team[] = [
   { team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 },
   { team_id: 'yellow', name: 'YELLOW TEAM', color: 'yellow', tid: 2 },
   { team_id: 'red', name: 'RED TEAM', color: 'red', tid: 0 },
   { team_id: 'purple', name: 'PURPLE TEAM', color: 'purple', tid: 3 },   // F423: paints purple, not green
 ];
-// F413 (games-presets.md §7): every team mode's own CATALOGUE default is red+blue now, matching the
-// server (team-lead's scope decision, 2026-09-27) -- a fresh pick, a mode change, or a direct putConfig
-// mode switch (GameEditPanel's inline edit) all read this SAME `MODES[].defaults.teams`, so all three
-// agree with each other and with the server. The demo's own STARTING session overrides back to
-// blue/yellow at construction (mock/backend.ts's own `config` field initialiser) -- a fixture already
-// in progress, not a fresh one; see the comment there.
-//
-// BLUE FIRST, deliberately: TDM's own previous default (blue/yellow) and KOTH's (blue/purple) both had
-// blue at index 0 -- `reteamForConfig`'s index map (mock/backend.ts) only remaps a player whose CURRENT
-// team_id is not already legal in the NEW pair, so keeping blue at the SAME index across every mode
-// change leaves anyone already on blue untouched, exactly as it always did. Putting red at index 0
-// instead would make blue the ONE that moves, and index 1 (yellow's own old slot) would then map onto
-// red for anyone coming from TDM -- structurally fine on its own, but it collapses an already-populated
-// side test (mode-switch-prediction.test.tsx's "uneven split") into a one-team fault every time, since
-// TDM's own idx-1 colour (yellow) would no longer land anyone on a genuinely different, still-populated
-// side. Order here is an implementation choice team-lead's own decision did not fix either way.
-const RED_BLUE_TEAMS = [TEAMS.find(t => t.team_id === 'blue')!, TEAMS.find(t => t.team_id === 'red')!];
-
 // GENERATED-START weapons
 // Regenerate: python3 mcp/tools/gen_ui_catalog.py - never hand-edit between the markers.
 export const WEAPONS: WeaponView[] = [
@@ -1029,7 +1014,11 @@ const base = (mode: string, over: Partial<GameConfig> = {}): ConfigView => ({
   respawn: { type: 'auto', delay_s: 15 },
   scoring: { frag_limit: null, win_by: 'kills' },
   health: { max_hp: 45, max_armor: 70, max_shield: 0, preset: 'standard' },   // S45: the Standard preset
-  teams: RED_BLUE_TEAMS,
+  // F413: every team mode defaults to red + blue, as the server's `default_config(mode)` does, so a mode
+  // switch through `putConfig` (GameEditPanel, a favourite load) lands the same teams in both. Only the
+  // demo's OPENING session keeps its blue/yellow roster (`DEMO_TEAMS`, backend.ts): it is a fixture of a
+  // session already in progress, and dozens of unrelated tests read those names.
+  teams: [TEAMS[2], TEAMS[0]],
   loadout_policy: defaultPolicy(mode),
   ...over,
 });
@@ -1117,7 +1106,7 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "desc": "Hold the hill; possession scores",
     "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
     "teams_text": "2 TEAMS",
-    "win_text": "POSSESSION TIME · HOST CALL",
+    "win_text": "POSSESSION TIME",
     "respawn_text": "ON · TIMED",
     "mvp": true
   }
@@ -1144,11 +1133,12 @@ export const MODES: ModeInfo[] = [
       mode_params: { channel_s: 45.0, win_target: 0, loot_per_kill: 10, drop_policy: 'ground', extract_removes_player: true } }) },
   // F82: yellow is tid 2, which is what a NEUTRAL hill broadcasts, so a yellow roster would read every
   // uncaptured point as its own — the server refuses it outright (checkMatchTeams, mock/backend.ts).
-  // F413: KOTH's own default is base()'s blue+red (tids 1 and 0) like every other team mode now, no
-  // override needed here any more -- it used to be blue+purple (tids 1 and 3, F423 renamed the tid-3
-  // team from GREEN to PURPLE) specifically to dodge tid 2, which blue+red already does too.
+  // F413: KOTH's own default is red+blue (tids 0 and 1) like every other team mode now, matching
+  // base()'s own default -- named explicitly here too (belt and braces) rather than left to fall
+  // through. It used to be blue+purple (tids 1 and 3, F423 renamed the tid-3 team from GREEN to PURPLE)
+  // specifically to dodge tid 2, which red+blue already does too.
   { ...MODE_TEXT.koth, params: KOTH_PARAMS, match_items: KOTH_ITEMS,
-    defaults: base('koth', { scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'phone',
+    defaults: base('koth', { teams: [TEAMS[2], TEAMS[0]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'phone',
       mode_params: { score_target: 0, points_per_s: 1.0 } }) },
 ];
 

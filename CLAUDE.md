@@ -55,7 +55,10 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   `npm` inside those three. Do not `pnpm install` in them: it would strand the lockfile CI depends on.
   If `app/` ever fails with *"This is not the tsc command you are looking for"*, its `node_modules` is incomplete
   (`typescript` is a declared devDependency): `cd app && npm install`. Note npm versions shuffle `peer` markers in
-  `package-lock.json` on install — that churn is noise, do not commit it.
+  `package-lock.json` on install — that churn is noise, do not commit it. **A fresh git worktree has none of these
+  `node_modules` at all** (they are per-checkout, not shared): run `npm ci` in `app/`, `site/` and `webapp/mc/`
+  (or symlink each `node_modules` from the main checkout) before the first `test:all` there, or `app-build` fails
+  the whole run before any job even starts.
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
@@ -72,8 +75,19 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
     names the jobs), or one file (`cd mcp && python3 run_tests.py <substring>`).
   - Before you commit any code change: `pnpm run test:all` (about 30 s; mcp, webapp/mc tsc + vitest, app tsc + tests, site).
   - Before you commit a change to `app/src`, `webapp/mc/src`, a UI gate or an e2e script: `pnpm run test:all -- --ui`
-    (about 2 min; adds the phone and Mission Control browser gates).
-  - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). A second run in the same checkout waits for the first.
+    (about 2 min; adds the phone and Mission Control browser gates). That full `--ui` gate stays the rule before
+    the FIRST push of a UI change: **CI does NOT run app-screens, app-e2e or the `mc-*` e2e scripts** (`site` is
+    not wired into CI at all), so nothing else catches a regression in them.
+  - **After merging `origin/main`** into a branch that was already green, run
+    `pnpm run test:all -- --changed <base>` for the paths that just came in, not the full suite again (the base
+    goes right after `--changed` on the command line). Default base: `HEAD^1` if the merge just made HEAD a merge
+    commit (its first parent is the branch as it stood before that merge), else the merge-base with
+    `origin/main`. **After a fresh `git merge origin/main`, that merge-base IS origin/main's own tip, so pass the
+    base explicitly (the commit you last tested) if you are not running this immediately after the merge.**
+    If only docs came in, the `mcp` job (docs hygiene) AND `site` (renders `docs/platform`, `docs/manual`) are
+    both needed. `--changed` adds `--ui` itself when the selection includes a UI-only job, since CI cannot.
+  - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). The lock is machine-wide (per user, not per
+    checkout): a second run anywhere on the box waits for the first.
   - The per-suite detail and flags are in `CONTRIBUTING.md` → *Running things*. The pyright gate runs inside the mcp suite.
 - **When you add or change a test**, keep the suite parallel-safe. `test:all` runs every job at once, under load:
   - Bind a free port (listen on 0), or read the port from an env var. Never a literal port.

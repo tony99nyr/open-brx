@@ -1940,13 +1940,13 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
              "or a bench run from the stage predicts a phone that does something else.")
 
     async def run():
-        st, mgr = mk(tid=2)
+        st, mgr = mk(tid=1)   # F413: TDM's own default no longer rosters tid 2 at all
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         head = tx(mgr)
-        assert head.index("$TID,2,*") > max(i for i, f in enumerate(head) if f.startswith("$PSET,")), \
+        assert head.index("$TID,1,*") > max(i for i, f in enumerate(head) if f.startswith("$PSET,")), \
             "the head already ends on $TID after its $PSET: nothing added"
-        assert head.count("$TID,2,*") == 1
+        assert head.count("$TID,1,*") == 1
         st.bundle["cues"]["countdown"] = ""
         for step in (st.spawn, st.revive):
             n = len(tx(mgr))
@@ -1960,12 +1960,12 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
             # `$SIR` rows between the `$PSET` and that `$TID`, so the old next-index assertion was pinning a
             # frame order rather than the rule. The count pins the other half: the two cures must not both
             # fire, or the gun reads a redundant team byte in the burst it can least afford one.
-            assert tid_follows_pset(new, 2), new
-            assert new.count("$TID,2,*") == 1, new
+            assert tid_follows_pset(new, 1), new
+            assert new.count("$TID,1,*") == 1, new
         # a write with a $PSET and NO $SPAWN gets the team too
         n = len(tx(mgr))
         await st.write([st.bundle["pset_pool"][0], "$AMMO,0,1,1,1,*"], "lone pset"); await settle(st)
-        assert tx(mgr)[n:] == [st.bundle["pset_pool"][0], "$TID,2,*", "$AMMO,0,1,1,1,*"]
+        assert tx(mgr)[n:] == [st.bundle["pset_pool"][0], "$TID,1,*", "$AMMO,0,1,1,1,*"]
         # a $TID already after the $PSET wins and is not doubled; a write with no $PSET is untouched
         n = len(tx(mgr))
         await st.write([st.bundle["pset_pool"][0], "$TID,3,*"], "flip"); await st.write(["$SPAWN,,*"], "spawn only")

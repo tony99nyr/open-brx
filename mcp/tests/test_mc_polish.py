@@ -158,7 +158,7 @@ def test_patch_team_mid_match_is_refused_and_display_is_still_limited():
     # moving the roster team would leave combat resolving on the old team. display/ready still ride in
     # `assign` mid-match, and the F366 16-character limit still applies (a refusal, not a cut).
     s = _sess()
-    a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="yellow")
+    a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="red")
     s.set_config({"time_limit_s": 60})
     for p in (a, b):
         s._bind(f"n-{p['player_id']}", p)
@@ -171,7 +171,7 @@ def test_patch_team_mid_match_is_refused_and_display_is_still_limited():
     s.start(runway_s=5)
     assert s.scorer.stats[a["player_id"]].team_id == "blue"
     try:
-        s.patch_player(a["player_id"], team_id="yellow", display="x" * 40); assert False
+        s.patch_player(a["player_id"], team_id="red", display="x" * 40); assert False
     except ValueError as e:
         assert "RECALL" in str(e), str(e)
     assert s.scorer.stats[a["player_id"]].team_id == "blue", "the refused re-team leaves the scorer put"
@@ -195,7 +195,7 @@ def test_patch_team_id_null_mid_match_is_a_no_op_not_a_409():
     # once the match started. `None` is "no instruction"; an actual named team that differs is still
     # refused exactly as the test above proves.
     s = _sess()
-    a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="yellow")
+    a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="red")
     s.set_config({"time_limit_s": 60})
     for p in (a, b):
         s._bind(f"n-{p['player_id']}", p)
@@ -213,7 +213,7 @@ def test_patch_team_id_null_mid_match_is_a_no_op_not_a_409():
     assert s.scorer.stats[a["player_id"]].team_id == "blue"
     # a REAL change alongside the null is still refused, same as team_id alone
     try:
-        s.patch_player(a["player_id"], team_id="yellow", display="NOPE"); assert False
+        s.patch_player(a["player_id"], team_id="red", display="NOPE"); assert False
     except ValueError as e:
         assert "RECALL" in str(e), str(e)
     assert s.players[a["player_id"]]["display"] == "STILL A", "nothing in the refused patch is applied"
@@ -221,7 +221,7 @@ def test_patch_team_id_null_mid_match_is_a_no_op_not_a_409():
 
 def test_ingest_batch_records_seq_for_dedup():
     s = _sess()
-    a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="yellow")
+    a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="red")
     s.set_config({"time_limit_s": 60})
     for p in (a, b):
         s._bind(f"n-{p['player_id']}", p); s.nodes[f"n-{p['player_id']}"]["synced"] = True
@@ -256,7 +256,7 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
     async def go():
         async with Stack(time_limit_s=30) as st:
             p = st.add_player("ALPHA", "GUN-A-AB12", team_id="blue")
-            q = st.add_player("BRAVO", "GUN-B-4E60", team_id="yellow")
+            q = st.add_player("BRAVO", "GUN-B-4E60", team_id="red")
             a = await st.connect_node("GUN-A-AB12"); b = await st.connect_node("GUN-B-4E60")
             assert await st.wait_ready(), st.session.readiness()
             a.send_ready(); b.send_ready()
@@ -376,7 +376,7 @@ async def _raw_hello(url, body, wait=1.5):
 
 async def _two_live(st):
     p = st.add_player("ALPHA", "GUN-A-AB12", team_id="blue")
-    q = st.add_player("BRAVO", "GUN-B-4E60", team_id="yellow")
+    q = st.add_player("BRAVO", "GUN-B-4E60", team_id="red")
     a = await st.connect_node("GUN-A-AB12", node_id="phone-A"); b = await st.connect_node("GUN-B-4E60", node_id="phone-B")
     assert await st.wait_ready(), st.session.readiness()
     a.send_ready(); b.send_ready()
@@ -507,7 +507,7 @@ def test_bind_to_another_gun_moves_the_node_and_frees_the_old_player():
     async def go():
         async with Stack(time_limit_s=30) as st:
             p = st.add_player("ALPHA", "GUN-A-AB12", team_id="blue")
-            c = st.add_player("CHARLIE", "GUN-C-7777", team_id="yellow")
+            c = st.add_player("CHARLIE", "GUN-C-7777", team_id="red")
             a = await st.connect_node("GUN-A-AB12", node_id="phone-A")
             assert await until(lambda: a.player_id == p["player_id"], 3)
             a._send(E.make_envelope("bind", {"node_id": "phone-A", "gun_name": "GUN-C-7777", "gun_tail": "7777"}))
@@ -707,7 +707,7 @@ def test_prune_and_rehello_rejection_are_quiet():
             assert await until(lambda: not any(f"throwaway-{i}" in st.net.nodes for i in range(5)), 3)
             assert "phone-A" in st.net.nodes                # bound records are never pruned
             # re-hello on the live socket naming another player's gun → refused, socket closed, no stray task exception
-            q = st.add_player("BRAVO", "GUN-B-4E60", team_id="yellow")
+            q = st.add_player("BRAVO", "GUN-B-4E60", team_id="red")
             b = await st.connect_node("GUN-B-4E60", node_id="phone-B")
             assert await until(lambda: st.session.players[q["player_id"]]["node_id"] == "phone-B", 3)
             stray = []

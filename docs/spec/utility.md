@@ -87,8 +87,9 @@ the advertised threshold overriding the default, neutral admitting every team, o
 **Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
 -63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
 better"): a phone station **-70 dBm**, a StickS3 **-57 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
-`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`: non-control Stick kinds resolve 0 to -57 and advertise -57). The other kinds on a phone station keep the
-2026-09-04 bench value, -74 dBm at high TX (about 10 ft). MC's `StationAssignment.threshold` still overrides; **0**
+`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`: non-control Stick kinds resolve 0 to -57 and advertise -57). Extraction and bomb stations on a phone keep the
+2026-09-04 bench value, -74 dBm at high TX (about 10 ft); a `control` station's own default is **-75 dBm** on both
+platforms (`beacon.js CONTROL_RSSI_DBM`; Tony, 2026-09-27, hysteresis 6, until the outdoor walk, F383). MC's `StationAssignment.threshold` still overrides; **0**
 (or absent) means the station's own default, which it resolves and advertises in byte 14. A phone app older than
 0.4.12 clamped 0 to -30, so MC sends such a phone the explicit value (`state.py _wire_threshold`). A player phone falls
 back to its own `Presence` default (-74, `app.js`) only for an advert whose byte 14 is 0; an MC-armed station never

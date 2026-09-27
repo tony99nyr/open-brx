@@ -9,10 +9,11 @@ import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATIO
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
-import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
+import { DEMO_TEAMS, GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 import { storedTag, tagError } from '../api/tag';
+import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -113,12 +114,11 @@ export class MockBackend implements Api {
   private subs = new Set<Sub>();
   private phase: Phase = 'muster';
   // F413 (games-presets.md §7): `MODES[].defaults.teams` is red+blue now, matching the server (a fresh
-  // pick, a mode change, and default_config all read it, team-lead's scope decision 2026-09-27) -- but
-  // this DEMO SESSION is a fixture already in progress, not a fresh one: its PLAYERS fixture (data.ts)
-  // is hardcoded to blue/yellow team_id strings across dozens of unrelated tests this lane does not own
-  // (Lobby/Items/spectate). One override, here only, keeps the demo's own starting roster on the OLD
-  // colours on purpose.
-  private config: ConfigView = withPolicy({ ...clone(MODES[0].defaults), teams: [TEAMS[0], TEAMS[1]] });
+  // pick, a mode change, and default_config all read it) -- but this DEMO SESSION is a fixture already
+  // in progress, not a fresh one: its PLAYERS fixture (data.ts) is hardcoded to blue/yellow team_id
+  // strings across dozens of unrelated tests. `DEMO_TEAMS()` (a function, not a shared array -- compose
+  // clones its OWN objects each time) keeps the demo's own starting roster on the OLD colours on purpose.
+  private config: ConfigView = withPolicy({ ...clone(MODES[0].defaults), teams: DEMO_TEAMS() });
   private players: Player[] = [];
   private trying: Record<string, string> = {};
   private standby: Player[] = [];   // STANDBY: parked players (never counted in kit/lobby/readiness)
@@ -258,7 +258,7 @@ export class MockBackend implements Api {
     st.armed = { game: this.gameNo, at: now(), kind: st.assigned.kind, team: st.assigned.team, id: st.assigned.id };
     st.arm_pending = false;
     // the demo phone applies it, as utility.js does: it now reports what it was told
-    st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold || -70, armed: true, live: true };
+    st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold || bubbleDefault(st.assigned.kind, node_id.startsWith('stick-')).start, armed: true, live: true };
   }
   /** F364, as state.py `_auto_station_id`: a station keeps its id, then the one it was handed, else the lowest free. */
   private stationIdOf: Record<string, number> = {};
@@ -1307,27 +1307,34 @@ export class MockBackend implements Api {
   /** F413 (games-presets.md §7): 2 to 4 UNIQUE colours from red/blue/yellow/purple; KOTH is exactly 2
    *  and never offers yellow (a neutral hill broadcasts tid 2, F82 -- the same fault a yellow ROSTER
    *  refuses elsewhere, refused here before it ever reaches one). */
+  /** Copies the server's own two-layer split (gamepick.py `_valid_teams_list` / `merge_match`, then
+   *  state.py `_merge_config`'s mode-specific checks): a shape violation (wrong count, a duplicate, an
+   *  unknown colour) is ONE generic message, whatever the specific defect -- the server never tells
+   *  those apart either. The mode-specific checks (koth exactly 2, never yellow) run only once the
+   *  shape is already valid, exactly as `_merge_config` runs them on the composed patch. */
   private checkMatchTeams(teams: unknown, mode: string): TeamColour[] {
     const ALL: TeamColour[] = ['red', 'blue', 'yellow', 'purple'];
-    if (!Array.isArray(teams) || !teams.every(c => typeof c === 'string')) {
-      throw Object.assign(new Error('match.teams must be an array of team colours'), { status: 400 });
-    }
-    if (teams.length < 2 || teams.length > 4) throw Object.assign(new Error('match.teams must name 2 to 4 teams'), { status: 400 });
-    if (new Set(teams).size !== teams.length) throw Object.assign(new Error('match.teams must name each colour once'), { status: 400 });
-    const bad = teams.find(c => !ALL.includes(c as TeamColour));
-    if (bad) throw Object.assign(new Error(`match.teams must be from red, blue, yellow, purple (saw '${bad}')`), { status: 400 });
-    if (mode === 'koth') {
-      if (teams.length !== 2) throw Object.assign(new Error('KING OF THE HILL is exactly 2 teams'), { status: 400 });
-      if (teams.includes('yellow')) throw Object.assign(new Error('KING OF THE HILL never offers yellow (a neutral hill broadcasts tid 2)'), { status: 400 });
+    const validShape = Array.isArray(teams) && teams.length >= 2 && teams.length <= 4
+      && teams.every(c => typeof c === 'string' && ALL.includes(c as TeamColour))
+      && new Set(teams).size === teams.length;
+    if (!validShape) throw Object.assign(new Error('TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE'), { status: 400 });
+    if (mode === 'koth' && teams.length !== 2) throw Object.assign(new Error('KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS'), { status: 400 });
+    // F82 (state.py _merge_config, verbatim -- yellow is $TID 2, the value a NEUTRAL grenade hill
+    // broadcasts): the server's own message names the mode and the tid, not just "never yellow".
+    if (mode === 'koth' && teams.includes('yellow')) {
+      throw Object.assign(new Error("F82: mode 'koth' cannot have a team on $TID 2 at all — that is the value a NEUTRAL "
+        + 'grenade hill broadcasts, so anyone put on it later reads every uncaptured point as their own and takes no '
+        + 'hill damage. Use tid 0, 1 or 3.'), { status: 400 });
     }
     return teams as TeamColour[];
   }
   /** F415: KOTH only -- absent/null is legal everywhere (no target, the pre-F415 rule); named on any
-   *  other mode is refused outright, the same way spawn.station_source is. */
+   *  other mode is refused outright, the same way spawn.station_source is. Strings and bound copied
+   *  verbatim from state.py _merge_config's own hold_target_s handling. */
   private checkHoldTarget(v: unknown, mode: string): number | null {
     if (v == null) return null;
-    if (mode !== 'koth') throw Object.assign(new Error('match.hold_target_s is only for KING OF THE HILL'), { status: 400 });
-    if (!Number.isInteger(v) || (v as number) <= 0) throw Object.assign(new Error('match.hold_target_s must be a positive integer of seconds, or null'), { status: 400 });
+    if (mode !== 'koth') throw Object.assign(new Error('A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL'), { status: 400 });
+    if (!Number.isInteger(v) || (v as number) <= 0 || (v as number) > 7200) throw Object.assign(new Error('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET'), { status: 400 });
     return v as number;
   }
   private composePartial(pieceIds: Record<string, string>, match: MatchSettings): Partial<GameConfig> {
