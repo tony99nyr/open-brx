@@ -109,7 +109,13 @@ itself receives from either phone.
 4. Restart Mission Control from the latest `main`, with no match ARMED or LIVE. Powerups are on by default
    (F372): pass no `--powerups` flag. Countdown default 30 s.
 5. The Stick: `stick.py cmd 10 "MC ws://<laptop LAN address>:8766/ws"`.
-- **Log:** each phone's `APP_VER` or iOS build marker, the Stick's STATUS line, MC's boot banner.
+6. **Reset the hill range to Tony's default, -75 dBm with hysteresis 6.** The 2026-09-26 bench left an indoor
+   RANGE of -66 in MC's station assignment. A station-side RANGE edit also survives a reboot and a reflash (the
+   Stick's own edit from 2026-09-25 was still `threshold=-77 threshold_src=station` after the 2026-09-26 reflash,
+   which erases no settings). So: PUT the Stick's assignment with `threshold: 0` (the platform default) from MC,
+   then read the Stick serial. Pass: `STATUS` shows `threshold=-75`, and a `PLAYERS STREAM 5` line shows `thr=-75`,
+   before the KOTH block. If it still reads a station value, edit RANGE on the Stick back to -75.
+- **Log:** each phone's `APP_VER` or iOS build marker, the Stick's STATUS line, MC's boot banner, the Stick's `thr`.
 
 Running total: 20 min.
 
