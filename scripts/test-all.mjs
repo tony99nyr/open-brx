@@ -29,12 +29,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { screensBudget, workerCount } from './lib/budget.mjs';
 import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
+import { selectJobs } from './lib/changed.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 const UI = argv.includes('--ui');
 const LIST = argv.includes('--list');
-const filters = argv.filter(a => !a.startsWith('--'));
+// --changed [base]: base defaults to the merge-base with origin/main (below) and, if given, must not itself
+// look like a flag (so `--changed --list` still means "default base").
+const changedIdx = argv.indexOf('--changed');
+const CHANGED = changedIdx >= 0;
+const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedIdx + 1].startsWith('--') ? argv[changedIdx + 1] : null;
+let filters = argv.filter((a, i) => !a.startsWith('--') && !(CHANGED && changedBaseArg !== null && i === changedIdx + 1));
 const LOGS = path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
 fs.mkdirSync(LOGS, { recursive: true });
 
@@ -120,6 +126,25 @@ function buildJobs() {
         ['lobby-outcome', 7, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
   ].filter(j => (UI || !j.ui) && (!filters.length || filters.some(f => j.name.includes(f))));
   return { budgetMb, jobs };
+}
+
+// `--changed [base]`: map the paths that differ from `base` to a job-name filter, the same mechanism as
+// `test:all -- mcp app` above -- fail safe (CLAUDE.md's re-gate rule): an unmapped path, or a path that trips
+// scripts/lib/changed.mjs's full-suite triggers, runs everything, never a narrower guess.
+if (CHANGED) {
+  let base = changedBaseArg;
+  if (!base) {
+    try { base = execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { cwd: ROOT, encoding: 'utf8' }).trim(); }
+    catch (e) { console.error(`test-all: --changed found no base (no origin/main merge-base: ${e.message}); pass one explicitly`); process.exit(2); }
+  }
+  let paths;
+  try { paths = execFileSync('git', ['diff', '--name-only', base], { cwd: ROOT, encoding: 'utf8' }).split('\n').map(s => s.trim()).filter(Boolean); }
+  catch (e) { console.error(`test-all: --changed could not diff against ${base}: ${e.message}`); process.exit(2); }
+  const { filters: selected, reasons } = selectJobs(paths);
+  console.log(`test-all: --changed vs ${base}: ${paths.length} path(s) changed`);
+  for (const r of reasons) console.log(`  ${r}`);
+  console.log(selected === null ? 'test-all: --changed selected: everything' : `test-all: --changed selected jobs matching: ${selected.join(', ')}`);
+  if (selected !== null) filters = filters.concat(selected);
 }
 
 let { budgetMb: BUDGET_MB, jobs: JOBS } = buildJobs();
