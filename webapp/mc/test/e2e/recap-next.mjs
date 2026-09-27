@@ -9,8 +9,8 @@
 //          - one honest thing about the END: no "NEVER" while MC is still re-delivering, and REACHED
 //            kept apart from CONFIRMED (M1),
 //          - the match's real length, which the server's own clock gives, not the 10:00 limit (M23);
-//          then PLAY AGAIN ▸ is CLICKED: the console lands on GAMES with the same game loaded, and the
-//          server has left RECAP.
+//          then PLAY AGAIN ▸ is CLICKED: the console lands on PLAY with the same game shown loaded
+//          (CONTINUE TO KIT ▸, F411), and the server has left RECAP.
 //   stale  the same RECAP with `since_end_ms` and `end_delivery` stripped over REST AND the WebSocket
 //          (an MC that predates them): the header says LIMIT, not a length, and nothing crashes.
 import path from 'node:path';
@@ -112,8 +112,12 @@ try {
     const btn = pg.getByRole('button', { name: 'PLAY AGAIN ▸' });
     c.expect(await btn.count() === 1, 'RECAP shows one PLAY AGAIN ▸ button');
     await btn.click();
-    await c.until(async () => new URL(pg.url()).hash === '#build', 10000, 'the console to land on GAMES (#build)');
-    await c.until(async () => /LOADED GAME/.test(await H.bodyText(pg)), 10000, 'GAMES to show the LOADED GAME');
+    await c.until(async () => new URL(pg.url()).hash === '#build', 10000, 'the console to land on PLAY (#build)');
+    // F411: the retired GAMES tab's "LOADED GAME" state is now `game-loaded-status` on PLAY
+    // (Games.tsx), which reads "LOADED · SENT n/n PHONES" once `state.game.loaded` is true.
+    await c.until(async () => (await pg.getByTestId('game-loaded-status').count()) > 0, 10000, 'PLAY to show the loaded-game status');
+    const status = (await pg.getByTestId('game-loaded-status').innerText()).replace(/\s+/g, ' ');
+    c.expect(/^LOADED/.test(status), `the status reads LOADED (saw ${JSON.stringify(status)})`);
     const after = await srv.get('/api/state');
     console.log(`      server: ${before.phase} -> ${after.phase}, game.loaded=${after.game?.loaded}, mode=${after.config?.mode}`);
     c.expect(after.phase === 'build', `the server left RECAP for BUILD (it is ${after.phase})`);
@@ -121,7 +125,7 @@ try {
     c.expect(after.config?.mode === before.config?.mode, 'it is the same game');
     c.expect(!after.live, 'no live match is left over');
     const games = await H.bodyText(pg);
-    c.expect(/CONTINUE TO KIT/.test(games), 'GAMES offers CONTINUE TO KIT');
+    c.expect(/CONTINUE TO KIT/.test(games), 'PLAY offers CONTINUE TO KIT');
     c.expect(!/MATCH COMPLETE/.test(games), 'the RECAP is gone from the screen');
     await H.shot(pg, SHOTS, 'games-after-next-1440');
     await pg.context().close();
