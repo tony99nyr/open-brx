@@ -35,7 +35,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { deriveTimeoutS, screensBudget, workerCount } from './lib/budget.mjs';
+import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, deriveTimeoutS, planPeakMb, screensBudget, workerCount } from './lib/budget.mjs';
 import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
 
@@ -87,14 +87,23 @@ const availableMb = () => {
 // A job that runs longer than this is killed and fails: a hung test must not hold the run (and an agent) forever.
 const JOB_TIMEOUT_S = Number(process.env.JOB_TIMEOUT_S || 600);
 
+// The one place JOBS pulls a browser job's mb/secs from: scripts/lib/budget.mjs's OTHER_UI_JOBS, so this file
+// and that one's tests never drift apart on the same job.
+const findOtherUi = name => {
+  const j = OTHER_UI_JOBS.find(o => o.name === name);
+  if (!j) throw new Error(`test-all: no OTHER_UI_JOBS entry for ${name} (scripts/lib/budget.mjs is out of step)`);
+  return j;
+};
+
 const freePort = () => new Promise((resolve, reject) => {
   const s = net.createServer(); s.unref(); s.on('error', reject);
   s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
 });
 
-// name, working dir, command, `mb` (peak PSS measured 2026-09-16, with a margin), `secs` (typical, for ordering),
-// and whether it needs app/www. `env` may be a function (for per-job ports).
-const e2e = (script, secs, mb = 700) => ({
+// name, working dir, command, `mb` (peak PSS, from scripts/lib/budget.mjs's E2E_SPECS/OTHER_UI_JOBS -- keep the
+// two in step, mcp/tests/test_test_all_budget.py pins them), `secs` (typical, for ordering), and whether it
+// needs app/www. `env` may be a function (for per-job ports).
+const e2e = (script, secs, mb) => ({
   name: `mc-${script}`, cwd: 'webapp/mc', cmd: ['node', `test/e2e/${script}.mjs`], ui: true, mb, secs,
   env: async () => ({ MC_PORT: String(await freePort()), MC_WS_PORT: String(await freePort()), VITE_PORT: String(await freePort()) }),
 });
@@ -106,7 +115,12 @@ const e2e = (script, secs, mb = 700) => ({
 function rawJobs(budgetMb) {
   // Worker counts: a quarter of the cores, and no runner may take more than a quarter of the budget for its workers.
   const pyJ = workerCount(70, 16, CPUS, budgetMb), vitestW = workerCount(300, 8, CPUS, budgetMb), siteW = workerCount(300, 8, CPUS, budgetMb);
-  const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb);   // the long pole
+  // app-screens is sized against what's left after the OTHER ui:true jobs THIS INVOCATION will actually run (not
+  // the whole budget): a full --ui run selects all of OTHER_UI_JOBS, so screensBudget clamps the reservation at
+  // its historical fair half; a filtered/--changed run that drops most of them leaves app-screens the rest.
+  const otherUiMb = OTHER_UI_JOBS.filter(j => UI && (!filters.length || filters.some(f => j.name.includes(f))))
+    .reduce((s, j) => s + j.mb, 0);
+  const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb, otherUiMb);   // the long pole
   return [
     { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 20 },
     // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
@@ -121,18 +135,11 @@ function rawJobs(budgetMb) {
     { name: 'site', cwd: 'site', cmd: ['npx', 'playwright', 'test', `--workers=${siteW}`], www: true, mb: 300 + 300 * siteW, secs: 30 },
     // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
     { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: { SCREENS_SHARDS: String(screensS) }, www: true, ui: true, mb: screensMb, secs: screensSecs },
-    { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, mb: 300, secs: 11 },
-    { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, mb: 500, secs: 60 },
+    { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, ...findOtherUi('app-logsync') },
+    { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, ...findOtherUi('app-moments') },
     // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
-    { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, mb: 1000, secs: 65 },
-    ...[['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87], ['m2-ui', 46], ['game-edit', 32], ['operator-menu', 18], ['report', 15],
-        // MC visual QA 2026-09-23: measured as 1.0-1.1 GB RSS summed over the process tree (shared pages counted
-        // twice), so 900 MB sits between that and the older jobs' measured 700 MB PSS.
-        ['frame', 7, 900], ['lobby-updating', 3, 900], ['recap-next', 20, 900],
-        ['feed-reload', 9, 900], ['mc-restart', 13, 900], ['live-board', 19, 900],
-        // MC visual QA round 2 (2026-09-24): a real MC with station and phone stand-ins; 27 s measured
-        ['vqa2', 27, 900], ['play', 35, 950], ['build', 8, 900],
-        ['lobby-outcome', 7, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
+    { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, ...findOtherUi('app-e2e') },
+    ...E2E_SPECS.map(([s, t]) => e2e(s, t, findOtherUi(`mc-${s}`).mb)),
   ];
 }
 const selectFiltered = (all, ui, filterList) => all.filter(j => (ui || !j.ui) && (!filterList.length || filterList.some(f => j.name.includes(f))));
@@ -292,7 +299,13 @@ for (let firstInARow = 0, toldPid = null; firstInARow < 2;) {
 JOBS = selectFiltered(ALL_JOBS, UI, filters);
 
 const t0 = Date.now();
+// The scheduler's real ceiling: HEADROOM's slice of the detected budget, never the whole thing (F429/F430,
+// scripts/lib/budget.mjs's HEADROOM comment) -- a job's `mb` running low, or the box being busier than
+// `availableMb()` saw, still has 15% of BUDGET_MB of slack instead of none.
+const PLAN_BUDGET_MB = Math.floor(BUDGET_MB * HEADROOM);
+const plannedPeakMb = planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB);
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
+console.log(`test-all: planned peak ${plannedPeakMb} MB against a ${PLAN_BUDGET_MB} MB ceiling (${Math.round(HEADROOM * 100)}% of the ${BUDGET_MB} MB budget), ${BUDGET_MB - plannedPeakMb} MB headroom`);
 // The one shared build output. Built once here, before any reader starts (see the rules at the top).
 const builds = [];
 if (JOBS.some(j => j.www)) builds.push(run('app-build', 'app', ['npm', 'run', 'build']));
@@ -310,7 +323,7 @@ await new Promise(done => {
     if (stopping) return;
     for (let i = 0; i < queue.length;) {
       const j = queue[i];
-      if (running > 0 && usedMb + j.mb > BUDGET_MB) { i++; continue; }
+      if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
       queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
@@ -337,5 +350,5 @@ for (const r of failed) {
   console.log(`\n---- ${r.name} (exit ${r.code}), last 30 lines of ${r.log}`);
   console.log(lines.slice(-30).join('\n'));
 }
-console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (planned peak ${peakMb} MB of a ${BUDGET_MB} MB budget)`);
+console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${peakMb} MB against a ${PLAN_BUDGET_MB} MB ceiling, ${BUDGET_MB} MB budget)`);
 await exitAfterKills(failed.length ? 1 : 0);

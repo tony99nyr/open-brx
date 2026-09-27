@@ -29,6 +29,17 @@ def _call(fn: str, *args: float) -> dict:
     return json.loads(res.stdout)
 
 
+def _call_expr(body: str) -> dict:
+    """Like _call, but `body` is a JS expression with `m` bound to the imported module (for the tests below,
+    which need more than one function call to build a job list before checking it)."""
+    needs(NODE, "node")
+    expr = f"import({json.dumps(BUDGET.as_uri())}).then(m => {{ console.log(JSON.stringify({body})); }})"
+    res = subprocess.run([NODE, "--input-type=module", "-e", expr], cwd=REPO,
+                          capture_output=True, text=True, timeout=30)
+    assert res.returncode == 0, res.stderr
+    return json.loads(res.stdout)
+
+
 def test_screens_budget_caps_at_16_shards_on_a_big_box():
     b = _call("screensBudget", 32, 8000)
     assert b["shards"] == 16, b
@@ -81,3 +92,45 @@ def test_derive_timeout_s_caps_the_derived_term_on_a_starved_box():
 def test_derive_timeout_s_never_undercuts_an_explicit_job_timeout_s_floor():
     # An operator's explicit JOB_TIMEOUT_S past the cap is never silently capped: only the DERIVED (3x) term is.
     assert _call("deriveTimeoutS", 5000, 65) == 5000
+
+
+# F429/F430 (2026-09-27): two e2e jobs were killed mid-run ("Target page, context or browser has been closed")
+# while test-all.mjs's own printed total sat at 7990 of an 8000 MB budget -- no margin at all for a job's `mb`
+# running low. HEADROOM, screensBudget's `otherUiMb` reservation and the scheduler's own ceiling (test-all.mjs's
+# PLAN_BUDGET_MB) exist to keep that from happening again; these tests pin the guarantee at the planning-math
+# level, on the actual OTHER_UI_JOBS this repo runs, so a retuned mb/secs can't quietly drift past it.
+
+def test_screens_budget_reserves_room_for_the_other_ui_jobs():
+    # Passing otherUiMb shrinks app-screens' share; a huge otherUiMb (more than the whole budget, as a real
+    # --ui run's OTHER_UI_JOBS sum is) still leaves it its historical fair half of the HEADROOM target, not zero.
+    plain = _call("screensBudget", 32, 8000)
+    reserved = _call("screensBudget", 32, 8000, 100000)
+    assert reserved["mb"] < plain["mb"], (plain, reserved)
+    assert reserved["shards"] >= 1, reserved
+    half = 8000 * 0.85 / 2
+    assert abs(reserved["mb"] - (100 + 240 * min(16, int(half // 240)))) < 240, reserved
+
+
+def test_full_ui_plan_stays_within_headroom():
+    """Mirrors test-all.mjs's rawJobs(): a full `--ui` run selects app-screens AND every OTHER_UI_JOBS entry at
+    once (the exact scenario that produced F429/F430). app-screens is sized against what is left of the HEADROOM
+    target after OTHER_UI_JOBS's own mb is totalled, then the whole plan (screens plus every other UI job) is
+    bin-packed (planPeakMb, the same greedy scheduler test-all.mjs's pump() runs) against that same HEADROOM
+    ceiling. The result must never plan to use more than HEADROOM's slice of the budget."""
+    result = _call_expr(
+        "(() => {"
+        "  const cpus = 32, budgetMb = 8000;"
+        "  const otherMb = m.OTHER_UI_JOBS.reduce((s, j) => s + j.mb, 0);"
+        "  const screens = m.screensBudget(cpus, budgetMb, otherMb);"
+        "  const ceiling = budgetMb * m.HEADROOM;"
+        "  const jobs = [{ mb: screens.mb, secs: screens.secs }, ...m.OTHER_UI_JOBS];"
+        "  const peak = m.planPeakMb(jobs, ceiling);"
+        "  return { peak, ceiling, budgetMb, otherMb, screensMb: screens.mb };"
+        "})()"
+    )
+    assert result["peak"] <= result["ceiling"], result
+    assert result["peak"] <= result["budgetMb"] * 0.85, result
+    # Not a vacuous pass: with the OTHER_UI_JOBS this repo runs today, the plan gets close to (not just under) the
+    # ceiling, so a regression that removed the cap would show up as `peak` jumping toward `budgetMb`, not `peak`
+    # trivially sitting at 0.
+    assert result["peak"] > result["ceiling"] * 0.5, result

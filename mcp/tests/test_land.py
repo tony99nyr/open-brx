@@ -78,6 +78,10 @@ if (wt / "RED").exists():
 if (wt / "FLAKE").exists() and not (d / "flaked").exists():
     (d / "flaked").write_text("")
     fail.add("site")
+closeflake = (wt / "CLOSEFLAKE").exists() and not (d / "closeflaked").exists()
+if closeflake:
+    (d / "closeflaked").write_text("")
+    fail.add("site")
 fail &= set(sel)
 print()
 print(f"{'job':<18}{'result':<8}secs")
@@ -85,9 +89,13 @@ for j in sel:
     print(f"{j:<18}{'FAIL' if j in fail else 'ok':<8}1")
 for j in sorted(fail):
     log = d / f"{j}-{time.time_ns()}.log"
-    log.write_text(f"FAIL test_{j}::test_thing\n")
+    # A browser gate crash (F429/F430): no "FAIL file::test" line, just the error Playwright prints.
+    if closeflake and j == "site":
+        log.write_text("Error: locator.click: Target page, context or browser has been closed\n")
+    else:
+        log.write_text(f"FAIL test_{j}::test_thing\n")
     print(f"\n---- {j} (exit 1), last 30 lines of {log}")
-    print(f"FAIL test_{j}::test_thing")
+    print(log.read_text().strip())
 print(f"\n{len(sel) - len(fail)}/{len(sel)} job(s) passed in 1s")
 sys.exit(1 if fail else 0)
 '''
@@ -257,6 +265,20 @@ def test_a_flake_is_rerun_recorded_and_lands():
         assert len(flakes) == 1 and flakes[0]["job"] == "site" and flakes[0]["branches"] == [a, b], flakes
         assert flakes[0]["step"] == "test_site::test_thing"
         assert "site x1" in r.stdout
+
+
+def test_a_flake_with_no_parseable_step_records_the_error_line_not_null():
+    # F429/F430 (2026-09-27): a browser-gate crash's log has no "FAIL file::test" line, only Playwright's own
+    # error. stepOf's fallback must still record it, so flakes.jsonl never lands a bare `step: null`.
+    with Lane() as t:
+        a = t.submit("a", {"CLOSEFLAKE": "fails site once, browser-crash style"})
+        b = t.submit("b", {"b.txt": "b"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a, b)
+        flakes = [json.loads(line) for line in (t.dir / "state-a" / "flakes.jsonl").read_text().splitlines()]
+        assert len(flakes) == 1 and flakes[0]["job"] == "site" and flakes[0]["branches"] == [a, b], flakes
+        assert flakes[0]["step"] is not None and "closed" in flakes[0]["step"], flakes
 
 
 # ---- main moving, stale locks, racing landers ---------------------------------------------------------------------
