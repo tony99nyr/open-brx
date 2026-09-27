@@ -64,10 +64,12 @@ F372 lands (already landing): pass no `--powerups` flag to MC anywhere below.
 - F348 (Group 1 item 1).
 - The queue-slot 2-then-3-cues-300ms-apart variant on the phone's own queue path (F419; Group 7's `$PLAY` spacing
   check).
-- **The Stick group, from brx4 (fixes on main at `26084fcf`, compiles clean): reflash the Stick from `main` at
-  setup.** Then: (a) END in a powerup match: the Stick shows the item plus MATCH OVER, and the countdown stops;
-  (b) stand at the Stick after END: no grant; (c) the F387 short-hold control, done this way: open STATS, wait
-  about 18 s, then hold A; RANGE opens at 5 s (a held button now counts as activity for the 20 s home timeout).
+- **The Stick group, from brx4 (fixes on main at `b79de96d` or later, compiles clean at 51%): reflash the Stick
+  from `main` at setup.** Then: (a) END in a powerup match: the Stick shows the item plus MATCH OVER, and the
+  countdown stops; (b) stand at the Stick after END: no grant; (c) the F387 short-hold control, done this way: open
+  STATS, wait about 18 s, then hold A; RANGE opens at 5 s (a held button now counts as activity for the 20 s home
+  timeout); (d) after END, the phone does not see the pickup as available. Known and documented: a Stick reboot
+  after END shows the pickup live again until MC re-sends END.
   Serial log on for (c).
 - **The Stick's double-grant race, from brx5 (F417 part 2, Sitting C): two phones walk into one Stick Rockets
   station together, with the Stick serial logging and both phones' logs on** (ROBP1 needs WebView debugging on,
