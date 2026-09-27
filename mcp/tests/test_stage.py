@@ -1464,7 +1464,7 @@ def test_stage_spaces_play_frames_and_drops_fillers_inside_the_gap():
         await st.write([line_a, "$SFLASH,*", line_b], "spacing regression", gap_ms=0)
         plays = [event for event in mgr.sessions["stage"].buffer if event.direction == "tx" and event.raw.startswith("$PLAY,")]
         assert [event.raw for event in plays] == [line_a, line_b]
-        assert clock.t == 1000.15
+        assert abs(clock.t - (1000 + S.clip_s("VA6D"))) < 1e-9, clock.t   # F419: a queue-slot line waits for the clip before it, not only PLAY_GAP_MS
 
         await st.write([tick], "filler regression", gap_ms=0)
         plays = [event.raw for event in mgr.sessions["stage"].buffer if event.direction == "tx" and event.raw.startswith("$PLAY,")]
@@ -1527,6 +1527,39 @@ def test_stage_play_gap_starts_when_previous_transmission_finishes():
         assert len(sent) == 2
         assert sent[1][0] - (sent[0][0] + 0.2) >= S.PLAY_GAP_MS / 1000 - 1e-9
         assert waits and waits[0] >= S.PLAY_GAP_MS / 1000 - 1e-9
+
+    asyncio.run(run())
+
+
+def test_f419_stage_queue_slot_cues_wait_for_the_clip_on_the_gun():
+    """engine.js `_drainPlayWrites` (F419, bench 2026-09-26): the gun's QUEUE slot drops and reorders cues fed faster
+    than they play, so a queue-slot `$PLAY` waits until the last one it sent has played. CONTROL: an INTERRUPT-slot
+    `$PLAY` keeps only the plain PLAY_GAP_MS."""
+    async def run():
+        clock = _Clock()
+
+        async def sleep(seconds):
+            clock.advance(seconds)
+
+        st = GunStage(FakeConnectionManager([]), None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
+        st.connected = True
+        sent = []
+
+        async def send(frames, gap_ms, on_start=None):
+            sent.append((clock.t, frames))
+
+        st._send = send
+        await st.write(["$PLAY,,4,6,VA6D,,,,*"], "queue A", gap_ms=0)
+        clock.advance(0.3)
+        await st.write(["$PLAY,,4,6,VA6E,,,,*"], "queue B", gap_ms=0)
+        assert sent[1][0] - sent[0][0] >= S.clip_s("VA6D") - 1e-9, sent
+        assert S.clip_s("VA6D") > 1.0, "setup: a real clip length from the sound catalogue"
+        clock.advance(0.3)
+        await st.write(["$PLAY,VAA,4,6,,,,,*"], "interrupt C", gap_ms=0)
+        assert sent[2][0] - sent[1][0] < S.clip_s("VA6E"), "the interrupt slot does not wait for the clip"
+        clock.advance(0.3)
+        await st.write([S.PLAYX, "$PLAY,,4,6,VB0N,,,,*"], "preempt D", gap_ms=0)
+        assert sent[3][0] - sent[2][0] < S.clip_s("VA6E"), "a write carrying its own $PLAYX (the hill preempt) never waits"
 
     asyncio.run(run())
 

@@ -152,6 +152,15 @@ export const SHIELD_REASSERT_MS = 500;
  *  holds every trigger, so every player is hittable AND can fire at the same moment. The T-0 spawn carries no t8. */
 export const PRE_ARM_TABLE_MS = 3000;
 // F416 (P0, bench part 1, 2026-09-26): a spawn or revive write that fails is CHECKED, never left. See `_writeLife`.
+/** F419: a `$PLAY` on the gun's QUEUE slot: token 1 empty, the sound id in token 4 (`$PLAY,,4,6,<id>,,,,*`). PURE. */
+/** F419 review: a queue-slot cue that has waited this long for the gun is stale and is dropped, not played late (the
+ *  announcer's own limit for a kill line, `ANNOUNCE_AUDIO_LATE_MS`). A must-hear line never waits, so never drops. */
+export const PLAY_QUEUE_STALE_MS = 6000;
+export function isQueueSlotPlay(f) {
+  if (typeof f !== 'string' || !f.startsWith('$PLAY,')) return false;
+  const t = f.split(',');
+  return !(t[1] || '').trim() && !!(t[4] || '').trim();
+}
 export const SPAWN_CHECK_MS = 400;        // after the failed write, this long before the node asks the gun
 export const SPAWN_ASKS = 2;              // probe writes before the check says the gun cannot be asked (HUD warning)
 export const SPAWN_ASK_GAP_MS = 1000;
@@ -1249,8 +1258,9 @@ export class Engine {
           }
         });
         const pending = groups.filter(group => group.length);
+        if (mustHear) this._dropWaitingPlays(why);   // F419: the cues still on the PHONE are what the old FIFO's stops cut
         const writes = pending.map((group, i) => new Promise(resolve => {
-          const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, resolve, cancelled: false };
+          const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, resolve, cancelled: false, queuedAt: now };
           this._pendingPlayWrites.add(job);
           this._playQueue.push(job);
         }));
@@ -1300,10 +1310,23 @@ export class Engine {
     if (this._playBusy || !this._playQueue.length) return;
     const job = this._playQueue.shift(), generation = this._playRunGen;
     this._playBusy = true;
-    const target = Math.max(this._nextPlayAt || 0, this._lastPlayAt == null ? 0 : this._lastPlayAt + PLAY_GAP_MS);
+    // F419 (bench part 1, 2026-09-26): the gun's QUEUE slot (`$PLAY,,4,6,<id>,...`, token 4) is not a deep FIFO. Four
+    // cues fed 300 ms apart were heard 1, 4, 3, with 2 dropped; 3.5 s apart, all four played whole and in order. So a
+    // queue-slot cue goes only once the clip the phone models on the gun has ended (`_gun.freeAt`). The INTERRUPT slot
+    // (token 1) cuts the playing clip by design and keeps the plain PLAY_GAP_MS; a must-hear line, and any write that
+    // carries its own `$PLAYX` (the hill callout's preempt), stops the clip itself and must not wait for it to end.
+    const waitsForGun = !job.mustHear && !job.group.includes(PLAYX) && job.group.some(isQueueSlotPlay);
+    const target = Math.max(this._nextPlayAt || 0, this._lastPlayAt == null ? 0 : this._lastPlayAt + PLAY_GAP_MS,
+      waitsForGun ? this._gun.freeAt(this.now()) : 0);
     const send = () => {
+      if (this._playWaiting === job) this._playWaiting = null;
       if (job.cancelled || generation !== this._playRunGen) return;
       this._nextPlayAt = 0;
+      if (waitsForGun && job.queuedAt != null && this.now() - job.queuedAt > PLAY_QUEUE_STALE_MS) {   // F419 review
+        this.log(`audio: ${job.why} dropped: it waited ${this.now() - job.queuedAt} ms for the gun (stale past ${PLAY_QUEUE_STALE_MS} ms)`, 'li');
+        this._pendingPlayWrites.delete(job); job.resolve(true); this._playBusy = false; this._drainPlayWrites();
+        return;
+      }
       const finish = ok => {
         this._pendingPlayWrites.delete(job);
         job.resolve(ok);
@@ -1318,8 +1341,22 @@ export class Engine {
       if (result && typeof result.then === 'function') result.then(finish, () => finish(false));
       else finish(result);
     };
-    if (target > this.now()) job.timer = this.delay(target - this.now(), send);
+    if (target > this.now()) { this._playWaiting = job; job.timer = this.delay(target - this.now(), send); }
     else send();
+  }
+  /** F419: a must-hear line (`_sayMust`) goes first. With the queue slot now paced by clip length, the cues it would
+   *  have cut with `$PLAYX` on the gun are still waiting on the PHONE, so they are dropped here instead, and `_sayMust`
+   *  stops only what the gun really holds. Another must-hear line is kept. Never touches a write already on the air. */
+  _dropWaitingPlays(why) {
+    const drop = job => {
+      job.cancelled = true; this._pendingPlayWrites.delete(job); job.resolve(true);
+      this.log(`audio: ${job.why} dropped before it reached the gun: the must-hear line (${why}) goes first (F419)`, 'li');
+    };
+    const keep = [];
+    for (const job of this._playQueue) { if (job.mustHear) keep.push(job); else drop(job); }
+    this._playQueue.length = 0; this._playQueue.push(...keep);
+    const w = this._playWaiting;
+    if (w && !w.mustHear) { drop(w); this._playWaiting = null; this._playBusy = false; }   // its timer finds it cancelled
   }
   /** Record the sounds and stops the phone writes. */
   _audioWrite(frames, why, deferPlay = false) {
@@ -1372,7 +1409,7 @@ export class Engine {
       this._pendingPlayWrites.delete(job);
       job.resolve(true);
     }
-    this._playQueue.length = 0;
+    this._playQueue.length = 0; this._playWaiting = null;
     this._playRunGen++;
     this._playBusy = this._playInFlight;
     this._nextPlayAt = this._lastPlayAt == null ? this.now() : this._lastPlayAt + PLAY_GAP_MS;

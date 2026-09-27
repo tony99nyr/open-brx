@@ -64,7 +64,8 @@ House style:
    practice. A guess stays in the evidence layer and goes in `../FOLLOWUPS.md`.
 3. **Write it once** in the right page above.
 4. **Bump that page's `Last verified:` date.**
-5. **Build and push.** `cd site && npm test` builds and checks. A push to `main` deploys.
+5. **Build and submit.** `cd site && npm test` builds and checks, then submit through the land lane
+   (`CLAUDE.md` → *Reaching main*). Landing on `main` deploys.
 
 **Only confirmed facts are published.** If two sources disagree, publish neither value: put the
 question in `../FOLLOWUPS.md` with what would settle it. This rule is unchanged. What went away is

@@ -1,7 +1,7 @@
 # GAMES: PLAY picks, BUILD creates (F411)
 
 **Status:** the server⇄console contract for the F411 build, 2026-09-26. The product brief is
-[`games-redesign.md`](games-redesign.md) (read it first); the storyboard is Proposal A of
+[`games-redesign.md`](../../archive/spec-design-games-redesign.md) (read it first); the storyboard is Proposal A of
 `C:\Users\Tony\brx-games-flow\index.html`. Where this file and the brief differ, this file is the wire. The types are in
 `mcp/brx_mcp/mc/types.py` (`GamePiece`, `GamePick`, `MatchSettings`, `PieceKind`) and generated into
 `webapp/mc/src/api/contract.gen.ts`. The routes are rows in `mcp/brx_mcp/mc/API.md`.

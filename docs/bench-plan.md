@@ -4,7 +4,7 @@ Updated: 2026-09-26. **Open this file first at the bench.** How a live bench run
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 **Part 1 ran and is DONE, 2026-09-26 (below, struck).** Part 2 is now NOW: [below](#part-2-tomorrow-after-games-and-014).
-App 0.4.14 is cut and F411 (the MC GAMES redesign) has landed on `main`. It supersedes the 2026-09-25 read of
+App 0.4.15 is cut (built from `efd1961c`; if it is not yet published, install the latest published APK and log its version) and F411, F413 (teams) and F415 (MATCH SETTINGS, the KOTH hold target) have landed on `main`. It supersedes the 2026-09-25 read of
 sitting C; see "Superseded" under "Sittings, in priority order" for the pointer.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
@@ -48,10 +48,9 @@ Part 2 is next: everything above that did not run or finish, plus everything tha
 iPhone (the GAMES CHECK, the iPhone block, F394, F400 and its lows, the 0.4.14 release loop, and every [RE-CHECK]
 below) is the section below.
 
-## Part 2, tomorrow: after GAMES and 0.4.14
+## Part 2: after GAMES, teams, the hold target and 0.4.15
 
-App 0.4.14 is cut (`app-v0.4.14`, built from `e52f965e`), and F411 (the MC GAMES redesign) has landed on `main`
-at `c2c51679`: PICK GAME, PLAY AGAIN, LAST MATCH, BUILD and FAVOURITES (`docs/spec/design/games-presets.md` §6)
+App 0.4.15 is cut (built from `efd1961c`; install the latest published APK and log its version if 0.4.15 is not up yet), and F411, F413 and F415 have landed on `main` at `4275fad2`: PICK GAME, PLAY AGAIN, LAST MATCH, BUILD and FAVOURITES (`docs/spec/design/games-presets.md` §6)
 are all real code now (`webapp/mc/src/screens/Games.tsx`), not only the brief. CI on that merge is green on the
 app, server and MC UI jobs; only the unrelated "Refresh the site screenshots" job failed. Powerups ship on by
 default now that F372 has landed: pass no `--powerups` flag to MC anywhere below.
@@ -64,19 +63,19 @@ do not copy a procedure here.
 
 1. **Step 0, setup (25 min).** Running total: 25.
 2. **IPHONE block (15 min).** Running total: 40.
-3. **GAMES CHECK: 11.7 + F422, PICK GAME, F402, FAVOURITES, the BUILD TypeChip guard (20 min).** Skip PLAY AGAIN,
-   LAST MATCH and the countdown default today. Running total: 60.
-4. **Group 1, items 1-5: the P0 block, F416 then F417/F381 (50 min).** Running total: 110.
-5. **Group 1, item 6: F348 (10 min).** Running total: 120.
-6. **Group 2: KOTH, plus F420, F421 and F424 (20 min).** Running total: 140.
-7. **Group 4, items 4-5 merged: F399 and F380 on an Overshield Stick, plus F425's silence check (12 min).**
-   Running total: 152.
-8. **Group 3, checks (a), (b) and (d): end the match (5 min).** Skip check (c) today. Running total: 157.
-9. **Group 1, item 7: F394 (5 min).** Running total: 162.
-10. **Group 1, item 8: 4.0, trimmed to the day/night launch only (10 min).** Skip the through-MC match today.
-    Running total: 172.
+3. **GAMES CHECK: 11.7 + F422, PICK GAME, F402, FAVOURITES, the BUILD TypeChip guard (23 min), plus a short TEAMS
+   re-split check (F413).** Skip PLAY AGAIN, LAST MATCH and the countdown default today. Running total: 63.
+4. **Group 1, item 0: F297 phone connect metrics (10 min).** Running total: 73.
+5. **Group 1, items 1-5: the P0 block, F416 then F417/F381 (50 min).** Running total: 123.
+6. **Group 1, item 6: F348 (10 min).** Running total: 133.
+7. **Group 2: KOTH, plus F420, F421 and F424, plus F415's hold target (25 min).** Running total: 158.
+8. **Group 4, items 4-5 merged: F399 and F380 on an Overshield Stick, plus F425's silence check (12 min).**
+   Running total: 170.
+9. **Group 3, checks (a), (b) and (d): end the match (5 min).** Skip check (c) today. Running total: 175.
+10. **Group 1, item 7: F394 (5 min).** Running total: 180.
 
-Stop at 172 min: 8 min of slack against a 3 h sitting.
+Stop at 180 min, with no slack. If short on time, drop the TEAMS and HOLD checks first: they are additions, not
+the core gate.
 
 ### Tomorrow list (not run in this sitting)
 
@@ -84,6 +83,8 @@ Stop at 172 min: 8 min of slack against a 3 h sitting.
   and MC/Stick re-pointed after a restart for LAST MATCH).
 - 11.6 (Group 1, item 9).
 - The powerup setup: 4.11, 11.2, 3.4 and 3.5 (Group 1, item 10).
+- 4.0, trimmed to the day/night launch only (Group 1, item 8 today's cut dropped it to make room for F297's
+  phone connect metrics). Skip the through-MC match when it runs.
 - F386 check (c), the idle-timeout control (Group 3).
 - Groups 4-7, except the F399/F380/F425 block already run today (Group 4's items 4-5).
 
@@ -100,7 +101,7 @@ Stop at 172 min: 8 min of slack against a 3 h sitting.
 - The Stick reflash from `main` at `6f042126` or later (supersedes `b79de96d`; CI green), now Step 0, and
   F386's (a)/(b)/(c)/(d) checks, now Group 3 (replacing the closed F387/F333 re-tests).
 
-**Kit.** Two guns and headsets. Player phones: a **Pixel 5** (0.4.14; this is "the grey Pixel" below) and an
+**Kit.** Two guns and headsets. Player phones: a **Pixel 5** (0.4.15; this is "the grey Pixel" below) and an
 **iPhone X**, built fresh from `main` on the MacBook (the `iphone-build` skill, or `npm run ios:push`;
 `docs/mac-dev-runbook.md`, `app/README.md` "To build for iOS"; note the iOS debug toggle is written but
 **uncompiled** until that build exercises it, `app/plugins/brx-debug/ios/`). The green and black Pixels are
@@ -135,14 +136,14 @@ MC in WSL); that is expected, not a fault.
    or the `iphone-build` skill). Log the iOS version it reports (Settings > General > About): the iPhone X tops
    out at iOS 16, and the app wants Safari 16.2 for `color-mix()` (`app/README.md`), so a phone stuck below
    16.2 is a real risk, not a formality.
-3. **Install app 0.4.14 on the green Pixel and the black station Pixel** with `adb install -r` (the same release
+3. **Install app 0.4.15 on the green Pixel and the black station Pixel** with `adb install -r` (the same release
    key installs over an older 0.4.x with no uninstall). Do not claim which version is already there: install
-   0.4.14 if it is not, and log what `adb shell dumpsys package com.openbrx.companion | grep versionName` reports
+   0.4.15 if it is not, and log what `adb shell dumpsys package com.openbrx.companion | grep versionName` reports
    on each phone afterwards.
 4. **The grey Pixel gets a true first contact, for 11.7.** `adb install -r` keeps app data and the phone's MC
    trust key, so reinstalling over an old build is not a real "first open". Run `adb shell pm clear
    com.openbrx.companion` on the grey Pixel first (**this wipes its app data**, including its trust key and any
-   saved BLE bond), then reinstall 0.4.14 only. **Do not open the app, and do not pair its gun.** Opening the app
+   saved BLE bond), then reinstall 0.4.15 only. **Do not open the app, and do not pair its gun.** Opening the app
    is what starts the auto-join and pairing is what SET MY GUN does, both of which are the actual test: the first
    GAMES CHECK item, below, is 11.7 and F422.
 5. Restart Mission Control from the latest `main`, with no match ARMED or LIVE. Powerups are on by default
@@ -161,6 +162,9 @@ MC in WSL); that is expected, not a fault.
    also shows `thr=-75` before the KOTH block.
 - **Log:** each phone's `APP_VER`/version and iOS build marker, the Stick's reflash sha and STATUS line, MC's
   boot banner, the Stick's `thr`.
+
+If the phones are still on 0.4.14, a RED victim's kill confirm can pair with the wrong team (fixed in 0.4.15,
+`f52d34dd`); do not log it as a new finding.
 
 Running total: 25 min.
 
@@ -216,20 +220,38 @@ label inside it, unchanged.
    a type toggle (`TypeChip`, e.g. "RIFLES"). Pass: the ids it selects are only from the server's visible weapon
    catalogue (`pieces.py`: "no preset may ever select a hidden weapon"); no cut-arsenal weapon appears under any
    type, on or partial.
+9. **TEAMS re-splits evenly on a count change (F413).** In MATCH SETTINGS, change the team count from 2 to 3.
+   Pass: the confirm shows an even split, and confirming applies it with no team off by more than one. Then
+   change only a colour: nobody moves.
 - **Log:** a pass/fail per step and tap counts, in the experiment log.
 
-STOP POINT 2: the new console's core flow, F402's fix, 11.7's auto-join, F422's join line, FAVOURITES and the
-BUILD type-toggle guard are all proven. Everything below (powerups, Shields, KOTH, the Stick) is next.
+STOP POINT 2: the new console's core flow, F402's fix, 11.7's auto-join, F422's join line, FAVOURITES, F413's
+TEAMS re-split and the BUILD type-toggle guard are all proven. Everything below (powerups, Shields, KOTH, the
+Stick) is next.
 
 Running total: 65 min.
 
-### Group 1: two phones, two guns, the P0s then powerups (about 170 min; the highest value)
+### Group 1: two phones, two guns, the P0s then powerups (about 180 min; the highest value)
 
 Kit: both guns and headsets, the Pixel 5 and the iPhone X (or the green Pixel, per STOP POINT 1), MC as
 restarted at setup, the black Pixel and the Stick as stations, a tape measure.
 
-**The P0 rows go first.** These are the three 🔴 rows still open from part 1 (F416, F417, F418), each run
-against its own FOLLOWUPS pass rule, not just carried as a note.
+**F297's phone connect metrics run first, then the three 🔴 rows still open from part 1 (F416, F417, F418)**,
+each against its own FOLLOWUPS pass rule, not just carried as a note.
+
+0. **F297 (🔴), phone connect metrics (10 min).** Pass rule, set BEFORE the run: 10/10 first-connect success on
+   every phone, a median at or under 3 s, and zero headset drops; anything worse is a FAIL, and feeds F297/F293
+   with the numbers, not an impression. A/B/A: **A** first, the laptop control (Windows Python; WSL has no
+   Bluetooth) — `cd mcp && python -m brx_mcp connect-metrics <gun-address> --runs 3 --cold warm --hold-s 60` — 3
+   quick re-runs of the existing control (10/10, median 1.37 s, p90 2.41 s, max 3.76 s, headset drops 0/10,
+   `bench-2026-09-24.md` Block 1.1) to catch drift before **B**. **B**, per Pixel (at least two: grey and
+   green), 10 cold connects under default phone settings (Fast Pair ON, as players carry them), gun and headset
+   paired as they are in play, not freshly bonded: force-stop the app, let the headset settle, reopen to SET MY
+   GUN, and log each run's connect time from the phone's own log (1 s resolution) plus a stopwatch — the tool
+   itself is laptop-only and cannot hold the link while a phone does, so this repeats Block 1.2's method, not the
+   CLI. Record per phone: connect time (median and max), first-connect success out of 10, and any headset drop
+   at connect or in the 60 s after it (this also watches for F293's 5-12 s loop). Close with **A** again, 3 more
+   laptop `connect-metrics` runs. Log every number against F297's row.
 
 1. **F416 (🔴), the A/B/A on phone-to-gun distance (15 min).** The one false start in part 1 had both guns
    carried away from their own phones; the clean starts had each phone with its gun. Go live three times: phones
@@ -263,7 +285,7 @@ against its own FOLLOWUPS pass rule, not just carried as a note.
 
 STOP POINT 3a: the three P0 rows from part 1 (F416, F417, F418) are proven or reopened. Powerups next.
 
-Running total: 115 min.
+Running total: 125 min.
 
 6. **F348 (🔴), a Shields spawn starts at full shield (10 min).** Arm a Shields-preset match (45/0/105).
    Control: a Standard-preset spawn shows no shield line. Read the gun's own `$HP,<hp>,0,105` read-back from the
@@ -276,7 +298,7 @@ Running total: 115 min.
    check of the magazine, or `$ALCD`), not only against each other. Pass: after ALT and after the reload, the
    number, the pips and the physical count all agree with no shot needed. Log: which phone, per
    `bench-2026-09-24.md`'s F394 row.
-8. **4.0, the 0.4.14 release loop (20 min).** First launch in day mode, then night mode, on both phones. Then one
+8. **4.0, the 0.4.15 release loop (20 min).** First launch in day mode, then night mode, on both phones. Then one
    short match through MC: lobby, arm, live, a death and its death screen, the recap. Pass: every screen appears
    in order on both phones, Android and iOS alike, with no stuck or blank state. Log: a screenshot of any defect.
 9. **11.6, MC-assigned station ids (F364, closed: confirm; 5 min).** Assign the black Pixel and the Stick on
@@ -300,7 +322,7 @@ whole powerup setup (S58, the shipped F372 default) are all proven. **KOTH is ne
 right now (F382-F386), and costs only 15 min for high value, so it must land inside this block rather than
 after it.
 
-Running total: 235 min.
+Running total: 245 min.
 
 ### Group 2: KOTH, phone hill then Stick hill (about 20 min; same hardware, no change)
 
@@ -315,6 +337,9 @@ Running total: 235 min.
    OVER freeze (the Stick freezes on the final owner and shows MATCH OVER, unlocked) and F353 (log the phone's
    Stick-advert arrivals during the hold; Pixel-side). F384 (recapture announced) and F385 (HUD card clears) are
    already CONFIRMED and closed in part 1; do not re-run them.
+3. **The HOLD target ends the match early (F415).** Set HOLD to 3 MIN before LOAD. Pass: the match ends the
+   instant one side's possession reaches 3:00, the recap names that team, and the pre-match BRIEFING's WIN row
+   read "FIRST TO HOLD 3:00 WINS".
 - **F416's scan-quiet question.** Across both games, watch whether the hill ever misses a capture or a tick
   inside the station-scan quiet window MC now opens around each spawn (about 9 s, F416 part 2).
 - **F424.** In either game, tap the clock to open the KOTH score panel. Ask Tony to judge the HOLD TIME board's
@@ -325,7 +350,7 @@ Running total: 235 min.
 STOP POINT 4: this closes the P0-then-powerups-then-KOTH core of the sitting, about 3 h of bench time once
 setup is done. Everything after this is worth less per minute.
 
-Running total: 255 min.
+Running total: 265 min.
 
 ### Group 3: F386's powerup-station MATCH OVER checks (about 15 min; no guns, no match)
 
@@ -344,7 +369,7 @@ F387 and F333 are already CONFIRMED and closed (part 1); do not re-run them. F38
 
 STOP POINT 5.
 
-Running total: 270 min.
+Running total: 280 min.
 
 ### Group 4: two phones, two guns, the rest of sitting C (about 67 min; same hardware, no change)
 
@@ -355,7 +380,7 @@ Kit: as Group 1.
    MC's feed lines; the walk-in RSSI is Pixel-side, or judge the iPhone's own screen by eye.
 2. **F400, the pickup switch card (10 min).** Take a heavy pickup. Pass: the full switch-card callout shows on
    the grant, on both SELECT directions and on the empty switch-back; ALT still holds its own time; SELECT works
-   at once while the card is up. Then the two 0.4.14 lows: the STOWING/DRAWING/ACTIVE label reads at a legible
+   at once while the card is up. Then the two 0.4.15 lows: the STOWING/DRAWING/ACTIVE label reads at a legible
    size (was 10 px, under the 11 px floor); the ACTIVE bubble closes on the equip echo, not just its timer (was
    stuck on READY). **Ask Tony** whether a kill card should wait under the switch card (his lean, unconfirmed;
    see "Decisions for Tony" below). Log: a pass/fail per sub-check, and Tony's answer.
@@ -388,7 +413,7 @@ Kit: as Group 1.
 STOP POINT 6: sitting C's higher-value checks are all done. The Shields fight, the kill-cue retest and the
 voice audition are the lowest value per minute of the two-phone work and are next.
 
-Running total: 337 min.
+Running total: 347 min.
 
 ### Group 5: the Shields fight, the kill-cue retest and the voice audition (about 30 min; same hardware, no change)
 
@@ -397,7 +422,7 @@ Running total: 337 min.
    Rockets pickup in a match and listen for what actually plays on the equip (today suspected to be the
    shotgun-like sound riding in the captured `$WEAP` head). Take an Overshield and confirm it plays the
    shield-charge cue (N102) with no voice line. Log: Tony's pick, and what actually played on each real pickup.
-2. **The kill-cue A/B/A (F347, closed: confirm on 0.4.14; optional, 10 min).** t23 EMPTY. A kill confirm with the
+2. **The kill-cue A/B/A (F347, closed: confirm on 0.4.15; optional, 10 min).** t23 EMPTY. A kill confirm with the
    shield up, then at 0, then up again. Pass: on time, all three. Skip first if time is short: F347 is already
    closed at the desk.
 3. **F298, a real Shields fight (10 min), the announcer and medal audio (S57).** A kill confirm, first blood, a
@@ -406,7 +431,7 @@ Running total: 337 min.
 
 STOP POINT 7.
 
-Running total: 367 min.
+Running total: 377 min.
 
 ### Group 6: a field walk (about 15 min; the Stick and one phone)
 
@@ -416,7 +441,7 @@ Running total: 367 min.
 
 STOP POINT 8.
 
-Running total: 382 min.
+Running total: 392 min.
 
 ### Group 7: one gun, no phone (about 15 min; lowest priority)
 
@@ -429,7 +454,7 @@ Running total: 382 min.
    muzzle-flash and loudness difference, or none, is agreed on both readings, not just the first.
 - **Log:** what Tony saw and heard, per pass.
 
-**Total across every group: about 397 min (6 h 37 min). The practical 3 h core is the P0 block, the powerup
+**Total across every group: about 407 min (6 h 47 min). The practical 3 h core is the P0 block, the powerup
 setup and KOTH (Groups 1 and 2): STOP POINT 4, above.**
 
 Rules for every sitting: the preflight in [`gotchas.md`](gotchas.md) ("Before a bench session", which holds the rig
@@ -455,7 +480,7 @@ Levers session 1 ran in three sittings on 2026-09-18 (the log's three "firmware 
 answered by §16), §12 steps 1 and 3 (answered by §23), §13 step 1 and step 3 (magnitudes 1-39), §16 steps 1-3 and
 6.1-6.2, §18, §19 step 15 (answered by F71 and F263: one Shotgun pull sends two words), §21 steps 1-10 and 15-18 (t4,
 t5, t6, t7, t8, t9), §22 steps 1-6, and §23 (all five steps). Screamers A1 and A2. F276 (the Shotgun words). The whole perks sheet
-([`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md), §1-§8). F230 closed, so levers §19 step 18 is dropped.
+(`bench-perks-2026-09-18.md`, §1-§8). F230 closed, so levers §19 step 18 is dropped.
 
 **Pre-game check, run 2026-09-19 (Saturday morning office test).** Tony installed the 0.4.0-0.4.2 APKs across the
 session. Levers §1 run f (a real TDM through Mission Control with two guns) **PASSED**: cross-team hits
@@ -474,7 +499,7 @@ eased `heavy` 40 to 45 and the Burst Rifle gap 550 to 540 ms, F308); Block 7 ste
 lost inside the headset's rate guard, and the wider gap is on main); and the evening audio A/B/A on one gun (F347:
 the native shield hum blocks the gun's audio queue). Off the plan the same day: melee (K4, closed) and F336.
 
-**The 2026-09-25 sitting, [`bench-2026-09-25.md`](bench-2026-09-25.md), sittings A and B and stop point 2.**
+**The 2026-09-25 sitting, `bench-2026-09-25.md`, sittings A and B and stop point 2.**
 Sitting A closed the 0.4.12 gate: A4, F341, F347 (t23 ships EMPTY, no restart delay needed), and F350 (H21 picked,
 playtest confirmation left to sitting C's 11.1(c)); 4.19 parts 2-3 and the Burst Rifle gap stayed INCONCLUSIVE.
 Sitting B closed F332, the Stick pickup online and offline (S58, found F380 and F381), F333 (reopened by Tony for a deliberate walk; F398 filed),
@@ -486,7 +511,7 @@ has not been opened since that install, so 11.7's auto-join must be sitting C's 
 
 ## Sittings, in priority order
 
-### Superseded: [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting C
+### Superseded: `bench-2026-09-25.md`, sitting C
 
 Folded into "Next sitting: after GAMES and 0.4.14" at the top of this file, which supersedes the list below, the
 "Carry into sitting C" list and the "Awaiting Tony" note that used to sit here. Kept only for the sheet's own
@@ -584,7 +609,7 @@ headset-word row was F254 before its renumber and is F275 now.
   post-MVP (**F338**, Tony 2026-09-24); the Stick MVP runs over Bluetooth, Block 9 of the runbook.
   Kit: a Stick, the rig, a laptop, one gun for gates 4 and 5.
 - [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, Z1-Z3, D, B, E, F (C is answered).
-- The unrun rungs of [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) that the table below does not mark as
+- The unrun rungs of `bench-queue-2026-09-09.md` that the table below does not mark as
   moved. Do not run BQ-A2 (`$AS,1`): it starts a native game, a screamer path.
 - Rows whose method is in the row itself: **F232** and the other "Later" rows of the FOLLOWUPS MVP BENCH group
   that no sheet names yet, and the post-MVP **F167**, **F168** and **F169**.
@@ -618,10 +643,10 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 |---|---|---|
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live | claims 1-27, §1-§26 |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0 | the screamers: Phases A-E (A1, A2 done) |
-| [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history | every section answered 2026-09-18 |
+| `bench-perks-2026-09-18.md` | history | every section answered 2026-09-18 |
 | [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live | the M5StickS3 bring-up gates (**F314**, H7); run with the `m5stick-bench` skill, no fixed sitting |
 | [`bench-grenade.md`](bench-grenade.md) | open, backlog | the grenade and hill rungs |
-| [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
+| `bench-queue-2026-09-09.md` | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
 | the 2026-09-05 flash-control, 2026-09-07 super-indoor and 2026-09-11 critical sheets | history | archived 2026-09-24: grep only. Critical: BC-A2 is levers §21 step 16 (done) plus grenade Z1; BC-B3 is grenade X; BC-C1 is levers §6; BC-C2 is answered (perks §2). Super-indoor: Q15; Tony defined S48 on 2026-09-23, and its sweep is Block 6 of the runbook. Flash-control: L1-L9 answered; BQ-D8 cites its rungs 9-10 |
 | [`capture-runbook.md`](capture-runbook.md) | method | how to take a capture; no status |
 | the 2026-09-13 runbook and the 2026-09-17 weapons sheet | history | already archived: grep only, open no step from them |

@@ -1740,6 +1740,11 @@ KNOWN_UNMIRRORED = {
     "linkProbeFrames", "setHeadsetJoin",
     # F347: engine drains its queued play jobs; the stage serialises them with `_play_lock` in `write`
     "_drainPlayWrites",
+    # F419: a must-hear line drops the queue-slot cues still waiting on the phone. The stage's `write` holds a cue until
+    # the clip before it has played (mirrored), and it writes no `$PLAYX` flush, so it has nothing to drop them for.
+    # Nor does it mirror the engine's must-hear bypass of that wait or PLAY_QUEUE_STALE_MS: the stage has no must-hear
+    # writes and drives one cue at a time from the bench page (review 2026-09-27).
+    "_dropWaitingPlays",
     # F289: what the node tells MC about owed spawn protection (respawn fact + statusBody); no game rule reads it
     "_protectOwedMs",
     # F272: node/BrxLink liveness and locked-head recovery. The stage is itself the deterministic gun driver,

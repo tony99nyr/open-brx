@@ -72,7 +72,19 @@ const lines = s => s.split('\n').map(l => l.trim()).filter(Boolean);
 
 // ---- the guard ---------------------------------------------------------------------------------------------------
 const isLocalUrl = u => u.startsWith('file://') || path.isAbsolute(u);
+// `git merge-tree --write-tree` (the conflict check) needs git 2.38 or later. Apple's git on a Mac can be older.
+const GIT_MIN = [2, 38];
+const FAKE_GIT_VERSION = process.env.LAND_FAKE_GIT_VERSION || '';   // test-only: refused unless LAND_TEST=1
+async function checkGitVersion() {
+  if (FAKE_GIT_VERSION && !TEST) die('LAND_FAKE_GIT_VERSION is test-only: it is refused unless LAND_TEST=1');
+  const raw = FAKE_GIT_VERSION || (await git(['--version'], { ok: true })).out;
+  const m = /(\d+)\.(\d+)/.exec(raw);
+  const ok = m && (Number(m[1]) > GIT_MIN[0] || (Number(m[1]) === GIT_MIN[0] && Number(m[2]) >= GIT_MIN[1]));
+  if (!ok) die(`git ${GIT_MIN.join('.')} or later is needed (found "${raw.trim() || 'no git'}"). On a Mac: `
+    + '`brew install git`, then check that `which git` is /opt/homebrew/bin/git (or /usr/local/bin/git).');
+}
 async function guard() {
+  await checkGitVersion();
   if (STUB && !TEST) die('LAND_GATE_STUB is test-only: it is refused unless LAND_TEST=1');
   if (INSTALL_STUB && !TEST) die('LAND_INSTALL_STUB is test-only: it is refused unless LAND_TEST=1');
   const url = await git(['remote', 'get-url', REMOTE], { ok: true });
@@ -251,9 +263,18 @@ function parseGate(out) {
   return { rows, logs, build: build ? { name: build[1], log: build[2].trim() } : null };
 }
 const listJobs = out => lines(out).filter(l => /^[a-z][a-z0-9-]*$/.test(l));
-/** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). */
+/** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). A browser
+ *  gate's log never says that -- it throws instead -- so falls back to the first line naming the actual error
+ *  (an "Error:" line, or Playwright's own "closed" wording, e.g. "Target page, context or browser has been
+ *  closed"), so flakes.jsonl still records SOMETHING to look at instead of `step: null` (2026-09-27, F429/F430:
+ *  two OOM-killed browser jobs both logged a `step: null` flake). */
 function stepOf(log) {
-  try { return /^FAIL (\S+)/m.exec(fs.readFileSync(log, 'utf8'))?.[1] || null; } catch { return null; }
+  let text;
+  try { text = fs.readFileSync(log, 'utf8'); } catch { return null; }
+  const fail = /^FAIL (\S+)/m.exec(text);
+  if (fail) return fail[1];
+  const line = /^.*(?:Error:|closed).*$/m.exec(text);
+  return line ? line[0].trim() : null;
 }
 
 class LandError extends Error {}

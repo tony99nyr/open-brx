@@ -285,8 +285,8 @@ export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: s
  *  _reteam_for_config`): map by team INDEX so a TDM blue/yellow split survives a KOTH pick as
  *  blue/green, fill anyone with no mapped index onto the least-populated side, then move the highest
  *  `player_num` off the fullest side until the spread is 1 — when that would otherwise leave every
- *  player on one team (the one-team fault), or (F413, 2026-09-27) when the declared SET of team ids
- *  changed (a count or colour change). A same-set edit never rebalances. A preview, not the write itself: the
+ *  player on one team (the one-team fault), or (F413, 2026-09-27) when the team COUNT changed. A
+ *  same-count colour change recolours by index and moves nobody (Tony, 2026-09-27). A preview, not the write itself: the
  *  actual reteam happens in `putConfig`/`set_config` once the operator confirms.
  *
  *  T2 INTEGRATION (2026-09-13, before F413 added the team-set trigger): the rebalance trigger was `one_team_fault()`, and this predicate read
@@ -306,10 +306,17 @@ export function predictedSplit(
   if (ids.length === 0 || players.length === 0) return counts;
   const legal = new Set(ids);
   const byOldIndex = new Map(prevTeams.map((t, i) => [t.team_id, i]));
+  const prevIds = new Set(prevTeams.map(t => t.team_id));
+  const setChanged = prevIds.size !== legal.size || [...prevIds].some(id => !legal.has(id));
+  const countChanged = prevTeams.length !== ids.length;
+  // Tony 2026-09-27: a same-count colour change recolours by index and moves nobody (`reteamForConfig`).
+  const recolour = setChanged && !countChanged;
   const ordered = [...players].sort((a, b) => a.player_num - b.player_num);
   const placed: string[] = new Array(ordered.length);
   const unplacedIdx: number[] = [];
   ordered.forEach((p, i) => {
+    const ri = recolour && p.team_id ? byOldIndex.get(p.team_id) : undefined;
+    if (ri !== undefined) { placed[i] = ids[ri]; return; }
     if (p.team_id && legal.has(p.team_id)) { placed[i] = p.team_id; return; }
     const oi = p.team_id ? byOldIndex.get(p.team_id) : undefined;
     if (oi !== undefined && oi < ids.length) placed[i] = ids[oi];
@@ -322,15 +329,9 @@ export function predictedSplit(
   // A team with no `tid` on it falls back to its own id, which is what the mock's own fixtures carry.
   const tidOf = new Map(newTeams.map(t => [t.team_id, t.tid ?? t.team_id]));
   const oneSide = () => new Set(placed.filter(Boolean).map(t => tidOf.get(t))).size < 2;
-  // HIGH (brx1 review of e8811fea; server d6643ecf): rebalance whenever the DECLARED team SET changed
-  // too (a count or colour change, comparing team_id SETS, never order), mirrored from
-  // `reteamForConfig`'s own same fix -- step 1 above leaves an ALREADY-legal player exactly where they
-  // are, so a 2-team 4/4 split growing a third team predicted 4/4/0 otherwise (never a one-side fault,
-  // since both original sides stayed populated). An edit that leaves the team set alone still never
-  // rebalances an operator's own uneven split.
-  const prevIds = new Set(prevTeams.map(t => t.team_id));
-  const teamsChanged = prevIds.size !== legal.size || [...prevIds].some(id => !legal.has(id));
-  if (ids.length >= 2 && ordered.length >= 2 && (teamsChanged || oneSide())) {
+  // The even re-split (brx1 review of e8811fea) fires only when the team COUNT changed (Tony 2026-09-27),
+  // or on a one-side fault. A colour-only change, and an edit that leaves the set alone, never rebalance.
+  if (ids.length >= 2 && ordered.length >= 2 && (countChanged || oneSide())) {
     for (let guard = ordered.length * ids.length + 1; guard > 0; guard--) {
       const fullest = ids.reduce((a, b) => (counts[b]! > counts[a]! ? b : a), ids[0]);
       const emptiest = ids.reduce((a, b) => (counts[b]! < counts[a]! ? b : a), ids[0]);

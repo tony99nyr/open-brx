@@ -81,15 +81,31 @@ describe('the GAMES confirm line predicts exactly what the switch then does', ()
     expect(Math.max(...vals) - Math.min(...vals), 'control: this case really is uneven').toBeGreaterThan(1);
   });
 
-  // The mirror image: a mode switch that changes to a DIFFERENT set now always evens out at the mode
-  // switch itself, whatever the numbers were before -- not just when the index map happens to collapse
-  // everyone onto one side (this file's own OLD "uneven split" case, retired above: TDM(yellow/purple)
-  // -> KOTH(red/blue) IS a set change, so it rebalances now regardless of whether it also one-sides).
-  it('a mode switch to a DIFFERENT team set rebalances too, not only when it one-sides', async () => {
+  // Tony 2026-09-27: a switch to a DIFFERENT set of the SAME size is a colour change: it recolours by
+  // index and moves nobody, so an uneven split stays exactly as uneven (the even re-split is for a COUNT
+  // change only). TDM(yellow/purple, 1 purple and the rest yellow) -> KOTH(red/blue): yellow (index 0)
+  // becomes red, purple (index 1) becomes blue.
+  it('a same-size mode switch recolours by index and keeps an uneven split, predicted and performed alike', async () => {
     const r = await predictThenDo('tdm', i => (i === 0 ? 'purple' : 'yellow'), 'koth', ['yellow', 'purple']);
-    expect(r.actual, 'the mock re-teamed by index THEN rebalanced, as the server does').toEqual(r.predicted);
-    const vals = Object.values(r.actual).sort();
-    expect(Math.max(...vals) - Math.min(...vals), 'the team-SET change alone rebalances this to spread <= 1').toBeLessThanOrEqual(1);
+    expect(r.actual, 'the mock recoloured by index, as the server does').toEqual(r.predicted);
+    const vals = Object.values(r.actual).sort((a, b) => a - b);
+    expect(vals[0], 'the lone purple player is now the lone blue player: nobody moved').toBe(1);
+  });
+
+  // Tony 2026-09-27: a deliberate uneven split survives a colour-only change (red/blue -> red/purple).
+  it('a colour-only TEAMS change keeps a 1-v-N split: red/blue -> red/purple moves nobody', async () => {
+    const api = new MockBackend();
+    await api.pick({ match: { teams: ['red', 'blue'] } });
+    let st = await api.getState();
+    await Promise.all(st.players.map((p, i) => api.patchPlayer(p.player_id, { team_id: i === 0 ? 'red' : 'blue' })));
+    st = await api.getState();
+    const n = st.players.length;
+    const predicted = predictedSplit(st.players, st.config.teams, [{ team_id: 'red' }, { team_id: 'purple' }]);
+    await api.pick({ match: { teams: ['red', 'purple'] } });
+    const after = await api.getState();
+    const actual = countsOf(after.players, after.config.teams);
+    expect(actual, 'predicted and performed alike').toEqual(predicted);
+    expect(actual).toEqual({ red: 1, purple: n - 1 });
   });
 
   // Team-lead's own proof cases (brx1 review of e8811fea), through a TEAMS-strip pick rather than a

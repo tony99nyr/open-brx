@@ -6,7 +6,7 @@ today** (`mcp/brx_mcp/mc/` — `__main__.py`, `api.py`, `state.py`), not the spe
 > ✅ **Hardware-verified.** The MC↔phone↔gun path ran whole matches on real hardware: a 300 s FFA on
 > 2026-08-30 (two iPhones, MacBook host) and a TDM outdoors on 2026-09-01 (two Android HUDs). It is also
 > proven in software (`cd mcp && python3 run_tests.py`, incl. the full-stack e2e with mock phones; `cd app
-> && npm run ui:e2e` for the browser suite). What is still unproven at scale (20-min soak, phone auto-rejoin,
+> && node tools/e2e.mjs` for the browser suite). What is still unproven at scale (20-min soak, phone auto-rejoin,
 > iOS locked-phone BLE, a gun joining a running match) is listed in `docs/post-mvp.md` under **System proofs**.
 
 ---

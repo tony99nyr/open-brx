@@ -139,7 +139,7 @@ npm run ios:open        # open the project in Xcode  (needs full Xcode)
 npm run ios:push        # build + install + launch on every paired iPhone, over Wi-Fi (see below)
 
 npm run android:setup   # build, add the Android platform if missing, sync
-npm run android:apk     # build the DEBUG APK the public site hands out (-> webapp/download/)
+npm run android:apk     # build a DEBUG APK (-> webapp/download/); APK_PUBLISH=0 to build only, see below
 npm run android:release # build a SIGNED release APK; fails clearly with no key (see Release signing)
 npm run android:install # build from the working tree, install on the attached phone over adb, launch (bench loop)
 npm run sync            # build + sync every platform already added
@@ -147,7 +147,7 @@ npm run sync            # build + sync every platform already added
 npm run ui:stage        # the STAGE harness: the real HUD + the utility screen in a phone frame, every state,
                         #   an event panel (fire / hit / death / respawn / reload / switch / kill / alerts…) → http://localhost:4190/
 npm run ui:screens      # the screen-truth suite (tools/screens.mjs): every reviewed screen state at two widths
-npm run ui:moments      # the transient-moment suite; npm run ui:e2e = the full browser suite against a real MC
+npm run ui:moments      # the transient-moment suite; `node tools/e2e.mjs` = the full browser suite against a real MC
 ```
 
 ### The build version the phone reports
@@ -183,77 +183,20 @@ this script never uploads anything.
 
 ### Publishing the Android build
 
-`npm run android:apk` is the build half of the release (the site rebuild below is the other half,
-and is not optional): it finds a JDK 21, re-applies `android-setup.sh`
-(the platform is generated, so those patches are not in git), builds a **debug** APK, and copies it
-to `../webapp/download/brx-companion-<version>-android-debug.apk`, deleting any older APK there. That
-copy is **git-ignored**: it exists so the site build can read the real bytes on the machine that cut it.
-Exactly one APK lives in that folder: the site build refuses to guess between two. It then
-**publishes the APK as a GitHub Release asset** (tag `app-v<version>`) and writes that asset's URL
-into `build.json`. Set `APK_PUBLISH=0` to skip the release; a missing or unauthenticated `gh` only
-warns, so a build always completes offline.
+The release process — bump the version, build the signed APK, verify it, publish the GitHub Release,
+update the site's sidecar — is [`RELEASING.md`](RELEASING.md). Follow that for any build meant for a
+player; it also covers the `webapp/download/` sidecar contract and the private-repo release caveat.
 
-**What lands in the APK is your working tree, not the last commit** — `npm run build` bundles `src/`
-as it is right now. So before cutting a build meant for the site: commit or stash `app/src`, and bump
-`package.json` if the version should change. The script prints a WARNING listing every uncommitted
-`app/` file it just baked in, and records `git` (short SHA) + `dirty` in `build.json` so a published
-APK is traceable to a tree. Heed the warning; it is the difference between publishing a
-reviewed build and publishing whatever another session had half-written.
+`npm run android:apk` is a **debug** build, not the release path: it finds a JDK 21, re-applies
+`android-setup.sh`, and copies the APK to `../webapp/download/brx-companion-<version>-android-debug.apk`
+(git-ignored). It **publishes the APK as a GitHub Release asset** by default (tag `app-v<version>`);
+set `APK_PUBLISH=0` to skip that, or `APK_OUT_DIR=<dir>` to write the APK elsewhere without touching
+`webapp/download/`. It bakes in the **working tree, not the last commit**, and prints a WARNING listing
+every uncommitted `app/` file it just baked in.
 
-Just want an APK to install locally, without touching the site? Send it somewhere else:
-
-```bash
-APK_OUT_DIR=/tmp/brx-apk npm run android:apk    # same build, webapp/download/ untouched
-```
-
-Then rebuild + test the site and commit, because **a push to `main` deploys `webapp/`**:
-
-```bash
-cd ../site && npm run build && npm test      # /download renders the new version off the sidecar
-git add webapp/download/build.json app && git commit -m "cut <version>" && git push
-```
-
-Name the paths. A bare `git add -A` here will sweep up whatever another session has in flight (this
-repo often has two running), and `webapp/download/` is the one place where that publishes a binary.
-
-**Where a build belongs: the Release, not git.** A committed APK cost ~5 MB of git history per
-release that nothing short of a rewrite gets back; a purge on 2026-09-07 reclaimed ~80 MB of
-accumulated binaries, most of it old APK builds. Since then the APK is **git-ignored** and every cut
-is published to the `app-v<version>` GitHub Release, which the download page links.
-
-One consequence while the repo is **private**: a release asset is not downloadable by an anonymous
-visitor, so the public page's download button only works for someone with repo access. That is a
-deliberate trade (the maintainer is the only consumer today) and it resolves itself the moment the
-repo goes public, with no edit: the URL does not change, it just starts working for everyone.
-
-**How the site and this script meet** (three rules, all enforced by the site build):
-
-- `webapp/download/build.json` is a **committed artifact**, not generated. `site/build.mjs` neither
-  writes nor sweeps it (`PROTECTED`), so it survives a site rebuild. The **APK beside it is not
-  committed** (`.gitignore`); the page links the Release asset instead, so Cloudflare has nothing to
-  upload but the sidecar.
-- **Exactly one `.apk`** in that folder. Two, and the site build fails ("keep exactly one") rather
-  than guessing which one the page should link.
-- `build.json` beside it records the **build date** plus `git`/`dirty` provenance (the date is
-  unrecoverable from the APK: a checkout rewrites the mtime and the zip entries are normalised to
-  1981). `built` describes the *bytes*, so a rebuild that produces an identical APK keeps the
-  original date. The generator trusts the sidecar only while its `file` + `sha256` still match the
-  APK, and fails the build if they drift. This script writes it; never hand-edit it.
-
-The page itself is `docs/platform/download.md` (`/download`, since the 2026-09-11 site refactor). Its
-```data download``` fence renders the Android card (version, size, SHA-256, build date, APK link)
-straight off the sidecar, so a new cut needs no page edit; the root landing's "Get it" card reads the
-same file. `webapp/download/build.json` is still the sidecar the release
-tooling writes and `mcp/tests/test_published_build.py` still checks (git provenance, branch, sidecar
-freshness); it just is not rendered into a name/size/date/sha256 table on the site anymore.
-
-**`npm run android:apk` builds a debug APK.** It sideloads fine, but a release-signed build will
-**not** upgrade over it, and anyone who installed a debug build has to uninstall first. It is also
-`android:debuggable="true"`, so anything attached over USB debugging can read the app's data, and it
-is signed with `~/.android/debug.keystore` — a key unique to whichever machine built it, so two
-people building the same commit get different bytes and different checksums. Every 0.3.x and 0.4.x
-release was published this way (B21): see *Release signing* below for the fix, and the one-time
-uninstall it needs.
+A debug APK sideloads fine, but a release-signed build will **not** upgrade over it (different signing
+key), and it is `android:debuggable="true"`. It is signed with `~/.android/debug.keystore` — a key
+unique to whichever machine built it, so two people building the same commit get different bytes.
 
 **Version:** `android-setup.sh` stamps `versionName` from `package.json` and derives `versionCode`
 from it (`0.1.0` -> `100`). Bump `package.json` before cutting a build, or every build claims to be

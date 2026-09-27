@@ -61,5 +61,5 @@ Tony's words: "im not convinced you are being scientific about these findings. y
 2. Mark each claim in the bench sheet: CONFIRMED, REFUTED or INCONCLUSIVE.
 3. Give the full results to a recorder agent in a worktree. It writes one experiment-log entry, one FOLLOWUPS diff and
    the HANDOFF update (its own lane section only, never another lane's), promotes confirmed facts into `docs/manual/` and `protocol/brx-protocol.md`, runs the docs
-   hygiene test, and pushes.
+   hygiene test, and submits through the land lane (`CLAUDE.md` → *Reaching main*).
 4. Update `docs/bench-plan.md`, so the next bench session starts from the steps that are still open.

@@ -2504,8 +2504,11 @@ class Session:
           2. **Least-count fill** for anyone whose old index the new config does not have (and for any
              otherwise-invalid `team_id`), stable by `player_num` — the same alternating fill
              `add_player` uses, so one rule decides where an unplaced player goes.
-          3. **Rebalance to a spread <= 1 whenever the DECLARED team set itself changed** (count or
-             colours, an explicit `{"teams": [...]}` PUT or a mode switch to a different set) --
+          0. **A same-count colour change recolours by index and moves nobody** (Tony, 2026-09-27):
+             every player on the old `teams[i]` takes the new `teams[i]`, so a deliberate 1-v-3 stays 1-v-3.
+          3. **Rebalance to a spread <= 1 whenever the team COUNT changed** (Tony, 2026-09-27; it first
+             fired on any change of the declared set, count or colours: an explicit `{"teams": [...]}` PUT or
+             a mode switch to a set of a different size) --
              Tony's decision (brx1 review of e8811fea): the OLD rule only rebalanced on
              `one_team_fault()` (everyone crammed onto ONE team), so a 2-team 4/4 roster growing a
              third team gave 4/4/0 -- every existing player's team was ALREADY legal in the bigger
@@ -2520,20 +2523,29 @@ class Session:
         new_ids = [t["team_id"] for t in self.teams]
         legal = set(new_ids)
         by_old_index = {t["team_id"]: i for i, t in enumerate(prev_teams)}
+        set_changed = {t["team_id"] for t in prev_teams} != legal
+        count_changed = len(prev_teams) != len(new_ids)
+        # Tony 2026-09-27: a same-count colour change RECOLOURS by index and moves nobody, so a deliberate
+        # 1-v-3 on red/blue stays 1-v-3 on red/purple (or blue/purple). Every player on the old teams[i] takes
+        # the new teams[i], even one whose old colour is still legal: leaving that player put would merge two
+        # sides into one colour.
+        recolour = set_changed and not count_changed
         unplaced: list[Player] = []
         for p in sorted(self.players.values(), key=lambda q: q["player_num"]):
             tid = p.get("team_id")
+            i = by_old_index.get(tid or "")
+            if recolour and i is not None:
+                p["team_id"] = new_ids[i]
+                continue
             if tid in legal:
                 continue
-            i = by_old_index.get(tid or "")
             if i is not None and i < len(new_ids):
                 p["team_id"] = new_ids[i]
             else:
                 unplaced.append(p)
         for p in unplaced:
             p["team_id"] = self._least_count_team()
-        teams_changed = {t["team_id"] for t in prev_teams} != legal
-        if teams_changed or self.one_team_fault():
+        if count_changed or self.one_team_fault():
             self._rebalance_sides()
 
     def _least_count_team(self) -> str | None:
@@ -2548,8 +2560,8 @@ class Session:
 
     def _rebalance_sides(self) -> None:
         """Even the roster out across the declared teams — FIELD-1 step 3. Reached from a true
-        `one_team_fault()`, and (F413, 2026-09-27) whenever the declared SET of team_ids changed: a count
-        or colour change re-splits evenly, while a same-set edit never does. Moves the HIGHEST `player_num` off the fullest team onto the emptiest,
+        `one_team_fault()`, and (F413, 2026-09-27) whenever the team COUNT changed. A colour-only change
+        recolours by index instead and moves nobody (Tony, 2026-09-27). Moves the HIGHEST `player_num` off the fullest team onto the emptiest,
         which is deterministic and leaves the low numbers (the operator's first picks) where they are.
         Stops at a spread of 1, so four players on one side come out 2/2 rather than the 3/1 that
         merely clears the gate. A config whose teams all share one `$TID` cannot be fixed by moving

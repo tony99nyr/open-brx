@@ -53,12 +53,12 @@ dispersed** match, tracks a live board and produces a recap. Each player carries
 |---|---|---|---|
 | M-CONTRACTS | `contracts.md` | `mc/types.py`, `mc/envelope.py`, `app/src/transport/envelope.js` | data model, wire, lifecycle, clock, constants, store-and-forward, platform gates |
 | M-ARMORY | `contracts.md` §1.1 | `mc/armory.py`, `usbconsole.py` | USB enrol + scan-only BLE presence |
-| M-MODES | `modes.md`, `loadout.md`, `../weapon-design.md` | `mc/compile.py`, `mc/policy.py`, `mc/presentation.py`, `mc/weapons.json`, `mc/perks.json` | the frame compiler, catalogs, policy, presentation |
+| M-MODES | `modes.md`, `loadout.md`, `powerups.md`, `../weapon-design.md` | `mc/compile.py`, `mc/policy.py`, `mc/presentation.py`, `mc/weapons.json`, `mc/perks.json` | the frame compiler, catalogs, policy, presentation, station-granted pickups |
 | M-NET | `contracts.md` §5 | `mc/net.py`, `app/src/transport/` | the WebSocket, ring, clock sync |
-| M-MC | `mc/API.md`, `design/mission-control.md` | `mc/state.py`, `mc/api.py`, `mc/scoring.py`, `webapp/mc/` | the operator console and scoring |
+| M-MC | `mc/API.md`, `design/mission-control.md`, `design/games-presets.md` | `mc/state.py`, `mc/api.py`, `mc/scoring.py`, `webapp/mc/` | the operator console, the GAMES PLAY/BUILD contract, and scoring |
 | M-NODE | `node.md`, `design/phone-hud.md` | `app/src/engine.js`, `app/src/hud/` | the per-gun engine and HUD |
 | M-START | `start-sequence.md` | `app/src/engine.js` (`startAt`, `resumeSchedule`) | the dispersed timed start and end |
-| M-UTILITY | `utility.md`, `docs/utility-roadmap.md` | `app/src/beacon.js`, `app/src/utility.js`, `app/plugins/brx-beacon` | phones as stations |
+| M-UTILITY | `utility.md` (build order: `../archive/utility-roadmap.md`, merged into `../post-mvp.md` §2) | `app/src/beacon.js`, `app/src/utility.js`, `app/plugins/brx-beacon` | phones as stations |
 | M-TRANSPORT | `transport-hardening.md` | `app/src/brxlink.js`, `mcp/brx_mcp/protocol.py` (`DENIED_COMMANDS`), `mcp/brx_mcp/ble.py` | the gun-side write budget, pacing, the deny list, read-back and the lock-up detector (status: the file's own header) |
 
 Coordination rules: bind to the wire in `contracts.md` and the Interface section of any module you depend on,

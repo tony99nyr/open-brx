@@ -55,7 +55,7 @@ and `site/playwright.config.mjs` is a working example — but what you write is 
 `http://localhost:5173` (add `/?mock` for no server) and clicks. Not a framework.
 
 **Why the confusion is easy, and the distinction worth keeping:** the phone HUD has a whole stage harness
-(`cd app && npm run ui:stage`, plus `ui:screens`, `ui:e2e`, `ui:shots`) because it drives a real tagger over
+(`cd app && npm run ui:stage`, plus `ui:screens`, `node tools/e2e.mjs`, `ui:shots`) because it drives a real tagger over
 BLE — it needs something to stand in for hardware you cannot script. **MC drives nothing.** It talks to a
 Python server over HTTP and a WebSocket, both of which Playwright can intercept directly
 (`page.route` for REST, **`page.routeWebSocket` for the pushed snapshots** — strip only REST and a

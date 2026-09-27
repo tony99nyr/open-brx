@@ -28,8 +28,8 @@ large-field play with no venue WiFi** — and **novel game modes Edge doesn't ha
 **We can't quickly match Edge's moat:** product **maturity** (Edge 7.0, years of polish, ~6M
 players, daily commercial use, support), a **global cloud/accounts/matchmaking network**, **marketing/
 monetization tooling** (Battle Coin, Message Center), proven **scaling/reliability**, and the
-**BRP+UBox hardware co-design**. We're specs + working software, a bench-proven Tier 0, two whole outdoor phone matches (2026-08-30 and
-2026-09-01) and a 1v1 game test on the Mac (2026-09-11); they're a shipping product.
+**BRP+UBox hardware co-design**. We're specs + working software, proven on the bench and in the field (current
+status: [`release-1.0.md`](release-1.0.md)); they're a shipping product.
 
 **The wedge:** BRX owners who don't want that subscription, clubs/meetups, small/mobile
 operators, and the modding community (LaserTagMods ecosystem already exists). We win *there* by being
