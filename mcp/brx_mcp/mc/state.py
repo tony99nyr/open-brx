@@ -2502,9 +2502,17 @@ class Session:
           2. **Least-count fill** for anyone whose old index the new config does not have (and for any
              otherwise-invalid `team_id`), stable by `player_num` — the same alternating fill
              `add_player` uses, so one rule decides where an unplaced player goes.
-          3. **Rebalance ONLY if `one_team_fault()` is then true** (FFA -> TDM: one declared team
-             becomes two and everyone is on index 0). A 2/2/0 across three declared teams already
-             plays and is left exactly as the operator left it.
+          3. **Rebalance to a spread <= 1 whenever the DECLARED team set itself changed** (count or
+             colours, an explicit `{"teams": [...]}` PUT or a mode switch to a different set) --
+             Tony's decision (brx1 review of e8811fea): the OLD rule only rebalanced on
+             `one_team_fault()` (everyone crammed onto ONE team), so a 2-team 4/4 roster growing a
+             third team gave 4/4/0 -- every existing player's team was ALREADY legal in the bigger
+             set, so step 1 left them exactly where they were, and nobody was on only one side for
+             `one_team_fault()` to catch. An edit that leaves the team set ALONE never rebalances --
+             an operator's own uneven split (1-v-3) is deliberate and must still be allowed to play
+             (`test_round2_b_a_one_team_roster_is_refused_...`); `one_team_fault()` stays as a second,
+             narrower trigger for the (rarer) case where an unrelated edit's own index remap happens
+             to strand everyone on one side of an UNCHANGED team set.
 
         Nobody is ever reordered inside a team, and a switch that changes nothing changes nothing."""
         new_ids = [t["team_id"] for t in self.teams]
@@ -2522,7 +2530,8 @@ class Session:
                 unplaced.append(p)
         for p in unplaced:
             p["team_id"] = self._least_count_team()
-        if self.one_team_fault():
+        teams_changed = {t["team_id"] for t in prev_teams} != legal
+        if teams_changed or self.one_team_fault():
             self._rebalance_sides()
 
     def _least_count_team(self) -> str | None:
