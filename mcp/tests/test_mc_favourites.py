@@ -216,7 +216,7 @@ def test_load_ok_false_changes_nothing():
     needs(HAVE, "starlette + httpx")
     c, s, net, clock, ps = _pclient()
     ghost = c.post("/api/pieces", json={"kind": "primary", "name": "Ghost Gun", "note": "",
-                                        "value": {"choice": "fixed", "fixed_id": "not_a_real_weapon"}}).json()
+                                        "value": {"choice": "fixed", "fixed_id": "smoke_gun"}}).json()
     pick = dict(s.game_pick)
     pick["pieces"] = {**pick["pieces"], "primary": ghost["piece_id"]}
     fav = s.favourites.create("Broken", 30, pick)

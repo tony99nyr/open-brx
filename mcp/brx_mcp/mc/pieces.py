@@ -23,7 +23,10 @@ from typing import Any, Callable, Mapping
 
 from ..storage import home_dir
 from . import policy as _policy
-from .compile import HEALTH_PRESETS, respawn_settings
+import functools
+
+from .compile import HEALTH_PRESETS, WeaponCatalog, respawn_settings
+from .perks import default_perks
 from .types import GamePiece, PieceKind, PIECE_KINDS
 
 log = logging.getLogger("brx.mc.pieces")
@@ -145,11 +148,28 @@ def _check_spawn(v: object) -> dict:
 _SLOT_OF_KIND = {"primary": "primary", "secondary": "secondary", "perks": "perk"}
 
 
+@functools.lru_cache(maxsize=1)
+def _pickable_ids() -> tuple[frozenset[str], frozenset[str]]:
+    """The weapon and perk ids a preset may name: the VISIBLE catalogues. A hidden row (the cut arsenal,
+    melee, an unbenched perk) never reaches the console, so only a stale or hand-written request can
+    name one; Tony 2026-09-26: no preset may ever select a hidden weapon."""
+    # a pickup-only heavy is armed at a station in ARMORY, never carried from the start (games-redesign.md §7)
+    return (frozenset(w["weapon_id"] for w in WeaponCatalog().all() if not w.get("pickup_only")),
+            frozenset(default_perks().visible_ids()))
+
+
 def _check_slot(kind: PieceKind, v: object) -> dict:
     try:
-        return dict(_policy._check_rule(_SLOT_OF_KIND[kind], v if isinstance(v, dict) else {}))
+        rule = dict(_policy._check_rule(_SLOT_OF_KIND[kind], v if isinstance(v, dict) else {}))
     except ValueError as e:
         raise PieceError(400, str(e)) from e
+    weapons, perks = _pickable_ids()
+    allowed = perks if kind == "perks" else weapons
+    named = ([rule["fixed_id"]] if rule.get("fixed_id") else []) + list(rule.get("only_ids") or [])
+    bad = [i for i in named if i not in allowed]
+    if bad:
+        raise PieceError(400, f"not offered in a loadout: {', '.join(bad)} (hidden, pickup-only or unknown)")
+    return rule
 
 
 def _check_misc_loadouts(v: object) -> dict:

@@ -395,7 +395,7 @@ def test_pick_ok_false_changes_nothing():
     needs(HAVE, "starlette + httpx")
     c, s, net, clock, ps = _pclient()
     r = c.post("/api/pieces", json={"kind": "primary", "name": "Ghost Gun", "note": "",
-                                    "value": {"choice": "fixed", "fixed_id": "not_a_real_weapon"}})
+                                    "value": {"choice": "fixed", "fixed_id": "smoke_gun"}})
     assert r.status_code == 200
     pid = r.json()["piece_id"]
     before_config, before_pick = dict(s.config), dict(s.game_pick)
@@ -454,7 +454,7 @@ def test_h1_put_on_a_picked_piece_prechecks_before_saving_or_dropping_the_lobby(
     assert c.post("/api/play/pick", json={"pieces": {"primary": pid}}).json()["ok"]
     s.push_config()
     assert s.lobby_pushed is True
-    r2 = c.put(f"/api/pieces/{pid}", json={"value": {"choice": "fixed", "fixed_id": "not_a_real_weapon"}})
+    r2 = c.put(f"/api/pieces/{pid}", json={"value": {"choice": "fixed", "fixed_id": "smoke_gun"}})
     assert r2.status_code == 400, r2.json()
     unchanged = next(p for p in c.get("/api/pieces").json() if p["piece_id"] == pid)
     assert unchanged["value"]["fixed_id"] == "assault_rifle"          # nothing saved
@@ -589,14 +589,14 @@ def test_ma_a_refused_pick_leaves_no_candidate_errors_on_the_live_session():
     before_errors = list(s.config_errors)
     before_warnings = list(s.config_warnings)
     r = c.post("/api/pieces", json={"kind": "primary", "name": "Ghost Gun", "note": "",
-                                    "value": {"choice": "fixed", "fixed_id": "not_a_real_weapon"}})
+                                    "value": {"choice": "fixed", "fixed_id": "smoke_gun"}})
     pid = r.json()["piece_id"]
     r2 = c.post("/api/play/pick", json={"pieces": {"primary": pid}})
     assert r2.json()["ok"] is False
     assert s.config_errors == before_errors
     assert s.config_warnings == before_warnings
     live = c.get("/api/state").json()
-    assert not any("not_a_real_weapon" in e for e in live["config_errors"])
+    assert not any("smoke_gun" in e for e in live["config_errors"])
 
 
 def test_mb_editing_an_unrelated_piece_survives_an_inherited_post_mvp_mode():
@@ -708,3 +708,51 @@ def test_round3_play_pick_prev_mode_lookup_does_not_404_an_unrelated_pick():
     assert r.json()["fallbacks"] == ["mode"]
     # treated as a mode CHANGE: the strip resets to the (real) current mode's own defaults
     assert r.json()["config"]["time_limit_s"] == default_config("tdm")["time_limit_s"]
+
+
+def _hidden_ids():
+    import json as _json, pathlib as _pl
+    here = _pl.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc"
+    w = _json.loads((here / "weapons.json").read_text())
+    rows = w["weapons"] if isinstance(w, dict) else w
+    p = _json.loads((here / "perks.json").read_text())
+    prow = p["perks"] if isinstance(p, dict) else p
+    return [r["weapon_id"] for r in rows if r.get("hidden")], [r["perk_id"] for r in prow if r.get("hidden")]
+
+
+def test_no_preset_can_name_a_hidden_weapon_or_perk():
+    """Tony 2026-09-26: no type toggle, picker or BUILD preset may ever select a hidden weapon (the cut
+    arsenal, the hidden heavies, melee). The console never receives them; the server refuses them too."""
+    weapons, perks = _hidden_ids()
+    assert "force_rifle" in weapons and "melee" in weapons, "the fixture lost its hidden rows"
+    for wid in weapons:
+        for value in ({"choice": "fixed", "fixed_id": wid}, {"choice": "player", "only_ids": ["assault_rifle", wid]}):
+            try:
+                check_value("primary", value); assert False, f"{wid} was accepted in {value}"
+            except PieceError as e:
+                assert e.status == 400 and wid in str(e)
+    for pid in perks:
+        try:
+            check_value("perks", {"choice": "fixed", "fixed_id": pid}); assert False, pid
+        except PieceError as e:
+            assert e.status == 400
+    for wid in ("rail_gun", "rocket_launcher"):   # pickup-only heavies: ARMORY arms them, never a loadout
+        try:
+            check_value("primary", {"choice": "fixed", "fixed_id": wid}); assert False, wid
+        except PieceError as e:
+            assert e.status == 400
+    assert check_value("primary", {"choice": "player", "only_ids": ["assault_rifle"]})["only_ids"] == ["assault_rifle"]
+
+
+def test_no_weapon_list_the_console_reads_carries_a_hidden_weapon():
+    """The live catalogue (`/api/weapons`) and the generated demo catalogue the mock and the phone read
+    both exclude every hidden weapon, so no type toggle or picker can offer one."""
+    import pathlib as _pl, re as _re
+    from brx_mcp.mc.compile import WeaponCatalog
+    weapons, _ = _hidden_ids()
+    live = {w["weapon_id"] for w in WeaponCatalog().all()}
+    assert not live & set(weapons), sorted(live & set(weapons))
+    repo = _pl.Path(__file__).resolve().parents[2]
+    for f in (repo / "app" / "src" / "demo-catalog.js", repo / "webapp" / "mc" / "src" / "mock" / "data.ts"):
+        offered = set(_re.findall(r'"weapon_id":\s*"([a-z0-9_]+)"', f.read_text()))
+        assert offered and not offered & set(weapons), (f.name, sorted(offered & set(weapons)))
