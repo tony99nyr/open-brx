@@ -14,7 +14,7 @@ import pathlib
 import tempfile
 
 from _skip import needs
-from brx_mcp.mc.favourites import FavouriteError, FavouriteStore
+from brx_mcp.mc.favourites import FavouriteError, FavouriteStore, check_pick
 from brx_mcp.mc.pieces import BUILTIN_IDS
 from brx_mcp.mc.types import PIECE_KINDS
 from test_mc_loadout import mk, online
@@ -240,3 +240,33 @@ def test_favourites_are_memory_only_when_no_store_attached():
     c = TestClient(create_app(s))
     assert c.get("/api/favourites").json() == []
     assert c.post("/api/favourites", json={"name": "X", "countdown_s": 30}).status_code == 200
+
+
+# ================================================================== independent review (brx1)
+def test_low_piece_id_length_cap_in_a_favourite_pick():
+    """Lows: a length cap on ids in favourites and picks (64 chars, 400 beyond)."""
+    huge_pick = _pick()
+    huge_pick["pieces"]["life"] = "x" * 65
+    try:
+        check_pick(huge_pick)
+        assert False
+    except FavouriteError as e:
+        assert e.status == 400
+    ok_pick = _pick()
+    ok_pick["pieces"]["life"] = "x" * 64
+    assert check_pick(ok_pick)["pieces"]["life"] == "x" * 64
+
+
+def test_medium5_messages_are_all_caps_what_colon_do():
+    st, _ = _store()
+    row = st.create("Original", 30, _pick())
+    try:
+        st.create("original", 30, _pick())
+        assert False
+    except FavouriteError as e:
+        assert str(e) == "NAME ALREADY USED: PICK ANOTHER NAME FOR THIS FAVOURITE"
+    try:
+        st.get("nope")
+        assert False
+    except FavouriteError as e:
+        assert str(e) == "FAVOURITE NOT FOUND: IT MAY HAVE BEEN DELETED"

@@ -38,31 +38,35 @@ class FavouriteError(ValueError):
         self.status = status
 
 
+# Round 3, MEDIUM 5: every message here is the console's own ALL-CAPS "WHAT: DO" copy.
+_ID_MAX = 64   # Low: a piece id this long is already nonsense; cap it rather than store it
+
+
 def _check_name(name: object) -> str:
     if not isinstance(name, str) or not name.strip():
-        raise FavouriteError(400, "name is required")
+        raise FavouriteError(400, "NAME REQUIRED: TYPE A NAME FOR THIS FAVOURITE")
     name = " ".join(name.split())
     if len(name) > _NAME_MAX:
-        raise FavouriteError(400, f"name must be {_NAME_MAX} characters or fewer")
+        raise FavouriteError(400, f"NAME TOO LONG: KEEP IT TO {_NAME_MAX} CHARACTERS OR FEWER")
     return name
 
 
 def _check_countdown(v: object) -> int:
     if not (isinstance(v, int) and not isinstance(v, bool) and _COUNTDOWN_MIN <= v <= _COUNTDOWN_MAX):
-        raise FavouriteError(400, f"countdown_s must be an integer {_COUNTDOWN_MIN}..{_COUNTDOWN_MAX}")
+        raise FavouriteError(400, f"COUNTDOWN MUST BE {_COUNTDOWN_MIN}-{_COUNTDOWN_MAX} SECONDS: PICK A NUMBER IN THAT RANGE")
     return v
 
 
 def _check_match(v: object) -> MatchSettings:
     if not isinstance(v, dict):
-        raise FavouriteError(400, "pick.match must be an object")
+        raise FavouriteError(400, "FAVOURITE NEEDS MATCH SETTINGS: SEND THE FULL BUNDLE")
     for k in ("night", "silenced"):
         if not isinstance(v.get(k), bool):
-            raise FavouriteError(400, f"pick.match.{k} must be a boolean")
+            raise FavouriteError(400, f"{k.upper()} MUST BE ON OR OFF: CHECK THE VALUE")
     for k in ("time_limit_s", "frag_limit"):
         val = v.get(k)
         if val is not None and not (isinstance(val, int) and not isinstance(val, bool)):
-            raise FavouriteError(400, f"pick.match.{k} must be an integer or null")
+            raise FavouriteError(400, f"{k.upper()} MUST BE A WHOLE NUMBER OR EMPTY: CHECK THE VALUE")
     return {"time_limit_s": v.get("time_limit_s"), "frag_limit": v.get("frag_limit"),
             "night": v["night"], "silenced": v["silenced"]}
 
@@ -71,11 +75,11 @@ def check_pick(v: object) -> GamePick:
     """Shape only -- NOT whether the piece ids still exist (that is LOAD's own job, with a fallback,
     never a 400/404 at save time: games-presets.md §6, "stores piece references, not copies")."""
     if not isinstance(v, dict):
-        raise FavouriteError(400, "pick must be an object")
+        raise FavouriteError(400, "FAVOURITE NEEDS A PICK: SEND THE FULL BUNDLE")
     pieces = v.get("pieces")
     if not isinstance(pieces, dict) or not all(k in pieces and isinstance(pieces[k], str) and pieces[k]
-                                               for k in PIECE_KINDS):
-        raise FavouriteError(400, f"pick.pieces must carry a piece id for every kind ({', '.join(PIECE_KINDS)})")
+                                               and len(pieces[k]) <= _ID_MAX for k in PIECE_KINDS):
+        raise FavouriteError(400, "FAVOURITE NEEDS EVERY PICKER'S PRESET: CHECK ALL EIGHT KINDS ARE NAMED")
     return {"pieces": {k: pieces[k] for k in PIECE_KINDS}, "match": _check_match(v.get("match"))}
 
 
@@ -156,12 +160,12 @@ class FavouriteStore:
         for r in self._rows:
             if r["favourite_id"] == favourite_id:
                 return copy.deepcopy(r)
-        raise FavouriteError(404, "no such favourite")
+        raise FavouriteError(404, "FAVOURITE NOT FOUND: IT MAY HAVE BEEN DELETED")
 
     def create(self, name: object, countdown_s: object, pick: Any) -> Favourite:
         name = _check_name(name)
         if self._find_name(name):
-            raise FavouriteError(409, f"a favourite named \"{name}\" already exists")
+            raise FavouriteError(409, "NAME ALREADY USED: PICK ANOTHER NAME FOR THIS FAVOURITE")
         cd = _check_countdown(countdown_s)
         pk = check_pick(pick)
         now = self.now_ms()
@@ -174,10 +178,10 @@ class FavouriteStore:
     def update(self, favourite_id: str, name: object) -> Favourite:
         row = next((r for r in self._rows if r["favourite_id"] == favourite_id), None)
         if row is None:
-            raise FavouriteError(404, "no such favourite")
+            raise FavouriteError(404, "FAVOURITE NOT FOUND: IT MAY HAVE BEEN DELETED")
         name = _check_name(name)
         if self._find_name(name, exclude_id=favourite_id):
-            raise FavouriteError(409, f"a favourite named \"{name}\" already exists")
+            raise FavouriteError(409, "NAME ALREADY USED: PICK ANOTHER NAME FOR THIS FAVOURITE")
         row["name"] = name
         row["updated_t"] = self.now_ms()
         self._save()
@@ -187,7 +191,7 @@ class FavouriteStore:
         before = len(self._rows)
         self._rows = [r for r in self._rows if r["favourite_id"] != favourite_id]
         if len(self._rows) == before:
-            raise FavouriteError(404, "no such favourite")
+            raise FavouriteError(404, "FAVOURITE NOT FOUND: IT MAY HAVE BEEN DELETED")
         self._save()
 
 

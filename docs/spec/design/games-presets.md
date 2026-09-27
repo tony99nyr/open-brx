@@ -34,6 +34,13 @@ A **piece** is one named preset for one PLAY picker. There are eight kinds:
   respawn checks). A bad value is a 400 that names the field.
 - The store is `home_dir()/pieces.json` (`{"v": 1, "pieces": [...]}`, atomic write). A corrupt file moves aside and
   MC starts with the builtins only, as `presets.py` does today.
+- **A stored piece a rule change elsewhere later refuses is KEPT, never dropped** (independent review, HIGH 1): a
+  weapon a PRIMARY/SECONDARY/PERKS piece named that is later hidden or turned pickup-only, or any other value the
+  server would now refuse, marks the piece `invalid` (the plain ALL-CAPS reason) instead of deleting it — losing a
+  host's saved work over a rule tightened somewhere else is worse than showing it read only. An `invalid` piece is
+  listed by `GET /api/pieces`, is never pickable (PICK/LOAD treat its id like a vanished one: named by the request =
+  400, merely inherited = falls back to that kind's builtin), and survives every future save untouched. A `PUT`
+  supplying a `value` the current rules accept again clears the flag.
 - **No migration.** The old whole-game store (`presets.json`, `/api/presets*`, `SavedGame`, `active_preset_id`) is
   removed. MC does not read `presets.json` any more and leaves the file on disk.
 

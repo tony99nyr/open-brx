@@ -99,36 +99,37 @@ def _builtin_pieces() -> list[GamePiece]:
 
 
 # ---------- value validation (games-presets.md §1's bench-proven gate) ----------
-def _int_in(v: object, lo: int, hi: int, field: str) -> int:
+# Round 3, MEDIUM 5: every message here is the console's own ALL-CAPS "WHAT: DO" copy, not raw mixed
+# case -- the console shows `str(PieceError)` verbatim (`api.py _err`).
+def _int_in(v: object, lo: int, hi: int, label: str) -> int:
     if not (isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi):
-        raise PieceError(400, f"{field} must be an integer {lo}..{hi}")
+        raise PieceError(400, f"{label} MUST BE {lo}-{hi}: PICK A NUMBER IN THAT RANGE")
     return v
 
 
 def _check_life(v: object) -> dict:
     if not isinstance(v, dict):
-        raise PieceError(400, "life value must be an object")
-    return {"max_hp": _int_in(v.get("max_hp"), 1, 255, "life.max_hp"),
-            "max_armor": _int_in(v.get("max_armor"), 0, 255, "life.max_armor"),
-            "max_shield": _int_in(v.get("max_shield"), 0, 255, "life.max_shield")}
+        raise PieceError(400, "LIFE PRESET NEEDS A VALUE: SEND MAX HP, MAX ARMOR AND MAX SHIELD")
+    return {"max_hp": _int_in(v.get("max_hp"), 1, 255, "MAX HP"),
+            "max_armor": _int_in(v.get("max_armor"), 0, 255, "MAX ARMOR"),
+            "max_shield": _int_in(v.get("max_shield"), 0, 255, "MAX SHIELD")}
 
 
 def _check_spawn(v: object) -> dict:
     if not isinstance(v, dict):
-        raise PieceError(400, "spawn value must be an object")
+        raise PieceError(400, "SPAWN PRESET NEEDS A VALUE: SEND A RESPAWN TYPE AND DELAY")
     t = v.get("type")
     if t not in ("auto", "scanner"):
         # games-presets.md §1: "spawn.type is auto or scanner" — "none" is a mode default (post-MVP LMS),
         # never a host-built piece.
-        raise PieceError(400, "spawn.type must be auto|scanner (a bench-proven respawn mechanism)")
-    d = _int_in(v.get("delay_s"), 0, 600, "spawn.delay_s")
+        raise PieceError(400, "SPAWN TYPE NOT SUPPORTED: USE AUTO OR STATION")
+    d = _int_in(v.get("delay_s"), 0, 600, "RESPAWN DELAY")
     if d in (1, 2):
-        raise PieceError(400, "spawn.delay_s of 1-2s wedges the headset in the relay's out-blink (F13); "
-                              "use 0 (no respawn) or >= 3")
+        raise PieceError(400, "RESPAWN DELAY OF 1-2S WEDGES THE HEADSET (F13): USE 0 (NO RESPAWN) OR 3 SECONDS OR MORE")
     try:
         respawn_settings(v)   # protect_s / weapon_delay_ms / station_protect_s: closed sets, compile.py
     except ValueError as e:
-        raise PieceError(400, str(e)) from e
+        raise PieceError(400, f"{str(e).upper()}: PICK A SUPPORTED VALUE") from e
     out: dict[str, Any] = {"type": t, "delay_s": d}
     for k in ("protect_s", "weapon_delay_ms", "station_protect_s"):
         if k in v:
@@ -136,11 +137,11 @@ def _check_spawn(v: object) -> dict:
     gate = v.get("gate")
     if gate is not None:
         if t != "scanner":
-            raise PieceError(400, "spawn.gate only applies to a scanner (station) respawn")
+            raise PieceError(400, "GATE NOT APPLICABLE: ONLY A STATION (SCANNER) RESPAWN HAS A GATE")
         if gate != "trigger":
             # games-presets.md §1: only "trigger" is bench-proven; "presence" needs its own bench proof
             # (§13 of the brief) before BUILD can offer it.
-            raise PieceError(400, "spawn.gate: only \"trigger\" is bench-proven — \"presence\" is not yet supported")
+            raise PieceError(400, "GATE NOT SUPPORTED: ONLY TRIGGER IS BENCH-PROVEN, NOT PRESENCE")
         out["gate"] = "trigger"
     return out
 
@@ -158,24 +159,41 @@ def _pickable_ids() -> tuple[frozenset[str], frozenset[str]]:
             frozenset(default_perks().visible_ids()))
 
 
+@functools.lru_cache(maxsize=1)
+def _id_names() -> dict[str, str]:
+    """id -> its catalogue display name, weapons and perks merged (disjoint id namespaces) -- so a
+    refusal can say "FORCE RIFLE", not "force_rifle" (round 3, MEDIUM 5)."""
+    names = {w["weapon_id"]: w["name"] for w in WeaponCatalog().all()}
+    names.update({p["perk_id"]: p["name"] for p in default_perks().all()})
+    return names
+
+
+def _display(item_id: str) -> str:
+    return _id_names().get(item_id, item_id.replace("_", " ")).upper()
+
+
 def _check_slot(kind: PieceKind, v: object) -> dict:
     try:
         rule = _policy._check_rule(_SLOT_OF_KIND[kind], v if isinstance(v, dict) else {})
     except ValueError as e:
-        raise PieceError(400, str(e)) from e
+        raise PieceError(400, f"{str(e).upper()}: PICK A SUPPORTED VALUE") from e
     weapons, perks = _pickable_ids()
     allowed = perks if kind == "perks" else weapons
     fixed = rule["fixed_id"]
     named: list[str] = ([fixed] if fixed else []) + list(rule["only_ids"])
     bad = [i for i in named if i not in allowed]
     if bad:
-        raise PieceError(400, f"not offered in a loadout: {', '.join(bad)} (hidden, pickup-only or unknown)")
+        # HIGH 1 / MEDIUM 5: the exact message a stored piece's `invalid` reason carries too, when a
+        # weapon or perk it once named is later hidden or turned pickup-only.
+        names = ", ".join(_display(i) for i in bad)
+        verb = "IS" if len(bad) == 1 else "ARE"
+        raise PieceError(400, f"NAMES {names}, WHICH {verb} NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK")
     return dict(rule)
 
 
 def _check_misc_loadouts(v: object) -> dict:
     if not isinstance(v, dict) or not isinstance(v.get("hud_select"), bool) or not isinstance(v.get("heavies"), bool):
-        raise PieceError(400, "misc_loadouts value must be {hud_select: bool, heavies: bool}")
+        raise PieceError(400, "MISC LOADOUTS PRESET NEEDS A VALUE: SEND WHO PICKS AND WHETHER HEAVIES ARE ON")
     return {"hud_select": v["hud_select"], "heavies": v["heavies"]}
 
 
@@ -186,11 +204,11 @@ def check_value(kind: PieceKind, value: object) -> dict:
         # ARMORY decide it)". Every kind-specific checker below only reads its OWN known keys, so an
         # extra `station_source` alongside them used to be silently dropped (QA-25, visual QA round 1)
         # -- an operator who typed it got a 200 and never learned it did nothing.
-        raise PieceError(400, "a piece may not carry station_source — the mode's default and ARMORY decide it")
+        raise PieceError(400, "STATION_SOURCE NOT ALLOWED HERE: THE MODE'S DEFAULT AND ARMORY DECIDE IT")
     if kind == "mode":
-        raise PieceError(403, "GAME MODE has no host-added pieces")
+        raise PieceError(403, "GAME MODE HAS NO HOST-ADDED PRESETS: PICK ONE OF THE BUILT-IN MODES")
     if kind == "gameplay":
-        raise PieceError(403, "GAMEPLAY has no host-added pieces yet (post-MVP, games-redesign.md §15)")
+        raise PieceError(403, "GAMEPLAY HAS NO HOST-ADDED PRESETS YET: THIS PICKER IS POST-MVP")
     if kind == "life":
         return _check_life(value)
     if kind == "spawn":
@@ -199,7 +217,7 @@ def check_value(kind: PieceKind, value: object) -> dict:
         return _check_slot(kind, value)
     if kind == "misc_loadouts":
         return _check_misc_loadouts(value)
-    raise PieceError(400, f"unknown kind {kind!r}")
+    raise PieceError(400, "UNKNOWN PRESET KIND: PICK ONE OF THE EIGHT PICKERS")
 
 
 class PieceStore:
@@ -260,12 +278,29 @@ class PieceStore:
             raise ValueError(f"bad kind {kind!r}")
         name = self._check_name(r.get("name"))
         note = self._check_note(r.get("note"))
-        value = check_value(kind, r.get("value"))   # a value the server would now refuse drops the whole row
+        raw_value = r.get("value")
+        invalid: str | None = None
+        try:
+            value = check_value(kind, raw_value)
+        except PieceError as e:
+            # HIGH 1: a value the CURRENT rules refuse (a weapon since hidden or turned pickup-only, a
+            # rule tightened elsewhere) is KEPT, marked `invalid`, not dropped -- deleting a host's saved
+            # work over a rule change made somewhere else is worse than showing it read-only. `mode` and
+            # `gameplay` are never host-created at all (`check_value` 403s them unconditionally, so a
+            # stored row of either kind is malformed from birth, not a rule-drift casualty) -- and a
+            # `value` that is not even an object is too broken to keep either way.
+            if kind in ("mode", "gameplay") or not isinstance(raw_value, dict):
+                raise ValueError(f"bad value: {e}") from e
+            value = raw_value
+            invalid = str(e).upper()
         raw_pid = r.get("piece_id")
         pid = raw_pid if isinstance(raw_pid, str) and raw_pid and not raw_pid.startswith("builtin:") else uuid.uuid4().hex[:8]
         now = self.now_ms()
-        return _piece(pid, kind, name, value, note=note, builtin=False, post_mvp=False,
-                     t=int(r.get("created_t") or now), updated_t=int(r.get("updated_t") or r.get("created_t") or now))
+        row = _piece(pid, kind, name, value, note=note, builtin=False, post_mvp=False,
+                    t=int(r.get("created_t") or now), updated_t=int(r.get("updated_t") or r.get("created_t") or now))
+        if invalid:
+            row["invalid"] = invalid
+        return row
 
     def _save(self) -> None:
         if not self.path:
@@ -279,10 +314,10 @@ class PieceStore:
     @staticmethod
     def _check_name(name: object) -> str:
         if not isinstance(name, str) or not name.strip():
-            raise PieceError(400, "name is required")
+            raise PieceError(400, "NAME REQUIRED: TYPE A NAME FOR THIS PRESET")
         name = " ".join(name.split())
         if len(name) > _NAME_MAX:
-            raise PieceError(400, f"name must be {_NAME_MAX} characters or fewer")
+            raise PieceError(400, f"NAME TOO LONG: KEEP IT TO {_NAME_MAX} CHARACTERS OR FEWER")
         return name
 
     @staticmethod
@@ -290,9 +325,9 @@ class PieceStore:
         if note is None or note == "":
             return ""
         if not isinstance(note, str) or "\n" in note or "\r" in note:
-            raise PieceError(400, "note must be one line")
+            raise PieceError(400, "NOTE MUST BE ONE LINE: REMOVE THE LINE BREAK")
         if len(note) > _NOTE_MAX:
-            raise PieceError(400, f"note must be {_NOTE_MAX} characters or fewer")
+            raise PieceError(400, f"NOTE TOO LONG: KEEP IT TO {_NOTE_MAX} CHARACTERS OR FEWER")
         return note
 
     def _is_builtin_name(self, kind: str, name: str) -> bool:
@@ -302,6 +337,16 @@ class PieceStore:
         return next((r for r in self._rows if r["kind"] == kind and r["name"].lower() == name.lower()
                     and r["piece_id"] != exclude_id), None)
 
+    def _check_new_name(self, kind: str, name: object, exclude_id: str | None = None) -> str:
+        """Shared by `create`/`update`: the two name refusals, in the console's own copy (MEDIUM 5). The
+        brief's own example is the 409 -- "NAME ALREADY USED: PICK ANOTHER NAME FOR THIS LIFE PRESET"."""
+        checked = self._check_name(name)
+        if self._is_builtin_name(kind, checked):
+            raise PieceError(403, f"NAME ALREADY USED: \"{checked}\" IS A BUILT-IN {kind.upper()} PRESET, PICK ANOTHER NAME")
+        if self._find_name(kind, checked, exclude_id=exclude_id):
+            raise PieceError(409, f"NAME ALREADY USED: PICK ANOTHER NAME FOR THIS {kind.upper()} PRESET")
+        return checked
+
     # ---------- CRUD ----------
     def list(self) -> list[GamePiece]:
         return [copy.deepcopy(b) for b in self._builtin] + [copy.deepcopy(r) for r in self._rows]
@@ -310,54 +355,52 @@ class PieceStore:
         for r in self._builtin + self._rows:
             if r["piece_id"] == piece_id:
                 return copy.deepcopy(r)
-        raise PieceError(404, "no such piece")
+        raise PieceError(404, "PRESET NOT FOUND: IT MAY HAVE BEEN DELETED")
 
     def create(self, kind: object, name: object, note: object, value: object) -> GamePiece:
         if kind not in PIECE_KINDS:
-            raise PieceError(400, f"kind must be one of {PIECE_KINDS}")
+            raise PieceError(400, "UNKNOWN PRESET KIND: PICK ONE OF THE EIGHT PICKERS")
         if kind in ("mode", "gameplay"):
-            raise PieceError(403, f"{kind} has no host-added pieces")
-        name = self._check_name(name)
-        if self._is_builtin_name(kind, name):
-            raise PieceError(403, f"\"{name}\" is a built-in name — pick another")
-        if self._find_name(kind, name):
-            raise PieceError(409, f"a {kind} piece named \"{name}\" already exists")
+            raise PieceError(403, f"{kind.upper()} HAS NO HOST-ADDED PRESETS: BUILD CANNOT CREATE ONE HERE")
+        checked_name = self._check_new_name(kind, name)
+        checked_note = self._check_note(note)
         val = check_value(kind, value)
         now = self.now_ms()
-        row = _piece(uuid.uuid4().hex[:8], kind, name, val, note=self._check_note(note),
+        row = _piece(uuid.uuid4().hex[:8], kind, checked_name, val, note=checked_note,
                     builtin=False, post_mvp=False, t=now)
         self._rows.append(row)
         self._save()
         return copy.deepcopy(row)
 
     def update(self, piece_id: str, name: object = None, note: object = None, value: object = None) -> GamePiece:
+        """MEDIUM 2 (round 3): every field is VALIDATED before anything is ASSIGNED -- a 400 on `value`
+        must leave `name`/`note` (and the row generally) exactly as they were, in memory and on disk,
+        not partially applied. `_check_new_name` alone would raise before the row is touched at all."""
         if any(b["piece_id"] == piece_id for b in self._builtin):
-            raise PieceError(403, "a built-in piece can't be edited — copy it, tune it, then NEW ▸")
+            raise PieceError(403, "BUILT-IN PRESET: COPY IT WITH NEW ▸, THEN EDIT THE COPY")
         row = next((r for r in self._rows if r["piece_id"] == piece_id), None)
         if row is None:
-            raise PieceError(404, "no such piece")
-        if name is not None:
-            name = self._check_name(name)
-            if self._is_builtin_name(row["kind"], name):
-                raise PieceError(403, f"\"{name}\" is a built-in name — pick another")
-            if self._find_name(row["kind"], name, exclude_id=piece_id):
-                raise PieceError(409, f"a {row['kind']} piece named \"{name}\" already exists")
-            row["name"] = name
-        if note is not None:
-            row["note"] = self._check_note(note)
+            raise PieceError(404, "PRESET NOT FOUND: IT MAY HAVE BEEN DELETED")
+        new_name = row["name"] if name is None else self._check_new_name(row["kind"], name, exclude_id=piece_id)
+        new_note = row["note"] if note is None else self._check_note(note)
+        new_value = row["value"] if value is None else check_value(row["kind"], value)
+        # every check passed -- assign now, in one go
+        row["name"] = new_name
+        row["note"] = new_note
+        row["value"] = new_value
         if value is not None:
-            row["value"] = check_value(row["kind"], value)
+            row.pop("invalid", None)   # HIGH 1: a value the current rules accept again clears the flag
         row["updated_t"] = self.now_ms()
         self._save()
         return copy.deepcopy(row)
 
     def delete(self, piece_id: str) -> None:
         if any(b["piece_id"] == piece_id for b in self._builtin):
-            raise PieceError(403, "a built-in piece can't be deleted")
+            raise PieceError(403, "BUILT-IN PRESET: IT CANNOT BE DELETED")
         before = len(self._rows)
         self._rows = [r for r in self._rows if r["piece_id"] != piece_id]
         if len(self._rows) == before:
-            raise PieceError(404, "no such piece")
+            raise PieceError(404, "PRESET NOT FOUND: IT MAY HAVE BEEN DELETED")
         self._save()
 
 
