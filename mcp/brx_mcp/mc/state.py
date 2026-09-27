@@ -257,8 +257,10 @@ MODES: list[ModeRow] = [
     # refuse a tid-2 hill roster outright regardless of which OTHER two tids are chosen -- tid 0 (RED)
     # is exactly as valid a hill team as 1 or 3 (`DominationEngine.add_player`'s own docstring: "Teams
     # 0, 1 and 3 are all free").
-    # `win_by` is "objective" (possession time), the same value extraction already uses: MC has no
-    # objective scorer, so `scoring.py` reports the winner as `undecided` rather than inventing one
+    # `win_by` is "objective" (possession time), the same value extraction already uses: `scoring.py`
+    # names the winner from possession (`Scorer.winner()`) once any is reported, and a hold target
+    # (F415, `scoring.hold_target_s`) ends the match the instant a team reaches it, the same as a kill
+    # cap. With NO possession reported at all, the winner stays `undecided` rather than inventing one
     # from kills, and the UI renders that as "UNDECIDED — OBJECTIVE · HOST DECIDES" (Recap.tsx).
     {"mode": "koth", "name": "KING OF THE HILL", "abbr": "KOTH", "desc": "Hold the hill; possession scores",
      "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
