@@ -2,9 +2,13 @@
 
 WHY (2026-09-27). test-all.mjs used to lock `.test-all.lock` inside the checkout, so two worktrees on the same
 box each got their own lock and ran full suites at once, starving each other's memory/CPU budget until jobs blew
-their kill timeout. The lock moved to one machine-wide location (scripts/test-all.mjs), keyed by user; these
-tests pin the one subtle part of that: a crashed run's entry (a confirmed-dead pid) must be reclaimed AT ONCE,
-not after the 60 s heartbeat window a merely-wedged-but-alive run still needs.
+their kill timeout. The lock moved to one machine-wide location, keyed by uid under a FIXED /tmp path (not
+$XDG_RUNTIME_DIR/$TMPDIR, which can differ between session types for the same account and so defeat the whole
+point). These tests pin the two subtle parts: a crashed run's entry (a confirmed-dead pid) is reclaimed almost
+at once, not after the full 60 s heartbeat window a merely-wedged-but-alive run still needs, but NOT instantly
+either -- an independent review (2026-09-27) flagged that an instant reclaim trusts a pid read the moment its
+heartbeat lapses, which pid namespacing/reuse can make say "alive" or "dead" about the WRONG process; a ~10 s
+grace past the missed heartbeat removes that coincidence at negligible cost when the holder really is gone.
 """
 import json
 import shutil
@@ -53,15 +57,24 @@ def test_pid_alive_is_false_once_the_process_has_exited():
     assert _call("pidAlive", _dead_pid()) is False
 
 
-def test_is_stale_reclaims_a_dead_pid_at_once():
-    # changedAt == now: no heartbeat timeout has elapsed at all, yet a dead pid is still reclaimed immediately.
+def test_is_stale_does_not_trust_a_dead_pid_the_instant_the_heartbeat_lapses():
+    # changedAt == now: no idle time has passed at all. Even though the pid is confirmed dead, this must NOT
+    # reclaim yet -- a bare "is it dead" check taken at this exact instant is exactly what pid reuse could fool.
     dead = _dead_pid()
     name = f"000000000000001-{dead}-xxxxxx"
     now = 1_000_000
-    assert _call("isStale", name, now, now) is True
+    assert _call("isStale", name, now, now) is False
 
 
-def test_is_stale_waits_out_the_heartbeat_for_a_live_but_wedged_process():
+def test_is_stale_reclaims_a_dead_pid_after_the_grace_period():
+    dead = _dead_pid()
+    name = f"000000000000001-{dead}-xxxxxx"
+    now = 1_000_000
+    assert _call("isStale", name, now - 5_000, now) is False    # 5s idle: still inside the ~10s grace
+    assert _call("isStale", name, now - 15_000, now) is True    # 15s idle: past the grace, reclaim
+
+
+def test_is_stale_waits_out_the_full_heartbeat_for_a_live_but_wedged_process():
     import os
     name = f"000000000000001-{os.getpid()}-xxxxxx"
     now = 1_000_000
@@ -69,7 +82,7 @@ def test_is_stale_waits_out_the_heartbeat_for_a_live_but_wedged_process():
     assert _call("isStale", name, now - 70_000, now) is True    # 70s idle: reclaim even though alive
 
 
-def test_lock_dir_name_is_keyed_by_user():
-    a, b = _call("lockDirName", "alice"), _call("lockDirName", "bob")
+def test_lock_dir_name_is_keyed_by_uid():
+    a, b = _call("lockDirName", 501), _call("lockDirName", 1000)
     assert a != b
-    assert "alice" in a and "bob" in b
+    assert "501" in a and "1000" in b
