@@ -9,7 +9,7 @@ import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATIO
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
-import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
+import { DEMO_TEAMS, GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 import { storedTag, tagError } from '../api/tag';
@@ -113,7 +113,7 @@ type Sub = { snap: (s: State) => void; feed: (e: FeedEntry) => void };
 export class MockBackend implements Api {
   private subs = new Set<Sub>();
   private phase: Phase = 'muster';
-  private config: ConfigView = withPolicy(clone(MODES[0].defaults));
+  private config: ConfigView = withPolicy({ ...clone(MODES[0].defaults), teams: DEMO_TEAMS() });   // F413: the demo fixture keeps blue/yellow
   private players: Player[] = [];
   private trying: Record<string, string> = {};
   private standby: Player[] = [];   // STANDBY: parked players (never counted in kit/lobby/readiness)

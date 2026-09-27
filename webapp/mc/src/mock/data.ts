@@ -2,6 +2,9 @@
 import type { ConfigView, GameConfig, MatchItemKey, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
 import { defaultPolicy } from './policy';
 
+/** The demo's opening session: a TDM game already in progress, rostered blue/yellow (see `base()`). */
+export const DEMO_TEAMS = (): Team[] => [{ team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW TEAM', color: 'yellow', tid: 2 }];
+
 export const TEAMS: Team[] = [
   { team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 },
   { team_id: 'yellow', name: 'YELLOW TEAM', color: 'yellow', tid: 2 },
@@ -1012,19 +1015,11 @@ const base = (mode: string, over: Partial<GameConfig> = {}): ConfigView => ({
   respawn: { type: 'auto', delay_s: 15 },
   scoring: { frag_limit: null, win_by: 'kills' },
   health: { max_hp: 45, max_armor: 70, max_shield: 0, preset: 'standard' },   // S45: the Standard preset
-  // F413 (games-presets.md §7) says a FRESH pick or a mode change defaults to red/blue -- but this
-  // `base()` ALSO builds the STATIC DEMO's own INITIAL config (`this.config =
-  // withPolicy(clone(MODES[0].defaults))`), whose PLAYERS fixture is hardcoded to blue/yellow team_id
-  // strings across dozens of unrelated tests this lane does not own (Lobby/Items/spectate). Team-lead's
-  // scope decision (2026-09-27): pick/compose (a fresh pick, a mode change, default_config) gives
-  // red+blue, but this demo fixture and its initial config are a SESSION ALREADY IN PROGRESS, not a
-  // fresh one -- they keep the old colours on purpose, so those 66 tests stay untouched. The red/blue
-  // default itself lives in `pick()`'s own mode-changed reset (never here); `Games.tsx`'s own
-  // client-side split prediction mirrors the SAME red/blue, not `defaults.teams`, so its confirm never
-  // disagrees with what actually lands. KOTH's own `defaults.teams` below (blue/purple) is likewise
-  // untouched -- it only still feeds a DIRECT `putConfig` mode switch (GameEditPanel's inline edit,
-  // out of this lane), never `pick()`'s own reset any more.
-  teams: [TEAMS[0], TEAMS[1]],
+  // F413: every team mode defaults to red + blue, as the server's `default_config(mode)` does, so a mode
+  // switch through `putConfig` (GameEditPanel, a favourite load) lands the same teams in both. Only the
+  // demo's OPENING session keeps its blue/yellow roster (`DEMO_TEAMS`, backend.ts): it is a fixture of a
+  // session already in progress, and dozens of unrelated tests read those names.
+  teams: [TEAMS[2], TEAMS[0]],
   loadout_policy: defaultPolicy(mode),
   ...over,
 });
@@ -1141,7 +1136,7 @@ export const MODES: ModeInfo[] = [
   // the gun paints). Yellow is tid 2, which is what a NEUTRAL hill broadcasts, so a yellow roster
   // would read every uncaptured point as its own — the server refuses it outright.
   { ...MODE_TEXT.koth, params: KOTH_PARAMS, match_items: KOTH_ITEMS,
-    defaults: base('koth', { teams: [TEAMS[0], TEAMS[3]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'phone',
+    defaults: base('koth', { teams: [TEAMS[2], TEAMS[0]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'phone',
       mode_params: { score_target: 0, points_per_s: 1.0 } }) },
 ];
 
