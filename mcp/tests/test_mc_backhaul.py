@@ -165,13 +165,22 @@ def test_a_tunnel_that_never_prints_a_url_errors_at_the_cap_with_the_last_output
 
 
 def test_the_child_exiting_at_any_time_is_an_error_not_a_silent_off():
-    t = _tunnel(_fake_child(delay_s=0.02, exit_after_s=0.05))
+    # No `exit_after_s`: a fixed wall-clock exit raced the DNS-resolve step under load (CI run
+    # 36319688593) — the child could exit before "up" was ever observed, so the first `_until` timed
+    # out and the assert fired against a status that had already moved straight to "error". Instead we
+    # wait for the condition, THEN kill the child ourselves: still "at any time" (this is a live
+    # process exiting with no `stop()` asked for), but deterministic.
+    t = _tunnel(_fake_child(delay_s=0.02))
 
     async def go():
         t.start(8766)
-        assert await _until(lambda: t.status == "up"), t.public()
-        assert await _until(lambda: t.status == "error"), t.public()
-        assert "exited" in t.error and t.ws_url is None
+        try:
+            assert await _until(lambda: t.status == "up"), t.public()
+            t._proc.kill()
+            assert await _until(lambda: t.status == "error"), t.public()
+            assert "exited" in t.error and t.ws_url is None
+        finally:
+            await t.stop()
     run(go())
 
 
