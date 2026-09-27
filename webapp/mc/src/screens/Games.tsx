@@ -244,8 +244,8 @@ export function Games() {
     const fav = favourites.find(f => f.favourite_id === id);
     if (!fav) return;
     const savedModePiece = pieces.find(p => p.piece_id === fav.pick.pieces.mode);
-    const modePiece = (savedModePiece && savedModePiece.kind === 'mode' && !savedModePiece.post_mvp)
-      ? savedModePiece : pieces.find(p => p.kind === 'mode' && !p.post_mvp);
+    const modePiece = (savedModePiece && savedModePiece.kind === 'mode' && !savedModePiece.post_mvp && !savedModePiece.invalid)
+      ? savedModePiece : pieces.find(p => p.kind === 'mode' && !p.post_mvp && !p.invalid);
     const modeId = modePiece ? (modePiece.value as { mode: string }).mode : undefined;
     const newTeams = modes.find(m => m.mode === modeId)?.defaults.teams ?? [];
     const split = splitLine(state.players, cfg.teams, newTeams);
@@ -411,7 +411,10 @@ export function Games() {
           <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, opacity: locked ? 0.5 : 1,
             display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '20px 32px' }}>
             {PICKER_ORDER.map(kind => {
-              const options = pieces.filter(p => p.kind === kind && !p.post_mvp);
+              // Round 3 (review): an `invalid` piece (a rule tightened under a stored value since it
+              // was saved) is never offered here either -- same exclusion as post_mvp, and it does not
+              // count toward the one-choice hiding rule.
+              const options = pieces.filter(p => p.kind === kind && !p.post_mvp && !p.invalid);
               if (options.length <= 1) return null;
               const selected = pick.pieces[kind];
               return (

@@ -630,3 +630,17 @@ describe('PLAY — review Low: the pieces-error banner is gated on connected', (
     m.unmount();
   });
 });
+
+describe('PLAY — review: an invalid piece is never offered, and does not break one-choice hiding', () => {
+  it('excludes it from the picker entirely, without turning a one-choice kind into two', async () => {
+    const api = new MockBackend();
+    const p = await api.createPiece({ kind: 'primary', name: 'OLD FAVOURITE',
+      value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'assault_rifle' } });
+    (api as unknown as { pieces: { piece_id: string; invalid?: string }[] }).pieces
+      .find(x => x.piece_id === p.piece_id)!.invalid = 'NAMES FORCE RIFLE, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK';
+    const { m } = await renderPlay(api);
+    expect(m.find('[data-testid="picker-primary"]').length, 'one-choice hiding still applies with the invalid piece excluded').toBe(0);
+    expect(m.text()).not.toContain('OLD FAVOURITE');
+    m.unmount();
+  });
+});

@@ -13,7 +13,7 @@
 // recomputed directly as `builtin:mode:<mode>`, with no post_mvp exclusion (a post-MVP mode still gets
 // its own real builtin id, never a fallback to another mode's).
 import { describe, expect, it } from 'vitest';
-import type { GameConfig } from '../src/api/types';
+import type { GameConfig, GamePiece } from '../src/api/types';
 import { MockBackend } from '../src/mock/backend';
 
 describe('pick() validation refusals carry status 400', () => {
@@ -185,5 +185,44 @@ describe('only_ids/fixed_id (review MEDIUM 4): hidden, pickup-only or unknown id
     await expect(b.createPiece({ kind: 'perks', name: 'X',
       value: { choice: 'fixed', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'not_a_real_perk' } }))
       .rejects.toMatchObject({ status: 400 });
+  });
+});
+
+// Round 3 (review): GamePiece.invalid?: string -- a stored, non-builtin piece a rule tightened under
+// since it was saved (a weapon hidden/turned pickup-only, in the real server; the mock has no live
+// rule-drift mechanism, so tests seed one directly, matching fake-invariants.test.ts's own `internals()`
+// pattern). Never pickable (named = 400 with the stored reason; inherited = falls back, listed).
+describe('GamePiece.invalid', () => {
+  const internals = (b: MockBackend) => b as unknown as { pieces: GamePiece[] };
+  const REASON = "NAMES FORCE RIFLE, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK";
+
+  it('a NAMED invalid piece is refused with its own stored reason', async () => {
+    const b = new MockBackend();
+    const p = await b.createPiece({ kind: 'primary', name: 'OLD FAVOURITE',
+      value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'assault_rifle' } });
+    internals(b).pieces.find(x => x.piece_id === p.piece_id)!.invalid = REASON;
+    await expect(b.pick({ pieces: { primary: p.piece_id } })).rejects.toMatchObject({ status: 400, message: REASON });
+  });
+
+  it('an INHERITED invalid piece falls back, and is listed in fallbacks', async () => {
+    const b = new MockBackend();
+    const p = await b.createPiece({ kind: 'primary', name: 'OLD FAVOURITE',
+      value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'assault_rifle' } });
+    await b.pick({ pieces: { primary: p.piece_id } });
+    internals(b).pieces.find(x => x.piece_id === p.piece_id)!.invalid = REASON;
+    const r = await b.pick({});   // names nothing -- 'primary' is purely inherited
+    expect(r.ok).toBe(true);
+    expect(r.fallbacks).toContain('primary');
+    expect(r.pick.pieces.primary).not.toBe(p.piece_id);
+  });
+
+  it('a PUT with a value the current rules accept clears it', async () => {
+    const b = new MockBackend();
+    const p = await b.createPiece({ kind: 'primary', name: 'OLD FAVOURITE',
+      value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'assault_rifle' } });
+    internals(b).pieces.find(x => x.piece_id === p.piece_id)!.invalid = REASON;
+    const updated = await b.updatePiece(p.piece_id, { value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'shotgun' } });
+    expect(updated.invalid).toBeUndefined();
+    expect((await b.getPieces()).find(x => x.piece_id === p.piece_id)?.invalid).toBeUndefined();
   });
 });
