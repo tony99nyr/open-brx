@@ -3,7 +3,7 @@ import type {
   Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, Favourite, GameConfig, GamePick, GamePiece, LanPublic, LastMatch, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView,
   MatchHistoryRow, MatchSettings, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, PieceKind, Player,
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationKind, StationSourceId,
-  StationView, TunnelProvider, TunnelStatus, TxPower, WeaponView,
+  StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
@@ -1279,6 +1279,32 @@ export class MockBackend implements Api {
     }
   }
   /** §3: compose the `GameConfig` partial the pick's pieces + strip describe. */
+  /** F413 (games-presets.md §7): 2 to 4 UNIQUE colours from red/blue/yellow/purple; KOTH is exactly 2
+   *  and never offers yellow (a neutral hill broadcasts tid 2, F82 -- the same fault a yellow ROSTER
+   *  refuses elsewhere, refused here before it ever reaches one). */
+  private checkMatchTeams(teams: unknown, mode: string): TeamColour[] {
+    const ALL: TeamColour[] = ['red', 'blue', 'yellow', 'purple'];
+    if (!Array.isArray(teams) || !teams.every(c => typeof c === 'string')) {
+      throw Object.assign(new Error('match.teams must be an array of team colours'), { status: 400 });
+    }
+    if (teams.length < 2 || teams.length > 4) throw Object.assign(new Error('match.teams must name 2 to 4 teams'), { status: 400 });
+    if (new Set(teams).size !== teams.length) throw Object.assign(new Error('match.teams must name each colour once'), { status: 400 });
+    const bad = teams.find(c => !ALL.includes(c as TeamColour));
+    if (bad) throw Object.assign(new Error(`match.teams must be from red, blue, yellow, purple (saw '${bad}')`), { status: 400 });
+    if (mode === 'koth') {
+      if (teams.length !== 2) throw Object.assign(new Error('KING OF THE HILL is exactly 2 teams'), { status: 400 });
+      if (teams.includes('yellow')) throw Object.assign(new Error('KING OF THE HILL never offers yellow (a neutral hill broadcasts tid 2)'), { status: 400 });
+    }
+    return teams as TeamColour[];
+  }
+  /** F415: KOTH only -- absent/null is legal everywhere (no target, the pre-F415 rule); named on any
+   *  other mode is refused outright, the same way spawn.station_source is. */
+  private checkHoldTarget(v: unknown, mode: string): number | null {
+    if (v == null) return null;
+    if (mode !== 'koth') throw Object.assign(new Error('match.hold_target_s is only for KING OF THE HILL'), { status: 400 });
+    if (!Number.isInteger(v) || (v as number) <= 0) throw Object.assign(new Error('match.hold_target_s must be a positive integer of seconds, or null'), { status: 400 });
+    return v as number;
+  }
   private composePartial(pieceIds: Record<string, string>, match: MatchSettings): Partial<GameConfig> {
     const valueOf = <T,>(kind: PieceKind) => this.pieces.find(x => x.piece_id === pieceIds[kind])!.value as T;
     const modeV = valueOf<{ mode: string }>('mode');
@@ -1308,12 +1334,19 @@ export class MockBackend implements Api {
       loadout_policy,
       mode_params: { ...(modeInfo.defaults.mode_params ?? {}), ...gameplayV.mode_params } as Record<string, number | boolean | string>,
       time_limit_s: match.time_limit_s,
-      scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit },
+      // F413/F415 (games-presets.md §7): `hold_target_s` rides Scoring alongside frag_limit -- KOTH
+      // only, and `pick()`'s own checkHoldTarget already refused it for any other mode before this runs.
+      scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit, hold_target_s: match.hold_target_s ?? null },
       night: match.night,
       // §3.6: SILENCED applies the full silenced preset together; off returns the mode's own automatic one.
       presentation: match.silenced ? { preset: 'silenced' } : { ...(modeInfo.defaults.presentation ?? { preset: 'standard' }) },
       environment: 'outdoor',   // §3.7 (F410): MVP is outdoors only
       volume: null,             // §3.7: the venue value, never a stale per-game knob
+      // F413: `match.teams` (a plain TeamColour[]) becomes the full Team[] compose writes to
+      // config.teams, in the SAME order -- `pick()`'s own checkMatchTeams already validated it (2-4
+      // unique colours, KOTH exactly 2 and never yellow). Absent (FFA) keeps whatever the mode's own
+      // defaults declare (a single non-team row), never TEAMS-derived.
+      ...(match.teams ? { teams: match.teams.map(c => TEAMS.find(t => t.team_id === c)!) } : {}),
     };
     return partial;
   }
@@ -1333,7 +1366,19 @@ export class MockBackend implements Api {
     const modePiece = this.pieces.find(x => x.piece_id === resolvedIds.mode)!;
     const modeInfo = MODES.find(m => m.mode === (modePiece.value as { mode: string }).mode)!;
     const match: MatchSettings = { ...this.gamePick.match };
-    if (modeChanged) { match.time_limit_s = modeInfo.defaults.time_limit_s; match.frag_limit = modeInfo.defaults.scoring.frag_limit ?? null; }
+    if (modeChanged) {
+      match.time_limit_s = modeInfo.defaults.time_limit_s;
+      match.frag_limit = modeInfo.defaults.scoring.frag_limit ?? null;
+      // F413/F415: "a mode change resets teams to the new mode's default, like the limits" -- gated on
+      // the mode's OWN match_items (the same authority the console's strip renders from), never on
+      // `defaults.teams` alone: a SOLO mode (FFA) still carries one placeholder team (`team_id: 'ffa'`,
+      // gameSummary.ts's own SOLO_MODES rule) that is not a real TeamColour and must never reach
+      // `match.teams` -- it composed into a config.teams row TEAMS.find() could never resolve.
+      // hold_target_s always resets to null (KOTH's own default, "no target"), whether entering or
+      // leaving KOTH.
+      match.teams = modeInfo.match_items?.includes('teams') ? modeInfo.defaults.teams.map(t => t.team_id as TeamColour) : undefined;
+      match.hold_target_s = null;
+    }
     const pm = p.match ?? {};
     if ('time_limit_s' in pm) {
       if (pm.time_limit_s != null && (!Number.isInteger(pm.time_limit_s) || pm.time_limit_s <= 0)) throw Object.assign(new Error('match.time_limit_s must be a positive integer of seconds, or null'), { status: 400 });
@@ -1345,6 +1390,8 @@ export class MockBackend implements Api {
     }
     if ('night' in pm) match.night = !!pm.night;
     if ('silenced' in pm) match.silenced = !!pm.silenced;
+    if ('teams' in pm) match.teams = this.checkMatchTeams(pm.teams, modeInfo.mode);
+    if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTarget(pm.hold_target_s, modeInfo.mode);
 
     const partial = this.composePartial(resolvedIds, match);
     const before = clone(this.config);
