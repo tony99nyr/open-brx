@@ -55,7 +55,10 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   `npm` inside those three. Do not `pnpm install` in them: it would strand the lockfile CI depends on.
   If `app/` ever fails with *"This is not the tsc command you are looking for"*, its `node_modules` is incomplete
   (`typescript` is a declared devDependency): `cd app && npm install`. Note npm versions shuffle `peer` markers in
-  `package-lock.json` on install — that churn is noise, do not commit it.
+  `package-lock.json` on install — that churn is noise, do not commit it. **A fresh git worktree has none of these
+  `node_modules` at all** (they are per-checkout, not shared): run `npm ci` in `app/`, `site/` and `webapp/mc/`
+  (or symlink each `node_modules` from the main checkout) before the first `test:all` there, or `app-build` fails
+  the whole run before any job even starts.
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
