@@ -18,9 +18,10 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 **State:** 0.4.15 is BUILT and verified but NOT published: local commits in the main checkout (bump `efd1961c`, merge
 `1a2e9927` which the APK is stamped with, notes `1400bc49`). It carries F419 and the red (tid 0) kill-confirm fix.
 Everything else is on main: F411/F413/F415, the land lane (CLAUDE.md rule, Tony-approved), the test speed-ups and
-memory headroom (F429/F430 closed), the doc cleanup. Handoff: `~/.claude/handoffs/battlecompany-brx1-0415-pending.md`.
+memory headroom (F429/F430 closed), the app-screens sleep-wait fix (F432 closed), the doc cleanup. Handoff:
+`~/.claude/handoffs/battlecompany-brx1-0415-pending.md`.
 **Next:** at the bench, Tony turns the phones on: install 0.4.15, merge main (never rebase), commit the sidecar, one
-push, publish `app-v0.4.15`, restart MC from main; then bench part 2. After it: the app-screens sleep cleanup (F432).
+push, publish `app-v0.4.15`, restart MC from main; then bench part 2.
 **Blocked:** the publish waits on the phones; B21 on the MacBook.
 ## Lane: brx2, bench, audio, utility and docs
 **State:** bench part 1 done 2026-09-26 (full write-up: `experiment-log/2026-09.md`'s 2026-09-26 brx2 entry). KOTH's
