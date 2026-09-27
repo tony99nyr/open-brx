@@ -16,7 +16,7 @@
 //                                              #   favourites-fallback | favourites-rename |
 //                                              #   favourites-delete | real-favourites |
 //                                              #   real-fresh | real-silent-snipers | real-load-feedback |
-//                                              #   real-last-match-restart
+//                                              #   real-teams-hold | real-last-match-restart
 //   HEADED=1   KEEP_SHOTS=1   MC_PY=…
 //
 // Every vite/MC pair below always picks its OWN fresh free port at the moment it starts (never
@@ -556,6 +556,56 @@ step('real-load-feedback', async ({ browser }) => {
     const after = await fetch(`${mc.base}/api/state`).then(r => r.json());
     expect(after.phase === 'kit', `CONTINUE TO KIT ▸ moves the server's own phase to kit (saw ${JSON.stringify(after.phase)})`);
     ok('LOAD feedback (QA-01) holds against a real MC, and CONTINUE TO KIT ▸ moves the server phase to kit');
+    await pg.context().close();
+  } finally { await vite.stop(); await mc.stop(); }
+});
+
+step('real-teams-hold', async ({ browser }) => {
+  // F413/F415 (games-presets.md §7), against a REAL MC: the mock-only steps (`teams`, `hold`, above)
+  // prove the CONSOLE's own logic; this proves the wire actually carries it -- a real server's own
+  // compose could disagree on field names, colour order or the koth gate in a way `?mock` never would.
+  const mc = await startRealMC();
+  const vite = await startVite(mc.port);
+  try {
+    const pg = await openReal(browser, vite.base, '#build', 1280);
+    const teamsItem = pg.getByTestId('match-teams-item');
+    await until(() => teamsItem.count().then(n => n > 0), 8000, 'the TEAMS item (TDM offers it)');
+    // control: a fresh real MC starts on TDM's own default pair (2 teams) -- prove the count really is
+    // 2 before bumping it, so "3 teams after" is not vacuously true of an already-3-team start.
+    const before = await fetch(`${mc.base}/api/state`).then(r => r.json());
+    expect(JSON.stringify(before.config.teams.map(t => t.team_id)) === JSON.stringify(['red', 'blue']),
+      `control: TDM starts at red, blue (saw ${JSON.stringify(before.config.teams.map(t => t.team_id))})`);
+    await teamsItem.getByRole('button', { name: '3', exact: true }).click();
+    // a fresh MC's own demo roster reshapes on this, so the count control asks first, same as `?mock`.
+    await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 6000, 'the reshape confirm (count to 3)');
+    await teamsItem.getByRole('button', { name: '3', exact: true }).click();
+    await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.teams.length === 3, 8000, '3 teams reaches the real server');
+    const withThree = await fetch(`${mc.base}/api/state`).then(r => r.json());
+    expect(JSON.stringify(withThree.config.teams.map(t => t.team_id)) === JSON.stringify(['red', 'blue', 'yellow']),
+      `the server's own config.teams is red, blue, yellow in order (saw ${JSON.stringify(withThree.config.teams.map(t => t.team_id))})`);
+    ok('TEAMS: a count change to 3 reaches a real MC as red, blue, yellow, in order');
+
+    await pickMode(pg, 'KING OF THE HILL');
+    await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'koth', 6000, 'KOTH reaches the real server');
+    // the server side of the round trip is done at this point, but the BROWSER's own websocket-pushed
+    // state can still be a tick behind it -- wait for the mode button's own re-render, not the server's,
+    // before reading the TEAMS item off the page (a bare server poll here read the item mid-stale-render).
+    const kothBtn = pg.getByRole('button', { name: 'KING OF THE HILL' });
+    await until(async () => (await kothBtn.getAttribute('aria-pressed')) === 'true', 6000, 'the button to show KotH picked');
+    expect(await pg.locator('[aria-label="team count"]').count() === 0, 'KOTH fixes the count on a real MC too, no control shown');
+    expect(!(await teamsItem.innerText()).includes('YELLOW'), 'KOTH never offers yellow on a real MC either');
+    ok('TEAMS: KOTH fixes the count at 2 and never offers yellow, against a real MC');
+
+    // control: the operator note must NOT already read a hold target before one is set.
+    const noteBefore = await pg.getByTestId('operator-note').innerText();
+    expect(!/FIRST TO HOLD/.test(noteBefore), `control: no hold target note yet (saw ${JSON.stringify(noteBefore)})`);
+    await pg.getByTestId('match-hold-value').click();
+    await pg.getByRole('button', { name: '5 MIN' }).click();
+    await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.scoring.hold_target_s === 300, 6000, '"5 MIN" reaches the real server as 300s');
+    await until(() => pg.getByTestId('operator-note').innerText().then(t => /FIRST TO HOLD/.test(t)), 6000, 'the operator note picks up the hold target');
+    const noteAfter = await pg.getByTestId('operator-note').innerText();
+    expect(/FIRST TO HOLD 5:00 WINS/.test(noteAfter), `the operator note reads FIRST TO HOLD 5:00 WINS (saw ${JSON.stringify(noteAfter)})`);
+    ok(`HOLD: "5 MIN" reaches a real MC as 300s, and the operator note names it   ${await shot(pg, 'real-teams-hold')}`);
     await pg.context().close();
   } finally { await vite.stop(); await mc.stop(); }
 });
