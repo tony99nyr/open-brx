@@ -39,7 +39,7 @@ so 300 seeds is about 10 minutes. Bound it: never loop explore without a seed co
 3. **Minimise.** `replay <trace> --shrink`, or write the few actions by hand. Put the script in
    `scenarios/regressions.py` with `ci_seeds=(1,)` and watch it go red.
 4. **Claim an id** before the work: the FOLLOWUPS "Next free" bump plus the row (or the closed line),
-   committed and pushed on its own.
+   committed and submitted through the land lane (`CLAUDE.md` → *Reaching main*) on its own.
 5. **Fix** if the fix is small, local and clearly correct. Otherwise give the regression scenario
    `xfail="F<id>: <reason>"` and `xfail_invariant="<the invariant it breaks>"` (`clock-back-assist` had them until F330's fix),
    or wrap a focused test in `xfail` from `tests/_skip.py`, and leave the row open. CI then fails on a
