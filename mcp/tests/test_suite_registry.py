@@ -6,8 +6,10 @@ executed it, and nothing said so. A gate with a fixed port has the second proble
 cannot run it at the same time, and a leftover server on that port can answer for the wrong code.
 
 The two rules:
-- A script under `app/tools/` or `webapp/mc/test/e2e/` is named in scripts/test-all.mjs, or it is in NOT_GATES
-  below with the reason it is not a pass/fail gate.
+- A script under `app/tools/` or `webapp/mc/test/e2e/` is named in scripts/test-all.mjs OR scripts/lib/budget.mjs
+  (2026-09-27: the webapp/mc/test/e2e job table -- name, `mb`, `secs` -- moved into budget.mjs's E2E_SPECS, so
+  screensBudget's `otherUiMb` reservation and the budget tests share the one real list instead of a second,
+  driftable copy), or it is in NOT_GATES below with the reason it is not a pass/fail gate.
 - A gate script does not bind or open a literal port. `process.env.X || 8792` is allowed: test-all passes the
   variable, and the default serves a person who runs the script by hand.
 """
@@ -18,6 +20,7 @@ import re
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TEST_ALL = REPO / "scripts" / "test-all.mjs"
+BUDGET = REPO / "scripts" / "lib" / "budget.mjs"
 GATE_DIRS = [REPO / "app" / "tools", REPO / "webapp" / "mc" / "test" / "e2e"]
 
 # Scripts in the gate folders that are not pass/fail gates. Name the reason; a gate does not belong here.
@@ -46,7 +49,7 @@ def _scripts():
 
 
 def test_every_gate_script_is_registered_in_test_all():
-    src = TEST_ALL.read_text()
+    src = TEST_ALL.read_text() + "\n" + BUDGET.read_text()
     # app/tools gates are named by path (`tools/moments.mjs`); the webapp/mc e2e scripts by quoted stem (`'koth'`)
     def named(rel, f):
         return f"tools/{f.name}" in src if rel.startswith("app/") else f"'{f.stem}'" in src
