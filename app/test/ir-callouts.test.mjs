@@ -402,3 +402,13 @@ test('S57 receiver: a name word 750 ms after its kill word still pairs (the wind
   h.irWord(19, IR_CALLOUT.DOWN + 2);
   assert.equal(h.eng.state().callout.victim, 'VIPER'); assert.equal(h.cues('VB8').length, 1, 'one death, one ENEMY DOWN');
 });
+
+test('S57 pairing: tid 0 (RED, the F413 default) is a real team, not "unknown"', () => {
+  // `_takeKillMatch` used `!x.team || !team`, so a RED victim (tid 0) paired with a confirm for ANY team.
+  const take = (open, team) => Engine.prototype._takeKillMatch.call(null, open, team, 100);
+  assert.equal(take([{ at: 0, team: 1 }], 0), null, 'a RED victim does not take a BLUE confirm');
+  assert.equal(take([{ at: 0, team: 0 }], 1), null, 'a BLUE victim does not take a RED confirm');
+  assert.deepEqual(take([{ at: 0, team: 0 }], 0), { at: 0, team: 0 }, 'RED pairs with RED');
+  assert.deepEqual(take([{ at: 0, team: null }], 0), { at: 0, team: null }, 'an unknown team still pairs with anything');
+  assert.deepEqual(take([{ at: 0, team: 2 }], null), { at: 0, team: 2 }, 'and so does an unknown victim team');
+});

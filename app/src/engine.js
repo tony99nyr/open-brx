@@ -3361,7 +3361,8 @@ export class Engine {
    *  plays MC's cue for the second kill: the one IR confirm pairs with one MC confirm, not with both. */
   _takeKillMatch(open, team, now) {
     for (let i = open.length - 1; i >= 0; i--) if (now - open[i].at > CALLOUT_WINDOW_MS) open.splice(i, 1);
-    const i = open.findIndex(x => !x.team || !team || x.team === team);
+    // `== null`, not falsy: tid 0 is RED (the F413 default), a real team, not an unknown one
+    const i = open.findIndex(x => x.team == null || team == null || x.team === team);
     if (i < 0) return null;
     return open.splice(i, 1)[0];   // the matched confirm: its `item` is the announcer item that said it (docs/announcer.md)
   }
