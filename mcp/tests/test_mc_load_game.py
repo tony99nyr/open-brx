@@ -337,8 +337,8 @@ def test_the_snapshot_game_block_reports_the_announced_game_not_the_live_head():
     for i in range(2):
         net.simulate_node_message(f"node{i}", "ack_config",
                                   {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
-    s.patch_player(ps[1]["player_id"], team_id="blue")        # a head-only change...
-    s.patch_player(ps[0]["player_id"], team_id="yellow")
+    s.patch_player(ps[1]["player_id"], team_id="red")         # a head-only change...
+    s.patch_player(ps[0]["player_id"], team_id="blue")
     assert s.config["config_id"] != announced, "control: the head really did move"
 
     g = s.snapshot()["game"]

@@ -112,12 +112,12 @@ def test_the_host_cannot_change_a_kit_mid_match_either_but_a_re_team_still_works
     # B1: a mid-match re-team is REFUSED loudly, names RECALL, and changes nothing -- not the roster,
     # not the scorer, and above all not an `assign` that would desync the gun's $TID from the roster.
     try:
-        s.patch_player(pid, team_id="yellow")
+        s.patch_player(pid, team_id="blue")   # F413: ps[0] defaults to red now, so blue is the change
         assert False, "the host re-teamed a player on a gun in play"
     except ValueError as e:
         assert s.phase.upper() in str(e) and "RECALL" in str(e), str(e)
-    assert ps[0]["team_id"] == "blue", "the refused re-team must not move the roster"
-    assert s.scorer.stats[pid].team_id == "blue", "nor the scorer"
+    assert ps[0]["team_id"] == "red", "the refused re-team must not move the roster"
+    assert s.scorer.stats[pid].team_id == "red", "nor the scorer"
     assert len(net.pushes("config", "node0")) == configs_before, "no frames re-pushed to a gun in play"
     assert len(net.pushes("assign", "node0")) == assigns_before, "and no assign carried the stale team"
     # A ready flag and a gamertag DO still ride in `assign` mid-match (roster/display only, no head).
