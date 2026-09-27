@@ -15,7 +15,7 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 
 const ROCKETS = { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' };
 const RAIL = { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#8a5cff' };
-const OVERSHIELD = { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#b36bff' };
+const OVERSHIELD = { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#ff4fd8' };
 // The pickup slots' head `$WEAP` rows (`WeaponCatalog.resolve()` output, 2026-09-24; the grant re-sends them verbatim).
 const WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*',
   3: '$WEAP,3,0,100,6,0,149,0,,,,,,,,1200,850,2,2,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,2,1,75,*' };
@@ -131,7 +131,7 @@ test('announcement: <ITEM> AVAILABLE at each spawn time, skipped when the statio
   h.at(60.5);
   const a = h.eng.state().powerupSpawn;
   assert.ok(a, 'the first spawn announces');
-  assert.equal(a.name, 'OVERSHIELD'); assert.equal(a.color, '#b36bff');
+  assert.equal(a.name, 'OVERSHIELD'); assert.equal(a.color, '#ff4fd8');
   h.near(4, { median: -85, state: 1 });   // heard across the field: available, nobody took it
   h.at(120.5);
   const sp = h.eng.state().powerupSpawn;
@@ -190,13 +190,14 @@ test('F374: an advert that says available before the first spawn is not claimabl
   assert.ok(h.eng.state().powerupClaim, 'CONTROL: the same advert after the first spawn starts the claim');
 });
 
-test('no grant without taker == me: the station named another player, so the HUD says who', () => {
+// F425 (Tony, 2026-09-26): "Halo never told you it was taken or who took it. I think not knowing is better for
+// gameplay." The HUD never names who took a station, or that it was taken at all -- see docs/spec/powerups.md.
+test('no grant without taker == me: the station named another player, and the HUD says nothing about it', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(121); const n = h.mark(); h.take(4, 19);
   assert.deepEqual(grants(h.since(n)), []);
   assert.equal(h.facts.filter(f => f.type === 'pickup').length, 0);
-  const hint = h.eng.state().powerup.hint;
-  assert.equal(hint.kind, 'taken_by'); assert.equal(hint.by, 'VIPER');
+  assert.equal(h.eng.state().powerup.hint, null, 'F425: no TAKEN/TAKEN BY hint');
 });
 
 test('no grant when the station names me but this phone was never claim_ready for it', () => {
@@ -219,16 +220,18 @@ test('STATION NOT ANSWERING: claim_ready for 15 s and the advert still says avai
   assert.equal(h.eng.state().powerupClaim, null, 'walking away ends the claim');
 });
 
-test('not there to take: the advert says taken, so the phone does not claim and the hint counts down to the next spawn', () => {
+// F425 (Tony, 2026-09-26): dropped the always-on countdown hint. Standing near a station the advert says is
+// taken no longer shows anything -- the phone does not claim, and the HUD stays silent until the next spawn's
+// own left-side AVAILABLE alert.
+test('not there to take: the advert says taken, so the phone does not claim, and the hint is gone', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(130); h.near(4, { state: 0, value: 110 }); h.adv(1500); h.near(4, { state: 0, value: 108 });
   assert.equal(h.eng.state().powerupClaim, null);
-  const hint = h.eng.state().powerup.hint;
-  assert.equal(hint.kind, 'taken'); assert.ok(hint.nextInMs > 100_000 && hint.nextInMs <= 110_000, JSON.stringify(hint));
+  assert.equal(h.eng.state().powerup.hint, null, 'F425: no TAKEN hint or countdown');
   const h2 = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h2.at(100); h2.near(4, { state: 0, value: 0 });
   assert.equal(h2.eng.state().powerupClaim, null, 'before the first spawn, a station that does not know yet is not claimable either');
-  assert.equal(h2.eng.state().powerup.hint.kind, 'taken');
+  assert.equal(h2.eng.state().powerup.hint, null);
 });
 
 test('a dead player does not claim', () => {
@@ -1014,4 +1017,101 @@ test('R2-21: an echo equal to the grant pools is no gain moment; CONTROL: a real
   h.frame('$HP,40,55,75,*');      // CONTROL: a real heal, still inside OVERSHIELD_ECHO_MS
   assert.equal(h.eng.moment && h.eng.moment.kind, 'gain');
   assert.equal(h.eng.moment.data.pool, 'health');
+});
+
+test('F400 final r1: the granted hint waits out a second card too (ALT right after the pickup card)', () => {
+  const h = armed(); h.take(4); h.away();
+  h.adv(2100);                                     // the pickup's own switch card has gone
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');       // ALT off the heavy: a second card
+  h.adv(2100);
+  h.adv(1500);                                     // 1.5 s of hint time after the second card
+  const hint = h.eng.state().powerup.hint;
+  assert.equal(hint && hint.kind, 'granted', `the hint still has ${E.PU_READY_MS - 1500} ms to run: ${JSON.stringify(hint)}`);
+  h.adv(E.PU_READY_MS);
+  assert.notEqual((h.eng.state().powerup.hint || {}).kind, 'granted', 'and then it is done');
+});
+
+test('F416 part 2: a pickup grant write opens the radio-quiet window (a scan flood lost a Rockets grant on bench part 1)', async () => {
+  const h = armed();
+  assert.equal(h.eng.state().radioQuiet, false, 'setup: quiet before the grant');
+  h.take(4);
+  assert.equal(h.eng.state().radioQuiet, true, 'the station scan shuts while the equip write is on the radio');
+  await new Promise(r => setImmediate(r));   // the write settles (this harness's adv is synchronous)
+  h.adv(E.RADIO_QUIET_AFTER_MS + 600);
+  assert.equal(h.eng.state().radioQuiet, false, 'and reopens after it settles');
+});
+
+// ---- F417 part 1 and F418 (bench 2026-09-26): a held heavy ended as "empty" with no round fired, three ways, all a
+// slot-2 read of 0 the node did not cause by a trigger pull: a grant whose `$AMMO` was lost (ROBAS), a stack whose
+// `$AMMO` was lost (F381: 2 on the gun, not 3), and a late or lost reconcile after an app restart (ROBP1). ----
+
+const tick = () => new Promise(r => setImmediate(r));
+
+test('F418: a late disarm echo after an app restart and reconcile does not end a held heavy; the counts are re-sent', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  h.restart();
+  h.adv(3000);                                   // the reconcile ends and re-arms slot 2
+  h.adv(1000);                                   // its echo window lapses
+  const n = h.mark();
+  h.frame('$ALCD,0,100,2,0,0,*');                // the ORIGINAL disarm's echo, late (or a re-arm that never landed)
+  assert.ok(h.eng._puHeld, 'no trigger pull, so no round left: the Rockets are still held');
+  assert.equal(h.eng._puHeld.left, 2);
+  assert.ok(h.since(n).includes('$AMMO,2,2,0,1,*'), `the node re-sent the held counts: ${JSON.stringify(puw(h.since(n)))}`);
+});
+
+test('F417: a grant whose $AMMO never landed (slot 2 reads 0, no pull) is re-sent, not ended as empty', () => {
+  const h = armed(); h.take(4); h.away();
+  const n = h.mark();
+  h.frame('$ALCD,0,100,2,0,0,*');                // the `$WEAP` reset landed, the `$AMMO` did not
+  assert.ok(h.eng._puHeld, 'still held');
+  assert.ok(puw(h.since(n)).some(f => f === '$AMMO,2,2,0,1,*'), 'the grant counts went again');
+});
+
+test('F417: a real last round (a trigger pull) still ends the heavy as empty', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  assert.equal(h.eng._puHeld, null);
+});
+
+test('F417: repairs are bounded: a gun that keeps reading 0 with no pull ends the item after PU_COUNT_REPAIRS', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  for (let i = 1; i <= E.PU_COUNT_REPAIRS; i++) {
+    h.adv(E.ACC_ECHO_MS + 100); h.frame('$ALCD,2,100,2,0,0,*');
+    const n = h.mark(); h.frame('$ALCD,0,100,2,0,0,*');
+    assert.ok(h.eng._puHeld, `read ${i}: still held`);
+    assert.ok(h.since(n).includes('$AMMO,2,2,0,1,*'), `read ${i}: the counts went again`);
+  }
+  h.adv(E.ACC_ECHO_MS + 100); h.frame('$ALCD,2,100,2,0,0,*'); h.frame('$ALCD,0,100,2,0,0,*');
+  assert.equal(h.eng._puHeld, null, 'past the bound it ends, as today');
+});
+
+test('F417 r1: a trigger pull on the PRIMARY does not stop the repair of a lost grant', () => {
+  const h = armed(); h.take(4); h.away();
+  h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame('$BUT,0,0,*');   // a pull, but the heavy's own switch has not happened on the gun
+  h.eng._pull = { at: h.eng.now(), slot: 0 };
+  h.frame('$ALCD,0,100,2,0,0,*');
+  assert.ok(h.eng._puHeld, 'a pull on slot 0 is not a rocket leaving slot 2');
+});
+
+test('F417: a lost equip write is re-sent once when nothing moved since', async () => {
+  const h = armed();
+  h.failNext(fr => fr.some(f => f.startsWith('$WEAP,2,')), 1);
+  const n = h.mark(); h.take(4); await tick(); h.adv(50);
+  assert.equal(puw(h.since(n)).filter(f => f.startsWith('$WEAP,2,')).length, 2, `the equip went twice: ${JSON.stringify(puw(h.since(n)))}`);
+});
+
+test('F418: the trigger slot survives an app restart (a held heavy on the trigger stays on it)', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  assert.equal(h.eng.activeSlot, 2, 'setup');
+  h.restart();
+  assert.equal(h.eng.activeSlot, 2);
+});
+
+test('F417: every change of a station\'s advertised state or taker is logged once (the bench can trace a race)', () => {
+  const logs = [];
+  const h = armed(); h.eng.log = m => logs.push(String(m));
+  h.near(4); h.near(4); h.near(4, { state: 0, value: 110, taker: 19 }); h.near(4, { state: 0, value: 110, taker: 19 });
+  const lines = logs.filter(l => /^powerup: station 4 advert/.test(l));
+  assert.equal(lines.length, 2, `one per change, not per advert: ${JSON.stringify(lines)}`);
+  assert.match(lines[1], /state 0 taker 19/);
 });

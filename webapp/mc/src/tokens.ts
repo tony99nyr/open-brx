@@ -11,8 +11,16 @@ export const T = {
   ok: '#2ecc71', warn: '#ffb020', bad: '#ff5252',
 } as const;
 
+// F423 (bench part 1, 2026-09-26): team 3 fights as "green" on the wire (its combat identity, F35 --
+// green is reserved for the headset's own death out-blink) but the gun and headset PAINT it purple
+// (mc/poolgauge.py TEAM_DISPLAY_COLOURS, protocol/brx-protocol.md $GLED/$HLED). MC's own team_id for
+// it is "purple" now (`state.py` TEAM_DEFS), matching what the gun actually shows.
+// F427 (2026-09-26): #7b2cbf read at ~2.7:1 against team-ink / MC's dark panels, under the 4.5:1
+// floor the other three teams clear. Moved to #bf4ce6 (4.9-5.0:1 against panel and ink) -- a same-hue
+// lighten (#a975d7) cleared contrast but landed too close, in RGB space, to CLASS_TAG's muted sniper
+// and assault tones (test/tokens.test.ts), so the hue shifted a little too (272 -> 285 degrees).
 export const TEAM: Record<string, string> = {
-  blue: '#3a86ff', yellow: '#ffd23f', red: '#ff5252', green: '#2ecc71', ffa: '#e8eef5',
+  blue: '#3a86ff', yellow: '#ffd23f', red: '#ff5252', purple: '#bf4ce6', ffa: '#e8eef5',
 };
 export const teamColor = (id: string | null | undefined) => (id ? TEAM[id] ?? TEAM.ffa : TEAM.ffa);
 

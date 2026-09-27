@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DEMO_PERKS, DEMO_WEAPONS } from '../src/demo-catalog.js';
 import { MAX_TAG_LEN } from '../src/transport/contract.gen.js';
+import { LANE_HERO_MS } from '../src/lanes.js';
 // Derived, never typed: `demo-catalog.js` is the artefact the PHONE reads (generated from weapons.json
 // by mcp/tools/gen_ui_catalog.py), and a row is IN it only when it is not `hidden`. `sidearm` is the
 // same predicate DESIGNER counts PISTOLS with (Designer.tsx SlotEditor); a `pickup_only` sidearm is
@@ -76,9 +77,9 @@ let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
+const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live-spawn-lost', 'live-switch-kill', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap', 'down-full', 'down-partial', 'down-unclear', 'down-zero-dealt', 'down-pickup', 'down-ffa', 'down-hill', 'down-stale', 'down-old-mc']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-scores-koth', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap', 'down-full', 'down-partial', 'down-unclear', 'down-zero-dealt', 'down-pickup', 'down-ffa', 'down-hill', 'down-stale', 'down-old-mc']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
@@ -801,6 +802,28 @@ for (const view of VIEWS) {
     must(!r2.sw && r2.on === 'SMG' && /ACTIVE/.test(r2.lab) && /SMG/.test(r2.corner) && r2.chips === '1', JSON.stringify(r2));
     must(r2.labPx >= 11, `ACTIVE label under the 11 px floor: ${r2.labPx}`);
   });
+  await step(`${view.name} #40c F400 final: a kill 0.5 s into the switch card waits under it, then shows its full time`, async () => {
+    // Tony 2026-09-26: "Not stacked. The weapon switch overlay is on top. When it finishes then the rest of ui is shown."
+    const pg = await open(view, 'live-switch-kill', '', 2600);
+    await pg.waitForFunction(() => !!(window.brx.engine.state().lanes || {}).hero, null, { timeout: 5000 }).catch(() => {});   // the kill has landed
+    const under = await pg.evaluate(() => ({ card: !!document.querySelector('.mo.switching, .mo.switched'), held: document.getElementById('lanes').classList.contains('held'),
+      hero: !!document.querySelector('#lanes .lh:not(.out)'), killed: !!(window.brx.engine.state().lanes || {}).hero }));
+    await pg.waitForFunction(() => !document.getElementById('lanes').classList.contains('held') && !!document.querySelector('#lanes .lh:not(.out)'), null, { timeout: 6000 }).catch(() => {});
+    const t0 = Date.now(); const drawn = await pg.evaluate(() => ({ card: !!document.querySelector('.mo.switching, .mo.switched:not(.out)'), hero: !!document.querySelector('#lanes .lh:not(.out)') }));
+    await pg.waitForTimeout(LANE_HERO_MS - 700);
+    const still = await pg.evaluate(() => !!document.querySelector('#lanes .lh:not(.out)')); await pg.close();
+    must(under.card && under.killed && under.held && !under.hero, `under the card: ${JSON.stringify(under)}`);
+    must(drawn.hero && !drawn.card, `after the card: ${JSON.stringify(drawn)}`);
+    must(still, `the kill card left before its ${LANE_HERO_MS} ms after the switch card (${Date.now() - t0} ms)`);
+  });
+  await step(`${view.name} F416: a lost revive write the gun never confirms says GUN MAY NOT BE SPAWNED and names the host's cure`, async () => {
+    const pg = await open(view, 'live-spawn-lost', '', 2600);
+    await pg.waitForFunction(() => !!document.querySelector('.gunwarn'), null, { timeout: 8000 }).catch(() => {});
+    const r = await pg.evaluate(() => { const w = document.querySelector('.gunwarn'); const b = w && w.getBoundingClientRect();
+      return { text: w ? w.textContent : null, danger: !!(w && w.classList.contains('danger')), shown: !!(b && b.width > 0 && b.height > 0), lost: window.brx.engine.state().spawnLost }; });
+    await pg.close();
+    must(r.lost && r.danger && r.shown && /GUN MAY NOT BE SPAWNED/.test(r.text) && /HOST: FORCE RESPAWN/.test(r.text), JSON.stringify(r));
+  });
   await step(`${view.name} #40b F394: after ALT (the gun reports nothing), the number, reserve and pips are all the secondary's`, async () => {
     // The demo gun fires 3 AR rounds (29 left), then ALT. The secondary's own counts are the bundle's spawn `$AMMO,1`.
     const pg = await open(view, 'live-switch', '', 3100);
@@ -906,6 +929,23 @@ for (const view of VIEWS) {
     const pg = await open(view, 'idle'); const r = await pg.evaluate(() => { const b = document.querySelector('[data-act="onUtility"]'); if (!b) return null; const rc = b.getBoundingClientRect(); const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1); return { txt: b.textContent.trim(), h: rc.height / sc }; }); await pg.close();
     must(r && /UTILITY MODE/.test(r.txt) && r.h >= 38, JSON.stringify(r));
   });
+  // F422 (bench 2026-09-26, 11.7): MC can bind this phone before any gun is picked (an mDNS auto-join
+  // over Wi-Fi) and the SET MY GUN screen said nothing about it ("no idea, no indication" — Tony).
+  // `hud._idleMcLine` must show BOTH states, never just the good one.
+  await step(`${view.name} #47 idle F422: SET MY GUN shows whether MC has joined, in both states`, async () => {
+    const pg = await open(view, 'idle');
+    const line = () => pg.evaluate(() => { const el = document.querySelector('.idle .mcline'); return el ? { text: el.textContent.trim(), on: el.classList.contains('on'), dotOff: !!el.querySelector('.dot.off') } : null; });
+    const before = await line();
+    // The stage has no real Transport, so `hud.sync` (app.js's 1 s poll) reads the engine's own wsState in
+    // DEMO mode instead (the same seam a bound-vs-not-bound RESULT screen relies on) — setting `hud.sync`
+    // directly here would just be overwritten by that poll within a second.
+    await pg.evaluate(() => { window.brx.engine.setWsState('bound'); }); await pg.waitForTimeout(1300);
+    const after = await line();
+    await pg.screenshot({ path: `${OUT}/${view.name}-idle-mcjoin.png` });
+    await pg.close();
+    must(before && before.text === 'MC NOT JOINED' && !before.on && before.dotOff, `SET MY GUN must say MC is NOT joined by default, not stay silent: ${JSON.stringify(before)}`);
+    must(after && after.text === 'MC JOINED' && after.on && !after.dotOff, `once MC binds, SET MY GUN must say so: ${JSON.stringify(after)}`);
+  });
   await step(`${view.name} #48 utility phone: status only; ⓘ ×7 opens the settings; START sticks across a reload`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
     await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }).catch(() => {});
@@ -920,6 +960,23 @@ for (const view of VIEWS) {
     must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 4 && s1.team === 'BLUE' && s1.status === 'NOT LIVE', 'status screen: ' + JSON.stringify(s1));   // four fake phones: three for the respawn demo + the opposing team a control point needs (F82 bars tid 2)
     must(six, 'six taps opened the settings'); must(!s2.hidden && s2.defaults >= 6 && s2.pressed === 3 && s2.rangeLabel, 'settings: ' + JSON.stringify(s2));
     must(s3.status === 'LIVE' && s3.hidden, 'after START + close: ' + JSON.stringify(s3)); must(s4.status === 'LIVE' && s4.hidden, 'after reload: ' + JSON.stringify(s4));
+  });
+  // F420 (bench 2026-09-26, green Pixel 5): Android 15's edge-to-edge WebView reported env(safe-area-inset-top)
+  // as 0, so the ⓘ that opens the exit drawer sat under the status bar and could not be tapped — with this
+  // phone MC-armed, an MC release was the ONLY way out. `applyNativeInset` (utility.js) floors the top
+  // padding on a native build; the plain browser / `?stage` harness (env() genuinely 0, no real status
+  // bar) must be untouched, which is also the pre-condition proving this test would fail without the fix.
+  await step(`${view.name} #69 F420: a native build floors the ⓘ's top inset so the status bar cannot cover it`, async () => {
+    const pg = await b.newPage({ viewport: { width: 411, height: 891 } });
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.waitForTimeout(600);
+    const before = await pg.evaluate(() => ({ padTop: getComputedStyle(document.body).paddingTop, infoTop: document.getElementById('info').getBoundingClientRect().top }));
+    await pg.evaluate(() => { window.Capacitor = { isNativePlatform: () => true }; window.brxUtility.applyNativeInset(); });
+    const after = await pg.evaluate(() => ({ padTop: getComputedStyle(document.body).paddingTop, infoTop: document.getElementById('info').getBoundingClientRect().top }));
+    await pg.screenshot({ path: `${OUT}/${view.name}-utility-native-inset.png` });
+    await pg.close();
+    must(parseFloat(before.padTop) < 20, `pre-condition: the browser/?stage default must be the plain 14px CSS floor, not already raised: ${JSON.stringify(before)}`);
+    must(parseFloat(after.padTop) >= 28, `a native build must floor the top padding at 28px: ${JSON.stringify(after)}`);
+    must(after.infoTop > before.infoTop, `the ⓘ button must move clear of where a status bar would sit once the native floor applies: ${JSON.stringify({ before, after })}`);
   });
   await step(`${view.name} #49 utility phone: a station_config push arms it (MC ✓ GAME n, re-keyed advert, live, drawer shut, survives reload)`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
@@ -1415,7 +1472,7 @@ for (const view of VIEWS) {
     must(day.present, 'no PICKUPS line on the pickups briefing');
     must(day.items.map(i => i.name).join(' · ') === 'ROCKETS · RAIL GUN · OVERSHIELD', 'item names/order: ' + JSON.stringify(day.items));
     must(!day.clipped && !day.wrapped && !day.overlapsFoot, 'the PICKUPS line does not fit cleanly: ' + JSON.stringify(day));
-    must(day.items[0].color === 'rgb(255, 122, 26)' && day.items[1].color === 'rgb(34, 211, 238)' && day.items[2].color === 'rgb(179, 107, 255)',
+    must(day.items[0].color === 'rgb(255, 122, 26)' && day.items[1].color === 'rgb(34, 211, 238)' && day.items[2].color === 'rgb(255, 79, 216)',
       'each item is not painted in its own day colour: ' + JSON.stringify(day.items));
 
     const nightPg = await open(view, 'briefing-pu', '&night'); const night = await read(nightPg); await nightPg.close();
@@ -1490,11 +1547,18 @@ for (const view of VIEWS) {
     await pg.waitForTimeout(400);
     const forced = await read(); const dis = await pg.evaluate(() => document.getElementById('dg-webdebug').disabled);
     await pg.click('#dg-webdebug', { force: true }); await pg.waitForTimeout(300);
-    const after = await pg.evaluate(() => window.__sets); await pg.close();
+    const after = await pg.evaluate(() => window.__sets);
+    // Stand in for an iOS build below 16.4 (no isInspectable): the plugin reports supported:false and the
+    // panel must say UNSUPPORTED, never ON/OFF/an error.
+    await pg.evaluate(() => { window.brx.webDebug.plugin.get = async () => ({ enabled: false, supported: false }); return window.brx.webDebug.load(); });
+    await pg.waitForTimeout(400);
+    const unsupported = await read(); const dis2 = await pg.evaluate(() => document.getElementById('dg-webdebug').disabled);
+    await pg.close();
     must(JSON.stringify(sets) === '[false]', 'the tap did not write OFF once: ' + JSON.stringify(sets));
     must(/OFF$/.test(off.state) && off.label === 'TURN ON' && off.desc === off.state, 'the panel still shows the old state: ' + JSON.stringify(off));
     must(/ALWAYS ON/.test(forced.state) && dis, 'a debuggable build does not show ALWAYS ON with a disabled button: ' + JSON.stringify(forced));
     must(JSON.stringify(after) === '[false]', 'a tap on the forced switch wrote to the phone: ' + JSON.stringify(after));
+    must(unsupported.shown && /UNSUPPORTED/.test(unsupported.state) && dis2, 'an unsupported switch does not show UNSUPPORTED with a disabled button: ' + JSON.stringify(unsupported));
   });
   await step(`${view.name} F122 diag: the reader's scroll position survives the render churn`, async () => {
     const pg = await open(view, 'diag-live', '', 5200);
@@ -3650,6 +3714,25 @@ await step('se scores overlay FFA: the clock opens STANDINGS, a kills ranking wi
   must(r.open && r.tab === 'STANDINGS' && r.rows === 4 && r.teams.length === 0, `FFA has no teams: the TEAM tab is the standings: ${JSON.stringify(r)}`);
   must(r.me.length === 1 && /REAPER/.test(r.me[0]), `my row is highlighted: ${JSON.stringify(r.me)}`);
 });
+// ---------- F424: KOTH is not scored on kills — the board's team chip must show HOLD TIME, from this
+// phone's own possession tally (engine.js `_accrueHold`/`state().possession`), never MC's kills-only push. ----------
+await step('se scores overlay KOTH F424: the clock opens TEAMS showing hold time, never a bare kill count', async () => {
+  const pg = await open(VIEWS[1], 'live-scores-koth');
+  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  const r = await boardState(pg);
+  const cap = await pg.evaluate(() => (document.querySelector('.bdcap') || {}).textContent || null);
+  await pg.screenshot({ path: `${OUT}/se-scores-koth.png` });
+  await pg.close();
+  must(r.open && r.tab === 'TEAMS', `the clock must open the TEAMS tab: ${JSON.stringify(r)}`);
+  must(r.teams.length === 2, `both team chips must show: ${JSON.stringify(r.teams)}`);
+  const secs = r.teams.map(t => { const m = /(\d\d):(\d\d)$/.exec(t); return m ? (+m[1]) * 60 + (+m[2]) : null; });
+  must(secs.every(s => s != null), `every KOTH team chip must read a mm:ss hold, never MC's bare kill number: ${JSON.stringify(r.teams)}`);
+  must(secs[0] > 0 && secs[0] < 30, `our own team (holding the hill since t=2200) must show real accrued hold time: ${JSON.stringify(r.teams)}`);
+  must(cap && /HOLD TIME/.test(cap), `the footer must read HOLD TIME, never a kill cap ("FIRST TO N · K · D · A"): ${cap}`);
+  // F429 (review, 2026-09-26): the per-player rows below still show K · D · A -- the caption used to
+  // drop that legend entirely for KOTH, rather than keep a short tag alongside HOLD TIME.
+  must(/K\s*·\s*D\s*·\s*A/.test(cap), `the K · D · A legend for the per-player rows must survive on the KOTH caption too: ${cap}`);
+});
 for (const view of VIEWS) {
   await step(`${view.name} scores overlay night: dim panel, and the day/night switch still works with it open`, async () => {
     const pg = await open(view, 'live-scores', '&night');
@@ -4278,7 +4361,7 @@ const ugRead = pg => pg.evaluate(() => {
   }
   const u0 = window.brxUtility;
   if (!cfgOpen && u0.settings.kind === 'control') {
-    const v = u0.point.advert(), p = u0.point, names = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' }, keys = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
+    const v = u0.point.advert(), p = u0.point, names = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE' }, keys = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple' };   // F423: tid 3 paints purple, not green
     const holder = v.team !== 255 && v.value > 0 ? v.team : null, held = (v.state & 1) === 1;
     const word = document.getElementById('team').textContent, pct = document.getElementById('cpct'), flashing = !document.getElementById('cflash').hidden;
     const aura = document.getElementById('aura'), cstate = document.documentElement.dataset.cstate;
@@ -5486,15 +5569,16 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: a second weapon pickup swaps: the feed row says RAIL GUN, REPLACES ROCKETS, and the chip follows`, async () => {
     const pg = await open(view, 'live-pu-swap', N, 4300);
-    const r = await puWait(pg, r => r.card && r.card.kind === 'powerup_swap', 2500); await shot(pg, 'swap');
-    must(r.card && r.card.kind === 'powerup_swap' && r.card.name === 'RAIL GUN' && r.card.sub === 'REPLACES ROCKETS · BLE', `the row: ${JSON.stringify(r.card)}`);
-    must(r.card.px >= 15 && vclear(r.card.box, r) && apart(r.card.box, r.ammo), `the row: ${JSON.stringify(r.card)}`);
-    // F400: the swap also opens the same full switch card, at the same instant as the feed row (both fire off the
-    // grant directly); decision 3 hides the small hint chip while it is up, so this checks the card, not the hint.
+    // F400: the swap opens the same full switch card; decision 3 hides the small hint chip while it is up.
+    // F400 final (Tony 2026-09-26): "Not stacked": the feed row fires at the same instant but waits under the card.
+    const r = await puWait(pg, r => r.switching && r.switching.to && r.switching.to.name === 'RAIL GUN', 2500); await shot(pg, 'swap');
     must(r.switching && r.switching.to && r.switching.to.name === 'RAIL GUN' && r.switching.to.pu && r.switching.to.charges === '2', `the card draws RAIL GUN with its charges: ${JSON.stringify(r.switching)}`);
     must(inside(r.switching.to.box, r.frame), `the RAIL GUN tile is on screen: ${JSON.stringify([r.switching.to.box, r.frame])}`);
     must(!r.switching.to.clipped, 'the longest pickup name is not cut off in its tile');
-    must(r.switching.from && apart(r.card.box, r.switching.to.box) && apart(r.card.box, r.switching.from.box), `the switch tiles are clear of the feed row: ${JSON.stringify([r.card.box, r.switching.from.box, r.switching.to.box])}`);
+    must(!r.card, `the feed row waits under the switch card: ${JSON.stringify(r.card)}`);
+    const rr = await puWait(pg, x => x.card && x.card.kind === 'powerup_swap' && !x.switching, 5000);
+    must(rr.card && rr.card.kind === 'powerup_swap' && rr.card.name === 'RAIL GUN' && rr.card.sub === 'REPLACES ROCKETS · BLE', `the row after the card: ${JSON.stringify(rr.card)}`);
+    must(rr.card.px >= 15 && vclear(rr.card.box, rr) && apart(rr.card.box, rr.ammo), `the row: ${JSON.stringify(rr.card)}`);
     const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2 SELECT', 1500);
     must(after.chip && after.chip.text === 'RAIL GUN 2 SELECT' && after.chip.on && after.chip.rows === 1, `the chip: ${JSON.stringify(after.chip)}`);
     // F400 r1: the hint's own time starts when the card has left, so the longest ON TRIGGER hint still shows and must fit
@@ -5517,22 +5601,18 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const h = await puWait(pg, r => r.obar && r.obar.left === 45, 2500); await pg.waitForTimeout(400); const h2 = await puRead(pg); await puClose(pg, night);
     must(h.obar && h2.obar && h2.obar.left === 45 && h2.obar.w < r.obar.w, `after a 30-damage hit: ${JSON.stringify(h2.obar)} (was ${JSON.stringify(r.obar)})`);
   });
-  await step(`${tag}: another player won it: TAKEN BY VIPER, with the countdown to the next spawn`, async () => {
-    const pg = await open(view, 'live-pu-taken-by', N, 3300); const r = await puWait(pg, r => r.hint && r.hint.kind === 'taken_by', 2000); await shot(pg, 'taken-by'); await puClose(pg, night);
-    // F374: the stage's items spawned half an interval before go-live (demo.js powerups), so the next spawn is ~1:00 out.
-    must(r.hint && /^ROCKETS TAKEN · 0:5\d$/.test(r.hint.act) && r.hint.lab === 'BY VIPER', `the countdown is in the action line: ${JSON.stringify(r.hint)}`);
-    must(r.hint.actPx >= 14 && r.hint.labPx >= 11, `type floors: ${r.hint.actPx}/${r.hint.labPx}`);
-    must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `a long line wraps, it never reaches the vitals: ${JSON.stringify(r.hint.box)} vitals ${JSON.stringify(r.vitals)}`);
-  });
   await step(`${tag}: ready for 15 s (F380) and the station never answers: STATION NOT ANSWERING`, async () => {
     const pg = await open(view, 'live-pu-no-answer', N, 17600); const r = await puWait(pg, r => r.hint && r.hint.kind === 'no_answer', 2500); await shot(pg, 'no-answer'); await puClose(pg, night);
     must(r.hint && r.hint.act === 'NOT ANSWERING' && r.hint.lab === 'ROCKETS STATION' && r.hint.actPx >= 14, `the hint: ${JSON.stringify(r.hint)}`);
     must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the widest hint must still fit: ${JSON.stringify(r.hint.box)}`);
   });
-  await step(`${tag}: the item is not there: the countdown to the next spawn`, async () => {
-    const pg = await open(view, 'live-pu-taken', N, 2800); const r = await puWait(pg, r => r.hint, 1500); await puClose(pg, night);
-    must(r.hint && r.hint.kind === 'taken' && /^ROCKETS IN 0:5\d$/.test(r.hint.act) && r.hint.lab === 'NEXT SPAWN', `the hint: ${JSON.stringify(r.hint)}`);
-    must(vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the hint: ${JSON.stringify(r.hint.box)}`);
+  // F425 (Tony, 2026-09-26, "use the left-side game alert 'X AVAILABLE' when a pickup spawns"): the always-on
+  // countdown and the TAKEN hint are GONE from the near-station hint (`_puHint`'s removed 'taken'/'taken_by'
+  // cases). Standing at a cooling (just-taken) station now shows no hint at all; the spawn step above already
+  // proves the left feed's <ITEM> AVAILABLE row is unchanged, so between the two this row is fully covered.
+  await step(`${tag}: near a cooling (just-taken) station: no countdown, no TAKEN hint -- the AVAILABLE feed alert is the only signal now`, async () => {
+    const pg = await open(view, 'live-pu-taken', N, 2800); const r = await puWait(pg, r => r.puDom, 1500); await puClose(pg, night);
+    must(!r.hint, `F425: no puhint at a cooling station (the countdown/TAKEN hint must be gone): ${JSON.stringify(r.hint)}`);
   });
   await step(`${tag}: both rockets fired: the phone puts the loadout weapon back on the trigger, and the hint says so briefly`, async () => {
     const pg = await open(view, 'live-pu-empty', N, 5200); const r = await puWait(pg, r => r.hint && r.hint.kind === 'switched_back', 2500); await shot(pg, 'empty'); await puClose(pg, night);
@@ -6056,7 +6136,7 @@ for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${
 // alert redesign owns it: R2-01/03/10/11/22), and F396's `.repin` -- the powerup hint/NIGHT OPS label's brief re-pin
 // dip when the warning rail's height changes underneath them (hud.js `_railFit`). It is a deliberate, ~260 ms transient,
 // the same kind of carve-out as the kill card's; the settled contrast on either side of it is what this gate protects.
-const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-pu-taken-by', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected',
+const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected',
   'live-kill-lead-hill', 'live-callout-by', 'live-pu-spawn', 'result-awards'];   // the three lanes and the AWARDS tab (round-3 M1, M2)
 const LANE_WAIT = { 'live-kill-lead-hill': 2800, 'live-callout-by': 2600, 'live-pu-spawn': 3600, 'result-awards': 4200 };   // until the lane item is up
 for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name} R2-12 night secondary tier ${stage}: text under 14 px reads at >= 4.5:1, nothing blinks`, async () => {
@@ -6081,7 +6161,7 @@ for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name}
 
 // R2-07 (QA-21 again): the SE type floor is ON SCREEN. Every painted text leaf of the in-game screens is >= 11 px after the
 // SE's 0.79 frame scale (14 frame px). Out of scope: the kill/callout card (the alert redesign owns it) and screen-reader text.
-const R2_TYPE = [['live', ''], ['live', '&night'], ['live-nogun', ''], ['live-pu-rockets', ''], ['live-pu-taken', ''], ['live-pu-taken-by', ''], ['live-shields-os', ''],
+const R2_TYPE = [['live', ''], ['live', '&night'], ['live-nogun', ''], ['live-pu-rockets', ''], ['live-pu-taken', ''], ['live-shields-os', ''],
   ['live-hill-captured', ''], ['down-recap', ''], ['down-full', ''], ['down-find', ''], ['down-hill', ''], ['down-pu-held', ''], ['live-pool-wrong', ''],
   ['live-kill-lead-hill', ''], ['live-kill-lead-hill', '&night'], ['live-callout-by', ''], ['live-pu-spawn', '']];   // the three lanes (round-3 M1); the AWARDS tab's own step gates its type
 for (const [stage, N] of R2_TYPE) await step(`se R2-07 type floor ${stage}${N ? ' night' : ''}: every in-game label is >= 11 px on the SE screen`, async () => {
@@ -6230,13 +6310,8 @@ for (const view of VIEWS) for (const night of [false, true]) await step(`${view.
   must(r.secs > r.word && r.secs >= 36, `the seconds must be the largest element of the tell: ${JSON.stringify(r)}`);
   must(r.mag <= 0.5, `the ammo must dim while the trigger does nothing: opacity ${r.mag}`);
 });
-// R2-16: the station hints name the item and the station
-await step('se R2-16 taken by VIPER: the line names the item, not only who took it', async () => {
-  const pg = await open(VIEWS[1], 'live-pu-taken-by', '', 2400);
-  let t = ''; for (let i = 0; i < 40 && !/TAKEN/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#puhint .pu') || {}).innerText || ''); }
-  await pg.close();
-  must(/ROCKETS/.test(t) && /TAKEN/.test(t) && /VIPER/.test(t), `the hint must say what VIPER took: ${JSON.stringify(t)}`);
-});
+// R2-16: the station hints name the item and the station (F425, 2026-09-26: the TAKEN-by-name hint is gone --
+// see the F425 no-hint step above -- so this gate now covers only the spawn feed row).
 await step('se R2-16 OVERSHIELD AVAILABLE: the feed row names the station', async () => {   // the three lanes: a spawn is a FEED row
   const pg = await open(VIEWS[1], 'live-pu-spawn', '', 1200);
   let t = ''; for (let i = 0; i < 40 && !/AVAILABLE/.test(t); i++) { await pg.waitForTimeout(100); t = await pg.evaluate(() => (document.querySelector('#lanes .lf[data-kind="powerup_spawn"]') || {}).innerText || ''); }

@@ -261,8 +261,8 @@ button, and the gun's buttons play no part.
    (`StationAssignment.threshold`, 0 = the station's own default). A powerup PHONE station at threshold 0 advertises
    its own claim default, -55 (`beacon.js POWERUP_RSSI_DBM.phone`; fixed 2026-09-24, it used to advertise the -74 of
    other kinds), and MC sends -55 explicitly to a phone app older than 0.4.12. A StickS3 still advertises its one
-   station default, -57, which is close. The HUD's "near" hints (GET CLOSER, TAKEN, the countdown) start
-   `PU_NEAR_DB` (10) under the threshold, so at -55 they show within about 1-2 m. If the calibration shows phones differing by more than 4 dB, the app gains a
+   station default, -57, which is close. The HUD's "near" hint (GET CLOSER) starts
+   `PU_NEAR_DB` (10) under the threshold, so at -55 it shows within about 1-2 m. If the calibration shows phones differing by more than 4 dB, the app gains a
    per-model offset table.
 3. **Dwell.** In range continuously for `POWERUP_DWELL_MS` (1000). Leaving range resets it. The HUD shows a
    1 s progress ring and HOLD STILL.
@@ -282,15 +282,16 @@ button, and the gun's buttons play no part.
    `station_action {id, action: "taken", player_num, t}` to MC (best effort).
 7. **The grant.** A phone applies the item only when the station's advert shows `taker` equal to its own
    `player_num` and it was `claim_ready` for that station. It then sends the `pickup` fact (queued, so it is the
-   reliable record; MC dedupes it against the station's report by station and spawn). A loser's HUD says TAKEN BY
-   <name>. A phone that is ready for 3 s with no answer says STATION NOT ANSWERING.
+   reliable record; MC dedupes it against the station's report by station and spawn). **A loser's HUD says
+   nothing** (F425, below: the HUD never names who took a station, or that it was taken at all). A phone that is
+   ready for 3 s with no answer still says STATION NOT ANSWERING (that is a claim failure, not a taken report).
 8. **Unavailable until the next spawn.** The next spawn is the fixed schedule above, not a cooldown from the
    moment of taking (Halo). MC's `station_update` always carries `next_spawn_in_ms` (the time to the next spawn
    instant, even while available). The station counts it down itself, spawns at 0 and then every `spawn_every_s`,
    and re-anchors on every update, never spawning one instant twice. A lost MC link therefore does not freeze a station.
 
 The HUD walks GET CLOSER → HOLD STILL (the ring) → <ITEM> READY, and the item then shows beside the ammo with its
-charges. An unavailable station shows its countdown.
+charges. **A taken (cooling) station shows nothing** on the claiming player's HUD (F425, below).
 
 **Security posture** is unchanged from `utility.md` §3: adverts are unauthenticated. A second phone advertising
 `claim_ready` could take an item from anywhere the station can hear it, since the claim has no RSSI floor (item 5).
@@ -337,11 +338,13 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
 3. **While the card is up, the small hint chip is hidden** for a weapon grant or a switch-back (`_puHint`'s own
    `granted`/`switched_back` kinds); the held chip beside the ammo is untouched. The hint still computes the same
    way underneath, so it resumes for whatever is left of its own window once the card has gone.
-4. **Clash (Tony's LEAN, not final; he will review a storyboard):** the switch card goes on top; a kill card that is
-   due waits underneath, its display timer does not run while hidden, and it shows for its own full time when the
-   switch card leaves. This is exactly F368's own takeover rule (`docs/announcer.md` "Layering and priority on the
-   phone HUD"): the pickup switch card IS `this.switching` (the engine field an ALT press sets), so it inherits the
-   rule with no new HUD code at all; see the dated note there.
+4. **Clash (Tony's final call, 2026-09-26):** "Not stacked. The weapon switch overlay is on top. When it finishes
+   then the rest of ui is shown. Events and streaks show. Anything which has a temporary show should have their timer
+   adjusted since the user was in that overlay. This should be true for regular alt weapon switches too." The card
+   is SWITCHING and then its ACTIVE bubble, for ALT and every pickup equip alike. While it is up, the alert lanes are
+   hidden and their clocks stop: a kill card, a feed row and a badge each get their full time once it leaves, and an
+   event that arrives under it shows afterwards. The persistent lead badge hides too (Tony, 2026-09-26: "yes it should
+   behave like the KC and events"). See `docs/announcer.md` "Layering and priority on the phone HUD".
 5. **The Overshield is not a weapon: no switch card, ever.** Its grant already animates the shield bar (the
    existing gain animation on `.svos`, `shieldmeter.js`) via the same width transition a hit's drain uses; it now
    also plays the shield-recharge sound again -- `_announceStatus('shield_charging')`, the exact clip the ordinary
@@ -374,5 +377,33 @@ The STOWING/DRAWING/ACTIVE label (`.wt .wl`, shared with ALT's own card) rendere
 floor (desk fix, 2026-09-26): raised to 11px in `www/index.html`. The tile is 220px wide with plenty of headroom,
 so the extra pixel does not wrap or clip either tile at either phone width.
 
-Not built: a storyboard for the clash lean, and the AUDIO panel's voice lines (decision 6). Bench check, the
-unbuilt voice lines and the clash storyboard are still open on the F400 row (`docs/FOLLOWUPS.md`).
+Not built: the AUDIO panel's voice lines (decision 6). The bench check and the unbuilt voice lines are still open on
+the F400 row (`docs/FOLLOWUPS.md`).
+
+## The near-station hint drops its countdown and TAKEN state (F425, Tony's decision, 2026-09-26, option A)
+
+Prompted by a multi-pickup display question (the old hint showed only the nearest or claiming station's timer,
+and could flip between stations at equal range): "idk if we need the pickups timer on hud the whole time... use
+the left-side game alert 'X AVAILABLE' when a pickup spawns." Storyboard: `C:\Users\Tony\brx-pickup-alert`, three
+options; Tony picked **A**, the plain one: drop the always-on countdown and the TAKEN hint, add nothing new.
+
+**Tony's rationale:** "Halo never told you it was taken or who took it. I think not knowing is better for
+gameplay." The HUD never reports that a pickup was taken, or who took it -- not as a countdown, not as a name,
+not in any form. This also answers the multi-pickup display question: each spawn gets its own left-side alert,
+never a shared timer.
+
+**What changed.** The near-station hint (`_puHint`, `#puhint`) drops its `taken` and `taken_by` states outright:
+standing near a station that is not there to claim now shows nothing, where it used to show `<ITEM> TAKEN · 0:52`
+or `<ITEM> TAKEN · BY <name>` counting down to the next spawn. `engine.js`'s `powerupView()` no longer computes
+either kind (and its `_puNextInMs` helper is gone with them); `hud.js`'s `_puHint` no longer renders them. The
+CSS rule that sized their text (`app/www/index.html`) is gone too.
+
+**What is unchanged.** The at-station claim feedback -- GET CLOSER, HOLD STILL / CONFIRMING (the 1 s ring),
+STATION NOT ANSWERING, and the grant's `<ITEM> ON TRIGGER` / `PICKED UP` -- is exactly as it was: none of that
+names a taker or counts down a cooldown, so F425 does not touch it. The left-side "`<ITEM> AVAILABLE` · AT
+STATION N" feed alert at every spawn (4 s, `docs/announcer.md`) is also unchanged: it was already the sole
+spawn signal (`docs/spec/powerups.md` "The spawn announcement", above) and stays that way. The wire (the
+station's own advert state/`taker`/countdown byte, `station_update`'s `next_spawn_in_ms`, `station_action
+{action: "taken", ...}` to MC) is unchanged: the station still decides and reports who took its item, MC's board
+still names the taker for the operator, and a station's own on-device screen (`utility.js`) still shows its own
+TAKEN/NEXT state -- none of that is the claiming player's phone HUD, which is the only surface this row touches.

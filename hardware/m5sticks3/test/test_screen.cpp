@@ -83,6 +83,38 @@ static void test_pickup_unknown_then_taken_without_a_taker() {
   CHECK_EQ(taken.next_spawn, std::string("0:30"));
 }
 
+// F386 for a pickup: MATCH OVER beats whatever the schedule was doing (taken, ready or unknown),
+// mirroring the hill's own ended note -- no NEXT SPAWN line, no ring, no TAKEN BY.
+static void test_pickup_ended_shows_match_over_not_the_countdown() {
+  StickState s;
+  s.at_home = true;
+  s.powerup_present = true;
+  s.powerup_known = true;
+  s.powerup_available = false;
+  s.powerup_taker = 7;
+  s.powerup_remaining_s = 100;
+  s.powerup_period_s = 200;
+  s.item_name = "ROCKETS";
+  s.powerup_ended = true;
+  ScreenSpec over = compute_screen(s);
+  CHECK(over.kind == ScreenKind::PICKUP_OVER);
+  CHECK_EQ(over.item_name, std::string("ROCKETS"));
+  CHECK_EQ(over.next_spawn, std::string(""));  // no countdown drawn once ended
+  CHECK_EQ(over.taken_by, std::string(""));
+  CHECK_EQ(over.pickup_frac_pct, 0);  // no ring fill either
+
+  // Ended beats READY too: the item was on offer, unclaimed, when the whistle went.
+  s.powerup_available = true;
+  s.powerup_taker = 0;
+  ScreenSpec over_ready = compute_screen(s);
+  CHECK(over_ready.kind == ScreenKind::PICKUP_OVER);
+
+  // And beats EMPTY (F374's "no station_update yet"): still ended, whatever MC last said.
+  s.powerup_known = false;
+  ScreenSpec over_empty = compute_screen(s);
+  CHECK(over_empty.kind == ScreenKind::PICKUP_OVER);
+}
+
 // ---- reset confirm and its draining timeout -------------------------------------------------
 static void test_reset_confirm_timeout_and_hint() {
   StickState s;
@@ -411,6 +443,32 @@ static void test_home_nav_go_home_is_immediate() {
   CHECK(nav.at_home());
 }
 
+// F415: the 20 s home idle timeout must not fire mid-hold, or a long A hold started on STATS loses
+// `rangeAllowed` (it needs `!home.at_home()`) partway through and RANGE never fires -- exactly the
+// composition m5sticks3.ino's pollButtons() runs every tick (rangeAllowed recomputed, poll_idle told
+// whether A or B is currently down). On STATS, idle 18 s (short of the 20 s timeout), then hold A for
+// the 5 s RANGE threshold: RANGE must fire, and HomeNav must never have gone home mid-hold.
+static void test_home_idle_does_not_swallow_a_range_hold_started_late() {
+  HomeNav nav;
+  AHoldGesture ahold;
+  nav.leave_home(0);  // on STATS
+  uint32_t now = 0;
+  for (; now < 18000; now += 50) CHECK(!nav.poll_idle(now, /*button_down=*/false));
+  CHECK(!nav.at_home());
+
+  AHoldEvent last = AHoldEvent::NONE;
+  for (uint32_t held = 0; held <= RANGE_ENTER_HOLD_MS; held += 50) {
+    now += 50;
+    bool range_allowed = !nav.at_home();
+    last = ahold.update(/*a_down=*/true, now, range_allowed, /*station_locked=*/false);
+    CHECK(!nav.poll_idle(now, /*button_down=*/true));  // a held button is activity
+    CHECK(!nav.at_home());  // never sent home mid-hold, however long since the last real activity
+    if (last == AHoldEvent::RANGE) break;
+  }
+  CHECK(last == AHoldEvent::RANGE);
+  CHECK(!nav.at_home());
+}
+
 // ---- A's long press also cancels an open confirm (station_ui.h's own cancel path, composed with
 // HomeNav; this is the exact composition m5sticks3.ino's button handler performs) -------------
 static void test_long_press_a_cancels_an_open_confirm_and_goes_home() {
@@ -465,6 +523,7 @@ int main() {
   test_format_mmss();
   test_pickup_ready_vs_taken();
   test_pickup_unknown_then_taken_without_a_taker();
+  test_pickup_ended_shows_match_over_not_the_countdown();
   test_reset_confirm_timeout_and_hint();
   test_no_reset_offer_without_an_assignment();
   test_joining_says_wifi_connected_only_once_it_is();
@@ -483,6 +542,7 @@ int main() {
   test_home_nav_idle_timeout_returns_home_after_20s();
   test_home_nav_activity_resets_the_idle_clock();
   test_home_nav_go_home_is_immediate();
+  test_home_idle_does_not_swallow_a_range_hold_started_late();
   test_long_press_a_cancels_an_open_confirm_and_goes_home();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);

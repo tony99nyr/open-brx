@@ -25,9 +25,12 @@ const UTIL_VER = APP_VER;
 const PRIOR_UTILITY_KEY = 'brx.prior_utility';
 
 const $ = id => document.getElementById(id);
-const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', [TEAM_ANY]: 'ANY TEAM' };
-const TEAM_ABBR = { 0: 'RED', 1: 'BLU', 2: 'YEL', 3: 'GRN', [TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
-const TEAM_KEYS = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green', [TEAM_ANY]: 'any' };
+// F423: tid 3 paints purple, not green (the gun/headset paint, `poolgauge.TEAM_DISPLAY_COLOURS`) --
+// MC's own roster names it team_id "purple" now (state.py TEAM_DEFS), and these three maps must track
+// that (`test_team_color_consistency.py`), even though the WIRE identity stays green (F35).
+const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE', [TEAM_ANY]: 'ANY TEAM' };
+const TEAM_ABBR = { 0: 'RED', 1: 'BLU', 2: 'YEL', 3: 'PUR', [TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
+const TEAM_KEYS = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple', [TEAM_ANY]: 'any' };
 const KIND_LABEL = { respawn: 'RESPAWN STATION', powerup: 'POWERUP', extraction: 'EXTRACTION POINT', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 const TX_LEVELS = ['ultraLow', 'low', 'medium', 'high'];
 const TX_HINT = { ultraLow: '~ -21 dBm · a few metres', low: '~ -15 dBm', medium: '~ -7 dBm', high: '~ +1 dBm · whole room' };
@@ -64,6 +67,19 @@ const a58Locked = () => Number.isFinite(+settings.lockUntil) && +settings.lockUn
 // ---------- plugins ----------
 const plugins = {};
 const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+/** F420 (bench 2026-09-26, green Pixel 5 on 0.4.13): Android 15's edge-to-edge WebView reports
+ *  `env(safe-area-inset-top)` as 0 (hud.js's `fit()` hit the identical bug first, on the HUD's own ⓘ),
+ *  so the ⓘ that opens the exit drawer sat under the status bar with no way to tap it — with this phone
+ *  MC-armed, that made an MC release the ONLY way out of utility mode. A native build gets the same
+ *  fixed floor the HUD uses (28px); the browser / `?stage` harness keeps the plain CSS `env()` value,
+ *  which already renders correctly there. */
+function applyNativeInset() {
+  if (!isNative()) return;
+  const top = 'max(env(safe-area-inset-top, 0px), 28px)';
+  document.body.style.paddingTop = top;
+  const cfg = $('cfg'); if (cfg) cfg.style.paddingTop = top;
+}
 async function loadPlugins() {
   const tryImport = async (name, fn) => { try { plugins[name] = (await fn()).v; } catch (e) { log(`plugin ${name} unavailable: ${e && e.message || e}`); } };
   const jobs = [
@@ -157,7 +173,7 @@ async function startAdvert(quiet = false) {
 }
 // ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
 let transport = null, mcState = 'offline', mcFormOpen = false, _wasLinked = false;   // mcFormOpen: CHANGE unfolded the linked MC panel
-const TEAM_ID_TO_TID = { blue: 1, yellow: 2, red: 0, green: 3, any: TEAM_ANY, ffa: TEAM_ANY };
+const TEAM_ID_TO_TID = { blue: 1, yellow: 2, red: 0, purple: 3, any: TEAM_ANY, ffa: TEAM_ANY };   // F423/F432: MC's roster team_id for tid 3 is "purple" now
 function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } }
 /** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
 async function applyStationConfig(body) {
@@ -368,7 +384,14 @@ async function exitToHud() {
     // its takeover key to the HUD so MC can authenticate the physical role transition, consume the old
     // ITEMS row, then acknowledge that consumption. A node that was never welcomed has no proof to hand on.
     if (transport && transport.nodeId && transport.nodeKey) {
-      localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify({ node_id: transport.nodeId, node_key: transport.nodeKey, mc_url: transport.url }));
+      // F430 (review, 2026-09-26): `mc_url` used to be written whenever a takeover proof existed, even if
+      // THIS phone never actually bound to that MC (a dial that never completed still carries `nodeId`/
+      // `nodeKey` from an earlier session) — a stale or wrong address the HUD side would dial as fact.
+      // Only a phone that is actually `bound` right now has proof the url is live. `at` timestamps the
+      // handoff so `priorUtilityReconnectUrl` can refuse to dial one that has sat unconsumed too long.
+      const handoff = { node_id: transport.nodeId, node_key: transport.nodeKey };
+      if (transport.state === 'bound') { handoff.mc_url = transport.url; handoff.at = Date.now(); }
+      localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify(handoff));
     }
     localStorage.setItem('brx.role', 'hud');
   } catch (_) { /* ignore */ }
@@ -1030,7 +1053,7 @@ function wireExit() {
 }
 
 (async () => {
-  wire(); render();
+  applyNativeInset(); wire(); render();
   await loadPlugins();
   try { if (plugins.keepAwake) await plugins.keepAwake.keepAwake(); } catch (_) { /* ignore */ }
   try { if (plugins.beacon) support = await plugins.beacon.isSupported(); } catch (e) { log('isSupported: ' + (e && e.message || e)); }
@@ -1056,7 +1079,8 @@ function wireExit() {
     // F365 / A67 test seams: the edit model, one on-station edit, the status body a heartbeat sends, the hold's need
     range, stationEdit, statusBody: utilityStatusBody, a58Locked, holdMs: () => rangeHoldMs(a58Locked()),
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
-    get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); } };
+    get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
+    applyNativeInset };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
   window.brxUtil = window.brxUtility;
 })();
 

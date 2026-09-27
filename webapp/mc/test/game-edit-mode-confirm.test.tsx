@@ -52,7 +52,7 @@ describe('GameEditPanel — a reshaping SAVE is a two-tap control', () => {
     const split = p.m.find('[data-testid="confirm-split"]')[0];
     expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
     expect(split.textContent).toMatch(/^▲ \d+ PLAYERS? → [A-Z]+ \d+ \/ [A-Z]+ \d+$/);
-    expect(split.textContent, 'the same prediction the GAMES tiles make').toBe('▲ 8 PLAYERS → BLUE 4 / GREEN 4');
+    expect(split.textContent, 'the same prediction the GAMES tiles make').toBe('▲ 8 PLAYERS → BLUE 4 / PURPLE 4');
 
     await click(p.save());
     expect(p.calls.length, 'the SECOND SAVE tap commits exactly one config write').toBe(1);

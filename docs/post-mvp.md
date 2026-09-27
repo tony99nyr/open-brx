@@ -1,6 +1,10 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-26 (F414 filed: a Codex delegation that reports back; F412 filed: a melee preset; F390 moved from FOLLOWUPS.md: MUSTER is post-launch; created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3; F407, F408 and F409 filed).
+Updated: 2026-09-26 (short bench part 1: F427 filed, a KOTH variant that scores the most hills held at the end;
+F414 filed: a Codex delegation that reports back; F412 filed: a melee preset; F390 moved from FOLLOWUPS.md: MUSTER
+is post-launch; created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench
+sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man
+Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3; F407, F408 and F409 filed).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -47,6 +51,11 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   **LMS, post-MVP: two more open gaps**, noted here rather than as rows of their own:
   - the match does not end automatically when one player or team is left.
   - there is no tie rule for simultaneous deaths or for the time limit with several players alive.
+
+- **F427 🟡 POST-MVP KOTH VARIANT: MOST HILLS HELD AT THE END.** Tony, bench part 1, 2026-09-26, close to
+  Domination: several hills active at once, and the winner is whoever holds the most of them at the whistle,
+  rather than KOTH's single running clock. Design later: how hold-time and hill-count interact if at all, and
+  whether it needs its own scorer or a flag on the existing KOTH one. `design` (post-MVP).
 
 - **S60 🟡 POST-MVP MODE: GUN GAME.** Tony 2026-09-24: "game mode where every time you spawn you get a new gun. you have to get a kill with each gun to win". Each spawn arms the next gun in a set (no repeats, only the guns you still need); a kill with the current gun ticks it off; the first player to tick off the whole set wins. Design questions for later: the set (every catalogue weapon, or a host-picked list), order (fixed or random), whether a death without a kill keeps or skips the gun, and the HUD tracker. Needs no props (Tier 0): the phone writes the life's `$WEAP` at spawn. Voice line VA8O "GUN GAME!" exists. Listed in docs/game-modes.md. `design` (post-MVP).
 

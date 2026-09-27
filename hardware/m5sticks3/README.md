@@ -505,6 +505,11 @@ gesture changes any station state -- see "Buttons and power" below.
   that). F374: it means the station is armed but MC has never sent a `station_update` for it, so the
   schedule is UNKNOWN (`PowerupSchedule::known()` false): waiting for MC's first `station_update`,
   sent at START.
+- PICKUP_OVER: F386 for a pickup, the same rule the hill already had -- an END/recap/RECALL
+  (`ends_in_ms:0`) or a passed match deadline (`StationLink::powerup_ended()`) freezes the schedule
+  into MATCH OVER, whatever it was doing (unknown, ready or taken), stops the countdown and refuses a
+  claim; only a new game/kind/id or a config carrying a fresh START clears it. render.py has no scene
+  for this state either.
 - SETTINGS: not wired to any button flow yet (`ID`/`GAME`/`TXPIN` stay serial-only); the renderer
   exists, `compute_screen()` never produces it.
 - A welcomed-but-not-yet-armed link (MC found, no `station_config` applied yet) shows LINKED /

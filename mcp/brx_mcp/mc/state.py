@@ -109,13 +109,55 @@ class CoverageRequired(ValueError):
         self.coverage = coverage
         self.status = 409
 
-TEAM_DEFS: dict[str, Team] = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); green provisional 3
+TEAM_DEFS: dict[str, Team] = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); tid 3 painted purple
     "blue": {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
     "yellow": {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2},
     "red": {"team_id": "red", "name": "RED TEAM", "color": "#ff5252", "tid": 0},
-    "green": {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3},
+    # F423 (bench part 1, 2026-09-26): tid 3 stays GREEN on the wire (its combat identity, F35 -- green
+    # is reserved for the headset's own death out-blink, so the wire cannot use it as a paint colour),
+    # but the gun and headset PAINT it purple (`poolgauge.TEAM_DISPLAY_COLOURS`, `protocol/brx-protocol.md`
+    # `$GLED`/`$HLED` rows). MC and the HUD used to call it GREEN TEAM too, which read wrong against the
+    # gun in hand -- renamed to match what the gun actually shows. The wire tid (3) is unchanged.
+    # F427 (2026-09-26): #7b2cbf read ~2.4-2.8:1 against MC's dark panels, under the 4.5:1 floor the
+    # other three teams clear. Moved to #bf4ce6 (4.9-5.0:1 against panel and team-ink) -- a same-hue
+    # lighten cleared contrast but landed too close, in RGB space, to CLASS_TAG's muted sniper/assault
+    # tones (webapp/mc/test/tokens.test.ts), so the hue shifted a little too (272 -> 285 degrees).
+    "purple": {"team_id": "purple", "name": "PURPLE TEAM", "color": "#bf4ce6", "tid": 3},
     "ffa": {"team_id": "ffa", "name": "FREE-FOR-ALL", "color": "#e8eef5", "tid": 1},
 }
+
+
+def _migrate_green_team_rows(teams: Any) -> list[Team]:
+    """F423 (2026-09-26) renamed tid 3's team_id/name/colour from GREEN to PURPLE. A preset, saved game
+    or session snapshot written before that migration still carries the old identity in its own frozen
+    `teams` list (a config copy, not a live lookup into `TEAM_DEFS`) -- this rewrites any such row on
+    load, so `team_id: "green"` never reaches a player phone, the console or a fresh recap again.
+    `sanitize_config` calls this for every preset/saved-game load; `restore_snapshot` calls it directly
+    for `self.teams`/`self.config["teams"]`, which are restored outside `sanitize_config` entirely.
+
+    `teams` is untrusted (raw JSON off disk, or a client PUT), same as every other caller of this data
+    before it reaches `sanitize_config`'s own shape checks -- this only ever rewrites a `team_id` it
+    recognises as the old name and passes every row through untouched otherwise, so a malformed row is
+    still refused downstream exactly as it was before this migration existed."""
+    if not isinstance(teams, list):
+        return cast(list[Team], teams)
+    out: list[Team] = []
+    for t in teams:
+        if isinstance(t, dict) and str(t.get("team_id", "")).lower() == "green":
+            t = {**t, "team_id": "purple", "name": "PURPLE TEAM", "color": TEAM_DEFS["purple"]["color"]}
+        elif isinstance(t, dict) and t.get("team_id") == "purple" and str(t.get("color", "")).lower() == "#7b2cbf":
+            t = {**t, "color": TEAM_DEFS["purple"]["color"]}   # saved between F423 and the contrast fix
+        out.append(cast(Team, t))
+    return out
+
+
+def _migrate_green_player_row(p: Any) -> Any:
+    """F423 (polish round 3): a player or standby row restored from a snapshot saved before the rename still
+    points at `team_id: "green"`. Its team row is migrated above, so the player must follow it, or
+    `compile._tid` finds no team and arms the player on tid 0 (RED)."""
+    if isinstance(p, dict) and str(p.get("team_id", "")).lower() == "green":
+        return {**p, "team_id": "purple"}
+    return p
 
 # Briefing copy verbatim from the Mission Control design export (A2 mode briefing panel).
 # `preset` (led-language.md §4, mode-extensibility G3, 2026-09-07): the presentation preset each
@@ -197,8 +239,9 @@ MODES: list[ModeRow] = [
     # `station_source: "phone"` on the row (Tony 2026-09-24: the MVP hill is a Bluetooth control point, a phone
     # station today and a StickS3 once its presence capture is bench-proven; the grenade hill is POST-MVP but
     # stays selectable, `_CONFIG_KEYS`).
-    # 🔴 `teams` is BLUE + GREEN, tids 1 and 3, and the choice is load-bearing: YELLOW is tid 2,
-    # which is the team a NEUTRAL hill broadcasts, so a yellow roster would read every uncaptured
+    # 🔴 `teams` is BLUE + PURPLE, tids 1 and 3 (F423: team_id "purple", still tid 3 -- the gun paints
+    # it purple, not the GREEN name MC used to give it), and the choice is load-bearing: YELLOW is tid
+    # 2, which is the team a NEUTRAL hill broadcasts, so a yellow roster would read every uncaptured
     # point as its own and take no hill damage (F82). `assign_teams` defaults the same 1/3 pair, and
     # both `DominationEngine.add_player` and `Compiler.validate` refuse a tid-2 hill roster outright.
     # `win_by` is "objective" (possession time), the same value extraction already uses: MC has no
@@ -212,7 +255,7 @@ MODES: list[ModeRow] = [
      # "POSSESSION TIME" promises a number that does not exist and the operator gets a kills table
      # (operator review 2026-09-10). ➡ Drop "· HOST CALL" when the phone ships the fact.
      "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME · HOST CALL", "respawn_text": "ON · TIMED",
-     "teams": ["blue", "green"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
+     "teams": ["blue", "purple"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
      "preset": "standard", "station_source": "phone", "proven": True, "mvp": True},
 ]
 
@@ -933,7 +976,7 @@ class Session:
                     "%d player(s)", self._persist_path, "demo" if was_demo else "real",
                     "demo" if self.demo_session else "real", len(snap.get("players") or []))
                 return 0
-            self.players = {p["player_id"]: p for p in snap.get("players", [])}
+            self.players = {p["player_id"]: _migrate_green_player_row(p) for p in snap.get("players", [])}
             sp = snap.get("sync_pending")
             if isinstance(sp, dict) and isinstance(sp.get("end_t"), int) and isinstance(sp.get("nodes"), dict):
                 self._match_end_t = sp["end_t"]
@@ -944,7 +987,7 @@ class Session:
             parked: dict[str, Player] = {}
             invalid_parked = 0
             for q in snap.get("standby") or []:
-                player = self._snapshot_player(q)
+                player = self._snapshot_player(_migrate_green_player_row(q))
                 if player is not None:
                     parked[player["player_id"]] = player
                 else:
@@ -955,9 +998,13 @@ class Session:
                                                      invalid_parked, self._persist_path)
             self.standby = parked
             if snap.get("teams"):
-                self.teams = snap["teams"]
+                # F423/F432: a snapshot saved before tid 3 was renamed GREEN -> PURPLE still carries the
+                # old team_id/name/colour in its frozen `teams` row; migrated on load, same as a preset.
+                self.teams = _migrate_green_team_rows(snap["teams"])
             if snap.get("config"):
                 self.config = snap["config"]
+                if isinstance(self.config.get("teams"), list):
+                    self.config["teams"] = _migrate_green_team_rows(self.config["teams"])
                 # K8 (polish round 2): a hand-edited volume outside the range is dropped at load (the venue
                 # default), rather than raising later, inside a compile.
                 try:
@@ -1026,6 +1073,12 @@ class Session:
                 # resuming a match nobody is playing any more. `saved_ms` lives on the outer snapshot,
                 # not the nested match dict, so it is carried across here under its own key.
                 self._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
+                # F423 (polish round 3): the held match carries its own config and players; migrate them too.
+                rp = self._resume_pending
+                if isinstance(rp.get("config"), dict) and isinstance(rp["config"].get("teams"), list):
+                    rp["config"] = {**rp["config"], "teams": _migrate_green_team_rows(rp["config"]["teams"])}
+                if isinstance(rp.get("players"), dict):
+                    rp["players"] = {k: _migrate_green_player_row(v) for k, v in rp["players"].items()}
                 if isinstance(snap.get("powerups"), dict):
                     self._pu_restored = snap["powerups"]      # A56 (M1): adopted for this same match only
             self._repair_player_nums()
@@ -2682,6 +2735,8 @@ class Session:
         mode = raw.get("mode", "tdm")
         if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
             raise ValueError(f"unknown mode {mode!r}")
+        if "teams" in raw:
+            raw = {**raw, "teams": _migrate_green_team_rows(raw["teams"])}   # F423/F432: a pre-migration preset/saved game
         cfg = self._merge_config(default_config(mode), raw, mode)
         cfg.pop("config_id", None)
         cfg.pop("vip_player_id", None)       # A19: a saved game names no person; the VIP is picked per session
@@ -3828,9 +3883,29 @@ class Session:
         `control.hold_ms` and the largest `revives` for the game the station is armed with, and writes them back
         into the report. A new game or a new assignment starts clean; a beat within one heartbeat of that arming may
         still carry the old tally, so it passes through without seeding the new one (a beat later than that, from a
-        station slow to apply the arming, can still seed it: a small race the self-authoritative design accepts)."""
+        station slow to apply the arming, can still seed it: a small race the self-authoritative design accepts).
+
+        F426: `hold_ms`'s keys are the STATION's own tids, and a tid nobody is ROSTERED on is nobody's team --
+        most often 2, the sentinel a hill passes through on its way to a real owner (F82) and the same field
+        `Scorer.possession()` already excludes from every team's total (`test_a_hills_neutral_time_is_nobodys`).
+        Left in here, that neutral time rode the tally into the recap and the ITEMS panel read it back as a
+        phantom team nobody picked. Only a rostered tid's ms is kept, mirroring `possession()`'s own rule for
+        the same field -- and this runs BEFORE the timing gate below, so it applies even to a beat too close
+        to arming to seed the tally (that beat's raw `control` still passes straight through to `rep`)."""
         armed = st.get("armed") or {}
         game, rep = armed.get("game"), st["report"]
+        rostered = {t["tid"] for t in self.teams}
+
+        def _rostered_tid(k: str) -> bool:
+            try:
+                return int(k) in rostered
+            except (TypeError, ValueError):
+                return False
+
+        control = rep.get("control")
+        if isinstance(control, dict) and isinstance(control.get("hold_ms"), dict):
+            rep["control"] = control = {**control, "hold_ms": {tid: ms for tid, ms in control["hold_ms"].items()
+                                                                if _rostered_tid(tid)}}
         if game is None or t_recv < (armed.get("at") or 0) + STATUS_HEARTBEAT_MS:
             return
         key = [game, armed.get("kind"), armed.get("id")]   # a re-assigned station is a new tally, same game or not
@@ -3843,7 +3918,13 @@ class Session:
             for tid, ms in hold.items():
                 if isinstance(ms, int) and not isinstance(ms, bool) and ms > tally["hold_ms"].get(tid, -1):
                     tally["hold_ms"][tid] = ms
-            rep["control"] = {**control, "hold_ms": {**hold, **tally["hold_ms"]}}
+            # F431 (2026-09-26): `hold` above is filtered to rostered tids (F426), but `tally["hold_ms"]`
+            # is RESTORED from `session.json` on a resume (`_tally_ok`, no rostered check at all) and
+            # only ever grows -- an unrostered tid a past roster edit or an old snapshot left in there
+            # would keep riding back into `rep["control"]` forever, unfiltered, because this merge puts
+            # `tally["hold_ms"]` LAST. The same rostered-tid filter applies to it here too.
+            rostered_tally = {tid: ms for tid, ms in tally["hold_ms"].items() if _rostered_tid(tid)}
+            rep["control"] = {**control, "hold_ms": {**hold, **rostered_tally}}
         rv = rep.get("revives")
         if isinstance(rv, int) and not isinstance(rv, bool):
             tally["revives"] = max(rv, tally["revives"] or 0)

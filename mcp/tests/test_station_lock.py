@@ -295,11 +295,11 @@ def test_a_station_restart_cannot_shrink_its_tally_within_one_game():
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
     clock.t += 10_000
-    _ctl_beat(s, clock, {"1": 90_000, "3": 20_000}, revives=5)
+    _ctl_beat(s, clock, {"1": 90_000, "2": 20_000}, revives=5)
     clock.t += 2_000
-    _ctl_beat(s, clock, {"1": 60_000, "3": 25_000}, revives=2, uptime_s=1)   # rebooted: blue's tally went back
+    _ctl_beat(s, clock, {"1": 60_000, "2": 25_000}, revives=2, uptime_s=1)   # rebooted: blue's tally went back
     rep = _report(s)
-    assert rep["control"]["hold_ms"] == {"1": 90_000, "3": 25_000}, rep
+    assert rep["control"]["hold_ms"] == {"1": 90_000, "2": 25_000}, rep
     assert rep["revives"] == 5, rep
     s.start(runway_s=30, force=True)
     s.control("end")

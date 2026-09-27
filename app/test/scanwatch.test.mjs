@@ -54,6 +54,21 @@ test('the gun picker owns the radio: no beacon start while it is open', async ()
   assert.deepEqual(r.calls, []);
 });
 
+test('F416 part 2: the radio-quiet window around a spawn write closes an open scan and keeps it shut, then it reopens', async () => {
+  const r = rig();
+  r.watch.tick(live(), { config: SCANNER }); await r.flush();
+  assert.equal(r.watch.open, true, 'setup: an alive player in a station game scans');
+  r.adv(1000); r.watch.tick(live(), { config: SCANNER, radioQuiet: true }); await r.flush();
+  assert.equal(r.watch.open, false, 'the spawn write gets the radio (F342: the scan flood starved GATT writes)');
+  r.adv(1000); r.watch.tick(live(), { config: SCANNER, radioQuiet: true }); await r.flush();
+  assert.deepEqual(r.calls, ['start', 'stop'], 'and nothing reopens while it is quiet');
+  r.adv(1000); r.watch.tick(live(), { config: SCANNER }); await r.flush();
+  assert.equal(r.watch.open, false, 'review r1: not at once: the restart cadence still holds (Android throttles scan starts)');
+  r.adv(RESCAN_DOWN_MS); r.watch.tick(live(), { config: SCANNER }); await r.flush();
+  assert.equal(r.watch.open, true, 'the scan reopens on its cadence once the window has ended');
+  assert.deepEqual(r.calls, ['start', 'stop', 'start'], 'one stop and one start per quiet window');
+});
+
 test('a refused start retries on the down cadence, not every tick', async () => {
   const r = rig({ failStart: true });
   for (let i = 0; i < 10; i++) { r.watch.tick(live(), { config: SCANNER }); await r.flush(); r.adv(1000); }
@@ -223,7 +238,7 @@ test('the station player watch drops only to balanced and steps back after the h
 test('app.js: the beacon watch gets the game config, and the player advert needs stations too', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
-  assert.match(src, /beaconWatch\.tick\(st, \{ pickerOpen: scanning \|\| link\.connecting, config: engine\.config \}\)/,
+  assert.match(src, /beaconWatch\.tick\(st, \{ pickerOpen: scanning \|\| link\.connecting, config: engine\.config, radioQuiet: !!st\.radioQuiet \}\)/,
     'without the config the watch cannot tell a station game from a plain TDM');
   const fn = src.slice(src.indexOf('async function syncPlayerAdvert'), src.indexOf('async function syncPlayerAdvert') + 900);
   assert.match(fn, /const want = \([^;]*stationsInPlay\(engine\.config\)/, 'a player advert is carried by every other phone scan: only a station game sends one');

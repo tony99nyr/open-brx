@@ -7,7 +7,7 @@ import path from 'node:path';
 import * as E from '../src/transport/envelope.js';
 import { Ring, memoryStorage } from '../src/transport/ring.js';
 import { Clock } from '../src/transport/clock.js';
-import { Transport, DELIVERED, clearConsumedPriorUtilityHandoff } from '../src/transport/transport.js';
+import { Transport, DELIVERED, clearConsumedPriorUtilityHandoff, priorUtilityReconnectUrl, debounceBound, BOUND_DEBOUNCE_POLLS, PRIOR_UTILITY_HANDOFF_MAX_AGE_MS } from '../src/transport/transport.js';
 import { APP_VER } from '../src/build.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -173,6 +173,76 @@ test('F184: an unconsumed welcome keeps the persisted utility proof retryable', 
   handoffStore.setItem('brx.prior_utility', proof);
   clearConsumedPriorUtilityHandoff({ priorUtilityConsumed: false }, handoffStore);
   assert.equal(handoffStore.getItem('brx.prior_utility'), proof);
+});
+
+test('F421: a released utility phone dials its prior MC directly instead of waiting on rediscovery', () => {
+  // Bench 2026-09-26: released from utility mode, a phone with no remembered HUD address (it never
+  // dialled MC as a HUD before) sat on "NOT JOINED YET" with no discovered MC row for a whole sitting —
+  // mDNS/sweep discovery simply missed. `exitToHud` had already written the MC url this phone was JUST
+  // bound to as a station into the handoff; nothing on the HUD side ever read it as a dial target.
+  const at = Date.now();
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.168.0.55:8766/ws', at }, null),
+    'ws://192.168.0.55:8766/ws', 'no remembered address: dial the handoff\'s mc_url');
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.168.0.55:8766/ws', at }, ''),
+    'ws://192.168.0.55:8766/ws', 'an empty remembered address counts as none');
+  // A remembered address — named by the player, or one that already bound this phone as a HUD — always
+  // wins; the handoff is a fallback for the phone that has never been a HUD on this network before.
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.168.0.55:8766/ws', at }, 'ws://remembered/ws'),
+    null, 'a remembered address is never overridden by the handoff');
+  assert.equal(priorUtilityReconnectUrl(null, null), null, 'no handoff at all: nothing to dial');
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k' }, null), null, 'a handoff with no mc_url names nowhere to dial');
+});
+
+test('F430 (review, 2026-09-26): a stale or unstamped prior-utility handoff is never dialled', () => {
+  // F421's handoff never expired, so a station's old address (moved networks, decommissioned) could sit
+  // in localStorage indefinitely and still be dialled. `exitToHud` now stamps every `mc_url` it writes
+  // with `at`; this is the read-side half of that fix.
+  const url = 'ws://192.168.0.55:8766/ws';
+  const fresh = Date.now();
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: url, at: fresh - 1000 }, null),
+    url, 'a fresh handoff (well under the max age) is still dialled');
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: url, at: fresh - PRIOR_UTILITY_HANDOFF_MAX_AGE_MS - 1 }, null),
+    null, 'a handoff older than the max age must not be dialled');
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: url }, null),
+    null, 'a handoff with no `at` timestamp at all cannot prove its age, so it is refused, not trusted');
+});
+
+test('F428: hud.sync.bound holds through a one-poll blip instead of flipping and rebuilding the idle screen', () => {
+  // Bench 2026-09-26: a brief reconnect flipped `hud.sync.bound` JOINED -> NOT JOINED -> JOINED across
+  // two polls, and `hud.js`'s render signature carries `sync.bound` as structure, so the whole idle
+  // screen rebuilt for nothing. `debounceBound` must hold the OLD value until the new one repeats.
+  let run = null;
+  run = debounceBound(run, true); assert.equal(run.committed, true, 'the first poll ever commits immediately');
+  run = debounceBound(run, true); run = debounceBound(run, true);
+  // a single dropped poll (the blip) must NOT flip the committed value
+  run = debounceBound(run, false);
+  assert.equal(run.committed, true, 'one false reading is not enough to flip it');
+  run = debounceBound(run, true);   // back to true before the debounce window elapses
+  assert.equal(run.committed, true, 'a one-poll blip that recovers never reaches the caller');
+  // a REAL disconnect (BOUND_DEBOUNCE_POLLS consecutive false polls) must still get through
+  run = debounceBound(run, false);
+  for (let i = 1; i < BOUND_DEBOUNCE_POLLS; i++) {
+    assert.equal(run.committed, true, `still holding at streak ${i} of ${BOUND_DEBOUNCE_POLLS}`);
+    run = debounceBound(run, false);
+  }
+  assert.equal(run.committed, false, 'a disconnect that actually holds must still reach the caller');
+});
+
+test('F421: dialling the handoff\'s mc_url is a TRUSTED, non-first-contact hello, so it still carries the prior utility proof', async ctx => {
+  // `connectMc(url, false)` (app.js) leaves `trusted`/`firstContact` at their defaults — this pins that
+  // those defaults are exactly what `_priorUtilityHello()` requires (trusted, not first-contact, same
+  // url as the handoff), so the released phone's very first hello both rejoins MC AND hands over the
+  // takeover proof that lets it retire the old utility station row.
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    priorUtility: { node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://192.168.0.55:8766/ws' } });
+  ctx.after(() => t.close());
+  const url = priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://192.168.0.55:8766/ws', at: Date.now() }, null);
+  const p = t.connect({ url }); sockets[0].open();
+  assert.deepEqual(sockets[0].sent[0].body.prior_utility, { node_id: 'brxu-old', node_key: 'utility-key' });
+  sockets[0].recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0, node_key: 'k-1', prior_utility_consumed: true }));
+  await p;
+  assert.equal(t.priorUtilityConsumed, true);
 });
 
 test('F184 security: an untrusted discovery peer never receives the prior utility takeover key', async ctx => {

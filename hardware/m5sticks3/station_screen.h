@@ -56,8 +56,12 @@ class HomeNav {
 
   // Call every loop(): returns true the one call that times out an away-from-home page, so the
   // caller can repaint once. Wrap-safe (unsigned subtraction), matching this codebase's own style
-  // (e.g. control_point.h's beacon-staleness check).
-  bool poll_idle(uint32_t now_ms) {
+  // (e.g. control_point.h's beacon-staleness check). `button_down` is a held A or B: the same
+  // "a held button counts as activity" rule `RangeEditor::poll_idle` (station_ui.h) already uses, so
+  // a long hold (RANGE's 5 s A hold on STATS, for one) is never sent home mid-hold by the 20 s idle
+  // clock, which would drop `rangeAllowed` (it needs `!at_home()`) out from under the gesture.
+  bool poll_idle(uint32_t now_ms, bool button_down = false) {
+    if (!at_home_ && button_down) last_activity_ms_ = now_ms;
     if (!at_home_ && (now_ms - last_activity_ms_) >= HOME_IDLE_TIMEOUT_MS) {
       at_home_ = true;
       return true;
@@ -130,6 +134,7 @@ enum class ScreenKind : uint8_t {
   PICKUP_READY,
   PICKUP_TAKEN,
   PICKUP_EMPTY,  // F374: armed, no station_update from MC yet (the schedule is unknown)
+  PICKUP_OVER,   // F386 for a pickup: the match ended; frozen, no countdown, no ring (mirrors HILL_HELD's ended note)
   RESPAWN_OWNED,
   RESPAWN_IDLE,
   SCR_DIAGNOSTICS,
@@ -290,6 +295,7 @@ struct StickState {
   bool powerup_present = false;
   bool powerup_known = false;
   bool powerup_available = true;
+  bool powerup_ended = false;  // F386 for a pickup: MATCH OVER, no more countdown, no more claims
   uint8_t powerup_taker = 0;
   uint32_t powerup_remaining_s = 0;
   uint32_t powerup_period_s = 60;
@@ -494,7 +500,11 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     spec.item_name = s.item_name;
     spec.item_color_hex = s.item_color_hex;
     spec.item_is_special = s.item_is_special;
-    if (!s.powerup_known) {
+    if (s.powerup_ended) {
+      // F386 for a pickup: the same freeze the hill gets, whatever the schedule was doing when the
+      // whistle went (unknown, ready or taken) -- no NEXT SPAWN line, no ring, just the item and MATCH OVER.
+      spec.kind = ScreenKind::PICKUP_OVER;
+    } else if (!s.powerup_known) {
       spec.kind = ScreenKind::PICKUP_EMPTY;
     } else if (s.powerup_available) {
       spec.kind = ScreenKind::PICKUP_READY;

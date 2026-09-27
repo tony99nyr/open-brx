@@ -67,7 +67,7 @@ function MedalLegend({ keys }: { keys: string[] }) {
   );
 }
 const STATION_KIND_LABEL: Record<string, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
-const STATION_TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
+const STATION_TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE', 255: 'ANY' };   // F423: tid 3 paints purple, not green
 
 export function Recap() {
   const { state, run, api, setView } = useStore();

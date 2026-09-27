@@ -23,7 +23,7 @@ const now = () => Date.now();
 const POWERUP_PRESETS: PowerupPreset[] = [
   { preset: 'rockets', item: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff6a2b' } },
   { preset: 'rail_gun', item: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#38b6ff' } },
-  { preset: 'overshield', item: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#b58cff' } },
+  { preset: 'overshield', item: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#ff4fd8' } },   // F427: off the team-purple hue family
 ];
 const mockPowerups = (): 'on' | 'off' | 'old' => {
   const v = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('powerups') : null;
@@ -543,7 +543,7 @@ export class MockBackend implements Api {
 
   /** `state.py _reteam_for_config()`, mirrored — round-3 FIELD-1.
    *
-   *  Map by team INDEX (so a TDM blue/yellow split survives a KOTH pick as blue/green), least-count
+   *  Map by team INDEX (so a TDM blue/yellow split survives a KOTH pick as blue/purple), least-count
    *  fill anyone the new config has no index for, and rebalance ONLY when the one-side predicate is
    *  then true. The demo used to do what the server used to do — dump everyone onto `teams[0]` — so
    *  `?mock` stranded itself on one side on every cross-family mode pick, which is a demo predicting
@@ -1478,7 +1478,7 @@ export class MockBackend implements Api {
     // can survive the switch. `station_source` was the one key this mirrored (F70: only the objective
     // modes carry one); `teams` was not, so a bare `{ mode: 'koth' }` (GameEditPanel's inline mode Seg,
     // never `Games.tsx`'s full-defaults tile) spread onto the PREVIOUS config left TDM's BLUE/YELLOW in
-    // place instead of KOTH's BLUE/GREEN, and `?mock` predicted a roster the real server never
+    // place instead of KOTH's BLUE/PURPLE, and `?mock` predicted a roster the real server never
     // produces. Venue facts (environment/night/coverage) are carried forward exactly like the server
     // carries them (`set_config`, same three keys, same "unless the patch itself names them" rule) —
     // they describe the SITE, not the game.

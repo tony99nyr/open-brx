@@ -329,7 +329,7 @@ async function resetTdm(base) {
  *  start it (`one_team_fault`, which `force` does NOT open), so a step that wants a pushed/armed match
  *  hands itself a playable roster first. Round-3 FIELD-1 (2026-09-13) removed the thing that used to
  *  CREATE that roster — `set_config` re-teamed anyone whose team the new config lacked onto `teams[0]`,
- *  so a tdm blue/yellow -> koth blue/green pick silently emptied GREEN; it now maps by team INDEX and
+ *  so a tdm blue/yellow -> koth blue/purple pick silently emptied PURPLE; it now maps by team INDEX and
  *  rebalances only if one side would be left empty. This helper is therefore a precondition against
  *  what a STEP may have done to the roster, not against what a mode pick does. `reteam-visible` still
  *  does not call it: what that step watches is exactly the mode pick's own re-teaming.
@@ -399,7 +399,10 @@ function recapFixture(args = []) {
   // server, so nothing a test runs can write into the operator's real data directory.
   const py = findPython();
   const r = spawnSync(py, [path.join(HERE, 'recap_fixture.py'), ...args],
-    { cwd: path.join(REPO, 'mcp'), encoding: 'utf8', env: { ...process.env, BRX_MCP_HOME: MC_HOME } });
+    // PYTHONPATH: a script's sys.path[0] is its own folder, not cwd, so without this a worktree run
+    // imported the MAIN checkout's brx_mcp through the shared venv's editable install (F423, 2026-09-26).
+    { cwd: path.join(REPO, 'mcp'), encoding: 'utf8',
+      env: { ...process.env, BRX_MCP_HOME: MC_HOME, PYTHONPATH: [path.join(REPO, 'mcp'), process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) } });
   if (r.status !== 0) { console.error(`recap_fixture.py failed (${r.status}):\n${r.stderr}`); process.exit(3); }
   return JSON.parse(r.stdout);
 }
@@ -586,7 +589,7 @@ step('setup-steps-prematch', async ({ browser, base }) => {
 
 // 🔴 the highest-value step in the file. Yellow is $TID 2, which is what a NEUTRAL hill broadcasts:
 // a tid-2 roster reads every uncaptured point as its own and cannot be hit by the hill's damage word
-// (F82). So: blue+green in the config, no yellow chip offered, and nobody left standing on yellow.
+// (F82). So: blue+purple in the config, no yellow chip offered, and nobody left standing on yellow.
 step('teams-never-yellow', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
@@ -599,11 +602,11 @@ step('teams-never-yellow', async ({ browser, base }) => {
   const group = pg.locator('span[role="group"][aria-label="team"]');
   await until(() => group.count().then(n => n > 0), 8000, 'the KIT team chip group');
   const chips = await group.locator('button').allTextContents();
-  expect(JSON.stringify(chips.map(c => c.trim())) === JSON.stringify(['BLUE', 'GREEN']),
-    `KIT offers exactly BLUE and GREEN (saw ${JSON.stringify(chips)})`);
+  expect(JSON.stringify(chips.map(c => c.trim())) === JSON.stringify(['BLUE', 'PURPLE']),
+    `KIT offers exactly BLUE and PURPLE (saw ${JSON.stringify(chips)})`);
   expect(!chips.some(c => /YELLOW/i.test(c)), '🔴 F82: YELLOW is never offered as a koth team');
   const pressed = await group.locator('button[aria-pressed="true"]').allTextContents();
-  expect(pressed.length === 1 && /BLUE|GREEN/.test(pressed[0]), `the selected player sits on a legal koth team (saw ${JSON.stringify(pressed)})`);
+  expect(pressed.length === 1 && /BLUE|PURPLE/.test(pressed[0]), `the selected player sits on a legal koth team (saw ${JSON.stringify(pressed)})`);
 
   // no row in the roster rail is painted yellow — the stripe is the operator's only team readout there
   const YELLOW = ['rgb(255, 210, 63)', 'rgb(255, 211, 63)'];
@@ -618,7 +621,7 @@ step('teams-never-yellow', async ({ browser, base }) => {
   expect(JSON.stringify(st.config.teams.map(t => t.tid)) === JSON.stringify([1, 3]), `config teams are tids 1 and 3 (saw ${JSON.stringify(st.config.teams.map(t => t.tid))})`);
   expect(!st.players.some(p => tidOf[p.team_id] === 2), '🔴 F82: no player is rostered on $TID 2');
   expect(st.config_errors.length === 0, `the server does not refuse the push (saw ${JSON.stringify(st.config_errors)})`);
-  ok(`blue+green only, no yellow chip, no yellow roster row  ${await shot(pg, '05-teams-no-yellow')}`);
+  ok(`blue+purple only, no yellow chip, no yellow roster row  ${await shot(pg, '05-teams-no-yellow')}`);
   await closePage(pg);
 });
 
@@ -635,14 +638,14 @@ step('reteam-visible', async ({ browser, base }) => {
   const counts = {};
   for (const p of st.players) counts[p.team_id] = (counts[p.team_id] ?? 0) + 1;
   const empty = st.config.teams.filter(t => !counts[t.team_id]);
-  // Switching to koth moves everyone who was on YELLOW onto GREEN — the same INDEX, not `teams[0]`
+  // Switching to koth moves everyone who was on YELLOW onto PURPLE — the same INDEX, not `teams[0]`
   // (state.py `_reteam_for_config`). F82 is still satisfied (nobody on $TID 2) and the operator's own
   // split is intact, so the match the roster describes is the match they set up.
   expect(empty.length === 0,
     `the koth pick keeps both sides populated (counts ${JSON.stringify(counts)})`);
   expect(!st.players.some(p => p.team_id === 'yellow'), '🔴 F82: nobody is left on YELLOW ($TID 2)');
-  const cols = await pg.locator('main span:text-is("GREEN TEAM")').count();
-  expect(cols > 0, 'the LOBBY renders the GREEN column the re-team filled');
+  const cols = await pg.locator('main span:text-is("PURPLE TEAM")').count();
+  expect(cols > 0, 'the LOBBY renders the PURPLE column the re-team filled');
   // ...and because nothing is stranded, the one-side fault banner must NOT be on screen.
   const fault = await pg.locator('[data-testid="roster-fault"]').count();
   expect(fault === 0, 'a rebalanced roster is not a fault — the banner must stay off');
@@ -906,7 +909,7 @@ step('load-path', async ({ browser, base }) => {
 step('recap-possession', async ({ browser, base }) => {
   await resetTdm(base);
   const rc = recapFixture(['--coverage', 'thin']);
-  expect(rc.possession?.by_team?.blue === 214 && rc.possession?.by_team?.green === 131,
+  expect(rc.possession?.by_team?.blue === 214 && rc.possession?.by_team?.purple === 131,
     `the fixture MC's own scorer produced is the one we expect (${JSON.stringify(rc.possession)})`);
   const pg = await newPage(browser, base);
   const seen = await patchSnapshots(pg, st => { st.recap = rc; });
@@ -919,8 +922,8 @@ step('recap-possession', async ({ browser, base }) => {
   const txt = await poss.textContent();
   // mm:ss, not raw seconds: 214 s is 3:34 and 131 s is 2:11
   expect(/3:34/.test(txt), `BLUE's 214 s reads as 3:34 (saw ${JSON.stringify(txt.slice(0, 160))})`);
-  expect(/2:11/.test(txt), "GREEN's 131 s reads as 2:11");
-  expect(/BLUE/.test(txt) && /GREEN/.test(txt), 'both sides are named');
+  expect(/2:11/.test(txt), "PURPLE's 131 s reads as 2:11");
+  expect(/BLUE/.test(txt) && /PURPLE/.test(txt), 'both sides are named');
   // the bars are the at-a-glance readout: the leader's must be full and the trailer's proportional
   const bars = await poss.locator('[data-poss-bar]').evaluateAll(els => els.map(el => ({
     pct: el.style.width, w: Math.round(el.getBoundingClientRect().width), bg: getComputedStyle(el).backgroundColor })));
@@ -1252,7 +1255,7 @@ step('mock-demo', async ({ browser, base }) => {
   await pg.locator('header nav button:has-text("KIT")').first().click();
   await until(() => pg.locator('span[role="group"][aria-label="team"]').count().then(n => n > 0), 10000, 'the demo KIT team chips');
   const chips = (await pg.locator('span[role="group"][aria-label="team"] button').allTextContents()).map(x => x.trim());
-  expect(JSON.stringify(chips) === JSON.stringify(['BLUE', 'GREEN']), `the demo offers BLUE+GREEN only (saw ${JSON.stringify(chips)})`);
+  expect(JSON.stringify(chips) === JSON.stringify(['BLUE', 'PURPLE']), `the demo offers BLUE+PURPLE only (saw ${JSON.stringify(chips)})`);
   const YELLOW = ['rgb(255, 210, 63)', 'rgb(255, 211, 63)'];
   const stripes = await pg.locator('.kit-row > span:first-child').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundColor));
   expect(stripes.length > 0 && !stripes.some(c => YELLOW.includes(c)), `🔴 F82: the DEMO re-teams its yellow half too (saw ${JSON.stringify([...new Set(stripes)])})`);

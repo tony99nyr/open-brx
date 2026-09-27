@@ -25,7 +25,7 @@ const row = (over: Partial<LiveRow> = {}): LiveRow => ({
 });
 const liveView = (rows: LiveRow[], over: Partial<LiveView> = {}): LiveView => ({
   match_id: 'm1', go_live_t: Date.now() - 60_000, time_limit_s: 600,
-  ends_t: Date.now() + 540_000, score: { blue: -1, green: 2 }, rows, ...over,
+  ends_t: Date.now() + 540_000, score: { blue: -1, purple: 2 }, rows, ...over,
 });
 
 async function board(screen: 'live' | 'spectate', over: Partial<State> = {}, rows: LiveRow[] = [row()], lvOver: Partial<LiveView> = {}, base: Partial<Store> = {}) {
@@ -36,25 +36,25 @@ async function board(screen: 'live' | 'spectate', over: Partial<State> = {}, row
   return { m, d, state, store };
 }
 
-/** a koth config, blue (tid 1) v green (tid 3), exactly as MC defaults it */
+/** a koth config, blue (tid 1) v purple (tid 3), exactly as MC defaults it */
 async function kothOver(): Promise<Partial<State>> {
   const d = await demo();
-  const teams = [{ team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 }, { team_id: 'green', name: 'GREEN TEAM', color: 'green', tid: 3 }];
+  const teams = [{ team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 }, { team_id: 'purple', name: 'PURPLE TEAM', color: 'purple', tid: 3 }];
   return { config: { ...d.state.config, mode: 'koth', teams, scoring: { frag_limit: null, win_by: 'objective' } }, teams };
 }
-const POSS = { by_team: { blue: 214, green: 131 }, neutral_s: 20, sites: 1, reports: 2, observed_s: 441, of_s: 600 };
+const POSS = { by_team: { blue: 214, purple: 131 }, neutral_s: 20, sites: 1, reports: 2, observed_s: 441, of_s: 600 };
 
 describe('H2 · the KOTH board headlines possession', () => {
   it('LIVE shows held time, not the kill score, and a hill panel with the tally', async () => {
-    const { m } = await board('live', await kothOver(), [row(), row({ player_id: 'p2', display: 'GHOST', team_id: 'green' })], { possession: POSS });
+    const { m } = await board('live', await kothOver(), [row(), row({ player_id: 'p2', display: 'GHOST', team_id: 'purple' })], { possession: POSS });
     const score = (id: string) => m.find(`[data-team-score="${id}"]`)[0]?.textContent;
     expect(score('blue')).toBe('3:34');
-    expect(score('green')).toBe('2:11');
+    expect(score('purple')).toBe('2:11');
     expect(m.find('[data-team-sub="blue"]')[0]?.textContent, 'the kill score is still there, as a sub-line').toBe('KILLS -1');
     const panel = m.find('[data-testid="hill-panel"]')[0];
     expect(panel, 'LIVE has a hill panel').toBeTruthy();
     expect(panel.textContent).toContain('HILL // POSSESSION');
-    expect(m.find('[data-hill-team]').map(e => e.getAttribute('data-hill-team'))).toEqual(['blue', 'green']);
+    expect(m.find('[data-hill-team]').map(e => e.getAttribute('data-hill-team'))).toEqual(['blue', 'purple']);
     expect(panel.textContent).toContain('OWNER NOT REPORTED LIVE');
     expect(panel.textContent).toContain('BEST COVERAGE 7:21 OF 10:00');
     m.unmount();
@@ -75,7 +75,7 @@ describe('H2 · the KOTH board headlines possession', () => {
     });
     const k = await kothOver();
     let r = await board('live', { ...k, stations: [station(true, 3)] }, [row()], { possession: POSS });
-    expect(r.m.find('[data-hill-owner]')[0].textContent).toBe('HELD BY GREEN TEAM');
+    expect(r.m.find('[data-hill-owner]')[0].textContent).toBe('HELD BY PURPLE TEAM');
     r.m.unmount();
     r = await board('live', { ...k, stations: [station(false, 2)] }, [row()], { possession: POSS });
     expect(r.m.find('[data-hill-owner]')[0].textContent).toBe('NOBODY HOLDS IT (LAST REPORT, STATION OUT OF REACH)');

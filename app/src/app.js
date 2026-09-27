@@ -8,7 +8,7 @@ import jsQR from 'jsqr';
 import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
-import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey } from './transport/transport.js';
+import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
 import { McAutoJoin, offerText, hostOf, urlKey, namedDialPending } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
@@ -202,7 +202,7 @@ const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit =>
 setInterval(() => {
   const st = engine.state();
   presence.game = configGameByte(engine.config);   // scope presence to this game (best-effort; §utility)
-  beaconWatch.tick(st, { pickerOpen: scanning || link.connecting, config: engine.config });   // no stations: no scan (bench 2026-09-17 flood); app 0.4.2: none while a connect is in flight
+  beaconWatch.tick(st, { pickerOpen: scanning || link.connecting, config: engine.config, radioQuiet: !!st.radioQuiet });   // no stations: no scan (bench 2026-09-17 flood); app 0.4.2: none while a connect is in flight
 }, 1000);
 async function stopAnyScan() {   // the picker owns the radio from here: `scanning` is already set, so the watch will not reopen
   await beaconWatch.release();
@@ -642,7 +642,7 @@ Object.assign(hud.h, {
     else connectMc(v, true, { user: true });   // not a recognised join code — let it through as a bare address (the mandatory floor, §5)
   },
   onToggleWebDebug: () => {
-    webDebug.toggle().then(on => { log(`WebView debugging ${on ? 'ON' : 'OFF'} (stored on this phone)`, 'lk'); scheduleRender(); })
+    webDebug.toggle().then(on => { log(on === 'unsupported' ? 'WebView debugging is unsupported on this phone' : `WebView debugging ${on ? 'ON' : 'OFF'} (stored on this phone)`, 'lk'); scheduleRender(); })
       .catch(e => log('WebView debugging switch failed: ' + (e && e.message || e), 'le'));
   },
   onToggleNight: () => { engine.setNight(!engine.night); hud.sig = null; scheduleRender(); },   // the header ☾/☀ and the diag NIGHT button
@@ -763,7 +763,23 @@ setInterval(refreshPreflight, 5000);
 // QA-15 (2026-09-23): the stage has no transport, so this read "never bound" and every stage result said OUT OF RANGE
 // under a result MC had just delivered. On a phone a result only arrives over a bound transport, and the engine's
 // wsState follows transport.onState, so the stage reads the engine's link instead: it predicts the phone again.
-setInterval(() => { try { hud.sync = (DEMO && !transport) ? { bound: engine.state().wsState === 'bound', pending: 0 } : { bound: !!transport && transport.state === 'bound', pending: transport && transport.ring ? transport.ring.pending().length : 0 }; if (transport) hud.sessionId = transport.sessionId || null; } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
+// F428: debounces `hud.sync.bound` across BOUND_DEBOUNCE_POLLS polls, so a brief REAL MC drop does not
+// rebuild the idle screen. Only the real-transport reading is debounced -- the stage/demo reading just
+// above (QA-15) mirrors the engine's own scripted `wsState` one-to-one on purpose: a stage scenario's
+// transitions are deterministic and screen-truth asserts against them land within a couple of seconds,
+// which the debounce would otherwise blow straight through.
+let _boundRun = null;
+setInterval(() => { try {
+  let bound, pending;
+  if (DEMO && !transport) { bound = engine.state().wsState === 'bound'; pending = 0; }
+  else {
+    _boundRun = debounceBound(_boundRun, !!transport && transport.state === 'bound');
+    bound = _boundRun.committed;
+    pending = transport && transport.ring ? transport.ring.pending().length : 0;
+  }
+  hud.sync = { bound, pending };
+  if (transport) hud.sessionId = transport.sessionId || null;
+} catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 
 // ---------- app lifecycle (§3.11) ----------
 function onForeground(fg) {
@@ -1038,6 +1054,20 @@ async function sweepForMc() {
     // remembered address: CONNECT now — a gunless hello is fine (late-bind), and waiting for a gun left
     // mc_reachable=false with MC right there (Tony, 2026-08-26)
     if (settings.mcUrl && !transport) { log(`MC address remembered — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); }
+    else if (!transport) {
+      // F421 (bench 2026-09-26): a phone RELEASED from utility mode (`utility.js exitToHud`) has no
+      // remembered HUD address — it never dialled MC as a HUD before — so it fell back to pure mDNS/sweep
+      // discovery, which can simply miss (green Pixel: no discovered row, no join, for the whole sitting;
+      // the typed address was the only way back in). But it already knows exactly where MC is: it was
+      // JUST bound to it as a utility node, and `exitToHud` wrote that url into `brx.prior_utility`
+      // (`PRIOR_UTILITY_KEY`) alongside the takeover proof. Dial it directly instead of waiting on
+      // rediscovery. Untrusted-by-default is wrong here too (`connectMc`'s default `trusted:true`,
+      // `firstContact:false` is exactly what `_priorUtilityHello()` requires to attach the proof — see
+      // its own url-match guard), so this also fixes the stale ITEMS row MC could never clean up without
+      // that proof reaching it.
+      const priorMc = priorUtilityReconnectUrl(priorUtilityHandoff(), settings.mcUrl);
+      if (priorMc) { log(`released from utility mode — reconnecting to ${priorMc}`, 'lk'); connectMc(priorMc, false); }
+    }
     lockLandscape();
     startDiscovery();
     if (!settings.mcUrl) setTimeout(() => { sweepForMc().catch(() => {}); }, 5000);   // fallback only when NO explicit target (typed/QR wins)

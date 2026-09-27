@@ -1226,6 +1226,12 @@ class StationLink {
     return true;
   }
   bool hill_ended() const { return has_control_assignment() && hill_.frozen && !duration_restore_wait_; }
+  // F386 for a pickup: same rule as the hill's `hill_ended`, but for a powerup assignment -- set by
+  // apply_station_config on an END/recap/RECALL (`ends_in_ms:0`) or by tick_powerup once a known match
+  // deadline passes (deadline_known_/hill_deadline_ms_, the same fields the hill's own clock uses; a
+  // station is only ever one kind at a time, so the two never collide). Cleared by a new game/kind/id or
+  // by a config carrying a fresh START.
+  bool powerup_ended() const { return has_powerup_assignment() && powerup_ended_; }
   bool hill_waiting(uint32_t now_ms) const {
     return has_control_assignment() && !hill_live_ &&
            (duration_restore_wait_ || (!hill_.frozen && (!starts_known_ || (int32_t)(now_ms - hill_starts_ms_) < 0)));
@@ -1343,6 +1349,7 @@ class StationLink {
       mc_start_known_ = false;
       duration_restore_wait_ = false;
       heard_down_.clear();
+      powerup_ended_ = false;
       epoch_++;
     }
     if (a.kind == "control" && a.starts_known) {
@@ -1382,6 +1389,12 @@ class StationLink {
       if (a.ends_in_ms != 0) hill_.frozen = false;
     }
     if (a.ends_in_ms == 0) hill_.freeze();
+    // F386 for a pickup: END/recap/RECALL (`ends_in_ms:0`) freezes the schedule into MATCH OVER, the
+    // same edge the hill above reads off the same field. A config carrying a fresh START (`starts_known`)
+    // is a new match clock, whatever kind the station is, so it lifts the freeze; either edge beats the
+    // kind/id/game reset above, since a same-game re-push (END then a later START) must still clear it.
+    if (a.kind == "powerup" && a.ends_in_ms == 0) powerup_ended_ = true;
+    if (a.starts_known) powerup_ended_ = false;
     // F365: a new station (kind or id) starts from MC's values (the log stays). A new GAME alone is the
     // same station in the same place for the next match: apply_mc below decides (the age rule, or the
     // ageless changed-value guard), so a pre-match edit survives arming.
@@ -1503,6 +1516,7 @@ class StationLink {
     duration_anchor_known_ = false;
     mc_start_known_ = false;
     heard_down_.clear();
+    powerup_ended_ = false;  // a fresh powerup schedule (assume_available below) is never restored ended
     assignment_ = a;
     if (a.kind == "control" && a.timed_hill) hill_.freeze();
     // A67: MC's saved values come back as MC's; an on-station edit is restored after this, from its own
@@ -1552,6 +1566,12 @@ class StationLink {
   // F374 round 3: in either mode, an unknown schedule with MC out of reach falls back to available (true: repaint),
   // so a station that cannot hear START is never dead; take_muster_drop does the same for a MUSTER drop.
   bool tick_powerup(uint32_t now_ms) {
+    // F386 for a pickup: a known match deadline passing freezes the schedule, whether or not MC is
+    // reachable to send the END config itself (deadline_known_/hill_deadline_ms_, wrap-safe as above).
+    if (has_powerup_assignment() && deadline_known_ && (int32_t)(now_ms - hill_deadline_ms_) >= 0) {
+      powerup_ended_ = true;
+    }
+    if (powerup_ended()) return false;  // countdown stopped: the screen reads MATCH OVER instead
     const bool mc_live = state_ == LinkState::WELCOMED || state_ == LinkState::ASSIGNED;
     if (!mc_live && !powerup_.known()) {
       powerup_.assume_available_if_unknown();
@@ -1566,7 +1586,9 @@ class StationLink {
   // ENQUEUED here, never sent -- the BLE scan-complete callback that calls this must not touch the
   // socket. `mcLoop` (or a test) drains it with `pop_pending_action`.
   bool award_claim(const ClaimWinner& w, uint32_t now_ms) {
-    if (!w.won || w.player_num == 0 || !powerup_.available()) return false;
+    // F386 for a pickup: a claim after the whistle is refused -- no local award, no `taken` report
+    // queued for MC. A player standing at the Stick after MATCH OVER gets nothing.
+    if (!w.won || w.player_num == 0 || !powerup_.available() || powerup_ended()) return false;
     uint32_t spawn_instant = powerup_.mark_taken(w.player_num, now_ms);
     pending_actions_.push(assignment_.id, w.player_num, spawn_instant, (int64_t)now_ms);
     return true;
@@ -1598,6 +1620,7 @@ class StationLink {
     hill_live_ = false;
     hill_offline_waiting_ = false;
     hill_restore_guard_ = false;
+    powerup_ended_ = false;
     // F374: a drop still waiting for START's update was never taken; with nothing armed there is nothing to wait
     // for, so cancel it rather than let a later loss of MC drop an unassigned Stick. A drop already taken stays.
     if (drop_wait_for_update_ && drop_pending_) {
@@ -1662,6 +1685,7 @@ class StationLink {
   std::vector<uint16_t> heard_down_;
   bool hill_offline_waiting_ = false;
   uint32_t hill_offline_since_ms_ = 0;
+  bool powerup_ended_ = false;  // F386 for a pickup: the match ended (END/deadline) while this was a powerup
   SyncedSetting threshold_{STICK_DEFAULT_THRESHOLD_DBM};  // A67
   SyncedSetting tx_power_{TX_POWER_DEFAULT};              // A67 addendum 1
   RangeEditLog edits_;                                    // A67 addendum 2

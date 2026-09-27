@@ -321,7 +321,7 @@ test('security guard: no automatic dial is left anywhere — every connectMc cal
     return line;
   }).filter(l => !l.startsWith('*') && !l.startsWith('//'));
   for (const l of callers) {
-    assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|\bv\)|\bv, true, \{ user: true \}\)|\burl,|\burl\)/.test(l), `unexpected connectMc caller: ${l}`);
+    assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|priorMc|\bv\)|\bv, true, \{ user: true \}\)|\burl,|\burl\)/.test(l), `unexpected connectMc caller: ${l}`);
   }
   assert.ok(callers.length >= 4, 'the real callers are still there');
   // A60: the callers no person started (a discovery hit) are a verify dial and (F346 d) an untrusted
@@ -336,6 +336,30 @@ test('security guard: no automatic dial is left anywhere — every connectMc cal
   assert.match(t, /if \(!pu \|\| !this\.trusted \|\| this\._firstContact \|\| !pu\.mc_url \|\| normUrl\(pu\.mc_url\) !== normUrl\(this\.url\)\) return undefined;/,
     'the utility proof: trusted, not a first contact, and only to the MC url it came from (F346 d r1)');
   assert.match(t, /if \(this\.pub && !this\.verify\) this\._dialVia\('backhaul'/, 'and never goes to the trusted MC\'s tunnel');
+  // F421: the one other caller no person started — `connectMc(priorMc, false)`, a phone just RELEASED from
+  // utility mode reconnecting to the MC it was JUST bound to as a station. Unlike the two above this one IS
+  // trusted (`connectMc`'s own defaults: `trusted: true`, `firstContact: false`), which is what lets it carry
+  // the prior-utility takeover proof (the url-match guard just above) — safe because `priorMc` is never a
+  // discovery hit: `priorUtilityReconnectUrl` only ever returns the exact url `exitToHud` persisted at the
+  // moment this same phone was authenticated as that MC's utility node, and only when nothing is already
+  // remembered (a remembered address, named by the player or one that already bound us, always wins).
+  //
+  // F430 (review, 2026-09-26): TWO more guarantees now hold, both enforced on the WRITE side (`utility.js
+  // exitToHud`) and re-checked here on the READ side, so a drift on either end fails this test:
+  //   1. `exitToHud` writes `mc_url` only when `transport.state === 'bound'` at the moment of release — a
+  //      dial that never completed no longer leaves a url behind at all, bound or not, real or stale.
+  //   2. every `mc_url` it writes carries an `at` timestamp, and `priorUtilityReconnectUrl` refuses to
+  //      dial one older than `PRIOR_UTILITY_HANDOFF_MAX_AGE_MS` (about 1 hour) — a handoff nobody consumed
+  //      does not sit there forever as a standing dial target.
+  const priorMcCaller = callers.find(l => /connectMc\(priorMc, false\)/.test(l));
+  assert.ok(priorMcCaller, 'the F421 release-reconnect caller is gone — FIX this guard, do not delete it');
+  assert.match(t, /export function priorUtilityReconnectUrl\(priorUtility, remembered, now = Date\.now\(\)\) \{\s*\n\s*if \(remembered \|\| !priorUtility/,
+    'the handoff url is only ever offered when nothing is already remembered');
+  assert.match(t, /typeof priorUtility\.at !== 'number' \|\| now - priorUtility\.at > PRIOR_UTILITY_HANDOFF_MAX_AGE_MS\) return null;/,
+    'F430: a handoff with no timestamp, or one past its max age, must not be dialled');
+  const u = readFileSync(path.resolve(HERE, '../src/utility.js'), 'utf8');
+  assert.match(u, /if \(transport\.state === 'bound'\) \{ handoff\.mc_url = transport\.url; handoff\.at = Date\.now\(\); \}/,
+    "F430: exitToHud writes mc_url (and its 'at' stamp) only for a phone that is actually bound right now");
 });
 
 test('A60 guard: the verify path processes nothing before the proof check', () => {

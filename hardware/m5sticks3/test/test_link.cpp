@@ -501,6 +501,102 @@ static void test_item_configures_the_schedules_spawn_period() {
   CHECK_EQ(link.powerup().view(1000).value, (uint8_t)90);  // 91000 - 1000 = 90000 ms = 90 s
 }
 
+// --- F386 for a pickup: MATCH OVER mirrors the hill's own ended state ------------------------------
+
+static StationAssignment pickup_config(int game) {
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  a.game = game;
+  a.item.present = true;
+  a.item.kind = "weapon";
+  a.item.name = "ROCKETS";
+  a.item.spawn_every_s = 90;
+  return a;
+}
+
+static void test_pickup_end_freezes_a_taken_item_into_match_over() {
+  StationLink link;
+  StationAssignment a = pickup_config(7);
+  link.apply_station_config(a, 0);
+  StationUpdateMsg u;
+  u.present = true; u.id = a.id; u.available = true;
+  link.apply_station_update(u, 0);
+  ClaimWinner w{true, 7};
+  CHECK(link.award_claim(w, 100));
+  CHECK(!link.powerup().available());
+  CHECK(!link.powerup_ended());
+
+  StationAssignment end = a;
+  end.ends_in_ms = 0;  // END/recap/RECALL: the same edge that freezes the hill (state.py _arm_station)
+  link.apply_station_config(end, 5000);
+  CHECK(link.powerup_ended());
+  CHECK(!link.powerup().available());  // frozen as it stood at the whistle, not reset to available
+
+  // The countdown stops: no more self-spawn ticking (and so no repaint from it).
+  CHECK(!link.tick_powerup(600000));
+  CHECK(link.powerup_ended());
+
+  // A claim after the whistle is refused: no local award, no `taken` report queued for MC.
+  size_t pending_before = link.pending_action_count();
+  ClaimWinner late{true, 9};
+  CHECK(!link.award_claim(late, 600100));
+  CHECK_EQ(link.pending_action_count(), pending_before);
+}
+
+static void test_pickup_passed_deadline_freezes_it_the_same_way() {
+  StationLink link;
+  StationAssignment a = pickup_config(7);
+  a.starts_known = true;
+  a.starts_in_ms = 0;
+  a.ends_in_ms = 4000;  // A68: a START with a 4 s time limit
+  link.apply_station_config(a, 1000);  // received at t=1000: the deadline lands at t=5000
+  StationUpdateMsg u;
+  u.present = true; u.id = a.id; u.available = true;
+  link.apply_station_update(u, 1000);
+  CHECK(!link.powerup_ended());
+  link.tick_powerup(4000);  // short of the deadline: ticks normally, no freeze yet
+  CHECK(!link.powerup_ended());
+  CHECK(!link.tick_powerup(5000));  // the deadline has passed: frozen, whatever MC's own END would have said
+  CHECK(link.powerup_ended());
+
+  // A claim after a passed deadline is refused exactly like an explicit END.
+  ClaimWinner late{true, 3};
+  CHECK(!link.award_claim(late, 5100));
+}
+
+static void test_pickup_same_game_restart_clears_match_over() {
+  StationLink link;
+  StationAssignment a = pickup_config(7);
+  link.apply_station_config(a, 0);
+  StationAssignment end = a;
+  end.ends_in_ms = 0;
+  link.apply_station_config(end, 1000);
+  CHECK(link.powerup_ended());
+
+  StationAssignment restart = a;  // same game=7, a fresh START: still clears the freeze
+  restart.starts_known = true;
+  restart.starts_in_ms = 0;
+  restart.ends_in_ms = -1;
+  link.apply_station_config(restart, 2000);
+  CHECK(!link.powerup_ended());
+}
+
+static void test_pickup_new_game_clears_match_over() {
+  StationLink link;
+  StationAssignment a = pickup_config(7);
+  link.apply_station_config(a, 0);
+  StationAssignment end = a;
+  end.ends_in_ms = 0;
+  link.apply_station_config(end, 1000);
+  CHECK(link.powerup_ended());
+
+  StationAssignment next_game = pickup_config(8);  // a new game byte: a new match on the same station
+  link.apply_station_config(next_game, 2000);
+  CHECK(!link.powerup_ended());
+}
+
 // --- the claim gate (award logic only; no dwell timing here per brx5's clarification) ------------
 
 static void test_claim_gate_awards_the_first_ready_advert_for_its_own_id() {
@@ -2667,6 +2763,10 @@ int main(int argc, char** argv) {
   test_mark_taken_never_double_spawns_an_instant_already_passed();
   test_mc_available_true_clears_the_taker();
   test_item_configures_the_schedules_spawn_period();
+  test_pickup_end_freezes_a_taken_item_into_match_over();
+  test_pickup_passed_deadline_freezes_it_the_same_way();
+  test_pickup_same_game_restart_clears_match_over();
+  test_pickup_new_game_clears_match_over();
   test_claim_gate_awards_the_first_ready_advert_for_its_own_id();
   test_ready_claim_resolves_after_short_tie_window();
   test_claim_feed_pause_discards_a_pending_ready_candidate();

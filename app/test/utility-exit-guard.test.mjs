@@ -131,9 +131,26 @@ test('F184: BACK TO HUD sends the final live station tally before navigation', a
 
 test('F184: BACK TO HUD persists the utility identity proof for the new HUD transport', async () => {
   api.transport.nodeKey = 'utility-proof';
+  // F430 (review, 2026-09-26): `exitToHud` writes `mc_url` (and stamps `at`) only for a phone that is
+  // actually `bound` right now -- a dial that never completed must not leave a url behind at all.
+  api.transport.state = 'bound';
+  const before = Date.now();
   await api.exitToHud();
-  assert.deepEqual(JSON.parse(store.get('brx.prior_utility')), {
-    node_id: api.transport.nodeId, node_key: 'utility-proof', mc_url: api.transport.url,
-  });
+  const saved = JSON.parse(store.get('brx.prior_utility'));
+  assert.equal(saved.node_id, api.transport.nodeId);
+  assert.equal(saved.node_key, 'utility-proof');
+  assert.equal(saved.mc_url, api.transport.url);
+  assert.ok(Number.isFinite(saved.at) && saved.at >= before, 'the handoff is stamped with the time it was written');
   assert.ok(api.transport.url, 'F346 (d) r1: the proof is bound to the MC url it came from');
+});
+
+test('F430 (review, 2026-09-26): a phone that never bound this MC leaves no mc_url in the handoff', async () => {
+  api.transport.nodeKey = 'utility-proof-unbound';
+  api.transport.state = 'connecting';   // a dial in flight, never completed -- no proof this phone is really at that MC
+  await api.exitToHud();
+  const saved = JSON.parse(store.get('brx.prior_utility'));
+  assert.equal(saved.node_id, api.transport.nodeId);
+  assert.equal(saved.node_key, 'utility-proof-unbound');
+  assert.equal(saved.mc_url, undefined, 'an unbound phone must not hand the HUD a url it never actually reached');
+  assert.equal(saved.at, undefined);
 });

@@ -24,10 +24,4 @@ describe('MODE_ART', () => {
     expect(missingFile, 'MODE_ART ids with no public/assets/modes/<id>.jpg — Games.tsx would paint a broken url()').toEqual([]);
     expect(unlisted, 'images in public/assets/modes that MODE_ART does not list — add the id to src/modeArt.ts').toEqual([]);
   });
-
-  it('still has koth as the known gap', () => {
-    // Not a rule, a reminder: the comment in src/modeArt.ts points at the open FOLLOWUPS item, and this
-    // fails the day the art lands so the note gets removed with it.
-    expect(MODE_ART.has('koth')).toBe(false);
-  });
 });

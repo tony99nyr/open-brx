@@ -1,7 +1,7 @@
 // F-10 (2026-09-13). `state.py set_config` rebuilds the WHOLE config from `default_config(mode)`
 // whenever the mode changes, then merges the patch on top — so nothing belonging to the OLD mode can
 // survive the switch. The mock instead spread a bare `{ mode }` patch onto the PREVIOUS config, so
-// `teams` (declared per-mode: TDM is BLUE/YELLOW, KOTH is BLUE/GREEN) stayed the old mode's list.
+// `teams` (declared per-mode: TDM is BLUE/YELLOW, KOTH is BLUE/PURPLE) stayed the old mode's list.
 // `GameEditPanel`'s inline mode Seg sends exactly this bare patch (`putGame({ mode: v })`) — the
 // full-defaults spread only `Games.tsx`'s mode tile does (`{ ...m.defaults, ...venue }`) does not hit
 // this path, so a demo of the inline KIT/LOBBY editor predicted the wrong roster.
@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { MockBackend } from '../src/mock/backend';
 
 describe('mock putConfig — a bare {mode} patch mirrors default_config(mode)', () => {
-  it('TDM -> KOTH rebuilds teams to BLUE/GREEN, not the stale TDM BLUE/YELLOW', async () => {
+  it('TDM -> KOTH rebuilds teams to BLUE/PURPLE, not the stale TDM BLUE/YELLOW', async () => {
     const b = new MockBackend();
     await b.putConfig({ mode: 'tdm' });
     const tdm = await b.getState();
@@ -17,7 +17,7 @@ describe('mock putConfig — a bare {mode} patch mirrors default_config(mode)', 
     // the bare patch GameEditPanel actually sends — no spread of the mode's defaults
     await b.putConfig({ mode: 'koth' });
     const koth = await b.getState();
-    expect(koth.config.teams.map(t => t.team_id).sort(), 'KOTH declares BLUE/GREEN, not TDM leftovers').toEqual(['blue', 'green']);
+    expect(koth.config.teams.map(t => t.team_id).sort(), 'KOTH declares BLUE/PURPLE, not TDM leftovers').toEqual(['blue', 'purple']);
     expect(koth.config.station_source, 'KOTH needs its objective source too').toBe('phone');
   });
 

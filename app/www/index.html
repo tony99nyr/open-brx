@@ -13,7 +13,7 @@
 /* ============ tokens (Phone HUD v2 holo theme) ============ */
 :root{
   /* team-red is a crimson-rose, hue-shifted off the alarm red (--bad #ff5252) so a red-team player's accents don't read as danger (design review #14) */
-  --team-blue:#3a86ff;--team-yellow:#ffd23f;--team-red:#f43f5e;--team-green:#2ecc71;
+  --team-blue:#3a86ff;--team-yellow:#ffd23f;--team-red:#f43f5e;--team-purple:#bf4ce6;   /* F423: team 3 paints purple, not green; F427: lightened for 4.5:1 ink contrast (was #7b2cbf, ~2.7:1) */
   --team:var(--team-blue);--team-ink:#04121e;
   --num:#eef9ff;--glow:#5fd6ff;--mut:#7fa0b8;
   --plate:rgba(12,28,44,.85);--plate2:rgba(4,12,20,.9);--edge:#2a4e6e;
@@ -36,7 +36,7 @@
 [data-team="blue"]{--team:var(--team-blue);--team-ink:#04121e}
 [data-team="yellow"]{--team:var(--team-yellow);--team-ink:#1a1400}
 [data-team="red"]{--team:var(--team-red);--team-ink:#1a0404}
-[data-team="green"]{--team:var(--team-green);--team-ink:#041a0c}
+[data-team="purple"]{--team:var(--team-purple);--team-ink:#140a1c}
 [data-env="night"][data-team]{--team:#5a2222;--team-ink:#f08080}   /* R2-12: black on the night team fill was 1.7:1 */
 [data-env="night"] .plate{background:#0a0303;border-color:#3a1414}[data-env="night"] .plate.slot .thumb{border-color:#3a1414}   /* the kit stays readable at night (#24) */
 
@@ -135,7 +135,6 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .puhint .pua{font-family:var(--fd);font-weight:700;font-size:17px;line-height:1.02;letter-spacing:.08em;color:var(--num)}
 .puhint .pul{font-size:11px;line-height:1.2;font-weight:700;letter-spacing:.14em;color:var(--item)}
 .puhint .pu[data-kind="no_answer"]{border-color:var(--warn)}.puhint .pu[data-kind="no_answer"] .pua{color:var(--warn);font-size:15px}
-.puhint .pu[data-kind="taken"] .pua,.puhint .pu[data-kind="taken_by"] .pua{font-size:15px}
 .puhint .pu[data-kind="granted"] .pua{color:var(--item);font-style:italic;font-size:20px}
 .puring{--p:0;flex:none;width:40px;height:40px;border-radius:50%;background:conic-gradient(var(--item) calc(var(--p) * 360deg),rgba(255,255,255,.12) 0);display:grid;place-items:center}
 .puring i{width:29px;height:29px;border-radius:50%;background:#04070c}
@@ -575,6 +574,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    stats, the ammo column (and the held-item chip over it) and the powerup hint; the hero may cover the centre of the HUD. */
 #lanes{position:absolute;inset:0;pointer-events:none;z-index:5;--lk:var(--ok);--ln-bg:rgba(4,7,12,.9)}
 #frame[data-board] #lanes{opacity:0}
+#lanes.held{visibility:hidden}   /* F400 final: the weapon-switch card is on top, not stacked; the engine pauses the lanes' clocks meanwhile */
 @keyframes lanein{from{opacity:0}to{opacity:1}}
 #lanes .lh{position:absolute;left:50%;top:86px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:3px;animation:lanein .15s ease-out;transition:opacity .3s}
 #lanes .lh.out{opacity:0}
@@ -715,6 +715,15 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .idle .wm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:54px;letter-spacing:.16em;text-indent:.16em}
 .idle .wm b{color:var(--glow)}
 .idle .sub{font-size:11px;letter-spacing:.4em;color:var(--mut);font-weight:600}
+/* F422: SET MY GUN gave no sign the phone had joined Mission Control — MC can bind over Wi-Fi before any
+   gun is even picked (an mDNS auto-join, no tap). Minimal: a dot + a word, the same shape as the live
+   HUD's own GUN/MC pair (`.topright`), never hidden — a NOT JOINED phone needs to say so as plainly. */
+.idle .mcline{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.14em;font-weight:600;color:var(--mut)}
+.idle .mcline.on{color:var(--ok)}
+.idle .mcline .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);flex:none}
+.idle .mcline .dot.off{background:var(--mut);box-shadow:none}
+[data-env="night"] .idle .mcline{color:var(--mut)}
+[data-env="night"] .idle .mcline .dot{background:var(--mut);box-shadow:none}
 .bigbtn{height:60px;width:260px;background:var(--glow);color:#04121e;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.16em;transform:skewX(-12deg)}
 .bigbtn .unskew{display:inline-block;transform:skewX(12deg)}
 .bigbtn.ghost{background:transparent;border:1px solid var(--edge);color:var(--mut);height:44px;width:220px;font-size:14px}

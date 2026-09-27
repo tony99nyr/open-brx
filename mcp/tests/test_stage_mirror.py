@@ -1757,6 +1757,10 @@ KNOWN_UNMIRRORED = {
     # pl4 (2026-09-17): what a spawn/revive batch that resolved false leaves behind (no repeat, re-arm, pool
     # `write_lost`). The stage's batches never resolve false, for the same reason as `_writeMust`.
     "_writeLife",
+    # F416 (2026-09-26): the check that follows such a batch (ask the gun, re-send to an unspawned one) and the radio-quiet
+    # window that keeps the phone's station scan off the spawn write. The stage's batches never resolve false, and it
+    # runs no station scan of its own.
+    "_spawnAsk", "_spawnCheckSeen", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "radioQuiet", "_quietWrite",
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
     # Maint review 2026-09-17 renamed the pair so the names say which is which: `_heatBlocksFire` is the
@@ -1779,6 +1783,8 @@ KNOWN_UNMIRRORED = {
     # 2026-09-24 (docs/announcer.md, "The three lanes"): the HUD's alert lanes, written as each event arrives. Presentation
     # only: they write no gun frame, say no line and move no score, and the stage has no HUD to draw them on.
     "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
+    # 2026-09-26 (F400 final): the switch card pauses the lanes' clocks. Presentation only, as above.
+    "_cardTick", "_switchCardUp", "_lanePaused", "_laneAge", "_lanesShown",
     # 2026-09-24 (docs/announcer.md, "The gun's audio FIFO"): the phone's model of the gun's audio queue and the
     # must-hear $PLAYX flush. NOT yet ported: the stage's own writes do not model the FIFO, and its heartbeat does not
     # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.
@@ -1822,14 +1828,16 @@ KNOWN_UNMIRRORED = {
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
     # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off). PRESENTATION only:
-    # the spawn announcer and the HUD's view (`_puTick`, `powerupView`, `_puNextInMs`). GAME STATE, but not portable
+    # the spawn announcer and the HUD's view (`_puTick`, `powerupView`). GAME STATE, but not portable
     # yet: the claim, the grant, the end of an item and the overshield all hang off a powerup station's advert (its
     # median RSSI and its `taker` byte, like `setStations` above) and the MATCH CLOCK's spawn schedule (like `goLiveT`
     # below), and the stage models neither. The gun-facing writes (`_puGrantWeapon`/`_puGrantShield`/`_puEnd`) are the
     # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
-    "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puNextInMs", "_puMedian", "_puThreshold",
+    # F425 (2026-09-26): `_puNextInMs` is GONE (the near-station TAKEN/countdown hint it fed is removed from the
+    # HUD), so it is dropped from this list too, not merely unmirrored.
+    "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puMedian", "_puThreshold",
     "_puStation", "_puObserve", "_puClaimTick",
-    "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puEnd", "_puShieldFrame", "_puDeath",
+    "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puZeroUnpulled", "_puEnd", "_puShieldFrame", "_puDeath",
     # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
     # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it
     # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.

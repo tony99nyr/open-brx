@@ -60,7 +60,7 @@ test('gameNow: FFA gives your place, a hill names its holder, no score push show
   const ffa = gameNow({ clockMs: 0, mode: 'FFA', scoreRows: rows, scoreAt: 1, player: { player_id: 'me' }, board: { cap: 15 }, kills: 4, deaths: 1 }, now);
   assert.match(txt(ffa), /2ND \/2 VIPER 9/);
   assert.ok(said(ffa).includes('your place 2ND of 2, first to 15'));
-  assert.ok(said(gameNow({ clockMs: 0, mode: 'KOTH', hill: { owner: 3 }, deaths: 0 }, now)).includes('hill held by green'));
+  assert.ok(said(gameNow({ clockMs: 0, mode: 'KOTH', hill: { owner: 3 }, deaths: 0 }, now)).includes('hill held by purple'));   // F423: tid 3 paints purple, not green
   assert.ok(said(gameNow({ clockMs: 0, mode: 'KOTH', hill: { owner: 2 }, deaths: 0 }, now)).includes('hill held by nobody'));
   assert.ok(said(gameNow({ clockMs: 0, mode: 'KOTH', hill: null, deaths: 0 }, now)).includes('hill out of range'));
   const old = gameNow({ clockMs: 0, fragLimit: 25, kills: null, deaths: 1, shots: 12 }, now);

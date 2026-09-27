@@ -8,8 +8,19 @@ import { LANE_FEED_MS, LANE_HERO_MS, LANE_SETTLE_MS, redeployOutMs } from '../la
 import { MEDALS, AWARDS, MAX_TAG_LEN } from '../transport/contract.gen.js';
 import { medalIcon, medalChip } from './medalicons.js';   // the RECAP icons only (Tony 2026-09-25): never in the in-game lanes   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
-const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
-const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
+// F423: tid 3 paints purple, not green (the gun/headset paint) -- MC's roster names it team_id
+// "purple" now (state.py TEAM_DEFS), and `st.teamKey` (engine.js TEAM_KEY) tracks that.
+// F432 (2026-09-26): `green` stays as an ALIAS of tid 3 in both maps below, a safety net for a
+// pre-F423 preset/saved-game/snapshot that reaches this phone before MC's own migration catches it
+// (`state.py`'s preset/snapshot loaders) — the gun still paints purple regardless of which string MC
+// sends, so a stray "green" team_id must draw exactly like "purple", not fall back to the plain ink.
+const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', purple: 'var(--team-purple)', green: 'var(--team-purple)' };
+const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', purple: '#140a1c', green: '#140a1c' };
+// F424: engine.js's own possession tally (`st.possession.by_site`) is keyed by the raw numeric tid the
+// beacon carries (TEAM_KEY in engine.js, 0..3), but the board's teams (MC's `score.board`) come back
+// keyed by the colour string (`t.team_id`, e.g. "blue"). This is the same table, reversed, so a KOTH
+// board can look a team's hold up by its colour.
+const TEAM_TID = { red: 0, blue: 1, yellow: 2, purple: 3, green: 3 };
 const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 /** A countdown as one fixed-width cell per digit (F115). Saira Condensed has no tabular figures, so
  *  `font-variant-numeric:tabular-nums` silently does nothing and every value is a different width:
@@ -36,8 +47,6 @@ const armorPct = (st, peak = 0) => { const top = st.maxArmor > 0 ? st.maxArmor :
 /** Tony 2026-09-24: "If there is no armor we dont need the 0 or the empty armor bar. If we have armor then the number and
  *  bar show." A game with armour, or armour granted in a game without it (a perk, a pickup). */
 const hasArmor = st => st.maxArmor > 0 || st.armor > 0;
-/** A56: a spawn countdown the way Tony writes it, "1:40" (rounded UP: it never reads 0:00 while the item is still away). */
-const mss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
 /** A56: an item's own colour from the wire, only ever a literal `#rrggbb` (it lands in a style attribute). */
 const itemColor = c => (/^#[0-9a-f]{6}$/i.test(String(c || '')) ? c : 'var(--glow)');
 const clock12 = t => { const d = new Date(Number(t) || 0); const h = d.getHours(); return `${h % 12 === 0 ? 12 : h % 12}:${pad2(d.getMinutes())}${h < 12 ? 'AM' : 'PM'}`; };
@@ -204,6 +213,7 @@ const WARN = {
   gun_lost: { full: 'GUN LINK LOST — TAP TO RECONNECT', short: 'GUN LINK LOST · TAP', down: 'GUN LINK LOST — TAP TO RECONNECT' },
   no_answer: { head: 'GUN NOT ANSWERING', sub: 'HOST: FORCE RESPAWN OR RELINK' },
   no_fire: { head: 'GUN NOT REPORTING SHOTS', sub: 'PULL TRIGGER AGAIN · THEN TELL HOST' },
+  spawn_lost: { head: 'GUN MAY NOT BE SPAWNED', sub: 'HOST: FORCE RESPAWN' },   // F416: a lost spawn write the node could not check. RESYNC GUN never writes `$SPAWN`; FORCE RESPAWN does
 };
 const warnFull = w => w.full || `${w.head} · ${w.sub}`;
 const secsLeft = ms => Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
@@ -537,7 +547,7 @@ export class Hud {
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
       // would turn every non-null value into the same "[object Object]" and miss no_fire → no_answer.
-      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, st.headsetJoin && st.headsetJoin.state, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
+      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.spawnLost, !!st.gunFlapping, st.headsetJoin && st.headsetJoin.state, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
       // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
       !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
       SV.meterShown(st), hasArmor(st),   // the shield meter exists or not; the armour number and bar exist or not
@@ -738,9 +748,19 @@ export class Hud {
       <div class="others" hidden></div></div>`;
   }
 
+  // F422 (bench 2026-09-26, 11.7): MC can bind this phone before the gun is ever picked (an mDNS
+  // auto-join over Wi-Fi, no tap needed — `app.js`'s boot sweep) and the SET MY GUN screen said nothing
+  // about it: "no idea, no indication" (Tony). `this.sync.bound` (app.js, the same 1 s poll the results
+  // screen's SENDING SCORES line already reads) is the one fact this screen can show with no new wiring;
+  // both states are shown, never just the good one, so a phone that has NOT joined says so too.
+  _idleMcLine() {
+    const bound = !!(this.sync && this.sync.bound);
+    return `<span class="mcline ${bound ? 'on' : ''}"><i class="dot ${bound ? '' : 'off'}"></i>${bound ? 'MC JOINED' : 'MC NOT JOINED'}</span>`;
+  }
   _idle(st = {}) {
     return `<div class="idle"><div class="scan"></div>
       <div class="l"><span class="wm">BRX<b>/</b></span><span class="sub">COMBAT HUD</span>
+        ${this._idleMcLine()}
         ${st.rejoin ? '<span class="note" style="color:var(--warn)">MATCH IN PROGRESS — SET YOUR GUN TO REJOIN</span>' : ''}
         <button class="bigbtn" data-act="onSetGun"><span class="unskew">SET MY GUN ▸</span></button>
         <button class="bigbtn ghost" data-act="onDemo"><span class="unskew">DESKTOP DEMO</span></button>
@@ -1155,6 +1175,29 @@ export class Hud {
     const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
     return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${esc(String(t.name || k || '—').toUpperCase())} <b>${num(t.score) == null ? '—' : t.score}</b></span></span>`;
   }
+  /** F424: this phone's own possession tally (engine.js `_accrueHold`), summed across every site into
+   *  {tid -> ms}. MC's live `score` push carries KILLS only (`_score_board` always uses `team_scores()`),
+   *  never a merged hold total — that only exists in the END-of-match recap (`_resultHold`). Mid-match,
+   *  the one number this phone actually has for KOTH is what IT observed, which is why this reads
+   *  `st.possession.by_site` (engine.js `state()`) rather than `st.board`: a stated lower bound, same
+   *  spirit as the recap's own possession fact, never a guess at what other phones saw. */
+  _liveHold(st) {
+    const p = st.possession && typeof st.possession === 'object' ? st.possession : null;
+    const bySite = p && p.by_site && typeof p.by_site === 'object' ? p.by_site : null;
+    if (!bySite) return null;
+    const out = {};
+    for (const site of Object.values(bySite)) { if (!site || typeof site !== 'object') continue;
+      for (const [tid, v] of Object.entries(site)) out[tid] = (out[tid] || 0) + (num(v) || 0); }
+    return out;
+  }
+  /** The KOTH board's team chip: HOLD TIME (mm:ss), not the kill count `_teamChip` shows — F424. `data-tid`
+   *  lets `_patch` update the number in place every tick without a full board rebuild (the hold climbs
+   *  continuously, not just on a fresh MC push). */
+  _teamChipKoth(t, ms) {
+    const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
+    const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
+    return `<span class="tm koth" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${esc(String(t.name || k || '—').toUpperCase())} <b class="tab">${mmss(ms || 0)}</b></span></span>`;
+  }
 
   /** THE FINAL RESULTS SCREEN.
    *
@@ -1438,7 +1481,9 @@ export class Hud {
       <div class="nightlab${st.powerup && this._puHint(st) ? ' pu' : ''}">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
   }
   /** A56 (docs/spec/powerups.md): the powerup station hint, centre-bottom between the vitals and the ammo. A 1 s ring
-   *  while the player stands at the station (HOLD STILL), the item once granted, who took it, or the countdown. */
+   *  while the player stands at the station (HOLD STILL), or the item once granted. F425 (2026-09-26): the
+   *  always-on TAKEN hint and its countdown to the next spawn are gone; the left-side "<ITEM> AVAILABLE" feed
+   *  alert at each spawn is the only signal for an unclaimed or unclaimable station. */
   _puHint(st) {
     const h = st.powerup && st.powerup.hint; if (!h) return '';
     // F400 decision 3: while the switch card is up, hide the small hint chip for a weapon grant or a switch-back --
@@ -1459,9 +1504,6 @@ export class Hud {
       case 'granted': return h.itemKind === 'overshield' ? line(name, 'PICKED UP')
         : line(`${name} ON TRIGGER`, h.charges != null ? `${h.charges} SHOT${h.charges === 1 ? '' : 'S'}` : '');
       case 'approach': return line('GET CLOSER', name);
-      // HUD QA R2-16: the line names WHAT was taken, not only who took it
-      case 'taken_by': return line(h.nextInMs != null ? `${name} TAKEN · ${mss(h.nextInMs)}` : `${name} TAKEN`, `BY ${esc(h.by)}`);
-      case 'taken': return line(`${name} IN ${mss(h.nextInMs || 0)}`, 'NEXT SPAWN');
       case 'switched_back': return line(`${name} EMPTY`, `BACK TO ${esc(h.to || '')}`);   // the phone put the saved weapon back on the trigger
       default: return '';
     }
@@ -1477,10 +1519,11 @@ export class Hud {
    *  alone is intentionally omitted because the existing GUN LINK state owns connectivity. */
   _gunHealthActive(st) {
     if (!st.alive || !st.bleUp || st.gunFlapping || st.resync || st.reconciling) return false;
-    return !!((st.cure && st.cure.verdict === 'no_answer') || (st.poolStale && st.poolStale.why === 'no_fire'));
+    return !!(st.spawnLost || (st.cure && st.cure.verdict === 'no_answer') || (st.poolStale && st.poolStale.why === 'no_fire'));
   }
   _gunHealthWarning(st) {
     if (!this._gunHealthActive(st)) return '';
+    if (st.spawnLost) return `<div class="gunwarn danger" role="alert"><b>${WARN.spawn_lost.head}</b> <span>${WARN.spawn_lost.sub}</span></div>`;
     if (st.cure && st.cure.verdict === 'no_answer') {
       return `<div class="gunwarn danger" role="alert"><b>${WARN.no_answer.head}</b> <span>${WARN.no_answer.sub}</span></div>`;
     }
@@ -1554,13 +1597,21 @@ export class Hud {
           : `<span class="tab">${v(r.kills)}</span>`}</div>`).join('')}
         ${rows.length ? '' : '<div class="bdnone">YOUR OWN LINE · MISSION CONTROL HAS SENT NO SCORES</div>'}</div>`;
     } else {
+      // F424: KOTH is not scored on kills, so the board's team chip shows HOLD TIME instead of the
+      // (always-kills) `t.score` MC's live push carries — read from THIS phone's own possession tally
+      // (`_liveHold`, engine.js `state().possession`), the one number available mid-match without an
+      // MC-side change (the merged, all-phones total exists only in the end-of-match recap).
+      const koth = st.mode === 'KOTH';
+      const holdByTid = koth ? this._liveHold(st) : null;
       const teams = st.board && Array.isArray(st.board.teams) ? st.board.teams.filter(t => t && typeof t === 'object') : [];
       body = teams.length ? `<div class="bdteams">${teams.map(t => {
         const k = String(t.team_id == null ? '' : t.team_id).toLowerCase(); const mine = !!(st.teamKey && k === st.teamKey);
         const ps = rows.filter(r => String(r.team_id == null ? '' : r.team_id).toLowerCase() === k);
-        return `<div class="bdteam ${mine ? 'mine' : ''}">${this._teamChip(t, mine)}
+        const chip = koth ? this._teamChipKoth(t, holdByTid && TEAM_TID[k] != null ? holdByTid[TEAM_TID[k]] : 0) : this._teamChip(t, mine);
+        return `<div class="bdteam ${mine ? 'mine' : ''}">${chip}
           ${ps.map(r => `<div class="bdr tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${name(r)}</span><span class="tab">${v(r.kills)} · ${v(r.deaths)} · ${v(r.assists)}</span></div>`).join('')}</div>`; }).join('')}</div>
-        ${st.board && num(st.board.cap) != null ? `<div class="bdcap">FIRST TO ${st.board.cap} · K · D · A</div>` : ''}`
+        ${koth ? '<div class="bdcap">HOLD TIME · A LOWER BOUND · K · D · A</div>'
+          : st.board && num(st.board.cap) != null ? `<div class="bdcap">FIRST TO ${st.board.cap} · K · D · A</div>` : ''}`
         : '<div class="bdnone">NO TEAM TOTALS FROM MISSION CONTROL YET</div>';
     }
     return `<div class="bdscrim"></div><div class="bdpanel" role="dialog" aria-label="Match scores">
@@ -1761,7 +1812,19 @@ export class Hud {
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
       const dot = q('linkdot'); if (dot) { const cls = gunDot(st); if (dot.className !== cls) dot.className = cls; }
       set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
-      if (this.board) { set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', this._boardStale(st)); }
+      if (this.board) {
+        set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', this._boardStale(st));
+        // F424: the hold climbs every tick, not just on a fresh MC score push (which is what the sig
+        // watches) — patch it directly so the board's own numbers do not sit stale while it is open.
+        if (st.mode === 'KOTH') {
+          const holdByTid = this._liveHold(st);
+          for (const el of this.hudEl.querySelectorAll('.bdteam .tm.koth[data-tid]')) {
+            const tid = el.dataset.tid; if (tid === '') continue;
+            const b = el.querySelector('b'); const txt = mmss((holdByTid && holdByTid[tid]) || 0);
+            if (b && b.textContent !== txt) b.textContent = txt;
+          }
+        }
+      }
       const md = q('mcdot'); if (md) { const cls = 'dot ' + (st.wsState === 'bound' ? '' : 'ws'); if (md.className !== cls) md.className = cls; }
     }
   }
@@ -1820,7 +1883,8 @@ export class Hud {
     // the bottom centre. While a kill card is up each shows its short headline (`data-short`, drawn by CSS); the ⓘ
     // panel's WARNINGS section always has every warning's full sentence.
     if (typeof this._gunHealthActive === 'function' && this._gunHealthActive(st)) {
-      if (st.cure && st.cure.verdict === 'no_answer') full.push(warnFull(WARN.no_answer));
+      if (st.spawnLost) full.push(warnFull(WARN.spawn_lost));
+      else if (st.cure && st.cure.verdict === 'no_answer') full.push(warnFull(WARN.no_answer));
       else if (st.poolStale && st.poolStale.why === 'no_fire') full.push(warnFull(WARN.no_fire));
     }
     const warn = full.length ? full.map(t => `<span>${esc(t)}</span>`).join('') : '<span class="mut">NONE</span>';
@@ -2106,7 +2170,12 @@ export class Hud {
     // one is up the kill card is not drawn; a kill that is due WAITS, and draws when the takeover ends with a full
     // LANE_HERO_MS hold from then. Nothing is lost, and the voice is not touched (the queue says the line on time).
     const rd = this._overlays && this._overlays.redeploy;
-    const takeover = !!this.frame.dataset.takeover || !!(rd && rd.el.isConnected && !rd.el.classList.contains('out'));
+    const cardUp = !!st.switchCard || this._puCardUp();   // the engine's clock (the ACTIVE bubble's full PU_ACTIVE_CARD_MS), or the DOM
+    const takeover = !!this.frame.dataset.takeover || !!(rd && rd.el.isConnected && !rd.el.classList.contains('out')) || cardUp;
+    // F400 final (Tony, 2026-09-26): "Not stacked. The weapon switch overlay is on top. When it finishes then the rest of
+    // ui is shown." While the card (SWITCHING, then ACTIVE) is up the lanes are hidden, and the engine stops their clocks
+    // (`_lanesShown`), so each row and badge still gets its full time once the card has gone. ALT and pickups alike.
+    root.classList.toggle('held', cardUp);
     const srcl = t => t ? `<span class="lsrc">${esc(t)}</span>` : '';
     const kindOf = k => { const m = MEDAL_ROWS.find(x => x.key === k); return m ? m.kind : 'multi'; };
     // HERO
@@ -2180,6 +2249,7 @@ export class Hud {
     // draw again at the next change (the hero fading and gone, a feed row leaving, a badge settling or leaving)
     const due = [heroUntil, heroUntil + FADE, this._laneTellUntil || 0,
       takeover && this._heroWait ? now + 200 : 0,   // F368: REDEPLOYED ends on a timer, not a state change
+      cardUp ? now + 200 : 0,                       // F400 final: the ACTIVE bubble ends on a timer too
       ...(L.feed || []).flatMap(f => [f.at + LANE_FEED_MS, f.at + LANE_FEED_MS + FADE]),
       ...Object.values(O).map(o => o.at + LANE_SETTLE_MS)].filter(t => t > now);
     if (due.length) this._lanesT = setTimeout(() => this._lanes(this._lastSt || st), Math.min(...due) - now + 10);
@@ -2407,16 +2477,19 @@ export class Hud {
     if (mcInp && document.activeElement !== mcInp && mcInp.value !== (this.mcUrl || '')) mcInp.value = this.mcUrl || '';
     put('dg-pf', kv(pf));
     put('dg-link', kv(d.link || {}));
-    // B21: the WebView debugging switch. `webDebug` is null where there is no switch (iOS, the browser stage), so the
-    // section stays hidden; 'forced' is a debuggable APK, which Chromium keeps inspectable, so the button is disabled. The button is a permanent node and only its label changes (F122: a rebuilt button eats a tap).
+    // B21: the WebView debugging switch. `webDebug` is null where there is no switch (the browser stage), so the
+    // section stays hidden; 'forced' is a debuggable APK, which Chromium keeps inspectable; 'unsupported' is a real
+    // switch this OS/build cannot offer (iOS below 16.4, or a native call that failed) — both disable the button.
+    // The button is a permanent node and only its label changes (F122: a rebuilt button eats a tap).
     const dev = this.diag.querySelector('#dg-dev'), wd = d.webDebug;
     if (dev) {
-      const show = wd === true || wd === false || wd === 'forced';
+      const show = wd === true || wd === false || wd === 'forced' || wd === 'unsupported';
       if (dev.hidden === show) dev.hidden = !show;
       if (show) {
         put('dg-webdebug-state', wd === 'forced' ? 'WEBVIEW DEBUGGING <span class="ok">ALWAYS ON (DEBUG BUILD)</span>'
+          : wd === 'unsupported' ? 'WEBVIEW DEBUGGING <span class="mut">UNSUPPORTED ON THIS PHONE</span>'
           : wd ? 'WEBVIEW DEBUGGING <span class="ok">ON</span>' : 'WEBVIEW DEBUGGING <span class="mut">OFF</span>');
-        const wb = this.diag.querySelector('#dg-webdebug'), label = wd === false ? 'TURN ON' : 'TURN OFF', off = wd === 'forced';
+        const wb = this.diag.querySelector('#dg-webdebug'), label = wd === false ? 'TURN ON' : 'TURN OFF', off = wd === 'forced' || wd === 'unsupported';
         if (wb && wb.textContent !== label) wb.textContent = label;
         if (wb && wb.disabled !== off) wb.disabled = off;
       }

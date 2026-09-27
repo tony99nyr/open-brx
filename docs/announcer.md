@@ -197,13 +197,18 @@ Rules:
   crosses a life: a death and a respawn each end it, and a takeover while down holds nothing open. The engine reads
   REDEPLOYED's end from the same `redeployOutMs` (`app/src/lanes.js`) as the HUD's overlay. The words of every warning
   have one source, `hud.js` `WARN`.
-  The OBJECTIVE and FEED lanes keep drawing at the sides, and the hit number still shows.
+  The OBJECTIVE and FEED lanes keep drawing at the sides, except under the switch card (below). The hit number still shows.
 - **2026-09-25 (F400): the pickup switch card is the SWITCHING takeover, not a new one.** A powerup weapon landing on
   the trigger, a same-weapon stack, either direction of SELECT, and the empty switch-back all open the exact takeover
   item 3 already names (`docs/spec/powerups.md` "The switch card"), so it inherits every rule above with no new code:
-  a kill card due while it is up waits and draws in full once it leaves. This is Tony's LEAN (not yet reviewed on a
-  storyboard); the brief ACTIVE confirm bubble after it is not itself gated (neither is ALT's own), so a kill can in
-  principle land on top of that one small moment.
+  a kill card due while it is up waits and draws in full once it leaves.
+- **2026-09-26 (F400 final, Tony): the switch card is on top, and every lane waits.** "Not stacked. The weapon switch
+  overlay is on top. When it finishes then the rest of ui is shown ... This should be true for regular alt weapon
+  switches too." The card is SWITCHING and then its ACTIVE bubble, for ALT and a pickup alike. While it is up, the
+  whole lanes layer is hidden (`hud.js` `_lanes`, `#lanes.held`), the kill card waits (`_laneTakeover` counts the
+  bubble), and the engine stops the FEED and OBJECTIVE clocks (`_cardTick`, `_lanesShown`, `_laneAge`). Each item
+  therefore gets its full time once the card leaves, and an event that arrives under the card shows afterwards. The
+  aim tells and the hit number are live state, not timed shows, so they keep drawing.
 - **The warnings live in a status rail** at the bottom centre, 150 px wide (x 347-497), between the vitals and the
   ammo, never in the kill card's band: GUN LINK LOST, HEADSET NOT JOINED or JOINING, HEADSET OFF?, GUN KEEPS DROPPING,
   MC out of range, ASK THE HOST, and the other pill-bar chips (WEAPONS HOT, ALT = RELOAD, RECONNECT NOW). Each stays

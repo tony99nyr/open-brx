@@ -29,7 +29,7 @@ export function startDemo({ engine, log }) {
   const kitOnly = q.has('kit'), locked = q.has('locked'), reject = q.has('reject'), setup = q.has('setup'), brief = q.has('brief');
   if (q.has('night')) engine.night = true;
   const TEAMS = { blue: { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, yellow: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 },
-    red: { team_id: 'red', name: 'RED', color: 'red', tid: 0 }, green: { team_id: 'green', name: 'GREEN', color: 'green', tid: 3 } };   // tids as MC's TEAM_DEFS / engine TEAM_KEY
+    red: { team_id: 'red', name: 'RED', color: 'red', tid: 0 }, purple: { team_id: 'purple', name: 'PURPLE', color: 'purple', tid: 3 } };   // tids as MC's TEAM_DEFS / engine TEAM_KEY (F423: purple, not green)
   const teamKey = TEAMS[q.get('team')] ? q.get('team') : 'blue', foeKey = teamKey === 'yellow' ? 'blue' : 'yellow';
   const player = { player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: teamKey, node_id: null, gun_id: 'GUN-A',
     loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male', ready: false };
@@ -165,7 +165,9 @@ export function startDemo({ engine, log }) {
   // and never `$HP`. Without this the stage would show a poison stack whose ticks change nothing.
   const DEMO_DOT = { 11: { weapon_id: 'toxin_rifle', per_tick: 4, tick_ms: 1000, duration_ms: 5000 } };
   const gunWriter = engine.writer;
+  let failRe = null, failLeft = 0;   // F416: the next `failLeft` writes carrying a frame that matches `failRe` resolve false, as BrxLink's do
   engine.writer = fr => {
+    if (failLeft > 0 && fr.some(f => failRe.test(f))) { failLeft--; return false; }
     gunWriter(fr);
     for (const f of fr) {
       // S55: the stage gun applies the same absolute t4 accuracy modifier as hardware. This keeps
@@ -412,6 +414,7 @@ export function startDemo({ engine, log }) {
       // 2026-09-19 station respawn: the bundle's respawn_profile gives a station life 2 s of visible protection (`shielded`).
       stationRespawn: () => { if (engine.alive) return; engine._revive(false, 3); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
       chargeAmmo: (ammo, reserve = 80) => { engine.feedFrame(`$ALCD,40,100,${gunSlot},80,0,*`); engine.feedFrame(`$ALCD,${ammo},100,${gunSlot},${reserve},0,*`); },
+      failWrites: (re, n = 1) => { failRe = re; failLeft = n; },   // F416: BrxLink resolving a batch false
       alt: () => { if (engine._slotCount() >= 2) gunAlt(); engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // F394: the gun's pointer moves, and it reports nothing   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT and NO report (F394); the next shot reports the new slot
         if (engine._slotCount() < 2) ev.twoWeapons();
@@ -488,7 +491,7 @@ export function startDemo({ engine, log }) {
     const PU = {
       rockets: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' },
       rail: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#22d3ee' },
-      overshield: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#b36bff' },
+      overshield: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#ff4fd8' },   // F427: moved off the team-purple hue family
     };
     const PU_WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*',
       3: '$WEAP,3,0,100,6,0,149,0,,,,,,,,1200,850,2,2,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,2,1,75,*' };
@@ -701,6 +704,10 @@ export function startDemo({ engine, log }) {
       'live-reload-overrun': [[0, () => { player.loadout = { weapons: [{ weapon_id: 'shotgun' }] }; }], ...live, [2300, () => ev.fire(20)], [2600, () => ev.reloadChain(18, 800)]],   // F123: the chain reload — nominal is the PER-SHELL time, so the bar is in overrun for the whole reload
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],
       // F394: the real gun reports nothing on ALT, so only a shot inside the swap window reaches CONFIRMED BY YOUR GUN
+      // F400 final (Tony 2026-09-26): a kill 0.5 s into the switch card waits under it, then gets its full time
+      'live-switch-kill':  [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle'], [3150, 'killConfirm']],
+      // F416: the revive write is lost and the demo gun (like a silent one) never answers the check: GUN MAY NOT BE SPAWNED
+      'live-spawn-lost':   [...live, [2300, 'die'], [2500, () => { ev.failWrites(/^\$SPAWN/, 1); engine._revive(false); }]],
       'live-switch-shot':  [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle'], [3000, () => ev.fire(1)]],
       'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
       'down-hold':         [[0, () => ev.scanner(8)], ...live, [2300, 'die'], [2400, () => ev.station(-70, true)]],
@@ -736,6 +743,11 @@ export function startDemo({ engine, log }) {
       // Bench 2026-09-17: MC's live score push has landed -- what the scores overlay (tap the name or the clock) reads.
       'live-scores':       [...live, [2300, () => ev.score(3, 1, 1)]],
       'live-scores-ffa':   [[0, () => { config.mode = 'ffa'; }], ...live, [2300, () => ev.scoreFfa()]],
+      // F424: KOTH is not scored on kills, so the scores overlay's team chip must show hold time — feed a
+      // real hill beacon (owner tid 1, our own team) so `engine.js` accrues `possession.by_site` for real,
+      // the same tally the board now reads (`hud.js _liveHold`); `ev.score` still lands so the board has
+      // team names/colours to show (its `score` kill numbers are the part the KOTH chip must NOT use).
+      'live-scores-koth':  [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(1)], [2300, () => ev.score(3, 1, 1)]],
       'mc-rejected':       [...kitted, [400, 'mcRejected']],
       'result':            [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end']],
       'over':              [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, 'endOk']],
@@ -783,9 +795,12 @@ export function startDemo({ engine, log }) {
       'live-pu-select-back': [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [6300, 'puSelect'], [9300, 'puSelect']],
       'live-pu-empty':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [4700, 'puFire'], [4800, 'puFire']],   // both rockets fired: the AR back on the trigger
       'down-pu-held':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, 'die']],           // a death with an item held: it is gone
-      'live-pu-taken-by':    [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4, 19)]],                      // VIPER won it: TAKEN BY VIPER
       'live-pu-no-answer':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)], [8300, () => { ev.puAt(4); engine.feedFrame('$BUT,0,0,*'); }], [14300, () => { ev.puAt(4); engine.feedFrame('$BUT,0,0,*'); }]],   // ready, and the station never answers: F380's 15 s needs the advert re-heard (PU_ADVERT_STALE_MS) and the gun heard (F272 liveness lock)
-      'live-pu-taken':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4, { state: 0, value: 110, median: -60 })]],   // taken: the countdown to the next spawn
+      // F425 (Tony, 2026-09-26): the station has gone to state 0 (taken/cooling) with the player standing near
+      // it. The near-station hint used to show a countdown to the next spawn (removed); now it shows nothing --
+      // the left-side "<ITEM> AVAILABLE" feed alert is the only spawn signal. Kept as a stage for that
+      // no-hint assertion and for the broader contrast/type-floor gates.
+      'live-pu-taken':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4, { state: 0, value: 110, median: -60 })]],
       // polish r1 (UX): a hit while standing at a station (the QA-04 weapon line must not cover the hint), the widest
       // night row (Shields preset, 3-digit pools, a 175 overshield) and an Easy Reload player at a weapon station
       'live-pu-claim-hit':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)], [2700, () => ev.hitFrom(19, 9, 9)]],
