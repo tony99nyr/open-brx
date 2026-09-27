@@ -267,7 +267,11 @@ async function resetTdm(base) {
   // then no-opped for real, and every assertion downstream (F82 re-team, the koth SETUP step, …) failed
   // against a config that had silently stayed on tdm. Picking through the same route the console uses
   // keeps `game_pick` and `config` the same fact.
-  const r = await fetch(`${base}/api/play/pick`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pieces: { mode: 'builtin:mode:tdm' } }) });
+  // F413 (2026-09-27): TDM's own default is red+blue now too (matching KOTH's), so a bare mode pick no
+  // longer gets this function's own blue/yellow -- named explicitly here, the same way a TEAMS-strip
+  // pick would, so every step downstream still gets the roster its own name promises.
+  const r = await fetch(`${base}/api/play/pick`, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ pieces: { mode: 'builtin:mode:tdm' }, match: { teams: ['blue', 'yellow'] } }) });
   if (!r.ok) throw new Error(`resetTdm: POST /api/play/pick ${r.status} ${(await r.text()).slice(0, 160)} (phase was ${phase0})`);
   await rebalance(base);
 }
@@ -422,10 +426,12 @@ step('koth-selectable', async ({ browser, base }) => {
   await btn.click();
   await until(() => modeConfirmLine(pg).count().then(n => n > 0), 6000, 'the reshape confirm');
   const split = (await pg.getByTestId('confirm-split').innerText()).trim();
-  // F413 scope decision (2026-09-27): red+blue is the NEW server's own reset -- this step runs against
-  // the REAL server, which predates `match_items` (Games.tsx's own `redBlueTeamsFor` falls back to the
-  // mode's own declared default exactly as before F413 whenever a server does not yet serve that field).
-  expect(split === '▲ 8 PLAYERS → BLUE 4 / PURPLE 4', `the predicted split names the reshape (saw ${JSON.stringify(split)})`);
+  // F413 (2026-09-27): TDM and KOTH now share the SAME default pair (red+blue) -- `resetTdm`'s own
+  // blue/yellow roster still reshapes, but BLUE is legal on both sides (reteamForConfig/predictedSplit
+  // leave an already-legal player exactly where they are), so only the YELLOW half actually moves, onto
+  // BLUE too -- collapsing the whole roster onto one side, which then rebalances back to an even split.
+  // Still a real reshape (the confirm shows it, the roster genuinely moves), just not a clean 1:1 swap.
+  expect(split === '▲ 8 PLAYERS → RED 4 / BLUE 4', `the predicted split names the reshape (saw ${JSON.stringify(split)})`);
   expect((await (await fetch(`${base}/api/state`)).json()).config.mode === 'tdm', 'the first tap must not have reached the server');
   await btn.click();
   await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', 6000, 'KotH picked on the second tap');
@@ -541,7 +547,8 @@ step('setup-steps-prematch', async ({ browser, base }) => {
 
 // 🔴 the highest-value step in the file. Yellow is $TID 2, which is what a NEUTRAL hill broadcasts:
 // a tid-2 roster reads every uncaptured point as its own and cannot be hit by the hill's damage word
-// (F82). So: blue+purple in the config, no yellow chip offered, and nobody left standing on yellow.
+// (F82). So: red+blue in the config (F413, 2026-09-27: KOTH's own default, no longer blue+purple), no
+// yellow chip offered, and nobody left standing on yellow.
 step('teams-never-yellow', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
@@ -554,11 +561,11 @@ step('teams-never-yellow', async ({ browser, base }) => {
   const group = pg.locator('span[role="group"][aria-label="team"]');
   await until(() => group.count().then(n => n > 0), 8000, 'the KIT team chip group');
   const chips = await group.locator('button').allTextContents();
-  expect(JSON.stringify(chips.map(c => c.trim())) === JSON.stringify(['BLUE', 'PURPLE']),
-    `KIT offers exactly BLUE and PURPLE (saw ${JSON.stringify(chips)})`);
+  expect(JSON.stringify(chips.map(c => c.trim())) === JSON.stringify(['RED', 'BLUE']),
+    `KIT offers exactly RED and BLUE (saw ${JSON.stringify(chips)})`);
   expect(!chips.some(c => /YELLOW/i.test(c)), '🔴 F82: YELLOW is never offered as a koth team');
   const pressed = await group.locator('button[aria-pressed="true"]').allTextContents();
-  expect(pressed.length === 1 && /BLUE|PURPLE/.test(pressed[0]), `the selected player sits on a legal koth team (saw ${JSON.stringify(pressed)})`);
+  expect(pressed.length === 1 && /RED|BLUE/.test(pressed[0]), `the selected player sits on a legal koth team (saw ${JSON.stringify(pressed)})`);
 
   // no row in the roster rail is painted yellow — the stripe is the operator's only team readout there
   const YELLOW = ['rgb(255, 210, 63)', 'rgb(255, 211, 63)'];
@@ -570,10 +577,10 @@ step('teams-never-yellow', async ({ browser, base }) => {
   // and the server agrees: nobody is on tid 2
   const st = await (await fetch(`${base}/api/state`)).json();
   const tidOf = Object.fromEntries(st.config.teams.map(t => [t.team_id, t.tid]));
-  expect(JSON.stringify(st.config.teams.map(t => t.tid)) === JSON.stringify([1, 3]), `config teams are tids 1 and 3 (saw ${JSON.stringify(st.config.teams.map(t => t.tid))})`);
+  expect(JSON.stringify(st.config.teams.map(t => t.tid)) === JSON.stringify([0, 1]), `config teams are tids 0 and 1 (saw ${JSON.stringify(st.config.teams.map(t => t.tid))})`);
   expect(!st.players.some(p => tidOf[p.team_id] === 2), '🔴 F82: no player is rostered on $TID 2');
   expect(st.config_errors.length === 0, `the server does not refuse the push (saw ${JSON.stringify(st.config_errors)})`);
-  ok(`blue+purple only, no yellow chip, no yellow roster row  ${await shot(pg, '05-teams-no-yellow')}`);
+  ok(`red+blue only, no yellow chip, no yellow roster row  ${await shot(pg, '05-teams-no-yellow')}`);
   await closePage(pg);
 });
 
@@ -590,14 +597,17 @@ step('reteam-visible', async ({ browser, base }) => {
   const counts = {};
   for (const p of st.players) counts[p.team_id] = (counts[p.team_id] ?? 0) + 1;
   const empty = st.config.teams.filter(t => !counts[t.team_id]);
-  // Switching to koth moves everyone who was on YELLOW onto PURPLE — the same INDEX, not `teams[0]`
-  // (state.py `_reteam_for_config`). F82 is still satisfied (nobody on $TID 2) and the operator's own
-  // split is intact, so the match the roster describes is the match they set up.
+  // F413 (2026-09-27): KOTH's own default is red+blue now (no longer blue+purple) -- and TDM's is too,
+  // so `resetTdm`'s own blue/yellow roster is BLUE's the one colour common to both sides. `_reteam_for_config`
+  // leaves an already-legal player alone (blue stays blue) and remaps everyone else by index (yellow, at
+  // TDM's own index 1, lands on koth's own index-1 colour: blue) -- which collapses the whole roster onto
+  // one side, then rebalances it back across red+blue (`one_team_fault`). RED is the column that did not
+  // exist on TDM at all, so it is what proves the rebalance actually ran, the same way PURPLE once did.
   expect(empty.length === 0,
     `the koth pick keeps both sides populated (counts ${JSON.stringify(counts)})`);
   expect(!st.players.some(p => p.team_id === 'yellow'), '🔴 F82: nobody is left on YELLOW ($TID 2)');
-  const cols = await pg.locator('main span:text-is("PURPLE TEAM")').count();
-  expect(cols > 0, 'the LOBBY renders the PURPLE column the re-team filled');
+  const cols = await pg.locator('main span:text-is("RED TEAM")').count();
+  expect(cols > 0, 'the LOBBY renders the RED column the re-team/rebalance filled');
   // ...and because nothing is stranded, the one-side fault banner must NOT be on screen.
   const fault = await pg.locator('[data-testid="roster-fault"]').count();
   expect(fault === 0, 'a rebalanced roster is not a fault — the banner must stay off');
@@ -788,7 +798,10 @@ step('load-path', async ({ browser, base }) => {
 step('recap-possession', async ({ browser, base }) => {
   await resetTdm(base);
   const rc = recapFixture(['--coverage', 'thin']);
-  expect(rc.possession?.by_team?.blue === 214 && rc.possession?.by_team?.purple === 131,
+  // F413 (2026-09-27): `recap_fixture.py` reads `s.config["teams"][0]`/`[1]` dynamically, so it follows
+  // KOTH's own default -- red+blue now, not blue+purple (its own local variable names are stale, but
+  // harmless: it never reads the team_id strings, only the tid each one's Team dict carries).
+  expect(rc.possession?.by_team?.red === 214 && rc.possession?.by_team?.blue === 131,
     `the fixture MC's own scorer produced is the one we expect (${JSON.stringify(rc.possession)})`);
   const pg = await newPage(browser, base);
   const seen = await patchSnapshots(pg, st => { st.recap = rc; });
@@ -800,9 +813,9 @@ step('recap-possession', async ({ browser, base }) => {
   expect(await poss.isVisible(), 'the possession panel is visible on the recap');
   const txt = await poss.textContent();
   // mm:ss, not raw seconds: 214 s is 3:34 and 131 s is 2:11
-  expect(/3:34/.test(txt), `BLUE's 214 s reads as 3:34 (saw ${JSON.stringify(txt.slice(0, 160))})`);
-  expect(/2:11/.test(txt), "PURPLE's 131 s reads as 2:11");
-  expect(/BLUE/.test(txt) && /PURPLE/.test(txt), 'both sides are named');
+  expect(/3:34/.test(txt), `RED's 214 s reads as 3:34 (saw ${JSON.stringify(txt.slice(0, 160))})`);
+  expect(/2:11/.test(txt), "BLUE's 131 s reads as 2:11");
+  expect(/RED/.test(txt) && /BLUE/.test(txt), 'both sides are named');
   // the bars are the at-a-glance readout: the leader's must be full and the trailer's proportional
   const bars = await poss.locator('[data-poss-bar]').evaluateAll(els => els.map(el => ({
     pct: el.style.width, w: Math.round(el.getBoundingClientRect().width), bg: getComputedStyle(el).backgroundColor })));
@@ -815,8 +828,8 @@ step('recap-possession', async ({ browser, base }) => {
   expect(/NOBODY HELD THE POINT/i.test(txt), 'the neutral line says nobody held it');
   // 🔴 the whole reason the panel exists: the WINNER comes off possession, not the kills table
   const winner = await pg.locator('main').textContent();
-  // the block names the TEAM as the live config names it ("BLUE TEAM"), not the raw team_id
-  expect(/BLUE(\s+TEAM)?\s+WINS/.test(winner), `BLUE (214 s) is named the winner, from possession (saw ${JSON.stringify(winner.slice(0, 80))})`);
+  // the block names the TEAM as the live config names it ("RED TEAM"), not the raw team_id
+  expect(/RED(\s+TEAM)?\s+WINS/.test(winner), `RED (214 s) is named the winner, from possession (saw ${JSON.stringify(winner.slice(0, 80))})`);
   expect(!/UNDECIDED/.test(winner), 'a match with a tally is no longer UNDECIDED · HOST DECIDES');
   expect(seen.ws > 0, 'the WebSocket snapshots were patched too, not only REST');
   ok(`the possession bar renders mm:ss per team  ${await shot(pg, '17-possession')}`);
@@ -1140,6 +1153,13 @@ step('mock-demo', async ({ browser, base }) => {
 });
 
 // A session persisted long before this change, with a YELLOW roster, booted into the new UI.
+// F413 (2026-09-27): the fixture had no top-level `"demo": true` -- `restore_snapshot`'s F142 guard
+// (state.py) refuses to restore a snapshot whose OWN demo flag disagrees with the run it is booting
+// into (this suite always starts `--demo`), and silently falls back to the demo's OWN auto-generated
+// roster instead. That roster used to default to blue/yellow too (TDM's old default), so this step
+// passed by COINCIDENCE, never actually exercising a restore at all -- until KOTH/TDM both moved to
+// red+blue and the fallback stopped containing yellow, at which point the control line here failed and
+// this was found. Fixed at the source (the fixture file itself), not here.
 step('old-data-boot', async ({ browser, base, swapMC }) => {
   const tmp = path.join(SHOTS, `session-old-${Date.now()}.json`);
   fs.copyFileSync(path.join(HERE, 'fixtures', 'session-prekoth.json'), tmp);
