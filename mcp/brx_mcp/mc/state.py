@@ -3092,6 +3092,19 @@ class Session:
             self.config_warnings.append(notice)          # round-3 MERGE-4: never a silent re-fit
         if self._policy_notice:
             self.config_warnings.append(self._policy_notice)     # A10: the host sees the overwrite
+        # Low (brx1 review of e8811fea, F415): a hold target at or past the time limit can never fire --
+        # the clock always ends the match first, and `game_brief()`'s own "FIRST TO HOLD ... WINS" copy
+        # would be a promise the config cannot keep. A config error would refuse the pick outright; this
+        # is playable (the clock still ends it, exactly as a mode with no target does), so it is a
+        # warning, not a 400.
+        scoring = self.config.get("scoring") or {}
+        hts, tl = scoring.get("hold_target_s"), self.config.get("time_limit_s")
+        if isinstance(hts, int) and not isinstance(hts, bool) and isinstance(tl, int) and not isinstance(tl, bool) and hts >= tl:
+            def _mmss(s: int) -> str:
+                return f"{s // 60}:{s % 60:02d}"
+            self.config_warnings.append(
+                f"SETUP: THE HOLD TARGET ({_mmss(hts)}) IS AT OR PAST THE TIME LIMIT ({_mmss(tl)}): THE MATCH WILL "
+                "ALWAYS END ON THE CLOCK, NEVER THE TARGET. LOWER THE TARGET OR RAISE THE TIME LIMIT")
         return res
 
     # ---------- utility stations (A13.5 / F104) ----------

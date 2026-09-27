@@ -542,6 +542,28 @@ def test_hold_target_s_is_koth_only_and_bounds_checked():
         assert str(e) == "A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL", e
 
 
+def test_validate_warns_when_the_hold_target_can_never_be_reached_before_the_clock():
+    """Low (brx1 review of e8811fea): a hold target at or past the time limit can never fire -- the
+    clock always ends the match first, so `game_brief()`'s "FIRST TO HOLD ... WINS" promise would be a
+    lie. Still playable (the clock still ends it), so a warning, not a refusal."""
+    s = _sess("koth")
+    s.set_config({"time_limit_s": 300, "scoring": {"hold_target_s": 300}})
+    s._validate()
+    assert any("HOLD TARGET (5:00)" in w and "TIME LIMIT (5:00)" in w for w in s.config_warnings), s.config_warnings
+    # past, not just equal, still warns
+    s.set_config({"scoring": {"hold_target_s": 301}})
+    s._validate()
+    assert any("HOLD TARGET (5:01)" in w for w in s.config_warnings), s.config_warnings
+    # CONTROL: a target comfortably under the clock warns nothing
+    s.set_config({"scoring": {"hold_target_s": 60}})
+    s._validate()
+    assert not any("HOLD TARGET" in w for w in s.config_warnings), s.config_warnings
+    # CONTROL: no target set at all warns nothing either
+    s.set_config({"scoring": {"hold_target_s": None}})
+    s._validate()
+    assert not any("HOLD TARGET" in w for w in s.config_warnings), s.config_warnings
+
+
 def test_koth_wins_at_once_when_a_team_reaches_the_hold_target():
     """F415: the same shape as the frag limit -- a team crossing `hold_target_s` ends the match AT ONCE
     (not at the clock), `end_reason` records which ending fired, and a target nobody reaches still
