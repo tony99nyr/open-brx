@@ -2853,7 +2853,7 @@ class Session:
                     hts = merged.get("hold_target_s")
                     if hts is not None:
                         if mode != "koth":
-                            raise ValueError("A HOLD TARGET ONLY APPLIES TO KING OF THE HILL")
+                            raise ValueError("A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL")
                         if not (isinstance(hts, int) and not isinstance(hts, bool) and 0 < hts <= 7200):
                             raise ValueError("HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET")
                     # `merged["win_by"]` is not guaranteed: a RESTORED snapshot's config can be missing

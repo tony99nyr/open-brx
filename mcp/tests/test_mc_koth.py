@@ -537,7 +537,7 @@ def test_hold_target_s_is_koth_only_and_bounds_checked():
         s.set_config({"scoring": {"hold_target_s": 300}})
         raise AssertionError("F415: hold_target_s was accepted on tdm")
     except ValueError as e:
-        assert str(e) == "A HOLD TARGET ONLY APPLIES TO KING OF THE HILL", e
+        assert str(e) == "A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL", e
 
 
 def test_koth_wins_at_once_when_a_team_reaches_the_hold_target():
