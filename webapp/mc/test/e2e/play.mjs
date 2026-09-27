@@ -240,7 +240,7 @@ step('mode-switch-confirm', async ({ browser, base }) => {
   await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
   await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm');
   const split = await pg.getByTestId('confirm-split').innerText();
-  expect(split === '▲ 8 PLAYERS → BLUE 4 / RED 4', `the predicted split is shown (saw ${JSON.stringify(split)})`);
+  expect(split === '▲ 8 PLAYERS → RED 4 / BLUE 4', `the predicted split is shown (saw ${JSON.stringify(split)})`);
   const mid = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
   expect(mid === 'tdm', 'the first tap must not have reached the server');
   await shot(pg, 'mode-switch-confirm-armed');
