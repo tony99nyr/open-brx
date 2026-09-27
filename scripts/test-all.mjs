@@ -27,6 +27,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { screensBudget, workerCount } from './lib/budget.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -69,9 +70,8 @@ const availableMb = () => {
 };
 const BUDGET_MB = Number(process.env.MEM_BUDGET_MB || Math.min(8000, Math.floor(availableMb() / 2)));
 // Worker counts: a quarter of the cores, and no runner may take more than a quarter of the budget for its workers.
-const workers = (perMb, cap) => Math.max(1, Math.min(cap, Math.floor(CPUS / 4), Math.floor(BUDGET_MB / 4 / perMb)));
-const PY_J = workers(70, 16), VITEST_W = workers(300, 8), SITE_W = workers(300, 8);
-const SCREENS_S = Math.max(1, Math.min(16, Math.floor(CPUS / 2), Math.floor(BUDGET_MB / 3 / 240)));   // the long pole
+const PY_J = workerCount(70, 16, CPUS, BUDGET_MB), VITEST_W = workerCount(300, 8, CPUS, BUDGET_MB), SITE_W = workerCount(300, 8, CPUS, BUDGET_MB);
+const { shards: SCREENS_S, mb: SCREENS_MB, secs: SCREENS_SECS } = screensBudget(CPUS, BUDGET_MB);   // the long pole
 // A job that runs longer than this is killed and fails: a hung test must not hold the run (and an agent) forever.
 const JOB_TIMEOUT_S = Number(process.env.JOB_TIMEOUT_S || 600);
 
@@ -99,7 +99,7 @@ const JOBS = [
   { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], env: { SCREENS_OUT: path.join(LOGS, 'app-test-screens') }, www: true, mb: 550, secs: 18 },
   { name: 'site', cwd: 'site', cmd: ['npx', 'playwright', 'test', `--workers=${SITE_W}`], www: true, mb: 300 + 300 * SITE_W, secs: 30 },
   // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
-  { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: { SCREENS_SHARDS: String(SCREENS_S) }, www: true, ui: true, mb: 100 + 240 * SCREENS_S, secs: 1500 / SCREENS_S },
+  { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: { SCREENS_SHARDS: String(SCREENS_S) }, www: true, ui: true, mb: SCREENS_MB, secs: SCREENS_SECS },
   { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, mb: 300, secs: 11 },
   { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, mb: 500, secs: 60 },
   // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
