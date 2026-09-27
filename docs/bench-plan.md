@@ -56,6 +56,37 @@ are all real code now (`webapp/mc/src/screens/Games.tsx`), not only the brief. C
 app, server and MC UI jobs; only the unrelated "Refresh the site screenshots" job failed. Powerups ship on by
 default now that F372 has landed: pass no `--powerups` flag to MC anywhere below.
 
+### The 3 h cut: today's order (172 min, 8 min slack against 3 h)
+
+Run this order today. It is the highest-value subset of everything below, picked to fit one 3 h sitting with
+slack to spare. Each block points at its procedure further down this file (fixed by the round-2 review below);
+do not copy a procedure here.
+
+1. **Step 0, setup (25 min).** Running total: 25.
+2. **IPHONE block (15 min).** Running total: 40.
+3. **GAMES CHECK: 11.7 + F422, PICK GAME, F402, FAVOURITES, the BUILD TypeChip guard (20 min).** Skip PLAY AGAIN,
+   LAST MATCH and the countdown default today. Running total: 60.
+4. **Group 1, items 1-5: the P0 block, F416 then F417/F381 (50 min).** Running total: 110.
+5. **Group 1, item 6: F348 (10 min).** Running total: 120.
+6. **Group 2: KOTH, plus F420, F421 and F424 (20 min).** Running total: 140.
+7. **Group 4, items 4-5 merged: F399 and F380 on an Overshield Stick, plus F425's silence check (12 min).**
+   Running total: 152.
+8. **Group 3, checks (a), (b) and (d): end the match (5 min).** Skip check (c) today. Running total: 157.
+9. **Group 1, item 7: F394 (5 min).** Running total: 162.
+10. **Group 1, item 8: 4.0, trimmed to the day/night launch only (10 min).** Skip the through-MC match today.
+    Running total: 172.
+
+Stop at 172 min: 8 min of slack against a 3 h sitting.
+
+### Tomorrow list (not run in this sitting)
+
+- GAMES CHECK's PLAY AGAIN and LAST MATCH items (both fixed below: END instead of a kill count for PLAY AGAIN,
+  and MC/Stick re-pointed after a restart for LAST MATCH).
+- 11.6 (Group 1, item 9).
+- The powerup setup: 4.11, 11.2, 3.4 and 3.5 (Group 1, item 10).
+- F386 check (c), the idle-timeout control (Group 3).
+- Groups 4-7, except the F399/F380/F425 block already run today (Group 4's items 4-5).
+
 **Carried from part 1 (re-checks), threaded into the groups below at their matching setup:**
 - The phone hill, KOTH game 1 (Group 2), blocked in part 1 by F420 (now built, `60b9db70`).
 - F374's carry-out A/B/A (Group 4).
@@ -111,8 +142,9 @@ MC in WSL); that is expected, not a fault.
 4. **The grey Pixel gets a true first contact, for 11.7.** `adb install -r` keeps app data and the phone's MC
    trust key, so reinstalling over an old build is not a real "first open". Run `adb shell pm clear
    com.openbrx.companion` on the grey Pixel first (**this wipes its app data**, including its trust key and any
-   saved BLE bond), then reinstall 0.4.14 and re-pair its gun over SET MY GUN. **Do not open the app until GAMES
-   CHECK item 3**, which is 11.7's actual test.
+   saved BLE bond), then reinstall 0.4.14 only. **Do not open the app, and do not pair its gun.** Opening the app
+   is what starts the auto-join and pairing is what SET MY GUN does, both of which are the actual test: the first
+   GAMES CHECK item, below, is 11.7 and F422.
 5. Restart Mission Control from the latest `main`, with no match ARMED or LIVE. Powerups are on by default
    (F372): pass no `--powerups` flag. Pass `--bench-volume` bare (defaults to 65) so match heads and try-outs
    both play at the bench level instead of the venue volume. Countdown default 30 s (`DEFAULT_RUNWAY_S` in
@@ -157,28 +189,37 @@ Running total: 40 min.
 ### GAMES CHECK: the new console (about 25 min; both phones, MC)
 
 F411 (the MC GAMES redesign) is merged (`c2c51679`, CI green on the app/server/MC jobs): PICK GAME, PLAY AGAIN,
-LAST MATCH, BUILD and FAVOURITES (`docs/spec/design/games-presets.md` §6) are real, not only the design doc.
+LAST MATCH, BUILD and FAVOURITES (`docs/spec/design/games-presets.md` §6) are real, not only the design doc. The
+console's second tab now reads PLAY, not GAMES (`Games.tsx`'s own header is `[ 02 // PLAY ]`); PICK GAME is the
+label inside it, unchanged.
 
-1. **PICK GAME in 2-3 taps.** Start a game from the new picker. Pass: 2-3 taps from idle to LOADED, no dead end.
-2. **PLAY AGAIN in 4 taps.** After 15 kills, use PLAY AGAIN. Pass: back to LIVE in 4 taps, same settings.
-3. **KOTH with no hill assigned (F402, closed at the desk: confirm on hardware).** Try to LOAD a KOTH game with
-   no station assigned as the hill. Pass: LOAD is blocked, and the jump to ARMORY fixes it in 1-2 clicks. This
-   is also the grey Pixel's true first open (11.7, Step 0 item 4): pass also means it joins MC and binds within
-   about 3 s, no tap.
-4. **LAST MATCH.** Restart MC, then open the console. Pass: LAST MATCH restores the previous settings.
-5. **The countdown default.** Start a game with no countdown override. Pass: it reads 30 s
+1. **11.7 + F422, the grey Pixel's true first open.** With MC already up, open the app on the grey Pixel for the
+   first time since Step 0's `pm clear` and reinstall. Time the auto-join. Pass: MC sees it join and bind
+   (`preflight.auto_join_ok true`) within about 3 s, no tap, AND the idle/SET MY GUN screen's dot + line reads MC
+   JOINED before the gun is paired (F422: the join line must show first, not silently or only after). Only then
+   pair the gun through SET MY GUN.
+2. **PICK GAME in 2-3 taps.** Start a game from the new picker. Pass: 2-3 taps from idle to LOADED, no dead end.
+3. **PLAY AGAIN in 4 taps.** End the match with END (not a 15-kill finish; a kill count is not a reliable line to
+   force on demand at the bench), then use PLAY AGAIN. Pass: back to LIVE in 4 taps, same settings.
+4. **KOTH with no hill assigned (F402, closed at the desk: confirm on hardware).** Try to LOAD a KOTH game with
+   no station assigned as the hill. Pass: LOAD is blocked, and the jump to ARMORY fixes it in 1-2 clicks.
+5. **LAST MATCH.** End the current match with END first (never restart MC while a match is ARMED or LIVE), restart
+   MC with `--bench-volume` again (a restart forgets the flag) and re-point the Stick at the new MC
+   (`stick.py cmd 10 "MC ws://<laptop>:8766/ws"`, F397), then open the console. Pass: LAST MATCH restores the
+   previous settings.
+6. **The countdown default.** Start a game with no countdown override. Pass: it reads 30 s
    (`DEFAULT_RUNWAY_S = 30`, confirmed on `main`).
-6. **FAVOURITES round-trips (`games-presets.md` §6).** Save a favourite from a chosen set of picks, load a
+7. **FAVOURITES round-trips (`games-presets.md` §6).** Save a favourite from a chosen set of picks, load a
    different preset over it, then load the favourite back. Pass: every pick it saved (mode, life, spawn, loadout
    pieces) comes back exactly as saved.
-7. **A BUILD weapon type toggle never surfaces a hidden weapon.** In BUILD's PRIMARY or SECONDARY editor, turn on
+8. **A BUILD weapon type toggle never surfaces a hidden weapon.** In BUILD's PRIMARY or SECONDARY editor, turn on
    a type toggle (`TypeChip`, e.g. "RIFLES"). Pass: the ids it selects are only from the server's visible weapon
    catalogue (`pieces.py`: "no preset may ever select a hidden weapon"); no cut-arsenal weapon appears under any
    type, on or partial.
 - **Log:** a pass/fail per step and tap counts, in the experiment log.
 
-STOP POINT 2: the new console's core flow, F402's fix, 11.7's auto-join, FAVOURITES and the BUILD type-toggle
-guard are all proven. Everything below (powerups, Shields, KOTH, the Stick) is next.
+STOP POINT 2: the new console's core flow, F402's fix, 11.7's auto-join, F422's join line, FAVOURITES and the
+BUILD type-toggle guard are all proven. Everything below (powerups, Shields, KOTH, the Stick) is next.
 
 Running total: 65 min.
 
@@ -192,34 +233,41 @@ against its own FOLLOWUPS pass rule, not just carried as a note.
 
 1. **F416 (🔴), the A/B/A on phone-to-gun distance (15 min).** The one false start in part 1 had both guns
    carried away from their own phones; the clean starts had each phone with its gun. Go live three times: phones
-   about 10 m from their own guns, then beside them, then apart. Pass: no false "down" at go-live in the beside
-   or apart runs (the row's fix re-sends a lost spawn write and checks it with a `$LIFE,0,0,0` read).
+   about 10 m from their own guns, then beside them, then apart. Pass, for EACH of the three runs: the phone log
+   shows a `write err` at go-live (`brxlink.js`'s own write failure), then the check's own line (`F416: ... the
+   gun reads a 0 pool ... re-sending (n/2)` or `F416: ... landed`), then the gun's pools read up, with no false
+   "down". A run with no `write err` proves nothing about the fix and reads INCONCLUSIVE, not a pass.
 2. **F416, go-live with the Stick hill scanning (5 min).** Repeat one go-live with the Stick armed as a hill and
    actively scanning (the suspected radio-quiet trigger). Pass: no false down; the station scan should now yield
    the radio for 1.5 s around the spawn write (`radioQuiet`).
-3. **F416, three `$LIFE,0,0,0` reads, then a power cycle (10 min).** On the laptop MCP, arm from
-   `compile.resolve()` (never a capture). Read `$LIFE,0,0,0` on: an unspawned gun (confirm it answers
-   `$HP,0,0,0`, as the fix assumes), a gun mid-poison, and a gun under a shield (confirm the read moves no pool
-   in either case). Power-cycle the gun at the end, per the bench-session skill's safety rule. Log each read.
+3. **F416, three `$LIFE,0,0,0` reads, then a power cycle (10 min).** Force-stop the phone app that holds this
+   gun first: a gun takes one BLE central at a time, so the laptop MCP cannot connect while a phone still holds
+   the link. On the laptop MCP, arm from `compile.resolve()` (never a capture), using the Toxin Rifle
+   (`toxin_rifle`, `mcp/brx_mcp/mc/weapons.json`, the one weapon with a poison dot) for the mid-poison read. Read
+   `$LIFE,0,0,0` on: an unspawned gun (confirm it answers `$HP,0,0,0`, as the fix assumes), a gun mid-poison from
+   the Toxin Rifle, and a gun under a shield (confirm the read moves no pool in either case). Power-cycle the gun
+   at the end, per the bench-session skill's safety rule. Log each read.
 4. **F418 (🔴), a held pickup survives backgrounding (5 min).** Hold Rockets, background the app for Android
-   Settings, come back. Pass: the Rockets stay, with their charges (reproduced on `main` in part 1 before the
-   fix).
+   Settings for at least 30 s, come back. Pass: the Rockets stay, with their charges (reproduced on `main` in
+   part 1 before the fix).
 5. **F417 part 2 (🔴), the Stick's double-grant race, then F381 (15 min).** Two phones walk into one Stick
-   Rockets station together, Stick serial logging on and both phones' logs on (ROBP1 needs WebView debugging on,
-   or its log pulled through MC before any app restart). Read every Stick serial `CLAIM station=… taker=…` line
-   and every phone `powerup: station N advert state S taker T value V seq Q (… dBm, … ms old)` line. Pass:
-   exactly one phone grants, and its grant follows a Stick advert naming its own player number. Fail: a phone
-   grants with no advert naming it. Then re-run F381: take Rockets twice more. Pass: 3 held, a third take caps
-   at 4 (`PU_STACK_CAP_X = 2`, `app/src/engine.js`). If an `$AMMO` write is lost along the way, log it as
-   "counts re-sent" (the F417/F418 repair re-sends a lost count at most twice) rather than a fresh fail.
+   Rockets station together, at least three times, Stick serial logging on and both phones' logs on (ROBP1 needs
+   WebView debugging on, or its log pulled through MC before any app restart). Read every Stick serial `CLAIM
+   station=… taker=…` line and every phone `powerup: station N advert state S taker T value V seq Q (… dBm, … ms
+   old)` line. Pass: exactly one phone grants on EVERY one of the three (or more) walk-ins, and each grant follows
+   a Stick advert naming its own player number. Fail: any walk-in where a phone grants with no advert naming it.
+   Then re-run F381 on the phone just granted Rockets (2 held): fire one rocket (2 held, now 1), re-take Rockets
+   and expect 3, then take again with no firing and expect the cap at 4 (`PU_STACK_CAP_X = 2`,
+   `app/src/engine.js`). If an `$AMMO` write is lost along the way, log it as "counts re-sent" (the F417/F418
+   repair re-sends a lost count at most twice) rather than a fresh fail.
 
 STOP POINT 3a: the three P0 rows from part 1 (F416, F417, F418) are proven or reopened. Powerups next.
 
 Running total: 115 min.
 
 6. **F348 (🔴), a Shields spawn starts at full shield (10 min).** Arm a Shields-preset match (45/0/105).
-   Control: a Standard-preset spawn shows no shield line. Read the gun's own `$HP,<hp>,0,105` read-back (the
-   laptop, or the phone log's rx frames) at spawn, not just the HUD meter. Pass: every spawn and revive's log
+   Control: a Standard-preset spawn shows no shield line. Read the gun's own `$HP,<hp>,0,105` read-back from the
+   Pixel's rx log only (the laptop cannot read a gun while a phone holds it) at spawn, not just the HUD meter. Pass: every spawn and revive's log
    ends `+ shield pool 105`, the read-back agrees, and one hit drains the shield before any HP moves. Log:
    `bench-2026-09-24.md` 4.18.
 7. **F394, ammo pips match the number after ALT and after a reload (5 min).** ALT-switch twice, then reload
@@ -254,22 +302,30 @@ after it.
 
 Running total: 235 min.
 
-### Group 2: KOTH, phone hill then Stick hill (about 15 min; same hardware, no change)
+### Group 2: KOTH, phone hill then Stick hill (about 20 min; same hardware, no change)
 
 1. **Game 1, phone hill (5 min).** MC: mode koth, station_source phone. Control: the point sits NEUTRAL with no
    tick before anyone approaches. Pass: the capture sound and HUD event fire; the tick runs every 3 s held, 1.5 s
    losing, silent while CONTESTED; the score pauses while CONTESTED; MC's recap names a winner. This is the
-   phone-hill half F420 blocked in part 1; F420 is built (`60b9db70`), so it should run clean now.
+   phone-hill half F420 blocked in part 1; F420 is built (`60b9db70`), so it should run clean now. **F420**: once
+   the hill phone is MC-armed, exit it through the ⓘ icon at the top edge (now clear of the status bar). Pass: it
+   is tappable and opens the exit drawer, no dead end. **F421**: release the black Pixel from utility
+   (`release_utility`). Pass: it rejoins MC as a HUD node within a few seconds, with no typed ws address needed.
 2. **Game 2, Stick hill (10 min).** Same config, the Stick as the station. Pass: as game 1, plus F386's MATCH
    OVER freeze (the Stick freezes on the final owner and shows MATCH OVER, unlocked) and F353 (log the phone's
    Stick-advert arrivals during the hold; Pixel-side). F384 (recapture announced) and F385 (HUD card clears) are
    already CONFIRMED and closed in part 1; do not re-run them.
-- **Log:** the times to CAPTURING, HELD, CONTESTED and neutral; both phones' read of the point.
+- **F416's scan-quiet question.** Across both games, watch whether the hill ever misses a capture or a tick
+  inside the station-scan quiet window MC now opens around each spawn (about 9 s, F416 part 2).
+- **F424.** In either game, tap the clock to open the KOTH score panel. Ask Tony to judge the HOLD TIME board's
+  readability (mm:ss, this phone's own possession tally) at a glance.
+- **Log:** the times to CAPTURING, HELD, CONTESTED and neutral; both phones' read of the point; the F416
+  scan-quiet watch; Tony's F424 readability verdict.
 
 STOP POINT 4: this closes the P0-then-powerups-then-KOTH core of the sitting, about 3 h of bench time once
 setup is done. Everything after this is worth less per minute.
 
-Running total: 250 min.
+Running total: 255 min.
 
 ### Group 3: F386's powerup-station MATCH OVER checks (about 15 min; no guns, no match)
 
@@ -288,9 +344,9 @@ F387 and F333 are already CONFIRMED and closed (part 1); do not re-run them. F38
 
 STOP POINT 5.
 
-Running total: 265 min.
+Running total: 270 min.
 
-### Group 4: two phones, two guns, the rest of sitting C (about 75 min; same hardware, no change)
+### Group 4: two phones, two guns, the rest of sitting C (about 67 min; same hardware, no change)
 
 Kit: as Group 1.
 
@@ -308,20 +364,22 @@ Kit: as Group 1.
    two-gun kill that earns first blood, or a double kill), so two cues queue on the phone's own token-4 path, not
    a synthetic laptop-MCP frame. Pass: both cues play in full, in order. Group 7's `$PLAY` spacing check (one
    gun, laptop MCP, `gap_ms=300`) is the control for this row, not the reproduction; keep both results.
-4. **F380, five reps of the same claim (10 min).** Stand at the Stick until the claim is ready, five times.
-   Pass: CONFIRMING shows every time, then the grant lands, with no NOT ANSWERING before 15 s
-   (`POWERUP_NO_ANSWER_MS`). Fail: NOT ANSWERING before 15 s after claim ready, on any of the five. Log: the
-   phone line `powerup: claim ready at station <id>` (Pixel-side), the grant as MC's feed row `<GUN> TOOK <ITEM>
-   · STATION #<id>` (`python -m brx_mcp.mc.diag <session.sqlite>`), and the taker advert's time from the Stick
-   serial.
-5. **F399, the Stick claim-latency re-run, timed off the serial and the phone log (10 min).** Nine claims at the
-   Stick station. Time each one from the phone's own `powerup: claim ready` line to its grant write, cross-checked
-   against the Stick serial's own timestamps (both to the millisecond), **not** MC's session log, which only
-   resolves to 1 s. Pass: over the nine claims, the median is 2 s or less and the maximum 3 s or less.
-6. **F374, the HELD Stick carried out of Wi-Fi before START (10 min).** Arm the Stick as a pickup, carry it out
+4. **F399 and F380 merged, the Stick claim-latency re-run on an Overshield Stick (12 min).** Heavies respawn every
+   120 s (`HEAVY_SPAWN_EVERY_S`, `mcp/brx_mcp/mc/powerups.py`), too slow for nine claims in this slot; assign the
+   Stick an Overshield item instead (`OVERSHIELD_SPAWN_EVERY_S = 60`, same file), which fits nine claims in the
+   time. Stand at the Stick until the claim is ready, nine times. Time each claim on the Pixel's own log only,
+   from `powerup: claim ready at station <id>` to its grant write; use the Stick serial only for its own
+   CLAIM-to-advert interval, not for the claim timing itself; read MC's session log
+   (`python -m brx_mcp.mc.diag <session.sqlite>`) only for the grant row `<GUN> TOOK OVERSHIELD · STATION #<id>`.
+   The Pixel makes all nine claims. **F380** (folded into the same nine): CONFIRMING shows every time, then the
+   grant lands, with no NOT ANSWERING before 15 s (`POWERUP_NO_ANSWER_MS`); fail on any claim that reads NOT
+   ANSWERING before then. **F399**: over the nine claims, the median is 2 s or less and the maximum 3 s or less.
+   **F425's silence check**: after one claim, have the other player approach the same station while it reads
+   TAKEN; pass means the HUD stays silent (no TAKEN hint, no countdown) for the player who did not take it.
+5. **F374, the HELD Stick carried out of Wi-Fi before START (10 min).** Arm the Stick as a pickup, carry it out
    of Wi-Fi, then push START. Control: part 1 (LOBBY/countdown) already CONFIRMED. Pass: the Stick reads READY
    within a second of `first_at_s`, and no phone claims before it.
-7. **11.8, death first (F158, F3, F21, F375 step 6; 15 min).** The scream and the death stop are never cut; a
+6. **11.8, death first (F158, F3, F21, F375 step 6; 15 min).** The scream and the death stop are never cut; a
    kill confirm, a medal or a hill line queues after it. Step 6 (F375, fixed in code, bench pending): take a
    player under 15 HP, then kill within about 1 s, three times normal and three times with a Shields life
    broken first. Pass: "Health critical" never plays after the scream.
@@ -330,7 +388,7 @@ Kit: as Group 1.
 STOP POINT 6: sitting C's higher-value checks are all done. The Shields fight, the kill-cue retest and the
 voice audition are the lowest value per minute of the two-phone work and are next.
 
-Running total: 340 min.
+Running total: 337 min.
 
 ### Group 5: the Shields fight, the kill-cue retest and the voice audition (about 30 min; same hardware, no change)
 
@@ -348,7 +406,7 @@ Running total: 340 min.
 
 STOP POINT 7.
 
-Running total: 370 min.
+Running total: 367 min.
 
 ### Group 6: a field walk (about 15 min; the Stick and one phone)
 
@@ -358,7 +416,7 @@ Running total: 370 min.
 
 STOP POINT 8.
 
-Running total: 385 min.
+Running total: 382 min.
 
 ### Group 7: one gun, no phone (about 15 min; lowest priority)
 
@@ -371,7 +429,7 @@ Running total: 385 min.
    muzzle-flash and loudness difference, or none, is agreed on both readings, not just the first.
 - **Log:** what Tony saw and heard, per pass.
 
-**Total across every group: about 400 min (6 h 40 min). The practical 3 h core is the P0 block, the powerup
+**Total across every group: about 397 min (6 h 37 min). The practical 3 h core is the P0 block, the powerup
 setup and KOTH (Groups 1 and 2): STOP POINT 4, above.**
 
 Rules for every sitting: the preflight in [`gotchas.md`](gotchas.md) ("Before a bench session", which holds the rig

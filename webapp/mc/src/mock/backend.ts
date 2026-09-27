@@ -13,6 +13,7 @@ import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from 
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 import { storedTag, tagError } from '../api/tag';
+import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -252,7 +253,7 @@ export class MockBackend implements Api {
     st.armed = { game: this.gameNo, at: now(), kind: st.assigned.kind, team: st.assigned.team, id: st.assigned.id };
     st.arm_pending = false;
     // the demo phone applies it, as utility.js does: it now reports what it was told
-    st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold || -70, armed: true, live: true };
+    st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold || bubbleDefault(st.assigned.kind, node_id.startsWith('stick-')).start, armed: true, live: true };
   }
   /** F364, as state.py `_auto_station_id`: a station keeps its id, then the one it was handed, else the lowest free. */
   private stationIdOf: Record<string, number> = {};

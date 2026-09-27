@@ -27,12 +27,20 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { screensBudget, workerCount } from './lib/budget.mjs';
+import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
+import { selectJobs } from './lib/changed.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 const UI = argv.includes('--ui');
 const LIST = argv.includes('--list');
-const filters = argv.filter(a => !a.startsWith('--'));
+// --changed [base]: base defaults to the merge-base with origin/main (below) and, if given, must not itself
+// look like a flag (so `--changed --list` still means "default base").
+const changedIdx = argv.indexOf('--changed');
+const CHANGED = changedIdx >= 0;
+const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedIdx + 1].startsWith('--') ? argv[changedIdx + 1] : null;
+let filters = argv.filter((a, i) => !a.startsWith('--') && !(CHANGED && changedBaseArg !== null && i === changedIdx + 1));
 const LOGS = path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
 fs.mkdirSync(LOGS, { recursive: true });
 
@@ -67,11 +75,6 @@ const availableMb = () => {
   try { return Number(/MemAvailable:\s+(\d+)/.exec(fs.readFileSync('/proc/meminfo', 'utf8'))[1]) / 1024; }
   catch { return os.totalmem() / 1048576 / 2; }   // macOS counts cache as used, so os.freemem() is far too low
 };
-const BUDGET_MB = Number(process.env.MEM_BUDGET_MB || Math.min(8000, Math.floor(availableMb() / 2)));
-// Worker counts: a quarter of the cores, and no runner may take more than a quarter of the budget for its workers.
-const workers = (perMb, cap) => Math.max(1, Math.min(cap, Math.floor(CPUS / 4), Math.floor(BUDGET_MB / 4 / perMb)));
-const PY_J = workers(70, 16), VITEST_W = workers(300, 8), SITE_W = workers(300, 8);
-const SCREENS_S = Math.max(1, Math.min(16, Math.floor(CPUS / 2), Math.floor(BUDGET_MB / 3 / 240)));   // the long pole
 // A job that runs longer than this is killed and fails: a hung test must not hold the run (and an agent) forever.
 const JOB_TIMEOUT_S = Number(process.env.JOB_TIMEOUT_S || 600);
 
@@ -86,33 +89,65 @@ const e2e = (script, secs, mb = 700) => ({
   name: `mc-${script}`, cwd: 'webapp/mc', cmd: ['node', `test/e2e/${script}.mjs`], ui: true, mb, secs,
   env: async () => ({ MC_PORT: String(await freePort()), MC_WS_PORT: String(await freePort()), VITE_PORT: String(await freePort()) }),
 });
-const JOBS = [
-  { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(PY_J), '--exclude', 'chaos'], mb: 150 + 70 * PY_J, secs: 20 },
-  // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
-  // stack with a field of MockNodes. Its own job so a red chaos run reads as one, not as "mcp".
-  { name: 'chaos', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(PY_J), 'chaos'], mb: 150 + 90 * PY_J, secs: 8 },
-  { name: 'mc-tsc', cwd: 'webapp/mc', cmd: ['npx', 'tsc', '-b'], mb: 450, secs: 10 },
-  { name: 'mc-vitest', cwd: 'webapp/mc', cmd: ['npx', 'vitest', 'run', `--maxWorkers=${VITEST_W}`], mb: 300 + 300 * VITEST_W, secs: 15 },
-  { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 3 },
-  // The root already built shared app/www. The prebuilt form avoids rewriting it under parallel readers, and a
-  // private shots dir keeps this focused A38 browser pass isolated from the full app-screens job.
-  { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], env: { SCREENS_OUT: path.join(LOGS, 'app-test-screens') }, www: true, mb: 550, secs: 18 },
-  { name: 'site', cwd: 'site', cmd: ['npx', 'playwright', 'test', `--workers=${SITE_W}`], www: true, mb: 300 + 300 * SITE_W, secs: 30 },
-  // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
-  { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: { SCREENS_SHARDS: String(SCREENS_S) }, www: true, ui: true, mb: 100 + 240 * SCREENS_S, secs: 1500 / SCREENS_S },
-  { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, mb: 300, secs: 11 },
-  { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, mb: 500, secs: 60 },
-  // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
-  { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, mb: 1000, secs: 65 },
-  ...[['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87], ['m2-ui', 46], ['game-edit', 32], ['operator-menu', 18], ['report', 15],
-      // MC visual QA 2026-09-23: measured as 1.0-1.1 GB RSS summed over the process tree (shared pages counted
-      // twice), so 900 MB sits between that and the older jobs' measured 700 MB PSS.
-      ['frame', 7, 900], ['lobby-updating', 3, 900], ['recap-next', 20, 900],
-      ['feed-reload', 9, 900], ['mc-restart', 13, 900], ['live-board', 19, 900],
-      // MC visual QA round 2 (2026-09-24): a real MC with station and phone stand-ins; 27 s measured
-      ['vqa2', 27, 900], ['play', 35, 950], ['build', 8, 900],
-      ['lobby-outcome', 7, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
-].filter(j => (UI || !j.ui) && (!filters.length || filters.some(f => j.name.includes(f))));
+// Builds JOBS from a FRESH read of available memory. Called once up front (for --list and the filter-match
+// check, before any lock wait) and again right after this run takes the machine-wide lock: a run that queued
+// behind another one must not schedule itself using the memory snapshot from while it was still waiting, or
+// it under-shards for no reason once the machine is actually free again.
+function buildJobs() {
+  const budgetMb = Number(process.env.MEM_BUDGET_MB || Math.min(8000, Math.floor(availableMb() / 2)));
+  // Worker counts: a quarter of the cores, and no runner may take more than a quarter of the budget for its workers.
+  const pyJ = workerCount(70, 16, CPUS, budgetMb), vitestW = workerCount(300, 8, CPUS, budgetMb), siteW = workerCount(300, 8, CPUS, budgetMb);
+  const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb);   // the long pole
+  const jobs = [
+    { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 20 },
+    // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
+    // stack with a field of MockNodes. Its own job so a red chaos run reads as one, not as "mcp".
+    { name: 'chaos', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), 'chaos'], mb: 150 + 90 * pyJ, secs: 8 },
+    { name: 'mc-tsc', cwd: 'webapp/mc', cmd: ['npx', 'tsc', '-b'], mb: 450, secs: 10 },
+    { name: 'mc-vitest', cwd: 'webapp/mc', cmd: ['npx', 'vitest', 'run', `--maxWorkers=${vitestW}`], mb: 300 + 300 * vitestW, secs: 15 },
+    { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 3 },
+    // The root already built shared app/www. The prebuilt form avoids rewriting it under parallel readers, and a
+    // private shots dir keeps this focused A38 browser pass isolated from the full app-screens job.
+    { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], env: { SCREENS_OUT: path.join(LOGS, 'app-test-screens') }, www: true, mb: 550, secs: 18 },
+    { name: 'site', cwd: 'site', cmd: ['npx', 'playwright', 'test', `--workers=${siteW}`], www: true, mb: 300 + 300 * siteW, secs: 30 },
+    // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
+    { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: { SCREENS_SHARDS: String(screensS) }, www: true, ui: true, mb: screensMb, secs: screensSecs },
+    { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, mb: 300, secs: 11 },
+    { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, mb: 500, secs: 60 },
+    // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
+    { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, mb: 1000, secs: 65 },
+    ...[['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87], ['m2-ui', 46], ['game-edit', 32], ['operator-menu', 18], ['report', 15],
+        // MC visual QA 2026-09-23: measured as 1.0-1.1 GB RSS summed over the process tree (shared pages counted
+        // twice), so 900 MB sits between that and the older jobs' measured 700 MB PSS.
+        ['frame', 7, 900], ['lobby-updating', 3, 900], ['recap-next', 20, 900],
+        ['feed-reload', 9, 900], ['mc-restart', 13, 900], ['live-board', 19, 900],
+        // MC visual QA round 2 (2026-09-24): a real MC with station and phone stand-ins; 27 s measured
+        ['vqa2', 27, 900], ['play', 35, 950], ['build', 8, 900],
+        ['lobby-outcome', 7, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
+  ].filter(j => (UI || !j.ui) && (!filters.length || filters.some(f => j.name.includes(f))));
+  return { budgetMb, jobs };
+}
+
+// `--changed [base]`: map the paths that differ from `base` to a job-name filter, the same mechanism as
+// `test:all -- mcp app` above -- fail safe (CLAUDE.md's re-gate rule): an unmapped path, or a path that trips
+// scripts/lib/changed.mjs's full-suite triggers, runs everything, never a narrower guess.
+if (CHANGED) {
+  let base = changedBaseArg;
+  if (!base) {
+    try { base = execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { cwd: ROOT, encoding: 'utf8' }).trim(); }
+    catch (e) { console.error(`test-all: --changed found no base (no origin/main merge-base: ${e.message}); pass one explicitly`); process.exit(2); }
+  }
+  let paths;
+  try { paths = execFileSync('git', ['diff', '--name-only', base], { cwd: ROOT, encoding: 'utf8' }).split('\n').map(s => s.trim()).filter(Boolean); }
+  catch (e) { console.error(`test-all: --changed could not diff against ${base}: ${e.message}`); process.exit(2); }
+  const { filters: selected, reasons } = selectJobs(paths);
+  console.log(`test-all: --changed vs ${base}: ${paths.length} path(s) changed`);
+  for (const r of reasons) console.log(`  ${r}`);
+  console.log(selected === null ? 'test-all: --changed selected: everything' : `test-all: --changed selected jobs matching: ${selected.join(', ')}`);
+  if (selected !== null) filters = filters.concat(selected);
+}
+
+let { budgetMb: BUDGET_MB, jobs: JOBS } = buildJobs();
 
 if (LIST) { for (const j of JOBS) console.log(j.name); process.exit(0); }
 if (!JOBS.length) { console.error(`no job matches ${filters.join(' ')} (try --list, and --ui for the browser gates)`); process.exit(2); }
@@ -166,16 +201,19 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
   });
 }
 
-// One run per checkout. A second run in the SAME checkout would rebuild app/www and webapp/mc/dist while the first
-// run's jobs read them, so a second run waits. Each run adds its own entry to the .test-all.lock directory, named
-// <start ms>-<pid>-<random>, and touches it every 5 s. The run whose entry sorts first among the LIVE entries holds the
-// checkout. No run ever renames or deletes another run's live entry, so two runs cannot both take it over.
-//   - Live: this waiter saw the entry's mtime change within the last 60 s of its OWN monotonic clock. A suspended laptop
-//     pauses that clock too, so a wake does not make a holder look dead. A pid is not used: pids are reused.
-//   - An entry dead by that rule (a run killed with SIGKILL, a restart) is deleted; its name can never be reused.
-//   - Two runs that start together: each waits until it has been first for 1 s, twice in a row, so an entry that was
-//     named earlier but written later is seen before anyone starts.
-const LOCK = path.join(ROOT, '.test-all.lock');
+// One run per MACHINE, per user (2026-09-27: was one run per checkout, so two worktrees on the same box ran
+// at once and starved each other's memory/CPU budget until jobs blew their kill timeout under the load). Each
+// run adds its own entry to a lock directory under $XDG_RUNTIME_DIR (else the OS temp dir), named
+// <start ms>-<pid>-<random>, and touches it every 5 s. The run whose entry sorts first among the LIVE entries
+// holds the machine. No run ever renames or deletes another run's live entry, so two runs cannot both take it over.
+//   - Live: the holder's pid still exists (checked directly: a crashed or SIGKILLed run is reclaimed at once,
+//     not after a timeout), AND, for one that is alive but wedged, its mtime changed within the last 60 s of
+//     THIS waiter's own monotonic clock. A suspended laptop pauses that clock too, so a wake does not make a
+//     live holder look dead.
+//   - An entry dead by either rule is deleted; its name can never be reused.
+//   - Two runs that start together: each waits until it has been first for 1 s, twice in a row, so an entry that
+//     was named earlier but written later is seen before anyone starts.
+const LOCK = path.join(process.env.XDG_RUNTIME_DIR || os.tmpdir(), lockDirName(os.userInfo().username));
 fs.mkdirSync(LOCK, { recursive: true });
 const MINE = `${String(Date.now()).padStart(15, '0')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 const mineAt = path.join(LOCK, MINE);
@@ -195,19 +233,24 @@ const firstLive = () => {
     try { mtime = fs.statSync(path.join(LOCK, name)).mtimeMs; } catch { seen.delete(name); continue; }
     const s = seen.get(name);
     if (!s || s.mtime !== mtime) seen.set(name, { mtime, changedAt: now });
-    if (now - seen.get(name).changedAt > 60_000) { fs.rmSync(path.join(LOCK, name), { force: true }); continue; }
+    if (isStale(name, seen.get(name).changedAt, now)) { fs.rmSync(path.join(LOCK, name), { force: true }); seen.delete(name); continue; }
     live.push(name);
   }
-  return live[0];
+  return live;
 };
-for (let firstInARow = 0, told = false; firstInARow < 2;) {
-  if (firstLive() === MINE) firstInARow++;
+for (let firstInARow = 0, toldPid = null; firstInARow < 2;) {
+  const live = firstLive();
+  if (live[0] === MINE) firstInARow++;
   else {
     firstInARow = 0;
-    if (!told) { console.log('test-all: another run is using this checkout; waiting for it to finish'); told = true; }
+    const pid = entryPid(live[0]);
+    if (pid !== toldPid) { console.log(`test-all: waiting on pid ${pid} (another run, anywhere on this machine) to finish`); toldPid = pid; }
   }
   if (firstInARow < 2) await new Promise(r => setTimeout(r, 1000));
 }
+// This run just acquired the machine: a queued run's earlier budget snapshot may be stale (computed while the
+// box was still busy), so rebuild JOBS from a fresh read of available memory before scheduling anything.
+({ budgetMb: BUDGET_MB, jobs: JOBS } = buildJobs());
 
 const t0 = Date.now();
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);

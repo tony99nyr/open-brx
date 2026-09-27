@@ -31,7 +31,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
+from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_CONTROL_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, ADOPT_SLACK_MS, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
                     STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, TX_POWERS, Event,
@@ -3596,7 +3596,8 @@ class Session:
         """F345: the `station_config.threshold` one station is sent. 0 means "your own platform default", but a phone
         app older than PHONE_THRESHOLD_ZERO_APP clamps 0 to -30 dBm (a few cm: no revive is possible). Such a phone,
         or one whose version MC cannot parse, gets the explicit value instead: the new phone respawn default for a
-        respawn station, the old -74 for any other kind. A StickS3 (platform `esp32`) has always read 0 correctly."""
+        respawn station, F383's -75 for a control (hill) station, the old -74 for any other kind. A StickS3
+        (platform `esp32`) has always read 0 correctly."""
         thr = a["threshold"]
         if thr != 0 or st.get("platform") == "esp32" or nid.startswith("stick-"):
             return thr
@@ -3605,7 +3606,11 @@ class Session:
             return 0
         if a["kind"] == "respawn":
             return PHONE_RESPAWN_THRESHOLD_DBM
-        return PHONE_POWERUP_THRESHOLD_DBM if a["kind"] == "powerup" else PHONE_STATION_THRESHOLD_DBM
+        if a["kind"] == "powerup":
+            return PHONE_POWERUP_THRESHOLD_DBM
+        if a["kind"] == "control":
+            return PHONE_CONTROL_THRESHOLD_DBM
+        return PHONE_STATION_THRESHOLD_DBM
 
     def _range_fields(self, prev: StationAssignment | None, thr: int, a: dict) -> dict:
         """A67 (F365): the range bookkeeping for an operator's assignment. A value that CHANGED (or a new

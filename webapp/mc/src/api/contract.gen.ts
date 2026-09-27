@@ -109,6 +109,10 @@ export const PHONE_RESPAWN_THRESHOLD_DBM = -70;
 export const PHONE_STATION_THRESHOLD_DBM = -74;
 /** S58: a powerup station's ~1 ft claim range (placeholder until bench 4.11) */
 export const PHONE_POWERUP_THRESHOLD_DBM = -55;
+/** F383: the hill's own default, -75 dBm with 6 dB hysteresis on every path, until the outdoor walk measures a real
+ *  one (Tony, 2026-09-27). app/src/beacon.js CONTROL_RSSI_DBM.phone; the Stick's copy is
+ *  hardware/m5sticks3/station_range.h STICK_HILL_DEFAULT_THRESHOLD_DBM. */
+export const PHONE_CONTROL_THRESHOLD_DBM = -75;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
 /** A67: an edit age at or above this is "the station restarted since, the time is lost". A Stick has no clock
