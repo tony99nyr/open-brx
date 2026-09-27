@@ -682,7 +682,7 @@ def test_round3_field1_a_mode_pick_reteams_by_index_and_rebalances():
     assert tids() == ["blue", "blue", "yellow", "yellow"], tids()
 
 
-def test_high_a_team_count_or_colour_change_on_the_same_mode_rebalances_evenly():
+def test_high_a_team_count_change_on_the_same_mode_rebalances_evenly():
     """HIGH (brx1 review of e8811fea, Tony's decision): growing (or otherwise changing) the DECLARED
     team set on the SAME mode -- an explicit `{"teams": [...]}` PUT, not a mode switch -- used to give
     a 2-team 4/4 roster a 4/4/0 on a third team, because every existing player's team_id was ALREADY
@@ -729,6 +729,25 @@ def test_high_a_team_count_or_colour_change_on_the_same_mode_rebalances_evenly()
         counts2[t] = counts2.get(t, 0) + 1
     assert sorted(counts2.values()) == [2, 2, 2, 2], counts2
     assert s2.readiness()["roster_faults"] == []
+
+
+def test_a_colour_only_change_recolours_by_index_and_moves_nobody():
+    """Tony 2026-09-27 ("Your rec is fine"): the even re-split fires only when the team COUNT changes. A
+    same-count colour change recolours by index and moves nobody, so a deliberate 1-v-3 stays 1-v-3. Both
+    shapes: a colour that stays legal (red/blue -> red/purple) and one where leaving the still-legal colour
+    put would merge the two sides (red/blue -> blue/purple: the old red player must become blue, the old
+    blue players purple)."""
+    for new_pair, want in ((("red", "purple"), ["red", "purple", "purple", "purple"]),
+                           (("blue", "purple"), ["blue", "purple", "purple", "purple"])):
+        s, net, clock, ps = mk(4)
+        for i, p in enumerate(ps):
+            online(s, net, clock, p, i)
+        s.set_config({"teams": [TEAM_DEFS["red"], TEAM_DEFS["blue"]]})
+        for p, t in zip(ps, ("red", "blue", "blue", "blue")):
+            s.players[p["player_id"]]["team_id"] = t
+        s.set_config({"teams": [TEAM_DEFS[new_pair[0]], TEAM_DEFS[new_pair[1]]]})
+        got = [s.players[p["player_id"]]["team_id"] for p in ps]
+        assert got == want, (new_pair, got)
 
 
 def test_round3_merge2_an_unbound_recompile_drops_the_stale_ack():

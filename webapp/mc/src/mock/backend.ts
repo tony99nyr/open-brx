@@ -558,23 +558,25 @@ export class MockBackend implements Api {
     const ids = this.config.teams.map(t => t.team_id);
     const legal = new Set(ids);
     const byOldIndex = new Map(prevTeams.map((t, i) => [t.team_id, i]));
+    const prevIds = new Set(prevTeams.map(t => t.team_id));
+    const setChanged = prevIds.size !== legal.size || [...prevIds].some(id => !legal.has(id));
+    const countChanged = prevTeams.length !== ids.length;
+    // Tony 2026-09-27 (server state.py _reteam_for_config): a same-count colour change RECOLOURS by index
+    // and moves nobody, so a deliberate 1-v-3 stays 1-v-3. Every player on the old teams[i] takes the new
+    // teams[i], even one whose old colour is still legal (leaving them put would merge two sides).
+    const recolour = setChanged && !countChanged;
     const unplaced: typeof this.players = [];
     for (const p of [...this.players].sort((a, b) => a.player_num - b.player_num)) {
-      if (legal.has(p.team_id ?? '')) continue;
       const i = byOldIndex.get(p.team_id ?? '');
+      if (recolour && i !== undefined) { p.team_id = ids[i]; continue; }
+      if (legal.has(p.team_id ?? '')) continue;
       if (i !== undefined && i < ids.length) p.team_id = ids[i];
       else unplaced.push(p);
     }
     for (const p of unplaced) p.team_id = this.leastCountTeam();
-    // HIGH (brx1 review of e8811fea; server d6643ecf): rebalance whenever the DECLARED team SET
-    // changed too (a count or colour change, comparing team_id SETS, never order -- a same-set reorder
-    // changes nothing here), not only on the pre-existing one-team-fault trigger. Step 1 above leaves
-    // an ALREADY-legal player exactly where they are, so a 2-team 4/4 roster growing a third team left
-    // everyone put -- 4/4/0, not a fault (both original sides still populated), and nothing rebalanced
-    // it. An edit that leaves the team set alone still never rebalances an operator's own uneven split.
-    const prevIds = new Set(prevTeams.map(t => t.team_id));
-    const teamsChanged = prevIds.size !== legal.size || [...prevIds].some(id => !legal.has(id));
-    if (teamsChanged || this.oneTeamFault()) this.rebalanceSides();
+    // The even re-split (brx1 review of e8811fea) fires only when the team COUNT changed, or on a one-team
+    // fault. A colour-only change and an edit that leaves the set alone never rebalance an operator's split.
+    if (countChanged || this.oneTeamFault()) this.rebalanceSides();
   }
 
   private teamCounts(ids: string[]): Map<string, number> {
