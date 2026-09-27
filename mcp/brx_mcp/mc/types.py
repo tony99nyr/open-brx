@@ -381,6 +381,9 @@ def parse_win_by(value: object, default: WinBy) -> WinBy:
 class Scoring(TypedDict):
     frag_limit: int | None
     win_by: WinBy
+    # F415: KOTH only. The first team to hold the hill this long wins; else the most possession at the
+    # clock. Absent or None = no target (the pre-F415 rule).
+    hold_target_s: NotRequired[int | None]
 
 
 # Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3): the three named starting-pool presets, plus
@@ -932,12 +935,20 @@ class GamePiece(TypedDict):
     invalid: NotRequired[str]
 
 
+TeamColour = Literal["red", "blue", "yellow", "purple"]   # F413: the four native $TID teams (0-3)
+MatchItemKey = Literal["time", "kills", "countdown", "daynight", "silenced", "teams", "hold"]
+
+
 class MatchSettings(TypedDict):
     """Per-game values on the PLAY strip. Never saved into a piece; kept by PLAY AGAIN."""
     time_limit_s: int | None
     frag_limit: int | None
     night: bool
     silenced: bool
+    # F413: the team colours in play, in order (2 to 4, unique; KOTH exactly 2 and never yellow). Absent
+    # for a mode without teams (FFA). The count is the list's length.
+    teams: NotRequired[list[TeamColour]]
+    hold_target_s: NotRequired[int | None]   # F415: KOTH's hold target (see Scoring.hold_target_s)
 
 
 class LastMatch(MatchSettings):
@@ -1264,6 +1275,9 @@ class ModeInfo(TypedDict):
     mvp: bool
     defaults: GameConfig
     params: list[ModeParamSpec]
+    # F415: the MATCH SETTINGS items this mode offers, in order. The console renders the strip from it;
+    # absent = a server that predates F415 (the console keeps its own fallback list).
+    match_items: NotRequired[list[MatchItemKey]]
 
 
 class Honor(TypedDict):

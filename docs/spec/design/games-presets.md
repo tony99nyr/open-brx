@@ -190,3 +190,36 @@ in the response so the console can set the runway store the same way LAST MATCH 
 runway store value), tap a chip to LOAD, delete behind the two-step confirm. A `fallbacks` reply shows one
 line per replaced kind (`SPAWN — STATION IS GONE, USING AUTO`) so the operator is never surprised by a
 silent substitution; the load still succeeds.
+
+## 7. Teams and per-mode items (F413, F415)
+
+**Per-mode items (F415).** Each `GET /api/modes` row carries `match_items`: the MATCH SETTINGS keys it
+offers, in order, from `time`, `kills`, `countdown`, `daynight`, `silenced`, `teams` and `hold`. The console
+renders the strip from it and never keeps its own per-mode list. When `match_items` is absent (an older
+server), the console falls back to `time, kills, countdown, daynight, silenced`, with `kills` only for a
+kill-scored mode.
+
+| Mode | `match_items` |
+|---|---|
+| TDM | time, kills, countdown, daynight, silenced, teams |
+| FFA | time, kills, countdown, daynight, silenced |
+| KOTH | time, hold, countdown, daynight, silenced, teams |
+
+**Teams (F413).**
+- `match.teams` is the team colours in play, in order: 2 to 4 unique values from `red` (tid 0), `blue` (1),
+  `yellow` (2) and `purple` (3). It is absent for a mode without teams (FFA).
+- Every team mode defaults to `["red", "blue"]`. KOTH is exactly 2 teams and never offers yellow (a neutral
+  hill broadcasts tid 2, F82). Anything else is a 400 on `POST /api/play/pick` or a favourite save.
+- Compose writes `config.teams` from `TEAM_DEFS` in that order. A change of count or colour re-teams the
+  roster evenly, through the same path as a mode switch, so PLAY's moves-players confirm applies to it.
+- A mode change resets `teams` to the new mode's default, like the limits.
+
+**KOTH hold target (F415).**
+- `match.hold_target_s` (KOTH only): `null` = no target. Otherwise the first team whose possession reaches
+  it wins at once. If no team reaches it, the team with the most possession at the clock wins, as before.
+- Compose writes it to `config.scoring.hold_target_s`. MC's scorer enforces it, as it does the frag limit.
+- The phone shows it through the existing `game_brief()` text (for example `FIRST TO HOLD 5:00 WINS`), with
+  no app change.
+- The console item offers NO TARGET and 3, 5 and 10 MIN as quick-picks, plus steppers in 1-minute steps.
+
+`last_match` and FAVOURITES carry both keys like the other strip values.

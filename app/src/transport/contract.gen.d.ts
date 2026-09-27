@@ -167,6 +167,9 @@ export type RangeSrc = 'station' | 'mc';
 export type RangeField = 'threshold' | 'tx_power';
 export type StationItemKind = 'weapon' | 'overshield';
 export type PieceKind = 'mode' | 'life' | 'spawn' | 'primary' | 'secondary' | 'perks' | 'misc_loadouts' | 'gameplay';
+/** F413: the four native $TID teams (0-3) */
+export type TeamColour = 'red' | 'blue' | 'yellow' | 'purple';
+export type MatchItemKey = 'time' | 'kills' | 'countdown' | 'daynight' | 'silenced' | 'teams' | 'hold';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
@@ -356,6 +359,9 @@ export interface RespawnProfile {
 export interface Scoring {
   frag_limit: number | null;
   win_by: WinBy;
+  /** F415: KOTH only. The first team to hold the hill this long wins; else the most possession at the
+   *  clock. Absent or None = no target (the pre-F415 rule). */
+  hold_target_s?: number | null;
 }
 
 export interface Health {
@@ -951,6 +957,11 @@ export interface MatchSettings {
   frag_limit: number | null;
   night: boolean;
   silenced: boolean;
+  /** F413: the team colours in play, in order (2 to 4, unique; KOTH exactly 2 and never yellow). Absent
+   *  for a mode without teams (FFA). The count is the list's length. */
+  teams?: TeamColour[];
+  /** F415: KOTH's hold target (see Scoring.hold_target_s) */
+  hold_target_s?: number | null;
 }
 
 /** F411 LAST MATCH: the strip values of the last match STARTed, kept across an MC restart. */
@@ -959,6 +970,8 @@ export interface LastMatch {
   frag_limit: number | null;
   night: boolean;
   silenced: boolean;
+  teams?: TeamColour[];
+  hold_target_s?: number | null;
   countdown_s: number;
 }
 
@@ -1309,6 +1322,9 @@ export interface ModeInfo {
   mvp: boolean;
   defaults: GameConfig;
   params: ModeParamSpec[];
+  /** F415: the MATCH SETTINGS items this mode offers, in order. The console renders the strip from it;
+   *  absent = a server that predates F415 (the console keeps its own fallback list). */
+  match_items?: MatchItemKey[];
 }
 
 export interface Honor {
