@@ -11,6 +11,7 @@
 //                                              #   lastmatch | koth | pick-fail | stale | widths |
 //                                              #   load-feedback | locked | refusal-and-cap |
 //                                              #   pieces-failure | hit-areas | silenced-onoff |
+//                                              #   teams | hold |
 //                                              #   favourites-save | favourites-load |
 //                                              #   favourites-fallback | favourites-rename |
 //                                              #   favourites-delete | real-favourites |
@@ -444,6 +445,55 @@ step('silenced-onoff', async ({ browser, base }) => {
   t = await text(pg);
   expect(/SILENCED:\s*ON/.test(t), 'SILENCED: ON shows once the switch is on');
   ok(`SILENCED: OFF / ON, in words, beside the switch   ${await shot(pg, 'silenced-onoff')}`);
+  await pg.context().close();
+});
+
+step('teams', async ({ browser, base }) => {
+  // F413 (games-presets.md §7): TDM starts BLUE/YELLOW (8 players) -- a count bump to 3 reshapes the
+  // roster, so it asks first (the SAME confirm mode-switch-confirm already proved, just with no single
+  // target to re-tap: any second teams-changing tap commits).
+  const pg = await open(browser, base, '?mock#build', 1280);
+  const teamsItem = pg.getByTestId('match-teams-item');
+  const count3 = teamsItem.getByRole('button', { name: '3', exact: true });
+  await count3.click();
+  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm (count to 3)');
+  const before = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.game_pick.match.teams);
+  expect(before === undefined, 'the first tap must not reach the server');
+  await count3.click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.teams?.length === 3, 4000, '3 teams committed');
+  ok(`TEAMS: a count change to 3 asks first, then commits   ${await shot(pg, 'teams-count-3')}`);
+
+  // a colour change on one slot: BLUE -> PURPLE (PURPLE is not yet taken by another slot at this point)
+  const slot0 = pg.getByTestId('match-teams-colour-0');
+  const purple = slot0.getByRole('button', { name: 'PURPLE' });
+  await purple.click();
+  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm (a colour change)');
+  await purple.click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.teams?.[0] === 'purple', 4000, 'the colour change committed');
+  ok('TEAMS: a colour change on one slot asks first, then commits');
+
+  // KOTH fixes the count at 2 and never offers yellow
+  await pickMode(pg, 'KING OF THE HILL');
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'KOTH applied');
+  const stripText = await teamsItem.innerText();
+  expect(!stripText.includes('YELLOW'), `KOTH never offers yellow (saw ${JSON.stringify(stripText)})`);
+  expect(await pg.locator('[aria-label="team count"]').count() === 0, 'KOTH fixes the count, no control shown');
+  ok(`TEAMS: KOTH fixes the count at 2 and never offers yellow   ${await shot(pg, 'teams-koth-no-yellow')}`);
+  await pg.context().close();
+});
+
+step('hold', async ({ browser, base }) => {
+  // F415: KOTH only, NO TARGET by default, 3/5/10 MIN quick-picks reaching the server.
+  const pg = await open(browser, base, '?mock#build', 1280);
+  expect(await pg.getByTestId('match-hold-value').count() === 0, 'TDM has no HOLD item');
+  await pickMode(pg, 'KING OF THE HILL');
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'KOTH applied');
+  await until(() => pg.getByTestId('match-hold-value').count().then(n => n > 0), 4000, 'the HOLD item');
+  expect(await pg.getByTestId('match-hold-value').innerText().then(t => t.includes('NO TARGET')), 'NO TARGET by default');
+  await pg.getByTestId('match-hold-value').click();
+  await pg.getByRole('button', { name: '5 MIN' }).click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.hold_target_s === 300, 4000, '"5 MIN" reaches the server');
+  ok(`HOLD: NO TARGET by default, "5 MIN" reaches the server as 300s   ${await shot(pg, 'hold-5min')}`);
   await pg.context().close();
 });
 
