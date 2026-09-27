@@ -46,16 +46,18 @@ describe('F413: match.teams validation', () => {
 });
 
 describe('F413: a mode change resets teams to red+blue, like the limits', () => {
-  // Team-lead's scope decision (2026-09-27): pick/compose (a fresh pick, a mode change) gives red+blue
-  // outright, never the mode's own catalogue `defaults.teams` (KOTH's own row still declares
-  // blue/purple, but that now only feeds the static demo fixture and a direct putConfig mode switch --
-  // mock/data.ts's own base() comment has the full reasoning).
-  it('TDM -> KOTH resets to red+blue', async () => {
+  // Team-lead's scope decision (2026-09-27): TDM's and KOTH's own CATALOGUE `defaults.teams` are
+  // blue+red now, matching the server (mock/data.ts's `base()`/`RED_BLUE_TEAMS` comments have the full
+  // reasoning) -- a mode change through `pick()` reads that straight, one source of truth shared with
+  // `putConfig`'s own mode-changed base rebuild and the console's client-side prediction. Only the
+  // static DEMO's own starting session keeps the old blue/yellow, a deliberate, separate override.
+  it('TDM -> KOTH resets to blue+red', async () => {
     const b = new MockBackend();
     await b.pick({ match: { teams: ['red', 'yellow', 'purple'] } });
     const r = await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
     expect(r.ok).toBe(true);
-    expect((await b.getState()).game_pick!.match.teams).toEqual(['red', 'blue']);
+    expect((await b.getState()).game_pick!.match.teams).toEqual(['blue', 'red']);
+    expect((await b.getState()).config.teams.map(t => t.team_id), 'the composed config agrees').toEqual(['blue', 'red']);
   });
 });
 

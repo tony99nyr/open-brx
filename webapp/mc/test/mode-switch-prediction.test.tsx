@@ -41,7 +41,9 @@ describe('the GAMES confirm line predicts exactly what the switch then does', ()
   it('an EVEN TDM split carries across to KOTH by index, predicted and performed alike', async () => {
     const r = await predictThenDo('tdm', i => (i % 2 === 0 ? 'blue' : 'yellow'), 'koth');
     expect(r.actual, 'the mock re-teamed by index, as the server does').toEqual(r.predicted);
-    expect(Object.keys(r.actual).sort()).toEqual(['blue', 'purple']);
+    // F413 (2026-09-27): KOTH's own declared pair is blue+red now (blue kept at index 0, matching every
+    // other team mode -- team-lead's scope decision), not blue+purple.
+    expect(Object.keys(r.actual).sort()).toEqual(['blue', 'red']);
   });
 
   it('an UNEVEN split is left uneven — the preview must not promise a rebalance that never comes', async () => {

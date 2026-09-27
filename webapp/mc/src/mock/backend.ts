@@ -112,7 +112,13 @@ type Sub = { snap: (s: State) => void; feed: (e: FeedEntry) => void };
 export class MockBackend implements Api {
   private subs = new Set<Sub>();
   private phase: Phase = 'muster';
-  private config: ConfigView = withPolicy(clone(MODES[0].defaults));
+  // F413 (games-presets.md §7): `MODES[].defaults.teams` is red+blue now, matching the server (a fresh
+  // pick, a mode change, and default_config all read it, team-lead's scope decision 2026-09-27) -- but
+  // this DEMO SESSION is a fixture already in progress, not a fresh one: its PLAYERS fixture (data.ts)
+  // is hardcoded to blue/yellow team_id strings across dozens of unrelated tests this lane does not own
+  // (Lobby/Items/spectate). One override, here only, keeps the demo's own starting roster on the OLD
+  // colours on purpose.
+  private config: ConfigView = withPolicy({ ...clone(MODES[0].defaults), teams: [TEAMS[0], TEAMS[1]] });
   private players: Player[] = [];
   private trying: Record<string, string> = {};
   private standby: Player[] = [];   // STANDBY: parked players (never counted in kit/lobby/readiness)
@@ -1394,14 +1400,13 @@ export class MockBackend implements Api {
       // gameSummary.ts's own SOLO_MODES rule) that is not a real TeamColour and must never reach
       // `match.teams` -- it composed into a config.teams row TEAMS.find() could never resolve.
       //
-      // team-lead's scope decision (2026-09-27): a FRESH pick or a MODE CHANGE through `pick()` gives
-      // red + blue outright -- never `modeInfo.defaults.teams` (still blue/yellow for TDM, blue/purple
-      // for KOTH in MODES, unchanged: that table also seeds the STATIC DEMO's own initial config and a
-      // direct `putConfig` mode switch, e.g. GameEditPanel's inline edit, which stay on the OLD colours
-      // deliberately -- data.ts's own `base()` comment has the full reasoning). `Games.tsx`'s own
-      // client-side prediction (`pickMode`/`loadFavourite`) mirrors this SAME red/blue default, not
-      // `defaults.teams` either, so the confirm it shows never disagrees with what actually lands.
-      match.teams = modeInfo.match_items?.includes('teams') ? ['red', 'blue'] : undefined;
+      // team-lead's scope decision (2026-09-27): `modeInfo.defaults.teams` IS red+blue now for every
+      // team mode (data.ts's `base()`), matching the server -- reading it straight here (rather than a
+      // separate hardcoded literal) keeps ONE source of truth for it, shared with `putConfig`'s own
+      // mode-changed base rebuild and `Games.tsx`'s client-side prediction. Only the static DEMO's own
+      // STARTING session (mock/backend.ts's `config` field initialiser) overrides back to blue/yellow,
+      // on purpose -- a fixture already in progress, not a fresh pick.
+      match.teams = modeInfo.match_items?.includes('teams') ? modeInfo.defaults.teams.map(t => t.team_id as TeamColour) : undefined;
       match.hold_target_s = null;
     }
     const pm = p.match ?? {};

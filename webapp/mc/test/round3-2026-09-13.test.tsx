@@ -194,6 +194,11 @@ describe('MERGE-0 / FIELD-1 — the mock mirrors the server', () => {
   it('a KOTH pick keeps the operator\'s split (yellow -> purple), it does not collapse onto teams[0]', async () => {
     const b = new MockBackend();
     await playStock(b, 'tdm');
+    // F413 (2026-09-27): TDM and KOTH now share the SAME declared pair (blue+red, team-lead's scope
+    // decision) -- force a genuinely DIFFERENT one explicitly (a TEAMS-strip pick, F413's own feature),
+    // matching this test's own "yellow -> purple" narrative, so the index-remap it exists to prove has
+    // something nontrivial to prove.
+    await b.pick({ match: { teams: ['yellow', 'purple'] } });
     const st = await b.getState();
     const teams = st.config.teams.map(t => t.team_id);
     await Promise.all(st.players.map((p, i) => b.patchPlayer(p.player_id, { team_id: teams[i % 2] })));

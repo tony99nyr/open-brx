@@ -35,24 +35,10 @@ const PICKER_ORDER: Exclude<PieceKind, 'gameplay'>[] = ['mode', 'life', 'spawn',
 // Polish round 1 Low: this duplicated BUILD's own `kindLabel` (screens/presets/kinds.ts) under a
 // second name with the same eight strings -- one table now, imported.
 
-// F413: what `pick()`'s own mode-changed reset actually applies -- red+blue outright for any mode
-// offering the TEAMS item (team-lead's scope decision, 2026-09-27; mock/data.ts's own `base()` comment
-// has the full reasoning), never a mode's own catalogue `defaults.teams` (still blue/yellow for TDM,
-// blue/purple for KOTH -- those feed the static demo fixture and a DIRECT putConfig mode switch
-// instead, GameEditPanel's inline edit, never PLAY's own pick()). `pickMode`/`loadFavourite` below
-// predict the SAME thing pick() will actually apply, so the reshape confirm never shows a split that
-// disagrees with what lands. No shared module with the mock for this one constant -- kept in sync by hand.
-//
-// An OLDER server (no `match_items` at all -- `matchItems.ts`'s own fallback reads the SAME absence)
-// predates the red/blue reset too: it still resets a mode change to that mode's own declared
-// `defaults.teams`, exactly as this console predicted before F413. Only a server that ALREADY serves
-// `match_items` is one that also gives red/blue -- the two land together, one feature.
-const RED_BLUE_TEAM_IDS: { team_id: string }[] = [{ team_id: 'red' }, { team_id: 'blue' }];
-const redBlueTeamsFor = (modeRow: { match_items?: MatchItemKey[]; defaults: { teams: { team_id: string }[] } } | undefined): { team_id: string }[] => {
-  if (!modeRow) return [];
-  if (!modeRow.match_items) return modeRow.defaults.teams;
-  return modeRow.match_items.includes('teams') ? RED_BLUE_TEAM_IDS : [];
-};
+// F413 (games-presets.md §7): every team mode's own catalogue `defaults.teams` is red+blue now,
+// matching the server (team-lead's scope decision, 2026-09-27; mock/data.ts's own `base()` and
+// `MODES` comments have the full reasoning) -- ONE source of truth, so `pickMode`/`loadFavourite`
+// below read it straight off `modes` again, the same way they did before F413.
 
 const TIME_QUICK_MIN = [5, 10, 15, 20, 30];
 // VQA QA-08: the server's own cap on a match's time limit (2 hours) — the stepper never sends past it.
@@ -194,10 +180,10 @@ export function Games() {
   // move anyone (`splitLine` returns '' either way), is still one tap.
   const pickMode = (p: GamePiece) => {
     const modeId = (p.value as { mode: string }).mode;
-    // F413: pick()'s own red/blue reset only fires when the mode ACTUALLY changes -- re-picking the
-    // mode already applied touches nothing (mirrored here, or a same-mode tap would predict a reshape
-    // that a real re-pick never does).
-    const newTeams = modeId !== cfg.mode ? redBlueTeamsFor(modes.find(m => m.mode === modeId)) : cfg.teams;
+    // F-6/F413: pick()'s own reset only fires when the mode ACTUALLY changes -- re-picking the mode
+    // already applied touches nothing (mirrored here, or a same-mode tap would predict a reshape that a
+    // real re-pick never does).
+    const newTeams = modeId !== cfg.mode ? (modes.find(m => m.mode === modeId)?.defaults.teams ?? []) : cfg.teams;
     const split = splitLine(state.players, cfg.teams, newTeams);
     if (split) {
       if (modeConfirm?.piece_id === p.piece_id) { setModeConfirm(null); pickPiece('mode', p.piece_id); return; }
