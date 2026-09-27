@@ -171,34 +171,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const dirtyRef = useRef(false);
   const [navBlockedTo, setNavBlockedTo] = useState<View | null>(null);
   const navBlockedRef = useRef<View | null>(null);
+  // Round 3 (3, 4): was this block set by an OPERATOR action (setView/onHash) or by `followPhase`
+  // catching the server up? Only an operator's own repeat tap at the same target may confirm and
+  // proceed — `followPhase` re-checking the SAME phase (its own guard, not a tap) must never count as
+  // one, or an unattended tab would discard the edit the moment the server pushed that phase again.
+  // And a draft keystroke (Build.tsx) only invalidates a block IT could have caused: a phase-follow
+  // banner ("LIVE is waiting") stays up regardless of what the operator keeps typing.
+  const navBlockedByFollowRef = useRef(false);
   const viewRef = useRef(view);
   useEffect(() => { viewRef.current = view; }, [view]);
-  const setNavBlocked = useCallback((v: View | null) => { navBlockedRef.current = v; setNavBlockedTo(v); }, []);
+  const setNavBlocked = useCallback((v: View | null, byFollow = false) => {
+    navBlockedRef.current = v;
+    navBlockedByFollowRef.current = v == null ? false : byFollow;
+    setNavBlockedTo(v);
+  }, []);
   const setDirty = useCallback((v: boolean) => { dirtyRef.current = v; setDirtyRaw(v); if (!v) setNavBlocked(null); }, [setNavBlocked]);
   // A stable identity matters here specifically: BUILD puts this in a `useEffect` dependency array
   // (round 2 Low, clearing a stale block when the draft changes), and the store's own `useMemo` below
   // rebuilds on nearly every snapshot -- an inline `() => setNavBlocked(null)' there would have gotten a
   // FRESH identity on every tick, re-firing that effect (and clearing a block that had nothing to do
   // with the draft) far more often than intended.
-  const clearNavBlock = useCallback(() => setNavBlocked(null), [setNavBlocked]);
+  const clearNavBlock = useCallback(() => { if (!navBlockedByFollowRef.current) setNavBlocked(null); }, [setNavBlocked]);
   // The one gate every navigation attempt goes through — `setView`, browser back/forward (`onHash`)
   // and the server phase catching up (`followPhase`) alike, so an unsaved BUILD edit is asked about
   // once, not lost to whichever of the three got there first. `debug` (the token screen) is exempt:
   // auth is never something a "tap again to confirm" can be waved past, and everything ELSE — saving
   // the very edit this guard is protecting — needs it reachable first.
-  const guardNav = useCallback((v: View): 'blocked' | 'go' => {
+  const guardNav = useCallback((v: View, source: 'operator' | 'follow'): 'blocked' | 'go' => {
     if (v === 'debug') { if (navBlockedRef.current !== null) setNavBlocked(null); return 'go'; }
     if (dirtyRef.current && v !== viewRef.current) {
-      // a second attempt at the SAME target is the confirm; a different target re-blocks on the new one
-      if (navBlockedRef.current === v) { setDirty(false); return 'go'; }
-      setNavBlocked(v);
+      // a second attempt at the SAME target is the confirm, but ONLY from an operator action -- a
+      // `followPhase` call never self-confirms, whatever it names
+      if (source === 'operator' && navBlockedRef.current === v) { setDirty(false); return 'go'; }
+      setNavBlocked(v, source === 'follow');
       return 'blocked';
     }
     if (navBlockedRef.current !== null) setNavBlocked(null);
     return 'go';
   }, [setDirty, setNavBlocked]);
   const setView = useCallback((v: View): boolean => {
-    if (guardNav(v) === 'blocked') return false;
+    if (guardNav(v, 'operator') === 'blocked') return false;
     if (spectatorTab.current) { setWanted(v === 'spectate' ? null : v); writeHash('spectate', v === 'spectate' ? null : v); return false; }
     writeHash(v); setViewRaw(v);
     return true;
@@ -218,7 +230,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // unlike a button's `setView` call, there is no "don't navigate" here, only "put it back". A
       // blocked attempt restores the CURRENT view's hash so the URL never lies about what is on screen;
       // BUILD's own banner (off `navBlockedTo`, set by `guardNav`) says why.
-      if (guardNav(v) === 'blocked') { writeHash(viewRef.current); return; }
+      if (guardNav(v, 'operator') === 'blocked') { writeHash(viewRef.current); return; }
       setViewRaw(v);
     };
     window.addEventListener('hashchange', onHash);
@@ -262,7 +274,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // match armed/went live, with no warning at all. `guardNav` keeps the operator on BUILD instead and
     // names the phase that is waiting (`navBlockedTo`) -- tapping that SAME tab again is still the way
     // through, exactly as if they had tried to navigate there themselves.
-    if (guardNav(s.phase) === 'blocked') return;
+    if (guardNav(s.phase, 'follow') === 'blocked') return;
     writeHash(s.phase); setViewRaw(s.phase);
   }, [guardNav]);
 

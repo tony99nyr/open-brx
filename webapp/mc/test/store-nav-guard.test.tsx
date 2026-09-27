@@ -84,4 +84,23 @@ describe('round 2 (2): the server phase advancing does not move the screen out f
     expect(blockedOf(m)).toBe('kit');
     m.unmount();
   });
+
+  // Round 3 (3): followPhase must never count as the confirming SECOND tap. The exploitable case is an
+  // OPERATOR's own attempt blocking on a target, with the SERVER independently (and later) reaching
+  // that same phase on its own -- two unrelated events that happen to share a name. Only the operator
+  // repeating THEIR OWN action may confirm; the server arriving there is not that.
+  it('a phase-follow landing on the operator’s own already-blocked target does not auto-confirm it', async () => {
+    openAt('#build');
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await m.click('mark dirty');
+    await m.click('go kit');   // operator attempt: blocked, navBlockedTo = 'kit'
+    expect(viewOf(m)).toBe('build');
+    expect(blockedOf(m)).toBe('kit');
+    const api = (window as unknown as { __MC_MOCK__: Api }).__MC_MOCK__;
+    await act(async () => { await api.setPhase('kit', true); });   // the server independently ALSO reaches 'kit'
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(viewOf(m), 'a phase-follow must not auto-confirm an operator’s own blocked target').toBe('build');
+    expect(blockedOf(m)).toBe('kit');
+    m.unmount();
+  });
 });

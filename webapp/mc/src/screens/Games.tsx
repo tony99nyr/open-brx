@@ -133,19 +133,24 @@ export function Games() {
 
   // "SPAWN — ITS SAVED PICK IS GONE, USING AUTO" (games-presets.md §6) needs the OLD piece's name,
   // which a fallback means we no longer have -- say what it is USING instead, always true, never
-  // invented. Shared by `loadFavourite` below and, round 2 (server review), `pick()` itself: a kind
-  // the request did not name (an INHERITED piece, e.g. a post-MVP mode set on KIT) can fall back to
-  // its builtin too now, shown the same way.
-  const fallbackNoteFor = (fallbacks: PieceKind[], pick: GamePick): string[] | null => (fallbacks.length
+  // invented.
+  const favouriteFallbackNote = (fallbacks: PieceKind[], pick: GamePick): string[] | null => (fallbacks.length
     ? fallbacks.map(k => `${kindLabel(k)} — ITS SAVED PICK IS GONE, USING ${pieces.find(p => p.piece_id === pick.pieces[k])?.name ?? 'ITS DEFAULT'}`)
+    : null);
+  // Round 3: a PICK fallback (round 2, server review: a kind the request did not itself name, e.g. a
+  // post-MVP mode set on KIT, falls back to its builtin) is a DIFFERENT story from a favourite's own
+  // fallback above -- there is no "saved pick" here that went missing, so "ITS SAVED PICK IS GONE"
+  // said something that never happened. Worded separately, naming where the value actually came from.
+  const pickFallbackNote = (fallbacks: PieceKind[], pick: GamePick): string[] | null => (fallbacks.length
+    ? fallbacks.map(k => `${kindLabel(k)}: USING ${pieces.find(p => p.piece_id === pick.pieces[k])?.name ?? 'ITS DEFAULT'} (THE KIT PICK IS NOT OFFERED ON PLAY)`)
     : null);
   // Polish round 1 Low: a fallback note used to sit on screen until the NEXT favourite load, surviving
   // every ordinary tap in between and describing a load that was no longer the reason anything on
   // screen looked the way it did.
   const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
-    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(fallbackNoteFor(r.fallbacks, r.pick)); }); };
+    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }); };
   const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); return run(() => api.pick({ match: patch }))
-    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(fallbackNoteFor(r.fallbacks, r.pick)); }); };
+    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }); };
 
   const load = async () => {
     if (busy) return;
@@ -199,7 +204,7 @@ export function Games() {
     // a countdown and a fallback list for a favourite that was never actually loaded.
     if (!r.ok) { setNotice(r.errors.join(' · '), true); return; }
     setRunway(r.countdown_s);
-    setFallbackNote(fallbackNoteFor(r.fallbacks, r.pick));
+    setFallbackNote(favouriteFallbackNote(r.fallbacks, r.pick));
   };
 
   // ---- the operator note (games-redesign.md §9), derived off the composed config -----------------
@@ -432,7 +437,7 @@ export function Games() {
                     setFallbackNote(null);
                     const lm = state.last_match!;
                     const r = await run(() => api.pick({ match: { time_limit_s: lm.time_limit_s, frag_limit: lm.frag_limit, night: lm.night, silenced: lm.silenced } }));
-                    if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(fallbackNoteFor(r.fallbacks, r.pick)); }
+                    if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }
                     else if (r) setNotice(r.errors.join(' · '), true);
                   }}>LAST MATCH ▸</GhostButton>
                 </span>
@@ -491,14 +496,18 @@ function FavouriteChip({ fav, renaming, confirmingDelete, onLoad, onRenameStart,
   // `preventDefault` — without it, a click blurs the input FIRST (committing via `DraftText`'s own
   // onBlur) and only THEN runs the button's onClick, so ✕ used to "cancel" an edit it had already sent.
   const [draft, setDraftMirror] = useState(fav.name);
-  useEffect(() => { if (renaming) setDraftMirror(fav.name); }, [renaming, fav.name]);
+  const suppressCommit = useRef(false);
+  // Round 3: `suppressCommit` was never reset, so after ONE Escape/✕ on a chip, every LATER rename on
+  // that SAME chip started with it already true -- Enter and click-away saved nothing from then on.
+  // Reset when a fresh rename session starts, not when it ends (cancel/save both unmount this branch
+  // and race the reset against whichever blur that causes).
+  useEffect(() => { if (renaming) { setDraftMirror(fav.name); suppressCommit.current = false; } }, [renaming, fav.name]);
   // Round 2 (4): Tab (not a mouse click) moves focus to ✓/✕ the same way blur/Enter does everywhere
   // else -- `onMouseDown`'s preventDefault above only ever stopped a MOUSE click from blurring first,
   // so a keyboard user tabbing to ✕ still committed the draft via `DraftText`'s own onBlur before ✕'s
   // Enter ever ran. `suppressCommit` covers Escape too (which does not move focus to a sibling at all,
   // so `relatedTarget` alone cannot catch it): both stop the blur reaching `DraftText`'s onCommit by
   // intercepting it in the CAPTURE phase, before the input's own onBlur (the bubble-phase target) fires.
-  const suppressCommit = useRef(false);
   if (renaming) {
     const save = () => { const v = draft.trim(); if (v && v !== fav.name) onRenameCommit(v); else onRenameCancel(); };
     const cancel = () => { suppressCommit.current = true; onRenameCancel(); };
