@@ -204,6 +204,24 @@ def test_a_value_the_current_rules_refuse_is_kept_invalid_not_dropped():
     assert rows["Sketchy"]["value"] == {"type": "scanner", "delay_s": 10, "gate": "presence"}   # kept verbatim
 
 
+def test_low_respawn_and_slot_rule_errors_are_hand_written_not_raw_uppercased():
+    """Lows (brx1 review of 222b1a81): a bad respawn `protect_s`/`weapon_delay_ms`/`station_protect_s`,
+    or a bad `loadout_policy` slot rule, used to surface as the underlying `ValueError` blindly
+    uppercased -- a raw "RESPAWN.PROTECT_S MUST BE ONE OF (0, 1, 2)" reads like a stack trace leaking a
+    Python attribute path, not the house "WHAT: DO" copy every other message here already uses. Now a
+    hand-written message, with no dotted path or raw exception text passed through."""
+    try:
+        check_value("spawn", {"type": "auto", "delay_s": 15, "protect_s": 9})
+        assert False, "an out-of-range protect_s was accepted"
+    except PieceError as e:
+        assert "." not in str(e) and "RESPAWN.PROTECT_S" not in str(e).upper(), e
+    try:
+        check_value("primary", {"choice": "bogus-choice"})
+        assert False, "an unknown choice was accepted"
+    except PieceError as e:
+        assert "." not in str(e) and "LOADOUT_POLICY" not in str(e).upper(), e
+
+
 def test_high1_a_weapon_since_hidden_keeps_the_piece_read_only_with_a_reason():
     """HIGH 1's own probe: a PRIMARY preset naming a weapon that is hidden today (force_rifle) is kept,
     not dropped, with a reason naming the weapon by its catalogue name -- not the raw snake_case id."""
@@ -229,14 +247,14 @@ def _pclient_with_pieces_file(rows):
         online(s, net, clock, p, i)
     s.attach_pieces(PieceStore(path))
     from brx_mcp.mc.api import create_app
-    return TestClient(create_app(s)), s, net, clock, ps
+    return TestClient(create_app(s)), s, net, clock, ps, path
 
 
 def test_high1_invalid_piece_is_never_pickable_and_survives_a_save_untouched():
     needs(HAVE, "starlette + httpx")
     ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
             "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
-    c, s, net, clock, ps = _pclient_with_pieces_file([ghost])
+    c, s, net, clock, ps, path = _pclient_with_pieces_file([ghost])
     # named directly by a request -> 400, treated like a vanished id, never silently accepted
     r = c.post("/api/play/pick", json={"pieces": {"primary": "ghost1"}})
     assert r.status_code == 400
@@ -251,16 +269,39 @@ def test_high1_invalid_piece_is_never_pickable_and_survives_a_save_untouched():
     c.put(f"/api/pieces/{other['piece_id']}", json={"name": "Another Mk2"})
     kept = next(p for p in c.get("/api/pieces").json() if p["piece_id"] == "ghost1")
     assert kept.get("invalid") and kept["value"]["fixed_id"] == "force_rifle"
+    # Low (brx1 review): re-open the SAME file a second time -- proves the invalid row survives a real
+    # load + save round trip (the first PieceStore's `_save()` already ran, above, from the PUT), not
+    # just staying in the one process's memory that loaded it first.
+    st2 = PieceStore(path)
+    row2 = next(r for r in st2.list() if r["piece_id"] == "ghost1")
+    assert row2.get("invalid") and row2["value"]["fixed_id"] == "force_rifle"
 
 
 def test_high1_put_with_a_valid_value_clears_invalid():
     needs(HAVE, "starlette + httpx")
     ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
             "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
-    c, s, net, clock, ps = _pclient_with_pieces_file([ghost])
+    c, s, net, clock, ps, path = _pclient_with_pieces_file([ghost])
     r = c.put("/api/pieces/ghost1", json={"value": {"choice": "player", "kinds": ["weapon"]}})
     assert r.status_code == 200
     assert "invalid" not in r.json()
+
+
+def test_medium_attach_pieces_falls_back_a_restored_pick_naming_an_invalid_piece():
+    """MEDIUM (brx1 review of 222b1a81): `attach_pieces`'s own docstring says a session must never sit
+    on a pick `POST /api/play/pick` itself would refuse to resolve -- but its ok-check only tested
+    kind/post_mvp, not `invalid` (HIGH 1's own rule-drift casualty), so a RESTORED `game_pick` naming an
+    invalid piece stayed picked, breaking the very rule the docstring states. Fixed by reusing
+    `gamepick._usable`, the same check `resolve_pieces_with_fallback`/`resolve_pieces_mixed` already
+    give a stale id elsewhere."""
+    ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
+            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
+    path = pathlib.Path(tempfile.mkdtemp()) / "pieces.json"
+    path.write_text(json.dumps({"v": 1, "pieces": [ghost]}))
+    s, net, clock, ps = mk(2)
+    s.game_pick["pieces"]["primary"] = "ghost1"   # as if restored, pointing at what is now an invalid piece
+    s.attach_pieces(PieceStore(path))
+    assert s.game_pick["pieces"]["primary"] == BUILTIN_IDS["primary"], s.game_pick["pieces"]["primary"]
 
 
 def test_corrupt_file_is_moved_aside_not_fatal():

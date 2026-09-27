@@ -36,7 +36,7 @@ from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PH
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, ADOPT_SLACK_MS, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
                     STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, TX_POWERS, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
-                    GamePick, LastMatch, MatchItemKey,
+                    GamePick, LastMatch, MatchItemKey, PieceKind,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
@@ -2410,7 +2410,11 @@ class Session:
             if pid:
                 try:
                     piece = store.get(pid)
-                    ok = piece["kind"] == kind and not piece.get("post_mvp")
+                    # MEDIUM (brx1 review of 222b1a81): `_usable` also refuses `invalid` (HIGH 1) -- a
+                    # bare kind/post_mvp check here left a RESTORED pick free to sit on a piece a fresh
+                    # `POST /api/play/pick` would itself refuse to resolve, the exact thing this
+                    # method's own docstring says never happens.
+                    ok = _gamepick._usable(cast(PieceKind, kind), piece)
                 except Exception:
                     ok = False
             if not ok and kind in BUILTIN_IDS:

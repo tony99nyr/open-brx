@@ -129,7 +129,10 @@ def _check_spawn(v: object) -> dict:
     try:
         respawn_settings(v)   # protect_s / weapon_delay_ms / station_protect_s: closed sets, compile.py
     except ValueError as e:
-        raise PieceError(400, f"{str(e).upper()}: PICK A SUPPORTED VALUE") from e
+        # Low (brx1 review of 222b1a81): hand-written, not the raw `compile.respawn_settings` message
+        # blindly uppercased -- "RESPAWN.PROTECT_S MUST BE ONE OF 0, 1, 2" leaks a Python attribute path
+        # dressed up as house style, not actual house style.
+        raise PieceError(400, "PROTECTION OR WEAPON-DELAY VALUE NOT SUPPORTED: PICK ONE OF THE OFFERED OPTIONS") from e
     out: dict[str, Any] = {"type": t, "delay_s": d}
     for k in ("protect_s", "weapon_delay_ms", "station_protect_s"):
         if k in v:
@@ -176,7 +179,10 @@ def _check_slot(kind: PieceKind, v: object) -> dict:
     try:
         rule = _policy._check_rule(_SLOT_OF_KIND[kind], v if isinstance(v, dict) else {})
     except ValueError as e:
-        raise PieceError(400, f"{str(e).upper()}: PICK A SUPPORTED VALUE") from e
+        # Low (brx1 review of 222b1a81): hand-written, same reason as `_check_spawn`'s own fix above --
+        # `policy._check_rule`'s own message is a dotted `loadout_policy.<slot>.<field>` attribute path,
+        # never meant for a console error strip.
+        raise PieceError(400, "SLOT RULE NOT SUPPORTED: CHECK THE CHOICE, KINDS AND ID LISTS") from e
     weapons, perks = _pickable_ids()
     allowed = perks if kind == "perks" else weapons
     fixed = rule["fixed_id"]
