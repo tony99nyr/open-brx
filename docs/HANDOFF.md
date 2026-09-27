@@ -67,13 +67,12 @@ before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392
   STATS + 18 s wait + hold opens RANGE at 5 s; serial log on). Then sitting C: the carried-out timed hill, F388,
   the F383 3 m and 7 m readings, F399's claim latency, F391's restart, F392's repro with the serial log, F397's MC
   restart.
-- **Decision for Tony:** the hill default. A -60 drop at median -62 is the 6 dB EMA hysteresis (`presence.h`), not
-  `near_floor` (-70 is the revive margin). brx2 proposes -75 until the outdoor walk, hysteresis 6.
+- **Decided:** the hill default is -75 dBm, hysteresis 6, until the outdoor walk (F383) (Tony, 2026-09-27).
 - **Next desk task:** F342 (a powerup or control-point game still floods the scan: a slower advert or a native filter).
 - **Resume:** a fresh worktree off `origin/main` (the old `/home/tony/brx4-l3` and `/home/tony/brx4-f333` are
   disposable). Native Windows MC for mDNS:
   `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785 --ws-port
-  8786 --ephemeral --powerups`.
+  8786 --ephemeral`.
 ## Lane: brx5, powerups, the HUD and gun audio
 On main: S58 powerups ON by default (F372 closed, `--no-powerups` is the opt-out); S59 Visor; F348/F349; death first; the three-lane alerts; F347, F350, F378.
 2026-09-25: sitting B's F379, F380, F381 (a same-weapon stack capped at 2x the drop) and F393; F400, the pickup switch
