@@ -21,7 +21,7 @@ Site shots: CI alone owns staleness now (858b4d1e), and an overlap race exits gr
 melee always on, gyro only, never a pick (F412 post-mvp for a toggle); teams red + blue by default (F413); per-mode
 MATCH SETTINGS and the KOTH hold target (F415); FAVOURITES in F411; mode art C; F425 option A (the HUD never says a
 pickup was taken, or by whom); the lead badge hides under the switch card; USP-S keeps Q04; iOS is MVP.
-- **Next:** land F411 (brx3), then F413 + F415 (brx3); re-run brx2's desk-prep audit; Tony builds the iPhone.
+- **Next:** MC GAMES, teams and the hold target are on main (`4275fad2`); cut 0.4.15 on Tony's go; Tony builds the iPhone.
 - **Open:** F414 (a Codex delegation that reports back: background Codex jobs vanished today).
 - **Decided:** the station phone may show TAKEN and a NEXT countdown; F425's rule covers the player HUD only.
 ## Lane: brx2, bench, audio, utility and docs
@@ -43,7 +43,7 @@ utility-mode icon sits behind the Android status bar (**F420**, blocked S1); `re
 pickup countdown should become a left-side "X AVAILABLE" alert (**F425**, storyboard first); a phantom team-2 hill
 total (**F426**). The hill default is decided: -75 dBm, hysteresis 6 (Tony, until the outdoor walk); a "-75 counts phones at 20 m" reading is VOID (the
 phones never left the room). Full write-up: `experiment-log/2026-09.md`'s 2026-09-26 entry.
-- **Next bench task:** part 2 of [`bench-plan.md`](bench-plan.md): 0.4.14 is cut and F411 IS on main (`c2c51679`),
+- **Next bench task:** part 2 of [`bench-plan.md`](bench-plan.md): 0.4.14 is cut and MC GAMES with teams and the hold target is on main (`4275fad2`),
   CI green. Part 2 now opens with a 3 h cut (172 min, 8 min slack): Step 0, IPHONE, a trimmed GAMES CHECK, the P0
   block, F348, KOTH plus F420/F421/F424, F399+F380 on an Overshield Stick, F386 a/b/d, F394, then 4.0's day/night
   launch; everything else (PLAY AGAIN, LAST MATCH, 11.6, the powerup setup, F386 c, Groups 4-7) is the tomorrow
