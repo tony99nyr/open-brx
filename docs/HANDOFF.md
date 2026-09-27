@@ -52,10 +52,12 @@ phones never left the room). Full write-up: `experiment-log/2026-09.md`'s 2026-0
   authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
-APK 0.4.14 is current. MC GAMES is PLAY + BUILD (F411), with FAVOURITES, LAST MATCH, teams (F413) and the KOTH hold
-target (F415), all on main at `4275fad2` with green CI. The phone tid-0 kill-confirm fix (`f52d34dd`) rides the next APK.
-- **Next:** Tony's GAMES check at the bench (PLAY, BUILD, TEAMS, HOLD); the next APK cut for the phone fix.
-- **Tools:** Codex returns 401 until `codex login`; Sonnet lanes in worktrees did the build, Opus reviewed.
+MC GAMES is PLAY + BUILD (F411) with FAVOURITES, LAST MATCH, teams (F413; a colour-only change recolours by index,
+a count change re-splits) and the KOTH hold target (F415). `scripts/land.mjs` (the land lane) is how commits reach main.
+APK 0.4.15 (built from `efd1961c`) carries the phone tid-0 kill-confirm fix and publishes at the bench.
+- **Next:** Tony's GAMES check at the bench. F429/F430 (browser-closed flakes): close after 3 clean lander runs once
+  brx1's test-all headroom fix lands.
+- **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
