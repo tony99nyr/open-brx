@@ -469,6 +469,25 @@ def _tok_int(t: list[str], i: int) -> int | None:
         return None
 
 
+ANNOUNCE_DEFAULT_CLIP_S = 2.5   # engine.js ANNOUNCE_DEFAULT_CLIP_MS: a clip the catalogue does not know
+
+
+def clip_s(sound_id: str | None) -> float:
+    """A sound's real length in seconds, off the sound catalogue (engine.js `CLIP_MS` is generated from the same
+    `duration_s`), else the announcer's 2.5 s default."""
+    e = _snd._catalog().get(sound_id or "")
+    d = e.get("duration_s") if e else None
+    return float(d) if isinstance(d, (int, float)) and d > 0 else ANNOUNCE_DEFAULT_CLIP_S
+
+
+def is_queue_slot_play(frame: str) -> bool:
+    """engine.js `isQueueSlotPlay` (F419): a `$PLAY` on the gun's QUEUE slot (token 1 empty, the id in token 4)."""
+    if not isinstance(frame, str) or not frame.startswith("$PLAY,"):
+        return False
+    t = frame.split(",")
+    return not (t[1] if len(t) > 1 else "").strip() and bool((t[4] if len(t) > 4 else "").strip())
+
+
 def _cue_id(frame: str) -> str | None:
     """The sound id a `$PLAY` cue carries: the announcer slot (token 4) for a voice line, else the SFX slot."""
     t = _toks(frame or "")
@@ -581,6 +600,7 @@ class GunStage:
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
         self._last_play_at: float | None = None
         self._last_play_sent_at: float | None = None
+        self._queue_play_until: float = 0.0   # F419: when the last queue-slot `$PLAY` the stage sent has played
         self._play_generation = 0
         self._play_lock = asyncio.Lock()
         self._play_cancel_event = asyncio.Event()
@@ -1281,6 +1301,25 @@ class GunStage:
                     if play_generation != self._play_generation:
                         self._play_lock.release()
                         return
+            # F419 (engine.js `_drainPlayWrites`): a queue-slot cue waits until the last one has played. The gun's queue
+            # slot dropped and reordered cues 300 ms apart on the bench (heard 1, 4, 3); the interrupt slot does not wait.
+            # A write that carries its own `$PLAYX` (the hill callout's preempt) stops the clip itself: it never waits.
+            if is_queue_slot_play(play_frame) and PLAYX not in frames and self._queue_play_until > self.now():
+                # Cancellable exactly like the gap wait above: a death or a teardown must not wait out a 3 s clip.
+                cancel_event = self._play_cancel_event
+                sleep_task = asyncio.ensure_future(self.sleep(self._queue_play_until - self.now()))
+                cancel_task = asyncio.create_task(cancel_event.wait())
+                wait_tasks = (sleep_task, cancel_task)
+                try:
+                    await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    for task in wait_tasks:
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(*wait_tasks, return_exceptions=True)
+                if play_generation != self._play_generation:
+                    self._play_lock.release()
+                    return
             self._last_play_at = now
         # F121 rebuild (engine.js `_write`): a `$SIR` row or a `$CLEAR` leaves the gun's table something other
         # than a `sir_pool` take, so the next protection release must write one. Marked at call time. `take`:
@@ -1298,6 +1337,9 @@ class GunStage:
             await self._send(frames, gap_ms, on_start=on_start)
             if play_indexes:
                 self._last_play_sent_at = self.now()
+                sent_play = frames[play_indexes[0]]
+                if is_queue_slot_play(sent_play):
+                    self._queue_play_until = self.now() + clip_s(_cue_id(sent_play))
                 self._last_play_at = self._last_play_sent_at
                 self._play_lock.release()
         except Exception as e:

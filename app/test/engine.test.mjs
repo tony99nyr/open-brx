@@ -2820,6 +2820,7 @@ test('F347 review: a split PLAY waits for transmission and completion before its
 });
 
 test('F347 review: the remaining gap starts when BrxLink reports the PLAY frame sent', async () => {
+  // F419: the gap mechanics, on the INTERRUPT slot: a queue-slot cue is now also paced by the clip on the gun.
   let clock = 1000, finishFirst, firstOptions;
   const timers = [], sent = [];
   const eng = new Engine({ now: () => clock, delay: (ms, fn) => timers.push({ ms, fn }),
@@ -2828,9 +2829,9 @@ test('F347 review: the remaining gap starts when BrxLink reports the PLAY frame 
       if (sent.length === 1) { firstOptions = options; return new Promise(resolve => { finishFirst = resolve; }); }
       return true;
     } });
-  const pending = eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'transmission gap');
+  const pending = eng._write(['$PLAY,VA6D,4,6,,,,,*', '$PLAY,VA6E,4,6,,,,,*'], 'transmission gap');
   clock = 1200;
-  firstOptions.onFrameSent('$PLAY,,4,6,VA6D,,,,*');
+  firstOptions.onFrameSent('$PLAY,VA6D,4,6,,,,,*');
   clock = 1250;
   finishFirst(true);
   await new Promise(resolve => setImmediate(resolve));
@@ -2844,6 +2845,7 @@ test('F347 review: the remaining gap starts when BrxLink reports the PLAY frame 
 });
 
 test('F347 review: a PLAY resend restarts the gap without adding a phantom clip', async () => {
+  // F419: the gap mechanics, on the INTERRUPT slot: a queue-slot cue is now also paced by the clip on the gun.
   let clock = 1000, finishFirst, firstOptions;
   const timers = [], sent = [];
   const eng = new Engine({ now: () => clock, delay: (ms, fn) => timers.push({ ms, fn }),
@@ -2852,11 +2854,11 @@ test('F347 review: a PLAY resend restarts the gap without adding a phantom clip'
       if (sent.length === 1) { firstOptions = options; return new Promise(resolve => { finishFirst = resolve; }); }
       return true;
     } });
-  const pending = eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'resend gap');
+  const pending = eng._write(['$PLAY,VA6D,4,6,,,,,*', '$PLAY,VA6E,4,6,,,,,*'], 'resend gap');
   assert.equal(eng._gun.clips.length, 0, 'a queued write has not reached the gun');
-  firstOptions.onFrameSent('$PLAY,,4,6,VA6D,,,,*');
+  firstOptions.onFrameSent('$PLAY,VA6D,4,6,,,,,*');
   clock = 1300;
-  firstOptions.onFrameSent('$PLAY,,4,6,VA6D,,,,*');
+  firstOptions.onFrameSent('$PLAY,VA6D,4,6,,,,,*');
   assert.equal(eng._gun.clips.length, 1, 'the retry keeps one logical clip in the model');
   clock = 1350;
   finishFirst(true);
@@ -2957,16 +2959,17 @@ test('F347 review: BrxLink rechecks cancellation after a parser reset', async ()
 });
 
 test('F347 review: cancelled PLAY reservations release the unused slots', () => {
+  // F419: the gap mechanics, on the INTERRUPT slot: a queue-slot cue is now also paced by the clip on the gun.
   let clock = 1000;
   const timers = [], sent = [];
   const eng = new Engine({ now: () => clock, delay: (ms, fn) => timers.push(fn), writer: frames => { sent.push(...frames); return true; } });
-  eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*', '$PLAY,,4,6,VA7,,,,*'], 'reserved pair');
+  eng._write(['$PLAY,VA6D,4,6,,,,,*', '$PLAY,VA6E,4,6,,,,,*', '$PLAY,VA7,4,6,,,,,*'], 'reserved pair');
   eng._cancelPendingPlayWrites();
   clock += 150;
-  eng._write(['$PLAY,,4,6,VA6F,,,,*'], 'after cancellation');
-  assert.ok(sent.includes('$PLAY,,4,6,VA6F,,,,*'), 'the new line uses the gap after the last transmitted PLAY');
+  eng._write(['$PLAY,VA6F,4,6,,,,,*'], 'after cancellation');
+  assert.ok(sent.includes('$PLAY,VA6F,4,6,,,,,*'), 'the new line uses the gap after the last transmitted PLAY');
   for (const fn of timers) fn();
-  assert.ok(!sent.includes('$PLAY,,4,6,VA6E,,,,*'), 'the cancelled PLAY remains cancelled');
+  assert.ok(!sent.includes('$PLAY,VA6E,4,6,,,,,*'), 'the cancelled PLAY remains cancelled');
 });
 
 test('F347 review: match end, panic and BLE drop cancel captured PLAY gap callbacks', () => {
@@ -5742,6 +5745,7 @@ test('A16.3 levels: a drop animates lead(solid) -> blink-gap(all off) -> step do
   h.eng.hurtFired = true;   // office test 2026-09-19: level 1 is under LOW_HEALTH_HP too -- in a real decline
                              // the once-per-life alert would already have fired well before this; isolate the
                              // LED animation under test from that separate, now-debounced write
+  h.eng._sirSound = {}; h.eng._gun.clear();   // F419: and from the gun-audio pacing (a queue-slot cue now waits out a hit row sound)
   h.writes.length = 0; h.delays.length = 0;
   h.adv(1000);                                                 // past the rapid-fire window: this is a SEPARATE hit,
                                                                // so it gets the full lead + all-off blink (a second hit
@@ -5759,6 +5763,7 @@ test('A16.3 levels: a change arriving mid-animation cancels it and restarts from
   const h = levelHarness();
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // level 3
   h.eng.hurtFired = true;   // office test 2026-09-19: isolate this animation from the separate, now-debounced low-health write (see the test above)
+  h.eng._sirSound = {}; h.eng._gun.clear();   // F419: and from the gun-audio pacing (see the test above)
   h.adv(1000);                                                 // separate hit, so the full lead+blink sequence runs
   const pending = [];
   h.eng.delay = (ms, fn) => pending.push(fn);   // manual control from here so we can interrupt mid-sequence

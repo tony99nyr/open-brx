@@ -434,7 +434,10 @@ test('P2: a must-hear kill line sends one $PLAYX per clip the gun still holds, t
   h.eng._write(['$PLAY,,4,6,VA8C,,,,*'], 'test: a body clip'); h.eng._write(['$PLAY,,4,6,VA7,,,,*'], 'test: another');   // 1.5 s + 2.1 s queued
   h.adv(200); const n = h.writes.length;
   h.kill(); h.adv(200);
-  assert.deepEqual(tail(h, n), ['X', 'X', 'VAA'], 'two stops, then the kill line');
+  // F419: only the first clip reached the gun; the second waited on the phone, so the must-hear line drops it there
+  // and stops the one the gun holds.
+  assert.deepEqual(tail(h, n), ['X', 'VAA'], 'one stop for the clip the gun holds, then the kill line');
+  assert.equal(h.plays('VA7').length, 0, 'the clip still on the phone never reaches the gun');
   h.adv(4000); const m = h.writes.length;
   h.kill(); h.adv(200);
   assert.deepEqual(tail(h, m), ['VAA'], 'nothing outstanding: no stop');
@@ -472,12 +475,12 @@ test('F347: the phone splits PLAY pairs and keeps PLAY_GAP_MS between writes', (
   h.eng._nextPlayAt = h.now();
   const from = h.writes.length;
   h.eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'test: paired clips');
-  h.adv(500);
+  h.adv(CLIP_MS.VA6D + 500);   // F419: a queue-slot pair is now paced by the first clip's length, not only the gap
   const sent = h.writes.slice(from).filter(w => w.f.startsWith('$PLAY,'));
   const byWrite = new Map();
   for (const w of sent) byWrite.set(w.group, (byWrite.get(w.group) || 0) + 1);
   assert.ok([...byWrite.values()].every(n => n === 1), 'each write carries at most one $PLAY');
-  assert.ok(sent.length >= 2 && sent[1].t - sent[0].t >= ann.PLAY_GAP_MS, 'the pair is at least PLAY_GAP_MS apart');
+  assert.ok(sent.length >= 2 && sent[1].t - sent[0].t >= Math.max(ann.PLAY_GAP_MS, CLIP_MS.VA6D), 'the pair is at least PLAY_GAP_MS apart, and (F419) the first clip long');
 });
 
 test('docs: announcer stop rules name both measured stop behaviours', () => {
@@ -866,7 +869,12 @@ test('M-B: my kill line ending inside the slack is neither stopped nor said agai
   die(h); h.adv(9000);
   assert.equal(killLines(h).length, 1, 'said once');
   const st = h.writes.slice(n).filter(w => w.f === '$PLAYX,0,*');
-  assert.ok(st.length >= 1 && st[0].t >= vaaEnd, `the stop goes after my line ended (${st.length ? st[0].t - vaaEnd : 'none'} ms)`);
+  // F419: the clip behind my line no longer sits on the gun: a queue-slot cue waits on the PHONE until my line has
+  // played (the gun's queue slot drops and reorders). So any stop still never lands on my line, and the clip behind it
+  // either never reaches the gun or is stopped after my line ended.
+  assert.ok(st.every(w => w.t >= vaaEnd), `no stop lands on my line (${st.map(w => w.t - vaaEnd)} ms after it ended)`);
+  const behind = h.plays('VA7');
+  assert.ok(!behind.length || behind[0].t >= vaaEnd, 'the clip behind never plays over my line');
 });
 
 // ---------- F375: the "Health Critical" line after the death scream (field 2026-09-24, Tony) ----------
