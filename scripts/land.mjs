@@ -263,9 +263,18 @@ function parseGate(out) {
   return { rows, logs, build: build ? { name: build[1], log: build[2].trim() } : null };
 }
 const listJobs = out => lines(out).filter(l => /^[a-z][a-z0-9-]*$/.test(l));
-/** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). */
+/** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). A browser
+ *  gate's log never says that -- it throws instead -- so falls back to the first line naming the actual error
+ *  (an "Error:" line, or Playwright's own "closed" wording, e.g. "Target page, context or browser has been
+ *  closed"), so flakes.jsonl still records SOMETHING to look at instead of `step: null` (2026-09-27, F429/F430:
+ *  two OOM-killed browser jobs both logged a `step: null` flake). */
 function stepOf(log) {
-  try { return /^FAIL (\S+)/m.exec(fs.readFileSync(log, 'utf8'))?.[1] || null; } catch { return null; }
+  let text;
+  try { text = fs.readFileSync(log, 'utf8'); } catch { return null; }
+  const fail = /^FAIL (\S+)/m.exec(text);
+  if (fail) return fail[1];
+  const line = /^.*(?:Error:|closed).*$/m.exec(text);
+  return line ? line[0].trim() : null;
 }
 
 class LandError extends Error {}

@@ -15,10 +15,13 @@ step, `.claude/skills/iphone-build`. Bench part 2 is at the top of [`bench-plan.
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: brx1, orchestration
-**State:** 0.4.14 cut and published (`56fbece4`), CI green; polish loop closed every Critical/High/Medium (Lows in
-the F416 row). The day's UI/balance decisions are in `post-mvp.md` (F412, F413, F414, F415) and
-`experiment-log/2026-09.md`'s 2026-09-26 brx1 entry.
-**Next:** cut 0.4.15 on Tony's go; Tony builds the iPhone (`iphone-build` skill).
+**State:** 0.4.15 published (`efd1961c`). `test-all`'s memory headroom fixed (F429/F430's lead): `screensBudget`
+reserves room for the other UI jobs and the scheduler caps its plan at 85% of the memory budget, never the whole
+thing (measured on the 32-core/8000 MB box: planned peak 6760 MB, 1240 MB headroom, app-screens 445s at 14
+shards). Landed `a7b0c26f` → main. F432 filed: a one-off `waitForTimeout(200)` race in the same gate's
+scores-overlay check, unrelated to the memory fix (peak stayed 6760/6800 on that run too).
+**Next:** brx3 closes F429/F430 after 3 clean lander runs (their call, this lane's row above). F432 waits on the
+post-bench sleep cleanup.
 **Blocked:** none.
 ## Lane: brx2, bench, audio, utility and docs
 **State:** bench part 1 done 2026-09-26 (full write-up: `experiment-log/2026-09.md`'s 2026-09-26 brx2 entry). KOTH's
