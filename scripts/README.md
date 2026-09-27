@@ -47,21 +47,31 @@ flake summary. Like `wait`, it runs the lander when none runs and the queue is n
 1. It takes the lander lock (`/tmp/brx-land-<uid>.lock`). The lock uses the stale rules of test-all's lock
    (`scripts/lib/lock.mjs`), so the lander takes over the entry of a crashed lander.
 2. It fetches `origin` and takes the first N branches of the queue (`land/*`, sorted by name, so by submit time).
-3. It builds the candidate in a scratch worktree (`/tmp/brx-land/wt`, reused between runs). The candidate is
-   `origin/main` plus each branch in order, as `--no-ff` merge commits: no squash, no rebase. A branch that
-   conflicts leaves the batch; the rest of the batch continues.
+   A `land/` ref that `submit` did not write (a hand push such as `land/0-Tony-x`) is reported and never landed.
+   Delete it by hand.
+3. It builds the candidate in a scratch worktree. Each lock entry gets its own worktree
+   (`/tmp/brx-land/wt-<entry>`), and the lander removes it when it stops. The candidate is `origin/main` plus each
+   branch in order, as `--no-ff` merge commits: no squash, no rebase. A branch that conflicts leaves the batch; the
+   rest of the batch continues. After the bisect (step 5), the lander tries each conflicting branch once more on top
+   of what passed, because its conflict can be with a batch member that then went red.
+   The worktree links the main checkout's `node_modules` for `app/`, `site/` and `webapp/mc/`. If the candidate's
+   `package.json` or `package-lock.json` differs from the main checkout's, the lander removes the link and runs
+   `npm ci` in the worktree instead. A failed install counts as a red job named `install <dir>`.
 4. It gates the candidate once: `node scripts/test-all.mjs --changed <main tip> --ui`, with no job names. The gate
    must run the same number of jobs that `--list` names. A different number stops the lander with an error. The
    lander does not count that as a pass.
 5. It reruns a failed job alone, once. If the job passes on the rerun, the lander records a flake and continues.
    If the job fails again, the lander bisects the batch. Each half is gated on top of the branches that already
    passed, so the lander also catches a branch that breaks only in combination. Before the lander blames a single
-   branch, it gates `main` alone. If `main` is red on its own, the lander stops and blames no branch.
+   branch, it runs the failed jobs on `main` alone. If `main` is red on its own, the lander stops and blames no
+   branch.
 6. It pushes the candidate to `main`, fast-forward only. If the push is rejected because `main` moved (another
    lander, or an emergency push), the branches did not fail. The lander fetches, merges the same branches onto the
    new `main`, gates again and pushes again. After two retries it stops with "main keeps moving" and leaves the
-   batch queued. A branch that is already on the new `main` (another lander landed it) is skipped, never merged
-   twice.
+   batch queued. Just before each push, the lander checks that it still holds the lock. If another lander took the
+   lock over (for example after a suspended laptop woke up), it does not push, and the batch stays queued.
+   A queued branch that is already on `main` (another lander landed it, an emergency push included it, or a lander
+   crashed after its push) is never merged twice: the lander marks it landed and deletes its `land/<id>` ref.
 7. It deletes `land/<id>` for each landed branch. It copies a red or conflicting branch to `land-failed/<id>`,
    and only then deletes `land/<id>`. It never deletes a branch that did not land, and it never force-pushes.
 
@@ -70,10 +80,13 @@ job selection. With `--dry-run`, the lander does not gate, push or change a ref.
 
 ### Results
 
-Each branch gets `/tmp/brx-land/<id>.json`: `{id, owner, status, main_sha?, failed_jobs?, conflict_files?, log?}`,
-where `status` is `landed`, `red`, `conflict` or `queued`. `wait` and `status` also read the result from the refs,
+Each branch gets `/tmp/brx-land/<id>.json`: `{id, owner, status, main_sha?, failed_jobs?, conflict_files?,
+conflicts_with?, log?}`, where `status` is `landed`, `red`, `conflict` or `queued`, and `conflicts_with` is `main` or
+the id of the batch member that the branch conflicts with. `wait` and `status` also read the result from the refs,
 so they work from another machine: a landed branch has a `Land <id>` merge commit on `main`, and a failed branch
-has a `land-failed/<id>` ref.
+has a `land-failed/<id>` ref. From the refs alone, `wait` cannot tell a conflict from a red branch, so it reports
+both as red (exit 1). The gate logs are in `/tmp/brx-land/logs` (the newest 200 are kept). Any unexpected error
+exits 5, never 1.
 
 To fix a red or conflicting branch, merge `origin/main` into it, fix it, and submit it again. The new submit gets a
 new id. Delete `land-failed/<id>` when you no longer need it.
@@ -108,14 +121,10 @@ rejected. It then merges its batch onto the new `main`, gates again and pushes (
 `mcp/tests/test_land.py` drives the real script against a temporary bare remote, with a stub in place of the gate
 (`LAND_GATE_STUB`). Two guards keep tests away from the real `origin`:
 
-- `LAND_GATE_STUB` is refused unless `LAND_TEST=1` is set.
+- `LAND_GATE_STUB` and `LAND_INSTALL_STUB` (the install stub) are refused unless `LAND_TEST=1` is set.
 - `LAND_TEST=1` refuses a remote whose URL is not a local path (`file://` or an absolute path).
 
 `LAND_STATE_DIR`, `LAND_LOCK_DIR` and `LAND_POLL_MS` move the state, the lock and the wait interval.
 
-Known limits:
-
-- The scratch worktree uses the main checkout's `node_modules` through symlinks. A batch that changes a
-  `package-lock.json` is gated with the old dependencies.
-- Two landers on one machine share `/tmp/brx-land/wt` and so must share the lock. Do not give them different
-  `LAND_LOCK_DIR` values.
+Known limit: the lander compares a candidate's lockfiles with the main checkout's working tree, not with what
+is installed in its `node_modules`. Run `npm ci` in the main checkout after you pull a dependency change there.
