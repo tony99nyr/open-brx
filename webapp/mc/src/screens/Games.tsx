@@ -24,6 +24,7 @@ import { emptyRequiredSlots, poolEmptyMessage, splitLine } from './gameSummary';
 import { operatorNote } from './operatorNote';
 import { type MatchItemKey, matchItems } from './matchItems';
 import { kindLabel } from './presets/kinds';
+import { pickFallbackNote } from './pieceFallbackNote';
 import { RUNWAYS, getRunway, setRunway, useRunway } from '../runway';
 import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { MODE_ART } from '../modeArt';
@@ -113,6 +114,9 @@ export function Games() {
   // mode picker. `piece_id`, not the mode string: two builtins could in principle share one mode (they
   // do not today, but the picker keys on piece ids everywhere else).
   const [modeConfirm, setModeConfirm] = useState<{ piece_id: string; split: string } | null>(null);
+  // Review follow-up: the SAME confirm, keyed by favourite id instead of piece id -- a FAVOURITE's own
+  // mode can reshape the roster too.
+  const [favConfirm, setFavConfirm] = useState<{ favourite_id: string; split: string } | null>(null);
 
   if (!state) return null;
   const cfg = state.config;
@@ -145,17 +149,16 @@ export function Games() {
   // Round 3: a PICK fallback (round 2, server review: a kind the request did not itself name, e.g. a
   // post-MVP mode set on KIT, falls back to its builtin) is a DIFFERENT story from a favourite's own
   // fallback above -- there is no "saved pick" here that went missing, so "ITS SAVED PICK IS GONE"
-  // said something that never happened. Worded separately, naming where the value actually came from.
-  const pickFallbackNote = (fallbacks: PieceKind[], pick: GamePick): string[] | null => (fallbacks.length
-    ? fallbacks.map(k => `${kindLabel(k)}: USING ${pieces.find(p => p.piece_id === pick.pieces[k])?.name ?? 'ITS DEFAULT'} (THE KIT PICK IS NOT OFFERED ON PLAY)`)
-    : null);
+  // said something that never happened. Worded separately (pieceFallbackNote.ts, shared with Build.tsx's
+  // own SAVE, review follow-up), naming where the value actually came from.
+  const pickFallback = (fallbacks: PieceKind[]) => pickFallbackNote(fallbacks, pieces);
   // Polish round 1 Low: a fallback note used to sit on screen until the NEXT favourite load, surviving
   // every ordinary tap in between and describing a load that was no longer the reason anything on
   // screen looked the way it did.
-  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); setModeConfirm(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
-    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }); };
-  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); setModeConfirm(null); return run(() => api.pick({ match: patch }))
-    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }); };
+  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); setModeConfirm(null); setFavConfirm(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
+    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallback(r.fallbacks)); }); };
+  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); setModeConfirm(null); setFavConfirm(null); return run(() => api.pick({ match: patch }))
+    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallback(r.fallbacks)); }); };
   // Round 4 (F-6, gameSummary.splitLine): a mode switch that would move ≥2 rostered players between
   // teams asks first -- retired along with the old GAMES tiles, restored here since PLAY's own mode
   // picker carries exactly the same hazard. Picking a mode is itself the request (no draft/SAVE step
@@ -171,6 +174,7 @@ export function Games() {
     if (split) {
       if (modeConfirm?.piece_id === p.piece_id) { setModeConfirm(null); pickPiece('mode', p.piece_id); return; }
       setModeConfirm({ piece_id: p.piece_id, split });
+      setFavConfirm(null);
       return;
     }
     setModeConfirm(null);
@@ -220,7 +224,7 @@ export function Games() {
     setConfirmDeleteFav(null);
     await refreshFavourites();   // harmless even on a refused delete — just re-syncs the shelf
   };
-  const loadFavourite = async (id: string) => {
+  const doLoadFavourite = async (id: string) => {
     const r = await run(() => api.loadFavourite(id));
     if (!r) return;
     // Polish round 1 H2: `ok: false` is a REFUSED load (a bench-gate refusal, same as any other pick) --
@@ -230,6 +234,29 @@ export function Games() {
     if (!r.ok) { setNotice(r.errors.join(' · '), true); return; }
     setRunway(r.countdown_s);
     setFallbackNote(favouriteFallbackNote(r.fallbacks, r.pick));
+  };
+  // Review follow-up: a FAVOURITE's own mode can reshape the roster exactly like picking it directly
+  // can (`pickMode` above) -- this used to switch straight through with no confirm at all. The mode
+  // piece a favourite names can itself be gone/post_mvp by now, so this predicts the SAME fallback the
+  // load would actually apply (the first non-post_mvp mode piece, mirroring `resolvePiecesMixed`'s own
+  // fallback rule) rather than assuming the favourite's saved piece still resolves.
+  const loadFavourite = async (id: string) => {
+    const fav = favourites.find(f => f.favourite_id === id);
+    if (!fav) return;
+    const savedModePiece = pieces.find(p => p.piece_id === fav.pick.pieces.mode);
+    const modePiece = (savedModePiece && savedModePiece.kind === 'mode' && !savedModePiece.post_mvp)
+      ? savedModePiece : pieces.find(p => p.kind === 'mode' && !p.post_mvp);
+    const modeId = modePiece ? (modePiece.value as { mode: string }).mode : undefined;
+    const newTeams = modes.find(m => m.mode === modeId)?.defaults.teams ?? [];
+    const split = splitLine(state.players, cfg.teams, newTeams);
+    if (split) {
+      if (favConfirm?.favourite_id === id) { setFavConfirm(null); await doLoadFavourite(id); return; }
+      setFavConfirm({ favourite_id: id, split });
+      setModeConfirm(null);
+      return;
+    }
+    setFavConfirm(null);
+    await doLoadFavourite(id);
   };
 
   // ---- the operator note (games-redesign.md §9), derived off the composed config -----------------
@@ -306,7 +333,11 @@ export function Games() {
           THE SERVER PREDATES THIS CONSOLE. RESTART MISSION CONTROL (./start.sh).
         </Alert>
       )}
-      {!staleServer && piecesError && (
+      {/* Review Low: while the console itself is known offline, a stale piecesError is not a NEW fact
+          -- CommandBar's own MC_OFFLINE banner already says so, and this one used to flash on
+          (in)/(out) with every reconnect blip instead of staying quiet until there is something new
+          to report. */}
+      {!staleServer && piecesError && connected && (
         <Alert id="games-pieces-error" testid="play-pieces-error" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ lineHeight: 1.5 }}>{alertWords(`COULD NOT LOAD THE GAME PIECES: ${piecesError}`)}</span>
           <span data-testid="pieces-retry">
@@ -362,6 +393,11 @@ export function Games() {
                 ))}
               </div>
             </fieldset>
+          )}
+          {/* Review follow-up: a FAVOURITE's own mode can reshape the roster just like picking it
+              directly can (`pickMode`'s own confirm below) -- the same primitive, the same wording. */}
+          {favConfirm && (
+            <SwitchConfirm dropsDraft={false} split={favConfirm.split} action="TAP THE FAVOURITE AGAIN TO SWITCH" />
           )}
           {fallbackNote && (
             <div data-testid="favourite-fallback-note" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 2, font: F.chk(600, 12), color: T.warn }}>
@@ -465,7 +501,7 @@ export function Games() {
                     setFallbackNote(null);
                     const lm = state.last_match!;
                     const r = await run(() => api.pick({ match: { time_limit_s: lm.time_limit_s, frag_limit: lm.frag_limit, night: lm.night, silenced: lm.silenced } }));
-                    if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }
+                    if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(pickFallback(r.fallbacks)); }
                     else if (r) setNotice(r.errors.join(' · '), true);
                   }}>LAST MATCH ▸</GhostButton>
                 </span>
