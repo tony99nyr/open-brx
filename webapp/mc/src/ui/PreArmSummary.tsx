@@ -258,9 +258,11 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
         <span style={{ flex: 1 }} />
         <span data-testid="pre-arm-counts" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
           <Count label="PHONES TOLD" n={totals.phone_game} of={totals.rostered} good={totals.phone_game === totals.rostered} bad={col('phone')} />
-          {/* PUSHED, not "SENT" (see the glossary at the top): SENT is the phone axis's word, and this
-              count is true even for a player with no phone bound at all. */}
-          <Count label="GUNS PUSHED" n={totals.gun_sent} of={totals.rostered} good={totals.gun_sent === totals.rostered} bad={col('push')} />
+          {/* QA-02 fold (2026-09-26): GUNS PUSHED used to sit here too, disagreeing with LOBBY's own
+              rail count and GameEditPanel's -- three counts for what is really one question, "are the
+              guns ready". LOBBY's GUNS READY line is now the one answer; this panel keeps ACKED/ECHO
+              (and the per-row PUSHED column below, still real per-gun detail) since those are not the
+              redundant three. */}
           <Count label="ACKED" n={totals.gun_acked} of={totals.rostered} good={totals.gun_acked === totals.rostered} bad={col('ack')} />
           {/* ECHO is reported, never required: `not_echoed` is the ordinary answer on our v4.32
               firmware (A37), so it is never coloured as a fault. */}

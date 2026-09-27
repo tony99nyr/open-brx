@@ -328,13 +328,18 @@ async function runMock(browser, viteBase) {
   if (await pushBtn.isEnabled().catch(() => false)) await pushBtn.click();
   else await pg.locator('main button:has-text("Push anyway")').click();
   await pg.waitForTimeout(400);
-  await until(async () => (await pg.locator('main').innerText()).includes('Config pushed'), 8000, 'the lobby to report a push');
+  // QA-02 fold (2026-09-26, visual QA round 1): LOBBY's own separate "Config pushed" step is retired
+  // -- GUNS READY is the one place LOBBY answers "are the guns ready" now -- so the push is read off
+  // that line instead.
+  await until(() => pg.getByTestId('lobby-guns-ready').count().then(n => n > 0), 8000, 'the lobby to report a push');
   ok(`LOBBY: pushed   ${await shot(pg, '04-mock-lobby-pushed')}`);
 
   await openPanel(pg);
+  // GameEditPanel's own standing "confirmed" count is retired here too (LoadedGame.tsx: it renders
+  // nothing on LOBBY once nothing is actively re-pushing) -- so before this edit there is nothing to
+  // read, and that absence IS the proof the fold landed.
   const repushBefore = await repushText(pg);
-  expect(/ALL GUNS ON THIS CONFIG|RE-PUSHING|GUNS CONFIRMED ON THIS CONFIG/.test(repushBefore), `the repush line reads a real state before the edit (saw ${JSON.stringify(repushBefore)})`);
-  const stepTextBefore = (await pg.locator('main').innerText()).replace(/\s+/g, ' ').match(/Config pushed[^A-Z]*\d+\/\d+/)?.[0] ?? '';
+  expect(repushBefore === '', `the standing count is retired on LOBBY, so this reads empty before the edit (saw ${JSON.stringify(repushBefore)})`);
 
   // WEAPONS AVAILABLE — switch one primary weapon off, then SAVE AND LOAD (the label the button
   // wears once there IS a head on the guns).
@@ -348,32 +353,16 @@ async function runMock(browser, viteBase) {
   expect((await saveLoad.innerText()).includes('SAVE AND LOAD'), `with a head on the guns the button says SAVE AND LOAD (saw ${JSON.stringify(await saveLoad.innerText())})`);
   await saveLoad.click();
 
-  // The edit RE-PUSHES: the ack count must visibly MOVE (drop, then recover) — this is the
-  // observable half of B3 (the un-push used to leave it looking untouched). Both indicators read the
-  // SAME `lobby.acks` off the SAME snapshot, so they are checked in the one instant just confirmed to
-  // be inside the transitional window — a second, separately-timed poll for the step text could miss
-  // it (the mock's re-ack delay is short by design; a real gun's is ~1.5s).
-  // Read both indicators in ONE page evaluation, so they come from the same DOM snapshot. Two separate
-  // reads let the step text come from a different moment than the repush line (before the new state
-  // renders, or after the acks return). Poll until both have moved; the held acks keep the window open.
-  const snapshot = () => pg.evaluate(() => ({
-    repush: (document.querySelector('[data-testid="game-edit-panel"] [data-testid="game-edit-repush"]')?.innerText ?? '').replace(/\s+/g, ' ').trim(),
-    step: (document.querySelector('main')?.innerText ?? '').replace(/\s+/g, ' ').match(/Config pushed[^A-Z]*\d+\/\d+/)?.[0] ?? '',
-  }));
-  let during = { repush: repushBefore, step: stepTextBefore };
-  await until(async () => { during = await snapshot(); return during.repush !== repushBefore; }, 4000, 'the repush line to change right after the edit');
-  const deadline = Date.now() + 2500;
-  while (during.repush !== repushBefore && during.step === stepTextBefore && Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, 80));
-    during = await snapshot();
-  }
-  const stepTextDuring = during.step;
-  expect(during.repush !== repushBefore && stepTextDuring !== stepTextBefore,
-    `LOBBY's own config-pushed step moves WITH the repush line (before "${stepTextBefore}", during "${stepTextDuring}", repush line "${during.repush}")`);
-  ok(`edit fired: repush line "${await repushText(pg)}", LOBBY step "${stepTextDuring}"   ${await shot(pg, '05-mock-repushing')}`);
+  // The edit RE-PUSHES: the repush line must visibly APPEAR (RE-PUSHING), then go quiet again once
+  // the acks return — this is the observable half of B3 (the un-push used to leave it looking
+  // untouched), now proved against the one remaining rendering of it rather than a retired step.
+  let during = repushBefore;
+  await until(async () => { during = await repushText(pg); return during !== ''; }, 4000, 'the repush line to appear right after the edit');
+  expect(/RE-PUSHING/.test(during), `the repush line shows the in-flight push (saw ${JSON.stringify(during)})`);
+  ok(`edit fired: repush line "${during}"   ${await shot(pg, '05-mock-repushing')}`);
 
-  await until(async () => !/RE-PUSHING/.test(await repushText(pg)), 6000, 'the acks to recover');
-  ok(`acks recovered: "${await repushText(pg)}"   ${await shot(pg, '06-mock-repushed')}`);
+  await until(async () => (await repushText(pg)) === '', 6000, 'the acks to recover (the standing count stays retired, so this goes back to empty)');
+  ok(`acks recovered: repush line is empty again   ${await shot(pg, '06-mock-repushed')}`);
   await openPanel(pg);
   expect(await panel(pg).locator(`[aria-label="primary weapons available"] button[aria-label="${chipName}, off"]`).count() === 1,
     `${chipName} is off in the config the server now holds`);

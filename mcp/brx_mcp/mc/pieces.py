@@ -160,16 +160,17 @@ def _pickable_ids() -> tuple[frozenset[str], frozenset[str]]:
 
 def _check_slot(kind: PieceKind, v: object) -> dict:
     try:
-        rule = dict(_policy._check_rule(_SLOT_OF_KIND[kind], v if isinstance(v, dict) else {}))
+        rule = _policy._check_rule(_SLOT_OF_KIND[kind], v if isinstance(v, dict) else {})
     except ValueError as e:
         raise PieceError(400, str(e)) from e
     weapons, perks = _pickable_ids()
     allowed = perks if kind == "perks" else weapons
-    named = ([rule["fixed_id"]] if rule.get("fixed_id") else []) + list(rule.get("only_ids") or [])
+    fixed = rule["fixed_id"]
+    named: list[str] = ([fixed] if fixed else []) + list(rule["only_ids"])
     bad = [i for i in named if i not in allowed]
     if bad:
         raise PieceError(400, f"not offered in a loadout: {', '.join(bad)} (hidden, pickup-only or unknown)")
-    return rule
+    return dict(rule)
 
 
 def _check_misc_loadouts(v: object) -> dict:

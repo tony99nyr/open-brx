@@ -137,6 +137,14 @@ export function LoadStatus({ pushed, acked, total, recent, testid = 'game-edit-r
   // remains the SERVER's gate for what may be armed, which is a different question.
   const everyone = total > 0 && acked >= total;
   const repushing = !everyone && recent;
+  // QA-02 fold (2026-09-26, visual QA round 1): the standing count here -- "ALL GUNS ON THIS CONFIG
+  // (n/n)" or "n/m GUNS CONFIRMED ON THIS CONFIG" -- used to sit on LOBBY beside its own rail count
+  // and, separately, PRE-ARM CHECK's GUNS PUSHED: three different words for one fact, and they could
+  // read as disagreeing (a 200ms window where one had updated and the others had not). LOBBY's own
+  // GUNS READY line is now the one place THAT screen answers "are the guns ready" -- KIT and
+  // HealthPresetEditor have no such line, so this stays exactly as it was there. Only the ACTIVE
+  // re-push stays on LOBBY too: it is motion, not a standing count, and nothing else on the screen says it.
+  if (onLobby && !repushing) return null;
   // F221: a still-in-flight push is transient status, not a fault — NEUTRAL, not amber; the standing
   // "N/M confirmed" state (once the transitional window has expired) stays amber, a real fix-before-
   // the-next-match fact. Polish r1: that standing state was a bare `T.warn`, no id, no glyph, routed
