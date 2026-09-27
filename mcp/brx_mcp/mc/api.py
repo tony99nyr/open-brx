@@ -18,7 +18,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .state import CoverageRequired, NotReadyError, Session
-from .types import DEFAULT_RUNWAY_S, MatchHistoryRow, MatchSettings, PerkView, PresentationView, VoiceList
+from .types import DEFAULT_RUNWAY_S, MatchHistoryRow, MatchSettings, PerkView, PresentationView, TeamColour, VoiceList
 from .tunnel import TunnelError
 
 log = logging.getLogger("brx.mc.api")
@@ -217,7 +217,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     # ---- F411: BUILD's pieces + PLAY's pick (docs/spec/design/games-presets.md) ----
     from . import gamepick as _gamepick
     from .pieces import PieceError, PieceStore, check_value
-    from .state import MODES, ModeRow, default_config
+    from .state import MODES, ModeRow, TEAM_DEFS, default_config
     if getattr(s, "pieces", None) is None:
         s.attach_pieces(PieceStore(None, now_ms=s.now_ms))   # memory-only; M1 reconciles a stale game_pick too
 
@@ -305,7 +305,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             except PieceError as e:
                 return _perr(e)
             resolved[piece["kind"]] = {**piece, "value": checked}
-            patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]))
+            patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]), TEAM_DEFS)
             precheck = s._compose_precheck(patch)
             if not precheck["ok"]:
                 return JSONResponse({"errors": precheck["errors"]}, status_code=400)
@@ -379,6 +379,15 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                 dc = default_config(mode)
                 match["time_limit_s"] = dc["time_limit_s"]
                 match["frag_limit"] = (dc.get("scoring") or {}).get("frag_limit")
+                # F413/F415: a mode change resets teams/hold_target_s to the NEW mode's own defaults
+                # too (same reset `time_limit_s`/`frag_limit` already get) -- unless the SAME request
+                # also sets one, which `merge_match` applies right after this. A stale koth hold target
+                # or a three-team roster must not ride along into an unrelated mode's own pick.
+                match.pop("teams", None)
+                match.pop("hold_target_s", None)
+                new_teams = _mode_row(mode).get("teams") or []
+                if new_teams != ["ffa"]:
+                    match["teams"] = cast(list[TeamColour], list(new_teams))
             match = _gamepick.merge_match(match, b.get("match") or {})
         except PieceError as e:
             return _perr(e)
@@ -386,7 +395,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         # builtin must PERSIST that builtin's id, or the stale one just resolved past would sit right
         # back in `game_pick` for the next request to trip over again.
         ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
-        patch = _gamepick.compose(resolved, match, _mode_row(mode))
+        patch = _gamepick.compose(resolved, match, _mode_row(mode), TEAM_DEFS)
         try:
             res = _apply_patch(patch)
         except ValueError as e:
@@ -459,7 +468,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         mode = resolved["mode"]["value"]["mode"]
         match = fav["pick"]["match"]
         ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
-        patch = _gamepick.compose(resolved, match, _mode_row(mode))
+        patch = _gamepick.compose(resolved, match, _mode_row(mode), TEAM_DEFS)
         try:
             res = _apply_patch(patch)
         except ValueError as e:

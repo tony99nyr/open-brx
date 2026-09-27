@@ -19,7 +19,7 @@ from brx_mcp.mc import gamepick as G
 from brx_mcp.mc import policy as P
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.pieces import BUILTIN_IDS, PieceError, PieceStore, check_value
-from brx_mcp.mc.state import MODES, Session, default_config
+from brx_mcp.mc.state import MODES, Session, TEAM_DEFS, default_config
 from brx_mcp.mc.types import PIECE_KINDS
 from test_mc_loadout import mk, online
 
@@ -204,6 +204,24 @@ def test_a_value_the_current_rules_refuse_is_kept_invalid_not_dropped():
     assert rows["Sketchy"]["value"] == {"type": "scanner", "delay_s": 10, "gate": "presence"}   # kept verbatim
 
 
+def test_low_respawn_and_slot_rule_errors_are_hand_written_not_raw_uppercased():
+    """Lows (brx1 review of 222b1a81): a bad respawn `protect_s`/`weapon_delay_ms`/`station_protect_s`,
+    or a bad `loadout_policy` slot rule, used to surface as the underlying `ValueError` blindly
+    uppercased -- a raw "RESPAWN.PROTECT_S MUST BE ONE OF (0, 1, 2)" reads like a stack trace leaking a
+    Python attribute path, not the house "WHAT: DO" copy every other message here already uses. Now a
+    hand-written message, with no dotted path or raw exception text passed through."""
+    try:
+        check_value("spawn", {"type": "auto", "delay_s": 15, "protect_s": 9})
+        assert False, "an out-of-range protect_s was accepted"
+    except PieceError as e:
+        assert "." not in str(e) and "RESPAWN.PROTECT_S" not in str(e).upper(), e
+    try:
+        check_value("primary", {"choice": "bogus-choice"})
+        assert False, "an unknown choice was accepted"
+    except PieceError as e:
+        assert "." not in str(e) and "LOADOUT_POLICY" not in str(e).upper(), e
+
+
 def test_high1_a_weapon_since_hidden_keeps_the_piece_read_only_with_a_reason():
     """HIGH 1's own probe: a PRIMARY preset naming a weapon that is hidden today (force_rifle) is kept,
     not dropped, with a reason naming the weapon by its catalogue name -- not the raw snake_case id."""
@@ -229,14 +247,14 @@ def _pclient_with_pieces_file(rows):
         online(s, net, clock, p, i)
     s.attach_pieces(PieceStore(path))
     from brx_mcp.mc.api import create_app
-    return TestClient(create_app(s)), s, net, clock, ps
+    return TestClient(create_app(s)), s, net, clock, ps, path
 
 
 def test_high1_invalid_piece_is_never_pickable_and_survives_a_save_untouched():
     needs(HAVE, "starlette + httpx")
     ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
             "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
-    c, s, net, clock, ps = _pclient_with_pieces_file([ghost])
+    c, s, net, clock, ps, path = _pclient_with_pieces_file([ghost])
     # named directly by a request -> 400, treated like a vanished id, never silently accepted
     r = c.post("/api/play/pick", json={"pieces": {"primary": "ghost1"}})
     assert r.status_code == 400
@@ -251,16 +269,39 @@ def test_high1_invalid_piece_is_never_pickable_and_survives_a_save_untouched():
     c.put(f"/api/pieces/{other['piece_id']}", json={"name": "Another Mk2"})
     kept = next(p for p in c.get("/api/pieces").json() if p["piece_id"] == "ghost1")
     assert kept.get("invalid") and kept["value"]["fixed_id"] == "force_rifle"
+    # Low (brx1 review): re-open the SAME file a second time -- proves the invalid row survives a real
+    # load + save round trip (the first PieceStore's `_save()` already ran, above, from the PUT), not
+    # just staying in the one process's memory that loaded it first.
+    st2 = PieceStore(path)
+    row2 = next(r for r in st2.list() if r["piece_id"] == "ghost1")
+    assert row2.get("invalid") and row2["value"]["fixed_id"] == "force_rifle"
 
 
 def test_high1_put_with_a_valid_value_clears_invalid():
     needs(HAVE, "starlette + httpx")
     ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
             "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
-    c, s, net, clock, ps = _pclient_with_pieces_file([ghost])
+    c, s, net, clock, ps, path = _pclient_with_pieces_file([ghost])
     r = c.put("/api/pieces/ghost1", json={"value": {"choice": "player", "kinds": ["weapon"]}})
     assert r.status_code == 200
     assert "invalid" not in r.json()
+
+
+def test_medium_attach_pieces_falls_back_a_restored_pick_naming_an_invalid_piece():
+    """MEDIUM (brx1 review of 222b1a81): `attach_pieces`'s own docstring says a session must never sit
+    on a pick `POST /api/play/pick` itself would refuse to resolve -- but its ok-check only tested
+    kind/post_mvp, not `invalid` (HIGH 1's own rule-drift casualty), so a RESTORED `game_pick` naming an
+    invalid piece stayed picked, breaking the very rule the docstring states. Fixed by reusing
+    `gamepick._usable`, the same check `resolve_pieces_with_fallback`/`resolve_pieces_mixed` already
+    give a stale id elsewhere."""
+    ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
+            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
+    path = pathlib.Path(tempfile.mkdtemp()) / "pieces.json"
+    path.write_text(json.dumps({"v": 1, "pieces": [ghost]}))
+    s, net, clock, ps = mk(2)
+    s.game_pick["pieces"]["primary"] = "ghost1"   # as if restored, pointing at what is now an invalid piece
+    s.attach_pieces(PieceStore(path))
+    assert s.game_pick["pieces"]["primary"] == BUILTIN_IDS["primary"], s.game_pick["pieces"]["primary"]
 
 
 def test_corrupt_file_is_moved_aside_not_fatal():
@@ -293,13 +334,13 @@ def _resolved(st, **overrides):
 
 def test_compose_day_mode_uses_the_mode_own_presentation_preset():
     st, _ = _store()
-    patch = G.compose(_resolved(st), _match(), _mode_row("koth"))
+    patch = G.compose(_resolved(st), _match(), _mode_row("koth"), TEAM_DEFS)
     assert patch["presentation"]["preset"] == _mode_row("koth")["preset"] == "standard"
 
 
 def test_compose_silenced_overrides_the_mode_preset():
     st, _ = _store()
-    patch = G.compose(_resolved(st), _match(silenced=True), _mode_row("tdm"))
+    patch = G.compose(_resolved(st), _match(silenced=True), _mode_row("tdm"), TEAM_DEFS)
     assert patch["presentation"]["preset"] == "silenced"
 
 
@@ -308,16 +349,16 @@ def test_compose_heavies_off_excludes_unless_the_slot_piece_already_has_its_own_
     st.create("primary", "Snipers Only", "", {"choice": "fixed", "fixed_id": "sniper_rifle", "exclude_tags": ["sniper"]})
     resolved = _resolved(st)
     resolved["misc_loadouts"] = {**st.get(BUILTIN_IDS["misc_loadouts"]), "value": {"hud_select": True, "heavies": False}}
-    patch = G.compose(resolved, _match(), _mode_row("tdm"))
+    patch = G.compose(resolved, _match(), _mode_row("tdm"), TEAM_DEFS)
     assert patch["loadout_policy"]["primary"]["exclude_tags"] == ["heavy"]        # ALL had none: the blanket applies
     resolved["primary"] = next(r for r in st.list() if r["name"] == "Snipers Only")
-    patch2 = G.compose(resolved, _match(), _mode_row("tdm"))
+    patch2 = G.compose(resolved, _match(), _mode_row("tdm"), TEAM_DEFS)
     assert patch2["loadout_policy"]["primary"]["exclude_tags"] == ["sniper"]      # the slot's own tags win
 
 
 def test_compose_a_mode_whose_default_respawn_is_none_keeps_its_own():
     st, _ = _store()
-    patch = G.compose(_resolved(st), _match(), _mode_row("lms"))
+    patch = G.compose(_resolved(st), _match(), _mode_row("lms"), TEAM_DEFS)
     assert "respawn" not in patch
 
 
@@ -325,8 +366,60 @@ def test_compose_every_other_mode_takes_the_picked_spawn_piece():
     st, _ = _store()
     resolved = _resolved(st, spawn=BUILTIN_IDS["spawn"])
     resolved["spawn"] = st.get(next(r["piece_id"] for r in st.list() if r["name"] == "STATION"))
-    patch = G.compose(resolved, _match(), _mode_row("tdm"))
+    patch = G.compose(resolved, _match(), _mode_row("tdm"), TEAM_DEFS)
     assert patch["respawn"]["type"] == "scanner" and patch["respawn"]["delay_s"] == 10
+
+
+# ---------------------------------------------------------------- F413/F415 (teams, hold_target_s)
+def test_compose_writes_teams_from_team_defs_but_leaves_ffa_unclaimed():
+    """§7: `compose()` writes `patch["teams"]` from `team_defs` in the picked colour order for a mode
+    with real teams -- the match strip's own pick if it named one, else the mode's own default. FFA has
+    no real teams (`mode_row["teams"] == ["ffa"]`) and must stay UNCLAIMED, the same treatment as
+    stations/powerups/vip/stun -- `state.TEAM_DEFS["ffa"]` is a display sentinel, never a real $TID row."""
+    st, _ = _store()
+    patch = G.compose(_resolved(st), _match(), _mode_row("tdm"), TEAM_DEFS)
+    assert [t["team_id"] for t in patch["teams"]] == ["red", "blue"], patch["teams"]
+    assert [t["tid"] for t in patch["teams"]] == [0, 1]
+    # a match strip that named its own colours wins over the mode's default order
+    patch2 = G.compose(_resolved(st), _match(teams=["yellow", "purple"]), _mode_row("tdm"), TEAM_DEFS)
+    assert [t["team_id"] for t in patch2["teams"]] == ["yellow", "purple"]
+    # ffa: no teams key at all
+    patch3 = G.compose(_resolved(st), _match(), _mode_row("ffa"), TEAM_DEFS)
+    assert "teams" not in patch3
+
+
+def test_compose_writes_hold_target_s_only_for_a_mode_that_offers_one():
+    """F415: `patch["scoring"]["hold_target_s"]` is only ever written for a mode whose own `match_items`
+    names "hold" (koth) -- a stale value left in the strip from a mode switch away from koth must not
+    reach `_merge_config`'s koth-only check as a 400 for an unrelated tdm/ffa pick."""
+    st, _ = _store()
+    patch = G.compose(_resolved(st), _match(hold_target_s=300), _mode_row("koth"), TEAM_DEFS)
+    assert patch["scoring"]["hold_target_s"] == 300
+    patch2 = G.compose(_resolved(st), _match(hold_target_s=300), _mode_row("tdm"), TEAM_DEFS)
+    assert "hold_target_s" not in patch2["scoring"], patch2["scoring"]
+
+
+def test_merge_match_validates_teams_and_hold_target_s():
+    base = _match()
+    m = G.merge_match(base, {"teams": ["red", "blue"]})
+    assert m["teams"] == ["red", "blue"]
+    m = G.merge_match(m, {"teams": None})
+    assert "teams" not in m
+    m = G.merge_match(base, {"hold_target_s": 300})
+    assert m["hold_target_s"] == 300
+    m = G.merge_match(m, {"hold_target_s": None})
+    assert "hold_target_s" not in m
+    for bad in (["red"], ["red", "red"], ["red", "orange"], ["red", "blue", "yellow", "purple", "red"], "red", 5):
+        try:
+            G.merge_match(base, {"teams": bad})
+            raise AssertionError(f"F413: teams {bad!r} was accepted")
+        except PieceError as e:
+            assert "TEAM COLOURS" in str(e), (bad, e)
+    try:
+        G.merge_match(base, {"hold_target_s": "300"})
+        raise AssertionError("F415: a string hold_target_s was accepted")
+    except PieceError as e:
+        assert "HOLD TARGET" in str(e), e
 
 
 def test_merge_match_mode_change_reset_unless_the_request_sets_it():
@@ -440,6 +533,39 @@ def test_pick_composes_the_config_and_a_mode_change_resets_the_strip():
     assert r2.json()["config"]["mode"] == "ffa"
 
 
+def test_pick_composes_teams_by_default_and_a_mode_change_resets_them_too():
+    """F413/F415: `POST /api/play/pick` composes `config.teams` from the mode's own default when the
+    strip names none, and a mode change resets `teams`/`hold_target_s` to the NEW mode's own defaults
+    (mirroring the existing `time_limit_s`/`frag_limit` reset above) -- unless the SAME request also
+    sets one."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/play/pick", json={})
+    assert r.status_code == 200 and r.json()["ok"]
+    assert [t["team_id"] for t in r.json()["config"]["teams"]] == ["red", "blue"]
+    assert r.json()["pick"]["match"]["teams"] == ["red", "blue"]
+    # koth: a custom team pair (never yellow, F82) and a hold target
+    r2 = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"},
+                                        "match": {"teams": ["blue", "purple"], "hold_target_s": 180}})
+    assert r2.status_code == 200 and r2.json()["ok"], r2.json()
+    assert [t["team_id"] for t in r2.json()["config"]["teams"]] == ["blue", "purple"]
+    assert r2.json()["config"]["scoring"]["hold_target_s"] == 180
+    # a mode change AWAY from koth (no explicit teams/hold_target_s this time) resets both to tdm's own
+    # defaults -- a stale hold target must not ride into a mode that cannot validate it.
+    r3 = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:tdm"}})
+    assert r3.status_code == 200 and r3.json()["ok"], r3.json()
+    assert [t["team_id"] for t in r3.json()["config"]["teams"]] == ["red", "blue"]
+    assert "hold_target_s" not in r3.json()["config"]["scoring"]
+    assert "hold_target_s" not in r3.json()["pick"]["match"]
+    # koth is exactly two teams: three or four are refused, ok:false, and change nothing
+    before = r3.json()["config"]
+    r4 = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"},
+                                        "match": {"teams": ["red", "blue", "purple"]}})
+    assert r4.status_code == 200 and not r4.json()["ok"], r4.json()
+    assert any("F413" in e for e in r4.json()["errors"]), r4.json()["errors"]
+    assert s.config == before, "an ok:false pick must change nothing"
+
+
 def test_recompose_on_edit_and_409_when_armed_or_live():
     needs(HAVE, "starlette + httpx")
     c, s, net, clock, ps = _pclient()
@@ -480,8 +606,9 @@ def test_last_match_captured_at_start_and_survives_a_restart():
     c.post("/api/play/pick", json={"match": {"frag_limit": 15, "night": True}})
     s.push_config()
     s.start(runway_s=42, force=True)
+    # F413: TDM's own default teams (red+blue) ride along in MATCH SETTINGS now too.
     assert s.last_match == {"time_limit_s": s.game_pick["match"]["time_limit_s"], "frag_limit": 15,
-                            "night": True, "silenced": False, "countdown_s": 42}
+                            "night": True, "silenced": False, "countdown_s": 42, "teams": ["red", "blue"]}
     path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = path
     s._persist()

@@ -79,7 +79,8 @@ def test_missing_gun_config_is_compatible_with_an_older_phone_and_makes_no_claim
 def test_any_query_readback_mismatch_is_red_and_refuses_start_even_with_force():
     cases = [
         ("player_id", 0),    # wire id 0 is the F80 failure: hits score for nobody
-        ("team", 0),         # F206: the gun silently drops enemy hits as friendly
+        ("team", 1),         # F206: the gun silently drops enemy hits as friendly (F413: a lone
+                             # player now defaults to red/tid 0, so the wrong value moves to 1)
         ("hp", 44),
         ("armor", 69),
         ("shield", 1),

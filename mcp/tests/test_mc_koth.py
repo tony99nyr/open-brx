@@ -59,9 +59,9 @@ def test_a_koth_game_compiles_and_its_head_can_hear_the_hill():
     # CONTROL, updated for S57 (2026-09-23, docs/ir-callouts.md): the row now ships in every mode's
     # head (the IR callout bus needs it too), so TDM carries it as well -- once, not doubled.
     s.set_config({"mode": "tdm"})
-    # koth is BLUE+GREEN and tdm is BLUE+YELLOW, so the swap re-teams the green player onto blue and
-    # leaves yellow empty -- the pile-up the round-2 one-team gate refuses. Split them again: this
-    # test is about the $SIR rows in the head, not about team assignment.
+    # F413: koth and tdm now default to the SAME pair (red+blue), so this swap re-teams nobody -- kept
+    # anyway (a mode row's own default could still diverge later) since this test is about the $SIR
+    # rows in the head, not about team assignment.
     _rebalance(s)
     s.push_config(force=True)
     for p in _roster(s):
@@ -76,11 +76,15 @@ def test_the_koth_defaults_never_put_anyone_on_the_neutral_team():
     s = _sess("koth")
     tids = {t["tid"] for t in s.config["teams"]}
     assert 2 not in tids, tids
-    assert tids == {1, 3}, tids                      # blue + green, the pair `assign_teams` also defaults to
+    assert tids == {0, 1}, tids                      # red + blue (F413) -- every team mode's own default now
     for p in _roster(s):
         assert p["team_id"] in {t["team_id"] for t in s.config["teams"]}
-    # CONTROL: tid 2 is an ordinary team in a mode with no hill, and TDM still uses it.
-    assert 2 in {t["tid"] for t in default_config("tdm")["teams"]}
+    # CONTROL: tid 2 (yellow) is an ordinary team in a mode with no hill -- TDM's default no longer uses
+    # it (F413: TDM now defaults to red+blue too), but it is still a legal EXPLICIT TDM pick, unlike koth.
+    tdm = _sess("tdm")
+    tdm.set_config({"teams": [{"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
+                              {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2}]})
+    assert 2 in {t["tid"] for t in tdm.config["teams"]}
 
 
 def test_a_hill_config_cannot_even_HOLD_a_neutral_team():
@@ -485,24 +489,115 @@ def test_a_garbage_possession_payload_is_ignored_rather_than_scored():
     assert sc.possession()["by_team"][s.config["teams"][0]["team_id"]] == 5
 
 
-def test_a_hill_config_cannot_hold_four_teams_and_the_error_names_the_cap():
-    """F97: PUT /api/config refuses a four-team hill BEFORE the F82 check, so the operator reads the
-    limit ("three teams") rather than a tid-2 message no fourth single-member team can obey."""
+def test_a_hill_config_is_exactly_two_teams_and_the_error_names_the_cap():
+    """F413 (2026-09-27): koth is EXACTLY two teams, tighter than F97's older "up to three, just not
+    tid 2" rule for an objective mode in general (`domination`, still F97's own rule -- see
+    `test_hillbeacon.py`) -- PUT /api/config refuses three OR four teams for koth, naming the F413 cap,
+    checked before F82's own tid-2 message."""
     s = _sess("koth")
     four = [{"team_id": n, "name": n.upper(), "color": n, "tid": t}
             for t, n in ((0, "red"), (1, "blue"), (2, "yellow"), (3, "green"))]
     try:
         s.set_config({"teams": four})
-        raise AssertionError("F97: a four-team hill config was accepted")
+        raise AssertionError("F413: a four-team koth config was accepted")
     except ValueError as e:
-        assert "F97" in str(e) and "three" in str(e), e
-    # CONTROL 1: three single-member teams -- the FFA hill at its cap -- are accepted and pushable.
-    s.set_config({"teams": [four[0], four[1], four[3]]})
-    assert [t["tid"] for t in s.config["teams"]] == [0, 1, 3]
+        assert "F413" in str(e) and "exactly 2 teams" in str(e), e
+    # F413 tightened this: three single-member teams -- the OLD FFA-hill cap (F97) -- is refused too now.
+    try:
+        s.set_config({"teams": [four[0], four[1], four[3]]})
+        raise AssertionError("F413: a three-team koth config was accepted")
+    except ValueError as e:
+        assert "F413" in str(e) and "exactly 2 teams" in str(e), e
+    # CONTROL 1: two teams, neither on tid 2, are accepted and pushable.
+    s.set_config({"teams": [four[0], four[1]]})
+    assert [t["tid"] for t in s.config["teams"]] == [0, 1]
     # CONTROL 2: four teams are ordinary in a mode with no hill.
     s.set_config({"mode": "tdm"})
     s.set_config({"teams": four})
     assert len(s.config["teams"]) == 4
+
+
+def test_hold_target_s_is_koth_only_and_bounds_checked():
+    """F415: `scoring.hold_target_s` only applies to koth (a TDM/FFA game has no possession tally for it
+    to mean anything against), and is a positive integer up to two hours or null."""
+    s = _sess("koth")
+    s.set_config({"scoring": {"hold_target_s": 300}})
+    assert s.config["scoring"]["hold_target_s"] == 300
+    s.set_config({"scoring": {"hold_target_s": None}})
+    assert "hold_target_s" not in s.config["scoring"]
+    for bad in (0, -1, True, 7201, 1.5, "300"):
+        try:
+            s.set_config({"scoring": {"hold_target_s": bad}})
+            raise AssertionError(f"F415: hold_target_s {bad!r} was accepted")
+        except ValueError as e:
+            assert "hold_target_s" in str(e), (bad, e)
+    # CONTROL: the same value is refused outright on a mode with no hill.
+    s.set_config({"mode": "tdm"})
+    try:
+        s.set_config({"scoring": {"hold_target_s": 300}})
+        raise AssertionError("F415: hold_target_s was accepted on tdm")
+    except ValueError as e:
+        assert "hold_target_s only applies to koth" in str(e), e
+
+
+def test_koth_wins_at_once_when_a_team_reaches_the_hold_target():
+    """F415: the same shape as the frag limit -- a team crossing `hold_target_s` ends the match AT ONCE
+    (not at the clock), `end_reason` records which ending fired, and a target nobody reaches still
+    resolves normally at the clock on whichever team held longer."""
+    from brx_mcp.mc.scoring import Scorer
+    s = _sess("koth")
+    pid = _roster(s)[0]["player_id"]
+    red = s.config["teams"][0]
+    fired: list[int] = []
+    sc = Scorer("m1", 1_000_000, 600, "koth", s.players, s.teams, {"n1": pid}, {"n1": True},
+               now_ms=lambda: 1_100_000, win_by="objective", hold_target_s=100,
+               on_limit=lambda t: fired.append(t))
+    # under target: nothing fires
+    sc.ingest("n1", _poss({str(red["tid"]): 60_000}, observed_ms=60_000), 1_100_000)
+    assert fired == []
+    # crossing it fires on_limit exactly once, with the report's own receipt time
+    assert sc.ingest("n1", _poss({str(red["tid"]): 150_000}, observed_ms=150_000), 1_150_000) == "scored"
+    assert fired == [1_150_000], fired
+    # a second report past the target does not fire again
+    sc.ingest("n1", _poss({str(red["tid"]): 200_000}, observed_ms=200_000), 1_200_000)
+    assert fired == [1_150_000], fired
+
+
+def test_koth_session_ends_live_the_moment_the_hold_target_is_reached():
+    """The Session-level dispatch: `_on_scorer_limit` routes an objective-mode scorer's `on_limit` to
+    `_on_hold_target`/`_end_on_hold_target` (the frag-limit path's own mirror), which flips the phase to
+    recap immediately -- not at the clock -- and records `end_reason == "hold_target"` (internal only,
+    never on the wire)."""
+    from test_mc_state import mk, online
+    s, net, clock, ps = mk(2)
+    s.set_config({"mode": "koth", "time_limit_s": 600, "scoring": {"hold_target_s": 60}})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control"})
+    s.push_config(force=True)
+    info = s.start(runway_s=1, force=True)
+    clock["t"] = info["go_live_t"] + 5_000
+    s.tick()
+    assert s.phase == "live", s.phase
+    red = s.config["teams"][0]
+    net.simulate_event("node0", {"type": "possession", "match_id": info["match_id"], "node_id": "node0",
+                                 "player_id": ps[0]["player_id"], "t": clock["t"], "site": "A",
+                                 "hold_ms": {str(red["tid"]): 60_000}, "observed_ms": 60_000}, clock["t"], seq=1)
+    assert s.phase == "recap", s.phase
+    assert s.end_reason == "hold_target", s.end_reason
+    assert s.recap()["winner"] == {"team_id": red["team_id"]}, s.recap()["winner"]
+
+
+def test_game_brief_shows_the_hold_target_when_one_is_set():
+    """F415: the phone's BRIEFING WIN row reads `game_brief()['win_text']` verbatim -- no app change,
+    the text has to already say the right thing."""
+    s = _sess("koth")
+    assert s.game_brief()["win_text"] == "POSSESSION TIME"        # no target: unchanged
+    s.set_config({"scoring": {"hold_target_s": 300}})
+    assert s.game_brief()["win_text"] == "FIRST TO HOLD 5:00 WINS", s.game_brief()["win_text"]
+    s.set_config({"scoring": {"hold_target_s": 90}})
+    assert s.game_brief()["win_text"] == "FIRST TO HOLD 1:30 WINS", s.game_brief()["win_text"]
 
 
 def test_a_phone_control_point_is_a_station_source_with_its_own_checklist():

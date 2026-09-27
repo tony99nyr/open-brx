@@ -265,15 +265,17 @@ def test_reinstate_backstop_refuses_a_collision_that_got_in_anyway():
 def test_reinstate_rebalances_when_their_team_is_gone():
     s, net, clock, ps = _session()
     pid = ps[0]["player_id"]
-    s.patch_player(pid, team_id="yellow")
+    s.patch_player(pid, team_id="red")
     s.stand_down(pid)
-    # the game is re-teamed while they sit out: red replaces yellow
+    # the game is re-teamed while they sit out: purple replaces red (F413: TDM's own default is now
+    # red+blue, so the vacated team has to be something else entirely, not just a different tid on the
+    # same name -- purple is a real team_id no default row ever hands out).
     s.set_config({"teams": [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
-                            {"team_id": "red", "name": "Red", "color": "red", "tid": 3}]})
+                            {"team_id": "purple", "name": "Purple", "color": "purple", "tid": 3}]})
     for q in s.players.values():
         s.patch_player(q["player_id"], team_id="blue")
     p = s.reinstate(pid)
-    assert p["team_id"] == "red", "auto-balanced onto the emptier team, never parked on a team that no longer exists"
+    assert p["team_id"] == "purple", "auto-balanced onto the emptier team, never parked on a team that no longer exists"
 
 
 def test_reinstate_refits_the_loadout_to_the_current_policy():

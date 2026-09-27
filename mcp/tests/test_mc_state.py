@@ -220,15 +220,17 @@ def test_timed_end_mirror_and_recap_kitted():
     clock["t"] = info["go_live_t"] + 1
     s.tick(); assert s.phase == "live"
     mid = info["match_id"]
-    net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": mid, "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"], "shooter_team": 1}, clock["t"], seq=1)
+    # F413: TDM's default two players land on red(tid0)/blue(tid1) now (was blue(1)/yellow(2)) -- ps[0]
+    # is red, ps[1] is blue.
+    net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": mid, "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"], "shooter_team": 0}, clock["t"], seq=1)
     live_view = s.snapshot()["live"]
-    assert live_view["score"]["blue"] == 1
+    assert live_view["score"]["red"] == 1
     assert live_view["ends_t"] == info["go_live_t"] + live_view["time_limit_s"] * 1000
     clock["t"] = info["go_live_t"] + 60_000 + 6000
-    s.tick(); assert s.phase == "recap" and s.recap()["winner"] == {"team_id": "blue"}
+    s.tick(); assert s.phase == "recap" and s.recap()["winner"] == {"team_id": "red"}
     # late flush after the end is recorded but not scored (A6.1)
-    net.simulate_event("node0", {"type": "death", "t": info["go_live_t"] + 65_000, "match_id": mid, "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"], "shooter_team": 2}, clock["t"], seq=2)
-    assert s.recap()["score"]["yellow"] == 0 and s.recap()["post_end"] == 1
+    net.simulate_event("node0", {"type": "death", "t": info["go_live_t"] + 65_000, "match_id": mid, "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
+    assert s.recap()["score"]["blue"] == 0 and s.recap()["post_end"] == 1
     assert not s.lobby_pushed
 
 
@@ -531,7 +533,7 @@ def test_round2_b_a_one_team_roster_is_refused_by_push_and_start_and_force_does_
             assert "ONE SIDE" in str(e), e
 
     # 1 v 3: uneven, legal, and it plays.
-    s.patch_player(ps[0]["player_id"], team_id="yellow")
+    s.patch_player(ps[0]["player_id"], team_id="red")
     rd = s.readiness()
     assert rd["roster_faults"] == [], rd["roster_faults"]
     assert rd["go"], rd["board"]
@@ -637,18 +639,25 @@ def test_round3_field1_a_mode_pick_reteams_by_index_and_rebalances():
     def tids():
         return [s.players[p["player_id"]]["team_id"] for p in ps]
 
-    s.set_config({"mode": "tdm", "time_limit_s": 60})
-    for p, t in zip(ps, ("blue", "blue", "yellow", "yellow")):
+    # F413: tdm and koth now default to the SAME pair (red+blue), so an EXPLICIT yellow/purple config on
+    # the tdm side is what still exercises a cross-family index remap -- neither label is legal in
+    # koth's own default (never yellow at all, F413/F82), so both sides remap cleanly by index with no
+    # collision (a shared label, e.g. blue/yellow -> red/blue, would leave BOTH halves on "blue" and
+    # trip step 3's rebalance instead of proving step 1's index mapping).
+    s.set_config({"mode": "tdm", "time_limit_s": 60,
+                  "teams": [TEAM_DEFS["yellow"], TEAM_DEFS["purple"]]})
+    for p, t in zip(ps, ("yellow", "yellow", "purple", "purple")):
         s.players[p["player_id"]]["team_id"] = t
 
-    # (1) tdm 2 v 2 -> koth: the operator's split SURVIVES, yellow -> purple by index.
+    # (1) tdm(yellow/purple) 2 v 2 -> koth(red/blue, its own default): the operator's split SURVIVES,
+    # mapped by index -- yellow(idx0) -> red(idx0), purple(idx1) -> blue(idx1).
     s.set_config({"mode": "koth", "time_limit_s": 60})
-    assert tids() == ["blue", "blue", "purple", "purple"], tids()
+    assert tids() == ["red", "red", "blue", "blue"], tids()
     assert s.readiness()["roster_faults"] == [], "the pick does not strand the roster on one side"
 
     # (2) a switch that changes nothing leaves the teams alone.
     s.set_config({"mode": "koth", "time_limit_s": 45})
-    assert tids() == ["blue", "blue", "purple", "purple"], tids()
+    assert tids() == ["red", "red", "blue", "blue"], tids()
 
     # (3) ffa (one team) -> tdm: everyone lands on index 0, so the rebalance splits them 2/2.
     s.set_config({"mode": "ffa", "time_limit_s": 60})

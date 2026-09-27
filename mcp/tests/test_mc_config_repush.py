@@ -19,8 +19,9 @@ from test_mc_block_b import go_live, mk, online
 
 from brx_mcp.mc.state import ConflictError
 
-# the FakeCompiler writes `$TID,<tid>,*` as the LAST frame of `head`; TDM defaults are blue=1, yellow=2.
-BLUE, YELLOW = "$TID,1,*", "$TID,2,*"
+# the FakeCompiler writes `$TID,<tid>,*` as the LAST frame of `head`; TDM defaults are red=0, blue=1
+# (F413, 2026-09-27; was blue=1, yellow=2).
+RED, BLUE = "$TID,0,*", "$TID,1,*"
 
 
 def _push_lobby(n_players=2, mode="tdm", cfg=None):
@@ -81,11 +82,11 @@ def test_a_team_change_in_lobby_repushes_a_fresh_config_with_the_new_tid():
     fresh head — with the NEW $TID — on that player's gun, or the beacon/LED change teams while combat
     does not (the TDM P0)."""
     s, net, clock, ps = _push_lobby(2, "tdm")
-    assert ps[1]["team_id"] == "yellow", ps[1]["team_id"]      # ps[0] blue, ps[1] yellow by default
+    assert ps[1]["team_id"] == "blue", ps[1]["team_id"]      # ps[0] red, ps[1] blue by default (F413)
     before = len(net.pushes("config", node_id="node1"))
-    s.patch_player(ps[1]["player_id"], team_id="blue")
+    s.patch_player(ps[1]["player_id"], team_id="red")
     assert len(net.pushes("config", node_id="node1")) == before + 1, "a re-team in lobby must re-push"
-    assert _head_to(net, "node1")[-1] == BLUE, "the re-pushed head must carry the NEW $TID"
+    assert _head_to(net, "node1")[-1] == RED, "the re-pushed head must carry the NEW $TID"
 
 
 def test_editing_the_loaded_game_then_reteaming_still_rewrites_the_gun_tid():
@@ -97,9 +98,9 @@ def test_editing_the_loaded_game_then_reteaming_still_rewrites_the_gun_tid():
     s.set_config({"health": {"max_hp": 30}})
     assert s.lobby_pushed is True, "the edit must not silently disable the re-team re-push"
     before = len(net.pushes("config", node_id="node1"))
-    s.patch_player(ps[1]["player_id"], team_id="blue")
+    s.patch_player(ps[1]["player_id"], team_id="red")
     assert len(net.pushes("config", node_id="node1")) == before + 1
-    assert _head_to(net, "node1")[-1] == BLUE, "combat team ($TID) follows the roster, not just the beacon"
+    assert _head_to(net, "node1")[-1] == RED, "combat team ($TID) follows the roster, not just the beacon"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -114,11 +115,11 @@ def test_a_team_change_is_refused_once_the_match_is_live():
     assigns_before = len(net.pushes("assign", node_id="node1"))
     configs_before = len(net.pushes("config", node_id="node1"))
     try:
-        s.patch_player(ps[1]["player_id"], team_id="blue")
+        s.patch_player(ps[1]["player_id"], team_id="red")
         assert False, "a live re-team must be refused"
     except ConflictError as e:
         assert "LIVE" in str(e) and "RECALL" in str(e), str(e)
-    assert ps[1]["team_id"] == "yellow", "the roster must not move on a refused re-team"
+    assert ps[1]["team_id"] == "blue", "the roster must not move on a refused re-team"
     assert len(net.pushes("assign", node_id="node1")) == assigns_before, "no assign with a stale team"
     assert len(net.pushes("config", node_id="node1")) == configs_before, "no frames to a gun in play"
 
@@ -205,15 +206,15 @@ def test_h_a_player_with_no_node_bound_is_recompiled_by_the_repush_too():
     s, net, clock, ps = _push_lobby(2, "tdm")
     pid = ps[1]["player_id"]
     stale_head = list(s.bundles[pid]["head"])
-    assert YELLOW in stale_head, stale_head                     # control: player 1 starts on yellow
+    assert BLUE in stale_head, stale_head                        # control: player 1 starts on blue (F413)
     s.evict_node("node1")                                       # the phone goes away, the bundle stays
     assert s.players[pid].get("node_id") is None
 
-    s.patch_player(pid, team_id="blue")                         # the edit lands while they are unbound
-    s.patch_player(ps[0]["player_id"], team_id="yellow")        # ...and somebody has to hold the other side
+    s.patch_player(pid, team_id="red")                          # the edit lands while they are unbound
+    s.patch_player(ps[0]["player_id"], team_id="blue")          # ...and somebody has to hold the other side
     fresh = s.bundles[pid]["head"]
-    assert BLUE in fresh, f"the unbound player kept a STALE head: {fresh}"
-    assert YELLOW not in fresh, fresh
+    assert RED in fresh, f"the unbound player kept a STALE head: {fresh}"
+    assert BLUE not in fresh, fresh
 
     # and the welcome that phone gets on its next hello carries those same fresh frames
     tail = demo_armory()[1]["ble"]["tail"]
@@ -267,8 +268,8 @@ def test_an_ack_in_flight_across_a_per_player_recompile_is_not_counted():
     assert s._ack_is_current(pid), "control: the gun answered for the head it was pushed"
     n0_before = len(net.pushes("config", node_id="node0"))
 
-    s.patch_player(pid, team_id="blue")                       # the re-team: ONE player recompiled
-    s.patch_player(ps[0]["player_id"], team_id="yellow")      # ...and somebody holds the other side
+    s.patch_player(pid, team_id="red")                        # the re-team: ONE player recompiled
+    s.patch_player(ps[0]["player_id"], team_id="blue")        # ...and somebody holds the other side
     assert s.config["config_id"] != old_id, "a fresh head is unprovable without a fresh config_id"
 
     # the mint is only safe because it reaches EVERY gun: a new id with a stale roster behind it is

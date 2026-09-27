@@ -78,15 +78,15 @@ def test_result_is_pushed_to_every_node_with_a_per_recipient_outcome():
     Before A24 the losers got nothing at all — `_push_victory` only ever reached the winning team's
     guns — so a phone could not tell a loss from a dropped socket.
     """
-    s, net, clock, ps, info = go_live(4, "tdm")          # ps[0]/ps[2] blue, ps[1]/ps[3] yellow
-    kill(s, net, clock, ps, 0, 1, info, seq=1)           # blue 1 - 0 yellow
+    s, net, clock, ps, info = go_live(4, "tdm")          # F413: ps[0]/ps[2] red, ps[1]/ps[3] blue
+    kill(s, net, clock, ps, 0, 1, info, seq=1)           # red 1 - 0 blue
     s.control("end")
     got = results(net)
     assert set(got) == {"node0", "node1", "node2", "node3"}, f"a node was left out: {sorted(got)}"
     assert [got[f"node{i}"]["outcome"] for i in range(4)] == ["win", "lose", "win", "lose"]
     b = got["node0"]
-    assert b["winner"]["team_id"] == "blue" and b["mode"] == "tdm" and b["match_id"] == info["match_id"]
-    assert {t["team_id"] for t in b["team_scores"]} == {"blue", "yellow"}
+    assert b["winner"]["team_id"] == "red" and b["mode"] == "tdm" and b["match_id"] == info["match_id"]
+    assert {t["team_id"] for t in b["team_scores"]} == {"red", "blue"}
     assert len(b["rows"]) == 4, "every player's row rides along, not just the recipient's"
     assert b["my"]["player_id"] == ps[0]["player_id"] and got["node1"]["my"]["player_id"] == ps[1]["player_id"]
     # `provisional` is a REAL claim, so assert the real value: at the whistle only the victim's node

@@ -36,7 +36,7 @@ from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PH
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, ADOPT_SLACK_MS, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
                     STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, TX_POWERS, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
-                    GamePick, LastMatch,
+                    GamePick, LastMatch, MatchItemKey, PieceKind,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
@@ -200,25 +200,34 @@ class ModeRow(TypedDict):
                                          # False row keeps its engine, config and tests -- `modes()` just
                                          # tells the console to hide it from the STOCK MODES picker
     station_source: NotRequired[str]    # F70: only the modes with an objective emitter carry one
+    # F415: the MATCH SETTINGS items this mode offers, in order (games-presets.md §7) -- `modes()` copies
+    # it straight onto `ModeInfo.match_items`. Absent on the post-MVP rows (never offered on PLAY, so no
+    # schema has been decided for them yet); the console falls back to its own list for an absent row.
+    match_items: NotRequired[list[MatchItemKey]]
 
 
 MODES: list[ModeRow] = [
     {"mode": "tdm", "name": "TEAM DEATHMATCH", "abbr": "TDM", "desc": "Teams score per elimination",
      "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. The highest score at the time limit takes the match; the operator can also set an optional score cap.",
      "teams_text": "2–4 TEAMS", "win_text": "TIME · OPTIONAL SCORE CAP", "respawn_text": "ON · TIMED",
-     "teams": ["blue", "yellow"], "win_by": "kills", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "proven": True, "mvp": True},
+     # F413 (Tony, 2026-09-26: "lets default teams in all modes to red and blue like halo"): every team
+     # mode now defaults to red (tid 0) + blue (tid 1); the operator picks the count (2-4) and the
+     # colours on the MATCH SETTINGS strip (`match.teams`, games-presets.md §7).
+     "teams": ["red", "blue"], "win_by": "kills", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
+     "preset": "standard", "proven": True, "mvp": True,
+     "match_items": ["time", "kills", "countdown", "daynight", "silenced", "teams"]},
     {"mode": "ffa", "name": "FREE-FOR-ALL", "abbr": "FFA", "desc": "Every operator for themselves",
      "brief": "No teams — everyone is a target. Each elimination scores a point. The top score when time expires wins; the operator can also set an optional frag limit.",
      "teams_text": "NONE · ALL VS ALL", "win_text": "TIME · OPTIONAL FRAG LIMIT", "respawn_text": "ON · TIMED",
      "teams": ["ffa"], "win_by": "kills", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "proven": True, "mvp": True},
+     "preset": "standard", "proven": True, "mvp": True,
+     "match_items": ["time", "kills", "countdown", "daynight", "silenced"]},
     # F-scope A (2026-09-25): Tony -- "infection can be post mvp". Engine, config and tests stay; the row
     # just drops off the console's STOCK MODES picker (`mvp: False`, `state.modes()`).
     {"mode": "infection", "name": "INFECTION", "abbr": "INF", "desc": "One infected; survive the spread",
      "brief": "One operator starts infected. Survivors who go down switch sides and hunt their old squad. Survivors win by outlasting the clock; the infected win by converting everyone.",
      "teams_text": "SURVIVORS VS INFECTED", "win_text": "SURVIVE THE CLOCK", "respawn_text": "INFECTED ONLY",
-     "teams": ["blue", "red"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 10},
+     "teams": ["red", "blue"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 10},
      "preset": "infection", "proven": False, "mvp": False},
     # F-scope A (2026-09-25): Tony -- Last Man Standing is post-MVP too (F377 solo-winner gap moved to
     # post-mvp.md with it). Same treatment: `mvp: False`, everything else unchanged.
@@ -231,7 +240,7 @@ MODES: list[ModeRow] = [
     {"mode": "extraction", "name": "EXTRACTION", "abbr": "EXT", "desc": "Loot, reach the extract, survive the channel",
      "brief": "Gather loot, then reach an extraction point and channel the extract. It is loud: everyone hears the chopper coming and converges on you. Survive the timer and your loot is banked. Die and you drop it all for someone else to take.",
      "teams_text": "SOLO OR SQUADS", "win_text": "BANKED LOOT", "respawn_text": "ON · TIMED",
-     "teams": ["blue", "yellow"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
+     "teams": ["red", "blue"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
      "preset": "extraction", "proven": False, "mvp": False},
     # F70 (bench-proven end to end 2026-09-10): the hill is a BRX Smart Grenade in hill mode. It
     # broadcasts protocol-15 beacons carrying its OWNER's team, `hillbeacon.py` reads them and
@@ -239,24 +248,27 @@ MODES: list[ModeRow] = [
     # `station_source: "phone"` on the row (Tony 2026-09-24: the MVP hill is a Bluetooth control point, a phone
     # station today and a StickS3 once its presence capture is bench-proven; the grenade hill is POST-MVP but
     # stays selectable, `_CONFIG_KEYS`).
-    # 🔴 `teams` is BLUE + PURPLE, tids 1 and 3 (F423: team_id "purple", still tid 3 -- the gun paints
-    # it purple, not the GREEN name MC used to give it), and the choice is load-bearing: YELLOW is tid
-    # 2, which is the team a NEUTRAL hill broadcasts, so a yellow roster would read every uncaptured
-    # point as its own and take no hill damage (F82). `assign_teams` defaults the same 1/3 pair, and
-    # both `DominationEngine.add_player` and `Compiler.validate` refuse a tid-2 hill roster outright.
+    # 🔴 `teams` is RED + BLUE by default (F413), tids 0 and 1, and staying off tid 2 is the load-bearing
+    # part, not which two tids are used: YELLOW is tid 2, the team a NEUTRAL hill broadcasts, so a yellow
+    # roster would read every uncaptured point as its own and take no hill damage (F82). KOTH is exactly
+    # 2 teams and never offers yellow (`_merge_config`'s "teams" handling refuses both). `modes/driver.py`'s
+    # `assign_teams` (the CLI/simulator's own, unrelated engine -- MC never calls it) still defaults
+    # domination/koth to its own 1/3 pair; both `DominationEngine.add_player` and `Compiler.validate`
+    # refuse a tid-2 hill roster outright regardless of which OTHER two tids are chosen -- tid 0 (RED)
+    # is exactly as valid a hill team as 1 or 3 (`DominationEngine.add_player`'s own docstring: "Teams
+    # 0, 1 and 3 are all free").
     # `win_by` is "objective" (possession time), the same value extraction already uses: MC has no
     # objective scorer, so `scoring.py` reports the winner as `undecided` rather than inventing one
     # from kills, and the UI renders that as "UNDECIDED — OBJECTIVE · HOST DECIDES" (Recap.tsx).
     {"mode": "koth", "name": "KING OF THE HILL", "abbr": "KOTH", "desc": "Hold the hill; possession scores",
      "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
-     # `win_text` says HOST CALL on purpose, and it is the honest label until the phones report.
-     # MC ingests a `possession` fact and names the winner from it the moment one arrives (API.md /
-     # `scoring._possession`) -- but nothing on `app/src` sends one yet, so a card reading plain
-     # "POSSESSION TIME" promises a number that does not exist and the operator gets a kills table
-     # (operator review 2026-09-10). ➡ Drop "· HOST CALL" when the phone ships the fact.
-     "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME · HOST CALL", "respawn_text": "ON · TIMED",
-     "teams": ["blue", "purple"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "station_source": "phone", "proven": True, "mvp": True},
+     # F415 (2026-09-27): `app/src/engine.js` now sends a `possession` fact, and `scoring.py` names the
+     # winner from it (`Scorer.winner()`) -- the "· HOST CALL" clause this used to carry was honest only
+     # until that shipped (operator review 2026-09-10's own finding); dropped now that it has.
+     "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME", "respawn_text": "ON · TIMED",
+     "teams": ["red", "blue"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
+     "preset": "standard", "station_source": "phone", "proven": True, "mvp": True,
+     "match_items": ["time", "hold", "countdown", "daynight", "silenced", "teams"]},
 ]
 
 
@@ -1577,6 +1589,10 @@ class Session:
             cap = scoring.get("frag_limit")
             win_text = (f"{'FRAG LIMIT' if cfg.get('mode') == 'ffa' else 'SCORE CAP'} {cap} / TIME"
                         if cap is not None else "TIME ONLY")
+        elif scoring.get("win_by") == "objective" and (hold := scoring.get("hold_target_s")):
+            # F415: the KOTH hold target, the same text shape as the kills-mode cap above -- the phone's
+            # existing BRIEFING WIN row (`app/src/hud/hud.js`) renders `win_text` verbatim, no app change.
+            win_text = f"FIRST TO HOLD {hold // 60}:{hold % 60:02d} WINS"
         else:
             win_text = mode.get("win_text")
         return {
@@ -2363,6 +2379,8 @@ class Session:
                              "mvp": m["mvp"],
                              "defaults": default_config(m["mode"]),
                              "params": _params_schema_json(m["mode"])}
+            if mi := m.get("match_items"):
+                row["match_items"] = mi
             rows.append(row)
         return rows
 
@@ -2392,7 +2410,11 @@ class Session:
             if pid:
                 try:
                     piece = store.get(pid)
-                    ok = piece["kind"] == kind and not piece.get("post_mvp")
+                    # MEDIUM (brx1 review of 222b1a81): `_usable` also refuses `invalid` (HIGH 1) -- a
+                    # bare kind/post_mvp check here left a RESTORED pick free to sit on a piece a fresh
+                    # `POST /api/play/pick` would itself refuse to resolve, the exact thing this
+                    # method's own docstring says never happens.
+                    ok = _gamepick._usable(cast(PieceKind, kind), piece)
                 except Exception:
                     ok = False
             if not ok and kind in BUILTIN_IDS:
@@ -2825,6 +2847,15 @@ class Session:
                     fl = merged.get("frag_limit")
                     if fl is not None and not (isinstance(fl, int) and not isinstance(fl, bool) and fl > 0):
                         raise ValueError("scoring.frag_limit must be a positive integer or null")
+                    # F415 (2026-09-27): the KOTH hold target -- the first team to hold the hill this
+                    # long wins at once (`scoring.Scorer._check_hold_target`), mirroring the frag limit.
+                    # KOTH only: a TDM/FFA game has no possession tally for it to mean anything against.
+                    hts = merged.get("hold_target_s")
+                    if hts is not None:
+                        if mode != "koth":
+                            raise ValueError("scoring.hold_target_s only applies to koth")
+                        if not (isinstance(hts, int) and not isinstance(hts, bool) and 0 < hts <= 7200):
+                            raise ValueError("scoring.hold_target_s must be a positive integer (<=7200) or null")
                     # `merged["win_by"]` is not guaranteed: a RESTORED snapshot's config can be missing
                     # it (see `set_config`'s own comment on `cfg` above), and a patch that only touches
                     # `frag_limit` then leaves `merged` without one too -- so this fell through to a
@@ -2832,6 +2863,8 @@ class Session:
                     cfg["scoring"] = {"frag_limit": fl,
                                       "win_by": parse_win_by(merged.get("win_by"),
                                                              default_config(mode)["scoring"]["win_by"])}
+                    if hts is not None:
+                        cfg["scoring"]["hold_target_s"] = hts
                 if k == "health":
                     # S45 (FOLLOWUPS, weapon-design.md §7.3): a saved config from before this field
                     # existed carries no `max_shield` at all -- that is the one honest signal that it
@@ -2901,6 +2934,12 @@ class Session:
                     raise ValueError(f"team tid(s) {sorted(set(bad))} outside 0-3 (F35): the IR word's "
                                      f"team field is 2 bits -- a $TID of 4 or higher makes teammates "
                                      f"damage each other and can let a gun read its own shots as friendly")
+                # F413 (2026-09-27): koth is exactly 2 teams, never 3 or 4 -- checked before F97's own
+                # (looser, other-objective-mode) count limit so a koth pick gets the RIGHT number back,
+                # not "up to three".
+                if mode == "koth" and len({t["tid"] for t in v}) != 2:
+                    raise ValueError(
+                        f"F413: koth is exactly 2 teams (got {len({t['tid'] for t in v})}): pick two colours.")
                 # 🔴 F82, and this was the LAST open route into it (operator review 2026-09-10). A hill
                 # mode's config was allowed to CONTAIN a tid-2 team as long as nobody was on it yet --
                 # `validate()` scans the roster, so an empty yellow team passed and the push succeeded.
@@ -5074,7 +5113,8 @@ class Session:
         scoring = self.config.get("scoring") or {}
         sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
                     self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
-                    frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"))
+                    frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
+                    hold_target_s=scoring.get("hold_target_s"))
         sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
         facts = self._match_facts(match_id)
         # F356: the replay runs in `t` order, but "did this team kill arrive after the whistle" is an ARRIVAL
@@ -5104,7 +5144,7 @@ class Session:
         sc.on_feed = self._on_feed
         sc.on_alert = self._alert
         sc.on_feedback = lambda pid, body: self._feedback(pid, body)
-        sc.on_limit = lambda t, _sc=sc: self._on_frag_limit(t, _sc)
+        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
         return sc
 
     def _import_facts(self, match_id: str, store_path: object) -> None:
@@ -6041,7 +6081,8 @@ class Session:
         sc = Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
                     self._match_players if self._match_players is not None else old.players,
                     list(old.teams.values()), {**old.node_player, **self._match_nodes}, old.synced_at_lobby,
-                    now_ms=self.now_ms, win_by=old.win_by, frag_limit=old.frag_limit)
+                    now_ms=self.now_ms, win_by=old.win_by, frag_limit=old.frag_limit,
+                    hold_target_s=old.hold_target_s)
         if freeze_at is not None:
             sc.set_end(freeze_at)
         sc.joined_t = dict(old.joined_t)         # A63: a hot join is not a fact the replay can re-derive
@@ -6080,7 +6121,7 @@ class Session:
         sc.on_feed = self._on_feed
         sc.on_alert = self._alert
         sc.on_feedback = lambda pid, body: self._feedback(pid, body)
-        sc.on_limit = lambda t, _sc=sc: self._on_frag_limit(t, _sc)
+        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
         self.scorer = sc
 
     def _reconcile_end(self, nid: str, events: list[Event], t_recv: int) -> bool:
@@ -7311,11 +7352,12 @@ class Session:
                     self.config["mode"], self.players, self.teams, self.node_player, self.synced_at_lobby,
                     on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms,
                     on_alert=self._alert, frag_limit=(self.config.get("scoring") or {}).get("frag_limit"),
-                    win_by=(self.config.get("scoring") or {}).get("win_by"))
+                    win_by=(self.config.get("scoring") or {}).get("win_by"),
+                    hold_target_s=(self.config.get("scoring") or {}).get("hold_target_s"))
         # The cap callback names the scorer that fired it. A Scorer outlives the Session's pointer to it
         # (a recap's frozen scorer, a scorer replaced by a re-start, a copy a caller kept), and a late fact
         # ingested into one of those would otherwise end the match that is running NOW.
-        sc.on_limit = lambda t, _sc=sc: self._on_frag_limit(t, _sc)
+        sc.on_limit = lambda t, _sc=sc: self._on_scorer_limit(t, _sc)
         self.scorer = sc
         for nv in self.nodes.values():
             nv.pop("protect_owed", None)       # F289: a window owed in the last match is not this one's
@@ -7748,10 +7790,44 @@ class Session:
             return
         self._end_on_frag_limit(t)
 
+    def _on_scorer_limit(self, t: int, scorer=None) -> None:
+        """F415: `Scorer.on_limit` is wired to this, not `_on_frag_limit` directly -- dispatches to
+        whichever ending actually applies, the frag cap (`win_by == "kills"`) or the KOTH hold target
+        (`win_by == "objective"`). Exactly one of `Scorer._check_frag_limit`/`_check_hold_target` can
+        ever fire `on_limit` for a given match, since a mode's `win_by` never changes mid-match, but the
+        dispatch reads the SCORER THAT FIRED (not `self.scorer`), for the same late-fact-on-a-retired-
+        scorer reason `_on_frag_limit`'s own docstring gives."""
+        sc = scorer if scorer is not None else self.scorer
+        if sc is not None and sc.win_by == "objective":
+            self._on_hold_target(t, scorer)
+        else:
+            self._on_frag_limit(t, scorer)
+
+    def _on_hold_target(self, t: int, scorer=None) -> None:
+        """F415: KOTH's hold target reached — end the match, mirroring `_on_frag_limit`'s own path
+        exactly (the A6.1-style freeze, the batch deferral, `is_adopted()`'s guard, `_finish()`)."""
+        if scorer is not None and scorer is not self.scorer:
+            return
+        if not self.scorer or not self.in_play():
+            return
+        if self.is_adopted():
+            return
+        self.scorer.set_end(t)
+        if self._batch_depth:
+            self._pending_limit_t = t if self._pending_limit_t is None else min(self._pending_limit_t, t)
+            return
+        self._end_on_hold_target(t)
+
     def _flush_pending_limit(self) -> None:
-        """Finish a cap that was reached mid-batch, now that the whole batch is scored."""
+        """Finish a cap/hold-target that was reached mid-batch, now that the whole batch is scored.
+        One shared `_pending_limit_t`, dispatched by `win_by` (F415) -- the two endings never compete
+        for it within one match, since `win_by` is fixed for the match's whole life."""
         t, self._pending_limit_t = self._pending_limit_t, None
-        if t is not None:
+        if t is None:
+            return
+        if self.scorer is not None and self.scorer.win_by == "objective":
+            self._end_on_hold_target(t)
+        else:
             self._end_on_frag_limit(t)
 
     def _end_on_frag_limit(self, t: int) -> None:
@@ -7770,6 +7846,24 @@ class Session:
         # to see that this END was partial while they are still standing on the field.
         self._on_feed({"t_match_s": t_match_s, "tag": "ALERT" if reached >= bound else "WITHHELD", "kind": "alert",
                        "text": f"FRAG LIMIT {cap} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)"})
+        self._changed()
+
+    def _end_on_hold_target(self, t: int) -> None:
+        """F415: the KOTH mirror of `_end_on_frag_limit` -- same shape, `hold_target_s` in place of
+        `frag_limit`, `end_reason` distinct so a debrief/CSV can tell the two endings apart."""
+        if not self.scorer or not self.in_play():
+            return
+        target, t_match_s = self.scorer.hold_target_s, max(0, (t - self.scorer.go_live_t) // 1000)
+        reached = self._broadcast_control("end")
+        bound = sum(1 for p in self.players.values() if p.get("node_id"))
+        self.scorer.set_end(t)
+        if self.scorer.cap_recv is None:
+            self.scorer.cap_recv = self.now_ms()
+        self.end_reason = "hold_target"
+        self._finish()
+        mins = f"{target // 60}:{target % 60:02d}" if target else "?"
+        self._on_feed({"t_match_s": t_match_s, "tag": "ALERT" if reached >= bound else "WITHHELD", "kind": "alert",
+                       "text": f"HOLD TARGET {mins} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)"})
         self._changed()
 
     def _push_victory(self, recap: RecapView | None) -> None:

@@ -30,7 +30,7 @@ def test_full_game_to_recap():
     async def go():
         async with Stack(mode="tdm", time_limit_s=30) as s:
             a = s.add_player("REAPER", "GUN-A", team_id="blue")
-            b = s.add_player("VIPER", "GUN-B", team_id="yellow")
+            b = s.add_player("VIPER", "GUN-B", team_id="red")
             na = await s.connect_node("GUN-A")
             nb = await s.connect_node("GUN-B")
             assert await until(lambda: na.player_id == a["player_id"] and nb.player_id == b["player_id"]), "nodes bound to players"
@@ -64,7 +64,7 @@ def test_long_outage_batch_flush_credits_once():
     async def go():
         async with Stack(mode="tdm", time_limit_s=60) as s:
             a = s.add_player("A", "GUN-A", team_id="blue")
-            b = s.add_player("B", "GUN-B", team_id="yellow")
+            b = s.add_player("B", "GUN-B", team_id="red")
             na = await s.connect_node("GUN-A")
             nb = await s.connect_node("GUN-B")
             assert await s.wait_ready()
@@ -130,7 +130,7 @@ def test_headset_off_blocks_start():
     async def go():
         async with Stack(mode="tdm", time_limit_s=30) as s:
             s.add_player("A", "GUN-A", team_id="blue")
-            s.add_player("B", "GUN-B", team_id="yellow")
+            s.add_player("B", "GUN-B", team_id="red")
             await s.connect_node("GUN-A")                      # healthy
             await s.connect_node("GUN-B", gun_echo=None)       # headset off → no config echo
             assert await s.wait_ready(), "pre-push readiness is go (headset is amber before the push)"
@@ -153,7 +153,7 @@ def test_headset_off_blocks_start():
 async def _live_two(s, mode="tdm"):
     """Bring two bound, ready, LIVE nodes up. Returns (a, b, na, nb)."""
     a = s.add_player("A", "GUN-A", team_id=("ffa" if mode == "ffa" else "blue"))
-    b = s.add_player("B", "GUN-B", team_id=("ffa" if mode == "ffa" else "yellow"))
+    b = s.add_player("B", "GUN-B", team_id=("ffa" if mode == "ffa" else "red"))
     na = await s.connect_node("GUN-A")
     nb = await s.connect_node("GUN-B")
     assert await s.wait_ready(), s.session.readiness()["board"]
@@ -381,7 +381,7 @@ def test_late_joiner_gets_bundle_and_start():
     async def go():
         async with Stack(mode="tdm", time_limit_s=120) as s:
             a, b, na, nb = await _live_two(s)
-            c = s.add_player("LATE", "GUN-C", team_id="yellow")
+            c = s.add_player("LATE", "GUN-C", team_id="red")
             nc = await s.connect_node("GUN-C")
             assert await until(lambda: nc.player_id == c["player_id"], 6.0), "late joiner binds to its player"
             assert await until(lambda: nc.go_live_t is not None, 6.0), "late joiner receives the running start"
@@ -403,7 +403,7 @@ def test_abort_start_lists_unreachable_node():
     async def go():
         async with Stack(mode="tdm", time_limit_s=120) as s:
             a = s.add_player("A", "GUN-A", team_id="blue")
-            b = s.add_player("B", "GUN-B", team_id="yellow")
+            b = s.add_player("B", "GUN-B", team_id="red")
             na = await s.connect_node("GUN-A")
             nb = await s.connect_node("GUN-B")
             assert await s.wait_ready()
