@@ -266,8 +266,8 @@ STOP POINT 3a: the three P0 rows from part 1 (F416, F417, F418) are proven or re
 Running total: 115 min.
 
 6. **F348 (🔴), a Shields spawn starts at full shield (10 min).** Arm a Shields-preset match (45/0/105).
-   Control: a Standard-preset spawn shows no shield line. Read the gun's own `$HP,<hp>,0,105` read-back (the
-   laptop, or the phone log's rx frames) at spawn, not just the HUD meter. Pass: every spawn and revive's log
+   Control: a Standard-preset spawn shows no shield line. Read the gun's own `$HP,<hp>,0,105` read-back from the
+   Pixel's rx log only (the laptop cannot read a gun while a phone holds it) at spawn, not just the HUD meter. Pass: every spawn and revive's log
    ends `+ shield pool 105`, the read-back agrees, and one hit drains the shield before any HP moves. Log:
    `bench-2026-09-24.md` 4.18.
 7. **F394, ammo pips match the number after ALT and after a reload (5 min).** ALT-switch twice, then reload
