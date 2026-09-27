@@ -177,22 +177,90 @@ def test_station_source_is_refused_on_any_piece():
             check_value(kind, {**ok_value, "station_source": "phone"})
             assert False, f"{kind} silently accepted station_source"
         except PieceError as e:
-            assert e.status == 400 and "station_source" in str(e)
+            assert e.status == 400 and "station_source" in str(e).lower()
         assert check_value(kind, ok_value)   # the same value with the field stripped still passes
 
 
-def test_no_stored_piece_can_carry_an_unproven_value():
-    """A hand-written pieces.json is re-validated on load exactly like the old presets.json was —
-    a row the server would now refuse is DROPPED, never fatal, and never reaches `list()`."""
+def test_a_value_the_current_rules_refuse_is_kept_invalid_not_dropped():
+    """HIGH 1 (round 3): a stored piece the CURRENT rules refuse (a value once valid, now refused by a
+    check elsewhere -- here, the respawn gate/delay guards) is KEPT, marked `invalid`, not dropped. A
+    row too broken to KEEP at all (an unknown kind, an empty name, a value that isn't even an object)
+    is still dropped, same as before HIGH 1."""
     _, path = _store()
     path.write_text(json.dumps({"v": 1, "pieces": [
         {"piece_id": "z1", "kind": "spawn", "name": "Sketchy", "value": {"type": "scanner", "delay_s": 10, "gate": "presence"}},
         {"piece_id": "z2", "kind": "spawn", "name": "Wedge", "value": {"type": "auto", "delay_s": 2}},
         {"piece_id": "z3", "kind": "life", "name": "Fine", "value": {"max_hp": 30, "max_armor": 0, "max_shield": 0}},
+        {"piece_id": "z4", "kind": "bogus", "name": "Broken Kind", "value": {}},
+        {"piece_id": "z5", "kind": "life", "name": "", "value": {"max_hp": 30, "max_armor": 0, "max_shield": 0}},
+        {"piece_id": "z6", "kind": "life", "name": "Not A Dict Value", "value": "nope"},
     ]}))
     st2 = PieceStore(path)
-    names = {r["name"] for r in st2.list() if not r["builtin"]}
-    assert names == {"Fine"}
+    rows = {r["name"]: r for r in st2.list() if not r["builtin"]}
+    assert set(rows) == {"Sketchy", "Wedge", "Fine"}          # z4/z5/z6: too broken to keep, dropped
+    assert "invalid" not in rows["Fine"]
+    assert "PRESENCE" in rows["Sketchy"]["invalid"]
+    assert "1-2S" in rows["Wedge"]["invalid"]
+    assert rows["Sketchy"]["value"] == {"type": "scanner", "delay_s": 10, "gate": "presence"}   # kept verbatim
+
+
+def test_high1_a_weapon_since_hidden_keeps_the_piece_read_only_with_a_reason():
+    """HIGH 1's own probe: a PRIMARY preset naming a weapon that is hidden today (force_rifle) is kept,
+    not dropped, with a reason naming the weapon by its catalogue name -- not the raw snake_case id."""
+    _, path = _store()
+    path.write_text(json.dumps({"v": 1, "pieces": [
+        {"piece_id": "z1", "kind": "primary", "name": "Old Loadout",
+         "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}},
+    ]}))
+    st2 = PieceStore(path)
+    row = next(r for r in st2.list() if r["name"] == "Old Loadout")
+    assert row["invalid"] == "NAMES FORCE RIFLE, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK"
+    assert row["value"]["fixed_id"] == "force_rifle"   # kept verbatim, not repaired
+
+
+def _pclient_with_pieces_file(rows):
+    """Like `_pclient` (below), but the PieceStore is backed by a real file seeded with `rows` -- the
+    only way an `invalid` piece actually comes to exist, so the HIGH 1 route tests go through the real
+    load path, not a hand-poked internal list."""
+    path = pathlib.Path(tempfile.mkdtemp()) / "pieces.json"
+    path.write_text(json.dumps({"v": 1, "pieces": rows}))
+    s, net, clock, ps = mk(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.attach_pieces(PieceStore(path))
+    from brx_mcp.mc.api import create_app
+    return TestClient(create_app(s)), s, net, clock, ps
+
+
+def test_high1_invalid_piece_is_never_pickable_and_survives_a_save_untouched():
+    needs(HAVE, "starlette + httpx")
+    ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
+            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
+    c, s, net, clock, ps = _pclient_with_pieces_file([ghost])
+    # named directly by a request -> 400, treated like a vanished id, never silently accepted
+    r = c.post("/api/play/pick", json={"pieces": {"primary": "ghost1"}})
+    assert r.status_code == 400
+    # inherited (not named by this request) -> falls back, same grace a stale/post-MVP id gets
+    s.game_pick["pieces"]["primary"] = "ghost1"
+    r2 = c.post("/api/play/pick", json={"match": {"frag_limit": 10}})
+    assert r2.status_code == 200 and r2.json()["ok"], r2.json()
+    assert r2.json()["fallbacks"] == ["primary"]
+    # survives every save untouched: an unrelated piece's edit must not drop or "repair" it
+    other = c.post("/api/pieces", json={"kind": "life", "name": "Another", "note": "",
+                                        "value": {"max_hp": 45, "max_armor": 0, "max_shield": 0}}).json()
+    c.put(f"/api/pieces/{other['piece_id']}", json={"name": "Another Mk2"})
+    kept = next(p for p in c.get("/api/pieces").json() if p["piece_id"] == "ghost1")
+    assert kept.get("invalid") and kept["value"]["fixed_id"] == "force_rifle"
+
+
+def test_high1_put_with_a_valid_value_clears_invalid():
+    needs(HAVE, "starlette + httpx")
+    ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
+            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
+    c, s, net, clock, ps = _pclient_with_pieces_file([ghost])
+    r = c.put("/api/pieces/ghost1", json={"value": {"choice": "player", "kinds": ["weapon"]}})
+    assert r.status_code == 200
+    assert "invalid" not in r.json()
 
 
 def test_corrupt_file_is_moved_aside_not_fatal():
@@ -730,7 +798,9 @@ def test_no_preset_can_name_a_hidden_weapon_or_perk():
             try:
                 check_value("primary", value); assert False, f"{wid} was accepted in {value}"
             except PieceError as e:
-                assert e.status == 400 and wid in str(e)
+                # round 3 (MEDIUM 5): the message names the weapon by its catalogue NAME, not the raw
+                # snake_case id -- "force_rifle" -> "FORCE RIFLE"
+                assert e.status == 400 and wid.replace("_", " ").upper() in str(e)
     for pid in perks:
         try:
             check_value("perks", {"choice": "fixed", "fixed_id": pid}); assert False, pid
@@ -756,3 +826,55 @@ def test_no_weapon_list_the_console_reads_carries_a_hidden_weapon():
     for f in (repo / "app" / "src" / "demo-catalog.js", repo / "webapp" / "mc" / "src" / "mock" / "data.ts"):
         offered = set(_re.findall(r'"weapon_id":\s*"([a-z0-9_]+)"', f.read_text()))
         assert offered and not offered & set(weapons), (f.name, sorted(offered & set(weapons)))
+
+
+# ================================================================== independent review (brx1)
+def test_medium2_a_failed_value_update_leaves_the_row_unchanged():
+    """MEDIUM 2: name, note and value are all validated BEFORE any of them is assigned -- a 400 on
+    value must leave the row (name AND note) exactly as it was, in memory and on disk."""
+    st, path = _store()
+    row = st.create("life", "Original Name", "original note", {"max_hp": 45, "max_armor": 0, "max_shield": 0})
+    try:
+        st.update(row["piece_id"], name="New Name", note="new note",
+                 value={"max_hp": 999, "max_armor": 0, "max_shield": 0})
+        assert False
+    except PieceError as e:
+        assert e.status == 400
+    reread = st.get(row["piece_id"])
+    assert reread["name"] == "Original Name" and reread["note"] == "original note"
+    assert reread["value"] == {"max_hp": 45, "max_armor": 0, "max_shield": 0}
+    st2 = PieceStore(path)   # on disk too -- _save() never ran, but check the in-memory row wasn't
+    reread2 = st2.get(row["piece_id"])   # half-mutated and then persisted by some LATER unrelated save
+    assert reread2["name"] == "Original Name" and reread2["value"]["max_hp"] == 45
+
+
+def test_medium5_messages_are_all_caps_what_colon_do():
+    st, _ = _store()
+    st.create("life", "Original", "", {"max_hp": 45, "max_armor": 0, "max_shield": 0})
+    try:
+        st.create("life", "original", "", {"max_hp": 45, "max_armor": 0, "max_shield": 0})
+        assert False
+    except PieceError as e:
+        assert str(e) == "NAME ALREADY USED: PICK ANOTHER NAME FOR THIS LIFE PRESET"
+    try:
+        st.create("life", "STANDARD", "", {"max_hp": 45, "max_armor": 0, "max_shield": 0})
+        assert False
+    except PieceError as e:
+        assert str(e) == e.args[0] == "NAME ALREADY USED: \"STANDARD\" IS A BUILT-IN LIFE PRESET, PICK ANOTHER NAME"
+    try:
+        st.get("nope")
+        assert False
+    except PieceError as e:
+        assert str(e) == "PRESET NOT FOUND: IT MAY HAVE BEEN DELETED"
+
+
+def test_low_piece_id_length_cap_in_pick():
+    """Lows: a length cap on ids in favourites and picks (64 chars, 400 beyond)."""
+    huge = "x" * 65
+    try:
+        G.merge_piece_ids({}, {"life": huge})
+        assert False
+    except PieceError as e:
+        assert e.status == 400
+    ok = G.merge_piece_ids({}, {"life": "x" * 64})   # exactly 64 is the shape limit, not a real id either way
+    assert ok["life"] == "x" * 64

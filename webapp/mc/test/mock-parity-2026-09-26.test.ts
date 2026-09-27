@@ -13,6 +13,7 @@
 // recomputed directly as `builtin:mode:<mode>`, with no post_mvp exclusion (a post-MVP mode still gets
 // its own real builtin id, never a fallback to another mode's).
 import { describe, expect, it } from 'vitest';
+import type { GameConfig } from '../src/api/types';
 import { MockBackend } from '../src/mock/backend';
 
 describe('pick() validation refusals carry status 400', () => {
@@ -99,5 +100,90 @@ describe('pick() falls back a kind the request did not name, and reports it (ser
   it('a kind the request DOES name still 404s/400s on a bad id -- never a silent fallback', async () => {
     const b = new MockBackend();
     await expect(b.pick({ pieces: { mode: 'nope' } })).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('updatePiece (review MEDIUM 3): only a value change on a PICKED piece recomposes', () => {
+  it('a name-only rename does not touch the config at all', async () => {
+    const b = new MockBackend();
+    const life = await b.createPiece({ kind: 'life', name: 'CUSTOM LIFE', value: { max_hp: 50, max_armor: 60, max_shield: 0 } });
+    await b.pick({ pieces: { life: life.piece_id } });
+    // an independent KIT/LOBBY inline edit -- toggling hud_select DIRECTLY, never through a BUILD piece
+    await b.putConfig({ loadout_policy: { hud_select: false } as GameConfig['loadout_policy'] });
+    expect((await b.getState()).config.loadout_policy!.hud_select, 'control').toBe(false);
+    const renamed = await b.updatePiece(life.piece_id, { name: 'RENAMED LIFE' });
+    expect(renamed.ok, 'a name-only save never even reaches a recompose').toBeUndefined();
+    const after = await b.getState();
+    expect(after.config.loadout_policy!.hud_select, 'a rename must not silently revert an unrelated inline edit').toBe(false);
+    expect((await b.getPieces()).find(p => p.piece_id === life.piece_id)?.name).toBe('RENAMED LIFE');
+  });
+
+  it('a value change on a picked piece DOES recompose, and reports ok/errors/fallbacks', async () => {
+    const b = new MockBackend();
+    const life = await b.createPiece({ kind: 'life', name: 'CUSTOM LIFE', value: { max_hp: 50, max_armor: 60, max_shield: 0 } });
+    await b.pick({ pieces: { life: life.piece_id } });
+    const r = await b.updatePiece(life.piece_id, { name: 'CUSTOM LIFE', value: { max_hp: 80, max_armor: 60, max_shield: 0 } });
+    expect(r.ok).toBe(true);
+    expect(r.errors).toEqual([]);
+    expect((await b.getState()).config.health.max_hp).toBe(80);
+  });
+
+  it('the precheck runs BEFORE anything is saved: a bad value leaves the name untouched', async () => {
+    const b = new MockBackend();
+    const life = await b.createPiece({ kind: 'life', name: 'CUSTOM LIFE', value: { max_hp: 50, max_armor: 60, max_shield: 0 } });
+    await expect(b.updatePiece(life.piece_id, { name: 'SHOULD NOT SAVE', value: { max_hp: 0, max_armor: 60, max_shield: 0 } }))
+      .rejects.toThrow(/max_hp must be an integer/);
+    expect((await b.getPieces()).find(p => p.piece_id === life.piece_id)?.name, 'the refused value must not leave a half-applied rename').toBe('CUSTOM LIFE');
+  });
+});
+
+describe('LIFE ranges (review MEDIUM 4): max_hp 1..255, armour/shield 0..255', () => {
+  it('max_hp 0 is refused (0..999 was never the server’s own range)', async () => {
+    const b = new MockBackend();
+    await expect(b.createPiece({ kind: 'life', name: 'X', value: { max_hp: 0, max_armor: 0, max_shield: 0 } }))
+      .rejects.toThrow(/max_hp must be an integer 1\.\.255/);
+  });
+  it('256 is refused on every field', async () => {
+    const b = new MockBackend();
+    await expect(b.createPiece({ kind: 'life', name: 'X', value: { max_hp: 256, max_armor: 0, max_shield: 0 } })).rejects.toThrow(/1\.\.255/);
+    await expect(b.createPiece({ kind: 'life', name: 'Y', value: { max_hp: 45, max_armor: 256, max_shield: 0 } })).rejects.toThrow(/0\.\.255/);
+    await expect(b.createPiece({ kind: 'life', name: 'Z', value: { max_hp: 45, max_armor: 0, max_shield: 256 } })).rejects.toThrow(/0\.\.255/);
+  });
+  it('the new ceiling (255) and max_hp’s floor (1) are accepted', async () => {
+    const b = new MockBackend();
+    const p = await b.createPiece({ kind: 'life', name: 'MAXED', value: { max_hp: 1, max_armor: 255, max_shield: 255 } });
+    expect(p.value).toEqual({ max_hp: 1, max_armor: 255, max_shield: 255 });
+  });
+});
+
+describe('only_ids/fixed_id (review MEDIUM 4): hidden, pickup-only or unknown ids are refused', () => {
+  it('an unknown weapon id in only_ids is refused with 400', async () => {
+    const b = new MockBackend();
+    await expect(b.createPiece({ kind: 'primary', name: 'X',
+      value: { choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: ['not_a_real_weapon'], fixed_id: null } }))
+      .rejects.toMatchObject({ status: 400 });
+  });
+  it('a pickup-only weapon as fixed_id is refused', async () => {
+    const b = new MockBackend();
+    const weapons = await b.getWeapons();
+    const pickupOnly = weapons.find(w => w.pickup_only);
+    expect(pickupOnly, 'fixture must carry at least one pickup-only weapon').toBeTruthy();
+    await expect(b.createPiece({ kind: 'secondary', name: 'X',
+      value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: pickupOnly!.weapon_id } }))
+      .rejects.toMatchObject({ status: 400 });
+  });
+  it('a real, pickable weapon id is accepted', async () => {
+    const b = new MockBackend();
+    const weapons = await b.getWeapons();
+    const real = weapons.find(w => !w.pickup_only)!.weapon_id;
+    const p = await b.createPiece({ kind: 'primary', name: 'X',
+      value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: real } });
+    expect((p.value as { fixed_id: string }).fixed_id).toBe(real);
+  });
+  it('an unknown perk id is refused', async () => {
+    const b = new MockBackend();
+    await expect(b.createPiece({ kind: 'perks', name: 'X',
+      value: { choice: 'fixed', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'not_a_real_perk' } }))
+      .rejects.toMatchObject({ status: 400 });
   });
 });

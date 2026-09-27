@@ -1,15 +1,16 @@
-# Handoff: Open BRX, state after the 2026-09-26 0.4.14 cut
-**State as of 2026-09-26.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
+# Handoff: Open BRX, state on the morning of bench part 2
+**State as of 2026-09-27.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 Open MVP work is [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench, decision); ideas and the roadmap are [`post-mvp.md`](post-mvp.md);
 what is done is [`archive/followups-closed.md`](archive/followups-closed.md). The bench order is [`bench-plan.md`](bench-plan.md).
 What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is [`post-launch.md`](post-launch.md).
 Update only the lane you worked.
-## State of main (2026-09-26)
+## State of main (2026-09-27)
 **App 0.4.14 is published** (`app-v0.4.14`, release-signed, main 56fbece4) and installed on the three bench Pixel 5s.
 It carries powerups on by default (F372), the go-live spawn check (F416), held pickups that survive a resume (F418,
 F417 part 1), the switch card with paused lanes (F400), no pickup countdown (F425), F394, F420-F424 and mode art C.
-Three polish rounds ran before the cut. **MC GAMES (F411, brx3) with FAVOURITES is not on main yet;** F413 (teams)
-and F415 (per-mode match settings) follow it. The iPhone X build (B21 iOS half, uncompiled Swift) is Tony's MacBook
+Three polish rounds ran before the cut. **MC GAMES (F411) is on main** (c2c51679, review fixes 222b1a81), with PLAY,
+BUILD, MATCH SETTINGS, FAVOURITES and the weapon-type toggles; F413 (teams) and F415 (per-mode items, the KOTH hold
+target) are in progress (brx3). The Stick firmware is b79de96d + RANGE CLEAR (6f042126); the hill default is -75/6. The iPhone X build (B21 iOS half, uncompiled Swift) is Tony's MacBook
 step, `.claude/skills/iphone-build`. Bench part 2 is at the top of [`bench-plan.md`](bench-plan.md).
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
@@ -83,9 +84,9 @@ and no card). 2026-09-26: F403, the BRIEFING's PICKUPS line (MC's brief carries 
 
 ## Start here
 
-1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
-   evidence and promote or close each row from the result.
-2. **Desk:** the FOLLOWUPS MVP DESK group, highest value first (F411, B21, F400).
+1. **Next sitting:** [`bench-plan.md`](bench-plan.md) part 2, the 3 h cut first; record evidence and promote or close
+   each row from the result.
+2. **Desk:** F413 and F415 (brx3), then B21's iOS compile on the MacBook (`.claude/skills/iphone-build`).
 3. **Decisions for Tony:** the FOLLOWUPS MVP DECISION group.
 4. **Only after MVP:** [`post-mvp.md`](post-mvp.md) is the roadmap; nothing there is scheduled.
 

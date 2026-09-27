@@ -154,6 +154,44 @@ describe('PLAY — round 4: a mode switch that reshapes the roster asks first (F
   });
 });
 
+describe('PLAY — review follow-up: loading a FAVOURITE that reshapes the roster asks first too', () => {
+  async function favouriteToKoth(api: MockBackend) {
+    const before = await api.getState();
+    await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,
+      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match: before.game_pick!.match } });
+  }
+
+  it('the first tap sends nothing and shows the predicted split', async () => {
+    const api = new MockBackend();
+    await favouriteToKoth(api);
+    const { m } = await renderPlay(api);   // 8 players, 4 BLUE / 4 YELLOW (TDM)
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getFavourites settles
+    await m.click('KOTH Setup');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const after = await api.getState();
+    expect(after.config.mode, 'the first tap must not reach the server').toBe('tdm');
+    const split = m.find('[data-testid="confirm-split"]')[0];
+    expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
+    expect(split.textContent).toBe('▲ 8 PLAYERS → BLUE 4 / PURPLE 4');
+    m.unmount();
+  });
+
+  it('the second tap on the SAME favourite commits it', async () => {
+    const api = new MockBackend();
+    await favouriteToKoth(api);
+    const { m } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('KOTH Setup');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('KOTH Setup');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const after = await api.getState();
+    expect(after.config.mode).toBe('koth');
+    expect(m.find('[data-testid="confirm-split"]').length, 'the confirm is gone once applied').toBe(0);
+    m.unmount();
+  });
+});
+
 describe('PLAY — LAST MATCH', () => {
   it('hidden until a match has been played', async () => {
     const { m } = await renderPlay(new MockBackend());
@@ -565,6 +603,30 @@ describe('PLAY — UX round 1: FAVOURITE rename has an explicit ✓, and ✕ tru
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     const favs = await api.getFavourites();
     expect(favs[0].name, 'the SECOND rename must not be poisoned by the first one’s Escape').toBe('New Name');
+    m.unmount();
+  });
+});
+
+describe('PLAY — review Low: the pieces-error banner is gated on connected', () => {
+  it('a stale piecesError does not flash while the console is known offline', async () => {
+    const d = await demo();
+    const err = new Error('socket reset');
+    const api = fixtureApi({ getPieces: async () => { throw err; } }, d.api);
+    const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api, connected: false });
+    const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.find('[data-testid="play-pieces-error"]').length, 'offline is already said elsewhere -- this must stay quiet').toBe(0);
+    m.unmount();
+  });
+
+  it('the same failure shows once the console is connected', async () => {
+    const d = await demo();
+    const err = new Error('socket reset');
+    const api = fixtureApi({ getPieces: async () => { throw err; } }, d.api);
+    const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api, connected: true });
+    const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.find('[data-testid="play-pieces-error"]').length).toBe(1);
     m.unmount();
   });
 });
