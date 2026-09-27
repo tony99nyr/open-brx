@@ -489,6 +489,23 @@ def test_adopting_notes_but_does_not_end_a_draft_cap_the_replayed_facts_already_
     assert any("DOES NOT END AN ADOPTED MATCH" in (e.get("text") or "") for e in s.feed)
 
 
+def test_adopting_notes_a_draft_hold_target_the_replayed_facts_already_reach_not_frag_limit():
+    """Low (brx1 review of e8811fea): the adopt-orphan note named FRAG LIMIT unconditionally, even for
+    a koth draft whose own hold target is what the replay actually reached (the same fix as
+    `resume_match`'s crossed-limit branch, above)."""
+    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    clock["t"] += 1000
+    net.simulate_event("node0", {"type": "possession", "match_id": "m-old", "node_id": "node0",
+                                 "player_id": ps[0]["player_id"], "t": clock["t"], "site": "A",
+                                 "hold_ms": {"1": 30_000}, "observed_ms": 30_000}, clock["t"], seq=1)
+    s.set_config({"mode": "koth", "scoring": {"hold_target_s": 30}})   # the draft's target the replay already reaches
+    s.adopt_orphan("m-old")
+    assert s.phase == "live" and s.start_info is not None, \
+        "reaching the draft's target in the replay must record, never end, an adopted match"
+    assert any("DOES NOT END AN ADOPTED MATCH" in (e.get("text") or "") for e in s.feed)
+    assert any("HOLD TARGET" in (e.get("text") or "") and "FRAG LIMIT" not in (e.get("text") or "") for e in s.feed), s.feed
+
+
 def test_resume_is_refused_while_mc_runs_its_own_match():
     s, net, clock, ps, info = go_live(2, "ffa")
     _status(net, clock, 1, "live", "m-other")
@@ -664,6 +681,43 @@ def test_a_resume_ignores_a_cap_only_the_t_order_replay_passes_and_a_real_cap_st
                                   "shooter_team": 1}, clock["t"], seq=2)
     assert s2.phase == "recap" and s2.end_reason == "frag_limit", \
         f"a real cap after the resume ends the match: {s2.phase} {s2.scorer.team_scores()} {s2.scorer.limit_reached_t}"
+
+
+def test_a_restart_after_a_crossed_hold_target_labels_and_records_it_correctly():
+    """Low (brx1 review of e8811fea): three bugs in one path, all frag_limit-only where koth's own
+    hold_target_s needed the same treatment.
+
+    1. `_arrival_cap_recv` (F356/F363's own "did the LIVE board really cross this" check) was
+       `kills`/`frag_limit` only, so it could never CONFIRM a hold target -- `_build_scorer`'s
+       `derive_cap` branch reads "no confirmation" as "the replay passed it only in passing" (F363's
+       kills edge case) and wipes the reached limit, which fired on EVERY resume for koth (nothing
+       could ever confirm it), so a hold target genuinely reached while MC was down never survived a
+       restart at all.
+    2. Even once confirmed, the wipe-on-no-confirmation branch discarded only "frag_limit" from
+       `_announced`, leaving "hold_target" stuck -- `Scorer._check_hold_target`'s own gate
+       (`"hold_target" in self._announced`) would then shut for good.
+    3. `resume_match`'s crossed-limit branch unconditionally set `end_reason = "frag_limit"` and said
+       "FRAG LIMIT", so even a successfully confirmed+resumed hold target was mislabelled.
+
+    This proves all three: the resume lands in recap, `end_reason` is `"hold_target"`, and the feed
+    says HOLD TARGET, never FRAG LIMIT."""
+    s, net, clock, ps, info = go_live(2, "koth", {"scoring": {"hold_target_s": 60}})
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist()                         # a snapshot from BEFORE the target was crossed
+    frozen = s._persist_path.read_text()   # ...frozen here, as a real crash would leave it: the LIVE
+    red = s.config["teams"][0]             # session keeps running and re-persists over the same path
+    mid = info["match_id"]                 # the instant the target is crossed, same as any other edit
+    clock["t"] += 1000
+    net.simulate_event("node0", {"type": "possession", "match_id": mid, "node_id": "node0",
+                                 "player_id": ps[0]["player_id"], "t": clock["t"], "site": "A",
+                                 "hold_ms": {str(red["tid"]): 60_000}, "observed_ms": 60_000}, clock["t"], seq=1)
+    # control: the fact really does cross the target for this (the "old") process
+    assert s.phase == "recap" and s.end_reason == "hold_target", (s.phase, s.end_reason)
+    s._persist_path.write_text(frozen)   # ...as if that later write never landed; the STORE still has
+    s2, net2 = _restart_no_repersist(s, clock)   # every fact regardless of what the snapshot says
+    assert s2.resume_match() == "recap", s2.phase
+    assert s2.end_reason == "hold_target", s2.end_reason
+    assert "HOLD TARGET" in s2.feed[0]["text"] and "FRAG LIMIT" not in s2.feed[0]["text"], s2.feed[0]
 
 
 def test_a_resume_does_not_tell_the_field_the_lead_and_next_kill_wins_again():

@@ -5147,6 +5147,16 @@ class Session:
             # later must still end the match.
             sc.limit_reached_t = None
             sc._announced.discard("frag_limit")
+            # Low (brx1 review of e8811fea): the hold-target mirror -- discarding only "frag_limit" left
+            # a koth match's own gate permanently shut (`Scorer._check_hold_target`'s own guard,
+            # `"hold_target" in self._announced`, never clears once set), so a real crossing after the
+            # resume could never end the match either. No test reaches this specific line: possession's
+            # max-merge tally is order-independent for the FINAL total (unlike a kill score, which a
+            # team kill can genuinely take back), so a constructed "taken back" case for `_arrival_cap_recv`
+            # to disagree with the t-order replay on has not been found -- kept for the same defensive
+            # symmetry the discard above already has, and in case the post-whistle clamp (A6.1) ever
+            # creates the divergence a kill score can.
+            sc._announced.discard("hold_target")
         # F362 (k): the replay skips the match-state alerts of every stale fact, so take what the field was
         # already told from the snapshot. An older snapshot without it: take it from the board.
         if isinstance(alerts, dict):
@@ -5304,10 +5314,14 @@ class Session:
                                    "RESUMED. PRESS END WHEN IT IS OVER"})
         elif self.scorer.limit_reached_t is not None:
             self.scorer.set_end(self.scorer.limit_reached_t)
-            self.end_reason = "frag_limit"
+            # Low (brx1 review of e8811fea): this used to say frag_limit and FRAG LIMIT unconditionally,
+            # so a koth match whose HOLD TARGET was reached while MC was down resumed mislabelled.
+            hold_ended = self.scorer.win_by == "objective"
+            self.end_reason = "hold_target" if hold_ended else "frag_limit"
             self._finish()
+            label = "HOLD TARGET" if hold_ended else "FRAG LIMIT"
             self._on_feed({"t_match_s": 0, "tag": "RESUMED", "kind": "alert",
-                           "text": "MC RESTARTED. THE MATCH REACHED ITS FRAG LIMIT WHILE MC WAS DOWN: RECAP BUILT"})
+                           "text": f"MC RESTARTED. THE MATCH REACHED ITS {label} WHILE MC WAS DOWN: RECAP BUILT"})
         elif too_old or past_clock:
             self.end_reason = "time"
             self._finish()
@@ -5428,10 +5442,16 @@ class Session:
         # adopted match is never ended by MC on it (see `tick()` and `_on_frag_limit`) — the phones end
         # themselves, or the operator presses END.
         if self.scorer.limit_reached_t is not None:
+            # Low (brx1 review of e8811fea): named FRAG LIMIT unconditionally, even for an adopted
+            # koth draft whose own hold target was what the replay actually reached.
+            if self.scorer.win_by == "objective":
+                label, cap = "HOLD TARGET", self.scorer.hold_target_s
+            else:
+                label, cap = "FRAG LIMIT", self.scorer.frag_limit
             self._on_feed({"t_match_s": max(0, (self.scorer.limit_reached_t - go) // 1000), "tag": "NOTE",
                            "kind": "alert",
-                           "text": f"THE REPLAYED FACTS ALREADY REACH THE DRAFT'S FRAG LIMIT "
-                                   f"({self.scorer.frag_limit}) — MC DOES NOT END AN ADOPTED MATCH ON A "
+                           "text": f"THE REPLAYED FACTS ALREADY REACH THE DRAFT'S {label} "
+                                   f"({cap}) — MC DOES NOT END AN ADOPTED MATCH ON A "
                                    f"CAP IT CANNOT CONFIRM IS THEIRS. PRESS END IF THE PHONES HAVE STOPPED"})
         self._changed()
         self.persist_now()
@@ -6060,12 +6080,29 @@ class Session:
     def _arrival_cap_recv(self, like: Scorer, facts: list[dict]) -> int | None:
         """F356: the `t_recv` at which these facts, taken in the order MC RECEIVED them, first reach the
         frag cap -- the moment the live scorer's whistle blew. None when they never do (or no cap is set).
-        A scratch scorer with no callbacks, so nothing is cued, fed or ended."""
-        if not like.frag_limit or like.win_by != "kills":
+        A scratch scorer with no callbacks, so nothing is cued, fed or ended.
+
+        F415 (Low, brx1 review of e8811fea): this used to be `kills`/`frag_limit` only, so a koth match's
+        own `hold_target_s` could never be CONFIRMED here -- `_build_scorer`'s `derive_cap` check reads
+        "no `cap_recv`" as "the t-order replay passed the cap only in passing" (F356/F363's own kills
+        edge case) and wipes a REACHED limit rather than risk announcing one the live board never truly
+        crossed. With no way to confirm an objective win, that wipe fired on every single resume, so a
+        hold target that really was reached while MC was down never survived one. Handles either shape
+        `like.win_by` names, whichever this match actually scores by."""
+        if like.win_by == "kills":
+            if not like.frag_limit:
+                return None
+            probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
+                           list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
+                           win_by=like.win_by, frag_limit=like.frag_limit)
+        elif like.win_by == "objective":
+            if not like.hold_target_s:
+                return None
+            probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
+                           list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
+                           win_by=like.win_by, hold_target_s=like.hold_target_s)
+        else:
             return None
-        probe = Scorer(like.match_id, like.go_live_t, like.time_limit_s, like.mode, like.players,
-                       list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
-                       win_by=like.win_by, frag_limit=like.frag_limit)
         probe.joined_t = dict(like.joined_t)
         # `facts` come in store insertion order (`_match_facts(arrival=True)`), which IS the order MC received
         # them, across a restart too (`_import_facts` copies the old rows first). No sort on `t_recv`: two facts
