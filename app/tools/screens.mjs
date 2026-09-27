@@ -5,6 +5,7 @@
 // Run: node tools/screens.mjs      ONLY=<substring> runs matching steps.      SCREENS_PORT=<port> pins the static server (default: ephemeral)
 //      SCREENS_SHARDS=<n> splits the steps across n child processes (default: half the cores, at most 16, capped by free memory; 1 = serial)
 import { chromium } from 'playwright';
+import { monotonicDate } from './monotonic-date.mjs';
 import http from 'http'; import fs from 'fs'; import path from 'path'; import os from 'os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -75,7 +76,7 @@ await new Promise(r => srv.listen(Number(process.env.SCREENS_PORT || 0), '127.0.
 const PORT = srv.address().port;
 let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
-const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
+const b = monotonicDate(await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] }));   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live-spawn-lost', 'live-switch-kill', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',

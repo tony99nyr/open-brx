@@ -385,6 +385,32 @@ def test_a_red_main_is_not_blamed_on_the_branch():
         assert _branch_count(t, "refs/heads/land-failed") == 0
 
 
+def test_wait_after_a_lander_stopped_on_a_red_main_exits_5_without_a_second_gate():
+    # 2026-09-27: `wait` polled while `run` stopped on "main is red on its own", then started a second full gate on the
+    # same red main (about 25 minutes) instead of reporting the stop.
+    with Lane() as t:
+        m = t.dir / "mover"
+        (m / "RED").write_text("main is broken")
+        _git("add", "RED", cwd=m)
+        _git("commit", "-q", "-m", "break main", cwd=m)
+        _git("push", "-q", "origin", "HEAD:main", cwd=m)
+        a = t.submit("a", {"a.txt": "a"})
+        assert t.land("run").returncode == 5
+        gates = t.full_gates()
+        w = t.land("wait", a, "--timeout-min", "0.2")
+        assert w.returncode == 5 and "red on its own" in w.stderr and a in w.stderr, w.stdout + w.stderr
+        assert "running the lander here" not in w.stdout, w.stdout
+        assert t.full_gates() == gates, "wait gated the same red main again"
+        assert f"refs/heads/land/{a}" in t.remote_refs()
+        # The fix moves main: the stop no longer applies, and wait drives the queue again.
+        _git("rm", "-q", "RED", cwd=m)
+        _git("commit", "-q", "-m", "fix main", cwd=m)
+        _git("push", "-q", "origin", "HEAD:main", cwd=m)
+        w = t.land("wait", a, "--timeout-min", "0.5")
+        assert w.returncode == 0 and "running the lander here" in w.stdout, w.stdout + w.stderr
+        _assert_landed(t, a)
+
+
 # ---- dry run, the guard, submit ---------------------------------------------------------------------------------
 
 def test_dry_run_changes_nothing():

@@ -5,6 +5,7 @@
 // Parallel runs: every port is free by default. Set E2E_MC_PORT, E2E_MC_WS_PORT, E2E_OLD_MC_PORT,
 // E2E_OLD_MC_WS_PORT or E2E_HUD_PORT to pin one. Set E2E_OUT to write shots + report to another directory.
 import { chromium } from 'playwright';
+import { monotonicDate } from './monotonic-date.mjs';
 import { spawn } from 'node:child_process';
 import http from 'http'; import net from 'node:net'; import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
@@ -146,7 +147,7 @@ if (!/:[1-9]\d*\/ws$/.test(WS)) { console.error('FATAL: lan.ws_url never got a r
 console.log('node ws:', WS);
 
 // ---------- pages + UX collectors ----------
-const browser = await chromium.launch();
+const browser = monotonicDate(await chromium.launch());
 const jsErrors = [];
 let expectHttpErrors = false;   // a step that deliberately provokes a 4xx (F3b j) sets this so the rollup doesn't count it
 const mkPage = async (name, viewport) => {

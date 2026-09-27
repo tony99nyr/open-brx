@@ -20,6 +20,7 @@
 // The one thing it does NOT cover is a real device: platform reads `web` in Chromium, and only an
 // APK/IPA can prove `android`/`ios`.
 import { chromium } from 'playwright';
+import { monotonicDate } from './monotonic-date.mjs';
 import { spawn } from 'node:child_process';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 
@@ -45,7 +46,7 @@ const fail = [];
 const check = (ok, what, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}${extra ? '  ' + extra : ''}`); if (!ok) fail.push(what); };
 
 const { port } = await until(o => o.port, 10000, 'mc port');
-const b = await chromium.launch();
+const b = monotonicDate(await chromium.launch());
 const page = await b.newPage({ viewport: { width: 891, height: 411 } });
 page.on('pageerror', e => { console.log('HUD PAGEERROR:', e.message); fail.push('pageerror: ' + e.message); });
 page.on('console', m => { if (m.type() === 'error') console.log('HUD console.error:', m.text()); });
