@@ -63,9 +63,12 @@ Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR rece
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
 2026-09-25). On main: A68 (the hill counts from go-live to the whistle; `duration_ms` ends a Stick carried out of Wi-Fi
 before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392, F397, F398. Flashed from main, unlocked.
-- **Next bench task:** sitting C: the carried-out timed hill, F388 (F386 and F387 closed 2026-09-26, bench part 1),
+- **Next bench task:** bench part 2: F386's a/b/c on `26084fcf` (END freezes the powerup screen, no post-END grant,
+  STATS + 18 s wait + hold opens RANGE at 5 s; serial log on). Then sitting C: the carried-out timed hill, F388,
   the F383 3 m and 7 m readings, F399's claim latency, F391's restart, F392's repro with the serial log, F397's MC
   restart.
+- **Decision for Tony:** the hill default. A -60 drop at median -62 is the 6 dB EMA hysteresis (`presence.h`), not
+  `near_floor` (-70 is the revive margin). brx2 proposes -75 until the outdoor walk, hysteresis 6.
 - **Next desk task:** F342 (a powerup or control-point game still floods the scan: a slower advert or a native filter).
 - **Resume:** a fresh worktree off `origin/main` (the old `/home/tony/brx4-l3` and `/home/tony/brx4-f333` are
   disposable). Native Windows MC for mDNS:

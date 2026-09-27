@@ -367,7 +367,10 @@ static AdvertView currentAdvertView(uint32_t now) {
   const StationAssignment& a = link.assignment();
   if (a.kind == "control") return link.hill().advert();
   if (a.kind == "powerup") {
-    PowerupAdvertView p = link.powerup().view(now);
+    // Review round 2 (LOW): gated on powerup_ended() (via powerup_advert_view), not the raw schedule
+    // -- after MATCH OVER the schedule can still say "available", and no phone must see an item it
+    // can never get.
+    PowerupAdvertView p = link.powerup_advert_view(now);
     AdvertView v;
     v.team = TEAM_ANY;
     v.state = p.state;

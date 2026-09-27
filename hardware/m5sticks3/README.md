@@ -509,7 +509,12 @@ gesture changes any station state -- see "Buttons and power" below.
   (`ends_in_ms:0`) or a passed match deadline (`StationLink::powerup_ended()`) freezes the schedule
   into MATCH OVER, whatever it was doing (unknown, ready or taken), stops the countdown and refuses a
   claim; only a new game/kind/id or a config carrying a fresh START clears it. render.py has no scene
-  for this state either.
+  for this state either. This freeze is RAM-only (no NVS write, by design -- the flash-write
+  budget): a Stick that reboots after MATCH OVER comes back showing the pickup live again, and stays
+  that way until MC's next `station_config`. A Stick that is still on Wi-Fi gets that config as soon
+  as it reconnects (`ends_in_ms:0` again, in MC's recap), so the window is short; a Stick that
+  reboots out of Wi-Fi range stays live until it reconnects. `test_pickup_restore_after_end_does_not_pin_match_over`
+  (test/test_link.cpp) pins this so a future change is deliberate.
 - SETTINGS: not wired to any button flow yet (`ID`/`GAME`/`TXPIN` stay serial-only); the renderer
   exists, `compute_screen()` never produces it.
 - A welcomed-but-not-yet-armed link (MC found, no `station_config` applied yet) shows LINKED /
