@@ -8,6 +8,9 @@
 // listed there as not a gate). Measure its peak memory and its time, and put them in `mb` and `secs`.
 //   pnpm run test:all -- mcp app      # only the jobs whose name contains one of these words
 //   pnpm run test:all -- --list       # print the job names and stop
+//   pnpm run test:all -- --changed [base] --list   # dry run: which jobs would --changed pick, and why
+//     (the base, if given, is the token RIGHT AFTER --changed, e.g. `--changed abc123`, not `abc123 --changed`;
+//     see scripts/lib/changed.mjs's defaultBase() for what "no base" means)
 //
 // Why (2026-09-16). An agent ran the suites one after another, and the browser gates ran serially inside themselves,
 // so a full run took about 30 minutes, 22 of them in `ui:screens`. Every suite is independent of the others once the
@@ -27,16 +30,17 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { screensBudget, workerCount } from './lib/budget.mjs';
+import { deriveTimeoutS, screensBudget, workerCount } from './lib/budget.mjs';
 import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
-import { selectJobs } from './lib/changed.mjs';
+import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs } from './lib/changed.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
-const UI = argv.includes('--ui');
+let UI = argv.includes('--ui');   // --changed may force this on below (a UI job in the selection: see MEDIUM(a))
 const LIST = argv.includes('--list');
-// --changed [base]: base defaults to the merge-base with origin/main (below) and, if given, must not itself
-// look like a flag (so `--changed --list` still means "default base").
+// --changed [base]: the base, if given, is the token RIGHT AFTER --changed on the command line (`--changed
+// abc123`, not `abc123 --changed`), and must not itself look like a flag (so `--changed --list` still means
+// "default base"). With no base, defaultBase() picks one (scripts/lib/changed.mjs).
 const changedIdx = argv.indexOf('--changed');
 const CHANGED = changedIdx >= 0;
 const changedBaseArg = CHANGED && changedIdx + 1 < argv.length && !argv[changedIdx + 1].startsWith('--') ? argv[changedIdx + 1] : null;
@@ -89,16 +93,16 @@ const e2e = (script, secs, mb = 700) => ({
   name: `mc-${script}`, cwd: 'webapp/mc', cmd: ['node', `test/e2e/${script}.mjs`], ui: true, mb, secs,
   env: async () => ({ MC_PORT: String(await freePort()), MC_WS_PORT: String(await freePort()), VITE_PORT: String(await freePort()) }),
 });
-// Builds JOBS from a FRESH read of available memory. Called once up front (for --list and the filter-match
-// check, before any lock wait) and again right after this run takes the machine-wide lock: a run that queued
-// behind another one must not schedule itself using the memory snapshot from while it was still waiting, or
-// it under-shards for no reason once the machine is actually free again.
-function buildJobs() {
-  const budgetMb = Number(process.env.MEM_BUDGET_MB || Math.min(8000, Math.floor(availableMb() / 2)));
+// The full job list (every job, regardless of --ui/filters), from a FRESH read of available memory. Called
+// once up front (to check the --changed selection for a UI job, and for --list/the filter-match check, before
+// any lock wait) and again right after this run takes the machine-wide lock: a run that queued behind another
+// one must not schedule itself using the memory snapshot from while it was still waiting, or it under-shards
+// for no reason once the machine is actually free again.
+function rawJobs(budgetMb) {
   // Worker counts: a quarter of the cores, and no runner may take more than a quarter of the budget for its workers.
   const pyJ = workerCount(70, 16, CPUS, budgetMb), vitestW = workerCount(300, 8, CPUS, budgetMb), siteW = workerCount(300, 8, CPUS, budgetMb);
   const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb);   // the long pole
-  const jobs = [
+  return [
     { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 20 },
     // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
     // stack with a field of MockNodes. Its own job so a red chaos run reads as one, not as "mcp".
@@ -124,30 +128,38 @@ function buildJobs() {
         // MC visual QA round 2 (2026-09-24): a real MC with station and phone stand-ins; 27 s measured
         ['vqa2', 27, 900], ['play', 35, 950], ['build', 8, 900],
         ['lobby-outcome', 7, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
-  ].filter(j => (UI || !j.ui) && (!filters.length || filters.some(f => j.name.includes(f))));
-  return { budgetMb, jobs };
+  ];
 }
+const selectFiltered = (all, ui, filterList) => all.filter(j => (ui || !j.ui) && (!filterList.length || filterList.some(f => j.name.includes(f))));
+function buildJobs() {
+  const budgetMb = Number(process.env.MEM_BUDGET_MB || Math.min(8000, Math.floor(availableMb() / 2)));
+  return { budgetMb, all: rawJobs(budgetMb) };
+}
+
+let { budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs();
 
 // `--changed [base]`: map the paths that differ from `base` to a job-name filter, the same mechanism as
 // `test:all -- mcp app` above -- fail safe (CLAUDE.md's re-gate rule): an unmapped path, or a path that trips
 // scripts/lib/changed.mjs's full-suite triggers, runs everything, never a narrower guess.
 if (CHANGED) {
-  let base = changedBaseArg;
-  if (!base) {
-    try { base = execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { cwd: ROOT, encoding: 'utf8' }).trim(); }
-    catch (e) { console.error(`test-all: --changed found no base (no origin/main merge-base: ${e.message}); pass one explicitly`); process.exit(2); }
-  }
+  const base = changedBaseArg || defaultBase(ROOT);
   let paths;
-  try { paths = execFileSync('git', ['diff', '--name-only', base], { cwd: ROOT, encoding: 'utf8' }).split('\n').map(s => s.trim()).filter(Boolean); }
+  try { paths = changedPaths(ROOT, base); }
   catch (e) { console.error(`test-all: --changed could not diff against ${base}: ${e.message}`); process.exit(2); }
   const { filters: selected, reasons } = selectJobs(paths);
   console.log(`test-all: --changed vs ${base}: ${paths.length} path(s) changed`);
   for (const r of reasons) console.log(`  ${r}`);
   console.log(selected === null ? 'test-all: --changed selected: everything' : `test-all: --changed selected jobs matching: ${selected.join(', ')}`);
   if (selected !== null) filters = filters.concat(selected);
+  // ci.yml never runs the UI gates (app-screens, app-e2e, the mc-* e2e scripts), so if the selection includes
+  // one, --ui must come on too: --changed is the only thing gating it, not "CI is the backstop".
+  if (!UI && selectionIncludesUiJob(ALL_JOBS.map(j => ({ name: j.name, ui: !!j.ui })), selected)) {
+    UI = true;
+    console.log('test-all: --changed selected a UI-only job; adding --ui (ci.yml does not run those)');
+  }
 }
 
-let { budgetMb: BUDGET_MB, jobs: JOBS } = buildJobs();
+let JOBS = selectFiltered(ALL_JOBS, UI, filters);
 
 if (LIST) { for (const j of JOBS) console.log(j.name); process.exit(0); }
 if (!JOBS.length) { console.error(`no job matches ${filters.join(' ')} (try --list, and --ui for the browser gates)`); process.exit(2); }
@@ -203,17 +215,19 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
 
 // One run per MACHINE, per user (2026-09-27: was one run per checkout, so two worktrees on the same box ran
 // at once and starved each other's memory/CPU budget until jobs blew their kill timeout under the load). Each
-// run adds its own entry to a lock directory under $XDG_RUNTIME_DIR (else the OS temp dir), named
+// run adds its own entry to a FIXED lock directory under /tmp, keyed by uid (not $XDG_RUNTIME_DIR/$TMPDIR,
+// which can differ between session types for the same account and would then give each its own lock), named
 // <start ms>-<pid>-<random>, and touches it every 5 s. The run whose entry sorts first among the LIVE entries
 // holds the machine. No run ever renames or deletes another run's live entry, so two runs cannot both take it over.
-//   - Live: the holder's pid still exists (checked directly: a crashed or SIGKILLed run is reclaimed at once,
-//     not after a timeout), AND, for one that is alive but wedged, its mtime changed within the last 60 s of
-//     THIS waiter's own monotonic clock. A suspended laptop pauses that clock too, so a wake does not make a
-//     live holder look dead.
+//   - Live: the holder's pid still exists (checked directly, with a ~10 s grace past a missed heartbeat before
+//     trusting a "gone" read -- pids are namespaced/reused, so a crashed or SIGKILLed run is reclaimed almost
+//     at once, not after a full timeout, without trusting a coincidental match the instant the heartbeat lapses),
+//     AND, for one that is alive but wedged, its mtime changed within the last 60 s of THIS waiter's own
+//     monotonic clock. A suspended laptop pauses that clock too, so a wake does not make a live holder look dead.
 //   - An entry dead by either rule is deleted; its name can never be reused.
 //   - Two runs that start together: each waits until it has been first for 1 s, twice in a row, so an entry that
 //     was named earlier but written later is seen before anyone starts.
-const LOCK = path.join(process.env.XDG_RUNTIME_DIR || os.tmpdir(), lockDirName(os.userInfo().username));
+const LOCK = path.join('/tmp', lockDirName(os.userInfo().uid));
 fs.mkdirSync(LOCK, { recursive: true });
 const MINE = `${String(Date.now()).padStart(15, '0')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 const mineAt = path.join(LOCK, MINE);
@@ -250,7 +264,8 @@ for (let firstInARow = 0, toldPid = null; firstInARow < 2;) {
 }
 // This run just acquired the machine: a queued run's earlier budget snapshot may be stale (computed while the
 // box was still busy), so rebuild JOBS from a fresh read of available memory before scheduling anything.
-({ budgetMb: BUDGET_MB, jobs: JOBS } = buildJobs());
+({ budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs());
+JOBS = selectFiltered(ALL_JOBS, UI, filters);
 
 const t0 = Date.now();
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
@@ -274,8 +289,10 @@ await new Promise(done => {
       if (running > 0 && usedMb + j.mb > BUDGET_MB) { i++; continue; }
       queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
       (async () => {
-        // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x its estimate.
-        const timeoutS = Math.max(JOB_TIMEOUT_S, Math.ceil(3 * j.secs));
+        // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
+        // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot
+        // hold a hung job -- and an agent -- for hours. JOB_TIMEOUT_S itself is still an explicit floor, never capped.
+        const timeoutS = deriveTimeoutS(JOB_TIMEOUT_S, j.secs);
         let r;
         try { r = await run(j.name, j.cwd, j.cmd, typeof j.env === 'function' ? await j.env() : j.env, timeoutS); }
         catch (e) { r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' }; }
