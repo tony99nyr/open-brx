@@ -1284,6 +1284,48 @@ class StationLink {
     return true;
   }
 
+  // F365 RANGE CLEAR (the serial command; station_ui.h's default-deny keeps it out while the A58 lock
+  // is on, the same as RESET or MODE): drops whichever on-station edit(s) are standing, so
+  // threshold_dbm()/tx_power_level() fall straight back to MC's last value for this station, or the
+  // kind's own platform default when MC never sent one -- `mc_` already holds that (SyncedSetting::
+  // clear_edit() never touches it). Logged the same way an ordinary edit is: it IS an on-station change
+  // of the applied value, from the edit to whatever now applies, so a bench operator (and MC, via
+  // `range_edits`) can see a clear happened. The log itself is a history and is never wiped by a clear,
+  // only added to (see also SavedStationConfig et al.: only apply_release()'s reset() forgets the
+  // VALUE, and it too keeps the log). Returns false when there was nothing on-station to clear (no
+  // change made, nothing logged).
+  bool clear_range_edit(uint32_t now_ms) {
+    bool cleared = false;
+    if (threshold_.from_station()) {
+      const int from = threshold_.applied();
+      threshold_.clear_edit();
+      edits_.add(false, from, threshold_.applied(), lock_.locked(now_ms), now_ms);
+      cleared = true;
+    }
+    if (tx_power_.from_station()) {
+      const int from = tx_power_.applied();
+      tx_power_.clear_edit();
+      edits_.add(true, from, tx_power_.applied(), lock_.locked(now_ms), now_ms);
+      cleared = true;
+    }
+    return cleared;
+  }
+
+  // Local diagnostic only (STATUS's LINK line, the RANGE CLEAR confirmation) -- one step finer than
+  // the wire's SyncedSetting::src() ("station"/"mc", MC's own vocabulary per contracts.md, left
+  // untouched so MC's status parsing never sees a value it does not expect). "default" tells a bench
+  // operator that MC never actually sent this value at all (threshold 0/absent, or no tx_power);
+  // `assignment_` already carries that per field (threshold_defaulted; tx_power < 0), so nothing new
+  // needs to be stored to answer it.
+  const char* threshold_src_label() const {
+    if (threshold_.from_station()) return "station";
+    return (assignment_.present && assignment_.threshold_defaulted) ? "default" : "mc";
+  }
+  const char* tx_power_src_label() const {
+    if (tx_power_.from_station()) return "station";
+    return (assignment_.present && assignment_.tx_power < 0) ? "default" : "mc";
+  }
+
   // NVS (written by the glue on each edit only): the current on-station values, tagged with the station
   // id they were made on, and the edit log with its seq. `{"id":3,"thr":-60,"tx":1,"log":{...}}`.
   std::string range_storage_body() const {

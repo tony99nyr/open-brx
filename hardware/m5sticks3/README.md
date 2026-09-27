@@ -618,6 +618,15 @@ to edit it. if within wifi range sync with MC on the change." Two decisions of h
   session, a new identity or a stale NVS copy cannot lower it. The one reset is an erased NVS (a
   reinstall); if NVS cannot be opened at boot, or the saved range body is there but does not parse,
   that boot keeps edits in RAM and never writes the key, so it cannot overwrite a higher seq.
+- **`RANGE CLEAR` (serial).** Gives the on-Stick edit back to the platform default: drops whichever
+  on-station edit(s) are standing, so the threshold and TX power fall back to MC's last explicit value
+  for this station, or the kind's own platform default when MC never sent one. Refused with `ERR
+  locked` while the A58 match lock is on, the same as RESET or MODE. Erases only the "range" NVS key
+  (every other saved key is untouched); the edit log keeps its history in RAM (the clear itself is
+  logged, like any other edit), though a reboot taken before the next edit or save restarts its `seq`
+  from 1. Prints `RANGE cleared threshold=<n> src=<station|mc|default> tx=<name>`, where `src` is one
+  step finer than the status beat's own "station"/"mc": "default" means MC never actually sent a value
+  here at all.
 - **TX power: bench-confirmed 2026-09-25.** STRENGTH moves the advert by about 9 dB: an A/B/A at 1 m
   from a player phone read MEDIUM -47.5, HIGH -39.0, MEDIUM -49.0 dBm (median of 30-50 samples each),
   consistent with the ±9 dBm spacing above. Whether `BLEDevice::setPower(level, ESP_BLE_PWR_TYPE_ADV)`

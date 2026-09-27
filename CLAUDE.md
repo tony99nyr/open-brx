@@ -38,7 +38,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 - **Volume:** the diagnostic default is `$VOL,30` (kind to ears indoors), but **30 is measurably
   inaudible for weapon/game audio**. MC now sets play volume **from the venue** —
   `compile.play_volume()`: **80 indoors (on-gun L3), 90 outdoors (L4)**; an unknown venue resolves to
-  the *quieter* value. Field-corrected 2026-08-30: `$VOL,69` (iOS Callsign's value, and our old
+  the *quieter* value. **MVP is outdoors only (F410), so every match plays at 90; 80 is only the
+  fallback for an unknown venue.** Field-corrected 2026-08-30: `$VOL,69` (iOS Callsign's value, and our old
   default) measures as roughly **on-gun level 2** and was inaudible outdoors. **Try-outs stay at 69** —
   they are fired at arm's length from the player's own head. CLI game commands still take volume as an
   argument; keep the low default (30) for protocol probing, and use `$VOL,65` for bench runs (the `bench-session` skill: 30

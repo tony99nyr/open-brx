@@ -631,15 +631,8 @@ armour-piercing or outdoor frame comes out of the same call instead of being reb
 as the two traps below: a harness that exercises something adjacent to what ships proves nothing about
 what ships.
 
-**Do not capture the site screenshots by hand.** The `site-shots` CI job re-captures them after every
-push to `main` that moves a UI, and commits them back. A hand capture only races that commit. If you
-must capture (the job stays red), do it AFTER you commit the UI change: `site/shots.mjs` stamps the
-manifest with `git rev-parse HEAD:app/src`, so a capture of an uncommitted change records the OLD hash.
-
-**Never write GitHub's skip keyword in a commit message, not even to explain it.** GitHub scans the whole
-message, so a commit that described the shots job's loop guard and quoted the token ran no CI at all: no
-red build, no queued run, only the Cloudflare check (2026-09-18). Say "the skip keyword" in prose and
-leave the literal token in the workflow file, where it is inert.
+**Do not capture the site screenshots by hand, and never write GitHub's skip keyword in a commit
+message.** See CONTRIBUTING.md → *Running things* for both rules.
 
 **Break a guard in the file the code actually reads.** A screen-truth step for the perk picker went on
 passing after `mcp/brx_mcp/mc/perks.json` was edited, because the phone reads the GENERATED

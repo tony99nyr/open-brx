@@ -563,8 +563,11 @@ static void printStatus() {
                 link.identity().node_id.c_str(), brx_glue::wifiSsid.c_str(), a.present ? a.kind.c_str() : "-",
                 a.present ? a.team : -1, a.present ? a.id : -1, a.present ? a.game : -1,
                 a.present ? link.threshold_dbm() : 0);
-  Serial.printf(" threshold_src=%s tx_power=%s tx_src=%s range_edits=%u", link.threshold_setting().src(),
-                tx_power_name(link.tx_power_level()), link.tx_power_setting().src(),
+  // threshold_src/tx_src are the local diagnostic labels (station/mc/default), one step finer than the
+  // wire's own src ("station"/"mc" only, contracts.md) -- a RANGE CLEAR reads here as "default" or "mc"
+  // depending on whether MC ever actually sent a value.
+  Serial.printf(" threshold_src=%s tx_power=%s tx_src=%s range_edits=%u", link.threshold_src_label(),
+                tx_power_name(link.tx_power_level()), link.tx_power_src_label(),
                 (unsigned)link.range_edits().edits().size());  // F365 / A67
   Serial.printf(" locked=%d lock_s=%lu boots=%lu uptime_s=%lu", link.lock().locked(millis()) ? 1 : 0,
                 (unsigned long)link.lock().remaining_s(millis()), (unsigned long)brx_glue::bootCount,
@@ -662,6 +665,16 @@ static void handleLine(String line) {
   // host-tested; default deny). Checked before mcHandleLine so WIFI/MC/LINK/ACTIONS are refused too.
   if (brx_glue::link.lock().locked(millis()) && !serial_command_allowed_while_locked(std::string(line.c_str()))) {
     Serial.printf("ERR locked (%lu s left)\n", (unsigned long)brx_glue::link.lock().remaining_s(millis()));
+    return;
+  }
+  // F365 (bench diagnostic): give the on-Stick RANGE edit back to the platform default, or MC's last
+  // explicit value if it sent one -- the lock check above already refuses this while a match lock is
+  // on (it is not in station_ui.h's allow-list), same as RESET or MODE. Local only: no MC round trip.
+  if (line == "RANGE CLEAR") {
+    brx_glue::mcClearRangeEdit(brx_glue::link);
+    Serial.printf("RANGE cleared threshold=%d src=%s tx=%s\n", brx_glue::link.threshold_dbm(),
+                  brx_glue::link.threshold_src_label(), tx_power_name(brx_glue::link.tx_power_level()));
+    displayDirty = true;
     return;
   }
   // H8: WIFI / MC / LINK MUSTER|HELD / LINK OFF / ACTIONS ON|OFF (docs/spec/utility.md §5g.3/§5g.4).

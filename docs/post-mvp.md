@@ -1,10 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-26 (short bench part 1: F427 filed, a KOTH variant that scores the most hills held at the end;
-F414 filed: a Codex delegation that reports back; F412 filed: a melee preset; F390 moved from FOLLOWUPS.md: MUSTER
-is post-launch; created by the final docs pass: every POST-MVP row, moved from `FOLLOWUPS.md` with its id; bench
-sitting A: P19 filed; a pointer to post-launch.md; F406 filed; MVP scope cut: F377 moved here with Last Man
-Standing, its two open LMS gaps noted, extraction/bomb station kinds noted under S3; F407, F408 and F409 filed).
+Updated: 2026-09-27 (see experiment-log/2026-09.md for the day's changes).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
