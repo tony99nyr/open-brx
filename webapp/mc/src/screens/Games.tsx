@@ -482,7 +482,7 @@ export function Games() {
           <div data-testid="match-settings" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 20,
             background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${T.acc}`, padding: '14px 18px',
             opacity: locked ? 0.5 : 1 }}>
-            {matchItems(cfg.mode, cfg.scoring.win_by).map(key => (
+            {matchItems(modes.find(m => m.mode === cfg.mode), cfg.scoring.win_by).map(key => (
               <MatchItem key={key} itemKey={key} pick={pick} locked={locked} runwayVal={runwayVal} pickMatch={pickMatch} />
             ))}
           </div>
