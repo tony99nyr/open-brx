@@ -17,10 +17,10 @@ import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind } from '.
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
-import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, Toggle } from '../ui';
+import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, SwitchConfirm, Toggle } from '../ui';
 import { Alert } from '../ui/Alert';
 import { alertWords, serverLine } from '../alerts';
-import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
+import { emptyRequiredSlots, poolEmptyMessage, splitLine } from './gameSummary';
 import { operatorNote } from './operatorNote';
 import { type MatchItemKey, matchItems } from './matchItems';
 import { kindLabel } from './presets/kinds';
@@ -50,7 +50,7 @@ export function lockedReason(phase: string): string {
 }
 
 export function Games() {
-  const { state, api, run, setView, openBuild, setFocusHill, connected } = useStore();
+  const { state, api, run, setView, openBuild, setFocusHill, connected, modes } = useStore();
   const [pieces, setPieces] = useState<GamePiece[]>([]);
   const [piecesStale, setPiecesStale] = useState(false);
   // VQA QA-09: a `GET /api/pieces` failure that is NOT a 404 (an older-console signal) is a real fetch
@@ -108,6 +108,11 @@ export function Games() {
   // Polish round 1 Low: guards SAVE AS A FAVOURITE against a double submit (declared up here with
   // every other hook -- a hook after the `if (!state) return null` below breaks the rules of hooks).
   const [submittingFav, setSubmittingFav] = useState(false);
+  // Round 4: F-6's mode-switch confirm (gameSummary.splitLine), restored here -- retired along with
+  // the old GAMES tiles, but the roster-reshaping hazard it guarded is exactly as real from PLAY's own
+  // mode picker. `piece_id`, not the mode string: two builtins could in principle share one mode (they
+  // do not today, but the picker keys on piece ids everywhere else).
+  const [modeConfirm, setModeConfirm] = useState<{ piece_id: string; split: string } | null>(null);
 
   if (!state) return null;
   const cfg = state.config;
@@ -147,10 +152,30 @@ export function Games() {
   // Polish round 1 Low: a fallback note used to sit on screen until the NEXT favourite load, surviving
   // every ordinary tap in between and describing a load that was no longer the reason anything on
   // screen looked the way it did.
-  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
+  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); setModeConfirm(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
     .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }); };
-  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); return run(() => api.pick({ match: patch }))
+  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); setModeConfirm(null); return run(() => api.pick({ match: patch }))
     .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }); };
+  // Round 4 (F-6, gameSummary.splitLine): a mode switch that would move ≥2 rostered players between
+  // teams asks first -- retired along with the old GAMES tiles, restored here since PLAY's own mode
+  // picker carries exactly the same hazard. Picking a mode is itself the request (no draft/SAVE step
+  // to hang the ask on, unlike GameEditPanel's), so the ask sits on the TAP: the first tap on a mode
+  // that reshapes the roster shows the predicted split and sends nothing; the SAME mode tapped again
+  // commits it. Any other tap (a different mode, or any other control -- pickPiece/pickMatch above
+  // both clear this) cancels. Re-picking the mode already applied, or one whose teams do not actually
+  // move anyone (`splitLine` returns '' either way), is still one tap.
+  const pickMode = (p: GamePiece) => {
+    const modeId = (p.value as { mode: string }).mode;
+    const newTeams = modes.find(m => m.mode === modeId)?.defaults.teams ?? [];
+    const split = splitLine(state.players, cfg.teams, newTeams);
+    if (split) {
+      if (modeConfirm?.piece_id === p.piece_id) { setModeConfirm(null); pickPiece('mode', p.piece_id); return; }
+      setModeConfirm({ piece_id: p.piece_id, split });
+      return;
+    }
+    setModeConfirm(null);
+    pickPiece('mode', p.piece_id);
+  };
 
   const load = async () => {
     if (busy) return;
@@ -366,7 +391,7 @@ export function Games() {
                         const modeId = (p.value as { mode: string }).mode;
                         return (
                           <button key={p.piece_id} type="button" className="hit44" aria-pressed={on} title={p.note || p.name}
-                            onClick={() => pickPiece('mode', p.piece_id)}
+                            onClick={() => pickMode(p)}
                             style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 14), letterSpacing: '.08em', padding: '8px 16px 8px 8px',
                               background: on ? T.panelAlt : 'transparent', color: on ? T.acc : T.micro,
                               boxShadow: on ? `inset 0 -2px 0 ${T.acc}` : undefined,
@@ -382,6 +407,9 @@ export function Games() {
                       options={options.map(p => ({ value: p.piece_id, label: p.name }))}
                       titles={Object.fromEntries(options.map(p => [p.piece_id, p.note || p.name]))}
                       onChange={id => pickPiece(kind, id)} />
+                  )}
+                  {kind === 'mode' && modeConfirm && (
+                    <SwitchConfirm dropsDraft={false} split={modeConfirm.split} action="TAP AGAIN TO SWITCH" style={{ marginTop: 2 }} />
                   )}
                   {kind === 'mode' && note.length > 0 && (
                     <div data-testid="operator-note" role="status"

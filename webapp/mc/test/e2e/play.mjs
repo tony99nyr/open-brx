@@ -6,7 +6,8 @@
 // (koth.mjs's own default), so this never fights a lane's own bench session or another suite for it.
 //
 //   node test/e2e/play.mjs                    # every step
-//   ONLY=<step> node test/e2e/play.mjs        # one step: fresh | extra-pieces | controls | kills |
+//   ONLY=<step> node test/e2e/play.mjs        # one step: fresh | extra-pieces | controls |
+//                                              #   mode-switch-confirm | kills |
 //                                              #   lastmatch | koth | pick-fail | stale | widths |
 //                                              #   load-feedback | locked | refusal-and-cap |
 //                                              #   pieces-failure | hit-areas | silenced-onoff |
@@ -153,6 +154,15 @@ const shot = async (pg, name) => {
   return f;
 };
 const text = pg => pg.evaluate(() => document.body.innerText);
+// Round 4 (F-6, splitLine, restored): a mode switch that reshapes the roster now asks first -- a
+// single click on a mode option can land on the confirm instead of applying it. A second click is
+// always safe here even when no confirm was shown (the mode is already applied, and clicking it again
+// re-picks the SAME value), so every OTHER step that just wants a mode APPLIED uses this.
+const pickMode = async (pg, label) => {
+  const btn = pg.getByRole('button', { name: label });
+  await btn.click();
+  await btn.click();
+};
 
 const steps = [];
 const step = (name, fn) => steps.push({ name, fn });
@@ -207,16 +217,44 @@ step('extra-pieces', async ({ browser, base }) => {
 
 step('controls', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280);
-  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await pickMode(pg, 'KING OF THE HILL');
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'the mode to reach the server');
   expect(await pg.getByRole('button', { name: 'KING OF THE HILL' }).getAttribute('aria-pressed').then(v => v === 'true'), 'KING OF THE HILL is marked selected');
-  await pg.getByRole('button', { name: 'TEAM DEATHMATCH' }).click();
+  await pickMode(pg, 'TEAM DEATHMATCH');
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 4000, 'the mode to reach the server');
   await pg.getByRole('button', { name: 'SHIELDS' }).click();
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.health.max_shield === 105, 4000, 'the life preset to reach the server');
   await pg.getByRole('button', { name: 'STATION' }).click();
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.respawn.type === 'scanner', 4000, 'the spawn preset to reach the server');
-  ok(`GAME MODE / LIFE / SPAWN each one tap, marked state follows the server   ${await shot(pg, 'controls-1280')}`);
+  ok(`GAME MODE (a two-tap reshape confirm) / LIFE / SPAWN each reach the server, marked state follows   ${await shot(pg, 'controls-1280')}`);
+  await pg.context().close();
+});
+
+step('mode-switch-confirm', async ({ browser, base }) => {
+  // F-6 (splitLine), restored: TDM's demo roster is 4 BLUE / 4 YELLOW; KOTH's own teams are BLUE and
+  // PURPLE, so this reshapes -- the first tap must ask, not send.
+  const pg = await open(browser, base, '?mock#build', 1280);
+  const before = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
+  expect(before === 'tdm', 'control: the demo starts on TDM');
+  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm');
+  const split = await pg.getByTestId('confirm-split').innerText();
+  expect(split === '▲ 8 PLAYERS → BLUE 4 / PURPLE 4', `the predicted split is shown (saw ${JSON.stringify(split)})`);
+  const mid = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
+  expect(mid === 'tdm', 'the first tap must not have reached the server');
+  await shot(pg, 'mode-switch-confirm-armed');
+
+  // a different mode cancels the pending confirm rather than stacking onto it
+  await pg.getByRole('button', { name: 'TEAM DEATHMATCH' }).click();
+  await until(() => pg.getByTestId('confirm-switch').count().then(n => n === 0), 4000, 'the confirm clears (TDM is already applied, so this alone reads as one tap)');
+
+  // the real two-tap sequence: same mode twice commits it
+  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm again');
+  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'the second tap reaches the server');
+  expect(await pg.getByTestId('confirm-switch').count() === 0, 'the confirm is gone once applied');
+  ok(`a mode switch that reshapes the roster asks first, and the same mode again applies it   ${await shot(pg, 'mode-switch-confirm-applied')}`);
   await pg.context().close();
 });
 
@@ -247,7 +285,7 @@ step('lastmatch', async ({ browser, base }) => {
 
 step('koth', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280);
-  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await pickMode(pg, 'KING OF THE HILL');
   await until(() => pg.locator('text=NO HILL STATION ASSIGNED').count().then(n => n > 0), 4000, 'the no-hill block');
   await pg.getByTestId('assign-a-hill').getByRole('button').click();
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 6000, 'ARMORY');
@@ -264,7 +302,7 @@ step('pick-fail', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280);
   const before = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
   await pg.evaluate(() => { window.__MC_MOCK__.pick = async () => { throw new Error('pick refused (forced by the test)'); }; });
-  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await pickMode(pg, 'KING OF THE HILL');
   await until(() => pg.locator('header button[role="alert"]').count().then(n => n > 0), 4000, 'the error strip');
   const after = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
   expect(after === before, 'a failed pick changes nothing');
@@ -334,7 +372,7 @@ step('refusal-and-cap', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280);
   const before = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
   await pg.evaluate(() => { window.__MC_MOCK__.pick = async () => ({ ok: false, errors: ['forced refusal for the VQA gate'], config: {}, pick: {} }); });
-  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await pickMode(pg, 'KING OF THE HILL');
   await until(() => pg.locator('text=forced refusal for the VQA gate').count().then(n => n > 0), 4000, 'the ok:false refusal shows in the error strip');
   const after = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
   expect(after === before, 'an ok:false refusal changes nothing');
@@ -511,7 +549,7 @@ step('favourites-save', async ({ browser, base }) => {
 step('favourites-load', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280);
   // build a distinctive pick, save it, then change EVERYTHING before loading it back
-  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+  await pickMode(pg, 'KING OF THE HILL');
   await pg.getByRole('button', { name: 'SHIELDS' }).click();
   await pg.getByRole('button', { name: 'STATION' }).click();
   await pg.getByRole('switch', { name: 'silenced' }).click();
@@ -523,7 +561,7 @@ step('favourites-load', async ({ browser, base }) => {
   await pg.getByRole('button', { name: 'SAVE ▸' }).click();
   await until(() => pg.locator('text=☆ Round One').count().then(n => n > 0), 4000, 'saved');
 
-  await pg.getByRole('button', { name: 'TEAM DEATHMATCH' }).click();
+  await pickMode(pg, 'TEAM DEATHMATCH');
   await pg.getByRole('button', { name: 'STANDARD' }).click();
   await pg.getByRole('button', { name: 'AUTO' }).click();
   await pg.getByRole('switch', { name: 'silenced' }).click();
@@ -621,7 +659,7 @@ step('real-favourites', async ({ browser }) => {
     await until(() => pg.locator('text=☆ Baseline').count().then(n => n > 0), 6000, 'saved against a real MC');
 
     // change everything
-    await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
+    await pickMode(pg, 'KING OF THE HILL');
     await pg.getByRole('button', { name: 'HARDCORE' }).click();
     await pg.getByRole('button', { name: 'STATION' }).click();
     await pg.getByRole('switch', { name: 'silenced' }).click();

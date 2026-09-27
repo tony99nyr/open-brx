@@ -37,10 +37,10 @@ async function typeInto(input: HTMLInputElement, value: string) {
 
 async function renderPlay(api: MockBackend) {
   const state = await api.getState();
-  const weapons = await api.getWeapons(), perks = await api.getPerks();
+  const weapons = await api.getWeapons(), perks = await api.getPerks(), modes = await api.getModes();
   const render = async () => {
     const s = await api.getState();
-    const store = makeStore({ state: s, weapons, perks, view: 'build' }, { api });
+    const store = makeStore({ state: s, weapons, perks, view: 'build' }, { api, modes });
     return mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
   };
   const m = await render();
@@ -75,6 +75,9 @@ describe('PLAY — the one-choice hiding rule (games-redesign.md §4)', () => {
 describe('PLAY — a tap is one POST /api/play/pick', () => {
   it('picking a mode reaches the server and the mark follows game_pick', async () => {
     const { m, api, settle } = await renderPlay(new MockBackend());
+    // Round 4: TDM -> KOTH reshapes the demo's 8-player blue/yellow roster, so this is now a two-tap
+    // mode switch (F-6's splitLine confirm, restored) -- the first tap only shows the predicted split.
+    await m.click('KING OF THE HILL');
     await m.click('KING OF THE HILL');
     m.unmount();
     const m2 = await settle();
@@ -90,7 +93,8 @@ describe('PLAY — a tap is one POST /api/play/pick', () => {
 
   it('KOTH with no hill assigned blocks LOAD and offers ASSIGN A HILL, never a dead end', async () => {
     const { m, settle } = await renderPlay(new MockBackend());
-    await m.click('KING OF THE HILL');
+    await m.click('KING OF THE HILL');   // round 4: first tap only shows the reshape confirm
+    await m.click('KING OF THE HILL');   // second tap actually picks it
     m.unmount();
     const m2 = await settle();
     expect(m2.text()).toContain('NO HILL STATION ASSIGNED');
@@ -98,6 +102,55 @@ describe('PLAY — a tap is one POST /api/play/pick', () => {
     const load = m2.find('[data-testid="game-load"] button')[0] as HTMLButtonElement;
     expect(load.disabled).toBe(true);
     m2.unmount();
+  });
+});
+
+describe('PLAY — round 4: a mode switch that reshapes the roster asks first (F-6, restored)', () => {
+  it('the first tap sends nothing and shows the predicted split', async () => {
+    const { m, api } = await renderPlay(new MockBackend());   // 8 players, 4 BLUE / 4 YELLOW (TDM)
+    await m.click('KING OF THE HILL');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const after = await api.getState();
+    expect(after.config.mode, 'the first tap must not reach the server').toBe('tdm');
+    const split = m.find('[data-testid="confirm-split"]')[0];
+    expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
+    expect(split.textContent).toBe('▲ 8 PLAYERS → BLUE 4 / PURPLE 4');   // KOTH's own teams, blue + purple
+    expect(m.text()).toContain('TAP AGAIN TO SWITCH');
+    m.unmount();
+  });
+
+  it('the second tap on the SAME mode commits exactly one pick', async () => {
+    const { m, api } = await renderPlay(new MockBackend());
+    await m.click('KING OF THE HILL');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('KING OF THE HILL');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const after = await api.getState();
+    expect(after.config.mode).toBe('koth');
+    expect(m.find('[data-testid="confirm-split"]').length, 'the confirm is gone once applied').toBe(0);
+    m.unmount();
+  });
+
+  it('re-picking the mode already applied is still one tap (splitLine has nothing to confirm)', async () => {
+    const { m, api } = await renderPlay(new MockBackend());   // already TDM
+    await m.click('TEAM DEATHMATCH');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const after = await api.getState();
+    expect(after.config.mode).toBe('tdm');
+    expect(m.find('[data-testid="confirm-split"]').length).toBe(0);
+    m.unmount();
+  });
+
+  it('tapping a DIFFERENT mode cancels the pending confirm rather than stacking it', async () => {
+    const { m, api } = await renderPlay(new MockBackend());
+    await m.click('KING OF THE HILL');   // arms the confirm for KOTH
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('TEAM DEATHMATCH');   // a DIFFERENT mode -- and TDM is already applied, so one tap picks it
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const after = await api.getState();
+    expect(after.config.mode, 'TDM must have been picked, not KOTH from a stale confirm').toBe('tdm');
+    expect(m.find('[data-testid="confirm-split"]').length).toBe(0);
+    m.unmount();
   });
 });
 
@@ -382,7 +435,7 @@ describe('PLAY — Lows', () => {
     await m.click('GONE SPAWN');
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(m.find('[data-testid="favourite-fallback-note"]').length, 'the fallback note shows right after the load').toBe(1);
-    await m.click('KING OF THE HILL');
+    await m.click('HARDCORE');   // any other pick, not a mode switch (round 4 gave that its own confirm)
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(m.find('[data-testid="favourite-fallback-note"]').length, 'and is gone after the very next pick').toBe(0);
     m.unmount();
