@@ -492,8 +492,8 @@ def test_a_garbage_possession_payload_is_ignored_rather_than_scored():
 def test_a_hill_config_is_exactly_two_teams_and_the_error_names_the_cap():
     """F413 (2026-09-27): koth is EXACTLY two teams, tighter than F97's older "up to three, just not
     tid 2" rule for an objective mode in general (`domination`, still F97's own rule -- see
-    `test_hillbeacon.py`) -- PUT /api/config refuses three OR four teams for koth, naming the F413 cap,
-    checked before F82's own tid-2 message."""
+    `test_hillbeacon.py`) -- PUT /api/config refuses three OR four teams for koth, checked before F82's
+    own tid-2 message. The error is the console's own ALL-CAPS "WHAT: DO" copy (M5), no `F413:` id."""
     s = _sess("koth")
     four = [{"team_id": n, "name": n.upper(), "color": n, "tid": t}
             for t, n in ((0, "red"), (1, "blue"), (2, "yellow"), (3, "green"))]
@@ -501,13 +501,13 @@ def test_a_hill_config_is_exactly_two_teams_and_the_error_names_the_cap():
         s.set_config({"teams": four})
         raise AssertionError("F413: a four-team koth config was accepted")
     except ValueError as e:
-        assert "F413" in str(e) and "exactly 2 teams" in str(e), e
+        assert str(e) == "KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS", e
     # F413 tightened this: three single-member teams -- the OLD FFA-hill cap (F97) -- is refused too now.
     try:
         s.set_config({"teams": [four[0], four[1], four[3]]})
         raise AssertionError("F413: a three-team koth config was accepted")
     except ValueError as e:
-        assert "F413" in str(e) and "exactly 2 teams" in str(e), e
+        assert str(e) == "KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS", e
     # CONTROL 1: two teams, neither on tid 2, are accepted and pushable.
     s.set_config({"teams": [four[0], four[1]]})
     assert [t["tid"] for t in s.config["teams"]] == [0, 1]
@@ -530,14 +530,14 @@ def test_hold_target_s_is_koth_only_and_bounds_checked():
             s.set_config({"scoring": {"hold_target_s": bad}})
             raise AssertionError(f"F415: hold_target_s {bad!r} was accepted")
         except ValueError as e:
-            assert "hold_target_s" in str(e), (bad, e)
+            assert str(e) == "HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET", (bad, e)
     # CONTROL: the same value is refused outright on a mode with no hill.
     s.set_config({"mode": "tdm"})
     try:
         s.set_config({"scoring": {"hold_target_s": 300}})
         raise AssertionError("F415: hold_target_s was accepted on tdm")
     except ValueError as e:
-        assert "hold_target_s only applies to koth" in str(e), e
+        assert str(e) == "A HOLD TARGET ONLY APPLIES TO KING OF THE HILL", e
 
 
 def test_koth_wins_at_once_when_a_team_reaches_the_hold_target():

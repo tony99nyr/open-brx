@@ -562,7 +562,7 @@ def test_pick_composes_teams_by_default_and_a_mode_change_resets_them_too():
     r4 = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"},
                                         "match": {"teams": ["red", "blue", "purple"]}})
     assert r4.status_code == 200 and not r4.json()["ok"], r4.json()
-    assert any("F413" in e for e in r4.json()["errors"]), r4.json()["errors"]
+    assert "KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS" in r4.json()["errors"], r4.json()["errors"]
     assert s.config == before, "an ok:false pick must change nothing"
 
 
