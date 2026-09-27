@@ -553,7 +553,13 @@ export function Games() {
                     // renders from, never guessed here).
                     const items = modes.find(m => m.mode === cfg.mode)?.match_items;
                     const patch: Partial<MatchSettings> = { time_limit_s: lm.time_limit_s, frag_limit: lm.frag_limit, night: lm.night, silenced: lm.silenced };
-                    if (lm.teams && (!items || items.includes('teams'))) patch.teams = lm.teams;
+                    // Review MEDIUM (brx1, e8811fea): a last match with 3+ teams or a yellow pick, played
+                    // on a mode that HAPPENS to share the 'teams' item (only KOTH today), is not just a
+                    // combination this mode refuses -- it refuses the WHOLE pick, rolling back the other
+                    // three fields too. KOTH is exactly 2, never yellow, so check that here rather than
+                    // let the round-trip find out; the mode's own current teams stay put instead.
+                    const kothLegal = cfg.mode !== 'koth' || (lm.teams != null && lm.teams.length === 2 && !lm.teams.includes('yellow'));
+                    if (lm.teams && kothLegal && (!items || items.includes('teams'))) patch.teams = lm.teams;
                     if (lm.hold_target_s !== undefined && (!items || items.includes('hold'))) patch.hold_target_s = lm.hold_target_s;
                     const r = await run(() => api.pick({ match: patch }));
                     if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(pickFallback(r.fallbacks)); }
@@ -738,7 +744,14 @@ function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, currentT
         </span>
       );
     case 'hold':
-      return guarded(<HoldControl seconds={pick.match.hold_target_s ?? null} onChange={s => pickMatch({ hold_target_s: s })} />);
+      // Review MEDIUM (brx1, e8811fea): NO TARGET said nothing about what it was NO TARGET *of* --
+      // the same leading label TEAMS already carries.
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>HOLD</span>
+          {guarded(<HoldControl seconds={pick.match.hold_target_s ?? null} onChange={s => pickMatch({ hold_target_s: s })} />)}
+        </span>
+      );
   }
 }
 
@@ -774,18 +787,27 @@ function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: st
           onChange={v => setCount(Number(v))} />
       )}
       {teams.map((c, i) => (
-        <ColourChooser key={i} slot={i} value={c} offered={offered} taken={teams.filter((_, j) => j !== i)}
-          onChange={v => setSlot(i, v)} />
+        <span key={i} style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
+          <span style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: T.micro }}>TEAM {i + 1}</span>
+          <ColourChooser slot={i} value={c} offered={offered} taken={teams.filter((_, j) => j !== i)}
+            onChange={v => setSlot(i, v)} />
+        </span>
       ))}
     </span>
   );
 }
 
 /** One team slot's colour picker: every offered colour NOT already taken by another slot (plus its own
- *  current value), each swatch filled in ITS OWN colour so the chooser IS the legend. */
+ *  current value). Review MEDIUM (brx1, e8811fea): four EQUAL filled swatches read as four choices
+ *  already made, not one pick among several -- only the CHOSEN colour fills solid now, the rest are
+ *  outlined in their own colour (still the legend the swatch itself provides) and dimmed. At 4 teams
+ *  every colour is already spoken for, so a slot's own "choice" is really just itself -- that single
+ *  swatch is disabled and dimmed further rather than inviting a tap that can only re-pick what is
+ *  already there (Low (d)). */
 function ColourChooser({ slot, value, offered, taken, onChange }:
   { slot: number; value: TeamColour; offered: TeamColour[]; taken: TeamColour[]; onChange: (c: TeamColour) => void }) {
   const options = offered.filter(c => c === value || !taken.includes(c));
+  const onlyChoice = options.length === 1;
   return (
     <span role="group" aria-label={`team ${slot + 1} colour`} data-testid={`match-teams-colour-${slot}`}
       style={{ display: 'inline-flex', gap: 4 }}>
@@ -793,10 +815,12 @@ function ColourChooser({ slot, value, offered, taken, onChange }:
         const on = c === value;
         return (
           <button key={c} type="button" className="hit44" aria-pressed={on} title={c.toUpperCase()}
-            onClick={() => onChange(c)}
-            style={{ ...BTN_RESET, minWidth: 44, minHeight: 44, padding: '8px 10px', cursor: on ? 'default' : 'pointer',
-              background: TEAM[c], color: '#0c1420', font: F.chk(700, 12), letterSpacing: '.04em',
-              border: on ? `2px solid ${T.ink}` : '2px solid transparent', boxSizing: 'border-box' }}>
+            disabled={onlyChoice} onClick={() => onChange(c)}
+            style={{ ...BTN_RESET, minWidth: 44, minHeight: 44, padding: '8px 10px',
+              cursor: onlyChoice || on ? 'default' : 'pointer',
+              background: on ? TEAM[c] : 'transparent', color: on ? '#0c1420' : TEAM[c],
+              font: F.chk(700, 12), letterSpacing: '.04em', border: `2px solid ${TEAM[c]}`,
+              opacity: onlyChoice ? 0.45 : (on ? 1 : 0.7), boxSizing: 'border-box' }}>
             {c.toUpperCase()}
           </button>
         );
@@ -809,8 +833,12 @@ function ColourChooser({ slot, value, offered, taken, onChange }:
  *  possession at the clock wins), or 3/5/10 MIN quick-picks with ±1 MIN steppers. Stepping down from a
  *  low value lands on NO TARGET (KillsControl's own idiom, minutes instead of a kill count); stepping
  *  up from NO TARGET starts a fresh target at 1 MIN. */
+// Low (b), review e8811fea: the server's own ceiling is 1s..2:00:00 (checkHoldTargetShape's own sibling
+// check in mock/backend.ts) -- the stepper must not invite a value it would only send back refused.
+const HOLD_MAX_S = 7200;
+
 function HoldControl({ seconds, onChange }: { seconds: number | null; onChange: (s: number | null) => void }) {
-  const step = (dir: 1 | -1) => { const next = (seconds ?? 0) + dir * 60; onChange(next <= 0 ? null : next); };
+  const step = (dir: 1 | -1) => { const next = (seconds ?? 0) + dir * 60; onChange(next <= 0 ? null : Math.min(next, HOLD_MAX_S)); };
   return (
     <QuickPick testid="match-hold-value" valueLabel={seconds ? `HOLD ${Math.round(seconds / 60)} MIN` : 'NO TARGET'}
       quick={[0, 3, 5, 10]} quickLabel={v => (v === 0 ? 'NO TARGET' : `${v} MIN`)}
@@ -818,7 +846,7 @@ function HoldControl({ seconds, onChange }: { seconds: number | null; onChange: 
       step={(
         <span style={{ display: 'inline-flex', gap: 4 }}>
           <StepBtn label="hold target minus" onClick={() => step(-1)}>−</StepBtn>
-          <StepBtn label="hold target plus" onClick={() => step(1)}>+</StepBtn>
+          <StepBtn label="hold target plus" disabled={(seconds ?? 0) >= HOLD_MAX_S} onClick={() => step(1)}>+</StepBtn>
         </span>
       )} />
   );

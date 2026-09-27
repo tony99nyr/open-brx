@@ -35,22 +35,31 @@ describe('F413: match.teams validation', () => {
     await expect(b.pick({ match: { teams: ['red', 'green'] as unknown as ['red'] } })).rejects.toMatchObject({ status: 400, message: SHAPE_ERR });
   });
 
-  it('KOTH is exactly 2 teams, with the server\'s own words', async () => {
+  // Review (brx1, e8811fea): koth's own exactly-2/never-yellow rules are COMPOSE-level refusals on the
+  // real server (state.py `_merge_config`), not a thrown exception -- `ok:false` in a resolved reply,
+  // the same shape a refused `time_limit_s`/`station_source` already answers with. "ok:false changes
+  // nothing" (pick()'s own rollback) still applies: `config.teams` below proves it stayed at koth's own
+  // default, never the refused 3-team/yellow value.
+  it('KOTH is exactly 2 teams, with the server\'s own words (ok:false, not thrown)', async () => {
     const b = new MockBackend();
     await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
-    await expect(b.pick({ match: { teams: ['blue', 'purple', 'red'] } }))
-      .rejects.toMatchObject({ status: 400, message: 'KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS' });
+    const bad = await b.pick({ match: { teams: ['blue', 'purple', 'red'] } });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors).toEqual(['KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS']);
+    expect((await b.getState()).config.teams.map(t => t.team_id), 'the refusal changed nothing').toEqual(['red', 'blue']);
     const r = await b.pick({ match: { teams: ['red', 'purple'] } });
     expect(r.ok).toBe(true);
   });
 
-  it('KOTH never offers yellow, with the server\'s own F82 words', async () => {
+  it('KOTH never offers yellow, with the server\'s own F82 words (ok:false, not thrown)', async () => {
     const b = new MockBackend();
     await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
-    await expect(b.pick({ match: { teams: ['blue', 'yellow'] } })).rejects.toMatchObject({ status: 400,
-      message: "F82: mode 'koth' cannot have a team on $TID 2 at all — that is the value a NEUTRAL grenade hill "
-        + 'broadcasts, so anyone put on it later reads every uncaptured point as their own and takes no hill damage. '
-        + 'Use tid 0, 1 or 3.' });
+    const bad = await b.pick({ match: { teams: ['blue', 'yellow'] } });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors).toEqual(["F82: mode 'koth' cannot have a team on $TID 2 at all — that is the value a NEUTRAL grenade hill "
+      + 'broadcasts, so anyone put on it later reads every uncaptured point as their own and takes no hill damage. '
+      + 'Use tid 0, 1 or 3.']);
+    expect((await b.getState()).config.teams.map(t => t.team_id), 'the refusal changed nothing').toEqual(['red', 'blue']);
   });
 });
 
@@ -83,10 +92,20 @@ describe('F413: a TEAMS change that reshapes the roster goes through the SAME re
 });
 
 describe('F415: match.hold_target_s validation', () => {
-  it('is refused on any mode but KOTH, with the server\'s own words', async () => {
+  // Review (brx1, e8811fea): the koth-only gate and the range are COMPOSE-level checks on the real
+  // server too (state.py `_merge_config`) -- `ok:false`, not a thrown exception, same as teams above.
+  it('is refused on any mode but KOTH, with the server\'s own words (ok:false, not thrown)', async () => {
     const b = new MockBackend();
-    await expect(b.pick({ match: { hold_target_s: 300 } })).rejects.toMatchObject({ status: 400,
-      message: 'A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL' });
+    const bad = await b.pick({ match: { hold_target_s: 300 } });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors).toEqual(['A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL']);
+    expect((await b.getState()).config.scoring.hold_target_s ?? null, 'the refusal changed nothing').toBeNull();
+  });
+
+  it('a non-integer is a SHAPE error, thrown outright (never ok:false)', async () => {
+    const b = new MockBackend();
+    await expect(b.pick({ match: { hold_target_s: '300' as unknown as number } }))
+      .rejects.toMatchObject({ status: 400, message: 'HOLD TARGET MUST BE A WHOLE NUMBER OR EMPTY: CHECK THE VALUE' });
   });
 
   it('null is always legal (no target)', async () => {
@@ -105,13 +124,16 @@ describe('F415: match.hold_target_s validation', () => {
     expect((await b.getState()).config.scoring.hold_target_s).toBe(300);
   });
 
-  it('refuses zero, a negative value, or a value past 2:00:00, with the server\'s own words', async () => {
+  it('refuses zero, a negative value, or a value past 2:00:00, with the server\'s own words (ok:false, not thrown)', async () => {
     const b = new MockBackend();
     await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
     const HOLD_ERR = 'HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET';
-    await expect(b.pick({ match: { hold_target_s: 0 } })).rejects.toMatchObject({ status: 400, message: HOLD_ERR });
-    await expect(b.pick({ match: { hold_target_s: -5 } })).rejects.toMatchObject({ status: 400, message: HOLD_ERR });
-    await expect(b.pick({ match: { hold_target_s: 7201 } })).rejects.toMatchObject({ status: 400, message: HOLD_ERR });
+    for (const v of [0, -5, 7201]) {
+      const bad = await b.pick({ match: { hold_target_s: v } });
+      expect(bad.ok, `hold_target_s ${v} is refused`).toBe(false);
+      expect(bad.errors).toEqual([HOLD_ERR]);
+    }
+    expect((await b.getState()).config.scoring.hold_target_s ?? null, 'every refusal above changed nothing').toBeNull();
     const r = await b.pick({ match: { hold_target_s: 7200 } });
     expect(r.ok, '2:00:00 exactly is the ceiling, still legal').toBe(true);
   });

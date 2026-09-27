@@ -727,6 +727,44 @@ describe('PLAY — F413: TEAMS strip item', () => {
     expect(teamsEl.textContent).not.toContain('YELLOW');
     m2.unmount();
   });
+
+  // Review MEDIUM (brx1, e8811fea): four equal filled swatches read as four choices already made, not
+  // one pick among several -- and the slot itself was unlabelled.
+  it('labels each slot TEAM 1, TEAM 2, …, and only the chosen swatch is filled', async () => {
+    const { m } = await renderPlay(new MockBackend());   // TDM, blue/yellow
+    const teamsEl = m.find('[data-testid="match-teams-item"]')[0];
+    expect(teamsEl.textContent).toContain('TEAM 1');
+    expect(teamsEl.textContent).toContain('TEAM 2');
+    const slot0 = m.find('[data-testid="match-teams-colour-0"]')[0];
+    const chosen = slot0.querySelector('button[aria-pressed="true"]') as HTMLButtonElement;
+    const other = slot0.querySelector('button[aria-pressed="false"]') as HTMLButtonElement;
+    expect(chosen, 'the chosen slot 0 swatch (BLUE) exists').toBeTruthy();
+    expect(other, 'an unchosen option exists to compare against').toBeTruthy();
+    expect(chosen.style.background, 'the CHOSEN swatch is filled with its own colour').not.toBe('transparent');
+    expect(other.style.background, 'an UNCHOSEN option is outlined, not filled').toBe('transparent');
+    m.unmount();
+  });
+
+  // Low (d): at 4 teams every colour is already spoken for, so a slot's own "choice" is really just
+  // itself -- a single, disabled swatch, not a button that looks pickable but never does anything.
+  it('at 4 teams, a slot with only its own colour left is disabled', async () => {
+    const { m, settle } = await renderPlay(new MockBackend());
+    const teamsEl = () => m.find('[data-testid="match-teams-item"]')[0];
+    await clickIn(teamsEl(), '4');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await clickIn(teamsEl(), '4');
+    m.unmount();
+    // a settled RE-RENDER: the count commit is a server round trip like any other pick, and the live
+    // mount can still be a tick behind it (same reason the KOTH test above settles).
+    const m2 = await settle();
+    const chosers = [0, 1, 2, 3].map(i => m2.find(`[data-testid="match-teams-colour-${i}"]`)[0]);
+    const buttonCounts = chosers.map(c => c.querySelectorAll('button').length);
+    expect(buttonCounts.some(n => n === 1), `at least one slot has only its own colour left (saw ${JSON.stringify(buttonCounts)})`).toBe(true);
+    const singleSlot = chosers[buttonCounts.findIndex(n => n === 1)]!;
+    const onlyBtn = singleSlot.querySelector('button') as HTMLButtonElement;
+    expect(onlyBtn.disabled, 'a slot with no real choice is disabled, not a dead-end tap').toBe(true);
+    m2.unmount();
+  });
 });
 
 describe('PLAY — F415: HOLD strip item (KOTH only)', () => {
@@ -764,6 +802,37 @@ describe('PLAY — F415: HOLD strip item (KOTH only)', () => {
     expect(m.find('[data-testid="match-hold-value"]')[0].textContent).toContain('NO TARGET');
     m.unmount();
   });
+
+  // Review MEDIUM (brx1, e8811fea): NO TARGET on its own says nothing about what it is NO TARGET *of*.
+  it('the item carries a leading HOLD label, not just the value', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    const { m } = await renderPlay(api);
+    const value = m.find('[data-testid="match-hold-value"]')[0];
+    const holdItem = value.closest('span')!;
+    expect(holdItem.textContent).toMatch(/^HOLD/);
+    m.unmount();
+  });
+
+  // Low (b): the server refuses past 2:00:00 (7200 s) -- the stepper must not walk up to a value it
+  // would only send back refused.
+  it('the + stepper clamps at 120 MIN and then disables itself', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    await api.pick({ match: { hold_target_s: 7140 } });   // 119 MIN -- one step short of the ceiling
+    const { m, settle } = await renderPlay(api);
+    const plus = m.find('button[aria-label="hold target plus"]')[0] as HTMLButtonElement;
+    await act(async () => { plus.click(); });
+    m.unmount();
+    // a settled RE-RENDER: the step is a server round trip like any other pick (see the TEAMS tests above).
+    const m2 = await settle();
+    expect((await api.getState()).config.scoring.hold_target_s, 'one step reaches the ceiling exactly').toBe(7200);
+    const plusAfter = m2.find('button[aria-label="hold target plus"]')[0] as HTMLButtonElement;
+    expect(plusAfter.disabled, 'at the ceiling, + disables rather than inviting a refused step').toBe(true);
+    await act(async () => { plusAfter.click(); });
+    expect((await api.getState()).config.scoring.hold_target_s, 'a disabled + button does nothing').toBe(7200);
+    m2.unmount();
+  });
 });
 
 describe('PLAY — F413/F415: LAST MATCH and FAVOURITES carry teams and the hold target forward', () => {
@@ -785,6 +854,36 @@ describe('PLAY — F413/F415: LAST MATCH and FAVOURITES carry teams and the hold
     const after = await api.getState();
     expect(after.game_pick?.match.hold_target_s).toBe(300);
     expect(after.game_pick?.match.teams).toEqual(['red', 'purple']);
+  });
+
+  // Review MEDIUM (brx1, e8811fea): a last match played on TDM with 3 teams (or a yellow pick) used to
+  // send that array straight into a KOTH pick, which koth's own exactly-2/never-yellow rules refuse --
+  // and since it is ONE pick() call, that refusal used to roll back the OTHER four fields too. The mode
+  // sharing the 'teams' item is not the same as the last match's own teams being LEGAL for it.
+  it('LAST MATCH drops an illegal team count/colour for the CURRENT mode, but still applies the rest', async () => {
+    const api = new MockBackend();
+    // played on TDM with 3 teams, a kill limit, night and silenced
+    await api.pick({ match: { teams: ['red', 'blue', 'yellow'], frag_limit: 15, night: true, silenced: true } });
+    await api.setPhase('lobby');
+    await api.pushLobby(true);
+    await api.start(45, true);
+    await api.abort();
+    // now on KOTH (a real mode change: resets teams to koth's own default, red/blue) -- and the live
+    // pick moved away from last_match's OWN values, so applying it has something to prove
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 9 });   // KOTH needs a hill to push
+    await api.pick({ match: { frag_limit: null, night: false, silenced: false } });
+    const before = await api.getState();
+    expect(before.game_pick?.match.teams, 'control: koth is legally on its own 2-team default').toEqual(['red', 'blue']);
+    const { m, settle } = await renderPlay(api);
+    await m.click('LAST MATCH');
+    m.unmount();
+    await settle();
+    const after = await api.getState();
+    expect(after.game_pick?.match.frag_limit, 'the other fields still apply').toBe(15);
+    expect(after.game_pick?.match.night).toBe(true);
+    expect(after.game_pick?.match.silenced).toBe(true);
+    expect(after.game_pick?.match.teams, 'the illegal 3-team array was dropped, koth kept its own default').toEqual(['red', 'blue']);
   });
 
   it('a FAVOURITE saved on KOTH with a hold target restores it on load', async () => {

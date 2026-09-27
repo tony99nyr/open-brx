@@ -479,6 +479,24 @@ step('teams', async ({ browser, base }) => {
   expect(!stripText.includes('YELLOW'), `KOTH never offers yellow (saw ${JSON.stringify(stripText)})`);
   expect(await pg.locator('[aria-label="team count"]').count() === 0, 'KOTH fixes the count, no control shown');
   ok(`TEAMS: KOTH fixes the count at 2 and never offers yellow   ${await shot(pg, 'teams-koth-no-yellow')}`);
+
+  // Review MEDIUM 2 (brx1, e8811fea): back on TDM (teams share the count control again), bump to 4 --
+  // every colour is then already spoken for, so one slot has only its own colour left. Screenshot: each
+  // slot reads TEAM 1..TEAM 4, only the CHOSEN swatch in each is filled solid (the rest outlined and
+  // dimmed), and the slot with no real choice is a single, disabled swatch rather than a dead-end tap.
+  await pickMode(pg, 'TEAM DEATHMATCH');
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 4000, 'TDM applied');
+  const count4 = teamsItem.getByRole('button', { name: '4', exact: true });
+  await count4.click();
+  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm (count to 4)');
+  await count4.click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.teams?.length === 4, 4000, '4 teams committed');
+  const labels = await teamsItem.innerText();
+  expect(/TEAM 1/.test(labels) && /TEAM 4/.test(labels), `each slot is labelled TEAM 1..TEAM 4 (saw ${JSON.stringify(labels.slice(0, 200))})`);
+  // at 4 teams every colour is already spoken for, so EVERY slot's own colour is its only option.
+  const disabledSwatches = await pg.locator('[data-testid^="match-teams-colour-"] button[disabled]').count();
+  expect(disabledSwatches === 4, `all four slots have no real choice left, at 4 teams (saw ${disabledSwatches})`);
+  ok(`TEAMS: at 4 teams, slots are labelled and the single-choice swatch is disabled   ${await shot(pg, 'teams-four-labelled')}`);
   await pg.context().close();
 });
 
@@ -490,6 +508,9 @@ step('hold', async ({ browser, base }) => {
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'KOTH applied');
   await until(() => pg.getByTestId('match-hold-value').count().then(n => n > 0), 4000, 'the HOLD item');
   expect(await pg.getByTestId('match-hold-value').innerText().then(t => t.includes('NO TARGET')), 'NO TARGET by default');
+  // Review MEDIUM 2 (brx1, e8811fea): NO TARGET said nothing about what it was NO TARGET *of* -- a
+  // leading HOLD label now prefixes the whole item, the same way TEAMS labels its own.
+  expect(await pg.getByText(/^HOLD$/).first().isVisible(), 'the item carries a leading HOLD label');
   await pg.getByTestId('match-hold-value').click();
   await pg.getByRole('button', { name: '5 MIN' }).click();
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.hold_target_s === 300, 4000, '"5 MIN" reaches the server');
