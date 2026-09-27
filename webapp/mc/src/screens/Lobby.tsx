@@ -110,7 +110,7 @@ export function Lobby() {
   // U-1: the stale-ack sentence is computed from the ACKS, independently of the board — a stale ack
   // is always ALSO a red row, so anything that asked "are there faults?" first could never reach it.
   // F8a: ONE instruction string, everywhere (`RE_PUSH_HERE` is the label of the button below).
-  const { acked, allAcked, noEcho, pendingAck, staleAcked, staleAckLine } = gate;
+  const { allAcked, noEcho, pendingAck, staleAcked, staleAckLine } = gate;
   // A28.4: derived, never asserted — "grey" the count while the tunnel is off, since it can only be 0.
   const cLine = shortCoverageLine(state.coverage);
   // Field feedback 2026-09-19 (Tony): partial coverage is not a fault — every gun still works over
@@ -378,10 +378,13 @@ export function Lobby() {
                 (nothing here says WHAT: DO or carries a glyph), so the not-yet state reads as ordinary
                 data, not a fix-before-the-next-match fact. */}
             <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : empty ? T.micro : T.body }}>{nReady}/{players.length}</b></>} />
-            <Step n={2} done={allAcked} label={<>Config pushed {lobby.pushed && <b style={{ font: F.osw(700, 16), color: allAcked ? T.ok : T.body }}>{acked}/{players.length}</b>}</>} />
+            {/* QA-02 fold (2026-09-26): this step used to read "Config pushed {acked}/{total}" -- the
+                same ACKED count as GUNS PUSHED (PRE-ARM CHECK) and GUNS CONFIRMED (GameEditPanel), each
+                worded differently enough to read as three disagreeing facts. GUNS READY, below the
+                button row, is now the one place this screen says "are the guns ready". */}
             {/* Bench 2026-09-17 (Tony): the countdown length is chosen only when ARM COUNTDOWN is the next
                 action: the lobby is pushed and every gun has acked (in sync). Before that it is plain text. */}
-            <Step n={3} done={false} label={
+            <Step n={2} done={false} label={
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>Countdown
                 {lobby.pushed && allAcked && <select aria-label="countdown length" value={String(runway)} onChange={e => setRunway(Number(e.target.value))}
                   style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.osw(700, 16), padding: '4px 8px', minHeight: 36, cursor: 'pointer' }}>
