@@ -65,15 +65,14 @@ do not copy a procedure here.
 2. **IPHONE block (15 min).** Running total: 40.
 3. **GAMES CHECK: 11.7 + F422, PICK GAME, F402, FAVOURITES, the BUILD TypeChip guard (23 min), plus a short TEAMS
    re-split check (F413).** Skip PLAY AGAIN, LAST MATCH and the countdown default today. Running total: 63.
-4. **Group 1, items 1-5: the P0 block, F416 then F417/F381 (50 min).** Running total: 113.
-5. **Group 1, item 6: F348 (10 min).** Running total: 123.
-6. **Group 2: KOTH, plus F420, F421 and F424, plus F415's hold target (25 min).** Running total: 148.
-7. **Group 4, items 4-5 merged: F399 and F380 on an Overshield Stick, plus F425's silence check (12 min).**
-   Running total: 160.
-8. **Group 3, checks (a), (b) and (d): end the match (5 min).** Skip check (c) today. Running total: 165.
-9. **Group 1, item 7: F394 (5 min).** Running total: 170.
-10. **Group 1, item 8: 4.0, trimmed to the day/night launch only (10 min).** Skip the through-MC match today.
-    Running total: 180.
+4. **Group 1, item 0: F297 phone connect metrics (10 min).** Running total: 73.
+5. **Group 1, items 1-5: the P0 block, F416 then F417/F381 (50 min).** Running total: 123.
+6. **Group 1, item 6: F348 (10 min).** Running total: 133.
+7. **Group 2: KOTH, plus F420, F421 and F424, plus F415's hold target (25 min).** Running total: 158.
+8. **Group 4, items 4-5 merged: F399 and F380 on an Overshield Stick, plus F425's silence check (12 min).**
+   Running total: 170.
+9. **Group 3, checks (a), (b) and (d): end the match (5 min).** Skip check (c) today. Running total: 175.
+10. **Group 1, item 7: F394 (5 min).** Running total: 180.
 
 Stop at 180 min, with no slack. If short on time, drop the TEAMS and HOLD checks first: they are additions, not
 the core gate.
@@ -84,6 +83,8 @@ the core gate.
   and MC/Stick re-pointed after a restart for LAST MATCH).
 - 11.6 (Group 1, item 9).
 - The powerup setup: 4.11, 11.2, 3.4 and 3.5 (Group 1, item 10).
+- 4.0, trimmed to the day/night launch only (Group 1, item 8 today's cut dropped it to make room for F297's
+  phone connect metrics). Skip the through-MC match when it runs.
 - F386 check (c), the idle-timeout control (Group 3).
 - Groups 4-7, except the F399/F380/F425 block already run today (Group 4's items 4-5).
 
@@ -230,13 +231,27 @@ Stick) is next.
 
 Running total: 65 min.
 
-### Group 1: two phones, two guns, the P0s then powerups (about 170 min; the highest value)
+### Group 1: two phones, two guns, the P0s then powerups (about 180 min; the highest value)
 
 Kit: both guns and headsets, the Pixel 5 and the iPhone X (or the green Pixel, per STOP POINT 1), MC as
 restarted at setup, the black Pixel and the Stick as stations, a tape measure.
 
-**The P0 rows go first.** These are the three 🔴 rows still open from part 1 (F416, F417, F418), each run
-against its own FOLLOWUPS pass rule, not just carried as a note.
+**F297's phone connect metrics run first, then the three 🔴 rows still open from part 1 (F416, F417, F418)**,
+each against its own FOLLOWUPS pass rule, not just carried as a note.
+
+0. **F297 (🔴), phone connect metrics (10 min).** Pass rule, set BEFORE the run: 10/10 first-connect success on
+   every phone, a median at or under 3 s, and zero headset drops; anything worse is a FAIL, and feeds F297/F293
+   with the numbers, not an impression. A/B/A: **A** first, the laptop control (Windows Python; WSL has no
+   Bluetooth) — `cd mcp && python -m brx_mcp connect-metrics <gun-address> --runs 3 --cold warm --hold-s 60` — 3
+   quick re-runs of the existing control (10/10, median 1.37 s, p90 2.41 s, max 3.76 s, headset drops 0/10,
+   `bench-2026-09-24.md` Block 1.1) to catch drift before **B**. **B**, per Pixel (at least two: grey and
+   green), 10 cold connects under default phone settings (Fast Pair ON, as players carry them), gun and headset
+   paired as they are in play, not freshly bonded: force-stop the app, let the headset settle, reopen to SET MY
+   GUN, and log each run's connect time from the phone's own log (1 s resolution) plus a stopwatch — the tool
+   itself is laptop-only and cannot hold the link while a phone does, so this repeats Block 1.2's method, not the
+   CLI. Record per phone: connect time (median and max), first-connect success out of 10, and any headset drop
+   at connect or in the 60 s after it (this also watches for F293's 5-12 s loop). Close with **A** again, 3 more
+   laptop `connect-metrics` runs. Log every number against F297's row.
 
 1. **F416 (🔴), the A/B/A on phone-to-gun distance (15 min).** The one false start in part 1 had both guns
    carried away from their own phones; the clean starts had each phone with its gun. Go live three times: phones
@@ -270,7 +285,7 @@ against its own FOLLOWUPS pass rule, not just carried as a note.
 
 STOP POINT 3a: the three P0 rows from part 1 (F416, F417, F418) are proven or reopened. Powerups next.
 
-Running total: 115 min.
+Running total: 125 min.
 
 6. **F348 (🔴), a Shields spawn starts at full shield (10 min).** Arm a Shields-preset match (45/0/105).
    Control: a Standard-preset spawn shows no shield line. Read the gun's own `$HP,<hp>,0,105` read-back from the
@@ -307,7 +322,7 @@ whole powerup setup (S58, the shipped F372 default) are all proven. **KOTH is ne
 right now (F382-F386), and costs only 15 min for high value, so it must land inside this block rather than
 after it.
 
-Running total: 235 min.
+Running total: 245 min.
 
 ### Group 2: KOTH, phone hill then Stick hill (about 20 min; same hardware, no change)
 
@@ -335,7 +350,7 @@ Running total: 235 min.
 STOP POINT 4: this closes the P0-then-powerups-then-KOTH core of the sitting, about 3 h of bench time once
 setup is done. Everything after this is worth less per minute.
 
-Running total: 255 min.
+Running total: 265 min.
 
 ### Group 3: F386's powerup-station MATCH OVER checks (about 15 min; no guns, no match)
 
@@ -354,7 +369,7 @@ F387 and F333 are already CONFIRMED and closed (part 1); do not re-run them. F38
 
 STOP POINT 5.
 
-Running total: 270 min.
+Running total: 280 min.
 
 ### Group 4: two phones, two guns, the rest of sitting C (about 67 min; same hardware, no change)
 
@@ -398,7 +413,7 @@ Kit: as Group 1.
 STOP POINT 6: sitting C's higher-value checks are all done. The Shields fight, the kill-cue retest and the
 voice audition are the lowest value per minute of the two-phone work and are next.
 
-Running total: 337 min.
+Running total: 347 min.
 
 ### Group 5: the Shields fight, the kill-cue retest and the voice audition (about 30 min; same hardware, no change)
 
@@ -416,7 +431,7 @@ Running total: 337 min.
 
 STOP POINT 7.
 
-Running total: 367 min.
+Running total: 377 min.
 
 ### Group 6: a field walk (about 15 min; the Stick and one phone)
 
@@ -426,7 +441,7 @@ Running total: 367 min.
 
 STOP POINT 8.
 
-Running total: 382 min.
+Running total: 392 min.
 
 ### Group 7: one gun, no phone (about 15 min; lowest priority)
 
@@ -439,7 +454,7 @@ Running total: 382 min.
    muzzle-flash and loudness difference, or none, is agreed on both readings, not just the first.
 - **Log:** what Tony saw and heard, per pass.
 
-**Total across every group: about 397 min (6 h 37 min). The practical 3 h core is the P0 block, the powerup
+**Total across every group: about 407 min (6 h 47 min). The practical 3 h core is the P0 block, the powerup
 setup and KOTH (Groups 1 and 2): STOP POINT 4, above.**
 
 Rules for every sitting: the preflight in [`gotchas.md`](gotchas.md) ("Before a bench session", which holds the rig
