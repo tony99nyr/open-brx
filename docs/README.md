@@ -11,7 +11,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 | **Starting Mission Control on the dev box** (no hardware, no phones) | [`../mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md) → *Start it*: the one command, what it prints, the busy-port trap, served vs dev UI |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
 | **Checking that MC survives hard matches** (drops, restarts, clock jumps, trades) | [`chaos-testing.md`](chaos-testing.md) (`python -m brx_mcp.chaos`) |
-| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md) for the end-to-end weapon workflow · [`adr/`](adr/) · remaining F42 cleanup is tracked in [`post-mvp.md`](post-mvp.md) |
+| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md), [`adding-modes.md`](adding-modes.md) and [`adding-perks.md`](adding-perks.md) for the end-to-end workflows · [`adr/`](adr/) · remaining F42 cleanup is tracked in [`post-mvp.md`](post-mvp.md) |
 | **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
 
 ## Status — three living files, one job each
@@ -39,12 +39,10 @@ historical context; the running order is always [`bench-plan.md`](bench-plan.md)
 | **[`evidence/2026-09-13-session-3782dc77/`](evidence/2026-09-13-session-3782dc77/)** | the sanitised MC store behind that sheet — compiled heads, gun echoes, event timeline, node logs, and the `extract.py` that rebuilds them |
 | **[`bench-plan.md`](bench-plan.md)** | **open this first.** Every bench test in one order, as sittings of 60 min or less, with the equipment, the preconditions, and which sheet owns what |
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live: verifies the firmware findings on v4.32 (claims 1-27) |
-| [`bench-2026-09-24.md`](bench-2026-09-24.md) | live: the next sitting's ordered runbook (connect reliability, screamers transport, the native kill word in Block 2b, one match, F275 outdoors, S48 in the house) |
+| [`bench-2026-09-24.md`](bench-2026-09-24.md) | the step procedures `bench-plan.md` cites; not an order |
 | [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live: the M5StickS3 first-bring-up gate sheet (F314, IR receive after transmit) |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0: reproduce and prevent the screamer lock-up (Phases A-E) |
-| [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history: every section answered on 2026-09-18 (the log's perks bench entry, items 5-8) |
 | [`archive/bench-critical-2026-09-11.md`](archive/bench-critical-2026-09-11.md) | archived 2026-09-24: superseded by the plan; history |
-| [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the running order; keeps the method of its unrun rungs. FOLLOWUPS (MVP BENCH) and `post-mvp.md` are the register (ids) |
 | [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |
 | [`archive/bench-super-indoor-2026-09-07.md`](archive/bench-super-indoor-2026-09-07.md) | archived 2026-09-24: Q15. Tony defined S48 on 2026-09-23; its sweep is Block 6 of the runbook |
 | [`archive/bench-flash-control-2026-09-05.md`](archive/bench-flash-control-2026-09-05.md) | archived 2026-09-24. History: the flash ladder, answered; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs are in [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), cited from the queue's BQ-D1 row |
@@ -80,9 +78,11 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 - **[spec/README.md](spec/README.md)** (invariants + module map + amendment index) →
   **[spec/contracts.md](spec/contracts.md)** (the shared data + node↔MC wire; amendments folded into the body,
   their ids kept as anchors — **the authority**). Modules: [node](spec/node.md) · [start-sequence](spec/start-sequence.md)
-  · [modes](spec/modes.md) · [loadout](spec/loadout.md) · [utility](spec/utility.md) · the server⇄UI contract
+  · [modes](spec/modes.md) · [loadout](spec/loadout.md) · [utility](spec/utility.md) ·
+  [powerups](spec/powerups.md) · [transport-hardening](spec/transport-hardening.md) · the server⇄UI contract
   [`../mcp/brx_mcp/mc/API.md`](../mcp/brx_mcp/mc/API.md). Design briefs: [spec/design/mission-control.md](spec/design/mission-control.md)
-  · [spec/design/phone-hud.md](spec/design/phone-hud.md). The software (`mcp/brx_mcp/mc/`, `app/`, `webapp/mc/`)
+  · [spec/design/phone-hud.md](spec/design/phone-hud.md) · [spec/design/games-presets.md](spec/design/games-presets.md)
+  (the MC GAMES contract). The software (`mcp/brx_mcp/mc/`, `app/`, `webapp/mc/`)
   is built + tested against this (`cd mcp && python3 run_tests.py`).
 - **[adr/](adr/)** — the load-bearing decisions: [0001](adr/0001-companion-rider-architecture.md) per-player node ·
   [0002](adr/0002-laptop-mission-control-host.md) laptop Mission Control + local LAN ·
@@ -104,8 +104,10 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
   victim's row does to a hit, the weapon axes and archetypes that opens, and why range is a carrier frequency.
 - **[perk-design.md](perk-design.md)** — the third kit slot: the rules a perk has to obey here, the core set and
   its costs, the next wave and what gates each one, and every rejected idea with its reason.
-- **[utility-roadmap.md](utility-roadmap.md)** — the objective-station work in order, the grenade-as-control-point
-  evidence, and two designs (roaming hills, Territories) that are specified but not built. What it costs an
+- **[post-mvp.md](post-mvp.md)** → *2. Stations, the grenade and the Stick*: the objective-station work still
+  open (Extraction zone, Bomb site, Flag base), merged there 2026-09-27 from the archived
+  [`archive/utility-roadmap.md`](archive/utility-roadmap.md), which still holds the grenade-as-control-point
+  evidence and two designs (roaming hills, Territories) specified but not built. What it costs an
   outsider to add a mode is `post-mvp.md` (E2, E3, E4, E6 and E7 in §1, E5 in §4).
 - **[led-language.md](led-language.md)** — the LED language (gun body, headset RGB, headset flash): the design of
   record for contracts A16, amended as the bench moves it; the open build items are S10.
@@ -128,7 +130,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 | `$GSET`/`$WEAP`/`$PSET` field maps, modes, grenade (APK teardown) | [`../protocol/callsign-extract/`](../protocol/callsign-extract/) |
 | The 2477 sounds on the gun, with meanings | [`reference/sound-catalog.md`](reference/sound-catalog.md) (generated from `mcp/brx_mcp/data/sound_catalog.json`) |
 | Every confirmed BRX fact, for people | [`manual/`](manual/) (+ [`manual/README.md`](manual/README.md): how a fact gets in) |
-| The evidence the manual cites | [`reference/`](reference/) (manual notes, community posts, JEDGE, grenade, weapons data, print-file survey, iOS BLE notes, the time-to-kill model, Jay's DIY ecosystem, the extended user guide, the firmware audio-pack diff) |
+| The evidence the manual cites | [`reference/`](reference/) (manual notes, community posts, JEDGE, grenade, weapons data, print-file survey, iOS BLE notes, the [time-to-kill model](reference/ttk-model.md), Jay's DIY ecosystem, the extended user guide, the firmware audio-pack diff) |
 | Decoded transcripts + raw btsnoop traces | [`../protocol/captures/`](../protocol/captures/) |
 | Node↔MC wire + game data model | [`spec/contracts.md`](spec/contracts.md) |
 | Open MVP work | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
@@ -137,6 +139,8 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 
 ## Hardware
 - **[../hardware/inventory.md](../hardware/inventory.md)** — what the bench owns, what is on order, what is planned.
+- **[../hardware/player-sim/README.md](../hardware/player-sim/README.md)**: a fake player-phone BLE advert
+  (one IR-rig ESP32-S3), so a station's claim scan can be bench-tested unattended, with no real phones.
 - **[../hardware/m5sticks3/README.md](../hardware/m5sticks3/README.md)** — the M5StickS3 station firmware (IR decode over RMT,
   kind-5 BLE advert, BRIDGE/HILL modes, the bench gate).
 - **[../hardware/esp32-ir-bridge/README.md](../hardware/esp32-ir-bridge/README.md)** — the IR transceiver that
@@ -148,6 +152,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 
 ## Building the software
 - **[../app/README.md](../app/README.md)** — the native phone app (Capacitor → Android + iOS), the APK publish path.
+  [`../app/RELEASING.md`](../app/RELEASING.md) is the release-signed cut checklist.
 - **[../mcp/README.md](../mcp/README.md)** — `brx-mcp`: install, first contact, the CLI and MCP tool
   tables, `diag-game`, platform notes — the tooling docs, as opposed to the protocol facts in
   `manual/dev.md`.

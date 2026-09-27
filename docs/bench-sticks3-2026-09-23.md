@@ -263,3 +263,12 @@ Stick on COM10, rig receiver (VS1838B) on COM7, rig emitter on COM8. Full eviden
 - **F314: root cause found, workaround proven, row stays open.** Not yet built: a standalone wiring (VS1838B
   powered from G10, not the shared rig) and a HILL capture test with real shots on a standalone Stick.
 
+
+## Bench checks for F389-F398 (moved from `hardware/m5sticks3/README.md`, 2026-09-27)
+
+1. **F389:** Connect by typed MC URL. Send `LINK MUSTER`, push a new lobby game, then confirm STATUS shows the drop and MC shows no socket. Repeat with `LINK OFF`; confirm neither typed nor mDNS reconnects until `LINK RECONNECT`.
+2. **F390:** On a MUSTER hill with `ends_in_ms`, confirm it rejoins after the deadline. With an untimed match, confirm lock expiry leaves it offline. Check B three-click rejoin while unlocked, then confirm the same gesture is refused while locked.
+3. **F391:** Lock a Stick, power-cycle it, and confirm `STATUS lock_s` remains nonzero and the PMIC side button stays locked. Hold A+B for 7 s and confirm the next boot is unlocked. Then send MC `lock_s: 0` and confirm the lock clears.
+4. **F392:** Reproduce `LINK OFF`, `LINK HELD`, `LINK RECONNECT` while Wi-Fi is joining. Compare each PMIC write log and reason with PMIC readback; click the side button once and confirm restart. Record whether a join delays PMIC sync or changes either register.
+5. **F397:** Type an MC URL, restart the Stick, and confirm it dials the saved URL without serial input. Send `WIFI CLEAR`, restart, and confirm both Wi-Fi credentials and the typed URL are gone.
+6. **F398:** Render the countdown screen on the Stick and confirm the loading ring clears `NEXT SPAWN` with visible space.

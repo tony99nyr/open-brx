@@ -85,7 +85,7 @@ picker row per preset kind, a picker with one preset hidden, the MATCH SETTINGS 
 and `LOAD ▸`, then `CONTINUE TO KIT ▸`) and **BUILD** (a header link, not a step: create, rename and delete
 presets per kind). PLAY never edits a preset. MVP is outdoors only (F410), so there is no venue strip. The
 wire and the console behaviour are [`games-presets.md`](games-presets.md); the product brief is
-[`games-redesign.md`](games-redesign.md).
+[`games-redesign.md`](../../archive/spec-design-games-redesign.md).
 
 **LOAD ANNOUNCES THE GAME; IT DOES NOT WRITE A GUN** (`POST /api/games/load` → `state.py load_game()`).
 Tony, 2026-09-13: *"weapons have to go with the arm."* It pushes an `assign` — mode, teams, win, health,

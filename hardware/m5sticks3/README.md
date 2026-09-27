@@ -71,37 +71,6 @@ MC sends `duration_ms` for a timed game from LOAD onward. A HELD hill that leave
 
 **Flash writes per match** (a 7200 s timed hill, the worst case): the hill clock 241 (the anchor, one per 30 s, 0 at the whistle); the A58 lock snapshot about 27 (LOAD, START, one per five minutes, the clear at END); the station config about 3 (LOAD, START, END); the typed MC URL 0 (only on `MC <url>`); range edits 0 (refused while the lock is on). The total is about 271, plus one SavedHill write per owner change and one at the whistle. Each clock save puts four keys, of which only `hclk_rem` changes.
 
-## Status
-
-**2026-09-24, late afternoon: F314's root cause is found, and a workaround is proven.** The onboard receiver
-(G42) decodes an ordinary TV remote fine but not BRX-style IR at any distance tried; an external VS1838B on a
-Grove pin (`RXPIN 9`/`RXPIN 10`) decoded 3 of 3 real gun shots at 1 m. See "External IR receiver" below. F314
-stays open until a standalone Stick (its own receiver power, not shared) captures a HILL by being shot.
-
-**2026-09-24: the Mission Control link (H8) is built and desk-verified only** -- host tests plus a
-clean `stick.py compile` against the real toolchain, nothing run on a Stick yet. See "Mission
-Control link (H8)" below.
-
-**2026-09-23: first bring-up on a real Stick.** Flash, boot, and serial all work. The BLE advert
-and IR transmit both work. IR receive of a gun shot is open (**F314**): the receiver hears a burst
-of the right length at close range, but the decode comes out distorted, so the strict decoder
-rejects it and no gun shot has decoded yet. Full gate results and the rerun plan are in
-`docs/bench-sticks3-2026-09-23.md`; that sheet is the source of record for gate procedures and the
-running results, not this file.
-
-**Settled at the bench (2026-09-23):** the receiver's output is active-low, idle-high, as the firmware assumes: the
-rig's word arrived at 6 in with the right bit order and mark widths (about 1020 and 520 us).
-
-**Bench to confirm:**
-
-- Whether a gun shot decodes at some distance at all, and if so, which distance (F314).
-- What a `SELFTEST` PASS means, given M5 asks for 30 cm between sender and receiver and the
-  self-test runs at millimetre range.
-- The source of an intermittent ~650 Hz stream of 144 us pulses seen during bring-up.
-- The emitter's real range on either TX pin (Seeed's "10 m" is to a TV receiver, not a laser-tag
-  receiver).
-- Which Grove pin (G9 or G10) the yellow wire actually drives on this unit.
-
 ## Hardware and pins
 
 | pin | role | note |
@@ -730,37 +699,3 @@ The PMIC side-button lock is restored at boot before Wi-Fi starts when the saved
 - **Never flash a BRX gun or headset with this tool.** `stick.py` and its FQBN target the StickS3
   only. The repo's hard rule stands: stock BRX firmware is never modified; all gun control stays on
   the Bluetooth serial protocol.
-
-## Open questions
-
-- **F314: IR receive of a gun shot is unproven.** The rerun plan, with a fixed-distance ladder and
-  controls, is `docs/bench-sticks3-2026-09-23.md`'s Rerun section.
-- **The standalone external-receiver wiring.** `RXPIN 9`/`RXPIN 10` and the external-receiver bench proof are
-  built (see "External IR receiver" above), but only with the receiver sharing power with another one already
-  on the bench. The standalone wiring (VS1838B powered from a Grove pin, not borrowed) and a HILL capture test
-  with real shots on a standalone Stick are **not yet built**; this closes F314.
-- **H8**, whether a Stick should carry its own `station_source` value instead of borrowing
-  `grenade`'s: `docs/spec/utility.md` §5g.7. (The Wi-Fi link itself is built; this is the one loose
-  end §5g.7 left open and it does not block arming a Stick today.)
-- **Everything in "Mission Control link (H8)"'s "Bench to confirm" list above** -- none of it has
-  run on a Stick.
-- **`station_action` (RESET, CLAIM's "taken" report) is proposed to brx5, not a final contract.**
-  Its shape lives in one function each (`build_station_action_body` in `station_ui.h`,
-  `mcBuildStationActionTaken` in `mc_link_glue.h`) so a rename is a one-line change.
-- **Which Grove pin (G9 or G10) the yellow wire drives on this unit**, given M5's own pinout page
-  and the M5Unified port mapping disagree; see "Hardware and pins" above.
-
-
-**Hill timing (A68):** MC sends `starts_in_ms` and `ends_in_ms` in the same `station_config` whenever it knows the times. Both are relative to MC send time; the start can be negative after go-live. A future start keeps the hill neutral, waiting, and accrual-free. A same-game config in LOBBY without a start also keeps it waiting. The MUSTER wait ends on any config with `starts_in_ms`, including an untimed START. The hill counts only from its local go-live to its local deadline, then freezes its owner and possession tally and shows MATCH OVER. A same-game config with neither time means no match is running and the hill waits. MC sends no `station_update` for a hill. A restored timed hill stays frozen until a fresh config provides timing, because `millis()` cannot measure time while powered off. After an abort, the same-game config omits both times and returns the hill to waiting. An early end reaches only a Stick still in Wi-Fi.
-
-**Offline limit:** F374's 60 s MUSTER fallback still starts the hill if the Stick loses Wi-Fi before hearing START, then drops Wi-Fi. That hill counts as before because it has no go-live or deadline. An adopted match pushes nothing to stations, so an adopted match gives a Stick hill no go-live or deadline and it counts as before.
-
-
-## Bench checks for F389-F398
-
-1. **F389:** Connect by typed MC URL. Send `LINK MUSTER`, push a new lobby game, then confirm STATUS shows the drop and MC shows no socket. Repeat with `LINK OFF`; confirm neither typed nor mDNS reconnects until `LINK RECONNECT`.
-2. **F390:** On a MUSTER hill with `ends_in_ms`, confirm it rejoins after the deadline. With an untimed match, confirm lock expiry leaves it offline. Check B three-click rejoin while unlocked, then confirm the same gesture is refused while locked.
-3. **F391:** Lock a Stick, power-cycle it, and confirm `STATUS lock_s` remains nonzero and the PMIC side button stays locked. Hold A+B for 7 s and confirm the next boot is unlocked. Then send MC `lock_s: 0` and confirm the lock clears.
-4. **F392:** Reproduce `LINK OFF`, `LINK HELD`, `LINK RECONNECT` while Wi-Fi is joining. Compare each PMIC write log and reason with PMIC readback; click the side button once and confirm restart. Record whether a join delays PMIC sync or changes either register.
-5. **F397:** Type an MC URL, restart the Stick, and confirm it dials the saved URL without serial input. Send `WIFI CLEAR`, restart, and confirm both Wi-Fi credentials and the typed URL are gone.
-6. **F398:** Render the countdown screen on the Stick and confirm the loading ring clears `NEXT SPAWN` with visible space.

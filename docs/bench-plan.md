@@ -465,7 +465,7 @@ Levers session 1 ran in three sittings on 2026-09-18 (the log's three "firmware 
 answered by §16), §12 steps 1 and 3 (answered by §23), §13 step 1 and step 3 (magnitudes 1-39), §16 steps 1-3 and
 6.1-6.2, §18, §19 step 15 (answered by F71 and F263: one Shotgun pull sends two words), §21 steps 1-10 and 15-18 (t4,
 t5, t6, t7, t8, t9), §22 steps 1-6, and §23 (all five steps). Screamers A1 and A2. F276 (the Shotgun words). The whole perks sheet
-([`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md), §1-§8). F230 closed, so levers §19 step 18 is dropped.
+(`bench-perks-2026-09-18.md`, §1-§8). F230 closed, so levers §19 step 18 is dropped.
 
 **Pre-game check, run 2026-09-19 (Saturday morning office test).** Tony installed the 0.4.0-0.4.2 APKs across the
 session. Levers §1 run f (a real TDM through Mission Control with two guns) **PASSED**: cross-team hits
@@ -484,7 +484,7 @@ eased `heavy` 40 to 45 and the Burst Rifle gap 550 to 540 ms, F308); Block 7 ste
 lost inside the headset's rate guard, and the wider gap is on main); and the evening audio A/B/A on one gun (F347:
 the native shield hum blocks the gun's audio queue). Off the plan the same day: melee (K4, closed) and F336.
 
-**The 2026-09-25 sitting, [`bench-2026-09-25.md`](bench-2026-09-25.md), sittings A and B and stop point 2.**
+**The 2026-09-25 sitting, `bench-2026-09-25.md`, sittings A and B and stop point 2.**
 Sitting A closed the 0.4.12 gate: A4, F341, F347 (t23 ships EMPTY, no restart delay needed), and F350 (H21 picked,
 playtest confirmation left to sitting C's 11.1(c)); 4.19 parts 2-3 and the Burst Rifle gap stayed INCONCLUSIVE.
 Sitting B closed F332, the Stick pickup online and offline (S58, found F380 and F381), F333 (reopened by Tony for a deliberate walk; F398 filed),
@@ -496,7 +496,7 @@ has not been opened since that install, so 11.7's auto-join must be sitting C's 
 
 ## Sittings, in priority order
 
-### Superseded: [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting C
+### Superseded: `bench-2026-09-25.md`, sitting C
 
 Folded into "Next sitting: after GAMES and 0.4.14" at the top of this file, which supersedes the list below, the
 "Carry into sitting C" list and the "Awaiting Tony" note that used to sit here. Kept only for the sheet's own
@@ -594,7 +594,7 @@ headset-word row was F254 before its renumber and is F275 now.
   post-MVP (**F338**, Tony 2026-09-24); the Stick MVP runs over Bluetooth, Block 9 of the runbook.
   Kit: a Stick, the rig, a laptop, one gun for gates 4 and 5.
 - [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, Z1-Z3, D, B, E, F (C is answered).
-- The unrun rungs of [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) that the table below does not mark as
+- The unrun rungs of `bench-queue-2026-09-09.md` that the table below does not mark as
   moved. Do not run BQ-A2 (`$AS,1`): it starts a native game, a screamer path.
 - Rows whose method is in the row itself: **F232** and the other "Later" rows of the FOLLOWUPS MVP BENCH group
   that no sheet names yet, and the post-MVP **F167**, **F168** and **F169**.
@@ -628,10 +628,10 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 |---|---|---|
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live | claims 1-27, §1-§26 |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0 | the screamers: Phases A-E (A1, A2 done) |
-| [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history | every section answered 2026-09-18 |
+| `bench-perks-2026-09-18.md` | history | every section answered 2026-09-18 |
 | [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live | the M5StickS3 bring-up gates (**F314**, H7); run with the `m5stick-bench` skill, no fixed sitting |
 | [`bench-grenade.md`](bench-grenade.md) | open, backlog | the grenade and hill rungs |
-| [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
+| `bench-queue-2026-09-09.md` | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
 | the 2026-09-05 flash-control, 2026-09-07 super-indoor and 2026-09-11 critical sheets | history | archived 2026-09-24: grep only. Critical: BC-A2 is levers §21 step 16 (done) plus grenade Z1; BC-B3 is grenade X; BC-C1 is levers §6; BC-C2 is answered (perks §2). Super-indoor: Q15; Tony defined S48 on 2026-09-23, and its sweep is Block 6 of the runbook. Flash-control: L1-L9 answered; BQ-D8 cites its rungs 9-10 |
 | [`capture-runbook.md`](capture-runbook.md) | method | how to take a capture; no status |
 | the 2026-09-13 runbook and the 2026-09-17 weapons sheet | history | already archived: grep only, open no step from them |

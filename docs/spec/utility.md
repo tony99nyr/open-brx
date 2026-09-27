@@ -534,7 +534,7 @@ Hill Lost, `VB0O` Hill Contested and the `U100` possession tick — are played b
 Two full designs that build on §5d and ship nothing today: **5e roaming hills**, the opt-in LAN-coupled
 variant and a deliberate exception to A4.8 (F95), and **5f TERRITORIES**, multi-point scoring where each
 station keeps its own books and needs no LAN at all (F98). Both live in
-[`../utility-roadmap.md`](../utility-roadmap.md) §8, under the same 5e / 5f numbers. Promote them back here as
+[`../utility-roadmap.md`](../archive/utility-roadmap.md) §8, under the same 5e / 5f numbers. Promote them back here as
 they are built.
 
 ## 5g. A NON-PHONE utility node: the M5StickS3 armed over Wi-Fi (H8)

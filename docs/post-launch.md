@@ -19,7 +19,7 @@ rules are in the `FOLLOWUPS.md` header.
 players carry loot to an extraction point before the zone closes ([`extraction-design.md`](extraction-design.md)).
 Infection and Last Man Standing already exist in Mission Control's code, but neither has run a real match. Gun Game hands each player a new weapon at every spawn. A tutorial mode, Syphon (the
 killer heals), and several hill variants (roaming hills, Territories, a rotating hill, a rate-of-fire boost for
-the holding team) are designed or partly specified in [`utility-roadmap.md`](utility-roadmap.md) and
+the holding team) are designed or partly specified in `utility-roadmap.md` and
 [`game-modes.md`](game-modes.md). Adding a mode is still harder than it should be; the extensibility rows fix that.
 
 Ids: S3 (Extraction on the phone), S60 (Gun Game), B17 (tutorial), S14 (Syphon), F95, F98, F83, F87, F93 (hill
@@ -50,7 +50,7 @@ Ids: F344.
 ## The armour pickup
 
 A pickup that grants armour or health, beside the Overshield that ships in 1.0.0. The `$LIFE` lever that a pickup
-would use is proven on the bench, and [`utility-roadmap.md`](utility-roadmap.md) sketches the station. There is no
+would use is proven on the bench, and `utility-roadmap.md` sketches the station. There is no
 row for the pickup itself yet.
 
 Ids: F109 (the host-granted shield and heal lever), F60, Q12, B20 (how a heal or shield reaches a game and the
