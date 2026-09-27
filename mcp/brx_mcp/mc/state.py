@@ -2853,9 +2853,9 @@ class Session:
                     hts = merged.get("hold_target_s")
                     if hts is not None:
                         if mode != "koth":
-                            raise ValueError("scoring.hold_target_s only applies to koth")
+                            raise ValueError("A HOLD TARGET ONLY APPLIES TO KING OF THE HILL")
                         if not (isinstance(hts, int) and not isinstance(hts, bool) and 0 < hts <= 7200):
-                            raise ValueError("scoring.hold_target_s must be a positive integer (<=7200) or null")
+                            raise ValueError("HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET")
                     # `merged["win_by"]` is not guaranteed: a RESTORED snapshot's config can be missing
                     # it (see `set_config`'s own comment on `cfg` above), and a patch that only touches
                     # `frag_limit` then leaves `merged` without one too -- so this fell through to a
@@ -2938,8 +2938,7 @@ class Session:
                 # (looser, other-objective-mode) count limit so a koth pick gets the RIGHT number back,
                 # not "up to three".
                 if mode == "koth" and len({t["tid"] for t in v}) != 2:
-                    raise ValueError(
-                        f"F413: koth is exactly 2 teams (got {len({t['tid'] for t in v})}): pick two colours.")
+                    raise ValueError("KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS")
                 # 🔴 F82, and this was the LAST open route into it (operator review 2026-09-10). A hill
                 # mode's config was allowed to CONTAIN a tid-2 team as long as nobody was on it yet --
                 # `validate()` scans the roster, so an empty yellow team passed and the push succeeded.
