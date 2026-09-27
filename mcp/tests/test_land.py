@@ -55,6 +55,11 @@ if full and cfg.get("barrier"):
         deadline = time.time() + 30
         while len(list(mark.parent.iterdir())) < cfg["barrier"] and time.time() < deadline:
             time.sleep(0.05)
+if full and cfg.get("steal_lock"):
+    lock = Path(cfg["steal_lock"])
+    for e in lock.iterdir():
+        e.unlink()
+    (lock / f"{1:015d}-{cfg['thief_pid']}-thief0").write_text("")
 if full and cfg.get("move_main", 0) > 0:
     n = int((d / "moves").read_text()) if (d / "moves").exists() else 0
     if n < cfg["move_main"]:
@@ -87,6 +92,17 @@ print(f"\n{len(sel) - len(fail)}/{len(sel)} job(s) passed in 1s")
 sys.exit(1 if fail else 0)
 '''
 
+# LAND_INSTALL_STUB: records where it ran, with which args, and whether node_modules was a symlink at the time.
+INSTALL_STUB = r'''
+import json, os, sys
+from pathlib import Path
+d = Path(os.environ["STUB_DIR"])
+with open(d / "installs.jsonl", "a") as f:
+    f.write(json.dumps({"cwd": os.getcwd(), "args": sys.argv[1:], "linked": os.path.islink("node_modules")}) + "\n")
+Path("node_modules").mkdir(exist_ok=True)
+(Path("node_modules") / "installed.txt").write_text("x")
+'''
+
 
 def _git(*args, cwd) -> str:
     return subprocess.run([GIT, *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
@@ -107,6 +123,7 @@ class Lane:
         _git("commit", "-q", "-m", "seed", cwd=seed)
         _git("push", "-q", "origin", "HEAD:main", cwd=seed)
         (self.dir / "stub.py").write_text(STUB)
+        (self.dir / "install_stub.py").write_text(INSTALL_STUB)
         self.dev = self.clone("dev")
         self.clone("mover")
 
@@ -130,13 +147,14 @@ class Lane:
     def env(self, machine="a", **extra):
         e = {**os.environ, "LAND_TEST": "1", "LAND_STATE_DIR": str(self.dir / f"state-{machine}"),
              "LAND_LOCK_DIR": str(self.dir / f"lock-{machine}"), "LAND_POLL_MS": "100",
-             "LAND_GATE_STUB": json.dumps([sys.executable, str(self.dir / "stub.py")]), "STUB_DIR": str(self.dir)}
+             "LAND_GATE_STUB": json.dumps([sys.executable, str(self.dir / "stub.py")]), "STUB_DIR": str(self.dir),
+             "LAND_INSTALL_STUB": json.dumps([sys.executable, str(self.dir / "install_stub.py")])}
         e.update(extra)
         return e
 
-    def land(self, *args, cwd=None, machine="a", env=None):
+    def land(self, *args, cwd=None, machine="a", env=None, timeout=120):
         return subprocess.run([NODE, str(LAND), *args], cwd=cwd or self.dev, env=env or self.env(machine),
-                              capture_output=True, text=True, timeout=120)
+                              capture_output=True, text=True, timeout=timeout)
 
     def submit(self, name: str, files: dict, owner="tester", cwd=None) -> str:
         cwd = cwd or self.dev
@@ -203,12 +221,13 @@ def test_a_conflict_leaves_the_batch_and_the_others_land():
         _assert_landed(t, a, c)
         res = t.result(b)
         assert res["status"] == "conflict" and res["conflict_files"] == ["same.txt"], res
+        assert res["conflicts_with"] == a, res
         refs = t.remote_refs()
         assert f"refs/heads/land-failed/{b}" in refs and f"refs/heads/land/{b}" not in refs
         assert t.on_main(f"Land {b}") == 0
         w = t.land("wait", b)
         assert w.returncode == 2, w.stdout + w.stderr
-        assert "same.txt" in w.stdout
+        assert "same.txt" in w.stdout and f"conflicts with {a}" in w.stdout
 
 
 def test_a_red_branch_is_bisected_out_and_the_others_land():
@@ -375,6 +394,9 @@ def test_the_gate_stub_is_refused_without_land_test():
         del env["LAND_TEST"]
         r = t.land("run", env=env)
         assert r.returncode == 4 and "test-only" in r.stderr, r.stdout + r.stderr
+        del env["LAND_GATE_STUB"]
+        r = t.land("run", env=env)
+        assert r.returncode == 4 and "LAND_INSTALL_STUB is test-only" in r.stderr, r.stdout + r.stderr
 
 
 def test_submit_refuses_a_dirty_tree_and_an_empty_branch():
@@ -417,3 +439,153 @@ def test_wait_on_another_machine_reads_the_result_from_the_refs():
         assert w.returncode == 0 and "landed" in w.stdout, w.stdout + w.stderr
         w = t.land("wait", b, "--timeout-min", "0.1", cwd=other, machine="b")
         assert w.returncode == 1 and f"land-failed/{b}" in w.stdout, w.stdout + w.stderr
+
+
+# ---- review 2026-09-27 (brx1): H1, H2, M(a)-(e) ------------------------------------------------------------------
+
+def test_h1_a_branch_already_on_main_is_marked_landed_and_leaves_the_queue():
+    """An emergency direct push (or a crash between the main push and the ref cleanup) puts a queued branch on main.
+    It used to be skipped forever: the ref stayed, no result was written, and the queue never emptied."""
+    with Lane() as t:
+        a = t.submit("a", {"a.txt": "a"})
+        _git("push", "-q", "origin", "HEAD:main", cwd=t.dev)   # the emergency path
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert f"refs/heads/land/{a}" not in t.remote_refs()
+        assert t.result(a)["status"] == "landed"
+        w = t.land("wait", a, "--timeout-min", "0.1", timeout=60)
+        assert w.returncode == 0, w.stdout + w.stderr
+
+
+def _stuck_branch(t: Lane) -> str:
+    """A queued red branch whose land-failed/<id> already exists at an unrelated commit: the lander can never move it,
+    so every lander run finds the queue non-empty."""
+    id_ = "20260101000000-stuck-x"
+    _git("checkout", "-q", "-B", "stuck", "origin/main", cwd=t.dev)
+    (t.dev / "RED").write_text("red")
+    _git("add", "RED", cwd=t.dev)
+    _git("commit", "-q", "-m", "stuck", cwd=t.dev)
+    _git("push", "-q", "origin", f"HEAD:refs/heads/land/{id_}", cwd=t.dev)
+    _git("checkout", "-q", "--orphan", "unrelated", cwd=t.dev)
+    _git("commit", "-q", "--allow-empty", "-m", "unrelated", cwd=t.dev)
+    _git("push", "-q", "origin", f"HEAD:refs/heads/land-failed/{id_}", cwd=t.dev)
+    _git("checkout", "-q", "-f", "stuck", cwd=t.dev)
+    return id_
+
+
+def test_h2_wait_times_out_even_while_it_keeps_driving_the_lander():
+    with Lane() as t:
+        stuck = _stuck_branch(t)
+        start = time.time()
+        w = t.land("wait", "20260101000000-nobody-x", "--timeout-min", "0.03", timeout=60)
+        assert w.returncode == 3, w.stdout + w.stderr
+        assert time.time() - start < 30
+        assert f"refs/heads/land/{stuck}" in t.remote_refs()   # never deleted: it did not land and was not copied
+
+
+def test_ma_an_unexpected_error_exits_5_not_1_which_means_red():
+    with Lane() as t:
+        _git("remote", "set-url", "origin", str(t.dir / "missing.git"), cwd=t.dev)
+        r = t.land("run")
+        assert r.returncode == 5, (r.returncode, r.stdout, r.stderr)
+        r = t.land("wait", "x", "--timeout-min", "0.01")
+        assert r.returncode == 5, (r.returncode, r.stdout, r.stderr)
+
+
+def test_mb_a_malformed_land_ref_is_reported_and_never_landed():
+    with Lane() as t:
+        _git("checkout", "-q", "-B", "hand", "origin/main", cwd=t.dev)
+        (t.dev / "hand.txt").write_text("pushed by hand")
+        _git("add", "hand.txt", cwd=t.dev)
+        _git("commit", "-q", "-m", "by hand", cwd=t.dev)
+        _git("push", "-q", "origin", "HEAD:refs/heads/land/0-Tony-x", cwd=t.dev)
+        b = t.submit("b", {"b.txt": "b"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, b)
+        assert "refs/heads/land/0-Tony-x" in t.remote_refs()
+        assert "hand.txt" not in _git("ls-tree", "--name-only", "main", cwd=t.remote).split()
+        assert "land/0-Tony-x" in r.stdout
+
+
+def test_mc_a_branch_that_conflicted_only_with_a_red_member_is_retried_and_lands():
+    with Lane() as t:
+        a = t.submit("a", {"same.txt": "a", "RED": "breaks mcp"})
+        b = t.submit("b", {"same.txt": "b"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert t.result(a)["status"] == "red"
+        _assert_landed(t, b)
+
+
+def test_mc_a_conflict_with_main_says_main():
+    with Lane() as t:
+        clean = t.submit("clean", {"clean.txt": "c"})   # lands, so "main" cannot be the empty-batch fallback
+        a = t.submit("a", {"same.txt": "a"})
+        m = t.dir / "mover"
+        _git("pull", "-q", "origin", "main", cwd=m)
+        (m / "same.txt").write_text("main's own")
+        _git("add", "same.txt", cwd=m)
+        _git("commit", "-q", "-m", "main edits same.txt", cwd=m)
+        _git("push", "-q", "origin", "HEAD:main", cwd=m)
+        assert t.land("run").returncode == 0
+        _assert_landed(t, clean)
+        res = t.result(a)
+        assert res["status"] == "conflict" and res["conflicts_with"] == "main", res
+
+
+def test_md_a_lander_that_lost_its_lock_during_the_gate_does_not_push():
+    with Lane() as t:
+        a = t.submit("a", {"a.txt": "a"})
+        main = t.remote_refs()["refs/heads/main"]
+        t.cfg(steal_lock=str(t.dir / "lock-a"), thief_pid=os.getpid())
+        r = t.land("run")
+        assert r.returncode == 5 and "lost the lander lock" in r.stderr, r.stdout + r.stderr
+        assert t.remote_refs()["refs/heads/main"] == main
+        assert f"refs/heads/land/{a}" in t.remote_refs()
+
+
+def test_md_each_lock_entry_gets_its_own_worktree_and_leaves_none_behind():
+    with Lane() as t:
+        state = t.dir / "state-a"
+        stale = state / "wt-000000000000001-1-dead00"   # a crashed lander's worktree
+        stale.mkdir(parents=True)
+        a = t.submit("a", {"a.txt": "a"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        assert [p.name for p in state.iterdir() if p.name.startswith("wt")] == []
+
+
+def test_me_a_changed_package_lock_is_installed_in_the_scratch_tree_not_linked():
+    with Lane() as t:
+        seed = t.dir / "seed"
+        (seed / "app").mkdir()
+        (seed / "app" / "package.json").write_text("{}")
+        (seed / "app" / "package-lock.json").write_text("{}")
+        (seed / ".gitignore").write_text("node_modules\n")
+        _git("add", "-A", cwd=seed)
+        _git("commit", "-q", "-m", "app", cwd=seed)
+        _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+        _git("pull", "-q", "origin", "main", cwd=t.dev)
+        sentinel = t.dev / "app" / "node_modules" / "main-deps.txt"   # the main checkout's installed deps
+        sentinel.parent.mkdir()
+        sentinel.write_text("main")
+        sub = t.clone("sub")   # submit from elsewhere: the main checkout (dev) stays on main, as it would for real
+        a = t.submit("a", {"a.txt": "a"}, cwd=sub)                                    # same lock: linked
+        b = t.submit("b", {"app/package-lock.json": '{"new": 1}'}, cwd=sub)          # new lock: npm ci in the scratch tree
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a, b)
+        installs = [json.loads(x) for x in (t.dir / "installs.jsonl").read_text().splitlines()]
+        assert len(installs) == 1, installs
+        assert installs[0]["args"] == ["npm", "ci", "--no-audit", "--no-fund"] and installs[0]["linked"] is False, installs
+        assert installs[0]["cwd"].endswith("/app") and str(t.dev) not in installs[0]["cwd"], installs
+        assert sentinel.read_text() == "main" and sorted(p.name for p in sentinel.parent.iterdir()) == ["main-deps.txt"]
+        # A candidate that matches main's lock links main's node_modules; removing the worktree must not follow the link.
+        _git("pull", "-q", "origin", "main", cwd=t.dev)   # dev's lock now matches main's again
+        c = t.submit("c", {"c.txt": "c"}, cwd=sub)
+        assert t.land("run").returncode == 0
+        _assert_landed(t, c)
+        assert len((t.dir / "installs.jsonl").read_text().splitlines()) == 1
+        assert sentinel.read_text() == "main"
