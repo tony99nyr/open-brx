@@ -880,7 +880,6 @@ _ARCHIVE_CITERS_BASELINE = {
     "app/README.md",                        # design/hud-export/
     "docs/architecture-topology.md",        # verification-checklist.md
     "docs/bench-grenade.md",                # bench-grenade-answered.md
-    "docs/bench-queue-2026-09-09.md",       # bench-weap-tokens-discovery-2026-09-04.md, hardware/range-experiment.md
     "docs/reference/ttk-model.md",          # game-test-2026-09-11.md (D2 provenance, cited twice)
     "docs/site/README.md",                  # site/SIMPLIFY-PLAN.md
     "docs/spec/contracts.md",               # mode-extensibility.md, spec-armory.md, spec-net.md

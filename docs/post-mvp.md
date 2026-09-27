@@ -201,6 +201,29 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 
 - **F408 🟡 THE EXTRACTION AND BOMB-SITE STATION KINDS.** Tony, 2026-09-25: "so mvp for utility is respawn station, pickup, hill". F405 hid `extraction` and `bomb` from every place a host assigns a station kind; the types, the code and the recap labels stay, so an old assignment still renders. They return with their modes (Extraction, S3; a bomb mode), each with a station built and benched. `build` + `bench`.
 
+  **The station work each one still needs**, merged from `utility-roadmap.md`'s ordered kind list (K1 the
+  control point is built, F94; K3 the powerup is built, S58, `spec/powerups.md`) before that file was archived
+  2026-09-27; the wire rule for each is `spec/utility.md` §5, this is only the build task:
+  - **K2 · Extraction zone.** A player carrying loot who is present at the zone channels for `channel_s`;
+    leaving resets; dying drops the loot. Left to build: the station state machine (idle / channelling /
+    extracted / failed, seconds left in `value`, an alarm on its own speaker), an `extracting` intent bit and
+    `state().objective` on the node, the CHANNELLING bar on the HUD, and the station as the zone source in MC's
+    extraction mode (today the zone is a phone/host); the loot wallet already lives in
+    `mcp/brx_mcp/modes/extraction.py`. Bench gate: one phone channels, walks out, walks back; a second gun
+    kills mid-channel → failed + loot dropped. Needs: K1's presence plumbing, B1 (station hears players
+    reliably).
+  - **K4 · Bomb site (the most moving parts).** An attacker present with the `planting` intent for `plant_s`
+    plants; the site counts down `fuse_s`; a defender present with `defusing` for `defuse_s` defuses; on
+    detonation every player phone within blast radius applies host-inflicted damage to its own gun. Left to
+    build: the four-state station with the fuse in `value` and beeps on its speaker; intent reading (present +
+    trigger held, the respawn gesture); the blast write on the node; the round-based `cs` mode in MC (win by
+    detonate / defuse / elimination, sides swap). Bench gate: plant with one phone, defuse with another, let
+    one detonate and read the `$HP` drop on a gun in radius against a gun outside it. Needs: K1 presence, B1,
+    and a decision on blast damage (proposal: 45 HP, a kill, inside the threshold, half out to threshold −10 dB).
+  - **K5 · Flag base (a new kind id, later).** CTF needs `kind 6 flag` (grab by presence + trigger, carry = a
+    player intent bit, return = present at own base) and a player-advert `carrying` bit; designed in
+    `game-modes.md`, not in the advert table yet. Do it after K2-K4 prove the intent-bit path.
+
 - **F338 🟡 POST-MVP: THE GRENADE HILL AND STICK IR RECEIVE.** Tony 2026-09-24: the MVP hill is a Bluetooth control point (`station_source: "phone"`, now KOTH's stock default): a phone station today, and a StickS3 once brx4's presence-capture port is bench-proven (it needs a reflash; older Stick firmware is an IR hill); StickS3 stations are Bluetooth-only for MVP (hill, pickup, respawn), and Stick IR TRANSMIT stays. **Do not build before MVP:** new grenade-hill features (the grenade stays selectable, marked POST-MVP, and bench-proven 2026-09-10) or Stick IR receive (the onboard receiver cannot hear BRX IR; an external VS1838B on Grove G9 decodes shots, `0f50605e`). A CONTROL station under a grenade objective raises a SETUP warning (`a4d2a1ee`). The Stick's SETTINGS screen waits with it (2026-09-25): it would edit MODE, ID, GAME and TXPIN, which only the IR hill and bridge use; `station_render.h` keeps the drawing, and MC assigns the station id (A66). `post-MVP`
 
 - **F344 🟠 A STATION COUNTS REVIVES OFF THE PLAYER'S OWN STATE BIT, NOT RSSI, AND REVIVE COUNTING IS NOW POST-MVP.** Both sides were built: MC's fallback (`beacon.js countRevives`, near = median at or above the threshold minus 10 dB, no dwell, own team only, only after a death seen this game) and the Stick's own rule (`presence.h`), which counts a revive on the rising edge of player state bit 6 `PLAYER_REVIVED`, no RSSI, tagged with the reviving station's id (needed because the Stick hears phones 20-30 dB weaker than phones hear it). The phone half that sets bit 6 is built but PARKED on `origin/revive-bit` (3304ef06): Tony, 2026-09-24/25, "let's remove the revive count for now and we can add those post mvp." `REVIVE_FEEDBACK_ENABLED` is off by default, so a respawn Stick today only advertises; nothing here is live until revive counting returns post-MVP. `post-MVP`.
@@ -1005,6 +1028,14 @@ voice in Callsign, re-host; WireGuard mode, not the HTTP proxy), **G3**; re-scra
 
 **Decisions (Tony's call):** **Q12′**; **F5** reserve 192 or the captured 384; **F20**; **F60** a heal/grant
 row in the compiled table, or shields stay node-granted; **K1** which kid mode; **P14**.
+
+**Tool traps, kept from the old bench queue (`archive/bench-queue-2026-09-09.md`), still true for
+`firemode_probe.py` and `native_capture.py`:** its RAW token index is `doc token + 1`; its shipped
+`tutorial_frames()` carries one `$SIR` row and one `$BMAP,0,0` row, so a weapon or button outside those
+needs `bench_common`'s own frames instead; the known-safe command list is enforced only in the MCP
+`send` tool, so a hand-run script (`sendframes.py`) sends anything with no refusal; and a stitched IR
+word can pass parity while naming the wrong protocol or magnitude: count only whole `WORD` lines or an
+unambiguous `STITCH`, never an `AMBIGUOUS` one.
 
 ## 10. System proofs (need players, space, time)
 
