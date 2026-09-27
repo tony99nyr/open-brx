@@ -112,19 +112,21 @@ describe('updatePiece (review MEDIUM 3): only a value change on a PICKED piece r
     await b.putConfig({ loadout_policy: { hud_select: false } as GameConfig['loadout_policy'] });
     expect((await b.getState()).config.loadout_policy!.hud_select, 'control').toBe(false);
     const renamed = await b.updatePiece(life.piece_id, { name: 'RENAMED LIFE' });
-    expect(renamed.ok, 'a name-only save never even reaches a recompose').toBeUndefined();
+    expect((renamed as { ok?: boolean }).ok, 'a name-only save never even reaches a recompose').toBeUndefined();
     const after = await b.getState();
     expect(after.config.loadout_policy!.hud_select, 'a rename must not silently revert an unrelated inline edit').toBe(false);
     expect((await b.getPieces()).find(p => p.piece_id === life.piece_id)?.name).toBe('RENAMED LIFE');
   });
 
-  it('a value change on a picked piece DOES recompose, and reports ok/errors/fallbacks', async () => {
+  it('a value change on a picked piece DOES recompose, and reports fallbacks', async () => {
     const b = new MockBackend();
     const life = await b.createPiece({ kind: 'life', name: 'CUSTOM LIFE', value: { max_hp: 50, max_armor: 60, max_shield: 0 } });
     await b.pick({ pieces: { life: life.piece_id } });
+    // Review MEDIUM (brx1, 222b1a81): `ok`/`errors` no longer ride a successful reply at all -- a
+    // refusal now throws instead (below), so a resolved call is unconditionally applied.
     const r = await b.updatePiece(life.piece_id, { name: 'CUSTOM LIFE', value: { max_hp: 80, max_armor: 60, max_shield: 0 } });
-    expect(r.ok).toBe(true);
-    expect(r.errors).toEqual([]);
+    expect((r as { ok?: boolean }).ok, 'a successful reply carries no ok/errors at all now').toBeUndefined();
+    expect(r.fallbacks).toEqual([]);
     expect((await b.getState()).config.health.max_hp).toBe(80);
   });
 
@@ -134,6 +136,39 @@ describe('updatePiece (review MEDIUM 3): only a value change on a PICKED piece r
     await expect(b.updatePiece(life.piece_id, { name: 'SHOULD NOT SAVE', value: { max_hp: 0, max_armor: 60, max_shield: 0 } }))
       .rejects.toThrow(/max_hp must be an integer/);
     expect((await b.getPieces()).find(p => p.piece_id === life.piece_id)?.name, 'the refused value must not leave a half-applied rename').toBe('CUSTOM LIFE');
+  });
+});
+
+describe('updatePiece (review MEDIUM 2): a value that fails to COMPOSE refuses outright, saving nothing', () => {
+  it('rolls back the piece AND the config, throwing 400 -- never ok:false in a 200', async () => {
+    const b = new MockBackend();
+    const life = await b.createPiece({ kind: 'life', name: 'CUSTOM LIFE', value: { max_hp: 50, max_armor: 60, max_shield: 0 } });
+    await b.pick({ pieces: { life: life.piece_id } });
+    // Break time_limit_s at the CONFIG level via an existing, already-tested mock path ("a REFUSED
+    // putConfig still syncs game_pick", above): `game_pick.match.time_limit_s` now carries the same
+    // stale 0 the config does, so ANY later recompose (this updatePiece, below) inherits it and fails
+    // to compose too -- the checked LIFE value itself is perfectly valid.
+    await b.putConfig({ time_limit_s: 0 });
+    const beforeConfig = (await b.getState()).config;
+    await expect(b.updatePiece(life.piece_id, { name: 'SHOULD NOT SAVE', value: { max_hp: 90, max_armor: 60, max_shield: 0 } }))
+      .rejects.toMatchObject({ status: 400 });
+    const after = await b.getState();
+    expect(after.config, 'the config must roll back to what it was before this call').toEqual(beforeConfig);
+    expect((await b.getPieces()).find(p => p.piece_id === life.piece_id))
+      .toMatchObject({ name: 'CUSTOM LIFE', value: { max_hp: 50, max_armor: 60, max_shield: 0 } });
+  });
+});
+
+describe('checkPieceValue LIFE (review Low, brx1 222b1a81): a numeric STRING is refused, not coerced', () => {
+  it('"45" fails Number.isInteger on the RAW value, matching state.py’s own isinstance(v, int) guard', async () => {
+    const b = new MockBackend();
+    await expect(b.createPiece({ kind: 'life', name: 'X', value: { max_hp: '45', max_armor: 0, max_shield: 0 } }))
+      .rejects.toThrow(/max_hp must be an integer 1\.\.255/);
+  });
+  it('a boolean is refused the same way (`Number(true)` is 1, a false pass otherwise)', async () => {
+    const b = new MockBackend();
+    await expect(b.createPiece({ kind: 'life', name: 'X', value: { max_hp: true, max_armor: 0, max_shield: 0 } }))
+      .rejects.toThrow(/max_hp must be an integer 1\.\.255/);
   });
 });
 

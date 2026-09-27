@@ -186,3 +186,28 @@ describe('A56 powerup routes', () => {
     expect((await call(404, '{"error":"no such station"}', 'application/json', a => a.resetStation('u1'))).err).toBe('no such station');
   });
 });
+
+// Review MEDIUM (brx1, 222b1a81): PUT /api/pieces/:id (a picked piece's value change that fails to
+// compose) refuses 400 with `{errors: [...]}`, no singular `error` field at all -- `j()` used to fall
+// through to `r.statusText` ("Bad Request") for exactly this shape, losing the server's own words.
+// Build.tsx's SAVE (the one caller that reads this) must show them in the error strip.
+describe('a 400 carrying only `errors` (no `error`) surfaces the server\'s own words, not "Bad Request"', () => {
+  const call400 = async (body: string, statusText = 'Bad Request') => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(body, { status: 400, statusText, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    try { await createHttpApi().updatePiece('p1', { value: { fixed_id: 'assault_rifle' } }); return ''; }
+    catch (e) { return (e as Error).message; }
+    finally { globalThis.fetch = real; }
+  };
+  it('joins the errors array with " · ", the same separator the console uses elsewhere', async () => {
+    expect(await call400('{"errors":["NAMES FORCE RIFLE, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK"]}'))
+      .toBe('NAMES FORCE RIFLE, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK');
+    expect(await call400('{"errors":["FIRST REASON","SECOND REASON"]}')).toBe('FIRST REASON · SECOND REASON');
+  });
+  it('an `error` field, when present, still wins over `errors`', async () => {
+    expect(await call400('{"error":"THE SINGULAR REASON","errors":["A DIFFERENT REASON"]}')).toBe('THE SINGULAR REASON');
+  });
+  it('neither field present: falls back to the status line, as before', async () => {
+    expect(await call400('{}')).toBe('Bad Request');
+  });
+});

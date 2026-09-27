@@ -1144,10 +1144,13 @@ export class MockBackend implements Api {
    *  changed, exactly as this checks `p.value !== undefined`, never comparing against the old value
    *  itself (the server cannot tell "sent but unchanged" from "sent and changed" either).
    *
-   *  `ok`/`errors`/`fallbacks` ride the reply the same way `POST /api/play/pick` reports its own, for
-   *  the one case that needs them: a picked piece's value change that reaches `putConfig`. */
+   *  Review MEDIUM (brx1, 222b1a81): a value that passes `checkPieceValue`'s own shape check can still
+   *  fail to COMPOSE (a bench-gate rule, a cross-field conflict) -- this used to save the piece and
+   *  commit the config regardless, reporting `ok:false` in a 200. The server refuses outright and saves
+   *  NOTHING; test-compose the checked value before committing anything, so a refusal here rolls back
+   *  cleanly (nothing else has been mutated yet) and throws the same 400 `{errors}` the server does. */
   async updatePiece(id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }):
-    Promise<GamePiece & { ok?: boolean; errors?: string[]; fallbacks?: PieceKind[] }> {
+    Promise<GamePiece & { fallbacks?: PieceKind[] }> {
     const piece = this.pieces.find(x => x.piece_id === id);
     if (!piece) throw Object.assign(new Error('no such piece'), { status: 404 });
     if (piece.builtin) throw Object.assign(new Error('a built-in piece cannot be edited — copy it into a new one'), { status: 403 });
@@ -1160,26 +1163,38 @@ export class MockBackend implements Api {
     const willRecompose = picked && p.value !== undefined;
     const checked = p.value !== undefined ? this.checkPieceValue(piece.kind, p.value) : undefined;
     const mixed = willRecompose ? this.resolvePiecesMixed(this.gamePick.pieces, new Set([piece.kind])) : undefined;
+    let nm: string | undefined;
     if (p.name != null) {
-      const nm = p.name.trim();
+      nm = p.name.trim();
       if (!nm || nm.length > 24) throw new Error('name must be 1 to 24 characters');
-      const clash = this.pieces.find(x => x !== piece && x.kind === piece.kind && x.name.toLowerCase() === nm.toLowerCase());
+      const clash = this.pieces.find(x => x !== piece && x.kind === piece.kind && x.name.toLowerCase() === nm!.toLowerCase());
       if (clash) throw Object.assign(new Error(`"${clash.name}" already exists for ${piece.kind}`), { status: 409 });
-      piece.name = nm;
     }
+    let fallbacks: PieceKind[] | undefined;
+    if (mixed) {
+      // Speculative: the piece's OWN value must already carry the checked one for `composePartial` to
+      // read the NEW value (it looks the piece up by id, not from a value passed in) -- reverted below
+      // on a refusal, before the piece is otherwise touched at all.
+      const originalValue = piece.value;
+      piece.value = checked!;
+      const partial = this.composePartial(mixed.ids, this.gamePick.match);
+      const before = clone(this.config);
+      const r = await this.putConfig(partial);
+      if (!r.ok) {
+        piece.value = originalValue;
+        this.config = before;
+        throw Object.assign(new Error(r.errors.join(' · ')), { status: 400 });
+      }
+      fallbacks = mixed.fallbacks;
+    }
+    if (nm !== undefined) piece.name = nm;
     if (p.note != null) piece.note = p.note.slice(0, 80);
     // Round 3 (invalid preset field): a PUT with a value the CURRENT rules accept clears `invalid` --
     // `checkPieceValue` above already threw if this value would not; reaching here means it does.
     if (checked !== undefined) { piece.value = checked; delete piece.invalid; }
     piece.updated_t = now();
-    const out: GamePiece & { ok?: boolean; errors?: string[]; fallbacks?: PieceKind[] } = clone(piece);
-    if (mixed) {
-      const partial = this.composePartial(mixed.ids, this.gamePick.match);
-      const r = await this.putConfig(partial);
-      out.ok = r.ok;
-      out.errors = r.errors;
-      out.fallbacks = mixed.fallbacks;
-    }
+    const out: GamePiece & { fallbacks?: PieceKind[] } = clone(piece);
+    if (fallbacks) out.fallbacks = fallbacks;
     this.emit();
     return out;
   }
@@ -1212,12 +1227,16 @@ export class MockBackend implements Api {
         // one number a player cannot have none of (0 HP is not "hardcore", it is dead on arrival).
         const RANGE = { max_hp: [1, 255], max_armor: [0, 255], max_shield: [0, 255] } as const;
         const keys = ['max_hp', 'max_armor', 'max_shield'] as const;
-        const nums = keys.map(k => Number(v[k]));
-        nums.forEach((n, i) => {
-          const [lo, hi] = RANGE[keys[i]];
-          if (!Number.isInteger(n) || n < lo || n > hi) throw Object.assign(new Error(`${keys[i]} must be an integer ${lo}..${hi}`), { status: 400 });
+        // Review Low (brx1, 222b1a81): `Number(v[k])` coerced a STRING ("45") into a passing integer --
+        // the server's own equivalent (state.py `_check_loadout`'s `overrides.max_hp`/`max_armor`)
+        // checks the RAW value's type first (`isinstance(v, bool) or not isinstance(v, int)`); the raw
+        // type check here is `typeof n !== 'number'`, which a string OR a boolean both fail outright.
+        keys.forEach(k => {
+          const n = v[k];
+          const [lo, hi] = RANGE[k];
+          if (typeof n !== 'number' || !Number.isInteger(n) || n < lo || n > hi) throw Object.assign(new Error(`${k} must be an integer ${lo}..${hi}`), { status: 400 });
         });
-        const [max_hp, max_armor, max_shield] = nums;
+        const [max_hp, max_armor, max_shield] = keys.map(k => v[k] as number);
         return { max_hp, max_armor, max_shield };
       }
       case 'spawn': {
