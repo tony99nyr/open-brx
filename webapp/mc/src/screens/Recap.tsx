@@ -360,13 +360,16 @@ export function Recap() {
               starts the next one (A43), and this button covers the one-tap case. Disabled in flight: a
               double-tap on a slow LAN fired twice. */}
           {!past && !inPlay && (
+            // QA-21 (visual QA round 1, 2026-09-26): Tony's own name for this button is PLAY AGAIN, not
+            // NEXT MATCH -- the testid and the `api.nextMatch()` call are untouched, only the word on
+            // screen changes.
             <span data-testid="recap-next-match">
               <PrimaryButton size={13} disabled={starting} onClick={async () => {
                 if (starting) return;
                 setStarting(true);
                 try { const s = await run(() => api.nextMatch()); if (s) setView('build'); }
                 finally { setStarting(false); }
-              }}>{starting ? 'STARTING…' : 'NEXT MATCH ▸'}</PrimaryButton>
+              }}>{starting ? 'STARTING…' : 'PLAY AGAIN ▸'}</PrimaryButton>
             </span>
           )}
         </div>

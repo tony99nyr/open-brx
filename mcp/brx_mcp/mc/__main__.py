@@ -314,7 +314,7 @@ def build(args):
         # ones by hand after a field night). `Store()`'s default path already honours `BRX_MCP_HOME`
         # (mc_dir() -> storage.home_dir()), but a harness that boots --demo/--ephemeral WITHOUT
         # setting that env var (a human at a shell, or a caller this list misses) still got a real
-        # path -- unlike the presets shelf and the tunnel pidfile above, which already fall back to a
+        # path -- unlike the pieces shelf and the tunnel pidfile above, which already fall back to a
         # throwaway tempdir. Give the store the same fallback.
         if (args.demo or getattr(args, "ephemeral", False)) and not os.environ.get("BRX_MCP_HOME"):
             import tempfile
@@ -346,19 +346,27 @@ def build(args):
     if resumed:
         print(f"  match resumed: {resumed.upper()} (the snapshot named a match in play)", flush=True)
 
-    # A10 §8 saved games: the real shelf lives next to armory.json; --demo/--ephemeral get a throwaway copy so a
-    # demo "SAVE AS…" never lands in (or wipes) the host's real presets.json
+    # F411 BUILD pieces: the real shelf lives next to armory.json; --demo/--ephemeral get a throwaway copy
+    # so demo NEW ▸ never lands in (or wipes) the host's real pieces.json
     from pathlib import Path as _PP
-    from .presets import PresetStore, default_path
-    from .state import default_config
-    from . import policy as _policy
+    from .pieces import PieceStore, default_path
     if args.demo or getattr(args, "ephemeral", False):
         import tempfile
-        ppath = _PP(tempfile.mkdtemp(prefix="brx-mc-presets-")) / "presets.json"
-        log.info("presets: throwaway shelf at %s (demo/ephemeral)", ppath)
+        ppath = _PP(tempfile.mkdtemp(prefix="brx-mc-pieces-")) / "pieces.json"
+        log.info("pieces: throwaway shelf at %s (demo/ephemeral)", ppath)
     else:
         ppath = default_path()
-    session.presets = PresetStore(ppath, session.sanitize_config, default_config, _policy.merge, now_ms=session.now_ms)
+    session.attach_pieces(PieceStore(ppath, now_ms=session.now_ms))   # M1: also reconciles a stale/restored game_pick
+
+    # F411 §6 FAVOURITES: same real-shelf-vs-throwaway-demo split as BUILD pieces above.
+    from .favourites import FavouriteStore, default_path as _fav_default_path
+    if args.demo or getattr(args, "ephemeral", False):
+        import tempfile
+        fpath = _PP(tempfile.mkdtemp(prefix="brx-mc-favourites-")) / "favourites.json"
+        log.info("favourites: throwaway shelf at %s (demo/ephemeral)", fpath)
+    else:
+        fpath = _fav_default_path()
+    session.favourites = FavouriteStore(fpath, now_ms=session.now_ms)
 
     if args.demo and not restored_from_file:   # a restored session keeps its roster; demo seeding would re-add GUN-A..H (e2e lane finding)
         session.set_config({"mode": "tdm"})

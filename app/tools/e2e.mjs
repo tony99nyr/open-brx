@@ -202,28 +202,31 @@ const tapAudit = async (pg, screen, hard = false) => {
 };
 /** ONLY= runs skip the boot steps: make sure the MC page is loaded before a standalone step drives it. */
 const ensureMc = async () => { if (mc.url() === 'about:blank') { await mc.goto(MC + '/', { waitUntil: 'networkidle' }); await until(async () => (await mc.locator('nav button').count()) >= 5, 25000, 'MC shell'); } };   // the header has FIVE phase tabs since the ☰ menu (F2-21); waiting for six made every standalone step time out before it began (2026-09-04)
-/** Show the GAMES shelves (the cards, CREATE A GAME, CUSTOMIZE, EDIT, COPY, DELETE). Once a game is LOADED the
- *  tab shows the loaded game and folds the shelves behind PLAY A DIFFERENT GAME (47a87830, Games.tsx): open them. */
-const shelves = async (pg = mc) => {
-  const create = pg.locator('button[aria-label="create a game"]'), more = pg.locator('button[data-testid="pick-another"]');
-  await until(async () => (await create.count()) > 0 || (await more.count()) > 0, 6000, 'GAMES shelves or PLAY A DIFFERENT GAME');
-  if ((await create.count()) === 0 && (await more.getAttribute('aria-expanded')) === 'false') await more.click();
-  await until(async () => (await create.count()) > 0, 6000, 'GAMES shelves open');
+// F411: the old GAMES card-shelf (CREATE A GAME, CUSTOMIZE/EDIT/COPY/DELETE cards) is retired along
+// with the whole-game SavedGame/preset system it edited (games-presets.md §1: "BUILD creates presets,
+// PLAY picks presets"). PLAY's pickers are always on screen (no shelf to open), and a game is now
+// composed from eight independent piece picks rather than one saved, named "game" you play/edit/copy.
+/** PLAY's mode picker (Games.tsx): a bespoke `role="group" aria-label="game mode"` row of buttons,
+ *  `aria-pressed` by the server's own `game_pick`. A switch that would reshape >=2 rostered players
+ *  arms a confirm on the first tap (`data-testid="confirm-switch"`) and commits on the SAME button's
+ *  second tap (Round 4, restoring the pre-F411 hazard guard for PLAY's own picker). */
+const modeBtn = (label) => mc.locator('[data-testid="picker-mode"]').getByRole('button', { name: label });
+const playMode = async (label) => {
+  const btn = modeBtn(label);
+  if ((await btn.getAttribute('aria-pressed')) === 'true') return;
+  await btn.click();
+  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true' || (await mc.locator('[data-testid="confirm-switch"]').count()) > 0,
+    6000, `${label} picked, or its reshape confirm`);
+  if ((await mc.locator('[data-testid="confirm-switch"]').count()) > 0) {
+    await btn.click();
+    await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', 6000, `${label} picked (after confirming the reshape)`);
+  }
 };
-/** Tap a GAMES card. While the draft is TUNED — NOT SAVED the card asks "TAP AGAIN" (review #16): confirm it. */
-const playCard = async (label) => {
-  const card = mc.locator(`div[role="button"][aria-label="play ${label}"]`).first();
-  await shelves();
-  await card.click();
-  await sleep(250);
-  if ((await mc.locator('text=TAP AGAIN').count()) > 0) await card.click();
-};
-/** DESIGNER → GAMES. With unsaved edits the button asks "TAP AGAIN TO LEAVE" (review #16): confirm it. */
-const backToGames = async (pg = mc) => {
-  await pg.click('button:has-text("◂ BACK TO GAMES")');
-  await sleep(250);
-  if ((await pg.locator('text=TAP AGAIN TO LEAVE').count()) > 0) await pg.click('button:has-text("◂ BACK TO GAMES")');
-  await shelves(pg);   // back on GAMES, with the shelves showing
+/** BUILD → PLAY, the `◂ BACK TO PLAY` link (screens/Build.tsx). BUILD never starts a game, so unlike
+ *  the retired DESIGNER this has no "unsaved edits" confirm to walk through. */
+const backToPlay = async (pg = mc) => {
+  await pg.click('button:has-text("◂ BACK TO PLAY")');
+  await until(async () => (await pg.locator('text=Pick Game').count()) > 0, 6000, 'back on PLAY');
 };
 /** The MC error strip (CommandBar `button[role=alert]` — a dismissable ▲ line). */
 const errStrip = async () => (await mc.locator('button[role="alert"]').allTextContents()).join(' | ');
@@ -286,56 +289,51 @@ await step('scan armory from the UI → rows appear', async () => {
   await until(async () => (await mc.locator(`text=${guns[0].gun_id}`).count()) > 0, 8000, 'armory row rendered');
   await shot(mc, 'armory-scanned'); await tapAudit(mc, 'armory'); await textAudit(mc, 'armory');
 });
-await step('the ARMORY gate (HARDWARE READY ▸, or what it waits for) advances to GAMES — the GAMES screen renders (dead GO chip regression)', async () => {
+await step('the ARMORY gate (HARDWARE READY ▸, or what it waits for) advances to PLAY — the PLAY screen renders (dead GO chip regression)', async () => {
   await mc.click('[data-testid="armory-gate"]');
   await until(async () => (await st()).phase === 'build', 6000, 'server phase build');
-  await until(async () => (await mc.locator('button[aria-label="create a game"]').count()) > 0, 6000, 'GAMES screen rendered (CREATE A GAME card)');
-  expect((await mc.locator('text=PICK THE GAME').count()) > 0, 'GAMES header missing');
+  await until(async () => (await mc.locator('[data-testid="picker-mode"]').count()) > 0, 6000, 'PLAY screen rendered (the GAME MODE picker)');
+  expect((await mc.locator('text=Pick Game').count()) > 0, 'PLAY header missing');
 });
-await step('GAMES: stock mode cards switch the game — PLAYING tag, rail title and LOADOUT row follow (screen truth)', async () => {
-  await playCard('FREE-FOR-ALL');
+await step('PLAY: the mode picker switches the game — aria-pressed follows the server, the operator note follows the mode (screen truth)', async () => {
+  await playMode('FREE-FOR-ALL');
   await until(async () => (await st()).config.mode === 'ffa', 5000, 'ffa applied');
-  // the UI snapshot is coalesced (≤4/s): wait until the card itself shows PLAYING before the next click — a card that
-  // still believes it is active ignores the tap (`if (!on)`), which is correct app behaviour and a race in a test
-  await until(async () => (await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"][aria-pressed="true"]').count()) > 0, 6000, 'FFA card shows PLAYING');
-  expect((await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"]').first().textContent()).includes('PLAYING'), 'FFA card has no PLAYING tag');
-  await playCard('TEAM DEATHMATCH');
+  expect((await modeBtn('FREE-FOR-ALL').getAttribute('aria-pressed')) === 'true', 'FFA button not marked picked');
+  // FFA carries no operator note (games-redesign.md §9); TDM's is TEAM HITS DON'T COUNT — the switch
+  // below proves the note follows the mode, not just the server's config.
+  expect((await mc.locator('[data-testid="operator-note"]').count()) === 0, 'FFA should show no operator note');
+  await playMode('TEAM DEATHMATCH');
   await until(async () => (await st()).config.mode === 'tdm', 5000, 'tdm back');
-  await until(async () => (await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"][aria-pressed="true"]').count()) > 0, 6000, 'TDM card shows PLAYING');
-  const rail = await mc.locator('text=STOCK MODE // PLAYING').locator('xpath=..').textContent();
-  expect(/TEAM DEATHMATCH/.test(rail), 'rail title is not TEAM DEATHMATCH: ' + rail.slice(0, 80));
-  const load = await mc.locator('text=LOADOUT').locator('xpath=..').first().textContent();
-  expect(/OPEN/.test(load) && /PRIMARY: PLAYER PICKS/.test(load) && /SLOT 2:.*WEAPON.*PERK/.test(load), 'LOADOUT row wrong: ' + load);
-  await shot(mc, 'games-modes'); await textAudit(mc, 'games');
+  expect((await modeBtn('TEAM DEATHMATCH').getAttribute('aria-pressed')) === 'true', 'TDM button not marked picked');
+  await until(async () => (await mc.locator('[data-testid="operator-note"]').count()) > 0, 6000, 'TDM operator note');
+  expect((await mc.locator('[data-testid="operator-note"]').textContent()).includes("TEAM HITS DON'T COUNT"), 'TDM note missing');
+  await shot(mc, 'games-modes'); await textAudit(mc, 'play');
 });
-await step('GAMES: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'games', true); });
-await step('GAMES: VENUE seg + NIGHT OPS change the venue → summary VENUE row + server config; venue survives a game switch', async () => {
-  const venue = mc.locator('[role="group"][aria-label="venue"]');
-  await venue.locator('button:has-text("INDOOR")').click();
-  await until(async () => (await st()).config.environment === 'indoor', 5000, 'indoor on the server');
-  await venue.locator('button[aria-label="night ops"]').click();
+await step('PLAY: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'play', true); });
+await step('PLAY: NIGHT (MATCH SETTINGS strip) changes the server config and survives a mode switch (F410 removed the venue picker — only NIGHT is tested here)', async () => {
+  const daynight = mc.locator('[role="group"][aria-label="day or night"]');
+  await daynight.locator('button:has-text("NIGHT")').click();
   await until(async () => (await st()).config.night === true, 5000, 'night on the server');
-  const row = () => mc.locator('text=VENUE').locator('xpath=..').last().textContent();
-  await until(async () => /INDOOR · NIGHT OPS/.test(await row()), 5000, 'summary VENUE row reads INDOOR · NIGHT OPS');
-  await playCard('FREE-FOR-ALL');      // venue is tonight's, not the game's
+  await playMode('FREE-FOR-ALL');
   await until(async () => (await st()).config.mode === 'ffa', 5000, 'ffa');
-  await until(async () => (await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"][aria-pressed="true"]').count()) > 0, 6000, 'FFA playing');
-  const c = (await st()).config; expect(c.environment === 'indoor' && c.night === true, 'venue was reset by playing a game: ' + c.environment + '/' + c.night);
-  await playCard('TEAM DEATHMATCH');
-  await until(async () => (await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"][aria-pressed="true"]').count()) > 0, 6000, 'TDM playing');
-  await venue.locator('button:has-text("OUTDOOR")').click(); await venue.locator('button[aria-label="night ops"]').click();
-  await until(async () => { const c = (await st()).config; return c.environment === 'outdoor' && c.night === false; }, 5000, 'venue restored');
+  expect((await st()).config.night === true, 'night was reset by switching mode: ' + JSON.stringify((await st()).config.night));
+  await playMode('TEAM DEATHMATCH');
+  await until(async () => (await modeBtn('TEAM DEATHMATCH').getAttribute('aria-pressed')) === 'true', 6000, 'TDM playing');
+  await daynight.locator('button:has-text("DAY")').click();
+  await until(async () => (await st()).config.night === false, 5000, 'day restored');
 });
 await step('config: fast respawn + short match for the run', async () => {
   const r = await api('PUT', '/api/config', { time_limit_s: 120, respawn: { type: 'auto', delay_s: 4 } });
   expect(r.ok, 'config PUT failed: ' + JSON.stringify(r.errors));
 });
-await step('LOAD ▸ on GAMES shows the LOADED GAME state; CONTINUE TO KIT ▸ advances to KIT — the KIT screen renders', async () => {
-  // GAMES has two states since 47a87830 / f7b29c9f (Games.tsx header): LOAD ▸ announces the game to the phones and
-  // stays on GAMES, then CONTINUE TO KIT ▸ is the way on. ARMORY's gate is HARDWARE READY ▸.
+await step('LOAD ▸ on PLAY shows LOADED · SENT n/n PHONES and swaps the control to CONTINUE TO KIT ▸; CONTINUE TO KIT ▸ advances to KIT — the KIT screen renders', async () => {
+  // PLAY has two states, restored in VQA round 1 (Games.tsx): LOAD ▸ announces the game to the
+  // phones and stays on PLAY, then CONTINUE TO KIT ▸ is the way on (`api.setPhase('kit')`). ARMORY's
+  // gate is HARDWARE READY ▸.
   await mc.click('[data-testid="game-load"] button:has-text("LOAD ▸")');
   await until(async () => (await st()).game?.loaded === true, 6000, 'server game.loaded');
-  await until(async () => (await mc.locator('[data-testid="active-game-config"]').count()) > 0, 6000, 'GAMES shows the LOADED GAME state');
+  await until(async () => (await mc.locator('[data-testid="game-continue-kit"]').count()) > 0, 6000, 'PLAY swaps LOAD for CONTINUE TO KIT');
+  expect((await mc.locator('[data-testid="game-loaded-status"]').textContent()).startsWith('LOADED'), 'no LOADED status line after LOAD');
   expect((await st()).phase === 'build', 'LOAD must not advance the phase');
   await mc.click('[data-testid="game-continue-kit"] button:has-text("CONTINUE TO KIT ▸")');
   await until(async () => (await st()).phase === 'kit', 6000, 'server phase kit');
@@ -473,7 +471,7 @@ await step('END TRY-OUT clears the panel', async () => {
 // ═══ F3b · LOADOUT v2 (docs/spec/loadout.md §6): rules, phone self-serve picks, perks, locks, saved games ═══
 flow('F3b loadout');
 let cfgBeforeRules = null;
-await step('A10 §4.1: host back on GAMES (phase build) → phones show SETTING UP THE GAME, no plates, no READY UP; back to KIT → BRIEFING again', async () => {
+await step('A10 §4.1: host back on PLAY (phase build) → phones show SETTING UP THE GAME, no plates, no READY UP; back to KIT → BRIEFING again', async () => {
   await api('POST', '/api/phase', { phase: 'build' });
   await until(async () => (await hudA.locator('.lobby .setup').count()) > 0 && (await hudA.locator('.plate.slot').count()) === 0 && (await hudA.locator('[data-act="onReady"]').count()) === 0, 8000, 'hudA setting-up screen');
   expect((await hudA.locator('.lobby .setup .t').textContent() || '').includes('SETTING UP'), 'setting-up copy missing');
@@ -487,18 +485,22 @@ await step('A10 §4.1: host back on GAMES (phase build) → phones show SETTING 
   await hudB.click('[data-act="onBriefDone"]');
   await until(async () => (await hudB.locator('.plate.slot').count()) === 3, 5000, 'hudB plates back');
 });
-await step(`(a) GAMES: play FREE-FOR-ALL (its default ruleset is NO HEAVIES) → Kit arsenal "${BASE_POOL}", Rocket tile disabled`, async () => {
-  // pickup_only (rocket_launcher/rail_gun) is never in any pool, so NO HEAVIES and OPEN both land on
-  // the same derived BASE_POOL — see the derivation at the top of this file.
+await step(`(a) PLAY: FREE-FOR-ALL → Kit arsenal "${BASE_POOL}", Rocket tile disabled (pickup_only, never in any pool)`, async () => {
+  // F411 decoupled mode from a loadout ruleset: FFA no longer carries its own "NO HEAVIES" default
+  // (that lived in the retired GAMES tile/SavedGame system) — a fresh session's misc_loadouts piece is
+  // the `standard` builtin, heavies ON, so loadout_policy.preset is OPEN here. Rocket Launcher and Rail
+  // Gun stay disabled regardless: pickup_only excludes them from every pool unconditionally, which is
+  // exactly why NO HEAVIES and OPEN always landed on the same derived BASE_POOL (see the top of this
+  // file) — this step now proves the half of that fact F411 left in place.
   cfgBeforeRules = (await st()).config;
   await nav(1);
-  await playCard('FREE-FOR-ALL');            // the run config is TUNED (fast respawn) → the card asks TAP AGAIN
-  await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'preset no_heavies');
+  await playMode('FREE-FOR-ALL');            // the roster is unaffected: FFA's own team layout matches TDM's split
+  await until(async () => (await st()).config.loadout_policy.preset === 'open', 6000, 'preset open');
   await nav(2);
   await mc.locator('div[role="button"]:has-text("ALPHA")').first().click();
   await until(async () => (await mc.locator(`text=${BASE_POOL}`).count()) > 0, 6000, `arsenal header ${BASE_POOL}`);
   const dis = await mc.locator('div[role="button"][aria-label*="Rocket"]').first().getAttribute('aria-disabled');
-  expect(dis === 'true', 'Rocket Launcher tile is not aria-disabled under NO HEAVIES');
+  expect(dis === 'true', 'Rocket Launcher tile is not aria-disabled (pickup_only)');
   await shot(mc, 'kit-no-heavies');
 });
 await step('(a2) defect-2: a missing weapon photo on the KIT arsenal tile shows a glyph, not a silent empty box', async () => {
@@ -620,18 +622,27 @@ await step('(f) READY UP while a try-out is armed ends it; first ready does NOT 
   await hudA.locator('[data-act="onReady"]').first().dispatchEvent('click');   // un-ready again so F4 readies both from a clean state
   await until(async () => (await st()).players.find(p => p.player_id === pA.player_id).ready === false, 6000, 'ALPHA un-ready');
 });
-await step('(g) GAMES: play the saved "Silenced Sniper" → both phones padlocked "FIXED BY THE HOST"; MC shows the LOADOUTS RESET notice', async () => {
+await step('(g) BUILD + PLAY: a FIXED-primary piece (Silenced Sniper) picked on PLAY → both phones padlocked "FIXED BY THE HOST"; MC shows the LOADOUTS RESET notice', async () => {
+  // F411 retired the whole-game SavedGame this step used to drive through the GAMES card + DESIGNER
+  // (games-presets.md §1: "No migration"). The FIXED-primary hazard it protects is unchanged — BUILD
+  // creates the piece (BUILD's own editor UI is its own e2e suite's job, test/e2e/build.mjs), PLAY
+  // picks it, same as an operator would. Created via the API rather than driving BUILD's editor here,
+  // to keep this suite's job (MC + phones, end to end) separate from BUILD's own.
+  const piece = await api('POST', '/api/pieces', { kind: 'primary', name: 'Silenced Sniper',
+    value: { choice: 'fixed', kinds: ['weapon'], fixed_id: 'sniper_rifle', exclude_tags: [], exclude_ids: [], only_ids: [] } });
+  expect(piece.piece_id, 'BUILD did not create the Silenced Sniper piece: ' + JSON.stringify(piece));
   await nav(1);
-  await playCard('Silenced Sniper');
-  await until(async () => { const c = (await st()).config; return c.mode === 'ffa' && c.loadout_policy.primary.choice === 'fixed' && c.loadout_policy.primary.fixed_id === 'sniper_rifle'; }, 6000, 'silenced sniper applied');
+  await until(async () => (await mc.locator('[data-testid="picker-primary"]').count()) > 0, 6000, 'the PRIMARY picker to appear with a second piece');
+  await mc.locator('[data-testid="picker-primary"]').getByRole('button', { name: 'Silenced Sniper' }).click();
+  await until(async () => { const c = (await st()).config; return c.loadout_policy.primary.choice === 'fixed' && c.loadout_policy.primary.fixed_id === 'sniper_rifle'; }, 6000, 'silenced sniper applied');
   for (const [pg, nm] of [[hudA, 'hudA'], [hudB, 'hudB']]) {
-    await until(async () => (await pg.locator('.plate.slot.locked').count()) === 3, 8000, nm + ' locked plates');
+    // A PRIMARY piece fixes the primary only; the secondary and perk stay the player's pick (the old
+    // whole-game Silenced Sniper also fixed those two, so it locked three plates).
+    await until(async () => (await pg.locator('.plate.slot.locked').count()) >= 1, 8000, nm + ' locked primary plate');
     expect((await pg.locator('text=FIXED BY THE HOST').count()) > 0, nm + ' missing FIXED BY THE HOST');
   }
-  // The "N LOADOUTS RESET BY <game name>" notice must survive the venue re-assert PUT (server keeps _policy_notice
-  // across venue-only PUTs; the label is the PLAYING game's name) — a hard assertion, not a finding (review #10)
-  await until(async () => (await mc.locator('text=/LOADOUTS? RESET BY SILENCED SNIPER/i').count()) > 0, 6000, 'the amber "N LOADOUTS RESET BY SILENCED SNIPER" notice on GAMES');
-  expect((await mc.locator('div[role="button"][aria-label="play Silenced Sniper"][aria-pressed="true"]').count()) > 0, 'Silenced Sniper card not marked PLAYING');
+  await until(async () => (await mc.locator('text=/LOADOUTS? RESET/i').count()) > 0, 6000, 'the amber LOADOUTS RESET notice on PLAY');
+  expect((await mc.locator('[data-testid="picker-primary"]').getByRole('button', { name: 'Silenced Sniper' }).getAttribute('aria-pressed')) === 'true', 'Silenced Sniper option not marked picked');
   await shot(mc, 'games-snipers-reset'); await shot(hudA, 'hudA-locked-snipers');
 });
 await step('(g2) KIT under Silenced Sniper: both slot cards read FIXED (locked by the game); tapping the SMG tile leaves the loadout unchanged', async () => {
@@ -647,61 +658,48 @@ await step('(g2) KIT under Silenced Sniper: both slot cards read FIXED (locked b
   expect((await mc.locator('text=TRYING SMG').count()) === 0, 'a disabled tile started a try-out');
   await shot(mc, 'kit-fixed-locked');
 });
-await step('(h) DESIGNER: create a game → name + notes → SAVE GAME "e2e test" → BACK TO GAMES shows the card', async () => {
+// F411 retired DESIGNER's whole-game create/edit/copy (a named SavedGame you both authored and played)
+// along with the store it lived in (`/api/presets`, games-presets.md §1: "No migration"). Its nearest
+// surviving analogue is FAVOURITES (games-presets.md §6): a named bundle of PLAY's own whole pick —
+// not an editable/copyable entity, just save the current pick under a name, load it back, rename it,
+// delete it. (h)/(h2)/(h3) below prove that shape instead; there is no "copy" or "notes" field, so
+// those parts of the old flow have no home any more.
+await step('(h) PLAY: SAVE AS A FAVOURITE names the current pick → it appears as a chip', async () => {
   await nav(1);
-  await shelves(); await mc.click('button[aria-label="create a game"]');
-  await until(async () => (await mc.locator('input[aria-label="game name"]').count()) > 0, 6000, 'designer open');
-  await mc.fill('input[aria-label="game name"]', 'e2e test');
-  await mc.fill('textarea[aria-label="game notes"]', 'notes written by the e2e suite');
-  await mc.click('button:has-text("SAVE GAME")');
-  await until(async () => (await (await fetch(MC + '/api/presets')).json()).some(g => g.name.toLowerCase() === 'e2e test'), 6000, 'preset saved server-side');
-  await until(async () => (await mc.locator('text=SAVED "E2E TEST"').count()) > 0, 6000, 'SAVED status in the rail');
-  await backToGames();
-  await until(async () => (await mc.locator('div[role="button"][aria-label="play e2e test"]').count()) > 0, 6000, 'saved card on GAMES');
+  await mc.locator('[data-testid="save-favourite"] button').click();
+  await mc.fill('input[aria-label="favourite name"]', 'e2e test');
+  await mc.click('[data-testid="save-favourite-form"] button:has-text("SAVE")');
+  await until(async () => (await api('GET', '/api/favourites')).some(f => f.name === 'e2e test'), 6000, 'favourite saved server-side');
+  await until(async () => (await mc.locator('[data-testid="favourites-row"]').getByText('e2e test', { exact: false }).count()) > 0, 6000, 'favourite chip on PLAY');
   await shot(mc, 'games-saved');
 });
-await step('(h2) EDIT pre-fills the designer with the saved name + notes', async () => {
-  await shelves(); await mc.click('button[aria-label="edit e2e test"]');
-  await until(async () => (await mc.locator('input[aria-label="game name"]').count()) > 0, 6000, 'designer open');
-  expect((await mc.inputValue('input[aria-label="game name"]')) === 'e2e test', 'name not pre-filled');
-  expect((await mc.inputValue('textarea[aria-label="game notes"]')) === 'notes written by the e2e suite', 'notes not pre-filled');
-  expect((await mc.locator('text=EDIT E2E TEST').count()) > 0, 'designer header is not EDIT E2E TEST');
-  await backToGames();
+await step('(h2) PLAY: renaming a favourite (✎ → ✓) commits the new name', async () => {
+  const fav = (await api('GET', '/api/favourites')).find(f => f.name === 'e2e test');
+  expect(fav, 'no "e2e test" favourite to rename');
+  await mc.locator('button[aria-label="rename e2e test"]').click();
+  const box = mc.locator(`[data-testid="favourite-rename-${fav.favourite_id}"]`);
+  await box.locator('input').fill('e2e test renamed');
+  await box.locator('button[aria-label="save rename"]').click();
+  await until(async () => (await api('GET', '/api/favourites')).some(f => f.favourite_id === fav.favourite_id && f.name === 'e2e test renamed'), 6000, 'rename committed server-side');
+  await until(async () => (await mc.locator('[data-testid="favourites-row"]').getByText('e2e test renamed', { exact: false }).count()) > 0, 6000, 'renamed chip on screen');
 });
-await step('(h3) copy "e2e test" → play the COPY → the copy\'s card is PLAYING and the rail title is the copy (identity by applied id, not content)', async () => {
-  await shelves();
-  const copyBtn = mc.locator('button[aria-label^="duplicate e2e test"], button[aria-label^="copy e2e test"]').first();
-  expect((await copyBtn.count()) > 0, 'no DUPLICATE / COPY button on the e2e test card');
-  await copyBtn.click();
-  // the copy either opens the designer as a draft or lands on the shelf: wait for whichever happens
-  await until(async () => (await mc.locator('input[aria-label="game name"]').count()) > 0 || (await (await fetch(MC + '/api/presets')).json()).some(g => /^e2e test copy/i.test(g.name)), 6000, 'the copy opened in the designer or saved');
-  if ((await mc.locator('input[aria-label="game name"]').count()) > 0) {           // the copy may open in the designer as a draft: save it there
-    if (!/copy/i.test(await mc.inputValue('input[aria-label="game name"]'))) await mc.fill('input[aria-label="game name"]', 'e2e test copy');
-    if ((await mc.locator('button:has-text("SAVE GAME")').count()) > 0) await mc.click('button:has-text("SAVE GAME")'); else await mc.click('button:has-text("SAVE")');
-    await until(async () => (await (await fetch(MC + '/api/presets')).json()).some(g => /^e2e test copy/i.test(g.name)), 6000, 'copy saved');
-    await backToGames();
-  }
-  const copy = (await (await fetch(MC + '/api/presets')).json()).find(g => /^e2e test copy/i.test(g.name));
-  expect(copy, 'no saved copy of e2e test on the server');
-  const card = mc.locator(`div[role="button"][aria-label="play ${copy.name}"]`).first();
-  await until(async () => (await card.count()) > 0, 6000, 'copy card on GAMES');
-  await playCard(copy.name);
-  await until(async () => (await st()).active_preset_id === copy.preset_id, 6000, 'server applied the COPY (active_preset_id)');
-  await until(async () => (await card.getAttribute('aria-pressed')) === 'true', 6000, 'the COPY card is marked PLAYING');
-  expect((await mc.locator('div[role="button"][aria-label="play e2e test"]').first().getAttribute('aria-pressed')) !== 'true', 'the ORIGINAL is still marked PLAYING');
-  // A LOADED game (47a87830) heads the tab as SAVED GAME // LOADED; the picker rail reads // PLAYING before a LOAD.
-  const rail = await mc.locator('text=/SAVED GAME \\/\\/ (PLAYING|LOADED)/').first().locator('xpath=..').textContent();
-  expect(new RegExp(rxLit(copy.name), 'i').test(rail), 'rail title is not the copy: ' + rail.slice(0, 80));
-  await shot(mc, 'games-play-copy');
-  for (const nm of [copy.name, 'e2e test']) {
-    await mc.click(`button[aria-label="delete ${nm}"]`); await mc.click('button:has-text("CONFIRM DELETE")');
-    await until(async () => (await mc.locator(`div[role="button"][aria-label="play ${nm}"]`).count()) === 0, 6000, nm + ' removed');
-  }
+await step('(h3) PLAY: loading a favourite re-applies its whole pick; delete is a two-tap confirm', async () => {
+  await playMode('TEAM DEATHMATCH');   // move the live pick away from the saved FFA + fixed-primary bundle first
+  const fav = (await api('GET', '/api/favourites')).find(f => f.name === 'e2e test renamed');
+  await mc.locator(`[data-testid="favourite-chip-${fav.favourite_id}"] button`).first().click();
+  await until(async () => (await st()).config.mode === 'ffa', 6000, 'loading the favourite re-applied its pick (ffa)');
+  await mc.locator('button[aria-label="delete e2e test renamed"]').click();
+  await mc.click(`[data-testid="favourite-confirm-delete-${fav.favourite_id}"] button:has-text("CONFIRM")`);
+  await until(async () => !(await api('GET', '/api/favourites')).some(f => f.favourite_id === fav.favourite_id), 6000, 'favourite deleted server-side');
+  // the FAVOURITE is gone; the PRIMARY piece it referenced still exists (BUILD's own store, untouched
+  // by deleting a favourite) — put PLAY back on the builtin so the rest of this run kits normally.
+  await mc.locator('[data-testid="picker-primary"]').getByRole('button', { name: 'ALL' }).click();
+  await until(async () => (await st()).config.loadout_policy.primary.choice === 'player', 6000, 'primary rules restored to ALL');
 });
 await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster line; PERK card → Extended Mags → card (A14: the weapon stays)', async () => {
   await nav(1);
-  await playCard('FREE-FOR-ALL');          // back to NO HEAVIES rules (player picks)
-  await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'no_heavies');
+  await playMode('FREE-FOR-ALL');          // back to OPEN rules (player picks every slot)
+  await until(async () => (await st()).config.loadout_policy.preset === 'open', 6000, 'open');
   await nav(2);
   await mc.locator('div[role="button"]:has-text("BRAVO")').first().click();
   await mc.locator('div[role="button"]:has-text("SECONDARY")').first().click();
@@ -771,21 +769,12 @@ await step('(j) a REJECTED host pick shows the server\'s error — no "CHANGED F
   } finally { await mc.unroute('**/api/players/*'); expectHttpErrors = false; }
   await mc.locator('button[role="alert"]').first().click().catch(() => {});   // dismiss the strip
 });
-await step('(k) DESIGNER: PLAY THIS NOW ▸ saves + applies the draft and lands on KIT', async () => {
-  await nav(1);
-  await shelves(); await mc.click('button[aria-label="customize TEAM DEATHMATCH"]');
-  await until(async () => (await mc.locator('input[aria-label="game name"]').count()) > 0, 6000, 'designer open');
-  const time = mc.locator('input[aria-label="time limit minutes"]');
-  await time.fill('7'); await time.press('Enter');
-  await mc.fill('input[aria-label="game name"]', 'play now test');
-  await mc.click('button:has-text("PLAY THIS NOW")');
-  await until(async () => { const s = await st(); return s.phase === 'kit' && s.config.time_limit_s === 420 && s.config.mode === 'tdm'; }, 8000, 'server: phase kit, TDM, 7 min');
-  await until(async () => (await mc.locator('text=KIT EACH PLAYER').count()) > 0, 6000, 'landed on KIT');
-  const saved = (await (await fetch(MC + '/api/presets')).json()).find(g => g.name === 'play now test');
-  expect(saved, 'PLAY THIS NOW did not save the named game');
-  expect((await st()).active_preset_id === saved.preset_id, 'active_preset_id is not the played game');
-  await fetch(MC + '/api/presets/' + encodeURIComponent(saved.preset_id), { method: 'DELETE' });
-});
+// `(k) DESIGNER: PLAY THIS NOW` is DELETED: it proved a single action that edited a draft's time
+// limit, saved+named it, applied it and jumped straight to KIT in one tap. PLAY has no draft to save
+// (every pick applies at once), and BUILD never starts a game (games-presets.md §1), so that
+// collapsed action has no home. The pieces it protects are covered elsewhere: TIME is a real control on
+// PLAY's own MATCH SETTINGS strip (`(a)`/`(g)` above pick pieces the same way), and LOAD ▸ → CONTINUE
+// TO KIT ▸ landing on KIT is F1's own "LOAD ▸ on PLAY..." step.
 await step('restore OPEN rules + the run config so the match flow continues unchanged', async () => {
   const c = cfgBeforeRules;
   await api('PUT', '/api/config', { mode: c.mode, environment: c.environment, night: c.night, time_limit_s: c.time_limit_s, respawn: c.respawn, scoring: c.scoring, health: c.health, teams: c.teams, loadout_policy: { preset: 'open' } });
@@ -1046,191 +1035,17 @@ await step('EVICT is a two-step confirm and kicks the node', async () => {
   await until(async () => { const s = await st(); return s.players.find(p => p.player_id === pA.player_id).node_id; }, 20000, 'hudA auto-rejoined after evict');
 });
 
-// ═══ F8a · DESIGNER controls — every control changes what the host SEES (Tony: "you can't click these toggles") ═══
-// One step per control; each asserts VISIBLE state (tile art opacity/filter, chip fill, summary text), not aria alone.
-flow('F8a designer-controls');
-const D = {
-  prim: () => mc.locator('[aria-label="primary slot rules"]'), sec: () => mc.locator('[aria-label="secondary slot rules"]'),
-  pSum: () => mc.getByTestId('primary-summary').textContent(), sSum: () => mc.getByTestId('secondary-summary').textContent(),
-  rail: () => mc.locator('aside').textContent(),
-  /** the art strip is the tile's first span: dimmed = opacity ≤ .3 + a grayscale filter */
-  // The weapon grid became an alphabetical TABLE (2026-09-02) — no images to dim and no filled
-  // chips, so allowed/off is read from aria-pressed, which is what a screen reader gets too.
-  // MC visual QA M15 (2026-09-23): a row this slot can never hold (a pickup-only heavy) is a LOCKED row, not a
-  // button, and it reads as off.
-  art: async (name) => {
-    const el = mc.locator(`[aria-label="primary slot rules"] [aria-label^="${name}"]`).first();
-    return (await el.getAttribute('data-locked')) ? 'false' : el.getAttribute('aria-pressed');
-  },
-  chip: (label) => mc.locator(`[aria-label="primary slot rules"] button:has-text("${label}")`).first(),
-  // MC visual QA M15: a class chip the slot can never take (every heavy is pickup-only) is hidden.
-  noChip: async (label) => (await mc.locator(`[aria-label="primary slot rules"] button:has-text("${label}")`).count()) === 0,
-  locked: async (name) => !!(await mc.locator(`[aria-label="primary slot rules"] [aria-label^="${name}"]`).first().getAttribute('data-locked')),
-};
-const dimmed = a => a === 'false';
-const lit = a => a === 'true';
-await step(`designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO HEAVIES (${BASE_POOL}), heavies dimmed, HEAVY chip unfilled`, async () => {
-  // rocket_launcher/rail_gun are the only visible `heavy`-tagged rows left (laser_cannon/ion_sniper/
-  // energy_launcher are hidden too), and both are `pickup_only`: NO HEAVIES and OPEN land on the
-  // SAME derived BASE_POOL, since pickup_only already excludes them before the chip's own rule applies.
-  await ensureMc();
-  await mc.locator('nav button').nth(1).click();
-  await shelves(); await mc.click('button[aria-label="customize FREE-FOR-ALL"]');
-  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 6000, `FFA base starts at NO HEAVIES (${BASE_POOL})`);
-  expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')), 'heavy tiles are not dimmed under NO HEAVIES');
-  // The DESIGNER offers only weapons a player can be issued (1c83b745): the Energy Launcher
-  // (UNPLAYABLE_IDS) is ALSO `hidden` now (2026-09-17), so it has no row for a stronger reason too.
-  expect((await D.prim().locator('button[aria-label^="Energy Launcher"]').count()) === 0, 'the unplayable Energy Launcher has a chip');
-  expect(lit(await D.art('Assault Rifle')), 'assault rifle tile should be lit');
-  expect(await D.noChip('HEAVY'), 'HEAVY chip shown, but the primary slot can never take a heavy (all pickup-only, M15)');
-  expect(await D.locked('Rocket Launcher') && await D.locked('Rail Gun'), 'pickup-only heavies are not locked rows (M15)');
-  await shot(mc, 'designer-open'); await textAudit(mc, 'designer');
-});
-await step('DESIGNER: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'designer', true); });
-await step(`designer-controls 1: template OPEN → ${BASE_POOL}; heavies stay dimmed and the HEAVY chip reads PARTIAL (pickup_only overrides the tag rule)`, async () => {
-  // rocket_launcher/rail_gun can never be "in the pool" (pickup_only), so under OPEN (no exclude_tags
-  // at all) the HEAVY chip's own members read 0/2 allowed — "mixed", not fully on — and the tiles
-  // stay dimmed even though nothing is explicitly excluding them by rule.
-  await mc.click('button[title="Everything, players pick all three slots"]');
-  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 4000, `OPEN → ${BASE_POOL}`);
-  expect(dimmed(await D.art('Rocket Launcher')), 'rocket launcher should stay dimmed under OPEN (pickup_only)');
-  expect(await D.noChip('HEAVY'), 'HEAVY chip shown under OPEN (M15: hidden while every heavy is pickup-only)');
-  expect((await mc.locator('button[title="Everything, players pick all three slots"][aria-pressed="true"]').count()) === 1, 'OPEN template not shown as selected');
-  await shot(mc, 'designer-open-template');
-});
-await step('designer-controls 2: template SNIPERS → PRIMARY "EVERYONE GETS SNIPER RIFLE", only the sniper tile lit, slot 2 OFF, rail follows', async () => {
-  await mc.click('button[title="Everyone gets the sniper rifle, no secondary, no perks, no picking"]');
-  await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await D.pSum()) && /OFF/.test(await D.sSum()), 4000, 'SNIPERS → fixed primary + slot 2 off');
-  expect((await D.prim().locator('button[aria-label="Sniper Rifle, allowed"]').count()) === 1, 'sniper rifle tile not shown as the fixed pick');
-  expect((await D.prim().locator('button[aria-label$=", allowed"]').count()) === 1, 'more than one tile lit under FIXED');
-  expect((await D.prim().locator('button[aria-pressed="true"]:has-text("FIXED")').count()) === 1, 'WHO PICKS does not read FIXED');
-  expect((await D.sec().locator('button[aria-pressed="true"]:has-text("OFF")').count()) === 1, 'slot 2 WHO PICKS does not read OFF');
-  await until(async () => /SNIPER RIFLE FOR EVERYONE/.test(await D.rail()) && /NO SLOT 2/.test(await D.rail()), 4000, 'rail follows the template');
-  await shot(mc, 'designer-snipers');
-});
-await step(`designer-controls 3: HEAVY chip off (from OPEN) → still ${BASE_POOL}, chip flips PARTIAL → OFF (pickup_only already excluded both heavies)`, async () => {
-  // tapping the HEAVY chip from its OPEN "mixed" (0/2) reading flips it to an EXPLICIT off (any state
-  // but fully off taps to off) — but the pool count does not move, because rocket_launcher/rail_gun
-  // were already out of it via pickup_only, not the tag rule.
-  await mc.click('button[title="Everything, players pick all three slots"]');
-  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 4000, 'OPEN again');
-  // M15: there is no HEAVY chip to toggle while every heavy is pickup-only; the heavies read locked, and
-  // the pool is the same BASE_POOL either way.
-  expect(await D.noChip('HEAVY'), 'HEAVY chip shown while every heavy is pickup-only');
-  expect(new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 'pool count should be BASE_POOL — pickup_only already excluded both heavies: ' + await D.pSum());
-  expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')), 'heavy tiles not dimmed after HEAVY off');
-  expect(lit(await D.art('Sniper Rifle')) && lit(await D.art('SMG')), 'a non-heavy tile went dim');
-  await shot(mc, 'designer-heavy-off');
-});
-await step(`designer-controls 4: tap the Assault Rifle tile → ${AR_OFF_POOL}, that tile dimmed and labelled off`, async () => {
-  await D.prim().locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => new RegExp(rxLit(AR_OFF_POOL)).test(await D.pSum()), 4000, `tile off → ${AR_OFF_POOL}`);
-  expect((await D.prim().locator('button[aria-label="Assault Rifle, off"]').count()) === 1, 'assault rifle tile not labelled off');
-  expect(dimmed(await D.art('Assault Rifle')), 'assault rifle tile not dimmed');
-  await shot(mc, 'designer-tile-off');
-});
-await step('designer-controls 5: tapping a pickup_only heavy tile ("allow through the chip") does NOT bring it into the pool — it stays dimmed, count unchanged', async () => {
-  // this used to prove the per-weapon "allow just this one" override beats the class chip. It no
-  // longer can for a `pickup_only` weapon: the pool excludes rocket_launcher/rail_gun UNCONDITIONALLY
-  // (policy.py, mirrored in computePool/gameSummary.ts), so the tap changes the RULE (the tile is no
-  // longer excluded "by tag") but the pool — and the tile's own lit/dim state, which reads off the
-  // pool — does not change. Worth a second look product-side: a control that can never visibly do
-  // anything may read as broken rather than as "this weapon is pickup-only".
-  // M15: a pickup_only heavy is now a LOCKED row that says why, not a tile that silently does nothing.
-  expect((await D.prim().locator('button[aria-label^="Rail Gun"]').count()) === 0 && await D.locked('Rail Gun'),
-    'the pickup-only Rail Gun is still a tappable tile');
-  expect(new RegExp(rxLit(AR_OFF_POOL)).test(await D.pSum()), `pool count must not move (still ${AR_OFF_POOL}, assault rifle stays off from step 4) — pickup_only overrides the per-id override: ` + await D.pSum());
-  expect(dimmed(await D.art('Rail Gun')), 'rail gun tile should still read off (dimmed) — pickup_only, not the chip, excludes it');
-  expect(dimmed(await D.art('Rocket Launcher')), 'the other heavy should stay dimmed too');
-  await shot(mc, 'designer-allow-through-chip-is-a-no-op-for-pickup-only');
-});
-await step('designer-controls 6: WHO PICKS → FIXED then tap SMG → "EVERYONE GETS SMG", only the SMG tile lit', async () => {
-  await D.prim().locator('button:has-text("FIXED")').click();
-  await D.prim().locator('button[aria-label^="SMG"]').click();
-  await until(async () => /EVERYONE GETS SMG/.test(await D.pSum()), 4000, 'FIXED + tap SMG → everyone gets SMG');
-  expect((await D.prim().locator('button[aria-label="SMG, allowed"]').count()) === 1 && (await D.prim().locator('button[aria-label$=", allowed"]').count()) === 1, 'only the SMG should be lit under FIXED');
-  await shot(mc, 'designer-fixed-smg');
-});
-await step('designer-controls 7: slot 2 OFF → "OFF — ALT-FIRE DOES NOTHING", weapon grid gone, rail reads NO SLOT 2', async () => {
-  await D.sec().locator('button:has-text("OFF")').click();
-  await until(async () => /OFF — ALT-FIRE/.test(await D.sSum()), 4000, 'secondary OFF');
-  expect((await D.sec().locator('button[aria-label$=", allowed"], button[aria-label$=", off"]').count()) === 0, 'slot-2 tiles still shown when OFF');
-  await until(async () => /SMG FOR EVERYONE · NO SLOT 2/.test(await D.rail()), 4000, 'summary rail follows');
-  await shot(mc, 'designer-slot2-off');
-});
-await step(`designer-controls 7b (A12/A14): slot 2 PLAYER → SIDEARMS chip → "${SIDEARM_POOL}", only the pickable pistols allowed, WEAPONS chip off; SIDEARMS again is a no-op (slot 2 always admits one kind); WEAPONS → ${SECONDARY_WEAPONS_POOL}`, async () => {
-  // The pistol counts are derived (SIDEARM_POOL, top of this file): a hidden weapon has no row at all,
-  // so unhiding the glock moves this step instead of breaking it. Secondary has no `lethal` filter
-  // (computePool never checks it for the secondary slot), so its pool is bigger than the primary's —
-  // SECONDARY_WEAPONS_POOL, not BASE_POOL.
-  await D.sec().locator('button:has-text("PLAYER")').click();
-  await until(async () => new RegExp(rxLit(SECONDARY_WEAPONS_POOL)).test(await D.sSum()), 4000, `slot 2 back to PLAYER (${SECONDARY_WEAPONS_POOL})`);
-  const kind = (label) => D.sec().locator(`button:has-text("${label}")`).first();
-  await kind('SIDEARMS').click();
-  await until(async () => new RegExp(rxLit(SIDEARM_POOL)).test(await D.sSum()), 4000, `SIDEARMS chip → ${SIDEARM_POOL}, got: ` + await D.sSum());
-  expect((await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true' && (await kind('WEAPONS').getAttribute('aria-pressed')) === 'false', 'SIDEARMS should be on and WEAPONS off (they are exclusive)');
-  const allowed = (await D.sec().locator('button[aria-label$=", allowed"]').evaluateAll(bs => bs.map(b => b.getAttribute('aria-label')))).filter(l => !/ perk, allowed$/.test(l));   // perk tiles are allowed too — the check is about WEAPONS
-  const wantPistols = [...SIDEARM_NAMES].sort().join(' | ');
-  expect(allowed.map(l => l.replace(/, allowed$/, '')).sort().join(' | ') === wantPistols, `only the pickable pistols should be allowed, want ${wantPistols}, got: ` + allowed.join(' | '));
-  expect((await D.sec().locator('button[aria-label="SMG, off"]').count()) === 1, 'the SMG should read off under SIDEARMS');
-  expect(/SLOT 2.*SIDEARM|SIDEARM/.test(await D.rail()), 'the rail should mention sidearms');
-  await shot(mc, 'designer-sidearms-only');
-  await kind('SIDEARMS').click();                     // A14: perks left slot 2, so the last kind cannot be switched off
-  await sleep(400);
-  expect(new RegExp(rxLit(SIDEARM_POOL)).test(await D.sSum()) && (await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true', 'the last kind must stay on, got: ' + await D.sSum());
-  await kind('WEAPONS').click();
-  await until(async () => new RegExp(rxLit(SECONDARY_WEAPONS_POOL)).test(await D.sSum()), 4000, `WEAPONS on → ${SECONDARY_WEAPONS_POOL}`);
-  expect((await D.sec().locator('button[aria-label="USP-S, allowed"]').count()) === 1, 'the pistols are ordinary weapons under WEAPONS');
-});
-await step(`designer-controls 8: base switch to TEAM DEATHMATCH resets the rules (${BASE_POOL}, rail BASE TDM) and SAVE lands the card`, async () => {
-  await mc.click('button[aria-pressed="false"]:has-text("TEAM DEATHMATCH")');
-  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 4000, 'base → TDM, rules reset');
-  // rocket_launcher is `pickup_only` — it stays dimmed on every reset, whatever the base mode's rules
-  // are, so "rules reset" is proven by the count/rail above instead, and by a non-heavy tile that a
-  // previous step's exclusion (assault_rifle, step 4) also un-dims here.
-  expect(lit(await D.art('Assault Rifle')), 'rules did not reset (assault rifle still dimmed from an earlier step)');
-  expect(dimmed(await D.art('Rocket Launcher')), 'rocket launcher should still read off — pickup_only, unaffected by the base reset');
-  await mc.fill('input[aria-label="game name"]', 'controls test');
-  await mc.click('button:has-text("SAVE GAME")');
-  await until(async () => (await mc.locator('text=SAVED "CONTROLS TEST"').count()) > 0, 6000, 'SAVED status');
-  await shot(mc, 'designer-controls-saved');
-  await backToGames();
-  await until(async () => (await mc.locator('div[role="button"][aria-label="play controls test"]').count()) > 0, 6000, 'card on GAMES');
-  await mc.click('button[aria-label="delete controls test"]'); await mc.click('button:has-text("CONFIRM DELETE")');
-  await until(async () => (await mc.locator('div[role="button"][aria-label="play controls test"]').count()) === 0, 6000, 'card gone');
-});
+// F8a `DESIGNER controls` is DELETED: it drove the OLD Designer.tsx slot-rule editor (HEAVY chip,
+// OPEN/SNIPERS templates, per-tile taps, the read-only ADVANCED presentation table) in deep, tile-by-
+// tile detail, with no phone/HUD involvement at all -- pure MC-screen coverage. BUILD's real editor
+// (screens/presets/editors.tsx) replaces Designer.tsx and has its own e2e suite, test/e2e/build.mjs,
+// owned by the BUILD lane; this suite's job is end-to-end coverage through the phones, which that
+// editor's controls do not touch. The one FIXED-primary/phone-lock hazard worth keeping end-to-end is
+// covered above ((g), BUILD + PLAY: Silenced Sniper).
 
-// ═══ F8b · compat: NEW UI against an OLDER / pre-A10 server ═══
-// Tony hit "cannot read properties of undefined (reading 'preset')" with today's bundle on an MC process started
-// before the loadout code landed. Every other step runs UI + server from the same tree, so that mismatch had no
-// coverage. Here the same UI gets stale responses: loadout fields stripped, the A10 routes 404, no live socket.
-await step('designer-controls A11: ADVANCED opens a read-only sounds & lights table with sources, words and MC confidence', async () => {
-  await ensureMc();
-  await mc.locator('nav button').nth(1).click();
-  await shelves(); await mc.click('button[aria-label="customize FREE-FOR-ALL"]');
-  await until(async () => (await mc.locator('input[aria-label="game name"]').count()) > 0, 6000, 'designer open');
-  const adv = mc.locator('[data-testid="advanced-presentation"] button[aria-expanded]');
-  expect((await adv.getAttribute('aria-expanded')) === 'false', 'ADVANCED should start collapsed');
-  expect((await mc.locator('[data-testid="pres-row-hit_taken"]').count()) === 0, 'table visible before ADVANCED was opened');
-  await adv.click();
-  await until(async () => (await mc.locator('[data-testid="pres-row-hit_taken"]').count()) === 1, 6000, 'hit_taken row after opening ADVANCED');
-  expect((await adv.getAttribute('aria-expanded')) === 'true', 'ADVANCED not marked expanded');
-  const src = async id => (await mc.locator(`[data-testid="pres-row-${id}"] td`).nth(1).textContent()).trim();   // the SOURCE cell
-  expect((await src('hit_taken')) === 'HUD', 'hit_taken must be a HUD-sourced row, got ' + await src('hit_taken'));
-  expect((await src('lead_taken')) === 'MC', 'lead_taken must be an MC-sourced row, got ' + await src('lead_taken'));
-  const lead = await mc.locator('[data-testid="pres-row-lead_taken"]').textContent();
-  expect(/VA6D/.test(lead) && /takes the lead/i.test(lead), 'lead_taken row lacks VA6D / the words: ' + lead);
-  const conf = await mc.getByTestId('mc-confidence').textContent();
-  expect(/MC (NOT )?CONFIDENT|MC CONFIDENCE GATE ARMED/.test(conf), 'confidence line missing: ' + conf);   // pre-match the line is the neutral GATE ARMED wording (polish 2026-09-04)
-  expect(/standard|silenced|counter.strike|vip|infection|last.stand|extraction|custom/i.test(await mc.getByTestId('presentation-preset').textContent()), 'preset not shown');   // uppercase is CSS, textContent is not
-  expect((await mc.locator('[data-testid="advanced-presentation"] input, [data-testid="advanced-presentation"] select').count()) === 0, 'ADVANCED is read-only: no inputs');
-  await shot(mc, 'designer-advanced'); await textAudit(mc, 'designer-advanced');
-  await adv.click();
-  await until(async () => (await mc.locator('[data-testid="pres-row-hit_taken"]').count()) === 0, 4000, 'ADVANCED collapses again');
-});
 
 flow('F8b compat-older-server');
-await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a server with no loadout fields and no A10 routes', async () => {
+await step('compat-older-server: new UI renders ARMORY / PLAY / BUILD / KIT / LOBBY against a server with no loadout fields and no A10 routes', async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });   // own context: its 404s are EXPECTED, keep them out of the global audit
   const pg = await ctx.newPage(); pg.setDefaultTimeout(6000);
   const errs = [];
@@ -1259,47 +1074,17 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   await until(async () => wsFrames > 0, 8000, 'a stripped snapshot arrived over the WebSocket');
   const live = await pg.evaluate(() => fetch('/api/state').then(r => r.json()));
   expect(live.loadout_policy === undefined, 'REST strip failed');
-  await nav(1); await noCrash('GAMES');
+  await nav(1); await noCrash('PLAY');
   await until(async () => (await pg.locator('text=MC SERVER IS OLDER THAN THIS CONSOLE').count()) > 0, 6000, 'the "server predates this UI" banner');
-  await shelves(pg);   // GAMES rendered, shelves showing
-  // F221: the skew banner's own words now include "LOADOUT RULES", so a bare `text=LOADOUT` can match
-  // the banner instead of the summary row — scope to the rail settings grid (LoadedGame.tsx's
-  // `rail-settings`), not the whole page.
-  const loadRow = await pg.locator('[data-testid="rail-settings"] :text("LOADOUT")').locator('xpath=..').first().textContent();
-  expect(/—/.test(loadRow), 'GAMES LOADOUT row should read — with no policy: ' + loadRow);
-  await pg.click('button[aria-label="create a game"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (create)');
-  await until(async () => (await pg.locator('text=RULES PREVIEW LOCALLY').count()) > 0, 6000, 'designer says the server cannot preview');
-  // A11 ADVANCED against a server with no /api/presentation: the section still renders, opens, and SAYS why it is empty
-  await pg.locator('[data-testid="advanced-presentation"] button[aria-expanded]').click();
-  await until(async () => (await pg.locator('[data-testid="advanced-presentation"] [role="alert"]:has-text("MC SERVER IS OLDER THAN THIS CONSOLE")').count()) > 0, 6000, 'ADVANCED shows the predates-this-UI line on a 404');
-  expect((await pg.locator('[data-testid="pres-row-hit_taken"]').count()) === 0, 'ADVANCED rendered rows from nowhere against a stale server');
-  await noCrash('DESIGNER (advanced, stale)');
-  await pg.click('button[title="Everyone gets the sniper rifle, no secondary, no perks, no picking"]');   // templates are client-side: must work here too
-  await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'template applies against a stale server');
-  await pg.click('button[title="Everything, players pick all three slots"]');
-  // rocket_launcher/rail_gun are `pickup_only`, so OPEN already excludes them before the HEAVY chip's
-  // own rule applies — see the BASE_POOL derivation at the top of this file.
-  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 4000, `OPEN → ${BASE_POOL} (pool computed locally)`);
-  // the rules must be LIVE with no server help: a chip dims its class, a tile tap switches one weapon (Tony, round 8)
-  const prim = pg.locator('[aria-label="primary slot rules"]');
-  // MC visual QA M15: the HEAVY chip is hidden while every heavy is pickup-only (the slot can never take one), and a
-  // pickup-only tile is a locked row, not a button. Toggle the chip only if this build still shows it.
-  const heavy = prim.locator('button:has-text("HEAVY")');
-  if (await heavy.count()) {
-    await heavy.first().click();
-    await until(async () => (await heavy.first().getAttribute('aria-pressed')) === 'false', 4000, 'HEAVY chip → off against a stale server');
-  }
-  expect(new RegExp(rxLit(BASE_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 'pool count should not move: ' + await pg.getByTestId('primary-summary').textContent());
-  const rocket = prim.locator('[aria-label^="Rocket Launcher"]').first();
-  expect((await rocket.getAttribute('data-locked')) || (await rocket.getAttribute('aria-label')) === 'Rocket Launcher, off', 'rocket launcher tile not shown as off or locked');
-  await prim.locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => new RegExp(rxLit(AR_OFF_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 4000, `tile tap → ${AR_OFF_POOL} against a stale server`);
-  // a pickup_only heavy can never enter the pool: its row is locked, so there is nothing to tap.
-  expect((await prim.locator('button[aria-label^="Rocket Launcher"]').count()) === 0 || !!(await rocket.getAttribute('data-locked')),
-    'a pickup-only heavy must not be a tappable tile');
-  expect(new RegExp(rxLit(AR_OFF_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 'pickup_only heavy must not enter the pool: ' + await pg.getByTestId('primary-summary').textContent());
-  expect((await prim.locator('button[disabled]').count()) === 0, 'tiles disabled against a stale server');
-  await backToGames(pg); await shelves(pg); await pg.click('button[aria-label="customize FREE-FOR-ALL"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (customize)');
+  // F411: `game_pick` and `/api/pieces` are NOT stripped here (this fixture is a server predating
+  // loadout policy, not predating PLAY/BUILD itself), so PLAY still renders its pickers normally
+  // rather than the F411-specific play-stale-server banner (that path is covered in koth.mjs).
+  expect((await pg.locator('[data-testid="picker-mode"]').count()) > 0, 'PLAY renders no mode picker against this stale server');
+  await pg.locator('button:has-text("BUILD ▸")').click();
+  await pg.waitForTimeout(400); await noCrash('BUILD');
+  expect((await pg.locator('text=[ BUILD ]').count()) > 0, 'BUILD does not render against this stale server');
+  await pg.locator('button:has-text("◂ BACK TO PLAY")').click();
+  await pg.waitForTimeout(400);
   await nav(2); await noCrash('KIT');
   await until(async () => (await pg.locator('text=KIT EACH PLAYER').count()) > 0, 6000, 'KIT rendered');
   expect((await pg.locator('text=GAME RULES').count()) === 0, 'KIT shows a GAME RULES chip with no policy');
@@ -1313,7 +1098,7 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
 
 // ═══ F8c · compat: a session persisted BEFORE A10 restores and every page renders (review #12) ═══
 flow('F8c compat-old-session');
-await step('compat-old-session: MC booted from a pre-A10 session.json → GAMES rail PLAYING the restored mode, KIT shows the restored players, GAME RULES = OPEN, no crash', async () => {
+await step('compat-old-session: MC booted from a pre-A10 session.json → PLAY shows the restored mode picked, KIT shows the restored players, GAME RULES = OPEN, no crash', async () => {
   const MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
   if (await fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false)) throw new Error(`something already listens on ${OLD_MC_PORT}`);
   const tmp = fs.mkdtempSync(path.join(OUT, 'session-'));
@@ -1335,13 +1120,13 @@ await step('compat-old-session: MC booted from a pre-A10 session.json → GAMES 
     await pg.goto(MC2 + '/', { waitUntil: 'networkidle' });
     const nav2 = async i => { await pg.locator('nav button').nth(i).click(); await pg.waitForTimeout(400); };
     const noCrash = async where => expect((await pg.locator('text=CONSOLE ERROR').count()) === 0, `crash banner on ${where}: ${errs.join(' | ')}`);
-    await nav2(1); await noCrash('GAMES');
-    // The rail's STOCK/TUNED label compares against TODAY's mode defaults, and those move (680a5b36 made the
-    // fixture's frag_limit 25 a non-default, so it now reads TUNED). What an old session owes is a rail that
-    // renders the restored mode as the one playing.
-    await until(async () => (await pg.locator('text=/\\/\\/ PLAYING/').count()) > 0, 6000, 'GAMES rail // PLAYING');
-    const rail2 = await pg.locator('text=/\\/\\/ PLAYING/').first().locator('xpath=..').textContent();
-    expect(/TEAM DEATHMATCH/.test(rail2), 'old-session rail is not the restored TEAM DEATHMATCH: ' + rail2.slice(0, 80));
+    await nav2(1); await noCrash('PLAY');
+    // F411: a session from before PLAY/BUILD has no `game_pick` of its own, and games-presets.md §2
+    // says how MC derives one on restore — mode = the restored config's own mode, when it is an MVP
+    // mode (it does not recompose the rest of the config). What an old session owes is a PLAY screen
+    // whose mode picker shows the restored mode as the one picked.
+    const modeBtn2 = label => pg.locator('[data-testid="picker-mode"]').getByRole('button', { name: label });
+    await until(async () => (await modeBtn2('TEAM DEATHMATCH').getAttribute('aria-pressed')) === 'true', 6000, 'PLAY shows the restored TEAM DEATHMATCH as picked');
     await nav2(2); await noCrash('KIT');
     await until(async () => (await pg.locator('div[role="button"]:has-text("RESTORED-A")').count()) > 0, 6000, 'restored roster row on KIT');
     expect((await pg.locator('div[role="button"]:has-text("RESTORED-A")').first().textContent()).includes('GUN-A'), 'restored row lost its gun');

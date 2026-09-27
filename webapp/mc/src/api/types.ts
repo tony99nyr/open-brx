@@ -15,7 +15,8 @@ export type {
   ReadinessSnapshot, Respawn, RosterEntry, RosterWeapon, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
   Stun, Recoil, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,
   StationAssignment, EndDeliveryView, VoiceList, VoiceOption, PhaseRefusalBody,
-  WeaponView, SavedGame, LiveRow, EndDeliveryRow, WeaponBars, Coverage,
+  WeaponView, GamePiece, GamePick, MatchSettings, LastMatch, PieceKind, ModePiece, LifePiece, MiscLoadoutsPiece, GameplayPiece, Favourite,
+  LiveRow, EndDeliveryRow, WeaponBars, Coverage,
   LanPublic, PresentationRow, PresentationView, PresentationSummary, HeadsetSummary, GunSummary,
   McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
@@ -37,7 +38,7 @@ export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STAT
 
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, TxPower, VoiceList, PhaseRefusalBody, ModeInfo,
-  WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
+  WeaponView, GamePiece, GamePick, MatchSettings, PieceKind, Favourite, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
   OperatorActionResult, OperatorCmd, PowerupsView } from './contract.gen';
 
 
@@ -97,11 +98,28 @@ export interface Api {
   getVoices(): Promise<VoiceList>;
   getWeapons(): Promise<WeaponView[]>;
   getPerks(): Promise<PerkView[]>;
-  getPresets(): Promise<SavedGame[]>;
-  savePreset(p: { name: string; desc?: string; config?: GameConfig; replace?: boolean }): Promise<SavedGame>;
-  deletePreset(id: string): Promise<void>;
-  applyPreset(id: string): Promise<{ ok: boolean; errors: string[]; config: ConfigView }>;
-  updatePreset(id: string, p: { name?: string; desc?: string; config?: GameConfig }): Promise<SavedGame>;
+  /** F411 (docs/spec/design/games-presets.md): every piece, builtins first. Rejects with status 404 on an MC that predates PLAY/BUILD. */
+  getPieces(): Promise<GamePiece[]>;
+  createPiece(p: { kind: PieceKind; name: string; note?: string; value: Record<string, unknown> }): Promise<GamePiece>;
+  updatePiece(id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }): Promise<GamePiece>;
+  deletePiece(id: string): Promise<void>;
+  /** F411: pick pieces and/or strip values; the server composes and applies the config. `ok: false` changed nothing. */
+  /** `fallbacks`: kinds the request did NOT name that fell back to their builtin (a piece a kind
+   *  merely INHERITED from the previous pick had gone missing/wrong-kind/post-MVP under it) --
+   *  the same grace `loadFavourite` gives a saved pick, shown the same way. A kind the request
+   *  itself named still 404s/400s on a bad id: that is the operator's own mistake to fix. */
+  pick(p: { pieces?: Partial<Record<PieceKind, string>>; match?: Partial<MatchSettings> }): Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick; fallbacks: PieceKind[] }>;
+  /** F411 §6: a named bundle of the whole PLAY pick, by created_t. */
+  getFavourites(): Promise<Favourite[]>;
+  /** `pick` defaults to the CURRENT game_pick (the ordinary way: build the game on PLAY, then save). */
+  createFavourite(p: { name: string; countdown_s: number; pick?: GamePick }): Promise<Favourite>;
+  /** rename only. */
+  updateFavourite(id: string, p: { name: string }): Promise<Favourite>;
+  deleteFavourite(id: string): Promise<void>;
+  /** Applies the favourite's pieces + match through the same compose path `pick` uses (same gating,
+   *  same `ok: false` changes nothing). A piece id that no longer exists or turned post_mvp falls back
+   *  to that kind's first builtin, named in `fallbacks` — never a 404 for the favourite itself. */
+  loadFavourite(id: string): Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick; countdown_s: number; fallbacks: PieceKind[] }>;
   /** preview the pool a DRAFT policy would allow (designer) — same rule engine, nothing applied */
   previewPool(policy: Partial<LoadoutPolicy>, mode?: string): Promise<{ policy: LoadoutPolicy; pool: LoadoutPool }>;
   /** A11: tonight's presentation profile, resolved, for the read-only ADVANCED view. Rejects with status 404 on an older server. */

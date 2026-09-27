@@ -1,14 +1,12 @@
 // F318 (MC visual QA Lows, 2026-09-23): the ones jsdom can see. Each case names the item it guards.
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Api, FeedEntry, GameConfig, MatchHistoryRow, ModeInfo, State } from '../src/api/types';
+import type { FeedEntry, MatchHistoryRow, State } from '../src/api/types';
 import { CommandBar } from '../src/frame/CommandBar';
-import { MockBackend } from '../src/mock/backend';
-import { Games } from '../src/screens/Games';
 import { Kit } from '../src/screens/Kit';
 import { Recap } from '../src/screens/Recap';
 import { SEED_RACE_MS, StoreCtx, StoreProvider, feedKey, isSeedEcho, seedMemo, useStore } from '../src/store';
-import { demo, fixtureApi, makeStore, mount, mountScreen } from './harness';
+import { demo, makeStore, mount, mountScreen } from './harness';
 
 describe('F318 item 1: the command bar while MC is offline', () => {
   it('does not show a red ● LIVE beside MC OFFLINE; it says the phase is last known', async () => {
@@ -33,28 +31,8 @@ describe('F318 item 1: the command bar while MC is offline', () => {
   });
 });
 
-describe('F318 item 3: GAMES under the LOCKED banner', () => {
-  it('does not tell the operator to adjust and SAVE AND LOAD while the match is live', async () => {
-    const backend = new MockBackend();
-    const modes: ModeInfo[] = await backend.getModes();
-    await backend.setPhase('lobby', true);
-    await backend.loadGame();
-    const raw = await backend.getState();
-    // a clean board: every gun acked this config, nobody red or waiting (the demo keeps one gun unpowered)
-    const acks = Object.fromEntries(raw.players.map(p => [p.player_id, { ok: true, config_id: raw.config.config_id }]));
-    const base: State = { ...raw, lobby: { ...raw.lobby, pushed: true, all_acked: true, acks } as State['lobby'],
-                          readiness: { ...raw.readiness, board: [] } as State['readiness'] };
-    const api = fixtureApi({ putConfig: async (p: Partial<GameConfig>) => backend.putConfig(p) }, backend as unknown as Api);
-    const render = (phase: State['phase']) => mount(<StoreCtx.Provider value={makeStore({ state: { ...base, phase }, weapons: [], perks: [], view: 'build' }, { api, modes })}><Games /></StoreCtx.Provider>);
-    const pre = await render('lobby');
-    expect(pre.text(), 'the control: pre-arm, the sentence is true').toContain('Adjust it here and SAVE AND LOAD');
-    pre.unmount();
-    const live = await render('live');
-    expect(live.text()).toContain('Every gun is holding this config');
-    expect(live.text()).not.toContain('Adjust it here and SAVE AND LOAD');
-    live.unmount();
-  });
-});
+// F411: item 3's "ACTIVE GAME CONFIG" status line (and its LOCKED-banner wording) is retired with the
+// old GAMES card-shelf UI — LOBBY alone reports the guns' own state now (games-redesign.md §10).
 
 describe('F318 items 5, 9 and 10: KIT', () => {
   it('item 5: a roster name ellipsises and carries its full name as a title', async () => {

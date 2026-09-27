@@ -107,10 +107,11 @@ const JOBS = [
   ...[['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87], ['m2-ui', 46], ['game-edit', 32], ['operator-menu', 18], ['report', 15],
       // MC visual QA 2026-09-23: measured as 1.0-1.1 GB RSS summed over the process tree (shared pages counted
       // twice), so 900 MB sits between that and the older jobs' measured 700 MB PSS.
-      ['designer-rail-play', 9, 900], ['frame', 7, 900], ['lobby-updating', 3, 900], ['recap-next', 20, 900],
+      ['frame', 7, 900], ['lobby-updating', 3, 900], ['recap-next', 20, 900],
       ['feed-reload', 9, 900], ['mc-restart', 13, 900], ['live-board', 19, 900],
       // MC visual QA round 2 (2026-09-24): a real MC with station and phone stand-ins; 27 s measured
-      ['vqa2', 27, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
+      ['vqa2', 27, 900], ['play', 35, 950], ['build', 8, 900],
+      ['lobby-outcome', 7, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
 ].filter(j => (UI || !j.ui) && (!filters.length || filters.some(f => j.name.includes(f))));
 
 if (LIST) { for (const j of JOBS) console.log(j.name); process.exit(0); }

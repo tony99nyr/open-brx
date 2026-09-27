@@ -31,7 +31,7 @@ That is the whole answer for "show me Mission Control". Expected output, in this
 
 ```
 INFO brx.mc: compiler: real M-MODES compiler
-INFO brx.mc: presets: throwaway shelf at /tmp/brx-mc-presets-…/presets.json (demo/ephemeral)
+INFO brx.mc: pieces: throwaway shelf at /tmp/brx-mc-pieces-…/pieces.json (demo/ephemeral)
 INFO brx.mc: demo: 8 fake nodes driving the board
 Mission Control  http://<lan-ip>:8765/
   nodes: ws://0.0.0.0:0/ws
@@ -63,10 +63,10 @@ than 8765 work for the SERVED UI only: the Vite dev server proxies to :8765 and 
 
 | flag | what it does |
 |---|---|
-| `--demo` | `FakeArmory` (no BLE) + 8 demo players on GUN-A…H, throwaway presets. **Alone it still starts the REAL node server** on :8766 and waits for phones. |
+| `--demo` | `FakeArmory` (no BLE) + 8 demo players on GUN-A…H, throwaway BUILD pieces. **Alone it still starts the REAL node server** on :8766 and waits for phones. |
 | `--fake-net` | in-memory node transport instead of the WebSocket server. **Alone it seeds nothing**: no players, no nodes, an empty MUSTER. |
 | `--demo --fake-net` | the two together are what "simulated nodes" means: `DemoDriver` plays 8 fake phones through the whole match. |
-| `--ephemeral` | no `~/.brx-mcp/session.json` read or write, and a throwaway presets shelf. `--demo` already implies both; the flag matters for a REAL run you do not want to inherit or overwrite the last bench roster with. |
+| `--ephemeral` | no `~/.brx-mcp/session.json` read or write, and a throwaway pieces shelf. `--demo` already implies both; the flag matters for a REAL run you do not want to inherit or overwrite the last bench roster with. |
 | `--no-auth` | no operator token. Otherwise the URL is printed with `#tok=…` and every non-GET needs it (`API.md` → Operator auth). |
 | `--tunnel` | A28: expose the **node socket only** through a `cloudflared` quick tunnel at boot — no account, no domain, no login. The public `wss://…trycloudflare.com/ws` goes into `lan.public`, into the join QR as `&pub=`, and out to every connected node as `join`. Needs `cloudflared` on PATH (`lan.public.available` says whether it was found); `POST /api/tunnel {on}` is the same switch at runtime. The LAN path is untouched either way. |
 | `--public-url wss://…` | A28: a public node URL **you** already run (named Cloudflare tunnel, Tailscale Funnel, port forward). `provider: "manual"` — MC hands it out and never starts or stops it, so `POST /api/tunnel` answers 409. |

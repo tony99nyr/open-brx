@@ -272,7 +272,9 @@ socket took the push, never that the phone actually reloaded; a phone with no so
 seven-tap ⓘ gesture left. Deliberately NOT `_refuse_station_change_in_play`-gated: a stranded phone needs
 releasing in every phase, armed/live most of all. A failed send changes nothing. An accepted send clears the
 assignment and active allow-lists, but retains the ITEMS card because delivery alone cannot prove the reload.
-The first HUD `hello` carries the prior utility id and its takeover key; MC validates and consumes that proof,
+**F421 (2026-09-26):** `utility.js exitToHud` writes the MC url this phone was bound to into the prior-utility
+handoff (only while bound, and the handoff expires after about 1 h); the HUD then dials that url directly ahead
+of mDNS/sweep discovery, so a released phone need not rediscover MC on its own. The first HUD `hello` carries the prior utility id and its takeover key; MC validates and consumes that proof,
 then removes the old card. Utility and HUD ids are deliberately distinct (`brxu` / `brx`). If this happens
 mid-match, the station's last self-authoritative report remains frozen for that match's recap. A pre-F184 HUD
 cannot send the proof: release still works safely, but the unassigned old card remains until the stale-row prune,

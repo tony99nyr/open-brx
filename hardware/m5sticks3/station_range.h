@@ -152,6 +152,14 @@ class SyncedSetting {
     age_known_ = false;
     mc_ = fallback_;
   }
+  // F365 RANGE CLEAR: drop the on-station edit only. Unlike reset() (a new station identity, whose
+  // mc_ is about to be replaced anyway by that station's own apply_mc), this leaves mc_ exactly as it
+  // stands -- MC's last value, or the kind's own default already folded into it by
+  // presence_threshold_dbm() -- so applied() reads it at once, with no re-derivation needed here.
+  void clear_edit() {
+    has_edit_ = false;
+    age_known_ = false;
+  }
 
  private:
   int mc_;

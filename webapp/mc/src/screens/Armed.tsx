@@ -10,6 +10,8 @@ import { GLYPH, colourOf } from '../alerts';
 import { SetupSteps } from '../ui/SetupSteps';
 import { PowerupStrip } from '../ui/Powerups';
 import { StationAlerts } from '../ui/StationAlerts';
+import { InfoIcon } from '../ui';
+import { operatorNote } from './operatorNote';
 
 
 export function Armed() {
@@ -28,6 +30,9 @@ export function Armed() {
   const [reschedConfirm, setReschedConfirm] = useState(false);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 250); return () => clearInterval(id); }, []);
   if (!state) return null;
+  // QA-04 (visual QA round 1, 2026-09-26): the same operator note LOBBY and PLAY show -- "the last
+  // reminder before players scatter" (games-redesign.md §9), and ARMED is the screen they scatter FROM.
+  const note = operatorNote(state.config);
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
   const cLine = shortCoverageLine(state.coverage);
   // Field feedback 2026-09-19 (Tony): partial coverage is not a fault, so it is neutral, never amber.
@@ -100,6 +105,16 @@ export function Armed() {
           <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.faint, marginTop: 4 }}>MATCH {st.match_id.toUpperCase()} · SEQ {st.seq}</div>
         </div>
       </Brackets>
+      {/* QA-04: an SVG icon, never the ⓘ glyph (QA-05, no bundled face carries U+24D8). */}
+      {note.length > 0 && (
+        <div data-testid="operator-note" role="status" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {note.map((l, i) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: F.chk(600, 12), lineHeight: 1.5, color: T.dim }}>
+              <InfoIcon size={14} />{l}
+            </span>
+          ))}
+        </div>
+      )}
       {/* Match reminders: still actionable during the runway (the grenade is placed while the
           players walk), plus A31's standing "this win is settled at MC" line */}
       <SetupSteps style={{ marginBottom: 12 }} />

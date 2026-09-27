@@ -56,6 +56,10 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   'lobby-no-phone-chip': { sev: 'neutral', text: 'NO PHONE' },
   'lobby-reach-lan-chip': { sev: 'neutral', text: 'LAN / INTERNET' },
 
+  // ---- GUNS READY (QA-02, visual QA round 1, 2026-09-26) ----------------------------------------
+  'lobby-guns-ready-line': { sev: 'amber', text: 'GUNS READY {N}/{M}' },
+  'lobby-guns-not-ready-line': { sev: 'amber', text: '{STICKER} NOT READY: {WHAT}' },
+
   // ---- PreArmSummary ------------------------------------------------------------------------------
   'frame-prearm-action': { sev: 'amber', text: '{N} OF {M} PLAYER(S) NEED(S) ACTION: SEE BELOW' },
   'frame-prearm-no-game': { sev: 'neutral', text: 'NO GAME LOADED' },
@@ -88,18 +92,20 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   // match fact, not a status colour picked at the call site.
   'frame-load-status-confirmed': { sev: 'amber', text: '{ACKED}/{TOTAL} GUNS CONFIRMED ON THIS CONFIG' },
 
-  // ---- Games --------------------------------------------------------------------------------------
-  'games-guns-not-configured': { sev: 'neutral', text: 'GUNS NOT CONFIGURED YET: WEAPONS GO AT THE LOBBY PUSH, AFTER KITTING' },
+  // ---- PLAY (screens/Games.tsx, F411 rewrite) ------------------------------------------------------
   'games-locked-banner': { sev: 'red', text: 'GAME SETTINGS ARE LOCKED: {REASON}' },
+  // VQA round 1 (2026-09-26): QA-19 splits KOTH-with-no-hill-yet off the red banner above -- it is a
+  // setup step, not a fault (the storyboard draws it amber). QA-09: a `GET /api/pieces` failure that
+  // is not the older-console 404 is a real fetch problem, shown and retried on reconnect.
+  'games-koth-no-hill': { sev: 'amber', text: 'NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.' },
+  'games-pieces-error': { sev: 'amber', text: 'COULD NOT LOAD THE GAME PIECES: {msg}' },
+  // Polish round 1 M5: a 404 here means an older MC with no FAVOURITES route -- stale, not a fault
+  // (silent, same as `games-pieces-error`'s own 404 case). Any OTHER failure is a real fetch problem.
+  'games-favourites-error': { sev: 'amber', text: 'COULD NOT LOAD FAVOURITES: {msg}' },
   // Config-warning wording is server-authored (`state.py` validate), but this one line has always been
   // stable enough to catalogue directly rather than route through `serverLine` (which is for the
   // readiness board's blocker/amber lists, not `config_warnings`).
   'games-loadouts-reset': { sev: 'amber', text: '{N} LOADOUT(S) RESET BY {LABEL}' },
-  'games-partial-delivery': { sev: 'neutral', text: '{N} OF {M} PHONES HAVE THE GAME SO FAR. THE REST ARE NOT CONNECTED. KITTING IS NEXT, AND THE GUNS ARE CONFIGURED AT THE LOBBY PUSH.' },
-  'games-no-echo': { sev: 'amber', text: 'NO CONFIG ECHO FROM {NAMES}: HEADSET OFF, OR GUN ASLEEP?' },
-  'games-tuned-not-saved': { sev: 'neutral', text: 'TUNED: NOT SAVED // LOADED' },
-  'games-venue-in-draft': { sev: 'neutral', text: 'IN THE DRAFT BELOW' },
-  'games-venue-locked': { sev: 'amber', text: 'LOCKED WHILE THE MATCH IS {PHASE}' },
   'games-wait-why': { sev: 'neutral', text: 'WAITING FOR {N} PHONE(S): {NAMES}' },
 };
 
@@ -108,4 +114,15 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
 export const LOBBY_RETIRED: Record<string, string> = {
   'lobby-unassigned-heading': 'a column header, not a fact about any one player — restyled off T.warn to plain ink; the audit itself flagged the borrowed amber as unearned.',
   'games-jump-to-match': 'a navigation button beside the locked banner, not itself an alert — its border no longer borrows T.bad.',
+  // F411 (docs/spec/design/games-presets.md): PLAY is rewritten — no more LOAD/ACTIVE GAME CONFIG dual
+  // state (LOAD stays on PLAY, but PLAY never becomes "the loaded game" screen), no gun-programming
+  // line (brief §10: "isn't it at the kit?" — LOBBY alone reports GUNS READY n/n), no venue chips/EDIT
+  // draft (day/night is a MATCH SETTINGS switch now), and no "TUNED: NOT SAVED" state (a pick is always
+  // either a saved BUILD piece or the composed config; nothing is ever left dangling and unsaved).
+  'games-guns-not-configured': 'PICK GAME never shows this any more — LOBBY alone reports GUNS READY n/n (games-redesign.md §10).',
+  'games-partial-delivery': 'the LOAD/ACTIVE-GAME-CONFIG dual state (and its phone-delivery status line) is retired with the old GAMES shelf UI.',
+  'games-no-echo': 'same: the gun-echo status line moved to LOBBY (frame-load-status-*), never shown on PLAY any more.',
+  'games-tuned-not-saved': 'PLAY never leaves a "tuned, not saved" draft (games-redesign.md §1) — every pick is a BUILD piece or the composed default.',
+  'games-venue-in-draft': 'PLAY has no venue chips or EDIT draft any more; DAY/NIGHT is one MATCH SETTINGS switch.',
+  'games-venue-locked': 'same: no venue control on PLAY to lock.',
 };

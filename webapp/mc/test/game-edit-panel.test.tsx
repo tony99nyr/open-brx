@@ -307,7 +307,7 @@ describe('GameEditPanel — locked once the match has started (armed/live)', () 
     m.unmount();
   });
 
-  it('OPEN GAME DESIGNER is inside that lock too — it used to stay tappable and dead-end on the Designer banner', async () => {
+  it('OPEN BUILD is inside that lock too — it used to stay tappable and dead-end on the Designer banner', async () => {
     const d = await demo();
     const modes = await d.api.getModes();
     const designer = (state: State) => {
@@ -315,7 +315,7 @@ describe('GameEditPanel — locked once the match has started (armed/live)', () 
       return mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
     };
     const find = (m: Awaited<ReturnType<typeof designer>>) =>
-      m.find('button').find(b => (b.textContent ?? '').includes('OPEN GAME DESIGNER')) as HTMLButtonElement | undefined;
+      m.find('button').find(b => (b.textContent ?? '').includes('OPEN BUILD')) as HTMLButtonElement | undefined;
 
     const live = await designer({ ...d.state, phase: 'live' });
     await click(live.find('[data-testid="game-edit-toggle"]')[0]);
@@ -362,7 +362,7 @@ describe('GameEditPanel — a request that lands in the phase-race window is sti
 });
 
 describe('GameEditPanel — a SAVE while the lobby is already pushed RE-PUSHES (B1/B3)', () => {
-  it('acks clear immediately (visibly re-pushing), then repopulate — the same acks LOBBY\'s own step reads', async () => {
+  it('acks clear immediately (visibly re-pushing), then repopulate', async () => {
     const { m, d, calls, open, night, save, resync, panel } = await gameScreen('lobby');
     await d.api.pushLobby(true);
     let state = await resync();
@@ -383,8 +383,10 @@ describe('GameEditPanel — a SAVE while the lobby is already pushed RE-PUSHES (
     expect(state.lobby.pushed, 'stays pushed — this is a RE-push, not an un-push (B1 was the un-push)').toBe(true);
     expect(Object.keys(state.lobby.acks).length, 'acks cleared: the guns have not echoed the new config yet').toBe(0);
     expect(panel().querySelector('[data-testid="game-edit-repush"]')!.textContent).toMatch(/RE-PUSHING/);
-    // LOBBY's OWN "config pushed" step reads the identical field and agrees — one source, never two counts.
-    expect(m.text()).toMatch(/Config pushed/);
+    // QA-02 fold (2026-09-26): LOBBY's own rail used to carry a second, separately-worded "Config
+    // pushed" count that read this identical field — retired once GUNS READY became the one place
+    // LOBBY answers "are the guns ready"; this RE-PUSHING status is the only count left on screen.
+    expect(m.text()).not.toMatch(/Config pushed/);
 
     await sleep(260);
     state = await resync();

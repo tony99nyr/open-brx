@@ -956,154 +956,9 @@ def test_weapon_view_htk_ttk_caution():
 
 
 # ------------------------------------------------------------------ A10 §8 saved games (presets)
-def _store(tmp=None, s=None):
-    import tempfile, pathlib
-    from brx_mcp.mc.presets import PresetStore
-    from brx_mcp.mc.state import default_config
-    s = s or mk(1)[0]
-    path = (pathlib.Path(tmp or tempfile.mkdtemp()) / "presets.json")
-    return PresetStore(path, s.sanitize_config, default_config, P.merge, now_ms=s.now_ms), path, s
-
-
-def test_presets_builtin_and_crud_and_name_clash():
-    from brx_mcp.mc.presets import PresetError, BUILTIN_SILENCED_SNIPER
-    st, path, s = _store()
-    rows = st.list()
-    assert [r["preset_id"] for r in rows] == [BUILTIN_SILENCED_SNIPER]
-    b = rows[0]
-    assert b["builtin"] and b["name"] == "Silenced Sniper" and "silenced" in b["desc"].lower() and "config_id" not in b["config"]
-    pol = b["config"]["loadout_policy"]
-    assert b["config"]["mode"] == "ffa" and b["config"]["health"]["max_armor"] == 0 and pol["hud_select"] is False
-    assert pol["primary"] == {**pol["primary"], "choice": "fixed", "fixed_id": "sniper_rifle"} and pol["preset"] == "custom"
-    assert pol["secondary"]["choice"] == "off" and pol["perk"] == {**pol["perk"], "choice": "fixed", "fixed_id": "extended_mags"}   # A14 shape
-    # create from the current draft (config_id stripped), listed after the builtin, persisted
-    s.set_config({"mode": "tdm", "time_limit_s": 300, "loadout_policy": {"preset": "no_heavies"}})
-    r = st.create("Friday TDM", "no heavies, 5 min", s.config)
-    assert not r["builtin"] and "config_id" not in r["config"] and r["config"]["time_limit_s"] == 300 and r["config"]["loadout_policy"]["preset"] == "no_heavies"
-    assert [x["name"] for x in st.list()] == ["Silenced Sniper", "Friday TDM"]
-    assert path.exists() and "Friday TDM" in path.read_text()
-    # case-insensitive clash → 409 unless replace (keeps the id)
-    try:
-        st.create("friday tdm", "", s.config); assert False
-    except PresetError as e:
-        assert e.status == 409
-    r2 = st.create("FRIDAY tdm", "replaced", {**s.config, "time_limit_s": 120}, replace=True)
-    assert r2["preset_id"] == r["preset_id"] and r2["config"]["time_limit_s"] == 120 and r2["name"] == "FRIDAY tdm" and len(st.list()) == 2
-    # update + delete
-    r3 = st.update(r["preset_id"], name="Friday Night", desc="x")
-    assert r3["name"] == "Friday Night" and st.get(r["preset_id"])["desc"] == "x"
-    st.create("Other", "", s.config)
-    try:
-        st.update(r["preset_id"], name="other"); assert False
-    except PresetError as e:
-        assert e.status == 409
-    st.delete(r["preset_id"])
-    assert [x["name"] for x in st.list()] == ["Silenced Sniper", "Other"]
-    for bad in (lambda: st.delete("nope"), lambda: st.get("nope"), lambda: st.update("nope", name="x")):
-        try:
-            bad(); assert False
-        except PresetError as e:
-            assert e.status == 404
-    try:
-        st.create("", "", s.config); assert False
-    except PresetError as e:
-        assert e.status == 400
-    # builtin guards: delete / edit / name-squat → 403
-    for bad in (lambda: st.delete(BUILTIN_SILENCED_SNIPER), lambda: st.update(BUILTIN_SILENCED_SNIPER, desc="x"),
-                lambda: st.create("silenced sniper", "", s.config, replace=True)):
-        try:
-            bad(); assert False
-        except PresetError as e:
-            assert e.status == 403
-    # reload from disk → same rows, builtin regenerated
-    st2, _, _ = _store(tmp=path.parent, s=s)
-    assert [x["name"] for x in st2.list()] == ["Silenced Sniper", "Other"]
-
-
-def test_presets_sanitize_drops_junk_and_corrupt_file_is_moved_aside():
-    import json
-    st, path, s = _store()
-    r = st.create("Weird", "", {"mode": "ffa", "time_limit_s": 240, "laser_eyes": True, "config_id": "stale",
-                                "loadout_policy": {"preset": "snipers"}, "health": {"max_hp": 45, "max_armor": 70}})
-    assert "laser_eyes" not in r["config"] and "config_id" not in r["config"] and r["config"]["loadout_policy"]["preset"] == "snipers"
-    try:
-        st.create("Bad", "", {"mode": "nope"}); assert False
-    except ValueError:
-        pass
-    # a stored row with an out-of-range value is DROPPED on load (never fatal); unknown keys pass through sanitize
-    rows = json.loads(path.read_text())["presets"]
-    rows.append({"preset_id": "zz", "name": "Broken", "config": {"mode": "tdm", "time_limit_s": 999999}})
-    rows.append({"preset_id": "yy", "name": "Old", "config": {"mode": "tdm", "future_key": 1}})
-    rows.append({"preset_id": "builtin:silenced_sniper", "name": "Silenced Sniper", "config": {"mode": "tdm"}})   # squatter
-    path.write_text(json.dumps({"v": 1, "presets": rows}))
-    st2, _, _ = _store(tmp=path.parent, s=s)
-    names = [x["name"] for x in st2.list()]
-    assert names == ["Silenced Sniper", "Weird", "Old"] and st2.list()[0]["config"]["mode"] == "ffa"
-    assert st2.get(next(x["preset_id"] for x in st2.list() if x["name"] == "Old"))["config"]["loadout_policy"]["preset"] == "open"
-    # corrupt JSON → renamed aside, store starts with the builtin only, and the next save writes a fresh file
-    path.write_text("{not json")
-    st3, _, _ = _store(tmp=path.parent, s=s)
-    assert [x["name"] for x in st3.list()] == ["Silenced Sniper"]
-    assert any(f.name.startswith("presets.json.corrupt-") for f in path.parent.iterdir()) and not path.exists()
-    st3.create("Fresh", "", s.config)
-    assert path.exists()
-
-
-def test_a_presetsjson_saved_game_with_the_old_green_team_migrates_to_purple_on_load():
-    """F423/F432 (2026-09-26): tid 3's team_id/name/colour was renamed GREEN -> PURPLE end to end, but a
-    saved game written before that (a KOTH preset in `~/.brx-mcp/presets.json` under the field's real
-    path) froze the old row into its own `config["teams"]` -- `_clean_row` re-validates every row
-    through `sanitize_config` on load, and that must migrate GREEN forward, not carry it into a fresh
-    game an operator applies today."""
-    import json
-    from brx_mcp.mc.state import default_config
-    st, path, s = _store()
-    cfg = default_config("koth")
-    cfg["teams"] = [
-        {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
-        {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3},
-    ]
-    path.write_text(json.dumps({"v": 1, "presets": [{"preset_id": "koth1", "name": "Friday KOTH", "desc": "",
-        "created_t": 0, "updated_t": 0, "config": cfg}]}))
-    st2, _, _ = _store(tmp=path.parent, s=s)
-    row = st2.get("koth1")
-    assert [t["team_id"] for t in row["config"]["teams"]] == ["blue", "purple"], row["config"]["teams"]
-    purple = next(t for t in row["config"]["teams"] if t["team_id"] == "purple")
-    assert purple["name"] == "PURPLE TEAM" and purple["color"] == "#bf4ce6" and purple["tid"] == 3
-
-
-def test_presets_api_and_apply_runs_apply_policy():
-    try:
-        from starlette.testclient import TestClient
-        import httpx  # noqa: F401
-    except Exception:
-        return
-    from brx_mcp.mc.api import create_app
-    s, net, clock, ps = mk(2)
-    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]})
-    c = TestClient(create_app(s))                                     # no presets attached → memory store
-    rows = c.get("/api/presets").json()
-    assert len(rows) == 1 and rows[0]["builtin"]
-    r = c.post("/api/presets", json={"name": "Mine", "desc": "d"})     # default config = the current draft
-    assert r.status_code == 200 and r.json()["config"]["mode"] == "tdm"
-    assert c.post("/api/presets", json={"name": "mine"}).status_code == 409
-    assert c.post("/api/presets", json={"name": "mine", "replace": True}).status_code == 200
-    assert c.post("/api/presets", json={"name": ""}).status_code == 400
-    pid = r.json()["preset_id"]
-    assert c.put(f"/api/presets/{pid}", json={"desc": "new"}).json()["desc"] == "new"
-    assert c.put("/api/presets/builtin:silenced_sniper", json={"desc": "x"}).status_code == 403
-    assert c.delete("/api/presets/builtin:silenced_sniper").status_code == 403
-    assert c.delete("/api/presets/nope").status_code == 404
-    # apply the builtin: same path as PUT /api/config → fresh config_id, loadouts reset, notice posted
-    old_id = s.config["config_id"]
-    a = c.post("/api/presets/builtin:silenced_sniper/apply")
-    assert a.status_code == 200 and a.json()["ok"] and a.json()["config"]["config_id"] != old_id
-    assert s.config["mode"] == "ffa" and s.config["health"]["max_armor"] == 0
-    for p in s.players.values():
-        assert p["loadout"] == {"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "extended_mags"}
-    assert any("RESET BY SILENCED SNIPER" in w for w in s.snapshot()["config_warnings"])
-    assert c.post("/api/presets/nope/apply").status_code == 404
-    assert c.delete(f"/api/presets/{pid}").json()["ok"] and len(c.get("/api/presets").json()) == 1
+# F411 (2026-09-26): the whole-game "saved game" this section tested (`PresetStore`, `/api/presets*`)
+# is REPLACED, with no migration, by GAMES = PLAY picks, BUILD creates (docs/spec/design/games-presets.md).
+# Its coverage moved to `test_mc_pieces.py` (the per-kind `PieceStore`, `/api/pieces*`, `/api/play/pick`).
 
 
 def test_loadout_pool_preview_route():
@@ -1170,23 +1025,19 @@ def test_game_brief_reports_the_configured_kill_rule():
     assert s.game_brief()["win_text"] == "FRAG LIMIT 7 / TIME"
 
 
-def test_apply_preset_marks_the_playing_game_and_edits_clear_it():
-    """A10 §8 (review #0): the state remembers WHICH saved game was applied — a duplicate is content-identical to its
-    source, so the UI cannot tell them apart by config. Venue-only PUTs keep it; any real edit clears it."""
-    from brx_mcp.mc.presets import PresetStore
+def test_put_config_never_touches_the_game_pick():
+    """F411 (games-presets.md §4): the whole-game "saved game" this test used to cover (`active_preset_id`,
+    cleared by any real edit) is gone with no migration. What replaces it is simpler: `PUT /api/config`
+    (KIT/LOBBY's inline edits) never touches `game_pick` at all — only `POST /api/play/pick` does."""
     s, net, clock, ps = mk()
-    s.presets = PresetStore(None, s.sanitize_config, default_config, P.merge, now_ms=s.now_ms)
-    a = s.presets.create("Alpha", "", s.config)
-    b = s.presets.create("Beta", "", s.config)        # identical config, different game
-    s.apply_preset(b["preset_id"], b["config"])
-    assert s.snapshot()["active_preset_id"] == b["preset_id"] != a["preset_id"]
-    s.set_config({"night": True})                       # venue-only: still playing Beta
-    assert s.snapshot()["active_preset_id"] == b["preset_id"]
-    s.set_config({"time_limit_s": 120})                 # a real edit: no longer Beta
-    assert s.snapshot()["active_preset_id"] is None
-    s.apply_preset(a["preset_id"], a["config"])
+    before = s.game_pick
+    s.set_config({"night": True})
+    assert s.game_pick is before
+    s.set_config({"time_limit_s": 120})
+    assert s.game_pick is before
     s.set_config({"loadout_policy": {"preset": "snipers"}})
-    assert s.snapshot()["active_preset_id"] is None
+    assert s.game_pick is before
+    assert s.snapshot()["game_pick"] == before
 
 
 # ── field 2026-08-30 regressions (first live 2-player match on the Mac) ──────────────────────────
@@ -1709,13 +1560,9 @@ def test_a_thin_shield_only_game_warns_when_someone_carries_armour_piercing():
     assert "shield-only" not in " ".join(C.validate(armoured, [ap])["warnings"])
 
 
-def test_f282_the_builtin_silenced_sniper_uses_the_silenced_preset():
-    """F282 polish: with no separate switch (Tony: "we only need one switch"), the shipped Silenced Sniper
-    game is how a host reaches the silenced preset today, so it must carry it."""
-    st, path, s = _store()
-    b = st.list()[0]
-    assert b["config"]["presentation"]["preset"] == "silenced", b["config"].get("presentation")
-    assert "pending" not in b["desc"].lower() and "sounds stock" not in b["desc"].lower(), b["desc"]
+# F282/F411: the shipped "Silenced Sniper" whole-game example this test covered is gone with no
+# migration — SILENCED is a MATCH SETTINGS switch now, reached through a `POST /api/play/pick`
+# (`test_mc_pieces.py test_compose_silenced_overrides_the_mode_preset`), not a shelf example.
 
 
 def test_f282_a_silenced_games_tryout_pushes_the_quiet_weapon_frame():

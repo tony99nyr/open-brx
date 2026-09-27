@@ -1148,6 +1148,7 @@ class WeaponCatalog:
             "weapon_class": w.get("class", "ballistic"),   # weapons.json `class`: ballistic|energy|melee (A10, 2026-09-17)
             "desc": w.get("desc", ""),
             "tags": list(w.get("tags") or []), "role": w.get("role", ""),   # A10 policy vocabulary
+            "types": list(w.get("types") or []),   # F411: the loadout-preset type toggles (games-presets.md)
             "stats": {"mag": w["mag"], "reserve": w["reserve"], "reload_ms": w["reload_ms"],
                       "dmg": w["dmg"], "rof": w["rof"], "rng": w["rng"],
                       "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms"),   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs

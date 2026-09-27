@@ -7,7 +7,6 @@ import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Api, LiveRow, LiveView, RecapView, State, StationView } from '../src/api/types';
 import { Armory } from '../src/screens/Armory';
-import { Designer } from '../src/screens/Designer';
 import { Games } from '../src/screens/Games';
 import { Items } from '../src/screens/Items';
 import { Kit } from '../src/screens/Kit';
@@ -18,7 +17,7 @@ import { StationAlerts } from '../src/ui/StationAlerts';
 import { MockBackend } from '../src/mock/backend';
 import { StoreCtx, type Store } from '../src/store';
 import { T } from '../src/tokens';
-import { demo, fixtureApi, makeStore, mount } from './harness';
+import { demo, makeStore, mount } from './harness';
 
 const REVERSE = "SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS THE GRENADE — every phone ignores "
   + "the station's hill; set OBJECTIVE SOURCE to PHONE (a phone station), or clear the CONTROL station in ITEMS";
@@ -276,34 +275,9 @@ describe('M9 · LOBBY names the updating player and why ARM waits', () => {
   });
 });
 
-describe('M10 · the DESIGNER objective source', () => {
-  async function designer() {
-    const d = await demo();
-    const modes = await d.api.getModes();
-    const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' },
-      { api: fixtureApi({}, d.api), modes, designerSeed: { mode: 'koth' } } as Partial<Store>);
-    const m = await mount(<StoreCtx.Provider value={store}><Designer /></StoreCtx.Provider>);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    return m;
-  }
-  it('after GRENADE is picked, the card text no longer describes a phone control point', async () => {
-    const m = await designer();
-    const grp = m.find('[role="group"][aria-label="objective source"]')[0];
-    const gren = Array.from(grp.querySelectorAll('button')).find(b => /GRENADE/.test(b.textContent ?? ''))!;
-    await act(async () => { gren.click(); });
-    const brief = m.find('[data-designer-brief]')[0];
-    expect(brief.textContent).not.toMatch(/spare phone in the utility role/);
-    expect(brief.textContent).toMatch(/grenade/i);
-    expect(gren.getAttribute('style') ?? '', 'the option label does not wrap').toMatch(/white-space: nowrap/);
-    m.unmount();
-  });
-  it('no text in the designer is under the 11 px floor', async () => {
-    const m = await designer();
-    const small = m.find('[style]').filter(e => /font: \d+ 10(\.5)?px/.test(e.getAttribute('style') ?? ''));
-    expect(small.map(e => (e.textContent ?? '').slice(0, 30))).toEqual([]);
-    m.unmount();
-  });
-});
+// F411: the GAME DESIGNER and its objective-source picker are retired (docs/spec/design/games-presets.md
+// §3: GAME MODE's `value` is just `{mode}` now — `station_source` is server-derived from the mode's
+// defaults). M10's own coverage went with it.
 
 describe('M11 · ARMORY says when the game needs a station that is not assigned', () => {
   it('a SETUP line in the header', async () => {
@@ -332,8 +306,9 @@ describe('M12 · the GAMES rail SETUP warnings are the friendly rewrite, upper c
     const { m } = await screen(<Games />, { phase: 'build', config_warnings: [NO_RESPAWN] });
     const t = m.text();
     expect(t.toUpperCase()).toContain('NO RESPAWN STATION IS ASSIGNED');
-    // the friendly rewrite, not the raw server sentence (which never says "set to")
-    expect(t.toUpperCase()).toContain('RESPAWN IS SET TO SCANNER');
+    // VQA round 1 QA-17: the picker calls this option STATION, never the wire word SCANNER — the
+    // friendly rewrite must use the operator's own vocabulary, not the raw server sentence's.
+    expect(t.toUpperCase()).toContain('RESPAWN IS SET TO STATION');
     expect(t).not.toMatch(/utility phone/i);
     m.unmount();
   });

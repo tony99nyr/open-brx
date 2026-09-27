@@ -125,6 +125,7 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
             "pool": pool,
             "verified": bool(w.get("verified")),
             "tags": list(w.get("tags") or []), "role": w.get("role", ""),
+            "types": list(w.get("types") or []),   # F411: the loadout-preset type toggles (games-presets.md)
             "htk": htk, "ttk_ms": ttk_ms}                                       # A10, now at the host's pool
     # A48: the cost of one full charge, for the HUD's NOT ENOUGH ENERGY line. Resolved, not raw: the
     # catalogue omits the key wherever it is 1 (`_note`: "Absent = 1"), and a consumer must never have to

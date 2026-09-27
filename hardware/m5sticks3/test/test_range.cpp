@@ -324,6 +324,79 @@ static void test_seq_never_goes_down() {
   CHECK_EQ(link.range_edits().edits().back().seq, 3u);
 }
 
+// ---- F365 RANGE CLEAR: give the on-Stick edit back to the platform default (or MC's value) --------
+static StationLink armed_hill_defaulted(uint32_t at_ms = 0) {
+  StationLink link;
+  link.apply_station_config(cfg(R"({"kind":"control","team":255,"id":3,"game":7,"threshold":0})"), at_ms);
+  return link;
+}
+
+// A defaulted control station (MC sent threshold 0, so the platform hill default -75 applies): an
+// edit to -77, then RANGE CLEAR restores -75, src "default" -- MC never actually sent a value here.
+static void test_range_clear_restores_the_platform_default() {
+  StationLink link = armed_hill_defaulted(0);
+  CHECK_EQ(link.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(std::string(link.threshold_src_label()), std::string("default"));
+  CHECK(link.edit_threshold(-2, 10));  // -75 -> -77
+  CHECK_EQ(link.threshold_dbm(), -77);
+  CHECK(link.threshold_setting().from_station());
+  CHECK(link.clear_range_edit(20));
+  CHECK_EQ(link.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK(!link.threshold_setting().from_station());
+  CHECK_EQ(std::string(link.threshold_src_label()), std::string("default"));
+  // The wire-facing src (contracts.md's own vocabulary) never says "default": that distinction is
+  // local-only, never sent to MC.
+  CHECK_EQ(std::string(link.threshold_setting().src()), std::string("mc"));
+  // Nothing left to clear: a second call is a no-op.
+  CHECK(!link.clear_range_edit(30));
+}
+
+// MC sent an EXPLICIT non-zero threshold before the edit: RANGE CLEAR restores THAT value, src "mc".
+static void test_range_clear_restores_mcs_explicit_value() {
+  StationLink link = armed_hill(0);  // "control", team 255, id 3, game 7
+  link.apply_station_config(cfg(R"({"kind":"control","team":255,"id":3,"game":7,"threshold":-66})"), 5);
+  CHECK_EQ(std::string(link.threshold_src_label()), std::string("mc"));
+  CHECK(link.edit_threshold(-3, 10));  // -66 -> -69
+  CHECK_EQ(link.threshold_dbm(), -69);
+  CHECK(link.clear_range_edit(20));
+  CHECK_EQ(link.threshold_dbm(), -66);
+  CHECK_EQ(std::string(link.threshold_setting().src()), std::string("mc"));
+  CHECK_EQ(std::string(link.threshold_src_label()), std::string("mc"));
+}
+
+// Both fields edited: clear drops both, keeps the log (and logs the clear itself), and a
+// second clear is a true no-op.
+static void test_range_clear_drops_both_fields_and_keeps_the_log() {
+  StationLink link = armed_hill_defaulted(0);
+  CHECK(link.edit_threshold(-2, 10));  // -75 -> -77
+  CHECK(link.edit_tx_power(-1, 10));   // high -> medium
+  CHECK_EQ(link.range_edits().edits().size(), (size_t)2);
+  CHECK(link.clear_range_edit(20));
+  CHECK_EQ(link.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK_EQ(link.tx_power_level(), TX_POWER_DEFAULT);
+  CHECK(!link.threshold_setting().from_station());
+  CHECK(!link.tx_power_setting().from_station());
+  CHECK_EQ(std::string(link.tx_power_src_label()), std::string("default"));
+  const auto& e = link.range_edits().edits();
+  CHECK_EQ(e.size(), (size_t)4);  // the two edits, still there, plus the two clears
+  CHECK(!e[2].tx_power);
+  CHECK_EQ(e[2].from, -77);
+  CHECK_EQ(e[2].to, STICK_HILL_DEFAULT_THRESHOLD_DBM);
+  CHECK(e[3].tx_power);
+  CHECK_EQ(e[3].from, TX_POWER_MEDIUM);
+  CHECK_EQ(e[3].to, TX_POWER_DEFAULT);
+  CHECK(!link.clear_range_edit(30));
+  CHECK_EQ(link.range_edits().edits().size(), (size_t)4);  // the no-op logs nothing more
+}
+
+static void test_range_clear_without_a_station_or_an_edit_is_a_no_op() {
+  StationLink link;
+  CHECK(!link.clear_range_edit(0));  // no station at all
+  StationLink armed = armed_hill();
+  CHECK(!armed.clear_range_edit(0));  // a station, but nothing on-station edited
+  CHECK(armed.range_edits().edits().empty());
+}
+
 static void test_release_drops_the_edit_but_keeps_the_log() {
   StationLink link = armed_hill();
   link.edit_threshold(-3, 10);
@@ -486,6 +559,10 @@ int main() {
   test_status_fields_edit_age_only_when_src_is_station();
   test_locked_range_edits_are_refused_and_unlocked_edits_are_logged();
   test_reboot_restores_value_seq_and_an_unknown_age();
+  test_range_clear_restores_the_platform_default();
+  test_range_clear_restores_mcs_explicit_value();
+  test_range_clear_drops_both_fields_and_keeps_the_log();
+  test_range_clear_without_a_station_or_an_edit_is_a_no_op();
   test_release_drops_the_edit_but_keeps_the_log();
   test_status_threshold_is_never_zero();
   test_seq_never_goes_down();

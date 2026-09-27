@@ -1,53 +1,8 @@
-// F-6 (2026-09-13). `Games.tsx guarded()` only confirmed a TUNED (unsaved) draft — a mode-tile switch
-// with a rostered game was one unconfirmed tap, even though round-3 FIELD-1's index-map + rebalance
-// still MOVES players between teams (TDM's BLUE/YELLOW to KOTH's BLUE/PURPLE). This is the new gate:
-// confirm whenever the switch would reshape ≥2 rostered players, and show the resulting split.
+// F-6 (2026-09-13): a mode switch that moves ≥2 rostered players between teams asks first and shows
+// the resulting split. `splitLine` is the pure predicate behind that gate (KIT/LOBBY's inline edit
+// uses it). F411 retired the GAMES tiles this file also drove; PLAY's own mode picker has its own test.
 import { describe, expect, it } from 'vitest';
-import type { ModeInfo, State } from '../src/api/types';
-import { Games } from '../src/screens/Games';
 import { splitLine } from '../src/screens/gameSummary';
-import { MockBackend } from '../src/mock/backend';
-import { StoreCtx } from '../src/store';
-import { makeStore, mount } from './harness';
-
-async function games() {
-  const api = new MockBackend();
-  const modes: ModeInfo[] = await api.getModes();
-  let state: State = await api.getState();
-  const render = () => (<StoreCtx.Provider value={makeStore({ state, view: 'build' }, { api, modes })}><Games /></StoreCtx.Provider>);
-  const m = await mount(render());
-  return { m, api, modes, settle: async () => { state = await api.getState(); await m.update(render()); } };
-}
-
-describe('GAMES mode-tile switch confirms a roster reshape', () => {
-  it('a rostered TDM -> KOTH switch shows the split, and the first tap sends nothing', async () => {
-    const g = await games();
-    const before = await g.api.getState();
-    expect(before.players.length, 'control: a rostered game (the demo default)').toBeGreaterThanOrEqual(2);
-    expect(before.config.mode).toBe('tdm');
-    await g.m.click('KING OF THE HILL');
-    // the first tap must not have reached the server
-    expect((await g.api.getState()).config.mode, 'no silent switch — the first tap only confirms').toBe('tdm');
-    const confirm = g.m.find('[data-testid="confirm-split"]')[0];
-    expect(confirm, 'the resulting split is on screen before the second tap').toBeTruthy();
-    expect(confirm.textContent).toMatch(/\d+ PLAYERS? → BLUE \d+ \/ PURPLE \d+/);
-    // second tap on the same card actually plays it
-    await g.m.click('KING OF THE HILL');
-    await g.settle();
-    expect((await g.api.getState()).config.mode).toBe('koth');
-    g.m.unmount();
-  });
-
-  it('re-picking the SAME mode (identical team layout) stays a one-tap no-op guard — nothing to confirm', async () => {
-    // Two different games sharing a team layout (or "run it back") move nobody; showing a confirm
-    // there would train operators to blind-tap through every confirm, which defeats the point of one.
-    const g = await games();
-    await g.m.click('TEAM DEATHMATCH');   // already the active stock mode -> tappable() swallows it
-    expect(g.m.find('[data-testid="confirm-split"]').length).toBe(0);
-    g.m.unmount();
-  });
-
-});
 
 describe('splitLine — the pure predicate behind the gate', () => {
   const blue = { team_id: 'blue' }, yellow = { team_id: 'yellow' }, purple = { team_id: 'purple' };

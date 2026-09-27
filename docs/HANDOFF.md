@@ -37,18 +37,17 @@ and the idle-timeout cause of F387's confounded control) on `26084fcf`, bench ch
 F282's A/B/A CONFIRMED (its t25/t26 isolation stays open); the `$PLAY` queue slot drops and reorders clips fed
 faster than they play (**F419**, links F378/F347, brx5). Also filed at the desk, all bugs seen in passing: the ⓘ
 utility-mode icon sits behind the Android status bar (**F420**, blocked S1); `release_utility` does not rejoin MC
-(**F421**); SET MY GUN shows no join feedback (**F422**); team 3 paints purple on the gun but reads GREEN TEAM
-everywhere else (**F423**); the KOTH HUD has no hill-hold score panel (**F424**); Tony decided the always-on
+(**F421**); SET MY GUN shows no join feedback (**F422**); team 3 read GREEN TEAM while the gun painted purple
+(**F423**, closed: now PURPLE #bf4ce6, the wire keeps green, F35/A69); the KOTH HUD has no hill-hold score panel (**F424**); Tony decided the always-on
 pickup countdown should become a left-side "X AVAILABLE" alert (**F425**, storyboard first); a phantom team-2 hill
-total (**F426**). F383's threshold stays at Tony's -75 default; a "-75 counts phones at 20 m" reading is VOID (the
+total (**F426**). The hill default is decided: -75 dBm, hysteresis 6 (Tony, until the outdoor walk); a "-75 counts phones at 20 m" reading is VOID (the
 phones never left the room). Full write-up: `experiment-log/2026-09.md`'s 2026-09-26 entry.
-- **Next bench task:** part 2 of [`bench-plan.md`](bench-plan.md) ("after GAMES and 0.4.14"), once the MC GAMES tab
-  (F411) and app 0.4.14 land. It now carries every part-1 re-check: F381 after F417, the phone hill (KOTH game 1),
+- **Next bench task:** part 2 of [`bench-plan.md`](bench-plan.md): 0.4.14 is cut and F411 is on main (c2c51679), so it
+  runs once F411's CI is green. Reflash the Stick from `6f042126` or later and `RANGE CLEAR` it at setup. It now carries every part-1 re-check: F381 after F417, the phone hill (KOTH game 1),
   F374's carry-out, F399's nine claims, 11.6, F386's a/b/c, the Stick-serial two-player race on F417 (brx5's
   detailed step), the queue-slot 2-then-3-cues variant (F419), F416's A/B/A (phones 10+ m from their guns), and
   F348.
-- **Next desk task:** F420-F423 (app-lane fixes, no gun needed) are ready to build from today's evidence. F424/F425
-  want a storyboard first (`ui-storyboard` skill) before either gets built. R4/T5 read-only research is
+- **Next desk task:** none open: F420-F425 are built in 0.4.14 (F423 closed); their bench checks are in part 2. R4/T5 read-only research is
   authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control

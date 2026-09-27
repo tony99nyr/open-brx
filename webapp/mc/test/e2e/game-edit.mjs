@@ -18,8 +18,9 @@
 // carries), locked (armed/live refuses an edit and says RECALL), stale (an MC with `/api/modes`
 // missing and no `loadout_policy` on the wire — the shape a pre-A10 or older server would send —
 // renders without crashing and shows the degraded state instead of a blank control), venue (F162:
-// the manual link beside the venue setting on GAMES, at desk and phone width, proving no popup
-// renders on GAMES or KIT, including against a config with no `environment` at all), faults
+// the manual link beside DAY/NIGHT on PLAY, at desk and phone width, proving no popup renders on
+// PLAY or KIT, and F410's environment=outdoor always holds — including against a config with no
+// `environment` at all), faults
 // (A36/A37: `?mock&faults=1` puts a stale ack, an echo mismatch, a pool fault and a gun that does
 // not echo on four otherwise-green guns, so all four states can be looked at without hardware).
 import { chromium } from 'playwright';
@@ -327,13 +328,18 @@ async function runMock(browser, viteBase) {
   if (await pushBtn.isEnabled().catch(() => false)) await pushBtn.click();
   else await pg.locator('main button:has-text("Push anyway")').click();
   await pg.waitForTimeout(400);
-  await until(async () => (await pg.locator('main').innerText()).includes('Config pushed'), 8000, 'the lobby to report a push');
+  // QA-02 fold (2026-09-26, visual QA round 1): LOBBY's own separate "Config pushed" step is retired
+  // -- GUNS READY is the one place LOBBY answers "are the guns ready" now -- so the push is read off
+  // that line instead.
+  await until(() => pg.getByTestId('lobby-guns-ready').count().then(n => n > 0), 8000, 'the lobby to report a push');
   ok(`LOBBY: pushed   ${await shot(pg, '04-mock-lobby-pushed')}`);
 
   await openPanel(pg);
+  // GameEditPanel's own standing "confirmed" count is retired here too (LoadedGame.tsx: it renders
+  // nothing on LOBBY once nothing is actively re-pushing) -- so before this edit there is nothing to
+  // read, and that absence IS the proof the fold landed.
   const repushBefore = await repushText(pg);
-  expect(/ALL GUNS ON THIS CONFIG|RE-PUSHING|GUNS CONFIRMED ON THIS CONFIG/.test(repushBefore), `the repush line reads a real state before the edit (saw ${JSON.stringify(repushBefore)})`);
-  const stepTextBefore = (await pg.locator('main').innerText()).replace(/\s+/g, ' ').match(/Config pushed[^A-Z]*\d+\/\d+/)?.[0] ?? '';
+  expect(repushBefore === '', `the standing count is retired on LOBBY, so this reads empty before the edit (saw ${JSON.stringify(repushBefore)})`);
 
   // WEAPONS AVAILABLE — switch one primary weapon off, then SAVE AND LOAD (the label the button
   // wears once there IS a head on the guns).
@@ -347,32 +353,16 @@ async function runMock(browser, viteBase) {
   expect((await saveLoad.innerText()).includes('SAVE AND LOAD'), `with a head on the guns the button says SAVE AND LOAD (saw ${JSON.stringify(await saveLoad.innerText())})`);
   await saveLoad.click();
 
-  // The edit RE-PUSHES: the ack count must visibly MOVE (drop, then recover) — this is the
-  // observable half of B3 (the un-push used to leave it looking untouched). Both indicators read the
-  // SAME `lobby.acks` off the SAME snapshot, so they are checked in the one instant just confirmed to
-  // be inside the transitional window — a second, separately-timed poll for the step text could miss
-  // it (the mock's re-ack delay is short by design; a real gun's is ~1.5s).
-  // Read both indicators in ONE page evaluation, so they come from the same DOM snapshot. Two separate
-  // reads let the step text come from a different moment than the repush line (before the new state
-  // renders, or after the acks return). Poll until both have moved; the held acks keep the window open.
-  const snapshot = () => pg.evaluate(() => ({
-    repush: (document.querySelector('[data-testid="game-edit-panel"] [data-testid="game-edit-repush"]')?.innerText ?? '').replace(/\s+/g, ' ').trim(),
-    step: (document.querySelector('main')?.innerText ?? '').replace(/\s+/g, ' ').match(/Config pushed[^A-Z]*\d+\/\d+/)?.[0] ?? '',
-  }));
-  let during = { repush: repushBefore, step: stepTextBefore };
-  await until(async () => { during = await snapshot(); return during.repush !== repushBefore; }, 4000, 'the repush line to change right after the edit');
-  const deadline = Date.now() + 2500;
-  while (during.repush !== repushBefore && during.step === stepTextBefore && Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, 80));
-    during = await snapshot();
-  }
-  const stepTextDuring = during.step;
-  expect(during.repush !== repushBefore && stepTextDuring !== stepTextBefore,
-    `LOBBY's own config-pushed step moves WITH the repush line (before "${stepTextBefore}", during "${stepTextDuring}", repush line "${during.repush}")`);
-  ok(`edit fired: repush line "${await repushText(pg)}", LOBBY step "${stepTextDuring}"   ${await shot(pg, '05-mock-repushing')}`);
+  // The edit RE-PUSHES: the repush line must visibly APPEAR (RE-PUSHING), then go quiet again once
+  // the acks return — this is the observable half of B3 (the un-push used to leave it looking
+  // untouched), now proved against the one remaining rendering of it rather than a retired step.
+  let during = repushBefore;
+  await until(async () => { during = await repushText(pg); return during !== ''; }, 4000, 'the repush line to appear right after the edit');
+  expect(/RE-PUSHING/.test(during), `the repush line shows the in-flight push (saw ${JSON.stringify(during)})`);
+  ok(`edit fired: repush line "${during}"   ${await shot(pg, '05-mock-repushing')}`);
 
-  await until(async () => !/RE-PUSHING/.test(await repushText(pg)), 6000, 'the acks to recover');
-  ok(`acks recovered: "${await repushText(pg)}"   ${await shot(pg, '06-mock-repushed')}`);
+  await until(async () => (await repushText(pg)) === '', 6000, 'the acks to recover (the standing count stays retired, so this goes back to empty)');
+  ok(`acks recovered: repush line is empty again   ${await shot(pg, '06-mock-repushed')}`);
   await openPanel(pg);
   expect(await panel(pg).locator(`[aria-label="primary weapons available"] button[aria-label="${chipName}, off"]`).count() === 1,
     `${chipName} is off in the config the server now holds`);
@@ -552,59 +542,54 @@ async function runStale(browser, viteBase, mcBase) {
 // ---------------------------------------------------------- venue (F162, the ALT beam-width backstop)
 /** 2026-09-16 (bench): the dismissable "SET EACH GUN TO <VENUE> (HOLD ALT 3 S)" banner is gone ,
  *  nagging the operator on every screen, every session, was "obnoxious" and it had to be dismissed
- *  again on several tabs. In its place, GAMES carries one small, quiet link beside the venue setting
- *  that opens the manual page explaining how to set the gun's own native ALT mode, in a new tab. No
- *  dismiss state, no storage: a link needs none. MC still cannot make the physical ALT selection, so
- *  this stays a real-browser step rather than only a jsdom one, to prove the link is really there and
- *  really points at the manual.
+ *  again on several tabs. In its place, PLAY carries one small, quiet link beside the DAY/NIGHT
+ *  setting that opens the manual page explaining how to set the gun's own native ALT mode, in a new
+ *  tab. No dismiss state, no storage: a link needs none. MC still cannot make the physical ALT
+ *  selection, so this stays a real-browser step rather than only a jsdom one, to prove the link is
+ *  really there and really points at the manual.
+ *
+ *  F411/F410 (2026-09-26): the venue PICKER this step used to drive (indoor/outdoor on GAMES) is gone
+ *  — MVP is outdoors only, so `config.environment` is always `"outdoor"` and there is nothing left to
+ *  switch (games-presets.md §3.7). The manual link itself is unchanged and un-reactive to venue (it
+ *  always pointed at the same anchor); this step now proves the link on PLAY, and that `environment`
+ *  really does stay pinned to outdoor on the real server.
  *
  *  Runs against the REAL python MC, at desk and phone width, and then against a server whose config
  *  carries no `environment` at all (the pre-venue shape), where it must still show no popup. */
 const MANUAL_ALT_MODE_URL = 'https://open-brx.iamrossi.workers.dev/manual/operate#indoor-vs-outdoor-mode';
 const reminder = pg => pg.locator('[data-testid="venue-mode-reminder"], [data-testid="venue-mode-dismiss"]');
 const manualLink = pg => pg.locator('[data-testid="venue-mode-manual-link"]');
-/** GAMES is the `build` view; reach it the way the operator does, through the nav tab. */
-async function toGames(pg) {
-  await pg.locator('header nav button:has-text("GAMES")').first().click();
-  await until(() => pg.locator('main [role="group"][aria-label="venue"]').count().then(n => n > 0), 10000, 'GAMES and its VENUE control');
+/** PLAY is the `build` view; reach it the way the operator does, through the nav tab. */
+async function toPlay(pg) {
+  await pg.locator('header nav button:has-text("PLAY")').first().click();
+  await until(() => manualLink(pg).count().then(n => n > 0), 10000, 'PLAY and its venue-mode manual link');
 }
 async function toKit(pg) {
   await pg.locator('header nav button:has-text("KIT")').first().click();
   await until(() => onKit(pg), 10000, 'KIT to open');
 }
-async function pickVenue(pg, want, mcBase) {
-  await pg.locator(`main [role="group"][aria-label="venue"] button:has-text("${want.toUpperCase()}")`).click();
-  await until(async () => (await (await fetch(`${mcBase}/api/state`)).json()).config.environment === want,
-    5000, `the real server to hold environment=${want}`);
-}
 async function runVenue(browser, viteBase, mcBase, vp = { width: 1280, height: 800 }, tag = 'desk') {
   step = `venue/${tag}`; stepFailedAt = failures.length;
-  console.log(`\n[${step}] the manual link beside the venue setting on GAMES, ${vp.width}x${vp.height}`);
+  console.log(`\n[${step}] the manual link beside DAY/NIGHT on PLAY, ${vp.width}x${vp.height}`);
   const pg = await newPage(browser, viteBase, vp);
   await pg.goto(`${viteBase}/`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header nav button').count().then(n => n > 0), 15000, 'the command bar');
-  await toGames(pg);
+  await toPlay(pg);
   await noCrash(pg);
 
-  await until(() => manualLink(pg).count().then(n => n === 1), 5000, 'the manual link beside the venue setting');
   const href = await manualLink(pg).getAttribute('href');
   expect(href === MANUAL_ALT_MODE_URL, `it points at the manual anchor (saw ${href})`);
   expect((await manualLink(pg).getAttribute('target')) === '_blank', 'it opens in a new tab');
   expect((await manualLink(pg).getAttribute('rel') ?? '').split(/\s+/).includes('noopener'), 'it carries rel="noopener"');
   expect(await reminder(pg).count() === 0, 'no dismissable popup renders any more');
-  ok(`GAMES: manual link present, no popup   ${await shot(pg, `40-venue-games-link-${tag}`)}`);
-
-  // switching venue must not resurrect a popup, and the link must not move or disappear
-  await pickVenue(pg, 'outdoor', mcBase);
-  await pickVenue(pg, 'indoor', mcBase);
-  expect(await reminder(pg).count() === 0, 'a venue change still shows no popup');
-  expect(await manualLink(pg).count() === 1, 'the link is still there after a venue change');
-  ok(`venue change: still just the link, no popup   ${await shot(pg, `41-venue-games-after-change-${tag}`)}`);
+  const env = (await (await fetch(`${mcBase}/api/state`)).json()).config.environment;
+  expect(env === 'outdoor', `F410: MVP is outdoors only, so the real server always composes outdoor (saw ${JSON.stringify(env)})`);
+  ok(`PLAY: manual link present, no popup, environment pinned outdoor   ${await shot(pg, `40-venue-games-link-${tag}`)}`);
 
   // KIT is where the guns are handed out, no control lives there, so no popup and no link either
   await toKit(pg);
   expect(await reminder(pg).count() === 0, 'KIT carries no popup');
-  expect(await manualLink(pg).count() === 0, 'the link lives beside the setting on GAMES, not on KIT');
+  expect(await manualLink(pg).count() === 0, 'the link lives beside DAY/NIGHT on PLAY, not on KIT');
   ok(`KIT: no popup, no stray link   ${await shot(pg, `42-venue-kit-clean-${tag}`)}`);
   await pg.context().close();
 }

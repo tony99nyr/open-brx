@@ -1,64 +1,48 @@
+// PLAY (F411 rewrite, docs/spec/design/games-presets.md + games-redesign.md): BUILD creates presets,
+// PLAY only picks among them, then LOADs. Rewritten from the old GAMES card-shelf/mode-tile screen,
+// which is retired along with the GAME DESIGNER it opened (BUILD, screens/Build.tsx, replaces both).
+//
+// The rule this screen exists to keep: PLAY never edits a preset, never leaves a "tuned, not saved"
+// draft, and never shows the guns' own state (that is LOBBY's job — "GUNS READY n/n").
+//
+// VQA round 1 (2026-09-26, docs/spec/design storyboard Proposal A frames 05/06/09/10/12): the layout
+// below follows the storyboard directly — pickers in one wrapping row (a label above a Seg group, not
+// a full-width bar each), the MATCH SETTINGS strip as one bordered row with no per-control caption
+// (each control's own value already names it), LOAD under the strip, right-aligned.
+import { useEffect, useRef, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
-// GAMES — two states on one tab (docs/spec/loadout.md §5).
-//
-// BEFORE a config has been sent to the guns it is "pick tonight's game": two rows of cards (YOUR
-// GAMES · STOCK MODES), a summary of what the players will get, the VENUE chips, and LOAD ▸.
-// AFTER, it is the ACTIVE GAME CONFIG: every setting of the game the guns are actually holding, the
-// count of guns that have confirmed it, EDIT, and the way on to KIT.
-//
-// Tony, 2026-09-13: "At first on a new match the game tab should be as it is today. Pick or create
-// customize. Instead of continue though it should be Load. Load pushes that config to phones. The tab
-// should then change state to active game config. Every setting for the current config shown. Click
-// Edit to modify and then Save and Load to update all phones." The reason is the one that decides
-// every judgement on this screen: "several times while players were kitting I wanted to make
-// adjustments and I would have to remake a game type and hit continue hoping it pushed the updates."
-// CONTINUE never pushed anything — it was a bare `setPhase('kit')` — so the operator's doubt was
-// well founded. Everything here exists to answer it: one control that loads, one readout of how many
-// guns took it, and the config_id they echoed.
-//
-// LOAD ANNOUNCES THE GAME; IT DOES NOT WRITE A GUN. Tony, 2026-09-13: "weapons have to go with the
-// arm." The first cut of this screen called the real config push, which compiles a weapon head per
-// player — and nobody has kitted at that point, so it wrote policy-DEFAULT loadouts to every gun and
-// re-pushed on every kit pick. LOAD now sends the game (mode, teams, health, night, respawn, venue,
-// the rules) to the phones and leaves the guns alone; weapons still reach them at the LOBBY push
-// after kitting, exactly as before. So `lobby.pushed` stays FALSE through a LOAD, and this tab keys
-// its two states on `state.game.loaded` instead.
-//
-// LOAD deliberately does NOT advance to KIT either: a tab cannot "change state to active game config"
-// if it navigates away. CONTINUE TO KIT ▸ is the way on, one tap, on the active state.
-//
-// Defining a game happens in the DESIGNER (opened from here) — this page has no forms.
 import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
-import { useCallback, useEffect, useState } from 'react';
-import { CONFIG_ERRORS_ALERT_ID, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_ID, pushGate , cleanServerLine } from '../api/derive';
-import type { ModeInfo, SavedGame } from '../api/types';
+import { CONFIG_ERRORS_ALERT_ID } from '../api/derive';
+import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
-import { F, PERK_COLOR, T } from '../tokens';
-import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, SwitchConfirm, Tag, Toggle, onKey } from '../ui';
+import { F, T } from '../tokens';
+import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, SwitchConfirm, Toggle } from '../ui';
 import { Alert } from '../ui/Alert';
-import { GLYPH, alertWords, colourOf, glyphed, serverLine, sevOf } from '../alerts';
-import { HEALTH_PRESET_COPY, emptyRequiredSlots, gameSig, healthPresetOf, poolEmptyMessage, rulesLine, splitLine } from './gameSummary';
+import { alertWords, serverLine } from '../alerts';
+import { emptyRequiredSlots, poolEmptyMessage, splitLine } from './gameSummary';
+import { operatorNote } from './operatorNote';
+import { type MatchItemKey, matchItems } from './matchItems';
+import { kindLabel } from './presets/kinds';
+import { RUNWAYS, getRunway, setRunway, useRunway } from '../runway';
+import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { MODE_ART } from '../modeArt';
 import { ModeEmblem } from './ModeEmblem';
-import { VenueModeManualLink } from '../ui/VenueModeReminder';
-import { GameEditPanel } from '../ui/GameEditPanel';
-import { GameSentStatus, GameSettings, LoadStatus, gameSettingRows } from '../ui/LoadedGame';
 
-/** F151 (field 2026-09-12, ISSUE 25) — `PUT /api/config` (and everything that rides on it: playing a
- *  saved game, playing a stock mode, applying a preset) is only VALID in muster/build/kit/lobby
- *  (mc/API.md). Once the field has moved on — the match is armed or live, or even sitting in the
- *  debrief — a tap here used to fail SILENTLY: the store's `error` is a small dismissable strip the
- *  operator can easily miss, and nothing on the Games screen itself said why nothing happened. This
- *  says which door is still open — and names the RIGHT one: `armed` is undone by ABORT, not RECALL. */
-/** 2026-09-16: RECAP is editable too. `state.py set_config` (and LOAD, and a phase move) in `recap`
- *  rolls the finished session forward first (`_roll_forward_from_recap`: roster and game kept), so any
- *  GAMES action after the whistle simply works on the next match. Tony: "why? just make a new one".
- *  Only armed/live refuse. */
+/** F411 games-presets.md §5: PLAY's picker order. GAMEPLAY is always hidden for MVP (§3/§13/§15). */
+const PICKER_ORDER: Exclude<PieceKind, 'gameplay'>[] = ['mode', 'life', 'spawn', 'primary', 'secondary', 'perks', 'misc_loadouts'];
+// Polish round 1 Low: this duplicated BUILD's own `kindLabel` (screens/presets/kinds.ts) under a
+// second name with the same eight strings -- one table now, imported.
+
+const TIME_QUICK_MIN = [5, 10, 15, 20, 30];
+// VQA QA-08: the server's own cap on a match's time limit (2 hours) — the stepper never sends past it.
+const TIME_MAX_MIN = 120;
+const KILLS_QUICK = [0, 10, 15, 25, 50, 100];   // 0 = NO KILL LIMIT
+const COUNTDOWN_QUICK = [10, 30, 60];
+
+/** the phases `POST /api/play/pick` (and `PUT /api/config`) accept in — same list `state.py` gates on.
+ *  RECAP is editable too: any pick rolls the finished session forward first, roster and game kept. */
 export const CONFIG_EDITABLE_PHASES = new Set(['muster', 'build', 'kit', 'lobby', 'recap']);
-/** Kept as its own name for the callers that ask "may a game card be played?"; today it is the same
- *  set, because the server no longer splits a mode pick from any other edit. */
-export const MODE_PICK_PHASES = CONFIG_EDITABLE_PHASES;
 export function lockedReason(phase: string): string {
   if (phase === 'armed') return 'GAME SETTINGS ARE LOCKED: THE MATCH IS ARMED. ABORT ON THE MATCH TAB RETURNS IT TO THE LOBBY.';
   if (phase === 'live') return 'GAME SETTINGS ARE LOCKED: THE MATCH IS LIVE. END OR RECALL IT ON THE MATCH TAB TO EDIT THE GAME AGAIN.';
@@ -66,335 +50,241 @@ export function lockedReason(phase: string): string {
 }
 
 export function Games() {
-  const { state, modes, weapons, perks, run, api, setView, openDesigner } = useStore();
-  // F-scope A (2026-09-25): MVP is TDM/FFA/KotH only. `modes` stays the full server list (an old saved
-  // game or a config off the wire still resolves its mode row for a name/brief); `stockModes` is what a
-  // host is OFFERED to start a NEW game from -- server-flagged (`ModeInfo.mvp`), not a console name list.
-  const stockModes = modes.filter(m => m.mvp);
-  const [games, setGames] = useState<SavedGame[]>([]);
-  const [confirmDel, setConfirmDel] = useState<string | null>(null);
-  const [confirmSwitch, setConfirmSwitch] = useState<string | null>(null);   // tapping a card while the draft is TUNED — NOT SAVED (review #16)
-  const [editing, setEditing] = useState(false);        // the ACTIVE state's EDIT draft is open
-  const [draftDirty, setDraftDirty] = useState(false);  // ...and whether it actually holds a change (`GameEditPanel`'s own `dirty`, mirrored up)
-  const [picking, setPicking] = useState(false);        // ...and the card shelves are showing under it
-  const [busy, setBusy] = useState(false);              // a LOAD / RE-PUSH is in flight
-  const [recentLoad, setRecentLoad] = useState(false);  // the few seconds after one, so the count reads as moving
-  const reload = useCallback(() => api.getPresets().then(setGames).catch(() => {}), [api]);
-  useEffect(() => { reload(); }, [reload]);
-  useEffect(() => { if (!recentLoad) return; const h = setTimeout(() => setRecentLoad(false), 4_000); return () => clearTimeout(h); }, [recentLoad]);
-  // Bench 2026-09-17: `editing` must never outlive its own draft UI. The EDIT panel only renders
-  // while `loaded` (below) is true, so if a game were ever to become un-loaded with `editing` still
-  // true (an older server's snapshot, a finished match rolling forward under this tab), the operator
-  // would be left with `guarded()` refusing a pick over a draft they can no longer see, let alone
-  // cancel. Reset both the moment there is nothing loaded to edit.
-  const loaded = !!state?.game?.loaded || !!state?.lobby?.pushed;
-  useEffect(() => { if (!loaded) { setEditing(false); setDraftDirty(false); } }, [loaded]);
+  const { state, api, run, setView, openBuild, setFocusHill, connected, modes } = useStore();
+  const [pieces, setPieces] = useState<GamePiece[]>([]);
+  const [piecesStale, setPiecesStale] = useState(false);
+  // VQA QA-09: a `GET /api/pieces` failure that is NOT a 404 (an older-console signal) is a real fetch
+  // problem — show it, and retry once the socket reconnects, rather than swallowing it and leaving
+  // every picker silently gone.
+  const [piecesError, setPiecesError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
+  const [runwayVal] = useRunway();
+  useEffect(() => {
+    let cancelled = false;
+    api.getPieces().then(ps => { if (cancelled) return; setPieces(ps); setPiecesStale(false); setPiecesError(null); })
+      .catch(e => {
+        if (cancelled) return;
+        if ((e as { status?: number }).status === 404) { setPiecesStale(true); setPiecesError(null); }
+        else setPiecesError((e as Error)?.message || 'could not load the game pieces');
+      });
+    return () => { cancelled = true; };
+    // `connected` retries on a real reconnect (mock mode holds it true, so `retryTick` — RETRY below,
+    // or a future reconnect against a real server — is what fires there).
+  }, [api, connected, retryTick]);
+
+  // ---- F411 §6 FAVOURITES: a named bundle of the whole PLAY pick, like a named LAST MATCH ---------
+  const [favourites, setFavourites] = useState<Favourite[]>([]);
+  // Polish round 1 M5: a 404 (an older MC, no FAVOURITES route) is stale, same as `piecesError`'s own
+  // 404 case -- silent. Any OTHER failure used to be swallowed the same way, hiding a real fetch
+  // problem behind an empty shelf that looked like "no favourites saved yet". The effect used to run
+  // once, off `[api]` only, so a reconnect after the server came back never tried again.
+  const [favouritesError, setFavouritesError] = useState<string | null>(null);
+  const refreshFavourites = () => api.getFavourites().then(fs => { setFavourites(fs); setFavouritesError(null); })
+    .catch(e => {
+      if ((e as { status?: number }).status === 404) { setFavouritesError(null); return; }
+      setFavouritesError((e as Error)?.message || 'could not load favourites');
+    });
+  // Round 2 Low: this had no `cancelled` guard at all (unlike the pieces-fetch effect just above it) --
+  // a stale response landing after `api`/`retryTick` moved on could still clobber newer state, or update
+  // state past unmount. And it used to refetch on EVERY `connected` change, including the DISCONNECT
+  // itself, which can only fail or race the reconnect fetch that follows it -- skip while known offline.
+  useEffect(() => {
+    if (!connected) return;
+    let cancelled = false;
+    api.getFavourites().then(fs => { if (cancelled) return; setFavourites(fs); setFavouritesError(null); })
+      .catch(e => {
+        if (cancelled) return;
+        if ((e as { status?: number }).status === 404) { setFavouritesError(null); return; }
+        setFavouritesError((e as Error)?.message || 'could not load favourites');
+      });
+    return () => { cancelled = true; };
+  }, [api, connected, retryTick]);
+  const [savingFav, setSavingFav] = useState(false);
+  const [favNameDraft, setFavNameDraft] = useState('');
+  const [renamingFav, setRenamingFav] = useState<string | null>(null);
+  const [confirmDeleteFav, setConfirmDeleteFav] = useState<string | null>(null);
+  const [fallbackNote, setFallbackNote] = useState<string[] | null>(null);
+  // Polish round 1 Low: guards SAVE AS A FAVOURITE against a double submit (declared up here with
+  // every other hook -- a hook after the `if (!state) return null` below breaks the rules of hooks).
+  const [submittingFav, setSubmittingFav] = useState(false);
+  // Round 4: F-6's mode-switch confirm (gameSummary.splitLine), restored here -- retired along with
+  // the old GAMES tiles, but the roster-reshaping hazard it guarded is exactly as real from PLAY's own
+  // mode picker. `piece_id`, not the mode string: two builtins could in principle share one mode (they
+  // do not today, but the picker keys on piece ids everywhere else).
+  const [modeConfirm, setModeConfirm] = useState<{ piece_id: string; split: string } | null>(null);
+
   if (!state) return null;
   const cfg = state.config;
-  const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);          // VENUE / LOAD / EDIT / playing a card
-  const modeLocked = !MODE_PICK_PHASES.has(state.phase);
-  // F141 polish (field 2026-09-12): the applied config's OWN pool, server-computed — a policy that
-  // excludes every weapon in a slot can reach `state.config` from a saved game or a race even without
-  // visiting DESIGNER this session, and `state.py push_config` refuses such a head
-  // (`_primary_pool_refusal`), so LOAD has to refuse it here too rather than at the whistle.
+  const pick = state.game_pick;
+  // F411 "stale server": `game_pick` absent from the snapshot, or `GET /api/pieces` 404 — an MC that
+  // predates PLAY/BUILD. PLAY still renders: it just has nothing pickable to show.
+  const staleServer = !pick || piecesStale;
+
+  const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);
   const poolEmpty = emptyRequiredSlots(state.loadout_pool);
   const poolEmptyReason = poolEmpty.any
     ? [poolEmpty.primary && poolEmptyMessage('PRIMARY', state.loadout_pool.reasons!.primary!),
        poolEmpty.secondary && poolEmptyMessage('SECONDARY', state.loadout_pool.reasons!.secondary_weapons!),
        poolEmpty.perk && poolEmptyMessage('PERK', state.loadout_pool.reasons!.perks!)].filter(Boolean).join(' ')
     : '';
-  // F402 (Tony 2026-09-25): "no way to play it without it" — the server refuses a koth LOAD/push
-  // outright with nothing on the field that IS the hill (`state.py _koth_hill_fault`, `force` does
-  // not open it either). Predicted here, in the SAME words, so LOAD is visibly disabled before the
-  // operator ever presses it rather than only after a caught refusal. `state.stations` is optional
-  // (absent from an older server's snapshot) — absent reads as "nothing assigned", never a crash.
-  const kothHillFault = cfg.mode !== 'koth' ? undefined
-    : cfg.station_source !== 'phone'
-      ? 'KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY'
-      : (state.stations ?? []).some(s => s.assigned?.kind === 'control') ? undefined
-        : 'KING OF THE HILL NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY';
-  const blocked = locked || poolEmpty.any || !!kothHillFault;
-  const blockedReason = locked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : kothHillFault;
-  const sig = gameSig(cfg);
-  // identity = the game the server APPLIED (a duplicate is content-identical to its source — review #0); content match is the fallback for an older MC
-  const activeSaved = (state.active_preset_id ? games.find(g => g.preset_id === state.active_preset_id) : null) ?? (state.active_preset_id === undefined ? games.find(g => gameSig(g.config) === sig) : null) ?? null;
-  const mode = modes.find(m => m.mode === cfg.mode);
-  const activeStock = !activeSaved && mode && gameSig({ ...mode.defaults, teams: cfg.teams }) === sig ? mode : null;   // stock defaults, untouched
-  const custom = !activeSaved && !activeStock;   // a tuned draft nobody saved yet
-  const venue = { environment: cfg.environment, night: cfg.night };
-  const title = activeSaved?.name ?? mode?.name ?? cfg.mode;
+  // games-redesign.md §8: KOTH needs a hill station assigned in ARMORY — never a dead end.
+  const kothNoHill = cfg.mode === 'koth' && !(state.stations ?? []).some(s => s.assigned?.kind === 'control');
+  // VQA QA-19: a real fault (locked, or an empty required slot) is red; KOTH-with-no-hill-yet is a
+  // setup step, not a fault, so it gets its own amber block instead of sharing the red one.
+  const realFault = locked || poolEmpty.any;
+  const blocked = realFault || kothNoHill;
+  const realFaultReason = locked ? lockedReason(state.phase) : poolEmptyReason;
 
-  // ---- has a game been LOADED? -----------------------------------------------------------------
-  // `game.loaded` is the key, NOT `lobby.pushed`. A LOAD announces the game to the phones and
-  // deliberately does not write a gun, so `pushed` no longer becomes true at LOAD — that split is the
-  // whole point. A lobby push still implies a loaded game (and is what an older server without a
-  // `game` block reports), so it counts too. Both survive armed/live and both are dropped by
-  // `_finish()`, so a debrief shows the card picker with the last game still selected: LOAD (or
-  // RECAP's NEXT MATCH) starts the next match on it. (`loaded` itself is computed above, before the
-  // early return, so the editing-reset effect can see it too.)
-  const gate = pushGate(state);
-  const gameSent = state.game?.sent ?? 0;
-  const gameTotal = state.game?.total ?? state.players.length;
-
-  // a TUNED (unsaved) draft is discarded by playing something else — ask once (review #16). Only the
-  // PHASE lock applies here — `poolEmpty` describes the config ALREADY applied, and picking a
-  // DIFFERENT game/mode is exactly how an operator escapes a bad one; it must never be the gate that
-  // traps them.
-  // MERGE-3 (round-3 fix pass, 2026-09-13): in RECAP, tapping the game you just played is "run it
-  // back". Since 2026-09-16 LOAD does the same with no tap, and so does RECAP's NEXT MATCH.
-  const runItBack = state.phase === 'recap';
-  const tappable = (on: boolean) => !on || runItBack;
-  // F-6 (2026-09-13): a mode/game switch RESHAPES the roster onto the target's own declared teams
-  // (round-3 FIELD-1's index-map + rebalance — no longer "everyone onto teams[0]", but still a move).
-  const splitFor = (targetTeams: { team_id: string }[]) => splitLine(state.players, cfg.teams, targetTeams);
-  const guarded = (key: string, targetTeams: { team_id: string }[], go: () => void) => {
-    // F.2 (2026-09-13): the loaded state shows the EDIT draft and "PLAY A DIFFERENT GAME" on screen
-    // together, and a card tap here used to call `putConfig`/`applyPreset` IMMEDIATELY. The draft
-    // stayed open, but its patch is diffed against `cfg` (`GameEditPanel`'s `patchOf`), and this tap
-    // had just moved `cfg` out from under it -- so SAVE would then send a patch against a game nobody
-    // drafted.
-    //
-    // REVISED (bench 2026-09-17): the fix above was a REFUSAL — "FINISH EDITING FIRST... BEFORE
-    // PICKING ANOTHER GAME" — and Tony hit it stone cold: he had opened EDIT, left it, forgotten it
-    // was open, and got a sticky error with no visible draft on screen to finish or cancel. Tony's
-    // call: picking another game while a draft is open DISCARDS the draft and proceeds, same as any
-    // other "this drops your unsaved game" case on this screen (`custom` below). No error either way
-    // -- only a one-line, auto-clearing notice, and only when the draft actually held a change.
-    if (editing) {
-      setEditing(false);
-      if (draftDirty) setNotice('UNSAVED EDITS DISCARDED', false, 4_000);
-      setDraftDirty(false);
+  // "SPAWN — ITS SAVED PICK IS GONE, USING AUTO" (games-presets.md §6) needs the OLD piece's name,
+  // which a fallback means we no longer have -- say what it is USING instead, always true, never
+  // invented.
+  const favouriteFallbackNote = (fallbacks: PieceKind[], pick: GamePick): string[] | null => (fallbacks.length
+    ? fallbacks.map(k => `${kindLabel(k)} — ITS SAVED PICK IS GONE, USING ${pieces.find(p => p.piece_id === pick.pieces[k])?.name ?? 'ITS DEFAULT'}`)
+    : null);
+  // Round 3: a PICK fallback (round 2, server review: a kind the request did not itself name, e.g. a
+  // post-MVP mode set on KIT, falls back to its builtin) is a DIFFERENT story from a favourite's own
+  // fallback above -- there is no "saved pick" here that went missing, so "ITS SAVED PICK IS GONE"
+  // said something that never happened. Worded separately, naming where the value actually came from.
+  const pickFallbackNote = (fallbacks: PieceKind[], pick: GamePick): string[] | null => (fallbacks.length
+    ? fallbacks.map(k => `${kindLabel(k)}: USING ${pieces.find(p => p.piece_id === pick.pieces[k])?.name ?? 'ITS DEFAULT'} (THE KIT PICK IS NOT OFFERED ON PLAY)`)
+    : null);
+  // Polish round 1 Low: a fallback note used to sit on screen until the NEXT favourite load, surviving
+  // every ordinary tap in between and describing a load that was no longer the reason anything on
+  // screen looked the way it did.
+  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); setModeConfirm(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
+    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }); };
+  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); setModeConfirm(null); return run(() => api.pick({ match: patch }))
+    .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }); };
+  // Round 4 (F-6, gameSummary.splitLine): a mode switch that would move ≥2 rostered players between
+  // teams asks first -- retired along with the old GAMES tiles, restored here since PLAY's own mode
+  // picker carries exactly the same hazard. Picking a mode is itself the request (no draft/SAVE step
+  // to hang the ask on, unlike GameEditPanel's), so the ask sits on the TAP: the first tap on a mode
+  // that reshapes the roster shows the predicted split and sends nothing; the SAME mode tapped again
+  // commits it. Any other tap (a different mode, or any other control -- pickPiece/pickMatch above
+  // both clear this) cancels. Re-picking the mode already applied, or one whose teams do not actually
+  // move anyone (`splitLine` returns '' either way), is still one tap.
+  const pickMode = (p: GamePiece) => {
+    const modeId = (p.value as { mode: string }).mode;
+    const newTeams = modes.find(m => m.mode === modeId)?.defaults.teams ?? [];
+    const split = splitLine(state.players, cfg.teams, newTeams);
+    if (split) {
+      if (modeConfirm?.piece_id === p.piece_id) { setModeConfirm(null); pickPiece('mode', p.piece_id); return; }
+      setModeConfirm({ piece_id: p.piece_id, split });
+      return;
     }
-    if (modeLocked) { setNotice(lockedReason(state.phase), true); return; }   // never a silent tap (F151)
-    if ((custom || splitFor(targetTeams)) && confirmSwitch !== key) { setConfirmSwitch(key); return; }
-    setConfirmSwitch(null); go();
+    setModeConfirm(null);
+    pickPiece('mode', p.piece_id);
   };
-  const playSaved = (g: SavedGame) => guarded(g.preset_id, g.config.teams, async () => {
-    const r = await run(() => api.applyPreset(g.preset_id));
-    if (r) await run(() => api.putConfig(venue));   // the venue is tonight's, never the saved game's
-  });
-  const playStock = (m: ModeInfo) => guarded(m.mode, m.defaults.teams, async () => { await run(() => api.putConfig({ ...m.defaults, ...venue, volume: null, config_id: cfg.config_id })); });   // K8: a stock game plays at the venue volume
-  // COPY / MAKE MY OWN open the designer as an UNSAVED draft named after the source — nothing is written until SAVE (review #23)
-  const copyOf = (g: SavedGame) => openDesigner({ game: g, copy: true });
-  const remove = async (g: SavedGame) => { await run(() => api.deletePreset(g.preset_id)); setConfirmDel(null); await reload(); };
 
-  /** LOAD — tell every connected phone WHICH GAME is loaded. It writes no gun.
-   *
-   *  `POST /api/games/load` → `state.py load_game()`, which pushes an `assign` (the kind that carries
-   *  a game and no head; a `config` cannot express "no frames" — `envelope.REQUIRED` makes them
-   *  mandatory). Weapons reach the guns at the LOBBY push, after kitting. */
   const load = async () => {
     if (busy) return;
     setBusy(true);
-    try {
-      const r = await run(() => api.loadGame());
-      if (r !== undefined) setRecentLoad(true);
-    } finally { setBusy(false); }
+    try { await run(() => api.loadGame()); } finally { setBusy(false); }
   };
-  /** …and the re-push, which IS a gun write: the same call LOBBY's own buttons make. Only reachable
-   *  once a real push has happened, because before that there is no head on a gun to be stale. */
-  const rePush = async (force: boolean) => {
+  // VQA QA-01: after LOAD succeeds nothing on screen said so, and LOAD stayed the only control — an
+  // operator could not tell it had worked, or press on. `state.game.loaded` is that fact.
+  const loaded = !!state.game?.loaded;
+  const gameSent = state.game?.sent ?? 0;
+  const gameTotal = state.game?.total ?? state.players.length;
+  // Polish round 1 H1: `setPhase` used to be navigated PAST regardless of what it answered -- a refused
+  // A27 not-ready guard (409) still landed on KIT, showing a screen for a phase the server never moved
+  // to. Also a `busy` guard: a second tap before the first round-trip lands used to fire the request twice.
+  const continueToKit = async () => {
     if (busy) return;
     setBusy(true);
-    try { await run(() => api.pushLobby(force)); } finally { setBusy(false); }
+    try { const r = await run(() => api.setPhase('kit')); if (r) setView('kit'); } finally { setBusy(false); }
   };
 
-  // ---- LOAD's gate ----------------------------------------------------------------------------
-  // An announcement is NOT a push, so the push's refusals do not apply to it: the one-team fault,
-  // The config proofs and "a phone has not arrived" are every one of them about a HEAD being
-  // written, and LOAD writes none. What does apply is the phase — `load_game` refuses in armed/live —
-  // and an empty required pool, which is a game nobody can be kitted for and is worth stopping at the
-  // door rather than at the whistle.
-  const loadDisabled = blocked || busy;
-  const loadWhy = blockedReason ?? '';
-  // The honest predicate, not the server's `all_acked` (which is vacuously true while no phone is
-  // bound -- see `LoadStatus`): with 0 of 8 answering, a re-push is exactly what this screen should
-  // still be offering, and the rail must not paint itself green.
-  const everyoneAcked = gate.total > 0 && gate.acked >= gate.total;
-  // The cure for a stale HEAD belongs to the push that writes heads, so it appears only once there
-  // has been one. Before that there is nothing on a gun to be stale.
-  const showRePush = state.lobby.pushed && !locked && (gate.curableRows.length > 0 || !everyoneAcked);
-  // M12 (visual QA 2026-09-23): this read "The game is on the guns" whenever a game was LOADED, and a
-  // LOAD writes no gun. Only a LOBBY push puts a config on the guns, so say which one has happened.
-  const continueKitTitle = state.lobby.pushed
-    ? 'The guns hold this config. This takes the phones to their kit screens.'
-    : 'The game is sent to the phones. The guns are configured at the lobby push, after kitting. This takes the phones to their kit screens.';
-  const faults = gate.redRows.map(b => ({ who: b.sticker, why: b.blockers ?? [] }));
-  const notOnlyStale = gate.redRows.filter(b => !((b.blockers ?? []).length > 0 && (b.blockers ?? []).every(w => w.startsWith(STALE_ACK_FAULT))));
+  const assignAHill = () => { setFocusHill(true); setView('muster'); };
 
-  // VENUE is where you are playing, not what game it is — so it applies straight away, the way it
-  // always has, rather than waiting behind a draft. The ONE moment that would contradict is while the
-  // EDIT draft is open, because the draft owns NIGHT OPS too: two live controls for one field, with
-  // different semantics, three inches apart. The strip stands down for exactly that moment and says
-  // where the control went (a real `fieldset disabled`, plus a guard, never a tap that does nothing).
-  const venueInert = locked || editing;
-  const venueChips = (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-      <fieldset disabled={venueInert} style={{ border: 'none', margin: 0, padding: 0 }}>
-        <div role="group" aria-label="venue" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep, opacity: venueInert ? 0.5 : 1 }}>
-          <span style={{ font: F.mono(600, 11), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
-          <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => { if (!venueInert) run(() => api.putConfig({ environment: v })); }} pad="9px 14px" />
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => { if (!venueInert) run(() => api.putConfig({ night: v })); }} label="night ops" /></span>
-          {/* F221: this tells the operator where the control moved, not that something is wrong — NEUTRAL. */}
-          {editing && <span data-testid="venue-in-draft" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf('games-venue-in-draft') }}>IN THE DRAFT BELOW</span>}
-        </div>
-      </fieldset>
-      {/* Bench 2026-09-17: NIGHT OPS was tapped mid-match and the LEDs did not change, with nothing on screen to
-          say why. The venue is part of the config, and a config push to a gun in play clears `spawned`, so it
-          stays locked until the match ends. Kept OUTSIDE the faded fieldset so the reason is readable.
-          F221: a real constraint on a live control the operator is running into right now — AMBER, not dim grey. */}
-      {locked && <span data-testid="venue-locked" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: colourOf('games-venue-locked') }}>{GLYPH} LOCKED WHILE THE MATCH IS {state.phase.toUpperCase()}</span>}
-      {/* F162 (revised 2026-09-16): this is a NUMBER MC sends and a PHYSICAL switch on every gun
-          that MC cannot reach, so a quiet link to the how-to sits right beside the control that raises
-          the question, not a dismissable banner nagging every screen, see ui/VenueModeReminder.
-          Kept OUTSIDE the fieldset above: the link works whether or not venue itself is editable right
-          now (F-review 2026-09-16), so it must not fade into the disabled group. */}
-      <VenueModeManualLink />
-    </div>
-  );
+  // ---- FAVOURITES actions (games-presets.md §6) ----------------------------------------------------
+  // Polish round 1 Low: `submittingFav` (declared above, with the other hooks) guards against a
+  // double Enter/click firing two `createFavourite` calls, the second landing as the 409 "already
+  // exists" refusal for what looked like one tap. `runwayVal` no longer needs snapping here (round 2):
+  // `setRunway` itself snaps now, so the screen and the saved favourite already agree.
+  const saveFavourite = async (name: string) => {
+    if (submittingFav) return;
+    setSubmittingFav(true);
+    try {
+      const r = await run(() => api.createFavourite({ name, countdown_s: runwayVal }));
+      if (r) { setSavingFav(false); setFavNameDraft(''); await refreshFavourites(); }
+    } finally { setSubmittingFav(false); }
+  };
+  const renameFavourite = async (id: string, name: string) => {
+    const r = await run(() => api.updateFavourite(id, { name }));
+    if (r) { setRenamingFav(null); await refreshFavourites(); }
+  };
+  const deleteFavourite = async (id: string) => {
+    await run(() => api.deleteFavourite(id));
+    setConfirmDeleteFav(null);
+    await refreshFavourites();   // harmless even on a refused delete — just re-syncs the shelf
+  };
+  const loadFavourite = async (id: string) => {
+    const r = await run(() => api.loadFavourite(id));
+    if (!r) return;
+    // Polish round 1 H2: `ok: false` is a REFUSED load (a bench-gate refusal, same as any other pick) --
+    // the mock changes nothing behind it (backend.ts's own "ok:false changes nothing" rule), so the
+    // console must not either. This used to apply the runway and the fallback note regardless, showing
+    // a countdown and a fallback list for a favourite that was never actually loaded.
+    if (!r.ok) { setNotice(r.errors.join(' · '), true); return; }
+    setRunway(r.countdown_s);
+    setFallbackNote(favouriteFallbackNote(r.fallbacks, r.pick));
+  };
+
+  // ---- the operator note (games-redesign.md §9), derived off the composed config -----------------
+  const note = operatorNote(cfg);
+
+  // ---- the read-only PICKUPS line (§7): what ARMORY has armed, never edited here -----------------
+  const pickupsLine = (state.stations ?? [])
+    .filter(s => s.assigned?.kind === 'powerup' && s.assigned.item)
+    .map(s => `${s.assigned!.item!.name} @ STATION ${s.assigned!.id}`)
+    .join(' · ');
 
   const errorsAndWarnings = (
     <>
       {(state.config_warnings?.length ?? 0) > 0 && (
         <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {/* `SETUP: ` = a PHYSICAL step on the field the operator must do before the push (F70: power-cycle
-              the grenade so the hill starts NEUTRAL, set hill mode, place it). It is not a technical advisory
-              like the $SIR/frag-limit warnings, which stay out of this rail — see mc/API.md. */}
-          {/* F221: this was a filled amber chip — Tony's AMBER bar is explicit that AMBER is never a
-              filled chip, one line only. */}
           {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w)).map((w, i) => (
             <Alert key={i} id="games-loadouts-reset" what={w} style={{ alignSelf: 'flex-start' }} />
           ))}
-          {/* F401: a station of the last finished match MC has not heard from since the whistle --
-              the next LOAD's game byte would lose its result, so this is the one config-warnings line
-              the operator sees before a LOAD they would otherwise regret. Advisory, never a blocker. */}
           {[...state.config_warnings!].filter(w => /HAS NOT SYNCED THE LAST MATCH/.test(w)).map((w, i) => {
             const line = serverLine(w, 'amber');
             return <Alert key={`sync-${i}`} id={line.id} sev={line.sev} testid="games-station-not-synced" style={{ alignSelf: 'flex-start' }}>{w}</Alert>;
           })}
-          {/* F221 polish r1: MC's own `SETUP:` lines used to render, unfiltered, as one flat amber
-              chip, so the control-vs-grenade conflict (RED in the catalogue, the game will not play
-              as set up) read exactly like an ordinary "no station assigned yet" reminder. Only the
-              STATION_CONFLICT lines are an alert now (`conflictWords`, the same words LOBBY's
-              SetupConflicts and ITEMS's CONTROL card use); a plain field step (power-cycle the
-              grenade, place the IR station) is not a fault, so it draws NEUTRAL here too, the same
-              look as SetupSteps' own "Match reminders" panel (F221 polish r2). */}
           {setupLines(state.config_warnings).filter(w => STATION_CONFLICT.test(w)).map((w, i) => {
             const line = serverLine(w, 'amber');
-            return <Alert key={`setup-conflict-${i}`} id={line.id} sev={line.sev} testid="games-setup-line" style={{ alignSelf: 'flex-start' }}>{conflictWords(w)}</Alert>;
+            // VQA QA-17: the raw server words say "respawn is set to station" now (matching the SPAWN
+            // picker's own STATION option), but the shared friendly-rewrite table (ui/SetupSteps.tsx,
+            // another lane's file this round) still hard-codes "scanner" — override the words here,
+            // in the one file this fix owns, and add the button the KOTH block already has.
+            const isRespawnSetup = /NO RESPAWN STATION IS ASSIGNED/i.test(w);
+            const words = isRespawnSetup
+              ? 'NO RESPAWN STATION IS ASSIGNED, AND RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION. ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT.'
+              : conflictWords(w);
+            return (
+              <div key={`setup-conflict-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <Alert id={line.id} sev={line.sev} testid="games-setup-line" style={{ alignSelf: 'flex-start', flex: '1 1 auto' }}>{words}</Alert>
+                {isRespawnSetup && (
+                  <span data-testid="assign-a-respawn-station">
+                    <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView('muster')}>ASSIGN A RESPAWN STATION ▸</GhostButton>
+                  </span>
+                )}
+              </div>
+            );
           })}
+          {/* QA-26: upper case, the same transform its STATION_CONFLICT sibling above already uses
+              (`conflictWords` = `friendlySetupLine(w).toUpperCase()`) -- this was the one setup line
+              left in mixed case, with internal terms, on an otherwise all-caps screen. */}
           {setupLines(state.config_warnings).filter(w => !STATION_CONFLICT.test(w)).map((w, i) => (
             <div key={`setup-step-${i}`} data-testid="games-setup-step" style={{ font: F.chk(500, 12), letterSpacing: '.02em', lineHeight: 1.5, color: T.body }}>
-              {friendlySetupLine(w)}
+              {friendlySetupLine(w).toUpperCase()}
             </div>
           ))}
         </div>
       )}
-      {/* Review finding, 2026-09-19: a friendly heads-up, never a blocker -- a mixed fleet plays fine,
-          it just keeps the OLD spawn-protection rules until the phone updates. F221 polish r1: this was
-          a filled amber chip in sentence case with the glyph typed in by hand; the server now words it
-          fully (`APP TOO OLD FOR TODAY'S RESPAWN RULES (...): UPDATE THE APP TO X`), so it draws through
-          `serverLine` like every other MC-worded line, one line, no fill. */}
-      {gate.respawnRulesWarning && (
-        <Alert {...serverLine(gate.respawnRulesWarning, 'amber')} style={{ alignSelf: 'flex-start' }}>{gate.respawnRulesWarning}</Alert>
-      )}
-      {/* A refusal is the one thing here the operator MUST be able to read: these are the server's
-          validate() errors (a missing/unknown station_source, F82's yellow roster, F88's second
-          control point) and they name the fix. */}
       {state.config_errors.length > 0 && <Alert id={CONFIG_ERRORS_ALERT_ID} what={state.config_errors.join(', ')} size={11.5} />}
     </>
-  );
-
-  // ------------------------------------------------------------------ the card shelves (pick a game)
-  const shelves = (
-    <div style={{ flex: '2 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 22 }}>
-      {/* YOUR GAMES */}
-      <div>
-        <SectionRule label={`YOUR GAMES // ${games.length}`} hint="TAP TO PLAY · EDIT TO CHANGE · CREATE FOR SOMETHING NEW" style={{ marginBottom: 12 }} />
-        <Shelf>
-          {games.map(g => {
-            const on = activeSaved?.preset_id === g.preset_id;
-            const gm = modes.find(m => m.mode === g.config.mode);
-            const del = confirmDel === g.preset_id;
-            return (
-              <div key={g.preset_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${g.name}`} onClick={() => { if (tappable(on)) playSaved(g); }} onKeyDown={onKey(() => { if (tappable(on)) playSaved(g); })}
-                style={{ flex: '0 0 262px', display: 'flex', flexDirection: 'column', gap: 8, padding: 10, cursor: tappable(on) ? 'pointer' : 'default',
-                  background: on ? 'rgba(196,139,255,.07)' : T.panel, border: `1px solid ${on ? PERK_COLOR : T.line}`, borderTop: `2px solid ${on ? PERK_COLOR : T.line2}` }}>
-                <StripedSlot height={70} style={{ background: gm && MODE_ART.has(gm.mode) ? `url(assets/modes/${gm.mode}.jpg) center/cover no-repeat` : undefined, overflow: 'hidden' }}
-                  corner={<>
-                    {!(gm && MODE_ART.has(gm.mode)) && <ModeEmblem mode={g.config.mode} />}
-                    <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? PERK_COLOR : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{gm?.abbr ?? g.config.mode.toUpperCase()}</span>
-                    {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={11} color={PERK_COLOR}>PLAYING</Tag></span>}
-                    {g.builtin && !on && <span style={{ position: 'absolute', top: 8, right: 6, font: F.mono(500, 11), letterSpacing: '.14em', color: T.dim, textShadow: '0 1px 4px #000' }}>BUILT-IN</span>}
-                  </>} />
-                <div style={{ font: F.osw(600, 17), letterSpacing: '.06em', lineHeight: 1.1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.name.toUpperCase()}</div>
-                <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
-                <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.desc || `${gm?.name ?? g.config.mode} · ${Math.round((g.config.time_limit_s ?? 0) / 60)} MIN · ${
-                  healthPresetOf(g.config.health) === 'custom'
-                    ? `HP ${g.config.health.max_hp} / ARMOR ${g.config.health.max_armor}${g.config.health.max_shield ? ` / SHIELD ${g.config.health.max_shield}` : ''}`
-                    : HEALTH_PRESET_COPY.find(p => p.value === healthPresetOf(g.config.health))!.label
-                }`}</div>
-                {confirmSwitch === g.preset_id && (
-                  <SwitchConfirm dropsDraft={custom} split={splitFor(g.config.teams)} action="TAP AGAIN TO PLAY THIS" />
-                )}
-                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
-                  {del ? (
-                    <>
-                      <SmallBtn color={T.bad} onClick={() => remove(g)}>CONFIRM DELETE</SmallBtn>
-                      <SmallBtn onClick={() => setConfirmDel(null)}>CANCEL</SmallBtn>
-                    </>
-                  ) : (
-                    <>
-                      {!g.builtin && <SmallBtn onClick={() => openDesigner({ game: g })} label={`edit ${g.name}`}>EDIT</SmallBtn>}
-                      <SmallBtn onClick={() => copyOf(g)} label={`copy ${g.name}`}>{g.builtin ? 'MAKE MY OWN' : 'COPY'}</SmallBtn>
-                      {!g.builtin && <SmallBtn onClick={() => setConfirmDel(g.preset_id)} label={`delete ${g.name}`} color={T.micro}>✕</SmallBtn>}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          <button type="button" className="hov-acc" onClick={() => openDesigner({ mode: cfg.mode })} aria-label="create a game"
-            style={{ ...BTN_RESET, flex: '0 0 220px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 6, padding: 14, minHeight: 120, background: T.panelDeep, border: `1px dashed ${T.line2}`, cursor: 'pointer', color: T.dim, textAlign: 'left' }}>
-            <span style={{ font: F.osw(700, 22), letterSpacing: '.08em', color: T.ink }}>+ CREATE A GAME</span>
-            <span style={{ font: F.chk(500, 12), lineHeight: 1.45 }}>Start from a stock mode, set the rules and who carries what, save it under a name.</span>
-          </button>
-        </Shelf>
-      </div>
-
-      {/* STOCK MODES */}
-      <div>
-        <SectionRule label="STOCK MODES" hint="TAP TO PLAY WITH DEFAULTS · CUSTOMIZE TO MAKE YOUR OWN" style={{ marginBottom: 12 }} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10 }}>
-          {stockModes.map(m => {
-            const on = activeStock?.mode === m.mode;
-            const base = !on && cfg.mode === m.mode;   // the current game (saved or tuned) is built on this mode
-            return (
-              <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${m.name}`} onClick={() => { if (tappable(on)) playStock(m); }} onKeyDown={onKey(() => { if (tappable(on)) playStock(m); })}
-                style={{ background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, borderTop: `2px solid ${on ? T.acc : base ? T.line2 : 'transparent'}`, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: tappable(on) ? 'pointer' : 'default' }}>
-                <StripedSlot height={76} style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined, overflow: 'hidden' }}
-                  corner={<>
-                    {!MODE_ART.has(m.mode) && <ModeEmblem mode={m.mode} />}
-                    <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? T.acc : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{m.abbr}</span>
-                    {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={11}>PLAYING</Tag></span>}
-                    {base && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={11} color={T.line2} ink={T.ink}>BASE</Tag></span>}
-                  </>} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ font: F.osw(600, 15), letterSpacing: '.08em' }}>{m.name}</div>
-                  <div style={{ font: F.chk(500, 12), color: T.dim, marginTop: 3 }}>{m.desc}</div>
-                  {confirmSwitch === m.mode && (
-                    <SwitchConfirm dropsDraft={custom} split={splitFor(m.defaults.teams)} action="TAP AGAIN" style={{ marginTop: 6 }} />
-                  )}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                  <SmallBtn onClick={() => openDesigner({ mode: m.mode })} label={`customize ${m.name}`}>CUSTOMIZE ▸</SmallBtn>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
   );
 
   return (
@@ -402,200 +292,423 @@ export function Games() {
       <StationAlerts unlockOnly />
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '14px 28px', marginBottom: 20 }}>
         <div>
-          <div style={{ font: F.mono(600, 10), letterSpacing: '.3em', color: T.acc }}>[ A2 // GAMES ]</div>
-          {/* int-n1 (2026-09-13): "Active Game Config" fused the two words this whole screen exists to
-              keep apart -- the GAME is announced to phones, the CONFIG is what gets pushed to guns.
-              "Loaded Game" names only the fact this title is entitled to: something has been LOADED.
-              The testid stays `active-game-config` -- a stable hook, not operator-facing copy. */}
-          <div style={{ font: F.osw(700, 30), letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2 }}>{loaded ? 'Loaded Game' : 'Pick the Game'}</div>
+          {/* VQA QA-20: the stepper's own step number is 02 — match it (was "A2"). */}
+          <div style={{ font: F.mono(600, 11), letterSpacing: '.3em', color: T.acc }}>[ 02 // PLAY ]</div>
+          <div style={{ font: F.osw(700, 30), letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2 }}>Pick Game</div>
         </div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
-          {/* VENUE — where you're playing, not what game it is */}
-          {venueChips}
-          {loaded ? (
-            <span data-testid="game-continue-kit">
-              <PrimaryButton disabled={locked} title={locked ? blockedReason : continueKitTitle}
-                onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>CONTINUE TO KIT ▸</PrimaryButton>
-            </span>
-          ) : (
-            <span data-testid="game-load">
-              <PrimaryButton disabled={loadDisabled} title={loadDisabled ? (loadWhy || 'Not ready to load yet') : 'Sends this game to every connected phone — mode, teams, health, night, respawn, venue and the rules. It does NOT write the guns: weapons go with the arm, at the lobby push after kitting.'}
-                onClick={() => load()}>{busy ? 'LOADING…' : 'LOAD ▸'}</PrimaryButton>
-            </span>
-          )}
+          <GhostButton size={14} onClick={openBuild}>BUILD ▸</GhostButton>
         </div>
       </div>
-      {blocked && (
+
+      {staleServer && (
+        <Alert id="frame-server-old" testid="play-stale-server" style={{ marginBottom: 18 }}>
+          THE SERVER PREDATES THIS CONSOLE. RESTART MISSION CONTROL (./start.sh).
+        </Alert>
+      )}
+      {!staleServer && piecesError && (
+        <Alert id="games-pieces-error" testid="play-pieces-error" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ lineHeight: 1.5 }}>{alertWords(`COULD NOT LOAD THE GAME PIECES: ${piecesError}`)}</span>
+          <span data-testid="pieces-retry">
+            <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setRetryTick(t => t + 1)}>RETRY ▸</GhostButton>
+          </span>
+        </Alert>
+      )}
+      {/* Polish round 1 M5: a real FAVOURITES fetch failure (not the older-MC 404) is shown, not
+          swallowed -- the shelf otherwise looks the same as "no favourites saved yet". */}
+      {!staleServer && favouritesError && (
+        <Alert id="games-favourites-error" testid="play-favourites-error" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ lineHeight: 1.5 }}>{alertWords(`COULD NOT LOAD FAVOURITES: ${favouritesError}`)}</span>
+          <span data-testid="favourites-retry">
+            <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setRetryTick(t => t + 1)}>RETRY ▸</GhostButton>
+          </span>
+        </Alert>
+      )}
+
+      {!staleServer && realFault && (
         <Alert id="games-locked-banner" testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ lineHeight: 1.5 }}>{alertWords(blockedReason ?? '')}</span>
-          {/* F221 (RETIRED games-jump-to-match): a navigation button beside the red banner, not
-              itself an alert — its border no longer borrows T.bad. */}
+          <span style={{ lineHeight: 1.5 }}>{alertWords(realFaultReason ?? '')}</span>
           {(state.phase === 'armed' || state.phase === 'live') && (
-            <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView(state.phase)}>JUMP TO MATCH ▸</GhostButton>
-          )}
-          {/* F402: the ARMORY is where ITEMS lives — the tap that actually cures this one. `muster` is
-              the view id the nav bar renders as ARMORY (`case 'muster': return <Armory />`). */}
-          {kothHillFault && (
-            <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView('muster')}>ASSIGN A HILL IN ARMORY ▸</GhostButton>
+            <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView(state.phase)}>JUMP TO MATCH ▸</GhostButton>
           )}
         </Alert>
       )}
-      {loaded ? (
-        <div data-testid="active-game-config" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* WHAT THE GUNS ARE HOLDING — the answer to "did it push?", above everything else. */}
-          {/* F221 polish r2 (Low): "not every gun has acked yet" is the ordinary waiting state, not a
-              fault -- the accent is neutral until it is fully acked, when it turns green. */}
-          <div style={{ background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${state.lobby.pushed && everyoneAcked ? T.ok : T.line2}` }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 20px', padding: '14px 18px' }}>
-              <div style={{ minWidth: 0 }}>
-                {/* F221: a status label, not a fault — NEUTRAL, not amber. */}
-                <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: custom ? colourOf('games-tuned-not-saved') : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED: NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // LOADED</div>
-                <div data-testid="playing-title" style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{title}</div>
+      {!staleServer && !realFault && kothNoHill && (
+        <Alert id="games-koth-no-hill" testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ lineHeight: 1.5 }}>NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.</span>
+          <span data-testid="assign-a-hill">
+            <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={assignAHill}>ASSIGN A HILL ▸</GhostButton>
+          </span>
+        </Alert>
+      )}
+
+      {!staleServer && pick && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* ---- FAVOURITES (games-presets.md §6): a named bundle of the whole pick, hidden when empty --- */}
+          {favourites.length > 0 && (
+            <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, opacity: locked ? 0.5 : 1, display: 'contents' }}>
+              <div data-testid="favourites-row" role="group" aria-label="favourites" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {favourites.map(f => (
+                  <FavouriteChip key={f.favourite_id} fav={f}
+                    renaming={renamingFav === f.favourite_id}
+                    confirmingDelete={confirmDeleteFav === f.favourite_id}
+                    onLoad={() => loadFavourite(f.favourite_id)}
+                    onRenameStart={() => setRenamingFav(f.favourite_id)}
+                    onRenameCommit={name => renameFavourite(f.favourite_id, name)}
+                    onRenameCancel={() => setRenamingFav(null)}
+                    onDeleteStart={() => setConfirmDeleteFav(f.favourite_id)}
+                    onDeleteConfirm={() => deleteFavourite(f.favourite_id)}
+                    onDeleteCancel={() => setConfirmDeleteFav(null)} />
+                ))}
               </div>
-              <span style={{ flex: 1 }} />
-              {/* TWO different facts, never merged into one tick: how many PHONES were told about the
-                  game (LOAD, delivery), and how many GUNS are confirmed on the head (the lobby push).
-                  The second only exists once there has been a push, and saying nothing is the honest
-                  answer until then — a gun count before any push would be a count of nothing. */}
-              {/* F.3 (2026-09-13): rendered unconditionally, this read "GAME SENT TO 0/N PHONES" on a
-                  server too old to send a `game` block at all -- `gameSent`/`gameTotal` fall back to
-                  0 and the roster size, which LOOKS like a real (and alarming) delivery count instead
-                  of "this server never told us". Absence is a different fact from zero, and only one
-                  of them is true here. */}
-              {state.game && <GameSentStatus testid="game-load-status" sent={gameSent} total={gameTotal} recent={recentLoad} />}
-              {state.lobby.pushed
-                ? <LoadStatus testid="game-gun-status" pushed acked={gate.acked} total={gate.total} recent={false} />
-                : <span data-testid="game-gun-status" style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('games-guns-not-configured') }}>GUNS NOT CONFIGURED YET: WEAPONS GO AT THE LOBBY PUSH, AFTER KITTING</span>}
-              {showRePush && (
-                <button type="button" data-repush="1" data-repush-force={gate.pushBlockedCount > 0 ? '1' : undefined}
-                  className={busy ? undefined : 'hov-acc-ink hit44'} disabled={busy || !!gate.rosterFault}
-                  style={{ ...BTN_RESET, cursor: busy || gate.rosterFault ? 'not-allowed' : 'pointer',
-                           color: busy || gate.rosterFault ? T.micro : gate.pushBlockedCount > 0 ? colourOf('lobby-repush-btn-blocked') : T.acc,
-                           font: F.chk(700, 13), letterSpacing: '.06em', minHeight: 44, padding: '0 6px' }}
-                  title={gate.rosterFault ?? 'Compiles and sends this config to every gun again. The ack count drops to 0 and climbs as each one answers.'}
-                  onClick={() => rePush(gate.pushBlockedCount > 0)}>
-                  {busy ? 'RE-PUSHING…' : gate.pushBlockedCount > 0 ? `RE-PUSH CONFIG OVER ${gate.pushBlockedCount} BLOCKED ▸` : 'RE-PUSH CONFIG ▸'}
-                </button>
-              )}
-              {!editing && (
-                <span data-testid="game-edit-open">
-                  <GhostButton size={12} pad="10px 16px" color={T.ink} border={T.line2} disabled={locked}
-                    title={locked ? lockedReason(state.phase) : 'Open this game for editing. Nothing is sent until SAVE AND LOAD.'}
-                    onClick={() => { if (!locked) { setDraftDirty(false); setEditing(true); } }}>EDIT ▸</GhostButton>
-                </span>
-              )}
+            </fieldset>
+          )}
+          {fallbackNote && (
+            <div data-testid="favourite-fallback-note" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 2, font: F.chk(600, 12), color: T.warn }}>
+              {fallbackNote.map((l, i) => <div key={i}>{l}</div>)}
             </div>
-            {/* The same sentence LOBBY's rail carries, from the same derivation: a stale ack names the
-                guns and the cure, a red names what cannot be pushed away, and a clean board says so. */}
-            {/* F221 polish r1: the id and the text now come from ONE ternary, so the colour and the
-                words can never drift onto two different facts (the old colour and text trees checked
-                things in a different order). `lineColorId` is null only for the two positive facts
-                below (everything is on the config) — those stay plain, sentence-case status text; every
-                other branch is a catalogued alert, so it is drawn UPPER CASE with its own glyph. */}
-            {(() => {
-              const lineColorId = gate.staleAckLine ? STALE_ACK_LINE_ALERT_ID
-                : faults.length ? 'lobby-status-line-red'
-                : gate.waitRows.length ? 'games-wait-why'
-                : everyoneAcked ? null
-                : !state.lobby.pushed ? 'games-partial-delivery'
-                : 'games-no-echo';
-              const lineText = gate.staleAckLine
-                || (faults.length ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
-                  : gate.waitWhy
-                    || (!state.lobby.pushed
-                        // int-n1 (2026-09-13): this used to say "The phones have the game" whenever the
-                        // readiness board was clean, WITHOUT checking delivery -- a fact from a
-                        // different server call (`state.game.sent/total`) that can lag behind a LOAD
-                        // for as long as a phone takes to answer. The two diverge for real, right after
-                        // LOAD, so the claim could sit directly under a counter reading 5 of 8.
-                        ? (state.game && gameSent < gameTotal
-                            ? `${gameSent} of ${gameTotal} phone${gameTotal === 1 ? '' : 's'} have the game so far. The rest are not connected. Kitting is next, and the guns are configured at the lobby push.`
-                            : 'The phones have the game. Kitting is next, and the guns are configured at the lobby push.')
-                        : !everyoneAcked ? `No config echo from ${gate.noEcho.join(', ') || 'some guns'}: headset off, or gun asleep?`
-                          // F318: under the LOCKED banner there is nothing to adjust, so say what is true.
-                          : locked ? 'Every gun is holding this config. The banner above says how to edit it again.'
-                            : 'Every gun is holding this config. Adjust it here and SAVE AND LOAD, or continue to KIT.'));
+          )}
+
+          {/* ---- the pickers, one wrapping row (§4's one-choice hiding rule: hidden with one piece) --- */}
+          {/* VQA QA-07: every control here is a real HTML `disabled` (a fieldset), not merely a banner
+              claiming it — while `locked`, nothing here can silently reach the server any more. */}
+          <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, opacity: locked ? 0.5 : 1,
+            display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '20px 32px' }}>
+            {PICKER_ORDER.map(kind => {
+              const options = pieces.filter(p => p.kind === kind && !p.post_mvp);
+              if (options.length <= 1) return null;
+              const selected = pick.pieces[kind];
               return (
-                <div style={{ padding: '0 18px 14px', font: F.chk(600, 13), lineHeight: 1.5, color: lineColorId ? colourOf(lineColorId) : T.ok }}>
-                  {lineColorId ? glyphed(sevOf(lineColorId), alertWords(lineText)) : lineText}
-                  {gate.staleAckLine && notOnlyStale.length > 0 && (
-                    <span style={{ color: colourOf('lobby-status-line-red') }}>{`: ${alertWords(`${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`)}`}</span>
+                <div key={kind} data-testid={`picker-${kind}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.micro }}>{kindLabel(kind)}</div>
+                  {kind === 'mode' ? (
+                    // Tony, 2026-09-26: "on play mode picker would be great" -- each option carries its
+                    // own mark, so this is a bespoke row (Seg has no per-option slot for one), styled to
+                    // match it otherwise.
+                    <span role="group" aria-label="game mode" style={{ display: 'flex', flexWrap: 'wrap', border: `1px solid ${T.line}` }}>
+                      {options.map(p => {
+                        const on = p.piece_id === selected;
+                        const modeId = (p.value as { mode: string }).mode;
+                        return (
+                          <button key={p.piece_id} type="button" className="hit44" aria-pressed={on} title={p.note || p.name}
+                            onClick={() => pickMode(p)}
+                            style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 14), letterSpacing: '.08em', padding: '8px 16px 8px 8px',
+                              background: on ? T.panelAlt : 'transparent', color: on ? T.acc : T.micro,
+                              boxShadow: on ? `inset 0 -2px 0 ${T.acc}` : undefined,
+                              cursor: on ? 'default' : 'pointer', minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+                            <ModeMark mode={modeId} />
+                            {p.name}
+                          </button>
+                        );
+                      })}
+                    </span>
+                  ) : (
+                    <Seg wrap size={14} label={kindLabel(kind).toLowerCase()} value={selected} pad={SEG_PAD_44}
+                      options={options.map(p => ({ value: p.piece_id, label: p.name }))}
+                      titles={Object.fromEntries(options.map(p => [p.piece_id, p.note || p.name]))}
+                      onChange={id => pickPiece(kind, id)} />
+                  )}
+                  {kind === 'mode' && modeConfirm && (
+                    <SwitchConfirm dropsDraft={false} split={modeConfirm.split} action="TAP AGAIN TO SWITCH" style={{ marginTop: 2 }} />
+                  )}
+                  {kind === 'mode' && note.length > 0 && (
+                    <div data-testid="operator-note" role="status"
+                      style={{ marginTop: 2, display: 'flex', flexDirection: 'column', gap: 3, font: F.chk(600, 12.5), lineHeight: 1.5, color: T.dim,
+                               border: `1px solid ${T.line2}`, padding: '8px 12px', maxWidth: 420 }}>
+                      {note.map((l, i) => (
+                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <InfoIcon size={13} color={T.acc} /> {l}
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
               );
-            })()}
-            {faults.length > 0 && (
-              <div style={{ borderTop: `1px solid ${T.line}`, padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {faults.map(f => (
-                  <div key={f.who} style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                    <span style={{ font: F.osw(700, 15), letterSpacing: '.06em', color: T.ink, minWidth: 130 }}>{f.who}</span>
-                    {/* F221: same server-worded blocker rendering as LOBBY's rail — see the comment there. */}
-                    <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      {f.why.map(w => {
-                        const line = serverLine(cleanServerLine(w), 'blocker');
-                        return <Alert key={w} id={line.id} sev={line.sev} variant="row">{cleanServerLine(w)}</Alert>;
-                      })}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            })}
+          </fieldset>
+
+          {pickupsLine && (
+            <div data-testid="pickups-line" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.dim }}>
+              PICKUPS: {pickupsLine}
+            </div>
+          )}
+
+          {/* ---- MATCH SETTINGS — not a picker, not a preset (games-redesign.md §5) ---- */}
+          {/* team-lead 2026-09-26: rendered from a per-mode ITEM LIST (screens/matchItems.ts), not a
+              fixed set here — F413 (TEAMS) and F415 (a KOTH hold target) each add one key there, never
+              a rewrite of this strip. Every item wraps in its own `display: contents` fieldset, so
+              disabling stays per-control while the flex row (and the outer dimming) treats them alike;
+              an item's own EXTRAS (the manual link, the ON/OFF word) sit as siblings, never inside the
+              fieldset, on the same rule as before (venue-mode-reminder.test.tsx). */}
+          <div data-testid="match-settings" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 20,
+            background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${T.acc}`, padding: '14px 18px',
+            opacity: locked ? 0.5 : 1 }}>
+            {matchItems(cfg.mode, cfg.scoring.win_by).map(key => (
+              <MatchItem key={key} itemKey={key} pick={pick} locked={locked} runwayVal={runwayVal} pickMatch={pickMatch} />
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+            {loaded && (
+              <span data-testid="game-loaded-status" style={{ font: F.mono(600, 12), letterSpacing: '.12em', color: T.ok }}>
+                LOADED · SENT {gameSent}/{gameTotal} PHONES
+              </span>
+            )}
+            <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0 }}>
+              {state.last_match && (
+                <span data-testid="last-match">
+                  {/* Polish round 1 M4: the runway used to be set (and the note treated as "applied")
+                      before the pick round-trip had even answered -- a refused pick (e.g. a bench-gate
+                      time_limit_s) still left the countdown control showing LAST MATCH's value with
+                      the STRIP itself unchanged, disagreeing with each other on screen. */}
+                  <GhostButton size={14} pad="10px 16px" onClick={async () => {
+                    setFallbackNote(null);
+                    const lm = state.last_match!;
+                    const r = await run(() => api.pick({ match: { time_limit_s: lm.time_limit_s, frag_limit: lm.frag_limit, night: lm.night, silenced: lm.silenced } }));
+                    if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(pickFallbackNote(r.fallbacks, r.pick)); }
+                    else if (r) setNotice(r.errors.join(' · '), true);
+                  }}>LAST MATCH ▸</GhostButton>
+                </span>
+              )}
+              {savingFav ? (
+                <span data-testid="save-favourite-form" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <input className="textbox" value={favNameDraft} onChange={e => setFavNameDraft(e.target.value)}
+                    placeholder="FAVOURITE NAME" maxLength={24} aria-label="favourite name"
+                    style={{ font: F.chk(700, 14), minHeight: 44, minWidth: 160, borderBottomColor: T.line2 }}
+                    onKeyDown={e => { if (e.key === 'Enter' && favNameDraft.trim() && !submittingFav) saveFavourite(favNameDraft.trim()); }} />
+                  <GhostButton size={14} pad="10px 14px" disabled={!favNameDraft.trim() || submittingFav} onClick={() => saveFavourite(favNameDraft.trim())}>SAVE ▸</GhostButton>
+                  <GhostButton size={14} pad="10px 14px" onClick={() => { setSavingFav(false); setFavNameDraft(''); }}>CANCEL</GhostButton>
+                </span>
+              ) : (
+                <span data-testid="save-favourite">
+                  <GhostButton size={14} pad="10px 16px" onClick={() => setSavingFav(true)}>☆ SAVE AS A FAVOURITE ▸</GhostButton>
+                </span>
+              )}
+            </fieldset>
+            {loaded ? (
+              <span data-testid="game-continue-kit">
+                {/* Polish round 1 Low: this used to check `locked` alone, so an empty required loadout
+                    slot (`poolEmpty.any`, part of `realFault` but not `locked`) still let CONTINUE TO
+                    KIT through -- KIT would then have nobody to kit into that slot. `busy` matches
+                    LOAD's own guard against a second tap before the first round-trip lands. */}
+                <PrimaryButton size={14} disabled={realFault || busy} title={realFault ? realFaultReason : 'Takes the phones to their kit screens. The guns are configured at the lobby push, after kitting.'}
+                  onClick={() => continueToKit()}>{busy ? 'MOVING TO KIT…' : 'CONTINUE TO KIT ▸'}</PrimaryButton>
+              </span>
+            ) : (
+              <span data-testid="game-load">
+                <PrimaryButton size={14} disabled={blocked || busy || staleServer}
+                  title={blocked ? (realFaultReason || 'NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.') : 'Sends this game to every connected phone. Weapons go with the arm, at the lobby push after kitting.'}
+                  onClick={() => load()}>{busy ? 'LOADING…' : 'LOAD ▸'}</PrimaryButton>
+              </span>
             )}
           </div>
 
-          {editing
-            ? <GameEditPanel alwaysOpen onDone={() => { setEditing(false); setDraftDirty(false); }} onDirtyChange={setDraftDirty} />
-            : <GameSettings testid="game-settings" rows={gameSettingRows(cfg, mode, weapons, perks, { full: true, players: state.players })} />}
           {errorsAndWarnings}
-
-          {/* The way back to the shelves: a different game is still one tap away, it just is not what
-              this tab is FOR any more once something is loaded. */}
-          <div>
-            <button type="button" data-testid="pick-another" className="hov-acc" onClick={() => setPicking(p => !p)} aria-expanded={picking}
-              style={{ ...BTN_RESET, font: F.chk(700, 12), letterSpacing: '.18em', color: T.dim, border: `1px solid ${T.line}`, padding: '10px 16px', minHeight: 44, cursor: 'pointer' }}>
-              {picking ? '▾' : '▸'} PLAY A DIFFERENT GAME
-            </button>
-            {picking && (
-              <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
-                {shelves}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
-          {shelves}
-          {/* THE GAME — what the players will get */}
-          <div style={{ flex: '1 1 330px', maxWidth: 480, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', gap: 0, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${custom ? T.warn : activeSaved ? PERK_COLOR : T.acc}` }}>
-            <div style={{ padding: '14px 18px 0' }}>
-              <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: custom ? colourOf('games-tuned-not-saved') : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED: NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // PLAYING</div>
-              <div data-testid="playing-title" style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{title}</div>
-            </div>
-            {mode && MODE_ART.has(mode.mode) && (
-              <div style={{ margin: '12px 18px 0', aspectRatio: '2816 / 1536', background: `url(assets/modes/${mode.mode}.jpg) center/contain no-repeat, ${T.inset}`, border: `1px solid ${T.line2}` }} />
-            )}
-            <div style={{ padding: '12px 18px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ font: F.chk(500, 13), lineHeight: 1.55, color: T.body }}>{activeSaved?.desc || mode?.brief}</div>
-              {/* H1 (visual QA 2026-09-23): one column in this narrow rail. `minCol={9999}` asked for a
-                  9999 px track, so every value sat far off the right edge and read as blank. */}
-              <GameSettings testid="rail-settings" style={{ gridTemplateColumns: 'minmax(0,1fr)' }} rows={gameSettingRows(cfg, mode, weapons, perks)} />
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <span data-testid="rail-designer"><GhostButton size={11} pad="8px 14px" onClick={() => openDesigner(activeSaved && !activeSaved.builtin ? { game: activeSaved } : { fromLive: true, game: activeSaved ?? undefined, copy: !!activeSaved })} title="Open this game in the designer">{activeSaved && !activeSaved.builtin ? 'EDIT THIS GAME ▸' : custom ? 'SAVE THIS AS A GAME ▸' : activeSaved ? 'MAKE MY OWN ▸' : 'CUSTOMIZE ▸'}</GhostButton></span>
-              </div>
-              {errorsAndWarnings}
-              <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). LOAD ▸ SENDS THIS GAME TO EVERY CONNECTED PHONE AND KEEPS YOU HERE, ON THE ACTIVE GAME CONFIG, WHERE YOU CAN EDIT IT AND LOAD AGAIN. IT DOES NOT WRITE THE GUNS — WEAPONS GO WITH THE ARM, AT THE LOBBY PUSH AFTER KITTING. CONTINUE TO KIT ▸ IS THEN ONE TAP. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>
-            </div>
-          </div>
         </div>
       )}
     </div>
   );
 }
 
-function SmallBtn({ children, onClick, color = T.dim, label }: { children: React.ReactNode; onClick: () => void; color?: string; label?: string }) {
+/** One FAVOURITES chip (games-presets.md §6): tap the name to LOAD it, ✎ to rename inline (DraftText,
+ *  commits on blur/Enter), ✕ for the two-tap delete confirm. */
+function FavouriteChip({ fav, renaming, confirmingDelete, onLoad, onRenameStart, onRenameCommit, onRenameCancel, onDeleteStart, onDeleteConfirm, onDeleteCancel }: {
+  fav: Favourite; renaming: boolean; confirmingDelete: boolean;
+  onLoad: () => void; onRenameStart: () => void; onRenameCommit: (name: string) => void; onRenameCancel: () => void;
+  onDeleteStart: () => void; onDeleteConfirm: () => void; onDeleteCancel: () => void;
+}) {
+  // UX round 1 (2026-09-26): renaming had only a ✕ (cancel), with no visible way to CONFIRM a typed
+  // name — Enter or clicking away commits it (`DraftText`'s own blur/Enter rule), but nothing on
+  // screen said so. `draft` mirrors `DraftText`'s own live value (its `onDraft` hook) so a sibling ✓
+  // button can commit the CURRENT text directly. Both buttons take focus with `onMouseDown`'s
+  // `preventDefault` — without it, a click blurs the input FIRST (committing via `DraftText`'s own
+  // onBlur) and only THEN runs the button's onClick, so ✕ used to "cancel" an edit it had already sent.
+  const [draft, setDraftMirror] = useState(fav.name);
+  const suppressCommit = useRef(false);
+  // Round 3: `suppressCommit` was never reset, so after ONE Escape/✕ on a chip, every LATER rename on
+  // that SAME chip started with it already true -- Enter and click-away saved nothing from then on.
+  // Reset when a fresh rename session starts, not when it ends (cancel/save both unmount this branch
+  // and race the reset against whichever blur that causes).
+  useEffect(() => { if (renaming) { setDraftMirror(fav.name); suppressCommit.current = false; } }, [renaming, fav.name]);
+  // Round 2 (4): Tab (not a mouse click) moves focus to ✓/✕ the same way blur/Enter does everywhere
+  // else -- `onMouseDown`'s preventDefault above only ever stopped a MOUSE click from blurring first,
+  // so a keyboard user tabbing to ✕ still committed the draft via `DraftText`'s own onBlur before ✕'s
+  // Enter ever ran. `suppressCommit` covers Escape too (which does not move focus to a sibling at all,
+  // so `relatedTarget` alone cannot catch it): both stop the blur reaching `DraftText`'s onCommit by
+  // intercepting it in the CAPTURE phase, before the input's own onBlur (the bubble-phase target) fires.
+  if (renaming) {
+    const save = () => { const v = draft.trim(); if (v && v !== fav.name) onRenameCommit(v); else onRenameCancel(); };
+    const cancel = () => { suppressCommit.current = true; onRenameCancel(); };
+    return (
+      <span data-testid={`favourite-rename-${fav.favourite_id}`}
+        onBlurCapture={e => {
+          const rt = e.relatedTarget as Node | null;
+          if (suppressCommit.current || (rt && e.currentTarget.contains(rt))) e.stopPropagation();
+        }}
+        onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); cancel(); } }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${T.line2}`, padding: '4px 8px', minHeight: 44 }}>
+        <DraftText value={fav.name} onCommit={onRenameCommit} onDraft={setDraftMirror} ariaLabel={`rename ${fav.name}`} maxLength={24}
+          style={{ font: F.chk(700, 14), minWidth: 120, borderBottomColor: T.line2 }} />
+        <button type="button" onMouseDown={e => e.preventDefault()} onClick={save} aria-label="save rename" className="hit44"
+          style={{ ...BTN_RESET, cursor: 'pointer', color: T.ok, padding: '0 8px', minHeight: 44 }}>✓</button>
+        <button type="button" onMouseDown={e => e.preventDefault()} onClick={cancel} aria-label="cancel rename" className="hit44"
+          style={{ ...BTN_RESET, cursor: 'pointer', color: T.micro, padding: '0 8px', minHeight: 44 }}>✕</button>
+      </span>
+    );
+  }
+  if (confirmingDelete) {
+    return (
+      <span data-testid={`favourite-confirm-delete-${fav.favourite_id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${T.bad}`, padding: '4px 8px', minHeight: 44 }}>
+        <span style={{ font: F.chk(700, 12), color: T.bad, letterSpacing: '.04em' }}>DELETE {fav.name.toUpperCase()}?</span>
+        <GhostButton size={12} pad="8px 10px" color={T.bad} border={T.bad} onClick={onDeleteConfirm}>CONFIRM</GhostButton>
+        <GhostButton size={12} pad="8px 10px" onClick={onDeleteCancel}>CANCEL</GhostButton>
+      </span>
+    );
+  }
   return (
-    <button type="button" className="hov-acc" onClick={onClick} aria-label={label}
-      style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', color, border: `1px solid ${color === T.dim ? T.line : color}`, padding: '8px 12px', minHeight: 40, cursor: 'pointer' }}>
-      {children}
-    </button>
+    <span data-testid={`favourite-chip-${fav.favourite_id}`} style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${T.line2}` }}>
+      <button type="button" className="hit44" onClick={onLoad} title={`Load ${fav.name}`}
+        style={{ ...BTN_RESET, font: F.chk(700, 14), letterSpacing: '.04em', padding: '10px 4px 10px 12px', cursor: 'pointer', color: T.acc, minHeight: 44 }}>
+        ☆ {fav.name}
+      </button>
+      <button type="button" onClick={onRenameStart} aria-label={`rename ${fav.name}`} title="Rename" className="hit44"
+        style={{ ...BTN_RESET, cursor: 'pointer', color: T.micro, padding: '0 8px', minHeight: 44 }}>✎</button>
+      <button type="button" onClick={onDeleteStart} aria-label={`delete ${fav.name}`} title="Delete" className="hit44"
+        style={{ ...BTN_RESET, cursor: 'pointer', color: T.micro, padding: '0 10px', minHeight: 44 }}>✕</button>
+    </span>
+  );
+}
+
+/** GAME MODE's own mark (Tony, 2026-09-26), beside its name in a FIXED box so the row never jumps.
+ *  `object-fit: contain` -- the whole mark shows, never a crop. A mode with no `<mode>.jpg` yet, or
+ *  whose image fails to load, falls back to ModeEmblem's line drawing (never a broken-image icon);
+ *  `MODE_ART` decides which modes have art, never a name hard-coded here, so a mode added later (or
+ *  koth, once its art lands) needs no change to this file. */
+function ModeMark({ mode }: { mode: string }) {
+  const [broken, setBroken] = useState(false);
+  const hasArt = MODE_ART.has(mode) && !broken;
+  return (
+    <span style={{ display: 'inline-block', width: 44, height: 28, flexShrink: 0, position: 'relative',
+      background: T.inset, border: `1px solid ${T.line2}`, overflow: 'hidden' }}>
+      {hasArt
+        ? <img src={`assets/modes/${mode}.jpg`} alt="" onError={() => setBroken(true)}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+        : <ModeEmblem mode={mode} />}
+    </span>
+  );
+}
+
+/** One MATCH SETTINGS strip item, by key (screens/matchItems.ts). Each wraps its own control in a
+ *  `display: contents` fieldset (disables with `locked`, contributes no box of its own); an item's
+ *  own extras (the manual link, the ON/OFF word) are siblings, never inside that fieldset. */
+function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch }:
+  { itemKey: MatchItemKey; pick: GamePick; locked: boolean; runwayVal: number; pickMatch: (p: Partial<MatchSettings>) => void }) {
+  const guarded = (child: React.ReactNode) => (
+    <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, display: 'contents' }}>{child}</fieldset>
+  );
+  switch (itemKey) {
+    case 'time':
+      return guarded(<TimeControl seconds={pick.match.time_limit_s} onChange={s => pickMatch({ time_limit_s: s })} />);
+    case 'kills':
+      return guarded(<KillsControl fragLimit={pick.match.frag_limit} onChange={n => pickMatch({ frag_limit: n })} />);
+    case 'countdown':
+      return guarded(<CountdownControl seconds={runwayVal} onChange={setRunway} />);
+    case 'daynight':
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {guarded(
+            <Seg size={14} label="day or night" value={pick.match.night ? 'night' : 'day'} pad={SEG_PAD_44}
+              options={[{ value: 'day', label: 'DAY' }, { value: 'night', label: 'NIGHT' }]}
+              onChange={v => pickMatch({ night: v === 'night' })} />,
+          )}
+          <VenueModeManualLink />
+        </span>
+      );
+    case 'silenced':
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44 }}>
+          {guarded(<Toggle on={pick.match.silenced} onChange={v => pickMatch({ silenced: v })} label="silenced" />)}
+          {/* VQA QA-12: the switch alone (grey/blue) was the only sign of the state — add the word. */}
+          <span style={{ font: F.chk(700, 14), letterSpacing: '.04em', color: pick.match.silenced ? T.ink : T.dim }}>
+            SILENCED: {pick.match.silenced ? 'ON' : 'OFF'}
+          </span>
+        </span>
+      );
+  }
+}
+
+/** Tapping the value opens a short quick-pick row; the steppers stay for fine adjustment beyond it
+ *  (games-redesign.md §5). One shape, three uses below. */
+function QuickPick({ testid, valueLabel, quick, quickLabel, onQuick, step }:
+  { testid: string; valueLabel: string; quick: number[]; quickLabel: (v: number) => string; onQuick: (v: number) => void; step: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button type="button" data-testid={testid} className="hov-acc hit44"
+          onClick={() => setOpen(o => !o)} aria-expanded={open}
+          style={{ ...BTN_RESET, font: F.chk(700, 14), padding: '8px 12px', minHeight: 44, cursor: 'pointer', color: T.acc, border: `1px solid ${T.line2}` }}>
+          {valueLabel}
+        </button>
+        {step}
+      </div>
+      {open && (
+        <div role="group" data-testid="quick-pick-row" style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {quick.map(v => (
+            <button key={v} type="button" onClick={() => { onQuick(v); setOpen(false); }} className="hit44"
+              style={{ ...BTN_RESET, font: F.chk(600, 14), padding: '8px 12px', minHeight: 44, minWidth: 44, cursor: 'pointer', background: T.panelDeep, border: `1px solid ${T.line}`, color: T.body }}>
+              {quickLabel(v)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TimeControl({ seconds, onChange }: { seconds: number | null; onChange: (s: number) => void }) {
+  const mins = Math.max(1, Math.round((seconds ?? 600) / 60));
+  return (
+    <QuickPick testid="match-time-value" valueLabel={`${mins} MIN`} quick={TIME_QUICK_MIN}
+      quickLabel={v => `${v} MIN`} onQuick={v => onChange(v * 60)}
+      step={(
+        <span style={{ display: 'inline-flex', gap: 4 }}>
+          <StepBtn label="time limit minus" onClick={() => onChange(Math.max(1, mins - 1) * 60)}>−</StepBtn>
+          {/* VQA QA-08: the server refuses a time limit past its own cap; never send past it. */}
+          <StepBtn label="time limit plus" disabled={mins >= TIME_MAX_MIN} onClick={() => onChange(Math.min(TIME_MAX_MIN, mins + 1) * 60)}>+</StepBtn>
+        </span>
+      )} />
+  );
+}
+
+function KillsControl({ fragLimit, onChange }: { fragLimit: number | null; onChange: (n: number | null) => void }) {
+  // VQA QA-22: stepping down from a low kill count must land on NO KILL LIMIT, not stick at "1 KILLS"
+  // (and pressing − again while already at NO KILL LIMIT must stay there, not go negative).
+  const step = (dir: 1 | -1) => { const next = (fragLimit ?? 0) + dir * 5; onChange(next <= 0 ? null : next); };
+  return (
+    <QuickPick testid="match-kills-value" valueLabel={fragLimit ? `${fragLimit} KILLS` : 'NO KILL LIMIT'}
+      quick={KILLS_QUICK} quickLabel={v => (v === 0 ? 'NO KILL LIMIT' : `${v}`)}
+      onQuick={v => onChange(v === 0 ? null : v)}
+      step={(
+        <span style={{ display: 'inline-flex', gap: 4 }}>
+          <StepBtn label="kill limit minus" onClick={() => step(-1)}>−</StepBtn>
+          <StepBtn label="kill limit plus" onClick={() => step(1)}>+</StepBtn>
+        </span>
+      )} />
+  );
+}
+
+function CountdownControl({ seconds, onChange }: { seconds: number; onChange: (s: number) => void }) {
+  const idx = Math.max(0, RUNWAYS.indexOf(seconds));
+  const step = (d: number) => onChange(RUNWAYS[Math.max(0, Math.min(RUNWAYS.length - 1, idx + d))] ?? getRunway());
+  return (
+    <QuickPick testid="match-countdown-value" valueLabel={`COUNTDOWN ${seconds} S`} quick={COUNTDOWN_QUICK}
+      quickLabel={v => `${v} S`} onQuick={onChange}
+      step={(
+        <span style={{ display: 'inline-flex', gap: 4 }}>
+          <StepBtn label="countdown minus" onClick={() => step(-1)}>−</StepBtn>
+          <StepBtn label="countdown plus" onClick={() => step(1)}>+</StepBtn>
+        </span>
+      )} />
   );
 }

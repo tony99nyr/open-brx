@@ -6,7 +6,7 @@ import contextlib
 import json
 import logging
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -18,7 +18,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .state import CoverageRequired, NotReadyError, Session
-from .types import DEFAULT_RUNWAY_S, MatchHistoryRow, PerkView, PresentationView, VoiceList
+from .types import DEFAULT_RUNWAY_S, MatchHistoryRow, MatchSettings, PerkView, PresentationView, VoiceList
 from .tunnel import TunnelError
 
 log = logging.getLogger("brx.mc.api")
@@ -214,69 +214,261 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except Exception:
             return JSONResponse(fake_weapon_views())
 
-    # ---- A10 §8 saved games (presets) ----
-    from .presets import PresetError, PresetStore
-    if getattr(s, "presets", None) is None:
-        from .state import default_config
-        from . import policy as _policy
-        s.presets = PresetStore(None, s.sanitize_config, default_config, _policy.merge, now_ms=s.now_ms)   # memory-only
+    # ---- F411: BUILD's pieces + PLAY's pick (docs/spec/design/games-presets.md) ----
+    from . import gamepick as _gamepick
+    from .pieces import PieceError, PieceStore, check_value
+    from .state import MODES, ModeRow, default_config
+    if getattr(s, "pieces", None) is None:
+        s.attach_pieces(PieceStore(None, now_ms=s.now_ms))   # memory-only; M1 reconciles a stale game_pick too
 
-    def _perr(e: PresetError):
+    def _perr(e: PieceError):
         return _err(str(e), e.status)
 
-    def _presets(s: Session) -> PresetStore:
-        """`s.presets` is only ever None before the memory-only fallback above runs -- which happens
+    def _pieces(s: Session) -> PieceStore:
+        """`s.pieces` is only ever None before the memory-only fallback above runs -- which happens
         unconditionally in this same function, before any route can be dispatched -- but it stays
         Optional on `Session` (attached by `__main__`/here), so every route reads it through this
         rather than five copies of the same narrowing."""
-        if s.presets is None:
-            raise PresetError(409, "saved games are not available for this session")
-        return s.presets
+        if s.pieces is None:
+            raise PieceError(409, "pieces are not available for this session")
+        return s.pieces
 
-    async def presets_list(_):
-        try:
-            return JSONResponse(_presets(s).list())
-        except PresetError as e:
-            return _perr(e)
+    def _mode_row(mode: str) -> ModeRow:
+        return next(m for m in MODES if m["mode"] == mode)
 
-    async def presets_create(req):
+    def _apply_patch(patch: dict) -> dict:
+        """Precheck -> `set_config`, shared by PICK, FAVOURITES LOAD and a picked piece's PUT. May
+        raise `ValueError` (a phase 400: the caller's own `_refuse_config_locked()` call should have
+        already caught this, but a race is still possible between the two).
+
+        `ok: false` always means the caller must NOT commit `game_pick` -- but (e, round 2) `config` in
+        that reply is NOT always the unchanged current one. The PRECHECK-failure path truly changes
+        nothing (`self.config` is never touched). The M2 BACKSTOP path below is different: `set_config`
+        has ALREADY run for real by the time it disagrees with the precheck, and `set_config` always
+        commits (errors and all -- `PUT /api/config`'s own long-standing "show the red instead of
+        silently reverting"). So that reply's `config` IS the newly-applied one, with real reteam/
+        apply_policy side effects (frames sent, players re-kitted) already done -- only `game_pick`
+        stays on the OLD pick, deliberately HALF-MOVED rather than presenting a config nobody chose to
+        load into that state as something PLAY still shows picked."""
+        precheck = s._compose_precheck(patch)
+        if not precheck["ok"]:
+            return {"ok": False, "errors": precheck["errors"], "config": s.config}
+        res = s.set_config(patch)
+        if not res["ok"]:
+            # M2 backstop (polish round 1): the precheck said this patch would validate and
+            # `set_config`'s own `_validate()` just disagreed. That is a real bug in the precheck (it
+            # is meant to run the SAME pipeline) -- config_id was still minted and the config WAS
+            # committed for real, but the CALLER must not also commit `game_pick` over a config nobody
+            # actually chose to load into that state.
+            log.warning("F411 M2: _compose_precheck passed but set_config's own validate refused the "
+                       "same patch -- game_pick will NOT be updated. errors=%r", res["errors"])
+        return res
+
+    async def pieces_list(_):
+        return JSONResponse(_pieces(s).list())
+
+    async def pieces_create(req):
         b = await body(req)
-        raw = b.get("config")
-        cfg = raw if isinstance(raw, dict) else s.config   # one read, so the checker sees the narrowing
         try:
-            return JSONResponse(_presets(s).create(b.get("name"), b.get("desc"), cfg, replace=bool(b.get("replace"))))
-        except PresetError as e:
+            return JSONResponse(_pieces(s).create(b.get("kind"), b.get("name"), b.get("note"), b.get("value")))
+        except PieceError as e:
             return _perr(e)
-        except ValueError as e:
-            return _err(str(e))
 
-    async def presets_update(req):
+    async def pieces_update(req):
+        pid = req.path_params["pid"]
         b = await body(req)
         try:
-            return JSONResponse(_presets(s).update(req.path_params["pid"], name=b.get("name"), desc=b.get("desc"),
-                                                    config=b.get("config") if isinstance(b.get("config"), dict) else None))
-        except PresetError as e:
+            piece = _pieces(s).get(pid)   # 404/403(builtin) before the in-use check
+        except PieceError as e:
             return _perr(e)
-        except ValueError as e:
-            return _err(str(e))
-
-    async def presets_delete(req):
+        picked = not piece["builtin"] and pid in s.game_pick["pieces"].values()
+        if picked:
+            # Low (round 2): rolls RECAP forward before any precheck work below, the same reason
+            # play_pick/favourites_load call this first -- the armed/live case still answers with the
+            # specific IN-USE message, not `_refuse_config_locked`'s generic one.
+            try:
+                s._refuse_config_locked()
+            except ValueError:
+                return _err("IN USE BY THE RUNNING GAME", 409)
+        value = b.get("value")
+        patch = None
+        fallbacks: list = []
+        if picked and value is not None:
+            # H1 (polish round 1): precheck the RECOMPOSED config BEFORE saving anything -- a value
+            # such as `fixed_id: "not_a_real_weapon"` must not drop a pushed lobby silently.
+            try:
+                checked = check_value(piece["kind"], value)
+                # M-b (round 2): resolve_pieces_mixed, not the strict resolve_pieces -- an INHERITED
+                # post-MVP mode (H2's `_sync_game_pick_from_config` can point `game_pick` at one via a
+                # plain `PUT /api/config`) must not refuse an edit to an unrelated piece.
+                resolved, fallbacks = _gamepick.resolve_pieces_mixed(_pieces(s), s.game_pick["pieces"], {piece["kind"]})
+            except PieceError as e:
+                return _perr(e)
+            resolved[piece["kind"]] = {**piece, "value": checked}
+            patch = _gamepick.compose(resolved, s.game_pick["match"], _mode_row(resolved["mode"]["value"]["mode"]))
+            precheck = s._compose_precheck(patch)
+            if not precheck["ok"]:
+                return JSONResponse({"errors": precheck["errors"]}, status_code=400)
         try:
-            _presets(s).delete(req.path_params["pid"])
-            if s.active_preset_id == req.path_params["pid"]:
-                s.active_preset_id = None; s._changed()
-        except PresetError as e:
+            row = _pieces(s).update(pid, name=b.get("name"), note=b.get("note"), value=value)
+        except PieceError as e:
+            return _perr(e)
+        out: dict = dict(row)
+        if patch is not None:
+            # round 3: ONLY a value change recomposes -- a name/note-only edit changes no game value
+            # and must not touch the config at all. This used to run for EVERY picked-piece edit
+            # (recomposing "so game_cfg/the lobby repush stay in step"), which is exactly what broke:
+            # pick a custom LIFE piece, `PUT /api/config {"mode": "infection"}` (a legal, non-pick config
+            # edit), then just rename the LIFE piece -- the unconditional recompose re-resolved every
+            # kind including the now-inherited post-MVP mode, which `resolve_pieces_mixed` correctly
+            # falls back to TDM, and `set_config` applied THAT for real. A rename silently reverted the
+            # game's mode. `fallbacks` (the fallen-back kinds from the resolve above) rides the reply
+            # the same way `POST /api/play/pick` reports its own.
+            try:
+                res = s.set_config(patch)
+            except ValueError as e:
+                return _err(str(e))
+            if not res["ok"]:
+                log.warning("F411 M2: pieces_update's own precheck said ok but set_config's validate "
+                           "refused the same patch. errors=%r", res["errors"])
+            out["ok"] = res["ok"]
+            out["errors"] = res["errors"]
+            out["fallbacks"] = fallbacks
+        return JSONResponse(out)
+
+    async def pieces_delete(req):
+        pid = req.path_params["pid"]
+        try:
+            piece = _pieces(s).get(pid)   # 404 before anything else; builtin-ness before the in-use check
+        except PieceError as e:
+            return _perr(e)
+        if not piece["builtin"] and pid in s.game_pick["pieces"].values():
+            return _err("IN USE: PICK ANOTHER ON PLAY FIRST", 409)
+        try:
+            _pieces(s).delete(pid)
+        except PieceError as e:
             return _perr(e)
         return JSONResponse({"ok": True})
 
-    async def presets_apply(req):
+    async def play_pick(req):
         try:
-            row = _presets(s).get(req.path_params["pid"])
-            return JSONResponse(s.apply_preset(row["preset_id"], row["config"]))   # PUT /api/config path + remembers which game is playing
-        except PresetError as e:
-            return _perr(e)
+            s._refuse_config_locked()   # Low (polish round 1): refuse an armed/live pick before the precheck work
         except ValueError as e:
             return _err(str(e))
+        b = await body(req)
+        try:
+            patch_ids = b.get("pieces") or {}
+            ids = _gamepick.merge_piece_ids(s.game_pick["pieces"], patch_ids)
+            # M1 (polish round 1): a kind the REQUEST itself names still 404s/400s on a bad id; a kind
+            # merely inherited from a stale/restored pick falls back to that kind's own first builtin.
+            resolved, fallbacks = _gamepick.resolve_pieces_mixed(_pieces(s), ids, set(patch_ids))
+            mode = resolved["mode"]["value"]["mode"]
+            # round 3: `.get` here is the STRICT lookup (`PieceError` 404 on an unknown id), and the
+            # OLD `game_pick.pieces.mode` is exactly the kind of inherited id that can go stale (a
+            # session/store drift M1 already tolerates everywhere else). Left unguarded, that 404
+            # bubbled out and refused an otherwise unrelated pick that never named "mode" at all.
+            # Unresolvable -> treat it as a mode change: `prev_mode` can equal nothing, so `mode !=
+            # prev_mode` is true and the strip resets to the (real, current) mode's own defaults --
+            # the same safe assumption `resolve_pieces_mixed`'s own fallback makes elsewhere.
+            try:
+                prev_mode = _pieces(s).get(s.game_pick["pieces"]["mode"])["value"]["mode"]
+            except PieceError:
+                prev_mode = None
+            match = cast(MatchSettings, dict(s.game_pick["match"]))
+            if mode != prev_mode:
+                dc = default_config(mode)
+                match["time_limit_s"] = dc["time_limit_s"]
+                match["frag_limit"] = (dc.get("scoring") or {}).get("frag_limit")
+            match = _gamepick.merge_match(match, b.get("match") or {})
+        except PieceError as e:
+            return _perr(e)
+        # From `resolved`, not the raw merged `ids` (M1, polish round 1): a kind that fell back to its
+        # builtin must PERSIST that builtin's id, or the stale one just resolved past would sit right
+        # back in `game_pick` for the next request to trip over again.
+        ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
+        patch = _gamepick.compose(resolved, match, _mode_row(mode))
+        try:
+            res = _apply_patch(patch)
+        except ValueError as e:
+            return _err(str(e))
+        if res["ok"]:
+            # games-presets.md §4: "a pick with ok: false changes nothing" -- neither the config nor the
+            # pick; `_apply_patch` already refused to commit the config, so `game_pick` must not move either.
+            s.game_pick = {"pieces": ids, "match": match}
+            s._changed()
+        # Low (round 2): a kind that fell back (e.g. an inherited post-MVP mode -> TDM) is named the
+        # same way FAVOURITES LOAD already names one, so the console can say so either way.
+        return JSONResponse({"ok": res["ok"], "errors": res["errors"], "config": res["config"], "pick": s.game_pick,
+                             "fallbacks": fallbacks})
+
+    # ---- F411 §6: FAVOURITES -- a named bundle of the whole PLAY pick ----
+    from .favourites import FavouriteError, FavouriteStore
+    if getattr(s, "favourites", None) is None:
+        s.favourites = FavouriteStore(None, now_ms=s.now_ms)   # memory-only
+
+    def _ferr(e: FavouriteError):
+        return _err(str(e), e.status)
+
+    def _favourites(s: Session) -> FavouriteStore:
+        """Mirrors `_pieces` above: `s.favourites` is only ever None before the memory-only fallback
+        just ran, but stays Optional on `Session` (attached by `__main__`/here)."""
+        if s.favourites is None:
+            raise FavouriteError(409, "favourites are not available for this session")
+        return s.favourites
+
+    async def favourites_list(_):
+        return JSONResponse(_favourites(s).list())
+
+    async def favourites_create(req):
+        b = await body(req)
+        pick = b.get("pick") if isinstance(b.get("pick"), dict) else s.game_pick   # default: the current pick
+        try:
+            return JSONResponse(_favourites(s).create(b.get("name"), b.get("countdown_s"), pick))
+        except FavouriteError as e:
+            return _ferr(e)
+
+    async def favourites_update(req):
+        b = await body(req)
+        try:
+            return JSONResponse(_favourites(s).update(req.path_params["fid"], b.get("name")))
+        except FavouriteError as e:
+            return _ferr(e)
+
+    async def favourites_delete(req):
+        try:
+            _favourites(s).delete(req.path_params["fid"])
+        except FavouriteError as e:
+            return _ferr(e)
+        return JSONResponse({"ok": True})
+
+    async def favourites_load(req):
+        """Applies the favourite's pieces + match through the SAME compose/precheck/set_config path
+        `POST /api/play/pick` uses (same phase gating, `ok: false` changes nothing) -- the one
+        difference is `resolve_pieces_with_fallback`: a piece the favourite named that no longer
+        exists (or turned post_mvp) falls back to that kind's first builtin rather than 404ing the
+        whole favourite, and is named in `fallbacks`."""
+        try:
+            fav = _favourites(s).get(req.path_params["fid"])
+        except FavouriteError as e:
+            return _ferr(e)
+        try:
+            s._refuse_config_locked()   # Low (polish round 1): refuse an armed/live load before the precheck work
+        except ValueError as e:
+            return _err(str(e))
+        resolved, fallbacks = _gamepick.resolve_pieces_with_fallback(_pieces(s), fav["pick"]["pieces"])
+        mode = resolved["mode"]["value"]["mode"]
+        match = fav["pick"]["match"]
+        ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
+        patch = _gamepick.compose(resolved, match, _mode_row(mode))
+        try:
+            res = _apply_patch(patch)
+        except ValueError as e:
+            return _err(str(e))
+        if res["ok"]:
+            s.game_pick = {"pieces": ids, "match": match}
+            s._changed()
+        return JSONResponse({"ok": res["ok"], "errors": res["errors"], "config": res["config"], "pick": s.game_pick,
+                             "countdown_s": fav["countdown_s"], "fallbacks": fallbacks})
 
     async def loadout_pool_preview(req):
         """A10 §5 designer: the pool a DRAFT `loadout_policy` would allow — same rule engine as `State.loadout_pool`,
@@ -860,11 +1052,16 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/weapons", weapons),
         Route("/api/perks", perks),
         Route("/api/loadout/pool", loadout_pool_preview, methods=["POST"]),
-        Route("/api/presets", presets_list),
-        Route("/api/presets", presets_create, methods=["POST"]),
-        Route("/api/presets/{pid}", presets_update, methods=["PUT"]),
-        Route("/api/presets/{pid}", presets_delete, methods=["DELETE"]),
-        Route("/api/presets/{pid}/apply", presets_apply, methods=["POST"]),
+        Route("/api/pieces", pieces_list),
+        Route("/api/pieces", pieces_create, methods=["POST"]),
+        Route("/api/pieces/{pid}", pieces_update, methods=["PUT"]),
+        Route("/api/pieces/{pid}", pieces_delete, methods=["DELETE"]),
+        Route("/api/play/pick", play_pick, methods=["POST"]),
+        Route("/api/favourites", favourites_list),
+        Route("/api/favourites", favourites_create, methods=["POST"]),
+        Route("/api/favourites/{fid}", favourites_update, methods=["PUT"]),
+        Route("/api/favourites/{fid}", favourites_delete, methods=["DELETE"]),
+        Route("/api/favourites/{fid}/load", favourites_load, methods=["POST"]),
         Route("/api/config", put_config, methods=["PUT"]),
         Route("/api/phase", set_phase, methods=["POST"]),
         Route("/api/players", post_player, methods=["POST"]),

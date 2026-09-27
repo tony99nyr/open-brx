@@ -6,13 +6,12 @@
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Catalog } from '../src/screens/Catalog';
-import { Games } from '../src/screens/Games';
 import { Kit } from '../src/screens/Kit';
 import { Recap } from '../src/screens/Recap';
 import { MockBackend } from '../src/mock/backend';
 import { StoreCtx, type View } from '../src/store';
 import { computePool, emptyRequiredSlots, poolEmptyMessage } from '../src/screens/gameSummary';
-import type { LoadoutPolicy, ModeInfo, RecapView, SlotRule, State, WeaponView } from '../src/api/types';
+import type { LoadoutPolicy, RecapView, SlotRule, State, WeaponView } from '../src/api/types';
 import { demo, makeStore, mount, mountScreen } from './harness';
 
 const RECAP: RecapView = { winner: { player_id: 'p1' }, score: {}, provisional: false, honors: [], missing: [],
@@ -22,7 +21,7 @@ const RECAP: RecapView = { winner: { player_id: 'p1' }, score: {}, provisional: 
 /** Mount a screen with a store whose `setView` is observable (the harness's is a no-op). */
 async function mountWithView(screen: React.ReactNode, f: Parameters<typeof makeStore>[0]) {
   const views: string[] = [];
-  const store = makeStore(f, { setView: (v: View) => { views.push(v); } });
+  const store = makeStore(f, { setView: (v: View) => { views.push(v); return true; } });
   const m = await mount(<StoreCtx.Provider value={store}>{screen}</StoreCtx.Provider>);
   return Object.assign(m, { views });
 }
@@ -31,7 +30,7 @@ describe('UX-1 — the recap advertises the play-again path (NEXT MATCH since 20
   // Tony, bench 2026-09-16: "why? just make a new one". The recap's KEEP THIS ROSTER? PICK A MODE ON
   // GAMES pointed at a banner that said the same thing again. The primary action now starts the next
   // match itself, roster and game kept, and lands on GAMES with the game loaded.
-  it('the primary action is NEXT MATCH ▸, it calls the server, and it lands on GAMES', async () => {
+  it('the primary action is PLAY AGAIN ▸, it calls the server, and it lands on GAMES', async () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'recap', recap: RECAP };
     const nextMatch = vi.fn(async () => ({ ...state, phase: 'build' }) as State);
@@ -40,7 +39,7 @@ describe('UX-1 — the recap advertises the play-again path (NEXT MATCH since 20
     expect(m.text()).not.toMatch(/PICK A MODE/);
     const btn = m.find('[data-testid="recap-next-match"] button')[0] as HTMLButtonElement;
     expect(btn, `saw: ${m.text()}`).toBeTruthy();
-    expect(btn.textContent).toBe('NEXT MATCH ▸');
+    expect(btn.textContent).toBe('PLAY AGAIN ▸');
     expect(btn.disabled).toBe(false);
     expect(parseFloat(getComputedStyle(btn).fontSize || '0') >= 11).toBe(true);
     await act(async () => { btn.click(); });
@@ -49,7 +48,7 @@ describe('UX-1 — the recap advertises the play-again path (NEXT MATCH since 20
     m.unmount();
   });
 
-  it('a refused NEXT MATCH stays on the recap and does not navigate', async () => {
+  it('a refused PLAY AGAIN stays on the recap and does not navigate', async () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'recap', recap: RECAP };
     const nextMatch = vi.fn(async () => { throw new Error('THIS MC PREDATES NEXT MATCH: RESTART IT, OR USE NEW SESSION (TOP RIGHT)'); });
@@ -221,35 +220,9 @@ describe('MERGE-0 / FIELD-1 — the mock mirrors the server', () => {
   });
 });
 
-describe('MERGE-3 — "run it back" on the recap', () => {
-  it('tapping the PLAYING card in RECAP rolls the session; elsewhere it stays a no-op', async () => {
-    const d = await demo();
-    const modes: ModeInfo[] = await d.api.getModes();
-    // the card reads PLAYING only when the applied config IS that stock mode, so play it first
-    await d.api.putConfig({ ...modes.find(m => m.mode === 'tdm')!.defaults });
-    const base = await d.api.getState();
-    const putConfig = vi.fn(async (patch: Record<string, unknown>) => d.api.putConfig(patch));
-    // `modes` is not a Fixture field, so the store is built by hand here — a Games screen with an
-    // empty mode list renders no STOCK cards at all and the assertion below would be unfalsifiable.
-    const mount1 = async (phase: State['phase']) => {
-      const state: State = { ...base, phase };
-      const store = makeStore({ ...d, state, view: 'build', api: { putConfig } }, { modes });
-      return mount(<StoreCtx.Provider value={store}>{<Games />}</StoreCtx.Provider>);
-    };
-    const recapM = await mount1('recap');
-    const card = recapM.find('[aria-pressed="true"][role="button"]')[0];
-    expect(card, `the current mode's card is PLAYING, saw: ${recapM.text()}`).toBeTruthy();
-    await act(async () => { card.click(); await new Promise(r => setTimeout(r, 0)); });
-    expect(putConfig, 'the commonest recap action must not be swallowed').toHaveBeenCalled();
-    recapM.unmount();
-
-    putConfig.mockClear();
-    const kitM = await mount1('kit');
-    await act(async () => { kitM.find('[aria-pressed="true"][role="button"]')[0].click(); await new Promise(r => setTimeout(r, 0)); });
-    expect(putConfig, 're-picking the game you are already on is still a no-op outside recap').not.toHaveBeenCalled();
-    kitM.unmount();
-  });
-});
+// F411: MERGE-3's "run it back" card was the old STOCK MODES mode-tile — retired with the GAMES
+// card-shelf UI. PLAY's own pickers call `api.pick()` on every tap (games-presets.md §5: "a tap is
+// one POST /api/play/pick"), already covered by test/play.test.tsx.
 
 describe('MERGE-5 / FIELD-2 — one list, two screens', () => {
   it('KIT does not rack the Energy Launcher at all', async () => {

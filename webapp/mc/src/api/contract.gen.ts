@@ -170,6 +170,7 @@ export type TxPower = 'ultra_low' | 'low' | 'medium' | 'high';
 export type RangeSrc = 'station' | 'mc';
 export type RangeField = 'threshold' | 'tx_power';
 export type StationItemKind = 'weapon' | 'overshield';
+export type PieceKind = 'mode' | 'life' | 'spawn' | 'primary' | 'secondary' | 'perks' | 'misc_loadouts' | 'gameplay';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
@@ -821,6 +822,8 @@ export interface Weapon {
   /** A10 policy vocabulary (loadout.md §1.1) */
   tags?: string[];
   role?: string;
+  /** F411 (2026-09-26): the loadout-preset vocabulary BUILD's type toggles union over (games-presets.md) -- rifle|close|long|sidearm|support, several per row allowed, [] on a pickup-only heavy */
+  types?: string[];
   /** A10: human copy for a known LIVE problem (weapons.json `caution`) */
   caution?: string;
   /** 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py) */
@@ -870,6 +873,8 @@ export interface WeaponView {
   verified: boolean;
   tags: string[];
   role: string;
+  /** F411 (2026-09-26): rifle|close|long|sidearm|support, several allowed, [] on a pickup-only heavy -- NotRequired so a console reading an older server (games-presets.md's own stale-server rule) degrades to no type toggles rather than crashing on `undefined.includes` */
+  types?: string[];
   htk: number | null;
   /** older MC rows can omit this derived figure */
   ttk_ms?: number | null;
@@ -895,15 +900,84 @@ export interface WeaponView {
   cells?: HirCell[];
 }
 
-/** A sanitized whole-game preset stored on the Mission Control host. */
-export interface SavedGame {
-  preset_id: string;
+export interface ModePiece {
+  /** a `GET /api/modes` mode; the rest of the mode's defaults come from there */
+  mode: string;
+}
+
+export interface LifePiece {
+  max_hp: number;
+  max_armor: number;
+  max_shield: number;
+}
+
+export interface MiscLoadoutsPiece {
+  /** True = PLAYERS pick on the phone, False = the HOST picks */
+  hud_select: boolean;
+  /** False = exclude_tags ["heavy"] on primary + secondary (a slot piece's own tags win) */
+  heavies: boolean;
+}
+
+export interface GameplayPiece {
+  /** MVP: {} = OPEN BRX STANDARD (each mode's own defaults) */
+  mode_params: Record<string, unknown>;
+}
+
+/** One named preset for one PLAY picker. `value` is the kind's shape: mode -> ModePiece, life -> LifePiece,
+ *  spawn -> Respawn, primary/secondary/perks -> SlotRule, misc_loadouts -> MiscLoadoutsPiece,
+ *  gameplay -> GameplayPiece. Builtins carry ids `builtin:<kind>:<slug>` and cannot be edited or deleted. */
+export interface GamePiece {
+  piece_id: string;
+  kind: PieceKind;
+  /** <= 24 chars, unique per kind (case-insensitive) */
   name: string;
-  desc: string;
+  /** one line, <= 80 chars; "" = none */
+  note: string;
   builtin: boolean;
+  /** True: shown greyed in BUILD, never offered on PLAY */
+  post_mvp: boolean;
   created_t: number;
   updated_t: number;
-  config: GameConfig;
+  value: Record<string, unknown>;
+}
+
+/** Per-game values on the PLAY strip. Never saved into a piece; kept by PLAY AGAIN. */
+export interface MatchSettings {
+  time_limit_s: number | null;
+  frag_limit: number | null;
+  night: boolean;
+  silenced: boolean;
+}
+
+/** F411 LAST MATCH: the strip values of the last match STARTed, kept across an MC restart. */
+export interface LastMatch {
+  time_limit_s: number | null;
+  frag_limit: number | null;
+  night: boolean;
+  silenced: boolean;
+  countdown_s: number;
+}
+
+/** What PLAY has picked: one piece id per kind, plus the strip. The config is composed from it. */
+export interface GamePick {
+  /** PieceKind -> piece_id, every kind present */
+  pieces: Record<string, string>;
+  match: MatchSettings;
+}
+
+/** F411 §6: a named bundle of the whole PLAY pick (games-presets.md §6) — "like a named LAST
+ *  MATCH" (Tony). Stores piece REFERENCES, not copies: a favourite tracks its pieces' current
+ *  values, and a piece deleted after being favourited falls back to that kind's first builtin at
+ *  LOAD time (`POST /api/favourites/{id}/load`'s `fallbacks`), never a 404 for the favourite itself. */
+export interface Favourite {
+  favourite_id: string;
+  /** <= 24 chars, unique (case-insensitive) */
+  name: string;
+  created_t: number;
+  updated_t: number;
+  pick: GamePick;
+  /** the arm runway this favourite loads (games-presets.md §2 COUNTDOWN) */
+  countdown_s: number;
 }
 
 export interface Preflight {
@@ -1851,7 +1925,10 @@ export interface State {
   game_no?: number;
   config_warnings?: string[];
   standby?: Player[];
-  active_preset_id?: string | null;
+  /** F411: absent = a server that predates PLAY/BUILD */
+  game_pick?: GamePick;
+  /** F411: absent until a match has been played */
+  last_match?: LastMatch;
   restored_from?: RestoredFromView;
   game?: GameAnnouncementView;
   sync?: SyncView;

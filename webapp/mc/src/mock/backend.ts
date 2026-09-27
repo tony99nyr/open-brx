@@ -1,11 +1,12 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, Player,
-  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
+  Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, Favourite, GameConfig, GamePick, GamePiece, LanPublic, LastMatch, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView,
+  MatchHistoryRow, MatchSettings, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, PieceKind, Player,
+  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
-import { withPolicy } from '../screens/gameSummary';
+import { healthPresetOf, withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
@@ -28,18 +29,31 @@ const mockPowerups = (): 'on' | 'off' | 'old' => {
   const v = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('powerups') : null;
   return v === 'off' || v === 'old' ? v : 'on';
 };
-// loadout.md §8 — the shipped example so the SAVED GAMES shelf is never empty on first use
-const BUILTIN_SNIPER = (): SavedGame => {
-  const ffa: ConfigView = withPolicy(clone(MODES.find(m => m.mode === 'ffa')!.defaults));
-  ffa.health = { ...ffa.health, max_armor: 0, max_shield: 0, preset: 'custom' };   // mirrors presets.py's Silenced Sniper
-  ffa.loadout_policy = { preset: 'custom', hud_select: false,
-    primary: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' },
-    secondary: { choice: 'off', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null },
-    perk: { choice: 'fixed', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'extended_mags' } };   // A14: the perk is its own slot
-  ffa.presentation = { ...(ffa.presentation ?? {}), preset: 'silenced' } as ConfigView['presentation'];   // F282: mirrors presets.py
-  return { preset_id: 'builtin:silenced_sniper', name: 'Silenced Sniper', builtin: true, created_t: 0, updated_t: 0, config: ffa,
-    desc: 'Everyone gets the bolt-action sniper with extended mags, no armor: one shot kills. No teams, no picking. Silenced: no announcer or LED flashes, and every rifle uses the Suppressor\'s fire sound.' };
-};
+// F411 (docs/spec/design/games-presets.md §1): the eight PLAY pickers' built-in pieces. `piece_id`s are
+// `builtin:<kind>:<slug>` and never edited/deleted (403); a fresh session picks the first of each kind.
+const builtinPiece = (kind: PieceKind, slug: string, name: string, value: Record<string, unknown>, post_mvp = false): GamePiece =>
+  ({ piece_id: `builtin:${kind}:${slug}`, kind, name, note: '', builtin: true, post_mvp, created_t: 0, updated_t: 0, value });
+const BUILTIN_PIECES = (): GamePiece[] => [
+  builtinPiece('mode', 'tdm', 'TEAM DEATHMATCH', { mode: 'tdm' }),
+  builtinPiece('mode', 'ffa', 'FREE-FOR-ALL', { mode: 'ffa' }),
+  builtinPiece('mode', 'koth', 'KING OF THE HILL', { mode: 'koth' }),
+  // F-scope A: post-MVP modes still ship a mode piece (so an old config naming one still resolves a
+  // name/brief), but `post_mvp: true` keeps them off PLAY (§5's "a post_mvp piece is not pickable").
+  builtinPiece('mode', 'infection', 'INFECTION', { mode: 'infection' }, true),
+  builtinPiece('mode', 'lms', 'LAST MAN STANDING', { mode: 'lms' }, true),
+  builtinPiece('mode', 'extraction', 'EXTRACTION', { mode: 'extraction' }, true),
+  builtinPiece('life', 'standard', 'STANDARD', { max_hp: 45, max_armor: 70, max_shield: 0 }),
+  builtinPiece('life', 'shields', 'SHIELDS', { max_hp: 45, max_armor: 0, max_shield: 105 }),
+  builtinPiece('life', 'hardcore', 'HARDCORE', { max_hp: 45, max_armor: 0, max_shield: 0 }),
+  builtinPiece('spawn', 'auto', 'AUTO', { type: 'auto', delay_s: 15, protect_s: TIMED_PROTECT_S_DEFAULT, weapon_delay_ms: WEAPON_DELAY_MS_DEFAULT }),
+  builtinPiece('spawn', 'station', 'STATION', { type: 'scanner', delay_s: 10, station_protect_s: STATION_PROTECT_S_DEFAULT, gate: 'trigger' }),
+  builtinPiece('primary', 'all', 'ALL', { choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null }),
+  builtinPiece('secondary', 'all', 'ALL', { choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null }),
+  builtinPiece('perks', 'all', 'ALL', { choice: 'player', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null }),
+  builtinPiece('misc_loadouts', 'standard', 'PLAYERS PICK · HEAVIES ON', { hud_select: true, heavies: true }),
+  builtinPiece('gameplay', 'standard', 'OPEN BRX STANDARD', { mode_params: {} }),
+];
+const PICKER_KINDS: PieceKind[] = ['mode', 'life', 'spawn', 'primary', 'secondary', 'perks', 'misc_loadouts', 'gameplay'];
 // every kit shape the Kit page can show: weapon + perk (A14: all three slots), perk only, empty, weapon only
 const DEMO_LOADOUTS: (() => Loadout)[] = [
   () => ({ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'deagle' }], perk: 'quick_switch' }),
@@ -103,8 +117,15 @@ export class MockBackend implements Api {
   private trying: Record<string, string> = {};
   private standby: Player[] = [];   // STANDBY: parked players (never counted in kit/lobby/readiness)
   private browsing: Record<string, number> = {};
-  private presets: SavedGame[] = [BUILTIN_SNIPER()];
-  private activePreset: string | null = null;
+  // F411 (docs/spec/design/games-presets.md): PLAY picks pieces, BUILD creates them. No migration —
+  // the old whole-game preset store above this is gone; a fresh session picks the first builtin of
+  // every kind.
+  private pieces: GamePiece[] = BUILTIN_PIECES();
+  private gamePick: GamePick = this.defaultPick();
+  private lastMatch?: LastMatch;
+  // F411 §6 FAVOURITES: a named bundle of the whole PLAY pick. Memory-only here (as the real
+  // `FavouriteStore(None, ...)` fallback is), by `created_t`.
+  private favourites: Favourite[] = [];
   private evicted = new Set<string>();
   // A13.5: one utility phone that said hello and is waiting to be assigned (the ITEMS panel demo). Mirrors
   // `Session.stations` / `_station_view` in state.py, including the attention flags the server derives.
@@ -770,7 +791,7 @@ export class MockBackend implements Api {
           && Object.values(this.stations).some(s => s.assigned?.kind === 'control')
           ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} (EVERY PHONE IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS`] : []),
         ...(this.config.respawn.type === 'scanner' && !Object.values(this.stations).some(s => s.assigned?.kind === 'respawn')
-          ? ['SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SCANNER, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT'] : []),
+          ? ['SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT'] : []),
         // F402 item 2: mirrors Session._koth_hill_offline_warning() -- computed fresh here too, never
         // cached, so a hill that goes quiet after LOAD with no other edit still shows it.
         ...(this.config.mode === 'koth' && this.config.station_source === 'phone'
@@ -786,7 +807,8 @@ export class MockBackend implements Api {
       standby: clone(this.standby),
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
-      active_preset_id: this.activePreset,
+      game_pick: clone(this.gamePick),
+      ...(this.lastMatch ? { last_match: clone(this.lastMatch) } : {}),
       // A36/C-5: `all_acked` is the SERVER's own answer to "has every gun answered for THIS config",
       // and the console prefers it over its own count. The mock exists to predict the server, so it
       // sends it too — without it `?mock` exercised only the fallback path.
@@ -1096,38 +1118,290 @@ export class MockBackend implements Api {
   async getModes(): Promise<ModeInfo[]> { return clone(MODES); }
   async getWeapons(): Promise<WeaponView[]> { return clone(WEAPONS); }
   async getPerks(): Promise<PerkView[]> { return clone(PERKS.filter(k => !k.hidden)); }
-  async getPresets(): Promise<SavedGame[]> { return clone(this.presets); }
-  async savePreset(p: { name: string; desc?: string; config?: GameConfig; replace?: boolean }): Promise<SavedGame> {
-    const name = p.name.trim(); if (!name) throw new Error('Give the game a name');
-    const clash = this.presets.find(x => x.name.toLowerCase() === name.toLowerCase());
-    if (clash?.builtin) throw new Error(`"${clash.name}" is a built-in game — pick another name`);
-    if (clash && !p.replace) throw new Error(`A saved game called "${clash.name}" already exists`);
-    const { config_id: _cid, ...cfg } = withPolicy(clone(p.config ?? this.config)); void _cid;
+  /** F411 §1: every piece, builtins first (they are constructed first and never reordered), then the
+   *  host's own pieces by `created_t`. */
+  async getPieces(): Promise<GamePiece[]> {
+    return clone([...this.pieces].sort((a, b) => (a.builtin === b.builtin ? a.created_t - b.created_t : a.builtin ? -1 : 1)));
+  }
+  async createPiece(p: { kind: PieceKind; name: string; note?: string; value: Record<string, unknown> }): Promise<GamePiece> {
+    if (p.kind === 'mode' || p.kind === 'gameplay') throw Object.assign(new Error(`${p.kind} pieces are fixed and cannot be created`), { status: 403 });
+    const name = (p.name ?? '').trim();
+    if (!name || name.length > 24) throw new Error('name must be 1 to 24 characters');
+    const clash = this.pieces.find(x => x.kind === p.kind && x.name.toLowerCase() === name.toLowerCase());
+    if (clash) throw Object.assign(new Error(clash.builtin ? `"${clash.name}" is a built-in — pick another name` : `"${clash.name}" already exists for ${p.kind}`), { status: clash.builtin ? 403 : 409 });
+    const value = this.checkPieceValue(p.kind, p.value);
     const t = now();
-    const sg: SavedGame = { preset_id: clash?.preset_id ?? uid('preset'), name, desc: p.desc ?? clash?.desc ?? '', builtin: false, created_t: clash?.created_t ?? t, updated_t: t, config: { ...cfg, config_id: '' } };
-    this.presets = [...this.presets.filter(x => x !== clash), sg];
-    return clone(sg);
+    const piece: GamePiece = { piece_id: uid('piece'), kind: p.kind, name, note: (p.note ?? '').slice(0, 80), builtin: false, post_mvp: false, created_t: t, updated_t: t, value };
+    this.pieces = [...this.pieces, piece];
+    this.emit();
+    return clone(piece);
   }
-  async deletePreset(id: string) {
-    const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
-    if (sg.builtin) throw new Error('Built-in games cannot be deleted');
-    this.presets = this.presets.filter(x => x !== sg);
-    if (this.activePreset === id) { this.activePreset = null; this.emit(); }
-  }
-  async updatePreset(id: string, p: { name?: string; desc?: string; config?: GameConfig }): Promise<SavedGame> {
-    const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
-    if (sg.builtin) throw new Error('Built-in games cannot be edited — save a copy under your own name');
-    if (p.name != null) {
-      const nm = p.name.trim(); if (!nm) throw new Error('Give the game a name');
-      const clash = this.presets.find(x => x !== sg && x.name.toLowerCase() === nm.toLowerCase());
-      if (clash) throw new Error(`A saved game called "${clash.name}" already exists`);
-      sg.name = nm;
+  async updatePiece(id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }): Promise<GamePiece> {
+    const piece = this.pieces.find(x => x.piece_id === id);
+    if (!piece) throw Object.assign(new Error('no such piece'), { status: 404 });
+    if (piece.builtin) throw Object.assign(new Error('a built-in piece cannot be edited — copy it into a new one'), { status: 403 });
+    if (Object.values(this.gamePick.pieces).includes(id) && (this.phase === 'armed' || this.phase === 'live')) {
+      throw Object.assign(new Error('IN USE BY THE RUNNING GAME'), { status: 409 });
     }
-    if (p.desc != null) sg.desc = p.desc;
-    if (p.config) { const { config_id: _c, ...cfg } = withPolicy(clone(p.config)); void _c; sg.config = { ...cfg, config_id: '' }; }
-    sg.updated_t = now();
-    return clone(sg);
+    if (p.name != null) {
+      const nm = p.name.trim();
+      if (!nm || nm.length > 24) throw new Error('name must be 1 to 24 characters');
+      const clash = this.pieces.find(x => x !== piece && x.kind === piece.kind && x.name.toLowerCase() === nm.toLowerCase());
+      if (clash) throw Object.assign(new Error(`"${clash.name}" already exists for ${piece.kind}`), { status: 409 });
+      piece.name = nm;
+    }
+    if (p.note != null) piece.note = p.note.slice(0, 80);
+    if (p.value != null) piece.value = this.checkPieceValue(piece.kind, p.value);
+    piece.updated_t = now();
+    // "when the piece is in the current pick, MC recomposes the config" (games-presets.md §4)
+    if (Object.values(this.gamePick.pieces).includes(id)) await this.recompose();
+    this.emit();
+    return clone(piece);
   }
+  async deletePiece(id: string): Promise<void> {
+    const piece = this.pieces.find(x => x.piece_id === id);
+    if (!piece) throw Object.assign(new Error('no such piece'), { status: 404 });
+    if (piece.builtin) throw Object.assign(new Error('a built-in piece cannot be deleted'), { status: 403 });
+    if (Object.values(this.gamePick.pieces).includes(id)) throw Object.assign(new Error('IN USE: PICK ANOTHER ON PLAY FIRST'), { status: 409 });
+    this.pieces = this.pieces.filter(x => x !== piece);
+    this.emit();
+  }
+  /** The eight-kind default pick (the first builtin of each), and TDM's own MATCH SETTINGS —
+   *  games-presets.md §2: "a fresh session picks the first builtin of every kind... and the strip
+   *  starts from TDM's defaults, day, not silenced." Called once, from the `gamePick` field
+   *  initialiser — `this.pieces` is already assigned by then (fields run top to bottom). */
+  private defaultPick(): GamePick {
+    const firstOf = (k: PieceKind) => this.pieces.find(p => p.kind === k && !p.post_mvp)!.piece_id;
+    const tdm = MODES.find(m => m.mode === 'tdm')!.defaults;
+    const pieces: Record<string, string> = {};
+    for (const k of PICKER_KINDS) pieces[k] = firstOf(k);
+    return { pieces, match: { time_limit_s: tdm.time_limit_s, frag_limit: tdm.scoring.frag_limit, night: false, silenced: false } };
+  }
+  /** Bench-proven-only gate (§13): a piece's `value` is validated the same way `PUT /api/config`
+   *  validates the field it feeds, before it can ever be saved. Never trust the caller's shape. */
+  private checkPieceValue(kind: PieceKind, value: Record<string, unknown>): Record<string, unknown> {
+    const v = value ?? {};
+    switch (kind) {
+      case 'life': {
+        const nums = (['max_hp', 'max_armor', 'max_shield'] as const).map(k => Number(v[k]));
+        nums.forEach((n, i) => { if (!Number.isInteger(n) || n < 0 || n > 999) throw new Error(`${(['max_hp', 'max_armor', 'max_shield'] as const)[i]} must be an integer 0..999`); });
+        const [max_hp, max_armor, max_shield] = nums;
+        return { max_hp, max_armor, max_shield };
+      }
+      case 'spawn': {
+        const type = v.type;
+        if (type !== 'auto' && type !== 'scanner') throw new Error("spawn.type must be 'auto' or 'scanner'");
+        const delay_s = Number(v.delay_s ?? 0);
+        if (!Number.isInteger(delay_s) || delay_s < 0 || delay_s > 300) throw new Error('spawn.delay_s must be an integer 0..300');
+        if (delay_s > 0 && delay_s < 3) throw new Error('spawn.delay_s of 1 or 2 seconds wedges the headset relay: use 0, or 3 or more');
+        if ('gate' in v && v.gate != null && v.gate !== 'trigger') throw new Error("spawn.gate may only be 'trigger' — presence is not yet bench-proven (§13)");
+        if ('station_source' in v) throw new Error('a spawn piece never carries station_source — the mode decides it');
+        if (type === 'auto') {
+          const protect_s = v.protect_s ?? TIMED_PROTECT_S_DEFAULT;
+          if (!(TIMED_PROTECT_S_OPTIONS as readonly unknown[]).includes(protect_s)) throw new Error(`spawn.protect_s must be one of ${TIMED_PROTECT_S_OPTIONS.join(', ')}`);
+          const weapon_delay_ms = v.weapon_delay_ms ?? WEAPON_DELAY_MS_DEFAULT;
+          if (!(WEAPON_DELAY_MS_OPTIONS as readonly unknown[]).includes(weapon_delay_ms)) throw new Error(`spawn.weapon_delay_ms must be one of ${WEAPON_DELAY_MS_OPTIONS.join(', ')}`);
+          return { type, delay_s, protect_s, weapon_delay_ms };
+        }
+        const station_protect_s = v.station_protect_s ?? STATION_PROTECT_S_DEFAULT;
+        if (!(STATION_PROTECT_S_OPTIONS as readonly unknown[]).includes(station_protect_s)) throw new Error(`spawn.station_protect_s must be one of ${STATION_PROTECT_S_OPTIONS.join(', ')}`);
+        return { type, delay_s, station_protect_s, gate: 'trigger' };
+      }
+      case 'primary': case 'secondary': case 'perks': {
+        const choice = v.choice;
+        if (!['player', 'host', 'fixed', 'off'].includes(choice as string)) throw new Error('choice must be one of player, host, fixed, off');
+        if (kind === 'primary' && choice === 'off') throw new Error('primary cannot be off — a player needs something to carry');
+        const kinds = kind === 'perks' ? ['perk'] : (Array.isArray(v.kinds) && v.kinds.length ? v.kinds : ['weapon']);
+        return { choice, kinds,
+          exclude_tags: Array.isArray(v.exclude_tags) ? v.exclude_tags : [],
+          exclude_ids: Array.isArray(v.exclude_ids) ? v.exclude_ids : [],
+          only_ids: Array.isArray(v.only_ids) ? v.only_ids : [],
+          fixed_id: choice === 'fixed' ? ((v.fixed_id as string | null) ?? null) : null };
+      }
+      case 'misc_loadouts':
+        return { hud_select: !!v.hud_select, heavies: v.heavies !== false };
+      case 'mode': case 'gameplay':
+        throw Object.assign(new Error(`${kind} pieces are fixed and cannot be created or edited`), { status: 403 });
+    }
+  }
+  /** §3: compose the `GameConfig` partial the pick's pieces + strip describe. */
+  private composePartial(pieceIds: Record<string, string>, match: MatchSettings): Partial<GameConfig> {
+    const valueOf = <T,>(kind: PieceKind) => this.pieces.find(x => x.piece_id === pieceIds[kind])!.value as T;
+    const modeV = valueOf<{ mode: string }>('mode');
+    const modeInfo = MODES.find(m => m.mode === modeV.mode)!;
+    const lifeV = valueOf<{ max_hp: number; max_armor: number; max_shield: number }>('life');
+    const spawnV = valueOf<Respawn>('spawn');
+    const primaryV = valueOf<SlotRule>('primary');
+    const secondaryV = valueOf<SlotRule>('secondary');
+    const perkV = valueOf<SlotRule>('perks');
+    const miscV = valueOf<{ hud_select: boolean; heavies: boolean }>('misc_loadouts');
+    const gameplayV = valueOf<{ mode_params: Record<string, unknown> }>('gameplay');
+
+    // §3.4: the blanket HEAVIES exclude, unless the slot piece already carries its own (the slot wins).
+    const withHeavyExcl = (rule: SlotRule): SlotRule =>
+      (!miscV.heavies && rule.exclude_tags.length === 0) ? { ...rule, exclude_tags: ['heavy'] } : rule;
+    const loadout_policy: LoadoutPolicy = {
+      preset: 'custom', hud_select: miscV.hud_select,
+      primary: withHeavyExcl(clone(primaryV)), secondary: withHeavyExcl(clone(secondaryV)), perk: clone(perkV),
+    };
+    loadout_policy.preset = presetOf(loadout_policy);
+
+    const partial: Partial<GameConfig> = {
+      mode: modeV.mode,
+      health: { ...clone(lifeV), preset: healthPresetOf(lifeV) },
+      // §3.3: a mode whose own default respawn type is "none" (post-MVP LMS) keeps its own.
+      ...(modeInfo.defaults.respawn.type === 'none' ? {} : { respawn: clone(spawnV) }),
+      loadout_policy,
+      mode_params: { ...(modeInfo.defaults.mode_params ?? {}), ...gameplayV.mode_params } as Record<string, number | boolean | string>,
+      time_limit_s: match.time_limit_s,
+      scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit },
+      night: match.night,
+      // §3.6: SILENCED applies the full silenced preset together; off returns the mode's own automatic one.
+      presentation: match.silenced ? { preset: 'silenced' } : { ...(modeInfo.defaults.presentation ?? { preset: 'standard' }) },
+      environment: 'outdoor',   // §3.7 (F410): MVP is outdoors only
+      volume: null,             // §3.7: the venue value, never a stale per-game knob
+    };
+    return partial;
+  }
+  /** Re-apply the current pick's pieces (a piece just edited under it changed shape). */
+  private async recompose() { await this.pick({}); }
+  /** F411 `POST /api/play/pick` (games-presets.md §4). `ok: false` changes nothing: not the pick, not
+   *  the config — so a content-validation failure rolls the config back rather than leaving the two
+   *  disagreeing. A bad piece id/kind/post_mvp pick, or a bad match value, throws before anything is
+   *  touched at all (the routes table's 400s); a phase refusal propagates from `putConfig` unchanged. */
+  async pick(p: { pieces?: Partial<Record<PieceKind, string>>; match?: Partial<MatchSettings> }):
+    Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick; fallbacks: PieceKind[] }> {
+    const patchIds = p.pieces ?? {};
+    // Round 2 (server review): a kind the REQUEST itself names still 404s/400s on a bad id -- the
+    // operator's own mistake to fix. A kind merely INHERITED from the previous pick (a post-MVP mode
+    // set on KIT, say) falls back to that kind's builtin instead of 404ing an UNRELATED pick, named in
+    // the returned `fallbacks` -- the same grace `loadFavourite` already gives a saved pick.
+    const { ids: resolvedIds, fallbacks } = this.resolvePiecesMixed({ ...this.gamePick.pieces, ...patchIds }, new Set(Object.keys(patchIds)));
+    const modeChanged = resolvedIds.mode !== this.gamePick.pieces.mode;
+    const modePiece = this.pieces.find(x => x.piece_id === resolvedIds.mode)!;
+    const modeInfo = MODES.find(m => m.mode === (modePiece.value as { mode: string }).mode)!;
+    const match: MatchSettings = { ...this.gamePick.match };
+    if (modeChanged) { match.time_limit_s = modeInfo.defaults.time_limit_s; match.frag_limit = modeInfo.defaults.scoring.frag_limit ?? null; }
+    const pm = p.match ?? {};
+    if ('time_limit_s' in pm) {
+      if (pm.time_limit_s != null && (!Number.isInteger(pm.time_limit_s) || pm.time_limit_s <= 0)) throw Object.assign(new Error('match.time_limit_s must be a positive integer of seconds, or null'), { status: 400 });
+      match.time_limit_s = pm.time_limit_s ?? null;
+    }
+    if ('frag_limit' in pm) {
+      if (pm.frag_limit != null && (!Number.isInteger(pm.frag_limit) || pm.frag_limit <= 0)) throw Object.assign(new Error('match.frag_limit must be a positive integer, or null'), { status: 400 });
+      match.frag_limit = pm.frag_limit ?? null;
+    }
+    if ('night' in pm) match.night = !!pm.night;
+    if ('silenced' in pm) match.silenced = !!pm.silenced;
+
+    const partial = this.composePartial(resolvedIds, match);
+    const before = clone(this.config);
+    const r = await this.putConfig(partial);   // throws on a phase refusal — nothing to roll back, nothing was touched
+    if (!r.ok) {
+      this.config = before;   // "ok: false changes nothing" — not the pick, not the config
+      this.emit();
+      return { ok: false, errors: r.errors, config: clone(this.config), pick: clone(this.gamePick), fallbacks };
+    }
+    // From `resolvedIds`, not the raw merged ids (mirrors api.py play_pick exactly): a kind that fell
+    // back to its builtin must PERSIST that builtin's id, or the stale one sits right back in
+    // `game_pick` for the next request to trip over again.
+    this.gamePick = { pieces: resolvedIds, match };
+    this.emit();
+    return { ok: true, errors: [], config: r.config, pick: clone(this.gamePick), fallbacks };
+  }
+
+  // ---------- F411 §6: FAVOURITES ----------
+  async getFavourites(): Promise<Favourite[]> {
+    return clone([...this.favourites].sort((a, b) => a.created_t - b.created_t));
+  }
+  async createFavourite(p: { name: string; countdown_s: number; pick?: GamePick }): Promise<Favourite> {
+    const name = (p.name ?? '').trim().replace(/\s+/g, ' ');
+    if (!name || name.length > 24) throw new Error('name must be 24 characters or fewer');
+    if (this.favourites.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+      throw Object.assign(new Error(`a favourite named "${name}" already exists`), { status: 409 });
+    }
+    if (!Number.isInteger(p.countdown_s) || p.countdown_s < 5 || p.countdown_s > 900) {
+      throw new Error('countdown_s must be an integer 5..900');
+    }
+    const pick = p.pick ?? this.gamePick;   // default: the current pick (games-presets.md §6)
+    if (!pick?.pieces || PICKER_KINDS.some(k => typeof pick.pieces[k] !== 'string' || !pick.pieces[k])) {
+      throw new Error(`pick.pieces must carry a piece id for every kind (${PICKER_KINDS.join(', ')})`);
+    }
+    const t = now();
+    const row: Favourite = { favourite_id: uid('fav'), name, created_t: t, updated_t: t, pick: clone(pick), countdown_s: p.countdown_s };
+    this.favourites = [...this.favourites, row];
+    this.emit();
+    return clone(row);
+  }
+  async updateFavourite(id: string, p: { name: string }): Promise<Favourite> {
+    const row = this.favourites.find(f => f.favourite_id === id);
+    if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
+    const name = (p.name ?? '').trim().replace(/\s+/g, ' ');
+    if (!name || name.length > 24) throw new Error('name must be 24 characters or fewer');
+    if (this.favourites.some(f => f !== row && f.name.toLowerCase() === name.toLowerCase())) {
+      throw Object.assign(new Error(`a favourite named "${name}" already exists`), { status: 409 });
+    }
+    row.name = name; row.updated_t = now();
+    this.emit();
+    return clone(row);
+  }
+  async deleteFavourite(id: string): Promise<void> {
+    const row = this.favourites.find(f => f.favourite_id === id);
+    if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
+    this.favourites = this.favourites.filter(f => f !== row);
+    this.emit();
+  }
+  /** Like the pick-id loop in `pick()` above, but a missing/wrong-kind/post_mvp id falls back to that
+   *  kind's first builtin instead of throwing (games-presets.md §6: "stores piece references... never a
+   *  404 for the whole favourite"). `this.pieces` always carries builtins first (never reordered), so
+   *  the first non-post_mvp match of a kind IS that kind's shipped builtin — mirrors the server's own
+   *  fixed `BUILTIN_IDS` table exactly. */
+  /** Round 2: `POST /api/play/pick` calls this too now (mirrors `gamepick.py resolve_pieces_mixed`
+   *  exactly). A kind in `strictKinds` (the REQUEST itself named it) still 404s/400s on a bad id --
+   *  the operator's own mistake to fix. A kind merely INHERITED from the previous pick (or, for
+   *  `loadFavourite` below, EVERY kind: `strictKinds` empty) falls back to that kind's first builtin
+   *  instead, named in the returned `fallbacks` -- never a 404 for the whole request/favourite over a
+   *  piece nobody asked to change. */
+  private resolvePiecesMixed(ids: Record<string, string>, strictKinds: ReadonlySet<string>): { ids: Record<string, string>; fallbacks: PieceKind[] } {
+    const out: Record<string, string> = {};
+    const fallbacks: PieceKind[] = [];
+    for (const kind of PICKER_KINDS) {
+      const pid = ids[kind];
+      if (strictKinds.has(kind)) {
+        if (!pid) throw Object.assign(new Error(`no piece picked for '${kind}'`), { status: 400 });
+        const piece = this.pieces.find(x => x.piece_id === pid);
+        if (!piece) throw Object.assign(new Error(`unknown piece id '${pid}'`), { status: 404 });
+        if (piece.kind !== kind) throw Object.assign(new Error(`piece '${pid}' is a ${piece.kind} piece, not ${kind}`), { status: 400 });
+        if (piece.post_mvp) throw Object.assign(new Error(`'${piece.name}' is post-MVP and cannot be picked yet`), { status: 400 });
+        out[kind] = pid;
+        continue;
+      }
+      const piece = pid ? this.pieces.find(x => x.piece_id === pid) : undefined;
+      if (piece && piece.kind === kind && !piece.post_mvp) { out[kind] = pid; continue; }
+      out[kind] = this.pieces.find(x => x.kind === kind && !x.post_mvp)!.piece_id;
+      fallbacks.push(kind);
+    }
+    return { ids: out, fallbacks };
+  }
+  async loadFavourite(id: string):
+    Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick; countdown_s: number; fallbacks: PieceKind[] }> {
+    const row = this.favourites.find(f => f.favourite_id === id);
+    if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
+    const { ids, fallbacks } = this.resolvePiecesMixed(row.pick.pieces, new Set());
+    const match = clone(row.pick.match);
+    const partial = this.composePartial(ids, match);
+    const before = clone(this.config);
+    const r = await this.putConfig(partial);
+    if (!r.ok) {
+      this.config = before;   // "ok: false changes nothing" -- same rule as pick()
+      this.emit();
+      return { ok: false, errors: r.errors, config: clone(this.config), pick: clone(this.gamePick), countdown_s: row.countdown_s, fallbacks };
+    }
+    this.gamePick = { pieces: ids, match };
+    this.emit();
+    return { ok: true, errors: [], config: r.config, pick: clone(this.gamePick), countdown_s: row.countdown_s, fallbacks };
+  }
+
   /** A11: the demo's presentation profile — a few representative rows so the ADVANCED view has something to show. */
   async getPresentation() {
     const rows = [
@@ -1154,14 +1428,6 @@ export class MockBackend implements Api {
     const merged: LoadoutPolicy = { ...base, ...policy, primary: { ...base.primary, ...(policy.primary ?? {}) }, secondary: { ...base.secondary, ...(policy.secondary ?? {}) }, perk: { ...base.perk, ...(policy.perk ?? {}) } };
     merged.preset = policy.preset === 'custom' ? 'custom' : presetOf(merged);
     return { policy: merged, pool: poolOf(merged, WEAPONS, PERKS) };
-  }
-  async applyPreset(id: string) {
-    const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
-    const { config_id: _cid, loadout_policy, ...rest } = withPolicy(clone(sg.config)); void _cid;
-    // K8: a saved game with no `volume` plays at the venue volume, never the previous game's knob (`state.py apply_preset`).
-    const r = await this.putConfig({ ...rest, volume: rest.volume ?? null, loadout_policy: { ...loadout_policy, preset: presetOf(loadout_policy) } });   // the name is re-derived, like the server
-    this.activePreset = id; this.emit();
-    return r;
   }
   async putConfig(partial: Partial<GameConfig>) {
     // F151 (field 2026-09-12, ISSUE 25): the mock used to accept `PUT /api/config` in ANY phase, which
@@ -1207,7 +1473,6 @@ export class MockBackend implements Api {
         if (!(ok as readonly number[]).includes(v)) throw new Error(`respawn.${name} must be one of ${ok.join(', ')}`);
       }
     }
-    if (Object.keys(partial).some(k => !['environment', 'night', 'config_id'].includes(k))) this.activePreset = null;   // a real edit: no longer that saved game
     // F-10 (2026-09-13): `state.py set_config` rebuilds the WHOLE config from `default_config(mode)`
     // whenever the mode changes, THEN merges the patch on top — so nothing belonging to the OLD mode
     // can survive the switch. `station_source` was the one key this mirrored (F70: only the objective
@@ -1286,6 +1551,20 @@ export class MockBackend implements Api {
       }, this.repushAckMs);   // long enough for a real-browser poll to see the transitional "re-pushing" state
     }
     if (rolled) this.phase = 'build';   // `set_config` moves muster -> build once a game is picked
+    // Polish round 1 H2 parity, round 2 (6): mirrors `state.py Session._sync_game_pick_from_config`
+    // exactly -- called on EVERY applied `set_config`, errors or not (the mock used to skip this while
+    // refused, disagreeing with the server the moment a KIT/LOBBY edit was rejected but still applied
+    // to `self.config`, as an invalid one always is). `mode` is a kind BUILD can never create a piece
+    // for, so the picked mode piece is always a builtin named `builtin:mode:<mode>` -- recomputed from
+    // the config's own mode string directly, with no PieceStore lookup and no post_mvp exclusion (a
+    // post-MVP mode still gets its own real builtin id, never falls back to another mode's).
+    this.gamePick.match = {
+      time_limit_s: this.config.time_limit_s ?? null,
+      frag_limit: this.config.scoring.frag_limit ?? null,
+      night: !!this.config.night,
+      silenced: this.config.presentation?.preset === 'silenced',
+    };
+    if (this.config.mode) this.gamePick.pieces.mode = `builtin:mode:${this.config.mode}`;
     this.cfgErrors = errors;
     this.emit();
     return { ok: errors.length === 0, errors, config: clone(this.config) };
@@ -1605,6 +1884,9 @@ export class MockBackend implements Api {
     });
     if (stale.length) throw new Error(`${stale.length} gun(s) last answered an OLDER config`);
     this.gameStarted = true;
+    // F411 LAST MATCH (games-presets.md §2): captured when a match STARTs, `countdown_s` from this
+    // request. Survives an MC restart and a new session — a small session-store key, not a preset.
+    this.lastMatch = { ...this.gamePick.match, countdown_s: runway_s };
     return this.schedule(runway_s, 1, uid('match'));
   }
   async reschedule(runway_s: number) { return this.schedule(runway_s, (this.start_?.seq ?? 0) + 1, uid('match')); }

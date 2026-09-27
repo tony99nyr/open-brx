@@ -4,7 +4,8 @@ import { DEFAULT_RUNWAY_S } from './api/contract.gen';
 /** Countdown lengths the operator can arm: quick bench starts through full walk-outs (Tony 2026-08-26). */
 export const RUNWAYS = [10, 15, 30, 45, 60, 90, 120, 180];
 /** Tony 2026-09-25: the ONE default lives in `types.py` (`DEFAULT_RUNWAY_S`); this reads the
- *  generated contract so the picker's preselected value can never drift from MC's own START default. */
+ *  generated contract so the picker's preselected value can never drift from MC's own START default.
+ *  F411: MATCH SETTINGS' COUNTDOWN pre-fills this same value. */
 export const DEFAULT_RUNWAY = DEFAULT_RUNWAY_S;
 
 const KEY = 'brx.mc.runway';
@@ -21,10 +22,21 @@ try {
 
 const subs = new Set<(v: number) => void>();
 
+/** Polish round 1 Low, round 2: LAST MATCH and a loaded FAVOURITE can both set the runway to whatever
+ *  they were actually armed with, which need not be a RUNWAYS value (an older favourite, or a value
+ *  another console version wrote). Round 2 moved the snap IN HERE, so it happens once, for every
+ *  caller, rather than only at the moment a favourite is saved -- the on-screen COUNTDOWN control and
+ *  its +/- stepper (which reads `RUNWAYS.indexOf(seconds)`, -1 and stuck for a non-member) now always
+ *  agree with what SAVE AS A FAVOURITE would write. */
+export function nearestRunway(v: number): number {
+  if (RUNWAYS.includes(v)) return v;
+  return RUNWAYS.reduce((best, r) => (Math.abs(r - v) < Math.abs(best - v) ? r : best), RUNWAYS[0]);
+}
+
 export function setRunway(v: number) {
-  current = v;
-  try { localStorage.setItem(KEY, String(v)); } catch { /* non-fatal */ }
-  subs.forEach(fn => fn(v));
+  current = nearestRunway(v);
+  try { localStorage.setItem(KEY, String(current)); } catch { /* non-fatal */ }
+  subs.forEach(fn => fn(current));
 }
 
 export function getRunway(): number { return current; }

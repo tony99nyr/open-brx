@@ -5,8 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import { Armed } from '../src/screens/Armed';
 import { Armory } from '../src/screens/Armory';
+import { Build } from '../src/screens/Build';
 import { Catalog } from '../src/screens/Catalog';
-import { Designer } from '../src/screens/Designer';
 import { Games } from '../src/screens/Games';
 import { Kit } from '../src/screens/Kit';
 import { Live } from '../src/screens/Live';
@@ -20,7 +20,7 @@ import type { View } from '../src/store';
 const SCREENS: [string, View, () => React.ReactElement][] = [
   ['muster', 'muster', () => <Armory />],
   ['build', 'build', () => <Games />],
-  ['designer', 'designer', () => <Designer />],
+  ['designer', 'designer', () => <Build />],
   ['catalog', 'catalog', () => <Catalog />],
   ['kit', 'kit', () => <Kit />],
   ['lobby', 'lobby', () => <Lobby />],

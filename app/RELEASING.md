@@ -18,7 +18,7 @@ Tony gives the go; nothing below publishes until then. For the next cut, change 
    - Release key: `16d3f5ab…0697e4`. The debug key is `691cb028…b76a7f`. The release APK must show the first.
    - `aapt2 dump badging` must show `versionName='0.4.14'`, `versionCode='414'`.
 
-WebView debugging ships ON by default on both platforms (B21, `DEFAULT_ON` in `BrxDebugPlugin.java`,
+Android ships ON; the iOS default is written but uncompiled (B21, `DEFAULT_ON` in `BrxDebugPlugin.java`,
 `defaultOn` in `BrxDebugPlugin.swift`). Keep it on for tester cuts. For a public release, set both to
 `false` first. A player's own stored choice still wins.
 
