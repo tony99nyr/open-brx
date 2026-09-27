@@ -396,3 +396,24 @@ def test_submit_names_the_branch_and_never_touches_main():
         assert t.remote_refs()["refs/heads/main"] == main
         s = t.land("status", "--no-drive")
         assert s.returncode == 0 and f"1. {id_}" in s.stdout, s.stdout + s.stderr
+
+
+def test_the_lander_loops_batch_by_batch_until_the_queue_is_empty():
+    with Lane() as t:
+        ids = [t.submit(f"b{i}", {f"f{i}.txt": str(i)}) for i in range(3)]
+        r = t.land("run", "--batch", "2")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, *ids)
+        assert t.full_gates() == 2
+
+
+def test_wait_on_another_machine_reads_the_result_from_the_refs():
+    with Lane() as t:
+        a = t.submit("a", {"a.txt": "a"})
+        b = t.submit("b", {"RED": "breaks mcp"})
+        assert t.land("run").returncode == 0
+        other = t.clone("other")   # machine b: no result files, only the refs
+        w = t.land("wait", a, "--timeout-min", "0.1", cwd=other, machine="b")
+        assert w.returncode == 0 and "landed" in w.stdout, w.stdout + w.stderr
+        w = t.land("wait", b, "--timeout-min", "0.1", cwd=other, machine="b")
+        assert w.returncode == 1 and f"land-failed/{b}" in w.stdout, w.stdout + w.stderr
