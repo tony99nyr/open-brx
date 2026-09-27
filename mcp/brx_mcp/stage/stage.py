@@ -1337,8 +1337,9 @@ class GunStage:
             await self._send(frames, gap_ms, on_start=on_start)
             if play_indexes:
                 self._last_play_sent_at = self.now()
-                if is_queue_slot_play(play_frame):
-                    self._queue_play_until = self.now() + clip_s(_cue_id(play_frame))
+                sent_play = frames[play_indexes[0]]
+                if is_queue_slot_play(sent_play):
+                    self._queue_play_until = self.now() + clip_s(_cue_id(sent_play))
                 self._last_play_at = self._last_play_sent_at
                 self._play_lock.release()
         except Exception as e:
