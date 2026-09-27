@@ -71,6 +71,12 @@ def _selection_includes_ui_job(all_jobs, filters) -> bool:
     return json.loads(_node(expr))
 
 
+def _union_filters(selected, named) -> list:
+    expr = (f"import({json.dumps(CHANGED_MOD.as_uri())}).then("
+            f"m => console.log(JSON.stringify(m.unionFilters({json.dumps(selected)}, {json.dumps(named)}))))")
+    return json.loads(_node(expr))
+
+
 # ---- path -> job edges --------------------------------------------------------------------------------------
 
 def test_app_paths_select_app_site_mc_and_mcp():
@@ -157,6 +163,32 @@ def test_running_everything_counts_as_including_a_ui_job_when_one_exists():
     all_jobs = [{"name": "mcp", "ui": False}, {"name": "app-screens", "ui": True}]
     assert _selection_includes_ui_job(all_jobs, None) is True
     assert _selection_includes_ui_job([{"name": "mcp", "ui": False}], None) is False
+
+
+# ---- unionFilters (2026-09-27 fix: named job filters ADD to --changed's pick, never replace it) --------------
+
+def test_named_jobs_add_to_a_diff_selection():
+    assert sorted(_union_filters(["mcp"], ["site"])) == ["mcp", "site"]
+
+
+def test_named_jobs_do_not_duplicate_an_already_selected_job():
+    assert sorted(_union_filters(["mcp", "site"], ["site"])) == ["mcp", "site"]
+
+
+def test_the_trap_named_jobs_do_not_narrow_a_fail_safe_everything_selection():
+    """The bug (2026-09-27): `node scripts/test-all.mjs -- --changed <sha> --ui mcp site` treated `mcp site` as a
+    filter that REPLACED --changed's fail-safe "everything" pick, so it silently ran only mcp and site. A null
+    `selected` (test-all.mjs's own "run everything") must stay "everything" -- an empty filter list, since
+    test-all.mjs's selectFiltered() treats an empty list as "no narrowing" -- no matter what was typed by hand."""
+    assert _union_filters(None, ["mcp", "site"]) == []
+
+
+def test_no_named_jobs_leaves_a_diff_selection_untouched():
+    assert sorted(_union_filters(["mcp", "chaos"], [])) == ["chaos", "mcp"]
+
+
+def test_no_named_jobs_and_no_diff_selection_is_still_everything():
+    assert _union_filters(None, []) == []
 
 
 # ---- defaultBase (HIGH: the post-merge merge-base bug) --------------------------------------------------------

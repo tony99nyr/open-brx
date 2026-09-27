@@ -55,7 +55,11 @@ that merge-base IS origin/main's own tip, so the default omits everything the me
 base you last tested explicitly whenever you are not calling `--changed` immediately after the merge. If only docs
 came in, both the `mcp` job (docs hygiene) and `site` (it renders `docs/platform`/`docs/manual`) are needed. An
 unmapped path, or a change to `scripts/test-all.mjs`/a CI workflow file, selects everything: fail safe, never a
-narrower guess. `--changed` adds `--ui` itself whenever the selection includes a UI-only job: CI does **not**
+narrower guess. A job name typed after `--changed` (e.g. `--changed [base] mcp site`) ADDS to that selection, a
+union, never a replacement: if the diff's own fail-safe already picked everything, naming jobs by hand adds
+nothing, it never narrows the run back down to just the names typed. The line printed just before the jobs
+start lists the final selection and why each job is in it (from the diff, or named on the command line).
+`--changed` adds `--ui` itself whenever the selection includes a UI-only job: CI does **not**
 run `app-screens`, `app-e2e` or the `mc-*` e2e scripts (and does not run `site` at all), so nothing else would
 catch a regression in them. The full `--ui` gate stays the rule before the FIRST push of a UI change in a branch.
 

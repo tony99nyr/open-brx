@@ -11,6 +11,11 @@
 //   pnpm run test:all -- --changed [base] --list   # dry run: which jobs would --changed pick, and why
 //     (the base, if given, is the token RIGHT AFTER --changed, e.g. `--changed abc123`, not `abc123 --changed`;
 //     see scripts/lib/changed.mjs's defaultBase() for what "no base" means)
+//   pnpm run test:all -- --changed [base] mcp site   # job names typed after --changed ADD to its pick (a union,
+//     never a replacement): --changed's own selection, PLUS mcp and site by hand. If --changed's own fail-safe
+//     already picked "everything", the named jobs add nothing (everything already includes them) -- they never
+//     narrow a --changed run back down to just the names you typed. The final line before the jobs start lists
+//     every selected job and why (from the diff, or named on the command line).
 //
 // Why (2026-09-16). An agent ran the suites one after another, and the browser gates ran serially inside themselves,
 // so a full run took about 30 minutes, 22 of them in `ui:screens`. Every suite is independent of the others once the
@@ -32,7 +37,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deriveTimeoutS, screensBudget, workerCount } from './lib/budget.mjs';
 import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
-import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs } from './lib/changed.mjs';
+import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -150,12 +155,31 @@ if (CHANGED) {
   console.log(`test-all: --changed vs ${base}: ${paths.length} path(s) changed`);
   for (const r of reasons) console.log(`  ${r}`);
   console.log(selected === null ? 'test-all: --changed selected: everything' : `test-all: --changed selected jobs matching: ${selected.join(', ')}`);
-  if (selected !== null) filters = filters.concat(selected);
+  // `filters` here is whatever job names were typed on the command line AFTER --changed (the same tokens
+  // `-- mcp app` uses without --changed). unionFilters (scripts/lib/changed.mjs) makes them ADD to --changed's
+  // own pick, never replace it (the 2026-09-27 trap: `--changed <sha> --ui mcp site` used to silently narrow a
+  // fail-safe "run everything" down to only mcp and site).
+  const named = filters;
+  if (named.length) console.log(`test-all: also named on the command line: ${named.join(', ')} (adds to the --changed pick, never replaces it)`);
+  filters = unionFilters(selected, named);
   // ci.yml never runs the UI gates (app-screens, app-e2e, the mc-* e2e scripts), so if the selection includes
   // one, --ui must come on too: --changed is the only thing gating it, not "CI is the backstop".
   if (!UI && selectionIncludesUiJob(ALL_JOBS.map(j => ({ name: j.name, ui: !!j.ui })), selected)) {
     UI = true;
     console.log('test-all: --changed selected a UI-only job; adding --ui (ci.yml does not run those)');
+  }
+  // The actual final selection, post-union, with why each job is in it -- so a mistyped or forgotten job name
+  // is visible before the jobs start, not after a green run that quietly skipped something.
+  const finalPreview = selectFiltered(ALL_JOBS, UI, filters);
+  console.log(`test-all: final selection (${finalPreview.length} job(s)):`);
+  for (const j of finalPreview) {
+    const why = [];
+    if (selected === null) why.push('everything (fail-safe)');
+    else {
+      if (selected.some(f => j.name.includes(f))) why.push('from the diff');
+      if (named.some(f => j.name.includes(f))) why.push('named on the command line');
+    }
+    console.log(`  ${j.name}: ${why.join(', ') || '(no reason recorded)'}`);
   }
 }
 
