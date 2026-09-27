@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-27 (F411, F413 and F415 closed: GAMES is PLAY + BUILD with FAVOURITES, teams and the KOTH hold target, on main at `4275fad2`; see experiment-log/2026-09.md for the day's changes; F383's -75/6 hill default applied on
+Updated: 2026-09-27 (F428 filed: the vqa2 medal-tag flake under load; F411, F413 and F415 closed: GAMES is PLAY + BUILD with FAVOURITES, teams and the KOTH hold target, on main at `4275fad2`; see experiment-log/2026-09.md for the day's changes; F383's -75/6 hill default applied on
 every path, Stick, phone and MC's old-app fallback alike, each pinned by a test; F386's part 2 reflash is `6f042126`).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
@@ -10,10 +10,11 @@ every path, Stick, phone and MC's old-app fallback alike, each pinned by a test;
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 74.** Desk 1 · bench 73 · decision 0.
+**MVP open: 75.** Desk 2 · bench 73 · decision 0.
 
-**MVP DESK (1),** a keyboard is enough:
+**MVP DESK (2),** a keyboard is enough:
 - 🟠 **B21**
+- 🟢 **F428**
 
 **MVP BENCH (73),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F417** · **F416** · **F418** · **F420** · **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
@@ -29,7 +30,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F428 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F429 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -73,6 +74,7 @@ A keyboard is enough. Highest value first.
   both console/HUD-adjacent work that lands alongside or after this row. Part 2's GAMES CHECK is still the first
   block once this is ready.
 
+- **F428 🟢 FLAKE: `vqa2` MEDAL TAG UNDER LOAD.** 2026-09-27 (brx3): in a full `test:all --changed --ui` run, `mc-vqa2` timed out after 10 s waiting for a medal tag in the feed ("the kill reaches the feed with a medal tag"); alone it passed at once. Only under the full parallel load. Find what the step waits on and make it wait on a condition, not a 10 s budget. `build`.
 - **B21 🟠** **What is left: iOS distribution, and a first Xcode compile of the written `BrxDebugPlugin.swift` (needs the MacBook).** Release-sign + distribute the Android app (history below; the Android half shipped 2026-09-24, see the last arrow; keystore out of repo, **→ 2026-09-19, this is no longer hypothetical: app 0.3.0 IS PUBLISHED and it is DEBUG-signed** (`app-v0.3.0`, F220 closed). It sideloads and it is what both phones run, but it carries the throwaway Android debug key, so the FIRST release-signed build will not upgrade over it and every player must uninstall once. That is a one-time cost that gets worse with every player who installs 0.3.x, and it is cheapest to pay before a public game rather than on a match day. **→ Tony 2026-09-23: release-sign at the NEXT APK cut, after the open desk fixes land.** The path is built: `npm run android:release` (app/README.md → *Release signing*); with no key it fails and names what is missing, and it refuses a version already tagged `app-v<version>`. **→ 2026-09-23/24: the key exists** (`~/.brx/openbrx-release.jks` and `~/.brx/keystore.properties`, outside the repo; Tony backs both up), and brx3 has built the release-signed 0.4.6 (held in `~/brx3-release`). The 0.4.6 go or no-go was the one blocker then (step 4.0 of [`bench-2026-09-24.md`](bench-2026-09-24.md)). Every player uninstalls the debug-signed app once: `adb install -r` over 0.4.5 fails on the signature. `build`.
   `assembleRelease`, version bump per build; iOS = TestFlight or source build). `build`. **→ Tony 2026-09-23:** release-sign at the NEXT APK cut, and cut only after the open desk fixes land. Testers uninstall once at that cut. `build`. **→ 2026-09-23: Tony created the release key outside the repo (`~/.brx/`, private, backed up).** The next cut is `npm run android:release` once the open desk fixes land. **→ 2026-09-24, the Android half shipped:** 0.4.6 was the first release-signed build (its release notes tell players to uninstall once), and 0.4.7 to 0.4.11 followed, each published as an `app-v<version>` release (`webapp/download/build.json` names 0.4.11). Open: `webContentsDebuggingEnabled` is still `true` in `app/capacitor.config.json`, and iOS has no distribution path yet. **→ Tony 2026-09-25, decided:** WebView debugging becomes a TOGGLE, not a removal ("can be a toggle to help dev and debugging. we may need that on as we build features"). Build: a runtime switch (the Android WebView `setWebContentsDebuggingEnabled`, called from a small native hook) in the app's ⓘ diag panel, persisted, defaulting ON while MVP features are still being built; the release build keeps the ability; the diag panel shows the current state. Flip the default to OFF for a public release later (a note on the row). `build`. **→ 2026-09-25, Android toggle built (brx5):** an in-app setting, not a build flag, because a tester must flip it on a release APK. `app/plugins/brx-debug` stores it in SharedPreferences and applies it at start (plugins load after Capacitor's config value). The ⓘ panel's DEVELOPER row shows it; default ON (`DEFAULT_ON`, flip for a public release: `app/RELEASING.md`). **→ 2026-09-26 iOS toggle written (uncompiled):** `app/plugins/brx-debug/ios/Sources/BrxDebugPlugin/BrxDebugPlugin.swift` mirrors the Android plugin (UserDefaults, `isInspectable`, guarded `if #available(iOS 16.4, *)`), wired the same way as `brx-beacon`'s iOS half (`Package.swift`, `package.json`'s `capacitor.ios.src`). Below iOS 16.4, or if the native call fails, the panel now shows the switch as UNSUPPORTED instead of an error or a wrong ON/OFF (`app/src/webdebug.js`, `app/src/hud/hud.js`). This box has no Xcode: the Swift is unverified until a MacBook build exercises it (`iphone-build` skill).
 
