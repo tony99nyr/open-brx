@@ -554,7 +554,8 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
     `time_limit_s`. A late one rewrites the stored recap like any other late fact (`_restore_recap`).
   - **`winner`** is the top team by `possession.by_team` when any is > 0 (a level pair is `tie`); with no possession
     reported at all, `win_by` other than `kills` stays `undecided` — host-decided, never inferred from kills.
-    ⚠ Nothing on `app/src` sends this fact yet, which is why the koth card reads "POSSESSION TIME · HOST CALL".
+    `app/src/engine.js` sends this fact (F415), so the koth card's `win_text` no longer says "· HOST CALL" —
+    just "POSSESSION TIME" (`GET /api/modes` above).
 - **The frag limit ENDS the match (F124, 2026-09-11).** `scoring.Scorer` watches the cap after every
   scored death and the Session ends on it down the same path `POST /api/control {cmd:"end"}` takes
   (`set_end` + `_finish`), so `game_over`/`victory` pushes, the recap and the stored match are identical
