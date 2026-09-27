@@ -1307,34 +1307,28 @@ export class MockBackend implements Api {
   /** F413 (games-presets.md §7): 2 to 4 UNIQUE colours from red/blue/yellow/purple; KOTH is exactly 2
    *  and never offers yellow (a neutral hill broadcasts tid 2, F82 -- the same fault a yellow ROSTER
    *  refuses elsewhere, refused here before it ever reaches one). */
-  /** Copies the server's own two-layer split (gamepick.py `_valid_teams_list` / `merge_match`, then
-   *  state.py `_merge_config`'s mode-specific checks): a shape violation (wrong count, a duplicate, an
-   *  unknown colour) is ONE generic message, whatever the specific defect -- the server never tells
-   *  those apart either. The mode-specific checks (koth exactly 2, never yellow) run only once the
-   *  shape is already valid, exactly as `_merge_config` runs them on the composed patch. */
-  private checkMatchTeams(teams: unknown, mode: string): TeamColour[] {
+  /** Review (brx1, e8811fea): mirrors the server's own TWO layers exactly, not just its wording --
+   *  gamepick.py `merge_match`/`_valid_teams_list` is SHAPE only (a wrong count, a duplicate, an
+   *  unknown colour) and throws a real 400, before the request can even compose. The mode-specific
+   *  rules (koth exactly 2, never yellow) are a DIFFERENT layer -- state.py `_merge_config`, run on the
+   *  COMPOSED config -- and a ValueError there is caught by `set_config` and returned as `ok:false` in
+   *  a 200, never thrown. `putConfig`'s own error accumulator carries those two checks now (below),
+   *  not this method -- "ok:false changes nothing" (`pick()`'s own rollback) covers them the same way
+   *  it already covers `time_limit_s`/`station_source`. */
+  private checkTeamsShape(teams: unknown): TeamColour[] {
     const ALL: TeamColour[] = ['red', 'blue', 'yellow', 'purple'];
     const validShape = Array.isArray(teams) && teams.length >= 2 && teams.length <= 4
       && teams.every(c => typeof c === 'string' && ALL.includes(c as TeamColour))
       && new Set(teams).size === teams.length;
     if (!validShape) throw Object.assign(new Error('TEAM COLOURS MUST BE 2-4 UNIQUE PICKS FROM RED, BLUE, YELLOW, PURPLE'), { status: 400 });
-    if (mode === 'koth' && teams.length !== 2) throw Object.assign(new Error('KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS'), { status: 400 });
-    // F82 (state.py _merge_config, verbatim -- yellow is $TID 2, the value a NEUTRAL grenade hill
-    // broadcasts): the server's own message names the mode and the tid, not just "never yellow".
-    if (mode === 'koth' && teams.includes('yellow')) {
-      throw Object.assign(new Error("F82: mode 'koth' cannot have a team on $TID 2 at all — that is the value a NEUTRAL "
-        + 'grenade hill broadcasts, so anyone put on it later reads every uncaptured point as their own and takes no '
-        + 'hill damage. Use tid 0, 1 or 3.'), { status: 400 });
-    }
     return teams as TeamColour[];
   }
-  /** F415: KOTH only -- absent/null is legal everywhere (no target, the pre-F415 rule); named on any
-   *  other mode is refused outright, the same way spawn.station_source is. Strings and bound copied
-   *  verbatim from state.py _merge_config's own hold_target_s handling. */
-  private checkHoldTarget(v: unknown, mode: string): number | null {
+  /** F415, same split as teams above: gamepick.py `_opt_int` is shape only (a real 400); the koth-only
+   *  gate and the 1s..2:00:00 bound are `_merge_config`'s own compose-level checks (ok:false), moved
+   *  to `putConfig`'s error accumulator below. */
+  private checkHoldTargetShape(v: unknown): number | null {
     if (v == null) return null;
-    if (mode !== 'koth') throw Object.assign(new Error('A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL'), { status: 400 });
-    if (!Number.isInteger(v) || (v as number) <= 0 || (v as number) > 7200) throw Object.assign(new Error('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET'), { status: 400 });
+    if (!Number.isInteger(v)) throw Object.assign(new Error('HOLD TARGET MUST BE A WHOLE NUMBER OR EMPTY: CHECK THE VALUE'), { status: 400 });
     return v as number;
   }
   private composePartial(pieceIds: Record<string, string>, match: MatchSettings): Partial<GameConfig> {
@@ -1367,7 +1361,8 @@ export class MockBackend implements Api {
       mode_params: { ...(modeInfo.defaults.mode_params ?? {}), ...gameplayV.mode_params } as Record<string, number | boolean | string>,
       time_limit_s: match.time_limit_s,
       // F413/F415 (games-presets.md §7): `hold_target_s` rides Scoring alongside frag_limit -- KOTH
-      // only, and `pick()`'s own checkHoldTarget already refused it for any other mode before this runs.
+      // only; the mode gate and the range are `putConfig`'s own compose-level checks (review, e8811fea),
+      // not checked before this runs any more.
       scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit, hold_target_s: match.hold_target_s ?? null },
       night: match.night,
       // §3.6: SILENCED applies the full silenced preset together; off returns the mode's own automatic one.
@@ -1375,9 +1370,10 @@ export class MockBackend implements Api {
       environment: 'outdoor',   // §3.7 (F410): MVP is outdoors only
       volume: null,             // §3.7: the venue value, never a stale per-game knob
       // F413: `match.teams` (a plain TeamColour[]) becomes the full Team[] compose writes to
-      // config.teams, in the SAME order -- `pick()`'s own checkMatchTeams already validated it (2-4
-      // unique colours, KOTH exactly 2 and never yellow). Absent (FFA) keeps whatever the mode's own
-      // defaults declare (a single non-team row), never TEAMS-derived.
+      // config.teams, in the SAME order -- `pick()`'s own checkTeamsShape already validated its SHAPE
+      // (2-4 unique colours); KOTH's own exactly-2/never-yellow rules are `putConfig`'s own
+      // compose-level checks (review, e8811fea), not checked before this runs any more. Absent (FFA)
+      // keeps whatever the mode's own defaults declare (a single non-team row), never TEAMS-derived.
       ...(match.teams ? { teams: match.teams.map(c => TEAMS.find(t => t.team_id === c)!) } : {}),
     };
     return partial;
@@ -1427,8 +1423,8 @@ export class MockBackend implements Api {
     }
     if ('night' in pm) match.night = !!pm.night;
     if ('silenced' in pm) match.silenced = !!pm.silenced;
-    if ('teams' in pm) match.teams = this.checkMatchTeams(pm.teams, modeInfo.mode);
-    if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTarget(pm.hold_target_s, modeInfo.mode);
+    if ('teams' in pm) match.teams = this.checkTeamsShape(pm.teams);
+    if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTargetShape(pm.hold_target_s);
 
     const partial = this.composePartial(resolvedIds, match);
     const before = clone(this.config);
@@ -1659,6 +1655,21 @@ export class MockBackend implements Api {
       errors.push(`mode '${this.config.mode}' needs a station/objective source (Tier 1): set config.station_source to one of: `
         + MOCK_STATION_SOURCES.map(x => `'${x.value}' (${x.desc})`).join(', '));
     }
+    // F413/F415 review (brx1, e8811fea): koth's own team-count/never-yellow rules, and the hold target's
+    // mode gate + range, are COMPOSE-level checks on the real server (state.py `_merge_config`) -- an
+    // `ok:false` refusal here, same as the two checks above, never a thrown exception (checkTeamsShape/
+    // checkHoldTargetShape upstream only validate SHAPE now, matching gamepick.py's own split).
+    if (this.config.mode === 'koth' && this.config.teams.length !== 2) errors.push('KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS');
+    if (this.config.mode === 'koth' && this.config.teams.some(t => t.team_id === 'yellow')) {
+      errors.push("F82: mode 'koth' cannot have a team on $TID 2 at all — that is the value a NEUTRAL "
+        + 'grenade hill broadcasts, so anyone put on it later reads every uncaptured point as their own and takes no '
+        + 'hill damage. Use tid 0, 1 or 3.');
+    }
+    { const hts = this.config.scoring.hold_target_s;
+      if (hts != null) {
+        if (this.config.mode !== 'koth') errors.push('A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL');
+        else if (!(hts > 0 && hts <= 7200)) errors.push('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET');
+      } }
     if (this.config.mode === 'ffa') { const t = this.config.teams[0]; if (t) for (const p of this.players) p.team_id = t.team_id; }
     // B3 (2026-09-12, coordinated with the real server's fix): editing a game that had already been
     // pushed to the guns used to un-push it SILENTLY -- `pushed` fell false and the acks were just
