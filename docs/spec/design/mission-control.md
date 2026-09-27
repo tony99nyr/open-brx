@@ -15,7 +15,7 @@ seems to need a control the brief doesn't mention, **ask**, don't fill it in.
 
 **Brand & tone.** Tactical, precise, energetic, confident. High-contrast and legible over pretty. Never
 cartoonish. Numbers are the hero on both UIs — big, tabular. **Team colours are fixed and meaningful** (Blue
-`#3a86ff`, Yellow `#ffd23f`, Red, Green `#2ecc71`) — never repurposed as decoration; semantic colour
+`#3a86ff`, Yellow `#ffd23f`, Red, Purple `#bf4ce6`) — never repurposed as decoration; semantic colour
 (ok/warn/bad) is separate from the brand accent (`#39b4ff`). ⚠ **The two consoles use different reds, on
 purpose.** MC paints team red `#ff5252` (`webapp/mc/src/tokens.ts`); the HUD paints `#f43f5e`
 (`app/www/index.html`), a crimson-rose hue-shifted off the alarm red so a red-team player's own accents cannot
@@ -152,7 +152,7 @@ audible at arm's length. A small **non-modal** "TRYING: <weapon>" state on the r
 END TRY-OUT; never a dialog. Try-outs close once the lobby is pushed (with a human reason).
 
 ### A5 · LOBBY
-**Team assignment:** drag players between team columns (Blue/Yellow/Red/Green), balance hint, lock teams.
+**Team assignment:** drag players between team columns (Blue/Yellow/Red/Purple), balance hint, lock teams.
 **Ready-up:** each node reports ready (only when synced) → a filling checklist ("5/8 ready"); the host can
 override-ready (logged). The action rail is three numbered steps **ALL READY → PUSH CONFIG → ARM COUNTDOWN**
 (completed step = green), disabled until the gate is green; **push and arm are separate clicks** (round 4 #5).
@@ -160,7 +160,7 @@ Per player two ticks — **frames written** and **gun echoed** (the headset proo
 everyone's in range — make "all ready → push → start" a confident sequence.
 
 ### A6 · START (dispersed countdown control)
-Host sets a **runway** (default 30 s; presets 60/120/180) and arms; MC hands every node a synced
+Host sets a **runway** (default 30 s; presets 10/15/30/45/60/90/120/180) and arms; MC hands every node a synced
 go-live time. Hero: `SYNCED GO-LIVE IN` + a big T-minus mirror, "GUNS COUNT DOWN ON THEIR OWN — PLAYERS MAY
 SCATTER OUT OF RANGE. ALL GO LIVE AT T-0." A per-node **armed / T-minus / in range / last seen** grid (ARMED ·
 NO ACK · RETRYING · LAST SEEN 40s — a silent node is never "gone"). **RESCHEDULE** (primary; the runway seg

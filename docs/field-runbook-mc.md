@@ -224,10 +224,10 @@ echoes nothing and the link dies, so the echo is the headset proof).
 > the lobby push (or re-add before pushing) so their gun is configured.
 
 ### Start — the dispersed countdown
-`POST /api/start` with a **runway** (countdown length; default 120 s = "walk to your base" time). MC
-hands every node a synced **go-live time**; players disperse **out of Wi-Fi range** and each phone counts
-its own gun down and spawns it at T-0 — **no signal needed at the moment of start**. The board shows each
-node **armed, T-minus**.
+`POST /api/start` with a **runway** (countdown length; default 30 s — pick a longer one to give players
+walk-to-base time). MC hands every node a synced **go-live time**; players disperse **out of Wi-Fi range**
+and each phone counts its own gun down and spawns it at T-0 — **no signal needed at the moment of start**.
+The board shows each node **armed, T-minus**.
 
 ### MATCH, live
 Phones run their own guns and stream events as the LAN allows; MC shows a **Halo-style scoreboard**
