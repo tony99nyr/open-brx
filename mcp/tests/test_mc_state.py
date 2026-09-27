@@ -682,6 +682,55 @@ def test_round3_field1_a_mode_pick_reteams_by_index_and_rebalances():
     assert tids() == ["blue", "blue", "yellow", "yellow"], tids()
 
 
+def test_high_a_team_count_or_colour_change_on_the_same_mode_rebalances_evenly():
+    """HIGH (brx1 review of e8811fea, Tony's decision): growing (or otherwise changing) the DECLARED
+    team set on the SAME mode -- an explicit `{"teams": [...]}` PUT, not a mode switch -- used to give
+    a 2-team 4/4 roster a 4/4/0 on a third team, because every existing player's team_id was ALREADY
+    legal in the new set (`_reteam_for_config`'s step 1 leaves a still-legal team alone) and
+    `one_team_fault()` only fires when EVERY player shares one team, not when one of several declared
+    teams is merely empty. The confirm read "YELLOW 0" for a team nobody had been dragged onto.
+
+    The fix: rebalance to spread <= 1 whenever the declared team set itself changed (count or
+    colours), the same deterministic `_rebalance_sides()` step 3 already runs for the narrower
+    one-team case -- moving the fewest players (the HIGHEST player_num off the fullest team, repeated
+    until the spread is <= 1), stable by team declaration order on a tie. An edit that leaves the
+    team set alone still never touches an operator's own uneven split (`test_round2_b_...`, 1-v-3 is
+    merely uneven and must still be allowed to play)."""
+    s, net, clock, ps = mk(8)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+
+    def tids():
+        return [s.players[p["player_id"]]["team_id"] for p in ps]
+
+    # 2 teams, 4/4, growing to 3: red/blue stay legal (step 1 leaves them alone), so the OLD gate
+    # never fired. Hand-traced result of _rebalance_sides() (fullest ties broken by -index, emptiest
+    # ties by index): player_num 4 and 8 (the highest on each full team) move to yellow.
+    for p, t in zip(ps, ("red", "red", "red", "red", "blue", "blue", "blue", "blue")):
+        s.players[p["player_id"]]["team_id"] = t
+    s.set_config({"teams": [TEAM_DEFS["red"], TEAM_DEFS["blue"], TEAM_DEFS["yellow"]]})
+    assert tids() == ["red", "red", "red", "yellow", "blue", "blue", "blue", "yellow"], tids()
+    counts: dict[str, int] = {}
+    for t in tids():
+        counts[t] = counts.get(t, 0) + 1
+    assert sorted(counts.values()) == [2, 3, 3], counts
+    assert s.readiness()["roster_faults"] == []
+
+    # 2 teams, 4/4, growing to 4 in one step: an even 2/2/2/2.
+    s2, net2, clock2, ps2 = mk(8)
+    for i, p in enumerate(ps2):
+        online(s2, net2, clock2, p, i)
+    for p, t in zip(ps2, ("red", "red", "red", "red", "blue", "blue", "blue", "blue")):
+        s2.players[p["player_id"]]["team_id"] = t
+    s2.set_config({"teams": [TEAM_DEFS["red"], TEAM_DEFS["blue"], TEAM_DEFS["yellow"], TEAM_DEFS["purple"]]})
+    got2 = [s2.players[p["player_id"]]["team_id"] for p in ps2]
+    counts2: dict[str, int] = {}
+    for t in got2:
+        counts2[t] = counts2.get(t, 0) + 1
+    assert sorted(counts2.values()) == [2, 2, 2, 2], counts2
+    assert s2.readiness()["roster_faults"] == []
+
+
 def test_round3_merge2_an_unbound_recompile_drops_the_stale_ack():
     """MERGE-2. `_resend`'s unbound branch (round-2 pass H) recompiles the player's stored bundle but
     left their ACK in place, and `_bind` drops a displaced player's `node_id` without touching theirs
