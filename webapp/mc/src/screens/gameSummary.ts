@@ -284,11 +284,12 @@ export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: s
  *  `mock/backend.ts reteamForConfig` + `rebalanceSides` (itself mirroring `state.py
  *  _reteam_for_config`): map by team INDEX so a TDM blue/yellow split survives a KOTH pick as
  *  blue/green, fill anyone with no mapped index onto the least-populated side, then move the highest
- *  `player_num` off the fullest side until the spread is 1 — but ONLY when that would otherwise leave
- *  every player on one team, same trigger as the one-team fault. A preview, not the write itself: the
+ *  `player_num` off the fullest side until the spread is 1 — when that would otherwise leave every
+ *  player on one team (the one-team fault), or (F413, 2026-09-27) when the declared SET of team ids
+ *  changed (a count or colour change). A same-set edit never rebalances. A preview, not the write itself: the
  *  actual reteam happens in `putConfig`/`set_config` once the operator confirms.
  *
- *  T2 INTEGRATION (2026-09-13): the rebalance trigger is `one_team_fault()`, and this predicate read
+ *  T2 INTEGRATION (2026-09-13, before F413 added the team-set trigger): the rebalance trigger was `one_team_fault()`, and this predicate read
  *  "spread > 1" — which is a DIFFERENT question. `state.py _reteam_for_config` rebalances only when
  *  `one_team_fault()` holds after the index map (`< 2` populated `$TID`s), and `backend.ts
  *  reteamForConfig` mirrors that; a 3/1 across two populated sides is uneven, not a fault, and the

@@ -886,6 +886,28 @@ describe('PLAY — F413/F415: LAST MATCH and FAVOURITES carry teams and the hold
     expect(after.game_pick?.match.teams, 'the illegal 3-team array was dropped, koth kept its own default').toEqual(['red', 'blue']);
   });
 
+  // brx1's review of 4275fad2: the yellow half of `kothLegal` had no test (a 2-team array that is legal
+  // by COUNT but carries yellow, KOTH's neutral team, F82).
+  it('LAST MATCH drops a 2-team array that includes YELLOW when the current mode is KOTH', async () => {
+    const api = new MockBackend();
+    await api.pick({ match: { teams: ['red', 'yellow'], frag_limit: 15, night: true } });
+    await api.setPhase('lobby');
+    await api.pushLobby(true);
+    await api.start(45, true);
+    await api.abort();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 9 });
+    await api.pick({ match: { frag_limit: null, night: false } });
+    expect((await api.getState()).game_pick?.match.teams, 'control: koth is on its own default').toEqual(['red', 'blue']);
+    const { m, settle } = await renderPlay(api);
+    await m.click('LAST MATCH');
+    m.unmount();
+    await settle();
+    const after = await api.getState();
+    expect(after.game_pick?.match.night, 'the other fields still apply').toBe(true);
+    expect(after.game_pick?.match.teams, 'yellow is never sent into KOTH').toEqual(['red', 'blue']);
+  });
+
   it('a FAVOURITE saved on KOTH with a hold target restores it on load', async () => {
     const api = new MockBackend();
     await api.pick({ pieces: { mode: 'builtin:mode:koth' } });

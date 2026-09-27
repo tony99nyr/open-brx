@@ -2547,8 +2547,9 @@ class Session:
         return min(counts, key=lambda k: (counts[k], list(counts).index(k)))
 
     def _rebalance_sides(self) -> None:
-        """Even the roster out across the declared teams — FIELD-1 step 3, reached ONLY from a true
-        `one_team_fault()`. Moves the HIGHEST `player_num` off the fullest team onto the emptiest,
+        """Even the roster out across the declared teams — FIELD-1 step 3. Reached from a true
+        `one_team_fault()`, and (F413, 2026-09-27) whenever the declared SET of team_ids changed: a count
+        or colour change re-splits evenly, while a same-set edit never does. Moves the HIGHEST `player_num` off the fullest team onto the emptiest,
         which is deterministic and leaves the low numbers (the operator's first picks) where they are.
         Stops at a spread of 1, so four players on one side come out 2/2 rather than the 3/1 that
         merely clears the gate. A config whose teams all share one `$TID` cannot be fixed by moving
