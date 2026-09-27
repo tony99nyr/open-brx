@@ -79,13 +79,13 @@ To its left, `ENABLE BACKHAUL` (`derive.backhaulOffer`) shows only when cloudfla
 Show *why* a gun is red. Device-first muster: claim a phone + gun in one gesture. A claim never moves the console off ARMORY
 (2026-09-17): CONTINUE TO KIT is the operator's own tap, however many gamertags they set first.
 
-### A2 · GAMES — "pick the game", and the GAME DESIGNER — "define a game"
-Tony: picking tonight's game and defining a game are different jobs; BUILD had both and buried the defining
-controls. **GAMES** (the stepper step): `YOUR GAMES` cards (saved games — name, base-mode art, one generated
-rules line, EDIT / DUPLICATE / delete-with-confirm, `+ CREATE A GAME`), `STOCK MODES` cards (defaults;
-CUSTOMIZE), a **VENUE** strip (indoor/outdoor, night ops — about where you play, never saved into a game;
-re-asserted after a game is applied), a sticky "what the players get" summary rail (name, mode board, rule
-rows, loadout line, reset notices) and `LOAD ▸`. No forms.
+### A2 · PLAY — "pick the game", and BUILD — "create the presets"
+F411 (2026-09-26) split the old GAMES tab and GAME DESIGNER into **PLAY** (the stepper step: PICK GAME, one
+picker row per preset kind, a picker with one preset hidden, the MATCH SETTINGS strip, LAST MATCH, FAVOURITES
+and `LOAD ▸`, then `CONTINUE TO KIT ▸`) and **BUILD** (a header link, not a step: create, rename and delete
+presets per kind). PLAY never edits a preset. MVP is outdoors only (F410), so there is no venue strip. The
+wire and the console behaviour are [`games-presets.md`](games-presets.md); the product brief is
+[`games-redesign.md`](games-redesign.md).
 
 **LOAD ANNOUNCES THE GAME; IT DOES NOT WRITE A GUN** (`POST /api/games/load` → `state.py load_game()`).
 Tony, 2026-09-13: *"weapons have to go with the arm."* It pushes an `assign` — mode, teams, win, health,

@@ -163,15 +163,6 @@ const pickMode = async (pg, label) => {
   await btn.click();
   await btn.click();
 };
-// Review follow-up: loading a FAVOURITE whose own mode reshapes the roster asks first too (the same
-// gate, keyed on the favourite id) -- a second click on the SAME chip is just as harmless when no
-// confirm ever showed (re-loading an already-applied favourite is a no-op), so every step that just
-// wants the favourite LOADED uses this rather than reasoning about which ones happen to reshape.
-const loadFavourite = async (pg, name) => {
-  const chip = pg.locator(`text=☆ ${name}`);
-  await chip.click();
-  await chip.click();
-};
 
 const steps = [];
 const step = (name, fn) => steps.push({ name, fn });
@@ -555,6 +546,16 @@ step('favourites-save', async ({ browser, base }) => {
   await pg.context().close();
 });
 
+/** Tap a favourite chip. When the load would move rostered players, PLAY asks first (the moves-players
+ *  confirm): wait for THIS tap's result (`loaded()` or the confirm), and tap again only if it asked. */
+async function loadFavourite(pg, name, loaded) {
+  const chip = pg.locator(`text=☆ ${name}`);
+  const asked = () => pg.locator('text=TAP THE FAVOURITE AGAIN TO SWITCH').count().then(n => n > 0);
+  await chip.click();
+  await until(async () => (await loaded()) || (await asked()), 6000, `${name}: loaded, or the moves-players confirm`);
+  if (await asked()) await chip.click();
+}
+
 step('favourites-load', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280);
   // build a distinctive pick, save it, then change EVERYTHING before loading it back
@@ -578,7 +579,7 @@ step('favourites-load', async ({ browser, base }) => {
   await pg.getByRole('button', { name: '10 S' }).click();
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 4000, 'changed away from it');
 
-  await loadFavourite(pg, 'Round One');
+  await loadFavourite(pg, 'Round One', async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth');
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 6000, 'LOAD restores the mode');
   const after = await pg.evaluate(() => window.__MC_MOCK__.getState());
   expect(after.config.mode === 'koth', 'GAME MODE restored');
@@ -674,7 +675,7 @@ step('real-favourites', async ({ browser }) => {
     await pg.getByRole('switch', { name: 'silenced' }).click();
     await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'koth', 6000, 'the changes reach the real server');
 
-    await loadFavourite(pg, 'Baseline');
+    await loadFavourite(pg, 'Baseline', async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'tdm');
     await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'tdm', 8000, 'LOAD restores the baseline on the real server');
     const after = await fetch(`${mc.base}/api/state`).then(r => r.json());
     expect(after.config.mode === 'tdm' && after.config.health.max_shield === 0 && after.config.health.max_armor === 70, `every picker restored (saw ${JSON.stringify(after.config.mode)}/${JSON.stringify(after.config.health)})`);

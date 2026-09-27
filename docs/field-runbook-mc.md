@@ -171,8 +171,8 @@ read-only board plus the token prompt).
 
 The server owns the `phase`; the UI walks it. Phases (`state.py`): **muster → build → kit → lobby →
 armed → live → recap**. The console names them differently in two places: the `build` phase is two
-pages, **GAMES** (pick a saved game, a stock mode, the venue) and **GAME DESIGNER** (define and save a
-game), and `live` + `recap` are one **MATCH** tab that shows the result when there is one and the live
+pages, **PLAY** (pick the presets and MATCH SETTINGS, then LOAD) and **BUILD** (create the presets PLAY
+offers; `docs/spec/design/games-presets.md`), and `live` + `recap` are one **MATCH** tab that shows the result when there is one and the live
 board otherwise. Each phase's actions map to REST calls (§7) the UI makes for you.
 
 ### Muster — is the gear ready?
@@ -186,10 +186,11 @@ The **readiness board** must be green-enough to start. Its gate is **no reds** (
 - **Green needs:** node linked + **clock synced** + on the right Wi-Fi + gun link up. **Reds block
   start** (see §6). Battery-unread / screen-off / firmware-unread are **amber** — they don't block.
 
-### GAMES + GAME DESIGNER (the `build` phase) — pick the game
-Choose a **mode** (tdm / ffa / infection / lms / extraction / koth) and settings — **`time_limit_s` is
-required** on the phone path (it's the only end that reaches a dispersed node), plus respawn, scoring,
-health, indoor/outdoor, night. `PUT /api/config` validates live; **`config_errors` block**,
+### PLAY + BUILD (the `build` phase) — pick the game
+PLAY picks a **mode** (TDM, FFA or KOTH for MVP) and one preset per picker (LIFE, SPAWN, and any loadout
+picker BUILD has given a second preset), plus the MATCH SETTINGS strip: time, kills, countdown, day or
+night, SILENCED. **`time_limit_s` is required** on the phone path (it's the only end that reaches a
+dispersed node). MVP is outdoors only (F410), so there is no venue choice. `PUT /api/config` validates live; **`config_errors` block**,
 **`config_warnings` don't** (e.g. a frag-limit on a non-fully-covered venue warns that the winner is an
 in-coverage early-end, provisional until recap).
 

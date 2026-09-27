@@ -263,13 +263,13 @@ is marked READ-ONLY per the "when unsure" rule, not EDITABLE.
 | `loadout_policy.hud_select` + blanket HEAVIES | MISC LOADOUTS | **EDITABLE** | `no_heavies` is an existing, long-proven preset |
 | `time_limit_s` | MATCH SETTINGS | **EDITABLE** | the basic match clock, used in every game |
 | `scoring.frag_limit` | MATCH SETTINGS | **EDITABLE** | the basic score cap, used in every game |
-| the arm countdown/runway | MATCH SETTINGS | **EDITABLE** | the existing 60/120/180 s runway mechanism, now defaulting to 30 s (Tony, 2026-09-26) |
+| the arm countdown/runway | MATCH SETTINGS | **EDITABLE** | the existing runway (the console's `RUNWAYS`: 10/15/30/45/60/90/120/180 s; the quick-picks offer 10/30/60 s), defaulting to 30 s (Tony, 2026-09-26) |
 | `night` | MATCH SETTINGS | **EDITABLE** | the existing, already-shipped VENUE toggle |
 | `presentation` — SILENCED switch | MATCH SETTINGS | **EDITABLE** (ship the switch); its `silent_weapons` claim stays under F282's own open bench row | F282: built at the desk, A/B/A eyes-and-ears bench pass still open — ship the control, keep chasing the bench proof under F282, not a reason to block this build |
 | `mode_params` | GAMEPLAY | **READ-ONLY**, fixed "OPEN BRX STANDARD" | no mode declares a parameter yet; nothing to edit |
 | `environment` (indoor/outdoor) | *n/a for MVP* | **HIDDEN** | F410: MVP is outdoors only |
 | `volume` | *n/a for MVP* | **HIDDEN**, fixed at 90 | follows `environment`; see F410 |
-| `stations` (objective/hill), `powerups` | ARMORY | out of scope here | configured in ARMORY only (§7); already bench-proven end to end for the powerup grant/pickup path (bench 2026-09-24 sitting A, items 1–9) |
+| `stations` (objective/hill), `powerups` | ARMORY | out of scope here | configured in ARMORY only (§7); the powerup grant/pickup path is bench-tested (bench 2026-09-24 sitting A), but not fully proven: item 9 and the 4.11 calibration are still open |
 | `led`, `siphon`, `hit_audio_class`, `hit_audio_rekey`, `stun`, `recoil` | Post-MVP | **HIDDEN** | no control anywhere today; no bench evidence either way |
 | `teams` | *n/a* | derived | set by mode choice / LOBBY roster drag, never a picker field |
 | `scoring.win_by` | *n/a* | derived, read-only | mode-derived everywhere already |

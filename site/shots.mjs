@@ -154,10 +154,11 @@ async function main() {
     await mcPage.goto(`http://127.0.0.1:${MC_PORT}/?mock`, { waitUntil: 'networkidle' });
     await mcPage.waitForTimeout(1200);
     await shot(mcPage, 'mc-armory.jpg');
-    for (const label of ['GAMES', 'KIT', 'LOBBY']) {
+    // F411: the second tab is PLAY now; the file keeps its published name, mc-games.jpg.
+    for (const [label, file] of [['PLAY', 'games'], ['KIT', 'kit'], ['LOBBY', 'lobby']]) {
       await mcPage.getByText(label, { exact: true }).first().click();
       await mcPage.waitForTimeout(900);
-      await shot(mcPage, `mc-${label.toLowerCase()}.jpg`);
+      await shot(mcPage, `mc-${file}.jpg`);
     }
     await mcPage.close();
 
