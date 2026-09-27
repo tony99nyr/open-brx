@@ -96,7 +96,14 @@ step('all-ready', async ({ browser, base }) => {
   const t = (await line.innerText()).replace(/\s+/g, ' ').trim();
   expect(t === 'GUNS READY 8/8', `the line reads exactly GUNS READY 8/8 (saw "${t}")`);
   expect(await line.locator('[data-not-ready-gun]').count() === 0, 'no not-ready gun is listed');
-  ok(`all 8 guns ready -> one line, no other count   ${await shot(pg, 'all-ready-1280')}`);
+  // QA-02 fold (2026-09-26): the three counts GUNS READY replaced must actually be gone, not just
+  // outnumbered -- this is the regression test for the follow-up, and it fails first against the
+  // pre-fold build (all three used to render alongside GUNS READY on this same page).
+  const mainText = await pg.locator('main').innerText();
+  expect(!/Config pushed/.test(mainText), `the rail's old "Config pushed" count is gone (saw "${mainText.match(/Config pushed[^\n]*/)?.[0] ?? ''}")`);
+  expect(!/GUNS PUSHED/.test(mainText), 'PRE-ARM CHECK\'s old GUNS PUSHED count is gone');
+  expect(!/GUNS CONFIRMED/.test(mainText) && !/ALL GUNS ON THIS CONFIG/.test(mainText), 'GameEditPanel\'s old standing confirmed count is gone');
+  ok(`all 8 guns ready -> one line, the old disagreeing counts gone   ${await shot(pg, 'all-ready-1280')}`);
   await pg.context().close();
 });
 

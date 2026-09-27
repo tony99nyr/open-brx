@@ -206,10 +206,14 @@ describe('PRE-ARM CHECK — the verdict can never be greener than the rows benea
     // int-n1, 2026-09-13: SENT meant phone delivery on the loaded-game view and a gun-side fact here,
     // on the one feature whose whole purpose is keeping those apart. Worst in the table, where a
     // green GUN SENT sits beside a red ACKED and reads as "done".
+    //
+    // QA-02 fold (2026-09-26): the header's own GUNS PUSHED count (once checked here) is retired --
+    // LOBBY's GUNS READY line is the one outcome now -- so this proves the axis word on the row column
+    // that is left, PUSHED, which the toggle above always shows for a row that needs doing.
     const v = await lobby(syncOf([row({ gun_acked: false })]));
     const panel = v.q('[data-testid="pre-arm-summary"]')!.textContent ?? '';
-    expect(v.q('[data-testid="pre-arm-counts"]')!.textContent).toContain('GUNS PUSHED');
-    expect(panel, 'neither the count nor the column header may say SENT of a gun').not.toMatch(/GUNS? SENT/);
+    expect(panel, 'the row column still says PUSHED').toMatch(/PUSHED/);
+    expect(panel, 'neither the row column nor anything else may say SENT of a gun').not.toMatch(/GUNS? SENT/);
     v.m.unmount();
   });
 
@@ -375,15 +379,16 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
     v.m.unmount();
   });
 
-  it('loaded but not pushed: the gun columns wait, and the headline agrees with GUNS PUSHED 0/2', async () => {
+  it('loaded but not pushed: the gun columns wait, and the headline agrees', async () => {
     const rows = [row({ gun_sent: false, gun_acked: false, gun_echo: null }),
                   row({ player_id: 'p2', display: 'VIPER', gun_sent: false, gun_acked: false, gun_echo: null })];
     const v = await lobby(syncOf(rows), { lobby: { ready: 0, total: 2, pushed: false, acks: {} } } as unknown as Partial<State>);
     const panel = v.q('[data-testid="pre-arm-summary"]')!;
-    expect(v.q('[data-testid="pre-arm-counts"]')!.textContent).toContain('GUNS PUSHED0/2');
     expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('EVERY PHONE HAS THE GAME: GUNS ARE CONFIGURED AT THE PUSH');
     expect(panel.querySelectorAll('[data-mark="fail"]').length).toBe(0);
     await act(async () => { v.q('[data-testid="pre-arm-toggle"]')!.click(); });
+    // QA-02 fold (2026-09-26): the header's own GUNS PUSHED 0/2 count (once checked here) is retired;
+    // the per-row PUSHED column -- what it was proving -- still waits for both rows.
     expect(panel.querySelectorAll('[data-col="push"] [data-mark="wait"]').length).toBe(2);
     v.m.unmount();
   });
