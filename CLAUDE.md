@@ -86,6 +86,9 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
     base explicitly (the commit you last tested) if you are not running this immediately after the merge.**
     If only docs came in, the `mcp` job (docs hygiene) AND `site` (renders `docs/platform`, `docs/manual`) are
     both needed. `--changed` adds `--ui` itself when the selection includes a UI-only job, since CI cannot.
+    A job name typed after `--changed` (e.g. `--changed <base> mcp site`) ADDS to its pick, a union, never a
+    replacement: if the diff itself already picked "everything" (its fail-safe), naming jobs by hand adds
+    nothing. The final line before the jobs start lists the whole selection and why each job is in it.
   - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). The lock is machine-wide (per user, not per
     checkout): a second run anywhere on the box waits for the first.
   - The per-suite detail and flags are in `CONTRIBUTING.md` → *Running things*. The pyright gate runs inside the mcp suite.

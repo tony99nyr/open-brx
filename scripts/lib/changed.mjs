@@ -64,6 +64,23 @@ export function selectJobs(paths) {
   return { filters: [...filters], reasons };
 }
 
+/** The final job-name filter for `--changed`, combining what the diff picked (`selected`, as returned by
+ *  selectJobs: a string[] or null for "everything") with job names typed by hand on the command line AFTER
+ *  --changed (`named`, e.g. the `mcp site` in `--changed <sha> mcp site`).
+ *
+ *  The bug this fixes (2026-09-27): `named` must ADD to `selected`, never replace it. A naive
+ *  `selected === null ? named : [...named, ...selected]` looks right until `selected` actually is null (the
+ *  fail-safe "run everything" case) -- then it returns `named` verbatim, and test-all.mjs's own
+ *  "empty filter list = no narrowing" convention turns that non-empty array back into a narrowing filter, so
+ *  `--changed <sha> --ui mcp site` silently ran ONLY mcp and site instead of the fail-safe everything. So:
+ *  `selected === null` always returns [] (everything; test-all.mjs treats an empty filter list as "no
+ *  narrowing", and everything already includes any job `named` could add), and otherwise returns the
+ *  deduplicated union of the two. */
+export function unionFilters(selected, named) {
+  if (selected === null) return [];
+  return [...new Set([...named, ...selected])];
+}
+
 /** True if `filters` (as returned by selectJobs) would run at least one UI-only job, given the full job list as
  *  {name, ui} pairs. ci.yml never runs the UI gates (app-screens, app-e2e, the mc-* e2e scripts: `webapp-mc` and
  *  `app` there only typecheck + unit-test, and `site` is not wired into CI at all), so --changed is the only
