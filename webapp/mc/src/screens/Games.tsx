@@ -13,10 +13,10 @@ import { useEffect, useRef, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CONFIG_ERRORS_ALERT_ID } from '../api/derive';
-import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind } from '../api/types';
+import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind, TeamColour } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
-import { F, T } from '../tokens';
+import { F, T, TEAM } from '../tokens';
 import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, SwitchConfirm, Toggle } from '../ui';
 import { Alert } from '../ui/Alert';
 import { alertWords, serverLine } from '../alerts';
@@ -117,6 +117,12 @@ export function Games() {
   // Review follow-up: the SAME confirm, keyed by favourite id instead of piece id -- a FAVOURITE's own
   // mode can reshape the roster too.
   const [favConfirm, setFavConfirm] = useState<{ favourite_id: string; split: string } | null>(null);
+  // F413: the TEAMS strip item can reshape the roster exactly like a mode switch does -- the SAME
+  // confirm, but not keyed by a single target (a count change and a colour change are both "the teams
+  // item changed"; unlike a mode or a favourite there is no single id to re-tap). One pending split at
+  // a time: ANY second teams-changing tap while it is showing commits that LATEST attempt, not
+  // necessarily the one that first armed it -- the gate is "did you mean it", not "the exact same value".
+  const [teamsConfirm, setTeamsConfirm] = useState<string | null>(null);
 
   if (!state) return null;
   const cfg = state.config;
@@ -155,9 +161,9 @@ export function Games() {
   // Polish round 1 Low: a fallback note used to sit on screen until the NEXT favourite load, surviving
   // every ordinary tap in between and describing a load that was no longer the reason anything on
   // screen looked the way it did.
-  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); setModeConfirm(null); setFavConfirm(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
+  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); setModeConfirm(null); setFavConfirm(null); setTeamsConfirm(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
     .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallback(r.fallbacks)); }); };
-  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); setModeConfirm(null); setFavConfirm(null); return run(() => api.pick({ match: patch }))
+  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); setModeConfirm(null); setFavConfirm(null); setTeamsConfirm(null); return run(() => api.pick({ match: patch }))
     .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallback(r.fallbacks)); }); };
   // Round 4 (F-6, gameSummary.splitLine): a mode switch that would move ≥2 rostered players between
   // teams asks first -- retired along with the old GAMES tiles, restored here since PLAY's own mode
@@ -179,6 +185,22 @@ export function Games() {
     }
     setModeConfirm(null);
     pickPiece('mode', p.piece_id);
+  };
+
+  // F413: the TEAMS item's own count/colour controls call this directly (never `pickMatch` -- that
+  // would skip the confirm). Same hazard, same primitive (`splitLine`/`SwitchConfirm`) as `pickMode`
+  // above, just with no single re-tap target to key on (see `teamsConfirm`'s own comment).
+  const pickTeams = (teams: TeamColour[]) => {
+    const split = splitLine(state.players, cfg.teams, teams.map(c => ({ team_id: c })));
+    if (split) {
+      if (teamsConfirm) { setTeamsConfirm(null); pickMatch({ teams }); return; }
+      setTeamsConfirm(split);
+      setModeConfirm(null);
+      setFavConfirm(null);
+      return;
+    }
+    setTeamsConfirm(null);
+    pickMatch({ teams });
   };
 
   const load = async () => {
@@ -483,7 +505,9 @@ export function Games() {
             background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${T.acc}`, padding: '14px 18px',
             opacity: locked ? 0.5 : 1 }}>
             {matchItems(modes.find(m => m.mode === cfg.mode), cfg.scoring.win_by).map(key => (
-              <MatchItem key={key} itemKey={key} pick={pick} locked={locked} runwayVal={runwayVal} pickMatch={pickMatch} />
+              <MatchItem key={key} itemKey={key} pick={pick} locked={locked} runwayVal={runwayVal} pickMatch={pickMatch}
+                mode={cfg.mode} currentTeams={cfg.teams.map(t => t.team_id as TeamColour)}
+                teamsConfirm={teamsConfirm} pickTeams={pickTeams} />
             ))}
           </div>
 
@@ -503,7 +527,16 @@ export function Games() {
                   <GhostButton size={14} pad="10px 16px" onClick={async () => {
                     setFallbackNote(null);
                     const lm = state.last_match!;
-                    const r = await run(() => api.pick({ match: { time_limit_s: lm.time_limit_s, frag_limit: lm.frag_limit, night: lm.night, silenced: lm.silenced } }));
+                    // F413/F415: carry teams/hold_target_s forward too, same as the other four fields --
+                    // but only where the CURRENT mode's own match_items still offers them (a last match
+                    // played on a different mode may name a combination the mode on screen now refuses,
+                    // e.g. 3 teams while KOTH is up; the mode row is the same authority the strip itself
+                    // renders from, never guessed here).
+                    const items = modes.find(m => m.mode === cfg.mode)?.match_items;
+                    const patch: Partial<MatchSettings> = { time_limit_s: lm.time_limit_s, frag_limit: lm.frag_limit, night: lm.night, silenced: lm.silenced };
+                    if (lm.teams && (!items || items.includes('teams'))) patch.teams = lm.teams;
+                    if (lm.hold_target_s !== undefined && (!items || items.includes('hold'))) patch.hold_target_s = lm.hold_target_s;
+                    const r = await run(() => api.pick({ match: patch }));
                     if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(pickFallback(r.fallbacks)); }
                     else if (r) setNotice(r.errors.join(' · '), true);
                   }}>LAST MATCH ▸</GhostButton>
@@ -640,8 +673,9 @@ function ModeMark({ mode }: { mode: string }) {
 /** One MATCH SETTINGS strip item, by key (screens/matchItems.ts). Each wraps its own control in a
  *  `display: contents` fieldset (disables with `locked`, contributes no box of its own); an item's
  *  own extras (the manual link, the ON/OFF word) are siblings, never inside that fieldset. */
-function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch }:
-  { itemKey: MatchItemKey; pick: GamePick; locked: boolean; runwayVal: number; pickMatch: (p: Partial<MatchSettings>) => void }) {
+function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, currentTeams, teamsConfirm, pickTeams }:
+  { itemKey: MatchItemKey; pick: GamePick; locked: boolean; runwayVal: number; pickMatch: (p: Partial<MatchSettings>) => void;
+    mode: string; currentTeams: TeamColour[]; teamsConfirm: string | null; pickTeams: (teams: TeamColour[]) => void }) {
   const guarded = (child: React.ReactNode) => (
     <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, display: 'contents' }}>{child}</fieldset>
   );
@@ -673,7 +707,102 @@ function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch }:
           </span>
         </span>
       );
+    case 'teams':
+      // F413: the pick's OWN `match.teams` is only set once a mode change or a TEAMS edit has named
+      // one explicitly (games-presets.md §7's "red, blue" default is compose's, not this control's) --
+      // absent that, this shows the ROSTER'S actual teams (`cfg.teams`, via `currentTeams`), never an
+      // invented default that could disagree with who is on what team right now.
+      return (
+        <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 6 }}>
+          {guarded(<TeamsControl teams={pick.match.teams ?? currentTeams} mode={mode} onChange={pickTeams} />)}
+          {teamsConfirm && <SwitchConfirm dropsDraft={false} split={teamsConfirm} action="TAP A TEAMS CONTROL AGAIN TO SWITCH" />}
+        </span>
+      );
+    case 'hold':
+      return guarded(<HoldControl seconds={pick.match.hold_target_s ?? null} onChange={s => pickMatch({ hold_target_s: s })} />);
   }
+}
+
+/** F413 (games-presets.md §7): 2 to 4 unique team colours, one chooser per rostered team, each shown
+ *  in its own colour (`tokens.ts`'s TEAM swatch map — the same colours the roster/HUD use elsewhere).
+ *  KOTH fixes the count at 2 and never offers yellow (a neutral hill broadcasts tid 2, F82). A count or
+ *  colour change that would move rostered players between teams is the caller's job (`pickTeams`) --
+ *  this component only ever proposes the next `TeamColour[]`, never sends anything itself. */
+const ALL_TEAM_COLOURS: TeamColour[] = ['red', 'blue', 'yellow', 'purple'];
+
+function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: string; onChange: (teams: TeamColour[]) => void }) {
+  const isKoth = mode === 'koth';
+  const offered = ALL_TEAM_COLOURS.filter(c => !isKoth || c !== 'yellow');
+  const setCount = (n: number) => {
+    if (n === teams.length) return;
+    if (n < teams.length) { onChange(teams.slice(0, n)); return; }
+    const next = [...teams];
+    for (const c of offered) { if (next.length >= n) break; if (!next.includes(c)) next.push(c); }
+    onChange(next);
+  };
+  const setSlot = (i: number, c: TeamColour) => {
+    const next = [...teams];
+    next[i] = c;
+    onChange(next);
+  };
+  return (
+    <span data-testid="match-teams-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>TEAMS</span>
+      {/* KOTH: exactly 2, no count control (F413 §7) -- nothing to choose. */}
+      {!isKoth && (
+        <Seg size={14} label="team count" value={String(teams.length)} pad={SEG_PAD_44}
+          options={[2, 3, 4].map(n => ({ value: String(n), label: String(n) }))}
+          onChange={v => setCount(Number(v))} />
+      )}
+      {teams.map((c, i) => (
+        <ColourChooser key={i} slot={i} value={c} offered={offered} taken={teams.filter((_, j) => j !== i)}
+          onChange={v => setSlot(i, v)} />
+      ))}
+    </span>
+  );
+}
+
+/** One team slot's colour picker: every offered colour NOT already taken by another slot (plus its own
+ *  current value), each swatch filled in ITS OWN colour so the chooser IS the legend. */
+function ColourChooser({ slot, value, offered, taken, onChange }:
+  { slot: number; value: TeamColour; offered: TeamColour[]; taken: TeamColour[]; onChange: (c: TeamColour) => void }) {
+  const options = offered.filter(c => c === value || !taken.includes(c));
+  return (
+    <span role="group" aria-label={`team ${slot + 1} colour`} data-testid={`match-teams-colour-${slot}`}
+      style={{ display: 'inline-flex', gap: 4 }}>
+      {options.map(c => {
+        const on = c === value;
+        return (
+          <button key={c} type="button" className="hit44" aria-pressed={on} title={c.toUpperCase()}
+            onClick={() => onChange(c)}
+            style={{ ...BTN_RESET, minWidth: 44, minHeight: 44, padding: '8px 10px', cursor: on ? 'default' : 'pointer',
+              background: TEAM[c], color: '#0c1420', font: F.chk(700, 12), letterSpacing: '.04em',
+              border: on ? `2px solid ${T.ink}` : '2px solid transparent', boxSizing: 'border-box' }}>
+            {c.toUpperCase()}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
+/** F415 (games-presets.md §7): KOTH's own hold target -- NO TARGET (null, the pre-F415 behaviour: most
+ *  possession at the clock wins), or 3/5/10 MIN quick-picks with ±1 MIN steppers. Stepping down from a
+ *  low value lands on NO TARGET (KillsControl's own idiom, minutes instead of a kill count); stepping
+ *  up from NO TARGET starts a fresh target at 1 MIN. */
+function HoldControl({ seconds, onChange }: { seconds: number | null; onChange: (s: number | null) => void }) {
+  const step = (dir: 1 | -1) => { const next = (seconds ?? 0) + dir * 60; onChange(next <= 0 ? null : next); };
+  return (
+    <QuickPick testid="match-hold-value" valueLabel={seconds ? `HOLD ${Math.round(seconds / 60)} MIN` : 'NO TARGET'}
+      quick={[0, 3, 5, 10]} quickLabel={v => (v === 0 ? 'NO TARGET' : `${v} MIN`)}
+      onQuick={v => onChange(v === 0 ? null : v * 60)}
+      step={(
+        <span style={{ display: 'inline-flex', gap: 4 }}>
+          <StepBtn label="hold target minus" onClick={() => step(-1)}>−</StepBtn>
+          <StepBtn label="hold target plus" onClick={() => step(1)}>+</StepBtn>
+        </span>
+      )} />
+  );
 }
 
 /** Tapping the value opens a short quick-pick row; the steppers stay for fine adjustment beyond it
