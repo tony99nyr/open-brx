@@ -132,18 +132,17 @@ export function Build() {
       const valueChanged = JSON.stringify(editing.draft.value) !== JSON.stringify(editing.initial.value);
       const saved = editing.action === 'create'
         ? await run(() => api.createPiece({ kind, name: editing.draft.name, note: editing.draft.note, value: editing.draft.value }))
-        : await run(async () => {
-            const r = await api.updatePiece(editing.base.piece_id, {
-              name: editing.draft.name, note: editing.draft.note,
-              ...(valueChanged ? { value: editing.draft.value } : {}),
-            });
-            // `ok`/`errors` only ride the reply when `value` reached a recompose (a name/note-only
-            // save never gets them at all) -- an explicit `=== false` check, never a bare `!r.ok`,
-            // since `undefined` here means "nothing to recompose", not "refused".
-            if (r.ok === false) throw Object.assign(new Error(r.errors?.join(' · ') || 'save refused'), { status: 400 });
-            return r;
-          });
-      if (!saved) return;   // run() already put the server's words in the error strip
+        // Review MEDIUM (brx1, 222b1a81): a value that fails to compose now refuses outright (a thrown
+        // 400 `{errors}`, saving nothing) rather than answering `ok:false` in a 200 -- `run()` alone
+        // catches it and puts the server's own words in the error strip, the same as any other refusal.
+        : await run(() => api.updatePiece(editing.base.piece_id, {
+            name: editing.draft.name, note: editing.draft.note,
+            ...(valueChanged ? { value: editing.draft.value } : {}),
+          }));
+      // Low (review): reload even on a refusal -- a compose refusal still ran `putConfig` on the SERVER
+      // (rolled back there, but this console has no way to tell that apart from any other 400 refusal
+      // without asking again), and the list may show an `invalid` piece the refusal itself is about.
+      if (!saved) { await load(); return; }
       const savedFallbacks = (saved as { fallbacks?: PieceKind[] }).fallbacks ?? [];
       setFallbackNote(pickFallbackNote(savedFallbacks, pieces ?? []));
       setEditing(null); setConfirmLeave(false); setConfirmDelete(false);

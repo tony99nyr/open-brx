@@ -3,7 +3,7 @@ import type {
   Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, Favourite, GameConfig, GamePick, GamePiece, LanPublic, LastMatch, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView,
   MatchHistoryRow, MatchSettings, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, PieceKind, Player,
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationKind, StationSourceId,
-  StationView, TunnelProvider, TunnelStatus, TxPower, WeaponView,
+  StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
@@ -1145,10 +1145,13 @@ export class MockBackend implements Api {
    *  changed, exactly as this checks `p.value !== undefined`, never comparing against the old value
    *  itself (the server cannot tell "sent but unchanged" from "sent and changed" either).
    *
-   *  `ok`/`errors`/`fallbacks` ride the reply the same way `POST /api/play/pick` reports its own, for
-   *  the one case that needs them: a picked piece's value change that reaches `putConfig`. */
+   *  Review MEDIUM (brx1, 222b1a81): a value that passes `checkPieceValue`'s own shape check can still
+   *  fail to COMPOSE (a bench-gate rule, a cross-field conflict) -- this used to save the piece and
+   *  commit the config regardless, reporting `ok:false` in a 200. The server refuses outright and saves
+   *  NOTHING; test-compose the checked value before committing anything, so a refusal here rolls back
+   *  cleanly (nothing else has been mutated yet) and throws the same 400 `{errors}` the server does. */
   async updatePiece(id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }):
-    Promise<GamePiece & { ok?: boolean; errors?: string[]; fallbacks?: PieceKind[] }> {
+    Promise<GamePiece & { fallbacks?: PieceKind[] }> {
     const piece = this.pieces.find(x => x.piece_id === id);
     if (!piece) throw Object.assign(new Error('no such piece'), { status: 404 });
     if (piece.builtin) throw Object.assign(new Error('a built-in piece cannot be edited — copy it into a new one'), { status: 403 });
@@ -1161,26 +1164,38 @@ export class MockBackend implements Api {
     const willRecompose = picked && p.value !== undefined;
     const checked = p.value !== undefined ? this.checkPieceValue(piece.kind, p.value) : undefined;
     const mixed = willRecompose ? this.resolvePiecesMixed(this.gamePick.pieces, new Set([piece.kind])) : undefined;
+    let nm: string | undefined;
     if (p.name != null) {
-      const nm = p.name.trim();
+      nm = p.name.trim();
       if (!nm || nm.length > 24) throw new Error('name must be 1 to 24 characters');
-      const clash = this.pieces.find(x => x !== piece && x.kind === piece.kind && x.name.toLowerCase() === nm.toLowerCase());
+      const clash = this.pieces.find(x => x !== piece && x.kind === piece.kind && x.name.toLowerCase() === nm!.toLowerCase());
       if (clash) throw Object.assign(new Error(`"${clash.name}" already exists for ${piece.kind}`), { status: 409 });
-      piece.name = nm;
     }
+    let fallbacks: PieceKind[] | undefined;
+    if (mixed) {
+      // Speculative: the piece's OWN value must already carry the checked one for `composePartial` to
+      // read the NEW value (it looks the piece up by id, not from a value passed in) -- reverted below
+      // on a refusal, before the piece is otherwise touched at all.
+      const originalValue = piece.value;
+      piece.value = checked!;
+      const partial = this.composePartial(mixed.ids, this.gamePick.match);
+      const before = clone(this.config);
+      const r = await this.putConfig(partial);
+      if (!r.ok) {
+        piece.value = originalValue;
+        this.config = before;
+        throw Object.assign(new Error(r.errors.join(' · ')), { status: 400 });
+      }
+      fallbacks = mixed.fallbacks;
+    }
+    if (nm !== undefined) piece.name = nm;
     if (p.note != null) piece.note = p.note.slice(0, 80);
     // Round 3 (invalid preset field): a PUT with a value the CURRENT rules accept clears `invalid` --
     // `checkPieceValue` above already threw if this value would not; reaching here means it does.
     if (checked !== undefined) { piece.value = checked; delete piece.invalid; }
     piece.updated_t = now();
-    const out: GamePiece & { ok?: boolean; errors?: string[]; fallbacks?: PieceKind[] } = clone(piece);
-    if (mixed) {
-      const partial = this.composePartial(mixed.ids, this.gamePick.match);
-      const r = await this.putConfig(partial);
-      out.ok = r.ok;
-      out.errors = r.errors;
-      out.fallbacks = mixed.fallbacks;
-    }
+    const out: GamePiece & { fallbacks?: PieceKind[] } = clone(piece);
+    if (fallbacks) out.fallbacks = fallbacks;
     this.emit();
     return out;
   }
@@ -1213,12 +1228,16 @@ export class MockBackend implements Api {
         // one number a player cannot have none of (0 HP is not "hardcore", it is dead on arrival).
         const RANGE = { max_hp: [1, 255], max_armor: [0, 255], max_shield: [0, 255] } as const;
         const keys = ['max_hp', 'max_armor', 'max_shield'] as const;
-        const nums = keys.map(k => Number(v[k]));
-        nums.forEach((n, i) => {
-          const [lo, hi] = RANGE[keys[i]];
-          if (!Number.isInteger(n) || n < lo || n > hi) throw Object.assign(new Error(`${keys[i]} must be an integer ${lo}..${hi}`), { status: 400 });
+        // Review Low (brx1, 222b1a81): `Number(v[k])` coerced a STRING ("45") into a passing integer --
+        // the server's own equivalent (state.py `_check_loadout`'s `overrides.max_hp`/`max_armor`)
+        // checks the RAW value's type first (`isinstance(v, bool) or not isinstance(v, int)`); the raw
+        // type check here is `typeof n !== 'number'`, which a string OR a boolean both fail outright.
+        keys.forEach(k => {
+          const n = v[k];
+          const [lo, hi] = RANGE[k];
+          if (typeof n !== 'number' || !Number.isInteger(n) || n < lo || n > hi) throw Object.assign(new Error(`${k} must be an integer ${lo}..${hi}`), { status: 400 });
         });
-        const [max_hp, max_armor, max_shield] = nums;
+        const [max_hp, max_armor, max_shield] = keys.map(k => v[k] as number);
         return { max_hp, max_armor, max_shield };
       }
       case 'spawn': {
@@ -1280,6 +1299,32 @@ export class MockBackend implements Api {
     }
   }
   /** §3: compose the `GameConfig` partial the pick's pieces + strip describe. */
+  /** F413 (games-presets.md §7): 2 to 4 UNIQUE colours from red/blue/yellow/purple; KOTH is exactly 2
+   *  and never offers yellow (a neutral hill broadcasts tid 2, F82 -- the same fault a yellow ROSTER
+   *  refuses elsewhere, refused here before it ever reaches one). */
+  private checkMatchTeams(teams: unknown, mode: string): TeamColour[] {
+    const ALL: TeamColour[] = ['red', 'blue', 'yellow', 'purple'];
+    if (!Array.isArray(teams) || !teams.every(c => typeof c === 'string')) {
+      throw Object.assign(new Error('match.teams must be an array of team colours'), { status: 400 });
+    }
+    if (teams.length < 2 || teams.length > 4) throw Object.assign(new Error('match.teams must name 2 to 4 teams'), { status: 400 });
+    if (new Set(teams).size !== teams.length) throw Object.assign(new Error('match.teams must name each colour once'), { status: 400 });
+    const bad = teams.find(c => !ALL.includes(c as TeamColour));
+    if (bad) throw Object.assign(new Error(`match.teams must be from red, blue, yellow, purple (saw '${bad}')`), { status: 400 });
+    if (mode === 'koth') {
+      if (teams.length !== 2) throw Object.assign(new Error('KING OF THE HILL is exactly 2 teams'), { status: 400 });
+      if (teams.includes('yellow')) throw Object.assign(new Error('KING OF THE HILL never offers yellow (a neutral hill broadcasts tid 2)'), { status: 400 });
+    }
+    return teams as TeamColour[];
+  }
+  /** F415: KOTH only -- absent/null is legal everywhere (no target, the pre-F415 rule); named on any
+   *  other mode is refused outright, the same way spawn.station_source is. */
+  private checkHoldTarget(v: unknown, mode: string): number | null {
+    if (v == null) return null;
+    if (mode !== 'koth') throw Object.assign(new Error('match.hold_target_s is only for KING OF THE HILL'), { status: 400 });
+    if (!Number.isInteger(v) || (v as number) <= 0) throw Object.assign(new Error('match.hold_target_s must be a positive integer of seconds, or null'), { status: 400 });
+    return v as number;
+  }
   private composePartial(pieceIds: Record<string, string>, match: MatchSettings): Partial<GameConfig> {
     const valueOf = <T,>(kind: PieceKind) => this.pieces.find(x => x.piece_id === pieceIds[kind])!.value as T;
     const modeV = valueOf<{ mode: string }>('mode');
@@ -1309,12 +1354,19 @@ export class MockBackend implements Api {
       loadout_policy,
       mode_params: { ...(modeInfo.defaults.mode_params ?? {}), ...gameplayV.mode_params } as Record<string, number | boolean | string>,
       time_limit_s: match.time_limit_s,
-      scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit },
+      // F413/F415 (games-presets.md §7): `hold_target_s` rides Scoring alongside frag_limit -- KOTH
+      // only, and `pick()`'s own checkHoldTarget already refused it for any other mode before this runs.
+      scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit, hold_target_s: match.hold_target_s ?? null },
       night: match.night,
       // §3.6: SILENCED applies the full silenced preset together; off returns the mode's own automatic one.
       presentation: match.silenced ? { preset: 'silenced' } : { ...(modeInfo.defaults.presentation ?? { preset: 'standard' }) },
       environment: 'outdoor',   // §3.7 (F410): MVP is outdoors only
       volume: null,             // §3.7: the venue value, never a stale per-game knob
+      // F413: `match.teams` (a plain TeamColour[]) becomes the full Team[] compose writes to
+      // config.teams, in the SAME order -- `pick()`'s own checkMatchTeams already validated it (2-4
+      // unique colours, KOTH exactly 2 and never yellow). Absent (FFA) keeps whatever the mode's own
+      // defaults declare (a single non-team row), never TEAMS-derived.
+      ...(match.teams ? { teams: match.teams.map(c => TEAMS.find(t => t.team_id === c)!) } : {}),
     };
     return partial;
   }
@@ -1334,7 +1386,25 @@ export class MockBackend implements Api {
     const modePiece = this.pieces.find(x => x.piece_id === resolvedIds.mode)!;
     const modeInfo = MODES.find(m => m.mode === (modePiece.value as { mode: string }).mode)!;
     const match: MatchSettings = { ...this.gamePick.match };
-    if (modeChanged) { match.time_limit_s = modeInfo.defaults.time_limit_s; match.frag_limit = modeInfo.defaults.scoring.frag_limit ?? null; }
+    if (modeChanged) {
+      match.time_limit_s = modeInfo.defaults.time_limit_s;
+      match.frag_limit = modeInfo.defaults.scoring.frag_limit ?? null;
+      // F413/F415: "a mode change resets teams to the new mode's default, like the limits" -- gated on
+      // the mode's OWN match_items (the same authority the console's strip renders from), never on
+      // `defaults.teams` alone: a SOLO mode (FFA) still carries one placeholder team (`team_id: 'ffa'`,
+      // gameSummary.ts's own SOLO_MODES rule) that is not a real TeamColour and must never reach
+      // `match.teams` -- it composed into a config.teams row TEAMS.find() could never resolve.
+      //
+      // team-lead's scope decision (2026-09-27): a FRESH pick or a MODE CHANGE through `pick()` gives
+      // red + blue outright -- never `modeInfo.defaults.teams` (still blue/yellow for TDM, blue/purple
+      // for KOTH in MODES, unchanged: that table also seeds the STATIC DEMO's own initial config and a
+      // direct `putConfig` mode switch, e.g. GameEditPanel's inline edit, which stay on the OLD colours
+      // deliberately -- data.ts's own `base()` comment has the full reasoning). `Games.tsx`'s own
+      // client-side prediction (`pickMode`/`loadFavourite`) mirrors this SAME red/blue default, not
+      // `defaults.teams` either, so the confirm it shows never disagrees with what actually lands.
+      match.teams = modeInfo.match_items?.includes('teams') ? ['red', 'blue'] : undefined;
+      match.hold_target_s = null;
+    }
     const pm = p.match ?? {};
     if ('time_limit_s' in pm) {
       if (pm.time_limit_s != null && (!Number.isInteger(pm.time_limit_s) || pm.time_limit_s <= 0)) throw Object.assign(new Error('match.time_limit_s must be a positive integer of seconds, or null'), { status: 400 });
@@ -1346,6 +1416,8 @@ export class MockBackend implements Api {
     }
     if ('night' in pm) match.night = !!pm.night;
     if ('silenced' in pm) match.silenced = !!pm.silenced;
+    if ('teams' in pm) match.teams = this.checkMatchTeams(pm.teams, modeInfo.mode);
+    if ('hold_target_s' in pm) match.hold_target_s = this.checkHoldTarget(pm.hold_target_s, modeInfo.mode);
 
     const partial = this.composePartial(resolvedIds, match);
     const before = clone(this.config);

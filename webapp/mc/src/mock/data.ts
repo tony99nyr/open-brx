@@ -1,5 +1,5 @@
 // Demo data from the design export (guns renamed GUN-A…GUN-H — real sticker ids never enter the repo).
-import type { ConfigView, GameConfig, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, MatchItemKey, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
 import { defaultPolicy } from './policy';
 
 export const TEAMS: Team[] = [
@@ -1012,6 +1012,18 @@ const base = (mode: string, over: Partial<GameConfig> = {}): ConfigView => ({
   respawn: { type: 'auto', delay_s: 15 },
   scoring: { frag_limit: null, win_by: 'kills' },
   health: { max_hp: 45, max_armor: 70, max_shield: 0, preset: 'standard' },   // S45: the Standard preset
+  // F413 (games-presets.md §7) says a FRESH pick or a mode change defaults to red/blue -- but this
+  // `base()` ALSO builds the STATIC DEMO's own INITIAL config (`this.config =
+  // withPolicy(clone(MODES[0].defaults))`), whose PLAYERS fixture is hardcoded to blue/yellow team_id
+  // strings across dozens of unrelated tests this lane does not own (Lobby/Items/spectate). Team-lead's
+  // scope decision (2026-09-27): pick/compose (a fresh pick, a mode change, default_config) gives
+  // red+blue, but this demo fixture and its initial config are a SESSION ALREADY IN PROGRESS, not a
+  // fresh one -- they keep the old colours on purpose, so those 66 tests stay untouched. The red/blue
+  // default itself lives in `pick()`'s own mode-changed reset (never here); `Games.tsx`'s own
+  // client-side split prediction mirrors the SAME red/blue, not `defaults.teams`, so its confirm never
+  // disagrees with what actually lands. KOTH's own `defaults.teams` below (blue/purple) is likewise
+  // untouched -- it only still feeds a DIRECT `putConfig` mode switch (GameEditPanel's inline edit,
+  // out of this lane), never `pick()`'s own reset any more.
   teams: [TEAMS[0], TEAMS[1]],
   loadout_policy: defaultPolicy(mode),
   ...over,
@@ -1107,9 +1119,16 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
 };
 // GENERATED-END modes
 
+// F413/F415 (games-presets.md §7): the ONLY three MVP rows carry their own `match_items` -- the
+// console's `matchItems.ts` reads this directly and keeps its own fallback list only for a server
+// that predates the field, which this mock never is.
+const TDM_ITEMS: MatchItemKey[] = ['time', 'kills', 'countdown', 'daynight', 'silenced', 'teams'];
+const FFA_ITEMS: MatchItemKey[] = ['time', 'kills', 'countdown', 'daynight', 'silenced'];
+const KOTH_ITEMS: MatchItemKey[] = ['time', 'hold', 'countdown', 'daynight', 'silenced', 'teams'];
+
 export const MODES: ModeInfo[] = [
-  { ...MODE_TEXT.tdm, params: [], defaults: base('tdm') },
-  { ...MODE_TEXT.ffa, params: [],
+  { ...MODE_TEXT.tdm, params: [], match_items: TDM_ITEMS, defaults: base('tdm') },
+  { ...MODE_TEXT.ffa, params: [], match_items: FFA_ITEMS,
     defaults: base('ffa', { teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }] }) },
   { ...MODE_TEXT.infection, params: [],
     defaults: base('infection', { respawn: { type: 'auto', delay_s: 10 }, scoring: { frag_limit: null, win_by: 'survival' } }) },
@@ -1121,7 +1140,7 @@ export const MODES: ModeInfo[] = [
   // F82: BLUE + PURPLE (tids 1 and 3; F423 renamed the tid-3 team from GREEN to PURPLE, matching what
   // the gun paints). Yellow is tid 2, which is what a NEUTRAL hill broadcasts, so a yellow roster
   // would read every uncaptured point as its own — the server refuses it outright.
-  { ...MODE_TEXT.koth, params: KOTH_PARAMS,
+  { ...MODE_TEXT.koth, params: KOTH_PARAMS, match_items: KOTH_ITEMS,
     defaults: base('koth', { teams: [TEAMS[0], TEAMS[3]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'phone',
       mode_params: { score_target: 0, points_per_s: 1.0 } }) },
 ];

@@ -43,7 +43,14 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
   if (r.status === 401) { notifyAuth(true); throw new AuthError(); }
   if (!r.ok) {
     let msg = r.statusText, body: unknown;
-    try { body = await r.json(); msg = (body as { error?: string }).error ?? msg; } catch { /* not JSON: the status line is all there is */ }
+    // Review MEDIUM (brx1, 222b1a81): a 400 refusal can carry `{errors: [...]}` with no singular
+    // `error` at all (PUT /api/pieces/:id's own shape, mirrored in mock/backend.ts) -- that used to fall
+    // through to `msg`'s own default (`r.statusText`, "Bad Request"), losing the server's own words.
+    try {
+      body = await r.json();
+      const b = body as { error?: string; errors?: string[] };
+      msg = b.error ?? (b.errors?.length ? b.errors.join(' · ') : msg);
+    } catch { /* not JSON: the status line is all there is */ }
     const err = new Error(msg) as Error & { status?: number; body?: unknown };
     err.status = r.status;   // callers can tell a 404 (route missing) from a 400
     err.body = body;         // A27: the 409 from POST /api/phase carries `not_ready` — the operator needs the LIST, not just the sentence

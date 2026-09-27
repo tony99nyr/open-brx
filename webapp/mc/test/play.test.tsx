@@ -114,7 +114,7 @@ describe('PLAY — round 4: a mode switch that reshapes the roster asks first (F
     expect(after.config.mode, 'the first tap must not reach the server').toBe('tdm');
     const split = m.find('[data-testid="confirm-split"]')[0];
     expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
-    expect(split.textContent).toBe('▲ 8 PLAYERS → BLUE 4 / PURPLE 4');   // KOTH's own teams, blue + purple
+    expect(split.textContent).toBe('▲ 8 PLAYERS → RED 4 / BLUE 4');   // F413 scope decision: a mode change gives red+blue
     expect(m.text()).toContain('TAP AGAIN TO SWITCH');
     m.unmount();
   });
@@ -155,6 +155,11 @@ describe('PLAY — round 4: a mode switch that reshapes the roster asks first (F
 });
 
 describe('PLAY — review follow-up: loading a FAVOURITE that reshapes the roster asks first too', () => {
+  // F413 scope decision (2026-09-27): this favourite carries NO explicit `match.teams` (an older
+  // favourite, saved before F413) -- loading it still reshapes, but through `putConfig`'s own
+  // mode-changed BASE rebuild (the NEW mode's own catalogue `defaults.teams`, blue/purple for KOTH),
+  // never through pick()'s red/blue reset (that path is `pick()`'s alone; a SEPARATE test would be
+  // needed for a favourite saved WITH an explicit teams list, e.g. one from a fresh red/blue pick).
   async function favouriteToKoth(api: MockBackend) {
     const before = await api.getState();
     await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,
@@ -642,5 +647,162 @@ describe('PLAY — review: an invalid piece is never offered, and does not break
     expect(m.find('[data-testid="picker-primary"]').length, 'one-choice hiding still applies with the invalid piece excluded').toBe(0);
     expect(m.text()).not.toContain('OLD FAVOURITE');
     m.unmount();
+  });
+});
+
+/** A button inside ONE container, matched by its exact (trimmed) text -- `m.click` searches the whole
+ *  document and would as happily hit a Seg option on a DIFFERENT control sharing the same label. */
+async function clickIn(container: HTMLElement, text: string) {
+  const btn = Array.from(container.querySelectorAll('button')).find(b => (b.textContent ?? '').trim() === text) as HTMLButtonElement | undefined;
+  if (!btn) throw new Error(`no button "${text}" inside the container -- saw: ${
+    Array.from(container.querySelectorAll('button')).map(b => (b.textContent ?? '').trim().slice(0, 24)).join(' | ')}`);
+  await act(async () => { btn.click(); });
+}
+
+describe('PLAY — F413: TEAMS strip item', () => {
+  it('shows for TDM, reading the ROSTER’S actual teams (never an invented default)', async () => {
+    const { m } = await renderPlay(new MockBackend());   // 8 players, 4 BLUE / 4 YELLOW (TDM)
+    const teamsEl = m.find('[data-testid="match-teams-item"]')[0];
+    expect(teamsEl, 'TDM offers TEAMS (data.ts TDM_ITEMS)').toBeTruthy();
+    expect(teamsEl.textContent).toContain('BLUE');
+    expect(teamsEl.textContent).toContain('YELLOW');
+    m.unmount();
+  });
+
+  it('is absent for FFA (data.ts FFA_ITEMS names no teams item)', async () => {
+    const { m, settle } = await renderPlay(new MockBackend());
+    await m.click('FREE-FOR-ALL');   // FFA’s own single team: splitLine has <2 newTeams, no confirm
+    m.unmount();
+    const m2 = await settle();
+    expect(m2.find('[data-testid="match-teams-item"]').length).toBe(0);
+    m2.unmount();
+  });
+
+  it('a count change to 3 asks first, and the second tap commits 3 teams', async () => {
+    const { m, api, settle } = await renderPlay(new MockBackend());
+    const teamsEl = () => m.find('[data-testid="match-teams-item"]')[0];
+    await clickIn(teamsEl(), '3');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect((await api.getState()).game_pick?.match.teams, 'the first tap must not reach the server').toBeUndefined();
+    expect(m.text()).toContain('TAP A TEAMS CONTROL AGAIN TO SWITCH');
+    await clickIn(teamsEl(), '3');
+    m.unmount();
+    const m2 = await settle();
+    const after = await api.getState();
+    expect(after.game_pick?.match.teams).toHaveLength(3);
+    expect(after.config.teams.map(t => t.team_id)).toEqual(after.game_pick?.match.teams);
+    expect(m2.find('[data-testid="match-teams-item"]')[0].textContent, 'confirm gone, the strip agrees with the server').not.toContain('TAP A TEAMS');
+    m2.unmount();
+  });
+
+  it('a colour change on one slot asks first too, and reshapes the roster on commit', async () => {
+    const { m, api, settle } = await renderPlay(new MockBackend());
+    const chooser0 = () => m.find('[data-testid="match-teams-colour-0"]')[0];
+    await clickIn(chooser0(), 'RED');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect((await api.getState()).config.teams.map(t => t.team_id)).toEqual(['blue', 'yellow']);   // unchanged
+    await clickIn(chooser0(), 'RED');
+    m.unmount();
+    await settle();
+    const after = await api.getState();
+    expect(after.config.teams.map(t => t.team_id)).toEqual(['red', 'yellow']);
+    expect(after.players.some(p => p.team_id === 'blue'), 'nobody left on a team no longer declared').toBe(false);
+  });
+
+  it('KOTH: no count control, and yellow is never offered', async () => {
+    const { m, api, settle } = await renderPlay(new MockBackend());
+    await m.click('KING OF THE HILL');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('KING OF THE HILL');   // second tap commits (round 4's own confirm)
+    m.unmount();
+    // a settled RE-RENDER, not a read off the live mount -- the mode-switch round trip lands over more
+    // than one microtask/macrotask hop, and the live subscription can still be a tick behind here
+    // (play.mjs's own `pickMode` helper double-clicks for the same reason; harness.tsx's `settle` re-
+    // fetches state and remounts fresh, which every OTHER content check after a commit in this file uses).
+    const m2 = await settle();
+    expect((await api.getState()).config.mode).toBe('koth');
+    const teamsEl = m2.find('[data-testid="match-teams-item"]')[0];
+    expect(m2.find('[aria-label="team count"]').length, 'KOTH fixes the count at 2, no control shown').toBe(0);
+    expect(teamsEl.textContent).not.toContain('YELLOW');
+    m2.unmount();
+  });
+});
+
+describe('PLAY — F415: HOLD strip item (KOTH only)', () => {
+  it('is absent on TDM, present on KOTH, starting at NO TARGET', async () => {
+    const { m, api, settle } = await renderPlay(new MockBackend());
+    expect(m.find('[data-testid="match-hold-value"]').length, 'TDM has no hold item').toBe(0);
+    await m.click('KING OF THE HILL');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('KING OF THE HILL');
+    m.unmount();
+    const m2 = await settle();   // see the comment on the TEAMS item's own KOTH test, above
+    expect((await api.getState()).config.mode).toBe('koth');
+    expect(m2.find('[data-testid="match-hold-value"]')[0].textContent).toContain('NO TARGET');
+    m2.unmount();
+  });
+
+  it('"5 MIN" reaches the server as hold_target_s: 300', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    const { m } = await renderPlay(api);
+    await m.click('NO TARGET');
+    await m.click('5 MIN');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect((await api.getState()).config.scoring.hold_target_s).toBe(300);
+    m.unmount();
+  });
+
+  it('a mode change away and back resets the target to NO TARGET, like the other limits', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    await api.pick({ match: { hold_target_s: 300 } });
+    await api.pick({ pieces: { mode: 'builtin:mode:tdm' } });
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    const { m } = await renderPlay(api);
+    expect(m.find('[data-testid="match-hold-value"]')[0].textContent).toContain('NO TARGET');
+    m.unmount();
+  });
+});
+
+describe('PLAY — F413/F415: LAST MATCH and FAVOURITES carry teams and the hold target forward', () => {
+  it('LAST MATCH applies the hold target and the team colours it recorded, on the SAME mode', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    await api.pick({ match: { hold_target_s: 300, teams: ['red', 'purple'] } });
+    await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 9 });   // KOTH needs a hill to push
+    await api.setPhase('lobby');
+    await api.pushLobby(true);
+    await api.start(45, true);
+    await api.abort();
+    // move the live pick away, so LAST MATCH applying it again has something to prove
+    await api.pick({ match: { hold_target_s: null, teams: ['blue', 'purple'] } });
+    const { m, settle } = await renderPlay(api);
+    await m.click('LAST MATCH');
+    m.unmount();
+    await settle();
+    const after = await api.getState();
+    expect(after.game_pick?.match.hold_target_s).toBe(300);
+    expect(after.game_pick?.match.teams).toEqual(['red', 'purple']);
+  });
+
+  it('a FAVOURITE saved on KOTH with a hold target restores it on load', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    await api.pick({ match: { hold_target_s: 600 } });
+    await api.createFavourite({ name: 'Hill Rush', countdown_s: 30 });
+    await api.pick({ pieces: { mode: 'builtin:mode:tdm' } });   // resets hold_target_s to null
+    const { m, settle } = await renderPlay(api);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getFavourites settles
+    // the favourite’s own mode (KOTH) reshapes the roster from TDM’s current split -- same two-tap
+    // confirm as any other favourite load (review follow-up, above).
+    await m.click('Hill Rush');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('Hill Rush');
+    m.unmount();
+    await settle();
+    const after = await api.getState();
+    expect(after.config.mode).toBe('koth');
+    expect(after.game_pick?.match.hold_target_s).toBe(600);
   });
 });

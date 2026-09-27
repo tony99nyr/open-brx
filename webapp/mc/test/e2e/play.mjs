@@ -11,6 +11,7 @@
 //                                              #   lastmatch | koth | pick-fail | stale | widths |
 //                                              #   load-feedback | locked | refusal-and-cap |
 //                                              #   pieces-failure | hit-areas | silenced-onoff |
+//                                              #   teams | hold |
 //                                              #   favourites-save | favourites-load |
 //                                              #   favourites-fallback | favourites-rename |
 //                                              #   favourites-delete | real-favourites |
@@ -163,15 +164,6 @@ const pickMode = async (pg, label) => {
   await btn.click();
   await btn.click();
 };
-// Review follow-up: loading a FAVOURITE whose own mode reshapes the roster asks first too (the same
-// gate, keyed on the favourite id) -- a second click on the SAME chip is just as harmless when no
-// confirm ever showed (re-loading an already-applied favourite is a no-op), so every step that just
-// wants the favourite LOADED uses this rather than reasoning about which ones happen to reshape.
-const loadFavourite = async (pg, name) => {
-  const chip = pg.locator(`text=☆ ${name}`);
-  await chip.click();
-  await chip.click();
-};
 
 const steps = [];
 const step = (name, fn) => steps.push({ name, fn });
@@ -240,15 +232,15 @@ step('controls', async ({ browser, base }) => {
 });
 
 step('mode-switch-confirm', async ({ browser, base }) => {
-  // F-6 (splitLine), restored: TDM's demo roster is 4 BLUE / 4 YELLOW; KOTH's own teams are BLUE and
-  // PURPLE, so this reshapes -- the first tap must ask, not send.
+  // F-6 (splitLine), restored: TDM's demo roster is 4 BLUE / 4 YELLOW; a mode change now gives red+blue
+  // (F413 scope decision, 2026-09-27), so this reshapes -- the first tap must ask, not send.
   const pg = await open(browser, base, '?mock#build', 1280);
   const before = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
   expect(before === 'tdm', 'control: the demo starts on TDM');
   await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
   await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm');
   const split = await pg.getByTestId('confirm-split').innerText();
-  expect(split === '▲ 8 PLAYERS → BLUE 4 / PURPLE 4', `the predicted split is shown (saw ${JSON.stringify(split)})`);
+  expect(split === '▲ 8 PLAYERS → RED 4 / BLUE 4', `the predicted split is shown (saw ${JSON.stringify(split)})`);
   const mid = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
   expect(mid === 'tdm', 'the first tap must not have reached the server');
   await shot(pg, 'mode-switch-confirm-armed');
@@ -456,6 +448,55 @@ step('silenced-onoff', async ({ browser, base }) => {
   await pg.context().close();
 });
 
+step('teams', async ({ browser, base }) => {
+  // F413 (games-presets.md §7): TDM starts BLUE/YELLOW (8 players) -- a count bump to 3 reshapes the
+  // roster, so it asks first (the SAME confirm mode-switch-confirm already proved, just with no single
+  // target to re-tap: any second teams-changing tap commits).
+  const pg = await open(browser, base, '?mock#build', 1280);
+  const teamsItem = pg.getByTestId('match-teams-item');
+  const count3 = teamsItem.getByRole('button', { name: '3', exact: true });
+  await count3.click();
+  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm (count to 3)');
+  const before = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.game_pick.match.teams);
+  expect(before === undefined, 'the first tap must not reach the server');
+  await count3.click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.teams?.length === 3, 4000, '3 teams committed');
+  ok(`TEAMS: a count change to 3 asks first, then commits   ${await shot(pg, 'teams-count-3')}`);
+
+  // a colour change on one slot: BLUE -> PURPLE (PURPLE is not yet taken by another slot at this point)
+  const slot0 = pg.getByTestId('match-teams-colour-0');
+  const purple = slot0.getByRole('button', { name: 'PURPLE' });
+  await purple.click();
+  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm (a colour change)');
+  await purple.click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.teams?.[0] === 'purple', 4000, 'the colour change committed');
+  ok('TEAMS: a colour change on one slot asks first, then commits');
+
+  // KOTH fixes the count at 2 and never offers yellow
+  await pickMode(pg, 'KING OF THE HILL');
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'KOTH applied');
+  const stripText = await teamsItem.innerText();
+  expect(!stripText.includes('YELLOW'), `KOTH never offers yellow (saw ${JSON.stringify(stripText)})`);
+  expect(await pg.locator('[aria-label="team count"]').count() === 0, 'KOTH fixes the count, no control shown');
+  ok(`TEAMS: KOTH fixes the count at 2 and never offers yellow   ${await shot(pg, 'teams-koth-no-yellow')}`);
+  await pg.context().close();
+});
+
+step('hold', async ({ browser, base }) => {
+  // F415: KOTH only, NO TARGET by default, 3/5/10 MIN quick-picks reaching the server.
+  const pg = await open(browser, base, '?mock#build', 1280);
+  expect(await pg.getByTestId('match-hold-value').count() === 0, 'TDM has no HOLD item');
+  await pickMode(pg, 'KING OF THE HILL');
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'KOTH applied');
+  await until(() => pg.getByTestId('match-hold-value').count().then(n => n > 0), 4000, 'the HOLD item');
+  expect(await pg.getByTestId('match-hold-value').innerText().then(t => t.includes('NO TARGET')), 'NO TARGET by default');
+  await pg.getByTestId('match-hold-value').click();
+  await pg.getByRole('button', { name: '5 MIN' }).click();
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.hold_target_s === 300, 4000, '"5 MIN" reaches the server');
+  ok(`HOLD: NO TARGET by default, "5 MIN" reaches the server as 300s   ${await shot(pg, 'hold-5min')}`);
+  await pg.context().close();
+});
+
 // ---------------------------------------------------------------- against a REAL MC (VQA round 1:
 // "no test renders PLAY against a real MC")
 
@@ -555,6 +596,16 @@ step('favourites-save', async ({ browser, base }) => {
   await pg.context().close();
 });
 
+/** Tap a favourite chip. When the load would move rostered players, PLAY asks first (the moves-players
+ *  confirm): wait for THIS tap's result (`loaded()` or the confirm), and tap again only if it asked. */
+async function loadFavourite(pg, name, loaded) {
+  const chip = pg.locator(`text=☆ ${name}`);
+  const asked = () => pg.locator('text=TAP THE FAVOURITE AGAIN TO SWITCH').count().then(n => n > 0);
+  await chip.click();
+  await until(async () => (await loaded()) || (await asked()), 6000, `${name}: loaded, or the moves-players confirm`);
+  if (await asked()) await chip.click();
+}
+
 step('favourites-load', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280);
   // build a distinctive pick, save it, then change EVERYTHING before loading it back
@@ -578,7 +629,7 @@ step('favourites-load', async ({ browser, base }) => {
   await pg.getByRole('button', { name: '10 S' }).click();
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 4000, 'changed away from it');
 
-  await loadFavourite(pg, 'Round One');
+  await loadFavourite(pg, 'Round One', async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth');
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 6000, 'LOAD restores the mode');
   const after = await pg.evaluate(() => window.__MC_MOCK__.getState());
   expect(after.config.mode === 'koth', 'GAME MODE restored');
@@ -674,7 +725,7 @@ step('real-favourites', async ({ browser }) => {
     await pg.getByRole('switch', { name: 'silenced' }).click();
     await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'koth', 6000, 'the changes reach the real server');
 
-    await loadFavourite(pg, 'Baseline');
+    await loadFavourite(pg, 'Baseline', async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'tdm');
     await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'tdm', 8000, 'LOAD restores the baseline on the real server');
     const after = await fetch(`${mc.base}/api/state`).then(r => r.json());
     expect(after.config.mode === 'tdm' && after.config.health.max_shield === 0 && after.config.health.max_armor === 70, `every picker restored (saw ${JSON.stringify(after.config.mode)}/${JSON.stringify(after.config.health)})`);
