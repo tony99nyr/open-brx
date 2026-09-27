@@ -163,6 +163,15 @@ const pickMode = async (pg, label) => {
   await btn.click();
   await btn.click();
 };
+// Review follow-up: loading a FAVOURITE whose own mode reshapes the roster asks first too (the same
+// gate, keyed on the favourite id) -- a second click on the SAME chip is just as harmless when no
+// confirm ever showed (re-loading an already-applied favourite is a no-op), so every step that just
+// wants the favourite LOADED uses this rather than reasoning about which ones happen to reshape.
+const loadFavourite = async (pg, name) => {
+  const chip = pg.locator(`text=☆ ${name}`);
+  await chip.click();
+  await chip.click();
+};
 
 const steps = [];
 const step = (name, fn) => steps.push({ name, fn });
@@ -569,7 +578,7 @@ step('favourites-load', async ({ browser, base }) => {
   await pg.getByRole('button', { name: '10 S' }).click();
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 4000, 'changed away from it');
 
-  await pg.locator('text=☆ Round One').click();
+  await loadFavourite(pg, 'Round One');
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 6000, 'LOAD restores the mode');
   const after = await pg.evaluate(() => window.__MC_MOCK__.getState());
   expect(after.config.mode === 'koth', 'GAME MODE restored');
@@ -665,7 +674,7 @@ step('real-favourites', async ({ browser }) => {
     await pg.getByRole('switch', { name: 'silenced' }).click();
     await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'koth', 6000, 'the changes reach the real server');
 
-    await pg.locator('text=☆ Baseline').click();
+    await loadFavourite(pg, 'Baseline');
     await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'tdm', 8000, 'LOAD restores the baseline on the real server');
     const after = await fetch(`${mc.base}/api/state`).then(r => r.json());
     expect(after.config.mode === 'tdm' && after.config.health.max_shield === 0 && after.config.health.max_armor === 70, `every picker restored (saw ${JSON.stringify(after.config.mode)}/${JSON.stringify(after.config.health)})`);
