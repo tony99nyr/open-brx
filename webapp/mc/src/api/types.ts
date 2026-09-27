@@ -101,7 +101,12 @@ export interface Api {
   /** F411 (docs/spec/design/games-presets.md): every piece, builtins first. Rejects with status 404 on an MC that predates PLAY/BUILD. */
   getPieces(): Promise<GamePiece[]>;
   createPiece(p: { kind: PieceKind; name: string; note?: string; value: Record<string, unknown> }): Promise<GamePiece>;
-  updatePiece(id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }): Promise<GamePiece>;
+  /** `ok`/`errors`/`fallbacks` are only present when `value` was sent for a PICKED piece (the one case
+   *  that recomposes the config) -- mirrors `mcp/brx_mcp/mc/api.py pieces_update` exactly. Omit `value`
+   *  entirely for a name/note-only edit; sending it unchanged is indistinguishable, server-side, from
+   *  sending it changed, and recomposes the config either way. */
+  updatePiece(id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }):
+    Promise<GamePiece & { ok?: boolean; errors?: string[]; fallbacks?: PieceKind[] }>;
   deletePiece(id: string): Promise<void>;
   /** F411: pick pieces and/or strip values; the server composes and applies the config. `ok: false` changed nothing. */
   /** `fallbacks`: kinds the request did NOT name that fell back to their builtin (a piece a kind

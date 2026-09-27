@@ -32,6 +32,16 @@ describe('BUILD — H3: a real GET /api/pieces failure', () => {
     expect(calls).toBe(2);
     m.unmount();
   });
+
+  it('review Low: does not flash while the console is known offline', async () => {
+    const d = await demo();
+    const api = fixtureApi({ getPieces: async () => { throw new Error('socket reset'); } }, d.api);
+    const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'designer' }, { api, connected: false });
+    const m = await mount(<StoreCtx.Provider value={store}><Build /></StoreCtx.Provider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(m.find('[data-testid="build-pieces-error"]').length, 'offline is already said elsewhere -- this must stay quiet').toBe(0);
+    m.unmount();
+  });
 });
 
 /** Renders whichever screen the store's `view` currently names -- BUILD, or a stand-in for anything
@@ -152,6 +162,37 @@ describe('M6 — an unsaved BUILD edit blocks navigation from OUTSIDE BUILD too'
     expect(m.text(), 'the phase-follow banner must be up').toContain('LEAVE FOR KIT');
     await type('DIRTY DRAFT, STILL EDITING');   // a further keystroke -- must NOT clear a follow-caused block
     expect(m.text(), 'a draft keystroke must not clear a block it did not cause').toContain('LEAVE FOR KIT');
+    m.unmount();
+  });
+});
+
+describe('BUILD — MEDIUM 3 (review): SAVE sends value only when it changed', () => {
+  it('a name-only rename omits value from the request entirely', async () => {
+    const d = await demo();
+    const life = await d.api.createPiece({ kind: 'life', name: 'CUSTOM LIFE', value: { max_hp: 50, max_armor: 60, max_shield: 0 } });
+    await d.api.pick({ pieces: { life: life.piece_id } });
+    const calls: Array<{ name?: string; note?: string; value?: unknown }> = [];
+    const api = fixtureApi({
+      updatePiece: async (id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }) => {
+        calls.push(p);
+        return d.api.updatePiece(id, p);
+      },
+    }, d.api);
+    const state = await d.api.getState();
+    const store = makeStore({ state, weapons: d.weapons, perks: d.perks, view: 'designer' }, { api });
+    const m = await mount(<StoreCtx.Provider value={store}><Build /></StoreCtx.Provider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('LIFE');
+    await m.click('CUSTOM LIFE');
+    const nameInput = m.find('input[aria-label="preset name"]')[0] as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput, 'RENAMED LIFE');
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await m.click('SAVE ▸');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(calls.length, 'exactly one save').toBe(1);
+    expect('value' in calls[0], 'a name-only save must not send value at all').toBe(false);
     m.unmount();
   });
 });

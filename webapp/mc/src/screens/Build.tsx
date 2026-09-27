@@ -13,6 +13,7 @@ import { viewLabel } from '../frame/CommandBar';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { GhostButton, PrimaryButton, ScreenHeader, SectionRule, Shelf } from '../ui';
+import { pickFallbackNote } from './pieceFallbackNote';
 import { KIND_TABS } from './presets/kinds';
 import { draftOf, isDirty, MAX_NOTE, proposeCopyName, slotNeedsFixedItem, type PieceDraft } from './presets/helpers';
 import { LifeFields, MiscLoadoutsFields, SlotFields, SpawnFields, type CatalogueRow } from './presets/editors';
@@ -50,6 +51,10 @@ export function Build() {
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  // MEDIUM 3 (review follow-up): a value-changing SAVE on a picked piece can fall an INHERITED,
+  // unrelated kind back to its builtin (`resolvePiecesMixed`, the same mechanism PLAY's own pick()
+  // reports) -- shown the same way PLAY shows it (pieceFallbackNote.ts, shared with Games.tsx).
+  const [fallbackNote, setFallbackNote] = useState<string[] | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -114,14 +119,33 @@ export function Build() {
 
   const setDraft = (patch: Partial<PieceDraft>) => setEditing(e => (e ? { ...e, draft: { ...e.draft, ...patch } } : e));
 
+  // MEDIUM 3 (review follow-up): SAVE used to send `value` unconditionally, even for a plain rename --
+  // on a PICKED piece, that recomposes the config exactly as if the value HAD changed (the server
+  // cannot tell "sent but identical" from "sent and changed" either), overwriting whatever a KIT/LOBBY
+  // inline edit had done since and re-pushing every gun for a rename. Only send it when it actually
+  // differs from what the editor opened on.
   const save = async () => {
     if (!editing) return;
     setBusy(true);
+    setFallbackNote(null);
     try {
+      const valueChanged = JSON.stringify(editing.draft.value) !== JSON.stringify(editing.initial.value);
       const saved = editing.action === 'create'
         ? await run(() => api.createPiece({ kind, name: editing.draft.name, note: editing.draft.note, value: editing.draft.value }))
-        : await run(() => api.updatePiece(editing.base.piece_id, { name: editing.draft.name, note: editing.draft.note, value: editing.draft.value }));
+        : await run(async () => {
+            const r = await api.updatePiece(editing.base.piece_id, {
+              name: editing.draft.name, note: editing.draft.note,
+              ...(valueChanged ? { value: editing.draft.value } : {}),
+            });
+            // `ok`/`errors` only ride the reply when `value` reached a recompose (a name/note-only
+            // save never gets them at all) -- an explicit `=== false` check, never a bare `!r.ok`,
+            // since `undefined` here means "nothing to recompose", not "refused".
+            if (r.ok === false) throw Object.assign(new Error(r.errors?.join(' · ') || 'save refused'), { status: 400 });
+            return r;
+          });
       if (!saved) return;   // run() already put the server's words in the error strip
+      const savedFallbacks = (saved as { fallbacks?: PieceKind[] }).fallbacks ?? [];
+      setFallbackNote(pickFallbackNote(savedFallbacks, pieces ?? []));
       setEditing(null); setConfirmLeave(false); setConfirmDelete(false);
       await load();
       setSelected(saved.piece_id);
@@ -168,7 +192,10 @@ export function Build() {
         BUILD CREATES PRESETS. PLAY PICKS THEM.
       </p>
 
-      {piecesError && (
+      {/* Review Low: gated on `connected` the same way Games.tsx's own sibling banner is now -- a
+          stale piecesError must not flash on every reconnect blip while the console is already saying
+          MC_OFFLINE elsewhere. */}
+      {piecesError && connected && (
         <div role="alert" data-alert="build-pieces-error" data-testid="build-pieces-error"
           style={{ font: F.chk(600, 12), letterSpacing: '.02em', color: T.warn, border: `1px solid ${T.warn}`,
             padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -179,10 +206,16 @@ export function Build() {
         </div>
       )}
 
+      {fallbackNote && (
+        <div data-testid="build-fallback-note" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 2, font: F.chk(600, 12), color: T.warn, marginBottom: 16 }}>
+          {fallbackNote.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+      )}
+
       <div role="tablist" aria-label="preset kind" style={{ display: 'flex', flexWrap: 'wrap', gap: 2, borderBottom: `1px solid ${T.line}`, marginBottom: 18 }}>
         {KIND_TABS.map(t => (
           <button key={t.kind} type="button" role="tab" aria-selected={kind === t.kind} data-testid={`build-tab-${t.kind}`}
-            onClick={() => { if (editing && dirty && !confirmLeave) { setConfirmLeave(true); return; } setEditing(null); setConfirmLeave(false); setKind(t.kind); }}
+            onClick={() => { if (editing && dirty && !confirmLeave) { setConfirmLeave(true); return; } setEditing(null); setConfirmLeave(false); setFallbackNote(null); setKind(t.kind); }}
             style={{ background: 'none', border: 'none', borderBottom: `2px solid ${kind === t.kind ? T.acc : 'transparent'}`,
               color: kind === t.kind ? T.ink : T.micro, font: F.chk(700, 11), letterSpacing: '.16em', padding: '10px 14px', minHeight: 44, cursor: 'pointer' }}>
             {t.label}

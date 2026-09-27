@@ -1136,13 +1136,30 @@ export class MockBackend implements Api {
     this.emit();
     return clone(piece);
   }
-  async updatePiece(id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }): Promise<GamePiece> {
+  /** MEDIUM 3 (review follow-up), mirrors `mcp/brx_mcp/mc/api.py pieces_update` exactly: ONLY a value
+   *  change on a PICKED piece recomposes the config -- a name/note-only edit changes no game value and
+   *  must not touch it at all (this used to recompose on EVERY picked-piece save, which overwrote a
+   *  KIT/LOBBY inline edit and re-pushed every gun for a plain rename). The caller (Build.tsx's SAVE)
+   *  is the one that decides whether `value` is even in `p` -- omitted when the draft's value has not
+   *  changed, exactly as this checks `p.value !== undefined`, never comparing against the old value
+   *  itself (the server cannot tell "sent but unchanged" from "sent and changed" either).
+   *
+   *  `ok`/`errors`/`fallbacks` ride the reply the same way `POST /api/play/pick` reports its own, for
+   *  the one case that needs them: a picked piece's value change that reaches `putConfig`. */
+  async updatePiece(id: string, p: { name?: string; note?: string; value?: Record<string, unknown> }):
+    Promise<GamePiece & { ok?: boolean; errors?: string[]; fallbacks?: PieceKind[] }> {
     const piece = this.pieces.find(x => x.piece_id === id);
     if (!piece) throw Object.assign(new Error('no such piece'), { status: 404 });
     if (piece.builtin) throw Object.assign(new Error('a built-in piece cannot be edited — copy it into a new one'), { status: 403 });
-    if (Object.values(this.gamePick.pieces).includes(id) && (this.phase === 'armed' || this.phase === 'live')) {
+    const picked = Object.values(this.gamePick.pieces).includes(id);
+    if (picked && (this.phase === 'armed' || this.phase === 'live')) {
       throw Object.assign(new Error('IN USE BY THE RUNNING GAME'), { status: 409 });
     }
+    // Precheck BEFORE anything is saved: a bad value (or, for a picked piece, one `resolvePiecesMixed`
+    // cannot resolve) must not leave `piece.name`/`.note` mutated ahead of the throw.
+    const willRecompose = picked && p.value !== undefined;
+    const checked = p.value !== undefined ? this.checkPieceValue(piece.kind, p.value) : undefined;
+    const mixed = willRecompose ? this.resolvePiecesMixed(this.gamePick.pieces, new Set([piece.kind])) : undefined;
     if (p.name != null) {
       const nm = p.name.trim();
       if (!nm || nm.length > 24) throw new Error('name must be 1 to 24 characters');
@@ -1151,12 +1168,18 @@ export class MockBackend implements Api {
       piece.name = nm;
     }
     if (p.note != null) piece.note = p.note.slice(0, 80);
-    if (p.value != null) piece.value = this.checkPieceValue(piece.kind, p.value);
+    if (checked !== undefined) piece.value = checked;
     piece.updated_t = now();
-    // "when the piece is in the current pick, MC recomposes the config" (games-presets.md §4)
-    if (Object.values(this.gamePick.pieces).includes(id)) await this.recompose();
+    const out: GamePiece & { ok?: boolean; errors?: string[]; fallbacks?: PieceKind[] } = clone(piece);
+    if (mixed) {
+      const partial = this.composePartial(mixed.ids, this.gamePick.match);
+      const r = await this.putConfig(partial);
+      out.ok = r.ok;
+      out.errors = r.errors;
+      out.fallbacks = mixed.fallbacks;
+    }
     this.emit();
-    return clone(piece);
+    return out;
   }
   async deletePiece(id: string): Promise<void> {
     const piece = this.pieces.find(x => x.piece_id === id);
@@ -1183,8 +1206,15 @@ export class MockBackend implements Api {
     const v = value ?? {};
     switch (kind) {
       case 'life': {
-        const nums = (['max_hp', 'max_armor', 'max_shield'] as const).map(k => Number(v[k]));
-        nums.forEach((n, i) => { if (!Number.isInteger(n) || n < 0 || n > 999) throw new Error(`${(['max_hp', 'max_armor', 'max_shield'] as const)[i]} must be an integer 0..999`); });
+        // Review MEDIUM 4: 0..999 for every field was never the server's own range -- max_hp is the
+        // one number a player cannot have none of (0 HP is not "hardcore", it is dead on arrival).
+        const RANGE = { max_hp: [1, 255], max_armor: [0, 255], max_shield: [0, 255] } as const;
+        const keys = ['max_hp', 'max_armor', 'max_shield'] as const;
+        const nums = keys.map(k => Number(v[k]));
+        nums.forEach((n, i) => {
+          const [lo, hi] = RANGE[keys[i]];
+          if (!Number.isInteger(n) || n < lo || n > hi) throw Object.assign(new Error(`${keys[i]} must be an integer ${lo}..${hi}`), { status: 400 });
+        });
         const [max_hp, max_armor, max_shield] = nums;
         return { max_hp, max_armor, max_shield };
       }
@@ -1212,11 +1242,27 @@ export class MockBackend implements Api {
         if (!['player', 'host', 'fixed', 'off'].includes(choice as string)) throw new Error('choice must be one of player, host, fixed, off');
         if (kind === 'primary' && choice === 'off') throw new Error('primary cannot be off — a player needs something to carry');
         const kinds = kind === 'perks' ? ['perk'] : (Array.isArray(v.kinds) && v.kinds.length ? v.kinds : ['weapon']);
+        const only_ids: string[] = Array.isArray(v.only_ids) ? v.only_ids : [];
+        const fixed_id = choice === 'fixed' ? ((v.fixed_id as string | null) ?? null) : null;
+        // Review MEDIUM 4: a hidden/pickup-only/unknown id used to sail straight through -- refused the
+        // same way the server refuses one, naming what it actually is. The mock's own catalogue carries
+        // no hidden ROW today (only perks.hidden and weapons.pickup_only fields), so "visible" here is
+        // exactly "not excluded by either" -- an id failing that is either unknown or excluded, and
+        // both read the same to the operator: not a pickable one.
+        const pickable = kind === 'perks'
+          ? (id: string) => PERKS.some(k => k.perk_id === id && !k.hidden)
+          : (id: string) => WEAPONS.some(w => w.weapon_id === id && !w.pickup_only);
+        const noun = kind === 'perks' ? 'perk' : 'weapon';
+        for (const oid of only_ids) {
+          if (!pickable(oid)) throw Object.assign(new Error(`${kind}.only_ids names '${oid}', which is not a pickable ${noun}`), { status: 400 });
+        }
+        if (fixed_id != null && !pickable(fixed_id)) {
+          throw Object.assign(new Error(`${kind}.fixed_id names '${fixed_id}', which is not a pickable ${noun}`), { status: 400 });
+        }
         return { choice, kinds,
           exclude_tags: Array.isArray(v.exclude_tags) ? v.exclude_tags : [],
           exclude_ids: Array.isArray(v.exclude_ids) ? v.exclude_ids : [],
-          only_ids: Array.isArray(v.only_ids) ? v.only_ids : [],
-          fixed_id: choice === 'fixed' ? ((v.fixed_id as string | null) ?? null) : null };
+          only_ids, fixed_id };
       }
       case 'misc_loadouts':
         return { hud_select: !!v.hud_select, heavies: v.heavies !== false };
@@ -1263,8 +1309,6 @@ export class MockBackend implements Api {
     };
     return partial;
   }
-  /** Re-apply the current pick's pieces (a piece just edited under it changed shape). */
-  private async recompose() { await this.pick({}); }
   /** F411 `POST /api/play/pick` (games-presets.md §4). `ok: false` changes nothing: not the pick, not
    *  the config — so a content-validation failure rolls the config back rather than leaving the two
    *  disagreeing. A bad piece id/kind/post_mvp pick, or a bad match value, throws before anything is
