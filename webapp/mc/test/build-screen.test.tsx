@@ -196,3 +196,25 @@ describe('BUILD — MEDIUM 3 (review): SAVE sends value only when it changed', (
     m.unmount();
   });
 });
+
+describe('BUILD — review: an invalid piece shows greyed with its reason, still EDIT/DELETE-able', () => {
+  it('shows the stored reason, and clicking it still opens the editor', async () => {
+    const d = await demo();
+    const p = await d.api.createPiece({ kind: 'primary', name: 'OLD FAVOURITE',
+      value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'assault_rifle' } });
+    const REASON = 'NAMES FORCE RIFLE, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK';
+    (d.api as unknown as { pieces: { piece_id: string; invalid?: string }[] }).pieces
+      .find(x => x.piece_id === p.piece_id)!.invalid = REASON;
+    const state = await d.api.getState();
+    const store = makeStore({ state, weapons: d.weapons, perks: d.perks, view: 'designer' }, { api: d.api });
+    const m = await mount(<StoreCtx.Provider value={store}><Build /></StoreCtx.Provider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    await m.click('PRIMARY');
+    expect(m.find('[data-testid="piece-invalid-reason"]').length).toBe(1);
+    expect(m.find('[data-testid="piece-invalid-reason"]')[0].textContent).toContain(REASON);
+    await m.click('OLD FAVOURITE');
+    expect(m.find('input[aria-label="preset name"]').length, 'EDIT still opens it').toBe(1);
+    expect(m.find('button').some(b => (b.textContent ?? '').includes('DELETE')), 'DELETE is still offered').toBe(true);
+    m.unmount();
+  });
+});

@@ -1168,7 +1168,9 @@ export class MockBackend implements Api {
       piece.name = nm;
     }
     if (p.note != null) piece.note = p.note.slice(0, 80);
-    if (checked !== undefined) piece.value = checked;
+    // Round 3 (invalid preset field): a PUT with a value the CURRENT rules accept clears `invalid` --
+    // `checkPieceValue` above already threw if this value would not; reaching here means it does.
+    if (checked !== undefined) { piece.value = checked; delete piece.invalid; }
     piece.updated_t = now();
     const out: GamePiece & { ok?: boolean; errors?: string[]; fallbacks?: PieceKind[] } = clone(piece);
     if (mixed) {
@@ -1244,20 +1246,26 @@ export class MockBackend implements Api {
         const kinds = kind === 'perks' ? ['perk'] : (Array.isArray(v.kinds) && v.kinds.length ? v.kinds : ['weapon']);
         const only_ids: string[] = Array.isArray(v.only_ids) ? v.only_ids : [];
         const fixed_id = choice === 'fixed' ? ((v.fixed_id as string | null) ?? null) : null;
-        // Review MEDIUM 4: a hidden/pickup-only/unknown id used to sail straight through -- refused the
-        // same way the server refuses one, naming what it actually is. The mock's own catalogue carries
-        // no hidden ROW today (only perks.hidden and weapons.pickup_only fields), so "visible" here is
-        // exactly "not excluded by either" -- an id failing that is either unknown or excluded, and
-        // both read the same to the operator: not a pickable one.
+        // Review MEDIUM 4 / round 3 HIGH 1: a hidden/pickup-only/unknown id used to sail straight
+        // through -- refused with the SAME words `check_value`/`_check_slot` uses, which is also the
+        // exact reason text a stored piece's own `invalid` field carries (games-presets.md's "invalid"
+        // shape) when a rule tightens under it later. The mock's own catalogue carries no hidden ROW
+        // today (only perks.hidden and weapons.pickup_only), so "pickable" here is exactly "not
+        // excluded by either" -- an id failing that is either unknown or excluded, and both read the
+        // same to the operator: not offered any more.
         const pickable = kind === 'perks'
           ? (id: string) => PERKS.some(k => k.perk_id === id && !k.hidden)
           : (id: string) => WEAPONS.some(w => w.weapon_id === id && !w.pickup_only);
-        const noun = kind === 'perks' ? 'perk' : 'weapon';
-        for (const oid of only_ids) {
-          if (!pickable(oid)) throw Object.assign(new Error(`${kind}.only_ids names '${oid}', which is not a pickable ${noun}`), { status: 400 });
-        }
-        if (fixed_id != null && !pickable(fixed_id)) {
-          throw Object.assign(new Error(`${kind}.fixed_id names '${fixed_id}', which is not a pickable ${noun}`), { status: 400 });
+        const displayOf = (id: string) => {
+          const row = kind === 'perks' ? PERKS.find(k => k.perk_id === id) : WEAPONS.find(w => w.weapon_id === id);
+          return (row?.name ?? id.replace(/_/g, ' ')).toUpperCase();
+        };
+        const named = [...(fixed_id != null ? [fixed_id] : []), ...only_ids];
+        const bad = named.filter(id => !pickable(id));
+        if (bad.length) {
+          const names = [...new Set(bad.map(displayOf))].join(', ');
+          const verb = bad.length === 1 ? 'IS' : 'ARE';
+          throw Object.assign(new Error(`NAMES ${names}, WHICH ${verb} NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK`), { status: 400 });
         }
         return { choice, kinds,
           exclude_tags: Array.isArray(v.exclude_tags) ? v.exclude_tags : [],
@@ -1417,12 +1425,16 @@ export class MockBackend implements Api {
         if (!piece) throw Object.assign(new Error(`unknown piece id '${pid}'`), { status: 404 });
         if (piece.kind !== kind) throw Object.assign(new Error(`piece '${pid}' is a ${piece.kind} piece, not ${kind}`), { status: 400 });
         if (piece.post_mvp) throw Object.assign(new Error(`'${piece.name}' is post-MVP and cannot be picked yet`), { status: 400 });
+        // Round 3 (invalid preset field): a piece a rule tightened under is kept, shown in BUILD, but
+        // never pickable -- the REQUEST naming it directly gets its own stored reason as the 400,
+        // exactly as if it had just failed that same check live.
+        if (piece.invalid) throw Object.assign(new Error(piece.invalid), { status: 400 });
         out[kind] = pid;
         continue;
       }
       const piece = pid ? this.pieces.find(x => x.piece_id === pid) : undefined;
-      if (piece && piece.kind === kind && !piece.post_mvp) { out[kind] = pid; continue; }
-      out[kind] = this.pieces.find(x => x.kind === kind && !x.post_mvp)!.piece_id;
+      if (piece && piece.kind === kind && !piece.post_mvp && !piece.invalid) { out[kind] = pid; continue; }
+      out[kind] = this.pieces.find(x => x.kind === kind && !x.post_mvp && !x.invalid)!.piece_id;
       fallbacks.push(kind);
     }
     return { ids: out, fallbacks };
