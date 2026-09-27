@@ -15,6 +15,9 @@ Many agents push to `main` at once. Each of them used to run the full gate befor
 runs were repeats. With the land lane, you submit a branch instead. One lander at a time merges a batch of
 submitted branches onto `main`, gates the batch once, and pushes it.
 
+It needs **git 2.38 or later** (`git --version`), because its conflict check uses `git merge-tree --write-tree`.
+It refuses to start on an older git. On a Mac, `brew install git` and check that `which git` is the Homebrew one.
+
 ### The flow
 
 1. Commit your work on a branch. Run the gate that fits your change (`CONTRIBUTING.md` → *Running things*).

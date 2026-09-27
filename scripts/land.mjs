@@ -72,7 +72,19 @@ const lines = s => s.split('\n').map(l => l.trim()).filter(Boolean);
 
 // ---- the guard ---------------------------------------------------------------------------------------------------
 const isLocalUrl = u => u.startsWith('file://') || path.isAbsolute(u);
+// `git merge-tree --write-tree` (the conflict check) needs git 2.38 or later. Apple's git on a Mac can be older.
+const GIT_MIN = [2, 38];
+const FAKE_GIT_VERSION = process.env.LAND_FAKE_GIT_VERSION || '';   // test-only: refused unless LAND_TEST=1
+async function checkGitVersion() {
+  if (FAKE_GIT_VERSION && !TEST) die('LAND_FAKE_GIT_VERSION is test-only: it is refused unless LAND_TEST=1');
+  const raw = FAKE_GIT_VERSION || (await git(['--version'], { ok: true })).out;
+  const m = /(\d+)\.(\d+)/.exec(raw);
+  const ok = m && (Number(m[1]) > GIT_MIN[0] || (Number(m[1]) === GIT_MIN[0] && Number(m[2]) >= GIT_MIN[1]));
+  if (!ok) die(`git ${GIT_MIN.join('.')} or later is needed (found "${raw.trim() || 'no git'}"). On a Mac: `
+    + '`brew install git`, then check that `which git` is /opt/homebrew/bin/git (or /usr/local/bin/git).');
+}
 async function guard() {
+  await checkGitVersion();
   if (STUB && !TEST) die('LAND_GATE_STUB is test-only: it is refused unless LAND_TEST=1');
   if (INSTALL_STUB && !TEST) die('LAND_INSTALL_STUB is test-only: it is refused unless LAND_TEST=1');
   const url = await git(['remote', 'get-url', REMOTE], { ok: true });

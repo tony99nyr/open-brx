@@ -589,3 +589,17 @@ def test_me_a_changed_package_lock_is_installed_in_the_scratch_tree_not_linked()
         _assert_landed(t, c)
         assert len((t.dir / "installs.jsonl").read_text().splitlines()) == 1
         assert sentinel.read_text() == "main"
+
+
+def test_an_old_git_is_refused_with_the_fix():
+    """brx1's check of 702fb334: `git merge-tree --write-tree` needs git 2.38+, and Apple's git can be older."""
+    with Lane() as t:
+        for old in ("git version 2.37.1 (Apple Git-137.1)", "git version 1.9.0"):
+            r = t.land("status", env=t.env(LAND_FAKE_GIT_VERSION=old))
+            assert r.returncode == 4 and "2.38 or later" in r.stderr and "brew install git" in r.stderr, r.stderr
+        r = t.land("status", env=t.env(LAND_FAKE_GIT_VERSION="git version 2.38.0"))
+        assert "2.38 or later" not in r.stderr, r.stderr
+        env = t.env(LAND_FAKE_GIT_VERSION="git version 2.99.0")
+        del env["LAND_TEST"]
+        r = t.land("status", env=env)
+        assert r.returncode == 4 and "LAND_FAKE_GIT_VERSION is test-only" in r.stderr, r.stderr
