@@ -232,15 +232,15 @@ step('controls', async ({ browser, base }) => {
 });
 
 step('mode-switch-confirm', async ({ browser, base }) => {
-  // F-6 (splitLine), restored: TDM's demo roster is 4 BLUE / 4 YELLOW; KOTH's own teams are BLUE and
-  // PURPLE, so this reshapes -- the first tap must ask, not send.
+  // F-6 (splitLine), restored: TDM's demo roster is 4 BLUE / 4 YELLOW; a mode change now gives red+blue
+  // (F413 scope decision, 2026-09-27), so this reshapes -- the first tap must ask, not send.
   const pg = await open(browser, base, '?mock#build', 1280);
   const before = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
   expect(before === 'tdm', 'control: the demo starts on TDM');
   await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
   await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm');
   const split = await pg.getByTestId('confirm-split').innerText();
-  expect(split === '▲ 8 PLAYERS → BLUE 4 / PURPLE 4', `the predicted split is shown (saw ${JSON.stringify(split)})`);
+  expect(split === '▲ 8 PLAYERS → RED 4 / BLUE 4', `the predicted split is shown (saw ${JSON.stringify(split)})`);
   const mid = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
   expect(mid === 'tdm', 'the first tap must not have reached the server');
   await shot(pg, 'mode-switch-confirm-armed');

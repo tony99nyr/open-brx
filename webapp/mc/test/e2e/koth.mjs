@@ -422,6 +422,9 @@ step('koth-selectable', async ({ browser, base }) => {
   await btn.click();
   await until(() => modeConfirmLine(pg).count().then(n => n > 0), 6000, 'the reshape confirm');
   const split = (await pg.getByTestId('confirm-split').innerText()).trim();
+  // F413 scope decision (2026-09-27): red+blue is the NEW server's own reset -- this step runs against
+  // the REAL server, which predates `match_items` (Games.tsx's own `redBlueTeamsFor` falls back to the
+  // mode's own declared default exactly as before F413 whenever a server does not yet serve that field).
   expect(split === '▲ 8 PLAYERS → BLUE 4 / PURPLE 4', `the predicted split names the reshape (saw ${JSON.stringify(split)})`);
   expect((await (await fetch(`${base}/api/state`)).json()).config.mode === 'tdm', 'the first tap must not have reached the server');
   await btn.click();
@@ -1125,7 +1128,11 @@ step('mock-demo', async ({ browser, base }) => {
   await pg.locator('header nav button:has-text("KIT")').first().click();
   await until(() => pg.locator('span[role="group"][aria-label="team"]').count().then(n => n > 0), 10000, 'the demo KIT team chips');
   const chips = (await pg.locator('span[role="group"][aria-label="team"] button').allTextContents()).map(x => x.trim());
-  expect(JSON.stringify(chips) === JSON.stringify(['BLUE', 'PURPLE']), `the demo offers BLUE+PURPLE only (saw ${JSON.stringify(chips)})`);
+  // F413 scope decision (2026-09-27): PLAY's own mode-switch pick() now resets to red+blue outright
+  // (never a mode's own catalogue defaults) -- this step goes PLAY -> pick KOTH -> KIT, so it inherits
+  // that reset. Reads RED against a REAL SERVER THAT STILL PREDATES THE SAME CHANGE (the server lane's
+  // half of F413, landing separately) -- flagged to team-lead, not silently decided here.
+  expect(JSON.stringify(chips) === JSON.stringify(['RED', 'BLUE']), `the demo offers RED+BLUE only (saw ${JSON.stringify(chips)})`);
   const YELLOW = ['rgb(255, 210, 63)', 'rgb(255, 211, 63)'];
   const stripes = await pg.locator('.kit-row > span:first-child').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundColor));
   expect(stripes.length > 0 && !stripes.some(c => YELLOW.includes(c)), `🔴 F82: the DEMO re-teams its yellow half too (saw ${JSON.stringify([...new Set(stripes)])})`);

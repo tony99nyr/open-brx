@@ -1012,15 +1012,18 @@ const base = (mode: string, over: Partial<GameConfig> = {}): ConfigView => ({
   respawn: { type: 'auto', delay_s: 15 },
   scoring: { frag_limit: null, win_by: 'kills' },
   health: { max_hp: 45, max_armor: 70, max_shield: 0, preset: 'standard' },   // S45: the Standard preset
-  // F413 (games-presets.md §7) says a FRESH pick defaults to red/blue -- but this `base()` also builds
-  // the STATIC DEMO's own INITIAL config (`this.config = withPolicy(clone(MODES[0].defaults))`), whose
-  // PLAYERS fixture is hardcoded to blue/yellow team_id strings across dozens of unrelated tests this
-  // lane does not own (Lobby/Items/spectate). Changing this default alone stranded half that roster on
-  // a team_id no longer in `config.teams`, breaking 66 tests outside games-presets.md's own scope.
-  // Console decision: the spec's red/blue default lives in `pick()`'s own TEAMS compose logic instead
-  // (a FRESH pick naming no `match.teams`), never in this shared demo-construction default. Flagged to
-  // team-lead -- if the real server's OWN default_config('tdm') is genuinely red/blue, the demo's
-  // PLAYERS fixture (and every test asserting BLUE/YELLOW) needs its own pass, out of this round's scope.
+  // F413 (games-presets.md §7) says a FRESH pick or a mode change defaults to red/blue -- but this
+  // `base()` ALSO builds the STATIC DEMO's own INITIAL config (`this.config =
+  // withPolicy(clone(MODES[0].defaults))`), whose PLAYERS fixture is hardcoded to blue/yellow team_id
+  // strings across dozens of unrelated tests this lane does not own (Lobby/Items/spectate). Team-lead's
+  // scope decision (2026-09-27): pick/compose (a fresh pick, a mode change, default_config) gives
+  // red+blue, but this demo fixture and its initial config are a SESSION ALREADY IN PROGRESS, not a
+  // fresh one -- they keep the old colours on purpose, so those 66 tests stay untouched. The red/blue
+  // default itself lives in `pick()`'s own mode-changed reset (never here); `Games.tsx`'s own
+  // client-side split prediction mirrors the SAME red/blue, not `defaults.teams`, so its confirm never
+  // disagrees with what actually lands. KOTH's own `defaults.teams` below (blue/purple) is likewise
+  // untouched -- it only still feeds a DIRECT `putConfig` mode switch (GameEditPanel's inline edit,
+  // out of this lane), never `pick()`'s own reset any more.
   teams: [TEAMS[0], TEAMS[1]],
   loadout_policy: defaultPolicy(mode),
   ...over,

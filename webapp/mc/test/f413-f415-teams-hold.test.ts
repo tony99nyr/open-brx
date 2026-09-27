@@ -45,13 +45,17 @@ describe('F413: match.teams validation', () => {
   });
 });
 
-describe('F413: a mode change resets teams to the new mode’s own default, like the limits', () => {
-  it('TDM -> KOTH resets to KOTH’s own declared teams (blue/purple)', async () => {
+describe('F413: a mode change resets teams to red+blue, like the limits', () => {
+  // Team-lead's scope decision (2026-09-27): pick/compose (a fresh pick, a mode change) gives red+blue
+  // outright, never the mode's own catalogue `defaults.teams` (KOTH's own row still declares
+  // blue/purple, but that now only feeds the static demo fixture and a direct putConfig mode switch --
+  // mock/data.ts's own base() comment has the full reasoning).
+  it('TDM -> KOTH resets to red+blue', async () => {
     const b = new MockBackend();
     await b.pick({ match: { teams: ['red', 'yellow', 'purple'] } });
     const r = await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
     expect(r.ok).toBe(true);
-    expect((await b.getState()).game_pick!.match.teams).toEqual(['blue', 'purple']);
+    expect((await b.getState()).game_pick!.match.teams).toEqual(['red', 'blue']);
   });
 });
 

@@ -114,7 +114,7 @@ describe('PLAY — round 4: a mode switch that reshapes the roster asks first (F
     expect(after.config.mode, 'the first tap must not reach the server').toBe('tdm');
     const split = m.find('[data-testid="confirm-split"]')[0];
     expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
-    expect(split.textContent).toBe('▲ 8 PLAYERS → BLUE 4 / PURPLE 4');   // KOTH's own teams, blue + purple
+    expect(split.textContent).toBe('▲ 8 PLAYERS → RED 4 / BLUE 4');   // F413 scope decision: a mode change gives red+blue
     expect(m.text()).toContain('TAP AGAIN TO SWITCH');
     m.unmount();
   });
@@ -155,6 +155,11 @@ describe('PLAY — round 4: a mode switch that reshapes the roster asks first (F
 });
 
 describe('PLAY — review follow-up: loading a FAVOURITE that reshapes the roster asks first too', () => {
+  // F413 scope decision (2026-09-27): this favourite carries NO explicit `match.teams` (an older
+  // favourite, saved before F413) -- loading it still reshapes, but through `putConfig`'s own
+  // mode-changed BASE rebuild (the NEW mode's own catalogue `defaults.teams`, blue/purple for KOTH),
+  // never through pick()'s red/blue reset (that path is `pick()`'s alone; a SEPARATE test would be
+  // needed for a favourite saved WITH an explicit teams list, e.g. one from a fresh red/blue pick).
   async function favouriteToKoth(api: MockBackend) {
     const before = await api.getState();
     await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,

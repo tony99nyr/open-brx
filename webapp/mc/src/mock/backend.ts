@@ -1393,9 +1393,15 @@ export class MockBackend implements Api {
       // `defaults.teams` alone: a SOLO mode (FFA) still carries one placeholder team (`team_id: 'ffa'`,
       // gameSummary.ts's own SOLO_MODES rule) that is not a real TeamColour and must never reach
       // `match.teams` -- it composed into a config.teams row TEAMS.find() could never resolve.
-      // hold_target_s always resets to null (KOTH's own default, "no target"), whether entering or
-      // leaving KOTH.
-      match.teams = modeInfo.match_items?.includes('teams') ? modeInfo.defaults.teams.map(t => t.team_id as TeamColour) : undefined;
+      //
+      // team-lead's scope decision (2026-09-27): a FRESH pick or a MODE CHANGE through `pick()` gives
+      // red + blue outright -- never `modeInfo.defaults.teams` (still blue/yellow for TDM, blue/purple
+      // for KOTH in MODES, unchanged: that table also seeds the STATIC DEMO's own initial config and a
+      // direct `putConfig` mode switch, e.g. GameEditPanel's inline edit, which stay on the OLD colours
+      // deliberately -- data.ts's own `base()` comment has the full reasoning). `Games.tsx`'s own
+      // client-side prediction (`pickMode`/`loadFavourite`) mirrors this SAME red/blue default, not
+      // `defaults.teams` either, so the confirm it shows never disagrees with what actually lands.
+      match.teams = modeInfo.match_items?.includes('teams') ? ['red', 'blue'] : undefined;
       match.hold_target_s = null;
     }
     const pm = p.match ?? {};
