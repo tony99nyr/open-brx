@@ -76,6 +76,19 @@ const PORT = srv.address().port;
 let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
+// Every page's Date.now() runs on the monotonic clock, the one the steps' own waits use. The engine times its badges,
+// delays and countdowns with Date.now(); a host whose wall clock steps (2026-09-27: a WSL boot with a mis-calibrated
+// TSC, and timesyncd stepping the clock +3 s every 32 s) expired them early at random, so about ten timing steps went
+// red on an unchanged main. A step that fakes time (`pg.clock.install()`) replaces Date after this and is unaffected.
+const MONOTONIC_DATE = () => {
+  const native = f => /\[native code\]/.test(Function.prototype.toString.call(f));
+  if (!native(Date.now) || !native(performance.now)) return;   // a faked clock is already in charge
+  const mono = performance.now.bind(performance), base = Date.now() - mono();   // bound now: never calls a later fake
+  Date.now = () => Math.floor(base + mono());
+};
+const newPage = b.newPage.bind(b), newContext = b.newContext.bind(b);
+b.newPage = async o => { const p = await newPage(o); await p.addInitScript(MONOTONIC_DATE); return p; };
+b.newContext = async o => { const c = await newContext(o); await c.addInitScript(MONOTONIC_DATE); return c; };
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live-spawn-lost', 'live-switch-kill', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
