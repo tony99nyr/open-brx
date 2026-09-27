@@ -8,6 +8,9 @@
 // listed there as not a gate). Measure its peak memory and its time, and put them in `mb` and `secs`.
 //   pnpm run test:all -- mcp app      # only the jobs whose name contains one of these words
 //   pnpm run test:all -- --list       # print the job names and stop
+//   pnpm run test:all -- --changed [base] --list   # dry run: which jobs would --changed pick, and why
+//     (the base, if given, is the token RIGHT AFTER --changed, e.g. `--changed abc123`, not `abc123 --changed`;
+//     see scripts/lib/changed.mjs's defaultBase() for what "no base" means)
 //
 // Why (2026-09-16). An agent ran the suites one after another, and the browser gates ran serially inside themselves,
 // so a full run took about 30 minutes, 22 of them in `ui:screens`. Every suite is independent of the others once the
