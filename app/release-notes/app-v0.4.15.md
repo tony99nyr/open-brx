@@ -8,6 +8,9 @@ used a test key, and Android will not update across keys.
 - **A kill on a RED player now confirms with the right team.** Red is team 0 and now the default in every game, and
   the phone used to treat team 0 as "unknown" when it paired a kill confirm, so a red victim's confirm could pair
   with any team's.
+- **Queued voice cues play whole and in order (F419).** A queued cue now waits until the clip before it has ended,
+  so cues that arrive close together are no longer cut, dropped or reordered by the gun. Urgent lines never wait,
+  and a cue that would start more than 6 s late is skipped.
 - **The phone hill uses the same default range as the Stick and Mission Control: -75 dBm (F383).** The outdoor walk
   will set the final value.
 
