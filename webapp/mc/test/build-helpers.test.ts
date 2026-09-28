@@ -8,9 +8,8 @@
 import { describe, expect, it } from 'vitest';
 import type { GamePiece } from '../src/api/contract.gen';
 import {
-  deriveTypeSelection, draftOf, guardSpawnDelay, idsCoveredByActiveTypes, idsForType, isDirty,
-  proposeCopyName, slotNeedsFixedItem, spawnBuiltinValue, toggleManualId, toggleType, typeSelectionIds,
-  typesOf, type TypeSelection,
+  draftOf, guardSpawnDelay, idsForType, isDirty, proposeCopyName, slotNeedsFixedItem, spawnBuiltinValue,
+  toggleTypeIds, typeChipState, typesOf,
 } from '../src/screens/presets/helpers';
 
 describe('guardSpawnDelay (QA-15: a typed 1 or 2 always snaps UP to 3, never down to 0)', () => {
@@ -73,7 +72,8 @@ describe('typesOf / idsForType (F411 type-toggle snapshot, replaces the old clas
   });
 });
 
-describe('TypeSelection (F411 type toggles: union, and toggle-off keeps hand picks)', () => {
+describe('typeChipState / toggleTypeIds (F411 follow-up 2026-09-28: the TYPE chip is a SHORTCUT over ' +
+  'only_ids, not a rule -- no selection is stored anywhere but the plain id list)', () => {
   const cat = [
     { id: 'assault_rifle', types: ['rifle'] },
     { id: 'burst_rifle', types: ['rifle'] },
@@ -82,65 +82,38 @@ describe('TypeSelection (F411 type toggles: union, and toggle-off keeps hand pic
     { id: 'shotgun', types: ['close'] },
   ];
 
-  it('turning a type on unions its ids into only_ids', () => {
-    const sel = toggleType({ manual: [], active: [] }, 'rifle');
-    expect(typeSelectionIds(sel, cat).sort()).toEqual(['assault_rifle', 'bolt_rifle', 'burst_rifle']);
+  it('reads OFF when none of the type\'s ids are selected', () => {
+    expect(typeChipState(cat, 'rifle', [])).toBe('off');
+    expect(typeChipState(cat, 'rifle', ['shotgun'])).toBe('off');
   });
 
-  it('several active types union together', () => {
-    let sel: TypeSelection = { manual: [], active: [] };
-    sel = toggleType(sel, 'rifle');
-    sel = toggleType(sel, 'long');
-    expect(typeSelectionIds(sel, cat).sort()).toEqual(['amr', 'assault_rifle', 'bolt_rifle', 'burst_rifle']);
+  it('reads PARTIAL when some but not all of the type\'s ids are selected', () => {
+    expect(typeChipState(cat, 'rifle', ['assault_rifle'])).toBe('partial');
   });
 
-  it('toggling a type off removes only the weapons that only that type had selected', () => {
-    let sel: TypeSelection = { manual: [], active: [] };
-    sel = toggleType(sel, 'rifle');
-    sel = toggleType(sel, 'long');           // rifle+long active: bolt_rifle covered by both
-    sel = toggleType(sel, 'rifle');          // rifle off again: long still covers bolt_rifle and amr
-    expect(typeSelectionIds(sel, cat).sort()).toEqual(['amr', 'bolt_rifle']);
+  it('reads ON only when every one of the type\'s ids is selected', () => {
+    expect(typeChipState(cat, 'rifle', ['assault_rifle', 'burst_rifle', 'bolt_rifle'])).toBe('on');
   });
 
-  it('a hand-picked weapon survives its type being switched off', () => {
-    let sel: TypeSelection = { manual: ['shotgun'], active: [] };
-    sel = toggleType(sel, 'rifle');
-    expect(typeSelectionIds(sel, cat).sort()).toEqual(['assault_rifle', 'bolt_rifle', 'burst_rifle', 'shotgun']);
-    sel = toggleType(sel, 'rifle');          // rifle off: the hand pick stays, the type's own ids go
-    expect(typeSelectionIds(sel, cat)).toEqual(['shotgun']);
+  it('clicking an OFF chip ticks every id of that type, unioned with what is already selected', () => {
+    expect(toggleTypeIds(['shotgun'], cat, 'rifle').sort()).toEqual(['assault_rifle', 'bolt_rifle', 'burst_rifle', 'shotgun']);
   });
 
-  it('toggleManualId adds/removes one id from the hand-picked set', () => {
-    let sel: TypeSelection = { manual: [], active: [] };
-    sel = toggleManualId(sel, 'shotgun');
-    expect(typeSelectionIds(sel, cat)).toEqual(['shotgun']);
-    sel = toggleManualId(sel, 'shotgun');
-    expect(typeSelectionIds(sel, cat)).toEqual([]);
+  it('clicking a PARTIAL chip fills in the rest of that type\'s ids (still a union, not a replace)', () => {
+    expect(toggleTypeIds(['assault_rifle'], cat, 'rifle').sort()).toEqual(['assault_rifle', 'bolt_rifle', 'burst_rifle']);
   });
 
-  it('idsCoveredByActiveTypes names ids an individual chip cannot remove on its own', () => {
-    const sel = toggleType({ manual: [], active: [] }, 'rifle');
-    const covered = idsCoveredByActiveTypes(sel, cat);
-    expect(covered.has('assault_rifle')).toBe(true);
-    expect(covered.has('shotgun')).toBe(false);
+  it('clicking an ON chip unticks every id of that type, even one another type also covers', () => {
+    // bolt_rifle is both rifle and long -- turning RIFLE off drops it too, because nothing here
+    // remembers "long also wanted it"; that is the point of a shortcut, not a rule.
+    const onlyIds = ['assault_rifle', 'burst_rifle', 'bolt_rifle', 'amr'];
+    expect(toggleTypeIds(onlyIds, cat, 'rifle').sort()).toEqual(['amr']);
   });
 
-  it('deriveTypeSelection reads a fully-covered type back as active, and reproduces the same ids', () => {
-    // `close` has only one member here (shotgun), so a fully-selected `close` and a hand-picked
-    // shotgun are the same only_ids -- genuinely ambiguous with no provenance, and the deriver
-    // reasonably reads it as the type being active rather than a hand pick.
-    const onlyIds = ['assault_rifle', 'burst_rifle', 'bolt_rifle', 'shotgun'];
-    const sel = deriveTypeSelection(onlyIds, cat);
-    expect(sel.active.slice().sort()).toEqual(['close', 'rifle']);
-    expect(sel.manual).toEqual([]);
-    expect(typeSelectionIds(sel, cat).sort()).toEqual([...onlyIds].sort());
-  });
-
-  it('deriveTypeSelection treats a partial type match as all hand-picked (no active type)', () => {
-    const onlyIds = ['assault_rifle'];   // only one of the two plain rifles -- not the whole type
-    const sel = deriveTypeSelection(onlyIds, cat);
-    expect(sel.active).toEqual([]);
-    expect(sel.manual).toEqual(['assault_rifle']);
+  it('unticking one weapon by hand leaves its type reading PARTIAL, not locked', () => {
+    const afterClick = toggleTypeIds([], cat, 'rifle');                          // RIFLES -> on
+    const afterUntick = afterClick.filter(id => id !== 'assault_rifle');        // hand-untick one
+    expect(typeChipState(cat, 'rifle', afterUntick)).toBe('partial');
   });
 });
 

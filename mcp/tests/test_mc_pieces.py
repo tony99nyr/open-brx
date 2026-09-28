@@ -17,6 +17,7 @@ import tempfile
 from _skip import needs
 from brx_mcp.mc import gamepick as G
 from brx_mcp.mc import policy as P
+from brx_mcp.mc.compile import WeaponCatalog
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.pieces import BUILTIN_IDS, PieceError, PieceStore, check_value
 from brx_mcp.mc.state import MODES, Session, TEAM_DEFS, default_config
@@ -234,6 +235,31 @@ def test_high1_a_weapon_since_hidden_keeps_the_piece_read_only_with_a_reason():
     row = next(r for r in st2.list() if r["name"] == "Old Loadout")
     assert row["invalid"] == "NAMES FORCE RIFLE, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK"
     assert row["value"]["fixed_id"] == "force_rifle"   # kept verbatim, not repaired
+
+
+def test_old_shape_type_rule_expands_to_plain_ids_on_load():
+    """F411 follow-up (Tony, bench 2026-09-28): the BUILD TYPE chip used to be a RULE that could leave a
+    bare type token (`rifle` and so on) sitting in `only_ids` in place of ids. Loading a piece in that
+    old shape must expand the token to the type's own VISIBLE weapon ids -- the hidden-weapon guard
+    every other picker gets -- so nothing silently changes for a saved preset: not refused as an unknown
+    id, and the token itself never reaches the console."""
+    _, path = _store()
+    path.write_text(json.dumps({"v": 1, "pieces": [
+        {"piece_id": "z1", "kind": "primary", "name": "Old Rifles",
+         "value": {"choice": "player", "only_ids": ["rifle"]}},
+        {"piece_id": "z2", "kind": "secondary", "name": "Old Rifles Plus One",
+         "value": {"choice": "player", "kinds": ["weapon"], "only_ids": ["rifle", "amr"]}},
+    ]}))
+    st2 = PieceStore(path)
+    rows = {r["name"]: r for r in st2.list()}
+    rifle_ids = sorted(w["weapon_id"] for w in WeaponCatalog().all()
+                       if "rifle" in (w.get("types") or []) and not w.get("pickup_only"))
+    assert "invalid" not in rows["Old Rifles"], rows["Old Rifles"].get("invalid")
+    assert sorted(rows["Old Rifles"]["value"]["only_ids"]) == rifle_ids
+    assert "rifle" not in rows["Old Rifles"]["value"]["only_ids"]
+    # a real id alongside the token survives, de-duplicated against the token's own expansion
+    assert "invalid" not in rows["Old Rifles Plus One"], rows["Old Rifles Plus One"].get("invalid")
+    assert sorted(rows["Old Rifles Plus One"]["value"]["only_ids"]) == sorted(set(rifle_ids) | {"amr"})
 
 
 def _pclient_with_pieces_file(rows):

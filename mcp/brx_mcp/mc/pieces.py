@@ -175,6 +175,44 @@ def _display(item_id: str) -> str:
     return _id_names().get(item_id, item_id.replace("_", " ")).upper()
 
 
+# F411 follow-up (Tony, bench 2026-09-28): the BUILD TYPE chip used to be a RULE -- it stored the type
+# itself and locked the ids it covered. It is now a SHORTCUT: clicking it only ever ticks or unticks
+# plain ids, so `only_ids` never carries anything but real weapon/perk ids from here on. A piece saved
+# by the OLD chip, or a hand-written one, can still hold a bare TYPE token (`rifle`/`close`/`long`/
+# `sidearm`/`support` -- `WEAPON_TYPES`, `webapp/mc/src/screens/presets/helpers.ts`) in place of ids;
+# `_check_slot` would otherwise refuse the whole piece as "no longer offered" (a type token is never a
+# real id). `_migrate_type_tokens` expands one ON LOAD, so an old preset keeps exactly the weapons it
+# used to mean instead of silently losing them or its whole slot.
+_WEAPON_TYPE_IDS = frozenset({"rifle", "close", "long", "sidearm", "support"})
+
+
+def _expand_type_tokens(only_ids: object) -> object:
+    if not isinstance(only_ids, list) or not any(isinstance(i, str) and i in _WEAPON_TYPE_IDS for i in only_ids):
+        return only_ids
+    weapons = WeaponCatalog().all()   # VISIBLE only -- the same hidden-weapon guard as `_pickable_ids()`
+    out: list[str] = []
+    seen: set[str] = set()
+    for i in only_ids:
+        if isinstance(i, str) and i in _WEAPON_TYPE_IDS:
+            for w in weapons:
+                wid = w["weapon_id"]
+                if i in (w.get("types") or []) and not w.get("pickup_only") and wid not in seen:
+                    seen.add(wid)
+                    out.append(wid)
+        elif isinstance(i, str) and i not in seen:
+            seen.add(i)
+            out.append(i)
+    return out
+
+
+def _migrate_type_tokens(kind: str, value: object) -> object:
+    """Read-path only (`PieceStore._load`/`_clean_row`) -- never on a live `create`/`update`, where a
+    bad id in a freshly-sent `only_ids` must still be refused as a typo, not silently rewritten."""
+    if kind not in ("primary", "secondary", "perks") or not isinstance(value, dict) or "only_ids" not in value:
+        return value
+    return {**value, "only_ids": _expand_type_tokens(value["only_ids"])}
+
+
 def _check_slot(kind: PieceKind, v: object) -> dict:
     try:
         rule = _policy._check_rule(_SLOT_OF_KIND[kind], v if isinstance(v, dict) else {})
@@ -284,7 +322,7 @@ class PieceStore:
             raise ValueError(f"bad kind {kind!r}")
         name = self._check_name(r.get("name"))
         note = self._check_note(r.get("note"))
-        raw_value = r.get("value")
+        raw_value = _migrate_type_tokens(kind, r.get("value"))
         invalid: str | None = None
         try:
             value = check_value(kind, raw_value)

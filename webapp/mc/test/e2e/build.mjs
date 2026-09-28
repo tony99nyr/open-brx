@@ -212,9 +212,11 @@ step('spawn', async ({ browser, base }) => {
 });
 
 step('type-toggle', async ({ browser, base }) => {
-  // F411 type toggles (games-presets.md, docs/spec/design/games-presets.md §5): building a PRIMARY
-  // preset from RIFLES + LONG RANGE must select exactly the union of both types, save, and land the
-  // new preset on the BUILD shelf — screen-truth, not internal state (ui-build-verify §4).
+  // F411 type toggles (games-presets.md, docs/spec/design/games-presets.md §5), now a SHORTCUT over
+  // plain ids rather than a rule (Tony, bench 2026-09-28): building a PRIMARY preset from RIFLES +
+  // LONG RANGE must select exactly the union of both types, an individual weapon must stay editable
+  // (unticking one shows its type PARTIAL, never locked), and the saved piece must hold plain ids —
+  // screen truth AND data truth, not internal state (ui-build-verify §4).
   const pg = await open(browser, base, 1280);
   await tab(pg, 'primary').click();
   await until(() => pg.locator('[data-testid="piece-card-builtin:primary:all"]').count().then(n => n === 1), 4000, 'the ALL card');
@@ -229,7 +231,6 @@ step('type-toggle', async ({ browser, base }) => {
 
   const typeRow = pg.locator('[data-testid="slot-type-row"]');
   const onlyRow = pg.locator('[data-testid="slot-only-row"]');
-  // the locked chip's padlock is an SVG icon (aria-hidden), not text, so its label compares exactly
   const selectedNames = () => onlyRow.locator('button[aria-pressed="true"]').allInnerTexts();
 
   // F411 correction (Tony, 2026-09-26): melee is a gyro swing, always on, never a weapon SELECTION --
@@ -261,18 +262,41 @@ step('type-toggle', async ({ browser, base }) => {
   expect((await typeRow.getByRole('button', { name: /LONG RANGE/ }).getAttribute('aria-pressed')) === 'true', 'LONG RANGE toggle itself reads ON');
   ok(`RIFLES + LONG RANGE unions to 8 weapons on screen   ${await shot(pg, 'type-toggle-union')}`);
 
-  // turning RIFLES back off must drop the rifle-only weapons but keep the ones LONG RANGE still covers
+  // F411 follow-up (Tony, bench 2026-09-28): the TYPE chip is a SHORTCUT now, not a rule -- turning
+  // RIFLES back off unticks every one of ITS OWN 7 ids, including SNIPER RIFLE and CHARGE RIFLE (also
+  // `long`), with no memory that LONG RANGE was clicked too. Only AMR (long-only) survives.
   await typeRow.getByRole('button', { name: 'RIFLES', exact: true }).click();
-  await until(() => selectedNames().then(n => n.length === 3), 3000, 'RIFLES off to drop to LONG RANGE\'s own 3');
+  await until(() => selectedNames().then(n => n.length === 1), 3000, 'RIFLES off drops every rifle id, including the two LONG RANGE also covers');
   const afterOff = await selectedNames();
-  expect(afterOff.includes('AMR') && afterOff.includes('SNIPER RIFLE') && afterOff.includes('CHARGE RIFLE'),
-    `LONG RANGE still covers AMR/SNIPER RIFLE/CHARGE RIFLE (saw ${JSON.stringify(afterOff)})`);
-  expect(!afterOff.includes('ASSAULT RIFLE'), 'ASSAULT RIFLE (rifle-only) is dropped once RIFLES is off');
-  ok('toggling RIFLES off keeps only the weapons LONG RANGE still covers');
+  expect(afterOff.length === 1 && afterOff[0] === 'AMR', `only AMR (long-only) remains (saw ${JSON.stringify(afterOff)})`);
+  expect((await typeRow.getByRole('button', { name: /LONG RANGE/ }).innerText()).trim() === '◐ LONG RANGE 1/3',
+    'LONG RANGE now reads PARTIAL 1/3 -- nothing was ever locked in on its behalf');
+  ok('toggling RIFLES off is a plain shortcut: it drops every rifle id, with no memory of LONG RANGE');
+
+  // Re-tick RIFLES (OFF -> ticks all 7, unioned with AMR already selected), then untick ONE weapon by
+  // hand -- every chip stays individually editable (no lock), and the type must read back PARTIAL.
+  await typeRow.getByRole('button', { name: 'RIFLES', exact: true }).click();
+  await until(() => selectedNames().then(n => n.length === 8), 3000, 'RIFLES back on (7) plus AMR already selected (8)');
+  await onlyRow.getByRole('button', { name: 'ASSAULT RIFLE', exact: true }).click();
+  await until(() => selectedNames().then(n => n.length === 7), 3000, 'unticking ASSAULT RIFLE by hand drops it alone');
+  await until(() => typeRow.getByRole('button', { name: /RIFLES/ }).innerText().then(t => t.trim() === '◐ RIFLES 6/7'),
+    3000, 'RIFLES now reads PARTIAL 6/7 after one hand-untick, never locked, never back to ON');
+  ok('unticking one weapon by hand shows its type PARTIAL, never locked');
 
   await pg.getByRole('button', { name: 'SAVE ▸' }).click();
   await until(() => pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'RIFLES PRESET' }).count().then(n => n === 1), 4000, 'the saved preset back on the BUILD shelf');
-  ok(`RIFLES PRESET lands on the PRIMARY shelf   ${await shot(pg, 'type-toggle-saved')}`);
+  // Data truth, not just screen truth: the piece the mock backend actually stored must hold plain
+  // weapon ids -- never a TYPE token (games-presets.md's own `WEAPON_TYPES` vocabulary) -- and exactly
+  // the 7 the screen showed selected.
+  const savedPieces = await pg.evaluate(() => window.__MC_MOCK__.getPieces());
+  const savedPiece = savedPieces.find(p => p.name === 'RIFLES PRESET');
+  expect(!!savedPiece, 'RIFLES PRESET was actually saved');
+  const onlyIds = savedPiece?.value?.only_ids ?? [];
+  const typeTokens = ['rifle', 'close', 'long', 'sidearm', 'support'];
+  expect(Array.isArray(onlyIds) && onlyIds.every(id => typeof id === 'string' && !typeTokens.includes(id)),
+    `the saved piece holds plain weapon ids, never a type token (saw ${JSON.stringify(onlyIds)})`);
+  expect(onlyIds.length === 7, `the saved piece holds exactly the 7 selected ids (saw ${JSON.stringify(onlyIds)})`);
+  ok(`RIFLES PRESET lands on the PRIMARY shelf holding plain ids   ${await shot(pg, 'type-toggle-saved')}`);
   await pg.context().close();
 });
 
