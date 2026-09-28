@@ -210,11 +210,13 @@ export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boo
 
 /** F411 VQA round 1 (QA-11): PLAY's MATCH SETTINGS − / + steppers. A shared primitive (Games.tsx's
  *  own copy was 32 px tall) so any other screen that needs the same stepper gets the same 44 px
- *  target, not a second, smaller one. */
+ *  target, not a second, smaller one. Flex-centred: BTN_RESET inherits the row's text-align, which put
+ *  the glyph at the top-left of the square (bench 2026-09-28). */
 export function StepBtn({ onClick, disabled, children, label }: { onClick: () => void; disabled?: boolean; children: ReactNode; label?: string }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-label={label} className="hit44"
       style={{ ...BTN_RESET, font: F.chk(700, 16), width: 44, height: 44, minHeight: 44, cursor: disabled ? 'not-allowed' : 'pointer',
+               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
                background: T.panelDeep, border: `1px solid ${T.line}`, color: disabled ? T.micro : T.ink }}>
       {children}
     </button>

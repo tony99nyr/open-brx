@@ -10,7 +10,7 @@
 //                                              #   mode-switch-confirm | kills |
 //                                              #   lastmatch | koth | pick-fail | stale | widths |
 //                                              #   load-feedback | locked | refusal-and-cap |
-//                                              #   pieces-failure | hit-areas | silenced-onoff |
+//                                              #   pieces-failure | hit-areas | stepper-glyphs | silenced-onoff |
 //                                              #   teams | hold |
 //                                              #   favourites-save | favourites-load |
 //                                              #   favourites-fallback | favourites-rename |
@@ -432,6 +432,24 @@ step('hit-areas', async ({ browser, base }) => {
   expect(sizes.pickers.length > 0 && sizes.pickers.every(r => r.height >= 44), `every GAME MODE/LIFE/SPAWN option is >= 44px tall (saw ${JSON.stringify(sizes.pickers.map(r => Math.round(r.height)))})`);
   expect(sizes.daynight.length === 2 && sizes.daynight.every(r => r.height >= 44), `DAY and NIGHT are each >= 44px tall (saw ${JSON.stringify(sizes.daynight.map(r => Math.round(r.height)))})`);
   ok('steppers, SILENCED, every quick-pick button and the picker/DAY-NIGHT rows meet the 44px hit-area floor');
+  await pg.context().close();
+});
+
+step('stepper-glyphs', async ({ browser, base }) => {
+  // Bench 2026-09-28: the − / + beside 10 MIN, NO KILL LIMIT and COUNTDOWN drew at the top-left of their
+  // square (BTN_RESET inherits the row's left text-align). Measure the glyph's own box, not the button's.
+  const pg = await open(browser, base, '?mock#build', 1280);
+  const offs = await pg.evaluate(() => [...document.querySelectorAll('[aria-label$=" minus"], [aria-label$=" plus"]')].map(b => {
+    const r = document.createRange(); r.selectNodeContents(b);
+    const g = r.getBoundingClientRect(), o = b.getBoundingClientRect();
+    return { label: b.getAttribute('aria-label'),
+             dx: Math.round((g.left + g.width / 2) - (o.left + o.width / 2)),
+             dy: Math.round((g.top + g.height / 2) - (o.top + o.height / 2)) };
+  }));
+  expect(offs.length >= 6, `at least three − / + pairs are on PLAY (saw ${offs.length})`);
+  const off = offs.filter(o => Math.abs(o.dx) > 2 || Math.abs(o.dy) > 2);
+  expect(off.length === 0, `every − / + glyph is centred in its button within 2px (off: ${JSON.stringify(off)})`);
+  ok(`${offs.length} stepper glyphs sit in the centre of their buttons   ${await shot(pg, 'stepper-glyphs')}`);
   await pg.context().close();
 });
 
