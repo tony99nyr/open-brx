@@ -176,8 +176,13 @@ export function Seg<V extends string>({ value, options, onChange, size = 11, pad
     <span role="group" aria-label={label} style={{ display: 'flex', flexWrap: wrap ? 'wrap' : undefined, border: `1px solid ${T.line}` }}>
       {options.map(o => {
         const on = o.value === value;
+        // bc-press: the button that just BECAME selected gets a brief accent flash (styles.css'
+        // `.flash-on-change`), re-triggered by remounting it — the key changes only for the newly-`on`
+        // button (`flash-${value}`, stable across re-renders while it stays selected), never for one
+        // that is merely sitting there `off` (whose key is its own unchanging `o.value`).
         return (
-          <button key={o.value} type="button" className="hit44" onClick={() => onChange(o.value)} aria-pressed={on} title={titles?.[o.value]}
+          <button key={on ? `flash-${o.value}` : o.value} type="button" className={on ? 'hit44 flash-on-change' : 'hit44'}
+            onClick={() => onChange(o.value)} aria-pressed={on} title={titles?.[o.value]}
             // Selected used to be a solid T.acc block. With several Segs on one screen (START FROM,
             // WHO PICKS, WEAPONS|PERKS, RESPAWN) that is a lot of bright fill for a toggle — Tony,
             // 2026-09-02: "the colors of the buttons are too harsh maybe just border color or a
