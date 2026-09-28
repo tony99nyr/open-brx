@@ -703,11 +703,22 @@ step('favourites-save', async ({ browser, base }) => {
   await pg.context().close();
 });
 
-/** Tap a favourite chip: one tap loads it (bench 2026-09-28, no confirm), and no warning appears. */
-async function loadFavourite(pg, name, loaded) {
+/** Tap a favourite chip (bench 2026-09-28). Pristine picks load on one tap with nothing to read.
+ *  Picks changed since the last load or save (`dirty`) ask "DISCARD YOUR CHANGES?" first: the tap
+ *  sends nothing, and DISCARD loads. Never a roster warning either way. */
+async function loadFavourite(pg, name, loaded, { dirty = false } = {}) {
   await pg.locator(`text=☆ ${name}`).click();
-  await until(loaded, 6000, `${name}: loaded on one tap`);
-  expect(await pg.getByTestId('confirm-switch').count() === 0, `${name}: no warning to read`);
+  if (dirty) {
+    const ask = pg.getByTestId('favourite-discard');
+    await until(() => ask.count().then(n => n === 1), 4000, `${name}: DISCARD YOUR CHANGES? over changed picks`);
+    expect((await ask.innerText()).includes('DISCARD YOUR CHANGES?'), `${name}: the question is short and plain`);
+    await pg.waitForTimeout(300);
+    expect(!(await loaded()), `${name}: the first tap loaded nothing`);
+    await ask.getByRole('button', { name: 'DISCARD' }).click();
+  }
+  await until(loaded, 6000, `${name}: loaded`);
+  expect(await pg.getByTestId('confirm-switch').count() === 0, `${name}: no roster warning to read`);
+  expect(await pg.getByTestId('favourite-discard').count() === 0, `${name}: the question is gone once loaded`);
 }
 
 step('favourites-load', async ({ browser, base }) => {
@@ -733,7 +744,7 @@ step('favourites-load', async ({ browser, base }) => {
   await pg.getByRole('button', { name: '10 S' }).click();
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 4000, 'changed away from it');
 
-  await loadFavourite(pg, 'Round One', async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth');
+  await loadFavourite(pg, 'Round One', async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', { dirty: true });
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 6000, 'LOAD restores the mode');
   const after = await pg.evaluate(() => window.__MC_MOCK__.getState());
   expect(after.config.mode === 'koth', 'GAME MODE restored');
@@ -743,6 +754,17 @@ step('favourites-load', async ({ browser, base }) => {
   const t = await text(pg);
   expect(/COUNTDOWN 60 S/.test(t), `the strip shows the restored countdown (saw the runway store, ${JSON.stringify(t.match(/COUNTDOWN \d+ S/))})`);
   ok(`FAVOURITES LOAD restores every picker and the strip, including the countdown   ${await shot(pg, 'favourites-load')}`);
+  // pristine now (the load made it so): the same favourite again loads on one tap, with no question
+  await loadFavourite(pg, 'Round One', async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth');
+  ok('pristine picks: a favourite loads on one tap, with no question');
+  await pickMode(pg, 'TEAM DEATHMATCH');
+  await pg.locator('text=☆ Round One').click();
+  await pg.waitForTimeout(300);
+  expect(await pg.getByTestId('favourite-discard').count() === 1, 'control: a change after the load makes the picks dirty again');
+  await pg.getByTestId('favourite-discard').getByRole('button', { name: 'CANCEL' }).click();
+  await until(() => pg.getByTestId('favourite-discard').count().then(n => n === 0), 4000, 'CANCEL closes the question');
+  expect((await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 'CANCEL keeps the changed pick');
+  ok(`dirty picks ask DISCARD YOUR CHANGES?, and CANCEL keeps them   ${await shot(pg, 'favourites-discard-ask')}`);
   await pg.context().close();
 });
 
@@ -768,8 +790,8 @@ step('favourites-fallback', async ({ browser, base }) => {
   await pg.evaluate(() => { location.hash = '#muster'; });
   await pg.evaluate(() => { location.hash = '#build'; });
   await until(() => pg.locator('text=☆ Gone Tomorrow').count().then(n => n > 0), 6000, 'the favourite survives its piece being deleted');
-  await pg.locator('text=☆ Gone Tomorrow').click();
-  await until(() => pg.getByTestId('favourite-fallback-note').count().then(n => n === 1), 6000, 'the fallback line');
+  // the pick moved off SNIPERS after the save, so the load asks first (bench 2026-09-28): DISCARD it
+  await loadFavourite(pg, 'Gone Tomorrow', () => pg.getByTestId('favourite-fallback-note').count().then(n => n === 1), { dirty: true });
   const t = await text(pg);
   expect(/PRIMARY.*GONE.*USING ALL/i.test(t), `the fallback line names the kind and what it is using now (saw ${JSON.stringify(t.slice(t.indexOf('PRIMARY'), t.indexOf('PRIMARY') + 60))})`);
   ok(`a favourite whose piece is gone still loads, and says what it used instead (never a 404)   ${await shot(pg, 'favourites-fallback')}`);
@@ -829,7 +851,7 @@ step('real-favourites', async ({ browser }) => {
     await pg.getByRole('switch', { name: 'silenced' }).click();
     await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'koth', 6000, 'the changes reach the real server');
 
-    await loadFavourite(pg, 'Baseline', async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'tdm');
+    await loadFavourite(pg, 'Baseline', async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'tdm', { dirty: true });
     await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.mode === 'tdm', 8000, 'LOAD restores the baseline on the real server');
     const after = await fetch(`${mc.base}/api/state`).then(r => r.json());
     expect(after.config.mode === 'tdm' && after.config.health.max_shield === 0 && after.config.health.max_armor === 70, `every picker restored (saw ${JSON.stringify(after.config.mode)}/${JSON.stringify(after.config.health)})`);

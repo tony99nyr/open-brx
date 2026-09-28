@@ -27,6 +27,7 @@ import { type MatchItemKey, matchItems } from './matchItems';
 import { kindLabel } from './presets/kinds';
 import { pickFallbackNote } from './pieceFallbackNote';
 import { RUNWAYS, getRunway, setRunway, useRunway } from '../runway';
+import { markPristine, picksDirty, seedBaseline } from '../playBaseline';
 import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { MODE_ART } from '../modeArt';
 import { ModeEmblem } from './ModeEmblem';
@@ -67,6 +68,8 @@ export function Games() {
   const [busy, setBusy] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
   const [runwayVal] = useRunway();
+  const seenPick = state?.game_pick;
+  useEffect(() => { if (seenPick) seedBaseline(seenPick, runwayVal); }, [seenPick, runwayVal]);
   useEffect(() => {
     let cancelled = false;
     api.getPieces().then(ps => { if (cancelled) return; setPieces(ps); setPiecesStale(false); setPiecesError(null); })
@@ -111,6 +114,8 @@ export function Games() {
   const [favNameDraft, setFavNameDraft] = useState('');
   const [renamingFav, setRenamingFav] = useState<string | null>(null);
   const [confirmDeleteFav, setConfirmDeleteFav] = useState<string | null>(null);
+  // Bench 2026-09-28 (Tony): the favourite waiting on "DISCARD YOUR CHANGES?" (playBaseline.ts).
+  const [favDiscard, setFavDiscard] = useState<string | null>(null);
   const [fallbackNote, setFallbackNote] = useState<string[] | null>(null);
   // Polish round 1 Low: guards SAVE AS A FAVOURITE against a double submit (declared up here with
   // every other hook -- a hook after the `if (!state) return null` below breaks the rules of hooks).
@@ -156,9 +161,9 @@ export function Games() {
   // Polish round 1 Low: a fallback note used to sit on screen until the NEXT favourite load, surviving
   // every ordinary tap in between and describing a load that was no longer the reason anything on
   // screen looked the way it did.
-  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
+  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); setFavDiscard(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
     .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallback(r.fallbacks)); }); };
-  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); return run(() => api.pick({ match: patch }))
+  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); setFavDiscard(null); return run(() => api.pick({ match: patch }))
     .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallback(r.fallbacks)); }); };
   const pickMode = (p: GamePiece) => pickPiece('mode', p.piece_id);
   const pickTeams = (teams: TeamColour[]) => pickMatch({ teams });
@@ -194,7 +199,7 @@ export function Games() {
     setSubmittingFav(true);
     try {
       const r = await run(() => api.createFavourite({ name, countdown_s: runwayVal }));
-      if (r) { setSavingFav(false); setFavNameDraft(''); await refreshFavourites(); }
+      if (r) { setSavingFav(false); setFavNameDraft(''); if (pick) markPristine(pick, runwayVal); await refreshFavourites(); }
     } finally { setSubmittingFav(false); }
   };
   const renameFavourite = async (id: string, name: string) => {
@@ -215,12 +220,16 @@ export function Games() {
     // a countdown and a fallback list for a favourite that was never actually loaded.
     if (!r.ok) { setNotice(r.errors.join(' · '), true); return; }
     setRunway(r.countdown_s);
+    markPristine(r.pick, getRunway());
     setFallbackNote(favouriteFallbackNote(r.fallbacks, r.pick));
   };
-  // Bench 2026-09-28 (Tony, "this warning is not helpful"): a favourite loads in one tap. The server
-  // keeps each player's side on a same-count colour change and splits evenly on a count change.
+  // Bench 2026-09-28 (Tony): a favourite loads in one tap, with no roster warning (the server keeps each
+  // player's side on a same-count colour change and splits evenly on a count change). The one question
+  // left guards lost work: over picks changed since the last load or save, "DISCARD YOUR CHANGES?".
   const loadFavourite = async (id: string) => {
     if (!favourites.some(f => f.favourite_id === id)) return;
+    if (pick && picksDirty(pick, runwayVal)) { setFavDiscard(id); return; }
+    setFavDiscard(null);
     await doLoadFavourite(id);
   };
 
@@ -358,6 +367,17 @@ export function Games() {
                 ))}
               </div>
             </fieldset>
+          )}
+          {favDiscard && (
+            <div data-testid="favourite-discard" role="alertdialog" aria-label="discard your changes"
+              style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ font: F.chk(700, 13), letterSpacing: '.12em', color: T.warn }}>
+                ▲ DISCARD YOUR CHANGES?
+              </span>
+              <GhostButton size={13} pad="10px 16px" color={T.warn} border={T.warn}
+                onClick={() => { const id = favDiscard; setFavDiscard(null); void doLoadFavourite(id); }}>DISCARD</GhostButton>
+              <GhostButton size={13} pad="10px 16px" onClick={() => setFavDiscard(null)}>CANCEL</GhostButton>
+            </div>
           )}
           {fallbackNote && (
             <div data-testid="favourite-fallback-note" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 2, font: F.chk(600, 12), color: T.warn }}>

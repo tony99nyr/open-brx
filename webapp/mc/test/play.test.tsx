@@ -14,10 +14,11 @@ import { MockBackend } from '../src/mock/backend';
 import { clearNotice, useNotice } from '../src/notice';
 import { getRunway, setRunway } from '../src/runway';
 import { Games } from '../src/screens/Games';
+import { resetBaseline } from '../src/playBaseline';
 import { StoreCtx } from '../src/store';
 import { demo, fixtureApi, makeStore, mount } from './harness';
 
-afterEach(() => clearNotice());
+afterEach(() => { clearNotice(); resetBaseline(); });
 
 /** A cross-screen notice (`setNotice`) is module state, not something `Games` renders itself --
  *  mounted beside it so the polish-round-1 tests can read what a refused action left in the bar. */
@@ -166,6 +167,67 @@ describe('PLAY — loading a FAVOURITE applies in one tap (bench 2026-09-28, "th
     expect(sideOf(after), 'every player keeps their side, only the colour changed').toEqual(sideOf(before));
     expect(m.find('[data-testid="confirm-split"]').length, 'no warning to read').toBe(0);
     m.unmount();
+  });
+});
+
+// Bench 2026-09-28 (Tony): the one question a favourite load still asks guards lost work. Over picks
+// changed since the last load or save it asks "DISCARD YOUR CHANGES?"; over pristine picks it loads.
+describe('PLAY — a favourite load over unsaved picks asks DISCARD YOUR CHANGES?', () => {
+  async function withFavourite() {
+    const api = new MockBackend();
+    const before = await api.getState();
+    await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,
+      pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match: before.game_pick!.match } });
+    const r = await renderPlay(api);
+    await act(async () => { await new Promise(res => setTimeout(res, 0)); });   // getFavourites settles
+    return r;   // `r.api` is this same backend
+  }
+  const tick = () => act(async () => { await new Promise(res => setTimeout(res, 0)); });
+
+  it('pristine picks: one tap loads, no question', async () => {
+    const { api, m } = await withFavourite();
+    await m.click('KOTH Setup');
+    await tick();
+    expect((await api.getState()).config.mode).toBe('koth');
+    expect(m.find('[data-testid="favourite-discard"]').length).toBe(0);
+    m.unmount();
+  });
+
+  it('changed picks: the first tap asks and sends nothing; CANCEL keeps the changes', async () => {
+    const { api, m, settle } = await withFavourite();
+    await m.click('SHIELDS');   // a LIFE pick: the picks are no longer what this console first saw
+    m.unmount();
+    const m2 = await settle();   // the screen now holds the changed pick (the baseline outlives a remount)
+    const changed = (await api.getState()).game_pick!.pieces.life;
+    await m2.click('KOTH Setup');
+    await tick();
+    const ask = m2.find('[data-testid="favourite-discard"]')[0];
+    expect(ask, 'the question shows').toBeTruthy();
+    expect(ask.textContent).toContain('DISCARD YOUR CHANGES?');
+    expect((await api.getState()).config.mode, 'nothing loaded yet').toBe('tdm');
+    await clickIn(ask, 'CANCEL');
+    await tick();
+    expect(m2.find('[data-testid="favourite-discard"]').length).toBe(0);
+    expect((await api.getState()).game_pick!.pieces.life, 'CANCEL keeps the changed pick').toBe(changed);
+    m2.unmount();
+  });
+
+  it('changed picks: DISCARD loads the favourite, and the next load needs no question', async () => {
+    const { api, m, settle } = await withFavourite();
+    await m.click('SHIELDS');
+    m.unmount();
+    const m2 = await settle();
+    await m2.click('KOTH Setup');
+    await tick();
+    await clickIn(m2.find('[data-testid="favourite-discard"]')[0], 'DISCARD');
+    await tick();
+    expect((await api.getState()).config.mode).toBe('koth');
+    m2.unmount();
+    const m3 = await settle();
+    await m3.click('KOTH Setup');   // pristine again: the load made it so
+    await tick();
+    expect(m3.find('[data-testid="favourite-discard"]').length).toBe(0);
+    m3.unmount();
   });
 });
 

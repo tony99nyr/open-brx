@@ -163,6 +163,11 @@ night's setup (SNIPERS + STATION + SILENCED + a 15-kill limit + a 15 s countdown
 taps §16's silent-snipers example takes. It is not a ninth picker and it is not a preset: BUILD still makes
 pieces one kind at a time, and a favourite has no fields of its own to edit beyond its name.
 
+Loading a favourite over picks the operator changed since the last load or save asks one question first,
+"DISCARD YOUR CHANGES?", with DISCARD and CANCEL (Tony, 2026-09-28: it guards lost work). Over pristine
+picks it loads on one tap. The console keeps that baseline (`webapp/mc/src/playBaseline.ts`); the server
+does not.
+
 `Favourite = {favourite_id, name (<= 24 chars, unique case-insensitive), created_t, updated_t, pick: GamePick,
 countdown_s: int}`. It stores piece **references** (the ids inside `pick.pieces`), not copies of their
 values — editing a piece in BUILD changes what every favourite naming it loads next, exactly like editing a
