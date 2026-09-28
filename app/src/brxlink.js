@@ -89,6 +89,18 @@ export function flapDelay(streak, backoffMs = FLAP_BACKOFF_MS, quietMs = QUIET_M
 // returns status 133 for a connect that starts right after a scan stops. The first connect after a
 // scan stop now waits for the stop to complete, then this long. Reconnects do not wait.
 export const SCAN_SETTLE_MS = 400;
+// F297, bench 2026-09-28 (app 0.4.15, two Pixel 5s, 10 cold connects each): 6/10 first attempts linked on each
+// phone. All 11 failures were status 133, and each came 0.27-0.31 s after the connect started. The stack logged
+// HCI reason 0x3E for every one: the link layer opened and the gun never answered its first packets. Scan timing did
+// not separate a failure from a success, and the plugin had already closed the old client. So the app cannot stop
+// the failure. The cost was the backoff: grey run 7 failed 3 times and spent 3.5 s of its 5.5 s waiting 0.5, 1 and
+// 2 s. A connect that fails with 133 inside GATT133_FAST_MS now retries after GATT133_GAP_MS, up to
+// GATT133_QUICK_RETRIES times in a row. Then the normal backoff applies, so the loop never hammers the radio.
+export const GATT133_FAST_MS = 1500;
+export const GATT133_GAP_MS = 200;
+export const GATT133_QUICK_RETRIES = 3;
+/** True for the plugin's fast GATT_ERROR (status 133) connect failure. */
+export function isGatt133(e) { return /\b133\b|GATT_ERROR/.test(String(e && e.message || e)); }
 const RELINK_DISCONNECT_CAP_MS = 2000;
 const RELINK_CONNECT_MS = 5000;
 const RELINK_GAP_MS = 250;
@@ -399,7 +411,7 @@ export class BrxLink {
     if (wait > 0) { this._log(`scan stopped: waiting ${wait} ms before the connect`, 'li'); await new Promise(r => setTimeout(r, wait)); }
   }
   async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false, onAttempt = null) {
-    let last;
+    let last, quick133 = 0;   // F297: fast 133 failures of the native connect, in a row
     for (let i = 1; ; i++) {
       // Game day 2026-09-19: a flap wait now holds THIS loop. It used to run beside the loop, so a loop
       // already running reconnected in the middle of the wait. A manual action clears `_flapNextAt` and wakes us.
@@ -410,7 +422,7 @@ export class BrxLink {
       if (gen !== this._gen) { this._log('reconnect abandoned — a different gun was selected', 'li'); return false; }
       if (onAttempt) { try { onAttempt(i, attempts); } catch (_) { /* a listener must not break the link */ } }
       const t0 = this.now();
-      let seq = 0;
+      let seq = 0, nativeFail = false;
       try {
         seq = ++this._linkSeq; this._attemptId = id;
         const att = { dropped: false, wake: null };
@@ -423,7 +435,8 @@ export class BrxLink {
             if (seq !== this._linkSeq) return;
             if (this.connected) this._dropped(); else { att.dropped = true; if (att.wake) att.wake(); }
           }, relink ? { timeout: this.relinkConnectMs } : undefined);
-        } finally { this._connecting--; }
+        } catch (e) { nativeFail = true; throw e; }
+        finally { this._connecting--; }
         if (gen !== this._gen) {                       // the gun came back AFTER we moved on: let it go,
           try { await this.ble.disconnect(id); } catch (_) { /* ignore */ }   // or two devices feed the engine
           return false;
@@ -442,7 +455,11 @@ export class BrxLink {
         last = e; this.retries = i;
         const keep = relink ? i < attempts : forever || this.unbounded() || i < attempts;
         if (!keep) throw last;
-        const delay = relink ? this.relinkGapMs : Math.min(10000, 500 * 2 ** Math.min(i - 1, 5)) * (0.8 + 0.4 * Math.random());
+        const is133 = nativeFail && isGatt133(e) && this.now() - t0 < GATT133_FAST_MS;
+        const fast133 = is133 && quick133 < GATT133_QUICK_RETRIES;
+        quick133 = is133 ? quick133 + 1 : 0;
+        const delay = fast133 ? GATT133_GAP_MS
+          : relink ? this.relinkGapMs : Math.min(10000, 500 * 2 ** Math.min(i - 1, 5)) * (0.8 + 0.4 * Math.random());
         // the time the attempt took and the plugin's reason: a 10 s "Connection timeout." and a fast GATT error need different fixes
         this._log(`connect ${i}${!relink && (forever || this.unbounded()) ? '' : '/' + attempts} failed after ${this.now() - t0} ms (${e && e.message || e}) — retrying in ${Math.round(delay)} ms`, 'le');
         await this._waitOrWake(delay);
