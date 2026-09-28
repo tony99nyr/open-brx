@@ -356,6 +356,12 @@ test('trigger grant: save the trigger slot and its counts, re-send the pickup sl
   assert.equal(h.facts.filter(x => x.type === 'pickup').length, 1);
 });
 
+test('F381: a zero-magazine loadout is saved at its real count for the switch-back', () => {
+  const h = armed(); h.fire(0, 0, 48);
+  h.take(4);
+  assert.deepEqual(h.eng._puHeld.back, { slot: 0, mag: 0, res: 48 });
+});
+
 test('F379: after ALT to the secondary and a rocket switch-back, the next ALT follows the gun pointer', () => {
   const h = armed();
   h.eng.switchWindowMs = () => 10_000;
@@ -364,6 +370,7 @@ test('F379: after ALT to the secondary and a rocket switch-back, the next ALT fo
   assert.equal(h.eng._altPtr, 1, 'the accepted ALT press moves the gun pointer');
   assert.equal(h.eng.state().switchTo, 1, 'SWITCHING shows the pointer target');
   h.take(4); h.away(); h.eng._puHeld.left = 1; h.fire(2, 0);
+  h.adv(h.eng.switchWindowMs());
   assert.equal(h.eng.activeSlot, 0, 'the empty rocket switched the trigger back to the primary');
   h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switchTo, 0, 'BMAP advanced from slot 1 to slot 0 despite the trigger switch-back');
@@ -506,12 +513,51 @@ test('the empty magazine switches back: the saved weapon\'s head $WEAP, then $AM
   h.fire(2, 1);
   assert.equal(h.eng.state().powerup.held.left, 1);
   const n = h.mark(); h.adv(300); h.fire(2, 0);
+  h.adv(h.eng.switchWindowMs());
   assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
   const s = h.eng.state();
   assert.equal(s.powerup.held, null); assert.equal(s.activeSlot, 0);
   assert.equal(s.powerup.hint.kind, 'switched_back'); assert.equal(s.powerup.hint.name, 'ROCKETS');
   assert.equal(s.weapon, 'ASSAULT RIFLE', 'the ammo block names the AR again');
   assert.equal(s.ammo, 30, 'and shows its saved magazine');
+});
+
+test('F418: empty Rockets wait for the gun swap window before slot 0 can fire', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1);
+  h.eng.frames.swap_ms = 1200;   // use the bundle value, not a fixed 850 ms
+  const n = h.mark(); h.adv(300); h.fire(2, 0);
+  const emptyAt = h.eng.now();
+  assert.deepEqual(puw(h.since(n)), [], 'slot 0 is not equipped on the last rocket frame');
+  assert.equal(h.eng.activeSlot, 2, 'the trigger remains on the empty heavy during the swap');
+  h.adv(h.eng.switchWindowMs() - 1);
+  assert.deepEqual(puw(h.since(n)), [], 'slot 0 cannot fire before swap_ms');
+  h.adv(1);
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
+  assert.equal(h.eng.activeSlot, 0);
+  h.adv(250);
+  assert.ok(h.eng.moment?.kind === 'switched' && h.eng.moment.at >= emptyAt, 'the existing ACTIVE switch card still follows the draw');
+});
+
+test('F418: SELECT during the empty swap window does not cancel the delayed return', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  const n = h.mark(); h.select();
+  assert.deepEqual(puw(h.since(n)), [], 'SELECT cannot equip slot 0 early');
+  h.adv(h.eng.switchWindowMs());
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
+});
+
+test('F418: death during the empty swap window still re-equips slot 0 on revive', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  const n = h.mark(); h.die(); h.adv(10_000);
+  assert.ok(h.since(n).includes(WEAP0), 'revive puts the loadout weapon on the trigger');
+  assert.equal(h.eng._puBackPending, null, 'death retires the delayed write');
+});
+
+test('F418: operator respawn during the empty swap window re-equips slot 0', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  const n = h.mark(); h.eng._revive(false, null, true);
+  assert.ok(h.since(n).includes(WEAP0), 'the revive burst is followed by a slot-0 equip');
+  assert.equal(h.eng._puBackPending, null);
 });
 
 test('a second heavy swaps: zero the old slot, the new slot\'s $WEAP and $AMMO; the switch-back target stays the loadout weapon', () => {
@@ -524,6 +570,7 @@ test('a second heavy swaps: zero the old slot, the new slot\'s $WEAP and $AMMO; 
   assert.equal(s.powerupGrant.replaced, 'ROCKETS', 'the HUD can say RAIL GUN replaces ROCKETS');
   assert.equal(h.facts.filter(f => f.type === 'pickup').length, 2);
   h.away(); h.adv(800); h.fire(3, 1); h.adv(300); const m = h.mark(); h.fire(3, 0);
+  h.adv(h.eng.switchWindowMs());
   assert.deepEqual(puw(h.since(m)), [WEAP0, '$AMMO,0,30,190,1,*'], 'the rail runs dry back to the AR, not to the rockets');
 });
 
@@ -643,6 +690,7 @@ test('an app restart mid-item still switches back with the saved counts', () => 
   assert.ok(h.eng.state().powerup && h.eng.state().powerup.held, 'the held item survived the restart');
   assert.deepEqual(h.eng.state().powerup.held.back, { slot: 0, mag: 30, res: 190 });
   const n = h.mark(); h.fire(2, 0);
+  h.adv(h.eng.switchWindowMs());
   assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
   assert.equal(h.eng.state().powerup.held, null);
 });
@@ -840,7 +888,7 @@ test('M2: a lost $PSET restore is retried once, in the same life', async () => {
 
 test('M3: a lost switch-back write is re-sent until back-slot evidence or a player SELECT press', () => {
   const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
-  let n = h.mark(); h.fire(2, 0);   // the switch-back goes out, and the (fake) gun never answers it
+  let n = h.mark(); h.fire(2, 0); h.adv(h.eng.switchWindowMs());   // the (fake) gun never answers the delayed switch-back
   assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
   h.adv(2000);
   assert.equal(h.since(n).filter(f => f === WEAP0).length, 2, 're-sent: the trigger must not stay on an empty heavy');
@@ -951,6 +999,7 @@ function pendingBack() {
   h.at(121); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
   const n = h.mark(); h.fire(2, 0);
   assert.ok(h.eng._puBackPending, 'setup: a switch-back pending');
+  h.adv(h.eng.switchWindowMs());
   return { h, n, backs: () => h.since(n).filter(f => f === WEAP0).length };
 }
 
@@ -1153,6 +1202,17 @@ test('F381: a slot 0 shot after the first grant exposes and repairs an unconfirm
   assert.ok(logs.some(m => /powerup:.*slot 0.*slot 2/.test(m)), 'the mismatch is visible in the log');
   assert.ok(h.since(n).includes(WEAP[2]), 'the phone retries the first equip');
   assert.equal(h.eng._puHeld?.left, 2, 'the gun has not fired a rocket');
+});
+
+test('F381 control: an armour readout after the grant leaves slot 2 on the trigger', () => {
+  const h = armed(); h.take(4);
+  const blink = golden.gun.readout.pools.find(p => p.pool === 'armor').levels[1][1];
+  h.eng._write([blink], 'readout armor blink');
+  h.eng._write([golden.gun.rest], 'readout rest');
+  const weaponWrites = h.writes.filter(f => f.startsWith('$WEAP,'));
+  assert.equal(+weaponWrites.at(-1).split(',')[1], 2, 'the last weapon equip stays on slot 2');
+  assert.equal(h.eng.activeSlot, 2);
+  assert.deepEqual(h.batches.slice(-2), [[blink], [golden.gun.rest]], 'readout writes carry LEDs only');
 });
 
 test('F381: an intentional ALT shot from slot 0 does not retry the held weapon equip', () => {
