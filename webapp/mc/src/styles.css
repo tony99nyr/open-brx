@@ -22,6 +22,21 @@ input { font-family: inherit; }
 @keyframes tryPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(57,180,255,.5); } 50% { box-shadow: 0 0 0 6px rgba(57,180,255,0); } }
 @keyframes linkBlink { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 @keyframes scanIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes valueFlash { 0%,55% { background-color: rgba(57,180,255,.45); } 100% { background-color: rgba(57,180,255,0); } }
+
+/* Press feedback (bc-press, bench 2026-09-28): every button gets a felt response the instant it is
+   pressed, not only after the state change lands. A disabled button gets none -- nothing to feel. Kept
+   out of the button's own transform (`Toggle`'s thumb, clip-path buttons) so it composes with whatever
+   else the button already draws; scaling the whole box (border, clip-path and all) together never
+   clips a corner. Off entirely under reduced motion, per the media query below. */
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled):active { transform: scale(0.96); transition: transform 90ms ease-out; }
+  /* A value that just changed (a stepper's own value box, a newly selected Seg option, a GAME MODE
+     card): a brief accent wash over the button, so the change reads as an event, not just a redraw.
+     Restarted on the same element by `useFlashOnChange` (ui/index.tsx): class off, reflow, class on.
+     Never a remount, which would drop keyboard focus. No timers: the animation ends itself. */
+  .flash-on-change { animation: valueFlash 260ms ease-out; }
+}
 
 .screen { animation: scanIn .25s ease-out; }
 .hov-acc:hover { border-color: #39b4ff !important; }

@@ -10,9 +10,8 @@
 //                                              #   mode-switch | kills |
 //                                              #   lastmatch | koth | pick-fail | stale | widths |
 //                                              #   load-feedback | locked | refusal-and-cap |
-//                                              #   pieces-failure | hit-areas | stepper-glyphs | picker-rows |
-//                                              #   silenced-onoff |
-//                                              #   teams | hold |
+//                                              #   pieces-failure | hit-areas | stepper-glyphs | stepper-width |
+//                                              #   picker-rows | silenced-onoff | teams | hold | press-feedback | flash-keeps-focus |
 //                                              #   favourites-save | favourites-load |
 //                                              #   favourites-fallback | favourites-rename |
 //                                              #   favourites-delete | real-favourites |
@@ -479,6 +478,129 @@ step('picker-rows', async ({ browser, base }) => {
     await pg.context().close();
   }
   ok('768/900/1280px: GAME MODE has its own row of bigger cards; LIFE and SPAWN share the next row');
+});
+
+step('stepper-width', async ({ browser, base }) => {
+  // Bench 2026-09-28: pressing − / + changes the LENGTH of the value label ("10 MIN" -> "9 MIN",
+  // "NO KILL LIMIT" -> "15 KILLS"), which used to resize the value BUTTON and shove the − / + pair
+  // sideways with it -- a stepper whose own position moves under the finger that is stepping it.
+  // `QuickPick`'s `minValueWidth` fixes each value button at its widest label; this walks every − / +
+  // pair across a range that crosses the width-changing boundaries the bug actually showed (the "NO
+  // ..." <-> numeric switch, and the 1- / 2- / 3-digit boundaries) and asserts neither button's own x
+  // position ever moves, on any single press.
+  const pg = await open(browser, base, '?mock#build', 1280);
+  const rectX = async loc => { const b = await loc.boundingBox(); return b ? Math.round(b.x) : null; };
+  const walk = async (page, minusLabel, plusLabel, sequence) => {
+    const minus = page.getByRole('button', { name: minusLabel });
+    const plus = page.getByRole('button', { name: plusLabel });
+    const x0 = { minus: await rectX(minus), plus: await rectX(plus) };
+    const moved = [];
+    for (const dir of sequence) {
+      await (dir === '+' ? plus : minus).click();
+      const xm = await rectX(minus), xp = await rectX(plus);
+      if (xm !== x0.minus || xp !== x0.plus) moved.push({ dir, x0, xm, xp });
+    }
+    return moved;
+  };
+  const seq = (down, up) => [...Array(down).fill('-'), ...Array(up).fill('+')];
+
+  // TIME: 10 MIN default -> floor at 1 (single digit) -> up through 16 (double digit).
+  const timeMoved = await walk(pg, 'time limit minus', 'time limit plus', seq(12, 15));
+  expect(timeMoved.length === 0, `TIME − / + never move, 1 MIN through double digits (saw ${JSON.stringify(timeMoved)})`);
+
+  // KILLS: NO KILL LIMIT -> 5 KILLS (steps of 5) -> 125 KILLS, crossing NO KILL LIMIT <-> numeric and
+  // 1-/2-/3-digit boundaries in one sequence.
+  const killsMoved = await walk(pg, 'kill limit minus', 'kill limit plus', seq(5, 25));
+  expect(killsMoved.length === 0, `KILLS − / + never move, NO KILL LIMIT through 3-digit (saw ${JSON.stringify(killsMoved)})`);
+
+  // COUNTDOWN: walks the whole RUNWAYS list both ways (10..180), clamping harmlessly past either end.
+  const countdownMoved = await walk(pg, 'countdown minus', 'countdown plus', seq(10, 10));
+  expect(countdownMoved.length === 0, `COUNTDOWN − / + never move across the whole runway list (saw ${JSON.stringify(countdownMoved)})`);
+
+  // HOLD needs KOTH (TDM has no hold item) -- a fresh page, same idea: NO TARGET -> double digits.
+  const pg2 = await open(browser, base, '?mock#build', 1280);
+  await pickMode(pg2, 'KING OF THE HILL');
+  await until(() => pg2.getByTestId('match-hold-value').count().then(n => n > 0), 4000, 'the HOLD item (KOTH)');
+  const holdMoved = await walk(pg2, 'hold target minus', 'hold target plus', seq(8, 20));
+  expect(holdMoved.length === 0, `HOLD − / + never move, NO TARGET through double digits (saw ${JSON.stringify(holdMoved)})`);
+
+  ok(`every stepper's − / + stay put across its control's range   ${await shot(pg, 'stepper-width')}`);
+  await pg.context().close();
+  await pg2.context().close();
+});
+
+step('press-feedback', async ({ browser, base }) => {
+  // bc-press: (1) every button gets a brief pressed look while held (styles.css `button:active`), and
+  // (2) a value that just changed -- a stepper's own value box, a newly selected Seg option, a GAME
+  // MODE card -- gets a brief accent flash (`.flash-on-change`, the `valueFlash` keyframe). Both are
+  // off under `prefers-reduced-motion: reduce`.
+  //
+  // `animationstart` is hooked globally rather than sampled once: the flash is a fire-and-forget 260ms
+  // animation, and a single `getComputedStyle` read some indeterminate number of ticks after the click
+  // would race it (fail on a slow run, pass on a fast one, prove nothing either way).
+  const pg = await open(browser, base, '?mock#build', 1280);
+  const hookAnim = () => pg.evaluate(() => {
+    window.__anims = [];
+    document.addEventListener('animationstart', e => window.__anims.push(e.animationName), true);
+  });
+  const sawFlash = () => pg.evaluate(() => window.__anims.includes('valueFlash'));
+
+  // SPAWN's STATION option is not yet selected -- press and hold it (the pressed transform must show
+  // while held), then release (the flash must follow, now that it is the newly selected option).
+  await hookAnim();
+  const station = pg.getByRole('button', { name: 'STATION' });
+  await station.hover();
+  await pg.mouse.down();
+  const pressedTransform = await station.evaluate(el => getComputedStyle(el).transform);
+  expect(pressedTransform !== 'none' && pressedTransform !== '', `a held button shows a pressed transform (saw ${JSON.stringify(pressedTransform)})`);
+  await shot(pg, 'press-feedback-pressed');
+  await pg.mouse.up();
+  await until(sawFlash, 2000, 'the flash animation on the newly selected SPAWN option');
+  ok('STATION: a pressed transform while held, then a flash once selected');
+
+  // the TIME stepper's own value box flashes on every step too.
+  await hookAnim();
+  await pg.getByRole('button', { name: 'time limit plus' }).click();
+  await until(sawFlash, 2000, 'the flash animation on the TIME value after a step');
+  ok('the TIME stepper value flashes after a step');
+
+  // a newly selected GAME MODE card flashes too.
+  await hookAnim();
+  await pickMode(pg, 'KING OF THE HILL');
+  await until(sawFlash, 2000, 'the flash animation on the newly selected GAME MODE card');
+  await shot(pg, 'press-feedback-mode-flash');
+  ok('the newly selected GAME MODE card flashes');
+
+  // prefers-reduced-motion: neither effect runs, on either kind of control.
+  await pg.emulateMedia({ reducedMotion: 'reduce' });
+  await hookAnim();
+  await pickMode(pg, 'TEAM DEATHMATCH');
+  await pg.waitForTimeout(500);   // well past the 260ms the flash would have taken
+  expect(await sawFlash() === false, 'reduced motion: the GAME MODE flash never fires');
+  const spawnAuto = pg.getByRole('button', { name: 'AUTO' });
+  await spawnAuto.hover();
+  await pg.mouse.down();
+  const reducedTransform = await spawnAuto.evaluate(el => getComputedStyle(el).transform);
+  await pg.mouse.up();
+  expect(reducedTransform === 'none' || reducedTransform === '', `reduced motion: no pressed transform (saw ${JSON.stringify(reducedTransform)})`);
+  ok(`reduced motion: no pressed transform, no flash animation, on either control kind   ${await shot(pg, 'press-feedback-reduced')}`);
+  await pg.context().close();
+});
+
+step('flash-keeps-focus', async ({ browser, base }) => {
+  // The changed-value flash must not remount the option: a keyboard pick keeps its focus.
+  const pg = await open(browser, base, '?mock#build', 1280);
+  const shields = pg.getByTestId('picker-life').getByRole('button', { name: 'SHIELDS' });
+  await shields.focus();
+  await pg.keyboard.press('Enter');
+  await until(() => shields.getAttribute('aria-pressed').then(v => v === 'true'), 4000, 'SHIELDS picked from the keyboard');
+  await pg.waitForTimeout(150);
+  const focused = await pg.evaluate(() => document.activeElement?.textContent?.trim());
+  expect(focused === 'SHIELDS', `focus stays on the option just picked (saw ${JSON.stringify(focused)})`);
+  const flashed = await shields.evaluate(el => el.classList.contains('flash-on-change'));
+  expect(flashed, 'the newly picked option carries the flash');
+  ok('a keyboard pick flashes and keeps its focus');
+  await pg.context().close();
 });
 
 step('silenced-onoff', async ({ browser, base }) => {

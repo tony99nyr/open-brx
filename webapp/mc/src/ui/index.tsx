@@ -1,5 +1,5 @@
 // Primitives that encode the "military armory" design language (see design README).
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import type { Coverage } from '../api/contract.gen';
 import { CHAMFER, F, HAZARD, SEG_OVERLAY, STRIPES, T, TAB } from '../tokens';
 import { colourOf } from '../alerts';
@@ -164,6 +164,23 @@ export function OutlineTag({ children, color, border, title }: { children: React
  *  rather than the shared component's own floor changing under every OTHER screen's Segs too). */
 export const SEG_PAD_44 = '15px 14px';
 
+/** Bench 2026-09-28: a value that just changed gets a brief accent wash (styles.css `.flash-on-change`).
+ *  Restarted on the SAME element (class off, reflow, class on), never by remounting it with a new key:
+ *  a remount drops keyboard focus from the option the operator just picked. Nothing flashes on first
+ *  mount, only on a change. `selector` picks the element inside `ref` (a Seg's selected option). */
+export function useFlashOnChange(ref: RefObject<HTMLElement | null>, dep: unknown, selector?: string) {
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    const root = ref.current;
+    const el = selector ? root?.querySelector<HTMLElement>(selector) : root;
+    if (!el) return;
+    el.classList.remove('flash-on-change');
+    void el.offsetWidth;   // a reflow, so the re-added class starts the animation again from 0%
+    el.classList.add('flash-on-change');
+  }, [dep, ref, selector]);
+}
+
 /** Segmented control. */
 export function Seg<V extends string>({ value, options, onChange, size = 11, pad = '5px 14px', label, titles, wrap = false }:
   { value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; size?: number; pad?: string;
@@ -172,12 +189,15 @@ export function Seg<V extends string>({ value, options, onChange, size = 11, pad
     /** let the options wrap onto a second row inside a narrow card — a five-way Seg in a 320 px card
      *  overflowed its clip-path and the last option could not be clicked (ITEMS, real browser 2026-09-11) */
     wrap?: boolean }) {
+  const groupRef = useRef<HTMLSpanElement>(null);
+  useFlashOnChange(groupRef, value, '[aria-pressed="true"]');
   return (
-    <span role="group" aria-label={label} style={{ display: 'flex', flexWrap: wrap ? 'wrap' : undefined, border: `1px solid ${T.line}` }}>
+    <span ref={groupRef} role="group" aria-label={label} style={{ display: 'flex', flexWrap: wrap ? 'wrap' : undefined, border: `1px solid ${T.line}` }}>
       {options.map(o => {
         const on = o.value === value;
         return (
-          <button key={o.value} type="button" className="hit44" onClick={() => onChange(o.value)} aria-pressed={on} title={titles?.[o.value]}
+          <button key={o.value} type="button" className="hit44"
+            onClick={() => onChange(o.value)} aria-pressed={on} title={titles?.[o.value]}
             // Selected used to be a solid T.acc block. With several Segs on one screen (START FROM,
             // WHO PICKS, WEAPONS|PERKS, RESPAWN) that is a lot of bright fill for a toggle — Tony,
             // 2026-09-02: "the colors of the buttons are too harsh maybe just border color or a
