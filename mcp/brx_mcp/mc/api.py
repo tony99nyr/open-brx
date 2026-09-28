@@ -379,15 +379,17 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                 dc = default_config(mode)
                 match["time_limit_s"] = dc["time_limit_s"]
                 match["frag_limit"] = (dc.get("scoring") or {}).get("frag_limit")
-                # F413/F415: a mode change resets teams/hold_target_s to the NEW mode's own defaults
-                # too (same reset `time_limit_s`/`frag_limit` already get) -- unless the SAME request
-                # also sets one, which `merge_match` applies right after this. A stale koth hold target
-                # or a three-team roster must not ride along into an unrelated mode's own pick.
-                match.pop("teams", None)
+                # F413/F415: a mode change resets hold_target_s to the NEW mode's own default (same
+                # reset `time_limit_s`/`frag_limit` already get) -- unless the SAME request also sets
+                # one, which `merge_match` applies right after this. Teams (bench 2026-09-28, Tony) are
+                # CARRIED when the count still fits, with only an illegal colour swapped
+                # (`carry_teams`), so a TDM blue/yellow roster picked into KOTH stays two sides, blue/red.
+                # A pick that never named teams (an older session) carries the roster's own.
+                prev_teams = match.pop("teams", None) or _gamepick.match_from_config(s.config).get("teams")
                 match.pop("hold_target_s", None)
                 new_teams = _mode_row(mode).get("teams") or []
                 if new_teams != ["ffa"]:
-                    match["teams"] = cast(list[TeamColour], list(new_teams))
+                    match["teams"] = _gamepick.carry_teams(prev_teams, cast(list[TeamColour], list(new_teams)), mode)
             match = _gamepick.merge_match(match, b.get("match") or {})
         except PieceError as e:
             return _perr(e)

@@ -17,10 +17,11 @@ import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind, TeamColo
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, T, TEAM } from '../tokens';
-import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, SwitchConfirm, Toggle } from '../ui';
+import { BTN_RESET, DraftText, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, StepBtn, Toggle } from '../ui';
 import { Alert } from '../ui/Alert';
 import { alertWords, serverLine } from '../alerts';
-import { emptyRequiredSlots, poolEmptyMessage, splitLine } from './gameSummary';
+import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
+import { legalColours } from '../teamColours';
 import { operatorNote } from './operatorNote';
 import { type MatchItemKey, matchItems } from './matchItems';
 import { kindLabel } from './presets/kinds';
@@ -114,20 +115,9 @@ export function Games() {
   // Polish round 1 Low: guards SAVE AS A FAVOURITE against a double submit (declared up here with
   // every other hook -- a hook after the `if (!state) return null` below breaks the rules of hooks).
   const [submittingFav, setSubmittingFav] = useState(false);
-  // Round 4: F-6's mode-switch confirm (gameSummary.splitLine), restored here -- retired along with
-  // the old GAMES tiles, but the roster-reshaping hazard it guarded is exactly as real from PLAY's own
-  // mode picker. `piece_id`, not the mode string: two builtins could in principle share one mode (they
-  // do not today, but the picker keys on piece ids everywhere else).
-  const [modeConfirm, setModeConfirm] = useState<{ piece_id: string; split: string } | null>(null);
-  // Review follow-up: the SAME confirm, keyed by favourite id instead of piece id -- a FAVOURITE's own
-  // mode can reshape the roster too.
-  const [favConfirm, setFavConfirm] = useState<{ favourite_id: string; split: string } | null>(null);
-  // F413: the TEAMS strip item can reshape the roster exactly like a mode switch does -- the SAME
-  // confirm, but not keyed by a single target (a count change and a colour change are both "the teams
-  // item changed"; unlike a mode or a favourite there is no single id to re-tap). One pending split at
-  // a time: ANY second teams-changing tap while it is showing commits that LATEST attempt, not
-  // necessarily the one that first armed it -- the gate is "did you mean it", not "the exact same value".
-  const [teamsConfirm, setTeamsConfirm] = useState<string | null>(null);
+  // Bench 2026-09-28 (Tony, "just change the choices, don't make me read warnings"): a mode pick and a
+  // TEAMS change apply at once, no confirm. The server keeps each player's side (a same-count change
+  // recolours by index; a count change splits evenly). A FAVOURITE load still asks first.
 
   if (!state) return null;
   const cfg = state.config;
@@ -166,50 +156,12 @@ export function Games() {
   // Polish round 1 Low: a fallback note used to sit on screen until the NEXT favourite load, surviving
   // every ordinary tap in between and describing a load that was no longer the reason anything on
   // screen looked the way it did.
-  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); setModeConfirm(null); setFavConfirm(null); setTeamsConfirm(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
+  const pickPiece = (kind: PieceKind, piece_id: string) => { setFallbackNote(null); return run(() => api.pick({ pieces: { [kind]: piece_id } }))
     .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallback(r.fallbacks)); }); };
-  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); setModeConfirm(null); setFavConfirm(null); setTeamsConfirm(null); return run(() => api.pick({ match: patch }))
+  const pickMatch = (patch: Partial<MatchSettings>) => { setFallbackNote(null); return run(() => api.pick({ match: patch }))
     .then(r => { if (!r) return; if (!r.ok) { setNotice(r.errors.join(' · '), true); return; } setFallbackNote(pickFallback(r.fallbacks)); }); };
-  // Round 4 (F-6, gameSummary.splitLine): a mode switch that would move ≥2 rostered players between
-  // teams asks first -- retired along with the old GAMES tiles, restored here since PLAY's own mode
-  // picker carries exactly the same hazard. Picking a mode is itself the request (no draft/SAVE step
-  // to hang the ask on, unlike GameEditPanel's), so the ask sits on the TAP: the first tap on a mode
-  // that reshapes the roster shows the predicted split and sends nothing; the SAME mode tapped again
-  // commits it. Any other tap (a different mode, or any other control -- pickPiece/pickMatch above
-  // both clear this) cancels. Re-picking the mode already applied, or one whose teams do not actually
-  // move anyone (`splitLine` returns '' either way), is still one tap.
-  const pickMode = (p: GamePiece) => {
-    const modeId = (p.value as { mode: string }).mode;
-    // F-6/F413: pick()'s own reset only fires when the mode ACTUALLY changes -- re-picking the mode
-    // already applied touches nothing (mirrored here, or a same-mode tap would predict a reshape that a
-    // real re-pick never does).
-    const newTeams = modeId !== cfg.mode ? (modes.find(m => m.mode === modeId)?.defaults.teams ?? []) : cfg.teams;
-    const split = splitLine(state.players, cfg.teams, newTeams);
-    if (split) {
-      if (modeConfirm?.piece_id === p.piece_id) { setModeConfirm(null); pickPiece('mode', p.piece_id); return; }
-      setModeConfirm({ piece_id: p.piece_id, split });
-      setFavConfirm(null);
-      return;
-    }
-    setModeConfirm(null);
-    pickPiece('mode', p.piece_id);
-  };
-
-  // F413: the TEAMS item's own count/colour controls call this directly (never `pickMatch` -- that
-  // would skip the confirm). Same hazard, same primitive (`splitLine`/`SwitchConfirm`) as `pickMode`
-  // above, just with no single re-tap target to key on (see `teamsConfirm`'s own comment).
-  const pickTeams = (teams: TeamColour[]) => {
-    const split = splitLine(state.players, cfg.teams, teams.map(c => ({ team_id: c })));
-    if (split) {
-      if (teamsConfirm) { setTeamsConfirm(null); pickMatch({ teams }); return; }
-      setTeamsConfirm(split);
-      setModeConfirm(null);
-      setFavConfirm(null);
-      return;
-    }
-    setTeamsConfirm(null);
-    pickMatch({ teams });
-  };
+  const pickMode = (p: GamePiece) => pickPiece('mode', p.piece_id);
+  const pickTeams = (teams: TeamColour[]) => pickMatch({ teams });
 
   const load = async () => {
     if (busy) return;
@@ -265,38 +217,10 @@ export function Games() {
     setRunway(r.countdown_s);
     setFallbackNote(favouriteFallbackNote(r.fallbacks, r.pick));
   };
-  // Review follow-up: a FAVOURITE's own mode can reshape the roster exactly like picking it directly
-  // can (`pickMode` above) -- this used to switch straight through with no confirm at all. The mode
-  // piece a favourite names can itself be gone/post_mvp by now, so this predicts the SAME fallback the
-  // load would actually apply (the first non-post_mvp mode piece, mirroring `resolvePiecesMixed`'s own
-  // fallback rule) rather than assuming the favourite's saved piece still resolves.
+  // Bench 2026-09-28 (Tony, "this warning is not helpful"): a favourite loads in one tap. The server
+  // keeps each player's side on a same-count colour change and splits evenly on a count change.
   const loadFavourite = async (id: string) => {
-    const fav = favourites.find(f => f.favourite_id === id);
-    if (!fav) return;
-    // F413: unlike a mode PICK, loading a favourite never goes through pick()'s own red/blue reset --
-    // it composes the favourite's OWN saved `match` directly (mock/backend.ts loadFavourite). An
-    // EXPLICIT saved `match.teams` always wins (whatever pick() itself composed when it was saved).
-    // Absent that (an older favourite, saved before F413), a mode change alone still reshapes -- not
-    // through `match.teams` at all, but through `putConfig`'s own mode-changed BASE rebuild, which uses
-    // the NEW mode's own catalogue `defaults.teams` when the patch itself names no `teams` (same
-    // mechanism a direct GameEditPanel mode switch relies on). No mode change at all touches nothing.
-    const savedModePiece = pieces.find(p => p.piece_id === fav.pick.pieces.mode);
-    const modePiece = (savedModePiece && savedModePiece.kind === 'mode' && !savedModePiece.post_mvp && !savedModePiece.invalid)
-      ? savedModePiece : pieces.find(p => p.kind === 'mode' && !p.post_mvp && !p.invalid);
-    const modeId = modePiece ? (modePiece.value as { mode: string }).mode : undefined;
-    const modeRow = modes.find(m => m.mode === modeId);
-    const modeChanged = modeId !== undefined && modeId !== cfg.mode;
-    const newTeams = fav.pick.match.teams
-      ? fav.pick.match.teams.map(c => ({ team_id: c }))
-      : modeChanged ? (modeRow?.defaults.teams ?? []) : cfg.teams;
-    const split = splitLine(state.players, cfg.teams, newTeams);
-    if (split) {
-      if (favConfirm?.favourite_id === id) { setFavConfirm(null); await doLoadFavourite(id); return; }
-      setFavConfirm({ favourite_id: id, split });
-      setModeConfirm(null);
-      return;
-    }
-    setFavConfirm(null);
+    if (!favourites.some(f => f.favourite_id === id)) return;
     await doLoadFavourite(id);
   };
 
@@ -435,11 +359,6 @@ export function Games() {
               </div>
             </fieldset>
           )}
-          {/* Review follow-up: a FAVOURITE's own mode can reshape the roster just like picking it
-              directly can (`pickMode`'s own confirm below) -- the same primitive, the same wording. */}
-          {favConfirm && (
-            <SwitchConfirm dropsDraft={false} split={favConfirm.split} action="TAP THE FAVOURITE AGAIN TO SWITCH" />
-          )}
           {fallbackNote && (
             <div data-testid="favourite-fallback-note" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 2, font: F.chk(600, 12), color: T.warn }}>
               {fallbackNote.map((l, i) => <div key={i}>{l}</div>)}
@@ -459,23 +378,24 @@ export function Games() {
               if (options.length <= 1) return null;
               const selected = pick.pieces[kind];
               return (
-                <div key={kind} data-testid={`picker-${kind}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                // Bench 2026-09-28 (Tony): GAME MODE takes a whole row, so LIFE and SPAWN share the next one.
+                <div key={kind} data-testid={`picker-${kind}`} style={{ display: 'flex', flexDirection: 'column', gap: 6, flexBasis: kind === 'mode' ? '100%' : undefined }}>
                   <div style={{ font: F.mono(600, 11), letterSpacing: '.22em', color: T.micro }}>{kindLabel(kind)}</div>
                   {kind === 'mode' ? (
                     // Tony, 2026-09-26: "on play mode picker would be great" -- each option carries its
                     // own mark, so this is a bespoke row (Seg has no per-option slot for one), styled to
                     // match it otherwise.
-                    <span role="group" aria-label="game mode" style={{ display: 'flex', flexWrap: 'wrap', border: `1px solid ${T.line}` }}>
+                    <span role="group" aria-label="game mode" style={{ display: 'flex', flexWrap: 'wrap', alignSelf: 'flex-start', border: `1px solid ${T.line}` }}>
                       {options.map(p => {
                         const on = p.piece_id === selected;
                         const modeId = (p.value as { mode: string }).mode;
                         return (
                           <button key={p.piece_id} type="button" className="hit44" aria-pressed={on} title={p.note || p.name}
                             onClick={() => pickMode(p)}
-                            style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 14), letterSpacing: '.08em', padding: '8px 16px 8px 8px',
+                            style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 15), letterSpacing: '.08em', padding: '10px 22px 10px 10px',
                               background: on ? T.panelAlt : 'transparent', color: on ? T.acc : T.micro,
                               boxShadow: on ? `inset 0 -2px 0 ${T.acc}` : undefined,
-                              cursor: on ? 'default' : 'pointer', minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+                              cursor: on ? 'default' : 'pointer', minHeight: 56, display: 'inline-flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }}>
                             <ModeMark mode={modeId} />
                             {p.name}
                           </button>
@@ -487,9 +407,6 @@ export function Games() {
                       options={options.map(p => ({ value: p.piece_id, label: p.name }))}
                       titles={Object.fromEntries(options.map(p => [p.piece_id, p.note || p.name]))}
                       onChange={id => pickPiece(kind, id)} />
-                  )}
-                  {kind === 'mode' && modeConfirm && (
-                    <SwitchConfirm dropsDraft={false} split={modeConfirm.split} action="TAP AGAIN TO SWITCH" style={{ marginTop: 2 }} />
                   )}
                   {kind === 'mode' && note.length > 0 && (
                     <div data-testid="operator-note" role="status"
@@ -526,7 +443,7 @@ export function Games() {
             {matchItems(modes.find(m => m.mode === cfg.mode), cfg.scoring.win_by).map(key => (
               <MatchItem key={key} itemKey={key} pick={pick} locked={locked} runwayVal={runwayVal} pickMatch={pickMatch}
                 mode={cfg.mode} currentTeams={cfg.teams.map(t => t.team_id as TeamColour)}
-                teamsConfirm={teamsConfirm} pickTeams={pickTeams} />
+pickTeams={pickTeams} />
             ))}
           </div>
 
@@ -685,7 +602,7 @@ function ModeMark({ mode }: { mode: string }) {
   const [broken, setBroken] = useState(false);
   const hasArt = MODE_ART.has(mode) && !broken;
   return (
-    <span style={{ display: 'inline-block', width: 44, height: 28, flexShrink: 0, position: 'relative',
+    <span data-testid="mode-mark" style={{ display: 'inline-block', width: 56, height: 36, flexShrink: 0, position: 'relative',
       background: T.inset, border: `1px solid ${T.line2}`, overflow: 'hidden' }}>
       {hasArt
         ? <img src={`assets/modes/${mode}.jpg`} alt="" onError={() => setBroken(true)}
@@ -698,9 +615,9 @@ function ModeMark({ mode }: { mode: string }) {
 /** One MATCH SETTINGS strip item, by key (screens/matchItems.ts). Each wraps its own control in a
  *  `display: contents` fieldset (disables with `locked`, contributes no box of its own); an item's
  *  own extras (the manual link, the ON/OFF word) are siblings, never inside that fieldset. */
-function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, currentTeams, teamsConfirm, pickTeams }:
+function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, currentTeams, pickTeams }:
   { itemKey: MatchItemKey; pick: GamePick; locked: boolean; runwayVal: number; pickMatch: (p: Partial<MatchSettings>) => void;
-    mode: string; currentTeams: TeamColour[]; teamsConfirm: string | null; pickTeams: (teams: TeamColour[]) => void }) {
+    mode: string; currentTeams: TeamColour[]; pickTeams: (teams: TeamColour[]) => void }) {
   const guarded = (child: React.ReactNode) => (
     <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, display: 'contents' }}>{child}</fieldset>
   );
@@ -737,12 +654,7 @@ function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, currentT
       // one explicitly (games-presets.md §7's "red, blue" default is compose's, not this control's) --
       // absent that, this shows the ROSTER'S actual teams (`cfg.teams`, via `currentTeams`), never an
       // invented default that could disagree with who is on what team right now.
-      return (
-        <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 6 }}>
-          {guarded(<TeamsControl teams={pick.match.teams ?? currentTeams} mode={mode} onChange={pickTeams} />)}
-          {teamsConfirm && <SwitchConfirm dropsDraft={false} split={teamsConfirm} action="TAP A TEAMS CONTROL AGAIN TO SWITCH" />}
-        </span>
-      );
+      return guarded(<TeamsControl teams={pick.match.teams ?? currentTeams} mode={mode} onChange={pickTeams} />);
     case 'hold':
       // Review MEDIUM (brx1, e8811fea): NO TARGET said nothing about what it was NO TARGET *of* --
       // the same leading label TEAMS already carries.
@@ -760,11 +672,10 @@ function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, currentT
  *  KOTH fixes the count at 2 and never offers yellow (a neutral hill broadcasts tid 2, F82). A count or
  *  colour change that would move rostered players between teams is the caller's job (`pickTeams`) --
  *  this component only ever proposes the next `TeamColour[]`, never sends anything itself. */
-const ALL_TEAM_COLOURS: TeamColour[] = ['red', 'blue', 'yellow', 'purple'];
 
 function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: string; onChange: (teams: TeamColour[]) => void }) {
   const isKoth = mode === 'koth';
-  const offered = ALL_TEAM_COLOURS.filter(c => !isKoth || c !== 'yellow');
+  const offered = legalColours(mode);
   const setCount = (n: number) => {
     if (n === teams.length) return;
     if (n < teams.length) { onChange(teams.slice(0, n)); return; }
@@ -789,7 +700,7 @@ function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: st
       {teams.map((c, i) => (
         <span key={i} style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
           <span style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: T.micro }}>TEAM {i + 1}</span>
-          <ColourChooser slot={i} value={c} offered={offered} taken={teams.filter((_, j) => j !== i)}
+          <ColourChooser slot={i} value={c} offered={offered} teams={teams}
             onChange={v => setSlot(i, v)} />
         </span>
       ))}
@@ -797,35 +708,27 @@ function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: st
   );
 }
 
-/** One team slot's colour picker: every offered colour NOT already taken by another slot (plus its own
- *  current value). Review MEDIUM (brx1, e8811fea): four EQUAL filled swatches read as four choices
- *  already made, not one pick among several -- only the CHOSEN colour fills solid now, the rest are
- *  outlined in their own colour (still the legend the swatch itself provides) and dimmed. At 4 teams
- *  every colour is already spoken for, so a slot's own "choice" is really just itself -- that single
- *  swatch is disabled and dimmed further rather than inviting a tap that can only re-pick what is
- *  already there (Low (d)). */
-function ColourChooser({ slot, value, offered, taken, onChange }:
-  { slot: number; value: TeamColour; offered: TeamColour[]; taken: TeamColour[]; onChange: (c: TeamColour) => void }) {
-  const options = offered.filter(c => c === value || !taken.includes(c));
-  const onlyChoice = options.length === 1;
+/** One team slot's colour, as a dropdown (bench 2026-09-28, Tony: it replaced a row of swatch buttons).
+ *  The select fills with the chosen colour; each option shows in its own colour. A colour another slot
+ *  already uses stays listed, disabled, with that slot's name, so the set never looks shorter than it is.
+ *  Controlled: while the F413 reshape confirm is up the value snaps back, and a second pick commits. */
+function ColourChooser({ slot, value, offered, teams, onChange }:
+  { slot: number; value: TeamColour; offered: TeamColour[]; teams: TeamColour[]; onChange: (c: TeamColour) => void }) {
   return (
-    <span role="group" aria-label={`team ${slot + 1} colour`} data-testid={`match-teams-colour-${slot}`}
-      style={{ display: 'inline-flex', gap: 4 }}>
-      {options.map(c => {
-        const on = c === value;
+    <select aria-label={`team ${slot + 1} colour`} data-testid={`match-teams-colour-${slot}`} value={value}
+      onChange={e => onChange(e.target.value as TeamColour)}
+      style={{ minWidth: 120, minHeight: 44, padding: '8px 10px', cursor: 'pointer', boxSizing: 'border-box',
+        background: TEAM[value], color: '#0c1420', border: `2px solid ${TEAM[value]}`, borderRadius: 0,
+        font: F.chk(700, 13), letterSpacing: '.06em' }}>
+      {offered.map(c => {
+        const owner = teams.findIndex((t, j) => j !== slot && t === c);
         return (
-          <button key={c} type="button" className="hit44" aria-pressed={on} title={c.toUpperCase()}
-            disabled={onlyChoice} onClick={() => onChange(c)}
-            style={{ ...BTN_RESET, minWidth: 44, minHeight: 44, padding: '8px 10px',
-              cursor: onlyChoice || on ? 'default' : 'pointer',
-              background: on ? TEAM[c] : 'transparent', color: on ? '#0c1420' : TEAM[c],
-              font: F.chk(700, 12), letterSpacing: '.04em', border: `2px solid ${TEAM[c]}`,
-              opacity: onlyChoice ? 0.45 : (on ? 1 : 0.7), boxSizing: 'border-box' }}>
-            {c.toUpperCase()}
-          </button>
+          <option key={c} value={c} disabled={owner >= 0} style={{ background: T.panelDeep, color: TEAM[c] }}>
+            {c.toUpperCase()}{owner >= 0 ? ` · TEAM ${owner + 1}` : ''}
+          </option>
         );
       })}
-    </span>
+    </select>
   );
 }
 

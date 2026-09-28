@@ -13,6 +13,7 @@ import { DEMO_TEAMS, GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEA
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 import { storedTag, tagError } from '../api/tag';
+import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
 
 const now = () => Date.now();
@@ -1419,7 +1420,14 @@ export class MockBackend implements Api {
       // mode-changed base rebuild and `Games.tsx`'s client-side prediction. Only the static DEMO's own
       // STARTING session (mock/backend.ts's `config` field initialiser) overrides back to blue/yellow,
       // on purpose -- a fixture already in progress, not a fresh pick.
-      match.teams = modeInfo.match_items?.includes('teams') ? modeInfo.defaults.teams.map(t => t.team_id as TeamColour) : undefined;
+      //
+      // Bench 2026-09-28 (Tony): the teams CARRY when the count still fits, with only an illegal colour
+      // swapped (`carryTeams`, mirroring gamepick.py `carry_teams`); reteamForConfig then recolours by
+      // index, so every player keeps their side.
+      match.teams = modeInfo.match_items?.includes('teams')
+        ? carryTeams(this.gamePick.match.teams
+            ?? this.config.teams.filter(t => t.team_id !== 'ffa').map(t => t.team_id as TeamColour), modeInfo.defaults.teams.map(t => t.team_id as TeamColour), modeInfo.mode)
+        : undefined;
       match.hold_target_s = null;
     }
     const pm = p.match ?? {};

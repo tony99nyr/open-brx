@@ -1,13 +1,7 @@
-// The inline MODE switch on KIT/LOBBY reshapes the roster, and the operator has to be asked before
-// anybody moves.
-//
-// T2-A (9a1570d) gave the GAMES tiles a two-tap confirm for exactly this, and a follow-up put the
-// same gate on `GameEditPanel`'s MODE chip. REWRITTEN 2026-09-13: the panel is a DRAFT now, so the
-// question moved to the tap that actually moves people. Picking a mode in a draft moves NOBODY — it
-// changes a local object — and confirming there would have trained operators to tap through a
-// warning about something that had not happened yet, twice per edit. SAVE AND LOAD is the tap that
-// reshapes the roster, so SAVE AND LOAD is the tap that asks, with the SAME `splitLine` predicate and
-// the SAME `SwitchConfirm` primitive the GAMES tiles use rather than a second implementation.
+// The inline MODE switch on KIT/LOBBY. Picking a mode in the draft moves nobody (it changes a local
+// object); SAVE AND LOAD is the one tap that sends it. Bench 2026-09-28 (Tony, no warnings): that SAVE
+// applies at once, with no "TAP SAVE AGAIN" split preview. The server keeps each player's side on a
+// same-count change and splits evenly on a count change.
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { GameConfig } from '../src/api/types';
@@ -35,8 +29,8 @@ async function panel() {
   return { m, d, calls, modes, chip, save };
 }
 
-describe('GameEditPanel — a reshaping SAVE is a two-tap control', () => {
-  it('picking the mode sends nothing and asks nothing; the first SAVE tap shows the predicted split', async () => {
+describe('GameEditPanel — a mode change saves on one tap, with nothing to read', () => {
+  it('picking the mode sends nothing; one SAVE tap commits it, and no confirm appears', async () => {
     const p = await panel();
     expect(p.d.state.config.mode, 'control: the demo starts on tdm').toBe('tdm');
     expect(p.d.state.players.length, 'control: a rostered game').toBeGreaterThanOrEqual(2);
@@ -44,21 +38,11 @@ describe('GameEditPanel — a reshaping SAVE is a two-tap control', () => {
 
     await click(p.chip(koth.abbr));
     expect(p.calls.length, 'picking a mode in the draft must not reach the server').toBe(0);
-    expect(p.m.find('[data-testid="confirm-switch"]').length,
-      'and it does not ask about a reshape that has not been requested yet').toBe(0);
 
     await click(p.save());
-    expect(p.calls.length, 'the FIRST SAVE tap must not reach the server either').toBe(0);
-    const split = p.m.find('[data-testid="confirm-split"]')[0];
-    expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
-    expect(split.textContent).toMatch(/^▲ \d+ PLAYERS? → [A-Z]+ \d+ \/ [A-Z]+ \d+$/);
-    // F413 (2026-09-27): KOTH's own declared pair is red+blue now (team-lead's scope decision, matching
-    // the server's own MODES row), not blue+purple.
-    expect(split.textContent, 'the same prediction the GAMES tiles make').toBe('▲ 8 PLAYERS → RED 4 / BLUE 4');
-
-    await click(p.save());
-    expect(p.calls.length, 'the SECOND SAVE tap commits exactly one config write').toBe(1);
+    expect(p.calls.length, 'the FIRST SAVE tap commits exactly one config write').toBe(1);
     expect(p.calls[0].mode).toBe('koth');
+    expect(p.m.find('[data-testid="confirm-switch"]').length, 'no split warning to read').toBe(0);
     p.m.unmount();
   });
 
@@ -70,16 +54,4 @@ describe('GameEditPanel — a reshaping SAVE is a two-tap control', () => {
     p.m.unmount();
   });
 
-  it('the confirm copy clears the 11px floor, like every other confirm', async () => {
-    const p = await panel();
-    const koth = p.modes.find(m => m.mode === 'koth')!;
-    await click(p.chip(koth.abbr));
-    await click(p.save());
-    const leaves = p.m.find('[data-testid="confirm-switch"] *')
-      .filter(el => el.children.length === 0 && (el.textContent ?? '').trim().length > 3)
-      .map(el => ({ t: (el.textContent ?? '').trim(), px: parseFloat(getComputedStyle(el).fontSize) }));
-    expect(leaves.length, 'control: the confirm rendered copy').toBeGreaterThan(0);
-    expect(leaves.filter(l => l.px < 11), `sub-11px confirm copy: ${JSON.stringify(leaves)}`).toEqual([]);
-    p.m.unmount();
-  });
 });

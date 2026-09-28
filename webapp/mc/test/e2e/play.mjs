@@ -7,10 +7,11 @@
 //
 //   node test/e2e/play.mjs                    # every step
 //   ONLY=<step> node test/e2e/play.mjs        # one step: fresh | extra-pieces | controls |
-//                                              #   mode-switch-confirm | kills |
+//                                              #   mode-switch | kills |
 //                                              #   lastmatch | koth | pick-fail | stale | widths |
 //                                              #   load-feedback | locked | refusal-and-cap |
-//                                              #   pieces-failure | hit-areas | stepper-glyphs | silenced-onoff |
+//                                              #   pieces-failure | hit-areas | stepper-glyphs | picker-rows |
+//                                              #   silenced-onoff |
 //                                              #   teams | hold |
 //                                              #   favourites-save | favourites-load |
 //                                              #   favourites-fallback | favourites-rename |
@@ -155,14 +156,9 @@ const shot = async (pg, name) => {
   return f;
 };
 const text = pg => pg.evaluate(() => document.body.innerText);
-// Round 4 (F-6, splitLine, restored): a mode switch that reshapes the roster now asks first -- a
-// single click on a mode option can land on the confirm instead of applying it. A second click is
-// always safe here even when no confirm was shown (the mode is already applied, and clicking it again
-// re-picks the SAME value), so every OTHER step that just wants a mode APPLIED uses this.
+// Bench 2026-09-28 (Tony, no warnings): one click on a mode applies it; there is no confirm any more.
 const pickMode = async (pg, label) => {
-  const btn = pg.getByRole('button', { name: label });
-  await btn.click();
-  await btn.click();
+  await pg.getByRole('button', { name: label }).click();
 };
 
 const steps = [];
@@ -185,7 +181,7 @@ step('fresh', async ({ browser, base }) => {
     // Tony, 2026-09-26: each GAME MODE option carries its own mark, fully inside a fixed box (never a
     // crop, never a jump). One mark per visible option, and each mark stays within its own box.
     const marks = await pg.evaluate(() => [...document.querySelectorAll('[aria-label="game mode"] button')].map(btn => {
-      const box = btn.querySelector('span[style*="width: 44px"]');
+      const box = btn.querySelector('[data-testid="mode-mark"]');
       const mark = box?.querySelector('img, svg');
       if (!box || !mark) return null;
       const b = box.getBoundingClientRect(), m = mark.getBoundingClientRect();
@@ -231,31 +227,25 @@ step('controls', async ({ browser, base }) => {
   await pg.context().close();
 });
 
-step('mode-switch-confirm', async ({ browser, base }) => {
-  // F-6 (splitLine), restored: TDM's demo roster is 4 BLUE / 4 YELLOW; a mode change now gives red+blue
-  // (F413 scope decision, 2026-09-27), so this reshapes -- the first tap must ask, not send.
+step('mode-switch', async ({ browser, base }) => {
+  // Bench 2026-09-28 (Tony): TDM blue/yellow picked into KOTH showed a split warning and a "tap again"
+  // step, and the TEAMS chooser still offered YELLOW while it was up. Now one click applies KOTH, only
+  // the yellow team changes colour (to red), nobody changes side, and yellow is never offered.
   const pg = await open(browser, base, '?mock#build', 1280);
-  const before = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
-  expect(before === 'tdm', 'control: the demo starts on TDM');
+  const before = await pg.evaluate(() => window.__MC_MOCK__.getState());
+  expect(before.config.mode === 'tdm', 'control: the demo starts on TDM');
+  expect(before.config.teams.map(t => t.team_id).join() === 'blue,yellow', 'control: the demo is BLUE/YELLOW');
+  const sideOf = s => Object.fromEntries(s.players.map(p => [p.player_id, s.config.teams.findIndex(t => t.team_id === p.team_id)]));
   await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
-  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm');
-  const split = await pg.getByTestId('confirm-split').innerText();
-  expect(split === '▲ 8 PLAYERS → RED 4 / BLUE 4', `the predicted split is shown (saw ${JSON.stringify(split)})`);
-  const mid = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.config.mode);
-  expect(mid === 'tdm', 'the first tap must not have reached the server');
-  await shot(pg, 'mode-switch-confirm-armed');
-
-  // a different mode cancels the pending confirm rather than stacking onto it
-  await pg.getByRole('button', { name: 'TEAM DEATHMATCH' }).click();
-  await until(() => pg.getByTestId('confirm-switch').count().then(n => n === 0), 4000, 'the confirm clears (TDM is already applied, so this alone reads as one tap)');
-
-  // the real two-tap sequence: same mode twice commits it
-  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
-  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm again');
-  await pg.getByRole('button', { name: 'KING OF THE HILL' }).click();
-  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'the second tap reaches the server');
-  expect(await pg.getByTestId('confirm-switch').count() === 0, 'the confirm is gone once applied');
-  ok(`a mode switch that reshapes the roster asks first, and the same mode again applies it   ${await shot(pg, 'mode-switch-confirm-applied')}`);
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'one click reaches the server');
+  const after = await pg.evaluate(() => window.__MC_MOCK__.getState());
+  expect(after.config.teams.map(t => t.team_id).join() === 'blue,red', `yellow became red, blue stayed (saw ${after.config.teams.map(t => t.team_id)})`);
+  expect(JSON.stringify(sideOf(after)) === JSON.stringify(sideOf(before)), 'every player keeps their side');
+  expect(await pg.getByTestId('confirm-switch').count() === 0, 'no warning to read');
+  await until(() => pg.locator('[data-testid^="match-teams-colour-"] option').count().then(n => n > 0), 4000, 'the TEAMS dropdowns');
+  const opts = await pg.locator('[data-testid^="match-teams-colour-"] option').allInnerTexts();
+  expect(!opts.some(t => t.includes('YELLOW')), `the chooser never offers yellow under KOTH (saw ${JSON.stringify(opts)})`);
+  ok(`one click on KOTH applies it: BLUE/RED, nobody moved, no warning, no yellow   ${await shot(pg, 'mode-switch-koth')}`);
   await pg.context().close();
 });
 
@@ -453,6 +443,27 @@ step('stepper-glyphs', async ({ browser, base }) => {
   await pg.context().close();
 });
 
+step('picker-rows', async ({ browser, base }) => {
+  // Bench 2026-09-28 (Tony): GAME MODE on its own row with bigger cards, then LIFE and SPAWN together
+  // on the next row, at every page width.
+  for (const w of [1280, 900, 768]) {
+    const pg = await open(browser, base, '?mock#build', w);
+    const r = await pg.evaluate(() => {
+      const box = id => document.querySelector(`[data-testid="picker-${id}"]`)?.getBoundingClientRect();
+      const [mode, life, spawn] = ['mode', 'life', 'spawn'].map(box);
+      const cards = [...document.querySelectorAll('[role="group"][aria-label="game mode"] button')].map(b => b.getBoundingClientRect().height);
+      return { mode: mode && { top: mode.top, bottom: mode.bottom }, life: life?.top, spawn: spawn?.top, cards };
+    });
+    expect(r.mode && r.life != null && r.spawn != null, `${w}px: GAME MODE, LIFE and SPAWN all render (saw ${JSON.stringify(r)})`);
+    expect(r.life >= r.mode.bottom && r.spawn >= r.mode.bottom, `${w}px: LIFE and SPAWN sit below GAME MODE, not beside it (saw ${JSON.stringify(r)})`);
+    expect(Math.abs(r.life - r.spawn) < 2, `${w}px: LIFE and SPAWN share one row (tops ${r.life} / ${r.spawn})`);
+    expect(r.cards.length >= 2 && r.cards.every(h => h >= 52), `${w}px: every GAME MODE card is >= 52px tall (saw ${JSON.stringify(r.cards)})`);
+    if (w === 1280) ok(`picker rows at ${w}px   ${await shot(pg, 'picker-rows')}`);
+    await pg.context().close();
+  }
+  ok('768/900/1280px: GAME MODE has its own row of bigger cards; LIFE and SPAWN share the next row');
+});
+
 step('silenced-onoff', async ({ browser, base }) => {
   // QA-12: the only sign of SILENCED was a 14px knob changing grey/blue -- no word said ON or OFF.
   const pg = await open(browser, base, '?mock#build', 1280);
@@ -467,54 +478,47 @@ step('silenced-onoff', async ({ browser, base }) => {
 });
 
 step('teams', async ({ browser, base }) => {
-  // F413 (games-presets.md §7): TDM starts BLUE/YELLOW (8 players) -- a count bump to 3 reshapes the
-  // roster, so it asks first (the SAME confirm mode-switch-confirm already proved, just with no single
-  // target to re-tap: any second teams-changing tap commits).
+  // F413 (games-presets.md §7): TDM starts BLUE/YELLOW (8 players). Bench 2026-09-28 (Tony, no
+  // warnings): a count bump to 3 applies at once and splits the roster over the three teams.
   const pg = await open(browser, base, '?mock#build', 1280);
   const teamsItem = pg.getByTestId('match-teams-item');
   const count3 = teamsItem.getByRole('button', { name: '3', exact: true });
   await count3.click();
-  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm (count to 3)');
-  const before = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.game_pick.match.teams);
-  expect(before === undefined, 'the first tap must not reach the server');
-  await count3.click();
-  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.teams?.length === 3, 4000, '3 teams committed');
-  ok(`TEAMS: a count change to 3 asks first, then commits   ${await shot(pg, 'teams-count-3')}`);
+  await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.teams?.length === 3, 4000, '3 teams committed on one click');
+  expect(await pg.getByTestId('confirm-switch').count() === 0, 'no warning to read');
+  ok(`TEAMS: a count change to 3 applies on one click   ${await shot(pg, 'teams-count-3')}`);
 
   // a colour change on one slot: BLUE -> PURPLE (PURPLE is not yet taken by another slot at this point)
   const slot0 = pg.getByTestId('match-teams-colour-0');
-  const purple = slot0.getByRole('button', { name: 'PURPLE' });
-  await purple.click();
-  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm (a colour change)');
-  await purple.click();
+  await slot0.selectOption('purple');
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.teams?.[0] === 'purple', 4000, 'the colour change committed');
-  ok('TEAMS: a colour change on one slot asks first, then commits');
+  expect(await pg.getByTestId('confirm-switch').count() === 0, 'a colour change shows no warning');
+  ok('TEAMS: a colour change on one slot applies on one pick');
 
   // KOTH fixes the count at 2 and never offers yellow
   await pickMode(pg, 'KING OF THE HILL');
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 4000, 'KOTH applied');
-  const stripText = await teamsItem.innerText();
-  expect(!stripText.includes('YELLOW'), `KOTH never offers yellow (saw ${JSON.stringify(stripText)})`);
+  const kothOptions = await pg.locator('[data-testid^="match-teams-colour-"] option').allInnerTexts();
+  expect(kothOptions.length > 0 && !kothOptions.some(t => t.includes('YELLOW')), `KOTH never offers yellow (saw ${JSON.stringify(kothOptions)})`);
   expect(await pg.locator('[aria-label="team count"]').count() === 0, 'KOTH fixes the count, no control shown');
   ok(`TEAMS: KOTH fixes the count at 2 and never offers yellow   ${await shot(pg, 'teams-koth-no-yellow')}`);
 
   // Review MEDIUM 2 (brx1, e8811fea): back on TDM (teams share the count control again), bump to 4 --
-  // every colour is then already spoken for, so one slot has only its own colour left. Screenshot: each
-  // slot reads TEAM 1..TEAM 4, only the CHOSEN swatch in each is filled solid (the rest outlined and
-  // dimmed), and the slot with no real choice is a single, disabled swatch rather than a dead-end tap.
+  // every colour is then already spoken for. Screenshot: each slot reads TEAM 1..TEAM 4, each dropdown
+  // wears its own colour, and (bench 2026-09-28) the other three colours are listed but not selectable.
   await pickMode(pg, 'TEAM DEATHMATCH');
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 4000, 'TDM applied');
   const count4 = teamsItem.getByRole('button', { name: '4', exact: true });
-  await count4.click();
-  await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 4000, 'the reshape confirm (count to 4)');
   await count4.click();
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).game_pick.match.teams?.length === 4, 4000, '4 teams committed');
   const labels = await teamsItem.innerText();
   expect(/TEAM 1/.test(labels) && /TEAM 4/.test(labels), `each slot is labelled TEAM 1..TEAM 4 (saw ${JSON.stringify(labels.slice(0, 200))})`);
   // at 4 teams every colour is already spoken for, so EVERY slot's own colour is its only option.
-  const disabledSwatches = await pg.locator('[data-testid^="match-teams-colour-"] button[disabled]').count();
-  expect(disabledSwatches === 4, `all four slots have no real choice left, at 4 teams (saw ${disabledSwatches})`);
-  ok(`TEAMS: at 4 teams, slots are labelled and the single-choice swatch is disabled   ${await shot(pg, 'teams-four-labelled')}`);
+  const free = await pg.locator('[data-testid^="match-teams-colour-"]').evaluateAll(sels =>
+    sels.map(s => ({ value: s.value, free: [...s.options].filter(o => !o.disabled).map(o => o.value), bg: getComputedStyle(s).backgroundColor })));
+  expect(free.length === 4 && free.every(f => f.free.length === 1 && f.free[0] === f.value), `at 4 teams, each dropdown can only keep its own colour (saw ${JSON.stringify(free)})`);
+  expect(new Set(free.map(f => f.bg)).size === 4, `each dropdown is filled with its own team colour (saw ${JSON.stringify(free.map(f => f.bg))})`);
+  ok(`TEAMS: at 4 teams, slots are labelled and each dropdown holds only its own colour   ${await shot(pg, 'teams-four-labelled')}`);
   await pg.context().close();
 });
 
@@ -615,9 +619,6 @@ step('real-teams-hold', async ({ browser }) => {
     expect(JSON.stringify(before.config.teams.map(t => t.team_id)) === JSON.stringify(['red', 'blue']),
       `control: TDM starts at red, blue (saw ${JSON.stringify(before.config.teams.map(t => t.team_id))})`);
     await teamsItem.getByRole('button', { name: '3', exact: true }).click();
-    // a fresh MC's own demo roster reshapes on this, so the count control asks first, same as `?mock`.
-    await until(() => pg.getByTestId('confirm-switch').count().then(n => n > 0), 6000, 'the reshape confirm (count to 3)');
-    await teamsItem.getByRole('button', { name: '3', exact: true }).click();
     await until(async () => (await fetch(`${mc.base}/api/state`).then(r => r.json())).config.teams.length === 3, 8000, '3 teams reaches the real server');
     const withThree = await fetch(`${mc.base}/api/state`).then(r => r.json());
     expect(JSON.stringify(withThree.config.teams.map(t => t.team_id)) === JSON.stringify(['red', 'blue', 'yellow']),
@@ -685,14 +686,11 @@ step('favourites-save', async ({ browser, base }) => {
   await pg.context().close();
 });
 
-/** Tap a favourite chip. When the load would move rostered players, PLAY asks first (the moves-players
- *  confirm): wait for THIS tap's result (`loaded()` or the confirm), and tap again only if it asked. */
+/** Tap a favourite chip: one tap loads it (bench 2026-09-28, no confirm), and no warning appears. */
 async function loadFavourite(pg, name, loaded) {
-  const chip = pg.locator(`text=☆ ${name}`);
-  const asked = () => pg.locator('text=TAP THE FAVOURITE AGAIN TO SWITCH').count().then(n => n > 0);
-  await chip.click();
-  await until(async () => (await loaded()) || (await asked()), 6000, `${name}: loaded, or the moves-players confirm`);
-  if (await asked()) await chip.click();
+  await pg.locator(`text=☆ ${name}`).click();
+  await until(loaded, 6000, `${name}: loaded on one tap`);
+  expect(await pg.getByTestId('confirm-switch').count() === 0, `${name}: no warning to read`);
 }
 
 step('favourites-load', async ({ browser, base }) => {

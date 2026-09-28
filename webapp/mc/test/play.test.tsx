@@ -105,95 +105,66 @@ describe('PLAY — a tap is one POST /api/play/pick', () => {
   });
 });
 
-describe('PLAY — round 4: a mode switch that reshapes the roster asks first (F-6, restored)', () => {
-  it('the first tap sends nothing and shows the predicted split', async () => {
-    const { m, api } = await renderPlay(new MockBackend());   // 8 players, 4 BLUE / 4 YELLOW (TDM)
+describe('PLAY — a mode pick applies at once and keeps every player on their side (bench 2026-09-28)', () => {
+  // Tony at the bench: TDM blue/yellow picked into KOTH showed "▲ 2 PLAYERS → BLUE 1 / RED 1 / TAP A TEAMS
+  // CONTROL AGAIN TO SWITCH", and the chooser still offered yellow while it was up. Now one tap applies,
+  // only the illegal colour changes, nobody moves, and nothing asks to be read.
+  it('one tap on KOTH applies: yellow becomes red, blue stays blue, nobody changes side', async () => {
+    const api = new MockBackend();
+    const { m, settle } = await renderPlay(api);   // 8 players, 4 BLUE / 4 YELLOW (TDM)
+    const before = await api.getState();
+    const sideOf = (s: typeof before) => Object.fromEntries(s.players.map(p => [p.player_id, s.config.teams.findIndex(t => t.team_id === p.team_id)]));
     await m.click('KING OF THE HILL');
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    const after = await api.getState();
-    expect(after.config.mode, 'the first tap must not reach the server').toBe('tdm');
-    const split = m.find('[data-testid="confirm-split"]')[0];
-    expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
-    expect(split.textContent).toBe('▲ 8 PLAYERS → RED 4 / BLUE 4');   // F413 scope decision: a mode change gives red+blue
-    expect(m.text()).toContain('TAP AGAIN TO SWITCH');
     m.unmount();
+    const m2 = await settle();
+    const after = await api.getState();
+    expect(after.config.mode, 'one tap reaches the server').toBe('koth');
+    expect(after.config.teams.map(t => t.team_id)).toEqual(['blue', 'red']);
+    expect(sideOf(after), 'every player keeps their side (index), only the colour changed').toEqual(sideOf(before));
+    expect(m2.find('[data-testid="confirm-split"]').length, 'no warning to read').toBe(0);
+    const options = m2.find('[data-testid^="match-teams-colour-"] option').map(o => (o as HTMLOptionElement).value);
+    expect(options.length).toBeGreaterThan(0);
+    expect(options, 'the chooser offers only KOTH-legal colours').not.toContain('yellow');
+    m2.unmount();
   });
 
-  it('the second tap on the SAME mode commits exactly one pick', async () => {
-    const { m, api } = await renderPlay(new MockBackend());
-    await m.click('KING OF THE HILL');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    await m.click('KING OF THE HILL');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    const after = await api.getState();
-    expect(after.config.mode).toBe('koth');
-    expect(m.find('[data-testid="confirm-split"]').length, 'the confirm is gone once applied').toBe(0);
-    m.unmount();
-  });
-
-  it('re-picking the mode already applied is still one tap (splitLine has nothing to confirm)', async () => {
-    const { m, api } = await renderPlay(new MockBackend());   // already TDM
+  it('re-picking the mode already applied changes nothing', async () => {
+    const api = new MockBackend();
+    const { m } = await renderPlay(api);   // already TDM, blue/yellow
     await m.click('TEAM DEATHMATCH');
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     const after = await api.getState();
     expect(after.config.mode).toBe('tdm');
-    expect(m.find('[data-testid="confirm-split"]').length).toBe(0);
-    m.unmount();
-  });
-
-  it('tapping a DIFFERENT mode cancels the pending confirm rather than stacking it', async () => {
-    const { m, api } = await renderPlay(new MockBackend());
-    await m.click('KING OF THE HILL');   // arms the confirm for KOTH
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    await m.click('TEAM DEATHMATCH');   // a DIFFERENT mode -- and TDM is already applied, so one tap picks it
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    const after = await api.getState();
-    expect(after.config.mode, 'TDM must have been picked, not KOTH from a stale confirm').toBe('tdm');
-    expect(m.find('[data-testid="confirm-split"]').length).toBe(0);
+    expect(after.config.teams.map(t => t.team_id)).toEqual(['blue', 'yellow']);
     m.unmount();
   });
 });
 
-describe('PLAY — review follow-up: loading a FAVOURITE that reshapes the roster asks first too', () => {
-  // F413 scope decision (2026-09-27): this favourite carries NO explicit `match.teams` (an older
-  // favourite, saved before F413) -- loading it still reshapes, through `putConfig`'s own mode-changed
-  // BASE rebuild (the NEW mode's own catalogue `defaults.teams`, blue+red for every team mode now,
-  // team-lead's decision) rather than through pick()'s own reset (a SEPARATE code path entirely; a
-  // favourite saved WITH an explicit teams list would carry ITS OWN saved colours instead, whatever
-  // they were at save time).
+describe('PLAY — loading a FAVOURITE applies in one tap (bench 2026-09-28, "this warning is not helpful")', () => {
+  // This favourite carries NO explicit `match.teams` (an older favourite, saved before F413): loading it
+  // goes through `putConfig`'s own mode-changed BASE rebuild (KOTH's red/blue). Same count, so the
+  // write recolours by index and nobody changes side.
   async function favouriteToKoth(api: MockBackend) {
     const before = await api.getState();
     await api.createFavourite({ name: 'KOTH Setup', countdown_s: 30,
       pick: { pieces: { ...before.game_pick!.pieces, mode: 'builtin:mode:koth' }, match: before.game_pick!.match } });
   }
 
-  it('the first tap sends nothing and shows the predicted split', async () => {
+  it('one tap loads it, shows no warning, and keeps every player on their side', async () => {
     const api = new MockBackend();
     await favouriteToKoth(api);
-    const { m } = await renderPlay(api);   // 8 players, 4 BLUE / 4 YELLOW (TDM)
+    const before = await api.getState();   // 8 players, 4 BLUE / 4 YELLOW (TDM)
+    const sideOf = (s: typeof before) => Object.fromEntries(s.players.map(p => [p.player_id, s.config.teams.findIndex(t => t.team_id === p.team_id)]));
+    const { m } = await renderPlay(api);
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });   // getFavourites settles
     await m.click('KOTH Setup');
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     const after = await api.getState();
-    expect(after.config.mode, 'the first tap must not reach the server').toBe('tdm');
-    const split = m.find('[data-testid="confirm-split"]')[0];
-    expect(split, 'the predicted split is on screen before anything moves').toBeTruthy();
-    expect(split.textContent).toBe('▲ 8 PLAYERS → RED 4 / BLUE 4');
-    m.unmount();
-  });
-
-  it('the second tap on the SAME favourite commits it', async () => {
-    const api = new MockBackend();
-    await favouriteToKoth(api);
-    const { m } = await renderPlay(api);
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    await m.click('KOTH Setup');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    await m.click('KOTH Setup');
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    const after = await api.getState();
-    expect(after.config.mode).toBe('koth');
-    expect(m.find('[data-testid="confirm-split"]').length, 'the confirm is gone once applied').toBe(0);
+    expect(after.config.mode, 'one tap reaches the server').toBe('koth');
+    expect(after.config.teams.some(t => t.team_id === 'yellow'), 'KOTH never keeps yellow').toBe(false);
+    expect(sideOf(after), 'every player keeps their side, only the colour changed').toEqual(sideOf(before));
+    expect(m.find('[data-testid="confirm-split"]').length, 'no warning to read').toBe(0);
     m.unmount();
   });
 });
@@ -660,6 +631,11 @@ async function clickIn(container: HTMLElement, text: string) {
   await act(async () => { btn.click(); });
 }
 
+/** Picks one colour in a team slot's dropdown, the way a browser does (value, then a bubbling change). */
+async function pickColour(sel: HTMLSelectElement, colour: string) {
+  await act(async () => { sel.value = colour; sel.dispatchEvent(new Event('change', { bubbles: true })); });
+}
+
 describe('PLAY — F413: TEAMS strip item', () => {
   it('shows for TDM, reading the ROSTER’S actual teams (never an invented default)', async () => {
     const { m } = await renderPlay(new MockBackend());   // 8 players, 4 BLUE / 4 YELLOW (TDM)
@@ -679,35 +655,33 @@ describe('PLAY — F413: TEAMS strip item', () => {
     m2.unmount();
   });
 
-  it('a count change to 3 asks first, and the second tap commits 3 teams', async () => {
-    const { m, api, settle } = await renderPlay(new MockBackend());
-    const teamsEl = () => m.find('[data-testid="match-teams-item"]')[0];
-    await clickIn(teamsEl(), '3');
+  it('a count change to 3 applies at once and splits the roster over 3 teams', async () => {
+    const api = new MockBackend();
+    const { m, settle } = await renderPlay(api);
+    await clickIn(m.find('[data-testid="match-teams-item"]')[0], '3');
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect((await api.getState()).game_pick?.match.teams, 'the first tap must not reach the server').toBeUndefined();
-    expect(m.text()).toContain('TAP A TEAMS CONTROL AGAIN TO SWITCH');
-    await clickIn(teamsEl(), '3');
     m.unmount();
     const m2 = await settle();
     const after = await api.getState();
     expect(after.game_pick?.match.teams).toHaveLength(3);
     expect(after.config.teams.map(t => t.team_id)).toEqual(after.game_pick?.match.teams);
-    expect(m2.find('[data-testid="match-teams-item"]')[0].textContent, 'confirm gone, the strip agrees with the server').not.toContain('TAP A TEAMS');
+    const ids = new Set(after.config.teams.map(t => t.team_id));
+    expect(after.players.every(p => ids.has(p.team_id!)), 'every player is on a declared team').toBe(true);
+    expect(m2.find('[data-testid="confirm-split"]').length, 'no warning to read').toBe(0);
     m2.unmount();
   });
 
-  it('a colour change on one slot asks first too, and reshapes the roster on commit', async () => {
-    const { m, api, settle } = await renderPlay(new MockBackend());
-    const chooser0 = () => m.find('[data-testid="match-teams-colour-0"]')[0];
-    await clickIn(chooser0(), 'RED');
+  it('a colour change on one slot applies at once and moves nobody', async () => {
+    const api = new MockBackend();
+    const { m } = await renderPlay(api);   // blue/yellow
+    const blueBefore = (await api.getState()).players.filter(p => p.team_id === 'blue').map(p => p.player_id).sort();
+    await pickColour(m.find('[data-testid="match-teams-colour-0"]')[0] as HTMLSelectElement, 'red');
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect((await api.getState()).config.teams.map(t => t.team_id)).toEqual(['blue', 'yellow']);   // unchanged
-    await clickIn(chooser0(), 'RED');
-    m.unmount();
-    await settle();
     const after = await api.getState();
     expect(after.config.teams.map(t => t.team_id)).toEqual(['red', 'yellow']);
+    expect(after.players.filter(p => p.team_id === 'red').map(p => p.player_id).sort(), 'the old blue team is the red team now').toEqual(blueBefore);
     expect(after.players.some(p => p.team_id === 'blue'), 'nobody left on a team no longer declared').toBe(false);
+    m.unmount();
   });
 
   it('KOTH: no count control, and yellow is never offered', async () => {
@@ -728,26 +702,29 @@ describe('PLAY — F413: TEAMS strip item', () => {
     m2.unmount();
   });
 
-  // Review MEDIUM (brx1, e8811fea): four equal filled swatches read as four choices already made, not
-  // one pick among several -- and the slot itself was unlabelled.
-  it('labels each slot TEAM 1, TEAM 2, …, and only the chosen swatch is filled', async () => {
+  // Bench 2026-09-28 (Tony): one dropdown per team replaced the swatch row. Each slot is labelled, the
+  // select wears its chosen colour, every option is in its own colour, and a colour another slot uses is
+  // listed but not selectable.
+  it('labels each slot TEAM 1, TEAM 2, …, one coloured dropdown each', async () => {
     const { m } = await renderPlay(new MockBackend());   // TDM, blue/yellow
     const teamsEl = m.find('[data-testid="match-teams-item"]')[0];
     expect(teamsEl.textContent).toContain('TEAM 1');
     expect(teamsEl.textContent).toContain('TEAM 2');
-    const slot0 = m.find('[data-testid="match-teams-colour-0"]')[0];
-    const chosen = slot0.querySelector('button[aria-pressed="true"]') as HTMLButtonElement;
-    const other = slot0.querySelector('button[aria-pressed="false"]') as HTMLButtonElement;
-    expect(chosen, 'the chosen slot 0 swatch (BLUE) exists').toBeTruthy();
-    expect(other, 'an unchosen option exists to compare against').toBeTruthy();
-    expect(chosen.style.background, 'the CHOSEN swatch is filled with its own colour').not.toBe('transparent');
-    expect(other.style.background, 'an UNCHOSEN option is outlined, not filled').toBe('transparent');
+    const slot0 = m.find('[data-testid="match-teams-colour-0"]')[0] as HTMLSelectElement;
+    expect(slot0.tagName).toBe('SELECT');
+    expect(slot0.value).toBe('blue');
+    expect(slot0.style.background, 'the select is filled with its chosen colour').not.toBe('');
+    const opts = Array.from(slot0.options);
+    expect(opts.map(o => o.value)).toEqual(['red', 'blue', 'yellow', 'purple']);
+    expect(new Set(opts.map(o => o.style.color)).size, 'each option wears its own colour').toBe(4);
+    const yellow = opts.find(o => o.value === 'yellow')!;
+    expect(yellow.disabled, 'TEAM 2 already has yellow').toBe(true);
+    expect(yellow.textContent).toContain('TEAM 2');
+    expect(opts.filter(o => o.disabled).map(o => o.value)).toEqual(['yellow']);
     m.unmount();
   });
 
-  // Low (d): at 4 teams every colour is already spoken for, so a slot's own "choice" is really just
-  // itself -- a single, disabled swatch, not a button that looks pickable but never does anything.
-  it('at 4 teams, a slot with only its own colour left is disabled', async () => {
+  it('at 4 teams, every other colour is taken in each dropdown', async () => {
     const { m, settle } = await renderPlay(new MockBackend());
     const teamsEl = () => m.find('[data-testid="match-teams-item"]')[0];
     await clickIn(teamsEl(), '4');
@@ -757,12 +734,11 @@ describe('PLAY — F413: TEAMS strip item', () => {
     // a settled RE-RENDER: the count commit is a server round trip like any other pick, and the live
     // mount can still be a tick behind it (same reason the KOTH test above settles).
     const m2 = await settle();
-    const chosers = [0, 1, 2, 3].map(i => m2.find(`[data-testid="match-teams-colour-${i}"]`)[0]);
-    const buttonCounts = chosers.map(c => c.querySelectorAll('button').length);
-    expect(buttonCounts.some(n => n === 1), `at least one slot has only its own colour left (saw ${JSON.stringify(buttonCounts)})`).toBe(true);
-    const singleSlot = chosers[buttonCounts.findIndex(n => n === 1)]!;
-    const onlyBtn = singleSlot.querySelector('button') as HTMLButtonElement;
-    expect(onlyBtn.disabled, 'a slot with no real choice is disabled, not a dead-end tap').toBe(true);
+    const sels = [0, 1, 2, 3].map(i => m2.find(`[data-testid="match-teams-colour-${i}"]`)[0] as HTMLSelectElement);
+    for (const sel of sels) {
+      const free = Array.from(sel.options).filter(o => !o.disabled).map(o => o.value);
+      expect(free, `slot ${sel.getAttribute('aria-label')}: only its own colour is selectable`).toEqual([sel.value]);
+    }
     m2.unmount();
   });
 });

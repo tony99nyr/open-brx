@@ -222,15 +222,8 @@ const shot = async (pg, name) => {
   await pg.screenshot({ path: f, fullPage: false });
   return f;
 };
-/** Round 4 (F-6's `splitLine` gate, retired with the old card-shelf UI's own two-tap confirm (T2-A),
- *  restored on PLAY's own mode picker 2026-09-26): a mode switch that would reshape ≥2 rostered
- *  players between teams asks first. The first tap shows the predicted split
- *  (`data-testid="confirm-switch"`/`confirm-split`, `SwitchConfirm`) and sends nothing; the SAME mode
- *  tapped again commits it. Re-picking the mode already applied, or one whose teams do not actually
- *  move anyone, is still one tap (no confirm). This taps twice whenever a confirm appears, so most
- *  callers do not need to know or care -- `koth-selectable` below asserts the confirm line itself; the
- *  F82 re-team it (and this helper) guard is also proven directly against the server
- *  (`teams-never-yellow`, `reteam-visible`). */
+/** Bench 2026-09-28 (Tony, no warnings): one tap on a mode applies it. There is no reshape confirm any
+ *  more; the server keeps each player's side (a same-count change recolours by index). */
 const modeBtn = (pg, label) => pg.locator('[data-testid="picker-mode"]').getByRole('button', { name: label });
 const kothBtn = pg => modeBtn(pg, 'KING OF THE HILL');
 const modeConfirmLine = pg => pg.getByTestId('confirm-switch');
@@ -238,12 +231,7 @@ async function pickMode(pg, label, { ms = 8000 } = {}) {
   const btn = modeBtn(pg, label);
   if ((await btn.getAttribute('aria-pressed')) === 'true') return;   // already the picked mode: a re-tap is a no-op
   await btn.click();
-  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true' || (await modeConfirmLine(pg).count()) > 0,
-    ms, `${label} picked, or its reshape confirm`);
-  if (await modeConfirmLine(pg).count() > 0) {
-    await btn.click();   // the reshape confirm was showing -- this second tap on the SAME mode commits it
-    await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', ms, `${label} picked (after confirming the reshape)`);
-  }
+  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', ms, `${label} picked on one tap`);
 }
 const pickKoth = (pg, opts = {}) => pickMode(pg, 'KING OF THE HILL', opts);
 const pickTdm = (pg, opts = {}) => pickMode(pg, 'TEAM DEATHMATCH', opts);
@@ -419,25 +407,20 @@ step('koth-selectable', async ({ browser, base }) => {
   const btn = kothBtn(pg);
   expect(await btn.count() === 1, 'a KING OF THE HILL option exists in the GAME MODE picker');
   expect((await btn.getAttribute('aria-pressed')) === 'false', 'KotH is not already picked');
-  // 🔴 the SEEDED-ROSTER step: `resetTdm` deals 8 demo players across blue/yellow, so this pick really
-  // does move the roster off yellow — proven on the server below, and directly in `teams-never-yellow`
-  // / `reteam-visible`. Round 4 (F-6's splitLine, restored): that reshape now asks first -- the FIRST
-  // tap only shows the predicted split and sends nothing; the SAME tap again commits it.
+  // 🔴 the SEEDED-ROSTER step: `resetTdm` deals 8 demo players across blue/yellow. Bench 2026-09-28
+  // (Tony, no warnings): ONE tap applies KOTH. Only the yellow team changes colour (to red, the first
+  // free legal colour), blue stays blue, and nobody changes side -- proven on the real server here.
+  const sideOf = st => Object.fromEntries(st.players.map(p => [p.player_id, st.config.teams.findIndex(t => t.team_id === p.team_id)]));
+  const beforeSt = await (await fetch(`${base}/api/state`)).json();
   await btn.click();
-  await until(() => modeConfirmLine(pg).count().then(n => n > 0), 6000, 'the reshape confirm');
-  const split = (await pg.getByTestId('confirm-split').innerText()).trim();
-  // F413 (2026-09-27): TDM and KOTH now share the SAME default pair (red+blue) -- `resetTdm`'s own
-  // blue/yellow roster still reshapes, but BLUE is legal on both sides (reteamForConfig/predictedSplit
-  // leave an already-legal player exactly where they are), so only the YELLOW half actually moves, onto
-  // BLUE too -- collapsing the whole roster onto one side, which then rebalances back to an even split.
-  // Still a real reshape (the confirm shows it, the roster genuinely moves), just not a clean 1:1 swap.
-  expect(split === '▲ 8 PLAYERS → RED 4 / BLUE 4', `the predicted split names the reshape (saw ${JSON.stringify(split)})`);
-  expect((await (await fetch(`${base}/api/state`)).json()).config.mode === 'tdm', 'the first tap must not have reached the server');
-  await btn.click();
-  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', 6000, 'KotH picked on the second tap');
+  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', 6000, 'KotH picked on one tap');
+  expect(await modeConfirmLine(pg).count() === 0, 'no warning to read');
   expect((await btn.getAttribute('aria-pressed')) === 'true', 'KotH reports itself picked');
   await until(async () => (await (await fetch(`${base}/api/state`)).json()).config.mode === 'koth', 6000, 'the server to hold the koth pick');
-  ok(`KotH asks first (the reshape confirm), then becomes the picked mode on the second tap  ${await shot(pg, '02-koth-playing')}`);
+  const afterSt = await (await fetch(`${base}/api/state`)).json();
+  expect(afterSt.config.teams.map(t => t.team_id).join() === 'blue,red', `the server kept BLUE and swapped YELLOW for RED (saw ${afterSt.config.teams.map(t => t.team_id)})`);
+  expect(JSON.stringify(sideOf(afterSt)) === JSON.stringify(sideOf(beforeSt)), 'every player keeps their side on the real server');
+  ok(`KotH applies on one tap: BLUE/RED, nobody moved, no warning  ${await shot(pg, '02-koth-playing')}`);
   await closePage(pg);
 });
 
@@ -561,7 +544,8 @@ step('teams-never-yellow', async ({ browser, base }) => {
   const group = pg.locator('span[role="group"][aria-label="team"]');
   await until(() => group.count().then(n => n > 0), 8000, 'the KIT team chip group');
   const chips = await group.locator('button').allTextContents();
-  expect(JSON.stringify(chips.map(c => c.trim())) === JSON.stringify(['RED', 'BLUE']),
+  // Bench 2026-09-28: a mode pick CARRIES the teams (blue/yellow -> blue/red), so compare as a set.
+  expect(JSON.stringify(chips.map(c => c.trim()).sort()) === JSON.stringify(['BLUE', 'RED']),
     `KIT offers exactly RED and BLUE (saw ${JSON.stringify(chips)})`);
   expect(!chips.some(c => /YELLOW/i.test(c)), '🔴 F82: YELLOW is never offered as a koth team');
   const pressed = await group.locator('button[aria-pressed="true"]').allTextContents();
@@ -577,7 +561,7 @@ step('teams-never-yellow', async ({ browser, base }) => {
   // and the server agrees: nobody is on tid 2
   const st = await (await fetch(`${base}/api/state`)).json();
   const tidOf = Object.fromEntries(st.config.teams.map(t => [t.team_id, t.tid]));
-  expect(JSON.stringify(st.config.teams.map(t => t.tid)) === JSON.stringify([0, 1]), `config teams are tids 0 and 1 (saw ${JSON.stringify(st.config.teams.map(t => t.tid))})`);
+  expect(JSON.stringify(st.config.teams.map(t => t.tid).sort()) === JSON.stringify([0, 1]), `config teams are tids 0 and 1 (saw ${JSON.stringify(st.config.teams.map(t => t.tid))})`);
   expect(!st.players.some(p => tidOf[p.team_id] === 2), '🔴 F82: no player is rostered on $TID 2');
   expect(st.config_errors.length === 0, `the server does not refuse the push (saw ${JSON.stringify(st.config_errors)})`);
   ok(`red+blue only, no yellow chip, no yellow roster row  ${await shot(pg, '05-teams-no-yellow')}`);
@@ -634,12 +618,7 @@ step('station-source-refused', async ({ browser, base }) => {
   await pg.route('**/api/play/pick', r => r.request().method() === 'POST'
     ? r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: VOCAB }) })
     : r.continue());
-  // round 4: TDM -> KOTH reshapes this seeded roster, so the FIRST tap only shows the confirm and
-  // sends nothing (asserted directly in `koth-selectable` above) -- the SECOND tap is the one that
-  // actually fires the POST this step is routing.
-  await kothBtn(pg).click();
-  await until(() => modeConfirmLine(pg).count().then(n => n > 0), 6000, 'the reshape confirm');
-  await kothBtn(pg).click();
+  await kothBtn(pg).click();   // one tap fires the POST this step is routing (no confirm, 2026-09-28)
   const strip = errorStrip(pg);
   await until(() => strip.count().then(n => n > 0), 8000, 'the refusal to reach the error strip');
   expect(await strip.isVisible(), 'the refusal is VISIBLE, not swallowed');
@@ -1038,11 +1017,7 @@ step('failure-path', async ({ browser, base }) => {
     posts.push(JSON.parse(r.request().postData() || '{}'));
     return r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"compiler exploded"}' });
   });
-  // round 4: same reshape confirm as `station-source-refused` -- the first tap sends nothing, the
-  // second is the one POST this step routes and counts.
-  await kothBtn(pg).click();
-  await until(() => modeConfirmLine(pg).count().then(n => n > 0), 6000, 'the reshape confirm');
-  await kothBtn(pg).click();
+  await kothBtn(pg).click();   // one tap is the one POST this step routes and counts
   await until(() => errorStrip(pg).count().then(n => n > 0), 8000, 'the 500 to surface in the strip');
   expect(/COMPILER EXPLODED|compiler exploded/.test(await errorStrip(pg).textContent()), 'the server message is shown verbatim, not "something went wrong"');
   await new Promise(r => setTimeout(r, 700));
@@ -1144,7 +1119,7 @@ step('mock-demo', async ({ browser, base }) => {
   // F413 scope decision (2026-09-27): every team mode's own catalogue default is red+blue now (mock and
   // server alike, both merged into f413-games) -- this step goes PLAY -> pick KOTH -> KIT, so it
   // inherits that. True against the real server too now, not just `?mock`.
-  expect(JSON.stringify(chips) === JSON.stringify(['RED', 'BLUE']), `the demo offers RED+BLUE only (saw ${JSON.stringify(chips)})`);
+  expect(JSON.stringify([...chips].sort()) === JSON.stringify(['BLUE', 'RED']), `the demo offers RED+BLUE only (saw ${JSON.stringify(chips)})`);
   const YELLOW = ['rgb(255, 210, 63)', 'rgb(255, 211, 63)'];
   const stripes = await pg.locator('.kit-row > span:first-child').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundColor));
   expect(stripes.length > 0 && !stripes.some(c => YELLOW.includes(c)), `🔴 F82: the DEMO re-teams its yellow half too (saw ${JSON.stringify([...new Set(stripes)])})`);

@@ -265,19 +265,14 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
   });
 });
 
-describe('GameEditPanel — a reshaping SAVE confirms once, at the moment it would move people', () => {
-  it('shows the predicted split on the first SAVE tap and commits on the second', async () => {
+describe('GameEditPanel — a reshaping SAVE applies at once (bench 2026-09-28, no warnings)', () => {
+  it('one SAVE tap commits a mode change that moves people, with no split preview', async () => {
     const { m, calls, open, save, panel } = await gameScreen('lobby');
     await open();
-    // KOTH declares BLUE+PURPLE against the demo's TDM BLUE+YELLOW: an 8-player roster really moves.
     await m.click('KOTH');
     expect(calls, 'picking the mode sends nothing').toEqual([]);
     await click(save());
-    const split = panel().querySelector('[data-testid="confirm-split"]');
-    expect(split, 'the reshape is shown BEFORE it happens').toBeTruthy();
-    expect(split!.textContent).toMatch(/^▲ \d+ PLAYERS? → [A-Z]+ \d+ \/ [A-Z]+ \d+$/);
-    expect(calls, 'and the first SAVE tap still sends nothing').toEqual([]);
-    await click(save());
+    expect(panel()?.querySelector('[data-testid="confirm-split"]') ?? null, 'no split warning').toBeNull();
     expect(calls).toEqual([{ mode: 'koth' }]);
     m.unmount();
   });

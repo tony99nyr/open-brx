@@ -550,11 +550,12 @@ def test_pick_composes_teams_by_default_and_a_mode_change_resets_them_too():
     assert r2.status_code == 200 and r2.json()["ok"], r2.json()
     assert [t["team_id"] for t in r2.json()["config"]["teams"]] == ["blue", "purple"]
     assert r2.json()["config"]["scoring"]["hold_target_s"] == 180
-    # a mode change AWAY from koth (no explicit teams/hold_target_s this time) resets both to tdm's own
-    # defaults -- a stale hold target must not ride into a mode that cannot validate it.
+    # a mode change AWAY from koth (no explicit teams/hold_target_s this time) drops the hold target --
+    # a stale one must not ride into a mode that cannot validate it. The teams CARRY (bench 2026-09-28,
+    # `carry_teams`): blue/purple are both legal in tdm, so the operator's pair stays.
     r3 = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:tdm"}})
     assert r3.status_code == 200 and r3.json()["ok"], r3.json()
-    assert [t["team_id"] for t in r3.json()["config"]["teams"]] == ["red", "blue"]
+    assert [t["team_id"] for t in r3.json()["config"]["teams"]] == ["blue", "purple"]
     assert "hold_target_s" not in r3.json()["config"]["scoring"]
     assert "hold_target_s" not in r3.json()["pick"]["match"]
     # koth is exactly two teams: three or four are refused, ok:false, and change nothing
@@ -564,6 +565,37 @@ def test_pick_composes_teams_by_default_and_a_mode_change_resets_them_too():
     assert r4.status_code == 200 and not r4.json()["ok"], r4.json()
     assert "KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS" in r4.json()["errors"], r4.json()["errors"]
     assert s.config == before, "an ok:false pick must change nothing"
+
+
+def test_carry_teams_swaps_only_an_illegal_colour():
+    assert G.carry_teams(["blue", "yellow"], ["red", "blue"], "koth") == ["blue", "red"]
+    assert G.carry_teams(["yellow", "blue"], ["red", "blue"], "koth") == ["red", "blue"]
+    assert G.carry_teams(["red", "blue"], ["red", "blue"], "koth") == ["red", "blue"]
+    assert G.carry_teams(["purple", "yellow"], ["red", "blue"], "tdm") == ["purple", "yellow"]
+    # a different count, or nothing to carry, takes the new mode's own default
+    assert G.carry_teams(["red", "blue", "purple"], ["red", "blue"], "koth") == ["red", "blue"]
+    assert G.carry_teams(None, ["red", "blue"], "tdm") == ["red", "blue"]
+    assert "yellow" not in G.legal_colours("koth") and "yellow" in G.legal_colours("tdm")
+
+
+def test_pick_into_koth_recolours_yellow_and_moves_nobody():
+    """Bench 2026-09-28 (Tony): TDM blue/yellow picked into KOTH swapped to red/blue and re-split the
+    roster behind a warning. Now the yellow team becomes red, blue stays blue, and every player keeps
+    their side."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    assert c.post("/api/play/pick", json={"match": {"teams": ["blue", "yellow"]}}).json()["ok"]
+    s.add_player("A", team_id="blue")
+    s.add_player("B", team_id="yellow")
+    s.add_player("C", team_id="yellow")
+    before = {p["display"]: p["team_id"] for p in s.players.values() if p["display"] in "ABC"}
+    assert before == {"A": "blue", "B": "yellow", "C": "yellow"}, before
+    r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}})
+    assert r.status_code == 200 and r.json()["ok"], r.json()
+    assert [t["team_id"] for t in r.json()["config"]["teams"]] == ["blue", "red"]
+    assert r.json()["pick"]["match"]["teams"] == ["blue", "red"]
+    after = {p["display"]: p["team_id"] for p in s.players.values() if p["display"] in "ABC"}
+    assert after == {"A": "blue", "B": "red", "C": "red"}, after
 
 
 def test_recompose_on_edit_and_409_when_armed_or_live():

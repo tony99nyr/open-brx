@@ -38,15 +38,15 @@ describe('F413: match.teams validation', () => {
   // Review (brx1, e8811fea): koth's own exactly-2/never-yellow rules are COMPOSE-level refusals on the
   // real server (state.py `_merge_config`), not a thrown exception -- `ok:false` in a resolved reply,
   // the same shape a refused `time_limit_s`/`station_source` already answers with. "ok:false changes
-  // nothing" (pick()'s own rollback) still applies: `config.teams` below proves it stayed at koth's own
-  // default, never the refused 3-team/yellow value.
+  // nothing" (pick()'s own rollback) still applies: `config.teams` below proves it stayed at the
+  // carried pair (blue/red, bench 2026-09-28), never the refused 3-team/yellow value.
   it('KOTH is exactly 2 teams, with the server\'s own words (ok:false, not thrown)', async () => {
     const b = new MockBackend();
     await b.pick({ pieces: { mode: 'builtin:mode:koth' } });
     const bad = await b.pick({ match: { teams: ['blue', 'purple', 'red'] } });
     expect(bad.ok).toBe(false);
     expect(bad.errors).toEqual(['KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS']);
-    expect((await b.getState()).config.teams.map(t => t.team_id), 'the refusal changed nothing').toEqual(['red', 'blue']);
+    expect((await b.getState()).config.teams.map(t => t.team_id), 'the refusal changed nothing').toEqual(['blue', 'red']);
     const r = await b.pick({ match: { teams: ['red', 'purple'] } });
     expect(r.ok).toBe(true);
   });
@@ -59,7 +59,7 @@ describe('F413: match.teams validation', () => {
     // Low (f) correction (brx1, cc87483f): the ALL-CAPS house style, not the technical F82/$TID
     // sentence a raw config PUT gets -- this reaches the console through PLAY/FAVOURITES too.
     expect(bad.errors).toEqual(["YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE"]);
-    expect((await b.getState()).config.teams.map(t => t.team_id), 'the refusal changed nothing').toEqual(['red', 'blue']);
+    expect((await b.getState()).config.teams.map(t => t.team_id), 'the refusal changed nothing').toEqual(['blue', 'red']);
   });
 });
 
