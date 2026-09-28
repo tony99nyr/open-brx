@@ -208,20 +208,15 @@ const ensureMc = async () => { if (mc.url() === 'about:blank') { await mc.goto(M
 // PLAY picks presets"). PLAY's pickers are always on screen (no shelf to open), and a game is now
 // composed from eight independent piece picks rather than one saved, named "game" you play/edit/copy.
 /** PLAY's mode picker (Games.tsx): a bespoke `role="group" aria-label="game mode"` row of buttons,
- *  `aria-pressed` by the server's own `game_pick`. A switch that would reshape >=2 rostered players
- *  arms a confirm on the first tap (`data-testid="confirm-switch"`) and commits on the SAME button's
- *  second tap (Round 4, restoring the pre-F411 hazard guard for PLAY's own picker). */
+ *  `aria-pressed` by the server's own `game_pick`. One tap applies a mode (bench 2026-09-28: the
+ *  reshape confirm is gone), and no warning may appear. */
 const modeBtn = (label) => mc.locator('[data-testid="picker-mode"]').getByRole('button', { name: label });
 const playMode = async (label) => {
   const btn = modeBtn(label);
   if ((await btn.getAttribute('aria-pressed')) === 'true') return;
   await btn.click();
-  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true' || (await mc.locator('[data-testid="confirm-switch"]').count()) > 0,
-    6000, `${label} picked, or its reshape confirm`);
-  if ((await mc.locator('[data-testid="confirm-switch"]').count()) > 0) {
-    await btn.click();
-    await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', 6000, `${label} picked (after confirming the reshape)`);
-  }
+  await until(async () => (await btn.getAttribute('aria-pressed')) === 'true', 6000, `${label} picked on one tap`);
+  expect((await mc.locator('[data-testid="confirm-switch"]').count()) === 0, `${label}: no roster warning`);
 };
 /** BUILD → PLAY, the `◂ BACK TO PLAY` link (screens/Build.tsx). BUILD never starts a game, so unlike
  *  the retired DESIGNER this has no "unsaved edits" confirm to walk through. */
@@ -703,6 +698,10 @@ await step('(h3) PLAY: loading a favourite re-applies its whole pick; delete is 
   await playMode('TEAM DEATHMATCH');   // move the live pick away from the saved FFA + fixed-primary bundle first
   const fav = (await api('GET', '/api/favourites')).find(f => f.name === 'e2e test renamed');
   await mc.locator(`[data-testid="favourite-chip-${fav.favourite_id}"] button`).first().click();
+  // Bench 2026-09-28: the pick changed since the save, so the load asks DISCARD YOUR CHANGES? first.
+  const ask = mc.locator('[data-testid="favourite-discard"]');
+  await until(async () => (await ask.count()) === 1, 6000, 'DISCARD YOUR CHANGES? over changed picks');
+  await ask.getByRole('button', { name: 'DISCARD' }).click();
   await until(async () => (await st()).config.mode === 'ffa', 6000, 'loading the favourite re-applied its pick (ffa)');
   await mc.locator('button[aria-label="delete e2e test renamed"]').click();
   await mc.click(`[data-testid="favourite-confirm-delete-${fav.favourite_id}"] button:has-text("CONFIRM")`);
