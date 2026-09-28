@@ -1223,3 +1223,25 @@ test('F381: an intentional ALT shot from slot 0 does not retry the held weapon e
   assert.deepEqual(puw(h.since(n)), [], 'the player chose the primary');
   assert.equal(h.eng._puHeld?.trig, 0);
 });
+
+test('F381 polish: the equip repair stays bounded when each re-sent $AMMO echoes the held count back', () => {
+  const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); let mag = 31;
+  for (let i = 0; i < 6; i++) {
+    h.fire(0, mag--, 192);                     // the gun ignores every `$WEAP,2` and stays on slot 0
+    h.frame(`$ALCD,2,100,2,${E.PU_RESERVE ?? 0},0,*`);   // but its `$AMMO,2` lands: the echo matches the held count
+    h.adv(E.ACC_ECHO_MS + 100);
+  }
+  const equips = h.since(n).filter(f => f === WEAP[2]).length;
+  assert.ok(equips <= E.PU_COUNT_REPAIRS, `at most ${E.PU_COUNT_REPAIRS} equip repairs per grant, got ${equips}`);
+});
+
+test('F381 polish: the empty switch-back hint names the saved secondary, not the primary', () => {
+  const h = armed();
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(h.eng.switchWindowMs() + 50); h.fire(1, 5, 24); h.adv(300);
+  h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  const ws = h.eng.player.loadout.weapons, row = h.eng.weaponRow(ws[1].weapon_id);
+  assert.equal(h.eng._puHeld, null, 'the rockets are over');
+  assert.equal(h.eng._puBack?.to, (row?.name || String(ws[1].weapon_id).replace(/_/g, ' ')).toUpperCase());
+});

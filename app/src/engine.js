@@ -6029,7 +6029,7 @@ export class Engine {
     const shot = prev == null || mag < prev;
     if (shot) h.trig = slot;
     if (slot !== h.slot) return null;
-    if (mag > 0 && mag === h.left) { h.suspect = false; h.equipRepairs = 0; }
+    if (mag > 0 && mag === h.left && h.suspect) { h.suspect = false; this._save(); }   // the count is confirmed; `equipRepairs` stays per grant (an `$AMMO` echo proves the count, not the trigger)
     h.left = mag;
     if (mag > 0 || !shot) return null;
     this._puEnd('empty');
@@ -6118,7 +6118,9 @@ export class Engine {
     // `going` keeps the heavy's name/colour on the STOWING tile past this call, since `_puHeld` is already gone above.
     this._puSwitchCard(h.slot, b.slot, { name: h.name, color: h.color, weapon_id: h.weapon_id, charges: 0 });
     this._puBackPending = { slot: b.slot, mag: b.mag, res: b.res, at: this.now(), readyAt: this.now() + this.switchWindowMs(), equipped: false, tries: 0 };
-    this._puBack = { name: h.name, to: this.weaponName, at: this.now() };
+    const bw = this.player && this.player.loadout && this.player.loadout.weapons && this.player.loadout.weapons[b.slot];
+    const br = bw && this.weaponRow(bw.weapon_id);   // the slot going back, not `weaponName`: the trigger is still on the heavy until the delayed equip
+    this._puBack = { name: h.name, to: bw ? (br && br.name ? br.name : String(bw.weapon_id).replace(/_/g, ' ')).toUpperCase() : this.weaponName, at: this.now() };
     this._save();
   }
   /** Death: a weapon item's charges are lost, and the overshield is gone. */
@@ -6970,6 +6972,7 @@ export class Engine {
       held.equipRepairs = (held.equipRepairs || 0) + 1;
       this.log(`powerup: gun fired slot ${slot} while ${held.name} was expected in slot ${held.slot}; equip repair ${held.equipRepairs}/${PU_COUNT_REPAIRS}`, 'le');
       if (held.equipRepairs <= PU_COUNT_REPAIRS) this._puEquip(held.slot, held.left, PU_RESERVE, `powerup: ${held.name} equip re-sent after slot ${slot} shot`);
+      this._save();
     }
     // heat itself is recorded at the top of this function, before the stunned return.
   }
