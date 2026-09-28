@@ -280,12 +280,29 @@ step('koth', async ({ browser, base }) => {
   await until(() => pg.locator('text=NO HILL STATION ASSIGNED').count().then(n => n > 0), 4000, 'the no-hill block');
   await pg.getByTestId('assign-a-hill').getByRole('button').click();
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 6000, 'ARMORY');
-  expect(await pg.getByTestId('armory-back-to-play').count() === 1, 'BACK TO PLAY is offered');
-  await pg.getByTestId('armory-back-to-play').getByRole('button').click();
+  // Bench 2026-09-28 (Tony, F402): returning to PLAY is the NEXT step, so it points forward; it stays
+  // secondary until a hill is assigned, then turns PRIMARY at once.
+  const back = pg.getByTestId('armory-back-to-play');
+  expect(await back.count() === 1, 'CONTINUE TO PLAY is offered');
+  const label = (await back.innerText()).trim();
+  expect(label === 'CONTINUE TO PLAY ▸', `the button points forward (saw ${JSON.stringify(label)})`);
+  const bg = () => back.getByRole('button').evaluate(el => getComputedStyle(el).backgroundColor);
+  const ghostBg = await bg();
+  expect(await back.getAttribute('data-ready') === 'false', 'secondary while no hill is set');
+  const elShot = async name => { fs.mkdirSync(SHOTS, { recursive: true }); const f = path.join(SHOTS, `${name}.png`); await back.scrollIntoViewIfNeeded(); await pg.waitForTimeout(300); await back.screenshot({ path: f }); return f; };
+  ok(`no hill yet: CONTINUE TO PLAY ▸ is secondary   ${await elShot('continue-to-play-secondary')}`);
+  const nodeId = await pg.evaluate(() => window.__MC_MOCK__.getState()).then(s => s.stations?.[0]?.node_id);
+  expect(!!nodeId, 'control: the demo has a station to assign as the hill');
+  await pg.evaluate(id => window.__MC_MOCK__.putStation(id, { kind: 'control', team: 'any' }), nodeId);
+  await until(() => back.getAttribute('data-ready').then(v => v === 'true'), 4000, 'the button reacts to the hill being set');
+  const primaryBg = await bg();
+  expect(primaryBg !== ghostBg, `the button changes to the PRIMARY look (bg ${ghostBg} -> ${primaryBg})`);
+  ok(`hill assigned: CONTINUE TO PLAY ▸ turns primary at once   ${await elShot('continue-to-play-primary')}`);
+  await back.getByRole('button').click();
   await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 6000, 'back on PLAY');
   await pg.waitForTimeout(300);   // the scanIn fade on PLAY's fresh remount
   expect(await pg.getByRole('button', { name: 'KING OF THE HILL' }).getAttribute('aria-pressed').then(v => v === 'true'), 'KOTH is still picked on return');
-  ok(`KOTH with no hill -> ASSIGN A HILL -> ARMORY -> BACK TO PLAY, never a dead end   ${await shot(pg, 'koth-no-hill')}`);
+  ok(`KOTH with no hill -> ASSIGN A HILL -> ARMORY -> CONTINUE TO PLAY, never a dead end   ${await shot(pg, 'koth-no-hill')}`);
   await pg.context().close();
 });
 

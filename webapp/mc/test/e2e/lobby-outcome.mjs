@@ -188,19 +188,19 @@ step('koth-no-stations', async ({ browser, base }) => {
   expect(t.includes('NO STATION HAS SAID HELLO'), `the callout says nothing is on the net yet (saw "${t}")`);
   expect(t.includes('SEVEN-TAP') || t.includes('STICKS3'), 'the callout says how to make one (a phone or a Stick)');
   const back = focus.getByTestId('items-back-to-play');
-  await until(() => back.count().then(n => n === 1), 4000, 'BACK TO PLAY inside the callout');
+  await until(() => back.count().then(n => n === 1), 4000, 'CONTINUE TO PLAY inside the callout');
   const box = await settledBox(back);
   const vh = pg.viewportSize().height;
-  expect(!!box && box.y >= 0 && box.y + box.height <= vh, `BACK TO PLAY is on screen after the scroll (box=${JSON.stringify(box)}, viewport height ${vh})`);
+  expect(!!box && box.y >= 0 && box.y + box.height <= vh, `CONTINUE TO PLAY is on screen after the scroll (box=${JSON.stringify(box)}, viewport height ${vh})`);
   await back.getByRole('button').click();
   await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 6000, 'back on PLAY');
   expect(await pg.getByRole('button', { name: 'KING OF THE HILL' }).getAttribute('aria-pressed').then(v => v === 'true'), 'KOTH is still picked on return');
-  ok(`no stations at all -> a callout that says how to make one, and BACK TO PLAY on screen   ${await shot(pg, 'koth-no-stations-1280')}`);
+  ok(`no stations at all -> a callout that says how to make one, and CONTINUE TO PLAY on screen   ${await shot(pg, 'koth-no-stations-1280')}`);
   await pg.context().close();
 });
 
 // QA-18 alone: with the mock's default two stations present, ARMORY still scrolls ITEMS into view, and
-// BACK TO PLAY has to be repeated inside the callout there too -- this is the shape the audit shot
+// CONTINUE TO PLAY has to be repeated inside the callout there too -- this is the shape the audit shot
 // (koth-mock-2-armory-focus.png) actually showed, at a shorter viewport where the header button scrolls
 // well off the top.
 step('koth-with-stations', async ({ browser, base }) => {
@@ -213,11 +213,11 @@ step('koth-with-stations', async ({ browser, base }) => {
   const focus = pg.getByTestId('items-hill-focus');
   await until(() => focus.count().then(n => n === 1), 6000, 'the focus callout, with the default stations present');
   const back = focus.getByTestId('items-back-to-play');
-  await until(() => back.count().then(n => n === 1), 4000, 'BACK TO PLAY inside the callout');
+  await until(() => back.count().then(n => n === 1), 4000, 'CONTINUE TO PLAY inside the callout');
   const box = await settledBox(back);
   const vh = pg.viewportSize().height;
-  expect(!!box && box.y >= 0 && box.y + box.height <= vh, `BACK TO PLAY is on screen after the scroll at a short viewport (box=${JSON.stringify(box)}, viewport height ${vh})`);
-  ok(`with stations present, BACK TO PLAY is still on screen after the scroll   ${await shot(pg, 'koth-with-stations-1280x700')}`);
+  expect(!!box && box.y >= 0 && box.y + box.height <= vh, `CONTINUE TO PLAY is on screen after the scroll at a short viewport (box=${JSON.stringify(box)}, viewport height ${vh})`);
+  ok(`with stations present, CONTINUE TO PLAY is still on screen after the scroll   ${await shot(pg, 'koth-with-stations-1280x700')}`);
   await pg.context().close();
 });
 

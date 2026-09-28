@@ -11,6 +11,7 @@ import type { PowerupPreset, StationItem, StationKind, StationView, TxPower } fr
 import { STATION_KINDS } from '../api/types';
 import { PHONE_CONTROL_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
 import { useStore } from '../store';
+import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, teamColor } from '../tokens';
 import { ItemStationRow, Swatch } from '../ui/Powerups';
 import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
@@ -45,7 +46,7 @@ const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: '
 const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));
 
 export function Items() {
-  const { state, focusHill, setFocusHill, setView } = useStore();
+  const { state, focusHill } = useStore();
   const stations = state?.stations ?? [];
   const pu = usePowerups();   // A56
   // F411 §8: PLAY's ASSIGN A HILL ▸ lands here. Scroll the panel into view and call out the slot in
@@ -54,7 +55,7 @@ export function Items() {
   //
   // QA-03 (visual QA round 1, 2026-09-26): this used to gate on `stations.length` too, so a host with
   // NOTHING on the net yet never scrolled or saw the callout at all -- the one screen that should be
-  // telling them how to get a station onto the board said nothing and left BACK TO PLAY (Armory's own
+  // telling them how to get a station onto the board said nothing and left CONTINUE TO PLAY (Armory's own
   // header button) as the only thing on screen.
   useEffect(() => {
     if (!focusHill) return;
@@ -64,11 +65,7 @@ export function Items() {
   if (!stations.length && !focusHill) return null;
   // QA-18: repeated here so it is still on screen once the scroll above has moved Armory's own header
   // button (`armory-back-to-play`) off the top of the viewport.
-  const backToPlay = focusHill && (
-    <span data-testid="items-back-to-play">
-      <GhostButton onClick={() => { setFocusHill(false); setView('build'); }}>◂ BACK TO PLAY</GhostButton>
-    </span>
-  );
+  const backToPlay = focusHill && <ContinueToPlay testid="items-back-to-play" />;
   if (!stations.length) {
     // QA-03: nobody has claimed a utility role yet, so there is no station card to carry the callout
     // below -- render the instruction on its own rather than returning null with nothing to act on.
