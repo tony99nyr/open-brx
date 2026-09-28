@@ -129,6 +129,10 @@ export function Games() {
   const [confirmDeleteFav, setConfirmDeleteFav] = useState<string | null>(null);
   // Bench 2026-09-28 (Tony): the favourite waiting on "DISCARD YOUR CHANGES?" (playBaseline.ts).
   const [favDiscard, setFavDiscard] = useState<string | null>(null);
+  // Polish 2026-09-28: the question takes focus when it appears, so a keyboard operator's next key acts
+  // on DISCARD / CANCEL, not on the tapped chip's own rename or delete buttons.
+  const discardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (favDiscard) discardRef.current?.querySelector('button')?.focus(); }, [favDiscard]);
   // Bench 2026-09-28: the GAME MODE card that just became selected flashes (ui `useFlashOnChange`).
   const modeGroupRef = useRef<HTMLSpanElement>(null);
   useFlashOnChange(modeGroupRef, state?.game_pick?.pieces.mode, '[aria-pressed="true"]');
@@ -385,7 +389,8 @@ export function Games() {
             </fieldset>
           )}
           {favDiscard && (
-            <div data-testid="favourite-discard" role="alertdialog" aria-label="discard your changes"
+            <div ref={discardRef} data-testid="favourite-discard" role="alertdialog" aria-label="discard your changes"
+              onKeyDown={e => { if (e.key === 'Escape') setFavDiscard(null); }}
               style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span style={{ font: F.chk(700, 13), letterSpacing: '.12em', color: T.warn }}>
                 ▲ DISCARD YOUR CHANGES?

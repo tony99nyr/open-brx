@@ -12,6 +12,7 @@
 //                                              #   load-feedback | locked | refusal-and-cap |
 //                                              #   pieces-failure | hit-areas | stepper-glyphs | stepper-width |
 //                                              #   picker-rows | silenced-onoff | teams | hold | press-feedback | flash-keeps-focus |
+//                                              #   flash-contrast |
 //                                              #   favourites-save | favourites-load |
 //                                              #   favourites-fallback | favourites-rename |
 //                                              #   favourites-delete | real-favourites |
@@ -603,6 +604,23 @@ step('flash-keeps-focus', async ({ browser, base }) => {
   await pg.context().close();
 });
 
+step('flash-contrast', async ({ browser, base }) => {
+  // Polish 2026-09-28: the flash must not wash the background under the blue value text (it took the
+  // text to about 3.2:1 at its peak). Mid-flash, the value box's background is what it is at rest.
+  const pg = await open(browser, base, '?mock#build', 1280);
+  const value = pg.getByTestId('match-time-value');
+  const bg = () => value.evaluate(el => getComputedStyle(el).backgroundColor);
+  const rest = await bg();
+  await pg.getByRole('button', { name: 'time limit plus' }).click();
+  await pg.waitForTimeout(60);
+  const mid = await value.evaluate(el => ({ bg: getComputedStyle(el).backgroundColor, flashing: el.classList.contains('flash-on-change'), outline: getComputedStyle(el).outlineStyle }));
+  expect(mid.flashing, 'control: the value is flashing');
+  expect(mid.bg === rest, `the background does not change mid-flash (rest ${rest}, mid ${mid.bg})`);
+  expect(mid.outline === 'solid', `the flash is an outline (saw ${mid.outline})`);
+  ok('the changed-value flash is an outline; the text keeps its contrast');
+  await pg.context().close();
+});
+
 step('silenced-onoff', async ({ browser, base }) => {
   // QA-12: the only sign of SILENCED was a 14px knob changing grey/blue -- no word said ON or OFF.
   const pg = await open(browser, base, '?mock#build', 1280);
@@ -883,6 +901,15 @@ step('favourites-load', async ({ browser, base }) => {
   await pg.locator('text=☆ Round One').click();
   await pg.waitForTimeout(300);
   expect(await pg.getByTestId('favourite-discard').count() === 1, 'control: a change after the load makes the picks dirty again');
+  // Polish 2026-09-28: the question takes focus (DISCARD), so a keyboard operator's next key acts on it
+  // (not the chip's own rename/delete), and Escape cancels it like CANCEL does.
+  const focused = await pg.evaluate(() => document.activeElement?.textContent?.trim());
+  expect(focused === 'DISCARD', `focus moves to DISCARD when the question appears (saw ${JSON.stringify(focused)})`);
+  await pg.keyboard.press('Escape');
+  await until(() => pg.getByTestId('favourite-discard').count().then(n => n === 0), 4000, 'Escape closes the question');
+  expect((await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 'Escape keeps the changed pick');
+  await pg.locator('text=☆ Round One').click();
+  await until(() => pg.getByTestId('favourite-discard').count().then(n => n === 1), 4000, 'the question again');
   await pg.getByTestId('favourite-discard').getByRole('button', { name: 'CANCEL' }).click();
   await until(() => pg.getByTestId('favourite-discard').count().then(n => n === 0), 4000, 'CANCEL closes the question');
   expect((await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 'CANCEL keeps the changed pick');
