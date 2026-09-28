@@ -2,17 +2,17 @@
 // `value` shape — LIFE's three numbers, SPAWN's respawn block, the three slot kinds (PRIMARY/
 // SECONDARY/PERKS share one shape, `SlotRule`), and MISC LOADOUTS' blanket. GAME MODE and GAMEPLAY get
 // no editor at all (read-only, brief §3).
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type {
   GamePiece, ItemKind, LifePiece, MiscLoadoutsPiece, Respawn, SlotChoice, SlotRule,
   StationProtectS, TimedProtectS, WeaponDelayMs,
 } from '../../api/contract.gen';
 import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../../api/contract.gen';
-import { BTN_RESET, LockIcon, Micro, OutlineTag, Seg, SEG_PAD_44, ValueBox } from '../../ui';
+import { BTN_RESET, Micro, OutlineTag, Seg, SEG_PAD_44, ValueBox } from '../../ui';
 import { F, T } from '../../tokens';
 import {
-  deriveTypeSelection, guardSpawnDelay, idsCoveredByActiveTypes, idsForType, spawnBuiltinValue,
-  toggleManualId, toggleType, typeSelectionIds, typesOf, WEAPON_TYPES, type ClassableItem, type TypeSelection,
+  guardSpawnDelay, idsForType, spawnBuiltinValue, toggleTypeIds, typeChipState, typesOf, WEAPON_TYPES,
+  type ClassableItem,
 } from './helpers';
 
 /** A catalogue row an editor can show (a weapon or a perk) — id, a display name, and whatever
@@ -35,14 +35,13 @@ function Row({ label, children, note, testId }: { label: string; children: React
 const CHIP_MIN_HEIGHT = 44;
 // `SEG_PAD_44` moved to ui/index.tsx (UX round 1 2026-09-26): PLAY's own Seg rows need the same pad.
 
-function Chip({ label, on, locked, onClick }: { label: string; on: boolean; locked?: boolean; onClick: () => void }) {
+function Chip({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
   return (
-    <button type="button" className="hov-acc" aria-pressed={on} disabled={locked} onClick={onClick}
-      title={locked ? 'COVERED BY A TYPE TOGGLE ABOVE — TURN THAT OFF TO EDIT THIS ONE' : undefined}
+    <button type="button" className="hov-acc" aria-pressed={on} onClick={onClick}
       style={{ ...BTN_RESET, display: 'flex', alignItems: 'center', gap: 6, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: CHIP_MIN_HEIGHT,
         border: `1px solid ${on ? T.acc : T.line}`, background: on ? 'rgba(57,180,255,.1)' : 'transparent',
-        color: on ? T.acc : T.dim, cursor: locked ? 'default' : 'pointer', opacity: locked ? 0.6 : 1 }}>
-      {locked && <LockIcon size={11} />}{label}
+        color: on ? T.acc : T.dim, cursor: 'pointer' }}>
+      {label}
     </button>
   );
 }
@@ -149,26 +148,19 @@ const KINDS_FOR: Record<'primary' | 'secondary' | 'perks', ItemKind[]> = {
 /** PRIMARY / SECONDARY / PERKS share one shape (`SlotRule`, games-presets.md §1). `offAllowed` is
  *  false for PRIMARY: every mode needs a primary weapon (brief §3's "off where legal").
  *
- *  F411: the TYPE row replaces the old CLASS shortcut (one mechanism, not two). `sel` is local,
- *  ephemeral toggle state seeded ONCE from the piece's saved `only_ids` on mount (`helpers.ts
- *  deriveTypeSelection`) — a fresh mount happens every time BUILD opens a different piece, since the
- *  whole editor un-renders on close (Build.tsx), so re-opening always starts from a clean read of
- *  what is actually saved. */
+ *  F411 follow-up (Tony, bench 2026-09-28): the TYPE row is a SHORTCUT over `value.only_ids`, not a
+ *  rule of its own — there is no selection state here beyond the piece's own `only_ids`. Clicking a
+ *  chip ticks or unticks that type's ids directly (`helpers.ts toggleTypeIds`); every weapon stays its
+ *  own "ONLY THESE" chip, so opening a saved piece always shows exactly what is selected, and nothing
+ *  is locked or remembered on a type's behalf. */
 export function SlotFields({ slotKind, value, onChange, catalogue, offAllowed }:
   { slotKind: 'primary' | 'secondary' | 'perks'; value: SlotRule; onChange: (v: SlotRule) => void; catalogue: CatalogueRow[]; offAllowed: boolean }) {
   const options = [{ value: 'player', label: 'PLAYERS' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(offAllowed ? [OFF] : [])] as { value: SlotChoice; label: string }[];
   const types = typesOf(catalogue);
-  const [sel, setSel] = useState<TypeSelection>(() => deriveTypeSelection(value.only_ids, catalogue));
-  const covered = idsCoveredByActiveTypes(sel, catalogue);
 
-  const applyType = (next: TypeSelection) => {
-    setSel(next);
-    onChange({ ...value, only_ids: typeSelectionIds(next, catalogue) });
-  };
-  const toggleOnly = (id: string) => {
-    if (covered.has(id)) return;   // locked chip, disabled — belt and braces against a stray click
-    applyType(toggleManualId(sel, id));
-  };
+  const toggleType = (type: string) => onChange({ ...value, only_ids: toggleTypeIds(value.only_ids, catalogue, type) });
+  const toggleOnly = (id: string) =>
+    onChange({ ...value, only_ids: value.only_ids.includes(id) ? value.only_ids.filter(x => x !== id) : [...value.only_ids, id] });
 
   return (
     <>
@@ -193,21 +185,21 @@ export function SlotFields({ slotKind, value, onChange, catalogue, offAllowed }:
         <>
           {types.length > 0 && (
             // QA-23 (visual QA round 1): plain uppercase words, no doc reference on screen (the
-            // "why" lives in helpers.ts's own comment, `onlyIdsForClass`/`idsForType`'s snapshot note).
+            // "why" lives in helpers.ts's own comment, `idsForType`'s snapshot note).
             <Row label="TYPE" testId="slot-type-row" note="A SNAPSHOT — DOES NOT UPDATE IF A NEW WEAPON OF THIS TYPE IS ADDED LATER">
               {types.map(t => {
                 const meta = WEAPON_TYPES.find(w => w.id === t)!;
                 const ids = idsForType(catalogue, t);
                 const count = ids.filter(id => value.only_ids.includes(id)).length;
-                const state: 'on' | 'partial' | 'off' = sel.active.includes(t) ? 'on' : count > 0 ? 'partial' : 'off';
+                const state = typeChipState(catalogue, t, value.only_ids);
                 return <TypeChip key={t} label={meta.label} state={state} count={count} total={ids.length}
-                  onClick={() => applyType(toggleType(sel, t))} />;
+                  onClick={() => toggleType(t)} />;
               })}
             </Row>
           )}
           <Row label="ONLY THESE" testId="slot-only-row" note={value.only_ids.length === 0 ? 'EMPTY = ANY OF THE ABOVE' : undefined}>
             {catalogue.map(c => (
-              <Chip key={c.id} label={c.name.toUpperCase()} on={value.only_ids.includes(c.id)} locked={covered.has(c.id)} onClick={() => toggleOnly(c.id)} />
+              <Chip key={c.id} label={c.name.toUpperCase()} on={value.only_ids.includes(c.id)} onClick={() => toggleOnly(c.id)} />
             ))}
           </Row>
         </>

@@ -89,50 +89,29 @@ export function idsForType(items: ClassableItem[], type: string): string[] {
   return items.filter(i => (i.types ?? []).includes(type)).map(i => i.id);
 }
 
-/** A type toggle's own ON/OFF state PLUS the individually hand-picked ids, kept apart from the wire's
- *  `only_ids` because `SlotRule` has no room for provenance. `active` types are unioned in on render;
- *  `manual` ids are the ones a "ONLY THESE" chip picked directly, and they always survive a type being
- *  switched off (brief: "toggling a type off removes the weapons that only that type had selected; a
- *  hand-picked weapon stays"). */
-export interface TypeSelection { manual: string[]; active: string[] }
+/** A type chip's state, computed FRESH from the piece's own `only_ids` every render -- no separate
+ *  selection is stored anywhere (F411 follow-up, Tony bench 2026-09-28: "I want to start from that and
+ *  then remove one or two" -- the chip is a SHORTCUT, not a rule). `off` = none of the type's ids are
+ *  selected, `on` = every one is, `partial` = some are (ui-build-verify §2: "partial states need their
+ *  own look", ◐ n/total, never read as "some" the way the old ON look did). */
+export type TypeChipState = 'on' | 'partial' | 'off';
 
-/** The `only_ids` a `TypeSelection` computes to: manual picks union every active type's ids, de-duped. */
-export function typeSelectionIds(sel: TypeSelection, items: ClassableItem[]): string[] {
-  const ids = new Set(sel.manual);
-  for (const t of sel.active) for (const id of idsForType(items, t)) ids.add(id);
-  return Array.from(ids);
+export function typeChipState(items: ClassableItem[], type: string, onlyIds: string[]): TypeChipState {
+  const ids = idsForType(items, type);
+  if (ids.length === 0) return 'off';
+  const count = ids.filter(id => onlyIds.includes(id)).length;
+  return count === 0 ? 'off' : count === ids.length ? 'on' : 'partial';
 }
 
-/** Reconstructs a `TypeSelection` from a saved piece's `only_ids`. The wire keeps no provenance, so a
- *  type reads as active only when EVERY one of its ids is already selected; whatever is left over is
- *  treated as a hand pick. Round-trips: `typeSelectionIds(deriveTypeSelection(ids, items), items)`
- *  reproduces `ids` (as a set) for any `ids` the catalogue can express. */
-export function deriveTypeSelection(onlyIds: string[], items: ClassableItem[]): TypeSelection {
-  const active = typesOf(items).filter(t => {
-    const ids = idsForType(items, t);
-    return ids.length > 0 && ids.every(id => onlyIds.includes(id));
-  });
-  const covered = new Set(active.flatMap(t => idsForType(items, t)));
-  return { manual: onlyIds.filter(id => !covered.has(id)), active };
-}
-
-/** Flips one type's active state (a union: several may be active at once). */
-export function toggleType(sel: TypeSelection, type: string): TypeSelection {
-  const active = sel.active.includes(type) ? sel.active.filter(t => t !== type) : [...sel.active, type];
-  return { ...sel, active };
-}
-
-/** Flips one id's membership in the hand-picked set (the "ONLY THESE" row's own chip). */
-export function toggleManualId(sel: TypeSelection, id: string): TypeSelection {
-  const manual = sel.manual.includes(id) ? sel.manual.filter(x => x !== id) : [...sel.manual, id];
-  return { ...sel, manual };
-}
-
-/** ids selected ONLY because an active type covers them. Their own "ONLY THESE" chip cannot remove
- *  them (turn the type off instead), so the editor shows them locked rather than silently eating the
- *  click (ui-build-verify §2: "a control that legitimately does nothing should say why"). */
-export function idsCoveredByActiveTypes(sel: TypeSelection, items: ClassableItem[]): Set<string> {
-  return new Set(sel.active.flatMap(t => idsForType(items, t)));
+/** The type chip's own click behaviour: OFF or PARTIAL ticks every one of the type's VISIBLE ids
+ *  (a union with whatever is already selected); ON unticks all of them. Either way the result is a
+ *  plain `only_ids` array -- every weapon it touches is still its own "ONLY THESE" chip afterwards, so
+ *  unticking one by hand later simply reads the type back as PARTIAL, nothing is locked and nothing is
+ *  remembered on the chip's behalf. */
+export function toggleTypeIds(onlyIds: string[], items: ClassableItem[], type: string): string[] {
+  const ids = idsForType(items, type);
+  if (typeChipState(items, type, onlyIds) === 'on') return onlyIds.filter(id => !ids.includes(id));
+  return Array.from(new Set([...onlyIds, ...ids]));
 }
 
 /** SPAWN's AUTO/STATION switch fills every field from that type's own builtin (games-presets.md §1,
