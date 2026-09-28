@@ -128,6 +128,13 @@ function writeResult(r) {
 function readResult(id) {
   try { return JSON.parse(fs.readFileSync(resultPath(id), 'utf8')); } catch { return null; }
 }
+// The last lander run on this machine that stopped because main is red on its own. Not a `.json` (status lists
+// those as results). `wait` reads it so it neither reports a stop as nothing nor starts another full gate on the same
+// red main; a new main sha (the fix) makes it stale.
+const MAIN_RED = path.join(STATE, 'main-red');
+function readMainRed() {
+  try { return JSON.parse(fs.readFileSync(MAIN_RED, 'utf8')); } catch { return null; }
+}
 const runFlakes = [];
 function recordFlake(f) {
   fs.mkdirSync(STATE, { recursive: true });
@@ -277,7 +284,9 @@ function stepOf(log) {
   return line ? line[0].trim() : null;
 }
 
-class LandError extends Error {}
+class LandError extends Error {
+  constructor(msg, extra = {}) { super(msg); Object.assign(this, extra); }
+}
 
 /** Gate the candidate at WT once. Returns { green, failed: [{name, log}], log }. A failed job is rerun alone once:
  *  green on the rerun is a flake (recorded, and the gate counts as green). Throws LandError when the gate cannot be
@@ -437,7 +446,7 @@ async function settle(base, changedBase, ids, tips) {
     if (g.green) { accepted = c.merged; acceptedSha = c.sha; return; }
     if (ok.length === 1) {
       if (!accepted.length && (await mainIsRed(g.failed))) {
-        throw new LandError(`main (${base.slice(0, 10)}) is red on its own for ${g.failed.map(f => f.name).join(', ')}; fix main first (the emergency path)`);
+        throw new LandError(`main (${base.slice(0, 10)}) is red on its own for ${g.failed.map(f => f.name).join(', ')}; fix main first (the emergency path)`, { mainRed: base });
       }
       red.push({ id: ok[0], failed: g.failed });
       return;
@@ -563,6 +572,10 @@ async function drive({ batch = 4, dry = false } = {}) {
   } catch (e) {
     if (!(e instanceof LandError)) throw e;
     error = e;
+    if (e.mainRed) {
+      fs.mkdirSync(STATE, { recursive: true });
+      fs.writeFileSync(MAIN_RED, `${JSON.stringify({ main_sha: e.mainRed, message: e.message, time: new Date().toISOString() })}\n`);
+    }
   } finally { release(); }
   if (runResults.length) {
     console.log('\nland: this run');
@@ -577,6 +590,7 @@ async function driveIfIdle() {
   if (holder()) return false;
   await fetchRemote();
   if (!(await queue()).length) return false;
+  if (readMainRed()?.main_sha === await revParse(MAIN)) return false;   // the same red main: a rerun would only repeat it
   console.log('land: the queue has branches and no lander is running; running the lander here');
   return drive();
 }
@@ -652,6 +666,9 @@ async function wait() {
     await fetchRemote();
     const r = await resolve(id);
     if (r) process.exit(report(r));
+    // A lander stopped on this main because main is red on its own: the branch stays queued, and waiting cannot help.
+    const red = readMainRed();
+    if (red && red.main_sha === await revParse(MAIN) && !holder()) die(`${id} is still queued: ${red.message}`, EXIT.error);
     if (await driveIfIdle()) {
       const after = await resolve(id);
       if (after) process.exit(report(after));

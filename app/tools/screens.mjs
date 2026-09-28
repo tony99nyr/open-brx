@@ -5,6 +5,7 @@
 // Run: node tools/screens.mjs      ONLY=<substring> runs matching steps.      SCREENS_PORT=<port> pins the static server (default: ephemeral)
 //      SCREENS_SHARDS=<n> splits the steps across n child processes (default: half the cores, at most 16, capped by free memory; 1 = serial)
 import { chromium } from 'playwright';
+import { monotonicDate } from './monotonic-date.mjs';
 import http from 'http'; import fs from 'fs'; import path from 'path'; import os from 'os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -75,7 +76,7 @@ await new Promise(r => srv.listen(Number(process.env.SCREENS_PORT || 0), '127.0.
 const PORT = srv.address().port;
 let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
-const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
+const b = monotonicDate(await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] }));   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live-spawn-lost', 'live-switch-kill', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
@@ -3678,7 +3679,11 @@ await step('scores overlay: a hidden pill under the tab row cannot intercept the
 await step('scores overlay: the empty-board badge is short and stays clear of the ✕', async () => {
   const pg = await open(VIEWS[1], 'live-scores');
   await pg.evaluate(() => { window.brx.engine.scoreAt = null; });
-  await pg.click('.ident'); await pg.waitForTimeout(200);
+  await pg.click('.ident');
+  // F432: a fixed 200ms wait raced the render under load and could sample the badge mid-transition
+  // (still "LIVE"). Poll the real condition instead, with a load-tolerant ceiling; if the badge never
+  // gets there the must() below still fails, now showing the actual stuck text rather than a lucky sample.
+  await pg.waitForFunction(() => (document.getElementById('bdage') || {}).textContent === 'NO SCORES YET', null, { timeout: 3000 }).catch(() => {});
   const r = await pg.evaluate(() => {
     const rect = el => { const b = el.getBoundingClientRect(); return { l: b.left, r: b.right }; };
     const age = document.getElementById('bdage'), x = document.querySelector('.bdx');

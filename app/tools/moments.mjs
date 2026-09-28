@@ -8,6 +8,7 @@
 //
 // Run: node tools/moments.mjs      ONLY=<substring> runs one step.
 import { chromium } from 'playwright';
+import { monotonicDate } from './monotonic-date.mjs';
 import http from 'http'; import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
 
@@ -73,7 +74,7 @@ const mustBeAlive = async p => {
   must(alive, 'the demo player is DEAD and could not be revived -- moments cannot fire');
 };
 
-const b = await chromium.launch();
+const b = monotonicDate(await chromium.launch());
 const page = await b.newPage({ viewport: { width: 891, height: 411 } });
 const pageErrors = [];
 page.on('pageerror', e => pageErrors.push(String(e.message)));
