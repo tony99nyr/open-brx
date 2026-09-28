@@ -1115,3 +1115,51 @@ test('F417: every change of a station\'s advertised state or taker is logged onc
   assert.equal(lines.length, 2, `one per change, not per advert: ${JSON.stringify(lines)}`);
   assert.match(lines[1], /state 0 taker 19/);
 });
+
+test('F418: two zero read-backs after a resume use both repairs before a held pickup ends', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.eng.resume(); h.adv(3000); h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); h.frame('$ALCD,0,100,2,0,0,*');
+  assert.equal(h.eng._puHeld?.left, 2, 'the first missing count does not spend a charge');
+  h.adv(E.ACC_ECHO_MS + 100);
+  h.frame('$BUT,0,1,*').frame('$BUT,0,0,*'); // the gun was still on slot 0, despite the phone assumption
+  h.frame('$ALCD,0,100,2,0,0,*');
+  assert.equal(h.eng._puHeld?.left, 2, 'a pull on an unconfirmed heavy is not proof that it fired');
+  assert.equal(h.since(n).filter(f => f === '$AMMO,2,2,0,1,*').length, 2, 'both bounded count repairs were sent');
+});
+
+test('F381: a stack keeps four charges when the gun reports its old two after the stack write', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  h.frame('$ALCD,2,100,2,0,0,*'); // a positive read-back confirms the first grant
+  h.fire(0, 29, 190); // the first equip was lost; the gun was still on the primary
+  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now());
+  const n = h.mark(); h.adv(E.ACC_ECHO_MS + 100);
+  h.frame('$ALCD,2,100,2,0,0,*'); // stack $AMMO was lost: the gun still holds two
+  assert.equal(h.eng._puHeld?.left, 4);
+  assert.ok(h.since(n).includes('$AMMO,2,4,0,1,*'), 'the four charges are re-sent');
+  assert.deepEqual(h.eng._puHeld.back, { slot: 0, mag: 29, res: 190 }, 'the primary shot remains spent');
+  h.frame('$ALCD,4,100,2,0,0,*'); // the gun confirms all four charges
+  for (const left of [3, 2, 1, 0]) { h.adv(3000); h.fire(2, left); }
+  assert.equal(h.eng._puHeld, null, 'four rockets fire before the switch-back');
+});
+
+test('F381: a slot 0 shot after the first grant exposes and repairs an unconfirmed equip', () => {
+  const h = harness(ROCKET_GAME); const logs = []; h.eng.log = m => logs.push(String(m));
+  h.at(121); h.take(4); h.away();
+  h.eng._write([golden.gun.rest], 'readout rest'); // a concurrent LED readout cannot equip a weapon
+  h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); h.fire(0, 31, 192); // the first primary shot: the gun never switched to slot 2
+  assert.ok(logs.some(m => /powerup:.*slot 0.*slot 2/.test(m)), 'the mismatch is visible in the log');
+  assert.ok(h.since(n).includes(WEAP[2]), 'the phone retries the first equip');
+  assert.equal(h.eng._puHeld?.left, 2, 'the gun has not fired a rocket');
+});
+
+test('F381: an intentional ALT shot from slot 0 does not retry the held weapon equip', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(h.eng.switchWindowMs() + 50);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(h.eng.switchWindowMs() + 50);
+  const n = h.mark(); h.fire(0, 29, 190);
+  assert.deepEqual(puw(h.since(n)), [], 'the player chose the primary');
+  assert.equal(h.eng._puHeld?.trig, 0);
+});

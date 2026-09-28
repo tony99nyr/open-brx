@@ -5790,7 +5790,7 @@ export class Engine {
     });
     this._holdAccuracyWrites('powerup equip');
     if (this.reloading) this._endReload('swapped');
-    this.switching = null; this.activeSlot = slot;
+    this.switching = null; this.activeSlot = slot; this._pull = null;   // a pull before this equip cannot prove the new count was spent
     this._altEvidencePending = null;   // F379 r2: a phone equip moves the trigger, not ALT: a later loadout round is no ALT evidence
     this._publishAmmo(slot, mag, res);   // the ammo block shows what is on the trigger now, before the gun's first `$ALCD`
     if (this._puHeld) this._puHeld.trig = slot;
@@ -5959,7 +5959,8 @@ export class Engine {
         old.back = { slot: t, mag, res };
       }
       const stacked = Math.min(PU_STACK_CAP_X * charges, old.left + charges);   // Rockets (2): 1 + 2 = 3; 3 + 2 = 4, capped
-      old.left = stacked; old.charges = stacked; old.station = id; old.at = now; old.repairs = 0;   // F417 r1: a new grant, a fresh repair budget
+      old.left = stacked; old.charges = stacked; old.station = id; old.at = now;
+      old.repairs = 0; old.equipRepairs = 0; old.suspect = false;   // a new grant has a fresh repair budget
       this._puEquip(old.slot, stacked, PU_RESERVE, `powerup: ${old.name} charges stacked (${stacked})`);
       this._puSwitchCard(old.slot, old.slot);   // F400: a re-equip still shows the full card (Tony's decision 1), the ACTIVE tile carrying the new count
       this.powerupGrant = { kind: 'weapon', name: old.name, color: old.color, charges: stacked, at: now };
@@ -6028,30 +6029,26 @@ export class Engine {
     const shot = prev == null || mag < prev;
     if (shot) h.trig = slot;
     if (slot !== h.slot) return null;
+    if (mag > 0 && mag === h.left) { h.suspect = false; h.equipRepairs = 0; }
     h.left = mag;
     if (mag > 0 || !shot) return null;
     this._puEnd('empty');
     return this.activeSlot;   // the slot the switch-back just put on the trigger: `_onAmmo` must not move it back
   }
 
-  /** F417/F418 (bench 2026-09-26): a held heavy's slot drops to 0 and nobody pulled the trigger. Three field cases, one
-   *  shape: ROBAS's grant `$AMMO` lost after a scan flood (the `$WEAP` reset landed), ROBP1's stack `$AMMO` lost (F381:
-   *  the gun held 2, not 3), and ROBP1's held Rockets after an app restart (the reconcile's disarm echo late, or its re-arm
-   *  lost). Each used to end the item as "empty" with no rocket fired. So the node re-sends the held counts instead, at
-   *  most PU_COUNT_REPAIRS times, and then believes the gun. A pull inside TRIGGER_NO_FIRE_MS is a real round. */
+  /** Repair a held count that fell without a credible heavy shot. This includes an old positive count after a stack.
+   *  After one mismatch, a pull is not proof that the gun switched to the heavy. A matching read-back clears that doubt. */
   _puZeroUnpulled(slot, mag, prev) {
     const h = this._puHeld;
-    if (!h || slot !== h.slot || mag !== 0 || !(h.left > 0) || this.reconciling) return false;
+    if (!h || slot !== h.slot || !(h.left > mag) || this.reconciling) return false;
     if (prev != null && mag >= prev) return false;
     const now = this.now();
-    // The trigger asked, ON the heavy: a real round. Review r1: a pull on the primary must not count (it would let a lost
-    // grant end the item again). The residue is a real last round whose `$BUT` notification was lost: it is re-sent,
-    // a free rocket at most PU_COUNT_REPAIRS times, which is the trade against losing the item on every lost write.
     const p = this._pull;
-    if (p && p.slot === h.slot && now - p.at < TRIGGER_NO_FIRE_MS) return false;
+    if (!h.suspect && p && p.slot === h.slot && now - p.at < TRIGGER_NO_FIRE_MS) return false;
     h.repairs = (h.repairs || 0) + 1;
-    if (h.repairs > PU_COUNT_REPAIRS) { this.log(`*** powerup: ${h.name} still reads 0 after ${PU_COUNT_REPAIRS} re-sends -- ending it ***`, 'le'); return false; }
-    this.log(`*** powerup: ${h.name} read 0 with no trigger pull -- the gun lost the counts; re-sending ${h.left} (${h.repairs}/${PU_COUNT_REPAIRS}) ***`, 'le');
+    if (h.repairs > PU_COUNT_REPAIRS) { this.log(`*** powerup: ${h.name} still reads ${mag} after ${PU_COUNT_REPAIRS} re-sends; accepting the gun count ***`, 'le'); return false; }
+    h.suspect = true;
+    this.log(`*** powerup: ${h.name} read ${mag} without a confirmed heavy shot; re-sending ${h.left} (${h.repairs}/${PU_COUNT_REPAIRS}) ***`, 'le');
     const why = `powerup: ${h.name} counts re-sent (${h.repairs}/${PU_COUNT_REPAIRS})`;
     if (h.trig === h.slot) this._puEquip(h.slot, h.left, PU_RESERVE, why);
     else { this._acctWrote(h.slot, h.left, PU_RESERVE); this._prevAmmo[h.slot] = h.left; this._prevReserve[h.slot] = PU_RESERVE; this._quietWrite([`$AMMO,${h.slot},${h.left},${PU_RESERVE},1,*`], why); }
@@ -6853,6 +6850,8 @@ export class Engine {
     // A report on the slot ALT is switching TO is the player's confirming shot, never an echo (polish round 2).
     const offSlotEcho = slot !== this.activeSlot && !(this.switching && slot === this.switching.to)
       && this._acctEchoing(slot) && mag <= this._shotAcct[slot].echoExpect;
+    const expectedBefore = this._puHeld && slot < 2 && this.activeSlot === this._puHeld.slot
+      ? this._liveAmmo()[slot]?.[0] : null;   // a first $ALCD can still prove a shot against the spawn count
     let prev = this._acctAmmo(slot, mag, this._prevAmmo[slot]);
     if (prev === null) {
       const a = this._shotAcct[slot];
@@ -6866,7 +6865,7 @@ export class Engine {
       if (reserve != null && !Number.isNaN(reserve)) this._prevReserve[slot] = reserve;
       return;
     }
-    if (this._puZeroUnpulled(slot, mag, prev)) return;   // F417/F418: not a round, so nothing below may book one
+    if (this._puZeroUnpulled(slot, mag, prev)) return;   // a stale pickup count is not a round
     // F147 (tightened, polish-loop passes 1+2): the gun's own confirmation that a try-out weapon write
     // actually took — a fresh magazine at the new weapon's full clip, on the SLOT that weapon is landing
     // in. Pass 2 bug: `$LCD` reports whichever slot is ACTIVE, so a routine report for the gun's CURRENT
@@ -6915,6 +6914,12 @@ export class Engine {
     // the gun's own rising count rather than on `_endReload`, because that is what "the player reloaded" means
     // on the wire -- a shell-by-shell shotgun chain, a swap onto a loaded slot and a spawn refill all land here.
     if (prev != null && mag > prev) this._dryPulls = 0;
+    // A loadout shot without ALT or SELECT proves that a recent phone equip did not put the held weapon on the trigger.
+    // A read-back with no count drop could be an old echo, so only a shot warrants another equip.
+    const held = this._puHeld;
+    const lostPuEquip = held && slot < 2 && this.activeSlot === held.slot && held.trig === held.slot
+      && (prev != null || expectedBefore != null) && mag < (prev != null ? prev : expectedBefore)
+      && !(this.switching && !this.switching.pu) && this._altEvidencePending == null;
     const puBack = this._puAmmo(slot, mag, prev);   // A56: the held item's magazine; empty ends the item and switches back
     if (this.switching && !this.switching.pu && slot !== this.switching.from && (slot < 2 || (this._puHeld && slot === this._puHeld.slot))) {
       // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
@@ -6949,6 +6954,13 @@ export class Engine {
     // (bench 2026-09-18), and reading the frame delta booked it as a burst -- see the echo-window note.
     if (reserve != null && !Number.isNaN(reserve)) this._prevReserve[slot] = reserve;
     this._publishAmmo(slot, mag, reserve);
+    if (lostPuEquip && this._puHeld === held) {
+      held.suspect = true;
+      if (held.back && held.back.slot === slot) held.back = { slot, mag, res: this._prevReserve[slot] || 0 };
+      held.equipRepairs = (held.equipRepairs || 0) + 1;
+      this.log(`powerup: gun fired slot ${slot} while ${held.name} was expected in slot ${held.slot}; equip repair ${held.equipRepairs}/${PU_COUNT_REPAIRS}`, 'le');
+      if (held.equipRepairs <= PU_COUNT_REPAIRS) this._puEquip(held.slot, held.left, PU_RESERVE, `powerup: ${held.name} equip re-sent after slot ${slot} shot`);
+    }
     // heat itself is recorded at the top of this function, before the stunned return.
   }
 
