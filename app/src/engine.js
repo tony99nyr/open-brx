@@ -5761,6 +5761,16 @@ export class Engine {
     const head = (this.frames && this.frames.head) || [];
     return head.find(f => typeof f === 'string' && f.startsWith(`$WEAP,${slot},`)) || null;
   }
+  /** F381 polish r2: an `$AMMO` set-mode write clamps to the `$WEAP` clip (docs/manual/dev.md, the `$TMP` row), so a held
+   *  count above the head's clip (a stack: Rockets 4 on a 2-round clip) raises the clip tokens in the equip's own `$WEAP`:
+   *  split index 17 is t16 maxClip, index 40 is t39 clipStartingAmmo. Without it the gun holds 2 whatever we send. */
+  _puWeapFor(slot, n) {
+    const weap = this._puHeadWeap(slot); if (!weap) return null;
+    const t = weap.split(',');
+    if (t.length < 41 || !(n > (+t[17] || 0))) return weap;
+    t[17] = String(n); t[40] = String(n);
+    return t.join(',');
+  }
   /** Is the held heavy on the trigger? `held.trig` is fed by `$ALCD` for slots 0-3 and by the node's own equips;
    *  melee's slot 4 never moves it (it is its own button, not the trigger). PURE. */
   _puOnHeavy() { const h = this._puHeld; return !!(h && h.trig === h.slot); }
@@ -5775,7 +5785,7 @@ export class Engine {
   /** Put `slot` on the trigger: `pre` (a swap's zeroing), its head `$WEAP`, then `$AMMO` with the counts it must hold.
    *  The `$WEAP` refills the slot, so the `$AMMO` is what makes the counts right; both go in one write, in that order. */
   _puEquip(slot, mag, res, why, pre = []) {
-    const weap = this._puHeadWeap(slot);
+    const weap = this._puWeapFor(slot, mag);
     if (!weap) { this.log(`powerup: the head carries no $WEAP for slot ${slot}; nothing equipped (${why})`, 'le'); return false; }
     this._acctWrote(slot, mag, res);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot
     this._prevAmmo[slot] = mag; this._prevReserve[slot] = res;   // what the slot holds now, should the echo never come back

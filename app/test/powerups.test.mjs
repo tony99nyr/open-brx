@@ -1245,3 +1245,15 @@ test('F381 polish: the empty switch-back hint names the saved secondary, not the
   assert.equal(h.eng._puHeld, null, 'the rockets are over');
   assert.equal(h.eng._puBack?.to, (row?.name || String(ws[1].weapon_id).replace(/_/g, ' ')).toUpperCase());
 });
+
+test('F381 polish r2: a stack above the clip raises the $WEAP clip, so a gun that clamps $AMMO holds all four', () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  const weap = h.since(n).filter(f => f.startsWith('$WEAP,2,'));
+  assert.equal(weap.length, 1, `one equip for the stack, no repair loop: ${weap.length}`);
+  const t = weap[0].split(',');
+  assert.equal(+t[17], 4, 't16 maxClip carries the stacked count');
+  assert.equal(+t[40], 4, 't39 clipStartingAmmo carries the stacked count');
+  assert.equal(h.eng._puHeld?.left, 4);
+  assert.equal(h.eng._puHeld?.repairs || 0, 0, 'the stack spent none of the repair budget');
+});
