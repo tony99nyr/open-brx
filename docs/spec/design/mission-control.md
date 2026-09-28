@@ -103,7 +103,7 @@ been one, `EDIT ▸` and `CONTINUE TO KIT ▸`. The tab keys this state on `stat
 `lobby.pushed`. `EDIT` opens a DRAFT (nothing is sent while editing); `SAVE AND LOAD ▸` fires one
 `PUT /api/config` with the whole patch, re-announces the game to the phones, and — if the lobby has
 already been pushed — re-pushes the frames too, so the ack count drops to 0/N and climbs. A draft that
-would reshape the roster shows the predicted split at SAVE time; abandoning one asks once.
+reshapes the roster saves on one tap, with no split preview (2026-09-28); abandoning one asks once.
 
 Because LOAD splits *"the game is loaded"* from *"the guns are configured"*, **LOBBY carries a PRE-ARM
 CHECK** (`state.py sync_summary()` → `ui/PreArmSummary`): four facts per rostered player — phone told, gun

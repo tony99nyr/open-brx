@@ -5,9 +5,9 @@ import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/typ
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
 import { GLYPH, colourOf } from '../alerts';
-import { DEFAULT_POLICY, HEALTH_PRESET_COPY, computePool, healthPresetOf, kindRows, splitLine } from '../screens/gameSummary';
+import { DEFAULT_POLICY, HEALTH_PRESET_COPY, computePool, healthPresetOf, kindRows } from '../screens/gameSummary';
 import { HealthPresetEditor } from '../screens/HealthPresetEditor';
-import { GhostButton, PrimaryButton, Seg, SwitchConfirm, Toggle } from './index';
+import { GhostButton, PrimaryButton, Seg, Toggle } from './index';
 import { LoadStatus } from './LoadedGame';
 
 type Slot = 'primary' | 'secondary';
@@ -77,7 +77,6 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
   const { state, modes, weapons, perks, run, api, openBuild } = useStore();
   /** the config being edited, or null for "not editing". NOTHING here is sent until SAVE AND LOAD. */
   const [draft, setDraft] = useState<GameConfig | null>(() => (alwaysOpen && state ? clone(state.config) : null));
-  const [confirmSave, setConfirmSave] = useState(false);      // a reshaping SAVE asks once (see `split`)
   const [confirmCancel, setConfirmCancel] = useState(false);  // abandoning a dirty draft asks once
   const [saving, setSaving] = useState(false);
   // Says "RE-PUSHING" for a few seconds after a successful save -- comfortably past a real gun's
@@ -120,15 +119,10 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
   const total = gate.total;
   const open = draft !== null;
 
-  /** The reshape this SAVE would produce -- the SAME predicate GAMES's mode tiles show, never a second
-   *  one. Asked of the DRAFT, which is why the per-tap confirm this panel used to carry is gone: the
-   *  question belongs to the tap that actually moves people, and that tap is SAVE AND LOAD. */
-  const split = draft ? splitLine(state.players, cfg.teams, draft.teams) : '';
-
-  // Clears BOTH confirms, not just SAVE's: an operator who tapped CANCEL once (declining to discard),
-  // then kept editing, has a fresh draft the OLD "TAP CANCEL AGAIN TO DISCARD" would still be primed
-  // for -- one more CANCEL would throw away work it never asked about a second time.
-  const edit = (fn: (d: GameConfig) => GameConfig) => { setConfirmSave(false); setConfirmCancel(false); setDraft(d => (d ? fn(d) : d)); };
+  // Clears the discard confirm: an operator who tapped CANCEL once (declining to discard), then kept
+  // editing, has a fresh draft the OLD "TAP CANCEL AGAIN TO DISCARD" would still be primed for -- one
+  // more CANCEL would throw away work it never asked about a second time.
+  const edit = (fn: (d: GameConfig) => GameConfig) => { setConfirmCancel(false); setDraft(d => (d ? fn(d) : d)); };
   const editPolicy = (p: Partial<LoadoutPolicy>) => edit(d => ({ ...d, loadout_policy: { ...polOf(d), ...p } }));
   const editSlot = (slot: Slot, r: Partial<SlotRule>) => editPolicy({ [slot]: { ...pol[slot], ...r } });
   const pickMode = (v: string) => {
@@ -139,15 +133,16 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
     edit(d => (def ? ({ ...clone(def), config_id: d.config_id, environment: cfg.environment, night: d.night, ...(d.volume != null ? { volume: d.volume } : {}) } as GameConfig) : { ...d, mode: v }));
   };
 
-  const startEdit = () => { setConfirmCancel(false); setConfirmSave(false); setDraft(clone(cfg)); };
+  const startEdit = () => { setConfirmCancel(false); setDraft(clone(cfg)); };
   const cancel = () => {
     if (dirty && !confirmCancel) { setConfirmCancel(true); return; }   // abandoning a draft asks ONCE
-    setConfirmCancel(false); setConfirmSave(false); setDraft(null); onDone?.();
+    setConfirmCancel(false); setDraft(null); onDone?.();
   };
   const save = async () => {
     if (!draft || saving || locked) return;
     if (!dirty) { cancel(); return; }                       // nothing changed: closing is the honest action
-    if (split && !confirmSave) { setConfirmSave(true); return; }
+    // Bench 2026-09-28 (Tony, no warnings): a SAVE that changes the teams applies at once; the server
+    // keeps each player's side on a same-count change and splits evenly on a count change.
     setSaving(true);
     const r = await run(async () => {
       try {
@@ -164,7 +159,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
     // `run` answers `undefined` ONLY on a throw — the refusal is already in the error strip and the
     // draft stays exactly as the operator left it, so nothing they typed is lost to a 409.
     if (r === undefined) return;
-    setRecentEdit(true); setConfirmSave(false); setConfirmCancel(false); setDraft(null); onDone?.();
+    setRecentEdit(true); setConfirmCancel(false); setDraft(null); onDone?.();
   };
 
   // Computed client-side from the DRAFT policy, same rule engine as the DESIGNER (gameSummary.ts
@@ -254,9 +249,6 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
           </fieldset>
 
           {/* The one place anything leaves this panel. */}
-          {confirmSave && split && (
-            <SwitchConfirm dropsDraft={false} split={split} action={`TAP ${saveLabel.replace(' ▸', '')} AGAIN TO APPLY`} />
-          )}
           {confirmCancel && (
             <div role="status" data-testid="game-edit-discard" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn, display: 'flex', flexDirection: 'column', gap: 3 }}>
               <span>▲ THIS DISCARDS YOUR UNSAVED CHANGES</span>

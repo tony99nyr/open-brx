@@ -163,6 +163,11 @@ night's setup (SNIPERS + STATION + SILENCED + a 15-kill limit + a 15 s countdown
 taps §16's silent-snipers example takes. It is not a ninth picker and it is not a preset: BUILD still makes
 pieces one kind at a time, and a favourite has no fields of its own to edit beyond its name.
 
+Loading a favourite over picks the operator changed since the last load or save asks one question first,
+"DISCARD YOUR CHANGES?", with DISCARD and CANCEL (Tony, 2026-09-28: it guards lost work). Over pristine
+picks it loads on one tap. The console keeps that baseline (`webapp/mc/src/playBaseline.ts`); the server
+does not.
+
 `Favourite = {favourite_id, name (<= 24 chars, unique case-insensitive), created_t, updated_t, pick: GamePick,
 countdown_s: int}`. It stores piece **references** (the ids inside `pick.pieces`), not copies of their
 values — editing a piece in BUILD changes what every favourite naming it loads next, exactly like editing a
@@ -210,9 +215,14 @@ kill-scored mode.
   `yellow` (2) and `purple` (3). It is absent for a mode without teams (FFA).
 - Every team mode defaults to `["red", "blue"]`. KOTH is exactly 2 teams and never offers yellow (a neutral
   hill broadcasts tid 2, F82). Anything else is a 400 on `POST /api/play/pick` or a favourite save.
-- Compose writes `config.teams` from `TEAM_DEFS` in that order. A change of count or colour re-teams the
-  roster evenly, through the same path as a mode switch, so PLAY's moves-players confirm applies to it.
-- A mode change resets `teams` to the new mode's default, like the limits.
+- Compose writes `config.teams` from `TEAM_DEFS` in that order. A colour change with the same count
+  recolours by index, so every player keeps their team. A count change splits the roster evenly.
+- A mode change keeps the current teams when the new mode's default has the same count, and swaps only a
+  colour the new mode cannot use for a free legal one (TDM blue/yellow to KOTH is blue/red). A different
+  count takes the new mode's default (`gamepick.carry_teams`).
+- None of these asks first (Tony, 2026-09-28: "just change the choices, don't make me read warnings"):
+  a mode pick, a TEAMS change, a favourite load and a KIT/LOBBY edit all apply on one tap. The TEAMS
+  chooser offers only the colours the current mode can use.
 
 **KOTH hold target (F415).**
 - `match.hold_target_s` (KOTH only): `null` = no target. Otherwise the first team whose possession reaches

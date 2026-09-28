@@ -11,12 +11,34 @@ from typing import Any, Container, Mapping, cast
 
 from . import presentation as _pres
 from .pieces import BUILTIN_IDS, PieceError, PieceStore
-from .types import GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, Team, TeamColour
+from .types import OBJECTIVE_MODES, GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, Team, TeamColour
 
 # F413 (2026-09-27): the closed vocabulary `match.teams` picks from -- "ffa" is a pseudo-team (the
 # no-teams sentinel `state.TEAM_DEFS` also carries), never a real choice on the strip, so it is
 # deliberately left out here even though it lives in the same table on the state.py side.
 TEAM_COLOURS: frozenset[str] = frozenset({"red", "blue", "yellow", "purple"})
+# The strip's own order (Games.tsx ALL_TEAM_COLOURS): the order a swapped-in colour is chosen in.
+_COLOUR_ORDER: tuple[TeamColour, ...] = ("red", "blue", "yellow", "purple")
+
+
+def legal_colours(mode: str) -> list[TeamColour]:
+    """The colours `mode` may use. A hill mode never uses yellow: tid 2 is the team a NEUTRAL hill
+    broadcasts (F82), the same rule `state._merge_config` enforces on the composed config."""
+    return [c for c in _COLOUR_ORDER if not (mode in OBJECTIVE_MODES and c == "yellow")]
+
+
+def carry_teams(prev: list[TeamColour] | None, default: list[TeamColour], mode: str) -> list[TeamColour]:
+    """Bench 2026-09-28 (Tony, "just change the choices, don't make me read warnings"): a mode change
+    keeps the operator's teams when the new mode's own default has the same count, and swaps only a colour
+    the new mode cannot use for a free legal one (the new mode's default colours first). With the count
+    unchanged, `state._reteam_for_config` then recolours by index, so every player keeps their team.
+    A different count (or no previous teams) takes the new mode's own default, as before."""
+    if not prev or len(prev) != len(default):
+        return list(default)
+    legal = legal_colours(mode)
+    kept: list[TeamColour | None] = [c if c in legal else None for c in prev]
+    free: list[TeamColour] = list(dict.fromkeys(c for c in [*default, *legal] if c in legal and c not in kept))
+    return [c if c is not None else free.pop(0) for c in kept]
 
 
 def default_pick(default_config: Any) -> GamePick:

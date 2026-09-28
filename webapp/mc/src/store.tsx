@@ -63,7 +63,7 @@ export interface Store {
    *  stepper step — it carries no seed, since BUILD is a preset editor now, not a per-game draft. */
   openBuild: () => void;
   /** F411 §5/§8: PLAY's "ASSIGN A HILL ▸" (KOTH with nothing assigned) sets this and jumps to ARMORY,
-   *  which scrolls to and highlights the ITEMS station slot and offers "◂ BACK TO PLAY". Transient,
+   *  which scrolls to and highlights the ITEMS station slot and offers "CONTINUE TO PLAY ▸". Transient,
    *  cleared by that button — never a second source of truth for anything server-side. */
   focusHill: boolean;
   setFocusHill: (v: boolean) => void;
