@@ -87,7 +87,7 @@ the advertised threshold overriding the default, neutral admitting every team, o
 **Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
 -63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
 better"): a phone station **-70 dBm**, a StickS3 **-57 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
-`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`: non-control Stick kinds resolve 0 to -57 and advertise -57). Extraction and bomb stations on a phone keep the
+`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`: a Stick respawn resolves 0 to -57 and advertises -57; a Stick powerup uses -45, F434). Extraction and bomb stations on a phone keep the
 2026-09-04 bench value, -74 dBm at high TX (about 10 ft); a `control` station's own default is **-75 dBm** on both
 platforms (`beacon.js CONTROL_RSSI_DBM`; Tony, 2026-09-27, hysteresis 6, until the outdoor walk, F383). MC's `StationAssignment.threshold` still overrides; **0**
 (or absent) means the station's own default, which it resolves and advertises in byte 14. A phone app older than
@@ -597,7 +597,8 @@ for `welcome.seq_hi` to reconcile.
 A68 also retains `starts_in_ms` and `ends_in_ms` as MC's known clock offsets. MC sends known values in ARMED/LIVE, including a start for an untimed match. End 0 freezes after match end, RECALL or PANIC; abort omits both clock offsets so the same game can start again. A same-game lobby config keeps the hill waiting. An adopted match sends no station config timing.
 
 For a Stick `control` station, threshold 0 or absent selects the separate -75 dBm hill default (Tony, 2026-09-25, UNPROVEN)
-(`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN, pending a 3, 5 and 7 m walk test). Other Stick kinds keep
+(`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN, pending a 3, 5 and 7 m walk test). A Stick `powerup` uses
+-45 dBm (`STICK_POWERUP_DEFAULT_THRESHOLD_DBM`, F434). Other Stick kinds keep
 -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A defaulted hill advertises -57 in byte 14 for phone-side presence:
 the phone hears the Stick about 25 dB louder than the Stick hears the phone. An explicit MC threshold
 overrides the relevant Stick measurement threshold and also sets byte 14. The first on-station RADIUS

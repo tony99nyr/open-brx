@@ -21,4 +21,8 @@ describe('bubbleDefault', () => {
     expect(bubbleDefault('control', false).start).toBe(PHONE_CONTROL_THRESHOLD_DBM);
     expect(bubbleDefault('control', true).start).toBe(PHONE_CONTROL_THRESHOLD_DBM);
   });
+  it('starts a Stick powerup edit at the Stick\'s own -45 (F434), and a Stick respawn at -57', () => {
+    expect(bubbleDefault('powerup', true).start).toBe(-45);
+    expect(bubbleDefault('respawn', true).start).toBe(-57);
+  });
 });

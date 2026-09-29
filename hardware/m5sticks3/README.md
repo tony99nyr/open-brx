@@ -317,7 +317,9 @@ any `WIFI` command has ever been given, since Wi-Fi credentials persist across r
 state. `LINK OFF` only drops the current socket and association.
 
 **THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means the Stick default for that kind.
-Every kind except `control` uses -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A `control` hill uses
+A `powerup` uses -45 dBm (`STICK_POWERUP_DEFAULT_THRESHOLD_DBM`, F434, Tony 2026-09-28): at -57 a Pixel 5 about
+3 m away claimed on every item respawn (it read -50 to -55 there; about -40 at 30 cm); bench 4.11 tunes it.
+Every kind except `control` and `powerup` uses -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A `control` hill uses
 -75 dBm (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, Tony 2026-09-25, UNPROVEN): sitting B, 2026-09-25, Stick-side PLAYERS STREAM
 medians were -43 touching, -64 at arm's length, -77/-81 at about 5 m (two phones), and -78 to -87 down the
 hall, still present at -80. -80 reached past 7 m, so Tony set -75 for a 5-7 m target. Take clean 3 m

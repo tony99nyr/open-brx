@@ -31,16 +31,17 @@ const TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 
 /** H1: what threshold 0 resolves to, as the server resolves it (state.py `_wire_threshold`, F345) and the phone
  *  applies it (app/src/beacon.js `phoneStationThreshold`): a phone respawn station -70, a phone powerup station
  *  -55 (S58), a phone control (hill) station -75 (F383, Tony 2026-09-27, until the outdoor walk), any other phone
- *  kind -74, a StickS3 its own. `start` is where an edit begins: that number, or for a Stick its respawn default
- *  (-57, the F345 note in state.py) and the phone value otherwise. */
+ *  kind -74, a StickS3 its own. `start` is where an edit begins: that number, or for a Stick its own respawn default
+ *  (-57, the F345 note in state.py) or powerup default (-45, F434), and the phone value otherwise. */
 export function bubbleDefault(kind: StationKind, stick: boolean): { label: string; start: number } {
   const phone = kind === 'respawn' ? PHONE_RESPAWN_THRESHOLD_DBM
     : kind === 'powerup' ? PHONE_POWERUP_THRESHOLD_DBM
     : kind === 'control' ? PHONE_CONTROL_THRESHOLD_DBM : PHONE_STATION_THRESHOLD_DBM;
-  return stick ? { label: "DEFAULT (the Stick's own)", start: kind === 'respawn' ? STICK_RESPAWN_DBM : phone }
+  return stick ? { label: "DEFAULT (the Stick's own)", start: kind === 'respawn' ? STICK_RESPAWN_DBM : kind === 'powerup' ? STICK_POWERUP_DBM : phone }
     : { label: `DEFAULT (${phone}, phone)`, start: phone };
 }
 const STICK_RESPAWN_DBM = -57;
+const STICK_POWERUP_DBM = -45;   // F434: station_range.h STICK_POWERUP_DEFAULT_THRESHOLD_DBM
 /** A67 (F365): the station's advert strength, weakest first. A stronger advert is heard farther, so it moves the range too. */
 const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: 'LOW', medium: 'MEDIUM', high: 'HIGH' };
 const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));

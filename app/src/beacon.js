@@ -167,7 +167,7 @@ export const RESPAWN_RSSI_DBM = Object.freeze({ phone: -70, sticks3: -57 });   /
 /** Every other kind on a phone station keeps the 2026-09-04 bench value (about 10 ft at high TX). */
 export const STATION_THRESHOLD_DBM = -74;
 /** A phone station's own default for `kind` (utility.js, when `settings.threshold` is 0). */
-export const POWERUP_RSSI_DBM = Object.freeze({ phone: -55 });   // S58: a phone station's ~1 ft claim range, a placeholder until bench 4.11 (a StickS3 advertises -57)
+export const POWERUP_RSSI_DBM = Object.freeze({ phone: -55, sticks3: -45 });   // S58: about 30 cm; placeholders until bench 4.11. The Stick's copy is station_range.h STICK_POWERUP_DEFAULT_THRESHOLD_DBM (F434, Tony 2026-09-28)
 /** F383: the hill's own default is -75 dBm with 6 dB hysteresis, on every path, until the outdoor walk measures a
  *  real one (Tony, 2026-09-27). The Stick's copy is `hardware/m5sticks3/station_range.h STICK_HILL_DEFAULT_THRESHOLD_DBM`. */
 export const CONTROL_RSSI_DBM = Object.freeze({ phone: -75, sticks3: -75 });

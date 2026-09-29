@@ -2624,6 +2624,28 @@ static void test_hill_default_threshold_separates_measurement_from_phone_advert(
   CHECK_EQ(hill.threshold_advertised_dbm(), -75);
 }
 
+// F434, Tony 2026-09-28: a defaulted powerup claims at -45 (about 30 cm), and advertises it in byte 14, which the
+// phone claims against. The respawn keeps -57; an MC value still wins.
+static void test_powerup_default_threshold_is_its_own() {
+  bool ok = false;
+  StationLink pu;
+  pu.apply_station_config(parse_station_config(json::parse(R"({"kind":"powerup","team":255,"id":5})", &ok)));
+  CHECK_EQ(STICK_POWERUP_DEFAULT_THRESHOLD_DBM, -45);
+  CHECK_EQ(pu.threshold_dbm(), -45);
+  CHECK_EQ(pu.threshold_advertised_dbm(), -45);
+  StationLink rs;
+  rs.apply_station_config(parse_station_config(json::parse(R"({"kind":"respawn","team":1,"id":2})", &ok)));
+  CHECK_EQ(rs.threshold_dbm(), -57);
+  StationLink mc;
+  mc.apply_station_config(parse_station_config(json::parse(R"({"kind":"powerup","team":255,"id":5,"threshold":-60})", &ok)));
+  CHECK_EQ(mc.threshold_dbm(), -60);
+  // A config an older build saved (the resolved -57 plus the default marker) resolves to the new default.
+  StationLink restored;
+  restored.apply_station_config(parse_station_config(json::parse(
+      R"({"kind":"powerup","team":255,"id":5,"threshold":-57,"threshold_default":true})", &ok)));
+  CHECK_EQ(restored.threshold_dbm(), -45);
+}
+
 static BleControlPoint held_by(int owner, uint32_t hold0 = 0, uint32_t hold3 = 0) {
   BleControlPoint h;
   h.owner = owner;
@@ -2829,6 +2851,7 @@ int main(int argc, char** argv) {
   test_station_kind_byte_maps_every_kind();
   test_a_respawn_station_advertises_ready_not_disabled();
   test_threshold_zero_or_absent_means_the_sticks_own_default();
+  test_powerup_default_threshold_is_its_own();
   test_powerup_schedule_starts_unknown_without_a_report();
   test_powerup_schedule_taken_counts_down_locally_from_the_last_update();
   test_powerup_schedule_caps_value_at_255();
