@@ -152,8 +152,11 @@ def invalid_reason(item: object) -> str | None:
     for key in ("spawn_every_s", "first_at_s"):
         v = item.get(key)
         lo = 1 if key == "spawn_every_s" else 0
-        if not isinstance(v, int) or isinstance(v, bool) or not lo <= v <= SPAWN_EVERY_MAX:
-            return f"{key} {v!r} (an integer, {lo}-{SPAWN_EVERY_MAX})"
+        # 255, the advert byte, as before: a STORED item is checked against what can be scheduled and sent,
+        # never against ARMORY's own override range (30-240), so a narrower operator range can never drop an
+        # item a session already holds (polish 2026-09-28).
+        if not isinstance(v, int) or isinstance(v, bool) or not lo <= v <= 255:
+            return f"{key} {v!r} (an integer, {lo}-255)"
     if not isinstance(item.get("name"), str) or not isinstance(item.get("color"), str):
         return "name or color missing"
     if item["kind"] == "weapon" and (not isinstance(item.get("weapon_id"), str) or not isinstance(item.get("charges"), int)):

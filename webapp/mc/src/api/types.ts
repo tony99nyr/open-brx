@@ -158,7 +158,7 @@ export interface Api {
     /** A56: a `powerup` station's item, one of `getPowerups().presets[].preset`. Refused when MC's powerups flag is off. */
     item_preset?: string;
     /** S-powerup-overrides (2026-09-28): optional siblings of `item_preset`, never free-standing. `charges`
-     *  (a weapon item, 1-4), `amount` (the overshield, 25-150 step 25), `spawn_every_s` (any item, 30-300 step
+     *  (a weapon item, 1-4), `amount` (the overshield, 25-150 step 25), `spawn_every_s` (any item, 30-240 step
      *  30, `first_at_s` follows it). Omitted = the preset's own default, not whatever was stored before --
      *  resend a kept override on every apply, the same as `item_preset` itself. */
     charges?: number; amount?: number; spawn_every_s?: number;

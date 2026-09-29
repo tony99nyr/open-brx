@@ -127,7 +127,7 @@ behind the flag until the design catches up (open for Tony, S58).
   colour, not a team. The same object rides in the player's `config.stations[]` entry (`{id, kind, item?}`), so a
   player's phone knows the schedule without MC.
 - **Per-station overrides (S-powerup-overrides, 2026-09-28):** `charges` (1-4, a weapon item only), `amount`
-  (25-150 in steps of 25, the overshield only) and `spawn_every_s` (30-300 in steps of 30, any item) are optional
+  (25-150 in steps of 25, the overshield only) and `spawn_every_s` (30-240 in steps of 30, any item; 240 because the StickS3 carries it in one byte) are optional
   siblings of `item_preset` on the station PUT (`mcp/brx_mcp/mc/API.md`). Stateless like the rest of the PUT: the
   whole item is recomputed from the request every time, so an override not resent falls back to the preset's own
   default rather than to whatever was stored before -- ARMORY resends a kept override on every apply, the same way

@@ -846,3 +846,11 @@ def test_f403_a_station_edit_that_leaves_the_pickups_alone_sends_no_assign():
     assert len(_pushed(s, "assign")) == before, "no brief change, no assign"
     _station(s, "u4", 8, "overshield")                    # an overshield alone moves no weapon slot, but it IS a new line
     assert len(_pushed(s, "assign")) > before
+
+
+def test_a_stored_item_is_checked_against_the_advert_byte_not_the_override_range():
+    """Polish 2026-09-28: ARMORY's override range is 30-240, but a stored item (a restored session) is only
+    refused past what can be sent and scheduled (255), so the narrower range never drops a held item."""
+    ok = {**PU.expand("rockets", WeaponCatalog()), "spawn_every_s": 250, "first_at_s": 250}
+    assert PU.invalid_reason(ok) is None
+    assert "255" in (PU.invalid_reason({**ok, "spawn_every_s": 256}) or "")
