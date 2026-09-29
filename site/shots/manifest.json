@@ -1,7 +1,7 @@
 {
-  "taken": "2026-09-28T20:33:17.709Z",
+  "taken": "2026-09-29T00:18:57.593Z",
   "mc_src": "26f548a3a25b21f098ad9bda8a80520f0d5619e1",
-  "hud_src": "73a10b806bd9697afb99528751da0dccac3627e3",
+  "hud_src": "7ce3c830a37ecbd44f933942c552955ea8362947",
   "mc_shell": "9ea5c65bbafd244cb934229dd67dd1de33c5c2a6",
   "hud_shell": "7dc618f388a642efe71e7ce3751d44a5ac91949f",
   "files": {
@@ -18,7 +18,7 @@
     "mc-kit.jpg": {
       "w": 1280,
       "h": 800,
-      "bytes": 245099
+      "bytes": 245060
     },
     "mc-lobby.jpg": {
       "w": 1280,
