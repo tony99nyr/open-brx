@@ -37,6 +37,9 @@ three 2-hour soaks; F275 on outdoor space.
 MC GAMES is PLAY + BUILD (F411) with FAVOURITES, LAST MATCH, teams (F413; a colour-only change recolours by index,
 a count change re-splits) and the KOTH hold target (F415). `scripts/land.mjs` (the land lane) is how commits reach main.
 APK 0.4.15 (built from `efd1961c`) carries the phone tid-0 kill-confirm fix and publishes at the bench.
+- **F297 (2026-09-28):** the Pixel 5's first-connect failures are GATT 133 at the link layer (HCI 0x3E); a fast 133
+  now retries after 200 ms. Bench it with the 10-run cold-connect script (FOLLOWUPS F297). The Stick powerup's claim
+  range (claims from 3 m at -57) and camping wait on Tony's decision and bench 4.11.
 - **Next:** Tony's GAMES check at the bench. F429/F430 (browser-closed flakes): close after 3 clean lander runs once
   brx1's test-all headroom fix lands.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.

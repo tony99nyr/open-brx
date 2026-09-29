@@ -3,7 +3,7 @@
 // entirely and the TAP TO RECONNECT pill was inert. Found by review, and pinned here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrxLink, flapDelay, directWriter, NUS, RX, PARSER_RESET } from '../src/brxlink.js';
+import { BrxLink, flapDelay, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133 } from '../src/brxlink.js';
 
 function rig() {
   const attempts = { A: 0, B: 0 }, subs = [], cb = {}, ups = [], drops = [], disconnects = [];
@@ -873,4 +873,85 @@ test('ending a background reconnect frees the radio, so the picker can scan inst
   await link.scan(() => {});
   assert.equal(link.scanning, true, 'the picker can now open its scan');
   await link.stopScan();
+});
+
+// F297, bench 2026-09-28 grey run 7: three status-133 failures, each 0.3 s after the connect, then a link. The old
+// 0.5/1/2 s backoff made that 5.5 s; the fast-133 gap makes it under 2 s.
+function gattRig(failures, { failMs = 300, message = 'Connection failed with status 133 (GATT_ERROR).' } = {}) {
+  const starts = []; let left = failures;
+  const ble = {
+    initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {},
+    connect: id => { starts.push(Date.now()); return new Promise((res, rej) => setTimeout(() => (left-- > 0 ? rej(new Error(message)) : res()), failMs)); },
+  };
+  const link = new BrxLink({ ble, log: () => {}, onUp: () => {}, onDrop: () => {} });
+  return { link, starts };
+}
+
+test('F297: three fast GATT 133 failures retry after GATT133_GAP_MS, and the gun links in under 2 s', async ctx => {
+  const settle = useClock(ctx);
+  const r = gattRig(3); ctx.after(() => r.link.disconnect());
+  const t0 = Date.now();
+  let up = false; r.link.connect('A', 'GUN-A-1111').then(() => { up = true; });
+  await settle(2000);
+  assert.equal(up, true, 'linked');
+  assert.equal(r.starts.length, 4);
+  const gaps = r.starts.slice(1).map((t, i) => t - r.starts[i] - 300);
+  assert.deepEqual(gaps, [GATT133_GAP_MS, GATT133_GAP_MS, GATT133_GAP_MS], 'each 133 retry waits the short gap');
+  assert.ok(r.starts[3] + 300 - t0 < 2000);
+});
+
+test('F297: past GATT133_QUICK_RETRIES in a row, a 133 takes the normal backoff', async ctx => {
+  const settle = useClock(ctx);
+  const r = gattRig(GATT133_QUICK_RETRIES + 1); ctx.after(() => r.link.disconnect());
+  r.link.connect('A', 'GUN-A-1111').catch(() => {});
+  await settle(8000);   // four 0.3 s failures, three 200 ms gaps, then up to 4.8 s of backoff
+  const gaps = r.starts.slice(1).map((t, i) => t - r.starts[i] - 300);
+  assert.ok(gaps[GATT133_QUICK_RETRIES] >= 0.8 * 500 * 2 ** GATT133_QUICK_RETRIES, `backoff after the cap, got ${gaps}`);
+});
+
+test('F297: a slow failure (a 10 s timeout) and a non-133 error keep the normal backoff', async ctx => {
+  for (const opts of [{ failMs: 2000 }, { failMs: 300, message: 'Connection timeout.' }]) {
+    const settle = useClock(ctx);
+    const r = gattRig(1, opts);
+    r.link.connect('A', 'GUN-A-1111').catch(() => {});
+    await settle(opts.failMs * 2 + 1000);
+    assert.ok(r.starts[1] - r.starts[0] - opts.failMs >= 400, `normal backoff for ${JSON.stringify(opts)}`);
+    await r.link.disconnect(); ctx.mock.timers.reset();
+  }
+});
+
+test('F297: isGatt133 reads the plugin reject and the field log shape, and nothing else', () => {
+  assert.equal(isGatt133(new Error('Connection failed with status 133 (GATT_ERROR).')), true);
+  assert.equal(isGatt133('GATT_ERROR 133'), true);
+  assert.equal(isGatt133(new Error('Connection timeout.')), false);
+  assert.equal(isGatt133(new Error('status 1330')), false);
+});
+
+test('F297: a non-133 failure between 133s resets the run, and a later setup failure that reads 133 is not a fast 133', async ctx => {
+  const settle = useClock(ctx);
+  const msgs = ['Connection failed with status 133 (GATT_ERROR).', 'Connection timeout.', 'Connection failed with status 133 (GATT_ERROR).'];
+  const starts = [];
+  const ble = {
+    initialize: async () => {}, disconnect: async () => {},
+    connect: () => { starts.push(Date.now()); const m = msgs.shift(); return new Promise((res, rej) => setTimeout(() => (m ? rej(new Error(m)) : res()), 300)); },
+    startNotifications: async () => {},
+  };
+  const link = new BrxLink({ ble, log: () => {}, onUp: () => {}, onDrop: () => {} }); ctx.after(() => link.disconnect());
+  link.connect('A', 'GUN-A-1111').catch(() => {});
+  await settle(8000);
+  const gaps = starts.slice(1).map((t, i) => t - starts[i] - 300);
+  assert.equal(gaps[0], GATT133_GAP_MS, 'the first 133 is fast');
+  assert.ok(gaps[1] >= 400, 'the timeout takes the backoff');
+  assert.equal(gaps[2], GATT133_GAP_MS, 'a 133 after the timeout is fast again');
+
+  const s2 = []; let n = 0;
+  const ble2 = {
+    initialize: async () => {}, disconnect: async () => {},
+    connect: async () => { s2.push(Date.now()); },
+    startNotifications: async () => { if (n++ === 0) throw new Error('GATT_ERROR 133 on the notify'); },
+  };
+  const link2 = new BrxLink({ ble: ble2, log: () => {}, onUp: () => {}, onDrop: () => {} }); ctx.after(() => link2.disconnect());
+  link2.connect('A', 'GUN-A-1111').catch(() => {});
+  await settle(2000);
+  assert.ok(s2[1] - s2[0] >= 400, 'a setup failure that is not the native connect keeps the backoff');
 });
