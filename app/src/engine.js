@@ -5969,8 +5969,11 @@ export class Engine {
         const t = this._puLoadoutSlot(old.trig), [mag, res] = this._puCounts(t);
         old.back = { slot: t, mag, res };
       }
-      const stacked = Math.min(PU_STACK_CAP_X * charges, old.left + charges);   // Rockets (2): 1 + 2 = 3; 3 + 2 = 4, capped
-      old.left = stacked; old.charges = stacked; old.station = id; old.at = now;
+      // Per-station CHARGES (1-4) means two stations can hand out the same weapon with different charges: the cap is
+      // the larger item's, and a stack never shrinks what is held (4 held + a CHARGES-1 pickup stays 4, not min(2, 5)).
+      const base = Math.max(charges, old.base || charges);
+      const stacked = Math.max(old.left, Math.min(PU_STACK_CAP_X * base, old.left + charges));   // Rockets (2): 1 + 2 = 3; 3 + 2 = 4, capped
+      old.left = stacked; old.charges = stacked; old.base = base; old.station = id; old.at = now;
       old.repairs = 0; old.equipRepairs = 0; old.suspect = false;   // a new grant has a fresh repair budget
       this._puEquip(old.slot, stacked, PU_RESERVE, `powerup: ${old.name} charges stacked (${stacked})`);
       this._puSwitchCard(old.slot, old.slot);   // F400: a re-equip still shows the full card (Tony's decision 1), the ACTIVE tile carrying the new count
@@ -5985,7 +5988,7 @@ export class Engine {
     const pre = old && old.slot !== slot ? [`$AMMO,${old.slot},0,0,1,*`] : [];
     if (pre.length) this._acctWrote(old.slot, 0, 0);
     const name = String(item.name || item.weapon_id).toUpperCase();
-    this._puHeld = { station: id, weapon_id: item.weapon_id, slot, charges, left: charges, name, color: item.color || null, at: now, back, trig: back.slot };
+    this._puHeld = { station: id, weapon_id: item.weapon_id, slot, charges, base: charges, left: charges, name, color: item.color || null, at: now, back, trig: back.slot };
     this._puBack = null;
     this._puEquip(slot, charges, PU_RESERVE, `powerup: ${name} on the trigger (${charges} in slot ${slot}; back to slot ${back.slot} at ${back.mag}/${back.res})${old ? ` replaces ${old.name}` : ''}`, pre);
     this._puSwitchCard(back.slot, slot);   // F400: the same full weapon-switch card an ALT press shows, ALT's own timing
