@@ -334,10 +334,15 @@ Running total: 125 min.
    in order on both phones, Android and iOS alike, with no stuck or blank state. Log: a screenshot of any defect.
 9. **11.6, MC-assigned station ids (F364, closed: confirm; 5 min).** Assign the black Pixel and the Stick on
    ITEMS with no id. Pass: MC gives them two different ids that survive a Stick restart. Log: both ids.
-10. **The powerup setup, in order (S58, the now-shipped F372 default; 80 min).**
-    - 4.11, the claim calibration (25 min): the ladder at 15/30/60/100 cm against the phone station and the
-      Stick, both player phones. Control: 3 m gives no ring. Pass: one threshold per station type, in range at
-      30 cm and out at 60 cm on both phones (RSSI reads are Pixel-side; judge the iPhone's ring by eye).
+10. **The powerup setup, in order (S58, the now-shipped F372 default; 90 min).**
+    - 4.11, the claim calibration (35 min): the ladder at 15/30/60/100 cm, 2 m and 3 m against the phone station
+      and the Stick powerup, both player phones, phone on the rail facing the station, 30 s a rung. Log the median
+      each phone reads per rung (the `powerup:` lines). Then repeat 30 cm and 3 m with the player's body between.
+      Background (2026-09-28): at the Stick's -57 default a Pixel 5 read about -40 at 30 cm (reported, not logged)
+      and -49 to -60 at about 3 m, and claimed from 3 m (F434). Control: 3 m gives no ring. Pass: one threshold per station type with at least 4 dB
+      margin to the weakest 30 cm median and the strongest 3 m median, on both phones (RSSI reads are Pixel-side;
+      judge the iPhone's ring by eye). Camping (F435): stand at 30 cm through one item respawn and log whether a
+      second grant comes with nobody moving.
     - 11.2, the claim, the winner and the respawn (15 min). Control: 2 m gives no ring. Pass: a 1 s dwell at
       30 cm claims; two players racing gives exactly one winner; the item respawns on schedule; death loses it.
       **TAKEN is checked on the station screen only**: per F425, the player HUD no longer shows a TAKEN hint or
@@ -353,7 +358,7 @@ whole powerup setup (S58, the shipped F372 default) are all proven. **KOTH is ne
 right now (F382-F386), and costs only 15 min for high value, so it must land inside this block rather than
 after it.
 
-Running total: 245 min.
+Running total: 255 min.
 
 ### Group 2: KOTH, phone hill then Stick hill (about 20 min; same hardware, no change)
 
@@ -381,7 +386,7 @@ Running total: 245 min.
 STOP POINT 4: this closes the P0-then-powerups-then-KOTH core of the sitting, about 3 h of bench time once
 setup is done. Everything after this is worth less per minute.
 
-Running total: 265 min.
+Running total: 275 min.
 
 ### Group 3: F386's powerup-station MATCH OVER checks (about 15 min; no guns, no match)
 
@@ -400,7 +405,7 @@ F387 and F333 are already CONFIRMED and closed (part 1); do not re-run them. F38
 
 STOP POINT 5.
 
-Running total: 280 min.
+Running total: 290 min.
 
 ### Group 4: two phones, two guns, the rest of sitting C (about 67 min; same hardware, no change)
 
@@ -444,7 +449,7 @@ Kit: as Group 1.
 STOP POINT 6: sitting C's higher-value checks are all done. The Shields fight, the kill-cue retest and the
 voice audition are the lowest value per minute of the two-phone work and are next.
 
-Running total: 347 min.
+Running total: 357 min.
 
 ### Group 5: the Shields fight, the kill-cue retest and the voice audition (about 30 min; same hardware, no change)
 
@@ -462,7 +467,7 @@ Running total: 347 min.
 
 STOP POINT 7.
 
-Running total: 377 min.
+Running total: 387 min.
 
 ### Group 6: a field walk (about 15 min; the Stick and one phone)
 
@@ -472,7 +477,7 @@ Running total: 377 min.
 
 STOP POINT 8.
 
-Running total: 392 min.
+Running total: 402 min.
 
 ### Group 7: one gun, no phone (about 15 min; lowest priority)
 
