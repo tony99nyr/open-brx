@@ -65,7 +65,7 @@ plan that verifies the mechanism and calibrates the claim thresholds. Items 1 to
 (`bench-2026-09-24.md` step 4.11, the claim calibration for a phone station and the Stick) and item 9 (steps 3.4
 and 3.5), plus the claim race and the respawn (step 11.2). Step 11.3 gives the order. Once those steps pass, the
 calibrated thresholds replace the placeholders (`POWERUP_THRESHOLD_DEFAULT`, `beacon.js POWERUP_RSSI_DBM`, the
-Stick's -57).
+Stick's -45).
 
 1. A `$WEAP` in slot 2 and 3 at arm time; `$ALCD` reports each slot; each fires and takes its own `$AMMO`.
 2. Slots 4 and 5: does a `$WEAP` take (Jay: "about 5 weapons")? Slot 4 is melee today.
@@ -268,8 +268,9 @@ button, and the gun's buttons play no part.
    placeholder until the calibration step) only when that byte is 0. MC can override the station's value
    (`StationAssignment.threshold`, 0 = the station's own default). A powerup PHONE station at threshold 0 advertises
    its own claim default, -55 (`beacon.js POWERUP_RSSI_DBM.phone`; fixed 2026-09-24, it used to advertise the -74 of
-   other kinds), and MC sends -55 explicitly to a phone app older than 0.4.12. A StickS3 still advertises its one
-   station default, -57, which is close. The HUD's "near" hint (GET CLOSER) starts
+   other kinds), and MC sends -55 explicitly to a phone app older than 0.4.12. A StickS3 powerup advertises its own
+   default, -45 (`STICK_POWERUP_DEFAULT_THRESHOLD_DBM`; F434, Tony 2026-09-28: at the old -57 a phone claimed from
+   about 3 m). A player who stays at the station gets each respawned item: no must-leave rule (F435, Tony). The HUD's "near" hint (GET CLOSER) starts
    `PU_NEAR_DB` (10) under the threshold, so at -55 it shows within about 1-2 m. If the calibration shows phones differing by more than 4 dB, the app gains a
    per-model offset table.
 3. **Dwell.** In range continuously for `POWERUP_DWELL_MS` (1000). Leaving range resets it. The HUD shows a

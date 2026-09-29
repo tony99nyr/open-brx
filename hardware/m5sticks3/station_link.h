@@ -386,7 +386,7 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   a.team = (int)body.get("team").as_int(255);
   a.id = (int)body.get("id").as_int();
   int t = (int)body.get("threshold").as_int(0);
-  a.threshold = (t == 0) ? STICK_DEFAULT_THRESHOLD_DBM : t;
+  a.threshold = (t == 0) ? (a.kind == "powerup" ? STICK_POWERUP_DEFAULT_THRESHOLD_DBM : STICK_DEFAULT_THRESHOLD_DBM) : t;
   // The saved copy (station_config_storage_body) writes the resolved value plus this marker, so a
   // restored config still knows MC asked for "the default". MC itself never sends the key.
   a.threshold_defaulted = (t == 0) || body.get("threshold_default").as_bool(false);
@@ -563,13 +563,12 @@ inline uint8_t station_kind_byte(const std::string& kind) {
 
 // ---- the presence threshold (hill + respawn) -------------------------------------------------------
 // The threshold a Bluetooth station measures PLAYERS against. MC's value when it sent one; when it sent
-// 0/absent, the StickS3's own default for that kind (-75 dBm for control, -57 otherwise). A defaulted
+// 0/absent, the StickS3's own default for that kind (-75 dBm for control, -45 for a powerup, -57 otherwise). A defaulted
 // control advert keeps byte 14 at -57 for phone-side presence because the radio paths are asymmetric.
 // The pickup claim has no RSSI floor at all (ClaimGate): the phone's own
 // claim_ready already proves the player stood at the station.
 inline int presence_threshold_dbm(const StationAssignment& a) {
-  return a.threshold_defaulted ? (a.kind == "control" ? STICK_HILL_DEFAULT_THRESHOLD_DBM : STICK_DEFAULT_THRESHOLD_DBM)
-                               : a.threshold;
+  return a.threshold_defaulted ? stick_default_threshold_dbm(a.kind) : a.threshold;
 }
 
 // ---- the saved hill owner (F332: a restart must not wipe an enemy hold) ----------------------------

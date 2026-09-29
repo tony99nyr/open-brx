@@ -540,7 +540,7 @@ static void test_distance_labels_are_anchored_at_minus_57_is_3_m() {
   CHECK_EQ(std::string(range_distance_label(-57)), std::string("~3 M"));
   CHECK_EQ(std::string(range_distance_label(-54)), std::string("~2 M"));
   CHECK_EQ(std::string(range_distance_label(-60)), std::string("~5 M"));
-  CHECK_EQ(std::string(range_distance_label(-40)), std::string("UNDER 1 M"));
+  CHECK_EQ(std::string(range_distance_label(-40)), std::string("<1 M"));
   CHECK_EQ(std::string(range_distance_label(-90)), std::string("OVER 20 M"));
   CHECK_EQ(std::string(range_distance_label(-78, true)), std::string("5-7 M"));
 }
