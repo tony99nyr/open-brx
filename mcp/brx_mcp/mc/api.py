@@ -387,9 +387,14 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                 # A pick that never named teams (an older session) carries the roster's own.
                 prev_teams = match.pop("teams", None) or _gamepick.match_from_config(s.config).get("teams")
                 match.pop("hold_target_s", None)
-                new_teams = _mode_row(mode).get("teams") or []
+                row = _mode_row(mode)
+                new_teams = cast(list[TeamColour], list(row.get("teams") or []))
                 if new_teams != ["ffa"]:
-                    match["teams"] = _gamepick.carry_teams(prev_teams, cast(list[TeamColour], list(new_teams)), mode)
+                    # Only a mode that OFFERS the TEAMS control carries (mock/backend.ts gates the same
+                    # way); a mode without one takes its own default, as before. Parity only today: the
+                    # rows without it (infection, extraction) are post_mvp and cannot be picked.
+                    match["teams"] = (_gamepick.carry_teams(prev_teams, new_teams, mode)
+                                      if "teams" in (row.get("match_items") or []) else new_teams)
             match = _gamepick.merge_match(match, b.get("match") or {})
         except PieceError as e:
             return _perr(e)

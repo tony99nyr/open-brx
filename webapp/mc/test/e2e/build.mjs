@@ -251,7 +251,8 @@ step('type-toggle', async ({ browser, base }) => {
   ok('RIFLES alone selects its 7 weapons');
   // LONG RANGE now reads PARTIAL (2 of its 3 ids already selected via RIFLES: SNIPER RIFLE and CHARGE
   // RIFLE are both `rifle` and `long`) -- its label is `◐ LONG RANGE 2/3`, so match loosely rather
-  // than by the exact OFF-state text.
+  // than by the exact OFF-state text. Polish 2026-09-28: PARTIAL tells a screen reader too (`mixed`).
+  expect((await typeRow.getByRole('button', { name: /LONG RANGE/ }).getAttribute('aria-pressed')) === 'mixed', 'a PARTIAL chip reads aria-pressed="mixed", not the same as OFF');
   await typeRow.getByRole('button', { name: /LONG RANGE/ }).click();
   await until(() => selectedNames().then(n => n.length === 8), 3000, 'RIFLES + LONG RANGE to union to 8 weapons');
   const names = await selectedNames();

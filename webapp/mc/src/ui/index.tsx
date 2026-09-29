@@ -164,7 +164,7 @@ export function OutlineTag({ children, color, border, title }: { children: React
  *  rather than the shared component's own floor changing under every OTHER screen's Segs too). */
 export const SEG_PAD_44 = '15px 14px';
 
-/** Bench 2026-09-28: a value that just changed gets a brief accent wash (styles.css `.flash-on-change`).
+/** Bench 2026-09-28: a value that just changed gets a brief accent outline (styles.css `.flash-on-change`).
  *  Restarted on the SAME element (class off, reflow, class on), never by remounting it with a new key:
  *  a remount drops keyboard focus from the option the operator just picked. Nothing flashes on first
  *  mount, only on a change. `selector` picks the element inside `ref` (a Seg's selected option). */
