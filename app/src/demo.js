@@ -793,7 +793,7 @@ export function startDemo({ engine, log }) {
       // F400: SELECT the OTHER way too, back onto the heavy -- the same card, this time naming ROCKETS again.
       // The second SELECT waits 3 s after the first: past its own card's window (850 ms) and confirm bubble (1200 ms).
       'live-pu-select-back': [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [6300, 'puSelect'], [9300, 'puSelect']],
-      'live-pu-empty':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [4700, 'puFire'], [4800, 'puFire']],   // both rockets fired: the AR back on the trigger
+      'live-pu-empty':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [4700, 'puFire'], [4800, 'puFire']],   // both rockets fired: the AR returns after swap_ms
       'down-pu-held':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, 'die']],           // a death with an item held: it is gone
       'live-pu-no-answer':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)], [8300, () => { ev.puAt(4); engine.feedFrame('$BUT,0,0,*'); }], [14300, () => { ev.puAt(4); engine.feedFrame('$BUT,0,0,*'); }]],   // ready, and the station never answers: F380's 15 s needs the advert re-heard (PU_ADVERT_STALE_MS) and the gun heard (F272 liveness lock)
       // F425 (Tony, 2026-09-26): the station has gone to state 0 (taken/cooling) with the player standing near
