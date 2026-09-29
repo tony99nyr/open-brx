@@ -129,6 +129,12 @@ export function Games() {
   const [confirmDeleteFav, setConfirmDeleteFav] = useState<string | null>(null);
   // Bench 2026-09-28 (Tony): the favourite waiting on "DISCARD YOUR CHANGES?" (playBaseline.ts).
   const [favDiscard, setFavDiscard] = useState<string | null>(null);
+  // Polish 2026-09-28: the question takes focus when it appears, so a keyboard operator's next key acts
+  // on DISCARD / CANCEL, not on the tapped chip's own rename or delete buttons.
+  const discardRef = useRef<HTMLDivElement>(null);
+  const discardOpener = useRef<HTMLElement | null>(null);   // the chip that asked, to hand focus back to
+  useEffect(() => { if (favDiscard) discardRef.current?.querySelector('button')?.focus(); }, [favDiscard]);
+  const closeDiscard = () => { setFavDiscard(null); discardOpener.current?.focus(); discardOpener.current = null; };
   // Bench 2026-09-28: the GAME MODE card that just became selected flashes (ui `useFlashOnChange`).
   const modeGroupRef = useRef<HTMLSpanElement>(null);
   useFlashOnChange(modeGroupRef, state?.game_pick?.pieces.mode, '[aria-pressed="true"]');
@@ -244,7 +250,11 @@ export function Games() {
   // left guards lost work: over picks changed since the last load or save, "DISCARD YOUR CHANGES?".
   const loadFavourite = async (id: string) => {
     if (!favourites.some(f => f.favourite_id === id)) return;
-    if (pick && picksDirty(pick, runwayVal)) { setFavDiscard(id); return; }
+    if (pick && picksDirty(pick, runwayVal)) {
+      discardOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setFavDiscard(id);
+      return;
+    }
     setFavDiscard(null);
     await doLoadFavourite(id);
   };
@@ -385,14 +395,20 @@ export function Games() {
             </fieldset>
           )}
           {favDiscard && (
-            <div data-testid="favourite-discard" role="alertdialog" aria-label="discard your changes"
+            <div ref={discardRef} data-testid="favourite-discard" role="alertdialog" aria-label="discard your changes"
+              onKeyDown={e => { if (e.key === 'Escape') closeDiscard(); }}
               style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span style={{ font: F.chk(700, 13), letterSpacing: '.12em', color: T.warn }}>
                 ▲ DISCARD YOUR CHANGES?
               </span>
               <GhostButton size={13} pad="10px 16px" color={T.warn} border={T.warn}
-                onClick={() => { const id = favDiscard; setFavDiscard(null); void doLoadFavourite(id); }}>DISCARD</GhostButton>
-              <GhostButton size={13} pad="10px 16px" onClick={() => setFavDiscard(null)}>CANCEL</GhostButton>
+                onClick={async () => {
+                  const id = favDiscard, opener = discardOpener.current;
+                  setFavDiscard(null); discardOpener.current = null;
+                  await doLoadFavourite(id);
+                  opener?.focus();   // back on the favourite, loaded or refused
+                }}>DISCARD</GhostButton>
+              <GhostButton size={13} pad="10px 16px" onClick={closeDiscard}>CANCEL</GhostButton>
             </div>
           )}
           {fallbackNote && (

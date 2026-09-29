@@ -112,6 +112,7 @@ the core gate.
 
 - GAMES CHECK's PLAY AGAIN and LAST MATCH items (both fixed below: END instead of a kill count for PLAY AGAIN,
   and MC/Stick re-pointed after a restart for LAST MATCH).
+- GAMES CHECK item 9, re-checked on the 2026-09-28 UI (team dropdowns, no roster warnings).
 - 11.6 (Group 1, item 9).
 - The powerup setup: 4.11, 11.2, 3.4 and 3.5 (Group 1, item 10).
 - 4.0, trimmed to the day/night launch only (Group 1, item 8 today's cut dropped it to make room for F297's
@@ -251,9 +252,10 @@ label inside it, unchanged.
    a type toggle (`TypeChip`, e.g. "RIFLES"). Pass: the ids it selects are only from the server's visible weapon
    catalogue (`pieces.py`: "no preset may ever select a hidden weapon"); no cut-arsenal weapon appears under any
    type, on or partial.
-9. **TEAMS re-splits evenly on a count change (F413).** In MATCH SETTINGS, change the team count from 2 to 3.
-   Pass: the confirm shows an even split, and confirming applies it with no team off by more than one. Then
-   change only a colour: nobody moves.
+9. **TEAMS re-splits evenly on a count change (F413), on the 2026-09-28 UI.** In MATCH SETTINGS, change the team
+   count from 2 to 3. Pass: it applies on one tap with no warning, and no team is off by more than one. Then
+   change one team's colour in its dropdown: nobody moves, only that team's colour changes. Then pick KOTH
+   over a BLUE/YELLOW game: yellow becomes red, nobody moves, and no dropdown offers yellow.
 - **Log:** a pass/fail per step and tap counts, in the experiment log.
 
 STOP POINT 2: the new console's core flow, F402's fix, 11.7's auto-join, F422's join line, FAVOURITES, F413's

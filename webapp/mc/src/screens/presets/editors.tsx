@@ -54,7 +54,7 @@ function TypeChip({ label, state, count, total, onClick }:
   const on = state === 'on';
   const partial = state === 'partial';
   return (
-    <button type="button" className="hov-acc" aria-pressed={on} onClick={onClick}
+    <button type="button" className="hov-acc" aria-pressed={on ? true : partial ? 'mixed' : false} onClick={onClick}
       style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, 11), letterSpacing: '.1em', padding: '7px 11px', minHeight: CHIP_MIN_HEIGHT,
         border: `1px solid ${on || partial ? T.acc : T.line}`, background: on ? 'rgba(57,180,255,.1)' : 'transparent',
         color: on ? T.acc : partial ? T.dim : T.micro, cursor: 'pointer' }}>
