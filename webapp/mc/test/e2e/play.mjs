@@ -885,6 +885,8 @@ step('favourites-load', async ({ browser, base }) => {
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 4000, 'changed away from it');
 
   await loadFavourite(pg, 'Round One', async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', { dirty: true });
+  // Polish 2026-09-28 round 3: after DISCARD, focus goes back to the favourite, not the page body.
+  await until(() => pg.evaluate(() => !!document.activeElement?.closest('[data-testid="favourites-row"]')), 4000, 'focus back on the favourite after DISCARD');
   await until(async () => (await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'koth', 6000, 'LOAD restores the mode');
   const after = await pg.evaluate(() => window.__MC_MOCK__.getState());
   expect(after.config.mode === 'koth', 'GAME MODE restored');

@@ -402,7 +402,12 @@ export function Games() {
                 ▲ DISCARD YOUR CHANGES?
               </span>
               <GhostButton size={13} pad="10px 16px" color={T.warn} border={T.warn}
-                onClick={() => { const id = favDiscard; setFavDiscard(null); void doLoadFavourite(id); }}>DISCARD</GhostButton>
+                onClick={async () => {
+                  const id = favDiscard, opener = discardOpener.current;
+                  setFavDiscard(null); discardOpener.current = null;
+                  await doLoadFavourite(id);
+                  opener?.focus();   // back on the favourite, loaded or refused
+                }}>DISCARD</GhostButton>
               <GhostButton size={13} pad="10px 16px" onClick={closeDiscard}>CANCEL</GhostButton>
             </div>
           )}
