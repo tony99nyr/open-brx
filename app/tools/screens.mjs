@@ -5620,7 +5620,9 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(!r.hint, `F425: no puhint at a cooling station (the countdown/TAKEN hint must be gone): ${JSON.stringify(r.hint)}`);
   });
   await step(`${tag}: both rockets fired: the phone puts the loadout weapon back on the trigger, and the hint says so briefly`, async () => {
-    const pg = await open(view, 'live-pu-empty', N, 5200); const r = await puWait(pg, r => r.hint && r.hint.kind === 'switched_back', 2500); await shot(pg, 'empty'); await puClose(pg, night);
+    const pg = await open(view, 'live-pu-empty', N, 5200);
+    await pg.waitForFunction(() => window.brx.engine.state().activeSlot === 0, null, { timeout: 2500 });
+    const r = await puWait(pg, r => r.hint && r.hint.kind === 'switched_back', 2500); await shot(pg, 'empty'); await puClose(pg, night);
     must(r.hint && r.hint.act === 'ROCKETS EMPTY' && /^BACK TO \S/.test(r.hint.lab), `the hint: ${JSON.stringify(r.hint)}`);
     must(r.hint.actPx >= 14 && r.hint.labPx >= 11 && inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `floors and room: ${JSON.stringify(r.hint)}`);
     must(!r.chip, 'the item is over: no held chip');

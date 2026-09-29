@@ -356,6 +356,12 @@ test('trigger grant: save the trigger slot and its counts, re-send the pickup sl
   assert.equal(h.facts.filter(x => x.type === 'pickup').length, 1);
 });
 
+test('F381: a zero-magazine loadout is saved at its real count for the switch-back', () => {
+  const h = armed(); h.fire(0, 0, 48);
+  h.take(4);
+  assert.deepEqual(h.eng._puHeld.back, { slot: 0, mag: 0, res: 48 });
+});
+
 test('F379: after ALT to the secondary and a rocket switch-back, the next ALT follows the gun pointer', () => {
   const h = armed();
   h.eng.switchWindowMs = () => 10_000;
@@ -364,6 +370,7 @@ test('F379: after ALT to the secondary and a rocket switch-back, the next ALT fo
   assert.equal(h.eng._altPtr, 1, 'the accepted ALT press moves the gun pointer');
   assert.equal(h.eng.state().switchTo, 1, 'SWITCHING shows the pointer target');
   h.take(4); h.away(); h.eng._puHeld.left = 1; h.fire(2, 0);
+  h.adv(h.eng.switchWindowMs());
   assert.equal(h.eng.activeSlot, 0, 'the empty rocket switched the trigger back to the primary');
   h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switchTo, 0, 'BMAP advanced from slot 1 to slot 0 despite the trigger switch-back');
@@ -506,12 +513,51 @@ test('the empty magazine switches back: the saved weapon\'s head $WEAP, then $AM
   h.fire(2, 1);
   assert.equal(h.eng.state().powerup.held.left, 1);
   const n = h.mark(); h.adv(300); h.fire(2, 0);
+  h.adv(h.eng.switchWindowMs());
   assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
   const s = h.eng.state();
   assert.equal(s.powerup.held, null); assert.equal(s.activeSlot, 0);
   assert.equal(s.powerup.hint.kind, 'switched_back'); assert.equal(s.powerup.hint.name, 'ROCKETS');
   assert.equal(s.weapon, 'ASSAULT RIFLE', 'the ammo block names the AR again');
   assert.equal(s.ammo, 30, 'and shows its saved magazine');
+});
+
+test('F418: empty Rockets wait for the gun swap window before slot 0 can fire', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1);
+  h.eng.frames.swap_ms = 1200;   // use the bundle value, not a fixed 850 ms
+  const n = h.mark(); h.adv(300); h.fire(2, 0);
+  const emptyAt = h.eng.now();
+  assert.deepEqual(puw(h.since(n)), [], 'slot 0 is not equipped on the last rocket frame');
+  assert.equal(h.eng.activeSlot, 2, 'the trigger remains on the empty heavy during the swap');
+  h.adv(h.eng.switchWindowMs() - 1);
+  assert.deepEqual(puw(h.since(n)), [], 'slot 0 cannot fire before swap_ms');
+  h.adv(1);
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
+  assert.equal(h.eng.activeSlot, 0);
+  h.adv(250);
+  assert.ok(h.eng.moment?.kind === 'switched' && h.eng.moment.at >= emptyAt, 'the existing ACTIVE switch card still follows the draw');
+});
+
+test('F418: SELECT during the empty swap window does not cancel the delayed return', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  const n = h.mark(); h.select();
+  assert.deepEqual(puw(h.since(n)), [], 'SELECT cannot equip slot 0 early');
+  h.adv(h.eng.switchWindowMs());
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
+});
+
+test('F418: death during the empty swap window still re-equips slot 0 on revive', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  const n = h.mark(); h.die(); h.adv(10_000);
+  assert.ok(h.since(n).includes(WEAP0), 'revive puts the loadout weapon on the trigger');
+  assert.equal(h.eng._puBackPending, null, 'death retires the delayed write');
+});
+
+test('F418: operator respawn during the empty swap window re-equips slot 0', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  const n = h.mark(); h.eng._revive(false, null, true);
+  assert.ok(h.since(n).includes(WEAP0), 'the revive burst is followed by a slot-0 equip');
+  assert.equal(h.eng._puBackPending, null);
 });
 
 test('a second heavy swaps: zero the old slot, the new slot\'s $WEAP and $AMMO; the switch-back target stays the loadout weapon', () => {
@@ -524,6 +570,7 @@ test('a second heavy swaps: zero the old slot, the new slot\'s $WEAP and $AMMO; 
   assert.equal(s.powerupGrant.replaced, 'ROCKETS', 'the HUD can say RAIL GUN replaces ROCKETS');
   assert.equal(h.facts.filter(f => f.type === 'pickup').length, 2);
   h.away(); h.adv(800); h.fire(3, 1); h.adv(300); const m = h.mark(); h.fire(3, 0);
+  h.adv(h.eng.switchWindowMs());
   assert.deepEqual(puw(h.since(m)), [WEAP0, '$AMMO,0,30,190,1,*'], 'the rail runs dry back to the AR, not to the rockets');
 });
 
@@ -643,6 +690,7 @@ test('an app restart mid-item still switches back with the saved counts', () => 
   assert.ok(h.eng.state().powerup && h.eng.state().powerup.held, 'the held item survived the restart');
   assert.deepEqual(h.eng.state().powerup.held.back, { slot: 0, mag: 30, res: 190 });
   const n = h.mark(); h.fire(2, 0);
+  h.adv(h.eng.switchWindowMs());
   assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
   assert.equal(h.eng.state().powerup.held, null);
 });
@@ -840,7 +888,7 @@ test('M2: a lost $PSET restore is retried once, in the same life', async () => {
 
 test('M3: a lost switch-back write is re-sent until back-slot evidence or a player SELECT press', () => {
   const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
-  let n = h.mark(); h.fire(2, 0);   // the switch-back goes out, and the (fake) gun never answers it
+  let n = h.mark(); h.fire(2, 0); h.adv(h.eng.switchWindowMs());   // the (fake) gun never answers the delayed switch-back
   assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
   h.adv(2000);
   assert.equal(h.since(n).filter(f => f === WEAP0).length, 2, 're-sent: the trigger must not stay on an empty heavy');
@@ -951,6 +999,7 @@ function pendingBack() {
   h.at(121); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
   const n = h.mark(); h.fire(2, 0);
   assert.ok(h.eng._puBackPending, 'setup: a switch-back pending');
+  h.adv(h.eng.switchWindowMs());
   return { h, n, backs: () => h.since(n).filter(f => f === WEAP0).length };
 }
 
@@ -1114,4 +1163,98 @@ test('F417: every change of a station\'s advertised state or taker is logged onc
   const lines = logs.filter(l => /^powerup: station 4 advert/.test(l));
   assert.equal(lines.length, 2, `one per change, not per advert: ${JSON.stringify(lines)}`);
   assert.match(lines[1], /state 0 taker 19/);
+});
+
+test('F418: two zero read-backs after a resume use both repairs before a held pickup ends', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.eng.resume(); h.adv(3000); h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); h.frame('$ALCD,0,100,2,0,0,*');
+  assert.equal(h.eng._puHeld?.left, 2, 'the first missing count does not spend a charge');
+  h.adv(E.ACC_ECHO_MS + 100);
+  h.frame('$BUT,0,1,*').frame('$BUT,0,0,*'); // the gun was still on slot 0, despite the phone assumption
+  h.frame('$ALCD,0,100,2,0,0,*');
+  assert.equal(h.eng._puHeld?.left, 2, 'a pull on an unconfirmed heavy is not proof that it fired');
+  assert.equal(h.since(n).filter(f => f === '$AMMO,2,2,0,1,*').length, 2, 'both bounded count repairs were sent');
+});
+
+test('F381: a stack keeps four charges when the gun reports its old two after the stack write', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  h.frame('$ALCD,2,100,2,0,0,*'); // a positive read-back confirms the first grant
+  h.fire(0, 29, 190); // the first equip was lost; the gun was still on the primary
+  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now());
+  const n = h.mark(); h.adv(E.ACC_ECHO_MS + 100);
+  h.frame('$ALCD,2,100,2,0,0,*'); // stack $AMMO was lost: the gun still holds two
+  assert.equal(h.eng._puHeld?.left, 4);
+  assert.ok(h.since(n).includes('$AMMO,2,4,0,1,*'), 'the four charges are re-sent');
+  assert.deepEqual(h.eng._puHeld.back, { slot: 0, mag: 29, res: 190 }, 'the primary shot remains spent');
+  h.frame('$ALCD,4,100,2,0,0,*'); // the gun confirms all four charges
+  for (const left of [3, 2, 1, 0]) { h.adv(3000); h.fire(2, left); }
+  assert.equal(h.eng._puHeld, null, 'four rockets fire before the switch-back');
+});
+
+test('F381: a slot 0 shot after the first grant exposes and repairs an unconfirmed equip', () => {
+  const h = harness(ROCKET_GAME); const logs = []; h.eng.log = m => logs.push(String(m));
+  h.at(121); h.take(4); h.away();
+  h.eng._write([golden.gun.rest], 'readout rest'); // a concurrent LED readout cannot equip a weapon
+  h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); h.fire(0, 31, 192); // the first primary shot: the gun never switched to slot 2
+  assert.ok(logs.some(m => /powerup:.*slot 0.*slot 2/.test(m)), 'the mismatch is visible in the log');
+  assert.ok(h.since(n).includes(WEAP[2]), 'the phone retries the first equip');
+  assert.equal(h.eng._puHeld?.left, 2, 'the gun has not fired a rocket');
+});
+
+test('F381 control: an armour readout after the grant leaves slot 2 on the trigger', () => {
+  const h = armed(); h.take(4);
+  const blink = golden.gun.readout.pools.find(p => p.pool === 'armor').levels[1][1];
+  h.eng._write([blink], 'readout armor blink');
+  h.eng._write([golden.gun.rest], 'readout rest');
+  const weaponWrites = h.writes.filter(f => f.startsWith('$WEAP,'));
+  assert.equal(+weaponWrites.at(-1).split(',')[1], 2, 'the last weapon equip stays on slot 2');
+  assert.equal(h.eng.activeSlot, 2);
+  assert.deepEqual(h.batches.slice(-2), [[blink], [golden.gun.rest]], 'readout writes carry LEDs only');
+});
+
+test('F381: an intentional ALT shot from slot 0 does not retry the held weapon equip', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(h.eng.switchWindowMs() + 50);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(h.eng.switchWindowMs() + 50);
+  const n = h.mark(); h.fire(0, 29, 190);
+  assert.deepEqual(puw(h.since(n)), [], 'the player chose the primary');
+  assert.equal(h.eng._puHeld?.trig, 0);
+});
+
+test('F381 polish: the equip repair stays bounded when each re-sent $AMMO echoes the held count back', () => {
+  const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); let mag = 31;
+  for (let i = 0; i < 6; i++) {
+    h.fire(0, mag--, 192);                     // the gun ignores every `$WEAP,2` and stays on slot 0
+    h.frame(`$ALCD,2,100,2,${E.PU_RESERVE ?? 0},0,*`);   // but its `$AMMO,2` lands: the echo matches the held count
+    h.adv(E.ACC_ECHO_MS + 100);
+  }
+  const equips = h.since(n).filter(f => f === WEAP[2]).length;
+  assert.ok(equips <= E.PU_COUNT_REPAIRS, `at most ${E.PU_COUNT_REPAIRS} equip repairs per grant, got ${equips}`);
+});
+
+test('F381 polish: the empty switch-back hint names the saved secondary, not the primary', () => {
+  const h = armed();
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(h.eng.switchWindowMs() + 50); h.fire(1, 5, 24); h.adv(300);
+  h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  h.fire(2, 1); h.adv(300); h.fire(2, 0);
+  const ws = h.eng.player.loadout.weapons, row = h.eng.weaponRow(ws[1].weapon_id);
+  assert.equal(h.eng._puHeld, null, 'the rockets are over');
+  assert.equal(h.eng._puBack?.to, (row?.name || String(ws[1].weapon_id).replace(/_/g, ' ')).toUpperCase());
+});
+
+test('F381 polish r2: a stack above the clip raises the $WEAP clip, so a gun that clamps $AMMO holds all four', () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  const weap = h.since(n).filter(f => f.startsWith('$WEAP,2,'));
+  assert.equal(weap.length, 1, `one equip for the stack, no repair loop: ${weap.length}`);
+  const t = weap[0].split(',');
+  assert.equal(+t[17], 4, 't16 maxClip carries the stacked count');
+  assert.equal(+t[40], 4, 't39 clipStartingAmmo carries the stacked count');
+  assert.ok(+t[18] >= 4, 't17 maxAmmo is never below the raised clip');
+  assert.equal(h.eng._puHeld?.left, 4);
+  assert.equal(h.eng._puHeld?.repairs || 0, 0, 'the stack spent none of the repair budget');
 });
