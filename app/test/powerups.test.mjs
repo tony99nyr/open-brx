@@ -1258,3 +1258,14 @@ test('F381 polish r2: a stack above the clip raises the $WEAP clip, so a gun tha
   assert.equal(h.eng._puHeld?.left, 4);
   assert.equal(h.eng._puHeld?.repairs || 0, 0, 'the stack spent none of the repair budget');
 });
+
+test('F381 per-station charges: a smaller pickup never shrinks a held stack, and the cap is the larger item\'s', () => {
+  const h = armed({ echo: true });
+  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 4 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  assert.equal(h.eng._puHeld?.left, 4);
+  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  assert.equal(h.eng._puHeld?.left, 5, 'a CHARGES-1 pickup adds one under the CHARGES-4 cap (8), never min(2, 5)');
+  h.fire(2, 4); h.adv(3000); h.fire(2, 3); h.adv(3000); h.fire(2, 2); h.adv(3000);
+  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now());
+  assert.equal(h.eng._puHeld?.left, 3, '2 held + 1 = 3');
+});
