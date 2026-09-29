@@ -44,6 +44,7 @@ PATH, so no personal machine path is hardcoded.
 | `victim_count.py` | Arms a victim properly and counts `$HIR` registrations over a timed window. One-off bench experiment, kept for reference. |
 | `weapon_range.py` | Cycles every catalogue weapon onto one bench gun for a fixed dwell each, for a full-arsenal firing pass. |
 | `webview_eval.py` | Runs a JavaScript expression inside the BRX app's WebView over `adb` port-forward, for driving/inspecting the live app engine. Windows-side (adb port-forward needs Windows localhost). |
+| `coldconn.sh` | F297's phone cold-connect loop: force-stop the app, launch it, and time process start to GATT service discovery from `logcat`, N runs per phone (`coldconn.sh <adb-serial> <label> <runs> <hold_s> [out_dir]`). Used by `docs/bench-standard-2026-09-29.md`. |
 
 ## Offline analysis and conversion (no gun, no BLE)
 

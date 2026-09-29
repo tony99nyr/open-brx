@@ -1,44 +1,29 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-09-28. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-09-29. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** Part 3 is NOW: [below](#part-3-tomorrow). Part 2's results
+**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** Part 3 is NOW: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
 are in `experiment-log/2026-09.md`'s 2026-09-28 entry; its sections below stay as the procedures Part 3 points at.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
 
-## Part 3: tomorrow
+## Part 3: 2026-09-29, three independent sheets
 
-Kit and setup as Part 2's Step 0 (below), on 0.4.15 or the build that carries brx4's and brx5's fixes (log the
-version). Reflash the Stick from main first (F434: its powerup default is now -45 dBm), and log `STATUS`'s threshold. No MacBook needed: 11.7 and the IPHONE block move to the MacBook sitting.
+Tony splits today into three benches. Each sheet stands alone, with its own kit, setup commands, steps (each with a
+control, a pass rule and its FOLLOWUPS row), a time estimate and the method from Part 2. A fresh session opens
+one sheet and runs it. The procedures live in the sheets and in the Part 2 sections below; this index holds none.
 
-**Method (used in Part 2, keep it).** Drive MC through its API. Read each phone's log over CDP (`window.brx.log`,
-`mcp/tools/webview_eval.py`). Time cold connects through adb (force-stop, 8 s settle, launch; ActivityManager
-"Start proc" to GATT `onSearchComplete`). Log the Stick serial for every powerup match, not only the first.
+| Sheet | Needs | Core steps | Time |
+|---|---|---|---|
+| [`bench-standard-2026-09-29.md`](bench-standard-2026-09-29.md) | this box, three Pixels, two guns, no Stick | F297's 10-run repeat, brx4's powerup rechecks (F418, F381, F436 with the `$GLED` gun test), F348 with the poison and shield reads, F394, 4.0, GAMES 9 TEAMS | about 2 h 40 min, plus 70 min lower priority |
+| [`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) | the M5StickS3, two Pixels, two guns | reflash, -45 powerup default (F434), the 4.11 ladder, 11.2 with the ARMORY overrides, 11.6, the F417 race | about 3 h |
+| [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md) | the MacBook, the iPhone X, the grey Pixel | the IPHONE block, 11.7 over real mDNS, the iPhone as player 2 | about 75 min |
 
-1. **brx4's powerup fixes, bench-gated rechecks.** Run the bench steps in the F418, F381 and F436 rows, in that
-   order (brx4's check list). F436 includes the gun-side `$GLED`-vs-equip test: equip, a `$GLED` within 100 ms,
-   then read the active slot. Also check F381's missing swap delay after the last Rocket.
-2. **brx5's F297 10-run repeat, then the claim-range ladder (F434).** Same adb loop as Part 2 (Group 1, item 0),
-   with Tony's new pass rule (2026-09-28): 10/10 linked, median at most 3 s, worst at most 3.5 s. Log the first-attempt
-   rate, but do not gate on it. Watch the headsets this time. The ladder's thresholds and distances are in F434.
-3. **F348, plus F416's poison and shield `$LIFE` reads** (Group 1, items 6 and 3).
-4. **F394** (Group 1, item 7).
-5. **4.0, the release loop** (Group 1, item 8).
-6. **11.6** (Group 1, item 9).
-7. **The powerup setup, 4.11 and 11.2** (Group 1, item 10). **Plus the new per-station overrides
-   (S-powerup-overrides, 2026-09-28):** on ARMORY, set a Rockets station's CHARGES stepper to 3, ASSIGN + ARM,
-   grant it, and check the gun fires 3 rockets (not the preset's own 2) before it empties. Then set that same
-   station's RESPAWN to 30 s and check the NEXT spawn lands 30 s after the grant, not at the preset's 2:00.
-8. **Group 2: KOTH, the phone hill first.**
-9. **Group 4.**
-10. **Group 3.**
-11. **GAMES 9: TEAMS on the new UI**, once brx3's team rework lands.
-
-**Moved to the MacBook sitting:** 11.7 (after `pm clear` a phone finds MC only by mDNS, and MC in WSL is never
-mDNS-discoverable) and the IPHONE block.
+**Build under test:** app 0.4.16, release-signed and unpublished, at
+`/home/tony/apk-0.4.16/brx-companion-0.4.16-android-release.apk` (branch `release/app-0.4.16`, `6a435152`,
+not on `main`). MC runs from `main`.
 
 ## DONE: part 1, the short bench, 2026-09-26 (1.5 h, on what exists today)
 
