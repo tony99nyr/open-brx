@@ -907,6 +907,8 @@ step('favourites-load', async ({ browser, base }) => {
   expect(focused === 'DISCARD', `focus moves to DISCARD when the question appears (saw ${JSON.stringify(focused)})`);
   await pg.keyboard.press('Escape');
   await until(() => pg.getByTestId('favourite-discard').count().then(n => n === 0), 4000, 'Escape closes the question');
+  const back = await pg.evaluate(() => { const a = document.activeElement; return { inRow: !!a?.closest('[data-testid="favourites-row"]'), tag: a?.tagName, text: (a?.textContent ?? '').trim().slice(0, 30) }; });
+  expect(back.inRow && back.tag === 'BUTTON' && back.text.includes('Round One'), `focus returns to the favourite that opened the question (saw ${JSON.stringify(back)})`);
   expect((await pg.evaluate(() => window.__MC_MOCK__.getState())).config.mode === 'tdm', 'Escape keeps the changed pick');
   await pg.locator('text=☆ Round One').click();
   await until(() => pg.getByTestId('favourite-discard').count().then(n => n === 1), 4000, 'the question again');
