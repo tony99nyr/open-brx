@@ -24,12 +24,15 @@ memory headroom (F429/F430 closed), the app-screens sleep-wait fix (F432 closed)
 push, publish `app-v0.4.15`, restart MC from main; then bench part 2.
 **Blocked:** the publish waits on the phones; B21 on the MacBook.
 ## Lane: brx2, bench, audio, utility and docs
-**State:** bench part 1 done 2026-09-26 (full write-up: `experiment-log/2026-09.md`'s 2026-09-26 brx2 entry). KOTH's
-Stick-hill half is confirmed (F382/F384/F385 closed); the phone-hill half is blocked by F420 (built, bench check
-owed). Hill default: -75 dBm, hysteresis 6, until the outdoor walk (F383).
-**Next:** part 2 of [`bench-plan.md`](bench-plan.md) (reflash the Stick from `6f042126`, `RANGE CLEAR` it at setup).
+**State:** bench part 2 ran 2026-09-28 (brx1 drove, brx2 recorded; ended early). Full write-up: the 2026-09-28
+entry in `experiment-log/2026-09.md`. Confirmed: F422 (closed), F402, PICK GAME, FAVOURITES, the BUILD guard, and
+F416's zero-pool read on an unspawned gun (no false down in 6 go-lives). Failed on 0.4.15: F418, F381 (brx4 fixing)
+and F297's first connect (6/10, GATT 133; brx5). New: F434 (claims from about 3 m), F435 (camped re-grant), F436
+(first-grant slot bug).
+**Next:** part 3 of [`bench-plan.md`](bench-plan.md): brx4's and brx5's rechecks first, then the rows that never ran.
 R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
+**Blocked:** 11.7 and the IPHONE block on the MacBook (WSL MC is never mDNS-discoverable); F270 on A8; F274 on its
+three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
 MC GAMES is PLAY + BUILD (F411) with FAVOURITES, LAST MATCH, teams (F413; a colour-only change recolours by index,
 a count change re-splits) and the KOTH hold target (F415). `scripts/land.mjs` (the land lane) is how commits reach main.

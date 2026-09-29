@@ -1,14 +1,40 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-09-26. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-09-28. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**Part 1 ran and is DONE, 2026-09-26 (below, struck).** Part 2 is now NOW: [below](#part-2-tomorrow-after-games-and-014).
-App 0.4.15 is cut (built from `efd1961c`; if it is not yet published, install the latest published APK and log its version) and F411, F413 (teams) and F415 (MATCH SETTINGS, the KOTH hold target) have landed on `main`. It supersedes the 2026-09-25 read of
-sitting C; see "Superseded" under "Sittings, in priority order" for the pointer.
+**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** Part 3 is NOW: [below](#part-3-tomorrow). Part 2's results
+are in `experiment-log/2026-09.md`'s 2026-09-28 entry; its sections below stay as the procedures Part 3 points at.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
+
+## Part 3: tomorrow
+
+Kit and setup as Part 2's Step 0 (below), on 0.4.15 or the build that carries brx4's and brx5's fixes (log the
+version). No MacBook needed: 11.7 and the IPHONE block move to the MacBook sitting.
+
+**Method (used in Part 2, keep it).** Drive MC through its API. Read each phone's log over CDP (`window.brx.log`,
+`mcp/tools/webview_eval.py`). Time cold connects through adb (force-stop, 8 s settle, launch; ActivityManager
+"Start proc" to GATT `onSearchComplete`). Log the Stick serial for every powerup match, not only the first.
+
+1. **brx4's powerup fixes, bench-gated rechecks.** Run the bench steps in the F418, F381 and F436 rows, in that
+   order (brx4's check list). F436 includes the gun-side `$GLED`-vs-equip test: equip, a `$GLED` within 100 ms,
+   then read the active slot. Also check F381's missing swap delay after the last Rocket.
+2. **brx5's F297 10-run repeat, then the claim-range ladder (F434, F435).** Same pass rule and adb loop as Part 2
+   (Group 1, item 0); watch the headsets this time. The ladder's thresholds and distances are in F434.
+3. **F348, plus F416's poison and shield `$LIFE` reads** (Group 1, items 6 and 3).
+4. **F394** (Group 1, item 7).
+5. **4.0, the release loop** (Group 1, item 8).
+6. **11.6** (Group 1, item 9).
+7. **The powerup setup, 4.11 and 11.2** (Group 1, item 10).
+8. **Group 2: KOTH, the phone hill first.**
+9. **Group 4.**
+10. **Group 3.**
+11. **GAMES 9: TEAMS on the new UI**, once brx3's team rework lands.
+
+**Moved to the MacBook sitting:** 11.7 (after `pm clear` a phone finds MC only by mDNS, and MC in WSL is never
+mDNS-discoverable) and the IPHONE block.
 
 ## DONE: part 1, the short bench, 2026-09-26 (1.5 h, on what exists today)
 
@@ -57,16 +83,21 @@ default now that F372 has landed: pass no `--powerups` flag to MC anywhere below
 
 ### The 3 h cut: today's order (172 min, 8 min slack against 3 h)
 
+**Ran 2026-09-28, ended early.** Done: Step 0; GAMES CHECK (F422, PICK GAME, F402, FAVOURITES, the BUILD guard
+CONFIRMED; 11.7 not run, moved to the MacBook); item 0 F297 (first connect FAIL); items 1-5 (F416 no false down,
+its zero-pool read CONFIRMED; F417 PASS by rule; F418 and F381 FAIL). Not run: the IPHONE block, TEAMS, F348,
+Group 2, Group 4, Group 3, F394. Every open item is in Part 3 above.
+
 Run this order today. It is the highest-value subset of everything below, picked to fit one 3 h sitting with
 slack to spare. Each block points at its procedure further down this file (fixed by the round-2 review below);
 do not copy a procedure here.
 
-1. **Step 0, setup (25 min).** Running total: 25.
+1. ~~**Step 0, setup (25 min).**~~ DONE 2026-09-28. Running total: 25.
 2. **IPHONE block (15 min).** Running total: 40.
-3. **GAMES CHECK: 11.7 + F422, PICK GAME, F402, FAVOURITES, the BUILD TypeChip guard (23 min), plus a short TEAMS
+3. (DONE 2026-09-28 except 11.7 and TEAMS.) **GAMES CHECK: 11.7 + F422, PICK GAME, F402, FAVOURITES, the BUILD TypeChip guard (23 min), plus a short TEAMS
    re-split check (F413).** Skip PLAY AGAIN, LAST MATCH and the countdown default today. Running total: 63.
-4. **Group 1, item 0: F297 phone connect metrics (10 min).** Running total: 73.
-5. **Group 1, items 1-5: the P0 block, F416 then F417/F381 (50 min).** Running total: 123.
+4. ~~**Group 1, item 0: F297 phone connect metrics (10 min).**~~ DONE 2026-09-28. Running total: 73.
+5. ~~**Group 1, items 1-5: the P0 block, F416 then F417/F381 (50 min).**~~ DONE 2026-09-28. Running total: 123.
 6. **Group 1, item 6: F348 (10 min).** Running total: 133.
 7. **Group 2: KOTH, plus F420, F421 and F424, plus F415's hold target (25 min).** Running total: 158.
 8. **Group 4, items 4-5 merged: F399 and F380 on an Overshield Stick, plus F425's silence check (12 min).**
@@ -308,9 +339,9 @@ Running total: 125 min.
       and the Stick powerup, both player phones, phone on the rail facing the station, 30 s a rung. Log the median
       each phone reads per rung (the `powerup:` lines). Then repeat 30 cm and 3 m with the player's body between.
       Background (2026-09-28): at the Stick's -57 default a Pixel 5 read about -40 at 30 cm (reported, not logged)
-      and -49 to -60 at about 3 m, and claimed from 3 m. Control: 3 m gives no ring. Pass: one threshold per station type with at least 4 dB
+      and -49 to -60 at about 3 m, and claimed from 3 m (F434). Control: 3 m gives no ring. Pass: one threshold per station type with at least 4 dB
       margin to the weakest 30 cm median and the strongest 3 m median, on both phones (RSSI reads are Pixel-side;
-      judge the iPhone's ring by eye). Camping: stand at 30 cm through one item respawn and log whether a
+      judge the iPhone's ring by eye). Camping (F435): stand at 30 cm through one item respawn and log whether a
       second grant comes with nobody moving.
     - 11.2, the claim, the winner and the respawn (15 min). Control: 2 m gives no ring. Pass: a 1 s dwell at
       30 cm claims; two players racing gives exactly one winner; the item respawns on schedule; death loses it.
