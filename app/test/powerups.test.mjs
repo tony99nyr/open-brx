@@ -1254,6 +1254,7 @@ test('F381 polish r2: a stack above the clip raises the $WEAP clip, so a gun tha
   const t = weap[0].split(',');
   assert.equal(+t[17], 4, 't16 maxClip carries the stacked count');
   assert.equal(+t[40], 4, 't39 clipStartingAmmo carries the stacked count');
+  assert.ok(+t[18] >= 4, 't17 maxAmmo is never below the raised clip');
   assert.equal(h.eng._puHeld?.left, 4);
   assert.equal(h.eng._puHeld?.repairs || 0, 0, 'the stack spent none of the repair budget');
 });

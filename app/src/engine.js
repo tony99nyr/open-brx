@@ -5763,12 +5763,13 @@ export class Engine {
   }
   /** F381 polish r2: an `$AMMO` set-mode write clamps to the `$WEAP` clip (docs/manual/dev.md, the `$TMP` row), so a held
    *  count above the head's clip (a stack: Rockets 4 on a 2-round clip) raises the clip tokens in the equip's own `$WEAP`:
-   *  split index 17 is t16 maxClip, index 40 is t39 clipStartingAmmo. Without it the gun holds 2 whatever we send. */
+   *  split index 17 is t16 maxClip, 18 is t17 maxAmmo, 40 is t39 clipStartingAmmo. Without it the gun holds 2 whatever we send. */
   _puWeapFor(slot, n) {
     const weap = this._puHeadWeap(slot); if (!weap) return null;
     const t = weap.split(',');
-    if (t.length < 41 || !(n > (+t[17] || 0))) return weap;
+    if (slot < 2 || t.length < 41 || !(+t[17] > 0) || !(n > +t[17])) return weap;   // pickup slots only: a loadout weapon keeps its compiled clip
     t[17] = String(n); t[40] = String(n);
+    t[18] = String(Math.max(+t[18] || 0, n));   // t17 maxAmmo: every stock frame has t17 >= t16; t40 (the spare reserve) stays as compiled
     return t.join(',');
   }
   /** Is the held heavy on the trigger? `held.trig` is fed by `$ALCD` for slots 0-3 and by the node's own equips;
