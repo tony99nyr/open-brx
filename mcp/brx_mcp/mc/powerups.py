@@ -49,6 +49,17 @@ PRESET_IDS = tuple(_PRESETS)
 REFUSED_FLAG_OFF = ("powerups are OFF: Mission Control was started with --no-powerups. Drop that flag "
                     "(or restart with ./start.sh, no flag needed) to give a station an item")
 
+# S-powerup-overrides (2026-09-28, Tony): per-station amounts and respawn on ARMORY. Optional siblings of
+# `item_preset` on the station PUT (docs/spec/powerups.md "Overrides"). These are Tony's own picks, not a
+# protocol limit: `app/src/powerup.js` VALUE_MAX_S (255) already clamps the claim-proximity advert's
+# remaining-seconds DISPLAY for a spawn further off than that -- exactly the same harmless cap that would
+# already apply to a heavy just taken with more than 255 s left -- while `station_update.next_spawn_in_ms`
+# carries the true remaining time as a full integer, so the schedule itself is never wrong.
+CHARGES_MIN, CHARGES_MAX = 1, 4
+AMOUNT_MIN, AMOUNT_MAX, AMOUNT_STEP = 25, 150, 25
+SPAWN_EVERY_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_STEP = 30, 300, 30
+OVERRIDE_KEYS = ("charges", "amount", "spawn_every_s")
+
 
 class _Magazines(Protocol):
     def spawn_ammo(self, weapon_id: str, mods: dict | None = None) -> tuple[int, int]: ...
@@ -70,6 +81,38 @@ def expand(preset: str, catalog: _Magazines | None = None) -> StationItem:
     if item["kind"] == "weapon":
         item["charges"] = int(_catalog(catalog).spawn_ammo(item["weapon_id"])[0])
     return item   # type: ignore[return-value]
+
+
+def _in_range(v: object, lo: int, hi: int, step: int) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi and (v - lo) % step == 0
+
+
+def apply_overrides(item: StationItem, a: dict) -> StationItem:
+    """The operator's per-station overrides, on top of a freshly expanded preset item. Every field is
+    optional and the whole thing is stateless (as `set_station` already is for `item_preset` itself): a PUT
+    that names none of `OVERRIDE_KEYS` gets back exactly today's item, the preset's own defaults, and one
+    that names a field this item's kind does not carry -- `amount` on a weapon, `charges` on the overshield
+    -- is refused rather than silently ignored. `first_at_s` always follows `spawn_every_s` (Halo's "first
+    after one interval", docs/spec/powerups.md), whether that value is the preset default or an override."""
+    out: dict = dict(item)
+    if (charges := a.get("charges")) is not None:
+        if out["kind"] != "weapon":
+            raise ValueError(f"CHARGES ONLY APPLIES TO A WEAPON ITEM: {out['name']} HAS NONE")
+        if not _in_range(charges, CHARGES_MIN, CHARGES_MAX, 1):
+            raise ValueError(f"CHARGES MUST BE A WHOLE NUMBER, {CHARGES_MIN}-{CHARGES_MAX}")
+        out["charges"] = charges
+    if (amount := a.get("amount")) is not None:
+        if out["kind"] != "overshield":
+            raise ValueError(f"AMOUNT ONLY APPLIES TO AN OVERSHIELD ITEM: {out['name']} HAS NONE")
+        if not _in_range(amount, AMOUNT_MIN, AMOUNT_MAX, AMOUNT_STEP):
+            raise ValueError(f"AMOUNT MUST BE {AMOUNT_MIN}-{AMOUNT_MAX}, IN STEPS OF {AMOUNT_STEP}")
+        out["amount"] = amount
+    if (spawn_every_s := a.get("spawn_every_s")) is not None:
+        if not _in_range(spawn_every_s, SPAWN_EVERY_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_STEP):
+            raise ValueError(f"RESPAWN MUST BE {SPAWN_EVERY_MIN}-{SPAWN_EVERY_MAX} SECONDS, IN STEPS OF {SPAWN_EVERY_STEP}")
+        out["spawn_every_s"] = spawn_every_s
+        out["first_at_s"] = spawn_every_s
+    return out   # type: ignore[return-value]
 
 
 def presets_view(enabled: bool, catalog: _Magazines | None = None) -> PowerupsView:
@@ -106,8 +149,9 @@ def invalid_reason(item: object) -> str | None:
         return f"kind {item.get('kind')!r}"
     for key in ("spawn_every_s", "first_at_s"):
         v = item.get(key)
-        if not isinstance(v, int) or isinstance(v, bool) or not (1 if key == "spawn_every_s" else 0) <= v <= 255:
-            return f"{key} {v!r} (an integer, 1-255)" if key == "spawn_every_s" else f"{key} {v!r} (an integer, 0-255)"
+        lo = 1 if key == "spawn_every_s" else 0
+        if not isinstance(v, int) or isinstance(v, bool) or not lo <= v <= SPAWN_EVERY_MAX:
+            return f"{key} {v!r} (an integer, {lo}-{SPAWN_EVERY_MAX})"
     if not isinstance(item.get("name"), str) or not isinstance(item.get("color"), str):
         return "name or color missing"
     if item["kind"] == "weapon" and (not isinstance(item.get("weapon_id"), str) or not isinstance(item.get("charges"), int)):

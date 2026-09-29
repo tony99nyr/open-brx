@@ -4,6 +4,8 @@
 //
 //   items        ITEMS: ASSIGN + ARM leaves the BUBBLE at the station's default (H1: it sent -74), the
 //                header counts ARMED apart from NEED ATTENTION (M2), the name is not cut (M3)
+//   overrides    S-powerup-overrides (2026-09-28): the CHARGES and RESPAWN steppers write a per-station
+//                override the server actually stores, proven with a real click and a real PUT
 //   station-ids  F364: every card shows the station id read-only (no id input), MC assigns 1 and 2 across two
 //                stations, and a cleared station gets its own id back on the next ASSIGN + ARM
 //   koth-source  KOTH on a grenade objective with a CONTROL station assigned: an amber conflict on LOBBY
@@ -173,6 +175,42 @@ try {
     await pg.setViewportSize({ width: 900, height: 900 });
     const cut900 = await title.evaluate(el => el.scrollWidth > el.clientWidth + 1).catch(() => true);
     expect(!cut900, 'at 900 px the name is still whole');
+    await pg.context().close();
+  });
+
+  // S-powerup-overrides (2026-09-28): the CHARGES and RESPAWN steppers on a powerup station card write a
+  // per-station override MC stores on the assignment -- proven end to end (a real click, a real PUT, the
+  // real server's own state), not just at the mock/vitest layer.
+  await runStep('overrides', 'ITEMS: the CHARGES and RESPAWN steppers write a per-station override MC stores', async () => {
+    await reset();
+    const pg = await page(browser, { width: 1440, height: 900 });
+    await go(pg, 'ARMORY');
+    const card = pg.locator(`[data-station-card="${STATION}"]`);
+    expect(await until(() => card.isVisible(), 8000, 'the station card'), 'the station stand-in has a card on ITEMS');
+    await card.getByRole('button', { name: 'POWERUP' }).click();
+    const rockets = card.getByTestId('item-pick-rockets');
+    expect(await until(() => rockets.isVisible(), 6000, 'the ROCKETS pick'), 'the item picker offers ROCKETS');
+    await rockets.click();
+    const charges = card.getByTestId(`station-charges-${STATION}`);
+    const respawn = card.getByTestId(`station-respawn-${STATION}`);
+    expect(await until(() => charges.isVisible(), 4000, 'the CHARGES stepper'), 'CHARGES shows for a weapon item');
+    expect((await charges.innerText()).trim() === '2', 'the preset default (2) before any step');
+    expect((await respawn.innerText()).trim() === '120S', 'the preset default (120S) before any step');
+    await card.locator(`button[aria-label="charges for ${STATION} plus"]`).click();
+    expect(await until(async () => (await charges.innerText()).trim() === '3', 4000, 'CHARGES at 3'),
+      'stepping + moves CHARGES from 2 to 3');
+    for (let i = 0; i < 3; i++) await card.locator(`button[aria-label="respawn for ${STATION} minus"]`).click();
+    expect(await until(async () => (await respawn.innerText()).trim() === '30S', 4000, 'RESPAWN at 30S'),
+      'stepping - three times moves RESPAWN from 120S to 30S');
+    await card.getByRole('button', { name: 'ASSIGN + ARM' }).click();
+    const item = await until(async () => (await get('/api/stations')).stations.find(s => s.node_id === STATION)?.assigned?.item, 8000, 'the item to land');
+    expect(!!item && item.charges === 3 && item.spawn_every_s === 30 && item.first_at_s === 30,
+      `the server stored the stepped CHARGES and RESPAWN, not the preset's own defaults (got ${JSON.stringify(item)})`);
+    await shot(pg, 'items-overrides-1440');
+    // leave the stand-in reporting `respawn` again (station_config updates its OWN `report.kind`,
+    // vqa2_nodes.py): every later step's `reset()` only clears the ASSIGNMENT, not that report, so a step
+    // left on POWERUP would hand the next one a card that starts on POWERUP and needs an item pick.
+    await must('PUT', `/api/stations/${STATION}`, { kind: 'respawn', team: 'any' });
     await pg.context().close();
   });
 

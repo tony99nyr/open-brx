@@ -3513,6 +3513,11 @@ class Session:
         # A56 (S58): a powerup station's item, picked from MC's presets. The expanded item is what is stored.
         if "item" in a:
             raise ValueError("send item_preset (one of: " + ", ".join(_pu.PRESET_IDS) + "), not a raw item")
+        # S-powerup-overrides (2026-09-28): CHARGES/AMOUNT/RESPAWN are optional siblings of `item_preset`,
+        # never free-standing -- there is no item to override without one.
+        override_keys = [k for k in _pu.OVERRIDE_KEYS if a.get(k) is not None]
+        if override_keys and not isinstance(a.get("item_preset"), str):
+            raise ValueError(f"{override_keys[0].upper()} NEEDS item_preset IN THE SAME REQUEST")
         item: StationItem | None = None
         if "item_preset" in a and a["item_preset"] is not None:
             if not self.powerups_enabled:
@@ -3522,6 +3527,7 @@ class Session:
             if not isinstance(a["item_preset"], str):
                 raise ValueError("item_preset must be one of: " + ", ".join(_pu.PRESET_IDS))
             item = _pu.expand(a["item_preset"], getattr(self.compiler, "catalog", None))
+            item = _pu.apply_overrides(item, a)    # S-powerup-overrides: charges/amount/spawn_every_s
             others = [it for n, _a, it in self._item_stations() if n != nid]
             _pu.weapon_slots([*others, item])      # refuses a third different weapon
         if (self.nodes.get(nid) or {}).get("stale"):
@@ -3736,10 +3742,14 @@ class Session:
         preset = a.get("item_preset")
         if preset is not None:
             try:
-                if _pu.expand(preset, getattr(self.compiler, "catalog", None)) != prev.get("item"):
+                item = _pu.expand(preset, getattr(self.compiler, "catalog", None))
+                item = _pu.apply_overrides(item, a)   # S-powerup-overrides: same item, overrides included
+                if item != prev.get("item"):
                     return None
             except (ValueError, KeyError, TypeError):
                 return None
+        elif any(a.get(k) is not None for k in _pu.OVERRIDE_KEYS):
+            return None   # an override with no item_preset is not a range-only shape; let the main path refuse it
         thr = a.get("threshold", 0)
         if not (isinstance(thr, int) and not isinstance(thr, bool) and (thr == 0 or -100 <= thr <= -30)):
             raise ValueError("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)")

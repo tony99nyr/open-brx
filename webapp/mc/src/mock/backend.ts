@@ -2,7 +2,7 @@
 import type {
   Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, Favourite, GameConfig, GamePick, GamePiece, LanPublic, LastMatch, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView,
   MatchHistoryRow, MatchSettings, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, PieceKind, Player,
-  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationKind, StationSourceId,
+  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationItem, StationKind, StationSourceId,
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
@@ -15,6 +15,7 @@ import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { bubbleDefault } from '../screens/Items';   // the per-kind platform default the console shows (F383)
+import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
@@ -31,6 +32,31 @@ const mockPowerups = (): 'on' | 'off' | 'old' => {
   const v = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('powerups') : null;
   return v === 'off' || v === 'old' ? v : 'on';
 };
+// S-powerup-overrides (2026-09-28): CHARGES/AMOUNT/RESPAWN are optional siblings of `item_preset` on the
+// station PUT, mirroring mcp/brx_mcp/mc/powerups.py exactly (constants AND wording).
+const inRange = (v: unknown, lo: number, hi: number, step: number): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi && (v - lo) % step === 0;
+/** As `powerups.py apply_overrides()`: stateless -- recomputes the item from the preset default plus
+ *  whichever override fields are present in THIS request, never from what was stored before. */
+function applyOverrides(item: StationItem, a: { charges?: number; amount?: number; spawn_every_s?: number }): StationItem {
+  const out = { ...item };
+  if (a.charges != null) {
+    if (out.kind !== 'weapon') throw Object.assign(new Error(`CHARGES ONLY APPLIES TO A WEAPON ITEM: ${out.name} HAS NONE`), { status: 400 });
+    if (!inRange(a.charges, CHARGES_MIN, CHARGES_MAX, 1)) throw Object.assign(new Error(`CHARGES MUST BE A WHOLE NUMBER, ${CHARGES_MIN}-${CHARGES_MAX}`), { status: 400 });
+    out.charges = a.charges;
+  }
+  if (a.amount != null) {
+    if (out.kind !== 'overshield') throw Object.assign(new Error(`AMOUNT ONLY APPLIES TO AN OVERSHIELD ITEM: ${out.name} HAS NONE`), { status: 400 });
+    if (!inRange(a.amount, AMOUNT_MIN, AMOUNT_MAX, AMOUNT_STEP)) throw Object.assign(new Error(`AMOUNT MUST BE ${AMOUNT_MIN}-${AMOUNT_MAX}, IN STEPS OF ${AMOUNT_STEP}`), { status: 400 });
+    out.amount = a.amount;
+  }
+  if (a.spawn_every_s != null) {
+    if (!inRange(a.spawn_every_s, SPAWN_EVERY_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_STEP)) throw Object.assign(new Error(`RESPAWN MUST BE ${SPAWN_EVERY_MIN}-${SPAWN_EVERY_MAX} SECONDS, IN STEPS OF ${SPAWN_EVERY_STEP}`), { status: 400 });
+    out.spawn_every_s = a.spawn_every_s;
+    out.first_at_s = a.spawn_every_s;
+  }
+  return out;
+}
 // F411 (docs/spec/design/games-presets.md §1): the eight PLAY pickers' built-in pieces. `piece_id`s are
 // `builtin:<kind>:<slug>` and never edited/deleted (403); a fresh session picks the first of each kind.
 const builtinPiece = (kind: PieceKind, slug: string, name: string, value: Record<string, unknown>, post_mvp = false): GamePiece =>
@@ -270,24 +296,40 @@ export class MockBackend implements Api {
     let id = 1; while (used.has(id)) id += 1;
     return id;
   }
-  async putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number; item_preset?: string; tx_power?: TxPower }): Promise<StationView> {
-    // A67, as `state.py _set_station_range_only`: a RANGE/STRENGTH-only change of an assigned station, any phase
+  async putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number; item_preset?: string; tx_power?: TxPower;
+    charges?: number; amount?: number; spawn_every_s?: number }): Promise<StationView> {
+    // A67, as `state.py _set_station_range_only`: a RANGE/STRENGTH-only change of an assigned station, any phase.
+    // S-powerup-overrides (2026-09-28): the requested ITEM (preset + overrides) must also match the one already
+    // assigned, or this is not range-only -- it falls through to the normal path below, which refuses an item
+    // change in play exactly as it refuses a kind/team change in play.
     const prev = this.stations[node_id]?.assigned;
     const inPlay = this.phase === 'armed' || this.phase === 'live';
-    if (prev && prev.kind === a.kind && (a.id == null || prev.id === a.id) && prev.team === a.team) {
+    const sameKindTeamId = !!prev && prev.kind === a.kind && (a.id == null || prev.id === a.id) && prev.team === a.team;
+    let sameItem = true;
+    if (sameKindTeamId) {
+      if (a.item_preset != null) {
+        try {
+          const p = POWERUP_PRESETS.find(x => x.preset === a.item_preset);
+          sameItem = !!p && JSON.stringify(applyOverrides(clone(p.item), a)) === JSON.stringify(prev!.item ?? null);
+        } catch { sameItem = false; }
+      } else if (a.charges != null || a.amount != null || a.spawn_every_s != null) {
+        sameItem = false;   // an override with no item_preset is not a range-only shape; let the normal path refuse it
+      }
+    }
+    if (sameKindTeamId && sameItem) {
       const thr = a.threshold ?? 0;
       if (!Number.isInteger(thr) || (thr !== 0 && (thr < -100 || thr > -30))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");
-      const moved = thr !== prev.threshold || (a.tx_power != null && a.tx_power !== prev.tx_power);
-      // nothing moved: in play that is the view as it is, not a refusal; outside play the full path runs
-      if (!moved && inPlay) return this.stationViews().find(v => v.node_id === node_id)!;
-    }
-    if (prev && prev.kind === a.kind && (a.id == null || prev.id === a.id) && prev.team === a.team
-        && ((a.threshold ?? 0) !== prev.threshold || (a.tx_power != null && a.tx_power !== prev.tx_power))) {
-      if (a.tx_power != null && !['ultra_low', 'low', 'medium', 'high'].includes(a.tx_power)) throw new Error('tx_power must be one of ultra_low, low, medium, high');
-      this.stations[node_id].assigned = { ...prev, threshold: a.threshold ?? 0, threshold_src: 'mc', at: now(),
-        ...(a.tx_power != null ? { tx_power: a.tx_power, tx_power_src: 'mc' as const } : {}) };
-      this.armStation(node_id); this.emit();
-      return this.stationViews().find(v => v.node_id === node_id)!;
+      const moved = thr !== prev!.threshold || (a.tx_power != null && a.tx_power !== prev!.tx_power);
+      if (!moved) {
+        // nothing moved: in play that is the view as it is, not a refusal; outside play the full path runs
+        if (inPlay) return this.stationViews().find(v => v.node_id === node_id)!;
+      } else {
+        if (a.tx_power != null && !['ultra_low', 'low', 'medium', 'high'].includes(a.tx_power)) throw new Error('tx_power must be one of ultra_low, low, medium, high');
+        this.stations[node_id].assigned = { ...prev!, threshold: thr, threshold_src: 'mc', at: now(),
+          ...(a.tx_power != null ? { tx_power: a.tx_power, tx_power_src: 'mc' as const } : {}) };
+        this.armStation(node_id); this.emit();
+        return this.stationViews().find(v => v.node_id === node_id)!;
+      }
     }
     // as `state.py set_station`: no station PUT while the match is armed or live (players already hold
     // `config.stations`, and A56's items are locked for the match)
@@ -295,13 +337,16 @@ export class MockBackend implements Api {
       throw Object.assign(new Error(`the match is ${this.phase.toUpperCase()}: stations and their items are locked for the match -- RECALL or END it first`), { status: 400 });
     }
     if (!STATION_KINDS.includes(a.kind)) throw new Error(`kind must be one of ${STATION_KINDS.join(', ')}`);
+    // S-powerup-overrides: CHARGES/AMOUNT/RESPAWN are optional siblings of `item_preset`, never free-standing.
+    const overrideKeys = (['charges', 'amount', 'spawn_every_s'] as const).filter(k => a[k] != null);
+    if (overrideKeys.length && a.item_preset == null) throw Object.assign(new Error(`${overrideKeys[0].toUpperCase()} NEEDS item_preset IN THE SAME REQUEST`), { status: 400 });
     let item: StationAssignment['item'];
     if (a.item_preset != null) {
       if (mockPowerups() !== 'on') throw new Error('powerups are OFF: Mission Control was started with --no-powerups; drop that flag to give a station an item');   // powerups.py REFUSED_FLAG_OFF
       if (a.kind !== 'powerup') throw new Error(`item_preset is only for a powerup station, not ${a.kind}`);
       const p = POWERUP_PRESETS.find(x => x.preset === a.item_preset);
       if (!p) throw new Error(`unknown item_preset '${a.item_preset}': one of ${POWERUP_PRESETS.map(x => x.preset).join(', ')}`);
-      item = clone(p.item);
+      item = applyOverrides(clone(p.item), a);
     }
     let team: number;
     if (typeof a.team === 'string') {

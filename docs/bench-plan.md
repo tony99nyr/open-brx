@@ -27,7 +27,10 @@ version). No MacBook needed: 11.7 and the IPHONE block move to the MacBook sitti
 4. **F394** (Group 1, item 7).
 5. **4.0, the release loop** (Group 1, item 8).
 6. **11.6** (Group 1, item 9).
-7. **The powerup setup, 4.11 and 11.2** (Group 1, item 10).
+7. **The powerup setup, 4.11 and 11.2** (Group 1, item 10). **Plus the new per-station overrides
+   (S-powerup-overrides, 2026-09-28):** on ARMORY, set a Rockets station's CHARGES stepper to 3, ASSIGN + ARM,
+   grant it, and check the gun fires 3 rockets (not the preset's own 2) before it empties. Then set that same
+   station's RESPAWN to 30 s and check the NEXT spawn lands 30 s after the grant, not at the preset's 2:00.
 8. **Group 2: KOTH, the phone hill first.**
 9. **Group 4.**
 10. **Group 3.**
