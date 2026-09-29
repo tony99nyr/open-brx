@@ -11,5 +11,5 @@ export const AMOUNT_MIN = 25;
 export const AMOUNT_MAX = 150;
 export const AMOUNT_STEP = 25;
 export const SPAWN_EVERY_MIN = 30;
-export const SPAWN_EVERY_MAX = 300;
+export const SPAWN_EVERY_MAX = 240;   // the StickS3's one-byte field (powerups.py)
 export const SPAWN_EVERY_STEP = 30;

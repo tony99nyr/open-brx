@@ -603,7 +603,7 @@ class StationItem(TypedDict):
     """A56 (S58, docs/spec/powerups.md): what a `powerup` station grants, and when it spawns on the match clock.
     A weapon item grants `charges` rounds of `weapon_id` (armed at start in a spare slot, `GameConfig.powerups`);
     an overshield grants `amount` shield on top, hit first, no regen, gone at death. `spawn_every_s`/`first_at_s`
-    are a positive integer (ARMORY's own per-station override caps `spawn_every_s` 30-300, `powerups.py`
+    are a positive integer (ARMORY's own per-station override caps `spawn_every_s` 30-240, `powerups.py`
     `SPAWN_EVERY_MIN`/`MAX`; the schedule mechanism itself tolerates any positive value); a spawn further off
     than `app/src/powerup.js`'s `VALUE_MAX_S` (255) just clamps the claim-proximity advert's remaining-seconds
     DISPLAY, it does not touch the real schedule (`station_update.next_spawn_in_ms` carries the true value).

@@ -12,7 +12,7 @@ import { STATION_KINDS } from '../api/types';
 import { PHONE_CONTROL_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
 import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
-import { CHAMFER, F, T, fmtAge, teamColor } from '../tokens';
+import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
 import { ItemStationRow, Swatch } from '../ui/Powerups';
 import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
 import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, ValueBox } from '../ui';
@@ -324,7 +324,8 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
         <Seg label={`kind for ${s.node_id}`} value={kind} size={11} pad="5px 8px" wrap
           options={kindOptions.map(k => ({ value: k, label: KIND_SHORT[k] }))} titles={Object.fromEntries(kindOptions.map(k => [k, KIND_LABEL[k]]))}
           onChange={k => { setKind(k); if (k === 'control') setTeam(255); }} />
-        {kind === 'powerup' && <ItemPicker node={s.node_id} pu={pu} chosen={chosen} locked={locked} onPick={setItemPick} />}
+        {kind === 'powerup' && <ItemPicker node={s.node_id} pu={pu} chosen={chosen} locked={locked} onPick={p => { setItemPick(p); setChargesEdit(null); setAmountEdit(null); setEveryEdit(null); }}
+          effective={chosenPreset ? { ...chosenPreset.item, ...(chosenKind === 'weapon' ? { charges } : {}), ...(chosenKind === 'overshield' ? { amount } : {}), spawn_every_s: every, first_at_s: every } : null} />}
         {kind === 'powerup' && chosen && chosenPreset && (
           <div data-testid="item-overrides" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
             {chosenKind === 'weapon' && (
@@ -336,7 +337,7 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
                 step={AMOUNT_STEP} format={v => `+${v}`} width={44} disabled={locked} onChange={setAmountEdit} />
             )}
             <OverrideStepper node={s.node_id} field="respawn" label="RESPAWN" value={every} min={SPAWN_EVERY_MIN} max={SPAWN_EVERY_MAX}
-              step={SPAWN_EVERY_STEP} format={v => `${v}S`} width={44} disabled={locked} onChange={setEveryEdit} />
+              step={SPAWN_EVERY_STEP} format={v => fmtDuration(v)} width={44} disabled={locked} onChange={setEveryEdit} />
           </div>
         )}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -435,8 +436,10 @@ function Val({ children, color }: { children: React.ReactNode; color: string }) 
 
 /** A56: the host picks ONE item per powerup station at setup; it is locked once the match is armed. Absent
  *  (with a one-line reason) when MC has powerups off or predates them. */
-function ItemPicker({ node, pu, chosen, locked, onPick }:
-  { node: string; pu: PowerupsState; chosen: string | null; locked: boolean; onPick: (p: string) => void }) {
+function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
+  { node: string; pu: PowerupsState; chosen: string | null; locked: boolean; onPick: (p: string) => void;
+    /** the chosen item with this card's CHARGES/AMOUNT/RESPAWN applied, so its chip agrees with the steppers */
+    effective?: StationItem | null }) {
   const note = (text: React.ReactNode, color: string = colourOf('items-itempicker-loading')) => (
     <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
   if (pu.s === 'loading') return note('READING THE ITEM LIST…');
@@ -448,8 +451,9 @@ function ItemPicker({ node, pu, chosen, locked, onPick }:
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Micro>ITEM · ONE PER STATION</Micro>
       <div role="group" aria-label={`item for ${node}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(118px,1fr))', gap: 6 }}>
-        {pu.v.presets.map(({ preset, item }) => {
+        {pu.v.presets.map(({ preset, item: presetItem }) => {
           const on = chosen === preset;
+          const item = on && effective ? effective : presetItem;
           return (
             <button key={preset} type="button" data-testid={`item-pick-${preset}`} aria-pressed={on} disabled={locked}
               onClick={() => onPick(preset)}

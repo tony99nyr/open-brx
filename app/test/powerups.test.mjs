@@ -395,6 +395,11 @@ test('S-powerup-overrides: a station item with charges:3 grants 3, not the prese
     powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(121); const n = h.mark(); h.take(4);
   assert.deepEqual(puw(h.since(n)).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,3,0,1,*']);
+  // F381's clip raise covers a FIRST grant above the weapon's own clip (Rockets 2), not only a stack:
+  // the equip's $WEAP carries t16 maxClip = 3, or the gun would clamp the $AMMO back to 2.
+  const weap = puw(h.since(n)).find(f => f.startsWith('$WEAP,2,'));
+  assert.ok(weap, 'the grant equips slot 2 with its own $WEAP');
+  assert.equal(weap.split(',')[17], '3', 'the $WEAP clip is raised to the 3 charges');
   assert.equal(h.eng.state().powerup.held.left, 3);
   assert.equal(h.eng.state().powerup.held.charges, 3);
 });

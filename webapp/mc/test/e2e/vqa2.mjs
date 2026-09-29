@@ -195,17 +195,21 @@ try {
     const respawn = card.getByTestId(`station-respawn-${STATION}`);
     expect(await until(() => charges.isVisible(), 4000, 'the CHARGES stepper'), 'CHARGES shows for a weapon item');
     expect((await charges.innerText()).trim() === '2', 'the preset default (2) before any step');
-    expect((await respawn.innerText()).trim() === '120S', 'the preset default (120S) before any step');
+    expect((await respawn.innerText()).trim() === '2:00', 'the preset default (2:00) before any step');
     await card.locator(`button[aria-label="charges for ${STATION} plus"]`).click();
     expect(await until(async () => (await charges.innerText()).trim() === '3', 4000, 'CHARGES at 3'),
       'stepping + moves CHARGES from 2 to 3');
     for (let i = 0; i < 3; i++) await card.locator(`button[aria-label="respawn for ${STATION} minus"]`).click();
-    expect(await until(async () => (await respawn.innerText()).trim() === '30S', 4000, 'RESPAWN at 30S'),
-      'stepping - three times moves RESPAWN from 120S to 30S');
+    expect(await until(async () => (await respawn.innerText()).trim() === '0:30', 4000, 'RESPAWN at 0:30'),
+      'stepping - three times moves RESPAWN from 2:00 to 0:30');
     await card.getByRole('button', { name: 'ASSIGN + ARM' }).click();
     const item = await until(async () => (await get('/api/stations')).stations.find(s => s.node_id === STATION)?.assigned?.item, 8000, 'the item to land');
     expect(!!item && item.charges === 3 && item.spawn_every_s === 30 && item.first_at_s === 30,
       `the server stored the stepped CHARGES and RESPAWN, not the preset's own defaults (got ${JSON.stringify(item)})`);
+    // polish 2026-09-28: once it lands, the card's ITEM row names the armed CHARGES, and the chosen chip agrees
+    const detail = card.locator('[data-testid="station-item-detail"]');
+    expect(await until(async () => (await detail.count()) > 0 && (await detail.innerText()).includes('3 CHARGES'), 6000, 'the ITEM row to show 3 CHARGES'),
+      'the armed ITEM row names the override (3 CHARGES), not the preset default');
     await shot(pg, 'items-overrides-1440');
     // leave the stand-in reporting `respawn` again (station_config updates its OWN `report.kind`,
     // vqa2_nodes.py): every later step's `reset()` only clears the ASSIGNMENT, not that report, so a step

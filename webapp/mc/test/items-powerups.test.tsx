@@ -145,12 +145,12 @@ describe('ITEMS — per-station override steppers (S-powerup-overrides)', () => 
     await m.click('POWERUP');
     await m.click(/^ROCKETS/);
     expect(value(m, 'charges'), m.text()).toBe('2');
-    expect(value(m, 'respawn')).toBe('120S');
+    expect(value(m, 'respawn')).toBe('2:00');
     expect(m.find(`[data-testid="station-amount-${NODE}"]`).length).toBe(0);
     await m.click(/^OVERSHIELD/);
     expect(m.find(`[data-testid="station-charges-${NODE}"]`).length).toBe(0);
     expect(value(m, 'amount')).toBe('+75');
-    expect(value(m, 'respawn')).toBe('60S');
+    expect(value(m, 'respawn')).toBe('1:00');
     m.unmount();
   });
 
@@ -175,38 +175,44 @@ describe('ITEMS — per-station override steppers (S-powerup-overrides)', () => 
     m.unmount();
   });
 
-  it('stepping RESPAWN disables at 30 and at 300', async () => {
+  it('stepping RESPAWN disables at 30 and at 240 (the StickS3 carries it in one byte)', async () => {
     const { m } = await muster();
     await m.click('POWERUP');
     await m.click(/^ROCKETS/);
     const minus = () => btn(m, 'respawn', 'minus')!;
     for (let i = 0; i < 3; i++) await act(async () => { minus().click(); });   // 120 -> 90 -> 60 -> 30
-    expect(value(m, 'respawn')).toBe('30S');
+    expect(value(m, 'respawn')).toBe('0:30');
     expect(minus().disabled, 'at the floor, − disables').toBe(true);
     const plus = () => btn(m, 'respawn', 'plus')!;
-    for (let i = 0; i < 9; i++) await act(async () => { plus().click(); });   // 30 -> ... -> 300
-    expect(value(m, 'respawn')).toBe('300S');
+    for (let i = 0; i < 7; i++) await act(async () => { plus().click(); });   // 30 -> ... -> 240
+    expect(value(m, 'respawn')).toBe('4:00');
     expect(plus().disabled, 'at the ceiling, + disables').toBe(true);
     m.unmount();
   });
 
-  it('an override that still applies survives a preset change; one that no longer applies is dropped', async () => {
+  // Polish 2026-09-28 (review High): an override used to survive a change of item, so ROCKETS 4 ->
+  // OVERSHIELD -> RAIL GUN armed RAIL GUN with 4 charges the operator never chose for it, while its chip
+  // still read "2 CHARGES". Any change of item now starts from that item's own defaults.
+  it('a change of item resets CHARGES, AMOUNT and RESPAWN to that item\'s own defaults', async () => {
     const { m } = await muster();
     await m.click('POWERUP');
     await m.click(/^ROCKETS/);
     await act(async () => { btn(m, 'charges', 'plus')!.click(); });   // 2 -> 3
     await act(async () => { btn(m, 'charges', 'plus')!.click(); });   // 3 -> 4
-    await act(async () => { btn(m, 'respawn', 'plus')!.click(); });   // 120 -> 150
+    await act(async () => { btn(m, 'respawn', 'plus')!.click(); });   // 2:00 -> 2:30
     expect(value(m, 'charges')).toBe('4');
-    // RAIL GUN is still a weapon: CHARGES and RESPAWN both still apply, and both are kept
-    await m.click(/^RAIL GUN/);
-    expect(value(m, 'charges'), 'CHARGES still applies to a weapon: kept across the preset change').toBe('4');
-    expect(value(m, 'respawn'), 'RESPAWN applies to any item: kept').toBe('150S');
-    // OVERSHIELD has no charges: dropped (never rendered); RESPAWN still applies and is still kept
+    const chip = (p: string) => m.find(`[data-testid="item-pick-${p}"]`)[0].textContent ?? '';
+    expect(chip('rockets'), 'the chosen chip agrees with the steppers').toContain('4 CHARGES');
+    expect(chip('rockets')).toContain('EVERY 2:30');
     await m.click(/^OVERSHIELD/);
-    expect(m.find(`[data-testid="station-charges-${NODE}"]`).length, 'CHARGES no longer applies: dropped').toBe(0);
-    expect(value(m, 'amount'), "its own default: never touched under a weapon preset").toBe('+75');
-    expect(value(m, 'respawn'), 'RESPAWN still applies: kept').toBe('150S');
+    expect(m.find(`[data-testid="station-charges-${NODE}"]`).length, 'CHARGES does not apply to an overshield').toBe(0);
+    expect(value(m, 'amount')).toBe('+75');
+    expect(value(m, 'respawn'), 'the overshield\'s own default').toBe('1:00');
+    await m.click(/^RAIL GUN/);
+    expect(value(m, 'charges'), 'RAIL GUN starts from its own default, not the 4 set on ROCKETS').toBe('2');
+    expect(value(m, 'respawn')).toBe('2:00');
+    expect(chip('rail_gun')).toContain('2 CHARGES');
+    expect(chip('rockets'), 'an unchosen chip shows its preset default').toContain('2 CHARGES');
     m.unmount();
   });
 

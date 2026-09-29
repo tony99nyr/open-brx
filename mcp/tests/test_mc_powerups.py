@@ -228,9 +228,9 @@ def test_spawn_every_s_override_applies_and_first_at_s_follows_it():
     assert v["assigned"]["item"]["spawn_every_s"] == 90 and v["assigned"]["item"]["first_at_s"] == 90
     v2 = s.set_station("u2", {"kind": "powerup", "team": "any", "id": 6, "item_preset": "overshield", "spawn_every_s": 30})
     assert v2["assigned"]["item"]["spawn_every_s"] == 30 and v2["assigned"]["item"]["first_at_s"] == 30
-    for bad in (20, 310, 45, 0, -30, "90", True):
+    for bad in (20, 270, 300, 45, 0, -30, "90", True):   # 240 is the ceiling: the StickS3's one-byte field
         _refused(lambda bad=bad: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "spawn_every_s": bad}),
-                 "RESPAWN", "30-300")
+                 "RESPAWN", "30-240")
 
 
 def test_a_field_that_does_not_apply_to_the_item_is_refused():

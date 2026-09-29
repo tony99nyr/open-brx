@@ -57,7 +57,9 @@ REFUSED_FLAG_OFF = ("powerups are OFF: Mission Control was started with --no-pow
 # carries the true remaining time as a full integer, so the schedule itself is never wrong.
 CHARGES_MIN, CHARGES_MAX = 1, 4
 AMOUNT_MIN, AMOUNT_MAX, AMOUNT_STEP = 25, 150, 25
-SPAWN_EVERY_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_STEP = 30, 300, 30
+# 240, not 300: the StickS3 carries spawn_every_s in one byte (station_link.h parse_item clamps at 255), so
+# 270 or 300 would reach a Stick as 255 and it would respawn early while offline (polish 2026-09-28).
+SPAWN_EVERY_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_STEP = 30, 240, 30
 OVERRIDE_KEYS = ("charges", "amount", "spawn_every_s")
 
 
