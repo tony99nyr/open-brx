@@ -36,6 +36,15 @@ constexpr int STICK_DEFAULT_THRESHOLD_DBM = -57;
 // at -80. Tony set -75 for MVP (2026-09-25, a 5-7 m target); clean 3 m and 7 m readings
 // settle it at the bench.
 constexpr int STICK_HILL_DEFAULT_THRESHOLD_DBM = -75;
+// F434, Tony 2026-09-28: a powerup's claim range is about 30 cm, not the respawn's 3 m. At -57 a Pixel 5 left
+// about 3 m away claimed on every item respawn (it read -50 to -55 there, about -40 at 30 cm). -45 sits between
+// the two; bench 4.11 tunes it (pass: at least 4 dB of margin each way). The phone claims against byte 14.
+constexpr int STICK_POWERUP_DEFAULT_THRESHOLD_DBM = -45;
+// The Stick's own default for a kind that MC sent 0/absent for: the hill, the powerup, else the respawn value.
+inline int stick_default_threshold_dbm(const std::string& kind) {
+  return kind == "control" ? STICK_HILL_DEFAULT_THRESHOLD_DBM
+       : kind == "powerup" ? STICK_POWERUP_DEFAULT_THRESHOLD_DBM : STICK_DEFAULT_THRESHOLD_DBM;
+}
 
 // The on-station radius edit: 3 dB a click, clamped. Closer = a smaller radius = a higher (less
 // negative) threshold.
@@ -88,7 +97,7 @@ struct RangeDistanceRow {
   const char* label;
 };
 constexpr RangeDistanceRow RANGE_DISTANCE_TABLE[] = {
-    {-45, "UNDER 1 M"}, {-51, "~1 M"}, {-54, "~2 M"}, {-58, "~3 M"}, {-62, "~5 M"},
+    {-45, "<1 M"}, {-51, "~1 M"}, {-54, "~2 M"}, {-58, "~3 M"}, {-62, "~5 M"},
     {-66, "~8 M"},      {-70, "~12 M"}, {-76, "~20 M"},
 };
 inline const char* range_distance_label(int dbm) {

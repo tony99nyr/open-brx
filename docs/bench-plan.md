@@ -12,7 +12,7 @@ Do not copy a procedure into this file. When a sitting ends, strike its steps he
 ## Part 3: tomorrow
 
 Kit and setup as Part 2's Step 0 (below), on 0.4.15 or the build that carries brx4's and brx5's fixes (log the
-version). No MacBook needed: 11.7 and the IPHONE block move to the MacBook sitting.
+version). Reflash the Stick from main first (F434: its powerup default is now -45 dBm), and log `STATUS`'s threshold. No MacBook needed: 11.7 and the IPHONE block move to the MacBook sitting.
 
 **Method (used in Part 2, keep it).** Drive MC through its API. Read each phone's log over CDP (`window.brx.log`,
 `mcp/tools/webview_eval.py`). Time cold connects through adb (force-stop, 8 s settle, launch; ActivityManager
@@ -21,8 +21,9 @@ version). No MacBook needed: 11.7 and the IPHONE block move to the MacBook sitti
 1. **brx4's powerup fixes, bench-gated rechecks.** Run the bench steps in the F418, F381 and F436 rows, in that
    order (brx4's check list). F436 includes the gun-side `$GLED`-vs-equip test: equip, a `$GLED` within 100 ms,
    then read the active slot. Also check F381's missing swap delay after the last Rocket.
-2. **brx5's F297 10-run repeat, then the claim-range ladder (F434, F435).** Same pass rule and adb loop as Part 2
-   (Group 1, item 0); watch the headsets this time. The ladder's thresholds and distances are in F434.
+2. **brx5's F297 10-run repeat, then the claim-range ladder (F434).** Same adb loop as Part 2 (Group 1, item 0),
+   with Tony's new pass rule (2026-09-28): 10/10 linked, median at most 3 s, worst at most 3.5 s. Log the first-attempt
+   rate, but do not gate on it. Watch the headsets this time. The ladder's thresholds and distances are in F434.
 3. **F348, plus F416's poison and shield `$LIFE` reads** (Group 1, items 6 and 3).
 4. **F394** (Group 1, item 7).
 5. **4.0, the release loop** (Group 1, item 8).
@@ -272,8 +273,9 @@ restarted at setup, the black Pixel and the Stick as stations, a tape measure.
 **F297's phone connect metrics run first, then the three 🔴 rows still open from part 1 (F416, F417, F418)**,
 each against its own FOLLOWUPS pass rule, not just carried as a note.
 
-0. **F297 (🔴), phone connect metrics (10 min).** Pass rule, set BEFORE the run: 10/10 first-connect success on
-   every phone, a median at or under 3 s, and zero headset drops; anything worse is a FAIL, and feeds F297/F293
+0. **F297 (🔴), phone connect metrics (10 min).** Pass rule (Tony, 2026-09-28, "linked within 3 s"): 10/10
+   linked on every phone, a median at or under 3 s, a worst at or under 3.5 s, and zero headset drops. Log the
+   first-attempt rate, but do not gate on it; anything worse is a FAIL, and feeds F297/F293
    with the numbers, not an impression. A/B/A: **A** first, the laptop control (Windows Python; WSL has no
    Bluetooth) — `cd mcp && python -m brx_mcp connect-metrics <gun-address> --runs 3 --cold warm --hold-s 60` — 3
    quick re-runs of the existing control (10/10, median 1.37 s, p90 2.41 s, max 3.76 s, headset drops 0/10,
@@ -340,11 +342,11 @@ Running total: 125 min.
     - 4.11, the claim calibration (35 min): the ladder at 15/30/60/100 cm, 2 m and 3 m against the phone station
       and the Stick powerup, both player phones, phone on the rail facing the station, 30 s a rung. Log the median
       each phone reads per rung (the `powerup:` lines). Then repeat 30 cm and 3 m with the player's body between.
-      Background (2026-09-28): at the Stick's -57 default a Pixel 5 read about -40 at 30 cm (reported, not logged)
-      and -49 to -60 at about 3 m, and claimed from 3 m (F434). Control: 3 m gives no ring. Pass: one threshold per station type with at least 4 dB
+      Background (2026-09-28): at the Stick's old -57 default a Pixel 5 read about -40 at 30 cm (reported, not
+      logged) and -49 to -60 at about 3 m, and claimed from 3 m (F434). The Stick powerup default is now -45 (reflash
+      from main). Control: 3 m gives no ring. Pass: one threshold per station type with at least 4 dB
       margin to the weakest 30 cm median and the strongest 3 m median, on both phones (RSSI reads are Pixel-side;
-      judge the iPhone's ring by eye). Camping (F435): stand at 30 cm through one item respawn and log whether a
-      second grant comes with nobody moving.
+      judge the iPhone's ring by eye).
     - 11.2, the claim, the winner and the respawn (15 min). Control: 2 m gives no ring. Pass: a 1 s dwell at
       30 cm claims; two players racing gives exactly one winner; the item respawns on schedule; death loses it.
       **TAKEN is checked on the station screen only**: per F425, the player HUD no longer shows a TAKEN hint or
