@@ -386,6 +386,32 @@ test('F381: a repeat pickup of the same weapon adds charges without a replacemen
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,3,0,1,*']);
 });
 
+// S-powerup-overrides (2026-09-28, MC console): ARMORY can override a station item's charges/amount/respawn.
+// The engine reads them straight off the station item it is handed, so a per-station override needs no
+// engine change -- these two tests confirm that end to end, station item in, grant out, on a FRESH pickup
+// (never fired before, no swap or stack in play). See mcp/brx_mcp/mc/powerups.py apply_overrides().
+test('S-powerup-overrides: a station item with charges:3 grants 3, not the preset default of 2', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: { ...ROCKETS, charges: 3 } }],
+    powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(121); const n = h.mark(); h.take(4);
+  assert.deepEqual(puw(h.since(n)).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,3,0,1,*']);
+  // F381's clip raise covers a FIRST grant above the weapon's own clip (Rockets 2), not only a stack:
+  // the equip's $WEAP carries t16 maxClip = 3, or the gun would clamp the $AMMO back to 2.
+  const weap = puw(h.since(n)).find(f => f.startsWith('$WEAP,2,'));
+  assert.ok(weap, 'the grant equips slot 2 with its own $WEAP');
+  assert.equal(weap.split(',')[17], '3', 'the $WEAP clip is raised to the 3 charges');
+  assert.equal(h.eng.state().powerup.held.left, 3);
+  assert.equal(h.eng.state().powerup.held.charges, 3);
+});
+
+test('S-powerup-overrides: a station item with amount:100 grants 100 shield, not the preset default of 75', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: { ...OVERSHIELD, amount: 100 } }] });
+  h.frame('$HP,40,55,0,*'); h.at(61); const n = h.mark(); h.take(6);
+  const w = osw(h.since(n));
+  assert.equal(psetT5(w.find(f => f.startsWith('$PSET,'))), 100, 'the $PSET shield max raised by the override amount');
+  assert.ok(w.includes('$LIFE,40,55,100,2,*'), '$LIFE carries the same override amount');
+});
+
 test('F381: a same-weapon stack is capped at twice the item charges (Tony: Rockets at most 4)', () => {
   const h = armed(); h.take(4); h.eng._puHeld.left = 3;
   const n = h.mark();

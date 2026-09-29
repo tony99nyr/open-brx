@@ -12,10 +12,11 @@ import { STATION_KINDS } from '../api/types';
 import { PHONE_CONTROL_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
 import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
-import { CHAMFER, F, T, fmtAge, teamColor } from '../tokens';
+import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
 import { ItemStationRow, Swatch } from '../ui/Powerups';
 import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
-import { GhostButton, Micro, SectionRule, Seg, SwitchConfirm, Tag, ValueBox } from '../ui';
+import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, ValueBox } from '../ui';
+import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
 import { Alert, AlertTag } from '../ui/Alert';
 import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
@@ -170,6 +171,24 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
   const assignedPreset = a?.kind === 'powerup' ? presetOf(a.item, presets) : null;
   const chosen = itemPick ?? assignedPreset;
   const needsPick = picking && !chosen;
+  const chosenPreset = presets?.find(p => p.preset === chosen) ?? null;
+  const chosenKind = chosenPreset?.item.kind ?? null;
+  const assignedItem = a?.kind === 'powerup' ? a.item : undefined;
+  // S-powerup-overrides (2026-09-28): per-station CHARGES/AMOUNT/RESPAWN, editable once an item is chosen.
+  // Same null-means-follow idiom as `thrEdit`/`txEdit` above. The BASE is the assignment's own stored item
+  // while the preset pick is unchanged (so a stored override still shows), or the newly picked preset's own
+  // default once the preset itself changes. An override that still applies across a preset change (CHARGES
+  // between two weapon presets) is kept -- nothing here clears it on a preset pick -- while one that no
+  // longer applies (AMOUNT on a weapon, CHARGES on the overshield) is simply never read or sent for the
+  // new kind, which is what "reset" means operationally.
+  const presetChanged = itemPick != null && itemPick !== assignedPreset;
+  const baseItem = (!presetChanged ? assignedItem : undefined) ?? chosenPreset?.item;
+  const [chargesEdit, setChargesEdit] = useState<number | null>(null);
+  const [amountEdit, setAmountEdit] = useState<number | null>(null);
+  const [everyEdit, setEveryEdit] = useState<number | null>(null);
+  const charges = chargesEdit ?? baseItem?.charges ?? CHARGES_MIN;
+  const amount = amountEdit ?? baseItem?.amount ?? AMOUNT_MIN;
+  const every = everyEdit ?? baseItem?.spawn_every_s ?? SPAWN_EVERY_MIN;
   // items are locked for the match: MC refuses any station PUT while it is armed or live
   const locked = state?.phase === 'armed' || state?.phase === 'live';
   // A56 round 2: RESET makes the item available now, off its schedule. Only in play, only with the flag on.
@@ -208,15 +227,27 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
   // while the match is armed/live (it would re-push config to every HUD), whereas arming touches only the
   // stations and is allowed in any phase — and a station that reboots mid-match is exactly this case.
   const needsRearm = s.arm_pending || s.attention.some(t => t.startsWith('PHONE ') || t.startsWith('ARMED FOR'));
+  // S-powerup-overrides: a stepper nudge is a change too, but only while the preset itself is unchanged --
+  // a preset change already marks `dirty` below on its own, and comparing against `assignedItem` once the
+  // preset changed would compare CHARGES from one weapon against another's, which is not what moved.
+  const itemOverrideDirty = picking && !presetChanged && !!assignedItem && (
+    (chosenKind === 'weapon' && chargesEdit != null && chargesEdit !== assignedItem.charges)
+    || (chosenKind === 'overshield' && amountEdit != null && amountEdit !== assignedItem.amount)
+    || (everyEdit != null && everyEdit !== assignedItem.spawn_every_s));
   const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.threshold !== threshold
-    || (tx != null && tx !== a.tx_power) || (picking && chosen !== assignedPreset);
+    || (tx != null && tx !== a.tx_power) || (picking && chosen !== assignedPreset) || itemOverrideDirty;
   // a powerup station still waiting for its item pick is not a live button, so it must not look like one
   const lit = (dirty || needsRearm) && !(dirty && needsPick);
   const apply = async () => {
     setBusy(true); setApplyErr(null);
     const keep = <T,>(fn: () => Promise<T>) => async () => { try { return await fn(); } catch (e) { setApplyErr((e as Error).message); throw e; } };
     try {
-      const body = { kind, team: control ? 255 : team, threshold, ...(tx ? { tx_power: tx } : {}), ...(picking && chosen ? { item_preset: chosen } : {}) };
+      // S-powerup-overrides: always resend the EFFECTIVE value for a field that applies to the chosen item,
+      // not only when it just changed -- the same full-replace contract `item_preset` itself already has
+      // (state.py `set_station` recomputes the whole item from this request; nothing carries over unsent).
+      const body = { kind, team: control ? 255 : team, threshold, ...(tx ? { tx_power: tx } : {}),
+        ...(picking && chosen ? { item_preset: chosen, spawn_every_s: every,
+          ...(chosenKind === 'weapon' ? { charges } : {}), ...(chosenKind === 'overshield' ? { amount } : {}) } : {}) };
       if (dirty) await run(keep(() => api.putStation(s.node_id, body).catch(e => {
         // F364 compatibility: an MC process older than this console (rebuilt, not restarted) still requires an id.
         if (!OLD_MC_WANTS_ID.test((e as Error).message)) throw e;
@@ -294,7 +325,22 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
         <Seg label={`kind for ${s.node_id}`} value={kind} size={11} pad="5px 8px" wrap
           options={kindOptions.map(k => ({ value: k, label: KIND_SHORT[k] }))} titles={Object.fromEntries(kindOptions.map(k => [k, KIND_LABEL[k]]))}
           onChange={k => { setKind(k); if (k === 'control') setTeam(255); }} />
-        {kind === 'powerup' && <ItemPicker node={s.node_id} pu={pu} chosen={chosen} locked={locked} onPick={setItemPick} />}
+        {kind === 'powerup' && <ItemPicker node={s.node_id} pu={pu} chosen={chosen} locked={locked} onPick={p => { setItemPick(p); setChargesEdit(null); setAmountEdit(null); setEveryEdit(null); }}
+          effective={chosenPreset ? { ...chosenPreset.item, ...(chosenKind === 'weapon' ? { charges } : {}), ...(chosenKind === 'overshield' ? { amount } : {}), spawn_every_s: every, first_at_s: every } : null} />}
+        {kind === 'powerup' && chosen && chosenPreset && (
+          <div data-testid="item-overrides" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            {chosenKind === 'weapon' && (
+              <OverrideStepper node={s.node_id} field="charges" label="CHARGES" value={charges} min={CHARGES_MIN} max={CHARGES_MAX}
+                step={1} format={v => String(v)} width={30} disabled={locked} onChange={setChargesEdit} />
+            )}
+            {chosenKind === 'overshield' && (
+              <OverrideStepper node={s.node_id} field="amount" label="AMOUNT" value={amount} min={AMOUNT_MIN} max={AMOUNT_MAX}
+                step={AMOUNT_STEP} format={v => `+${v}`} width={44} disabled={locked} onChange={setAmountEdit} />
+            )}
+            <OverrideStepper node={s.node_id} field="respawn" label="RESPAWN" value={every} min={SPAWN_EVERY_MIN} max={SPAWN_EVERY_MAX}
+              step={SPAWN_EVERY_STEP} format={v => fmtDuration(v)} width={44} disabled={locked} onChange={setEveryEdit} />
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* a control point starts NEUTRAL and is taken by presence (§5d): the team control is moot for it */}
           {!control && <Seg label={`team for ${s.node_id}`} value={String(team)} size={11} pad="5px 8px" wrap options={teamOptions} onChange={v => setTeam(Number(v))} />}
@@ -391,8 +437,10 @@ function Val({ children, color }: { children: React.ReactNode; color: string }) 
 
 /** A56: the host picks ONE item per powerup station at setup; it is locked once the match is armed. Absent
  *  (with a one-line reason) when MC has powerups off or predates them. */
-function ItemPicker({ node, pu, chosen, locked, onPick }:
-  { node: string; pu: PowerupsState; chosen: string | null; locked: boolean; onPick: (p: string) => void }) {
+function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
+  { node: string; pu: PowerupsState; chosen: string | null; locked: boolean; onPick: (p: string) => void;
+    /** the chosen item with this card's CHARGES/AMOUNT/RESPAWN applied, so its chip agrees with the steppers */
+    effective?: StationItem | null }) {
   const note = (text: React.ReactNode, color: string = colourOf('items-itempicker-loading')) => (
     <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
   if (pu.s === 'loading') return note('READING THE ITEM LIST…');
@@ -404,8 +452,9 @@ function ItemPicker({ node, pu, chosen, locked, onPick }:
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Micro>ITEM · ONE PER STATION</Micro>
       <div role="group" aria-label={`item for ${node}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(118px,1fr))', gap: 6 }}>
-        {pu.v.presets.map(({ preset, item }) => {
+        {pu.v.presets.map(({ preset, item: presetItem }) => {
           const on = chosen === preset;
+          const item = on && effective ? effective : presetItem;
           return (
             <button key={preset} type="button" data-testid={`item-pick-${preset}`} aria-pressed={on} disabled={locked}
               onClick={() => onPick(preset)}
@@ -424,6 +473,30 @@ function ItemPicker({ node, pu, chosen, locked, onPick }:
       </div>
       {locked && <div data-testid="item-locked" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-itempicker-locked') }}>LOCKED FOR THE MATCH: RECALL OR END IT TO CHANGE THIS STATION'S ITEM</div>}
     </div>
+  );
+}
+
+/** S-powerup-overrides (2026-09-28): one per-station override on the chosen item -- CHARGES, AMOUNT or
+ *  RESPAWN. Same idiom as `Games.tsx`'s own steppers: `StepBtn` either side of a fixed-width `tabular-nums`
+ *  value, so stepping it never resizes the box and shoves the pair sideways under the finger pressing it
+ *  (bench 2026-09-28, the same finding that shaped `QuickPick`). Disables at each range end on its own,
+ *  with no need for the caller to track it. */
+function OverrideStepper({ node, field, label, value, min, max, step, format, width, disabled, onChange }: {
+  node: string; field: string; label: string; value: number; min: number; max: number; step: number;
+  format: (v: number) => string; width: number; disabled: boolean; onChange: (v: number) => void;
+}) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <Micro>{label}</Micro>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <StepBtn label={`${label.toLowerCase()} for ${node} minus`} disabled={disabled || value <= min}
+          onClick={() => onChange(Math.max(min, value - step))}>−</StepBtn>
+        <span data-testid={`station-${field}-${node}`} style={{ font: F.chk(700, 13), letterSpacing: '.04em', minWidth: width,
+          textAlign: 'center', fontVariantNumeric: 'tabular-nums', color: disabled ? T.micro : T.ink }}>{format(value)}</span>
+        <StepBtn label={`${label.toLowerCase()} for ${node} plus`} disabled={disabled || value >= max}
+          onClick={() => onChange(Math.min(max, value + step))}>+</StepBtn>
+      </span>
+    </span>
   );
 }
 

@@ -157,6 +157,11 @@ export interface Api {
   putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number;
     /** A56: a `powerup` station's item, one of `getPowerups().presets[].preset`. Refused when MC's powerups flag is off. */
     item_preset?: string;
+    /** S-powerup-overrides (2026-09-28): optional siblings of `item_preset`, never free-standing. `charges`
+     *  (a weapon item, 1-4), `amount` (the overshield, 25-150 step 25), `spawn_every_s` (any item, 30-240 step
+     *  30, `first_at_s` follows it). Omitted = the preset's own default, not whatever was stored before --
+     *  resend a kept override on every apply, the same as `item_preset` itself. */
+    charges?: number; amount?: number; spawn_every_s?: number;
     /** A67 (F365): the station's advert strength. Absent = keep what MC holds. A range-only PUT is allowed in any phase. */
     tx_power?: TxPower }): Promise<StationView>;
   /** A56: `GET /api/powerups` -- MC's powerups flag and the item presets. Rejects with status 404 on an MC that predates powerups. */

@@ -188,6 +188,148 @@ def test_get_api_powerups():
     assert r.status_code == 200 and r.json()["assigned"]["item"]["weapon_id"] == "rocket_launcher"
 
 
+# --------------------------------------------------------------------------- per-station overrides (S-powerup-overrides, 2026-09-28)
+def test_overrides_omitted_gives_exactly_todays_item():
+    """The whole point of "optional": a PUT with no charges/amount/spawn_every_s is untouched."""
+    s, _ = _sess()
+    v = _station(s, "u1", 5, "rockets")
+    assert v["assigned"]["item"] == PU.expand("rockets", WeaponCatalog())
+    v2 = _station(s, "u2", 6, "overshield")
+    assert v2["assigned"]["item"] == PU.expand("overshield", WeaponCatalog())
+
+
+def test_charges_override_applies_and_is_range_checked():
+    s, _ = _sess()
+    s.net.simulate_utility_hello("u1")
+    v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3})
+    assert v["assigned"]["item"]["charges"] == 3
+    assert v["assigned"]["item"]["first_at_s"] == 120, "only charges moved"
+    for bad in (0, 5, -1, "3", True, 2.5):
+        _refused(lambda bad=bad: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": bad}),
+                 "CHARGES", "1-4")
+    assert s.stations["u1"]["assigned"]["item"]["charges"] == 3, "a refused PUT changes nothing"
+
+
+def test_amount_override_applies_and_is_range_checked():
+    s, _ = _sess()
+    s.net.simulate_utility_hello("u1")
+    v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "overshield", "amount": 100})
+    assert v["assigned"]["item"]["amount"] == 100
+    for bad in (10, 175, 30, -25, "100", True):
+        _refused(lambda bad=bad: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "overshield", "amount": bad}),
+                 "AMOUNT", "25-150")
+
+
+def test_spawn_every_s_override_applies_and_first_at_s_follows_it():
+    s, _ = _sess()
+    s.net.simulate_utility_hello("u1")
+    s.net.simulate_utility_hello("u2")
+    v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "spawn_every_s": 90})
+    assert v["assigned"]["item"]["spawn_every_s"] == 90 and v["assigned"]["item"]["first_at_s"] == 90
+    v2 = s.set_station("u2", {"kind": "powerup", "team": "any", "id": 6, "item_preset": "overshield", "spawn_every_s": 30})
+    assert v2["assigned"]["item"]["spawn_every_s"] == 30 and v2["assigned"]["item"]["first_at_s"] == 30
+    for bad in (20, 270, 300, 45, 0, -30, "90", True):   # 240 is the ceiling: the StickS3's one-byte field
+        _refused(lambda bad=bad: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "spawn_every_s": bad}),
+                 "RESPAWN", "30-240")
+
+
+def test_a_field_that_does_not_apply_to_the_item_is_refused():
+    """charges on the overshield, amount on a weapon: neighbouring-field refusals, e.g. amount on Rockets."""
+    s, _ = _sess()
+    s.net.simulate_utility_hello("u1")
+    s.net.simulate_utility_hello("u2")
+    _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "amount": 100}),
+             "AMOUNT", "OVERSHIELD")
+    _refused(lambda: s.set_station("u2", {"kind": "powerup", "team": "any", "id": 6, "item_preset": "overshield", "charges": 3}),
+             "CHARGES", "WEAPON")
+    assert s.stations.get("u1", {}).get("assigned") is None, "the refused PUT never assigned the station"
+
+
+def test_an_override_with_no_item_preset_is_refused():
+    s, _ = _sess()
+    s.net.simulate_utility_hello("u1")
+    _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "charges": 3}), "CHARGES", "item_preset")
+    _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "spawn_every_s": 90}), "SPAWN_EVERY_S", "item_preset")
+    assert s.stations.get("u1", {}).get("assigned") is None
+
+
+def test_changing_only_item_preset_does_not_carry_overrides_forward():
+    """Chosen rule (docs/spec/powerups.md "Per-station overrides"): `set_station` is a stateless full replace,
+    exactly like it already is for kind/team/threshold/item_preset itself. An override not resent in THIS
+    request falls back to the NEW preset's own default, never to what the old assignment held -- the console
+    is the one that resends a kept value (Items.tsx `apply()`)."""
+    s, _ = _sess()
+    s.net.simulate_utility_hello("u1")
+    s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3, "spawn_every_s": 90})
+    v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "overshield"})
+    assert v["assigned"]["item"] == PU.expand("overshield", WeaponCatalog()), "back to the overshield's own defaults, nothing carried over"
+
+
+def test_overrides_flow_into_station_config_and_config_stations():
+    s, _ = _sess()
+    _station(s, "u1", 5)
+    v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3, "spawn_every_s": 90})
+    assert v["assigned"]["item"]["charges"] == 3
+    s.push_config(force=True)
+    body = _pushed(s, "station_config", "u1")[-1]
+    assert body["item"]["charges"] == 3 and body["item"]["spawn_every_s"] == 90
+    wire = s._wire_config()
+    row = next(r for r in wire["stations"] if r["id"] == 5)
+    assert row["item"]["charges"] == 3 and row["item"]["spawn_every_s"] == 90
+
+
+def test_overrides_survive_an_mc_restart():
+    """A restart re-reads the assignment dict verbatim (`restore_snapshot`): the override rides the same
+    `assigned.item` the un-overridden preset already did before this change."""
+    import pathlib
+    import tempfile
+    s, clock = _sess()
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s.net.simulate_utility_hello("u1")
+    s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3})
+    s._persist_last = 0.0
+    s._persist()
+    s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock, voice_rng=random.Random(7))
+    s2.powerups_enabled = True
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot()
+    assert s2.stations["u1"]["assigned"]["item"]["charges"] == 3
+
+
+def test_an_override_cannot_bypass_the_hidden_weapon_or_two_weapon_rules():
+    """The hidden-weapon and two-different-weapon rules are enforced on `weapon_id`, which no override field
+    ever names (`apply_overrides` only reads charges/amount/spawn_every_s) -- an unknown `weapon_id` in the
+    body is silently dropped, same as every other unknown key `set_station` does not read."""
+    s, _ = _sess()
+    s.net.simulate_utility_hello("u1")
+    s.net.simulate_utility_hello("u2")
+    v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets",
+                              "charges": 3, "weapon_id": "stinger"})   # stinger is a HIDDEN weapon (weapons.json)
+    assert v["assigned"]["item"]["weapon_id"] == "rocket_launcher", "the preset's own weapon, never the smuggled one"
+    # CONTROL: the two-weapon-station rule still runs on the merged (overridden) item, unaffected by the override
+    v2 = s.set_station("u2", {"kind": "powerup", "team": "any", "id": 6, "item_preset": "rail_gun", "charges": 4})
+    assert v2["assigned"]["item"]["charges"] == 4
+    assert {r["weapon_id"] for r in s._powerup_slots()} == {"rocket_launcher", "rail_gun"}
+
+
+def test_range_only_edit_in_play_keeps_a_stored_override_untouched():
+    """A67 `_set_station_range_only`: a threshold-only PUT that also resends the SAME item (preset + overrides)
+    is allowed even ARMED/LIVE; one that also changes an override is not range-only and is refused in play,
+    exactly like a kind/item_preset change already was."""
+    s, _ = _sess()
+    s.net.simulate_utility_hello("u1")
+    s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    # same item, only the threshold moves: allowed in ARMED
+    v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3, "threshold": -60})
+    assert v["assigned"]["threshold"] == -60 and v["assigned"]["item"]["charges"] == 3
+    # the override itself moves: refused in ARMED, same words as any other item change in play
+    _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 2, "threshold": -60}),
+             "ARMED")
+    assert s.stations["u1"]["assigned"]["item"]["charges"] == 3, "the refused PUT changed nothing"
+
+
 # --------------------------------------------------------------------------- compile
 def _frames(s):
     return {pid: b for pid, b in s.bundles.items()}
@@ -704,3 +846,11 @@ def test_f403_a_station_edit_that_leaves_the_pickups_alone_sends_no_assign():
     assert len(_pushed(s, "assign")) == before, "no brief change, no assign"
     _station(s, "u4", 8, "overshield")                    # an overshield alone moves no weapon slot, but it IS a new line
     assert len(_pushed(s, "assign")) > before
+
+
+def test_a_stored_item_is_checked_against_the_advert_byte_not_the_override_range():
+    """Polish 2026-09-28: ARMORY's override range is 30-240, but a stored item (a restored session) is only
+    refused past what can be sent and scheduled (255), so the narrower range never drops a held item."""
+    ok = {**PU.expand("rockets", WeaponCatalog()), "spawn_every_s": 250, "first_at_s": 250}
+    assert PU.invalid_reason(ok) is None
+    assert "255" in (PU.invalid_reason({**ok, "spawn_every_s": 256}) or "")

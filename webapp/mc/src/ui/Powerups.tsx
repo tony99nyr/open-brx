@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { StationItem, StationView } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
-import { schedule, usePowerups } from './powerupData';
+import { itemDetail, schedule, usePowerups } from './powerupData';
 import { GhostButton, SectionRule, Tag } from './index';
 import { GLYPH, MC_OLDER, colourOf, glyphed, sevOf } from '../alerts';
 
@@ -35,7 +35,9 @@ export function ItemState({ s, item }: { s: StationView; item: StationItem }) {
     : <span style={{ color: T.micro }}>{schedule(item)}</span>;
   return (
     <span data-testid="station-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', font: F.chk(600, 12), letterSpacing: '.08em', color: T.dim }}>
-      <Swatch color={item.color} /><span style={{ color: item.color }}>{item.name}</span>{live}
+      <Swatch color={item.color} /><span style={{ color: item.color }}>{item.name}</span>
+      {/* polish 2026-09-28: the armed item's own CHARGES/AMOUNT, so a per-station override shows once it lands */}
+      <span data-testid="station-item-detail" style={{ color: T.micro }}>{itemDetail(item)}</span>{live}
     </span>
   );
 }
