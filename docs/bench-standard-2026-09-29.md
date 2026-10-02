@@ -95,6 +95,13 @@ moves; the mid-poison and under-shield `$LIFE,0,0,0` reads move no pool. Rows: F
 **8. 4.0, the release loop on 0.4.16 (20 min).** Follow *Group 1*, item 8, on the grey and green Pixels (the iOS
 half is in the Mac sheet). Row: the 4.0 step in `bench-2026-09-24.md`.
 
+**8b. NIGHT OPS from MC reaches the phones (5 min).** Use a phone whose player has not tapped the HUD skin switch
+in this MC session (a tap there outranks NIGHT OPS for the rest of the session). In LOBBY, set NIGHT on MC, then
+PUSH. A LOADed lobby that was never pushed only announces the change. Control, before the PUSH: over CDP,
+`engine.game.night` is true and `engine.config.night` is unchanged. **Pass:** after the PUSH, `engine.config.night`
+is true on both phones and the ack names MC's new `config_id`. START: at ARMED the HUD turns to the night skin.
+Then relaunch one phone in LOBBY: it comes back with `engine.config.night` true. Row: bench 2026-10-02's night note.
+
 **9. GAMES 9, TEAMS on the new UI (5 min).** Follow [`bench-plan.md`](bench-plan.md) → *GAMES CHECK*, item 9.
 Control: a 2-team game loads as red and blue. Row: F413's check (closed at the desk; bench-confirm only).
 

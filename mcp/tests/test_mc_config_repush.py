@@ -287,3 +287,54 @@ def test_an_ack_in_flight_across_a_per_player_recompile_is_not_counted():
         raise AssertionError("start() certified a gun that never answered the head it holds")
     except ValueError as e:
         assert old_id in str(e), f"the refusal must name the OLDER head the gun answered: {e}"
+
+
+# ---------------------------------------------------------------------------------------------
+# Bench 2026-10-02: NIGHT OPS set in LOBBY. `PUT /api/config {"night": true}` answered ok and the
+# phones' `engine.config.night` stayed false. The B3 re-push was not at fault: that LOBBY had never
+# been PUSHED (NEXT MATCH LOADs, the players were READY, so the phase moved on; the PUSH at 15:28:33
+# answered `repushed: false`). Before a push, an edit is ANNOUNCED (`assign.game`) and nothing writes
+# a gun; the config, night included, reaches the node with the PUSH. Both legs are pinned here.
+# ---------------------------------------------------------------------------------------------
+def _pushed_config(net, node_id):
+    cfgs = net.pushes("config", node_id=node_id)
+    return cfgs[-1][2]["config"] if cfgs else None
+
+
+def test_a_night_edit_in_a_pushed_lobby_reaches_every_node_in_the_next_config():
+    s, net, clock, ps = _push_lobby(2, "tdm")
+    assert _pushed_config(net, "node0")["night"] is False
+    before = {f"node{i}": len(net.pushes("config", node_id=f"node{i}")) for i in range(2)}
+    res = s.set_config({"night": True})
+    assert res["ok"] and s.lobby_pushed is True
+    for i in range(2):
+        assert len(net.pushes("config", node_id=f"node{i}")) == before[f"node{i}"] + 1, f"node{i} not re-pushed"
+        cfg = _pushed_config(net, f"node{i}")
+        assert cfg["night"] is True, cfg
+        assert cfg["config_id"] == s.config["config_id"]
+    # ...and a phone relaunched after the edit is welcomed with the same night config.
+    net.simulate_disconnect("node0")
+    welcome = net.simulate_hello("node0", f"GUN-A-{demo_armory()[0]['ble']['tail']}")
+    assert welcome and welcome["config"]["night"] is True and welcome["config"]["config_id"] == s.config["config_id"]
+
+
+def test_a_night_edit_in_an_unpushed_lobby_is_announced_then_rides_the_push():
+    """The bench state exactly: a LOADed game, phase LOBBY by the all-ready rule, never pushed."""
+    s, net, clock, ps = mk(2, "tdm")
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.load_game()
+    s.set_phase("lobby", force=True)
+    assert s.phase == "lobby" and s.lobby_pushed is False
+    s.set_config({"night": True})
+    assert net.pushes("config") == [], "an unpushed lobby writes no gun on an edit (LOAD's rule)"
+    for i in range(2):
+        game = net.pushes("assign", node_id=f"node{i}")[-1][2]["game"]
+        assert game["night"] is True, game
+    # A relaunch before the push is welcomed with the announced game and no config.
+    net.simulate_disconnect("node0")
+    welcome = net.simulate_hello("node0", f"GUN-A-{demo_armory()[0]['ble']['tail']}")
+    assert welcome and "config" not in welcome and welcome["game"]["night"] is True
+    s.push_config(force=True)
+    for i in range(2):
+        assert _pushed_config(net, f"node{i}")["night"] is True
