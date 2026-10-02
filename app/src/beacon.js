@@ -95,6 +95,9 @@ export function configGameByte(config) {
  * `hysteresisDb` below it, or when no advert has arrived for `expiryMs`. The threshold is the
  * station's own advertised one when set, else `defaultThreshold`.
  */
+/** How many recent inter-arrival gaps a Presence entry keeps (F438 diagnostics). */
+export const GAP_SAMPLES = 16;
+
 export class Presence {
   constructor({ dwellMs = 2000, hysteresisDb = 6, expiryMs = 4000, alpha = 0.35, defaultThreshold = -62, game = 0 } = {}) {
     this.entries = new Map();          // key role:id → entry
@@ -119,6 +122,8 @@ export class Presence {
     if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, firstAt: now, samples: [rssi], median: rssi }; this.entries.set(key, e); }
     else {
       const fresh = d.seq !== e.seq || d.state !== e.state || d.team !== e.team || d.value !== e.value || d.threshold !== e.threshold || d.taker !== e.taker;
+      // F438: the last GAP_SAMPLES inter-arrival gaps, so a sparse or stalling advertiser shows as numbers (diag, logs).
+      e.gaps = [...(e.gaps || []), now - e.seenAt].slice(-GAP_SAMPLES);
       Object.assign(e, d, { raw: rssi, seenAt: now, rssi: e.rssi + this.alpha * (rssi - e.rssi) });
       // A56: the powerup claim reads the MEDIAN of the last MEDIAN_SAMPLES raw samples, beside the EMA (which the
       // respawn and control paths keep reading, unchanged): a 1 ft range cannot afford one wild sample.
@@ -269,6 +274,29 @@ export const ADVERT_FAIL_BACKOFF_MS = 1000;
  * two starts are at least ADVERT_START_MIN_MS apart (state bits flap at the range edge), and a start waits
  * ADVERT_FAIL_BACKOFF_MS after a failed one. A stop is never held.
  */
+/** F438: why a player phone's advert is (re)starting or stopping, for its log. `prev`/`next` are UUIDs or null;
+ *  `ctx` names why `next` is null (`phase`, `stations`, `num`, `tid`). PURE. */
+export function advertChangeReason(prev, next, ctx = {}) {
+  if (!next) {
+    if (ctx.phase === 'idle') return 'stop: phase idle';
+    if (ctx.stations === false) return 'stop: no stations in this game';
+    if (ctx.num == null && 'num' in ctx) return 'stop: no player number';
+    if (ctx.tid == null && 'tid' in ctx) return 'stop: no team';
+    return 'stop';
+  }
+  const a = prev ? decodeUuid(prev) : null, b = decodeUuid(next);
+  if (!a || !b) return 'first start';
+  const alive = st => (st & PLAYER_STATE.alive ? 'alive' : 'down');
+  const parts = [];
+  if (a.team !== b.team) parts.push(`team ${a.team} -> ${b.team}`);
+  if ((a.state & PLAYER_STATE.alive) !== (b.state & PLAYER_STATE.alive)) parts.push(`state ${alive(a.state)} -> ${alive(b.state)}`);
+  else if (a.state !== b.state) parts.push(`state bits ${a.state} -> ${b.state}`);
+  if (a.value !== b.value) parts.push(`value ${a.value} -> ${b.value}`);
+  if (a.game !== b.game) parts.push(`game ${a.game} -> ${b.game}`);
+  if (a.id !== b.id) parts.push(`id ${a.id} -> ${b.id}`);
+  return parts.join(', ') || 'restart (same advert)';
+}
+
 export class AdvertGate {
   constructor({ minValueMs = ADVERT_VALUE_MIN_MS, minStartMs = ADVERT_START_MIN_MS, failBackoffMs = ADVERT_FAIL_BACKOFF_MS } = {}) {
     this.minValueMs = minValueMs; this.minStartMs = minStartMs; this.failBackoffMs = failBackoffMs;

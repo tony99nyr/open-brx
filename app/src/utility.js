@@ -131,6 +131,8 @@ const link = new BrxLink({ log });
 // game (v1 manual stations stay at 0 = any), which is exactly when two games share a field.
 const presence = new Presence({ defaultThreshold: thr(), dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
 const wasAlive = new Map();          // player id → { alive, died } for THIS game, to count revives that happened here (beacon.js countRevives)
+const _quietLogged = new Set();   // F438: players already logged as quiet in the current silence
+const QUIET_MS = 1500;
 const _playerWas = new Map();   // player id -> present, for the edge lines above (playerEdges)
 let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false, _twin = 0;
 const scanGuard = new ScanGuard(); let _scanModeIdx = 0, _scanModeSince = 0;   // a crowded field drops the player watch to balanced (scanwatch.js)
@@ -443,6 +445,13 @@ function tick() {
   presence.tick(now);
   // Bench 2026-10-02: say when a player is HEARD on this station and when they leave (edges only), so a field log
   // can tell "never heard him" from "heard him and did not count him".
+  // F438: a PRESENT player not heard for QUIET_MS is logged once per silence, with its last few gaps: a sparse
+  // advertiser that still clears the dwell would otherwise stall a capture with nothing in the log.
+  for (const p of presence.players()) {
+    const quiet = p.present && now - p.seenAt >= QUIET_MS;
+    if (quiet && !_quietLogged.has(p.id)) { _quietLogged.add(p.id); log(`player ${p.id} (${TEAM_NAMES[p.team] ?? `team ${p.team}`}) quiet ${((now - p.seenAt) / 1000).toFixed(1)} s while present · recent gaps ${(p.gaps || []).slice(-6).join(' ')} ms`, 'li'); }
+    else if (!quiet) _quietLogged.delete(p.id);
+  }
   for (const e of playerEdges(presence, _playerWas)) {
     log(`player ${e.id} (${TEAM_NAMES[e.team] ?? `team ${e.team}`}) ${e.present ? 'PRESENT' : 'left'} at ${Math.round(Number.isFinite(e.median) ? e.median : e.rssi)} dBm`, e.present ? 'lk' : 'li');
   }
@@ -1103,7 +1112,10 @@ function utilityDiag() {
     point: settings.kind === 'control' ? { owner: point.owner, capturing: point.capturing, progress: Math.round(point.progress), contested: point.contested,
       counts: { ...(point.counts || {}) }, holdMs: { ...point.holdMs } } : null,
     players: presence.players().map(p => ({ id: p.id, team: p.team, alive: !!(p.state & PLAYER_STATE.alive), present: !!p.present,
-      rssi: Math.round(p.rssi), median: Number.isFinite(p.median) ? Math.round(p.median) : null, ageMs: now - p.seenAt, game: p.game })),
+      rssi: Math.round(p.rssi), median: Number.isFinite(p.median) ? Math.round(p.median) : null, ageMs: now - p.seenAt, game: p.game,
+      // F438: how often this phone is heard: the recent gaps between its adverts, the worst, and the median
+      gaps: [...(p.gaps || [])], gapMax: p.gaps?.length ? Math.max(...p.gaps) : null,
+      gapMedian: p.gaps?.length ? [...p.gaps].sort((a, b) => a - b)[Math.floor(p.gaps.length / 2)] : null })),
     log: logLines.slice(-40),
   };
 }

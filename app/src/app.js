@@ -14,7 +14,7 @@ import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
 import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
 import { makeWsFactory } from './transport/netsocket.js';
-import { Presence, encodeUuid, stationView, AdvertGate, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
+import { Presence, encodeUuid, stationView, AdvertGate, advertChangeReason, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
 import { playerClaimAdvert } from './powerup.js';                     // A56: the powerup claim bits on the player advert
 import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
@@ -234,12 +234,16 @@ async function syncPlayerAdvert() {
   const action = playerAdvertGate.due(want, Date.now());
   if (!action) return;
   playerAdvertBusy = true;
+  // F438: every start and stop says WHY, so a phone a station hears only sometimes can be checked for churn.
+  const prevAdvert = playerAdvertGate.last && playerAdvertGate.last !== '?' ? playerAdvertGate.last : null;
+  const why = advertChangeReason(prevAdvert, action === 'start' ? want : null,
+    { phase: st.phase, stations: stationsInPlay(engine.config), num, tid });
   try {
     if (action === 'start') {
       await plugins.beacon.start({ uuid: want, txPower: 'medium', mode: claim.mode });
       playerAdvertGate.started(want, Date.now());
-      log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}${claim.bits ? ` · ${st.powerupClaim.ready ? 'CLAIM READY' : 'claiming'} station ${claim.value}` : ''}`, 'li');
-    } else { await plugins.beacon.stop(); playerAdvertGate.stopped(); }
+      log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}${claim.bits ? ` · ${st.powerupClaim.ready ? 'CLAIM READY' : 'claiming'} station ${claim.value}` : ''} · ${claim.mode || 'balanced'} · ${why}`, 'li');
+    } else { await plugins.beacon.stop(); playerAdvertGate.stopped(); log(`player advert stopped (${why})`, 'li'); }
   } catch (e) {
     // ⚠ The gate records nothing for a failed call, so retried after ADVERT_FAIL_BACKOFF_MS. The one that matters is the start that
     // clears the alive bit on death: a dead player whose advert still says alive=1 goes on converting a control point

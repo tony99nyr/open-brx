@@ -125,3 +125,32 @@ test('playerEdges: one line per presence edge, team 0 included, nothing while st
   pres.tick(1500 + pres.expiryMs + 1);
   assert.deepEqual(playerEdges(pres, mem).map(e => [e.id, e.present]), [[1, false]], 'leaving is an edge');
 });
+
+// Bench 2026-10-02 (F438 A/B): the hill heard ONE phone only intermittently, whatever its team. Presence now keeps
+// each entry's recent inter-arrival gaps, so a sparse advertiser shows up as numbers, not a guess.
+test('Presence keeps each entry\'s recent advert gaps (ms between arrivals), bounded', () => {
+  const pres = new Presence({ dwellMs: 0, game: 7 });
+  const adv = encodeUuid({ role: 'player', id: 1, team: 0, state: PLAYER_STATE.alive, game: 7 });
+  let t = 1000;
+  for (const gap of [0, 200, 250, 1800, 220]) { t += gap; pres.observe([adv], -60, t); }
+  const e = pres.players()[0];
+  assert.deepEqual(e.gaps, [200, 250, 1800, 220], 'one gap per arrival after the first');
+  assert.equal(Math.max(...e.gaps), 1800);
+  for (let i = 0; i < 40; i++) { t += 100; pres.observe([adv], -60, t); }
+  assert.ok(pres.players()[0].gaps.length <= 16, 'bounded');
+});
+
+// F438: the player phone logs every advertiser start and stop with WHY, so a phone the hill hears only sometimes
+// can be checked for churn (restarts) or a stop it never meant.
+import { advertChangeReason } from '../src/beacon.js';
+test('advertChangeReason names what changed between two player adverts, and why one stops', () => {
+  const u = o => encodeUuid({ role: 'player', id: 1, team: 0, state: PLAYER_STATE.alive, game: 7, ...o });
+  assert.equal(advertChangeReason(null, u()), 'first start');
+  assert.equal(advertChangeReason(u(), u({ state: 0 })), 'state alive -> down');
+  assert.equal(advertChangeReason(u({ state: 0 }), u()), 'state down -> alive');
+  assert.equal(advertChangeReason(u(), u({ value: 4 })), 'value 0 -> 4');
+  assert.equal(advertChangeReason(u(), u({ team: 1 })), 'team 0 -> 1');
+  assert.equal(advertChangeReason(u(), null, { phase: 'idle' }), 'stop: phase idle');
+  assert.equal(advertChangeReason(u(), null, { phase: 'live', stations: false }), 'stop: no stations in this game');
+  assert.equal(advertChangeReason(u(), null, { phase: 'live', stations: true, num: null }), 'stop: no player number');
+});
