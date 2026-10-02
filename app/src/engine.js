@@ -5808,9 +5808,9 @@ export class Engine {
     // F436 (bench 2026-10-02, 0/6 vs 4/4 + 9/9): after `$SPAWN` the gun ignores a `$WEAP`/`$AMMO` slot change until the
     // first trigger pull of the life, while its `$ALCD` echo still reports the new slot. No cure is bench-proven yet, so an
     // equip before that pull is logged as unconfirmed; the slot-0-shot backstop (`lostPuEquip`) is the working cure.
-    if (slot >= 2 && this._puHeld && this._puHeld.slot === slot && this._pulledLife !== this._lifeSeq) {
-      this._puHeld.unconfirmed = true;
-      this.log(`powerup: ${this._puHeld.name} equipped before the first trigger pull of this life: unconfirmed (F436); the first shot repairs it`, 'li');
+    if (slot >= 2 && this._puHeld && this._puHeld.slot === slot) {
+      this._puHeld.unconfirmed = this._pulledLife !== this._lifeSeq;
+      if (this._puHeld.unconfirmed) this.log(`powerup: ${this._puHeld.name} equipped before the first trigger pull of this life: unconfirmed (F436); a slot-0 shot triggers the re-send`, 'li');
     }
     this._recoilArm('powerup equip');   // S42: as a confirmed ALT swap, the slot's own profile
     return true;
