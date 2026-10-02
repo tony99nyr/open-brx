@@ -39,7 +39,7 @@ to come from brx1); none can be checked on today's APK. Each row holds its own b
    the scream) (brx5).** For F439, re-run 11.8 in full, the Shields half included.
 5. **F441 (MOVE opens a picker), F442 (the ACTIVE pip animation), F443 (MC LINK needs the locked hold) (brx3).**
 6. **F445, a USP reload just after an ALT swap.** Capture the wire.
-7. **Open questions:** a powerup take at the cap of 4 used up the item for nothing; MC's `PUT` of `night=true`
+7. **Open questions:** a powerup take at the cap of 4 used up the item for nothing (now F447); MC's `PUT` of `night=true`
    in LOBBY did not reach the phones; after a match the hill assignment was gone.
 
 F444 (the capture-begins alert) waits for Tony's storyboard pick, and F446 (the poison tick) for his ears.
