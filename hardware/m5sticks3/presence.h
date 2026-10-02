@@ -43,7 +43,9 @@ constexpr bool REVIVE_FEEDBACK_ENABLED = BRX_REVIVE_FEEDBACK != 0;
 
 // ---- the phone station's numbers ------------------------------------------------------------
 constexpr uint32_t PRESENCE_DWELL_MS = 800;          // utility.js DEFAULTS.dwell (arm's length, with -74)
-constexpr int PRESENCE_HYSTERESIS_DB = 6;            // beacon.js Presence hysteresisDb
+// F440 (Tony, 2026-10-02): 3 dB, not 6, so the circle is nearly the same size in and out; the exit grace absorbs
+// the dips. beacon.js EXIT_BAND_DB.
+constexpr int PRESENCE_HYSTERESIS_DB = 3;
 constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expiryMs
 // F440 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
 // leaves only after the EMA has stayed below the exit level this long, so a dip is not a step out. beacon.js EXIT_GRACE_MS.

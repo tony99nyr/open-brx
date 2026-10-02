@@ -304,7 +304,9 @@ matter if you are closer within that circle." So:
   into the system: uniform advertising (the same tx power and mode on every phone, re-asserted after a scan reopen),
   the debounced exit and the sighting window. The threshold is set ONCE per station type from the bench ladder
   (in at 7.5 m, out by about 9-10 m), never per phone or per player.
-- The platform default stays -75 dBm with 6 dB of hysteresis until that ladder measures the 7.5 m number.
+- The exit band is **3 dB** (`EXIT_BAND_DB`, Tony 2026-10-02): the circle is nearly the same size in and out, and the
+  2.5 s grace absorbs the dips. A sparse phone's edge noise is kept as is until the ladder measures real fading.
+- The platform default threshold stays -75 dBm until that ladder measures the 7.5 m number.
 
 ### 5d.1 The rule: capture rate is the NET DIFFERENCE of living present players
 

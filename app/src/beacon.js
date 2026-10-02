@@ -86,9 +86,15 @@ export function configGameByte(config) {
 /** F440: how long a PRESENT entry may sit below the exit level before it leaves (a dip or a sparse advertiser's
  *  silence is not a step out of the circle; a player who walks away still leaves within about this). */
 export const EXIT_GRACE_MS = 2500;
+/** F440 (Tony, 2026-10-02): the exit band, how far under the threshold a PRESENT player may read before leaving.
+ *  3 dB, not 6: the circle is nearly the same size in and out ("a minimum threshold and you are in the circle"),
+ *  and EXIT_GRACE_MS absorbs the dips. Was 6 dB, which kept a player already in out to about twice the radius. */
+export const EXIT_BAND_DB = 3;
 /** F440: the window a credible sighting takes its median over (beacon.js observe). */
 export const SIGHT_WINDOW_MS = 2000;
-/** F440: a credible sighting keeps an entry "in the circle" this long. */
+/** F440: a credible sighting keeps an entry "in the circle" this long. Tony, 2026-10-02: the sparse-phone edge noise
+ *  (one sample in a sparse phone's window) is KEPT as is, with no two-advert rule; bench 10c's ladder decides with real
+ *  fading. */
 export const SIGHT_MS = 4000;   // = the silence expiry: heard inside the band in the last 4 s
 /** How many recent inter-arrival gaps a Presence entry keeps (F440 diagnostics). */
 export const GAP_SAMPLES = 16;
@@ -110,7 +116,7 @@ export class Presence {
   // sparse advertiser's dips and silences inside the circle never drop it; `sightMs` keeps a credible sighting (the
   // median of the last SIGHT_WINDOW_MS of adverts at or above the threshold) in the circle that long, so an arriving
   // opponent contests at once, before the dwell.
-  constructor({ dwellMs = 2000, hysteresisDb = 6, expiryMs = 4000, alpha = 0.35, defaultThreshold = -62, game = 0, exitGraceMs = EXIT_GRACE_MS, sightMs = SIGHT_MS } = {}) {
+  constructor({ dwellMs = 2000, hysteresisDb = EXIT_BAND_DB, expiryMs = 4000, alpha = 0.35, defaultThreshold = -62, game = 0, exitGraceMs = EXIT_GRACE_MS, sightMs = SIGHT_MS } = {}) {
     this.entries = new Map();          // key role:id → entry
     Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs });
   }

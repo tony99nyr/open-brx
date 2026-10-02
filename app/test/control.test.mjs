@@ -500,7 +500,7 @@ test('tid 0 end to end: a RED advert is heard, a lone red captures, red beside b
 });
 
 // F440 (bench 2026-10-02, Tony: "a newer phone with stronger bluetooth shouldn't get an advantage"; "it should be a
-// minimum threshold and you are in the circle"). The real station parameters: threshold -75, 6 dB hysteresis, the
+// minimum threshold and you are in the circle"). The real station parameters: threshold -75, a 3 dB exit band (F440), the
 // utility page's 0.8 s dwell. A SPARSE advertiser (adverts every 1.5-3 s) whose RSSI swings +/-10 dB but stays inside
 // the circle must capture within 15 s; an arriving opponent must contest within its own advert interval; a player
 // OUTSIDE the threshold never counts however often it advertises; and a player who walks out stops counting.
@@ -524,7 +524,7 @@ function sim({ seed = 7, players, untilMs = 30000, stepMs = 250, thr = -75, pres
   }
   return trace;
 }
-const sparse = (id, team, o = {}) => ({ id, team, mean: -70, swing: 10, gapMin: 1500, gapMax: 3000, ...o });   // -80..-60: dips past the threshold, inside the band
+const sparse = (id, team, o = {}) => ({ id, team, mean: -70, swing: 10, gapMin: 1500, gapMax: 3000, ...o });   // -80..-60: dips past the threshold and the exit level
 const dense = (id, team, o = {}) => ({ id, team, mean: -66, swing: 4, gapMin: 200, gapMax: 300, ...o });
 
 test('F440: a sparse, noisy advertiser alone never stalls: it captures 10 s after it first counts', () => {
@@ -573,7 +573,7 @@ test('F440: a player who walks out of the circle stops counting promptly (fallin
   const walk = t => (t < 20000 ? -66 : -66 - 3 * ((t - 20000) / 1000));
   const tr = sim({ seed: 3, untilMs: 40000, players: [dense(2, 1), dense(1, 0, { from: 14000, mean: walk })] });
   assert.ok(tr.some(s => s.t >= 15000 && s.t < 20000 && s.contested), 'control: red contests while in the circle');
-  // red crosses the exit level (-81) at about 25 s; the grace and the sighting window keep it at most a few seconds more
+  // red crosses the exit level (-78) at about 24 s; the grace and the sighting window keep it at most a few seconds more
   const clear = tr.find(s => s.t >= 20000 && !s.contested)?.t;
   assert.ok(clear != null && clear <= 31000, `uncontested at ${clear} ms (want <= 31000: about 6 s past the exit level)`);
 });

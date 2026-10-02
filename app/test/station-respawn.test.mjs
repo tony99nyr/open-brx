@@ -82,12 +82,12 @@ test('the respawn threshold default is per platform: phone -70, StickS3 -57 (Ton
 
 // F383 (Tony, 2026-09-27): the hill (control station) default is its own -75 dBm on every path, hysteresis 6,
 // until the outdoor walk measures a real one. It is NOT the generic -74 the other kinds share.
-test('a control station defaults to -75 dBm, and Presence hysteresis defaults to 6 dB (F383, Tony 2026-09-27)', () => {
+test('a control station defaults to -75 dBm (F383, Tony 2026-09-27), and the exit band is 3 dB (F440, Tony 2026-10-02)', () => {
   assert.deepEqual({ ...CONTROL_RSSI_DBM }, { phone: -75, sticks3: -75 });
   assert.ok(Object.isFrozen(CONTROL_RSSI_DBM));
   assert.equal(phoneStationThreshold('control'), -75);
   assert.equal(stationThreshold({ threshold: 0, kind: 'control' }), -75);
-  assert.equal(new Presence().hysteresisDb, 6);
+  assert.equal(new Presence().hysteresisDb, 3);
 });
 
 test('review M3: MC\'s threshold 0 means the platform default, never a -30 dBm bubble', () => {
