@@ -6191,18 +6191,23 @@ test('F123: a chain that fed shells and then FIRED books what the RELOAD gained,
                    { ok: true, gained: 2, from: 1, to: 3, why: 'fired' });
 });
 
-test('F123: an ALT swap during a reload ENDS the takeover — SWITCHING is never hidden behind a stale RELOADING', () => {
-  // `reloadUp` outranks `switchUp` in the HUD, so a takeover left running to its deadline swallows the
-  // SWITCHING screen; and the swapped-away slot can never send the $ALCD that would have reconciled it.
+test('ALT mid-reload is ignored by the gun (bench 2026-10-02): no assumed swap, the reload still completes on its slot', () => {
+  // Captured wire: the lever at mag 8, ALT 1.16 s later, then `$ALCD,12,100,1,88` on slot 1 -- the reload took and the
+  // trigger never moved. (F123's old reading, that ALT ends the reload and draws the other weapon, was an assumption.)
   const h = shellHarness();
   h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty
   h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
   assert.equal(h.eng.state().reloading, true);
-  h.adv(300); h.frame('$BUT,1,1,*');            // ALT with two weapons loaded = a swap
-  const st = h.eng.state();
-  assert.equal(st.reloading, false, 'the reload is over — the gun is drawing another weapon');
-  assert.equal(st.switching, true, 'and SWITCHING is what the player sees');
-  assert.equal(st.reloadOutcome.why, 'swapped');
+  h.adv(300); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // ALT with two weapons loaded, mid-reload
+  let st = h.eng.state();
+  assert.equal(st.switching, false, 'no SWITCHING takeover: the gun ignores ALT while reloading');
+  assert.equal(st.reloading, true, 'the reload is still running');
+  h.adv(h.eng.switchWindowMs() + 200);          // past the window that used to book an assumed swap
+  assert.equal(h.eng.activeSlot, 0, 'no assumed swap to the other slot');
+  h.frame('$ALCD,32,100,0,170,0,*');            // the reload lands on the same slot: a full magazine (the capture: 8 -> 12)
+  st = h.eng.state();
+  assert.equal(st.reloading, false);
+  assert.notEqual(st.reloadOutcome && st.reloadOutcome.why, 'swapped', 'never "reload did NOT take (swapped)"');
 });
 
 test('F123: a BLE drop clears the held-button map — a press whose release never arrived cannot read as held forever', () => {
