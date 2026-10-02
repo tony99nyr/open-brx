@@ -1474,7 +1474,7 @@ export class Engine {
       this._writeLost = life;
       // F416: ask the gun before a repeat. A pool answer alone cannot prove the weapon state.
       this.log(`*** write ${why} failed -- asking the gun before any re-send (F416) ***`, 'le');
-      const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: at, shotsAt: this.shots, pulled: false };
+      const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: at, shotsAt: this.shots };
       // Review 2026-09-26: `resentAt` clears. A lost re-send is off the radio, so its in-flight guard must not swallow
       // the probe's `$HP,0` answer (`_spawnIntercept`). `resends` still counts it, so the SPAWN_RESENDS bound holds.
       Object.assign(c, { writeAt: at, asks: 0, lost: false, heardAt: 0, queryAt: 0, resentAt: 0 });
@@ -1542,35 +1542,39 @@ export class Engine {
     if (!c || c.done || c.life !== this._lifeSeq || !(this.now() > c.writeAt)) return;
     c.heardAt = this.now(); c.lost = false;
     if (hp <= 0) return;
-    if (!this._spawnCheckLive(c)) { c.done = true; c.lost = true; this._changed(); return; }
+    if (!this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }   // out of time: a positive pool closes it, as before
     if (!lcd || !c.queryAt) { this._spawnQuery(c); return; }
     if (!this._probeShapeOk(lcd) || ![lcd[4], lcd[5]].every(v => v !== '' && Number.isFinite(+v))) return;
     c.queryAt = 0;
-    const ammo = c.frames.find(f => f.startsWith('$AMMO,0,'));
-    const expected = ammo ? +ammo.split(',')[2] : null;
-    const spent = Math.max(0, this.shots - c.shotsAt);
-    if (+lcd[4] === 0 && expected != null && +lcd[5] === expected - spent) {
+    // The gun must agree with the node's own view: the slot on the trigger and that slot's live count. A healthy gun
+    // that fired, reloaded or swapped with ALT since the write still matches; the bench P0 (an unspawned gun on the
+    // head's last `$WEAP`, slot 2 at 2/1, while the node held slot 0) does not.
+    const slot = this.activeSlot, live = this._liveAmmo()[slot], expected = live ? live[0] : null;
+    if (+lcd[4] === slot && expected != null && +lcd[5] === expected) {
       this._spawnCheck = null;
       if (this._writeLost === c.life) this._writeLost = null;
       this.log(`F416: the gun's weapon state matches ${c.why}; landed, no re-send`, 'lk');
       this._changed(); return;
     }
-    this._spawnRetry(c, `slot ${lcd[4]}, magazine ${lcd[5]} (expected slot 0, magazine ${expected - spent})`);
+    this._spawnRetry(c, `slot ${lcd[4]}, magazine ${lcd[5]} (expected slot ${slot}, magazine ${expected})`);
   }
   /** F416: repeat the burst only before any observed play; otherwise restore its weapon controls. */
   _spawnRetry(c, evidence) {
     if (c.resends >= SPAWN_RESENDS) {
-      c.done = true; c.lost = true;
+      c.done = true; c.lost = true; c.queryAt = 0;
       this.log(`*** F416: ${c.resends} re-sends and ${evidence}; HOST: FORCE RESPAWN ***`, 'le');
-      this._changed(); return;
+      this._changed(); return false;
     }
     c.resends++; c.resentAt = this.now();
-    const whole = !c.pulled && !(this.lastHitAt > c.firstAt) && this.shots === c.shotsAt;
+    // Only a round or a hit is play. A pull is NOT: a dead trigger on an unspawned gun is exactly what makes players pull.
+    const whole = !(this.lastHitAt > c.firstAt) && this.shots === c.shotsAt;
     this.log(`F416: ${evidence}; re-sending ${whole ? 'whole burst' : 'weapon controls'} (${c.resends}/${SPAWN_RESENDS})`, 'le');
     if (whole) { this._writeLife(c.frames, `${c.why} (re-sent ${c.resends})`, c.life, c); return; }
     const rp = this._respawnProfile();
     const map = this._triggerPending ? c.frames.find(f => f.startsWith('$BMAP,0,')) : (rp && rp.trigger_live) || c.frames.find(f => f.startsWith('$BMAP,0,'));
-    const repair = c.frames.filter(f => f.startsWith('$TID,') || f.startsWith('$AMMO,'));
+    const live = this._liveAmmo();   // live counts, never the spawn rows: a repair after play must not refill the magazine
+    const repair = [...c.frames.filter(f => f.startsWith('$TID,')),
+      ...Object.entries(live).map(([s, [mag, res]]) => { this._acctWrote(+s, mag, res); return `$AMMO,${s},${mag},${res},1,*`; })];
     if (map) repair.push(map);
     Promise.resolve(this._quietWrite(repair, `${c.why} weapon repair ${c.resends}`)).then(() => {
       if (this._spawnCheck !== c) return;
@@ -1594,8 +1598,7 @@ export class Engine {
     const now = this.now();
     if (!(c.heardAt > c.writeAt)) return true;                                  // no answer to the check yet: no evidence either way
     if (c.resentAt && now - c.resentAt < SPAWN_RESEND_WAIT_MS) return true;     // the re-send is in flight
-    this._spawnRetry(c, 'the gun reads a 0 pool');
-    return true;
+    return this._spawnRetry(c, 'the gun reads a 0 pool') !== false;   // a spent budget books the 0 pool now
   }
   /** The repair after a lost spawn/revive write (pl4): the take that ends spawn protection, and the hit table. It runs at
    *  once on the loss and again after a re-send lands (F416), so a protection a burst applied is always ended. */
@@ -5263,6 +5266,7 @@ export class Engine {
     }
     const life = p.life;
     this._writeLost = null;   // the live reply is the evidence that retires a lost spawn/revive write
+    this._spawnCheck = null;  // ...and the F416 check with it, so the HUD's FORCE RESPAWN warning and MC agree
     const tid = this._liveTid();
     const ammo = Object.entries(this._liveAmmo()).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`);
     const bmap = ((this.frames && this.frames.revive) || []).find(f => typeof f === 'string' && f.startsWith('$BMAP,0,0')) || '$BMAP,0,0,,,,,*';
@@ -5530,7 +5534,7 @@ export class Engine {
         // read 0 in every observed frame -- so writing it can only ZERO a live shield, never set one,
         // which silently recreates the Q12 bug this file just fixed. Re-add only once t3 is
         // bench-confirmed as the shield.
-        if (t[5] !== undefined && !(this._spawnCheck && this._spawnCheck.queryAt)) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);   // a spawn query's slot may differ from activeSlot
+        if (t[5] !== undefined && !(this._spawnCheck && this._spawnCheck.queryAt && !this._spawnCheck.done)) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);   // a spawn query's slot may differ from activeSlot
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         const wasResync = !!this.resync;
         this._spawnCheckSeen(this.hp, this.armor, 0, t);   // F416: only a queried `$LCD` proves the weapon state
@@ -6712,7 +6716,7 @@ export class Engine {
       // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
       if (id === BTN_ALT) this._altPressed();
       else if (id === BTN_RELOAD) this._reloadPulled();
-      else if (id === BTN_TRIGGER) { if (this._spawnCheck) this._spawnCheck.pulled = true; this._pull = { at: this.now(), slot: this.activeSlot }; this._triggerPulled(); this._heatLockPress(); this._awaitShot(); }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
+      else if (id === BTN_TRIGGER) { this._pull = { at: this.now(), slot: this.activeSlot }; this._triggerPulled(); this._heatLockPress(); this._awaitShot(); }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
       else if (id === BTN_SELECT) this._puSelectPressed();   // A56: a PRESS only; `$PHONE` also sends `$BUT,3,0`, a release, which never acts
       return;                                                // `feedFrame` fires the one `_changed()` for this frame
     }

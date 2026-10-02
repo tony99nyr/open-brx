@@ -230,20 +230,41 @@ test('F416 weapon: matching slot 0 and magazine prove a failed write landed', as
   assert.ok(h.logs.some(l => /weapon state.*landed/.test(l)));
 });
 
-test('F416 weapon: a trigger pull before a mismatch repairs only team, ammo and trigger', async () => {
+test('F416 weapon: a pull with no shot (a dead trigger) still gets the whole burst, $SPAWN included', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { hp: 45, armor: 70, shield: 105, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  await h.adv(4000 + 100);
+  h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame('$BUT,0,0,*');   // the player pulls; an unspawned gun fires nothing
+  await h.adv(3000);
+  assert.equal(h.spawns(), 2, `a pull is not play: the burst goes again: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+});
+
+test('F416 weapon: a hit before a mismatch repairs only team, live ammo and trigger, never $SPAWN', async () => {
   let failed = false;
   const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 2, mag: 2, reserve: 1 }), true) }).live();
   await h.adv(4000 + 100);
-  h.eng.feedFrame('$BUT,0,1,*');
+  h.eng.feedFrame('$HIR,4,0,19,2,5,0,3,*'); h.eng.feedFrame('$HP,40,70,0,*');   // play: a hit since the write
   await h.adv(3000);
-  assert.equal(h.spawns(), 1, 'a pull forbids a second $SPAWN');
+  assert.equal(h.spawns(), 1, 'play forbids a second $SPAWN (a refill)');
   const spawnedAt = h.writes.find(w => w.f.startsWith('$SPAWN')).t;
   const queryAt = h.writes.findIndex(w => w.f === '$QUERY,*' && w.t > spawnedAt);
   const repair = h.writes.slice(queryAt + 1).map(w => w.f);
   assert.ok(repair.some(f => f.startsWith('$TID,')));
-  assert.ok(repair.some(f => f.startsWith('$AMMO,0,')));
+  assert.ok(repair.some(f => f.startsWith('$AMMO,0,')), `the live slot-0 count (_liveAmmo): ${JSON.stringify(repair)}`);
   assert.ok(repair.some(f => f.startsWith('$BMAP,0,')));
-  assert.ok(!repair.some(f => f.startsWith('$SPAWN') || f.startsWith('$PSET')), JSON.stringify({ repair, logs: h.logs.filter(l => l.includes('F416')) }));
+  assert.ok(!repair.some(f => f.startsWith('$SPAWN') || f.startsWith('$PSET')), JSON.stringify(repair));
+});
+
+test('F416 weapon review: a landed spawn, then ALT and three rounds on slot 1, still matches (no repair, no refill)', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 1, mag: 3, reserve: 24 }), true) }).live();
+  await h.adv(4000 + 50);
+  h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');
+  for (const m of [5, 4, 3]) { h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame(`$ALCD,${m},100,1,24,0,*`); h.eng.feedFrame('$BUT,0,0,*'); }
+  await h.adv(3000);
+  assert.equal(h.eng.activeSlot, 1);
+  assert.ok(h.logs.some(l => /weapon state matches/.test(l)), `landed: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+  assert.equal(h.eng.state().spawnLost, false);
 });
 
 test('F416 weapon: exhausted re-sends show HOST: FORCE RESPAWN and stop', async () => {
@@ -262,4 +283,11 @@ test('F416 weapon review: once the re-sends are spent, a hit to 0 is still a dea
   assert.equal(h.eng.state().spawnLost, true, 'setup: the budget is spent');
   h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*');
   assert.equal(h.eng.state().alive, false, 'the hit to 0 books a death; the respawn is the cure');
+});
+
+test('F416 weapon review: the zero-pool answer that spends the budget books the death at once', async () => {
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) }).live();   // every burst fails; the gun stays at 0
+  await h.adv(4000 + 6000);
+  const st = h.eng.state();
+  assert.equal(st.alive, false, `the budget is spent and the 0 pool is booked; the respawn is the cure: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
 });
