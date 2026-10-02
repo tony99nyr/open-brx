@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
 import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_ID, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, splitBlocker , cleanServerLine } from '../api/derive';
 import type { Player } from '../api/types';
@@ -599,6 +599,36 @@ export function Lobby() {
   );
 }
 
+/** A roster row's MOVE: neutral until pressed, then the OTHER teams inline, each in its own colour. A pick
+ *  moves the player at once (no warning, the same `patchPlayer`); Escape or MOVE again closes it. Inline,
+ *  not floating, so it never covers the row below on a tablet. */
+function MoveMenu({ name, others, onMove }: { name: string; others: string[]; onMove: (team_id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const openRef = useRef<HTMLButtonElement>(null);
+  const firstRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (open) firstRef.current?.focus(); }, [open]);
+  const close = () => { setOpen(false); openRef.current?.focus(); };
+  return (
+    <span role="group" aria-label={`move ${name} to`} style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}
+      onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); close(); } }}>
+      <button ref={openRef} type="button" className="hit44" data-move-open aria-expanded={open} onClick={() => setOpen(o => !o)}
+        title={`Move ${name} to another team`}
+        style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 10px', color: T.dim,
+          border: `1px solid ${open ? T.line2 : T.line}`, minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
+        MOVE {open ? '▴' : '▾'}
+      </button>
+      {open && others.map((t, i) => (
+        <button key={t} ref={i === 0 ? firstRef : undefined} type="button" className="hit44" data-move-to={t}
+          onClick={() => { setOpen(false); onMove(t); }} title={`Move ${name} to ${t.toUpperCase()}`}
+          style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 12px', color: teamColor(t),
+            border: `1px solid ${teamColor(t)}`, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>
+          {t.toUpperCase()}
+        </button>
+      ))}
+    </span>
+  );
+}
+
 function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; readOnly?: boolean; updating?: boolean; onDragStart: () => void; onMove: (team_id: string) => void }) {
   // H5: no move chips, no drag and no STAND DOWN while the match is in play (the server refuses them)
   const others = readOnly ? [] : teamIds.filter(t => t !== p.team_id);
@@ -625,21 +655,9 @@ function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart
     {noPhone && <OutlineTag color={colourOf('lobby-no-phone-chip')} border={T.line}>NO PHONE</OutlineTag>}
     {reach && <OutlineTag color={reach === 'backhaul' ? T.acc : colourOf('lobby-reach-lan-chip')} border={reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(reach)}>{reachLabel(reach)}</OutlineTag>}
   </>;
-  // tap-to-move (tablets have no HTML5 drag): one chip per other team
-  const moveChips = (
-    <span role="group" style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }} aria-label={`move ${p.display} to`}>
-      {others.map(t => (
-        <button key={t} type="button" className="hit44" onClick={() => onMove(t)} title={`Move ${p.display} to ${t.toUpperCase()}`}
-          // F7 follow-up (2026-09-13): 9px was under the console's 11px floor for meaning-bearing
-          // text -- the floor this same file states at :339 -- and these chips NAME the team a tap
-          // moves a player onto. One `moveChips` const feeds both the wide row and the compact 393px
-          // one, so this is the single place it is set; 11px also matches `StandDownChip` beside it.
-          style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 10px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
-          ▸ {t.toUpperCase()}
-        </button>
-      ))}
-    </span>
-  );
+  // tap-to-move (tablets have no HTML5 drag). Bench 2026-10-02 (Tony): one chip per other team put a red
+  // "▸ RED" on a blue player's row ("this is confusing"). One neutral MOVE opens the other teams instead.
+  const moveChips = others.length > 0 && <MoveMenu name={p.display} others={others} onMove={onMove} />;
   if (narrow) {
     return (
       <div className="hov-acc" draggable={!readOnly} onDragStart={readOnly ? undefined : onDragStart} data-no-phone={noPhone ? '1' : undefined} data-compact-row="1"

@@ -107,6 +107,38 @@ step('all-ready', async ({ browser, base }) => {
   await pg.context().close();
 });
 
+// Bench 2026-10-02 (Tony): a BLUE player's row carried a red "▸ RED" chip ("it says red on the blue team
+// guy"). One neutral MOVE now opens the OTHER teams in their own colours; a pick moves him at once.
+step('move-picker', async ({ browser, base }) => {
+  for (const w of [1280, 393]) {
+    const pg = await open(browser, base, '?mock&allgreen=1#lobby', w);
+    await until(() => pg.locator('text=Team Assignment').count().then(n => n > 0), 8000, 'LOBBY');
+    const st = await pg.evaluate(() => window.__MC_MOCK__.getState());
+    const p = st.players.find(x => x.team_id === st.config.teams[0].team_id);
+    const group = pg.locator(`[aria-label="move ${p.display} to"]`).first();
+    const move = group.locator('[data-move-open]');
+    const label = (await move.innerText()).trim();
+    expect(/^MOVE/.test(label) && !/RED|BLUE|YELLOW|PURPLE/.test(label), `${w}px: one neutral MOVE, naming no team (saw "${label}")`);
+    expect(await group.locator('[data-move-to]').count() === 0, `${w}px: no team buttons until MOVE is pressed`);
+    if (w === 1280) await shot(pg, 'move-closed-1280');
+    await move.click();
+    const opts = group.locator('[data-move-to]');
+    await until(() => opts.count().then(n => n > 0), 4000, 'the team picker');
+    const ids = await opts.evaluateAll(els => els.map(e => e.dataset.moveTo));
+    expect(!ids.includes(p.team_id) && ids.length === st.config.teams.length - 1, `${w}px: only the OTHER teams (saw ${ids})`);
+    const focused = await pg.evaluate(() => document.activeElement?.dataset?.moveTo ?? null);
+    expect(focused === ids[0], `${w}px: the picker takes focus (saw ${focused})`);
+    const sizes = await opts.evaluateAll(els => els.map(e => e.getBoundingClientRect().height));
+    expect(sizes.every(h => h >= 44), `${w}px: every team button is >= 44 px (saw ${sizes})`);
+    if (w === 1280) await shot(pg, 'move-open-1280');
+    await opts.first().click();
+    await until(async () => (await pg.evaluate(id => window.__MC_MOCK__.getState().then(s => s.players.find(x => x.player_id === id)?.team_id), p.player_id)) === ids[0], 4000, 'the move to reach the server');
+    expect(await pg.locator('[data-move-to]').count() === 0, `${w}px: the picker closes after a pick`);
+    ok(`${w}px: MOVE -> the other teams in their own colours -> a pick moves ${p.display} to ${ids[0].toUpperCase()}`);
+    await pg.context().close();
+  }
+});
+
 // QA-02: one gun with no phone bound (`?mock&faults=1`'s DRIFT/GUN-D) is reported as NOT READY: NO
 // PHONE, never as "has not confirmed this config" -- it was never sent anything to confirm.
 step('one-not-ready', async ({ browser, base }) => {
