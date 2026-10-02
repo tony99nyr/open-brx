@@ -24,7 +24,8 @@ export const SCENARIOS = Object.freeze([
     writes: [{ t: 0, frames: [play('VA6D')] }, { t: 100, frames: [play('VA6E')] }, { t: 200, frames: [play('VB0P')] }, { t: 300, frames: [play('VAA')] }, { t: 1500, frames: [PLAYX, PLAYX, PLAYX] }] },
   { id: 'single-stop-current', title: 'One stop cuts only the current clip', horizonMs: 8000,
     writes: [{ t: 0, frames: [play('VA6D')] }, { t: 100, frames: [play('VA6E')] }, { t: 500, frames: [PLAYX] }] },
-  { id: 'death-stops-spaced', title: 'Two death stops, one write each, 150 ms apart', horizonMs: 6000,
+  // PRE-F439 reading: the scream queues here. F439 (bench 2026-10-02) sends no death stop; the scream interrupts.
+  { id: 'death-stops-spaced', title: 'Two death stops, one write each, 150 ms apart (pre-F439 reading)', horizonMs: 6000,
     writes: [{ t: 0, frames: [play('VA6D')] }, { t: 50, frames: [play('VA6E')] }, { t: 100, frames: [PLAYX] }, { t: 250, frames: [PLAYX] }],
     natives: [{ t: 75, id: 'VA3', cue: 'scream' }] },
 ]);

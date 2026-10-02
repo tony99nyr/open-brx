@@ -39,6 +39,12 @@ APK 0.4.15 (built from `efd1961c`) carries the phone tid-0 kill-confirm fix and 
 - **F297 / F434 (2026-09-28):** a fast GATT 133 retries after 200 ms (`dec8065a`); the pass rule is now "linked
   within 3 s". The Stick powerup default is -45 dBm; reflash the Stick from main before bench 4.11. F435 closed:
   camping is fine.
+- **F437 (2026-10-02):** the go-live klaxon (interrupt slot) cut the character taunt; it now goes before the line.
+  Bench: `bench-standard-2026-09-29.md` step 10.
+- **F438 (2026-10-02):** our own `$HIR` is a self-hit: the pools are given back, and a lethal one revives at once. Bench
+  step 11 (and the FF A/B, a possible firmware finding).
+- **F439 (2026-10-02):** the native death scream interrupts, so the phone sends no stop at death; body cues behind it
+  are stopped after it ends. Bench step 12.
 - **Next:** Tony's GAMES check at the bench. F429/F430 (browser-closed flakes): close after 3 clean lander runs once
   brx1's test-all headroom fix lands.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.

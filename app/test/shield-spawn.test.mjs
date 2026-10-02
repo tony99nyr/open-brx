@@ -155,17 +155,23 @@ test('F348 control: a shield broken in play still recharges the old way (and, To
 // ---------- integration review 2026-09-24 (X1, X3, X5, X6, X7): the fill against the audio model and the pool repair ----------
 const REPAIRS = (h, n) => h.since(n).filter(w => /^\$LIFE,\d+,\d+,\d+,1,\*$/.test(w));
 
-test('X3: the spawn line and klaxon precede the fill in separate writes 150 ms apart', () => {
+// F437 + F416 (2026-10-02): rewritten. The klaxon and the spawn line now go as ONE two-slot frame (Callsign's game-end
+// form), so the queue-slot line never waits on the phone and the burst settles at once.
+test('X3/F437: the klaxon and the spawn line go as one two-slot frame, before the fill, and nothing interrupts after it', () => {
   const h = harness();
   const burst = h.since(h.startAt);
-  const fill = burst.indexOf(FILL), line = burst.indexOf(golden.cues.spawn), klaxon = burst.indexOf(golden.cues.klaxon);
-  assert.ok(line >= 0 && klaxon >= 0 && fill >= 0, `setup: all three went out: ${JSON.stringify(burst)}`);
-  assert.ok(line < fill && klaxon < fill, `both lines precede the fill: ${JSON.stringify(burst)}`);
-  const lineWrite = h.writeGroups.findIndex(g => g.frames.includes(golden.cues.spawn));
-  const klaxonWrite = h.writeGroups.findIndex(g => g.frames.includes(golden.cues.klaxon));
-  assert.notEqual(lineWrite, klaxonWrite, 'the spawn line and klaxon use separate writes');
-  assert.equal(h.writeGroups[klaxonWrite].gapMs, 150,
-    'the klaxon waits 150 ms after the spawn line transmission');
+  const kxId = golden.cues.klaxon.split(',')[1];
+  const both = burst.findIndex(f => f.startsWith(`$PLAY,${kxId},4,6,`) && !!f.split(',')[4]);
+  const fill = burst.indexOf(FILL);
+  assert.ok(both >= 0 && fill >= 0, `setup: the two-slot frame and the fill went out: ${JSON.stringify(burst)}`);
+  assert.ok(both < fill, `the sounds precede the fill: ${JSON.stringify(burst)}`);
+  assert.ok(!burst.includes(golden.cues.klaxon), 'no separate klaxon frame');
+  const sf = burst.indexOf('$SFLASH,*');   // the countdown line before the burst is not part of it
+  assert.equal(burst.slice(sf).filter(f => f.startsWith('$PLAY,')).length, 1, `one $PLAY in the spawn burst: ${JSON.stringify(burst)}`);
+  assert.ok(burst.slice(both + 1).every(f => !f.startsWith('$PLAY') ), 'no interrupt-slot $PLAY or $PLAYX follows the line');
+  const ids = h.eng._gun.clips.map(c => c.id);
+  assert.ok(ids.includes(kxId) && ids.includes(burst[both].split(',')[4]), `the model holds the klaxon and the line: ${ids}`);
+  assert.ok(ids.indexOf(kxId) < ids.indexOf(burst[both].split(',')[4]), 'the klaxon plays first, the line queued behind it');
 });
 
 test('X3: a revive puts its line before the fill', () => {

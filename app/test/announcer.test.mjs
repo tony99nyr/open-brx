@@ -737,7 +737,7 @@ test('death unit: after the respawn the normal rules resume (a lead line in my k
   assert.deepEqual(r.log.slice(1).map(x => [x[0], x[2]]), [['kill_confirmed', false], ['lead_taken', true]]);
 });
 
-test('death: the trade through the engine: the scream first (one stop for my kill line ahead of it, then none), then my kill line again, the lead change, the medal', () => {
+test('death: the trade through the engine: the scream first (it interrupts my kill line; no stop), then my kill line again, the lead change, the medal', () => {
   const h = harness().live();
   h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(200);                       // my kill line is on the gun
   const d0 = h.writes.length, dAt = h.now();
@@ -747,7 +747,8 @@ test('death: the trade through the engine: the scream first (one stop for my kil
   const after = h.writes.slice(d0);
   const sp = (after.find(w => w.f.startsWith('$SPAWN')) || { t: Infinity }).t;   // the respawn write opens with its own $PLAYX
   const stops = after.filter(w => w.f === '$PLAYX,0,*' && w.t < sp);
-  assert.ok(stops.length === 1 && stops[0].t === dAt, 'one stop, at the death, for the kill line ahead of the scream: ' + stops.map(w => w.t - dAt));
+  // F439: the native scream interrupts the kill line itself, so a stop at the death would only cut the scream
+  assert.deepEqual(stops.map(w => w.t - dAt), [], 'no stop at the death: the scream cuts the kill line');
   const scream = CLIP_MS[golden.head.find(f => f.startsWith('$PSET,')).split(',')[10]];
   const vaa = after.filter(w => w.f.startsWith('$PLAY,') && w.f.split(',')[4] === KILL);
   const ll = h.plays(LEAD_LOST)[0], dk = h.plays(golden.cues.double_kill.split(',')[4])[0];
@@ -758,9 +759,10 @@ test('death: the trade through the engine: the scream first (one stop for my kil
 
 // ---------- review of 7173d400 (death-wins) ----------
 const die = h => { h.eng.feedFrame('$HIR,4,0,19,2,60,0,0,*'); h.eng.feedFrame('$HP,0,0,0,*'); };
+const screamOf = h => h.eng._psetSounds[10].trim();
 const stopsIn = (h, from, to = Infinity) => h.writes.slice(from).filter(w => w.f === '$PLAYX,0,*' && w.t < to);
 
-test('H1: the lethal hit\'s own $SIR row sound is not counted ahead of the scream: a quiet gun sends no stop at death (F158)', () => {
+test('H1: the lethal hit\'s own $SIR row sound sends no stop at death (F158; F439: no stop with a known scream at all)', () => {
   const h = harness().live();
   h.eng._write(['$SIR,0,0,X13,1,9,0,0,0,*'], 'test: a row with a 1.5 s sound');
   h.adv(2000); const n = h.writes.length;
@@ -768,21 +770,21 @@ test('H1: the lethal hit\'s own $SIR row sound is not counted ahead of the screa
   assert.deepEqual(stopsIn(h, n, h.now() + 1).map(w => w.t), [], 'no stop: it could land on the scream');
 });
 
-test('F347: death sends stops one per write, spaced by PLAY_GAP_MS, so two clips ahead cannot cut the scream', () => {
+// F439: replaces F347's two spaced death stops: the scream interrupts the clip playing, so no stop goes out at all
+test('F347/F439: two clips on the gun at death send no stop; the scream cuts the first and the second waits behind it', () => {
   const h = harness().live();
   h.eng._gun.clear();
   h.eng._gun.add(3000, 'clip one', h.now(), 'VA8C');
   h.eng._gun.add(3000, 'clip two', h.now(), 'VA7');
+  h.adv(500);   // F439 r3: VA8C is `shield_up`, a body cue; written past DEATH_LATE_WRITE_MS, the scream cuts it
   const start = h.writes.length;
   die(h);
-  h.adv(500);
-  const stops = stopsIn(h, start, h.now());
-  assert.equal(stops.length, 2);
-  assert.notEqual(stops[1].group, stops[0].group, 'each stop has its own write');
-  assert.ok(stops[1].t - stops[0].t >= ann.PLAY_GAP_MS, 'stops are at least PLAY_GAP_MS apart');
+  assert.equal(stopsIn(h, start, h.now() + 1).length, 0);
+  assert.deepEqual(h.eng._gun.clips.map(c => c.id), [screamOf(h), 'VA7']);
 });
 
-test('H2: a clip that ends within DEATH_STOP_SLACK_MS of the death is not stopped', () => {
+// F439: replaces H2 (DEATH_STOP_SLACK_MS is gone with the death stops): a clip about to end is interrupted like any other
+test('H2/F439: a line ending about 86 ms after the death gets no stop', () => {
   const h = harness().live();
   h.eng._write(['$PLAY,,4,6,VAA,,,,*'], 'test: a 636 ms line'); h.adv(550);   // it ends in about 86 ms
   const n = h.writes.length;
@@ -807,7 +809,8 @@ test('M1: a death that cuts the second medal line replays only that line, not th
   h.adv(120 + CLIP_MS[ids[0]] + 150 + 600);              // the second line has played about 0.5 s
   const n = h.writes.length;
   die(h); h.adv(9000);
-  assert.equal(stopsIn(h, n, h.now()).length >= 1, true, 'setup: the death stopped the second line');
+  // F439: the scream, not a stop, cuts the second line now
+  assert.ok(h.logs.some(l => /cut at my death/.test(l)), 'setup: the scream cut the second line');
   assert.equal(h.plays(ids[0]).length, 1, 'the first medal is not said again');
   assert.equal(h.plays(ids[1]).length, 2, 'the cut line is said again, after the scream');
 });
@@ -837,6 +840,219 @@ test('M3: a hill change while I am dead is queued and said after the scream', ()
   assert.ok(hc && hc.t >= dAt + 1271, 'Hill Captured, after the scream');
 });
 
+// ---------- F439 (bench 2026-10-02, 0.4.16, step 11.8): the native scream interrupts; no stop at death ----------
+// Run 3: the low-health line went out, the death came about 1 s later, our death stop went out, and Tony heard
+// neither Health critical nor the scream: the scream cut the line at once, then our stop cut the scream.
+const untilSent = (h, id, capMs = 4000) => { for (let t = 0; t < capMs && !h.plays(id).length; t += 50) h.adv(50); return h.plays(id)[0]; };
+
+test('F439: the low-health line went out, then a death 1 s later: no $PLAYX at the death, and the scream plays from the death', () => {
+  const h = harness().live();
+  const hurtId = golden.cues.hurt.split(',')[4];
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,7,0,0,*');   // under 15: the critical line is armed
+  assert.ok(untilSent(h, hurtId), 'setup: the critical line reached the gun');
+  h.adv(1000);
+  const n = h.writes.length, dAt = h.now(), id = screamOf(h);
+  die(h);
+  assert.deepEqual(stopsIn(h, n, dAt + 1).map(w => w.t - dAt), [], 'no stop: it would land on the scream');
+  const front = h.eng._gun.clips[0];
+  assert.ok(front && front.id === id && front.start === dAt && front.end === dAt + CLIP_MS[id], 'the scream plays from the death');
+  assert.ok(!h.eng._gun.clips.some(c => c.id === hurtId), 'the critical line it interrupted is gone from the model');
+  assert.equal(h.eng._screamUntil, dAt + CLIP_MS[id]);
+});
+
+test('F439: my kill line on air at the death is interrupted by the scream, and said again after it', () => {
+  const h = harness().live();
+  h.kill(); h.adv(120 + 200);                               // my kill line has played about 200 ms
+  const n = h.writes.length, dAt = h.now(), id = screamOf(h);
+  die(h);
+  assert.equal(stopsIn(h, n, dAt + 1).length, 0, 'no stop');
+  assert.ok(!h.eng._gun.clips.some(c => c.id === KILL), 'the kill line is modelled as interrupted');
+  assert.ok(h.logs.some(l => /kill_confirmed cut at my death/.test(l)), 'the announcer counts it as cut');
+  h.adv(9000);
+  const again = killLines(h).filter(w => w.t >= dAt);
+  assert.ok(again.length === 1 && again[0].t >= dAt + CLIP_MS[id], `said again after the scream (${again.map(w => w.t - dAt)} ms)`);
+});
+
+test('F439: a queued clip that had not started stays queued behind the scream', () => {
+  const h = harness().live();
+  h.eng._gun.clear();
+  const t = h.now();
+  h.eng._gun.add(3000, 'clip one, playing', t, 'VA8C');
+  h.eng._gun.add(2000, 'clip two, queued', t, 'VA7');
+  h.adv(500);
+  const n = h.writes.length, dAt = h.now(), id = screamOf(h);
+  die(h);
+  assert.equal(stopsIn(h, n, dAt + 1).length, 0, 'no stop');
+  assert.deepEqual(h.eng._gun.clips.map(c => [c.id, c.start - dAt, c.end - dAt]),
+    [[id, 0, CLIP_MS[id]], ['VA7', CLIP_MS[id], CLIP_MS[id] + 2000]], 'the scream cut clip one; clip two waits behind it');
+});
+
+test('F439: with no scream id known, a low-health line that went out still gets F149\'s one stop', () => {
+  const h = harness().live();
+  const hurtId = golden.cues.hurt.split(',')[4];
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,7,0,0,*');
+  assert.ok(untilSent(h, hurtId), 'setup: the critical line reached the gun');
+  h.adv(500);
+  h.eng._psetSounds[10] = '';                               // no scream to cut: the fallback is safe
+  const n = h.writes.length, dAt = h.now();
+  die(h);
+  assert.deepEqual(stopsIn(h, n, dAt + 1).map(w => w.t - dAt), [0], 'one stop, at the death');
+});
+
+test('F439 (brx1, Shields preset): heartbeat on the gun, the critical line waiting, death 1 s later: no stop, no beat over the scream', () => {
+  const h = harness().live();
+  const loop = golden.cues.shield_loop.split(',')[4], hurtId = golden.cues.hurt.split(',')[4];
+  h.eng._shieldLoopTick(h.now());                           // the shield-down heartbeat, as `_shieldTick` plays it
+  assert.equal(h.plays(loop).length, 1, 'setup: a beat is on the gun');
+  h.adv(100);
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,9,0,0,*');   // under 15: it waits for a quiet gun
+  h.adv(1000);
+  const n = h.writes.length, dAt = h.now(), id = screamOf(h);
+  die(h);
+  assert.equal(stopsIn(h, n, dAt + 1).length, 0, 'no stop: the beat was the clip the old stop counted ahead');
+  assert.equal(h.eng._gun.clips[0].id, id, 'the scream is modelled as playing');
+  for (let t = 0; t < CLIP_MS[id] + 200; t += 50) { h.adv(50); h.eng._shieldLoopTick(h.now()); }
+  const beats = h.plays(loop).filter(w => w.t >= dAt);
+  assert.ok(beats.every(w => w.t >= dAt + CLIP_MS[id]), `no beat during the scream (${beats.map(w => w.t - dAt)} ms)`);
+  assert.equal(h.plays(hurtId).length, 0, 'the critical line never went out');
+});
+
+test('F439 (brx1, heartbeat in the death second): no beat goes out while the critical line waits', () => {
+  const h = harness().live();
+  const loop = golden.cues.shield_loop.split(',')[4];
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); h.eng.feedFrame('$HP,9,0,0,*');   // the alert crosses: its line is pending
+  assert.equal(h.eng._pendingHurtWrite, true, 'setup: the critical line waits');
+  h.eng._shieldLoopTick(h.now());                           // the heartbeat's turn comes in the same instant
+  assert.equal(h.plays(loop).length, 0, 'no beat while the critical line waits');
+  h.adv(300); die(h);
+  for (let t = 0; t < 3000; t += 50) { h.adv(50); h.eng._shieldLoopTick(h.now()); }
+  assert.equal(h.plays(loop).length, 0, 'and none while dead');
+});
+
+test('F439 (brx1, heartbeat in the death second): body clips queued behind the scream are stopped after it; my kill line behind them is not', () => {
+  const h = harness().live();
+  const loop = golden.cues.shield_loop.split(',')[4], hurtId = golden.cues.hurt.split(',')[4];
+  h.eng._gun.clear();
+  const t = h.now();
+  h.eng._gun.add(CLIP_MS[hurtId], 'the critical line, playing', t, hurtId);
+  h.eng._gun.add(CLIP_MS[loop], 'a heartbeat, queued', t, loop);
+  h.eng._gun.add(CLIP_MS[KILL], 'my kill line, queued', t, KILL).item = { kind: 'kill_confirmed' };
+  h.adv(500);   // F439 r3: written well before the death (past DEATH_LATE_WRITE_MS), so the scream cuts the first clip
+  const n = h.writes.length, dAt = h.now(), id = screamOf(h), until = dAt + CLIP_MS[id];
+  die(h);
+  assert.equal(stopsIn(h, n, until).length, 0, 'no stop before the scream ends');
+  h.adv(CLIP_MS[id] + 450);
+  const st = stopsIn(h, n, h.now());
+  assert.ok(st.length === 1 && st[0].t >= until + 300, `one stop, for the heartbeat, after the scream (${st.map(w => w.t - until)} ms past its end)`);
+  assert.equal(h.eng._gun.clips[0] && h.eng._gun.clips[0].id, KILL, 'my kill line is next on the gun, not stopped');
+  h.adv(2000);
+  assert.equal(stopsIn(h, n, h.now()).length, 1, 'and no stop lands on it');
+});
+
+// F439 polish r1
+const bodyRig = (h, clips) => {
+  h.eng._gun.clear();
+  const t = h.now();
+  for (const [id, item] of clips) { const c = h.eng._gun.add(CLIP_MS[id], `test ${id}`, t, id); if (item) c.item = { kind: 'kill_confirmed' }; }
+};
+
+test('F439 polish: a non-first pool take of a body kind behind the scream is a body clip, and is stopped', () => {
+  const h = harness().live();
+  const loop = golden.cues.shield_loop.split(',')[4], hurtId = golden.cues.hurt.split(',')[4];
+  const take = golden.cue_pools.pain_long[1].split(',')[4];   // pain_long's second take (not `cues.pain_long`)
+  assert.notEqual(take, golden.cues.pain_long.split(',')[4], 'setup: a pool take, not the cue');
+  bodyRig(h, [[hurtId], [take], [loop], [KILL, true]]);
+  h.adv(500);   // F439 r3: past DEATH_LATE_WRITE_MS
+  const n = h.writes.length, id = screamOf(h), until = h.now() + CLIP_MS[id];
+  die(h); h.adv(CLIP_MS[id] + 300 + ann.PLAY_GAP_MS + 200);
+  const st = stopsIn(h, n, h.now());
+  assert.ok(st.length === 2 && st[0].t >= until + 300, `two stops after the scream, the take then the beat (${st.map(w => w.t - until)})`);
+  assert.equal(h.eng._gun.clips[0] && h.eng._gun.clips[0].id, KILL, 'my kill line is next, not stopped');
+});
+
+test('F439 polish: a body clip with too little left at its stop time is not stopped, nor any after it', () => {
+  const h = harness().live();
+  const loop = golden.cues.shield_loop.split(',')[4], hurtId = golden.cues.hurt.split(',')[4];
+  const take = golden.cue_pools.pain_short.map(f => f.split(',')[4]).find(i => CLIP_MS[i] - 300 < 250);   // ends < 250 ms after the stop
+  assert.ok(take, 'setup: a short pain take');
+  bodyRig(h, [[hurtId], [take], [loop], [KILL, true]]);
+  h.adv(500);   // F439 r3: past DEATH_LATE_WRITE_MS
+  const n = h.writes.length, id = screamOf(h);
+  die(h); h.adv(CLIP_MS[id] + 2000);
+  assert.equal(stopsIn(h, n, h.now()).length, 0, 'no stop: it could land on the clip behind');
+  assert.ok(h.logs.some(l => /no stop for .* ms left/.test(l)), 'and the log says why');
+});
+
+test('F439 polish: a revive inside the body-stop window cancels the pending stops', () => {
+  const h = harness().live();
+  const loop = golden.cues.shield_loop.split(',')[4], hurtId = golden.cues.hurt.split(',')[4];
+  bodyRig(h, [[hurtId], [loop]]);
+  h.adv(500);   // F439 r3: past DEATH_LATE_WRITE_MS
+  const id = screamOf(h);
+  die(h); h.adv(CLIP_MS[id] - 200);
+  h.eng._spawn(false);                                      // back on my feet before the stop is due
+  h.adv(2000);
+  assert.ok(h.eng.alive, 'setup: revived');
+  assert.ok(!h.logs.some(l => /body cue queued behind the scream/.test(l)), 'no body stop after the revive');
+});
+
+// F439 polish r3
+test('F439 r3 (probe): the critical line written 50 ms before the phone hears $HP,0 queues behind the scream and gets one stop after it', () => {
+  const h = harness().live();
+  const hurtId = golden.cues.hurt.split(',')[4];
+  h.eng._gun.clear();
+  h.eng._gun.add(CLIP_MS[hurtId], 'the critical line, just written', h.now(), hurtId);
+  h.adv(50);
+  const n = h.writes.length, id = screamOf(h), until = h.now() + CLIP_MS[id];
+  die(h);
+  assert.deepEqual(h.eng._gun.clips.map(c => c.id), [id, hurtId], 'not cut: it waits behind the scream');
+  h.adv(CLIP_MS[id] + 1000);
+  const st = stopsIn(h, n, h.now());
+  assert.ok(st.length === 1 && st[0].t >= until + 300, `one stop after the scream (${st.map(w => w.t - until)})`);
+});
+
+test('F439 r3 (control): the critical line written 1 s before the death is interrupted, and no stop goes out', () => {
+  const h = harness().live();
+  const hurtId = golden.cues.hurt.split(',')[4];
+  h.eng._gun.clear();
+  h.eng._gun.add(CLIP_MS[hurtId], 'the critical line', h.now(), hurtId);
+  h.adv(1000);
+  const n = h.writes.length, id = screamOf(h);
+  die(h);
+  assert.deepEqual(h.eng._gun.clips.map(c => c.id), [id], 'cut by the scream');
+  h.adv(CLIP_MS[id] + 2000);
+  assert.equal(stopsIn(h, n, h.now()).length, 0);
+});
+
+test('F439 r3: a body clip whose write resolves after the death is still stopped after the scream', () => {
+  const h = harness().live();
+  const loop = golden.cues.shield_loop.split(',')[4];
+  h.eng._gun.clear();
+  const n = h.writes.length, id = screamOf(h), until = h.now() + CLIP_MS[id];
+  die(h);
+  h.adv(100);
+  h.eng._gun.add(CLIP_MS[loop], 'a heartbeat, in flight at the death', h.now(), loop);   // lands behind the scream
+  h.adv(CLIP_MS[id] + 1000);
+  const st = stopsIn(h, n, h.now());
+  assert.ok(st.length === 1 && st[0].t >= until + 300, `one stop after the scream (${st.map(w => w.t - until)})`);
+});
+
+test('F439 r3: a $SIR row sound behind the scream is waited out, and the body clip behind it is still stopped', () => {
+  const h = harness().live();
+  const loop = golden.cues.shield_loop.split(',')[4];
+  h.eng._gun.clear();
+  const t = h.now();
+  h.eng._gun.add(3000, 'a clip, playing', t, 'VA8C');
+  h.eng._gun.add(1548, 'a hit row sound, queued', t, 'X13');
+  h.eng._gun.add(CLIP_MS[loop], 'a heartbeat, queued', t, loop);
+  h.adv(500);
+  const n = h.writes.length, id = screamOf(h), rowEnd = h.now() + CLIP_MS[id] + 1548;
+  die(h);
+  h.adv(CLIP_MS[id] + 1548 + 1000);
+  const st = stopsIn(h, n, h.now());
+  assert.ok(st.length === 1 && st[0].t >= rowEnd + 300, `one stop, for the heartbeat, after the row sound (${st.map(w => w.t - rowEnd)})`);
+});
+
 // ---------- round 2 review of death-wins ----------
 test('H-A unit: after respawn my kept KC starts when real clips clear', () => {
   const r = deadRig();
@@ -859,31 +1075,29 @@ test('M-A: a medal stack cut at my death, then folded into my next kill, never s
   assert.equal(h.plays(ids[0]).length, 1, 'first blood once');
 });
 
-test('M-B: my kill line ending inside the slack is neither stopped nor said again; the stop waits for it and takes the clip behind', () => {
+// F439: rewritten. The slack and the stop that waited for my line are gone: the scream interrupts my line wherever it
+// is, so the line is cut and said again after the scream, and the clip behind it waits behind the scream.
+test('M-B/F439: my kill line about to end at the death gets no stop, and is said again after the scream', () => {
   const h = harness().live();
   h.kill(); h.adv(120);                                     // VAA from +120
   h.eng._write(['$PLAY,,4,6,VA7,,,,*'], 'test: a 2.1 s clip behind my kill line');
-  const vaaEnd = h.plays(KILL)[0].t + CLIP_MS[KILL];
   h.adv(CLIP_MS[KILL] - 80);                                // my line ends in about 80 ms
-  const n = h.writes.length;
+  const n = h.writes.length, dAt = h.now();
   die(h); h.adv(9000);
-  assert.equal(killLines(h).length, 1, 'said once');
-  const st = h.writes.slice(n).filter(w => w.f === '$PLAYX,0,*');
-  // F419: the clip behind my line no longer sits on the gun: a queue-slot cue waits on the PHONE until my line has
-  // played (the gun's queue slot drops and reorders). So any stop still never lands on my line, and the clip behind it
-  // either never reaches the gun or is stopped after my line ended.
-  assert.ok(st.every(w => w.t >= vaaEnd), `no stop lands on my line (${st.map(w => w.t - vaaEnd)} ms after it ended)`);
-  const behind = h.plays('VA7');
-  assert.ok(!behind.length || behind[0].t >= vaaEnd, 'the clip behind never plays over my line');
+  const sp = (h.writes.slice(n).find(w => w.f.startsWith('$SPAWN')) || { t: Infinity }).t;   // the respawn write opens with its own $PLAYX
+  assert.deepEqual(stopsIn(h, n, sp).map(w => w.t - dAt), [], 'no stop');
+  const again = killLines(h).filter(w => w.t >= dAt);
+  assert.ok(again.length === 1 && again[0].t >= dAt + CLIP_MS[screamOf(h)], 'said again, after the scream');
 });
 
 // ---------- F375: the "Health Critical" line after the death scream (field 2026-09-24, Tony) ----------
 // "A critical-health sound is useless while the player is down." The engine's writes go through the gun simulator
 // (gun-audio-sim.mjs), with the native scream at the moment the GUN died, which is before the phone hears `$HP,0`.
 const HURT_ID = golden.cues.hurt.split(',')[4];
-/** The writes since `from`, run through the gun simulator. `scream` = when the gun screamed. `interrupt` = F158's other
- *  case: the scream cuts what plays, like a token-1 clip (UNPROVEN either way; the simulator's default queues it). */
-function gunRun(h, from, scream, { interrupt = false } = {}) {
+/** The writes since `from`, run through the gun simulator. `scream` = when the gun screamed. `interrupt` (the default):
+ *  the scream cuts what plays, like a token-1 clip, the working reading after F439 (bench 2026-10-02 plus F375, not a
+ *  direct measurement). `interrupt: false` runs the older queue model, where the scream waits behind what plays. */
+function gunRun(h, from, scream, { interrupt = true } = {}) {
   const id = h.eng._psetSounds[10].trim();
   const writes = h.writes.slice(from).map(w => ({ t: w.t, frames: [w.f] }));
   if (interrupt) writes.push({ t: scream, frames: [playNow(id)] });
@@ -919,7 +1133,7 @@ test('F375: the critical line never queues behind another clip; it waits for a q
   k.eng.feedFrame('$HIR,4,0,19,2,9,0,0,*'); k.eng.feedFrame('$HP,12,0,0,*');
   k.kill(); k.adv(600); die(k); k.adv(8000);
   assert.equal(k.plays(HURT_ID).length, 0, 'a death while it waits cancels it');
-  const { scream, hurt } = gunRun(k, m, u0 + 600, { interrupt: true });
+  const { scream, hurt } = gunRun(k, m, u0 + 600);
   assert.ok(scream && !hurt.some(c => c.start >= scream.start), 'nothing critical after the scream');
 });
 

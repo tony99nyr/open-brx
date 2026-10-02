@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames } from '../src/engine.js';
 import { BrxLink } from '../src/brxlink.js';
 import { Hud } from '../src/hud/hud.js';
 import * as W from '../src/transport/envelope.js';
@@ -1360,7 +1360,7 @@ test('B5: a stale zero-HP echo right after a respawn is not a phantom death, and
   // ended, not this one.
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$LCD,45,70,0,0,36,216,*');                     // the gun confirms the first life
-  h.frame('$HIR,4,0,7,2,45,0,3,*'); h.frame('$HP,0,0,0,*');   // get the player down once, for a REAL revive below
+  h.frame('$HIR,4,0,19,2,45,0,3,*'); h.frame('$HP,0,0,0,*');   // get the player down once, for a REAL revive below (F438: never id 7, our own)
   assert.equal(h.eng.alive, false, 'setup: player is down');
   h.adv(8000); h.eng.tick();                              // auto-respawn (delay 8 s) -> _revive; the settle window starts here
   assert.equal(h.eng.alive, true, 'setup: revived');
@@ -2709,6 +2709,7 @@ test('a respawn re-arms the low-health alert', () => {
   const h = goLive(harness());
   h.frame('$HP,12,0,0,*');
   h.writes.length = 0;
+  h.adv(1000);                                                   // F439 r3: a death in the alert's own instant is a late write (it queues behind the scream)
   h.frame('$HP,0,0,0,*');                                        // dead
   h.eng._spawn(false);                                           // back on your feet
   h.frame('$HP,12,0,0,*');
@@ -2716,7 +2717,7 @@ test('a respawn re-arms the low-health alert', () => {
 });
 
 // ── F149 (field 2026-09-12): a death must stop a still-playing low-health loop ────────────────────
-test('F149: a death that follows a low-health alert stops the loop with $PLAYX,0,*', () => {
+test('F149/F439: a death that follows a low-health alert sends no $PLAYX: the native scream interrupts the loop', () => {
   // The realistic field shape: one hit crosses under 15 HP (fires `cues.hurt`, a several-second voice
   // sample), a SEPARATE later hit finishes the kill. `cues.died` is never populated (A15.3: the scream
   // stays native), so nothing else would ever interrupt the sample -- the loop played on past the death.
@@ -2725,7 +2726,8 @@ test('F149: a death that follows a low-health alert stops the loop with $PLAYX,0
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'sanity: the loop did start');
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');        // a later, separate hit finishes the kill
-  assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'death sends the stop-playback frame');
+  // F439 (bench 2026-10-02): the stop landed on the scream; the scream itself cuts the loop. F149's stop stays only with no scream known
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 0, 'no stop: it would cut the native scream');
 });
 
 test('F149: an ordinary death (never under 15 HP) sends no extra stop frame', () => {
@@ -2752,14 +2754,16 @@ test('office test 2026-09-19: a death that lands inside HURT_DEBOUNCE_MS cancels
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'cancelled -- the queued alert must not play after death');
 });
 
-test('F149/F375: death stops a low-health clip that already reached a quiet gun', () => {
+test('F149/F375/F439: a low-health clip already on the gun gets no death stop; the scream interrupts it', () => {
   const h = goLive(harness());
   h.writes.length = 0;
   h.eng._gun.clear();
-  h.eng._gun.add(1984, 'low-health cue already written', h.eng.now(), 'VA86');
+  h.eng._gun.add(1984, 'low-health cue already written', h.eng.now(), 'VA86').at -= 1000;   // F439 r3: written 1 s before, past DEATH_LATE_WRITE_MS
   h.eng._hurtSent = true;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');
-  assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'one stop removes the clip ahead of the native scream');
+  // F439: no clip is ever ahead of the native scream (it interrupts), so the stop is gone
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 0, 'no stop');
+  assert.ok(!h.eng._gun.clips.some(c => c.id === 'VA86'), 'the scream cut the low-health clip in the model');
 });
 
 test('F375 review: low-health stays pending through the play gap and death cancels it', () => {
@@ -5387,7 +5391,20 @@ test('cue pools: a seeded rng picks the expected take, no pool falls back to cue
 
 // ---- A15.2: the spawn line is OURS (Tony 2026-09-06, bench: an empty $PSET cry field silences the firmware; $SPAWN then
 // $PLAY in the SAME write plays clean; "what if we dont rely on the firmware to make the sound on spawn and we just control it")
-test('spawn writes one take of the spawn pool right after $SFLASH in the same write; revive carries one too; no pool = cues.spawn; pre-A15.2 = nothing', () => {
+test('F437: twoSlotPlay merges an interrupt-slot and a queue-slot $PLAY only when both fit one frame (PURE)', () => {
+  assert.equal(twoSlotPlay('$PLAY,U16,4,6,,,,,*', '$PLAY,,4,6,VAI,,,,*'), '$PLAY,U16,4,6,VAI,,,,*');
+  assert.equal(twoSlotPlay('$PLAY,U16,4,6,,,,,*', '$PLAY,,7,2,VAI,,,,*'), '$PLAY,U16,4,6,VAI,,,,*', 'the klaxon\'s volume and priority stand');
+  assert.equal(twoSlotPlay('$PLAY,U16,4,6,VAA,,,,*', '$PLAY,,4,6,VAI,,,,*'), null, 'the klaxon already has a token 4');
+  assert.equal(twoSlotPlay('$PLAY,U16,4,6,,,,,*', '$PLAY,X1,4,6,VAI,,,,*'), null, 'the line has a token 1');
+  assert.equal(twoSlotPlay('$PLAY,,4,6,,,,,*', '$PLAY,,4,6,VAI,,,,*'), null, 'no interrupt id');
+  assert.equal(twoSlotPlay('$PLAY,U16,4,6,,,,,*', '$DPLAY,A10,4,*'), null, 'not a $PLAY');
+  assert.equal(twoSlotPlay('$PLAY,U16,4,6,,,,,*', '$PLAY,,4,6,VAI,1,,,*'), null, 'the tail tokens differ');
+  assert.deepEqual(playSlotFrames('$PLAY,U16,4,6,VAI,,,,*'), ['$PLAY,U16,4,6,,,,,*', '$PLAY,,4,6,VAI,,,,*'], 'two clips, the interrupt slot first');
+  assert.deepEqual(playSlotFrames('$PLAY,,4,6,VAI,,,,*'), ['$PLAY,,4,6,VAI,,,,*']);
+  assert.deepEqual(playSlotFrames('$PLAYX,0,*'), []);
+});
+
+test('spawn writes one take of the spawn pool after $SFLASH and the klaxon in the go-live burst; revive carries one too; no pool = cues.spawn; pre-A15.2 = nothing', () => {
   const POOL = ['$PLAY,,4,6,VAI,,,,*', '$PLAY,,4,6,VAN,,,,*', '$PLAY,,4,6,VAO,,,,*'];
   const mk = (r, frames) => {
     const h = harness();
@@ -5401,9 +5418,12 @@ test('spawn writes one take of the spawn pool right after $SFLASH in the same wr
   const plays = ws => ws.filter(w => w.startsWith('$PLAY,,4,6,'));
   // a pool: rng 0.5 -> pool[1] (VAN), written in the spawn write right after $SFLASH
   const a = mk(0.5, { cues: { ...golden.cues, spawn: POOL[0], respawned: POOL[0] }, cue_pools: { ...(golden.cue_pools || {}), spawn: POOL, respawned: POOL } });
+  // F437 + F416 (2026-10-02): the klaxon and the line are ONE two-slot frame right after $SFLASH (Callsign's game-end form)
+  const kxId = golden.cues.klaxon.split(',')[1];
   const i = a.writes.indexOf('$SFLASH,*');
-  assert.ok(i > 0 && a.writes[i + 1] === POOL[1], 'rng 0.5 -> VAN right after $SFLASH: ' + a.writes.slice(i - 1, i + 3).join(' '));
-  assert.equal(plays(a.writes).length, 1, 'exactly one voice line at spawn: ' + plays(a.writes).join(' '));
+  assert.ok(i > 0 && a.writes[i + 1] === `$PLAY,${kxId},4,6,VAN,,,,*`, 'rng 0.5 -> the klaxon and VAN in one frame, after $SFLASH: ' + a.writes.slice(i - 1, i + 4).join(' '));
+  assert.ok(!a.writes.includes(golden.cues.klaxon) && !a.writes.includes(POOL[1]), 'no separate klaxon or line frame');
+  assert.equal(a.writes.slice(i).filter(w => w.startsWith('$PLAY,')).length, 1, 'exactly one voice frame in the spawn burst: ' + a.writes.slice(i).join(' '));
   // revive: the take rides in the revive write, once (the respawned event is lights only)
   a.frame('$HIR,4,0,19,2,45,0,0,*'); a.frame('$HP,0,0,0,*'); a.writes.length = 0;
   a.adv(9000); a.eng.tick();
@@ -5415,7 +5435,11 @@ test('spawn writes one take of the spawn pool right after $SFLASH in the same wr
   // no pool, one take: cues.spawn plays
   const b = mk(0.9, { cues: { ...golden.cues, spawn: '$PLAY,,4,6,V3I,,,,*' }, cue_pools: { ...(golden.cue_pools || {}), spawn: undefined } });
   const j = b.writes.indexOf('$SFLASH,*');
-  assert.equal(b.writes[j + 1], '$PLAY,,4,6,V3I,,,,*', 'the single take');
+  assert.equal(b.writes[j + 1], `$PLAY,${kxId},4,6,V3I,,,,*`, 'the single take, in the klaxon\'s frame (F437)');
+  // F437 fallback: a klaxon that already carries a token 4 cannot share a frame: the klaxon, then the line
+  const f = mk(0.9, { cues: { ...golden.cues, klaxon: '$PLAY,U16,4,6,VAA,,,,*', spawn: '$PLAY,,4,6,V3I,,,,*' }, cue_pools: { ...(golden.cue_pools || {}), spawn: undefined } });
+  const fl = f.writes.indexOf('$SFLASH,*');
+  assert.deepEqual(f.writes.slice(fl + 1).filter(w => w.startsWith('$PLAY,')), ['$PLAY,U16,4,6,VAA,,,,*', '$PLAY,,4,6,V3I,,,,*'], 'fallback: the klaxon, then the line');
   // a pre-A15.2 bundle (no cues.spawn at all): the spawn write ends on $SFLASH, nothing appended
   const { spawn: _s, respawned: _r, ...cuesOld } = golden.cues;
   const c = mk(0.5, { cues: cuesOld, cue_pools: {} });
@@ -6744,7 +6768,7 @@ test('B5: a death suppressed by the spawn-settle window is RE-EXAMINED once the 
   // a zombie at 0 HP: no DOWN screen, no respawn, no death fact for MC to score.
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$LCD,45,70,0,0,36,216,*');                     // the gun confirms the first life
-  h.frame('$HIR,4,0,7,2,45,0,3,*'); h.frame('$HP,0,0,0,*');
+  h.frame('$HIR,4,0,19,2,45,0,3,*'); h.frame('$HP,0,0,0,*');   // F438: id 19, not 7 (our own id is a self-hit)
   assert.equal(h.eng.alive, false, 'setup: down once');
   h.adv(8000); h.eng.tick();                              // auto-respawn — the settle window starts here
   assert.equal(h.eng.alive, true, 'setup: revived');

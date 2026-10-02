@@ -68,8 +68,9 @@ const isStop = f => typeof f === 'string' && f.startsWith('$PLAYX');
  * @param {Array<{t:number, frames:Array<string|{f:string, cue?:string, eventT?:number, must?:boolean}>, why?:string}>} input.writes
  *        what the phone sent; the frames of one write reach the gun `writeFrameGapMs` apart, in order.
  * @param {Array<{t:number, id:string, cue?:string}>} [input.natives] the gun's OWN sounds that enter the same FIFO (the
- *        native death scream, `$PSET` t10, on the `$HP,0` that kills). ASSUMPTION: the scream queues like a token-4
- *        clip, behind whatever plays (docs/announcer.md models it the same way; unmeasured).
+ *        native death scream, `$PSET` t10, on the `$HP,0` that kills). this queues it like a token-4 clip, behind
+ *        whatever plays: the OLD reading. The interrupt model is the working reading after F439 (docs/announcer.md):
+ *        to run it, send the scream as a token-1 write (`playNow`) instead.
  * @param {number} input.horizonMs how long to run.
  * @param {object} [rules] GUN_RULES, or a copy with a changed field.
  */
