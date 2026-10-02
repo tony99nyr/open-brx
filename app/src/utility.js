@@ -448,7 +448,7 @@ function tick() {
   // F438: a PRESENT player not heard for QUIET_MS is logged once per silence, with its last few gaps: a sparse
   // advertiser that still clears the dwell would otherwise stall a capture with nothing in the log.
   for (const p of presence.players()) {
-    const quiet = p.present && now - p.seenAt >= QUIET_MS;
+    const quiet = (p.present || p.inCircle) && now - p.seenAt >= QUIET_MS;
     if (quiet && !_quietLogged.has(p.id)) { _quietLogged.add(p.id); log(`player ${p.id} (${TEAM_NAMES[p.team] ?? `team ${p.team}`}) quiet ${((now - p.seenAt) / 1000).toFixed(1)} s while present · recent gaps ${(p.gaps || []).slice(-6).join(' ')} ms`, 'li'); }
     else if (!quiet) _quietLogged.delete(p.id);
   }
@@ -673,14 +673,16 @@ function render() {
     // the point (present + alive + a team that may hold one), DOWN is struck through, and in range but off
     // the point is dimmed. The three COMPOSE rather than ranking: a body that is both down and out of range
     // is both, and ranking them silently dropped one of the two facts the operator reads the row for.
-    const claim = isControl && p.present && alive && claimable(p.team);
+    const inCircle = p.present || p.inCircle;   // F438: the same rule the point counts
+    const claim = isControl && inCircle && alive && claimable(p.team);
     // F82: a tid-2 body standing here converts nothing, and the row has to say so. Left unmarked it read
     // exactly like a contributor -- highlighted, green ON POINT -- two lines under a net line saying
     // NOBODY ON THE POINT. A down body is struck through; a refused one gets its own word and colour.
-    const refused = isControl && p.present && alive && !claimable(p.team);
-    const label = isControl ? (refused ? "CAN'T HOLD" : p.present ? 'ON POINT' : '') : (p.present ? 'AT STATION' : '');
-    const mark = !isControl ? '' : `${alive ? '' : ' dead'}${p.present ? '' : ' far'}${claim ? ' claim' : ''}${refused ? ' refused' : ''}`;
-    return `<div class="row ${p.present ? 'near' : ''}${mark}" style="--rowteam:var(--team-${TEAM_KEYS[p.team] || 'any'})"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres${refused ? ' no' : ''}">${label}</span></div>`;
+    const refused = isControl && inCircle && alive && !claimable(p.team);
+    const near = isControl ? inCircle : p.present;
+    const label = isControl ? (refused ? "CAN'T HOLD" : near ? 'ON POINT' : '') : (p.present ? 'AT STATION' : '');
+    const mark = !isControl ? '' : `${alive ? '' : ' dead'}${near ? '' : ' far'}${claim ? ' claim' : ''}${refused ? ' refused' : ''}`;
+    return `<div class="row ${near ? 'near' : ''}${mark}" style="--rowteam:var(--team-${TEAM_KEYS[p.team] || 'any'})"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres${refused ? ' no' : ''}">${label}</span></div>`;
   });
   $('players').innerHTML = rows.join('') || '<div class="row empty">no player phones in range</div>';
   $('ptitle').textContent = isControl ? 'WHO IS ON THE POINT' : 'PLAYER PHONES IN RANGE';

@@ -150,6 +150,39 @@ static void test_presence_six_db_hysteresis() {
   CHECK(!pr.get(7)->present);
 }
 
+// F438 (beacon.js parity): the circle. A sighting at the threshold puts a player in the circle at once (before the
+// dwell), an advert inside the hysteresis band only KEEPS one already in, and a player that never reaches the
+// threshold is never in it, however often it is heard.
+static void test_presence_f438_circle() {
+  PlayerPresence pr;  // threshold -74 (the default), 6 dB band, 800 ms dwell
+  pr.observe(player(7, 0), -70, 0);
+  pr.tick(0);
+  CHECK(!pr.get(7)->present);   // still dwelling ...
+  CHECK(pr.get(7)->in_circle);  // ... but in the circle at once: an opponent contests now
+  pr.observe(player(7, 0), -78, 3000);  // inside the band: keeps it in
+  pr.tick(3000);
+  CHECK(pr.get(7)->in_circle);
+  PlayerPresence out;
+  for (uint32_t t = 0; t < 10000; t += 250) {
+    out.observe(player(8, 1), -78, t);  // inside the band but never at the threshold
+    out.tick(t);
+    CHECK(!out.get(8)->in_circle);
+    CHECK(!out.get(8)->present);
+  }
+}
+
+static void test_hill_counts_the_circle_not_only_present() {
+  BleControlPoint cp;
+  PlayerPresence pr;  // the real dwell: the sighting, not presence, makes this count on the first tick
+  pr.observe(player(3, 1), -60, 0);
+  pr.tick(0);
+  cp.update(pr, 0);
+  pr.observe(player(3, 1), -60, STATION_TICK_MS);
+  pr.tick(STATION_TICK_MS);
+  cp.update(pr, STATION_TICK_MS);
+  CHECK_EQ(cp.counts[1], 1);
+}
+
 static void test_presence_four_second_expiry() {
   PlayerPresence pr;
   pr.observe(player(7, 0), -50, 0);
@@ -584,6 +617,8 @@ int main() {
   test_presence_dwell_restarts_when_the_ema_dips();
   test_presence_ema_is_beacon_js();
   test_presence_six_db_hysteresis();
+  test_presence_f438_circle();
+  test_hill_counts_the_circle_not_only_present();
   test_presence_four_second_expiry();
   test_presence_game_byte_and_roles();
   test_presence_drops_a_65th_player_and_counts_it();

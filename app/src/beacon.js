@@ -83,6 +83,14 @@ export function configGameByte(config) {
   return Number.isInteger(b) && b >= 1 && b <= 255 ? b : 0;
 }
 
+/** F438: how long a PRESENT entry may sit below the exit level before it leaves (a dip or a sparse advertiser's
+ *  silence is not a step out of the circle; a player who walks away still leaves within about this). */
+export const EXIT_GRACE_MS = 2500;
+/** F438: a credible sighting keeps an entry "in the circle" this long (entering needs the threshold; the exit band only keeps). */
+export const SIGHT_MS = 4000;   // = the silence expiry: heard inside the band in the last 4 s
+/** How many recent inter-arrival gaps a Presence entry keeps (F438 diagnostics). */
+export const GAP_SAMPLES = 16;
+
 /**
  * Presence: which stations (or players) are near, by smoothed RSSI against a threshold, with dwell and
  * hysteresis so a reading that flickers at the edge does not flicker the answer (utility.md §3).
@@ -91,18 +99,10 @@ export function configGameByte(config) {
  *   tick(now)                  advance dwell / expiry; call it a few times a second
  *   stations() / players()     current entries; each carries { present, rssi (EMA), raw, seenAt, ... }
  *
- * present flips ON after `dwellMs` continuously at/above the threshold and OFF when the EMA falls
- * `hysteresisDb` below it, or when no advert has arrived for `expiryMs`. The threshold is the
+ * present flips ON after `dwellMs` continuously at/above the threshold and OFF when the EMA has stayed
+ * `hysteresisDb` below it for `exitGraceMs` (F438), or when no advert has arrived for `expiryMs`. The threshold is the
  * station's own advertised one when set, else `defaultThreshold`.
  */
-/** F438: how long a PRESENT entry may sit below the exit level before it leaves (a dip or a sparse advertiser's
- *  silence is not a step out of the circle; a player who walks away still leaves within about this). */
-export const EXIT_GRACE_MS = 2500;
-/** F438: one advert at or above the threshold keeps an entry "in the circle" for this long: the contest-at-once rule. */
-export const SIGHT_MS = 4000;   // = the silence expiry: heard inside the band in the last 4 s
-/** How many recent inter-arrival gaps a Presence entry keeps (F438 diagnostics). */
-export const GAP_SAMPLES = 16;
-
 export class Presence {
   // F438 (Tony 2026-10-02: "a minimum threshold and you are in the circle"): `exitGraceMs` debounces leaving, so a
   // sparse advertiser's dips and silences inside the circle never drop it; `sightMs` makes ONE advert at or above
@@ -138,12 +138,15 @@ export class Presence {
       e.samples = [...(e.samples || []), rssi].slice(-MEDIAN_SAMPLES); e.median = medianOf(e.samples);
       if (fresh) e.changedAt = now;
     }
-    // F438: a credible sighting is any advert inside the tolerance band (at or above the EXIT level, the same band presence
-    // keeps), never weighted by how far above it reads: binary, in the circle or not.
-    if (rssi >= this.thresholdFor(e) - this.hysteresisDb) e.sightedAt = now;
+    // F438: a credible sighting ENTERS the circle at the threshold and only KEEPS it down to the exit level, the same
+    // band presence keeps (review: a sighting at the exit level let a player who never entered capture alone, which
+    // made the circle bigger for a phone that advertises more often). Binary: never weighted by how far above.
+    if (rssi >= this.thresholdFor(e) - (this.inCircleNow(e, now) ? this.hysteresisDb : 0)) e.sightedAt = now;
     return e;
   }
   thresholdFor(e) { return e.threshold || this.defaultThreshold; }
+  /** F438: in the circle right now: PRESENT, or a credible sighting within `sightMs`. */
+  inCircleNow(e, now) { return !!e.present || (e.sightedAt != null && now - e.sightedAt <= this.sightMs); }
   tick(now) {
     for (const [key, e] of this.entries) {
       // How long since this advert actually arrived, stamped HERE so it is a duration on ONE clock. A reader
@@ -160,7 +163,7 @@ export class Presence {
         else e.belowSince = null;
       } else if (e.rssi >= thr) { if (e.sinceAbove == null) e.sinceAbove = now; if (now - e.sinceAbove >= this.dwellMs) e.present = true; }
       else e.sinceAbove = null;
-      e.inCircle = e.present || (e.sightedAt != null && now - e.sightedAt <= this.sightMs);
+      e.inCircle = this.inCircleNow(e, now);
     }
   }
   _list(role) { return [...this.entries.values()].filter(e => e.role === role).sort((a, b) => b.rssi - a.rssi); }
@@ -258,7 +261,7 @@ export function playerEdges(presence, memory) {
   const seen = new Set();
   for (const p of presence.players()) {
     seen.add(p.id);
-    const now = !!p.present;
+    const now = !!(p.present || p.inCircle);   // F438: the same "in the circle" the hill counts
     if ((memory.get(p.id) ?? false) !== now) { memory.set(p.id, now); edges.push({ id: p.id, team: p.team, present: now, rssi: p.rssi, median: p.median }); }
   }
   for (const id of [...memory.keys()]) if (!seen.has(id)) memory.delete(id);
@@ -279,16 +282,6 @@ export const ADVERT_VALUE_MIN_MS = 1000;
 export const ADVERT_START_MIN_MS = 300;
 /** F331: how long a failed start waits before it is tried again (it was every 250 ms tick). */
 export const ADVERT_FAIL_BACKOFF_MS = 1000;
-/**
- * The player advert's restart gate (polish H1). It compares the WHOLE UUID, so a new game byte, player id, team or
- * state always goes out, and it records a start only once the plugin says it worked:
- *   due(want, now) -> 'start' | 'stop' | null     what to do this tick (`want` = the UUID, or null = advertise nothing)
- *   started(uuid, now) / stopped()                 after the plugin call succeeded
- *   failed(action, now)                            after it threw: a failed start is retried, a failed stop too
- * A change of the `value` byte alone is rate-limited to ADVERT_VALUE_MIN_MS (Android throttles restarts). F331: any
- * two starts are at least ADVERT_START_MIN_MS apart (state bits flap at the range edge), and a start waits
- * ADVERT_FAIL_BACKOFF_MS after a failed one. A stop is never held.
- */
 /** F438: why a player phone's advert is (re)starting or stopping, for its log. `prev`/`next` are UUIDs or null;
  *  `ctx` names why `next` is null (`phase`, `stations`, `num`, `tid`). PURE. */
 export function advertChangeReason(prev, next, ctx = {}) {
@@ -312,6 +305,16 @@ export function advertChangeReason(prev, next, ctx = {}) {
   return parts.join(', ') || 'restart (same advert)';
 }
 
+/**
+ * The player advert's restart gate (polish H1). It compares the WHOLE UUID, so a new game byte, player id, team or
+ * state always goes out, and it records a start only once the plugin says it worked:
+ *   due(want, now) -> 'start' | 'stop' | null     what to do this tick (`want` = the UUID, or null = advertise nothing)
+ *   started(uuid, now) / stopped()                 after the plugin call succeeded
+ *   failed(action, now)                            after it threw: a failed start is retried, a failed stop too
+ * A change of the `value` byte alone is rate-limited to ADVERT_VALUE_MIN_MS (Android throttles restarts). F331: any
+ * two starts are at least ADVERT_START_MIN_MS apart (state bits flap at the range edge), and a start waits
+ * ADVERT_FAIL_BACKOFF_MS after a failed one. A stop is never held.
+ */
 export class AdvertGate {
   constructor({ minValueMs = ADVERT_VALUE_MIN_MS, minStartMs = ADVERT_START_MIN_MS, failBackoffMs = ADVERT_FAIL_BACKOFF_MS } = {}) {
     this.minValueMs = minValueMs; this.minStartMs = minStartMs; this.failBackoffMs = failBackoffMs;
