@@ -9,15 +9,15 @@ Updated: 2026-10-02. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 76.** Desk 1 · bench 75 · decision 0.
+**MVP open: 77.** Desk 1 · bench 76 · decision 0.
 
 **MVP DESK (1),** a keyboard is enough:
 - 🟠 **B21**
 
-**MVP BENCH (75),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F438** · **F439** · **F417** · **F434** · **F436** · **F440** · **F416** · **B26** · **F232** · **F293** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
 - 🟠 **F437** · **F349** · **F308** · **F374** · **S58** · **F425** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F383** · **F388** · **F389** · **F391** · **F393** · **F399** · **F443** · **F444**
-- 🟡 **Q13** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398** · **F282** · **F441** · **F442** · **F445** · **F446**
+- 🟡 **Q13** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398** · **F282** · **F441** · **F442** · **F445** · **F446** · **F447**
 - 🟢 **F339** · **F431**
 
 **MVP DECISION (0),** awaiting Tony:
