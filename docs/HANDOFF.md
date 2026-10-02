@@ -24,15 +24,14 @@ memory headroom (F429/F430 closed), the app-screens sleep-wait fix (F432 closed)
 push, publish `app-v0.4.15`, restart MC from main; then bench part 2.
 **Blocked:** the publish waits on the phones; B21 on the MacBook.
 ## Lane: brx2, bench, audio, utility and docs
-**State:** bench part 2 ran 2026-09-28 (brx1 drove, brx2 recorded; ended early). Full write-up: the 2026-09-28
-entry in `experiment-log/2026-09.md`. Confirmed: F422 (closed), F402, PICK GAME, FAVOURITES, the BUILD guard, and
-F416's zero-pool read on an unspawned gun (no false down in 6 go-lives). Failed on 0.4.15: F418, F381 (brx4 fixing)
-and F297's first connect (6/10, GATT 133; brx5). New: F434 (claims from about 3 m), F435 (camped re-grant), F436
-(first-grant slot bug).
-**Next:** part 3 of [`bench-plan.md`](bench-plan.md): brx4's and brx5's rechecks first, then the rows that never ran.
+**State:** the standard sheet ran 2026-10-02 on 0.4.16 (brx1 drove, brx2 recorded): `experiment-log/2026-10.md`.
+Closed: F297, F418, F381, F348, F394, F400, F419, F420, F421, F424; F413/F415 bench-confirmed. F436's cause is
+proven (after `$SPAWN` the gun ignores a slot change until the first pull: 0/6 against 13/13). Open with fixes in
+flight: F416's partial burst (brx4), F440 hill fairness (brx3), F437-F439 (brx5), F441-F444 (brx3). New, no
+owner: F445 (USP reload after a swap), F446 (poison tick loop).
+**Next:** the re-bench list in [`bench-plan.md`](bench-plan.md) on brx1's next APK; the Stick and Mac sheets.
 R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** 11.7 and the IPHONE block on the MacBook (WSL MC is never mDNS-discoverable); F270 on A8; F274 on its
-three 2-hour soaks; F275 on outdoor space.
+**Blocked:** the re-bench on the new APK; F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
 MC GAMES is PLAY + BUILD (F411) with FAVOURITES, LAST MATCH, teams (F413; a colour-only change recolours by index,
 a count change re-splits) and the KOTH hold target (F415). `scripts/land.mjs` (the land lane) is how commits reach main.
@@ -40,6 +39,12 @@ APK 0.4.15 (built from `efd1961c`) carries the phone tid-0 kill-confirm fix and 
 - **F297 / F434 (2026-09-28):** a fast GATT 133 retries after 200 ms (`dec8065a`); the pass rule is now "linked
   within 3 s". The Stick powerup default is -45 dBm; reflash the Stick from main before bench 4.11. F435 closed:
   camping is fine.
+- **F437 (2026-10-02):** the go-live klaxon (interrupt slot) cut the character taunt; it now goes before the line.
+  Bench: `bench-standard-2026-09-29.md` step 10.
+- **F438 (2026-10-02):** our own `$HIR` is a self-hit: the pools are given back, and a lethal one revives at once. Bench
+  step 11 (and the FF A/B, a possible firmware finding).
+- **F439 (2026-10-02):** the native death scream interrupts, so the phone sends no stop at death; body cues behind it
+  are stopped after it ends. Bench step 12.
 - **Next:** Tony's GAMES check at the bench. F429/F430 (browser-closed flakes): close after 3 clean lander runs once
   brx1's test-all headroom fix lands.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.
@@ -55,8 +60,7 @@ for mDNS: `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_m
 ## Lane: brx5, powerups, the HUD and gun audio
 **State:** powerups ON by default on main (F372); F416, F417 part 1 and F418 are shipped (spawn-write retry, lost
 equip re-send, a held heavy ends only on a trigger pull).
-**Next:** desk: B21's iOS half on the MacBook. F419's engine side is built (queue-slot cues wait for the clip on the gun); its bench check is on the row. Bench part 2: re-verify F416/F417/F418; sitting C's F394, F381,
-F400 and spacing checks.
+**Next:** the re-bench list in [`bench-plan.md`](bench-plan.md); F437-F439 bench steps on their rows.
 **Blocked:** none.
 ## Start here
 

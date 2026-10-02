@@ -95,29 +95,61 @@ moves; the mid-poison and under-shield `$LIFE,0,0,0` reads move no pool. Rows: F
 **8. 4.0, the release loop on 0.4.16 (20 min).** Follow *Group 1*, item 8, on the grey and green Pixels (the iOS
 half is in the Mac sheet). Row: the 4.0 step in `bench-2026-09-24.md`.
 
+**8b. NIGHT OPS from MC reaches the phones (5 min).** Use a phone whose player has not tapped the HUD skin switch
+in this MC session (a tap there outranks NIGHT OPS for the rest of the session). In LOBBY, set NIGHT on MC, then
+PUSH. A LOADed lobby that was never pushed only announces the change. Control, before the PUSH: over CDP,
+`engine.game.night` is true and `engine.config.night` is unchanged. **Pass:** after the PUSH, `engine.config.night`
+is true on both phones and the ack names MC's new `config_id`. START: at ARMED the HUD turns to the night skin.
+Then relaunch one phone in LOBBY: it comes back with `engine.config.night` true. Row: bench 2026-10-02's night note.
+
 **9. GAMES 9, TEAMS on the new UI (5 min).** Follow [`bench-plan.md`](bench-plan.md) → *GAMES CHECK*, item 9.
 Control: a 2-team game loads as red and blue. Row: F413's check (closed at the desk; bench-confirm only).
 
+**10. F437, the go-live taunt plays whole at volume 80 (5 min).** MC with no `--bench-volume`, so the match plays at
+80 (the venue value; ears at arm's length). Start a short match on both player phones. Control: the T-3 countdown
+"3, 2, 1, GO" plays. **Pass:** at go-live each gun plays the klaxon, then the whole character line (for example
+"no where to hide", not "no.."), on 3 of 3 starts. Log each phone's `write spawn + klaxon + spawn line (...)` line.
+Row: F437.
+
+**11. F438, your own shot never hurts you (10 min).** Indoors, a TDM match, standard health. The victim stands
+1-2 m from a wall and fires the sniper at it, 5 shots. Control first: the other player hits the victim once, and
+the pools move. **Pass:** no damage to self on any of the 5 shots. Any self `$HIR` that does arrive logs
+`self-hit: own shot ... restored` (or `... was lethal, revived`), and the HUD, MC's feed and the recap show no hit
+or death. Then the firmware A/B: the same 5 wall shots in an FFA match (friendly fire ON) against TDM (OFF). Log
+every `$HIR` with its shooter id and team (tokens 3 and 4), and whether the gun applied it. Row: F438.
+
+**12. F439, every death scream is heard (10 min).** Standard health, then Shields, at the match's play volume. Six
+fast kills on one victim: bring them under 15 HP, then kill within about 1 s, so the low-health alert (and, on
+Shields, the shield-down heartbeat) is in flight at the death. Control: one slow kill from full health, scream heard.
+**Pass:** the scream is heard on 6 of 6, no Health critical and no heartbeat after a scream, and the victim log has no
+`death: stop ... ahead of the scream` line. Log any `death: stop N for a body cue queued behind the scream` lines with their times. Row: F439.
+
 STOP POINT: the core is done. Everything below is lower value per minute.
 
-**10. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with
+**13. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with
 the black Pixel as the hill (release it from the powerup role first). Rows: F420, F421, F424.
 
-**10b. F438, a RED player on the phone hill (10 min, right after 10).** Pass rule for each part: read the hill's log
-(`player N (RED) PRESENT` lines) or `window.brx.diag()` over CDP.
-1. A RED player alone at the hill captures it.
-2. Then a BLUE player joins: the point is CONTESTED, and the hill's ticks stop.
-3. If red never captures, record whether the hill's log has a `player N (RED) PRESENT` line at all. That line
-   decides between "never heard" and "heard, not counted".
-Control: the same steps with a BLUE player alone. Row: F438.
+**13b. F440, fair presence on the phone hill (25 min, right after 13).** Read the hill's log (`player N (TEAM)
+IN THE CIRCLE` and `quiet` lines) or `window.brx.diag()` over CDP, and each player's `player advert` lines.
+1. The BLACK Pixel alone at the hill captures within 15 s. 3 runs.
+2. BLACK and GREEN together, on different teams: CONTESTED at once (within about 1 s of the second arriving), and the
+   hill's ticks stop. 3 runs, then swap the two phones' teams and 3 more.
+3. Record each run's gap histogram for both phones from `diag()`.
+Control: GREEN alone captures within 15 s. Row: F440.
 
-**11. F400, the pickup switch card (10 min).** Follow *Group 4*, item 2. Row: F400.
+**13c. The hill ladder (20 min; sets the hill threshold once per station type).** Hill phone on its stand. Each
+player phone, body between it and the hill, stands at 5, 7.5, 9 and 12 m, 3 times each, for 10 s at each mark. Pass:
+IN (present) at 5 and 7.5 m every time, OUT at 12 m every time, and 9 m recorded as the edge. If 7.5 m is not
+reliably IN, lower the default threshold by the measured shortfall (`beacon.js` / `station_range.h`), never per phone.
+Row: F440, F383.
 
-**12. F419, the phone's own queue path (10 min).** Follow *Group 4*, item 3. Row: F419.
+**14. F400, the pickup switch card (10 min).** Follow *Group 4*, item 2. Row: F400.
 
-**13. 11.8, death first (15 min).** Follow *Group 4*, item 6. Rows: F158, F3, F21, F375.
+**15. F419, the phone's own queue path (10 min).** Follow *Group 4*, item 3. Row: F419.
 
-**14. 11.4, the phone station's range edit (10 min).** Follow *Group 4*, item 1. Row: F365.
+**16. 11.8, death first (15 min).** Follow *Group 4*, item 6. Rows: F158, F3, F21, F375.
+
+**17. 11.4, the phone station's range edit (10 min).** Follow *Group 4*, item 1. Row: F365.
 
 ## Close
 

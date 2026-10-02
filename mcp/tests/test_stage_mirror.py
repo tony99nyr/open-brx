@@ -1765,7 +1765,8 @@ KNOWN_UNMIRRORED = {
     # F416 (2026-09-26): the check that follows such a batch (ask the gun, re-send to an unspawned one) and the radio-quiet
     # window that keeps the phone's station scan off the spawn write. The stage's batches never resolve false, and it
     # runs no station scan of its own.
-    "_spawnAsk", "_spawnCheckSeen", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "radioQuiet", "_quietWrite",
+    # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
+    "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "radioQuiet", "_quietWrite",
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
     # Maint review 2026-09-17 renamed the pair so the names say which is which: `_heatBlocksFire` is the
@@ -1849,7 +1850,7 @@ KNOWN_UNMIRRORED = {
     # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
     # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it
     # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.
-    "_puHeadWeap", "_puWeapFor", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puRearmRows", "_puBackResend", "_puBackTick",
+    "_puHeadWeap", "_puWeapFor", "_puItemCharges", "_puAtCap", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puRearmRows", "_puBackResend", "_puBackTick",
     # F400 (docs/spec/powerups.md "The switch card"): the pickup-driven weapon-switch card, reusing `switching`'s own
     # timing and takeover (a `pu` card: no echo confirm, no SELECT or re-send gate, no ALT pointer move). It hangs off
     # the unmirrored pickup mechanic (`_puEquip`, `_puSelectPressed`, `_puEnd`, above), so it has nothing to mirror onto.
@@ -2396,7 +2397,10 @@ def test_x3_the_spawn_line_and_the_klaxon_go_before_the_fill_like_the_phone():
         await st.spawn(); await settle(st)
         burst = since(mgr, n)
         plays = [i for i, f in enumerate(burst) if f.startswith("$PLAY,")]
-        assert len(plays) >= 2 and cues["klaxon"] in burst, f"setup: the spawn line and the klaxon went out: {burst}"
+        # F437 + F416 (2026-10-02): the klaxon and the spawn line are ONE two-slot frame, like engine.js
+        kx_id = cues["klaxon"].split(",")[1]
+        both = [f for f in burst if f.startswith(f"$PLAY,{kx_id},") and f.split(",")[4]]
+        assert len(both) == 1 and cues["klaxon"] not in burst, f"the klaxon and the line in one frame: {burst}"
         assert max(plays) < burst.index(fill), burst
         st._on_rx("$HP,0,0,0,*"); await settle(st)
         m = mark(mgr)
@@ -2405,6 +2409,14 @@ def test_x3_the_spawn_line_and_the_klaxon_go_before_the_fill_like_the_phone():
         plays = [i for i, f in enumerate(burst) if f.startswith("$PLAY,")]
         assert plays and max(plays) < burst.index(fill), burst
     asyncio.run(go())
+
+
+def test_f437_two_slot_play_mirrors_engine():
+    """engine.js `twoSlotPlay`: the same merge and the same refusals."""
+    assert S.two_slot_play("$PLAY,U16,4,6,,,,,*", "$PLAY,,4,6,VAI,,,,*") == "$PLAY,U16,4,6,VAI,,,,*"
+    assert S.two_slot_play("$PLAY,U16,4,6,VAA,,,,*", "$PLAY,,4,6,VAI,,,,*") is None
+    assert S.two_slot_play("$PLAY,U16,4,6,,,,,*", "$PLAY,X1,4,6,VAI,,,,*") is None
+    assert S.two_slot_play("$PLAY,U16,4,6,,,,,*", "$PLAY,,4,6,VAI,1,,,*") is None
 
 
 def test_live_bench_arming_literals_leave_t23_empty():
@@ -2602,6 +2614,26 @@ def test_the_heartbeat_follows_the_pool_and_stops_when_the_refill_gives_up():
         await shield_run(st2, mgr2, clock2, 20.0)
         assert c2["shield_loop"] not in since(mgr2, n2), \
             "a refill nothing can fix must not replay the clip for the rest of the life"
+    asyncio.run(go())
+
+
+def test_f439_no_heartbeat_while_the_low_health_line_waits():
+    """F439 (brx1 bench 2026-10-02, UNPROVEN): a beat went out in the same instant as the low-health alert and
+    played after the death scream. engine.js `_shieldLoopTick` holds the beat while the line waits; so does the
+    stage. CONTROL: the same due beat goes out once nothing waits."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        c = shield_cues(st)
+        clock.advance(1.0)
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)                  # the shield breaks: the heartbeat runs
+        st._pending_hurt_write = True                                   # the critical line waits in its hold
+        n = mark(mgr)
+        await shield_run(st, mgr, clock, 2.5)                           # a beat falls due (SHIELD_LOOP_S) in here
+        assert c["shield_loop"] not in since(mgr, n), "no beat while the critical line waits"
+        st._pending_hurt_write = False
+        await shield_run(st, mgr, clock, 1.0)
+        assert since(mgr, n).count(c["shield_loop"]) == 1, "CONTROL: the beat goes out once nothing waits"
     asyncio.run(go())
 
 

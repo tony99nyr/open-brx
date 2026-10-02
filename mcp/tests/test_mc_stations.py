@@ -1449,3 +1449,61 @@ def test_f402_switching_a_loaded_game_to_koth_without_a_hill_unloads_it_instead_
     assert s.game_loaded
     r = s.set_config({"mode": "koth", "station_source": "phone"})    # must not raise half-way
     assert s.game_loaded is False and s.config["mode"] == "koth", r
+
+
+# --------------------------------------------------------------------------- bench 2026-10-02: hill after NEXT MATCH
+def _koth_played_to_recap(nid: str):
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    s.net.simulate_utility_hello(nid)
+    s.set_station(nid, {"kind": "control", "team": "any", "id": 2})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    s.net.simulate_status(nid, {"node_id": nid, "arm_state": "connected", "synced": True, "role": "utility",
+                                "kind": "control", "station_id": 2, "armed": True,
+                                "control": {"owner": 1, "hold_ms": {"1": 400_750}}}, s.now_ms())
+    s.control("end")
+    assert s.phase == "recap"
+    return s
+
+
+def test_a_hill_assignment_survives_end_and_next_match_like_a_powerup_one():
+    """Bench 2026-10-02: after END and NEXT MATCH the hill was gone and LOAD refused "KING OF THE HILL NEEDS
+    A HILL". The roll itself keeps every assignment, hill or powerup, and a plain utility reconnect in RECAP
+    (the station's socket dropping and coming back, as at 11:48 that day) keeps it too."""
+    s = _koth_played_to_recap("brxu-grey")
+    s.net.simulate_utility_hello("brxu-grey")           # a plain reconnect: the same utility identity
+    s.next_match()                                       # raises if the hill were gone (F402 LOAD refusal)
+    a = s.stations["brxu-grey"]["assigned"]
+    assert a and a["kind"] == "control" and a["id"] == 2, a
+    assert s._koth_hill_fault() is None
+    # CONTROL: the same roll with a powerup, the case that "survived" earlier that day.
+    p = _joined(_sess(mode="tdm"))
+    p.net.simulate_utility_hello("brxu-pu")
+    p.set_station("brxu-pu", {"kind": "powerup", "team": "any", "id": 1})
+    p.push_config(force=True); p.start(runway_s=3, force=True); p.phase = "live"
+    p.control("end")
+    p.next_match()
+    assert (p.stations["brxu-pu"]["assigned"] or {}).get("kind") == "powerup"
+
+
+def test_back_to_hud_in_recap_clears_the_hill_and_the_way_back_is_a_fresh_station():
+    """What the bench actually did (session-697a8a8d, 2026-10-02): the grey phone's utility identity
+    `node-9af239c705` and its HUD identity `node-623e092c46` were never connected at the same time. Each
+    HUD hello came ~300 ms after an off-cadence utility status (the `exitToHud` flush), 2-6 s after END,
+    and the utility identity came back 12 s and 14 min later with `live: false` and a NEW station id
+    (2 -> 1), which only a consumed row gives. That is the F184 role handoff, and it is meant to clear:
+    the phone stopped being a hill the moment it left utility mode. Pinned so a future "keep the hill"
+    change has to face it on purpose."""
+    s = _koth_played_to_recap("brxu-grey")
+    s.net.simulate_hello("brx-grey", "", prior_utility_node_id="brxu-grey")   # BACK TO HUD
+    assert "brxu-grey" not in s.stations
+    s.net.simulate_utility_hello("brxu-grey")           # the seven-tap way back into utility mode
+    assert s.stations["brxu-grey"]["assigned"] is None, "a returning utility phone is a fresh, unassigned station"
+    try:
+        s.next_match()
+        raise AssertionError("LOAD accepted a koth game with no hill")
+    except ValueError as e:
+        assert "NEEDS A HILL" in str(e), e
+    # CONTROL: the operator re-assigns it on ITEMS and the same NEXT MATCH loads.
+    s.set_station("brxu-grey", {"kind": "control", "team": "any"})
+    s.load_game()
+    assert s.game_loaded and s._koth_hill_fault() is None

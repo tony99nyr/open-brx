@@ -1,6 +1,6 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-09-29. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-10-02. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 **Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** Part 3 is NOW: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
@@ -17,13 +17,32 @@ one sheet and runs it. The procedures live in the sheets and in the Part 2 secti
 
 | Sheet | Needs | Core steps | Time |
 |---|---|---|---|
-| [`bench-standard-2026-09-29.md`](bench-standard-2026-09-29.md) | this box, three Pixels, two guns, no Stick | F297's 10-run repeat, brx4's powerup rechecks (F418, F381, F436 with the `$GLED` gun test), F348 with the poison and shield reads, F394, 4.0, GAMES 9 TEAMS | about 2 h 40 min, plus 70 min lower priority |
+| ~~[`bench-standard-2026-09-29.md`](bench-standard-2026-09-29.md)~~ RAN 2026-10-02 (`experiment-log/2026-10.md`); steps 1-14 all ran | this box, three Pixels, two guns, no Stick | F297's 10-run repeat, brx4's powerup rechecks (F418, F381, F436 with the `$GLED` gun test), F348 with the poison and shield reads, F394, 4.0, GAMES 9 TEAMS | about 2 h 40 min, plus 70 min lower priority |
 | [`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) | the M5StickS3, two Pixels, two guns | reflash, -45 powerup default (F434), the 4.11 ladder, 11.2 with the ARMORY overrides, 11.6, the F417 race | about 3 h |
 | [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md) | the MacBook, the iPhone X, the grey Pixel | the IPHONE block, 11.7 over real mDNS, the iPhone as player 2 | about 75 min |
 
 **Build under test:** app 0.4.16, release-signed and unpublished, at
 `/home/tony/apk-0.4.16/brx-companion-0.4.16-android-release.apk` (branch `release/app-0.4.16`, `6a435152`,
 not on `main`). MC runs from `main`.
+
+### Re-bench after the fixes in flight (needs a NEW APK)
+
+The standard sheet ran on 0.4.16. These fixes land after it, so they need brx1's rebuilt 0.4.16+ (path and sha
+to come from brx1); none can be checked on today's APK. Each row holds its own bench step.
+
+1. **F416, the partial go-live burst (P0, brx4).** The check must verify the weapon state, not only the pools.
+2. **F436, an equip before the first pull since `$SPAWN` (brx4).** Plus one question: hold the trigger on the last
+   Rocket and keep holding through the empty switch-back's swap window. Does the primary fire by itself when the
+   window ends? Note any primary round and its delay.
+3. **F440, the phone hill hears one phone only now and then (brx3).** Steps 13b and 13c of the standard sheet.
+4. **F437 (the whole go-live taunt), F438 (an own-id hit never kills), F439 (the death stop and the heartbeat after
+   the scream) (brx5).** For F439, re-run 11.8 in full, the Shields half included.
+5. **F441 (MOVE opens a picker), F442 (the ACTIVE pip animation), F443 (MC LINK needs the locked hold) (brx3).**
+6. **F445, a USP reload just after an ALT swap.** Capture the wire.
+7. **Open questions:** a powerup take at the cap of 4 used up the item for nothing (now F447); MC's `PUT` of `night=true`
+   in LOBBY did not reach the phones; after a match the hill assignment was gone.
+
+F444 (the capture-begins alert) waits for Tony's storyboard pick, and F446 (the poison tick) for his ears.
 
 ## DONE: part 1, the short bench, 2026-09-26 (1.5 h, on what exists today)
 
@@ -685,4 +704,4 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | decision | what it blocks |
 |---|---|
 | The ALT indoor/outdoor wording in `manual/fix.md` "IR isn't registering hits" step 4. The page says the field test found no emitted-range change, but V4_31 shows the mode sets emitter power (F171) | no sitting; a manual edit |
-| **F400**: should a kill card wait under the pickup switch card, or take over it? Tony's lean is wait, unconfirmed | the switch-card clash fix, checked in the "after GAMES and 0.4.14" sitting above |
+| Should a kill card wait under the pickup switch card, or take over it? Tony's lean is wait, unconfirmed (the switch card itself passed 2026-10-02) | the switch-card clash fix, checked in the "after GAMES and 0.4.14" sitting above |

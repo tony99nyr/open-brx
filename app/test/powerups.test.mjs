@@ -1362,3 +1362,26 @@ test('bench 2026-10-02 CONTROL: the cue stays off a pickup slot the player does 
   h.frame('$ALCD,2,100,2,0,0,*'); h.fire(2, 1);   // a stray round reported from the pickup slot while nothing is held
   assert.equal(h.eng.state().shotCooldown, null);
 });
+
+test('F436: an equip before the first trigger pull of the life is logged as unconfirmed; one after a pull is not', () => {
+  const h = harness(ROCKET_GAME); h.at(121); const logs = []; h.eng.log = m => logs.push(String(m));
+  h.take(4);
+  assert.equal(h.eng._puHeld?.unconfirmed, true, 'no pull since the spawn: the gun may ignore the slot change');
+  assert.ok(logs.some(m => /before the first trigger pull of this life: unconfirmed \(F436\)/.test(m)));
+  const g = armed(); const glogs = []; g.eng.log = m => glogs.push(String(m));   // armed() fires two rounds this life
+  g.take(4);
+  assert.ok(!g.eng._puHeld?.unconfirmed, 'a pull this life: the equip takes (bench 4/4 + 9/9)');
+  assert.ok(!glogs.some(m => /unconfirmed \(F436\)/.test(m)));
+});
+
+test('pickup at the stack cap: the player does not claim, so the station keeps the item (bench 2026-10-02, ROBP1)', () => {
+  const h = armed({ echo: true });
+  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  assert.equal(h.eng._puHeld?.left, 4, 'setup: Rockets at the cap (2 x 2)');
+  const item = h.eng._puItems()[4];
+  assert.ok(item && item.weapon_id === 'rocket_launcher', 'setup: station 4 holds Rockets');
+  assert.equal(h.eng._puClaimable(4, item, h.eng.now()), false, 'at the cap: no claim, no claim_ready');
+  h.fire(2, 3); h.adv(3000);
+  assert.equal(h.eng._puClaimable(4, item, h.eng.now()), h.eng._puClaimable(4, { ...item, weapon_id: 'nope' }, h.eng.now()), 'one rocket fired: the cap no longer blocks the claim');
+});

@@ -14,7 +14,7 @@ import * as W from './transport/envelope.js';   // single source for the contrac
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S } from './transport/contract.gen.js';   // the spawn-kill window (2026-09-19) and the A16.3 readout timings (F52)
 import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
-import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, DEATH_STOP_SLACK_MS, PLAY_GAP_MS } from './announcer.js';
+import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, PLAY_GAP_MS } from './announcer.js';
 import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, redeployOutMs } from './lanes.js';
 import { MEDALS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
@@ -129,6 +129,9 @@ export const SHIELD_REGEN_WRITE_BUDGET = SHIELD_REGEN_GRANTS + 2;   // one recha
 // with `$HP`; that rise is the spawn fill, not a recharge, so it says nothing (SHIELD_FILL_ECHO_MS).
 export const SPAWN_SHIELD_FULL = true;
 const SHIELD_FILL_ECHO_MS = 5000;     // a shield rise this soon after a spawn fill is the fill's own echo (under SHIELD_REGEN_DELAY_MS, so a recharge never reads as one)
+// F438 (bench 2026-10-02): every `$HP` this soon after a self-hit's restore (or its revive) is the gun answering OUR write,
+// unless a newer `$HIR` landed since. The revive burst is ~17 frames at 30-90 ms each (SPAWN_PROBE_MS), so ~1.5 s to land.
+const SELF_HIT_ECHO_MS = 2000;
 const SHIELD_CHARGING_MIN_MS = 1000;  // C4: a refill shorter than this is not announced ("Shields charging" would outlast it)
 // A gun that stops echoing `$HP` would otherwise be granted at forever, so a refill is capped at the grants a
 // full pool can possibly need plus slack for the ones that landed while a hit was in flight.
@@ -161,11 +164,34 @@ export function isQueueSlotPlay(f) {
   const t = f.split(',');
   return !(t[1] || '').trim() && !!(t[4] || '').trim();
 }
+/** F437 (bench 2026-10-02) + F416: an interrupt-slot `$PLAY` (token 1, e.g. the klaxon `$PLAY,U16,4,6,,,,,*`) and a
+ *  queue-slot one (token 4, e.g. the spawn line `$PLAY,,4,6,VAI,,,,*`) as ONE two-slot frame, `$PLAY,U16,4,6,VAI,,,,*`:
+ *  Callsign's own game-end form (`$PLAY,VSF,4,6,JAY,,,,*`, a sting plus "victory", both played; docs/manual/sound.md
+ *  "Two slots at once"). The first frame's volume and priority stand. Null when the two do not fit one frame (the
+ *  interrupt frame already has a token 4, the queue frame a token 1, or the tail tokens differ). PURE. */
+export function twoSlotPlay(interrupt, queued) {
+  if (typeof interrupt !== 'string' || typeof queued !== 'string' || !interrupt.startsWith('$PLAY,') || !queued.startsWith('$PLAY,')) return null;
+  const a = interrupt.split(','), b = queued.split(',');
+  if (a.length !== b.length || a.length < 6) return null;
+  if (!(a[1] || '').trim() || (a[4] || '').trim() || (b[1] || '').trim() || !(b[4] || '').trim()) return null;
+  if (a.slice(5).join(',') !== b.slice(5).join(',')) return null;
+  const t = a.slice(); t[4] = b[4];
+  return t.join(',');
+}
+/** The clips one `$PLAY` puts on the gun, in play order: its interrupt-slot id (token 1), then its queue-slot id
+ *  (token 4). A two-slot frame (`twoSlotPlay`) gives both, each as its own one-slot frame. PURE. */
+export function playSlotFrames(f) {
+  if (typeof f !== 'string' || !f.startsWith('$PLAY,')) return [];
+  const t = f.split(',');
+  if (!(t[1] || '').trim() || !(t[4] || '').trim()) return [f];
+  const a = t.slice(), b = t.slice(); a[4] = ''; b[1] = '';
+  return [a.join(','), b.join(',')];
+}
 export const SPAWN_CHECK_MS = 400;        // after the failed write, this long before the node asks the gun
 export const SPAWN_ASKS = 2;              // probe writes before the check says the gun cannot be asked (HUD warning)
 export const SPAWN_ASK_GAP_MS = 1000;
 export const SPAWN_ANSWER_MS = 1500;       // a delivered probe that gets no `$HP` in this long counts as unanswered
-export const SPAWN_RESENDS = 2;           // re-sends to a gun that read an unspawned 0 pool, before today's death + respawn
+export const SPAWN_RESENDS = 2;           // bounded burst or weapon repairs before HOST: FORCE RESPAWN
 export const SPAWN_RESEND_WAIT_MS = 1500; // a re-send's own answer gets this long before the next one
 // Review r1: the check holds a 0-pool death at most this long from the first lost write. Past it the pool books as it
 // always did (the auto-respawn is the cure), so a gun that never answers can never leave an undying player at 0.
@@ -232,8 +258,7 @@ export const NO_FIRE_PULLS = 3;
  *     the one thing that tells an empty gun from a stuck one. But its status-array BODY arrives about 2 s later
  *     with NO trailing `*`, and **a dead gun holds its print loop for those 2 s** (a live gun: about 30 ms). That
  *     is the `$DPLAY` failure shape in miniature, which is why `$DPLAY` is on the deny list at all. So `$QUERY`
- *     NEVER goes on a timer and never goes to a gun that might be dead. It is sent in exactly ONE place: after
- *     `$LIFE` has already proved the gun ALIVE and the node still needs the magazine.
+ *     never goes to a gun that might be dead. The cure and F416 send it after a positive health read.
  *  ⚠ `$QUERY` CANNOT prove the `$SIR` table: nothing reads that back (transport-hardening.md §6). Nothing here
  *  implies the hit table is verified. The `$QUERY` token map is confirmed by SHAPE only, on an unconfigured gun
  *  (levers claim 19), so `_probeShapeOk` checks the shape and refuses a reply that does not fit. */
@@ -359,6 +384,18 @@ const STUN_PLAY = '$PLAY,X17,4,6,,,,,*';
 const MIN_RESPAWN_S = 3;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const MUST_HEAR_MAX_STOPS = 4;  // a flush has a fixed cap to limit fragments and write size
+/** F439 (brx1 bench 2026-10-02, UNPROVEN): a body clip left queued behind the native scream is stopped no sooner than
+ *  this long after the model says the scream ends, so the stop never lands on the scream's tail (the model's clock is
+ *  an estimate). */
+const DEATH_BODY_STOP_MARGIN_MS = 300;
+/** F439 polish r1: a body clip the model says has less than this left is not stopped, nor any after it. BLE latency or a
+ *  late timer could carry the stop past its end and onto the line behind it (my kill confirm). */
+const DEATH_BODY_STOP_MIN_LEFT_MS = 250;
+/** F439 polish r3 (brx1 bench 2026-10-02, UNPROVEN): a body clip whose write went out this long or less before the phone
+ *  heard `$HP,0` reached the gun after the scream began (the BLE delay), so it queues behind the scream, not cut. */
+const DEATH_LATE_WRITE_MS = 300;
+/** F439: the cues that are the player's BODY, not news: they never play after my death scream. */
+const BODY_CUES = ['hurt', 'pain_short', 'pain_long', 'pain_melee', 'shield_up', 'shield_down', 'shield_charging', 'shield_online', 'shield_loop'];
 const KILL_CARD_MS = 1800;      // hud.js `_kill`'s card hold: MC's kill card owns the announcer slot at least this long
 const LANE_FEED_MAX = 6;           // docs/announcer.md "The three lanes": the FEED rows kept (the HUD draws the newest three)
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
@@ -810,6 +847,10 @@ export class Engine {
     this._activeRole = null;        // A16 §3.3: {name, tid} — the ONE headset role currently held (carrier|infected|vip|beacon|extracted), re-asserted after every hit, cleared on death
     this._lastHeadsetFlashAt = null; // led-language.md §2 (safety: bursts ≥ 1 s apart) / §5: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto, ir_subtype, sensor}
+    this._foreignDmgAt = null;      // F438 polish r1: when another player's damaging word last landed (a self-hit inside 1000 ms of one is a real hit)
+    this._selfGunPools = null;      // F438 polish r2: the pools the gun reported on a self-hit whose restore has not landed
+    this._selfHitUsed = null;       // F438 polish r2: the last word given back (one word, one give-back)
+    this._selfEcho = null;          // F438: {at, health, armor, shield} -- the pools a self-hit restore or revive put back, while its echo is due
     this._dmgLatch = null;          // F354: the last latch whose `$SIR` cell can move a pool (`_nonDamaging`); the `$HP` that follows is ITS damage
     this._sirFnsFor = undefined; this._sirFnsMap = null;   // F354: `_sirFns()`'s cache, keyed on the bundle object
     this._hitGroupSeq = 0;
@@ -1292,7 +1333,7 @@ export class Engine {
         this._lastPlayAt = this.now();
         if (noted) return;
         noted = true;
-        this._gun.add(this._clipLen(frame), why, this.now(), clipId(frame));
+        for (const one of playSlotFrames(frame)) this._gun.add(this._clipLen(one), why, this.now(), clipId(one));   // F437: a two-slot frame is two clips
         if (onSent) onSent();
       };
       const writeOptions = hasPlay ? { ...options, onFrameSent: frame => {
@@ -1378,7 +1419,7 @@ export class Engine {
     out = [];
     for (const f of frames) {
       if (!deferPlay && typeof f === 'string' && f.startsWith('$PLAY,')) {
-        g.add(this._clipLen(f), why, now, clipId(f));
+        for (const one of playSlotFrames(f)) g.add(this._clipLen(one), why, now, clipId(one));   // F437: a two-slot frame is two clips
       }
       out.push(f);
     }
@@ -1423,7 +1464,6 @@ export class Engine {
   }
   /** A hit the gun registered (`$HIR`): the gun plays the `$SIR` row's sound for it, into the same FIFO. */
   _audioHit(proto, subtype, now) {
-    this._lastHitClip = null;   // per hit: only THIS hit's own row sound is the lethal one's
     const id = this._sirSound[`${proto}:${subtype}`];
     const ms = id ? CLIP_MS[id] : undefined;
     if (!(ms > 0)) {
@@ -1431,8 +1471,7 @@ export class Engine {
       if (!(this._hitSoundWarned || (this._hitSoundWarned = new Set())).has(key)) { this._hitSoundWarned.add(key); this.log(`audio: a hit on $SIR ${proto},${subtype} has ${id ? `sound ${id}, of unknown length` : 'no row sound'}: counted as 0 ms`, 'li'); }
       return;
     }
-    const clip = this._gun.add(ms, `hit sound ${id}`, now, id);   // each hit is a separate FIFO clip
-    if (clip) this._lastHitClip = clip;   // `_death`: the lethal hit's own row sound is never counted ahead of the scream (F158)
+    this._gun.add(ms, `hit sound ${id}`, now, id);   // each hit is a separate FIFO clip
   }
   /** pl3 (2026-09-17): a write the gun must not miss AND that is harmless to repeat -- the stun restore and the
    *  operator resync (both re-send the live counts, `$TID` and `$BMAP`; nothing heals or re-heads). Spawn and
@@ -1455,21 +1494,17 @@ export class Engine {
     }).catch(e => this.log(`write ${why} retry failed: ${e && e.message || e}`, 'le'));
     return r;
   }
-  /** pl4 (2026-09-17): a spawn or revive write is NEVER sent twice. A repeat re-sends `$SPAWN` and the loadout
-   *  `$AMMO` into a life in play (a refill and a second spawn line), and on a protected bundle it re-sends the
-   *  protection (`$TMP` t8 = -100, or an older bundle's fn-28 twin), which can land after `_armLife` ended it and
-   *  leave the gun unhittable for the life (F11).
-   *  On a false resolve for THIS life: log loudly, make sure a live take is pending or written, and flag the
-   *  pool `write_lost` so MC shows it and the operator's RESYNC GUN is the cure. */
+  /** F416: a failed spawn or revive write gets a pool probe, then a weapon query if health is positive.
+   *  Only a matching slot and magazine prove the burst landed. Re-send the burst before any play, else repair
+   *  only team, ammo and trigger controls. The check remains open until a query verifies the result. */
   _writeLife(frames, why, life, check = null) {
     const at = this.now();
     const r = this._quietWrite(frames, why);   // F416 part 2: no station scan while this write is on the radio
     Promise.resolve(r).then(ok => {
       if (ok !== false) {
-        if (check) {   // a re-send landed. Its own `$LCD` can close the check before this promise settles, so do not ask
-          if (this._spawnCheck === check) this._spawnCheck = null;
-          if (this._writeLost === check.life) this._writeLost = null;
-          this.log(`F416: ${why} landed`, 'lk');
+        if (check) {   // a completed write still needs a weapon read-back
+          if (this._spawnCheck === check) { check.heardAt = 0; check.queryAt = 0; check.resentAt = 0; check.asks = 0; this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(check)); }
+          this.log(`F416: ${why} write completed; checking weapon state`, 'lk');
           this._spawnLanded(check);   // the burst re-applied spawn protection: end it as the first repair did (F11)
           this._changed();
         }
@@ -1479,13 +1514,12 @@ export class Engine {
         this.log(`*** write ${why} failed -- the life moved on, nothing to check ***`, 'le'); return;
       }
       this._writeLost = life;
-      // F416 (bench part 1, 2026-09-26): this used to stop here, "not re-sent", and the gun stayed unspawned until the
-      // node booked a death on its 0 pool. A blind second burst is still unsafe (pl4, above), so ASK the gun first.
+      // F416: ask the gun before a repeat. A pool answer alone cannot prove the weapon state.
       this.log(`*** write ${why} failed -- asking the gun before any re-send (F416) ***`, 'le');
-      const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: at };
+      const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: at, shotsAt: this.shots };
       // Review 2026-09-26: `resentAt` clears. A lost re-send is off the radio, so its in-flight guard must not swallow
       // the probe's `$HP,0` answer (`_spawnIntercept`). `resends` still counts it, so the SPAWN_RESENDS bound holds.
-      Object.assign(c, { writeAt: at, asks: 0, lost: false, heardAt: 0, resentAt: 0 });
+      Object.assign(c, { writeAt: at, asks: 0, lost: false, heardAt: 0, queryAt: 0, resentAt: 0 });
       this._spawnCheck = c;
       this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
       // The repair runs NOW, as it always did, whatever the check finds: ending spawn protection must never wait on
@@ -1506,18 +1540,18 @@ export class Engine {
     Promise.resolve(r).then(done, done);
     return r;
   }
-  /** F416: ask the gun (`PROBE_LIFE`, the all-zero read) whether the lost spawn/revive write landed. The answer lands
+  /** F416: ask for a live pool before `$QUERY`; a dead gun can hold its print loop on `$QUERY`. The answer lands
    *  through the ordinary `$HP` handler, which calls `_spawnCheckSeen`. A probe the BLE layer cannot deliver either is
    *  asked once more, and then the check is `lost`: the HUD says the gun may not be spawned and names the cure, FORCE
    *  RESPAWN (a revive burst). RESYNC GUN cannot cure it: it re-sends counts and never `$SPAWN` (`_operatorResync`). */
   _spawnAsk(c) {
-    if (this._spawnCheck !== c) return;
+    if (this._spawnCheck !== c || c.done) return;
     if (c.life !== this._lifeSeq || !this.alive || this.phase !== 'live' || !this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }
     if (!this.bleUp) return;   // the relink's reconcile probes on its own, and its answer reaches `_spawnCheckSeen`
     c.asks++;
-    const asked = this.now();
+    const asked = this.now(), gen = c.gen || 0;
     const next = () => {   // no delivery, or no answer: ask again, then say so
-      if (this._spawnCheck !== c || c.heardAt > asked) return;
+      if (this._spawnCheck !== c || c.done || c.heardAt > asked || (c.gen || 0) !== gen) return;   // r3: a deferral retires older chains
       if (c.asks < SPAWN_ASKS) { this._spawnAsk(c); return; }
       c.lost = true;
       this.log('*** F416: the gun did not answer the spawn check -- it may not be spawned (HOST: FORCE RESPAWN) ***', 'le');
@@ -1528,44 +1562,100 @@ export class Engine {
       this.delay(ok === false ? SPAWN_ASK_GAP_MS : SPAWN_ANSWER_MS, next);   // a delivered probe gets its answer time first
     });
   }
+  /** F416: `$LCD` gives the slot and magazine that a positive pool cannot prove. */
+  _spawnQuery(c) {
+    if (c.queryAt || c.done || this._spawnCheck !== c) return;
+    c.queryAt = this.now();
+    const gen = c.gen || 0;
+    Promise.resolve(this._askMagazine('F416 spawn weapon check')).then(ok => {
+      if (this._spawnCheck !== c || c.done) return;
+      this.delay(ok === false ? SPAWN_ASK_GAP_MS : SPAWN_ANSWER_MS, () => {
+        if (this._spawnCheck !== c || c.done || !c.queryAt || (c.gen || 0) !== gen) return;
+        c.queryAt = 0; c.heardAt = 0;
+        if (c.asks < SPAWN_ASKS) this._spawnAsk(c);
+        else { c.lost = true; this.log('*** F416: the gun did not answer the weapon check (HOST: FORCE RESPAWN) ***', 'le'); this._changed(); }
+      });
+    });
+  }
   /** F416: is the check still inside SPAWN_CHECK_MAX_MS of the first lost write? PURE. */
   _spawnCheckLive(c, now = this.now()) { return !!c && now - c.firstAt < SPAWN_CHECK_MAX_MS; }
-  /** F416: a pool report (`$HP` or `$LCD`) while a spawn check is open. Pools up: the spawn landed and the check
-   *  closes (the repair already ran). All zero: `_death` asks `_spawnIntercept` before booking. */
-  _spawnCheckSeen(hp, armor, shield) {
+  /** F416: positive health permits a `$QUERY`; only its matching weapon state closes the check. */
+  _spawnCheckSeen(hp, armor, shield, lcd = null) {
     const c = this._spawnCheck;
-    if (!c || c.life !== this._lifeSeq || !(this.now() > c.writeAt)) return;
+    if (!c || c.done || c.life !== this._lifeSeq || !(this.now() > c.writeAt)) return;
     c.heardAt = this.now(); c.lost = false;
-    if (hp > 0 || armor > 0 || shield > 0) { this._spawnCheck = null; this.log(`F416: the gun reads its pools, so ${c.why} landed; no re-send`, 'lk'); this._changed(); }
+    if (hp <= 0) return;
+    if (!this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }   // out of time: a positive pool closes it, as before
+    if (!lcd || !c.queryAt) { this._spawnQuery(c); return; }
+    if (!this._probeShapeOk(lcd) || ![lcd[4], lcd[5]].every(v => v !== '' && Number.isFinite(+v))) return;
+    c.queryAt = 0;
+    // The gun must agree with the node's own view: the slot on the trigger and that slot's live count. A healthy gun
+    // that fired, reloaded or swapped with ALT since the write still matches; the bench P0 (an unspawned gun on the
+    // head's last `$WEAP`, slot 2 at 2/1, while the node held slot 0) does not.
+    const slot = this.activeSlot, gs = +lcd[4], gm = +lcd[5];
+    const live = this._liveAmmo()[slot], expected = live ? live[0] : null;
+    // Round 2/3: no verdict while the node's own view is in motion AND that motion can explain the gap: a press whose
+    // round has not come back (the gun still holds it: magazine in [expected, expected + pressed]), an ALT swap in its
+    // window (the gun on its from or to slot), or a stun holding the gun at 0. Anything else, such as the P0's slot 2
+    // at 2/1 while the player pulls a dead trigger, is decided now, or it would defer to a silent close.
+    const a = this._shotAcct[slot], pressed = this._acctOutstanding(slot) && a ? a.fired : 0;
+    const sw = this.switching && !this.switching.pu ? this.switching : null;
+    const motion = (pressed && gs === slot && expected != null && gm >= expected && gm <= expected + pressed)
+      || (sw && (gs === sw.from || gs === sw.to)) || this.stunned;
+    if (motion) {
+      c.gen = (c.gen || 0) + 1; c.heardAt = 0; c.asks = 0;   // retire the older ask and query timers: one chain only
+      this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
+      return;
+    }
+    if (gs === slot && expected != null && gm === expected) {
+      this._spawnCheck = null;
+      if (this._writeLost === c.life) this._writeLost = null;
+      this.log(`F416: the gun's weapon state matches ${c.why}; landed, no re-send`, 'lk');
+      this._changed(); return;
+    }
+    this._spawnRetry(c, `slot ${lcd[4]}, magazine ${lcd[5]} (expected slot ${slot}, magazine ${expected})`);
   }
-  /** F416: `_death` asks this first. True = do NOT book a death: the 0 pool is a gun that never spawned (no `$HIR`
-   *  since the write), so the burst goes again, or a re-send or the check is still in flight. After SPAWN_RESENDS the
-   *  node gives up and books it, so today's auto-respawn is the cure, never a zombie at 0.
-   *  Why "no `$HIR`" is enough (review r1): an unspawned gun ignores IR (docs/manual/dev.md), and a spawn that lands
-   *  answers at once with its own `$LCD`, which closes the check. The residue is a spawn that landed, lost that `$LCD`
-   *  too, and died with no `$HIR` (grenade or station damage) inside SPAWN_CHECK_MAX_MS: that player is re-spawned
-   *  (a free respawn), and the repair ends the protection the burst re-applied (F11). Never an undying player. */
+  /** F416: repeat the burst only before any observed play; otherwise restore its weapon controls. */
+  _spawnRetry(c, evidence) {
+    if (c.resends >= SPAWN_RESENDS) {
+      c.done = true; c.lost = true; c.queryAt = 0;
+      this.log(`*** F416: ${c.resends} re-sends and ${evidence}; HOST: FORCE RESPAWN ***`, 'le');
+      this._changed(); return false;
+    }
+    c.resends++; c.resentAt = this.now();
+    // Only a round or a hit is play. A pull is NOT: a dead trigger on an unspawned gun is exactly what makes players pull.
+    const whole = !(this.lastHitAt > c.firstAt) && this.shots === c.shotsAt;
+    this.log(`F416: ${evidence}; re-sending ${whole ? 'whole burst' : 'weapon controls'} (${c.resends}/${SPAWN_RESENDS})`, 'le');
+    if (whole) { this._writeLife(c.frames, `${c.why} (re-sent ${c.resends})`, c.life, c); return; }
+    const rp = this._respawnProfile();
+    const map = this._triggerPending ? c.frames.find(f => f.startsWith('$BMAP,0,')) : (rp && rp.trigger_live) || c.frames.find(f => f.startsWith('$BMAP,0,'));
+    const live = this._liveAmmo();   // live counts, never the spawn rows: a repair after play must not refill the magazine
+    const repair = [...c.frames.filter(f => f.startsWith('$TID,')),
+      ...Object.entries(live).map(([s, [mag, res]]) => { this._acctWrote(+s, mag, res); return `$AMMO,${s},${mag},${res},1,*`; })];
+    if (map) repair.push(map);
+    Promise.resolve(this._quietWrite(repair, `${c.why} weapon repair ${c.resends}`)).then(() => {
+      if (this._spawnCheck !== c) return;
+      c.heardAt = 0; c.queryAt = 0; c.resentAt = 0; c.asks = 0;
+      this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
+    });
+  }
+  /** F416: `_death` asks this first. A zero pool without a hit can mean the gun never spawned.
+   *  After SPAWN_RESENDS, keep the HOST: FORCE RESPAWN warning visible and stop automatic writes. */
   _spawnIntercept() {
     const c = this._spawnCheck;
     if (!c) return false;
-    if (c.life !== this._lifeSeq || this.phase !== 'live' || !this._spawnCheckLive(c)) {
-      if (c.life === this._lifeSeq) this.log(`F416: the check of ${c.why} ran out -- the 0 pool books as usual`, 'le');
+    if (c.life !== this._lifeSeq || this.phase !== 'live') { this._spawnCheck = null; return false; }
+    if (this.hp > 0) return false;   // a shield fill can raise shield on a gun whose spawn never landed
+    if (this.lastHitAt > c.writeAt) { this._spawnCheck = null; return false; }   // a hit since the write: a real death
+    // Never an undying player: a spent budget or an expired check books the 0 pool as usual, and the respawn is the cure.
+    if (c.done || !this._spawnCheckLive(c)) {
+      this.log(`F416: the check of ${c.why} is ${c.done ? 'out of re-sends' : 'out of time'} -- the 0 pool books as usual`, 'le');
       this._spawnCheck = null; return false;
     }
-    if (this.hp > 0 || this.armor > 0 || this.shield > 0) return false;
-    if (this.lastHitAt > c.writeAt) { this._spawnCheck = null; return false; }   // a hit since the write: a real death
     const now = this.now();
     if (!(c.heardAt > c.writeAt)) return true;                                  // no answer to the check yet: no evidence either way
     if (c.resentAt && now - c.resentAt < SPAWN_RESEND_WAIT_MS) return true;     // the re-send is in flight
-    if (c.resends >= SPAWN_RESENDS) {
-      this._spawnCheck = null;
-      this.log(`*** F416: ${c.resends} re-sends and the gun still reads 0 -- booking it, the respawn is the cure ***`, 'le');
-      return false;
-    }
-    c.resends++; c.resentAt = now;
-    this.log(`F416: the gun reads a 0 pool with no hit since ${c.why} -- it never spawned; re-sending (${c.resends}/${SPAWN_RESENDS})`, 'le');
-    this._writeLife(c.frames, `${c.why} (re-sent ${c.resends}: the gun was not spawned)`, c.life, c);
-    return true;
+    return this._spawnRetry(c, 'the gun reads a 0 pool') !== false;   // a spent budget books the 0 pool now
   }
   /** The repair after a lost spawn/revive write (pl4): the take that ends spawn protection, and the hit table. It runs at
    *  once on the loss and again after a re-send lands (F416), so a protection a burst applied is always ended. */
@@ -3083,9 +3173,9 @@ export class Engine {
     if (!SPAWN_SHIELD_FULL || !this.shieldRegenOn) return [];
     return [`$LIFE,0,0,${this.maxShield},*`];
   }
-  /** X3: a spawn or revive burst, with the fill LAST after the spawn line and klaxon. */
-  _writeSpawnBurst(frames, fill, why, life) {
-    this._writeLife([...frames, ...fill], why, life);
+  /** X3: a spawn or revive burst, with the fill LAST after the klaxon and spawn line. */
+  _writeSpawnBurst(frames, fill, why, life, tail = []) {
+    this._writeLife([...frames, ...fill, ...tail], why, life);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
     this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
   }
   _spawn(withCountdown) {
@@ -3106,10 +3196,19 @@ export class Engine {
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
-    // X3: keep the klaxon after the spawn line and before the fill
+    // X3: the fill goes last. Bench 2026-10-02 (0.4.16, Tony): the klaxon is on the INTERRUPT slot (token 1), and sent
+    // after the spawn line it cut the taunt after one word ("no where to hide" played as "no.."). So the klaxon goes
+    // FIRST, and the line, on the queue slot (token 4), plays whole after it.
+    // F437 + F416 (2026-10-02): as two frames, the queue-slot line waited about 0.4 s on the phone for the klaxon (F419's
+    // `_drainPlayWrites`), so the burst's `_writeLife` settled late and F416's last re-send failure opened a fresh check
+    // after its verdict. So the two go as ONE two-slot frame (`twoSlotPlay`, Callsign's game-end form: both slots play),
+    // after `$SFLASH`, before the fill. A pair that does not fit one frame falls back to the klaxon, then the line.
+    // ⚠ The fallback brings back the 0.4 s settle (F416's risk); no bundle today takes it (review 2026-10-02).
     const kx = this.frames.cues && this.frames.cues.klaxon && !this.cuesFired.has('klaxon') ? this.frames.cues.klaxon : null;
     if (kx) this.cuesFired.add('klaxon');
-    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : []), ...(kx ? [kx] : [])], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + this._lineTag(sp) + (kx ? ' + klaxon' : '') + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
+    const both = kx && sp.frame ? twoSlotPlay(kx, sp.frame) : null;
+    const sounds = both ? [both] : [...(kx ? [kx] : []), ...(sp.frame ? [sp.frame] : [])];
+    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
     if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;
@@ -3835,6 +3934,10 @@ export class Engine {
     // one FIFO. It never starts while the gun still holds a clip (a must-hear line included, for that line's length) or
     // while any announcer item waits; once written it is a clip in the model, so a kill confirm flushes it.
     if (this._gun.outstanding(now) > 0 || this._ann.queue.length) return;
+    // F439 (brx1 bench 2026-10-02, UNPROVEN): a beat went out in the same instant as the low-health alert, before that
+    // line reached the model, and Tony heard it AFTER the death scream. So no beat while a play write waits or is in
+    // flight, while the critical line waits, while dead, or before the scream ends. The next life restarts it.
+    if (!this.alive || now < (this._screamUntil || 0) || this._pendingHurtWrite || this._pendingPlayWrites.size || this._playBusy) return;
     this._shieldLoopAt = now;
     this._write([f], 'shield down heartbeat');   // recorded in the gun's audio FIFO by `_audioWrite`
   }
@@ -4096,14 +4199,17 @@ export class Engine {
     if (this.resync) this._resyncTick();
   }
 
-  _revive(resync, stationId = null, operator = false) {
+  /** `selfHit` (F438): the pools held just before our own shot killed us. The revive writes the same burst a timed
+   *  respawn does, ending in a `$LIFE` that drains back to those pools, and to MC and the HUD it never happened: no
+   *  respawn fact, no REDEPLOYED moment, and the life's ledger and spawn-kill clock carry on. */
+  _revive(resync, stationId = null, operator = false, selfHit = null) {
     this.reloading = null; this._reloadOutcome = null; this.held = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
     if (this._overshield || this._puHeld || this._puBackPending?.equipped === false) this._puDeath(true);   // a live respawn also retires a delayed empty switch-back
     const down = this.frames.headset && this.frames.headset.down;
     if (down && down.stop) this._write([down.stop], 'down stop');   // §3.2: `$HLOOP,0,0,*` before $SPAWN — belt-and-braces, $SPAWN clears the loop on its own
     this._downRearmSent = false;   // §3.2: fresh rearm gate for the next life
-    const sp = this._pickCue('respawned');   // A15.2: the spawn line rides in the revive write (one line, never two)
+    const sp = selfHit ? { frame: null, tag: '' } : this._pickCue('respawned');   // A15.2: the spawn line rides in the revive write (one line, never two); F438 polish: a self-hit revive says nothing
     const ps = this._pickFrame('pset_pool');   // A15.3: a fresh death scream for this life, written before $SPAWN
     if (ps.frame) this._psetNow = ps.frame;   // A56: ...and, at the preset shield max, it undoes an overshield's raised one
     // A17: a fresh $SIR table too, so the sound a given WEAPON makes on us changes between lives. It rides the
@@ -4124,10 +4230,14 @@ export class Engine {
     const revive = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
+    // F438: the revive leaves full health and armour and the fill's shield; the drain takes back the difference, per pool
+    // (a negative floors at 0 and never spills, docs/manual/dev.md `$LIFE`). Never a heal: a self-kill costs what it cost.
+    const selfDrain = selfHit ? [selfHit.health - this.maxHp, selfHit.armor - this.maxArmor, selfHit.shield - (fill.length ? this.maxShield : 0)].map(d => Math.min(0, d)) : null;
+    const drain = selfDrain && selfDrain.some(d => d < 0) ? [`$LIFE,${selfDrain[0]},${selfDrain[1]},${selfDrain[2]},*`] : [];
     // docs/announcer.md: the dead queue ends here. Only my kill confirm and the lead change survive it, and they wait for
     // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
-    this._ann.respawn(this.now(), revive.includes(PLAYX));
-    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);   // X3: the line before the fill
+    if (!selfHit || revive.includes(PLAYX)) this._ann.respawn(this.now(), revive.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
+    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain);   // X3: the line before the fill
     this.hurtFired = false; this._hurtSent = false;
     this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
@@ -4140,9 +4250,12 @@ export class Engine {
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
     this._puRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
-    this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
-    this._resetLifeLedger();   // S56: nor does the "what hit me" ledger
+    // F438 polish r1: a self-hit revive is the same life, so an enemy's poison keeps ticking and a smoke keeps its clock.
+    // ⚠ Unbenched: the revive's `$SPAWN` clears every `$TMP`, so the gun may have dropped the smoke's accuracy hold already.
+    if (!selfHit) { this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null; }   // S16/S53: a new life carries neither
+    if (!selfHit) this._resetLifeLedger();   // S56: nor does the "what hit me" ledger (F438: a self-hit revive is the same life)
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null; this.downReason = null;
+    if (selfHit) { this.hp = selfHit.health; this.armor = selfHit.armor; this.shield = Math.min(selfHit.shield, fill.length ? this.maxShield : 0); }   // F438: what the drain leaves
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._gunLifeAt = this._spawnAt; this._armedThisLife = false;   // B5/F272: settle and silence clocks start with this life
@@ -4152,8 +4265,9 @@ export class Engine {
     // SHIELD_REGEN_DELAY_MS in and never inside the spawn write.
     this._shieldRegen = null; this._shieldDown = false; this._shieldLoopAt = 0; this._shieldGaveUp = false; this._shieldQuietAt = this.now();
     this._armAfterSpawn(false, kind);   // F209; 2026-09-19: the profile this revive used
-    this._timedLifeAt = kind === 'timed' && stationId == null ? this.now() : null;   // a legacy bundle's station revive is not a timed one   // 2026-09-19: the spawn-kill window runs from a timed respawn
+    if (!selfHit) this._timedLifeAt = kind === 'timed' && stationId == null ? this.now() : null;   // a legacy bundle's station revive is not a timed one   // 2026-09-19: the spawn-kill window runs from a timed respawn   // F438: a self-hit revive is no respawn
     this._gunTake();   // A11.7
+    if (!selfHit) {   // F438: a self-hit revive tells MC and the HUD nothing; the gun's lights below still follow its `$SPAWN`
     const protectMs = this._protectOwedMs();   // F289: sent at once, so MC knows of the window even if the phone dies inside it
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}), ...(protectMs ? { protect_ms: protectMs } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     // F368: `_redeployOutAt` is when the HUD's REDEPLOYED gives up the centre (lanes.js `redeployOutMs`, the weapon delay read here)
@@ -4161,6 +4275,7 @@ export class Engine {
     this._redeployOutAt = this.now() + redeployOutMs(this._triggerPending ? Math.max(0, this._triggerPending.due - this.now()) : 0);   // kept apart: a kill overwrites the moment slot
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): a kill from the old life never draws in, nor joins, this one
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
+    }
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
     if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
@@ -5267,6 +5382,7 @@ export class Engine {
     }
     const life = p.life;
     this._writeLost = null;   // the live reply is the evidence that retires a lost spawn/revive write
+    this._spawnCheck = null;  // ...and the F416 check with it, so the HUD's FORCE RESPAWN warning and MC agree
     const tid = this._liveTid();
     const ammo = Object.entries(this._liveAmmo()).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`);
     const bmap = ((this.frames && this.frames.revive) || []).find(f => typeof f === 'string' && f.startsWith('$BMAP,0,0')) || '$BMAP,0,0,,,,,*';
@@ -5526,6 +5642,7 @@ export class Engine {
     switch (cmd) {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); this._poolVerify(this.hp, this.armor, this.shield, solicited); if (solicited || this._operatorResyncPending) this._operatorResyncAnswer('HP', t, solicited); if (solicited) this._cureAnswer('HP', t); break;
       case 'LCD': {
+        if (this._selfHitLcd(+t[1] || 0)) break;   // F438 polish r2: the lethal self-hit's own `$LCD,0` twin
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
         if (this.hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
@@ -5534,10 +5651,10 @@ export class Engine {
         // read 0 in every observed frame -- so writing it can only ZERO a live shield, never set one,
         // which silently recreates the Q12 bug this file just fixed. Re-add only once t3 is
         // bench-confirmed as the shield.
-        if (t[5] !== undefined) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);   // $LCD carries no heat token — leave it untouched this frame
+        if (t[5] !== undefined && !(this._spawnCheck && this._spawnCheck.queryAt && !this._spawnCheck.done)) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);   // a spawn query's slot may differ from activeSlot
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         const wasResync = !!this.resync;
-        this._spawnCheckSeen(this.hp, this.armor, 0);   // F416: a `$SPAWN`'s own `$LCD` answers a spawn check too. `$LCD` carries no shield, so never the engine's own
+        this._spawnCheckSeen(this.hp, this.armor, 0, t);   // F416: only a queried `$LCD` proves the weapon state
         if (this.resync) this._resyncEvidence('lcd');
         // F264: a SOLICITED zero is a `desync` death by the §3.3 definition -- the node learned the `$HP,0` out of
         // band, from its own question, rather than from a live hit sequence. There is ONE death path and this is
@@ -5625,14 +5742,18 @@ export class Engine {
         // word), latched raw and unmapped to any pool -- `_resolveHitWeapon` matches it against the roster's
         // `RosterWeapon.hir` to name what hit us. Never confused with the `dmg` `_onHp` computes from the
         // pool delta a moment later: that number is armour/shield-adjusted, this one is the wire magnitude.
-        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10), mag: parseInt(t[5], 10) }; if (!this._nonDamaging(this.latch)) this._dmgLatch = this.latch; this.lastHitAt = this.now(); this._shieldReassert(); }
-        if (t[2] === '8') this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
+        // F438: our OWN word (a bounce off a wall into our own headset, bench 2026-10-02) still latches, so the `$HP` that
+        // follows can be recognised and given back, but it is not "under fire", never stuns and never poisons.
+        // `_shieldReassert` still runs: the gun's native hit flash wiped the protection light whoever fired.
+        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10), mag: parseInt(t[5], 10) }; if (!this._nonDamaging(this.latch)) { this._dmgLatch = this.latch; if (!this._ownShot(this.latch)) this._foreignDmgAt = this.now(); } if (!this._ownShot(this.latch)) this.lastHitAt = this.now(); this._shieldReassert(); }
+        const own = !Number.isNaN(team) && this._ownShot(this.latch);
+        if (t[2] === '8' && !own) this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
         if (t[2] === '7') {               // S55: the Haze's fn-23 cell; repeated hits arrive while accuracy is already 0
           const until = this.now() + SMOKE_MS;
           this._nativeAccuracyHold('smoke', until);
           if (this.smoke) this.smoke.until = until;
         }
-        if (!Number.isNaN(team)) this._poisonHit(parseInt(t[2], 10));   // S16: a protocol in `frames.dot` starts or refreshes the stack
+        if (!Number.isNaN(team) && !own) this._poisonHit(parseInt(t[2], 10));   // S16: a protocol in `frames.dot` starts or refreshes the stack
         this._smokeHirAt = this.now(); this._smokeCheck();               // S53: half of a smoke landing (the other half is the $ALCD drop to 0)
         break;
       }
@@ -5768,9 +5889,23 @@ export class Engine {
     if (a.state === 0 && !a.value) return null;
     return a;
   }
+  /** A weapon item's charges: the station's own CHARGES, else the weapon's clip, else 1. PURE. */
+  _puItemCharges(item) {
+    const row = this.weaponRow(item.weapon_id);
+    return Number.isFinite(+item.charges) && +item.charges > 0 ? +item.charges : (row && row.clip > 0 ? row.clip : 1);
+  }
+  /** Bench 2026-10-02 (ROBP1): a re-claim of the same weapon at the stack cap took the station's item and gave nothing.
+   *  At the cap the player does not claim, so the item stays for someone else. Same cap rule as the stack grant. PURE. */
+  _puAtCap(item) {
+    const h = this._puHeld;
+    if (!h || !item || item.kind !== 'weapon' || h.weapon_id !== item.weapon_id) return false;
+    const c = this._puItemCharges(item);
+    return h.left >= PU_STACK_CAP_X * Math.max(c, h.base || c);   // the stack grant's own formula, byte for byte
+  }
   /** Is the item at station `id` there to claim? The station owns taken and untaken, so its advert decides; only a
    *  station with nothing to say yet falls back to the phone's own schedule (and then decides nothing: it names the taker). */
   _puClaimable(id, item, now) {
+    if (this._puAtCap(item)) return false;
     const el = this._puElapsed(now); if (el == null) return false;
     const a = this._puAdvertOf(id, now);
     if (a) return a.state === 1 && puSpawnIndex(item, el) >= 0;   // F374: never before the first spawn, whatever a station says
@@ -5841,6 +5976,13 @@ export class Engine {
     this._altEvidencePending = null;   // F379 r2: a phone equip moves the trigger, not ALT: a later loadout round is no ALT evidence
     this._publishAmmo(slot, mag, res);   // the ammo block shows what is on the trigger now, before the gun's first `$ALCD`
     if (this._puHeld) this._puHeld.trig = slot;
+    // F436 (bench 2026-10-02, 0/6 vs 4/4 + 9/9): after `$SPAWN` the gun ignores a `$WEAP`/`$AMMO` slot change until the
+    // first trigger pull of the life, while its `$ALCD` echo still reports the new slot. No cure is bench-proven yet, so an
+    // equip before that pull is logged as unconfirmed; the slot-0-shot backstop (`lostPuEquip`) is the working cure.
+    if (slot >= 2 && this._puHeld && this._puHeld.slot === slot) {
+      this._puHeld.unconfirmed = this._pulledLife !== this._lifeSeq;
+      if (this._puHeld.unconfirmed) this.log(`powerup: ${this._puHeld.name} equipped before the first trigger pull of this life: unconfirmed (F436); a slot-0 shot triggers the re-send`, 'li');
+    }
     this._recoilArm('powerup equip');   // S42: as a confirmed ALT swap, the slot's own profile
     return true;
   }
@@ -5997,8 +6139,7 @@ export class Engine {
     const slot = +armed.slot;
     if (!this._puHeadWeap(slot)) { this.log(`powerup: the head carries no $WEAP for slot ${slot} (${item.weapon_id})`, 'le'); return false; }
     this._puBackPending = null;
-    const row = this.weaponRow(item.weapon_id);
-    const charges = Number.isFinite(+item.charges) && +item.charges > 0 ? +item.charges : (row && row.clip > 0 ? row.clip : 1);
+    const charges = this._puItemCharges(item);
     const old = this._puHeld;
     if (old && old.weapon_id === item.weapon_id) {
       if (old.trig !== old.slot) {
@@ -6342,13 +6483,13 @@ export class Engine {
     this._probeSeq = (this._probeSeq || 0) + 1;
     return this._write([PROBE_LIFE], why, options);
   }
-  /** F264: ask for the MAGAZINE, which only a `$QUERY` reply's `$LCD` carries. ⚠ Sent from exactly one place, the
-   *  cure's alive branch, and only after `$LIFE` has already answered `$HP` with health above 0. Bench 2026-09-19:
+  /** Ask for the MAGAZINE, which only a `$QUERY` reply's `$LCD` carries. Sent from the
+   *  cure's alive branch or F416's positive-health spawn check. Bench 2026-09-19:
    *  a DEAD gun holds its print loop about 2 s on a `$QUERY`, so this must never reach a gun that might be dead,
    *  and it must never go on a timer. */
   _askMagazine(why) {
     this._queryAt = this.now(); this._probeSeen = {};
-    this._write([QUERY], why);
+    return this._write([QUERY], why);
   }
   /** F264: is this pool frame the answer to a probe we sent? True at most ONCE per probe PER FRAME KIND, inside
    *  QUERY_REPLY_MS, and then consumed. `$LIFE` answers with one `$HP`; `$QUERY` answers with a status array and
@@ -6716,7 +6857,7 @@ export class Engine {
       // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
       if (id === BTN_ALT) this._altPressed();
       else if (id === BTN_RELOAD) this._reloadPulled();
-      else if (id === BTN_TRIGGER) { this._pull = { at: this.now(), slot: this.activeSlot }; this._triggerPulled(); this._heatLockPress(); this._awaitShot(); }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
+      else if (id === BTN_TRIGGER) { this._pull = { at: this.now(), slot: this.activeSlot }; this._pulledLife = this._lifeSeq; this._triggerPulled(); this._heatLockPress(); this._awaitShot(); }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
       else if (id === BTN_SELECT) this._puSelectPressed();   // A56: a PRESS only; `$PHONE` also sends `$BUT,3,0`, a release, which never acts
       return;                                                // `feedFrame` fires the one `_changed()` for this frame
     }
@@ -6777,10 +6918,10 @@ export class Engine {
       if (this._easyReload()) this._reloadPulled();
       return;
     }
-    // A swap ABANDONS a running reload: the gun is putting a different weapon in your hands, so the old
-    // slot's magazine stops moving and no further $ALCD can reconcile the takeover. Left running it would
-    // sit on the chip bar to its deadline (`reloadUp` outranks `switchUp` in hud.js) and hide SWITCHING.
-    if (this.reloading) this._endReload('swapped');
+    // Bench 2026-10-02 (captured wire, USP-S): the gun IGNORES ALT while a reload runs. The lever at mag 8, ALT 1.16 s
+    // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
+    // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
+    if (this.reloading) { this.log(`ALT ignored by the gun mid-reload (slot ${this.activeSlot})`, 'li'); return; }
     this._puBackPending = null;
     const from = this._altPtr, to = this._nextAltSlot();
     this._altPtr = to;
@@ -7028,6 +7169,111 @@ export class Engine {
     // heat itself is recorded at the top of this function, before the stunned return.
   }
 
+  /** F438: a word whose shooter id (`$HIR` token 3, the shooter's `$PSET` id) is our own `player_num`. Wire id 0 is
+   *  "no identity" (A5.1) and never us, and a node with no player assigned has no self to hit. */
+  _ownShot(latch) {
+    const me = this.player && this.player.player_num;
+    return !!latch && me != null && Number(me) > 0 && Number(latch.shooter_num) === Number(me);
+  }
+
+  /** F438 (bench 2026-10-02, Tony: "a player's OWN shot must never hurt or kill them"): a sniper's round bounced off a
+   *  wall into his own headset with friendly fire off, and the gun's own gates (its 124 ms self-hit window, FF-off) let
+   *  it through: he went down "by" his own sticker name. The firmware half is a bench item; this is the node's half.
+   *  Returns true when this `$HP` is handled here and `_onHp` must do nothing else with it:
+   *   - the gun's ECHO of a restore or revive we wrote (`_selfEcho`, no newer `$HIR` since): pools only, no cue (and
+   *     after a lethal self-hit a repeated all-zero `$HP` is the old zero, not a pool);
+   *   - a SELF-HIT (the damaging word paired with this `$HP` by the usual 1000 ms gate is our own): it never happened.
+   *     Non-lethal: one `$LIFE` gives back exactly what this `$HP` took. Lethal: the timed respawn's own revive write
+   *     at once, ending in a `$LIFE` that drains back to the pre-hit pools, so a self-kill never heals. No fact reaches
+   *     MC (no hit_taken, no death, no respawn), no cue, no flash, no ledger entry, no poison. Never when another
+   *     player's damaging word landed inside the same 1000 ms: that drop may be theirs (polish r1).
+   *  A lethal self-hit the node cannot revive (link down, match over, no revive burst) falls through to the normal
+   *  death, which `_death` books as a down by nobody, never by us. */
+  _selfHitHp(hp, armor, shield) {
+    const now = this.now(), L = this.latch, se = this._selfEcho, rep = { health: hp, armor, shield };
+    // Polish r2: the pools the GUN last reported. After a restore the model already holds the pre-hit pools, but the gun
+    // holds them only once our `$LIFE` lands; a second self-hit or a poison tick before then is measured from the gun's.
+    const gun = this._selfGunPools || { health: this.hp, armor: this.armor, shield: this.shield };
+    const fall = () => {   // the normal path measures from the model, so give it the gun's pools first
+      if (this._selfGunPools) { this.hp = gun.health; this.armor = gun.armor; this.shield = gun.shield; this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; this._selfGunPools = null; }
+      return false;
+    };
+    // Polish r2 (LOW): our own poison tick's answer is the tick, even inside a restore's echo window (S16 `dotEcho`).
+    if (this._dotEcho && now - this._dotEcho.at <= DOT_ECHO_MS && dotEchoMatches(this._dotEcho, gun, rep)) return fall();
+    if (se) {
+      // Polish r3: "a new word" is a different latch OBJECT, never a later timestamp: frames handled in the same millisecond
+      // (`Date.now()`) made an enemy's `$HP` read as our echo and a second self-hit go unpaid.
+      if (now - se.at > SELF_HIT_ECHO_MS || L !== se.latch) this._selfEcho = null;   // expired, or a new word: judge it below
+      else if (hp === 0 && armor === 0 && shield === 0) {
+        // F438 polish r1/r2: the gun repeats its zero before it has processed the revive. Taking it as the pools left hp 0,
+        // and the next tick's B5 re-examination booked a death. With no newer `$HIR`, and no live pool reported since the
+        // revive, it can only be the old zero. After a live pool, or after a non-lethal restore, a zero is real (a
+        // grenade or poison has no `$HIR` of ours), so the window closes and the normal path judges it.
+        if (se.lethal && !se.sawLife) { this.log('self-hit: a stale zero from before the revive, ignored', 'li'); return true; }
+        this._selfEcho = null;
+      } else {
+        this.hp = hp; this.armor = armor; this.shield = shield; this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
+        this._selfGunPools = null;   // the model is the gun's word again
+        if (hp > 0) se.sawLife = true;
+        this._spawnCheckSeen(hp, armor, shield);   // F416: a revive's echo still proves the revive landed
+        if (hp === se.health && armor === se.armor && shield === se.shield) { this._selfEcho = null; this._shieldFillAt = 0; this.log(`self-hit: the gun is back at ${hp}/${armor}/${shield}`, 'li'); }
+        this._changed();
+        return true;
+      }
+    }
+    if (!(this.phase === 'live' && this.spawned && this.alive && !this.tutorial) || !L || now - L.at > 1000) return fall();
+    const dl = this._dmgLatch, hl = dl && now - dl.at <= C.DEATH_LATCH_MS ? dl : L;   // `_onHp`'s own pairing (F354)
+    if (!this._ownShot(hl)) return fall();
+    // Polish r2: one word is given back once. A later drop paired with the same word (a grenade's zero after the revive)
+    // is not that shot's damage.
+    if (hl === this._selfHitUsed) return fall();
+    // F438 polish r1: another player's damaging word inside the same pairing window may have done some or all of this
+    // damage, and the pool drop cannot say which. A real hit is never swallowed, so this one takes the normal path.
+    if (this._foreignDmgAt != null && now - this._foreignDmgAt <= 1000) return fall();
+    const took = gun.health + gun.armor + gun.shield - (hp + armor + shield);
+    if (took <= 0) return fall();   // nothing taken: not a hit
+    const target = { health: this.hp, armor: this.armor, shield: this.shield };   // the pre-hit pools (a restore still in flight included)
+    const r = this._resolveHitWeapon(hl);
+    const what = r && r.name ? r.name : `proto ${hl.ir_proto}/subtype ${hl.ir_subtype}`;
+    this._selfHitUsed = hl;
+    if (hp > 0) {
+      // Per pool, and only what THIS frame took from what the gun held: a pool that rose in the same frame keeps its rise,
+      // and a restore still in flight is never paid twice (polish r2: two quick self-hits healed 30 -> 39).
+      const give = [gun.health - hp, gun.armor - armor, gun.shield - shield].map(d => Math.max(0, d));
+      this._write([`$LIFE,${give[0]},${give[1]},${give[2]},*`], 'F438 self-hit restore');
+      this._selfGunPools = rep;
+      this._selfEcho = { at: now, latch: L, ...target };
+      this.log(`self-hit: own shot (${what}) took ${took}, restored`, 'li');
+      this._changed();
+      return true;
+    }
+    const rp = this._respawnProfile(), burst = this.frames && (rp ? rp.revive : this.frames.revive);
+    const why = !this.bleUp ? 'link down' : this.ended ? 'match over' : (this.resync || this.reconciling) ? 'resync' : !(burst && burst.length) ? 'no revive burst' : null;
+    if (why) { this.log(`self-hit: own shot was lethal, no revive (${why}): booked as a down by nobody`, 'le'); return fall(); }
+    this._selfGunPools = null;
+    this._revive(false, null, false, target);
+    this._selfEcho = { at: now, lethal: true, latch: L, ...target };
+    this.log(`self-hit: own shot was lethal, revived at ${target.health}/${target.armor}/${target.shield}`, 'le');
+    this._changed();
+    return true;
+  }
+
+  /** F438 polish r2: a lethal hit sends `$HP,0` and then `$LCD,0,...` at once (docs/manual/dev.md). The `$HP` revived
+   *  us; its `$LCD` twin must not book the death. True = drop this `$LCD` (no pool write): exactly ONE zero, inside the
+   *  lethal echo window, with no newer `$HIR` and no live pool reported since, so a later real zero (a grenade or a
+   *  poison kill, which carry no `$HIR` of ours) still kills. ⚠ Known gaps, accepted (polish r3): an `$LCD,0` that
+   *  arrives BEFORE its `$HP,0` books an ordinary death (named nobody, `_ownShot` in `_death`) before any revive; a lost
+   *  `$HIR` + `$HP` + `$LCD` triple, or a lethal grenade whose `$LCD` is lost, leaves the zero to the F264 poll. */
+  _selfHitLcd(hp) {
+    const se = this._selfEcho, L = this.latch;
+    if (!se || !se.lethal || this.now() - se.at > SELF_HIT_ECHO_MS || L !== se.latch) return false;   // polish r3: identity, not time
+    if (hp > 0) { se.sawLife = true; return false; }
+    if (se.lcdDropped || se.sawLife) return false;
+    se.lcdDropped = true;
+    this.log('self-hit: the lethal shot\'s own `$LCD,0` twin, ignored', 'li');
+    return true;
+  }
+
   _onHp(hp, armor, shield, solicited = false) {
     this._puHpAt = this.now();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
@@ -7036,6 +7282,7 @@ export class Engine {
     // total made every shield-absorbed hit compute dmg === 0, which the guard below then
     // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
+    if (this._selfHitHp(hp, armor, shield)) return;   // F438: our own shot, or the gun's echo of us giving it back
     const before = this.hp + this.armor + this.shield;
     const pools0 = { health: this.hp, armor: this.armor, shield: this.shield };   // S16: what `dmg` measures from, read by the echo match
     if (this._prevHp === undefined) { this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; }
@@ -7328,17 +7575,10 @@ export class Engine {
     if (!this.alive) return;
     if (reason !== 'gun_recovery' && this._spawnIntercept()) return;   // F416: an unspawned gun's 0 pool is not a death
     this._armPending = null; this._triggerPending = null;   // F209: never arm a dead gun; the revive protects and arms again
-    // The gun screams on its own: it joins the FIFO. `screamAhead` = the clips the model says the gun holds ahead of it.
-    // The scream joins the model below, right after the stops that take off what is ahead of it.
-    let screamAhead = null, aheadClips = [], stopWait = 0;
+    // The gun screams on its own (A15.3, `$PSET` t10). F439: it interrupts what plays; the model takes it in below.
     const screamId = this._psetSounds && (this._psetSounds[10] || '').trim();
-    { const now = this.now(); this._audioSync(now); this._gun._prune(now);
-      // Truly ahead: not the lethal hit's own row sound (the gun may play none on a lethal hit, or the scream may interrupt
-      // it; F158 is unbenched), and not a clip that ends within DEATH_STOP_SLACK_MS (the stop would arrive after it).
-      if (screamId && CLIP_MS[screamId]) { aheadClips = this._gun.clips.filter(c => c !== this._lastHitClip && c.end - now > DEATH_STOP_SLACK_MS); screamAhead = aheadClips.length; }
-      // a clip the slack spared that is still playing at the FRONT: the stops wait for it to end, so none lands on it
-      const front = this._gun.clips[0];
-      if (screamAhead && front && !aheadClips.includes(front) && front.end > now) stopWait = front.end - now + 10; }
+    const screamMs = screamId && CLIP_MS[screamId] > 0 ? CLIP_MS[screamId] : 0;
+    { const now = this.now(); this._audioSync(now); this._gun._prune(now); }
     // 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets louder (never quieter).
     if (this._timedLifeAt != null && this.now() - this._timedLifeAt <= SPAWN_KILL_WINDOW_MS && this._downWarn < DOWN_WARN_MAX) { this._downWarn++; this.log(`killed ${Math.round((this.now() - this._timedLifeAt) / 100) / 10}s after a timed respawn: down warning level ${this._downWarn}`, 'li'); }
     this._timedLifeAt = null;
@@ -7386,7 +7626,10 @@ export class Engine {
     // never landed (F80). Its team field is the hill's OWNER, so naming that team as the killer told the player a
     // specific lie ("KILLED BY GREEN" when nobody shot them). MC already refuses to credit wire 0; the phone now
     // says the killer is unknown. A stale latch (older than DEATH_LATCH_MS) is the same case: nobody we can name.
-    const unknown = !fresh || shooter_num === 0;
+    // F438 (bench 2026-10-02): our OWN id is nobody we can name either. A self-hit the node could not revive (or one whose
+    // `$HP` missed the 1000 ms pairing gate) still downs the player, but "down by <your own name>" is never the story.
+    // The fact keeps the raw id: MC's `_kill_pair` already credits nobody for killer == victim.
+    const unknown = !fresh || shooter_num === 0 || this._ownShot(src);
     this.alive = false; this.deaths++; this.deadAt = this.now(); this.downReason = reason; this._downRearmSent = false;   // §3.2: fresh rearm gate for this life
     // F149 (field 2026-09-12, "the low-health breathing loop played AFTER a death"): `cues.hurt` (A17.2) is a
     // several-second voice sample, and a death can land while it is still playing -- the killing hit itself
@@ -7400,30 +7643,68 @@ export class Engine {
     if (this._pendingHurtWrite) { this._pendingHurtWrite = false; this.log('low-health alert cancelled — a death landed inside the debounce window (2026-09-19)', 'lk'); }
     const cancelledMustHear = this._cancelPendingPlayWrites();
     // Tony 2026-09-25 (F149 / F351 / X4): "your death wins. delaying the death scream would be bad. while you are dead you
-    // can listen to the queue of KCs and game alerts". The death stop takes off every clip the gun holds AHEAD of the
-    // scream (the low-health line, my own kill line) and never the scream itself; an announcer line it cut is said again
-    // after the scream (`_ann.death`). With no scream known, F149's one stop for the low-health line stays.
-    const stops = screamAhead != null ? Math.min(screamAhead, MUST_HEAR_MAX_STOPS) : (this._hurtSent ? 1 : 0);   // F375: only a line that went out
-    // A line on air is cut, and its unsaid rest requeued, only when one of ITS clips is among the stopped ones.
-    const cur = this._ann.current, stopped = aheadClips.slice(0, stops);
-    this._ann.death(this.now(), cancelledMustHear || (stops > 0 && (screamAhead == null || (!!cur && stopped.some(c => c.item === cur)))));
-    const deathLife = this._lifeSeq, deathLightGen = this._lightGen;
-    const sendStop = i => {
-      if (this._lifeSeq !== deathLife || this._lightGen !== deathLightGen || this.ended) return;
-      if (i >= stops) return;
+    // can listen to the queue of KCs and game alerts".
+    // F439 (bench 2026-10-02, 0.4.16, step 11.8, run 3 of three fast kills): the low-health line went out, the death came
+    // about 1 s later, `_death` sent one stop "for a clip ahead of the scream", and Tony heard neither the line nor the
+    // scream (brx1 the same day: the same stop, aimed at a shield heartbeat, and no scream). The native scream does not
+    // queue: it starts AT ONCE and cuts the clip playing, like a token-1 clip (F375's own reading, above: a line written
+    // in the gap after the lethal hit queues BEHIND the scream). So no clip is ever "ahead" of it, and a death stop
+    // lands on the scream itself. With the scream known: NO stop. The model drops the clip playing, puts the scream at
+    // the front from now, and the clips queued behind wait behind it ("you can listen to the queue"). An announcer line
+    // the scream cut is said again after it (`_ann.death`); a line still queued on the gun is not cut.
+    // ⚠ Rests on one bench run plus F375, not a direct measurement: the new bench step confirms it.
+    // With no scream known, F149's one stop for a low-health line that went out stays: there is no scream to cut.
+    const stops = screamMs ? 0 : (this._hurtSent ? 1 : 0);   // F375: only a line that went out
+    const cur = this._ann.current;
+    // every take of a body kind: the cue itself and its pool (`cue_pools`: four `pain_short` takes, two `pain_long`)
+    const cues = (this.frames && this.frames.cues) || {}, pools = (this.frames && this.frames.cue_pools) || {};
+    const bodyIds = new Set(BODY_CUES.flatMap(k => [cues[k], ...(Array.isArray(pools[k]) ? pools[k] : [])]).filter(Boolean).map(f => clipId(f)).filter(Boolean));
+    const isBody = c => !!c && !c.item && bodyIds.has(c.id);
+    // F439 r3: a body clip written within DEATH_LATE_WRITE_MS of the death reached the gun after the scream began (the
+    // brx1 heartbeat in the death second played AFTER the scream): it waits behind the scream and gets a body stop. An
+    // announcer clip in the same window keeps the interrupt reading.
+    const late = c => isBody(c) && this.now() - c.at <= DEATH_LATE_WRITE_MS;
+    const interrupted = screamMs ? this._gun.interrupt(screamMs, `native death scream ${screamId}`, this.now(), screamId, late) : null;
+    if (screamMs) this._screamUntil = this.now() + screamMs;
+    this._ann.death(this.now(), cancelledMustHear || (screamMs ? !!cur && !!interrupted && interrupted.item === cur : stops > 0));
+    if (stops) {
       this._mustWrite = true;
-      try { this._write([PLAYX], `death: stop ${i + 1}/${stops} for a clip ahead of the scream${stopWait ? `, after ${stopWait} ms slack` : ''}`); }
+      try { this._write([PLAYX], 'death: one stop for the low-health line (no native scream known, F149)'); }
       finally { this._mustWrite = false; }
-      const cutClip = stopped[i];
-      if (cutClip) this._gun.clips = this._gun.clips.filter(c => c !== cutClip);
-      else this._gun.clips.splice(0, 1);
+      this._gun.clips.splice(0, 1);
       let tail = this.now();
       for (const c of this._gun.clips) { c.start = tail; c.end = tail + c.ms; tail = c.end; }
-      if (i + 1 < stops) this.delay(PLAY_GAP_MS, () => sendStop(i + 1));
-    };
-    if (stopWait) { const lg = this._lightGen; this.delay(stopWait, () => { if (this._lightGen === lg) sendStop(0); }); }
-    else sendStop(0);
-    if (screamAhead != null) { this._gun.add(CLIP_MS[screamId], `native death scream ${screamId}`, this.now(), screamId); this._screamUntil = this.now() + CLIP_MS[screamId]; }
+    }
+    // F439 (brx1 bench 2026-10-02, UNPROVEN): nothing plays after the scream but the lines meant to follow it (my kill
+    // confirm, announcer items). The scream cut only the clip playing, so a BODY clip queued behind it (the heartbeat,
+    // the critical line, a shield cue) would play next. One stop per such clip, from the scream's end plus
+    // DEATH_BODY_STOP_MARGIN_MS, one write each, PLAY_GAP_MS apart, and only for the body clips in front of the first
+    // announcer clip (a stop never cuts a line meant to follow the scream). A revive cancels them.
+    // F439 r3: the body clips are found lazily, one front clip at a time, so a body write that resolves after the death
+    // (in flight at it) is still covered. A clip with no item that is not a body clip (a `$SIR` row sound) is waited
+    // out, not stopped; an announcer clip ends the stops. At most MUST_HEAR_MAX_STOPS stops.
+    if (screamMs) {
+      const deathLife = this._lifeSeq, deathLightGen = this._lightGen;
+      const bodyStop = (i, waited = null) => {
+        if (this._lifeSeq !== deathLife || this._lightGen !== deathLightGen || this.ended || this.alive) return;
+        if (i >= MUST_HEAR_MAX_STOPS) return;
+        const now = this.now(); this._audioSync(now);
+        const front = this._gun.clips[0];
+        if (!front || front.item || !(front.start <= now)) return;   // a quiet gun, or a line meant to follow the scream
+        // a row sound (or the scream itself, on a timer that ran early): wait it out, once per clip, so a clock that does
+        // not move cannot loop
+        if (!bodyIds.has(front.id)) { if (front !== waited) this.delay(front.end - now + DEATH_BODY_STOP_MARGIN_MS, () => bodyStop(i, front)); return; }
+        if (front.end - now < DEATH_BODY_STOP_MIN_LEFT_MS) { this.log(`death: no stop for ${front.why}: ${front.end - now} ms left, a stop could land on the clip behind it`, 'li'); return; }
+        this._mustWrite = true;
+        try { this._write([PLAYX], `death: stop ${i + 1} for a body cue queued behind the scream (${front.why})`); }
+        finally { this._mustWrite = false; }
+        this._gun.clips.shift();
+        let tail = now;
+        for (const c of this._gun.clips) { c.start = tail; c.end = tail + c.ms; tail = c.end; }
+        this.delay(PLAY_GAP_MS, () => bodyStop(i + 1));
+      };
+      this.delay(this._screamUntil + DEATH_BODY_STOP_MARGIN_MS - this.now(), () => bodyStop(0));
+    }
     this._stunRestore('died');   // F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
     this._puDeath();             // A56: a weapon item's charges are lost and the overshield is gone
     // A16 §5 (AMENDED 2026-09-11 by F113): death clears the readout AND blanks the strip.

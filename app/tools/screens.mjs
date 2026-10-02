@@ -1245,7 +1245,9 @@ for (const view of VIEWS) {
     // F82: tid 2 standing on it is refused, and the operator is told why
     await pg.evaluate(() => { window.brxUtilityFake[1].alive = true; });
     await pinFakes(pg, [FAR, ON, FAR, FAR]);
-    const y = await untilC(pg, r => /TEAM 2 CAN NEVER HOLD A POINT/.test(r.warn), 8000, 'the F82 warning');
+    // F440: the blue body that walked off stays counted through the exit grace and the sighting window, so wait for it
+    // to leave as well as for the warning
+    const y = await untilC(pg, r => /TEAM 2 CAN NEVER HOLD A POINT/.test(r.warn) && r.claims === 0, 12000, 'the F82 warning, with blue gone');
     must(y.claims === 0 && y.team !== 'YELLOW' && !/yellow/.test(y.hold), 'and tid 2 gets nothing: ' + JSON.stringify(y));
     must(y.wire.team !== 2, 'nor can the advert ever name team 2: ' + JSON.stringify(y.wire));
     const frozen = y.painted;
@@ -1320,7 +1322,10 @@ for (const view of VIEWS) {
   // is a separate full-screen burst (#cburst, light only) and the WORD sits inside the ring, in the % line's place. The
   // guard: the word overlaps no other text and no bordered box on the screen, at the pop and while the point drains.
   await step(`${view.name} #57 control point: the crossing burst is full-bleed and its word overlaps nothing`, async () => {
-    const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtility.settings.captureS = 4; window.brxUtility.point.captureS = 4; });
+    const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtility.settings.captureS = 4; window.brxUtility.point.captureS = 4;
+      // F440: this step checks the flash's GEOMETRY against a drain a second later, not presence timing, so the leaving
+      // owner drops at once here (no exit grace, no sighting window); the real timings have their own tests.
+      window.brxUtility.presence.exitGraceMs = 0; window.brxUtility.presence.sightMs = 0; });
     await untilC(pg, r => (r.wire.state & 1) === 1 && r.wire.team === 1, 14000, 'BLUE takes it');
     const up = await pg.evaluate(() => !document.getElementById('cflash').hidden);
     must(up, 'precondition: the capture threw its flash');
