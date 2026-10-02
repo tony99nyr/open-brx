@@ -6953,8 +6953,9 @@ export class Engine {
     if (prev != null && mag < prev) this._actSeq++;   // pl4: `_writeMust` never repeats counts past a shot
     if (prev != null && mag < prev && this.phase === 'live') { this.shots += (prev - mag); if (this._life && this.alive) this._life.shots += (prev - mag); }   // death screen: this life's rounds too
     // Bench 2026-09-17: the shot-ready cue times from THIS frame, the gun's own report of the round, so the
-    // cue can only be late, never early. Slots 0/1 only: slot 4 is melee and has no gauge.
-    if (prev != null && mag < prev && this.phase === 'live' && (slot === 0 || slot === 1)) this.lastShot = { slot, at: this.now(), ms: this._fireIntervalMs(slot) };
+    // cue can only be late, never early. Slots 0/1 and a held heavy's pickup slot (bench 2026-10-02: the Rockets never
+    // shone); slot 4 is melee and has no gauge.
+    if (prev != null && mag < prev && this.phase === 'live' && (slot === 0 || slot === 1 || (this._puHeld && slot === this._puHeld.slot))) this.lastShot = { slot, at: this.now(), ms: this._fireIntervalMs(slot) };
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
     if (this.resync && prev != null && mag > prev) this._resyncEvidence('alcd-inc');
     // F123: the takeover is reconciled against the REAL magazine, one $ALCD at a time. A rise feeds it

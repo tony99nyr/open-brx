@@ -13,10 +13,14 @@ const OUT = path.resolve(process.argv[2] || '/mnt/c/Users/Tony/brx-koth-capture-
 fs.mkdirSync(OUT, { recursive: true });
 let BASE = '?'; try { BASE = execFileSync('git', ['log', '-1', '--format=%h %s'], { cwd: HERE }).toString().trim(); } catch { /* not a checkout: say so on the page */ }
 const TYPES = { '.js': 'text/javascript', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.css': 'text/css', '.ttf': 'font/ttf', '.woff2': 'font/woff2' };
-const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
-  try { const b = fs.readFileSync(path.join(WWW, decodeURIComponent(rel))); res.setHeader('content-type', TYPES[path.extname(rel)] || 'application/octet-stream'); res.end(b); } catch { res.statusCode = 404; res.end(); } });
-await new Promise(r => srv.listen(0, '127.0.0.1', r));
-const PORT = srv.address().port;
+const serve = async root => { const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
+  try { const b = fs.readFileSync(path.join(root, decodeURIComponent(rel))); res.setHeader('content-type', TYPES[path.extname(rel)] || 'application/octet-stream'); res.end(b); } catch { res.statusCode = 404; res.end(); } });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r)); return srv; };
+const srv = await serve(WWW), PORT = srv.address().port;
+// The Rockets before/after (bench 2026-10-02): BEFORE_WWW is a copy of app/www built WITHOUT the fix (the parent commit).
+// Without it the page shows the built frames only and says so.
+const BEFORE_WWW = process.env.BEFORE_WWW || null;
+const srvB = BEFORE_WWW ? await serve(path.resolve(BEFORE_WWW)) : null;
 const VIEWS = [{ name: 'pixel', width: 891, height: 411, label: '891×411' }, { name: 'se', width: 667, height: 375, label: '667×375' }];   // = screens.mjs VIEWS
 const SKINS = [{ name: 'day', q: '' }, { name: 'night', q: '&night' }];
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -27,10 +31,10 @@ const INIT = () => {
     .observe(document, { subtree: true, childList: true, attributes: true });
 };
 const b = await chromium.launch();
-const openPg = async (view, stage, skin) => {
+const openPg = async (view, stage, skin, port = PORT) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); pg.__err = []; pg.on('pageerror', e => pg.__err.push(e.message));
   await pg.addInitScript(INIT);
-  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=${stage}${skin.q}`);
+  await pg.goto(`http://127.0.0.1:${port}/?demo&stage=${stage}${skin.q}`);
   return pg;
 };
 const shot = async (pg, f) => { await pg.screenshot({ path: path.join(OUT, f) }); return f; };
@@ -73,7 +77,24 @@ for (const skin of SKINS) for (const view of VIEWS) {
   fail(pg, `clash ${skin.name} ${view.name}`);
   clash.push({ skin: skin.name, view, frames }); await pg.close(); console.log('clash', skin.name, view.name);
 }
-await b.close(); srv.close();
+// ---- Rockets: the shot-ready shine (bench 2026-10-02, "The little green animation doesn't play for rockets") ----
+// Frames from the rocket's own report: dimmed while the next rocket is not due, then the green shine at 1 s.
+const RK_TIMES = [[0.4, 'dimmed: the next rocket is not due'], [1.06, 'the next rocket is due: the shine']];
+const rockets = [];
+for (const [which, port] of [['before', srvB && srvB.address().port], ['built', PORT]]) {
+  if (!port) continue;
+  for (const skin of SKINS) for (const view of VIEWS) {
+    const pg = await openPg(view, 'live-pu-rockets', skin, port);
+    await pg.waitForFunction(() => { const s = window.brxDemo && window.brxDemo.state(); return s && s.activeSlot === 2 && !s.switchCard && !document.querySelector('#overlay .mo.switched, #overlay .mo.switching'); }, null, { timeout: 15000 });
+    await pg.waitForTimeout(1500);   // the ACTIVE card's fade is gone
+    const t0 = await pg.evaluate(() => { window.brxDemo.puFire(); return Date.now(); }), frames = [];
+    for (const [t, what] of RK_TIMES) { await at(pg, t0, t); frames.push({ t, what, cool: await pg.evaluate(() => document.getElementById('frame').dataset.cool || 'none'), f: await shot(pg, `rockets-${which}-${skin.name}-${view.name}-${String(t).replace('.', '_')}.png`) }); }
+    fail(pg, `rockets ${which} ${skin.name} ${view.name}`);
+    rockets.push({ which, skin: skin.name, view, frames }); await pg.close();
+  }
+  console.log('rockets', which);
+}
+await b.close(); srv.close(); if (srvB) srvB.close();
 
 // Tony's notes after each round go here, verbatim, with where the page answers each one.
 const CHANGED = [];
@@ -84,6 +105,9 @@ const side = SKINS.flatMap(skin => VIEWS.map(view => `<h3>${title({ skin: skin.n
   const r = s.runs.find(x => x.skin === skin.name && x.view === view), fr = r.frames[1];
   return fig(fr.f, `<b>${esc(s.label)}</b>`); }).join('')}</div>`)).join('');
 const seqHtml = seqs.slice(0, 2).map(s => `<section><h3>${esc(s.label)}</h3><p class="mut">${esc(s.note)}</p>${s.runs.map(r => `<h3 class="mut">${title(r)}</h3><div class="strip">${r.frames.map(fr => fig(fr.f, `<b>t ${fr.t} s</b> ${esc(fr.what)}`)).join('')}</div>`).join('')}</section>`).join('');
+const rkHtml = SKINS.flatMap(skin => VIEWS.map(view => { const cell = w => rockets.find(x => x.which === w && x.skin === skin.name && x.view === view);
+  const strip = (w, lab) => { const r = cell(w); return r ? `<p class="mut"><b>${lab}</b></p><div class="strip">${r.frames.map(fr => fig(fr.f, `<b>t ${fr.t} s</b> ${esc(fr.what)} (gauge cue: ${esc(fr.cool)})`)).join('')}</div>` : ''; };
+  return `<h3>${title({ skin: skin.name, view })}</h3>${strip('before', 'BEFORE (0.4.16)')}${strip('built', 'BUILT')}`; })).join('');
 const clashHtml = clash.map(c => `<h3>${title(c)}</h3><div class="strip">${c.frames.map(fr => fig(fr.f, fr.cap)).join('')}</div>`).join('');
 fs.writeFileSync(path.join(OUT, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KOTH capture alerts</title>
 <style>:root{color-scheme:dark;--bg:#0b0e12;--fg:#e8edf2;--mut:#8a96a3;--edge:#262d36}body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
@@ -117,5 +141,8 @@ ${side}
 ${seqHtml}
 <h2>Clash: HILL UNDER ATTACK while I am down</h2>
 ${clashHtml}
+<h2>Rockets: the green shine (bench 2026-10-02)</h2>
+<p class="mut">“The little green animation doesn't play for rockets.” The animation is the shot-ready cue: after a round from a slow weapon the ammo gauge dims, then a green shine runs across it when the next round is due. It read only the two loadout slots, so a pickup heavy never had it. The Rockets fire one round a second, which is long enough; the delay was never the cause. Built: a held heavy gets the same cue. The switch card on the pickup (SWITCHING, then ACTIVE) was already the same as an ALT switch, and is unchanged. Night has no moving shine by design: the digits brighten instead. Time 0 is the rocket's report.${srvB ? '' : ' (The BEFORE row was not rendered in this run.)'}</p>
+${rkHtml}
 </main></body></html>`);
 console.log('gallery:', path.join(OUT, 'index.html'));

@@ -1342,3 +1342,23 @@ test('F436 reconcile: an ALT swap in flight at the re-arm is left alone (no forc
   const after = h.batches.slice(b0).flat();
   assert.ok(!after.includes(WEAP[2]), `the re-arm does not force $WEAP,2 over the player's ALT: ${JSON.stringify(after.filter(f => f.startsWith('$WEAP')))}`);
 });
+
+// Tony, bench 2026-10-02 (0.4.16): "The little green animation doesn't play for rockets." That animation is the
+// shot-ready cue (hud.js `_shotCue`, index.html `readyshine`): after a round from a weapon with >= 400 ms between
+// rounds the gauge dims, then shines green once when the next round is due. It read only slots 0 and 1, so a held
+// heavy in its pickup slot never had one, whatever its interval (the Rockets' is 1000 ms, `$WEAP` token 14).
+test('bench 2026-10-02: a Rockets round gets the same shot-ready cue as a slow loadout weapon', () => {
+  const h = armed(); h.take(4); h.adv(2000);
+  assert.equal(h.eng.state().activeSlot, 2, 'setup: the Rockets are on the trigger');
+  assert.equal(h.eng.state().shotCooldown, null, 'no round yet: no cue');
+  const at = h.eng.now(); h.fire(2, 1);
+  assert.deepEqual(h.eng.state().shotCooldown, { at, ms: 1000, leftMs: 1000 }, 'the first rocket starts the cue, timed from the gun`s own report');
+  h.adv(1000);
+  assert.equal(h.eng.state().shotCooldown.leftMs, 0, 'and the next rocket is due 1 s later: the HUD shines then');
+});
+
+test('bench 2026-10-02 CONTROL: the cue stays off a pickup slot the player does not hold', () => {
+  const h = armed();
+  h.frame('$ALCD,2,100,2,0,0,*'); h.fire(2, 1);   // a stray round reported from the pickup slot while nothing is held
+  assert.equal(h.eng.state().shotCooldown, null);
+});

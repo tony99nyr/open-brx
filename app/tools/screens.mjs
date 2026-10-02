@@ -3585,6 +3585,26 @@ await step('se shot cue reduced motion: a brightness step, no moving shine', asy
   must(r.trace.some(x => x.v === 'ready'), `pre-condition: the ready cue must fire: ${JSON.stringify(r.trace)}`);
   must(r.shine && r.shine.display === 'none' && /brightness/.test(r.shine.filter), `reduced motion must swap the shine for a brightness step: ${JSON.stringify(r.shine)}`);
 });
+// Tony, bench 2026-10-02: "The little green animation doesn't play for rockets." A held heavy's round dims the gauge and
+// shines when the next round is due, like a slow loadout weapon (the demo's Rockets head `$WEAP` says 1000 ms).
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  await step(`${tag} shot cue: a Rockets round dims the gauge and shines green when the next rocket is due`, async () => {
+    const pg = await open(view, 'live-pu-rockets');
+    await pg.waitForFunction(() => { const s = window.brxDemo.state(); return s.activeSlot === 2 && !s.switchCard && !document.querySelector('#overlay .mo.switched, #overlay .mo.switching'); }, null, { timeout: 9000 });
+    const r = await pg.evaluate(async () => {
+      const fr = document.getElementById('frame'), trace = [], t0 = performance.now(); let shine = null;
+      const mo = new MutationObserver(() => { const v = fr.dataset.cool || ''; trace.push({ v, t: Math.round(performance.now() - t0) });
+        if (v === 'ready' && !shine) shine = getComputedStyle(document.querySelector('.ammo .pips'), '::after').animationName; });
+      mo.observe(fr, { attributes: true, attributeFilter: ['data-cool'] });
+      window.brxDemo.puFire(); await new Promise(res => setTimeout(res, 1500)); mo.disconnect();
+      return { trace, shine };
+    });
+    await pg.close();
+    const on = r.trace.find(x => x.v === 'on'), ready = r.trace.find(x => x.v === 'ready');
+    must(on && on.t < 150, `the gauge must dim at the rocket: ${JSON.stringify(r)}`);
+    must(ready && ready.t >= 1000 && ready.t < 1300 && r.shine === 'readyshine', `the green shine must run when the next rocket is due: ${JSON.stringify(r)}`);
+  });
+}
 await step('se shot cue CONTROL: an automatic weapon (assault rifle, 140 ms a round) gets no dim and no shine', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setWeap(pg, 0, 140);
