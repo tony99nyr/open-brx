@@ -325,7 +325,7 @@ function connectTypedMc(text) {
   if (r.note) log(r.note, 'li');
   connectMc(r.url, r.join ? { trusted: true, pub: r.pub, secret: r.secret } : { trusted: true });   // a bare address keeps the held pub/secret, as before
 }
-/** Bench 11.4 (2026-10-02): on the field (MC-armed or advertising) the MC link is a tamper target like the range, so it
+/** F443, bench 11.4 (2026-10-02): on the field (MC-armed or advertising) the MC link is a tamper target like the range, so it
  *  changes only once the same knock-safe hold has opened editing (1.5 s, or the 5 s override under an A58 lock).
  *  Setting up, it stays free. Refused, it says why; the station's own log keeps every change made in play. */
 function mcLinkEditable() {
