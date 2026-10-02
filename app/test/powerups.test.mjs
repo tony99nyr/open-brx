@@ -1295,3 +1295,50 @@ test('F381 per-station charges: a smaller pickup never shrinks a held stack, and
   h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now());
   assert.equal(h.eng._puHeld?.left, 3, '2 held + 1 = 3');
 });
+
+test('F436 reconcile: a heavy on the trigger is re-equipped in the re-arm write, so the first pull after a resume is a rocket', () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
+  assert.equal(h.eng._puHeld?.trig, 2, 'setup: Rockets on the trigger');
+  const b0 = h.batches.length, logs = []; h.eng.log = m => logs.push(String(m));
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.adv(6000);
+  const rearm = h.batches.slice(b0).find(b => b.includes('$AMMO,0,32,192,1,*') || b.some(f => /^\$AMMO,0,[1-9]/.test(f)));
+  assert.ok(rearm, `a re-arm write: ${JSON.stringify(h.batches.slice(b0))}`);
+  const wi = rearm.indexOf(WEAP[2]), ai = rearm.indexOf('$AMMO,2,2,0,1,*');
+  assert.ok(wi >= 0 && ai > wi, `the re-arm carries the heavy's $WEAP then its count: ${JSON.stringify(rearm)}`);
+  assert.ok(rearm.findIndex(f => f.startsWith('$AMMO,0,')) < wi, 'the loadout rows go first, the heavy equip last');
+  assert.equal(h.eng.activeSlot, 2);
+  h.fire(2, 1);
+  assert.equal(h.eng._puHeld?.left, 1, 'the first pull after the resume is a rocket');
+  assert.ok(!logs.some(m => /gun fired slot 0 while/.test(m)), 'the slot-0 backstop never ran');
+});
+
+test('F436 reconcile control: a heavy held OFF the trigger is not re-equipped by the re-arm', () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
+  h.select(); h.adv(h.eng.switchWindowMs() + 300);
+  assert.equal(h.eng._puHeld?.trig, 0, 'setup: SELECT put the loadout weapon back');
+  const b0 = h.batches.length;
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.adv(6000);
+  const after = h.batches.slice(b0).flat();
+  assert.ok(!after.includes(WEAP[2]), `no $WEAP,2 while the heavy is off the trigger: ${JSON.stringify(after.filter(f => f.startsWith('$WEAP')))}`);
+  assert.ok(after.includes('$AMMO,2,2,0,1,*'), 'its charges are still re-armed');
+});
+
+test('F436 backstop: a slot-0 shot repair shows the switch card onto the heavy, and none once the repairs are spent', () => {
+  const h = harness({ ...ROCKET_GAME, echo: true }); h.at(121); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+  h.fire(0, 31, 192);
+  const sw = h.eng.switching;
+  assert.ok(sw && sw.pu && sw.from === 0 && sw.to === 2, `the HUD card names the move from slot 0 to the heavy: ${JSON.stringify(sw)}`);
+  let mag = 30;
+  for (let i = 0; i < E.PU_COUNT_REPAIRS; i++) { h.adv(h.eng.switchWindowMs() + 300); h.eng.switching = null; h.fire(0, mag--, 192); }
+  h.adv(h.eng.switchWindowMs() + 300); h.eng.switching = null; h.fire(0, mag--, 192);
+  assert.ok(!(h.eng.switching && h.eng.switching.pu), 'no card once the repair budget is spent');
+});
+
+test('F436 reconcile: an ALT swap in flight at the re-arm is left alone (no forced heavy)', () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
+  const b0 = h.batches.length;
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.adv(2800); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(3000);   // ALT 200 ms before the 3 s reconcile (RECONCILE_MS) ends
+  const after = h.batches.slice(b0).flat();
+  assert.ok(!after.includes(WEAP[2]), `the re-arm does not force $WEAP,2 over the player's ALT: ${JSON.stringify(after.filter(f => f.startsWith('$WEAP')))}`);
+});

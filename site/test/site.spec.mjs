@@ -131,6 +131,9 @@ it('2b · the official documents we say we link are actually reachable', async (
       const r = await request.get(u, { timeout: 20000, maxRedirects: 5 });
       // 429 is the host rate-limiting THIS checker (GitHub does, after a few runs), not a dead link
       if (r.status() === 429) { console.log(`  (rate limited by ${new URL(u).host}, could not verify ${u})`); continue; }
+      // 5xx is the HOST failing (GitHub answered 503 for every blob page on 2026-10-02 and turned main red), not a
+      // dead link: reported and skipped like a transport error. A real dead link is a 4xx.
+      if (r.status() >= 500) { console.log(`  (${new URL(u).host} answered ${r.status()}, could not verify ${u})`); continue; }
       if (r.status() >= 400) bad.push(`${u} -> ${r.status()}`);
     } catch (e) { console.log(`  (could not reach ${u}: ${e.message.split('\n')[0]})`); }
   }
