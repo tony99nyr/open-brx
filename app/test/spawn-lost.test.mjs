@@ -301,3 +301,19 @@ test('F416 weapon review r2: an ALT swap still in its window defers the verdict 
   await h.adv(3000);
   assert.equal(h.spawns(), 1, `no second $SPAWN over the player's ALT: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
 });
+
+test('F416 weapon review r3: pulling a dead trigger on an unspawned gun does not defer the check to a silent close', async () => {
+  // Round 3 probe d6: a slot-0 account exists (an earlier `$ALCD` or repair seeded it), the gun is unspawned on slot 2
+  // at 2/1, every `$SPAWN` is lost, and the player pulls the dead trigger every second.
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && (Object.assign(h.gun, { spawned: false, hp: 45, armor: 70, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  await h.adv(4000); const t0 = h.now();
+  h.eng._shotAcct[0] = { mag: 32, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0 };
+  for (let t = 0; t < 14000; t += 50) {
+    if (t % 1000 === 0 && t < 12000) { h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame('$BUT,0,0,*'); }
+    await h.adv(50);
+  }
+  assert.ok(h.spawns() >= 2, `the unspawned gun gets the burst again: ${JSON.stringify(h.logs.filter(l => l.includes('F416')).slice(-3))}`);
+  assert.equal(h.eng.state().spawnLost, true, 'the budget ends on a visible HOST: FORCE RESPAWN, never a silent close');
+  const queries = h.writes.filter(w => w.t >= t0 && w.f === '$QUERY,*').length;
+  assert.ok(queries <= 10, `one probe chain, no fan-out: ${queries} queries`);
+});

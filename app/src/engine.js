@@ -1507,9 +1507,9 @@ export class Engine {
     if (c.life !== this._lifeSeq || !this.alive || this.phase !== 'live' || !this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }
     if (!this.bleUp) return;   // the relink's reconcile probes on its own, and its answer reaches `_spawnCheckSeen`
     c.asks++;
-    const asked = this.now();
+    const asked = this.now(), gen = c.gen || 0;
     const next = () => {   // no delivery, or no answer: ask again, then say so
-      if (this._spawnCheck !== c || c.done || c.heardAt > asked) return;
+      if (this._spawnCheck !== c || c.done || c.heardAt > asked || (c.gen || 0) !== gen) return;   // r3: a deferral retires older chains
       if (c.asks < SPAWN_ASKS) { this._spawnAsk(c); return; }
       c.lost = true;
       this.log('*** F416: the gun did not answer the spawn check -- it may not be spawned (HOST: FORCE RESPAWN) ***', 'le');
@@ -1524,10 +1524,11 @@ export class Engine {
   _spawnQuery(c) {
     if (c.queryAt || c.done || this._spawnCheck !== c) return;
     c.queryAt = this.now();
+    const gen = c.gen || 0;
     Promise.resolve(this._askMagazine('F416 spawn weapon check')).then(ok => {
       if (this._spawnCheck !== c || c.done) return;
       this.delay(ok === false ? SPAWN_ASK_GAP_MS : SPAWN_ANSWER_MS, () => {
-        if (this._spawnCheck !== c || c.done || !c.queryAt) return;
+        if (this._spawnCheck !== c || c.done || !c.queryAt || (c.gen || 0) !== gen) return;
         c.queryAt = 0; c.heardAt = 0;
         if (c.asks < SPAWN_ASKS) this._spawnAsk(c);
         else { c.lost = true; this.log('*** F416: the gun did not answer the weapon check (HOST: FORCE RESPAWN) ***', 'le'); this._changed(); }
@@ -1549,17 +1550,22 @@ export class Engine {
     // The gun must agree with the node's own view: the slot on the trigger and that slot's live count. A healthy gun
     // that fired, reloaded or swapped with ALT since the write still matches; the bench P0 (an unspawned gun on the
     // head's last `$WEAP`, slot 2 at 2/1, while the node held slot 0) does not.
-    const slot = this.activeSlot;
-    // Round 2: no verdict while the node's own view is in motion -- a press whose round has not come back (the account
-    // already counts it), an ALT swap inside its window, or a stun holding the gun at 0. Ask again; the check's own
-    // SPAWN_CHECK_MAX_MS still bounds it. A false mismatch here would re-send `$SPAWN` to a gun that is firing.
-    if (this._acctOutstanding(slot) || (this.switching && !this.switching.pu) || this.stunned) {
-      c.heardAt = 0; c.asks = 0;
+    const slot = this.activeSlot, gs = +lcd[4], gm = +lcd[5];
+    const live = this._liveAmmo()[slot], expected = live ? live[0] : null;
+    // Round 2/3: no verdict while the node's own view is in motion AND that motion can explain the gap: a press whose
+    // round has not come back (the gun still holds it: magazine in [expected, expected + pressed]), an ALT swap in its
+    // window (the gun on its from or to slot), or a stun holding the gun at 0. Anything else, such as the P0's slot 2
+    // at 2/1 while the player pulls a dead trigger, is decided now, or it would defer to a silent close.
+    const a = this._shotAcct[slot], pressed = this._acctOutstanding(slot) && a ? a.fired : 0;
+    const sw = this.switching && !this.switching.pu ? this.switching : null;
+    const motion = (pressed && gs === slot && expected != null && gm >= expected && gm <= expected + pressed)
+      || (sw && (gs === sw.from || gs === sw.to)) || this.stunned;
+    if (motion) {
+      c.gen = (c.gen || 0) + 1; c.heardAt = 0; c.asks = 0;   // retire the older ask and query timers: one chain only
       this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
       return;
     }
-    const live = this._liveAmmo()[slot], expected = live ? live[0] : null;
-    if (+lcd[4] === slot && expected != null && +lcd[5] === expected) {
+    if (gs === slot && expected != null && gm === expected) {
       this._spawnCheck = null;
       if (this._writeLost === c.life) this._writeLost = null;
       this.log(`F416: the gun's weapon state matches ${c.why}; landed, no re-send`, 'lk');
