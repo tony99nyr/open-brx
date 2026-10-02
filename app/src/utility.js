@@ -131,7 +131,7 @@ const link = new BrxLink({ log });
 // game (v1 manual stations stay at 0 = any), which is exactly when two games share a field.
 const presence = new Presence({ defaultThreshold: thr(), dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
 const wasAlive = new Map();          // player id → { alive, died } for THIS game, to count revives that happened here (beacon.js countRevives)
-const _quietLogged = new Set();   // F438: players already logged as quiet in the current silence
+const _quietLogged = new Set();   // F440: players already logged as quiet in the current silence
 const QUIET_MS = 1500;
 const _playerWas = new Map();   // player id -> present, for the edge lines above (playerEdges)
 let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false, _twin = 0;
@@ -457,7 +457,7 @@ function tick() {
   presence.tick(now);
   // Bench 2026-10-02: say when a player is HEARD on this station and when they leave (edges only), so a field log
   // can tell "never heard him" from "heard him and did not count him".
-  // F438: a PRESENT player not heard for QUIET_MS is logged once per silence, with its last few gaps: a sparse
+  // F440: a PRESENT player not heard for QUIET_MS is logged once per silence, with its last few gaps: a sparse
   // advertiser that still clears the dwell would otherwise stall a capture with nothing in the log.
   for (const p of presence.players()) {
     const quiet = p.present && now - p.seenAt >= QUIET_MS;
@@ -685,7 +685,7 @@ function render() {
     // the point (present + alive + a team that may hold one), DOWN is struck through, and in range but off
     // the point is dimmed. The three COMPOSE rather than ranking: a body that is both down and out of range
     // is both, and ranking them silently dropped one of the two facts the operator reads the row for.
-    const inCircle = p.present || p.inCircle;   // F438: the same rule the point counts
+    const inCircle = p.present || p.inCircle;   // F440: the same rule the point counts
     const claim = isControl && inCircle && alive && claimable(p.team);
     // F82: a tid-2 body standing here converts nothing, and the row has to say so. Left unmarked it read
     // exactly like a contributor -- highlighted, green ON POINT -- two lines under a net line saying
@@ -1120,7 +1120,7 @@ function wireExit() {
   window.brxUtil = window.brx = window.brxUtility;
 })();
 
-/** F438: the recent advert gaps bucketed, so a sparse advertiser reads at a glance ({'<0.5s': 9, '1-2s': 3, ...}). */
+/** F440: the recent advert gaps bucketed, so a sparse advertiser reads at a glance ({'<0.5s': 9, '1-2s': 3, ...}). */
 function gapHistogram(gaps) {
   const edges = [[500, '<0.5s'], [1000, '0.5-1s'], [2000, '1-2s'], [4000, '2-4s'], [Infinity, '4s+']];
   const out = Object.fromEntries(edges.map(([, k]) => [k, 0]));
@@ -1137,7 +1137,7 @@ function utilityDiag() {
       counts: { ...(point.counts || {}) }, holdMs: { ...point.holdMs } } : null,
     players: presence.players().map(p => ({ id: p.id, team: p.team, alive: !!(p.state & PLAYER_STATE.alive), present: !!p.present,
       rssi: Math.round(p.rssi), median: Number.isFinite(p.median) ? Math.round(p.median) : null, ageMs: now - p.seenAt, game: p.game,
-      // F438: how often this phone is heard: the recent gaps between its adverts, the worst, and the median
+      // F440: how often this phone is heard: the recent gaps between its adverts, the worst, and the median
       gaps: [...(p.gaps || [])], gapMax: p.gaps?.length ? Math.max(...p.gaps) : null,
       gapMedian: p.gaps?.length ? [...p.gaps].sort((a, b) => a - b)[Math.floor(p.gaps.length / 2)] : null,
       gapHistogram: gapHistogram(p.gaps || []), inCircle: !!p.inCircle })),

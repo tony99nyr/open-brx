@@ -131,7 +131,7 @@ export class BeaconWatch {
     this.pausedUntil = 0;     // the guard closed the scan; do not reopen before this
     this.modeSince = 0;       // when the guard last lowered the mode
     this.backoffs = 0;        // guard trips since the app started
-    this.opens = 0;           // F438: successful scan opens; a change tells the player advert to re-assert itself
+    this.opens = 0;           // F440: successful scan opens; a change tells the player advert to re-assert itself
     this._floorWarned = false;
     this._lastSample = new Map();   // deviceId → when its last sample reached onHit
     this._chain = Promise.resolve();

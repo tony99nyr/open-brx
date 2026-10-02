@@ -45,13 +45,13 @@ constexpr bool REVIVE_FEEDBACK_ENABLED = BRX_REVIVE_FEEDBACK != 0;
 constexpr uint32_t PRESENCE_DWELL_MS = 800;          // utility.js DEFAULTS.dwell (arm's length, with -74)
 constexpr int PRESENCE_HYSTERESIS_DB = 6;            // beacon.js Presence hysteresisDb
 constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expiryMs
-// F438 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
+// F440 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
 // leaves only after the EMA has stayed below the exit level this long, so a dip is not a step out. beacon.js EXIT_GRACE_MS.
 constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 2500;
-// F438: a credible sighting keeps a player "in the circle" this long. Entering needs an advert at the threshold;
+// F440: a credible sighting keeps a player "in the circle" this long. Entering needs an advert at the threshold;
 // once in, an advert inside the hysteresis band keeps it. beacon.js SIGHT_MS.
 constexpr uint32_t PRESENCE_SIGHT_MS = 4000;
-// F438: a sighting is the MEDIAN of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold
+// F440: a sighting is the MEDIAN of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold
 // (beacon.js SIGHT_WINDOW_MS): the same circle edge for a dense and a sparse advertiser. SIGHT_RECENT_MAX bounds it.
 constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
 constexpr size_t SIGHT_RECENT_MAX = 24;
@@ -120,14 +120,14 @@ struct PlayerEntry {
   bool present = false;
   bool above = false;  // beacon.js `sinceAbove != null`
   uint32_t since_above = 0;
-  bool below = false;  // F438: beacon.js `belowSince != null`
+  bool below = false;  // F440: beacon.js `belowSince != null`
   uint32_t below_since = 0;
-  bool sighted = false;  // F438: beacon.js `sightedAt != null`
+  bool sighted = false;  // F440: beacon.js `sightedAt != null`
   uint32_t sighted_at = 0;
-  uint32_t recent_t[SIGHT_RECENT_MAX] = {};  // F438: beacon.js `e.recent`, oldest first
+  uint32_t recent_t[SIGHT_RECENT_MAX] = {};  // F440: beacon.js `e.recent`, oldest first
   int recent_rssi[SIGHT_RECENT_MAX] = {};
   size_t n_recent = 0;
-  bool in_circle = false;  // F438: beacon.js `inCircle`: present, or a credible sighting within sight_ms
+  bool in_circle = false;  // F440: beacon.js `inCircle`: present, or a credible sighting within sight_ms
 };
 
 class PlayerPresence {
@@ -172,11 +172,11 @@ class PlayerPresence {
     return e;
   }
 
-  // F438 (beacon.js inCircleNow): present, or a credible sighting within sight_ms.
+  // F440 (beacon.js inCircleNow): present, or a credible sighting within sight_ms.
   bool in_circle_now(const PlayerEntry& e, uint32_t now) const {
     return e.present || (e.sighted && now - e.sighted_at <= sight_ms);
   }
-  // F438 (beacon.js observe): the median of the adverts in the last PRESENCE_SIGHT_WINDOW_MS, at or above the threshold.
+  // F440 (beacon.js observe): the median of the adverts in the last PRESENCE_SIGHT_WINDOW_MS, at or above the threshold.
   void stamp_sighting(PlayerEntry& e, int rssi, uint32_t now) const {
     size_t keep = 0;
     for (size_t i = 0; i < e.n_recent; i++) {
@@ -229,7 +229,7 @@ class PlayerPresence {
       }
       const int thr = threshold_for(e);
       if (e.present) {
-        // Hysteresis: off only once the EMA is `hysteresis_db` BELOW the threshold (strictly), and (F438) has
+        // Hysteresis: off only once the EMA is `hysteresis_db` BELOW the threshold (strictly), and (F440) has
         // stayed there `exit_grace_ms`: a dip is not a step out of the circle.
         if (e.rssi < thr - hysteresis_db) {
           if (!e.below) { e.below = true; e.below_since = now; }
@@ -392,7 +392,7 @@ class BleControlPoint {
     int refused = 0;
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
-      if (!p.used || !(p.present || p.in_circle)) continue;  // F438: outside the circle: not on the point
+      if (!p.used || !(p.present || p.in_circle)) continue;  // F440: outside the circle: not on the point
       if (!(p.state & PLAYER_ALIVE)) continue;      // DOWN on the point contributes nothing
       if (p.team == HILL_REFUSED_TID) { refused++; continue; }  // F82
       if (!hill_claimable(p.team)) continue;        // no team / a colour tid: no claim

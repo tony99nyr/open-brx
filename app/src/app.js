@@ -220,7 +220,7 @@ function presenceTick() {
 }
 const playerAdvertGate = new AdvertGate();   // polish H1: whole-UUID compare; a start counts only once it worked (beacon.js)
 let playerAdvertBusy = false;                // one plugin call at a time: the 250 ms loop must not stack starts
-// F438: every player phone advertises the same way (tx medium; balanced, or low latency only while claiming, the same rule
+// F440: every player phone advertises the same way (tx medium; balanced, or low latency only while claiming, the same rule
 // for every phone), re-asserts its advert whenever the scan reopens, and counts what happened (window.brx.advert).
 const playerAdvertStats = { starts: 0, stops: 0, fails: 0, reasserts: 0, lastReason: null };
 let _advertScanOpens = 0;
@@ -235,13 +235,13 @@ async function syncPlayerAdvert() {
   // other phone's scan would carry it over its own bridge for no reader (bench 2026-09-17 flood).
   const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(engine.config))
     ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits, value: claim.value, game: configGameByte(engine.config) }) : null;
-  // F438: the scan reopened (a flood close, a BLE hiccup): re-assert the advert, which could have stopped silently.
+  // F440: the scan reopened (a flood close, a BLE hiccup): re-assert the advert, which could have stopped silently.
   let reassert = false;
   if (beaconWatch.opens !== _advertScanOpens) {
     _advertScanOpens = beaconWatch.opens;
     if (want && playerAdvertGate.last === want) { playerAdvertGate.refresh(); reassert = true; }
   }
-  // F438: every start and stop says WHY, so a phone a station hears only sometimes can be checked for churn.
+  // F440: every start and stop says WHY, so a phone a station hears only sometimes can be checked for churn.
   const prevAdvert = playerAdvertGate.last && playerAdvertGate.last !== '?' ? playerAdvertGate.last : null;
   const action = playerAdvertGate.due(want, Date.now());
   if (!action) return;

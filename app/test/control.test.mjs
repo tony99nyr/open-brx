@@ -499,7 +499,7 @@ test('tid 0 end to end: a RED advert is heard, a lone red captures, red beside b
   assert.equal(cp.holdMs[0], held, 'no possession accrues while contested');
 });
 
-// F438 (bench 2026-10-02, Tony: "a newer phone with stronger bluetooth shouldn't get an advantage"; "it should be a
+// F440 (bench 2026-10-02, Tony: "a newer phone with stronger bluetooth shouldn't get an advantage"; "it should be a
 // minimum threshold and you are in the circle"). The real station parameters: threshold -75, 6 dB hysteresis, the
 // utility page's 0.8 s dwell. A SPARSE advertiser (adverts every 1.5-3 s) whose RSSI swings +/-10 dB but stays inside
 // the circle must capture within 15 s; an arriving opponent must contest within its own advert interval; a player
@@ -527,7 +527,7 @@ function sim({ seed = 7, players, untilMs = 30000, stepMs = 250, thr = -75, pres
 const sparse = (id, team, o = {}) => ({ id, team, mean: -70, swing: 10, gapMin: 1500, gapMax: 3000, ...o });   // -80..-60: dips past the threshold, inside the band
 const dense = (id, team, o = {}) => ({ id, team, mean: -66, swing: 4, gapMin: 200, gapMax: 300, ...o });
 
-test('F438: a sparse, noisy advertiser alone never stalls: it captures 10 s after it first counts', () => {
+test('F440: a sparse, noisy advertiser alone never stalls: it captures 10 s after it first counts', () => {
   // Measured from the first moment it COUNTS on the point (its first advert at the threshold): before that it is
   // rightly outside the circle (seed 5's first two adverts read -75.2 and -75.1). After it, no dip or silence may
   // stall the 10 s conversion.
@@ -541,7 +541,7 @@ test('F438: a sparse, noisy advertiser alone never stalls: it captures 10 s afte
   }
 });
 
-test('F438: a dense opponent arriving at a sparse owner\'s hill contests at once', () => {
+test('F440: a dense opponent arriving at a sparse owner\'s hill contests at once', () => {
   for (const seed of [1, 2, 3]) {
     const tr = sim({ seed, players: [sparse(1, 1), dense(2, 0, { from: 18000 })] });
     assert.equal(tr.find(s => s.t === 17750)?.owner, 1, `seed ${seed}: control: blue (sparse) holds before red arrives`);
@@ -550,7 +550,7 @@ test('F438: a dense opponent arriving at a sparse owner\'s hill contests at once
   }
 });
 
-test('F438: a SPARSE opponent contests within two of its own adverts, and stays contesting while in the circle', () => {
+test('F440: a SPARSE opponent contests within two of its own adverts, and stays contesting while in the circle', () => {
   for (const seed of [1, 2, 3, 4]) {
     const tr = sim({ seed, players: [dense(2, 1), sparse(1, 0, { from: 15000 })] });
     assert.equal(tr.find(s => s.t === 14750)?.owner, 1, `seed ${seed}: control: blue holds`);
@@ -561,14 +561,14 @@ test('F438: a SPARSE opponent contests within two of its own adverts, and stays 
   }
 });
 
-test('F438 (review High): a player OUTSIDE the threshold never counts, however often it advertises', () => {
+test('F440 (review High): a player OUTSIDE the threshold never counts, however often it advertises', () => {
   // inside the hysteresis band but never at the threshold: -79 +/-3 never reaches -75, at 4 adverts a second
   const tr = sim({ seed: 2, players: [{ id: 4, team: 0, mean: -79, swing: 3, gapMin: 250, gapMax: 250 }] });
   assert.ok(tr.every(s => !s.counts[0]), 'never counted on the point');
   assert.ok(tr.every(s => s.owner !== 0 && s.progress === 0), 'never captures, never builds');
 });
 
-test('F438: a player who walks out of the circle stops counting promptly (falling RSSI, same phone)', () => {
+test('F440: a player who walks out of the circle stops counting promptly (falling RSSI, same phone)', () => {
   // red stands at -66 beside blue, then walks away: its RSSI falls 3 dB a second from 20 s, to well outside
   const walk = t => (t < 20000 ? -66 : -66 - 3 * ((t - 20000) / 1000));
   const tr = sim({ seed: 3, untilMs: 40000, players: [dense(2, 1), dense(1, 0, { from: 14000, mean: walk })] });
@@ -578,7 +578,7 @@ test('F438: a player who walks out of the circle stops counting promptly (fallin
   assert.ok(clear != null && clear <= 31000, `uncontested at ${clear} ms (want <= 31000: about 6 s past the exit level)`);
 });
 
-test('F438: the exit grace is what keeps a dipping player present (fails without it)', () => {
+test('F440: the exit grace is what keeps a dipping player present (fails without it)', () => {
   const pres = (graceMs) => {
     const p = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 1, exitGraceMs: graceMs, sightMs: 0 });
     const adv = encodeUuid({ role: 'player', id: 1, team: 0, state: PLAYER_STATE.alive, game: 0 });
@@ -591,7 +591,7 @@ test('F438: the exit grace is what keeps a dipping player present (fails without
   assert.equal(pres(2500), true, 'with the grace, a dip is not a step out');
 });
 
-test('F438 (review round 2 High): the circle edge does not move with advert rate', () => {
+test('F440 (review round 2 High): the circle edge does not move with advert rate', () => {
   // -80 +/-6 dB: 5 dB outside the circle, but its noise reaches the threshold. Advertising 4 times a second gave it
   // ~90% time in the circle and a solo capture under the band-keep rule; it must never capture, at any rate.
   for (const seed of [1, 2, 3]) {

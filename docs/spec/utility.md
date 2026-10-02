@@ -299,7 +299,7 @@ matter if you are closer within that circle." So:
 - **In the circle** means PRESENT (the entry dwell passed; leaving is debounced, `EXIT_GRACE_MS` 2.5 s below the exit
   level) or a **credible sighting**: any advert inside the tolerance band (at or above the exit level) in the last
   `SIGHT_MS` (4 s). The sighting makes an arriving opponent contest at once, before the dwell, so a quieter phone
-  never lets the other team take the hill silently (`beacon.js` Presence, `control.js`; F438).
+  never lets the other team take the hill silently (`beacon.js` Presence, `control.js`; F440).
 - There is **no per-phone calibration** (Tony, 2026-10-02: "isn't practical"). Fairness comes from tolerance built
   into the system: uniform advertising (the same tx power and mode on every phone, re-asserted after a scan reopen),
   the debounced exit and the sighting window. The threshold is set ONCE per station type from the bench ladder

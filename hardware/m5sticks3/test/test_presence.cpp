@@ -130,7 +130,7 @@ static void test_presence_six_db_hysteresis() {
   pr.observe(player(7, 0), -79, 1000);  // inside the band: still present, no dwell needed
   pr.tick(1000);
   CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -81, 1100);  // 7 dB below: a dip, not yet a step out (F438 exit grace)
+  pr.observe(player(7, 0), -81, 1100);  // 7 dB below: a dip, not yet a step out (F440 exit grace)
   pr.tick(1100);
   CHECK(pr.get(7)->present);
   pr.observe(player(7, 0), -79, 1500);  // back inside the band: the dip is over, the grace resets
@@ -150,7 +150,7 @@ static void test_presence_six_db_hysteresis() {
   CHECK(!pr.get(7)->present);
 }
 
-// F438 (beacon.js parity): the circle. A sighting is the median of the last 2 s of adverts at or above the threshold,
+// F440 (beacon.js parity): the circle. A sighting is the median of the last 2 s of adverts at or above the threshold,
 // so a sparse player's first advert at the threshold puts it in the circle at once (before the dwell), while a DENSE
 // player whose noise only touches the threshold never enters (review round 2: the circle edge must not move with
 // advert rate).

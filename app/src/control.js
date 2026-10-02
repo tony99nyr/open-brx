@@ -161,7 +161,7 @@ export class ControlPoint {
     const counts = {};
     let refused = 0;
     for (const p of players || []) {
-      // F438: in the circle = present (dwell passed, debounced exit) OR a credible sighting in the last SIGHT_MS, so an
+      // F440: in the circle = present (dwell passed, debounced exit) OR a credible sighting in the last SIGHT_MS, so an
       // arriving opponent contests at once and a sparse advertiser keeps its count. Binary: never weighted by RSSI.
       if (!p || !(p.present || p.inCircle)) continue;       // outside the bubble: not on the point
       if (!(p.state & PLAYER_STATE.alive)) continue;        // DOWN on the point contributes nothing
