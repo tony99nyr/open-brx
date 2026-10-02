@@ -164,6 +164,29 @@ export function isQueueSlotPlay(f) {
   const t = f.split(',');
   return !(t[1] || '').trim() && !!(t[4] || '').trim();
 }
+/** F437 (bench 2026-10-02) + F416: an interrupt-slot `$PLAY` (token 1, e.g. the klaxon `$PLAY,U16,4,6,,,,,*`) and a
+ *  queue-slot one (token 4, e.g. the spawn line `$PLAY,,4,6,VAI,,,,*`) as ONE two-slot frame, `$PLAY,U16,4,6,VAI,,,,*`:
+ *  Callsign's own game-end form (`$PLAY,VSF,4,6,JAY,,,,*`, a sting plus "victory", both played; docs/manual/sound.md
+ *  "Two slots at once"). The first frame's volume and priority stand. Null when the two do not fit one frame (the
+ *  interrupt frame already has a token 4, the queue frame a token 1, or the tail tokens differ). PURE. */
+export function twoSlotPlay(interrupt, queued) {
+  if (typeof interrupt !== 'string' || typeof queued !== 'string' || !interrupt.startsWith('$PLAY,') || !queued.startsWith('$PLAY,')) return null;
+  const a = interrupt.split(','), b = queued.split(',');
+  if (a.length !== b.length || a.length < 6) return null;
+  if (!(a[1] || '').trim() || (a[4] || '').trim() || (b[1] || '').trim() || !(b[4] || '').trim()) return null;
+  if (a.slice(5).join(',') !== b.slice(5).join(',')) return null;
+  const t = a.slice(); t[4] = b[4];
+  return t.join(',');
+}
+/** The clips one `$PLAY` puts on the gun, in play order: its interrupt-slot id (token 1), then its queue-slot id
+ *  (token 4). A two-slot frame (`twoSlotPlay`) gives both, each as its own one-slot frame. PURE. */
+export function playSlotFrames(f) {
+  if (typeof f !== 'string' || !f.startsWith('$PLAY,')) return [];
+  const t = f.split(',');
+  if (!(t[1] || '').trim() || !(t[4] || '').trim()) return [f];
+  const a = t.slice(), b = t.slice(); a[4] = ''; b[1] = '';
+  return [a.join(','), b.join(',')];
+}
 export const SPAWN_CHECK_MS = 400;        // after the failed write, this long before the node asks the gun
 export const SPAWN_ASKS = 2;              // probe writes before the check says the gun cannot be asked (HUD warning)
 export const SPAWN_ASK_GAP_MS = 1000;
@@ -1308,7 +1331,7 @@ export class Engine {
         this._lastPlayAt = this.now();
         if (noted) return;
         noted = true;
-        this._gun.add(this._clipLen(frame), why, this.now(), clipId(frame));
+        for (const one of playSlotFrames(frame)) this._gun.add(this._clipLen(one), why, this.now(), clipId(one));   // F437: a two-slot frame is two clips
         if (onSent) onSent();
       };
       const writeOptions = hasPlay ? { ...options, onFrameSent: frame => {
@@ -1394,7 +1417,7 @@ export class Engine {
     out = [];
     for (const f of frames) {
       if (!deferPlay && typeof f === 'string' && f.startsWith('$PLAY,')) {
-        g.add(this._clipLen(f), why, now, clipId(f));
+        for (const one of playSlotFrames(f)) g.add(this._clipLen(one), why, now, clipId(one));   // F437: a two-slot frame is two clips
       }
       out.push(f);
     }
@@ -3174,9 +3197,15 @@ export class Engine {
     // X3: the fill goes last. Bench 2026-10-02 (0.4.16, Tony): the klaxon is on the INTERRUPT slot (token 1), and sent
     // after the spawn line it cut the taunt after one word ("no where to hide" played as "no.."). So the klaxon goes
     // FIRST, and the line, on the queue slot (token 4), plays whole after it.
+    // F437 + F416 (2026-10-02): as two frames, the queue-slot line waited about 0.4 s on the phone for the klaxon (F419's
+    // `_drainPlayWrites`), so the burst's `_writeLife` settled late and F416's last re-send failure opened a fresh check
+    // after its verdict. So the two go as ONE two-slot frame (`twoSlotPlay`, Callsign's game-end form: both slots play),
+    // after `$SFLASH`, before the fill. A pair that does not fit one frame falls back to the klaxon, then the line.
     const kx = this.frames.cues && this.frames.cues.klaxon && !this.cuesFired.has('klaxon') ? this.frames.cues.klaxon : null;
     if (kx) this.cuesFired.add('klaxon');
-    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(kx ? [kx] : []), ...(sp.frame ? [sp.frame] : [])], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? ' + klaxon' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
+    const both = kx && sp.frame ? twoSlotPlay(kx, sp.frame) : null;
+    const sounds = both ? [both] : [...(kx ? [kx] : []), ...(sp.frame ? [sp.frame] : [])];
+    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
     if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;

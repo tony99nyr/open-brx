@@ -74,9 +74,11 @@ Rules:
    (`_dropWaitingPlays`), which the old model would have stopped on the gun. A queue-slot cue that waited past
    `PLAY_QUEUE_STALE_MS` (6 s, the kill line's own lateness limit) is dropped, not played late. The stage's `write`
    mirrors the wait.
-4. **Spawn and revive** (`X3`): the phone sends the klaxon, then the spawn line, before F348's `$LIFE,0,0,<max>,*` fill.
-   The klaxon is on the interrupt slot, so it goes first: sent after the line, it cut the line after one word (F437).
-   Spacing splits those sounds across writes. A must-hear line may flush the queue that remains.
+4. **Spawn and revive** (`X3`): the phone sends the klaxon and the spawn line before F348's `$LIFE,0,0,<max>,*` fill.
+   At go-live they are one two-slot frame (`twoSlotPlay`): the klaxon's id in token 1, the line's id in token 4, as in
+   `$PLAY,U16,4,6,VAI,,,,*`. This is Callsign's own game-end form (`docs/manual/sound.md`, "Two slots at once"). Sent
+   as two frames, the klaxon on the interrupt slot cut the line after one word (F437). A pair that does not fit one
+   frame goes as the klaxon, then the line. Spacing splits other sounds across writes. A must-hear line may flush the queue that remains.
 
 **Not modelled** (assumed not to use the announcer FIFO, unconfirmed): the gun's own fire, reload, empty-click and
 weapon-swap sounds, and whatever the native `$SPAWN` plays. If any of them do queue there, the flush count is low by

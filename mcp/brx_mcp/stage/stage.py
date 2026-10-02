@@ -481,6 +481,21 @@ def clip_s(sound_id: str | None) -> float:
     return float(d) if isinstance(d, (int, float)) and d > 0 else ANNOUNCE_DEFAULT_CLIP_S
 
 
+def two_slot_play(interrupt: str, queued: str) -> str | None:
+    """engine.js `twoSlotPlay` (F437 + F416, 2026-10-02): the klaxon (interrupt slot, token 1) and the spawn line (queue
+    slot, token 4) as ONE `$PLAY`, Callsign's game-end form. The first frame's volume and priority stand. None when the
+    two do not fit one frame."""
+    if not (isinstance(interrupt, str) and isinstance(queued, str) and interrupt.startswith("$PLAY,") and queued.startswith("$PLAY,")):
+        return None
+    a, b = interrupt.split(","), queued.split(",")
+    if len(a) != len(b) or len(a) < 6:
+        return None
+    if not a[1].strip() or a[4].strip() or b[1].strip() or not b[4].strip() or a[5:] != b[5:]:
+        return None
+    t = list(a); t[4] = b[4]
+    return ",".join(t)
+
+
 def is_queue_slot_play(frame: str) -> bool:
     """engine.js `isQueueSlotPlay` (F419): a `$PLAY` on the gun's QUEUE slot (token 1 empty, the id in token 4)."""
     if not isinstance(frame, str) or not frame.startswith("$PLAY,"):
@@ -2375,12 +2390,15 @@ class GunStage:
             self._arm_after_spawn()                              # F209 (an older bundle): hits stay silent until the gun fires or the cap
         fill = self._spawn_shield_fill()                          # F348: a shields life starts at full shield
         self._shield_fill_start(fill)
-        # engine.js X3: the spawn line and the klaxon go out BEFORE the fill, and the play gap separates the sound writes
+        # engine.js X3: the sounds go out BEFORE the fill. F437 + F416 (2026-10-02): the klaxon and the spawn line are ONE
+        # two-slot frame (`two_slot_play`); a pair that does not fit one frame falls back to the klaxon, then the line.
         kx = cues.get("klaxon", "")
+        both = two_slot_play(kx, fr) if kx and fr else None
+        sounds = [both] if both else ([kx] if kx else []) + ([fr] if fr else [])
         await self.write(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
-                          + ([fr] if fr else []) + ([kx] if kx else []) + fill,
+                          + sounds + fill,
                           "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
-                          + (" + klaxon" if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
+                          + ((" + klaxon (one two-slot frame)" if both else " + klaxon") if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
                           take=bool(late))
         self._after_spawn()
         hs = self.bundle.get("headset") or {}

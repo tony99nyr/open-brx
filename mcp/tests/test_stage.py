@@ -979,8 +979,15 @@ def test_a_kill_and_the_kill_event_play_one_random_take_of_the_pool_and_name_it(
 
 # --- A15.2: the spawn line is OURS (Tony, bench 2026-09-06: an empty $PSET cry field silences the firmware; $SPAWN then
 # $PLAY in the same write plays clean; "what if we dont rely on the firmware to make the sound on spawn and we just control it") ---
+def _as_line(f):
+    """F437: a two-slot `$PLAY` (the klaxon on token 1 and the spawn line on token 4) read as its queue-slot line."""
+    t = f.split(","); t[1] = ""
+    return ",".join(t)
+
+
 def _voice_plays(frames):
-    return [f for f in frames if f.startswith("$PLAY,,4,6,")]
+    # F437 (2026-10-02): the go-live klaxon and the spawn line now share one two-slot frame; count its line
+    return [_as_line(f) for f in frames if f.startswith("$PLAY,") and len(f.split(",")) > 4 and f.split(",")[4] and f.split(",")[2:4] == ["4", "6"]]
 
 
 def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty():
@@ -1016,11 +1023,11 @@ def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty(
                 assert new.count(f"$TID,{st.profile['tid']},*") == 1, new
             assert new[prefix - len(spawn):prefix] == spawn and new[prefix] == "$SFLASH,*", new
             i = prefix
-            assert new[i + 1] in pool, new
-            assert _voice_plays(new) == [new[i + 1]], "exactly one spawn line per spawn"
+            assert _as_line(new[i + 1]) in pool, new   # F437: may ride in the klaxon's two-slot frame
+            assert _voice_plays(new) == [_as_line(new[i + 1])], "exactly one spawn line per spawn"
             why = next(l["why"] for l in reversed(st.log) if l["text"] == new[i + 1])
             assert "spawn line (" in why and new[i + 1].split(",")[4] in why, why    # A15.3: "spawn + scream Vxx N/3 + spawn line (…)"
-            seen.add(new[i + 1])
+            seen.add(_as_line(new[i + 1]))
         assert len(seen) > 1, "the take is drawn per spawn, not fixed per arm"
     asyncio.run(run())
     # a family with ONE take (Heavy: V3I) plays that one every time, no pool entry needed
@@ -1034,7 +1041,7 @@ def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty(
     async def run2():
         await st2.spawn(); await settle(st2)
         all_ = tx(m2); i = len(all_) - 1 - all_[::-1].index("$SFLASH,*"); new = all_[i - 5:]
-        assert new[new.index("$SFLASH,*") + 1] == "$PLAY,,4,6,V3I,,,,*" and _voice_plays(new) == ["$PLAY,,4,6,V3I,,,,*"]
+        assert _as_line(new[new.index("$SFLASH,*") + 1]) == "$PLAY,,4,6,V3I,,,,*" and _voice_plays(new) == ["$PLAY,,4,6,V3I,,,,*"]   # F437: in the klaxon's frame
     asyncio.run(run2())
 
 

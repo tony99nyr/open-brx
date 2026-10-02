@@ -2394,7 +2394,10 @@ def test_x3_the_spawn_line_and_the_klaxon_go_before_the_fill_like_the_phone():
         await st.spawn(); await settle(st)
         burst = since(mgr, n)
         plays = [i for i, f in enumerate(burst) if f.startswith("$PLAY,")]
-        assert len(plays) >= 2 and cues["klaxon"] in burst, f"setup: the spawn line and the klaxon went out: {burst}"
+        # F437 + F416 (2026-10-02): the klaxon and the spawn line are ONE two-slot frame, like engine.js
+        kx_id = cues["klaxon"].split(",")[1]
+        both = [f for f in burst if f.startswith(f"$PLAY,{kx_id},") and f.split(",")[4]]
+        assert len(both) == 1 and cues["klaxon"] not in burst, f"the klaxon and the line in one frame: {burst}"
         assert max(plays) < burst.index(fill), burst
         st._on_rx("$HP,0,0,0,*"); await settle(st)
         m = mark(mgr)
@@ -2403,6 +2406,14 @@ def test_x3_the_spawn_line_and_the_klaxon_go_before_the_fill_like_the_phone():
         plays = [i for i, f in enumerate(burst) if f.startswith("$PLAY,")]
         assert plays and max(plays) < burst.index(fill), burst
     asyncio.run(go())
+
+
+def test_f437_two_slot_play_mirrors_engine():
+    """engine.js `twoSlotPlay`: the same merge and the same refusals."""
+    assert S.two_slot_play("$PLAY,U16,4,6,,,,,*", "$PLAY,,4,6,VAI,,,,*") == "$PLAY,U16,4,6,VAI,,,,*"
+    assert S.two_slot_play("$PLAY,U16,4,6,VAA,,,,*", "$PLAY,,4,6,VAI,,,,*") is None
+    assert S.two_slot_play("$PLAY,U16,4,6,,,,,*", "$PLAY,X1,4,6,VAI,,,,*") is None
+    assert S.two_slot_play("$PLAY,U16,4,6,,,,,*", "$PLAY,,4,6,VAI,1,,,*") is None
 
 
 def test_live_bench_arming_literals_leave_t23_empty():
