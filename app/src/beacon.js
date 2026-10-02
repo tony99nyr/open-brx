@@ -107,8 +107,9 @@ export const GAP_SAMPLES = 16;
  */
 export class Presence {
   // F440 (Tony 2026-10-02: "a minimum threshold and you are in the circle"): `exitGraceMs` debounces leaving, so a
-  // sparse advertiser's dips and silences inside the circle never drop it; `sightMs` makes ONE advert at or above
-  // the threshold count as in the circle for that long, so an arriving opponent contests at once, before the dwell.
+  // sparse advertiser's dips and silences inside the circle never drop it; `sightMs` keeps a credible sighting (the
+  // median of the last SIGHT_WINDOW_MS of adverts at or above the threshold) in the circle that long, so an arriving
+  // opponent contests at once, before the dwell.
   constructor({ dwellMs = 2000, hysteresisDb = 6, expiryMs = 4000, alpha = 0.35, defaultThreshold = -62, game = 0, exitGraceMs = EXIT_GRACE_MS, sightMs = SIGHT_MS } = {}) {
     this.entries = new Map();          // key role:id → entry
     Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs });

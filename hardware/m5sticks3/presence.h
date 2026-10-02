@@ -48,8 +48,8 @@ constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expir
 // F440 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
 // leaves only after the EMA has stayed below the exit level this long, so a dip is not a step out. beacon.js EXIT_GRACE_MS.
 constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 2500;
-// F440: a credible sighting keeps a player "in the circle" this long. Entering needs an advert at the threshold;
-// once in, an advert inside the hysteresis band keeps it. beacon.js SIGHT_MS.
+// F440: a credible sighting (the window median below, at or above the threshold) keeps a player "in the circle"
+// this long. Staying in otherwise comes from `present`. beacon.js SIGHT_MS.
 constexpr uint32_t PRESENCE_SIGHT_MS = 4000;
 // F440: a sighting is the MEDIAN of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold
 // (beacon.js SIGHT_WINDOW_MS): the same circle edge for a dense and a sparse advertiser. SIGHT_RECENT_MAX bounds it.
