@@ -5853,9 +5853,23 @@ export class Engine {
     if (a.state === 0 && !a.value) return null;
     return a;
   }
+  /** A weapon item's charges: the station's own CHARGES, else the weapon's clip, else 1. PURE. */
+  _puItemCharges(item) {
+    const row = this.weaponRow(item.weapon_id);
+    return Number.isFinite(+item.charges) && +item.charges > 0 ? +item.charges : (row && row.clip > 0 ? row.clip : 1);
+  }
+  /** Bench 2026-10-02 (ROBP1): a re-claim of the same weapon at the stack cap took the station's item and gave nothing.
+   *  At the cap the player does not claim, so the item stays for someone else. Same cap rule as the stack grant. PURE. */
+  _puAtCap(item) {
+    const h = this._puHeld;
+    if (!h || !item || item.kind !== 'weapon' || h.weapon_id !== item.weapon_id) return false;
+    const c = this._puItemCharges(item);
+    return h.left >= PU_STACK_CAP_X * Math.max(c, h.base || c);   // the stack grant's own formula, byte for byte
+  }
   /** Is the item at station `id` there to claim? The station owns taken and untaken, so its advert decides; only a
    *  station with nothing to say yet falls back to the phone's own schedule (and then decides nothing: it names the taker). */
   _puClaimable(id, item, now) {
+    if (this._puAtCap(item)) return false;
     const el = this._puElapsed(now); if (el == null) return false;
     const a = this._puAdvertOf(id, now);
     if (a) return a.state === 1 && puSpawnIndex(item, el) >= 0;   // F374: never before the first spawn, whatever a station says
@@ -6089,8 +6103,7 @@ export class Engine {
     const slot = +armed.slot;
     if (!this._puHeadWeap(slot)) { this.log(`powerup: the head carries no $WEAP for slot ${slot} (${item.weapon_id})`, 'le'); return false; }
     this._puBackPending = null;
-    const row = this.weaponRow(item.weapon_id);
-    const charges = Number.isFinite(+item.charges) && +item.charges > 0 ? +item.charges : (row && row.clip > 0 ? row.clip : 1);
+    const charges = this._puItemCharges(item);
     const old = this._puHeld;
     if (old && old.weapon_id === item.weapon_id) {
       if (old.trig !== old.slot) {
