@@ -318,12 +318,24 @@ function startUtilityLanSweep(over = {}) {   // `over`: the node test's sweep/ti
 /** The typed-address buttons: the HUD's parse (join code → url + pub + secret), and a pasted console address
  *  (`http://<host>:8765/`) dials MC's node port rather than being saved and redialled as typed. */
 function connectTypedMc(text) {
+  if (!mcLinkEditable()) return;
   const r = resolveTypedMc(text);
   if (!r) return;
+  if (playLocked()) log(`MC link changed on the station in play: ${settings.mc || '(none)'} -> ${r.url}${a58Locked() ? ' (MC lock overridden)' : ''}`, 'lk');
   if (r.note) log(r.note, 'li');
   connectMc(r.url, r.join ? { trusted: true, pub: r.pub, secret: r.secret } : { trusted: true });   // a bare address keeps the held pub/secret, as before
 }
+/** Bench 11.4 (2026-10-02): on the field (MC-armed or advertising) the MC link is a tamper target like the range, so it
+ *  changes only once the same knock-safe hold has opened editing (1.5 s, or the 5 s override under an A58 lock).
+ *  Setting up, it stays free. Refused, it says why; the station's own log keeps every change made in play. */
+function mcLinkEditable() {
+  if (!rangeLocked()) return true;
+  log(`MC LINK IS LOCKED IN PLAY: HOLD RANGE ${a58Locked() ? '5 S (MC LOCK)' : '1.5 S'} TO CHANGE IT`, 'le');
+  render();
+  return false;
+}
 async function scanUtilityQr() {
+  if (!mcLinkEditable()) return;
   if (!navigator.mediaDevices?.getUserMedia) { log('QR scan unavailable — enter the MC address below', 'le'); return; }
   const panel = $('qrPanel');
   const video = $('qrVideo') || document.createElement('video'); video.setAttribute('playsinline', ''); video.muted = true;
@@ -337,7 +349,7 @@ async function scanUtilityQr() {
   catch (e) { stop(); log('QR camera unavailable: ' + e.message, 'le'); return; }
   const tick = () => {
     if (done) return;
-    if (video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; ctx.drawImage(video, 0, 0); const img = ctx.getImageData(0, 0, canvas.width, canvas.height); const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' }); const join = code && parseMcJoin(code.data); if (join) { stop(); connectMc(join.url, { trusted: true, pub: join.pub, secret: join.secret }); return; } }
+    if (video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; ctx.drawImage(video, 0, 0); const img = ctx.getImageData(0, 0, canvas.width, canvas.height); const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' }); const join = code && parseMcJoin(code.data); if (join) { stop(); if (!mcLinkEditable()) return; if (playLocked()) log(`MC link changed on the station in play (QR): ${settings.mc || '(none)'} -> ${join.url}`, 'lk'); connectMc(join.url, { trusted: true, pub: join.pub, secret: join.secret }); return; } }
     requestAnimationFrame(tick);
   };
   tick();
@@ -1100,6 +1112,8 @@ function wireExit() {
     startLanSweep: startUtilityLanSweep, get sweeper() { return _sweeper; },
     // F365 / A67 test seams: the edit model, one on-station edit, the status body a heartbeat sends, the hold's need
     range, stationEdit, statusBody: utilityStatusBody, a58Locked, holdMs: () => rangeHoldMs(a58Locked()),
+    // bench 11.4 test seams: the typed-address path, and what the RANGE hold does once held long enough
+    connectTypedMc, openRangeEdit: () => { _editOpen = true; _editIdleAt = Date.now(); render(); },
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
     applyNativeInset };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this

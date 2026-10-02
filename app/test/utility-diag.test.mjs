@@ -58,3 +58,20 @@ test('diag() lists a RED (tid 0) player the station hears, and the log names the
   const h = api.diag().players.find(x => x.id === 7).gapHistogram;
   assert.ok(h && Object.values(h).reduce((a, b) => a + b, 0) === p.gaps.length, `the gap histogram covers every gap (saw ${JSON.stringify(h)})`);
 });
+
+// Bench 11.4 (2026-10-02): an MC-armed, A58-locked station let anyone change its MC LINK with no hold, a tamper hole
+// the lock is meant to close. On the field the link now changes only once the RANGE hold has opened editing (1.5 s,
+// or 5 s under an A58 lock); setting up, it stays free.
+test('the MC link cannot be changed on the field until the hold opens editing', () => {
+  const before = api.settings.mc;
+  api.settings.mcArmed = true;                       // on the field
+  api.settings.lockUntil = Date.now() + 60_000;      // and MC-locked (A58)
+  api.connectTypedMc('ws://10.9.9.9:8766/ws');
+  assert.equal(api.settings.mc, before, 'refused: the link is unchanged');
+  assert.ok(api.log.some(l => /MC LINK IS LOCKED/.test(l)), `the station says why (saw ${JSON.stringify(api.log.slice(-3))})`);
+  api.openRangeEdit();                               // what the 5 s override hold does
+  api.connectTypedMc('ws://10.9.9.9:8766/ws');
+  assert.equal(api.settings.mc, 'ws://10.9.9.9:8766/ws', 'after the hold, the change goes through');
+  assert.ok(api.log.some(l => /MC link changed on the station/.test(l)), 'and it is logged');
+  api.settings.mcArmed = false; api.settings.lockUntil = 0;
+});
