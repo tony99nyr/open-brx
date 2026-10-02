@@ -134,7 +134,7 @@ queue, so the screen can show more than the voice says. The timings are in `app/
 | Lane | Where | What | How long |
 |---|---|---|---|
 | HERO | centre, over the HUD | my kill: KILL, the victim's name, my newest medal. A spree adds a ×N count and a ladder of the earlier medals, newest first, fading | 2.5 s after the last kill (`LANE_HERO_MS`), or longer while that kill's slot is on air |
-| OBJECTIVE | right, under the K/D stats | one badge for the lead and one for the hill (HILL CAPTURED, HILL LOST, or HILL CAPTURE STARTED in the capturing team's colour, for everyone) | the lead dims after 4 s and stays until replaced; the hill dims after 4 s and clears 8 s after it was set (`LANE_HILL_CLEAR_MS`). A hill badge is dropped while I am down and goes with the life at my death (Tony 2026-10-02: "if you are down you miss game alerts") |
+| OBJECTIVE | right, under the K/D stats | one badge for the lead and one for the hill (HILL CAPTURED, HILL LOST, or HILL CAPTURE STARTED in the capturing team's colour, for everyone) | the lead dims after 4 s and stays until replaced; the hill dims after 4 s and clears 8 s after it was set (`LANE_HILL_CLEAR_MS`). A hill badge is dropped while I am down and goes with the life at my death (Tony 2026-10-02: "if you are down you miss game alerts"). The hill VOICE lines are not dropped: they queue while I am down and play after the scream (death-first rules 3 and 8; Tony 2026-10-02, "voice alerts are fine"). Badges and voice differ on purpose |
 | FEED | left, under the identity block | teammate down, enemy down, a powerup spawn or swap, every other MC alert (BOMB PLANTED, ONE MINUTE LEFT; no full-width banner, F371) | 4 s a row (`LANE_FEED_MS`), the newest three |
 
 Rules:
@@ -313,7 +313,8 @@ can listen to the queue of KCs and game alerts".
 7. **A hill preempt while dead** goes through `_sayMust`'s guard: no raw `$PLAYX`.
 8. **A hill change while I am dead** is queued too (Tony's "game alerts"), and said after the scream. Before this, a
    control-point handover while down was said on the revive; now it is said while down, once. Its BADGE is not: a hill badge that
-   arrives while I am down is dropped (Tony 2026-10-02, "if you are down you miss game alerts").
+   arrives while I am down is dropped (Tony 2026-10-02, "if you are down you miss game alerts"); the voice line still plays
+   ("voice alerts are fine"), so the two rules do not contradict each other.
 9. **The low-health line never follows the scream** (F375, field 2026-09-24). It is not an item, but it waits: it goes
    out only after `HURT_DEBOUNCE_MS` (400 ms) with no damaging `$HP` (each hit restarts the wait), and only when the
    model holds no clip that can still play. So it is never queued behind another clip, and it never goes out while a
