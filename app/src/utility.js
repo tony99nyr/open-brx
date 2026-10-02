@@ -448,12 +448,12 @@ function tick() {
   // F438: a PRESENT player not heard for QUIET_MS is logged once per silence, with its last few gaps: a sparse
   // advertiser that still clears the dwell would otherwise stall a capture with nothing in the log.
   for (const p of presence.players()) {
-    const quiet = (p.present || p.inCircle) && now - p.seenAt >= QUIET_MS;
+    const quiet = p.present && now - p.seenAt >= QUIET_MS;
     if (quiet && !_quietLogged.has(p.id)) { _quietLogged.add(p.id); log(`player ${p.id} (${TEAM_NAMES[p.team] ?? `team ${p.team}`}) quiet ${((now - p.seenAt) / 1000).toFixed(1)} s while present · recent gaps ${(p.gaps || []).slice(-6).join(' ')} ms`, 'li'); }
     else if (!quiet) _quietLogged.delete(p.id);
   }
   for (const e of playerEdges(presence, _playerWas)) {
-    log(`player ${e.id} (${TEAM_NAMES[e.team] ?? `team ${e.team}`}) ${e.present ? 'PRESENT' : 'left'} at ${Math.round(Number.isFinite(e.median) ? e.median : e.rssi)} dBm`, e.present ? 'lk' : 'li');
+    log(`player ${e.id} (${TEAM_NAMES[e.team] ?? `team ${e.team}`}) ${e.present ? 'IN THE CIRCLE' : 'left the circle'} at ${Math.round(Number.isFinite(e.median) ? e.median : e.rssi)} dBm`, e.present ? 'lk' : 'li');
   }
   // F344: a revive counts on the player being NEAR, not `present` (beacon.js countRevives says why).
   for (const p of countRevives(presence, wasAlive, { team: settings.team })) {

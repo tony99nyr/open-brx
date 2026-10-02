@@ -51,6 +51,10 @@ constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 2500;
 // F438: a credible sighting keeps a player "in the circle" this long. Entering needs an advert at the threshold;
 // once in, an advert inside the hysteresis band keeps it. beacon.js SIGHT_MS.
 constexpr uint32_t PRESENCE_SIGHT_MS = 4000;
+// F438: a sighting is the MEDIAN of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold
+// (beacon.js SIGHT_WINDOW_MS): the same circle edge for a dense and a sparse advertiser. SIGHT_RECENT_MAX bounds it.
+constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
+constexpr size_t SIGHT_RECENT_MAX = 24;
 constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
 constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // utility.js DEFAULTS.threshold (the port's own default;
                                                      // a Stick station passes STICK_DEFAULT_THRESHOLD_DBM, -57)
@@ -120,6 +124,9 @@ struct PlayerEntry {
   uint32_t below_since = 0;
   bool sighted = false;  // F438: beacon.js `sightedAt != null`
   uint32_t sighted_at = 0;
+  uint32_t recent_t[SIGHT_RECENT_MAX] = {};  // F438: beacon.js `e.recent`, oldest first
+  int recent_rssi[SIGHT_RECENT_MAX] = {};
+  size_t n_recent = 0;
   bool in_circle = false;  // F438: beacon.js `inCircle`: present, or a credible sighting within sight_ms
 };
 
@@ -165,12 +172,29 @@ class PlayerPresence {
     return e;
   }
 
-  // F438 (beacon.js observe): a sighting ENTERS the circle at the threshold and only KEEPS it down to the exit level.
+  // F438 (beacon.js inCircleNow): present, or a credible sighting within sight_ms.
   bool in_circle_now(const PlayerEntry& e, uint32_t now) const {
     return e.present || (e.sighted && now - e.sighted_at <= sight_ms);
   }
+  // F438 (beacon.js observe): the median of the adverts in the last PRESENCE_SIGHT_WINDOW_MS, at or above the threshold.
   void stamp_sighting(PlayerEntry& e, int rssi, uint32_t now) const {
-    if (rssi >= threshold_for(e) - (in_circle_now(e, now) ? hysteresis_db : 0)) { e.sighted = true; e.sighted_at = now; }
+    size_t keep = 0;
+    for (size_t i = 0; i < e.n_recent; i++) {
+      if (now - e.recent_t[i] < PRESENCE_SIGHT_WINDOW_MS) { e.recent_t[keep] = e.recent_t[i]; e.recent_rssi[keep] = e.recent_rssi[i]; keep++; }
+    }
+    e.n_recent = keep;
+    if (e.n_recent == SIGHT_RECENT_MAX) {  // full: drop the oldest
+      for (size_t i = 1; i < SIGHT_RECENT_MAX; i++) { e.recent_t[i - 1] = e.recent_t[i]; e.recent_rssi[i - 1] = e.recent_rssi[i]; }
+      e.n_recent--;
+    }
+    e.recent_t[e.n_recent] = now;
+    e.recent_rssi[e.n_recent] = rssi;
+    e.n_recent++;
+    int a[SIGHT_RECENT_MAX];
+    for (size_t i = 0; i < e.n_recent; i++) a[i] = e.recent_rssi[i];
+    std::sort(a, a + e.n_recent);
+    const int med = a[(e.n_recent - 1) / 2];  // beacon.js medianOf: the lower middle
+    if (med >= threshold_for(e)) { e.sighted = true; e.sighted_at = now; }
   }
 
   static void push_sample(PlayerEntry& e, int v) {

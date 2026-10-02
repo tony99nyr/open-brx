@@ -150,21 +150,19 @@ static void test_presence_six_db_hysteresis() {
   CHECK(!pr.get(7)->present);
 }
 
-// F438 (beacon.js parity): the circle. A sighting at the threshold puts a player in the circle at once (before the
-// dwell), an advert inside the hysteresis band only KEEPS one already in, and a player that never reaches the
-// threshold is never in it, however often it is heard.
+// F438 (beacon.js parity): the circle. A sighting is the median of the last 2 s of adverts at or above the threshold,
+// so a sparse player's first advert at the threshold puts it in the circle at once (before the dwell), while a DENSE
+// player whose noise only touches the threshold never enters (review round 2: the circle edge must not move with
+// advert rate).
 static void test_presence_f438_circle() {
   PlayerPresence pr;  // threshold -74 (the default), 6 dB band, 800 ms dwell
   pr.observe(player(7, 0), -70, 0);
   pr.tick(0);
   CHECK(!pr.get(7)->present);   // still dwelling ...
   CHECK(pr.get(7)->in_circle);  // ... but in the circle at once: an opponent contests now
-  pr.observe(player(7, 0), -78, 3000);  // inside the band: keeps it in
-  pr.tick(3000);
-  CHECK(pr.get(7)->in_circle);
   PlayerPresence out;
   for (uint32_t t = 0; t < 10000; t += 250) {
-    out.observe(player(8, 1), -78, t);  // inside the band but never at the threshold
+    out.observe(player(8, 1), (t / 250) % 2 ? -73 : -87, t);  // a peak at the threshold every other advert
     out.tick(t);
     CHECK(!out.get(8)->in_circle);
     CHECK(!out.get(8)->present);

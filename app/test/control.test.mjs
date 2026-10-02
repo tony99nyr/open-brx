@@ -590,3 +590,16 @@ test('F438: the exit grace is what keeps a dipping player present (fails without
   assert.equal(pres(0), false, 'control: with no grace, one dip drops the player');
   assert.equal(pres(2500), true, 'with the grace, a dip is not a step out');
 });
+
+test('F438 (review round 2 High): the circle edge does not move with advert rate', () => {
+  // -80 +/-6 dB: 5 dB outside the circle, but its noise reaches the threshold. Advertising 4 times a second gave it
+  // ~90% time in the circle and a solo capture under the band-keep rule; it must never capture, at any rate.
+  for (const seed of [1, 2, 3]) {
+    for (const gap of [250, 1000, 2500]) {
+      const tr = sim({ seed, untilMs: 60000, players: [{ id: 4, team: 0, mean: -80, swing: 6, gapMin: gap, gapMax: gap }] });
+      assert.ok(!tr.some(s => s.owner === 0), `seed ${seed}, an advert every ${gap} ms: never captures from 5 dB outside`);
+      const share = tr.filter(s => s.counts[0]).length / tr.length;
+      assert.ok(share < 0.15, `seed ${seed}, every ${gap} ms: in the circle ${(share * 100).toFixed(0)}% of the time (want < 15%)`);
+    }
+  }
+});

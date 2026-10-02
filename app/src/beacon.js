@@ -86,7 +86,9 @@ export function configGameByte(config) {
 /** F438: how long a PRESENT entry may sit below the exit level before it leaves (a dip or a sparse advertiser's
  *  silence is not a step out of the circle; a player who walks away still leaves within about this). */
 export const EXIT_GRACE_MS = 2500;
-/** F438: a credible sighting keeps an entry "in the circle" this long (entering needs the threshold; the exit band only keeps). */
+/** F438: the window a credible sighting takes its median over (beacon.js observe). */
+export const SIGHT_WINDOW_MS = 2000;
+/** F438: a credible sighting keeps an entry "in the circle" this long. */
 export const SIGHT_MS = 4000;   // = the silence expiry: heard inside the band in the last 4 s
 /** How many recent inter-arrival gaps a Presence entry keeps (F438 diagnostics). */
 export const GAP_SAMPLES = 16;
@@ -138,10 +140,13 @@ export class Presence {
       e.samples = [...(e.samples || []), rssi].slice(-MEDIAN_SAMPLES); e.median = medianOf(e.samples);
       if (fresh) e.changedAt = now;
     }
-    // F438: a credible sighting ENTERS the circle at the threshold and only KEEPS it down to the exit level, the same
-    // band presence keeps (review: a sighting at the exit level let a player who never entered capture alone, which
-    // made the circle bigger for a phone that advertises more often). Binary: never weighted by how far above.
-    if (rssi >= this.thresholdFor(e) - (this.inCircleNow(e, now) ? this.hysteresisDb : 0)) e.sightedAt = now;
+    // F438: a credible sighting is the MEDIAN of the adverts heard in the last SIGHT_WINDOW_MS at or above the threshold.
+    // Review rounds 1-2: a single sample (or a band that kept a player in) let a DENSE advertiser enter on a noise peak
+    // and stay, so the circle edge moved with advert rate. A window median gives every phone the same edge: a sparse
+    // phone's window holds its one advert, a dense phone's holds several. Staying in comes from `present` (the EMA
+    // with its debounced exit). Binary: never weighted by how far above.
+    e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }];
+    if (medianOf(e.recent.map(x => x.rssi)) >= this.thresholdFor(e)) e.sightedAt = now;
     return e;
   }
   thresholdFor(e) { return e.threshold || this.defaultThreshold; }

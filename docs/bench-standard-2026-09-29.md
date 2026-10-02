@@ -104,7 +104,7 @@ STOP POINT: the core is done. Everything below is lower value per minute.
 the black Pixel as the hill (release it from the powerup role first). Rows: F420, F421, F424.
 
 **10b. F438, fair presence on the phone hill (25 min, right after 10).** Read the hill's log (`player N (TEAM)
-PRESENT` and `quiet` lines) or `window.brx.diag()` over CDP, and each player's `player advert` lines.
+IN THE CIRCLE` and `quiet` lines) or `window.brx.diag()` over CDP, and each player's `player advert` lines.
 1. The BLACK Pixel alone at the hill captures within 15 s. 3 runs.
 2. BLACK and GREEN together, on different teams: CONTESTED at once (within about 1 s of the second arriving), and the
    hill's ticks stop. 3 runs, then swap the two phones' teams and 3 more.
