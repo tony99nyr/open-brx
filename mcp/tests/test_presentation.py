@@ -663,6 +663,21 @@ def test_voice_role_pools_reach_the_bundle_for_multi_take_roles_only():
     assert P.cue_pool_frames(P.resolve(cfg), "V3A") == {}                # the pre-A15 str form carries no pools
 
 
+def test_f446_poison_tick_pool_ships_by_default_and_yields_to_an_override_and_a_mute():
+    """F446 (Tony, 2026-10-02): `poison_tick` is H31/H32 at random on the queue slot. A host override of the sound
+    wins (the phone prefers a pool, so a pool left beside the override would hide it), and a mute ships no pool."""
+    cfg = default_config("tdm"); teams = cfg["teams"]
+    player = {"player_id": "p1", "player_num": 3, "display": "X", "team_id": teams[0]["team_id"], "node_id": None, "gun_id": None,
+              "voice": "male", "ready": True, "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]}}
+    b = C.Compiler().compile(cfg, player, teams)
+    assert b["cue_pools"]["poison_tick"] == ["$PLAY,,4,6,H31,,,,*", "$PLAY,,4,6,H32,,,,*"]
+    assert b["cues"]["poisoned"] == "$PLAY,H12,4,6,,,,,*"
+    over = C.Compiler().compile({**cfg, "presentation": {"events": {"poison_tick": {"sound": "V4G"}}}}, player, teams)
+    assert "poison_tick" not in over["cue_pools"] and "V4G" in over["cues"]["poison_tick"]
+    muted = C.Compiler().compile({**cfg, "presentation": {"hud_events": False}}, player, teams)
+    assert "poison_tick" not in muted["cue_pools"] and muted["cues"]["poison_tick"] == ""
+
+
 def test_s9_f58a_ear_confirmed_ids_are_wired_and_on_the_gun():
     """S9 / F58(a): several EVENTS shipped with sound=None, or with an id that FAILED the bench walkthrough.
     Tony's ear confirmed each of these six on a real gun 2026-09-11, one clip at a time (his exact words

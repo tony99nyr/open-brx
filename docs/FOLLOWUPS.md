@@ -290,7 +290,7 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 
 - **F309 🟡 BENCH: THE PHONE-REPORTED TRANSPORT ON REAL PHONES.** The desk half is built (2026-09-23): each phone sends `status.transport` (Capacitor `connectionType`), claiming `cellular` only while the network its socket bound on and the current one are both cellular, and MC counts a phone as covered only on the tunnel AND on cellular (`_independent_path`, also the A31 off-grid test). Prove on two Pixels: (1) what the plugin reports with Wi-Fi AND mobile data both on; (2) two phones on cellular through the tunnel read `Internet: 2 of 2 phones · 2 on cellular`, green; (3) one on the field Wi-Fi through the tunnel drops to zones, grey; (4) mobile data off mid-lobby drops the count within one heartbeat. `bench`.
 
-- **F292 🟡 BENCH: THE TOXIN RIFLE ON A REAL GUN.** Check by ear the two cues (H23 on poison, V4G "Cough!" per tick). Check that a
+- **F292 🟡 BENCH: THE TOXIN RIFLE ON A REAL GUN.** Check by ear the two cues (H12 "Bubble Acid" on poison, H31 or H32 bubbles per tick: F446). Check that a
   tick's `$HP` echo moves exactly one pool by the tick amount, so the echo rule in `spec/node.md` §3.17 holds on the wire. Check
   one lethal tick books a credited `death` with `dot: true`. `bench`.
 
