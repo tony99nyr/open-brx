@@ -3201,6 +3201,7 @@ export class Engine {
     // `_drainPlayWrites`), so the burst's `_writeLife` settled late and F416's last re-send failure opened a fresh check
     // after its verdict. So the two go as ONE two-slot frame (`twoSlotPlay`, Callsign's game-end form: both slots play),
     // after `$SFLASH`, before the fill. A pair that does not fit one frame falls back to the klaxon, then the line.
+    // ⚠ The fallback brings back the 0.4 s settle (F416's risk); no bundle today takes it (review 2026-10-02).
     const kx = this.frames.cues && this.frames.cues.klaxon && !this.cuesFired.has('klaxon') ? this.frames.cues.klaxon : null;
     if (kx) this.cuesFired.add('klaxon');
     const both = kx && sp.frame ? twoSlotPlay(kx, sp.frame) : null;
