@@ -3,7 +3,7 @@
 // departure (`state.py _station_departures`), names it in the refusal and on ITEMS, and offers a one-tap RESTORE
 // once the SAME utility node is back. The server half is `mcp/tests/test_mc_stations.py`; this file holds the
 // mock's parity with it and what the ITEMS card shows.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Armory } from '../src/screens/Armory';
 import { Games } from '../src/screens/Games';
 import { MockBackend } from '../src/mock/backend';
@@ -51,6 +51,22 @@ describe('mock parity with state.py station departures', () => {
     expect(v.assigned).toMatchObject({ kind: 'control', id });
     st = await api.getState();
     expect(st.station_departures).toEqual([]);
+  });
+
+  it('polish r2: a second departure after a return names its own time and reason; the HUD hello after a RELEASE does not', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { api } = await departedHill();
+      const first = (await api.getState()).station_departures![0];
+      api.utilityHello(NODE);                                   // back
+      vi.setSystemTime(first.at_ms + 3_600_000);                // an hour on
+      await api.releaseStation(NODE);                           // released this time
+      let d = (await api.getState()).station_departures![0];
+      expect(d).toMatchObject({ reason: 'released', at_ms: first.at_ms + 3_600_000 });
+      api.confirmStationHud(NODE);                              // the HUD hello that follows the release
+      d = (await api.getState()).station_departures![0];
+      expect(d).toMatchObject({ reason: 'released', at_ms: first.at_ms + 3_600_000 });
+    } finally { vi.useRealTimers(); }
   });
 
   it('RELEASE records it too, NEXT MATCH keeps it and a FRESH SESSION drops it', async () => {

@@ -1660,6 +1660,23 @@ def test_m1_a_returned_node_that_leaves_again_unassigned_is_not_back_any_more():
     assert _departures(s)[0]["returned"] is False
 
 
+def test_r2_a_second_departure_after_a_return_names_its_own_time_and_reason():
+    """Polish r2: a node that came back and left again (unassigned) kept the FIRST departure's time and reason, so
+    the line said "AT 17:21" or the wrong kind of leaving. A genuine second departure (it had returned) restamps both;
+    the HUD hello that follows a RELEASE (never returned) does not overwrite the release."""
+    s = _departed_hill()
+    first = _departures(s)[0]
+    s.net.simulate_utility_hello("brxu-grey")                                  # back
+    later = first["at_ms"] + 3_600_000
+    s.now_ms = lambda: later                                                   # an hour on
+    assert s.release_station("brxu-grey")                                      # released this time
+    d = _departures(s)[0]
+    assert d["at_ms"] == later and d["reason"] == "released", d
+    s.net.simulate_hello("brx-grey", "", prior_utility_node_id="brxu-grey")   # the HUD hello after the release
+    d2 = _departures(s)[0]
+    assert d2["reason"] == "released" and d2["at_ms"] == later, "the release record is not overwritten by its own HUD hello"
+
+
 def test_m2a_another_hill_assigned_drops_the_control_departure_but_not_others():
     s = _departed_hill()
     s.net.simulate_utility_hello("brxu-pu")

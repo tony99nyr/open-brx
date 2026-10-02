@@ -307,7 +307,9 @@ export class MockBackend implements Api {
     if (!a) {
       // polish r1 M1: back, then gone again before anyone assigned it -- not back any more
       const old = this.departures[node_id];
-      if (old) { old.returned = false; if (successor) old.successor = successor; }
+      // polish r2: a genuine second departure (it had come back) restamps when and how it left; the HUD hello after a
+      // RELEASE (never back in between) does not overwrite the release (state.py `_record_departure`)
+      if (old) { if (old.returned) { old.reason = reason; old.at_ms = now(); } old.returned = false; if (successor) old.successor = successor; }
       return;
     }
     const restore: StationDeparture['restore'] = { kind: a.kind, team: a.team, threshold: a.threshold, ...(a.tx_power ? { tx_power: a.tx_power } : {}) };

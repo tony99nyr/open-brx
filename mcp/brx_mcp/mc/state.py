@@ -3597,6 +3597,11 @@ class Session:
             # Polish r1 M1: a node that came back and left again before anyone assigned it is not back any more.
             # Nothing new to restore: the record keeps describing the station it was.
             if (old := self._station_departures.get(nid)) is not None:
+                # Polish r2: a GENUINE second departure (the node had come back) restamps when and how it left. The
+                # HUD hello that follows a RELEASE (never back in between) must not overwrite the release.
+                if old.get("returned"):
+                    old["reason"] = reason
+                    old["at_ms"] = self.now_ms()
                 old["returned"] = reason == "released" and platform == "esp32"
                 if successor:
                     old["successor"] = successor
