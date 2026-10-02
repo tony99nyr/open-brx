@@ -1360,7 +1360,7 @@ test('B5: a stale zero-HP echo right after a respawn is not a phantom death, and
   // ended, not this one.
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$LCD,45,70,0,0,36,216,*');                     // the gun confirms the first life
-  h.frame('$HIR,4,0,7,2,45,0,3,*'); h.frame('$HP,0,0,0,*');   // get the player down once, for a REAL revive below
+  h.frame('$HIR,4,0,19,2,45,0,3,*'); h.frame('$HP,0,0,0,*');   // get the player down once, for a REAL revive below (F438: never id 7, our own)
   assert.equal(h.eng.alive, false, 'setup: player is down');
   h.adv(8000); h.eng.tick();                              // auto-respawn (delay 8 s) -> _revive; the settle window starts here
   assert.equal(h.eng.alive, true, 'setup: revived');
@@ -6739,7 +6739,7 @@ test('B5: a death suppressed by the spawn-settle window is RE-EXAMINED once the 
   // a zombie at 0 HP: no DOWN screen, no respawn, no death fact for MC to score.
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$LCD,45,70,0,0,36,216,*');                     // the gun confirms the first life
-  h.frame('$HIR,4,0,7,2,45,0,3,*'); h.frame('$HP,0,0,0,*');
+  h.frame('$HIR,4,0,19,2,45,0,3,*'); h.frame('$HP,0,0,0,*');   // F438: id 19, not 7 (our own id is a self-hit)
   assert.equal(h.eng.alive, false, 'setup: down once');
   h.adv(8000); h.eng.tick();                              // auto-respawn — the settle window starts here
   assert.equal(h.eng.alive, true, 'setup: revived');
