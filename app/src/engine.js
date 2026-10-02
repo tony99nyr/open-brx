@@ -5853,8 +5853,6 @@ export class Engine {
     if (a.state === 0 && !a.value) return null;
     return a;
   }
-  /** Is the item at station `id` there to claim? The station owns taken and untaken, so its advert decides; only a
-   *  station with nothing to say yet falls back to the phone's own schedule (and then decides nothing: it names the taker). */
   /** A weapon item's charges: the station's own CHARGES, else the weapon's clip, else 1. PURE. */
   _puItemCharges(item) {
     const row = this.weaponRow(item.weapon_id);
@@ -5865,8 +5863,11 @@ export class Engine {
   _puAtCap(item) {
     const h = this._puHeld;
     if (!h || !item || item.kind !== 'weapon' || h.weapon_id !== item.weapon_id) return false;
-    return h.left >= PU_STACK_CAP_X * Math.max(this._puItemCharges(item), h.base || h.charges || 0);
+    const c = this._puItemCharges(item);
+    return h.left >= PU_STACK_CAP_X * Math.max(c, h.base || c);   // the stack grant's own formula, byte for byte
   }
+  /** Is the item at station `id` there to claim? The station owns taken and untaken, so its advert decides; only a
+   *  station with nothing to say yet falls back to the phone's own schedule (and then decides nothing: it names the taker). */
   _puClaimable(id, item, now) {
     if (this._puAtCap(item)) return false;
     const el = this._puElapsed(now); if (el == null) return false;

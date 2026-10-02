@@ -1847,7 +1847,7 @@ KNOWN_UNMIRRORED = {
     # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
     # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it
     # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.
-    "_puHeadWeap", "_puWeapFor", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puRearmRows", "_puBackResend", "_puBackTick",
+    "_puHeadWeap", "_puWeapFor", "_puItemCharges", "_puAtCap", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puRearmRows", "_puBackResend", "_puBackTick",
     # F400 (docs/spec/powerups.md "The switch card"): the pickup-driven weapon-switch card, reusing `switching`'s own
     # timing and takeover (a `pu` card: no echo confirm, no SELECT or re-send gate, no ALT pointer move). It hangs off
     # the unmirrored pickup mechanic (`_puEquip`, `_puSelectPressed`, `_puEnd`, above), so it has nothing to mirror onto.
