@@ -1385,3 +1385,19 @@ test('pickup at the stack cap: the player does not claim, so the station keeps t
   h.fire(2, 3); h.adv(3000);
   assert.equal(h.eng._puClaimable(4, item, h.eng.now()), h.eng._puClaimable(4, { ...item, weapon_id: 'nope' }, h.eng.now()), 'one rocket fired: the cap no longer blocks the claim');
 });
+
+// Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". The "<ITEM> AVAILABLE" feed row that lands while I
+// am DOWN is dropped, during and after the respawn (engine.js `_laneWrite`).
+test('down: <ITEM> AVAILABLE while I am down is never drawn, during or after the respawn', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(58); h.die(); h.adv(300);
+  assert.equal(h.eng.state().alive, false, 'setup: down');
+  h.at(60.5);
+  const rows = () => ((h.eng.state().lanes || {}).feed || []).filter(f => f.kind === 'powerup_spawn');
+  assert.deepEqual(rows(), [], 'not drawn while I am down');
+  for (let t = 0; t < 12000 && !h.eng.state().alive; t += 250) h.adv(250);
+  assert.equal(h.eng.state().alive, true, 'setup: back');
+  assert.deepEqual(rows(), [], 'not drawn after the respawn');
+  const g = harness({ stations: [{ id: 4, kind: 'powerup', item: OVERSHIELD }] }); g.at(60.5);
+  assert.equal(((g.eng.state().lanes || {}).feed || []).filter(f => f.kind === 'powerup_spawn').length, 1, 'CONTROL: alive, it is drawn');
+});

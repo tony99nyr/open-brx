@@ -2878,7 +2878,7 @@ export class Engine {
   _announceAlert(evKind, text, { hud = true, subject = null, src = 'PHONE' } = {}) {
     // The three lanes: the lead and the hill are persistent OBJECTIVE badges; any other alert is a FEED row.
     if (evKind === 'lead_taken' || evKind === 'lead_lost') this._laneObj('lead', { kind: evKind, text: text || evKind, src });
-    else if (evKind === 'hill_captured' || evKind === 'hill_lost') { if (this.alive) this._laneObj('hill', { kind: evKind, src }); }   // down: missed (Tony 2026-10-02)
+    else if (evKind === 'hill_captured' || evKind === 'hill_lost') this._laneObj('hill', { kind: evKind, src });
     else if (evKind !== 'kill' && hud) this._laneFeed({ kind: 'alert', alert: evKind, text: text || evKind, src });
     // A kill line is said for exactly two sources: MC's `feedback{kind:'kill'}` and an S57 DOWN_BY naming this player.
     // An alert that names `kill` is neither, so it must not borrow the kill pool.
@@ -3323,7 +3323,7 @@ export class Engine {
     // cuts our own hill callout. Behind any other item (a kill confirm, a lead change) it waits like everything else.
     const cue = this._hillCue(kind);
     const card = kind === 'hill_captured' || kind === 'hill_lost';
-    if (card && this.alive) this._laneObj('hill', { kind, src: /control point/.test(why) ? 'BLE' : 'IR' });   // down: the badge is missed, the line still queues (announcer.md, Death first 8)
+    if (card) this._laneObj('hill', { kind, src: /control point/.test(why) ? 'BLE' : 'IR' });   // `_laneWrite` drops it while I am down; the line still queues (announcer.md, "My death wins" rule 8)
     if (!cue.frame && !card) return;
     this._ann.push({ kind: card ? kind : 'alert', key: 'hill', preemptKey: true, stopsOwn: true, audioMs: cue.frame ? cue.ms : 0, ...(card ? {} : { bannerMs: 0 }),
       ok: () => this._hillAudioOn(true),   // Tony 2026-09-25: a hill line already queued is still said while I am dead
@@ -3677,10 +3677,14 @@ export class Engine {
     // outright (`_hillSay` preempts; the episode still counts as started, so it is not said late).
     const mine = this.teamTid;
     const stalled = contested && held && mine != null && mine !== HILL_NEUTRAL_TEAM && owner === mine;
-    if (stalled && !this._hillWasContested && !said && audio) {
+    // Polish r1: two stations on one id alternate their fields every scan, so the bit can flap where F440's debounce
+    // cannot reach; HILL_CALLOUT_MIN_MS (3 s, the floor the transition lines already have) bounds that. A stall inside
+    // the floor still starts its episode, so it is never said late.
+    if (stalled && !this._hillWasContested && !said && audio && now - (this._hillContestedAt || 0) >= HILL_CALLOUT_MIN_MS) {
+      this._hillContestedAt = now;
       this._hillSay('hill_contested', `control point ${e.id}: our scoring stopped, the other team is in the circle (${e.value}%)`);
     }
-    this._hillBegins(e.id, now, audio && !said && this.alive);   // down: the episode is marked, its badge missed
+    this._hillBegins(e.id, now, audio && !said && !this._alertsMissed());   // down: the episode is marked, its badge missed (and its 10 s floor not spent)
     this._hillWasContested = stalled;
     // 4 Hz: only a fact the screen shows is worth a render (progress to the whole percent, like the RSSI
     // rounding in `setStations`).
@@ -3710,7 +3714,7 @@ export class Engine {
     const neutral = h.owner === HILL_NEUTRAL_TEAM, x = neutral ? h.holding : h.owner, p = h.progress;
     const prev = this._hillEp && this._hillEp.site === site && now - this._hillEp.at <= CONTROL_RECONNECT_MS ? this._hillEp : null;
     const eps = {};
-    if (neutral && x != null && p > 0) eps[x] = 'build';
+    if (neutral && x != null && (p > 0 || h.rising)) eps[x] = 'build';   // polish r1: the zero crossing reads {thief, rising, 0}; it is still their capture
     const drainer = x != null && h.falling ? this._hillRival(x) : null;
     if (drainer != null) eps[drainer] = 'drain';
     for (const t of Object.keys(prev ? prev.eps : {}).map(Number)) {   // a drain that stalls is still that team's capture
@@ -3789,7 +3793,7 @@ export class Engine {
   _resetHill() {
     this.hill = null; this.hillCallout = null; this._hillTickAt = 0;
     this._controlSite = null; this._controlLastOwner = null; this._controlSpokenOwner = null; this._hillPendingCallout = null; this._controlSig = ''; this._hillSaidAt = 0;
-    this._hillWasContested = false; this._hillOwnerWhenSilenced = undefined;
+    this._hillWasContested = false; this._hillContestedAt = 0; this._hillOwnerWhenSilenced = undefined;
     this._hillTeam2Warned = false; this._hillSourceWarned = '';
     this._hillEp = null; this._hillBeginsAt = {};
     this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null;
@@ -4968,12 +4972,23 @@ export class Engine {
     const obj = {}; for (const k of Object.keys(L.obj || {})) obj[k] = shift(L.obj[k]);
     return { ...L, obj, feed: (L.feed || []).map(shift), heroUntil: this._heroUntil(now) };
   }
+  /** Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". THE gate for every HUD alert: each lane item (the
+   *  HERO kill card and its medals, the OBJECTIVE lead and hill badges, every FEED row: MC alerts, the clock, S57 downs,
+   *  powerup notices) is written here and only here. While I am DOWN the item is dropped, never kept for the respawn,
+   *  and `_death` empties the lanes but the standing lead badge, so what was up at the death goes with the life. The voice side is not gated: an
+   *  announcer line keeps docs/announcer.md "My death wins" rules 3 and 8. The DOWN screen's own content is not a lane. */
+  _alertsMissed() { return this.phase === 'live' && this.spawned && !this.alive; }
+  _laneWrite(what, fn) {
+    if (this._alertsMissed()) { this.log(`down: ${what} not shown (a down player misses HUD alerts)`, 'li'); return null; }
+    const r = fn(this._lanesOf(), this.now()); this._changed(); return r;
+  }
   _laneKill(k) {
-    const L = this._lanesOf(), now = this.now();
-    if (!L.hero || now >= this._heroUntil(now)) L.hero = { id: (this._laneSeq = (this._laneSeq || 0) + 1), t0: now, kills: [], lastAt: now };   // `id`: the HUD's key
-    const row = { victim: k.victim || null, team: k.team || null, medals: (k.medals || []).slice(), src: k.src, at: now };
-    L.hero = { ...L.hero, kills: [...L.hero.kills, row], lastAt: now };
-    this._changed(); return row;
+    return this._laneWrite('kill card', (L, now) => {
+      if (!L.hero || now >= this._heroUntil(now)) L.hero = { id: (this._laneSeq = (this._laneSeq || 0) + 1), t0: now, kills: [], lastAt: now };   // `id`: the HUD's key
+      const row = { victim: k.victim || null, team: k.team || null, medals: (k.medals || []).slice(), src: k.src, at: now };
+      L.hero = { ...L.hero, kills: [...L.hero.kills, row], lastAt: now };
+      return row;
+    });
   }
   _laneUpdate(row, patch) { if (!row || !this._lanes || !this._lanes.hero) return; Object.assign(row, patch); this._lanes.hero = { ...this._lanes.hero }; this._changed(); }
   /** The victim's own DOWN word names a hero row (only when MC has not named it) or a feed row, in place. */
@@ -4982,9 +4997,13 @@ export class Engine {
     if (this._lanes.hero && this._lanes.hero.kills.includes(row)) { if (!row.victim) this._laneUpdate(row, { victim: name }); return; }
     if (this._lanes.feed.includes(row)) { row.name = name; this._lanes.feed = [...this._lanes.feed]; this._changed(); }
   }
-  _laneObj(key, v) { const L = this._lanesOf(); L.obj = { ...L.obj, [key]: { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: this.now() } }; this._changed(); }
-  _laneFeed(v) { const L = this._lanesOf(), row = { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: this.now() };   // `id`: the HUD's key (two rows can share a ms)
-    L.feed = [row, ...L.feed].slice(0, LANE_FEED_MAX); this._changed(); return row; }
+  _laneObj(key, v) { this._laneWrite(`${key} badge (${v.kind})`, (L, now) => { L.obj = { ...L.obj, [key]: { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: now } }; }); }
+  _laneFeed(v) {
+    return this._laneWrite(`feed row (${v.alert || v.kind})`, (L, now) => {
+      const row = { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: now };   // `id`: the HUD's key (two rows can share a ms)
+      L.feed = [row, ...L.feed].slice(0, LANE_FEED_MAX); return row;
+    });
+  }
   /** S42 × A44/A47/F15: stand the accuracy writer down while a write that carries its own `$AMMO` is in
    *  flight (spawn, revive, operator RESYNC GUN, stun disarm, stun restore, reconcile re-arm). Any verify
    *  still open is DROPPED here -- an `$ALCD` answering THAT write proves nothing about ours -- and ONLY
@@ -7599,10 +7618,12 @@ export class Engine {
     this._shieldFillAt = 0;   // X3: a dead gun holds no shield, so a fill still unanswered no longer blocks the audio model
     this.reloading = null; this.switching = null; this._reloadOutcome = null; this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): the kill card ends with the life; the down screen owns the phone
-    // Tony, 2026-10-02: "if you are down you miss game alerts". A hill badge up at the death goes with the life, and
-    // one that arrives while I am down is never set (`_hillSay`, `_hillBegins`, `_announceAlert`), so none draws after
-    // the respawn. The hill VOICE lines keep docs/announcer.md "Death first" 3 and 8.
-    if (this._lanes && this._lanes.obj && this._lanes.obj.hill) { const { hill: _gone, ...obj } = this._lanes.obj; this._lanes.obj = obj; }
+    // Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". The lane items up at the death go with the life
+    // (the kill card above, the hill badge, the feed rows), and `_laneWrite` drops any that arrive while I am
+    // down, so nothing draws after the respawn. The voice lines keep docs/announcer.md "My death wins" rules 3 and 8.
+    // The standing lead badge stays: it says who leads until the next lead change replaces it, and was not an alert that
+    // arrived while I was down. A lead change that arrives while I am down is dropped like any other alert.
+    if (this._lanes) this._lanes = { ...this._lanes, hero: null, obj: this._lanes.obj && this._lanes.obj.lead ? { lead: this._lanes.obj.lead } : {}, feed: [] };
     // S16: a death straight after our own poison tick, with no newer `$HIR` behind it, is the TICK's kill, and the
     // kill goes to the player who last applied the poison (Tony, 2026-09-18). A newer latch means a real hit landed
     // after the tick, and that hit is the kill.

@@ -259,6 +259,7 @@ test('capture started: a steal is ONE episode, from the first drain through the 
   point(h, { team: BLUE, state: CS.held | CS.falling, value: 95 });
   hold(h, 11000, { team: BLUE, state: CS.held, value: 60 });          // RED left: the drain stalls (past the floor)
   hold(h, 2000, { team: BLUE, state: CS.held | CS.falling, value: 5 });
+  hold(h, 500, { team: RED, state: CS.rising, value: 0 });            // the zero crossing: RED's bar, at 0 (polish r1 HIGH)
   hold(h, 2000, { team: RED, state: CS.rising, value: 20 });          // it went neutral and RED builds on
   assert.deepEqual(started(h), ['red'], 'one capture, however it stalls or crosses 0');
   hold(h, 3000, { team: RED, state: CS.held, value: 100 });
@@ -305,7 +306,7 @@ test('capture started: with three teams a drain names nobody, so the badge waits
 
 // Tony, 2026-10-02 (storyboard question 4): "if you are down you miss game alerts". A hill badge (HILL CAPTURE STARTED,
 // HILL CAPTURED, HILL LOST) that arrives while I am DOWN is dropped, never drawn after the respawn; one that was up when
-// I died goes with the life. The hill VOICE lines keep the death-first rule (docs/announcer.md "Death first" 3 and 8):
+// I died goes with the life. The hill VOICE lines keep the death-first rule (docs/announcer.md "My death wins" rules 3 and 8):
 // queued while dead, said after the scream, and the respawn drops what is left of them (`KEEP_AT_RESPAWN`).
 const die = h => { h.eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); h.adv(300); assert.equal(h.eng.state().alive, false, 'setup: I am down'); };
 const respawn = (h, o) => { for (let t = 0; t < 8000 && !h.eng.state().alive; t += 250) hold(h, 250, o); assert.equal(h.eng.state().alive, true, 'setup: the timed respawn brought me back'); };
@@ -330,7 +331,7 @@ test('down: HILL LOST while I am DOWN drops the badge, and the line keeps the de
   hold(h, 1000, { team: RED, state: CS.rising, value: 3 });           // drained to 0 while I was down: we lost it
   assert.equal(badge(h), undefined, 'no HILL LOST badge on the lane while I am down');
   h.adv(4000);
-  assert.equal(h.plays('VB0P').length, n + 1, 'the voice line is still said while I am down (announcer.md, Death first 8)');
+  assert.equal(h.plays('VB0P').length, n + 1, 'the voice line is still said while I am down (announcer.md, "My death wins" rule 8)');
   respawn(h, { team: RED, state: CS.rising, value: 40 });
   assert.equal(badge(h), undefined, 'nothing drawn after the respawn');
 });
@@ -364,4 +365,56 @@ test('capture started: a badge during a weapon switch card waits under it, as ev
   h.adv(cardEnd + LANE_HILL_CLEAR_MS - 300 - h.now());
   point(h, { team: BLUE, state: CS.held | CS.falling, value: 60 });
   assert.equal(badge(h).kind, 'hill_capture_started', 'its full time runs after the card');
+});
+
+// ---- Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". EVERY HUD alert (each lane: the HERO kill card
+// and its medals, the OBJECTIVE lead and hill badges, every FEED row) that arrives while I am DOWN is dropped: not
+// drawn, and not drawn after the respawn. One already up at my death goes with the life. The voice lines are not
+// alerts on the screen: they keep docs/announcer.md "My death wins" rules 3 and 8 (queued while dead, said after the scream).
+// Each family below goes through the same gate (engine.js `_laneWrite`), and each arrives while I am down.
+const downNow = h => { h.eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); h.adv(300); assert.equal(h.eng.state().alive, false, 'setup: I am down'); };
+const backUp = h => { for (let t = 0; t < 9000 && !h.eng.state().alive; t += 250) h.adv(250); assert.equal(h.eng.state().alive, true, 'setup: the timed respawn brought me back'); };
+/** Everything in the three lanes, as the HUD reads it. */
+const laneItems = h => { const L = h.eng.state().lanes; if (!L) return []; return [...(L.hero ? L.hero.kills.map(k => `hero:${k.victim || k.team}`) : []), ...Object.keys(L.obj || {}).map(k => `obj:${k}:${L.obj[k].kind}`), ...(L.feed || []).map(f => `feed:${f.kind}:${f.alert || f.name || ''}`)]; };
+const FAMILIES = [
+  ['HERO: MC`s kill confirm and its medals', h => h.kill({ medals: ['double_kill'] })],
+  ['HERO: the S57 IR KILL CONFIRMED (a DOWN_BY naming me)', h => h.irWord(7, IR_CALLOUT.DOWN_BY + 2)],
+  ['OBJECTIVE: the lead change', h => h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD')],
+  ['OBJECTIVE: the hill (an MC alert)', h => h.alert('hill_captured', 'HILL CAPTURED')],
+  ['FEED: an MC objective alert (bomb, flag, VIP, extraction)', h => { h.alert('bomb_planted', 'BOMB PLANTED'); h.alert('flag_returned', 'FLAG RETURNED'); h.alert('vip_down', 'VIP DOWN'); h.alert('extraction_open', 'EXTRACTION OPEN'); }],
+  ['FEED: a clock warning', h => h.alert('time_60', 'ONE MINUTE LEFT')],
+  ['FEED: the S57 ENEMY DOWN and TEAMMATE DOWN', h => { h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.irWord(20, IR_CALLOUT.DOWN + 1); }],
+];
+for (const [family, send] of FAMILIES) {
+  test(`down: ${family} arriving while I am DOWN is never drawn, during or after the respawn`, () => {
+    const h = harness({ mode: 'koth' }).live();
+    downNow(h);
+    send(h); h.adv(500);
+    assert.deepEqual(laneItems(h), [], 'nothing on the lanes while I am down');
+    backUp(h);
+    assert.deepEqual(laneItems(h), [], 'and nothing drawn after the respawn');
+  });
+}
+test('down CONTROL: the same alerts, alive, are drawn', () => {
+  const h = harness({ mode: 'koth' }).live();
+  for (const [, send] of FAMILIES) send(h);
+  const items = laneItems(h);
+  for (const want of ['hero:', 'obj:lead:', 'obj:hill:', 'feed:alert:', 'feed:alert:time_60', 'feed:enemy_down', 'feed:teammate_down']) assert.ok(items.some(i => i.startsWith(want)), `${want} is drawn alive: ${JSON.stringify(items)}`);
+});
+test('down: what is up at my death goes with the life, except the standing lead badge', () => {
+  const h = harness({ mode: 'koth' }).live();
+  h.kill(); h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); h.alert('hill_captured', 'HILL CAPTURED'); h.alert('bomb_planted', 'BOMB PLANTED');
+  assert.equal(laneItems(h).length, 4, 'setup: a kill, the lead, the hill and a feed row are up');
+  downNow(h);
+  assert.deepEqual(laneItems(h), ['obj:lead:lead_taken'], 'the kill card, the hill and the feed go with the life; the standing lead badge stays (it says who leads, until replaced)');
+  backUp(h);
+  assert.deepEqual(laneItems(h), ['obj:lead:lead_taken'], 'and nothing else comes back after the respawn');
+});
+test('down: the voice lines still queue while I am down ("My death wins" rules 3 and 8)', () => {
+  const h = harness({ mode: 'koth' }).live();
+  downNow(h);
+  const n = h.plays('VA6D').length;
+  h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); h.adv(4000);
+  assert.equal(h.plays('VA6D').length, n + 1, 'the lead line is said while I am down, after the scream');
+  assert.deepEqual(laneItems(h), [], 'its badge is not drawn');
 });

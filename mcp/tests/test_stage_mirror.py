@@ -232,10 +232,13 @@ def test_hill_contested_is_the_holders_line_once_per_stall_and_never_on_the_ir_p
         assert audio(mgr, n) == [CONTESTED], audio(mgr, n)
         await adv(st, id=1, team=1, held=True, contested=True, falling=True, value=88, present=True)
         assert audio(mgr, n).count(CONTESTED) == 1, "one line per stall, never per advert"
-        await ticks(st, clock, S.HILL_CUES["hill_contested"]["s"] + 0.1)
-        await adv(st, id=1, team=1, held=True, value=85, present=True)       # scoring resumed
+        await adv(st, id=1, team=1, held=True, value=85, present=True)       # scoring resumed, inside the 3 s floor
+        await adv(st, id=1, team=1, held=True, contested=True, falling=True, value=84, present=True)
+        assert audio(mgr, n).count(CONTESTED) == 1, "a flapping bit inside HILL_CALLOUT_MIN_S says nothing more"
+        await ticks(st, clock, S.HILL_CALLOUT_MIN_S + 0.1)
+        await adv(st, id=1, team=1, held=True, value=82, present=True)       # scoring resumed
         await adv(st, id=1, team=1, held=True, contested=True, falling=True, value=80, present=True)
-        assert audio(mgr, n).count(CONTESTED) == 2, "a new stall after scoring resumed speaks again"
+        assert audio(mgr, n).count(CONTESTED) == 2, "a new stall after scoring resumed, past the floor, speaks again"
         # CONTROL 1: the attacker, standing ON team 1's point, is not told: it stops team 1's scoring, not theirs
         b, bm, bclock = mk_point(tid=0)
         await in_play(b)
@@ -1789,6 +1792,9 @@ KNOWN_UNMIRRORED = {
     "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
     # 2026-09-26 (F400 final): the switch card pauses the lanes' clocks. Presentation only, as above.
     "_cardTick", "_switchCardUp", "_lanePaused", "_laneAge", "_lanesShown",
+    # 2026-10-02 (Tony: "any hud alerts a down player doesnt get tho"): the ONE gate every lane write goes through, and its
+    # predicate. Presentation only: it drops a HUD item while down, never a voice line, a gun frame or a score.
+    "_alertsMissed", "_laneWrite",
     # 2026-10-02 (Tony): HILL CAPTURE STARTED, the hill badge when any team's capture begins, and the drainer it infers.
     # It writes only that lane badge and a log line: no gun frame, no voice line, no score. Presentation only, as above.
     "_hillBegins", "_hillRival",

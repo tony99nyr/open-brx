@@ -712,7 +712,7 @@ test('control point: the attacker does not hear Hill Contested, on the point or 
   assert.equal(nWrites(on, HILL_CONTESTED_F), 1);
 });
 
-test('control point: a second contest after scoring resumed plays again, however soon', () => {
+test('control point: a second contest after scoring resumed plays again, past the 3 s floor', () => {
   const h = koth();
   control(h, { team: 1, state: HELD, value: 100 });
   control(h, { team: 1, state: HELD | CONTESTED, value: 98 });
@@ -720,6 +720,14 @@ test('control point: a second contest after scoring resumed plays again, however
   runControl(h, 3000, { team: 1, state: HELD, value: 98 });                 // the enemy left: scoring resumed
   control(h, { team: 1, state: HELD | CONTESTED, value: 98 });
   assert.equal(nWrites(h, HILL_CONTESTED_F), 2, 'a new stall 3 s later is a new episode');
+  // polish r1 MEDIUM: two stations on one id alternate their fields every scan, so the bit flaps. The episode rule alone
+  // said the 2 s line on every flap; HILL_CALLOUT_MIN_MS (3 s) bounds it.
+  const f = koth();
+  control(f, { team: 1, state: HELD, value: 100 });
+  const n0 = nWrites(f, HILL_CONTESTED_F);
+  for (let i = 0; i < 12; i++) { f.adv(250); control(f, { team: 1, state: HELD | CONTESTED, value: 99 }); f.adv(250); control(f, { team: 1, state: HELD, value: 99 }); }
+  assert.ok(nWrites(f, HILL_CONTESTED_F) - n0 <= 2, `a flap every 250 ms for 6 s says it at most twice, not ${nWrites(f, HILL_CONTESTED_F) - n0} times`);
+  assert.ok(nWrites(f, HILL_CONTESTED_F) - n0 >= 1, 'and still says it');
   runControl(h, 2000, { team: 1, state: HELD | CONTESTED | CONTROL_STATE.falling, value: 90 });
   assert.equal(nWrites(h, HILL_CONTESTED_F), 2, 'and its ticks never replay it');
 });
