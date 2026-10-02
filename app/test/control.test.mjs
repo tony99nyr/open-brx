@@ -475,3 +475,26 @@ test('control: F103 — reassigning the tid-2 player off team 2 takes the F82 ba
   assert.equal(again.filter(e => e.type === 'refused').length, 1);
   assert.equal(pt.refusedSeen, true);
 });
+
+// Bench 2026-10-02 (0.4.16): a RED player (tid 0) stood on a phone hill blue held and never contested it. The
+// whole station path, advert bytes in to ownership out, with tid 0 on the wire: a red player alone captures,
+// and red beside blue contests (no conversion, no possession tally).
+import { Presence } from '../src/beacon.js';
+test('tid 0 end to end: a RED advert is heard, a lone red captures, red beside blue contests', () => {
+  const pres = new Presence({ dwellMs: 0, game: 7 });
+  const advert = (id, team) => encodeUuid({ role: 'player', id, team, state: PLAYER_STATE.alive, game: 7 });
+  const hear = (now, ...ps) => { for (const [id, team] of ps) pres.observe([advert(id, team)], -50, now); pres.tick(now); };
+  const cp = new ControlPoint();
+  let t = 1000;
+  hear(t, [2, 0]); cp.update(pres.players(), t);
+  assert.equal(pres.players().find(p => p.id === 2)?.team, 0, 'the red advert decodes as team 0');
+  assert.equal(pres.players().find(p => p.id === 2)?.present, true, 'and is present');
+  for (let i = 0; i < 40; i++) { t += 1000; hear(t, [2, 0]); cp.update(pres.players(), t); }
+  assert.equal(cp.owner, 0, 'a lone RED player captures the point');
+  // blue arrives: red + blue on the point is contested, and the red-held point does not tally while it is
+  const held = cp.holdMs[0];
+  t += 1000; hear(t, [2, 0], [3, 1]); cp.update(pres.players(), t);
+  assert.equal(cp.contested, true, 'red beside blue contests');
+  t += 3000; hear(t, [2, 0], [3, 1]); cp.update(pres.players(), t);
+  assert.equal(cp.holdMs[0], held, 'no possession accrues while contested');
+});

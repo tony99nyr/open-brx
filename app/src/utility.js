@@ -5,7 +5,7 @@
 // No gun, no engine: the revive itself happens on the player's phone (engine.js _triggerPulled).
 import { BrxLink } from './brxlink.js';
 import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // the BLE flood guard (bench 2026-09-17)
-import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE, countRevives, stationThreshold, applyThreshold, migrateThreshold } from './beacon.js';
+import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE, countRevives, playerEdges, stationThreshold, applyThreshold, migrateThreshold } from './beacon.js';
 import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { PowerupStation } from './powerup.js';   // kind 2: the powerup station decides who took its item (A56, docs/spec/powerups.md)
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
@@ -131,6 +131,7 @@ const link = new BrxLink({ log });
 // game (v1 manual stations stay at 0 = any), which is exactly when two games share a field.
 const presence = new Presence({ defaultThreshold: thr(), dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
 const wasAlive = new Map();          // player id → { alive, died } for THIS game, to count revives that happened here (beacon.js countRevives)
+const _playerWas = new Map();   // player id -> present, for the edge lines above (playerEdges)
 let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false, _twin = 0;
 const scanGuard = new ScanGuard(); let _scanModeIdx = 0, _scanModeSince = 0;   // a crowded field drops the player watch to balanced (scanwatch.js)
 const SCAN_RESTART_MS = 8000;        // S6: a long scan STALLS on Android, worse while we also advertise — restart it on this cadence (8s > the ~6s floor Android's ~5-starts/30s throttle imposes)
@@ -440,6 +441,11 @@ function tick() {
   presence.defaultThreshold = thr();
   presence.game = settings.game;
   presence.tick(now);
+  // Bench 2026-10-02: say when a player is HEARD on this station and when they leave (edges only), so a field log
+  // can tell "never heard him" from "heard him and did not count him".
+  for (const e of playerEdges(presence, _playerWas)) {
+    log(`player ${e.id} (${TEAM_NAMES[e.team] ?? `team ${e.team}`}) ${e.present ? 'PRESENT' : 'left'} at ${Math.round(Number.isFinite(e.median) ? e.median : e.rssi)} dBm`, e.present ? 'lk' : 'li');
+  }
   // F344: a revive counts on the player being NEAR, not `present` (beacon.js countRevives says why).
   for (const p of countRevives(presence, wasAlive, { team: settings.team })) {
     if (settings.kind !== 'respawn') continue;
@@ -1071,10 +1077,14 @@ function wireExit() {
   else if (url) { connectMc(url, { trusted: !settings.mc_auto }); if (settings.mc_auto) startUtilityDiscovery(); }   // setup needs WiFi (A13.5); once armed, play does not
   else startUtilityDiscovery();   // utility mode is an explicit choice: auto-join MC when it advertises on this LAN
   if (!plugins.beacon || !support.advertising) log('this phone cannot advertise; check Bluetooth is on', 'le');
+  // Bench 2026-10-02: CDP found an empty `window.brx` here (that name is the player app's). Expose the same name,
+  // and BEFORE the scan starts, so a scan that never returns cannot hide the one read that answers "is the hill
+  // hearing that player?". `diag()` is a plain snapshot: the point, its counts, and every player heard.
+  window.brx = { log: logLines, settings, presence, point, diag: utilityDiag };   // the full API replaces it below
   await startScan();
   setInterval(tick, 250);
   if (DEMO) seedDemo();
-  window.brxUtility = { settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; },
+  window.brxUtility = { diag: utilityDiag, settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; },
     // test seam (app/test/utility-join-wiring): `startLanSweep(over)` spreads `over` into the sweep options unchecked
     startLanSweep: startUtilityLanSweep, get sweeper() { return _sweeper; },
     // F365 / A67 test seams: the edit model, one on-station edit, the status body a heartbeat sends, the hold's need
@@ -1082,8 +1092,21 @@ function wireExit() {
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
     applyNativeInset };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
-  window.brxUtil = window.brxUtility;
+  window.brxUtil = window.brx = window.brxUtility;
 })();
+
+/** The station's state as plain data, for a CDP read in the field (window.brx.diag()). */
+function utilityDiag() {
+  const now = Date.now();
+  return {
+    kind: settings.kind, id: settings.id, team: settings.team, game: settings.game, threshold: thr(), live: !!settings.live, advertising,
+    point: settings.kind === 'control' ? { owner: point.owner, capturing: point.capturing, progress: Math.round(point.progress), contested: point.contested,
+      counts: { ...(point.counts || {}) }, holdMs: { ...point.holdMs } } : null,
+    players: presence.players().map(p => ({ id: p.id, team: p.team, alive: !!(p.state & PLAYER_STATE.alive), present: !!p.present,
+      rssi: Math.round(p.rssi), median: Number.isFinite(p.median) ? Math.round(p.median) : null, ageMs: now - p.seenAt, game: p.game })),
+    log: logLines.slice(-40),
+  };
+}
 
 /** The stage harness: three fake player phones on a 250 ms timer — one close, one far, one drifting across the threshold. */
 function seedDemo() {

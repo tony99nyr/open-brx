@@ -230,6 +230,21 @@ export function countRevives(presence, memory, { team = TEAM_ANY } = {}) {
   return revived;
 }
 
+/** Bench 2026-10-02: a hill that never counted a RED player left nothing in its log to say whether it had even
+ *  HEARD him. One entry per PLAYER presence edge (arrived or left), for the station's log, never one per
+ *  reading. `memory` (player id -> was present) is the caller's; an id no longer heard at all is forgotten. */
+export function playerEdges(presence, memory) {
+  const edges = [];
+  const seen = new Set();
+  for (const p of presence.players()) {
+    seen.add(p.id);
+    const now = !!p.present;
+    if ((memory.get(p.id) ?? false) !== now) { memory.set(p.id, now); edges.push({ id: p.id, team: p.team, present: now, rssi: p.rssi, median: p.median }); }
+  }
+  for (const id of [...memory.keys()]) if (!seen.has(id)) memory.delete(id);
+  return edges;
+}
+
 /** A plain snapshot of a station entry for engine state / diagnostics. */
 export function stationView(e) {
   if (!e) return null;

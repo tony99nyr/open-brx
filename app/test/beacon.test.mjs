@@ -110,3 +110,18 @@ test('presence: EMA smooths, seq/state changes stamp changedAt, other games are 
   assert.equal(p.observe(station({ game: 9 }), -30, 3), null, 'another game');
   assert.equal(p.observe(station({ game: 0 }), -30, 3).id, 5, 'game 0 = any game');
 });
+
+// Bench 2026-10-02: a hill that never counted a RED player left nothing in its log to say whether it had
+// HEARD him. `playerEdges` reports each player's present/left edge once, for the station's log.
+import { playerEdges } from '../src/beacon.js';
+test('playerEdges: one line per presence edge, team 0 included, nothing while steady', () => {
+  const pres = new Presence({ dwellMs: 0, game: 7 });
+  const mem = new Map();
+  const adv = (id, team) => encodeUuid({ role: 'player', id, team, state: PLAYER_STATE.alive, game: 7 });
+  pres.observe([adv(1, 0)], -50, 1000); pres.tick(1000);
+  assert.deepEqual(playerEdges(pres, mem).map(e => [e.id, e.team, e.present]), [[1, 0, true]], 'red arriving is an edge');
+  pres.observe([adv(1, 0)], -50, 1500); pres.tick(1500);
+  assert.deepEqual(playerEdges(pres, mem), [], 'steady presence logs nothing');
+  pres.tick(1500 + pres.expiryMs + 1);
+  assert.deepEqual(playerEdges(pres, mem).map(e => [e.id, e.present]), [[1, false]], 'leaving is an edge');
+});

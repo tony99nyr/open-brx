@@ -103,6 +103,14 @@ STOP POINT: the core is done. Everything below is lower value per minute.
 **10. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with
 the black Pixel as the hill (release it from the powerup role first). Rows: F420, F421, F424.
 
+**10b. F438, a RED player on the phone hill (10 min, right after 10).** Pass rule for each part: read the hill's log
+(`player N (RED) PRESENT` lines) or `window.brx.diag()` over CDP.
+1. A RED player alone at the hill captures it.
+2. Then a BLUE player joins: the point is CONTESTED, and the hill's ticks stop.
+3. If red never captures, record whether the hill's log has a `player N (RED) PRESENT` line at all. That line
+   decides between "never heard" and "heard, not counted".
+Control: the same steps with a BLUE player alone. Row: F438.
+
 **11. F400, the pickup switch card (10 min).** Follow *Group 4*, item 2. Row: F400.
 
 **12. F419, the phone's own queue path (10 min).** Follow *Group 4*, item 3. Row: F419.
