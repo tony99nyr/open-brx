@@ -1515,8 +1515,13 @@ export interface StationDeparture {
   threshold: number;
   tx_power?: TxPower;
   item?: StationItem;
+  /** polish r1 M3: "NOW <PLAYER>'S HUD" once its HUD is bound, else the device and id head */
   label: string;
   platform?: string;
+  /** the HUD node_id the phone became (BACK TO HUD) */
+  successor?: string;
+  /** polish r1 L1: RESTORE would get `id` back (no station holds it, not handed on) */
+  id_free: boolean;
   reason: StationDepartureReason;
   at_ms: number;
   returned: boolean;

@@ -48,7 +48,7 @@ const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: '
 const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));
 
 export function Items() {
-  const { state, focusHill } = useStore();
+  const { state, focusHill, run, api } = useStore();
   const stations = state?.stations ?? [];
   // Bench 2026-10-02: assigned stations that left ITEMS (BACK TO HUD, RELEASE). Absent on an older MC.
   const departures = state?.station_departures ?? [];
@@ -72,7 +72,16 @@ export function Items() {
   const away = departures.filter(d => !stations.some(s => s.node_id === d.node_id));
   const awayBlock = away.length > 0 && (
     <div data-testid="items-departures" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
-      {away.map(d => <Alert key={d.node_id} id="items-station-departed" testid="station-departure">{d.line}</Alert>)}
+      {away.map(d => (
+        <div key={d.node_id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Alert id="items-station-departed" testid="station-departure">{d.line}</Alert>
+          {/* polish r1 M2(b): a phone that stays a player would otherwise leave this line up every match */}
+          <span data-testid="station-departure-dismiss">
+            <GhostButton size={11} pad="6px 12px" onClick={async () => { await run(() => api.dismissDeparture(d.node_id)); }}
+              title="forget this station: it is not coming back as it was">DISMISS</GhostButton>
+          </span>
+        </div>
+      ))}
     </div>
   );
   // QA-18: repeated here so it is still on screen once the scroll above has moved Armory's own header
@@ -343,8 +352,10 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
           {canRestore && (
             <span data-testid="station-restore">
               <GhostButton disabled={busy} onClick={restore} color={T.ink} border={T.acc}
-                title="assign this station exactly as it was before it left: the same kind, team, item and range, and its old id when that is free">
-                RESTORE ▸ {departure.kind === 'control' ? 'HILL' : KIND_SHORT[departure.kind]} {departure.id}
+                title={departure.id_free ? 'assign this station exactly as it was before it left: the same kind, team, item and range, and its old id'
+                  : 'assign this station as it was before it left: the same kind, team, item and range. Its old id is taken now, so MC gives it a new one'}>
+                {/* polish r1 L1: the number only while RESTORE would really get it back */}
+                RESTORE ▸ {departure.kind === 'control' ? 'HILL' : KIND_SHORT[departure.kind]}{departure.id_free ? ` ${departure.id}` : ''}
               </GhostButton>
             </span>
           )}

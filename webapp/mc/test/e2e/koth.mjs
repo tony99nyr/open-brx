@@ -820,7 +820,8 @@ step('hill-departed-restore', async ({ browser, base }) => {
   expect(!(st.stations ?? []).some(x => x.node_id === NODE), 'the station row is gone, as F184 designs');
   const dep = st.station_departures[0];
   expect(dep.node_id === NODE && dep.kind === 'control' && dep.id === id && dep.returned === false, `the record names the hill (saw ${JSON.stringify(dep)})`);
-  const named = new RegExp(`HILL ${id} \\(ANDROID PHONE C705\\) WENT BACK TO HUD AT \\d\\d:\\d\\d`);
+  // polish r1 M3: the HUD identity here holds no gun, so no player: the label is the id head the ITEMS card shows
+  const named = new RegExp(`HILL ${id} \\(PHONE ${NODE.slice(0, 12)}\\) WENT BACK TO HUD AT \\d\\d:\\d\\d`);
 
   // --- PLAY AGAIN: the server's refusal names it, in the error strip the operator reads -----------------------
   const pg = await go(await newPage(browser, base), 'recap');
@@ -842,6 +843,9 @@ step('hill-departed-restore', async ({ browser, base }) => {
   await until(() => line.count().then(n => n > 0), 8000, 'the departure line on ITEMS');
   expect(named.test((await line.first().textContent()) ?? ''), 'ITEMS names the hill that left');
   expect(await pg.locator('[data-testid="station-restore"]').count() === 0, 'no RESTORE while the phone is still a HUD');
+  expect(await pg.locator('[data-testid="station-departure-dismiss"] button').count() === 1, 'the away line carries DISMISS');
+  await pg.locator('[data-testid="items-departures"]').scrollIntoViewIfNeeded();
+  await pg.locator('[data-testid="items-departures"]').screenshot({ path: path.join(RESTORE_SHOTS, 'items-away-dismiss.png') });
 
   // --- it comes back (the seven-tap way into utility mode, same utility node id): RESTORE, never automatic ------
   hud.ws.close();
@@ -865,7 +869,17 @@ step('hill-departed-restore', async ({ browser, base }) => {
   await until(() => pg.locator(`[data-station-title="${NODE}"]`).textContent().then(t => t === `CONTROL ${id}`), 6000, 'the card to read the restored hill');
   expect(await pg.locator('[data-testid="station-restore"]').count() === 0, 'RESTORE is gone with the record');
   ok(`RESTORE put the hill back on one tap  ${itemsShot}`);
-  back.ws.close(); util.ws.close();
+
+  // --- polish r1 M2(b): it leaves again and the operator DISMISSes the line (the real DELETE route) -------------
+  const hud2 = await nodeHello(base, { node_id: 'node-e2ehud0002', node_type: 'phone', platform: 'android',
+    prior_utility: { node_id: NODE, node_key: back.welcome.node_key } });
+  const dismiss = pg.locator('[data-testid="station-departure-dismiss"] button');
+  await until(() => dismiss.count().then(n => n > 0), 8000, 'the away line with DISMISS after the second BACK TO HUD');
+  await dismiss.click();
+  await until(async () => ((await get()).station_departures ?? []).length === 0, 6000, 'DISMISS to drop the departure');
+  await until(() => pg.locator('[data-testid="station-departure"]').count().then(n => n === 0), 6000, 'the away line to leave ITEMS');
+  ok('DISMISS forgot the station that left');
+  hud2.ws.close(); back.ws.close(); util.ws.close();
   await closePage(pg);
 });
 

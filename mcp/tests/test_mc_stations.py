@@ -1535,10 +1535,10 @@ def test_back_to_hud_records_the_departure_with_what_restore_needs():
     d = deps[0]
     assert d["node_id"] == "brxu-grey" and d["kind"] == "control" and d["id"] == 2 and d["team"] == 255, d
     assert d["threshold"] == 0 and d["reason"] == "back_to_hud" and d["returned"] is False, d
-    assert d["label"] == "ANDROID PHONE GREY", d   # the device and the node's tail: ITEMS shows no other name
+    assert d["label"] == "PHONE brxu-grey", d   # M3: the device word and id head the ITEMS card shows
     assert isinstance(d["at_ms"], int) and d["at_ms"] > 0, d
     assert d["restore"] == {"kind": "control", "team": 255, "threshold": 0}, d["restore"]
-    assert f"HILL 2 (ANDROID PHONE GREY) WENT BACK TO HUD AT {_hhmm(d['at_ms'])}" in d["line"], d["line"]
+    assert f"HILL 2 (PHONE brxu-grey) WENT BACK TO HUD AT {_hhmm(d['at_ms'])}" in d["line"], d["line"]
 
 
 def test_the_load_refusal_names_the_hill_that_went_back_to_hud():
@@ -1550,7 +1550,7 @@ def test_the_load_refusal_names_the_hill_that_went_back_to_hud():
     except ValueError as e:
         msg = str(e)
     assert msg.startswith("KING OF THE HILL NEEDS A HILL: "), msg
-    assert f"HILL 2 (ANDROID PHONE GREY) WENT BACK TO HUD AT {_hhmm(at)}" in msg, msg
+    assert f"HILL 2 (PHONE brxu-grey) WENT BACK TO HUD AT {_hhmm(at)}" in msg, msg
     assert "TAP RESTORE" in msg, msg
     # CONTROL: a koth game with no departure keeps the plain F402 words.
     plain = _joined(_sess(mode="koth", station_source="phone"))
@@ -1604,7 +1604,7 @@ def test_mc_release_records_the_departure_with_the_powerup_item():
     s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "rockets", "spawn_every_s": 180})
     assert s.release_station("brxu-pu")
     d = _departures(s)[0]
-    assert d["reason"] == "released" and d["kind"] == "powerup" and d["label"] == "IPHONE U-PU", d
+    assert d["reason"] == "released" and d["kind"] == "powerup" and d["label"] == "PHONE brxu-pu", d
     assert d["item"]["weapon_id"] == "rocket_launcher", d
     assert d["restore"]["item_preset"] == "rockets" and d["restore"]["spawn_every_s"] == 180, d["restore"]
     assert "charges" in d["restore"], d["restore"]
@@ -1642,3 +1642,79 @@ def test_the_departure_survives_next_match_and_an_mc_restart_but_not_a_fresh_ses
     assert "WENT BACK TO HUD" in (s2._koth_hill_fault() or "")
     s2.new_session(keep_roster=False)                    # FRESH SESSION drops it
     assert _departures(s2) == []
+
+
+# --------------------------------------------------------------------------- polish round 1 (departures)
+def test_m1_a_returned_node_that_leaves_again_unassigned_is_not_back_any_more():
+    s = _departed_hill()
+    s.net.simulate_utility_hello("brxu-grey")
+    assert _departures(s)[0]["returned"] is True
+    s.net.simulate_hello("brx-grey", "", prior_utility_node_id="brxu-grey")   # BACK TO HUD again, still unassigned
+    d = _departures(s)[0]
+    assert d["returned"] is False and "IT IS BACK" not in d["line"], d
+    assert d["kind"] == "control" and d["id"] == 2, "the record still describes the old hill"
+    # ...and the same for an MC RELEASE of the returned, unassigned node
+    s.net.simulate_utility_hello("brxu-grey")
+    assert _departures(s)[0]["returned"] is True
+    assert s.release_station("brxu-grey")
+    assert _departures(s)[0]["returned"] is False
+
+
+def test_m2a_another_hill_assigned_drops_the_control_departure_but_not_others():
+    s = _departed_hill()
+    s.net.simulate_utility_hello("brxu-pu")
+    s.set_station("brxu-pu", {"kind": "respawn", "team": "any"})
+    s.net.simulate_hello("brx-pu", "", prior_utility_node_id="brxu-pu")       # a respawn station leaves too
+    assert {d["kind"] for d in _departures(s)} == {"control", "respawn"}
+    s.net.simulate_utility_hello("brxu-new")
+    s.set_station("brxu-new", {"kind": "control", "team": "any"})             # KOTH has one hill: a new one
+    assert [d["kind"] for d in _departures(s)] == ["respawn"], _departures(s)
+
+
+def test_m2b_dismiss_drops_a_departure_and_refuses_an_unknown_one():
+    s = _departed_hill()
+    assert s.dismiss_departure("brxu-grey") is True
+    assert _departures(s) == []
+    assert s.dismiss_departure("brxu-grey") is False   # the route answers 404 in the operator's voice
+
+
+def test_m2b_dismiss_route():
+    try:
+        from starlette.testclient import TestClient
+        import httpx  # noqa: F401
+    except ImportError:
+        from _skip import Skipped
+        raise Skipped("starlette/httpx absent")
+    from brx_mcp.mc.api import create_app
+    s = _departed_hill()
+    c = TestClient(create_app(s))
+    r = c.delete("/api/stations/brxu-grey/departure")
+    assert r.status_code == 200 and r.json() == {"ok": True}, r.text
+    r = c.delete("/api/stations/brxu-grey/departure")
+    assert r.status_code == 404 and "NO DEPARTED STATION" in r.json()["error"], r.text
+
+
+def test_m3_the_label_names_the_player_whose_hud_the_phone_now_is():
+    s = _koth_played_to_recap("brxu-grey")
+    p1 = list(s.players.values())[1]
+    s.net.simulate_hello("brx-grey", p1["gun_id"], prior_utility_node_id="brxu-grey")   # BACK TO HUD, then bound
+    d = _departures(s)[0]
+    assert d["successor"] == "brx-grey", d
+    assert d["label"] == f"NOW {p1['display'].upper()}'S HUD", d
+    assert f"(NOW {p1['display'].upper()}'S HUD) WENT BACK TO HUD" in d["line"], d["line"]
+
+
+def test_l1_id_free_says_whether_restore_gets_the_old_number_back():
+    s = _departed_hill()
+    assert _departures(s)[0]["id_free"] is True
+    s.net.simulate_utility_hello("brxu-other")
+    s.set_station("brxu-other", {"kind": "respawn", "team": "any", "id": 2})
+    assert _departures(s)[0]["id_free"] is False
+
+
+def test_l2_a_returned_node_out_of_wifi_is_told_to_come_back_not_to_tap():
+    s = _departed_hill()
+    s.net.simulate_utility_hello("brxu-grey")
+    s.nodes["brxu-grey"]["stale"] = True
+    line = _departures(s)[0]["line"]
+    assert "IT IS BACK, SO TAP RESTORE" not in line and "BRING IT BACK INTO WI-FI" in line, line

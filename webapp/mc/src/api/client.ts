@@ -194,6 +194,7 @@ export function createHttpApi(): Api {
     armStations: () => post('/api/stations/arm'),
     unlockStations: () => post('/api/stations/unlock'),
     releaseStation: id => post(`/api/stations/${encodeURIComponent(id)}/release`),
+    dismissDeparture: id => j(`/api/stations/${encodeURIComponent(id)}/departure`, { method: 'DELETE' }),
     tryout: async (id, weapon_id) => { await post(`/api/players/${id}/tryout`, { weapon_id }); },
     rangeVerdicts: () => j('/api/range/verdicts'),
     rangeVerdict: (weapon_id, verdict, note) => post('/api/range/verdict', { weapon_id, verdict, note }),

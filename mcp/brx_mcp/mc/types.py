@@ -1456,8 +1456,10 @@ class StationDeparture(TypedDict):
     threshold: int
     tx_power: NotRequired[TxPower]
     item: NotRequired[StationItem]
-    label: str
+    label: str                       # polish r1 M3: "NOW <PLAYER>'S HUD" once its HUD is bound, else the device and id head
     platform: NotRequired[str]
+    successor: NotRequired[str]      # the HUD node_id the phone became (BACK TO HUD)
+    id_free: bool                    # polish r1 L1: RESTORE would get `id` back (no station holds it, not handed on)
     reason: StationDepartureReason
     at_ms: int
     returned: bool

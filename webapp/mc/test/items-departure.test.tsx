@@ -31,13 +31,13 @@ describe('mock parity with state.py station departures', () => {
     expect(st.station_departures).toHaveLength(1);
     const d = st.station_departures![0];
     expect(d).toMatchObject({ node_id: NODE, kind: 'control', id, team: 255, threshold: 0, reason: 'back_to_hud', returned: false,
-      label: 'PHONE B2C3', restore: { kind: 'control', team: 255, threshold: 0 } });
-    expect(d.line).toMatch(new RegExp(`^HILL ${id} \\(PHONE B2C3\\) WENT BACK TO HUD AT \\d\\d:\\d\\d: SWITCH IT BACK TO UTILITY, THEN TAP RESTORE IN THE ARMORY`));
+      label: 'PHONE util-a1b2c3', restore: { kind: 'control', team: 255, threshold: 0 } });
+    expect(d.line).toMatch(new RegExp(`^HILL ${id} \\(PHONE util-a1b2c3\\) WENT BACK TO HUD AT \\d\\d:\\d\\d: SWITCH IT BACK TO UTILITY, THEN TAP RESTORE IN THE ARMORY`));
   });
 
   it('the LOAD refusal names the hill that left', async () => {
     const { api, id } = await departedHill();
-    await expect(api.loadGame()).rejects.toThrow(new RegExp(`^KING OF THE HILL NEEDS A HILL: HILL ${id} \\(PHONE B2C3\\) WENT BACK TO HUD AT`));
+    await expect(api.loadGame()).rejects.toThrow(new RegExp(`^KING OF THE HILL NEEDS A HILL: HILL ${id} \\(PHONE util-a1b2c3\\) WENT BACK TO HUD AT`));
   });
 
   it('a returning node is offered RESTORE and never restored on its own; RESTORE puts the old id back and clears it', async () => {
@@ -80,7 +80,7 @@ describe('ITEMS shows the departure, and RESTORE only once that node is back', (
     const { m } = await armory(api);
     const lines = m.find('[data-testid="station-departure"]');
     expect(lines).toHaveLength(1);
-    expect(lines[0].textContent).toMatch(new RegExp(`HILL ${id} \\(PHONE B2C3\\) WENT BACK TO HUD AT \\d\\d:\\d\\d`));
+    expect(lines[0].textContent).toMatch(new RegExp(`HILL ${id} \\(PHONE util-a1b2c3\\) WENT BACK TO HUD AT \\d\\d:\\d\\d`));
     expect(m.find(`[data-station-card="${NODE}"]`)).toHaveLength(0);
     expect(m.find('[data-testid="station-restore"]')).toHaveLength(0);
     m.unmount();
@@ -135,7 +135,7 @@ describe('PLAY names the hill that left in its NO HILL block', () => {
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
     const line = m.find('[data-testid="games-hill-departed"]');
     expect(line).toHaveLength(1);
-    expect(line[0].textContent).toMatch(new RegExp(`^HILL ${id} \\(PHONE B2C3\\) WENT BACK TO HUD AT`));
+    expect(line[0].textContent).toMatch(new RegExp(`^HILL ${id} \\(PHONE util-a1b2c3\\) WENT BACK TO HUD AT`));
     m.unmount();
     const plain = new MockBackend();
     await plain.putConfig({ mode: 'koth', station_source: 'phone' });
@@ -144,5 +144,79 @@ describe('PLAY names the hill that left in its NO HILL block', () => {
     expect(m2.find('[data-testid="assign-a-hill"]')).toHaveLength(1);
     expect(m2.find('[data-testid="games-hill-departed"]')).toHaveLength(0);
     m2.unmount();
+  });
+});
+
+describe('polish round 1 (departures)', () => {
+  it('M1: a node that came back and left again unassigned is not back any more (mock parity)', async () => {
+    const { api } = await departedHill();
+    api.utilityHello(NODE);
+    expect((await api.getState()).station_departures![0].returned).toBe(true);
+    api.confirmStationHud(NODE);
+    const d = (await api.getState()).station_departures![0];
+    expect(d.returned).toBe(false);
+    expect(d.line).not.toMatch(/IT IS BACK/);
+    api.utilityHello(NODE);
+    await api.releaseStation(NODE);
+    expect((await api.getState()).station_departures![0].returned).toBe(false);
+  });
+
+  it('M2(a): another hill assigned drops the hill departure, and only that one', async () => {
+    const { api } = await departedHill();
+    await api.putStation('util-d4e5f6', { kind: 'respawn', team: 'any' });
+    api.confirmStationHud('util-d4e5f6');
+    expect((await api.getState()).station_departures!.map(d => d.kind).sort()).toEqual(['control', 'respawn']);
+    api.utilityHello('util-new');
+    await api.putStation('util-new', { kind: 'control', team: 'any' });
+    expect((await api.getState()).station_departures!.map(d => d.kind)).toEqual(['respawn']);
+  });
+
+  it('M2(b): DISMISS on the away line drops it; an unknown one is a 404 (mock parity)', async () => {
+    const { api } = await departedHill();
+    const { m, settle } = await armory(api);
+    const dismiss = m.find('[data-testid="station-departure-dismiss"] button');
+    expect(dismiss).toHaveLength(1);
+    await m.click('DISMISS');
+    await settle();
+    expect(m.find('[data-testid="station-departure"]')).toHaveLength(0);
+    expect((await api.getState()).station_departures).toEqual([]);
+    await expect(api.dismissDeparture(NODE)).rejects.toMatchObject({ status: 404 });
+    m.unmount();
+  });
+
+  it('M3: the label names the player whose HUD the phone now is, once bound', async () => {
+    const { api, id } = await departedHill();
+    const st = await api.getState();
+    const bound = st.players.find(p => p.node_id)!;
+    api.utilityHello(NODE);
+    api.confirmStationHud(NODE, bound.node_id!);   // M1 path: the successor is still recorded
+    const d = (await api.getState()).station_departures![0];
+    expect(d.label).toBe(`NOW ${bound.display.toUpperCase()}'S HUD`);
+    expect(d.line).toMatch(new RegExp(`^HILL ${id} \\(NOW ${bound.display.toUpperCase()}'S HUD\\)`));
+  });
+
+  it('L1: RESTORE names the id only while that id is still free', async () => {
+    const { api, id } = await departedHill();
+    api.utilityHello(NODE);
+    const first = await armory(api);
+    expect(first.m.find('[data-testid="station-restore"]')[0].textContent).toBe(`RESTORE ▸ HILL ${id}`);
+    first.m.unmount();
+    await api.putStation('util-d4e5f6', { kind: 'respawn', team: 'any', id });   // the old number, taken
+    const { m } = await armory(api);
+    expect((await api.getState()).station_departures![0].id_free).toBe(false);
+    expect(m.find('[data-testid="station-restore"]')[0].textContent).toBe('RESTORE ▸ HILL');
+    m.unmount();
+  });
+
+  it('L2: back but out of Wi-Fi says bring it back, not tap, and offers no RESTORE', async () => {
+    const { api } = await departedHill();
+    api.utilityHello(NODE);
+    (api as unknown as { stations: Record<string, { offline?: boolean }> }).stations[NODE].offline = true;
+    const d = (await api.getState()).station_departures![0];
+    expect(d.line).toMatch(/BRING IT BACK INTO WI-FI/);
+    expect(d.line).not.toMatch(/IT IS BACK, SO TAP RESTORE/);
+    const { m } = await armory(api);
+    expect(m.find('[data-testid="station-restore"]')).toHaveLength(0);
+    m.unmount();
   });
 });

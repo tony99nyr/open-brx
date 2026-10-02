@@ -301,9 +301,15 @@ export class MockBackend implements Api {
   }
   /** Bench 2026-10-02 (option B), as state.py `_station_departures`: an ASSIGNED station that left ITEMS (its own
    *  BACK TO HUD, or an accepted RELEASE). `line` is derived on every view, as `_departure_line`. */
-  private departures: Record<string, Omit<StationDeparture, 'line'>> = {};
-  private recordDeparture(node_id: string, reason: StationDeparture['reason']) {
-    const a = this.stations[node_id]?.assigned; if (!a) return;
+  private departures: Record<string, Omit<StationDeparture, 'line' | 'label' | 'id_free'>> = {};
+  private recordDeparture(node_id: string, reason: StationDeparture['reason'], successor?: string) {
+    const a = this.stations[node_id]?.assigned;
+    if (!a) {
+      // polish r1 M1: back, then gone again before anyone assigned it -- not back any more
+      const old = this.departures[node_id];
+      if (old) { old.returned = false; if (successor) old.successor = successor; }
+      return;
+    }
     const restore: StationDeparture['restore'] = { kind: a.kind, team: a.team, threshold: a.threshold, ...(a.tx_power ? { tx_power: a.tx_power } : {}) };
     const it = a.item;
     const preset = it ? POWERUP_PRESETS.find(p => p.item.kind === it.kind && (p.item.weapon_id ?? null) === (it.weapon_id ?? null))?.preset : undefined;
@@ -315,20 +321,39 @@ export class MockBackend implements Api {
     // the mock's stations report no platform, so every one is a PHONE (state.py `_device_label`)
     this.departures[node_id] = { node_id, kind: a.kind, id: a.id, team: a.team, threshold: a.threshold,
       ...(a.tx_power ? { tx_power: a.tx_power } : {}), ...(it ? { item: clone(it) } : {}),
-      label: `PHONE ${node_id.slice(-4).toUpperCase()}`, reason, at_ms: now(), returned: false, restore };
+      ...(successor ? { successor } : {}), reason, at_ms: now(), returned: false, restore };
   }
-  private departureLine(d: Omit<StationDeparture, 'line'>): string {
+  /** polish r1 M3, as state.py `_departure_label`: the player whose HUD the phone became, else what the card shows. */
+  private departureLabel(d: Omit<StationDeparture, 'line' | 'label' | 'id_free'>): string {
+    const p = d.successor ? this.players.find(x => x.node_id === d.successor) : undefined;
+    if (p) return `NOW ${p.display.toUpperCase()}'S HUD`;
+    return `${d.platform === 'esp32' ? 'STICKS3' : 'PHONE'} ${d.node_id.slice(0, 12)}`;
+  }
+  /** polish r1 L1, as state.py `_departure_id_free`. */
+  private departureIdFree(d: { node_id: string; id: number }): boolean {
+    if (Object.entries(this.stations).some(([n, s]) => n !== d.node_id && s.assigned?.id === d.id)) return false;
+    return !Object.entries(this.stationIdOf).some(([n, i]) => n !== d.node_id && i === d.id);
+  }
+  /** polish r1 M2(b): `DELETE /api/stations/{node_id}/departure`. */
+  async dismissDeparture(node_id: string): Promise<{ ok: boolean }> {
+    if (!this.departures[node_id]) throw Object.assign(new Error('NO DEPARTED STATION BY THAT ID: REFRESH ITEMS'), { status: 404 });
+    delete this.departures[node_id]; this.emit();
+    return { ok: true };
+  }
+  private departureLine(d: Omit<StationDeparture, 'line' | 'label' | 'id_free'>): string {
     const stick = d.platform === 'esp32';
     const what = d.reason === 'back_to_hud' ? 'WENT BACK TO HUD' : stick ? 'WAS RELEASED' : 'WAS RELEASED TO ITS HUD';
     const t = new Date(d.at_ms), at = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
-    const act = d.returned ? 'IT IS BACK, SO TAP RESTORE ON ITS ITEMS CARD TO ASSIGN IT AGAIN'
+    const online = d.returned && !this.stations[d.node_id]?.offline;
+    const act = online ? 'IT IS BACK, SO TAP RESTORE ON ITS ITEMS CARD TO ASSIGN IT AGAIN'
+      : d.returned ? 'IT IS BACK BUT OUT OF WI-FI: BRING IT BACK INTO WI-FI, THEN TAP RESTORE ON ITS ITEMS CARD'
       : stick ? 'BRING IT BACK INTO WI-FI, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN'
       : 'SWITCH IT BACK TO UTILITY, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN';
     const name: Record<StationKind, string> = { control: 'HILL', respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB' };
-    return `${name[d.kind] ?? d.kind.toUpperCase()} ${d.id} (${d.label}) ${what} AT ${at}: ${act}`;
+    return `${name[d.kind] ?? d.kind.toUpperCase()} ${d.id} (${this.departureLabel(d)}) ${what} AT ${at}: ${act}`;
   }
   private departureViews(): StationDeparture[] {
-    return Object.values(this.departures).sort((x, y) => x.at_ms - y.at_ms).map(d => ({ ...clone(d), line: this.departureLine(d) }));
+    return Object.values(this.departures).sort((x, y) => x.at_ms - y.at_ms).map(d => ({ ...clone(d), label: this.departureLabel(d), id_free: this.departureIdFree(d), line: this.departureLine(d) }));
   }
   async putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number; item_preset?: string; tx_power?: TxPower;
     charges?: number; amount?: number; spawn_every_s?: number }): Promise<StationView> {
@@ -399,6 +424,8 @@ export class MockBackend implements Api {
     const st = this.stations[node_id] ?? (this.stations[node_id] = { assigned: null, armed: null, arm_pending: false, report: {}, seen: now() });
     this.stationIdOf[node_id] = id;
     delete this.departures[node_id];   // bench 2026-10-02: assigned again (RESTORE or anew)
+    // polish r1 M2(a): KOTH has one hill, so a new hill answers every hill that left
+    if (a.kind === 'control') for (const [n, d] of Object.entries(this.departures)) if (d.kind === 'control') delete this.departures[n];
     st.assigned = { kind: a.kind, team, id, threshold, at: now(), ...(item ? { item } : {}), ...(a.tx_power ? { tx_power: a.tx_power } : {}) };
     st.takenAt = undefined; st.takenBy = undefined; st.resetAt = undefined;
     for (const n of Object.keys(this.stations)) this.armStation(n);
@@ -427,8 +454,8 @@ export class MockBackend implements Api {
     return { ok: true };
   }
   /** Test/demo stand-in for NetServer's authenticated `prior_utility` handoff on the first HUD hello. */
-  confirmStationHud(node_id: string) {
-    this.recordDeparture(node_id, 'back_to_hud');   // bench 2026-10-02: a no-op after a RELEASE (already unassigned)
+  confirmStationHud(node_id: string, successor?: string) {
+    this.recordDeparture(node_id, 'back_to_hud', successor);   // bench 2026-10-02: a no-op after a RELEASE (already unassigned)
     delete this.stations[node_id]; delete this.stationIdOf[node_id];   // F364: a station that became a HUD frees its number
     this.emit();
   }
