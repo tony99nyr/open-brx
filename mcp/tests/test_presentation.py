@@ -657,7 +657,7 @@ def test_voice_role_pools_reach_the_bundle_for_multi_take_roles_only():
     b = C.Compiler().compile(cfg, player, teams)
     assert b["cue_pools"]["hit_taken"] == [f"$PLAY,,4,6,V3{s},,,,*" for s in "CDEFGH"] and b["cues"]["hit_taken"] == "$PLAY,,4,6,V3C,,,,*"
     assert "healed" not in b["cue_pools"] and b["cues"]["healed"] == "$PLAY,,4,6,V37,,,,*"
-    assert set(b["cue_pools"]) == {"hit_taken", "kill", "pain_short", "pain_long"}
+    assert set(b["cue_pools"]) == {"hit_taken", "kill", "pain_short", "pain_long", "poison_tick"}   # F446: poison_tick is a fixed pool, not a voice one, but it ships in every unmuted bundle
     muted = C.Compiler().compile({**cfg, "presentation": {**cfg["presentation"], "hud_events": False}}, player, teams)
     assert "hit_taken" not in muted["cue_pools"] and muted["cues"]["hit_taken"] == ""
     assert P.cue_pool_frames(P.resolve(cfg), "V3A") == {}                # the pre-A15 str form carries no pools
