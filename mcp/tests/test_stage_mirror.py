@@ -1790,6 +1790,9 @@ KNOWN_UNMIRRORED = {
     "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
     # 2026-09-26 (F400 final): the switch card pauses the lanes' clocks. Presentation only, as above.
     "_cardTick", "_switchCardUp", "_lanePaused", "_laneAge", "_lanesShown",
+    # 2026-10-02 (Tony, bench): the hill badge when a capture BEGINS (TAKING THE HILL, HILL UNDER ATTACK). It writes only
+    # that lane badge and a log line: no gun frame, no voice line, no score. Presentation only, as above.
+    "_hillBegins",
     # 2026-09-24 (docs/announcer.md, "The gun's audio FIFO"): the phone's model of the gun's audio queue and the
     # must-hear $PLAYX flush. NOT yet ported: the stage's own writes do not model the FIFO, and its heartbeat does not
     # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.
