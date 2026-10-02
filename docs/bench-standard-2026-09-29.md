@@ -103,6 +103,20 @@ STOP POINT: the core is done. Everything below is lower value per minute.
 **10. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with
 the black Pixel as the hill (release it from the powerup role first). Rows: F420, F421, F424.
 
+**10b. F440, fair presence on the phone hill (25 min, right after 10).** Read the hill's log (`player N (TEAM)
+IN THE CIRCLE` and `quiet` lines) or `window.brx.diag()` over CDP, and each player's `player advert` lines.
+1. The BLACK Pixel alone at the hill captures within 15 s. 3 runs.
+2. BLACK and GREEN together, on different teams: CONTESTED at once (within about 1 s of the second arriving), and the
+   hill's ticks stop. 3 runs, then swap the two phones' teams and 3 more.
+3. Record each run's gap histogram for both phones from `diag()`.
+Control: GREEN alone captures within 15 s. Row: F440.
+
+**10c. The hill ladder (20 min; sets the hill threshold once per station type).** Hill phone on its stand. Each
+player phone, body between it and the hill, stands at 5, 7.5, 9 and 12 m, 3 times each, for 10 s at each mark. Pass:
+IN (present) at 5 and 7.5 m every time, OUT at 12 m every time, and 9 m recorded as the edge. If 7.5 m is not
+reliably IN, lower the default threshold by the measured shortfall (`beacon.js` / `station_range.h`), never per phone.
+Row: F440, F383.
+
 **11. F400, the pickup switch card (10 min).** Follow *Group 4*, item 2. Row: F400.
 
 **12. F419, the phone's own queue path (10 min).** Follow *Group 4*, item 3. Row: F419.
