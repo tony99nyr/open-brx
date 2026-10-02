@@ -117,26 +117,69 @@ static void test_presence_ema_is_beacon_js() {
   CHECK_EQ(pr.get(7)->raw, -80);
 }
 
-static void test_presence_six_db_hysteresis() {
-  PlayerPresence pr;
+// F440 (Tony, 2026-10-02): a 3 dB exit band, and leaving is debounced by the exit grace.
+static void test_presence_exit_band_and_grace() {
+  PlayerPresence pr;  // threshold -74, exit level -77
   pr.alpha = 1.0;
   pr.observe(player(7, 0), -70, 0);
   pr.tick(0);
   pr.tick(800);
   CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -80, 900);  // exactly thr - 6: `<` is strict, still present
+  pr.observe(player(7, 0), -77, 900);   // exactly thr - 3: `<` is strict, still present
   pr.tick(900);
   CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -79, 1000);  // inside the band: still present, no dwell needed
+  pr.observe(player(7, 0), -76, 1000);  // inside the band: still present, no dwell needed
   pr.tick(1000);
   CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -81, 1100);  // 7 dB below: off
+  pr.observe(player(7, 0), -79, 1100);  // 5 dB below: a dip, not yet a step out (the exit grace)
   pr.tick(1100);
-  CHECK(!pr.get(7)->present);
-  pr.observe(player(7, 0), -75, 1200);  // back inside the band but below the threshold: stays off
-  pr.tick(1200);
+  CHECK(pr.get(7)->present);
+  pr.observe(player(7, 0), -76, 1500);  // back inside the band: the dip is over, the grace resets
+  pr.tick(1500);
+  CHECK(pr.get(7)->present);
+  pr.observe(player(7, 0), -79, 1600);  // below again ...
+  pr.tick(1600);
+  pr.observe(player(7, 0), -79, 3000);
   pr.tick(3000);
+  CHECK(pr.get(7)->present);            // ... 1.4 s: still inside the grace
+  pr.observe(player(7, 0), -79, 4100);
+  pr.tick(4100);                        // 2.5 s below the exit level: off
   CHECK(!pr.get(7)->present);
+  pr.observe(player(7, 0), -75, 4200);  // back inside the band but below the threshold: stays off
+  pr.tick(4200);
+  pr.tick(6000);
+  CHECK(!pr.get(7)->present);
+}
+
+// F440 (beacon.js parity): the circle. A sighting is the median of the last 2 s of adverts at or above the threshold,
+// so a sparse player's first advert at the threshold puts it in the circle at once (before the dwell), while a DENSE
+// player whose noise only touches the threshold never enters (review round 2: the circle edge must not move with
+// advert rate).
+static void test_presence_f438_circle() {
+  PlayerPresence pr;  // threshold -74 (the default), 3 dB band, 800 ms dwell
+  pr.observe(player(7, 0), -70, 0);
+  pr.tick(0);
+  CHECK(!pr.get(7)->present);   // still dwelling ...
+  CHECK(pr.get(7)->in_circle);  // ... but in the circle at once: an opponent contests now
+  PlayerPresence out;
+  for (uint32_t t = 0; t < 10000; t += 250) {
+    out.observe(player(8, 1), (t / 250) % 2 ? -73 : -87, t);  // a peak at the threshold every other advert
+    out.tick(t);
+    CHECK(!out.get(8)->in_circle);
+    CHECK(!out.get(8)->present);
+  }
+}
+
+static void test_hill_counts_the_circle_not_only_present() {
+  BleControlPoint cp;
+  PlayerPresence pr;  // the real dwell: the sighting, not presence, makes this count on the first tick
+  pr.observe(player(3, 1), -60, 0);
+  pr.tick(0);
+  cp.update(pr, 0);
+  pr.observe(player(3, 1), -60, STATION_TICK_MS);
+  pr.tick(STATION_TICK_MS);
+  cp.update(pr, STATION_TICK_MS);
+  CHECK_EQ(cp.counts[1], 1);
 }
 
 static void test_presence_four_second_expiry() {
@@ -572,7 +615,9 @@ int main() {
   test_presence_dwell();
   test_presence_dwell_restarts_when_the_ema_dips();
   test_presence_ema_is_beacon_js();
-  test_presence_six_db_hysteresis();
+  test_presence_exit_band_and_grace();
+  test_presence_f438_circle();
+  test_hill_counts_the_circle_not_only_present();
   test_presence_four_second_expiry();
   test_presence_game_byte_and_roles();
   test_presence_drops_a_65th_player_and_counts_it();
