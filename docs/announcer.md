@@ -276,16 +276,21 @@ the new item is a duplicate and the waiting item is false: both are dropped.
 **Tony**, 2026-09-25 (F149, F351, X4): "your death wins. delaying the death scream would be bad. while you are dead you
 can listen to the queue of KCs and game alerts".
 
-1. **The scream first, never cut.** At my death (`_death`) the phone sends one `$PLAYX,0,*` per write for each clip its model says
-   the gun holds truly AHEAD of the native scream, with `PLAY_GAP_MS` between writes (the low-health line, my own kill line), and none for the scream
-   itself. Not counted: the lethal hit's own `$SIR` row sound (the gun may play none on a lethal hit, or the scream
-   may interrupt it: F158), and a clip that ends within `DEATH_STOP_SLACK_MS` (150 ms), since a stop that arrives
-   after it lands on the scream. An extra stop here is not harmless. If such a spared clip is still playing at the
-   front of the gun's queue, the stops wait until it ends, so none lands on it. Exactly the stopped clips leave the
-   model. An ordinary death with a quiet gun sends no stop.
-   With no scream id known, F149's one stop for the low-health line stays. The death path sends each stop in its own write because two stops in one write can clear the scream.
-2. **A line the death stop cut is said again, and only what was not said.** Only when one of the item's OWN clips is
-   among the stopped ones is it cut (`Announcer.death`; a must-hear or hill clip carries its item): its pending lines check `cut` and do not go out, and a copy holding the lines
+1. **The scream first, never cut.** The native scream (`$PSET` t10, fired by the gun on the lethal `$HP,0`) does not
+   queue: it starts at once and cuts the clip playing, like a token-1 clip. This model rests on the 2026-10-02 bench
+   (F439: a death stop cut the scream, and Tony heard neither the low-health line nor the scream) plus F375, not on a
+   direct measurement. So with a known scream, `_death` sends no `$PLAYX` at the death: any stop would land on the
+   scream itself. The model (`GunAudio.interrupt`) drops the clip playing, puts the scream at the front from now, and
+   keeps the clips queued behind it in order. With no scream id known, F149's one stop for a low-health line that went
+   out stays, since there is no scream to cut.
+   **Body cues never follow the scream.** A body clip (the shield heartbeat, the low-health line, a pain or shield cue,
+   any take of its `cue_pools`) queued behind the scream gets one stop each, from the scream's end plus
+   `DEATH_BODY_STOP_MARGIN_MS` (300 ms), one write each, `PLAY_GAP_MS` apart. The stops end at the first announcer
+   clip (my kill line is never stopped), and at a body clip with under `DEATH_BODY_STOP_MIN_LEFT_MS` (250 ms) left. A
+   revive cancels them. No heartbeat starts while dead, before the scream ends, or while the low-health line or a play
+   write waits. The body stops rest on one brx1 run of the same bench (unproven).
+2. **A line the scream cut is said again, and only what was not said.** Only when the item's OWN clip was playing
+   when the scream interrupted it is it cut (`Announcer.death`; a must-hear or hill clip carries its item): its pending lines check `cut` and do not go out, and a copy holding the lines
    not yet finished goes back in the queue (`resume`). A medal stack cut on its second line says that line again, not
    the kill line or the first medal. The copy's medals and owed kill line are trimmed the same way, so a later spree
    fold does not say them again. It plays after the scream.

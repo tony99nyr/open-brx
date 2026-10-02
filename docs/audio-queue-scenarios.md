@@ -55,7 +55,10 @@ Latency measures from the event to the clip start. A dropped clip was not played
 | VA6D | want | 0.00 | 0 | cut after 500 ms of 1943 |
 | VA6E | want | 0.10 | 400 | full |
 
-### death-stops-spaced: Two death stops, one write each, 150 ms apart
+### death-stops-spaced: Two death stops, one write each, 150 ms apart (pre-F439 reading)
+
+This case models the scream as queued. After F439 (bench 2026-10-02) the working reading is that the scream
+interrupts, and the phone sends no death stop when the scream is known (docs/announcer.md, "My death wins").
 
 | Cue | Want | Event (s) | Latency (ms) | Fate |
 |---|---|---|---|---|
@@ -69,7 +72,7 @@ Latency measures from the event to the clip start. A dropped clip was not played
 - The measured zero-gap burst played VA6D, VB0P and VAA. The model marks VA6E as the assumed dropped clip.
 - Three stops in one write cleared every clip, including queued VAA.
 - A single stop cut the current clip. The next queued clip then played.
-- Two death stops in separate writes, 150 ms apart, let the scream play. A two-stop write cleared the scream in the model.
+- Pre-F439 reading: two death stops in separate writes, 150 ms apart, let the scream play. A two-stop write cleared the scream in the model. F439 replaced the death stops: the scream interrupts, and no stop goes out.
 - The F375 engine test crosses low health, delays the `$PLAY` for the reserved gap, then applies death. The engine cancels the pending `VA86` write.
 - F347 ships t23 EMPTY. The historical A10 hum blocked the FIFO, and `$PLAYX` did not stop it.
 

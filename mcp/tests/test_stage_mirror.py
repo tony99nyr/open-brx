@@ -2602,6 +2602,26 @@ def test_the_heartbeat_follows_the_pool_and_stops_when_the_refill_gives_up():
     asyncio.run(go())
 
 
+def test_f439_no_heartbeat_while_the_low_health_line_waits():
+    """F439 (brx1 bench 2026-10-02, UNPROVEN): a beat went out in the same instant as the low-health alert and
+    played after the death scream. engine.js `_shieldLoopTick` holds the beat while the line waits; so does the
+    stage. CONTROL: the same due beat goes out once nothing waits."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        c = shield_cues(st)
+        clock.advance(1.0)
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)                  # the shield breaks: the heartbeat runs
+        st._pending_hurt_write = True                                   # the critical line waits in its hold
+        n = mark(mgr)
+        await shield_run(st, mgr, clock, 2.5)                           # a beat falls due (SHIELD_LOOP_S) in here
+        assert c["shield_loop"] not in since(mgr, n), "no beat while the critical line waits"
+        st._pending_hurt_write = False
+        await shield_run(st, mgr, clock, 1.0)
+        assert since(mgr, n).count(c["shield_loop"]) == 1, "CONTROL: the beat goes out once nothing waits"
+    asyncio.run(go())
+
+
 def test_an_ordinary_game_never_grants_and_a_dead_gun_is_not_refilled():
     """The ARMOUR is the opt-in, not the ceiling (S45): `health.max_shield` is a real host field now,
     so a host can arm a non-zero shield BESIDE ordinary armour (Advanced) -- and that alone must not

@@ -3007,6 +3007,11 @@ class GunStage:
             return
         if self._shield_loop_at and now - self._shield_loop_at < period:
             return
+        # F439 (engine.js `_shieldLoopTick`, brx1 bench 2026-10-02, UNPROVEN): no beat while the low-health line waits in
+        # its hold, so a beat never goes out in the same instant as the alert and plays after the death scream. The phone
+        # also waits out its pending PLAY writes and the scream; the stage has no audio model (see the mirror registry).
+        if self._pending_hurt_write:
+            return
         self._shield_loop_at = now
         self._spawn_task(self.write([fr], "shield down heartbeat", gap_ms=0))
 

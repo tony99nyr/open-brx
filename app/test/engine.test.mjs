@@ -2709,6 +2709,7 @@ test('a respawn re-arms the low-health alert', () => {
   const h = goLive(harness());
   h.frame('$HP,12,0,0,*');
   h.writes.length = 0;
+  h.adv(1000);                                                   // F439 r3: a death in the alert's own instant is a late write (it queues behind the scream)
   h.frame('$HP,0,0,0,*');                                        // dead
   h.eng._spawn(false);                                           // back on your feet
   h.frame('$HP,12,0,0,*');
@@ -2716,7 +2717,7 @@ test('a respawn re-arms the low-health alert', () => {
 });
 
 // ── F149 (field 2026-09-12): a death must stop a still-playing low-health loop ────────────────────
-test('F149: a death that follows a low-health alert stops the loop with $PLAYX,0,*', () => {
+test('F149/F439: a death that follows a low-health alert sends no $PLAYX: the native scream interrupts the loop', () => {
   // The realistic field shape: one hit crosses under 15 HP (fires `cues.hurt`, a several-second voice
   // sample), a SEPARATE later hit finishes the kill. `cues.died` is never populated (A15.3: the scream
   // stays native), so nothing else would ever interrupt the sample -- the loop played on past the death.
@@ -2725,7 +2726,8 @@ test('F149: a death that follows a low-health alert stops the loop with $PLAYX,0
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'sanity: the loop did start');
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');        // a later, separate hit finishes the kill
-  assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'death sends the stop-playback frame');
+  // F439 (bench 2026-10-02): the stop landed on the scream; the scream itself cuts the loop. F149's stop stays only with no scream known
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 0, 'no stop: it would cut the native scream');
 });
 
 test('F149: an ordinary death (never under 15 HP) sends no extra stop frame', () => {
@@ -2752,14 +2754,16 @@ test('office test 2026-09-19: a death that lands inside HURT_DEBOUNCE_MS cancels
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'cancelled -- the queued alert must not play after death');
 });
 
-test('F149/F375: death stops a low-health clip that already reached a quiet gun', () => {
+test('F149/F375/F439: a low-health clip already on the gun gets no death stop; the scream interrupts it', () => {
   const h = goLive(harness());
   h.writes.length = 0;
   h.eng._gun.clear();
-  h.eng._gun.add(1984, 'low-health cue already written', h.eng.now(), 'VA86');
+  h.eng._gun.add(1984, 'low-health cue already written', h.eng.now(), 'VA86').at -= 1000;   // F439 r3: written 1 s before, past DEATH_LATE_WRITE_MS
   h.eng._hurtSent = true;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');
-  assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'one stop removes the clip ahead of the native scream');
+  // F439: no clip is ever ahead of the native scream (it interrupts), so the stop is gone
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 0, 'no stop');
+  assert.ok(!h.eng._gun.clips.some(c => c.id === 'VA86'), 'the scream cut the low-health clip in the model');
 });
 
 test('F375 review: low-health stays pending through the play gap and death cancels it', () => {

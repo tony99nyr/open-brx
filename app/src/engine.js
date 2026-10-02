@@ -14,7 +14,7 @@ import * as W from './transport/envelope.js';   // single source for the contrac
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S } from './transport/contract.gen.js';   // the spawn-kill window (2026-09-19) and the A16.3 readout timings (F52)
 import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
-import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, DEATH_STOP_SLACK_MS, PLAY_GAP_MS } from './announcer.js';
+import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, PLAY_GAP_MS } from './announcer.js';
 import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, redeployOutMs } from './lanes.js';
 import { MEDALS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
@@ -359,6 +359,18 @@ const STUN_PLAY = '$PLAY,X17,4,6,,,,,*';
 const MIN_RESPAWN_S = 3;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const MUST_HEAR_MAX_STOPS = 4;  // a flush has a fixed cap to limit fragments and write size
+/** F439 (brx1 bench 2026-10-02, UNPROVEN): a body clip left queued behind the native scream is stopped no sooner than
+ *  this long after the model says the scream ends, so the stop never lands on the scream's tail (the model's clock is
+ *  an estimate). */
+const DEATH_BODY_STOP_MARGIN_MS = 300;
+/** F439 polish r1: a body clip the model says has less than this left is not stopped, nor any after it. BLE latency or a
+ *  late timer could carry the stop past its end and onto the line behind it (my kill confirm). */
+const DEATH_BODY_STOP_MIN_LEFT_MS = 250;
+/** F439 polish r3 (brx1 bench 2026-10-02, UNPROVEN): a body clip whose write went out this long or less before the phone
+ *  heard `$HP,0` reached the gun after the scream began (the BLE delay), so it queues behind the scream, not cut. */
+const DEATH_LATE_WRITE_MS = 300;
+/** F439: the cues that are the player's BODY, not news: they never play after my death scream. */
+const BODY_CUES = ['hurt', 'pain_short', 'pain_long', 'pain_melee', 'shield_up', 'shield_down', 'shield_charging', 'shield_online', 'shield_loop'];
 const KILL_CARD_MS = 1800;      // hud.js `_kill`'s card hold: MC's kill card owns the announcer slot at least this long
 const LANE_FEED_MAX = 6;           // docs/announcer.md "The three lanes": the FEED rows kept (the HUD draws the newest three)
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
@@ -1421,7 +1433,6 @@ export class Engine {
   }
   /** A hit the gun registered (`$HIR`): the gun plays the `$SIR` row's sound for it, into the same FIFO. */
   _audioHit(proto, subtype, now) {
-    this._lastHitClip = null;   // per hit: only THIS hit's own row sound is the lethal one's
     const id = this._sirSound[`${proto}:${subtype}`];
     const ms = id ? CLIP_MS[id] : undefined;
     if (!(ms > 0)) {
@@ -1429,8 +1440,7 @@ export class Engine {
       if (!(this._hitSoundWarned || (this._hitSoundWarned = new Set())).has(key)) { this._hitSoundWarned.add(key); this.log(`audio: a hit on $SIR ${proto},${subtype} has ${id ? `sound ${id}, of unknown length` : 'no row sound'}: counted as 0 ms`, 'li'); }
       return;
     }
-    const clip = this._gun.add(ms, `hit sound ${id}`, now, id);   // each hit is a separate FIFO clip
-    if (clip) this._lastHitClip = clip;   // `_death`: the lethal hit's own row sound is never counted ahead of the scream (F158)
+    this._gun.add(ms, `hit sound ${id}`, now, id);   // each hit is a separate FIFO clip
   }
   /** pl3 (2026-09-17): a write the gun must not miss AND that is harmless to repeat -- the stun restore and the
    *  operator resync (both re-send the live counts, `$TID` and `$BMAP`; nothing heals or re-heads). Spawn and
@@ -3799,6 +3809,10 @@ export class Engine {
     // one FIFO. It never starts while the gun still holds a clip (a must-hear line included, for that line's length) or
     // while any announcer item waits; once written it is a clip in the model, so a kill confirm flushes it.
     if (this._gun.outstanding(now) > 0 || this._ann.queue.length) return;
+    // F439 (brx1 bench 2026-10-02, UNPROVEN): a beat went out in the same instant as the low-health alert, before that
+    // line reached the model, and Tony heard it AFTER the death scream. So no beat while a play write waits or is in
+    // flight, while the critical line waits, while dead, or before the scream ends. The next life restarts it.
+    if (!this.alive || now < (this._screamUntil || 0) || this._pendingHurtWrite || this._pendingPlayWrites.size || this._playBusy) return;
     this._shieldLoopAt = now;
     this._write([f], 'shield down heartbeat');   // recorded in the gun's audio FIFO by `_audioWrite`
   }
@@ -7291,17 +7305,10 @@ export class Engine {
     if (!this.alive) return;
     if (reason !== 'gun_recovery' && this._spawnIntercept()) return;   // F416: an unspawned gun's 0 pool is not a death
     this._armPending = null; this._triggerPending = null;   // F209: never arm a dead gun; the revive protects and arms again
-    // The gun screams on its own: it joins the FIFO. `screamAhead` = the clips the model says the gun holds ahead of it.
-    // The scream joins the model below, right after the stops that take off what is ahead of it.
-    let screamAhead = null, aheadClips = [], stopWait = 0;
+    // The gun screams on its own (A15.3, `$PSET` t10). F439: it interrupts what plays; the model takes it in below.
     const screamId = this._psetSounds && (this._psetSounds[10] || '').trim();
-    { const now = this.now(); this._audioSync(now); this._gun._prune(now);
-      // Truly ahead: not the lethal hit's own row sound (the gun may play none on a lethal hit, or the scream may interrupt
-      // it; F158 is unbenched), and not a clip that ends within DEATH_STOP_SLACK_MS (the stop would arrive after it).
-      if (screamId && CLIP_MS[screamId]) { aheadClips = this._gun.clips.filter(c => c !== this._lastHitClip && c.end - now > DEATH_STOP_SLACK_MS); screamAhead = aheadClips.length; }
-      // a clip the slack spared that is still playing at the FRONT: the stops wait for it to end, so none lands on it
-      const front = this._gun.clips[0];
-      if (screamAhead && front && !aheadClips.includes(front) && front.end > now) stopWait = front.end - now + 10; }
+    const screamMs = screamId && CLIP_MS[screamId] > 0 ? CLIP_MS[screamId] : 0;
+    { const now = this.now(); this._audioSync(now); this._gun._prune(now); }
     // 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets louder (never quieter).
     if (this._timedLifeAt != null && this.now() - this._timedLifeAt <= SPAWN_KILL_WINDOW_MS && this._downWarn < DOWN_WARN_MAX) { this._downWarn++; this.log(`killed ${Math.round((this.now() - this._timedLifeAt) / 100) / 10}s after a timed respawn: down warning level ${this._downWarn}`, 'li'); }
     this._timedLifeAt = null;
@@ -7363,30 +7370,68 @@ export class Engine {
     if (this._pendingHurtWrite) { this._pendingHurtWrite = false; this.log('low-health alert cancelled — a death landed inside the debounce window (2026-09-19)', 'lk'); }
     const cancelledMustHear = this._cancelPendingPlayWrites();
     // Tony 2026-09-25 (F149 / F351 / X4): "your death wins. delaying the death scream would be bad. while you are dead you
-    // can listen to the queue of KCs and game alerts". The death stop takes off every clip the gun holds AHEAD of the
-    // scream (the low-health line, my own kill line) and never the scream itself; an announcer line it cut is said again
-    // after the scream (`_ann.death`). With no scream known, F149's one stop for the low-health line stays.
-    const stops = screamAhead != null ? Math.min(screamAhead, MUST_HEAR_MAX_STOPS) : (this._hurtSent ? 1 : 0);   // F375: only a line that went out
-    // A line on air is cut, and its unsaid rest requeued, only when one of ITS clips is among the stopped ones.
-    const cur = this._ann.current, stopped = aheadClips.slice(0, stops);
-    this._ann.death(this.now(), cancelledMustHear || (stops > 0 && (screamAhead == null || (!!cur && stopped.some(c => c.item === cur)))));
-    const deathLife = this._lifeSeq, deathLightGen = this._lightGen;
-    const sendStop = i => {
-      if (this._lifeSeq !== deathLife || this._lightGen !== deathLightGen || this.ended) return;
-      if (i >= stops) return;
+    // can listen to the queue of KCs and game alerts".
+    // F439 (bench 2026-10-02, 0.4.16, step 11.8, run 3 of three fast kills): the low-health line went out, the death came
+    // about 1 s later, `_death` sent one stop "for a clip ahead of the scream", and Tony heard neither the line nor the
+    // scream (brx1 the same day: the same stop, aimed at a shield heartbeat, and no scream). The native scream does not
+    // queue: it starts AT ONCE and cuts the clip playing, like a token-1 clip (F375's own reading, above: a line written
+    // in the gap after the lethal hit queues BEHIND the scream). So no clip is ever "ahead" of it, and a death stop
+    // lands on the scream itself. With the scream known: NO stop. The model drops the clip playing, puts the scream at
+    // the front from now, and the clips queued behind wait behind it ("you can listen to the queue"). An announcer line
+    // the scream cut is said again after it (`_ann.death`); a line still queued on the gun is not cut.
+    // ⚠ Rests on one bench run plus F375, not a direct measurement: the new bench step confirms it.
+    // With no scream known, F149's one stop for a low-health line that went out stays: there is no scream to cut.
+    const stops = screamMs ? 0 : (this._hurtSent ? 1 : 0);   // F375: only a line that went out
+    const cur = this._ann.current;
+    // every take of a body kind: the cue itself and its pool (`cue_pools`: four `pain_short` takes, two `pain_long`)
+    const cues = (this.frames && this.frames.cues) || {}, pools = (this.frames && this.frames.cue_pools) || {};
+    const bodyIds = new Set(BODY_CUES.flatMap(k => [cues[k], ...(Array.isArray(pools[k]) ? pools[k] : [])]).filter(Boolean).map(f => clipId(f)).filter(Boolean));
+    const isBody = c => !!c && !c.item && bodyIds.has(c.id);
+    // F439 r3: a body clip written within DEATH_LATE_WRITE_MS of the death reached the gun after the scream began (the
+    // brx1 heartbeat in the death second played AFTER the scream): it waits behind the scream and gets a body stop. An
+    // announcer clip in the same window keeps the interrupt reading.
+    const late = c => isBody(c) && this.now() - c.at <= DEATH_LATE_WRITE_MS;
+    const interrupted = screamMs ? this._gun.interrupt(screamMs, `native death scream ${screamId}`, this.now(), screamId, late) : null;
+    if (screamMs) this._screamUntil = this.now() + screamMs;
+    this._ann.death(this.now(), cancelledMustHear || (screamMs ? !!cur && !!interrupted && interrupted.item === cur : stops > 0));
+    if (stops) {
       this._mustWrite = true;
-      try { this._write([PLAYX], `death: stop ${i + 1}/${stops} for a clip ahead of the scream${stopWait ? `, after ${stopWait} ms slack` : ''}`); }
+      try { this._write([PLAYX], 'death: one stop for the low-health line (no native scream known, F149)'); }
       finally { this._mustWrite = false; }
-      const cutClip = stopped[i];
-      if (cutClip) this._gun.clips = this._gun.clips.filter(c => c !== cutClip);
-      else this._gun.clips.splice(0, 1);
+      this._gun.clips.splice(0, 1);
       let tail = this.now();
       for (const c of this._gun.clips) { c.start = tail; c.end = tail + c.ms; tail = c.end; }
-      if (i + 1 < stops) this.delay(PLAY_GAP_MS, () => sendStop(i + 1));
-    };
-    if (stopWait) { const lg = this._lightGen; this.delay(stopWait, () => { if (this._lightGen === lg) sendStop(0); }); }
-    else sendStop(0);
-    if (screamAhead != null) { this._gun.add(CLIP_MS[screamId], `native death scream ${screamId}`, this.now(), screamId); this._screamUntil = this.now() + CLIP_MS[screamId]; }
+    }
+    // F439 (brx1 bench 2026-10-02, UNPROVEN): nothing plays after the scream but the lines meant to follow it (my kill
+    // confirm, announcer items). The scream cut only the clip playing, so a BODY clip queued behind it (the heartbeat,
+    // the critical line, a shield cue) would play next. One stop per such clip, from the scream's end plus
+    // DEATH_BODY_STOP_MARGIN_MS, one write each, PLAY_GAP_MS apart, and only for the body clips in front of the first
+    // announcer clip (a stop never cuts a line meant to follow the scream). A revive cancels them.
+    // F439 r3: the body clips are found lazily, one front clip at a time, so a body write that resolves after the death
+    // (in flight at it) is still covered. A clip with no item that is not a body clip (a `$SIR` row sound) is waited
+    // out, not stopped; an announcer clip ends the stops. At most MUST_HEAR_MAX_STOPS stops.
+    if (screamMs) {
+      const deathLife = this._lifeSeq, deathLightGen = this._lightGen;
+      const bodyStop = (i, waited = null) => {
+        if (this._lifeSeq !== deathLife || this._lightGen !== deathLightGen || this.ended || this.alive) return;
+        if (i >= MUST_HEAR_MAX_STOPS) return;
+        const now = this.now(); this._audioSync(now);
+        const front = this._gun.clips[0];
+        if (!front || front.item || !(front.start <= now)) return;   // a quiet gun, or a line meant to follow the scream
+        // a row sound (or the scream itself, on a timer that ran early): wait it out, once per clip, so a clock that does
+        // not move cannot loop
+        if (!bodyIds.has(front.id)) { if (front !== waited) this.delay(front.end - now + DEATH_BODY_STOP_MARGIN_MS, () => bodyStop(i, front)); return; }
+        if (front.end - now < DEATH_BODY_STOP_MIN_LEFT_MS) { this.log(`death: no stop for ${front.why}: ${front.end - now} ms left, a stop could land on the clip behind it`, 'li'); return; }
+        this._mustWrite = true;
+        try { this._write([PLAYX], `death: stop ${i + 1} for a body cue queued behind the scream (${front.why})`); }
+        finally { this._mustWrite = false; }
+        this._gun.clips.shift();
+        let tail = now;
+        for (const c of this._gun.clips) { c.start = tail; c.end = tail + c.ms; tail = c.end; }
+        this.delay(PLAY_GAP_MS, () => bodyStop(i + 1));
+      };
+      this.delay(this._screamUntil + DEATH_BODY_STOP_MARGIN_MS - this.now(), () => bodyStop(0));
+    }
     this._stunRestore('died');   // F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
     this._puDeath();             // A56: a weapon item's charges are lost and the overshield is gone
     // A16 §5 (AMENDED 2026-09-11 by F113): death clears the readout AND blanks the strip.
