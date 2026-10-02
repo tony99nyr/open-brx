@@ -162,7 +162,8 @@ export function Lobby() {
     setBusy(true);
     try { await run(() => api.pushLobby(force)); } finally { setBusy(false); }
   };
-  const reteam = (p: Player, team_id: string) => { if (p.team_id !== team_id) run(() => api.patchPlayer(p.player_id, { team_id })); };
+  // Returns whether the move went through (`run` resolves undefined on a refusal), so MOVE knows (polish 2026-10-02).
+  const reteam = async (p: Player, team_id: string) => (p.team_id === team_id ? true : (await run(() => api.patchPlayer(p.player_id, { team_id }))) !== undefined);
   // Bench 2026-09-17: a config re-push from LOBBY (e.g. the inline `GameEditPanel`) resets every
   // player's READY to false with the fresh head — correct, but with two players already readied up
   // the operator's only fix used to be tapping each one's HOST OVERRIDE by hand. One call, the
@@ -600,15 +601,16 @@ export function Lobby() {
 }
 
 const MOVE_OPEN_EVENT = 'mc-move-open';
-/** The player whose MOVE should take focus when its row mounts again in its new team column. It expires:
- *  a REFUSED move never remounts the row, and must not pull focus there on some later, unrelated mount. */
+/** The player whose MOVE should take focus when its row mounts again in its new team column. Set at the
+ *  pick (the snapshot can land before the PATCH reply), cleared at once if the move is refused, and capped
+ *  so it can never pull focus there on some later, unrelated mount. */
 let focusAfterMove: { id: string; until: number } | null = null;
-const FOCUS_AFTER_MOVE_MS = 2000;
+const FOCUS_AFTER_MOVE_MS = 10_000;   // a slow field link's PATCH + snapshot, with room to spare
 
 /** A roster row's MOVE: neutral until pressed, then the OTHER teams inline, each in its own colour. A pick
  *  moves the player at once (no warning, the same `patchPlayer`); Escape or MOVE again closes it. Inline,
  *  not floating, so it never covers the row below on a tablet. */
-function MoveMenu({ id, name, others, onMove }: { id: string; name: string; others: string[]; onMove: (team_id: string) => void }) {
+function MoveMenu({ id, name, others, onMove }: { id: string; name: string; others: string[]; onMove: (team_id: string) => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
   const openRef = useRef<HTMLButtonElement>(null);
   const firstRef = useRef<HTMLButtonElement>(null);
@@ -643,7 +645,11 @@ function MoveMenu({ id, name, others, onMove }: { id: string; name: string; othe
       </button>
       {open && others.map((t, i) => (
         <button key={t} ref={i === 0 ? firstRef : undefined} type="button" className="hit44" data-move-to={t}
-          onClick={() => { focusAfterMove = { id, until: Date.now() + FOCUS_AFTER_MOVE_MS }; close(); onMove(t); }} title={`Move ${name} to ${t.toUpperCase()}`}
+          onClick={() => {
+            focusAfterMove = { id, until: Date.now() + FOCUS_AFTER_MOVE_MS };
+            close();
+            void onMove(t).then(ok => { if (!ok && focusAfterMove?.id === id) focusAfterMove = null; });
+          }} title={`Move ${name} to ${t.toUpperCase()}`}
           style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 12px', color: teamColor(t),
             border: `1px solid ${teamColor(t)}`, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>
           {t.toUpperCase()}
@@ -653,7 +659,7 @@ function MoveMenu({ id, name, others, onMove }: { id: string; name: string; othe
   );
 }
 
-function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; readOnly?: boolean; updating?: boolean; onDragStart: () => void; onMove: (team_id: string) => void }) {
+function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; readOnly?: boolean; updating?: boolean; onDragStart: () => void; onMove: (team_id: string) => Promise<boolean> }) {
   // H5: no move chips, no drag and no STAND DOWN while the match is in play (the server refuses them)
   const others = readOnly ? [] : teamIds.filter(t => t !== p.team_id);
   // F-7 (2026-09-13): the wide layout wraps to 3-4 lines at 393 px — name, gun, NO PHONE, reach,

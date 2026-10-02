@@ -114,7 +114,7 @@ describe('LOBBY — one neutral MOVE button opens a picker of the other teams', 
       await act(async () => { opt.click(); });
       m.unmount();
       (document.activeElement as HTMLElement | null)?.blur();
-      vi.setSystemTime(Date.now() + 5000);   // much later: a tab switch back to LOBBY
+      vi.setSystemTime(Date.now() + 500);   // soon after, well inside the window: the refusal itself must have cleared it
       const m2 = await mountScreen(<Lobby />, { ...d, api, state, view: 'lobby' });
       expect(document.activeElement?.hasAttribute('data-move-open') ?? false, 'no focus theft on an unrelated remount').toBe(false);
       m2.unmount();
