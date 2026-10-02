@@ -7508,7 +7508,7 @@ export class Engine {
       // F436 (bench 2026-10-02): a heavy ON the trigger is re-equipped in the re-arm itself. An `$AMMO` row never moves
       // the trigger, and after the disarm the gun was on slot 0 while the engine kept slot 2, so the first pull fired
       // the loadout weapon. `_puEquip` writes the loadout rows first, then the heavy's `$WEAP` + `$AMMO`, in one write.
-      const reequip = !!(h && h.trig === h.slot && this._puHeadWeap(h.slot));
+      const reequip = !!(h && h.trig === h.slot && this._puHeadWeap(h.slot) && !(this.switching && !this.switching.pu));   // an ALT swap in flight is the player's choice: leave the trigger to it
       const ammo = reequip ? rows.filter(f => !f.startsWith(`$AMMO,${h.slot},`)) : this._puRearmRows(rows);   // A56: a held heavy keeps its charges
       if (ammo.length || reequip) {
         // F259: the account takes the re-armed counts and opens the echo window, as `_puEquip` does, so the gun's

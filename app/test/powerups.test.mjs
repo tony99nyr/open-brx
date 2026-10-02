@@ -1323,9 +1323,22 @@ test('F436 reconcile control: a heavy held OFF the trigger is not re-equipped by
   assert.ok(after.includes('$AMMO,2,2,0,1,*'), 'its charges are still re-armed');
 });
 
-test('F436 backstop: a slot-0 shot repair shows the switch card onto the heavy', () => {
-  const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
+test('F436 backstop: a slot-0 shot repair shows the switch card onto the heavy, and none once the repairs are spent', () => {
+  const h = harness({ ...ROCKET_GAME, echo: true }); h.at(121); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
   h.fire(0, 31, 192);
   const sw = h.eng.switching;
-  assert.ok(sw && sw.pu && sw.to === 2, `the HUD card names the move to the heavy: ${JSON.stringify(sw)}`);
+  assert.ok(sw && sw.pu && sw.from === 0 && sw.to === 2, `the HUD card names the move from slot 0 to the heavy: ${JSON.stringify(sw)}`);
+  let mag = 30;
+  for (let i = 0; i < E.PU_COUNT_REPAIRS; i++) { h.adv(h.eng.switchWindowMs() + 300); h.eng.switching = null; h.fire(0, mag--, 192); }
+  h.adv(h.eng.switchWindowMs() + 300); h.eng.switching = null; h.fire(0, mag--, 192);
+  assert.ok(!(h.eng.switching && h.eng.switching.pu), 'no card once the repair budget is spent');
+});
+
+test('F436 reconcile: an ALT swap in flight at the re-arm is left alone (no forced heavy)', () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
+  const b0 = h.batches.length;
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.adv(2800); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(3000);   // ALT 200 ms before the 3 s reconcile (RECONCILE_MS) ends
+  const after = h.batches.slice(b0).flat();
+  assert.ok(!after.includes(WEAP[2]), `the re-arm does not force $WEAP,2 over the player's ALT: ${JSON.stringify(after.filter(f => f.startsWith('$WEAP')))}`);
 });
