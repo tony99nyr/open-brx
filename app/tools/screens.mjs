@@ -4490,6 +4490,9 @@ const CO_CASES = [
   ['live-kill', 'hero', 'kill', 'VIPER', 30, 3400, 2900],
   ['live-hill-captured', 'obj', 'hill_captured', 'HILL CAPTURED', 15, 3600, null],
   ['live-hill-lost', 'obj', 'hill_lost', 'HILL LOST', 15, 3600, null],
+  // Tony, bench 2026-10-02: a capture BEGINS (engine.js `_hillBegins`), on the same hill badge
+  ['live-hill-taking', 'obj', 'hill_taking', 'TAKING THE HILL', 15, 3600, null],
+  ['live-hill-attack', 'obj', 'hill_attack', 'HILL UNDER ATTACK', 15, 3600, null],
 ];
 const coRead = (pg, lane, kind) => lnRead(pg).then(r => {
   const it = lane === 'hero' ? (r.hero ? { name: r.hero.name, px: r.hero.namePx, boxes: r.hero.parts } : null)
@@ -4515,6 +4518,25 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [stage, 
     const took = await pg.evaluate(t => performance.now() - t, t0); await pg.close();
     if (holdMs) must(gone && took <= holdMs + 150, `still up ${Math.round(took)} ms after it appeared (hold ${holdMs})`);
     else must(!gone, `the ${kind} badge left after ${Math.round(took)} ms; it stays until the next one replaces it`);
+  });
+}
+
+// Tony, bench 2026-10-02, the clash: HILL UNDER ATTACK lands while I am DOWN. The down screen owns the phone, so the
+// badge is not drawn; it waits on the lane and is drawn, one line, once I am back.
+for (const view of VIEWS) for (const night of [false, true]) {
+  await step(`${view.name} hill attack while down ${night ? 'night' : 'day'}: hidden under the down screen, shown after the respawn`, async () => {
+    const pg = await open(view, 'down-hill-attack', night ? '&night' : '', 1200);
+    await pg.waitForFunction(() => { const s = window.brxDemo.state(); return !s.alive && s.lanes && s.lanes.obj.hill && s.lanes.obj.hill.kind === 'hill_attack'; }, null, { timeout: 6000 });
+    const down = await lnRead(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-hill-attack-down${night ? '-night' : ''}.png` });
+    must(down.obj.length === 0, `no badge may draw over the down screen: ${JSON.stringify(down.obj)}`);
+    await pg.waitForFunction(() => window.brxDemo.state().alive, null, { timeout: 6000 });
+    let r = null; for (let t = 0; t < 3000 && !(r = (await lnRead(pg)).obj.find(o => o.kind === 'hill_attack')); t += 100) await pg.waitForTimeout(100);
+    await pg.screenshot({ path: `${OUT}/${view.name}-hill-attack-back${night ? '-night' : ''}.png` });
+    const env = (await lnRead(pg)).env; await pg.close();
+    must(r && r.text === 'HILL UNDER ATTACK' && r.kick === 'OBJECTIVE', `after the respawn the badge must read HILL UNDER ATTACK: ${JSON.stringify(r)}`);
+    must(r.px >= 15, `the words are ${r.px}px, the floor is 15`);
+    must(apart(r.box, env.vitals[0]) && apart(r.box, env.ammo[0]), `it covers the vitals or the ammo: ${JSON.stringify({ box: r.box, env })}`);
   });
 }
 

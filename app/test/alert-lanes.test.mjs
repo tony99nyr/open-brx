@@ -192,3 +192,120 @@ test('F400 final r2: a hit during the ACTIVE bubble does not end the card early'
   h.adv(300);
   assert.equal(h.eng.state().switchCard, false);
 });
+
+// ---- Tony, bench 2026-10-02: the hill badge when a capture BEGINS (engine.js `_hillBegins`). A phone control point's
+// advert (utility.md §5d), as app.js pushes `presence.stations()`. Me: BLUE (tid 1). The enemy here is RED (tid 0):
+// YELLOW is tid 2, the neutral sentinel, which can never own a point (F82).
+const { CONTROL_STATE: CS } = await import('../src/control.js');
+const BLUE = 1, RED = 0;
+function point(h, o) {
+  h.eng.setStations([{ role: 'station', id: 11, kind: 'control', team: 255, state: 0, value: 0, seq: 0, game: 0, threshold: -74, rssi: -50, raw: -50, present: true, ageMs: 0, ...o }]);
+  return h;
+}
+/** Hold one advert for `ms`, re-sent every 250 ms like the presence loop. */
+function hold(h, ms, o) { for (let t = 0; t < ms; t += 250) { h.adv(250); point(h, o); } return h; }
+const shown = (h, kind) => h.logs.filter(l => l.startsWith(`hill ${kind}: `)).length;
+const badge = h => h.eng.state().lanes && h.eng.state().lanes.obj.hill;
+
+test('hill begins: TAKING THE HILL once when our progress leaves 0, and a stall that resumes is the same episode', () => {
+  const h = harness({ mode: 'koth' }).live();
+  point(h, { team: 255, state: 0, value: 0 });                       // first advert: a neutral point, adopted silently
+  assert.equal(shown(h, 'hill_taking'), 0);
+  point(h, { team: BLUE, state: CS.rising, value: 4 });
+  assert.equal(shown(h, 'hill_taking'), 1, 'our progress left 0');
+  assert.equal(badge(h).kind, 'hill_taking', 'on the hill badge, the same lane item as HILL CAPTURED');
+  for (let v = 8; v <= 60; v += 4) { h.adv(250); point(h, { team: BLUE, state: CS.rising, value: v }); }
+  hold(h, 11000, { team: BLUE, state: 0, value: 60 });                // we stepped off: it stalls at 60 (past the 10 s floor)
+  hold(h, 3000, { team: BLUE, state: CS.rising, value: 70 });         // and resumes
+  hold(h, 2000, { team: BLUE, state: CS.contested, value: 70 });      // an even fight stalls it too
+  assert.equal(shown(h, 'hill_taking'), 1, 'never twice in one episode');
+  hold(h, 500, { team: BLUE, state: CS.held, value: 100 });
+  assert.equal(badge(h).kind, 'hill_captured', 'the capture replaces it, and that ends the episode');
+});
+
+test('hill begins: a new TAKING episode only after the progress returned to 0, and never inside the 10 s floor', () => {
+  const h = harness({ mode: 'koth' }).live();
+  point(h, { team: 255, state: 0, value: 0 });
+  point(h, { team: BLUE, state: CS.rising, value: 10 });
+  hold(h, 1000, { team: BLUE, state: CS.falling, value: 4 });         // RED pushes our build back down
+  hold(h, 500, { team: RED, state: CS.rising, value: 3 });            // to 0, and on for RED: our episode is over
+  point(h, { team: BLUE, state: CS.rising, value: 2 });               // ours again 2 s after the first card: inside the floor
+  assert.equal(shown(h, 'hill_taking'), 1, 'a flapping point is bounded to one card per 10 s');
+  hold(h, 1000, { team: RED, state: CS.rising, value: 5 });
+  hold(h, 9000, { team: RED, state: 0, value: 5 });                  // RED's bar, stalled: past the floor, not ours
+  assert.equal(shown(h, 'hill_taking'), 1);
+  hold(h, 500, { team: RED, state: CS.falling, value: 0 });
+  hold(h, 500, { team: BLUE, state: CS.rising, value: 3 });
+  assert.equal(shown(h, 'hill_taking'), 2, 'past the floor, a capture that began again is news again');
+});
+
+test('hill begins: HILL UNDER ATTACK once when the other team starts on our held point, until we restore it', () => {
+  const h = harness({ mode: 'koth' }).live();
+  point(h, { team: BLUE, state: CS.held, value: 100 });              // we hold it: adopted silently
+  hold(h, 1000, { team: BLUE, state: CS.held, value: 100 });
+  assert.equal(shown(h, 'hill_attack'), 0);
+  point(h, { team: BLUE, state: CS.held | CS.falling, value: 96 });
+  assert.equal(shown(h, 'hill_attack'), 1, 'RED started to drain it');
+  assert.equal(badge(h).kind, 'hill_attack');
+  hold(h, 2000, { team: BLUE, state: CS.held | CS.falling, value: 80 });
+  hold(h, 11000, { team: BLUE, state: CS.held, value: 80 });          // they left: it stalls at 80, still ours (past the floor)
+  hold(h, 2000, { team: BLUE, state: CS.held | CS.falling, value: 70 });   // and they came back
+  assert.equal(shown(h, 'hill_attack'), 1, 'a drain that stalls and resumes is one episode');
+  hold(h, 3000, { team: BLUE, state: CS.held | CS.rising, value: 99 });
+  hold(h, 3000, { team: BLUE, state: CS.held, value: 100 });         // we built it back to 100: the episode ends
+  hold(h, 500, { team: BLUE, state: CS.held | CS.falling, value: 97 });
+  assert.equal(shown(h, 'hill_attack'), 2, 'a new attack after the point was whole again');
+  assert.equal(shown(h, 'hill_taking'), 0, 'and none of this is ours to take');
+});
+
+test('hill begins: HILL UNDER ATTACK when the other team drains a point we are building, and the enemy`s own build is silent', () => {
+  const h = harness({ mode: 'koth' }).live();
+  point(h, { team: 255, state: 0, value: 0 });
+  hold(h, 2000, { team: RED, state: CS.rising, value: 20 });          // RED building it: not our capture, not our point
+  assert.equal(shown(h, 'hill_taking') + shown(h, 'hill_attack'), 0);
+  hold(h, 1000, { team: RED, state: CS.falling, value: 0 });
+  hold(h, 2000, { team: BLUE, state: CS.rising, value: 40 });
+  assert.equal(shown(h, 'hill_taking'), 1);
+  point(h, { team: BLUE, state: CS.falling, value: 37 });
+  assert.equal(shown(h, 'hill_attack'), 1, 'our build is our point too');
+  assert.equal(badge(h).kind, 'hill_attack', 'the newer fact replaces TAKING THE HILL');
+});
+
+test('hill begins: walking into range mid-capture is silent, as the owner is', () => {
+  const h = harness({ mode: 'koth' }).live();
+  point(h, { team: BLUE, state: CS.rising, value: 40 });
+  hold(h, 1000, { team: BLUE, state: CS.rising, value: 45 });
+  const g = harness({ mode: 'koth' }).live();
+  point(g, { team: BLUE, state: CS.held | CS.falling, value: 70 });
+  hold(g, 1000, { team: BLUE, state: CS.held | CS.falling, value: 65 });
+  assert.equal(shown(h, 'hill_taking') + shown(g, 'hill_attack'), 0, 'we did not see either begin');
+});
+
+test('hill begins: an attack while I am DOWN waits on the badge, and is there when I am back', () => {
+  const h = harness({ mode: 'koth' }).live();
+  hold(h, 1000, { team: BLUE, state: CS.held, value: 100 });
+  h.eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); h.adv(300);
+  assert.equal(h.eng.state().alive, false, 'setup: I am down (the HUD draws no lane while I am down)');
+  hold(h, 500, { team: BLUE, state: CS.held | CS.falling, value: 97 });
+  assert.equal(shown(h, 'hill_attack'), 1);
+  assert.equal(badge(h).kind, 'hill_attack', 'queued on the badge under the down screen');
+  const at = badge(h).at;
+  for (let t = 0; t < 8000 && !h.eng.state().alive; t += 250) hold(h, 250, { team: BLUE, state: CS.held | CS.falling, value: 90 });
+  assert.equal(h.eng.state().alive, true, 'setup: the timed respawn brought me back');
+  assert.equal(badge(h).kind, 'hill_attack', 'still up after the respawn');
+  assert.equal(badge(h).at, at, 'the same card, not a second one');
+  assert.equal(shown(h, 'hill_attack'), 1);
+});
+
+test('hill begins: an attack during a weapon switch card waits under it, as every hill badge does', () => {
+  const h = harness({ mode: 'koth', ...TWO }).live();
+  hold(h, 1000, { team: BLUE, state: CS.held, value: 100 });
+  const end = altCard(h); h.adv(300);
+  point(h, { team: BLUE, state: CS.held | CS.falling, value: 97 });
+  assert.equal(h.eng.state().switchCard, true, 'the card is up (the HUD hides the lanes under it)');
+  assert.equal(badge(h).kind, 'hill_attack');
+  hold(h, 2500, { team: BLUE, state: CS.held | CS.falling, value: 90 }); const cardEnd = end();
+  h.adv(cardEnd + LANE_HILL_CLEAR_MS - 300 - h.now());
+  point(h, { team: BLUE, state: CS.held | CS.falling, value: 60 });
+  assert.equal(badge(h).kind, 'hill_attack', 'its full time runs after the card');
+});

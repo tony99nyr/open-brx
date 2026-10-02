@@ -483,6 +483,12 @@ export function startDemo({ engine, log }) {
       dealtTo: (victim, num, dmg, weapon_id = 'assault_rifle') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'hit', t: Date.now(), victim: 'p-' + victim.toLowerCase(), victim_num: num, victim_display: victim, dmg, weapon_id } }),
       beacon: (tid = 1) => engine.feedFrame(`$HIR,4,15,0,${tid},8,0,0,*`),   // a grenade hill's IR beacon: owner tid, magnitude 8
       hillTaken: (tid = 1) => engine.feedFrame(`$HIR,4,15,0,${tid},50,0,0,*`),   // QA-05: the grenade's capture word (magnitude 50) naming the new owner
+      // a phone CONTROL POINT's advert (utility.md §5d), fed through presence like `station`: `team` is the owner while
+      // held, else the team building it; `state` bits held 1 · contested 2 · rising 4 · falling 8; `value` 0-100
+      point: (team = 255, state = 0, value = 0) => { const list = [{ role: 'station', kind: 'control', id: 11, team, state, value, seq: 0, game: 0, rssi: -55, raw: -55, threshold: -74, present: true, seenAt: Date.now(), ageMs: 0 }];
+        const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
+        if (pr) pr.stations = () => list;
+        engine.setStations(list); },
       addMate: () => { if (!roster.some(r => r.player_num === 23)) roster.push({ player_id: 'p-4', player_num: 23, display: 'MAVERICK', team_id: teamKey }); },   // QA-05: a teammate the roster can name
     });
     // ---- A56 powerups (docs/spec/powerups.md): a powerup game through the REAL engine. The config carries the stations'
@@ -780,6 +786,12 @@ export function startDemo({ engine, log }) {
       'live-callout-by':    [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${21 + foe.tid},0,0,*`)]],   // DOWN_BY naming MAVERICK: ENEMY DOWN · BY MAVERICK
       'live-hill-captured': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(2)], [2400, () => ev.hillTaken(team.tid)]],
       'live-hill-lost':     [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(team.tid)], [2400, () => ev.hillTaken(team.tid === 0 ? 3 : 0)]],   // we hold it (adopted silently), then an enemy's capture word
+      // Tony, bench 2026-10-02: a capture BEGINS, on a phone control point (engine.js `_hillBegins`). The first advert is
+      // adopted silently, so each stage shows the point first and then the change.
+      'live-hill-taking':   [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(255, 0, 0)], [2400, () => ev.point(team.tid, 4, 6)]],   // our bar leaves 0: TAKING THE HILL
+      'live-hill-attack':   [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(team.tid, 1, 100)], [2400, () => ev.point(team.tid, 1 | 8, 96)]],   // our point starts to drain: HILL UNDER ATTACK
+      // the clash: the attack lands while I am DOWN, waits on the badge, and shows when I am back
+      'down-hill-attack':   [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(team.tid, 1, 100)], [2300, 'die'], [2600, () => ev.point(team.tid, 1 | 8, 96)], [4600, 'respawn']],
       // ---- A56 powerups: every state below is the REAL engine, fed a powerup game and fake station adverts ----
       'live-pu':             [[0, () => ev.powerups()], ...live],                                                      // a powerup game, nothing near: the HUD is unchanged
       'live-pu-spawn':       [[0, () => ev.powerups(1)], ...live],                                                     // OVERSHIELD AVAILABLE, 1 s after go-live
