@@ -134,6 +134,8 @@ step('move-picker', async ({ browser, base }) => {
     await opts.first().click();
     await until(async () => (await pg.evaluate(id => window.__MC_MOCK__.getState().then(s => s.players.find(x => x.player_id === id)?.team_id), p.player_id)) === ids[0], 4000, 'the move to reach the server');
     expect(await pg.locator('[data-move-to]').count() === 0, `${w}px: the picker closes after a pick`);
+    // polish 2026-10-02: the row remounts in its new column; focus follows the player there, not to <body>
+    await until(() => pg.evaluate(name => document.activeElement?.closest(`[aria-label="move ${name} to"]`) != null && document.activeElement?.hasAttribute('data-move-open'), p.display), 4000, `${w}px: focus on ${p.display}'s MOVE in the new column`);
     ok(`${w}px: MOVE -> the other teams in their own colours -> a pick moves ${p.display} to ${ids[0].toUpperCase()}`);
     await pg.context().close();
   }

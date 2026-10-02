@@ -77,6 +77,28 @@ describe('LOBBY — one neutral MOVE button opens a picker of the other teams', 
     expect(calls).toEqual([]);
     m.unmount();
   });
+
+  it('opening one row\'s picker closes any other row\'s', async () => {
+    const { m, state } = await lobby();
+    const [a, b] = state.players.slice(0, 2);
+    const open = (name: string) => (m.find(`[aria-label="move ${name} to"]`)[0] as HTMLElement).querySelector('[data-move-open]') as HTMLButtonElement;
+    await act(async () => { open(a.display).click(); });
+    await act(async () => { open(b.display).click(); });
+    expect(open(a.display).getAttribute('aria-expanded'), 'the first picker closed').toBe('false');
+    expect(open(b.display).getAttribute('aria-expanded')).toBe('true');
+    m.unmount();
+  });
+
+  it('a drag never starts from a button on the row (a trackpad press on MOVE stays a click)', async () => {
+    const { m, group, moveBtn } = await lobby();
+    const row = group().closest('[draggable="true"]') as HTMLElement;
+    expect(row, 'control: the row is draggable').toBeTruthy();
+    moveBtn().dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    const ev = new Event('dragstart', { bubbles: true, cancelable: true });
+    moveBtn().dispatchEvent(ev);
+    expect(ev.defaultPrevented, 'the row refuses a drag that began on a button').toBe(true);
+    m.unmount();
+  });
 });
 
 function hexToRgb(hex: string): string {
