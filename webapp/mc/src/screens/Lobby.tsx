@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
 import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_ID, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, splitBlocker , cleanServerLine } from '../api/derive';
 import type { Player } from '../api/types';
@@ -162,7 +162,8 @@ export function Lobby() {
     setBusy(true);
     try { await run(() => api.pushLobby(force)); } finally { setBusy(false); }
   };
-  const reteam = (p: Player, team_id: string) => { if (p.team_id !== team_id) run(() => api.patchPlayer(p.player_id, { team_id })); };
+  // Returns whether the move went through (`run` resolves undefined on a refusal), so MOVE knows (polish 2026-10-02).
+  const reteam = async (p: Player, team_id: string) => (p.team_id === team_id ? true : (await run(() => api.patchPlayer(p.player_id, { team_id }))) !== undefined);
   // Bench 2026-09-17: a config re-push from LOBBY (e.g. the inline `GameEditPanel`) resets every
   // player's READY to false with the fresh head — correct, but with two players already readied up
   // the operator's only fix used to be tapping each one's HOST OVERRIDE by hand. One call, the
@@ -599,7 +600,66 @@ export function Lobby() {
   );
 }
 
-function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; readOnly?: boolean; updating?: boolean; onDragStart: () => void; onMove: (team_id: string) => void }) {
+const MOVE_OPEN_EVENT = 'mc-move-open';
+/** The player whose MOVE should take focus when its row mounts again in its new team column. Set at the
+ *  pick (the snapshot can land before the PATCH reply), cleared at once if the move is refused, and capped
+ *  so it can never pull focus there on some later, unrelated mount. */
+let focusAfterMove: { id: string; until: number } | null = null;
+const FOCUS_AFTER_MOVE_MS = 10_000;   // a slow field link's PATCH + snapshot, with room to spare
+
+/** A roster row's MOVE: neutral until pressed, then the OTHER teams inline, each in its own colour. A pick
+ *  moves the player at once (no warning, the same `patchPlayer`); Escape or MOVE again closes it. Inline,
+ *  not floating, so it never covers the row below on a tablet. */
+function MoveMenu({ id, name, others, onMove }: { id: string; name: string; others: string[]; onMove: (team_id: string) => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const openRef = useRef<HTMLButtonElement>(null);
+  const firstRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (open) firstRef.current?.focus(); }, [open]);
+  // Polish 2026-10-02: one picker at a time; opening this one closes any other row's.
+  useEffect(() => {
+    const onOther = (e: Event) => { if ((e as CustomEvent<string>).detail !== id) setOpen(false); };
+    window.addEventListener(MOVE_OPEN_EVENT, onOther);
+    return () => window.removeEventListener(MOVE_OPEN_EVENT, onOther);
+  }, [id]);
+  // A pick moves the row to another team column, which mounts a NEW MoveMenu: that one takes the focus,
+  // so a keyboard operator stays on the player they just moved (polish 2026-10-02).
+  useEffect(() => {
+    if (focusAfterMove?.id !== id) return;
+    const fresh = Date.now() < focusAfterMove.until;
+    focusAfterMove = null;
+    if (fresh) openRef.current?.focus();
+  }, [id]);
+  const toggle = () => {
+    if (!open) window.dispatchEvent(new CustomEvent(MOVE_OPEN_EVENT, { detail: id }));
+    setOpen(!open);
+  };
+  const close = () => { setOpen(false); openRef.current?.focus(); };
+  return (
+    <span role="group" aria-label={`move ${name} to`} style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}
+      onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); close(); } }}>
+      <button ref={openRef} type="button" className="hit44" data-move-open aria-expanded={open} onClick={toggle}
+        title={`Move ${name} to another team`}
+        style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 10px', color: T.dim,
+          border: `1px solid ${open ? T.line2 : T.line}`, minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
+        MOVE {open ? '▴' : '▾'}
+      </button>
+      {open && others.map((t, i) => (
+        <button key={t} ref={i === 0 ? firstRef : undefined} type="button" className="hit44" data-move-to={t}
+          onClick={() => {
+            focusAfterMove = { id, until: Date.now() + FOCUS_AFTER_MOVE_MS };
+            close();
+            void onMove(t).then(ok => { if (!ok && focusAfterMove?.id === id) focusAfterMove = null; });
+          }} title={`Move ${name} to ${t.toUpperCase()}`}
+          style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 12px', color: teamColor(t),
+            border: `1px solid ${teamColor(t)}`, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>
+          {t.toUpperCase()}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; readOnly?: boolean; updating?: boolean; onDragStart: () => void; onMove: (team_id: string) => Promise<boolean> }) {
   // H5: no move chips, no drag and no STAND DOWN while the match is in play (the server refuses them)
   const others = readOnly ? [] : teamIds.filter(t => t !== p.team_id);
   // F-7 (2026-09-13): the wide layout wraps to 3-4 lines at 393 px — name, gun, NO PHONE, reach,
@@ -625,24 +685,17 @@ function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart
     {noPhone && <OutlineTag color={colourOf('lobby-no-phone-chip')} border={T.line}>NO PHONE</OutlineTag>}
     {reach && <OutlineTag color={reach === 'backhaul' ? T.acc : colourOf('lobby-reach-lan-chip')} border={reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(reach)}>{reachLabel(reach)}</OutlineTag>}
   </>;
-  // tap-to-move (tablets have no HTML5 drag): one chip per other team
-  const moveChips = (
-    <span role="group" style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }} aria-label={`move ${p.display} to`}>
-      {others.map(t => (
-        <button key={t} type="button" className="hit44" onClick={() => onMove(t)} title={`Move ${p.display} to ${t.toUpperCase()}`}
-          // F7 follow-up (2026-09-13): 9px was under the console's 11px floor for meaning-bearing
-          // text -- the floor this same file states at :339 -- and these chips NAME the team a tap
-          // moves a player onto. One `moveChips` const feeds both the wide row and the compact 393px
-          // one, so this is the single place it is set; 11px also matches `StandDownChip` beside it.
-          style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 10px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
-          ▸ {t.toUpperCase()}
-        </button>
-      ))}
-    </span>
-  );
+  // tap-to-move (tablets have no HTML5 drag). Bench 2026-10-02 (Tony): one chip per other team put a red
+  // "▸ RED" on a blue player's row ("this is confusing"). One neutral MOVE opens the other teams instead.
+  // Polish 2026-10-02: a press that wanders a few pixels on MOVE, a team button or STAND DOWN started a
+  // ROW drag and swallowed the click (trackpads). A drag may only start from the row itself, never a button.
+  const fromButton = useRef(false);
+  const markDragOrigin = (e: React.PointerEvent) => { fromButton.current = !!(e.target as Element).closest('button'); };
+  const rowDragStart = (e: React.DragEvent) => { if (fromButton.current) { e.preventDefault(); return; } onDragStart(); };
+  const moveChips = others.length > 0 && <MoveMenu id={p.player_id} name={p.display} others={others} onMove={onMove} />;
   if (narrow) {
     return (
-      <div className="hov-acc" draggable={!readOnly} onDragStart={readOnly ? undefined : onDragStart} data-no-phone={noPhone ? '1' : undefined} data-compact-row="1"
+      <div className="hov-acc" draggable={!readOnly} onPointerDownCapture={markDragOrigin} onDragStart={readOnly ? undefined : rowDragStart} data-no-phone={noPhone ? '1' : undefined} data-compact-row="1"
         style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', background: T.panel, border: `1px solid ${T.line}`, cursor: readOnly ? 'default' : 'grab', minHeight: 44, opacity: noPhone ? 0.55 : 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span aria-hidden style={{ font: F.mono(600, 12), color: T.faint, letterSpacing: '-.1em', flex: 'none' }}>⠿</span>
@@ -662,7 +715,7 @@ function MemberRow({ p, teamIds, reach, noPhone, readOnly, updating, onDragStart
     );
   }
   return (
-    <div className="hov-acc" draggable={!readOnly} onDragStart={readOnly ? undefined : onDragStart} data-no-phone={noPhone ? '1' : undefined}
+    <div className="hov-acc" draggable={!readOnly} onPointerDownCapture={markDragOrigin} onDragStart={readOnly ? undefined : rowDragStart} data-no-phone={noPhone ? '1' : undefined}
       // F142 (field 2026-09-12, ISSUE 11b): a restored player with no phone bound read exactly like a
       // real, connected one — dim the row and say so, the same treatment KIT now gives it.
       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.panel, border: `1px solid ${T.line}`, cursor: readOnly ? 'default' : 'grab', minHeight: 44, flexWrap: 'wrap', opacity: noPhone ? 0.55 : 1 }}>
