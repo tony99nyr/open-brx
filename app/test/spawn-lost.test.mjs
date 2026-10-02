@@ -291,3 +291,13 @@ test('F416 weapon review: the zero-pool answer that spends the budget books the 
   const st = h.eng.state();
   assert.equal(st.alive, false, `the budget is spent and the 0 pool is booked; the respawn is the cure: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
 });
+
+test('F416 weapon review r2: an ALT swap still in its window defers the verdict instead of re-sending $SPAWN', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 1, mag: 6, reserve: 24 }), true) }).live();
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } };   // two weapons: ALT is a swap
+  await h.adv(4000 + 50);
+  h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');   // ALT before the check's query: the gun is on slot 1, the node still waits
+  await h.adv(3000);
+  assert.equal(h.spawns(), 1, `no second $SPAWN over the player's ALT: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+});

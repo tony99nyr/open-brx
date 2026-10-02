@@ -1549,7 +1549,16 @@ export class Engine {
     // The gun must agree with the node's own view: the slot on the trigger and that slot's live count. A healthy gun
     // that fired, reloaded or swapped with ALT since the write still matches; the bench P0 (an unspawned gun on the
     // head's last `$WEAP`, slot 2 at 2/1, while the node held slot 0) does not.
-    const slot = this.activeSlot, live = this._liveAmmo()[slot], expected = live ? live[0] : null;
+    const slot = this.activeSlot;
+    // Round 2: no verdict while the node's own view is in motion -- a press whose round has not come back (the account
+    // already counts it), an ALT swap inside its window, or a stun holding the gun at 0. Ask again; the check's own
+    // SPAWN_CHECK_MAX_MS still bounds it. A false mismatch here would re-send `$SPAWN` to a gun that is firing.
+    if (this._acctOutstanding(slot) || (this.switching && !this.switching.pu) || this.stunned) {
+      c.heardAt = 0; c.asks = 0;
+      this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
+      return;
+    }
+    const live = this._liveAmmo()[slot], expected = live ? live[0] : null;
     if (+lcd[4] === slot && expected != null && +lcd[5] === expected) {
       this._spawnCheck = null;
       if (this._writeLost === c.life) this._writeLost = null;
