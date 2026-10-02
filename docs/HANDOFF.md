@@ -54,8 +54,7 @@ for mDNS: `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_m
 ## Lane: brx5, powerups, the HUD and gun audio
 **State:** powerups ON by default on main (F372); F416, F417 part 1 and F418 are shipped (spawn-write retry, lost
 equip re-send, a held heavy ends only on a trigger pull).
-**Next:** desk: B21's iOS half on the MacBook. F419's engine side is built (queue-slot cues wait for the clip on the gun); its bench check is on the row. Bench part 2: re-verify F416/F417/F418; sitting C's F394, F381,
-F400 and spacing checks.
+**Next:** the re-bench list in [`bench-plan.md`](bench-plan.md); F437-F439 bench steps on their rows.
 **Blocked:** none.
 ## Start here
 
