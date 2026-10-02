@@ -1507,3 +1507,138 @@ def test_back_to_hud_in_recap_clears_the_hill_and_the_way_back_is_a_fresh_statio
     s.set_station("brxu-grey", {"kind": "control", "team": "any"})
     s.load_game()
     assert s.game_loaded and s._koth_hill_fault() is None
+
+
+# --------------------------------------------------------------------------- bench 2026-10-02: the departure record
+# Tony's option B: no confirm on the phone. MC RECORDS a station that leaves (BACK TO HUD, or an MC RELEASE), names
+# it in the LOAD refusal and on ITEMS, and offers a one-tap RESTORE once the SAME utility node is back. Never automatic.
+def _hhmm(ms: int) -> str:
+    import time as _t
+    return _t.strftime("%H:%M", _t.localtime(ms / 1000))
+
+
+def _departed_hill(nid: str = "brxu-grey"):
+    s = _koth_played_to_recap(nid)
+    s.stations[nid]["platform"] = "android"
+    s.net.simulate_hello("brx-grey", "", prior_utility_node_id=nid)   # BACK TO HUD
+    return s
+
+
+def _departures(s) -> list[dict]:
+    return s.snapshot().get("station_departures") or []
+
+
+def test_back_to_hud_records_the_departure_with_what_restore_needs():
+    s = _departed_hill()
+    deps = _departures(s)
+    assert len(deps) == 1, deps
+    d = deps[0]
+    assert d["node_id"] == "brxu-grey" and d["kind"] == "control" and d["id"] == 2 and d["team"] == 255, d
+    assert d["threshold"] == 0 and d["reason"] == "back_to_hud" and d["returned"] is False, d
+    assert d["label"] == "ANDROID PHONE GREY", d   # the device and the node's tail: ITEMS shows no other name
+    assert isinstance(d["at_ms"], int) and d["at_ms"] > 0, d
+    assert d["restore"] == {"kind": "control", "team": 255, "threshold": 0}, d["restore"]
+    assert f"HILL 2 (ANDROID PHONE GREY) WENT BACK TO HUD AT {_hhmm(d['at_ms'])}" in d["line"], d["line"]
+
+
+def test_the_load_refusal_names_the_hill_that_went_back_to_hud():
+    s = _departed_hill()
+    at = _departures(s)[0]["at_ms"]
+    try:
+        s.next_match()
+        raise AssertionError("LOAD accepted a koth game with no hill")
+    except ValueError as e:
+        msg = str(e)
+    assert msg.startswith("KING OF THE HILL NEEDS A HILL: "), msg
+    assert f"HILL 2 (ANDROID PHONE GREY) WENT BACK TO HUD AT {_hhmm(at)}" in msg, msg
+    assert "TAP RESTORE" in msg, msg
+    # CONTROL: a koth game with no departure keeps the plain F402 words.
+    plain = _joined(_sess(mode="koth", station_source="phone"))
+    assert plain._koth_hill_fault() == plain._KOTH_HILL_FAULT_NONE
+
+
+def test_a_returning_node_is_never_restored_automatically_but_is_offered_restore():
+    s = _departed_hill()
+    s.net.simulate_utility_hello("brxu-grey")           # the seven-tap way back into utility mode
+    assert s.stations["brxu-grey"]["assigned"] is None, "RESTORE is never automatic"
+    d = _departures(s)[0]
+    assert d["returned"] is True, d
+    assert "IT IS BACK, SO TAP RESTORE ON ITS ITEMS CARD" in d["line"], d["line"]
+    # CONTROL: before the return the line asks for the switch back, not the tap.
+    s2 = _departed_hill()
+    assert "IT IS BACK" not in _departures(s2)[0]["line"]
+
+
+def test_restore_reapplies_the_assignment_through_set_station_and_clears_the_record():
+    s = _departed_hill()
+    s.net.simulate_utility_hello("brxu-grey")
+    d = _departures(s)[0]
+    v = s.set_station("brxu-grey", d["restore"])        # the normal station PUT path
+    assert v["assigned"]["kind"] == "control" and v["assigned"]["id"] == 2, v["assigned"]   # its old id, free again
+    assert _departures(s) == [], "an assigned node has no departure"
+    s.next_match()                                       # the same NEXT MATCH now loads
+    assert s.game_loaded and s._koth_hill_fault() is None
+
+
+def test_restore_takes_the_normal_id_when_the_old_one_is_now_held():
+    s = _departed_hill()
+    s.net.simulate_utility_hello("brxu-other")
+    assert s.set_station("brxu-other", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 1
+    s.set_station("brxu-other", {"kind": "respawn", "team": "any", "id": 2})   # the hill's old number, taken
+    s.net.simulate_utility_hello("brxu-grey")
+    v = s.set_station("brxu-grey", _departures(s)[0]["restore"])
+    assert v["assigned"]["id"] != 2 and v["assigned"]["kind"] == "control", v["assigned"]
+
+
+def test_assigning_the_node_anew_clears_its_departure_too():
+    s = _departed_hill()
+    s.net.simulate_utility_hello("brxu-grey")
+    assert len(_departures(s)) == 1, "CONTROL: the record is there before the new assignment"
+    s.set_station("brxu-grey", {"kind": "respawn", "team": "any"})
+    assert _departures(s) == []
+
+
+def test_mc_release_records_the_departure_with_the_powerup_item():
+    s = _joined(_sess(mode="tdm"))
+    s.net.simulate_utility_hello("brxu-pu", platform="ios")
+    s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "rockets", "spawn_every_s": 180})
+    assert s.release_station("brxu-pu")
+    d = _departures(s)[0]
+    assert d["reason"] == "released" and d["kind"] == "powerup" and d["label"] == "IPHONE U-PU", d
+    assert d["item"]["weapon_id"] == "rocket_launcher", d
+    assert d["restore"]["item_preset"] == "rockets" and d["restore"]["spawn_every_s"] == 180, d["restore"]
+    assert "charges" in d["restore"], d["restore"]
+    # the HUD hello that follows a release does not overwrite (or drop) the record
+    s.net.simulate_hello("brx-pu", "", prior_utility_node_id="brxu-pu")
+    assert _departures(s)[0]["reason"] == "released"
+    s.net.simulate_utility_hello("brxu-pu", platform="ios")
+    v = s.set_station("brxu-pu", _departures(s)[0]["restore"])
+    assert v["assigned"]["item"]["spawn_every_s"] == 180 and v["assigned"]["id"] == d["id"], v["assigned"]
+
+
+def test_restore_of_an_assignment_no_longer_valid_is_refused_by_the_normal_path():
+    s = _joined(_sess(mode="tdm"))
+    s.net.simulate_utility_hello("brxu-pu")
+    s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "rockets"})
+    s.net.simulate_hello("brx-pu", "", prior_utility_node_id="brxu-pu")
+    s.net.simulate_utility_hello("brxu-pu")
+    s.powerups_enabled = False                           # the item it held is no longer allowed
+    try:
+        s.set_station("brxu-pu", _departures(s)[0]["restore"])
+        raise AssertionError("an invalid restore was accepted")
+    except ValueError:
+        pass
+    assert len(_departures(s)) == 1, "a refused restore keeps the record"
+
+
+def test_the_departure_survives_next_match_and_an_mc_restart_but_not_a_fresh_session():
+    s = _departed_hill()
+    s._roll_forward_from_recap()                         # NEXT MATCH's roll keeps it (the bench case)
+    assert len(_departures(s)) == 1
+    s2 = _restart_mc(s)                                  # a restart within the session keeps it
+    deps = _departures(s2)
+    assert len(deps) == 1 and deps[0]["node_id"] == "brxu-grey" and deps[0]["id"] == 2, deps
+    assert deps[0]["returned"] is False, "a new process has heard nothing yet"
+    assert "WENT BACK TO HUD" in (s2._koth_hill_fault() or "")
+    s2.new_session(keep_roster=False)                    # FRESH SESSION drops it
+    assert _departures(s2) == []

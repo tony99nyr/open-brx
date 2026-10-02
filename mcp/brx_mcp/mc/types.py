@@ -1427,6 +1427,44 @@ class StationView(TypedDict):
     range_edits: NotRequired[list[RangeEdit]]
 
 
+class StationRestore(TypedDict):
+    """Bench 2026-10-02: the `PUT /api/stations/{node_id}` body that re-applies a departed station's assignment.
+    No `id`: `_auto_station_id` hands the node its old number back when that number is still free."""
+    kind: StationKind
+    team: int
+    threshold: int
+    tx_power: NotRequired[TxPower]
+    item_preset: NotRequired[str]
+    charges: NotRequired[int]
+    amount: NotRequired[int]
+    spawn_every_s: NotRequired[int]
+
+
+StationDepartureReason = Literal["back_to_hud", "released"]
+
+
+class StationDeparture(TypedDict):
+    """Bench 2026-10-02 (option B): an ASSIGNED station that left ITEMS, by its own BACK TO HUD (F184 handoff) or by
+    an MC RELEASE. Kept for the session (it survives NEXT MATCH and an MC restart; a FRESH SESSION drops it) until
+    that node is assigned again. `returned` = the same utility node_id said hello since (never before an MC restart);
+    only then does ITEMS offer RESTORE, which sends `restore` through the normal station PUT. `line` is MC's own words
+    for it (the LOAD refusal names it the same way); `at_ms` is MC's clock."""
+    node_id: str
+    kind: StationKind
+    id: int
+    team: int
+    threshold: int
+    tx_power: NotRequired[TxPower]
+    item: NotRequired[StationItem]
+    label: str
+    platform: NotRequired[str]
+    reason: StationDepartureReason
+    at_ms: int
+    returned: bool
+    restore: StationRestore
+    line: str
+
+
 class RecapStationRow(TypedDict):
     """One assigned utility station's self-authoritative recap heartbeat."""
     node_id: str
@@ -1884,6 +1922,7 @@ class State(TypedDict):
     # optional on the client so rolling a new console back to an older server remains safe.
     coverage: NotRequired[Coverage]
     stations: NotRequired[list[StationView]]
+    station_departures: NotRequired[list[StationDeparture]]   # bench 2026-10-02: absent on an older MC
     game_byte: NotRequired[int]
     # X10: the old name for `game_byte` (the same wrapped byte, not a match count). Kept for an older console.
     game_no: NotRequired[int]
