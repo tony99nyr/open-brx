@@ -3088,7 +3088,7 @@ export class Engine {
     if (!SPAWN_SHIELD_FULL || !this.shieldRegenOn) return [];
     return [`$LIFE,0,0,${this.maxShield},*`];
   }
-  /** X3: a spawn or revive burst, with the fill LAST after the spawn line and klaxon. */
+  /** X3: a spawn or revive burst, with the fill LAST after the klaxon and spawn line. */
   _writeSpawnBurst(frames, fill, why, life, tail = []) {
     this._writeLife([...frames, ...fill, ...tail], why, life);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
     this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
@@ -3111,10 +3111,12 @@ export class Engine {
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
-    // X3: keep the klaxon after the spawn line and before the fill
+    // X3: the fill goes last. Bench 2026-10-02 (0.4.16, Tony): the klaxon is on the INTERRUPT slot (token 1), and sent
+    // after the spawn line it cut the taunt after one word ("no where to hide" played as "no.."). So the klaxon goes
+    // FIRST, and the line, on the queue slot (token 4), plays whole after it.
     const kx = this.frames.cues && this.frames.cues.klaxon && !this.cuesFired.has('klaxon') ? this.frames.cues.klaxon : null;
     if (kx) this.cuesFired.add('klaxon');
-    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : []), ...(kx ? [kx] : [])], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + this._lineTag(sp) + (kx ? ' + klaxon' : '') + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
+    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(kx ? [kx] : []), ...(sp.frame ? [sp.frame] : [])], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? ' + klaxon' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
     if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;

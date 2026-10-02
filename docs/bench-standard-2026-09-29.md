@@ -98,18 +98,31 @@ half is in the Mac sheet). Row: the 4.0 step in `bench-2026-09-24.md`.
 **9. GAMES 9, TEAMS on the new UI (5 min).** Follow [`bench-plan.md`](bench-plan.md) → *GAMES CHECK*, item 9.
 Control: a 2-team game loads as red and blue. Row: F413's check (closed at the desk; bench-confirm only).
 
+**10. F437, the go-live taunt plays whole at volume 80 (5 min).** MC with no `--bench-volume`, so the match plays at
+80 (the venue value; ears at arm's length). Start a short match on both player phones. Control: the T-3 countdown
+"3, 2, 1, GO" plays. **Pass:** at go-live each gun plays the klaxon, then the whole character line (for example
+"no where to hide", not "no.."), on 3 of 3 starts. Log each phone's `write spawn + klaxon + spawn line (...)` line.
+Row: F437.
+
+**11. F438, your own shot never hurts you (10 min).** Indoors, a TDM match, standard health. The victim stands
+1-2 m from a wall and fires the sniper at it, 5 shots. Control first: the other player hits the victim once, and
+the pools move. **Pass:** no damage to self on any of the 5 shots. Any self `$HIR` that does arrive logs
+`self-hit: own shot ... restored` (or `... was lethal, revived`), and the HUD, MC's feed and the recap show no hit
+or death. Then the firmware A/B: the same 5 wall shots in an FFA match (friendly fire ON) against TDM (OFF). Log
+every `$HIR` with its shooter id and team (tokens 3 and 4), and whether the gun applied it. Row: F438.
+
 STOP POINT: the core is done. Everything below is lower value per minute.
 
-**10. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with
+**12. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with
 the black Pixel as the hill (release it from the powerup role first). Rows: F420, F421, F424.
 
-**11. F400, the pickup switch card (10 min).** Follow *Group 4*, item 2. Row: F400.
+**13. F400, the pickup switch card (10 min).** Follow *Group 4*, item 2. Row: F400.
 
-**12. F419, the phone's own queue path (10 min).** Follow *Group 4*, item 3. Row: F419.
+**14. F419, the phone's own queue path (10 min).** Follow *Group 4*, item 3. Row: F419.
 
-**13. 11.8, death first (15 min).** Follow *Group 4*, item 6. Rows: F158, F3, F21, F375.
+**15. 11.8, death first (15 min).** Follow *Group 4*, item 6. Rows: F158, F3, F21, F375.
 
-**14. 11.4, the phone station's range edit (10 min).** Follow *Group 4*, item 1. Row: F365.
+**16. 11.4, the phone station's range edit (10 min).** Follow *Group 4*, item 1. Row: F365.
 
 ## Close
 
