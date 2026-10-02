@@ -2605,12 +2605,12 @@ static void test_hill_default_threshold_separates_measurement_from_phone_advert(
   bool ok = false;
   StationAssignment a = parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9})", &ok));
   hill.apply_station_config(a);
-  // F383, Tony 2026-09-27: -75 dBm with 6 dB hysteresis, on every path, until the outdoor walk measures a real one.
-  // The hysteresis is the one global constant every kind shares (no per-kind override exists), so pinning it here
-  // beside the hill's own -75 default keeps the two facts of the 2026-09-27 decision in one place.
+  // F383, Tony 2026-09-27: -75 dBm on every path, until the outdoor walk measures a real one. F440, Tony 2026-10-02:
+  // the hysteresis (the exit band) is 3 dB, not 6, so the circle is nearly the same size in and out. It is the one
+  // global constant every kind shares (no per-kind override exists), so it is pinned here beside the hill's default.
   CHECK_EQ(hill.threshold_dbm(), STICK_HILL_DEFAULT_THRESHOLD_DBM);
   CHECK_EQ(STICK_HILL_DEFAULT_THRESHOLD_DBM, -75);
-  CHECK_EQ(PRESENCE_HYSTERESIS_DB, 6);
+  CHECK_EQ(PRESENCE_HYSTERESIS_DB, 3);
   CHECK_EQ(hill.threshold_advertised_dbm(), STICK_DEFAULT_THRESHOLD_DBM);
   StationLink respawn;
   StationAssignment r = parse_station_config(json::parse(R"({"kind":"respawn","team":1,"id":2})", &ok));

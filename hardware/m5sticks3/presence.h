@@ -43,8 +43,20 @@ constexpr bool REVIVE_FEEDBACK_ENABLED = BRX_REVIVE_FEEDBACK != 0;
 
 // ---- the phone station's numbers ------------------------------------------------------------
 constexpr uint32_t PRESENCE_DWELL_MS = 800;          // utility.js DEFAULTS.dwell (arm's length, with -74)
-constexpr int PRESENCE_HYSTERESIS_DB = 6;            // beacon.js Presence hysteresisDb
+// F440 (Tony, 2026-10-02): 3 dB, not 6, so the circle is nearly the same size in and out; the exit grace absorbs
+// the dips. beacon.js EXIT_BAND_DB.
+constexpr int PRESENCE_HYSTERESIS_DB = 3;
 constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expiryMs
+// F440 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
+// leaves only after the EMA has stayed below the exit level this long, so a dip is not a step out. beacon.js EXIT_GRACE_MS.
+constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 2500;
+// F440: a credible sighting (the window median below, at or above the threshold) keeps a player "in the circle"
+// this long. Staying in otherwise comes from `present`. beacon.js SIGHT_MS.
+constexpr uint32_t PRESENCE_SIGHT_MS = 4000;
+// F440: a sighting is the MEDIAN of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold
+// (beacon.js SIGHT_WINDOW_MS): the same circle edge for a dense and a sparse advertiser. SIGHT_RECENT_MAX bounds it.
+constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
+constexpr size_t SIGHT_RECENT_MAX = 24;
 constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
 constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // utility.js DEFAULTS.threshold (the port's own default;
                                                      // a Stick station passes STICK_DEFAULT_THRESHOLD_DBM, -57)
@@ -110,6 +122,14 @@ struct PlayerEntry {
   bool present = false;
   bool above = false;  // beacon.js `sinceAbove != null`
   uint32_t since_above = 0;
+  bool below = false;  // F440: beacon.js `belowSince != null`
+  uint32_t below_since = 0;
+  bool sighted = false;  // F440: beacon.js `sightedAt != null`
+  uint32_t sighted_at = 0;
+  uint32_t recent_t[SIGHT_RECENT_MAX] = {};  // F440: beacon.js `e.recent`, oldest first
+  int recent_rssi[SIGHT_RECENT_MAX] = {};
+  size_t n_recent = 0;
+  bool in_circle = false;  // F440: beacon.js `inCircle`: present, or a credible sighting within sight_ms
 };
 
 class PlayerPresence {
@@ -117,6 +137,8 @@ class PlayerPresence {
   uint32_t dwell_ms = PRESENCE_DWELL_MS;
   int hysteresis_db = PRESENCE_HYSTERESIS_DB;
   uint32_t expiry_ms = PRESENCE_EXPIRY_MS;
+  uint32_t exit_grace_ms = PRESENCE_EXIT_GRACE_MS;
+  uint32_t sight_ms = PRESENCE_SIGHT_MS;
   double alpha = PRESENCE_ALPHA;
   int default_threshold = PRESENCE_DEFAULT_THRESHOLD_DBM;
   uint8_t game = 0;  // the station's game byte; 0 = any
@@ -140,6 +162,7 @@ class PlayerPresence {
       e->raw = rssi;
       push_sample(*e, (int)rssi);
       e->seen_at = now;
+      stamp_sighting(*e, rssi, now);
       return e;
     }
     copy(*e, d);
@@ -147,7 +170,33 @@ class PlayerPresence {
     push_sample(*e, (int)rssi);
     e->seen_at = now;
     e->rssi = e->rssi + alpha * (rssi - e->rssi);
+    stamp_sighting(*e, rssi, now);
     return e;
+  }
+
+  // F440 (beacon.js inCircleNow): present, or a credible sighting within sight_ms.
+  bool in_circle_now(const PlayerEntry& e, uint32_t now) const {
+    return e.present || (e.sighted && now - e.sighted_at <= sight_ms);
+  }
+  // F440 (beacon.js observe): the median of the adverts in the last PRESENCE_SIGHT_WINDOW_MS, at or above the threshold.
+  void stamp_sighting(PlayerEntry& e, int rssi, uint32_t now) const {
+    size_t keep = 0;
+    for (size_t i = 0; i < e.n_recent; i++) {
+      if (now - e.recent_t[i] < PRESENCE_SIGHT_WINDOW_MS) { e.recent_t[keep] = e.recent_t[i]; e.recent_rssi[keep] = e.recent_rssi[i]; keep++; }
+    }
+    e.n_recent = keep;
+    if (e.n_recent == SIGHT_RECENT_MAX) {  // full: drop the oldest
+      for (size_t i = 1; i < SIGHT_RECENT_MAX; i++) { e.recent_t[i - 1] = e.recent_t[i]; e.recent_rssi[i - 1] = e.recent_rssi[i]; }
+      e.n_recent--;
+    }
+    e.recent_t[e.n_recent] = now;
+    e.recent_rssi[e.n_recent] = rssi;
+    e.n_recent++;
+    int a[SIGHT_RECENT_MAX];
+    for (size_t i = 0; i < e.n_recent; i++) a[i] = e.recent_rssi[i];
+    std::sort(a, a + e.n_recent);
+    const int med = a[(e.n_recent - 1) / 2];  // beacon.js medianOf: the lower middle
+    if (med >= threshold_for(e)) { e.sighted = true; e.sighted_at = now; }
   }
 
   static void push_sample(PlayerEntry& e, int v) {
@@ -174,14 +223,23 @@ class PlayerPresence {
       if (now - e.seen_at > expiry_ms) {
         e.present = false;
         e.above = false;
+        e.below = false;
+        e.in_circle = false;
         // beacon.js: the entry is forgotten only at twice the expiry.
         if (now - e.seen_at > 2 * expiry_ms) e = PlayerEntry();
         continue;
       }
       const int thr = threshold_for(e);
       if (e.present) {
-        // Hysteresis: off only once the EMA is `hysteresis_db` BELOW the threshold (strictly).
-        if (e.rssi < thr - hysteresis_db) { e.present = false; e.above = false; }
+        // Hysteresis: off only once the EMA is `hysteresis_db` BELOW the threshold (strictly), and (F440) has
+        // stayed there `exit_grace_ms`: a dip is not a step out of the circle.
+        if (e.rssi < thr - hysteresis_db) {
+          if (!e.below) { e.below = true; e.below_since = now; }
+          if (now - e.below_since >= exit_grace_ms) { e.present = false; e.above = false; e.below = false; }
+        } else {
+          e.below = false;
+        }
+        e.in_circle = in_circle_now(e, now);
         continue;
       }
       if (e.rssi >= thr) {
@@ -190,6 +248,7 @@ class PlayerPresence {
       } else {
         e.above = false;
       }
+      e.in_circle = in_circle_now(e, now);
     }
   }
 
@@ -335,7 +394,7 @@ class BleControlPoint {
     int refused = 0;
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
-      if (!p.used || !p.present) continue;          // outside the bubble: not on the point
+      if (!p.used || !(p.present || p.in_circle)) continue;  // F440: outside the circle: not on the point
       if (!(p.state & PLAYER_ALIVE)) continue;      // DOWN on the point contributes nothing
       if (p.team == HILL_REFUSED_TID) { refused++; continue; }  // F82
       if (!hill_claimable(p.team)) continue;        // no team / a colour tid: no claim

@@ -34,7 +34,7 @@ to come from brx1); none can be checked on today's APK. Each row holds its own b
 2. **F436, an equip before the first pull since `$SPAWN` (brx4).** Plus one question: hold the trigger on the last
    Rocket and keep holding through the empty switch-back's swap window. Does the primary fire by itself when the
    window ends? Note any primary round and its delay.
-3. **F440, the phone hill hears one phone only now and then (brx3).** Steps 10b and 10c of the standard sheet.
+3. **F440, the phone hill hears one phone only now and then (brx3).** Steps 13b and 13c of the standard sheet.
 4. **F437 (the whole go-live taunt), F438 (an own-id hit never kills), F439 (the death stop and the heartbeat after
    the scream) (brx5).** For F439, re-run 11.8 in full, the Shields half included.
 5. **F441 (MOVE opens a picker), F442 (the ACTIVE pip animation), F443 (MC LINK needs the locked hold) (brx3).**
