@@ -55,4 +55,6 @@ test('diag() lists a RED (tid 0) player the station hears, and the log names the
   assert.equal(p.present, true, `present after the dwell (waited ${Date.now() - t0} ms)`);
   assert.ok(api.log.some(l => /player 7 \(RED\) PRESENT at -\d+ dBm/.test(l)), `the log names the edge (saw ${JSON.stringify(api.log.slice(-5))})`);
   assert.ok(api.diag().point, 'a control station reports its point');
+  const h = api.diag().players.find(x => x.id === 7).gapHistogram;
+  assert.ok(h && Object.values(h).reduce((a, b) => a + b, 0) === p.gaps.length, `the gap histogram covers every gap (saw ${JSON.stringify(h)})`);
 });

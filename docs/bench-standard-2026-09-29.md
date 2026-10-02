@@ -103,13 +103,19 @@ STOP POINT: the core is done. Everything below is lower value per minute.
 **10. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with
 the black Pixel as the hill (release it from the powerup role first). Rows: F420, F421, F424.
 
-**10b. F438, a RED player on the phone hill (10 min, right after 10).** Pass rule for each part: read the hill's log
-(`player N (RED) PRESENT` lines) or `window.brx.diag()` over CDP.
-1. A RED player alone at the hill captures it.
-2. Then a BLUE player joins: the point is CONTESTED, and the hill's ticks stop.
-3. If red never captures, record whether the hill's log has a `player N (RED) PRESENT` line at all. That line
-   decides between "never heard" and "heard, not counted".
-Control: the same steps with a BLUE player alone. Row: F438.
+**10b. F438, fair presence on the phone hill (25 min, right after 10).** Read the hill's log (`player N (TEAM)
+PRESENT` and `quiet` lines) or `window.brx.diag()` over CDP, and each player's `player advert` lines.
+1. The BLACK Pixel alone at the hill captures within 15 s. 3 runs.
+2. BLACK and GREEN together, on different teams: CONTESTED at once (within about 1 s of the second arriving), and the
+   hill's ticks stop. 3 runs, then swap the two phones' teams and 3 more.
+3. Record each run's gap histogram for both phones from `diag()`.
+Control: GREEN alone captures within 15 s. Row: F438.
+
+**10c. The hill ladder (20 min; sets the hill threshold once per station type).** Hill phone on its stand. Each
+player phone, body between it and the hill, stands at 5, 7.5, 9 and 12 m, 3 times each, for 10 s at each mark. Pass:
+IN (present) at 5 and 7.5 m every time, OUT at 12 m every time, and 9 m recorded as the edge. If 7.5 m is not
+reliably IN, lower the default threshold by the measured shortfall (`beacon.js` / `station_range.h`), never per phone.
+Row: F438, F383.
 
 **11. F400, the pickup switch card (10 min).** Follow *Group 4*, item 2. Row: F400.
 

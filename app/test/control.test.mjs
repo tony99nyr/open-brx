@@ -498,3 +498,66 @@ test('tid 0 end to end: a RED advert is heard, a lone red captures, red beside b
   t += 3000; hear(t, [2, 0], [3, 1]); cp.update(pres.players(), t);
   assert.equal(cp.holdMs[0], held, 'no possession accrues while contested');
 });
+
+// F438 (bench 2026-10-02, Tony: "a newer phone with stronger bluetooth shouldn't get an advantage"; "it should be a
+// minimum threshold and you are in the circle"). A SPARSE, noisy advertiser (adverts every 1.5-3 s, RSSI swinging
+// +/-6 dB, dipping past the exit level) is in the circle the whole time. It must capture within the 10 s design plus
+// the entry dwell, and an opponent arriving must contest at once, whichever of the two is the sparse one.
+function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32); }
+function sim({ seed = 7, players, untilMs = 30000, stepMs = 250, thr = -75 }) {
+  const r = rng(seed);
+  const pres = new Presence({ defaultThreshold: thr, dwellMs: 2000, alpha: 0.35, game: 7 });
+  const cp = new ControlPoint();
+  const next = new Map(players.map(p => [p.id, p.from ?? 0]));
+  const trace = [];
+  for (let t = 0; t <= untilMs; t += stepMs) {
+    for (const p of players) {
+      if (t < (p.from ?? 0) || t >= (p.until ?? Infinity) || t < next.get(p.id)) continue;
+      const rssi = p.mean + (r() * 2 - 1) * p.swing;
+      pres.observe([encodeUuid({ role: 'player', id: p.id, team: p.team, state: PLAYER_STATE.alive, game: 7 })], rssi, t);
+      next.set(p.id, t + p.gapMin + r() * (p.gapMax - p.gapMin));
+    }
+    pres.tick(t);
+    cp.update(pres.players(), t);
+    trace.push({ t, owner: cp.owner, contested: cp.contested, progress: cp.progress, capturing: cp.capturing });
+  }
+  return trace;
+}
+const sparse = (id, team, o = {}) => ({ id, team, mean: -70, swing: 13, gapMin: 1500, gapMax: 3000, ...o });   // -83..-57: dips past the -81 exit level
+const dense = (id, team, o = {}) => ({ id, team, mean: -66, swing: 4, gapMin: 200, gapMax: 300, ...o });
+
+test('F438: a sparse, noisy advertiser alone captures within the 10 s design plus the entry dwell', () => {
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const tr = sim({ seed, players: [sparse(1, 0)] });
+    const at = tr.find(s => s.owner === 0)?.t;
+    assert.ok(at != null && at <= 15000, `seed ${seed}: red captured at ${at} ms (want <= 15000)`);
+  }
+});
+
+test('F438: a dense opponent arriving at a sparse owner\'s hill contests at once', () => {
+  for (const seed of [1, 2, 3]) {
+    const tr = sim({ seed, players: [sparse(1, 1), dense(2, 0, { from: 18000 })] });
+    assert.equal(tr.find(s => s.t === 17750)?.owner, 1, `seed ${seed}: control: blue (sparse) holds before red arrives`);
+    const c = tr.find(s => s.t >= 18000 && s.contested)?.t;
+    assert.ok(c != null && c - 18000 <= 1000, `seed ${seed}: contested ${c == null ? 'never' : `${c - 18000} ms`} after red arrived (want <= 1000)`);
+  }
+});
+
+test('F438: a SPARSE opponent arriving at a dense owner\'s hill contests promptly, and never lets it convert silently', () => {
+  for (const seed of [1, 2, 3]) {
+    const tr = sim({ seed, players: [dense(2, 1), sparse(1, 0, { from: 15000 })] });
+    assert.equal(tr.find(s => s.t === 14750)?.owner, 1, `seed ${seed}: control: blue holds`);
+    const first = tr.find(s => s.t >= 15000 && s.contested)?.t;
+    assert.ok(first != null && first - 15000 <= 3500, `seed ${seed}: contested ${first == null ? 'never' : `${first - 15000} ms`} after the sparse red arrived (want <= 3500: its first credible advert)`);
+    const after = tr.filter(s => s.t >= first + 500);
+    assert.ok(after.every(s => s.contested), `seed ${seed}: stays contested while red is in the circle (dropped at ${after.find(s => !s.contested)?.t})`);
+  }
+});
+
+test('F438: a player who walks out of the circle stops counting promptly (the exit stays crisp)', () => {
+  // red stands in, contests blue's hill, then walks away to -92 (well outside); dense adverts so only the rule decides
+  const tr = sim({ seed: 3, untilMs: 30000, players: [dense(2, 1), dense(1, 0, { from: 14000, until: 20000 }), dense(9, 0, { mean: -92, swing: 2, from: 20000 })] });
+  assert.ok(tr.some(s => s.t >= 14000 && s.t < 20000 && s.contested), 'control: red contests while in the circle');
+  const clear = tr.find(s => s.t >= 20000 && !s.contested)?.t;
+  assert.ok(clear != null && clear - 20000 <= 5000, `uncontested ${clear == null ? 'never' : `${clear - 20000} ms`} after red left (want <= 5000)`);
+});

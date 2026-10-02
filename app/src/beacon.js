@@ -95,13 +95,21 @@ export function configGameByte(config) {
  * `hysteresisDb` below it, or when no advert has arrived for `expiryMs`. The threshold is the
  * station's own advertised one when set, else `defaultThreshold`.
  */
+/** F438: how long a PRESENT entry may sit below the exit level before it leaves (a dip or a sparse advertiser's
+ *  silence is not a step out of the circle; a player who walks away still leaves within about this). */
+export const EXIT_GRACE_MS = 2500;
+/** F438: one advert at or above the threshold keeps an entry "in the circle" for this long: the contest-at-once rule. */
+export const SIGHT_MS = 4000;   // = the silence expiry: heard inside the band in the last 4 s
 /** How many recent inter-arrival gaps a Presence entry keeps (F438 diagnostics). */
 export const GAP_SAMPLES = 16;
 
 export class Presence {
-  constructor({ dwellMs = 2000, hysteresisDb = 6, expiryMs = 4000, alpha = 0.35, defaultThreshold = -62, game = 0 } = {}) {
+  // F438 (Tony 2026-10-02: "a minimum threshold and you are in the circle"): `exitGraceMs` debounces leaving, so a
+  // sparse advertiser's dips and silences inside the circle never drop it; `sightMs` makes ONE advert at or above
+  // the threshold count as in the circle for that long, so an arriving opponent contests at once, before the dwell.
+  constructor({ dwellMs = 2000, hysteresisDb = 6, expiryMs = 4000, alpha = 0.35, defaultThreshold = -62, game = 0, exitGraceMs = EXIT_GRACE_MS, sightMs = SIGHT_MS } = {}) {
     this.entries = new Map();          // key role:id → entry
-    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game });
+    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs });
   }
   get game() { return this._game || 0; }
   /** X10: a new game byte drops every entry learnt under a different non-zero byte at once. Without this, a
@@ -119,7 +127,7 @@ export class Presence {
     if (this.game && d.game && d.game !== this.game) return null;   // another match's station
     const key = `${d.role}:${d.id}`;
     let e = this.entries.get(key);
-    if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, firstAt: now, samples: [rssi], median: rssi }; this.entries.set(key, e); }
+    if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, belowSince: null, firstAt: now, samples: [rssi], median: rssi }; this.entries.set(key, e); }
     else {
       const fresh = d.seq !== e.seq || d.state !== e.state || d.team !== e.team || d.value !== e.value || d.threshold !== e.threshold || d.taker !== e.taker;
       // F438: the last GAP_SAMPLES inter-arrival gaps, so a sparse or stalling advertiser shows as numbers (diag, logs).
@@ -130,6 +138,9 @@ export class Presence {
       e.samples = [...(e.samples || []), rssi].slice(-MEDIAN_SAMPLES); e.median = medianOf(e.samples);
       if (fresh) e.changedAt = now;
     }
+    // F438: a credible sighting is any advert inside the tolerance band (at or above the EXIT level, the same band presence
+    // keeps), never weighted by how far above it reads: binary, in the circle or not.
+    if (rssi >= this.thresholdFor(e) - this.hysteresisDb) e.sightedAt = now;
     return e;
   }
   thresholdFor(e) { return e.threshold || this.defaultThreshold; }
@@ -141,11 +152,15 @@ export class Presence {
       // every advert look stale (or none of them) with no log line saying why. F84's shape, with the clock as
       // the wide constant.
       e.ageMs = now - e.seenAt;
-      if (now - e.seenAt > this.expiryMs) { e.present = false; e.sinceAbove = null; if (now - e.seenAt > 2 * this.expiryMs) this.entries.delete(key); continue; }
+      if (now - e.seenAt > this.expiryMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; e.inCircle = false; if (now - e.seenAt > 2 * this.expiryMs) this.entries.delete(key); continue; }
       const thr = this.thresholdFor(e);
-      if (e.present) { if (e.rssi < thr - this.hysteresisDb) { e.present = false; e.sinceAbove = null; } continue; }
-      if (e.rssi >= thr) { if (e.sinceAbove == null) e.sinceAbove = now; if (now - e.sinceAbove >= this.dwellMs) e.present = true; }
+      if (e.present) {
+        // F438: leave only after the EMA has stayed below the exit level for `exitGraceMs` (a dip is not a step out)
+        if (e.rssi < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
+        else e.belowSince = null;
+      } else if (e.rssi >= thr) { if (e.sinceAbove == null) e.sinceAbove = now; if (now - e.sinceAbove >= this.dwellMs) e.present = true; }
       else e.sinceAbove = null;
+      e.inCircle = e.present || (e.sightedAt != null && now - e.sightedAt <= this.sightMs);
     }
   }
   _list(role) { return [...this.entries.values()].filter(e => e.role === role).sort((a, b) => b.rssi - a.rssi); }
@@ -311,6 +326,9 @@ export class AdvertGate {
   }
   started(uuid, now) { this.last = uuid; this.lastAt = now; this.triedAt = now; }
   stopped() { this.last = null; }
+  /** F438: re-assert the current advert (the scan reopened; a silent native stop has no callback). A stopped gate
+   *  stays stopped. The start still waits out `minStartMs` and a failure backoff. */
+  refresh() { if (this.last) { this.last = UNKNOWN; this.lastAt = 0; } }
   // A failed start leaves the radio in an unknown state (maybe still the previous advert): any start is due again, and
   // so is a stop. A failed stop keeps `last`, so the stop is due again.
   failed(action, now = Date.now()) { if (action === 'start') { this.last = UNKNOWN; this.lastAt = 0; this.triedAt = now; this.failedAt = now; } }

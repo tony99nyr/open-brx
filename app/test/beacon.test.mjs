@@ -53,7 +53,10 @@ test('presence: dwell before present, hysteresis before gone, expiry when silent
   t += 500; p.observe(station(), -65, t); p.tick(t);
   assert.equal(p.stations()[0].present, true, '3 dB under the threshold is inside the hysteresis band: still present');
   t += 500; p.observe(station(), -70, t); p.tick(t);
-  assert.equal(p.stations()[0].present, false, '8 dB under: gone');
+  // F438: leaving is debounced: 8 dB under is a dip until it has lasted EXIT_GRACE_MS
+  assert.equal(p.stations()[0].present, true, '8 dB under for a moment: still present (a dip is not a step out)');
+  t += 2600; p.observe(station(), -70, t); p.tick(t);
+  assert.equal(p.stations()[0].present, false, '8 dB under for longer than the exit grace: gone');
   t += 500; p.observe(station(), -50, t); p.tick(t); t += 2100; p.observe(station(), -50, t); p.tick(t);
   assert.equal(p.stations()[0].present, true, 'back above for the dwell: present again');
   t += 4100; p.tick(t);
@@ -153,4 +156,20 @@ test('advertChangeReason names what changed between two player adverts, and why 
   assert.equal(advertChangeReason(u(), null, { phase: 'idle' }), 'stop: phase idle');
   assert.equal(advertChangeReason(u(), null, { phase: 'live', stations: false }), 'stop: no stations in this game');
   assert.equal(advertChangeReason(u(), null, { phase: 'live', stations: true, num: null }), 'stop: no player number');
+});
+
+// F438 uniform advertising: after the scan reopens (a flood close, a BLE hiccup) the player re-asserts its advert,
+// because a silent advertiser stop has no callback. `refresh()` makes the same advert due again, once.
+import { AdvertGate } from '../src/beacon.js';
+test('AdvertGate.refresh: the same advert is due to start again, then settles', () => {
+  const g = new AdvertGate({ minStartMs: 0, minValueMs: 0, failBackoffMs: 0 });
+  const u = encodeUuid({ role: 'player', id: 1, team: 0, state: PLAYER_STATE.alive, game: 7 });
+  assert.equal(g.due(u, 1000), 'start'); g.started(u, 1000);
+  assert.equal(g.due(u, 1100), null, 'control: an unchanged advert is not restarted');
+  g.refresh();
+  assert.equal(g.due(u, 1200), 'start', 'after refresh the same advert is due again');
+  g.started(u, 1200);
+  assert.equal(g.due(u, 1300), null, 'and settles once restarted');
+  const idle = new AdvertGate(); idle.refresh();
+  assert.equal(idle.due(null, 0), null, 'refresh on a stopped gate does not invent a stop');
 });

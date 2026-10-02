@@ -131,6 +131,7 @@ export class BeaconWatch {
     this.pausedUntil = 0;     // the guard closed the scan; do not reopen before this
     this.modeSince = 0;       // when the guard last lowered the mode
     this.backoffs = 0;        // guard trips since the app started
+    this.opens = 0;           // F438: successful scan opens; a change tells the player advert to re-assert itself
     this._floorWarned = false;
     this._lastSample = new Map();   // deviceId → when its last sample reached onHit
     this._chain = Promise.resolve();
@@ -139,7 +140,7 @@ export class BeaconWatch {
   /** For the diagnostic bundle: cheap, no per-advert work. */
   stats() {
     return { open: this.open, scanMode: SCAN_MODES[this.modeIdx], rate: this.guard.rate, peak: this.guard.peak,
-      budget: this.guard.budget, results: this.guard.total, passed: this.passed, backoffs: this.backoffs,
+      budget: this.guard.budget, results: this.guard.total, passed: this.passed, backoffs: this.backoffs, opens: this.opens,
       paused: this.pausedUntil > this.now() };
   }
 
@@ -170,6 +171,7 @@ export class BeaconWatch {
       this.guard.reset(this.now()); this._lastSample.clear();
       await this.link.scan(hit => this._onResult(hit), { scanMode: SCAN_MODES[this.modeIdx], onRaw: () => this.guard.hit(this.now()) });
       this.open = true;
+      this.opens++;
     } catch (e) { this.open = false; this.log('beacon scan: ' + (e && e.message || e), 'li'); }
   }
   async _stop() {

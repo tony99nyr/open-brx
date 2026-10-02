@@ -130,12 +130,23 @@ static void test_presence_six_db_hysteresis() {
   pr.observe(player(7, 0), -79, 1000);  // inside the band: still present, no dwell needed
   pr.tick(1000);
   CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -81, 1100);  // 7 dB below: off
+  pr.observe(player(7, 0), -81, 1100);  // 7 dB below: a dip, not yet a step out (F438 exit grace)
   pr.tick(1100);
-  CHECK(!pr.get(7)->present);
-  pr.observe(player(7, 0), -75, 1200);  // back inside the band but below the threshold: stays off
-  pr.tick(1200);
+  CHECK(pr.get(7)->present);
+  pr.observe(player(7, 0), -79, 1500);  // back inside the band: the dip is over, the grace resets
+  pr.tick(1500);
+  CHECK(pr.get(7)->present);
+  pr.observe(player(7, 0), -81, 1600);  // below again ...
+  pr.tick(1600);
+  pr.observe(player(7, 0), -81, 3000);
   pr.tick(3000);
+  CHECK(pr.get(7)->present);            // ... 1.4 s: still inside the grace
+  pr.observe(player(7, 0), -81, 4100);
+  pr.tick(4100);                        // 2.5 s below the exit level: off
+  CHECK(!pr.get(7)->present);
+  pr.observe(player(7, 0), -75, 4200);  // back inside the band but below the threshold: stays off
+  pr.tick(4200);
+  pr.tick(6000);
   CHECK(!pr.get(7)->present);
 }
 

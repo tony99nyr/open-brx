@@ -288,6 +288,24 @@ deployed station in the meantime.
 this is the rule. Build row: `docs/utility-roadmap.md` K1. **Everything in §5d works with no LAN at all** — the
 Wi-Fi-coupled extensions are `utility-roadmap.md` §8 5e and are a separate, opt-in mode.
 
+### 5d.0 The circle (Tony, 2026-10-02)
+
+"Imagine a 15 m diameter circle around the phone. Contested is anywhere in the circle." A hill's presence radius is
+about **7.5 m**, and presence is **binary**: "it should be a minimum threshold and you are in the circle. It doesn't
+matter if you are closer within that circle." So:
+
+- Capture speed and contest weight count players in the circle. RSSI never weighs a player, and no closer or
+  stronger-radio phone gets an advantage ("a newer phone with stronger bluetooth shouldn't get an advantage").
+- **In the circle** means PRESENT (the entry dwell passed; leaving is debounced, `EXIT_GRACE_MS` 2.5 s below the exit
+  level) or a **credible sighting**: any advert inside the tolerance band (at or above the exit level) in the last
+  `SIGHT_MS` (4 s). The sighting makes an arriving opponent contest at once, before the dwell, so a quieter phone
+  never lets the other team take the hill silently (`beacon.js` Presence, `control.js`; F438).
+- There is **no per-phone calibration** (Tony, 2026-10-02: "isn't practical"). Fairness comes from tolerance built
+  into the system: uniform advertising (the same tx power and mode on every phone, re-asserted after a scan reopen),
+  the debounced exit and the sighting window. The threshold is set ONCE per station type from the bench ladder
+  (in at 7.5 m, out by about 9-10 m), never per phone or per player.
+- The platform default stays -75 dBm with 6 dB of hysteresis until that ladder measures the 7.5 m number.
+
 ### 5d.1 The rule: capture rate is the NET DIFFERENCE of living present players
 
 A control point is captured by **presence**, and the rate is the **net difference** between the leading team and

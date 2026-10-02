@@ -161,7 +161,9 @@ export class ControlPoint {
     const counts = {};
     let refused = 0;
     for (const p of players || []) {
-      if (!p || !p.present) continue;                       // outside the bubble: not on the point
+      // F438: in the circle = present (dwell passed, debounced exit) OR a credible sighting in the last SIGHT_MS, so an
+      // arriving opponent contests at once and a sparse advertiser keeps its count. Binary: never weighted by RSSI.
+      if (!p || !(p.present || p.inCircle)) continue;       // outside the bubble: not on the point
       if (!(p.state & PLAYER_STATE.alive)) continue;        // DOWN on the point contributes nothing
       if (p.team === REFUSED_TID) { refused++; continue; }  // F82
       if (!claimable(p.team)) continue;                     // no team / a colour tid: no claim

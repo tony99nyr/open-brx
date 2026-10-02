@@ -1104,6 +1104,14 @@ function wireExit() {
   window.brxUtil = window.brx = window.brxUtility;
 })();
 
+/** F438: the recent advert gaps bucketed, so a sparse advertiser reads at a glance ({'<0.5s': 9, '1-2s': 3, ...}). */
+function gapHistogram(gaps) {
+  const edges = [[500, '<0.5s'], [1000, '0.5-1s'], [2000, '1-2s'], [4000, '2-4s'], [Infinity, '4s+']];
+  const out = Object.fromEntries(edges.map(([, k]) => [k, 0]));
+  for (const g of gaps) out[edges.find(([e]) => g < e)[1]]++;
+  return out;
+}
+
 /** The station's state as plain data, for a CDP read in the field (window.brx.diag()). */
 function utilityDiag() {
   const now = Date.now();
@@ -1115,7 +1123,8 @@ function utilityDiag() {
       rssi: Math.round(p.rssi), median: Number.isFinite(p.median) ? Math.round(p.median) : null, ageMs: now - p.seenAt, game: p.game,
       // F438: how often this phone is heard: the recent gaps between its adverts, the worst, and the median
       gaps: [...(p.gaps || [])], gapMax: p.gaps?.length ? Math.max(...p.gaps) : null,
-      gapMedian: p.gaps?.length ? [...p.gaps].sort((a, b) => a - b)[Math.floor(p.gaps.length / 2)] : null })),
+      gapMedian: p.gaps?.length ? [...p.gaps].sort((a, b) => a - b)[Math.floor(p.gaps.length / 2)] : null,
+      gapHistogram: gapHistogram(p.gaps || []), inCircle: !!p.inCircle })),
     log: logLines.slice(-40),
   };
 }

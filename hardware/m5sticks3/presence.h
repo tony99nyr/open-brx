@@ -45,6 +45,9 @@ constexpr bool REVIVE_FEEDBACK_ENABLED = BRX_REVIVE_FEEDBACK != 0;
 constexpr uint32_t PRESENCE_DWELL_MS = 800;          // utility.js DEFAULTS.dwell (arm's length, with -74)
 constexpr int PRESENCE_HYSTERESIS_DB = 6;            // beacon.js Presence hysteresisDb
 constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expiryMs
+// F438 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
+// leaves only after the EMA has stayed below the exit level this long, so a dip is not a step out. beacon.js EXIT_GRACE_MS.
+constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 2500;
 constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
 constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // utility.js DEFAULTS.threshold (the port's own default;
                                                      // a Stick station passes STICK_DEFAULT_THRESHOLD_DBM, -57)
@@ -110,6 +113,8 @@ struct PlayerEntry {
   bool present = false;
   bool above = false;  // beacon.js `sinceAbove != null`
   uint32_t since_above = 0;
+  bool below = false;  // F438: beacon.js `belowSince != null`
+  uint32_t below_since = 0;
 };
 
 class PlayerPresence {
@@ -117,6 +122,7 @@ class PlayerPresence {
   uint32_t dwell_ms = PRESENCE_DWELL_MS;
   int hysteresis_db = PRESENCE_HYSTERESIS_DB;
   uint32_t expiry_ms = PRESENCE_EXPIRY_MS;
+  uint32_t exit_grace_ms = PRESENCE_EXIT_GRACE_MS;
   double alpha = PRESENCE_ALPHA;
   int default_threshold = PRESENCE_DEFAULT_THRESHOLD_DBM;
   uint8_t game = 0;  // the station's game byte; 0 = any
@@ -174,14 +180,21 @@ class PlayerPresence {
       if (now - e.seen_at > expiry_ms) {
         e.present = false;
         e.above = false;
+        e.below = false;
         // beacon.js: the entry is forgotten only at twice the expiry.
         if (now - e.seen_at > 2 * expiry_ms) e = PlayerEntry();
         continue;
       }
       const int thr = threshold_for(e);
       if (e.present) {
-        // Hysteresis: off only once the EMA is `hysteresis_db` BELOW the threshold (strictly).
-        if (e.rssi < thr - hysteresis_db) { e.present = false; e.above = false; }
+        // Hysteresis: off only once the EMA is `hysteresis_db` BELOW the threshold (strictly), and (F438) has
+        // stayed there `exit_grace_ms`: a dip is not a step out of the circle.
+        if (e.rssi < thr - hysteresis_db) {
+          if (!e.below) { e.below = true; e.below_since = now; }
+          if (now - e.below_since >= exit_grace_ms) { e.present = false; e.above = false; e.below = false; }
+        } else {
+          e.below = false;
+        }
         continue;
       }
       if (e.rssi >= thr) {
