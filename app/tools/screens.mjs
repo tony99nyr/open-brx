@@ -4554,28 +4554,29 @@ for (const view of VIEWS) await step(`${view.name} capture started: tinted in th
     const pg = await open(view, stage, '', 1200);
     let r = null; for (let t = 0; t < 3600 && !(r = (await lnRead(pg)).obj.find(o => o.kind === 'hill_capture_started')); t += 100) await pg.waitForTimeout(100);
     const want = await pg.evaluate(t => getComputedStyle(document.querySelector('#lanes .lo')).getPropertyValue(t).trim(), token);
+    const cut = await pg.evaluate(() => { const w = document.querySelector('#lanes .lo[data-kind="hill_capture_started"] .low'); return w ? { sw: w.scrollWidth, cw: w.clientWidth } : null; });
+    must(cut && cut.sw <= cut.cw + 1, `${stage}: the words are cut off (an ellipsis): ${JSON.stringify(cut)}`);
     await pg.close();
     must(r && r.text === 'HILL CAPTURE STARTED', `${stage}: the badge must read HILL CAPTURE STARTED: ${JSON.stringify(r)}`);
     lc[stage] = r.lc; must(want && r.lc === want, `${stage}: tint ${r.lc}, want ${token} (${want})`);
   }
   must(lc['live-hill-capture-ours'] !== lc['live-hill-capture-enemy'], `ours and theirs must differ: ${JSON.stringify(lc)}`);
 });
-// Tony, 2026-10-02, the clash: a capture starts while I am DOWN. The down screen owns the phone, so the badge is not
-// drawn; it waits on the lane and is drawn once I am back.
+// Tony, 2026-10-02 (storyboard question 4): "if you are down you miss game alerts". A capture that starts while I am DOWN
+// is dropped: no badge over the down screen, and none after the respawn.
 for (const view of VIEWS) for (const night of [false, true]) {
-  await step(`${view.name} capture started while down ${night ? 'night' : 'day'}: hidden under the down screen, shown after the respawn`, async () => {
+  await step(`${view.name} capture started while down ${night ? 'night' : 'day'}: dropped, not drawn over the down screen nor after the respawn`, async () => {
     const pg = await open(view, 'down-hill-capture', night ? '&night' : '', 1200);
-    await pg.waitForFunction(() => { const s = window.brxDemo.state(); return !s.alive && s.lanes && s.lanes.obj.hill && s.lanes.obj.hill.kind === 'hill_capture_started'; }, null, { timeout: 6000 });
-    const down = await lnRead(pg);
+    await pg.waitForFunction(() => { const s = window.brxDemo.state(); return !s.alive && s.hill && s.hill.holding != null && s.hill.progress > 0; }, null, { timeout: 6000 });
+    await pg.waitForTimeout(300);
+    const down = await lnRead(pg), eng = await pg.evaluate(() => { const L = window.brxDemo.state().lanes; return L && L.obj && L.obj.hill ? L.obj.hill.kind : null; });
     await pg.screenshot({ path: `${OUT}/${view.name}-hill-capture-down${night ? '-night' : ''}.png` });
-    must(down.obj.length === 0, `no badge may draw over the down screen: ${JSON.stringify(down.obj)}`);
+    must(down.obj.length === 0 && eng === null, `nothing over the down screen, and nothing waiting: ${JSON.stringify({ obj: down.obj, eng })}`);
     await pg.waitForFunction(() => window.brxDemo.state().alive, null, { timeout: 6000 });
-    let r = null; for (let t = 0; t < 3000 && !(r = (await lnRead(pg)).obj.find(o => o.kind === 'hill_capture_started')); t += 100) await pg.waitForTimeout(100);
+    let seen = null; for (let t = 0; t < 2500 && !seen; t += 100) { await pg.waitForTimeout(100); seen = (await lnRead(pg)).obj.find(o => o.key === 'hill') || null; }
     await pg.screenshot({ path: `${OUT}/${view.name}-hill-capture-back${night ? '-night' : ''}.png` });
-    const env = (await lnRead(pg)).env; await pg.close();
-    must(r && r.text === 'HILL CAPTURE STARTED' && r.kick === 'OBJECTIVE', `after the respawn the badge must read HILL CAPTURE STARTED: ${JSON.stringify(r)}`);
-    must(r.px >= 15, `the words are ${r.px}px, the floor is 15`);
-    must(apart(r.box, env.vitals[0]) && apart(r.box, env.ammo[0]), `it covers the vitals or the ammo: ${JSON.stringify({ box: r.box, env })}`);
+    await pg.close();
+    must(!seen, `a hill badge drew after the respawn: ${JSON.stringify(seen)}`);
   });
 }
 

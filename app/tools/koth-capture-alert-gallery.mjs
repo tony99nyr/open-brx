@@ -65,17 +65,17 @@ for (const [kind, stage, label, note] of BADGES) {
   seqs.push({ kind, label, note, runs }); console.log('badge', id);
 }
 
-// ---- the clash: a capture starts while I am DOWN ----
+// ---- dropped while down: a capture starts while I am DOWN (Tony, question 4: "if you are down you miss game alerts") ----
 const clash = [];
 for (const skin of SKINS) for (const view of VIEWS) {
   const pg = await openPg(view, 'down-hill-capture', skin), frames = [];
-  await pg.waitForFunction(() => { const s = window.brxDemo && window.brxDemo.state(); return s && !s.alive && s.lanes && s.lanes.obj.hill && s.lanes.obj.hill.kind === 'hill_capture_started'; }, null, { timeout: 15000 });
+  await pg.waitForFunction(() => { const s = window.brxDemo && window.brxDemo.state(); return s && !s.alive && s.hill && s.hill.holding != null && s.hill.progress > 0; }, null, { timeout: 15000 });
   await pg.waitForTimeout(300);
-  frames.push({ f: await shot(pg, `clash-${skin.name}-${view.name}-0.png`), cap: '<b>Down</b> RED started to capture 0.3 s ago. The badge waits on the lane; the down screen owns the phone.' });
+  frames.push({ f: await shot(pg, `clash-${skin.name}-${view.name}-0.png`), cap: '<b>Down</b> RED started to capture 0.3 s ago. I am down, so I miss it: no badge, nothing kept for later.' });
   await pg.waitForFunction(() => window.brxDemo.state().alive, null, { timeout: 15000 });
   const t0 = await pg.evaluate(() => Date.now());
-  await at(pg, t0, 0.4); frames.push({ f: await shot(pg, `clash-${skin.name}-${view.name}-1.png`), cap: '<b>Respawn +0.4 s</b> REDEPLOYED. The badge draws at once, beside it (as HILL CAPTURED does today).' });
-  await at(pg, t0, 2.6); frames.push({ f: await shot(pg, `clash-${skin.name}-${view.name}-2.png`), cap: '<b>Respawn +2.6 s</b> The live HUD, the badge still up, already dimmed: its 4 s ran while I was down, and it clears 8 s after it arrived.' });
+  await at(pg, t0, 0.4); frames.push({ f: await shot(pg, `clash-${skin.name}-${view.name}-1.png`), cap: '<b>Respawn +0.4 s</b> REDEPLOYED, and no hill badge.' });
+  await at(pg, t0, 2.6); frames.push({ f: await shot(pg, `clash-${skin.name}-${view.name}-2.png`), cap: '<b>Respawn +2.6 s</b> The live HUD. No hill badge: the capture I missed is not shown late.' });
   fail(pg, `clash ${skin.name} ${view.name}`);
   clash.push({ skin: skin.name, view, frames }); await pg.close(); console.log('clash', skin.name, view.name);
 }
@@ -122,6 +122,7 @@ const CHANGED = [
   ['1', 'the copy: one generic badge, HILL CAPTURE STARTED, tinted in the CAPTURING team`s colour, shown to everyone whenever any team`s capture progress starts rising', 'built. It replaces TAKING THE HILL and HILL UNDER ATTACK (and the interim TEAM / ENEMY IS CAPTURING). See the side by side, in BLUE and in RED.'],
   ['2', 'attackers draining an enemy point see it too', 'built: a drain is a capture starting, for both sides. One episode per capturing team, so a steal (the drain, then the build) is one badge.'],
   ['3', 'if we have the voice then we dont need the badge', 'no CONTESTED badge.'],
+  ['4', 'if you are down you miss game alerts', 'built: a hill badge arriving while I am down is dropped, and one up at my death goes with it; nothing draws after the respawn. The hill voice lines keep the death-first rule (docs/announcer.md, Death first 3 and 8): they still queue while down and are said after the scream. See "Dropped while down".'],
   ['Voice', 'Hill contested should play whenever you stop scoring points because of the other team`s presence', 'built: the HOLDING team hears it once each time a contest stops its scoring, and again after scoring resumed and stopped again. The attacker does not. See the timeline.'],
 ];
 const fig = (f, cap) => `<figure><img src="${f}" alt="${esc(cap.replace(/<[^>]+>/g, ''))}" loading="lazy"><figcaption>${cap}</figcaption></figure>`;
@@ -156,17 +157,17 @@ ol,ul{margin:4px 0 10px;padding-left:20px;max-width:1000px}li{margin-bottom:6px}
 .axis{border:0;background:none;height:16px}.axis span{position:absolute;font-size:11px;color:var(--mut);transform:translateX(-50%)}</style></head><body><main>
 <h1>King of the Hill: a capture begins</h1>
 <p class="mut">Frozen renders of the real phone HUD. The demo stages drive the real engine with phone control-point adverts. Day and night, at the two screen-gate widths. Built ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC on ${esc(BASE)} (branch hud-capture-begins-alert, not on main yet).</p>
-<div class="q"><h2>Open question</h2><ol start="4">
-<li><b>After a respawn.</b> A hill badge that arrived while I was down draws at once beside REDEPLOYED (see the clash). That is what HILL CAPTURED does today. A: keep. B: hold every hill badge until REDEPLOYED ends, as the kill card does.</li>
-</ol><p class="done">Answered: 1, the copy (one badge, HILL CAPTURE STARTED, in the capturing team's colour); 2, the attackers' drain (everyone sees the badge, attackers too); 3, no CONTESTED badge (the holder's "Hill Contested" voice line is the whole signal). See "Changed since your notes".</p></div>
+<div class="q"><h2>All questions answered</h2><p>1, the copy: one badge, HILL CAPTURE STARTED, in the capturing team's colour. 2, the attackers' drain: everyone sees the badge, attackers too. 3, no CONTESTED badge: the holder's "Hill Contested" voice line is the whole signal. 4, down: you miss game alerts, so a hill badge is dropped while down. This page now shows what is built; see "Changed since your notes".</p></div>
 ${CHANGED.length ? `<div class="q"><h2>Changed since your notes</h2><ul>${CHANGED.map(([n, note, what]) => `<li><b>${n}</b> “${esc(note)}” → ${what}</li>`).join('')}</ul></div>` : ''}
 <h2>How it decides</h2>
 <ul><li>The phone decides from the control point's advert it already hears (owner, held, contested, rising, falling, progress). No MC.</li>
 <li>HILL CAPTURE STARTED: a team's capture starts when its bar leaves 0 on a point nobody holds, or when it starts to drain a point another team holds or is building.</li>
 <li>Once per capture episode per team, never per advert. A capture that stalls and resumes is one episode, and so is a steal (the drain to 0, then the build). It ends when that team's progress is gone, the point is whole again, or the team owns it. At most one badge per team per 10 s, against a flapping advert.</li>
 <li>The first advert of a point is adopted silently, as the owner is: walking up to a capture already under way shows nothing.</li>
-<li>It is the same OBJECTIVE hill badge as HILL CAPTURED and HILL LOST, so the newest hill fact replaces the last one, and it waits under the down screen and the weapon switch card exactly as they do.</li>
+<li>It is the same OBJECTIVE hill badge as HILL CAPTURED and HILL LOST, so the newest hill fact replaces the last one, and it waits under the weapon switch card exactly as they do.</li>
+<li>Down, you miss game alerts: a hill badge (HILL CAPTURE STARTED, HILL CAPTURED, HILL LOST) that arrives while I am down is dropped, and one up when I die goes with the life. Nothing is drawn after the respawn. The hill voice lines keep the death-first rule: queued while down, said after the scream, and dropped at the respawn.</li>
 <li>⚠ The advert names the point's team, never the drainer. With two teams the drainer is the other one. With three or more a drain shows nothing, and the badge waits for the thief's own build, which the advert does name.</li>
+<li>Night keeps its red-only rule, so by night the badge is not tinted by team; the words are the same.</li>
 <li>Phone control points only. A grenade hill sends no progress, so it cannot say when a capture begins.</li></ul>
 <h2>Side by side: the new badges beside the ones that ship</h2>
 <p class="mut">Each 1 s after it appeared.</p>
@@ -174,7 +175,8 @@ ${side}
 <h2>Over time</h2>
 <p class="mut">Time 0 is the badge's first frame. It dims after 4 s and clears after 8 s, like every hill badge.</p>
 ${seqHtml}
-<h2>Clash: a capture starts while I am down</h2>
+<h2>Dropped while down</h2>
+<p class="mut">Question 4, answered: “if you are down you miss game alerts”. RED starts to capture while I am down.</p>
 ${clashHtml}
 <h2>"Hill Contested": when the voice line plays</h2>
 <p class="mut">Audio, so a timeline from the real engine (the stage at 891×411, by day). Green: BLUE scores. Amber: contested, so nobody scores. The marks are the engine's own "Hill Contested" writes. The holder hears it once per stall and again after scoring resumed; never per advert or tick. The attacker standing on the point hears nothing: the stall is the holder's.</p>

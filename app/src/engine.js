@@ -2878,7 +2878,7 @@ export class Engine {
   _announceAlert(evKind, text, { hud = true, subject = null, src = 'PHONE' } = {}) {
     // The three lanes: the lead and the hill are persistent OBJECTIVE badges; any other alert is a FEED row.
     if (evKind === 'lead_taken' || evKind === 'lead_lost') this._laneObj('lead', { kind: evKind, text: text || evKind, src });
-    else if (evKind === 'hill_captured' || evKind === 'hill_lost') this._laneObj('hill', { kind: evKind, src });
+    else if (evKind === 'hill_captured' || evKind === 'hill_lost') { if (this.alive) this._laneObj('hill', { kind: evKind, src }); }   // down: missed (Tony 2026-10-02)
     else if (evKind !== 'kill' && hud) this._laneFeed({ kind: 'alert', alert: evKind, text: text || evKind, src });
     // A kill line is said for exactly two sources: MC's `feedback{kind:'kill'}` and an S57 DOWN_BY naming this player.
     // An alert that names `kill` is neither, so it must not borrow the kill pool.
@@ -3323,7 +3323,7 @@ export class Engine {
     // cuts our own hill callout. Behind any other item (a kill confirm, a lead change) it waits like everything else.
     const cue = this._hillCue(kind);
     const card = kind === 'hill_captured' || kind === 'hill_lost';
-    if (card) this._laneObj('hill', { kind, src: /control point/.test(why) ? 'BLE' : 'IR' });
+    if (card && this.alive) this._laneObj('hill', { kind, src: /control point/.test(why) ? 'BLE' : 'IR' });   // down: the badge is missed, the line still queues (announcer.md, Death first 8)
     if (!cue.frame && !card) return;
     this._ann.push({ kind: card ? kind : 'alert', key: 'hill', preemptKey: true, stopsOwn: true, audioMs: cue.frame ? cue.ms : 0, ...(card ? {} : { bannerMs: 0 }),
       ok: () => this._hillAudioOn(true),   // Tony 2026-09-25: a hill line already queued is still said while I am dead
@@ -3680,7 +3680,7 @@ export class Engine {
     if (stalled && !this._hillWasContested && !said && audio) {
       this._hillSay('hill_contested', `control point ${e.id}: our scoring stopped, the other team is in the circle (${e.value}%)`);
     }
-    this._hillBegins(e.id, now, audio && !said);
+    this._hillBegins(e.id, now, audio && !said && this.alive);   // down: the episode is marked, its badge missed
     this._hillWasContested = stalled;
     // 4 Hz: only a fact the screen shows is worth a render (progress to the whole percent, like the RSSI
     // rounding in `setStations`).
@@ -7599,6 +7599,10 @@ export class Engine {
     this._shieldFillAt = 0;   // X3: a dead gun holds no shield, so a fill still unanswered no longer blocks the audio model
     this.reloading = null; this.switching = null; this._reloadOutcome = null; this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): the kill card ends with the life; the down screen owns the phone
+    // Tony, 2026-10-02: "if you are down you miss game alerts". A hill badge up at the death goes with the life, and
+    // one that arrives while I am down is never set (`_hillSay`, `_hillBegins`, `_announceAlert`), so none draws after
+    // the respawn. The hill VOICE lines keep docs/announcer.md "Death first" 3 and 8.
+    if (this._lanes && this._lanes.obj && this._lanes.obj.hill) { const { hill: _gone, ...obj } = this._lanes.obj; this._lanes.obj = obj; }
     // S16: a death straight after our own poison tick, with no newer `$HIR` behind it, is the TICK's kill, and the
     // kill goes to the player who last applied the poison (Tony, 2026-09-18). A newer latch means a real hit landed
     // after the tick, and that hit is the kill.

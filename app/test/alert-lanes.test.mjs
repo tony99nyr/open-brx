@@ -208,7 +208,7 @@ function point(h, o) {
 function hold(h, ms, o) { for (let t = 0; t < ms; t += 250) { h.adv(250); point(h, o); } return h; }
 /** Every HILL CAPTURE STARTED the engine put on the badge, as the capturing team's key, in order. */
 const started = h => h.logs.filter(l => l.startsWith('hill capture started: ')).map(l => /team (\w+)/.exec(l)[1]);
-const badge = h => h.eng.state().lanes && h.eng.state().lanes.obj.hill;
+const badge = h => { const L = h.eng.state().lanes; return (L && L.obj.hill) || undefined; };
 const redBlue = h => { h.eng.config.teams = [{ team_id: 'red', name: 'RED', color: 'red', tid: 0 }, { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }]; return h; };
 const koth = (o = {}) => redBlue(harness({ mode: 'koth', ...o }).live());
 
@@ -303,18 +303,54 @@ test('capture started: with three teams a drain names nobody, so the badge waits
   assert.deepEqual(started(h), ['blue', 'purple'], 'the thief`s own build names them');
 });
 
-test('capture started: a badge while I am DOWN waits on the lane, and is there when I am back', () => {
+// Tony, 2026-10-02 (storyboard question 4): "if you are down you miss game alerts". A hill badge (HILL CAPTURE STARTED,
+// HILL CAPTURED, HILL LOST) that arrives while I am DOWN is dropped, never drawn after the respawn; one that was up when
+// I died goes with the life. The hill VOICE lines keep the death-first rule (docs/announcer.md "Death first" 3 and 8):
+// queued while dead, said after the scream, and the respawn drops what is left of them (`KEEP_AT_RESPAWN`).
+const die = h => { h.eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); h.adv(300); assert.equal(h.eng.state().alive, false, 'setup: I am down'); };
+const respawn = (h, o) => { for (let t = 0; t < 8000 && !h.eng.state().alive; t += 250) hold(h, 250, o); assert.equal(h.eng.state().alive, true, 'setup: the timed respawn brought me back'); };
+
+test('down: a capture that starts while I am DOWN is dropped, and never shown after the respawn', () => {
   const h = koth();
   hold(h, 1000, { team: BLUE, state: CS.held, value: 100 });
-  h.eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); h.adv(300);
-  assert.equal(h.eng.state().alive, false, 'setup: I am down (the HUD draws no lane while I am down)');
+  die(h);
   hold(h, 500, { team: BLUE, state: CS.held | CS.falling, value: 97 });
-  assert.deepEqual(started(h), ['red']);
-  const at = badge(h).at;
-  for (let t = 0; t < 8000 && !h.eng.state().alive; t += 250) hold(h, 250, { team: BLUE, state: CS.held | CS.falling, value: 90 });
-  assert.equal(h.eng.state().alive, true, 'setup: the timed respawn brought me back');
-  assert.equal(badge(h).kind, 'hill_capture_started', 'still up after the respawn');
-  assert.equal(badge(h).at, at, 'the same card, not a second one');
+  assert.equal(badge(h), undefined, 'not on the lane while I am down');
+  respawn(h, { team: BLUE, state: CS.held | CS.falling, value: 90 });
+  assert.equal(badge(h), undefined, 'and not drawn after the respawn either: I missed it');
+  hold(h, 11000, { team: BLUE, state: CS.held | CS.falling, value: 60 });
+  assert.equal(badge(h), undefined, 'the episode I missed never shows late');
+});
+
+test('down: HILL LOST while I am DOWN drops the badge, and the line keeps the death-first rule', () => {
+  const h = koth();
+  hold(h, 1000, { team: BLUE, state: CS.held, value: 100 });
+  die(h);
+  const n = h.plays('VB0P').length;
+  hold(h, 1000, { team: RED, state: CS.rising, value: 3 });           // drained to 0 while I was down: we lost it
+  assert.equal(badge(h), undefined, 'no HILL LOST badge on the lane while I am down');
+  h.adv(4000);
+  assert.equal(h.plays('VB0P').length, n + 1, 'the voice line is still said while I am down (announcer.md, Death first 8)');
+  respawn(h, { team: RED, state: CS.rising, value: 40 });
+  assert.equal(badge(h), undefined, 'nothing drawn after the respawn');
+});
+
+test('down: a hill badge that is up when I die goes with the life', () => {
+  const h = koth();
+  point(h, { team: 255, state: 0, value: 0 });
+  point(h, { team: RED, state: CS.rising, value: 4 });
+  assert.equal(badge(h).kind, 'hill_capture_started', 'setup: up');
+  die(h);
+  assert.equal(badge(h), undefined);
+  respawn(h, { team: RED, state: CS.rising, value: 30 });
+  assert.equal(badge(h), undefined, 'not back after the respawn');
+});
+
+test('down CONTROL: the same capture, alive, is shown', () => {
+  const h = koth();
+  hold(h, 1000, { team: BLUE, state: CS.held, value: 100 });
+  hold(h, 500, { team: BLUE, state: CS.held | CS.falling, value: 97 });
+  assert.equal(badge(h).kind, 'hill_capture_started');
 });
 
 test('capture started: a badge during a weapon switch card waits under it, as every hill badge does', () => {

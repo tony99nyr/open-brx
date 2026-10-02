@@ -603,6 +603,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 #lanes .lot{display:flex;flex-direction:column;line-height:1.05;flex:1;min-width:0}
 #lanes .lok{display:flex;justify-content:space-between;gap:6px;font-family:var(--fl);font-size:14px;line-height:1.05;letter-spacing:.14em;color:var(--lc);font-weight:700}
 #lanes .low{font-family:var(--fd);font-weight:700;font-size:16px;line-height:1;letter-spacing:.06em;color:var(--num);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lanes .lo[data-kind="hill_capture_started"] .low{white-space:normal}   /* HILL CAPTURE STARTED is wider than the 180 px lane: two lines, never an ellipsis */
 #lanes .lo.settled{opacity:.75}
 #lanes .lfs{position:absolute;left:34px;top:68px;width:192px;display:flex;flex-direction:column;gap:3px}
 #lanes .lf{display:flex;align-items:stretch;gap:7px;padding:2px 7px 2px 0;background:var(--ln-bg);transition:opacity .3s;animation:lanein .2s ease-out}

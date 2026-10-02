@@ -16,7 +16,7 @@ them there.
 | `medal` | MC `feedback{kind:"kill"}` with medals, when the kill's IR word already said its kill line | the medal lines | HERO |
 | `hill_captured`, `hill_lost` | the engine's hill transition (`_hillSay`) | `VB0N`, `VB0P` | OBJECTIVE (hill badge) |
 | `powerup_swap` | a second weapon pickup (`_puGrantWeapon`) | none | FEED ("NEW", "REPLACES OLD") |
-| `alert` | every other MC alert, the clock warnings, `victory` feedback, "Hill Contested" | the bundle's cue | FEED (if any) |
+| `alert` | every other MC alert, the clock warnings, `victory` feedback, "Hill Contested" (the holding team only, once each time a contest stops its scoring) | the bundle's cue | FEED (if any) |
 | `teammate_down`, `enemy_down` | an S57 word (`_onIrCallout`) | none, `VB8` | FEED |
 | `powerup_spawn` | the spawn schedule (`_puTick`) | none | FEED ("ITEM AVAILABLE") |
 | `status` | a pool rising (`_onHp`), the shield recharge starting (`_shieldTick`) | `shield_up`, `shield_charging` (only for a refill longer than 1 s, `SHIELD_CHARGING_MIN_MS`), `healed`, `armour_up` | none |
@@ -134,7 +134,7 @@ queue, so the screen can show more than the voice says. The timings are in `app/
 | Lane | Where | What | How long |
 |---|---|---|---|
 | HERO | centre, over the HUD | my kill: KILL, the victim's name, my newest medal. A spree adds a ×N count and a ladder of the earlier medals, newest first, fading | 2.5 s after the last kill (`LANE_HERO_MS`), or longer while that kill's slot is on air |
-| OBJECTIVE | right, under the K/D stats | one badge for the lead and one for the hill | the lead dims after 4 s and stays until replaced; the hill dims after 4 s and clears 8 s after it was set (`LANE_HILL_CLEAR_MS`) |
+| OBJECTIVE | right, under the K/D stats | one badge for the lead and one for the hill (HILL CAPTURED, HILL LOST, or HILL CAPTURE STARTED in the capturing team's colour, for everyone) | the lead dims after 4 s and stays until replaced; the hill dims after 4 s and clears 8 s after it was set (`LANE_HILL_CLEAR_MS`). A hill badge is dropped while I am down and goes with the life at my death (Tony 2026-10-02: "if you are down you miss game alerts") |
 | FEED | left, under the identity block | teammate down, enemy down, a powerup spawn or swap, every other MC alert (BOMB PLANTED, ONE MINUTE LEFT; no full-width banner, F371) | 4 s a row (`LANE_FEED_MS`), the newest three |
 
 Rules:
@@ -312,7 +312,8 @@ can listen to the queue of KCs and game alerts".
 6. **A match end inside the scream** keeps the dead rules until the scream has ended (`_screamUntil`).
 7. **A hill preempt while dead** goes through `_sayMust`'s guard: no raw `$PLAYX`.
 8. **A hill change while I am dead** is queued too (Tony's "game alerts"), and said after the scream. Before this, a
-   control-point handover while down was said on the revive; now it is said while down, once.
+   control-point handover while down was said on the revive; now it is said while down, once. Its BADGE is not: a hill badge that
+   arrives while I am down is dropped (Tony 2026-10-02, "if you are down you miss game alerts").
 9. **The low-health line never follows the scream** (F375, field 2026-09-24). It is not an item, but it waits: it goes
    out only after `HURT_DEBOUNCE_MS` (400 ms) with no damaging `$HP` (each hit restarts the wait), and only when the
    model holds no clip that can still play. So it is never queued behind another clip, and it never goes out while a
