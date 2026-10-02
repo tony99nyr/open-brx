@@ -5387,7 +5387,7 @@ test('cue pools: a seeded rng picks the expected take, no pool falls back to cue
 
 // ---- A15.2: the spawn line is OURS (Tony 2026-09-06, bench: an empty $PSET cry field silences the firmware; $SPAWN then
 // $PLAY in the SAME write plays clean; "what if we dont rely on the firmware to make the sound on spawn and we just control it")
-test('spawn writes one take of the spawn pool right after $SFLASH in the same write; revive carries one too; no pool = cues.spawn; pre-A15.2 = nothing', () => {
+test('spawn writes one take of the spawn pool after $SFLASH and the klaxon in the go-live burst; revive carries one too; no pool = cues.spawn; pre-A15.2 = nothing', () => {
   const POOL = ['$PLAY,,4,6,VAI,,,,*', '$PLAY,,4,6,VAN,,,,*', '$PLAY,,4,6,VAO,,,,*'];
   const mk = (r, frames) => {
     const h = harness();
@@ -5401,8 +5401,9 @@ test('spawn writes one take of the spawn pool right after $SFLASH in the same wr
   const plays = ws => ws.filter(w => w.startsWith('$PLAY,,4,6,'));
   // a pool: rng 0.5 -> pool[1] (VAN), written in the spawn write right after $SFLASH
   const a = mk(0.5, { cues: { ...golden.cues, spawn: POOL[0], respawned: POOL[0] }, cue_pools: { ...(golden.cue_pools || {}), spawn: POOL, respawned: POOL } });
+  // Bench 2026-10-02: the klaxon (interrupt slot) goes between $SFLASH and the line, so it can never cut the line.
   const i = a.writes.indexOf('$SFLASH,*');
-  assert.ok(i > 0 && a.writes[i + 1] === POOL[1], 'rng 0.5 -> VAN right after $SFLASH: ' + a.writes.slice(i - 1, i + 3).join(' '));
+  assert.ok(i > 0 && a.writes[i + 1] === golden.cues.klaxon && a.writes[i + 2] === POOL[1], 'rng 0.5 -> the klaxon, then VAN, after $SFLASH: ' + a.writes.slice(i - 1, i + 4).join(' '));
   assert.equal(plays(a.writes).length, 1, 'exactly one voice line at spawn: ' + plays(a.writes).join(' '));
   // revive: the take rides in the revive write, once (the respawned event is lights only)
   a.frame('$HIR,4,0,19,2,45,0,0,*'); a.frame('$HP,0,0,0,*'); a.writes.length = 0;
@@ -5415,7 +5416,7 @@ test('spawn writes one take of the spawn pool right after $SFLASH in the same wr
   // no pool, one take: cues.spawn plays
   const b = mk(0.9, { cues: { ...golden.cues, spawn: '$PLAY,,4,6,V3I,,,,*' }, cue_pools: { ...(golden.cue_pools || {}), spawn: undefined } });
   const j = b.writes.indexOf('$SFLASH,*');
-  assert.equal(b.writes[j + 1], '$PLAY,,4,6,V3I,,,,*', 'the single take');
+  assert.equal(b.writes[j + 2], '$PLAY,,4,6,V3I,,,,*', 'the single take, after the klaxon');
   // a pre-A15.2 bundle (no cues.spawn at all): the spawn write ends on $SFLASH, nothing appended
   const { spawn: _s, respawned: _r, ...cuesOld } = golden.cues;
   const c = mk(0.5, { cues: cuesOld, cue_pools: {} });
