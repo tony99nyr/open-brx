@@ -1584,13 +1584,13 @@ export class Engine {
     const c = this._spawnCheck;
     if (!c) return false;
     if (c.life !== this._lifeSeq || this.phase !== 'live') { this._spawnCheck = null; return false; }
-    if (c.done) return true;   // the budget is spent; keep HOST: FORCE RESPAWN visible
-    if (!this._spawnCheckLive(c)) {
-      if (c.life === this._lifeSeq) this.log(`F416: the check of ${c.why} ran out -- the 0 pool books as usual`, 'le');
-      this._spawnCheck = null; return false;
-    }
     if (this.hp > 0) return false;   // a shield fill can raise shield on a gun whose spawn never landed
     if (this.lastHitAt > c.writeAt) { this._spawnCheck = null; return false; }   // a hit since the write: a real death
+    // Never an undying player: a spent budget or an expired check books the 0 pool as usual, and the respawn is the cure.
+    if (c.done || !this._spawnCheckLive(c)) {
+      this.log(`F416: the check of ${c.why} is ${c.done ? 'out of re-sends' : 'out of time'} -- the 0 pool books as usual`, 'le');
+      this._spawnCheck = null; return false;
+    }
     const now = this.now();
     if (!(c.heardAt > c.writeAt)) return true;                                  // no answer to the check yet: no evidence either way
     if (c.resentAt && now - c.resentAt < SPAWN_RESEND_WAIT_MS) return true;     // the re-send is in flight

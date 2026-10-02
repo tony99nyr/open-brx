@@ -85,12 +85,12 @@ test('F416: a hit since the lost write means the 0 pool is a real death, not an 
   assert.equal(h.eng.state().alive, false, 'the hit is a death');
 });
 
-test('F416: two failed re-sends show HOST: FORCE RESPAWN, without another burst', async () => {
-  let n = 0;   // the first write and both re-sends fail
+test('F416: two failed re-sends fall back to today\'s death and auto-respawn, never a zombie at 0', async () => {
+  let n = 0;   // the first write and both re-sends fail; the revive after the booked death is the cure
   const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && n++ < 3 }).live();
   await h.adv(4000 + 5000);
   assert.equal(h.spawns() >= 3, true, `the first write and two re-sends: ${h.spawns()}`);
-  assert.equal(h.eng.state().spawnLost, true, 'the host sees FORCE RESPAWN after the budget');
+  assert.equal(h.eng.state().alive, false, 'after two failed re-sends the 0 pool is booked, so auto-respawn can cure it');
 });
 
 test('F416: a probe write that fails too shows a HUD warning that names the host\'s cure', async () => {
@@ -254,4 +254,12 @@ test('F416 weapon: exhausted re-sends show HOST: FORCE RESPAWN and stop', async 
   assert.ok(h.logs.some(l => l.includes('HOST: FORCE RESPAWN')));
   await h.adv(3000);
   assert.equal(h.spawns(), 1 + E.SPAWN_RESENDS, 'no more burst after the budget');
+});
+
+test('F416 weapon review: once the re-sends are spent, a hit to 0 is still a death (never an undying player)', async () => {
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && (Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  await h.adv(4000 + 6000);
+  assert.equal(h.eng.state().spawnLost, true, 'setup: the budget is spent');
+  h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(h.eng.state().alive, false, 'the hit to 0 books a death; the respawn is the cure');
 });
