@@ -255,6 +255,7 @@ SHIELD_REGEN_MAX_GRANTS_SLACK = 3   # engine.js SHIELD_REGEN_MAX_GRANTS_SLACK
 # answer inside SHIELD_FILL_ECHO_S is that fill, not a recharge, and says nothing.
 SPAWN_SHIELD_FULL = True
 SHIELD_FILL_ECHO_S = 5.0
+SELF_HIT_ECHO_S = 2.0      # F438 (engine.js SELF_HIT_ECHO_MS): a pool frame this soon after a self-hit restore/revive is its echo
 SHIELD_LOOP_S = 1.94                # engine.js SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
 READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
@@ -665,7 +666,9 @@ class GunStage:
         self.refused = 0                            # frames dropped by the deny list in `write` (mirrors engine.refused)
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
-        self._dmg_hir: tuple[int, float] | None = None   # F354 (engine.js `_dmgLatch`): (proto, at) of the last word whose cell can do damage
+        self._dmg_hir: tuple[int, float, int, int] | None = None   # F354 (engine.js `_dmgLatch`): (proto, at, shooter id, `$HIR` seq) of the last word whose cell can do damage
+        self._hir_seq = 0   # F438 polish r3: counts latched `$HIR` words; the stage's twin of engine.js latch-object identity
+        self._foreign_dmg_at: float | None = None   # F438 polish r1 (engine.js `_foreignDmgAt`): another player's last damaging word
         # A65 (engine.js `latch` / `_lastHitFact.noPool`): the last registered word {num, team, at, no_pool}, and the word
         # the last booked hit was credited to (the damaging word while fresh, else the raw latch). `_death` reads both.
         self._hir_word: dict | None = None
@@ -734,6 +737,9 @@ class GunStage:
         # the kill, never the tick.
         self.poison: PoisonState | None = None
         self._dot_echo: DotEchoState | None = None
+        self._self_gun_pools: dict | None = None   # F438 polish r2 (engine.js `_selfGunPools`)
+        self._self_hit_used: int | None = None   # F438 polish r2/r3 (engine.js `_selfHitUsed`): the `$HIR` seq of the last word given back
+        self._self_echo: dict | None = None   # F438 (engine.js `_selfEcho`): the pools a self-hit restore/revive put back
         self._dot_kill: DotKillState | None = None
         self._last_hir_at: float | None = None
         # engine.js `_lastHitFact.at`: the clock of the last hit that MOVED a pool. A smoke, EMP or Breacher word stamps
@@ -2382,7 +2388,7 @@ class GunStage:
             self._headset(hs["start"], "headset start")
         return self.state()
 
-    async def revive(self, station: int | None = None) -> dict:
+    async def revive(self, station: int | None = None, self_hit: dict | None = None) -> dict:
         """engine.js `_revive`. `station`: the id of the respawn station this revive happened at, or None for a
         revive in place (timed, operator, resync). With a respawn profile a station revive protects, maps the
         trigger at once and shows the shield; every other revive is a timed life that holds the trigger.
@@ -2394,7 +2400,7 @@ class GunStage:
             # §3.2: belt-and-braces -- $SPAWN clears the $HLOOP on its own, this just gives the relay a
             # settled frame first (mirrors engine.js `_revive`, written BEFORE the revive frames below).
             await self.write([down["stop"]], "down stop", gap_ms=0)
-        fr, tag = self._pick_cue("respawned")                  # A15.2: the spawn line rides in the revive write (one line, never two)
+        fr, tag = (None, "") if self_hit else self._pick_cue("respawned")   # A15.2: the spawn line rides in the revive write; F438: a self-hit revive says nothing
         ps, ps_why = self._scream_take()                       # A15.3: a fresh death scream for this life, written before $SPAWN
         rp = self._respawn_profile()
         kind = "station" if rp and station is not None else "timed"
@@ -2404,17 +2410,27 @@ class GunStage:
         # engine.js `_revive`: a legacy bundle (no respawn_profile) always computes `kind == "timed"`, station
         # or not, so the window must also require `station is None` -- otherwise a legacy station revive would
         # wrongly start the spawn-kill escalation.
-        self._timed_life_at = self.now() if kind == "timed" and station is None else None   # 2026-09-19: the spawn-kill window runs from a timed respawn
+        if self_hit is None:   # F438: a self-hit revive is no respawn, so the spawn-kill window does not restart
+            self._timed_life_at = self.now() if kind == "timed" and station is None else None   # 2026-09-19: the spawn-kill window runs from a timed respawn
         fill = self._spawn_shield_fill()                          # F348: a shields life starts at full shield
+        # F438 (engine.js `_revive` `selfHit`): the drain back to the pre-hit pools rides last; never a heal
+        sd = [min(0, self_hit["health"] - self.max_hp), min(0, self_hit["armor"] - self.max_armor),
+              min(0, self_hit["shield"] - (self.max_shield if fill else 0))] if self_hit else None
+        drain = [f"$LIFE,{sd[0]},{sd[1]},{sd[2]},*"] if sd and any(d < 0 for d in sd) else []
         self._shield_fill_start(fill)
-        await self.write(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill,   # engine.js X3: the line before the fill
-                          "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else ""))
-        self._after_spawn()
+        await self.write(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
+                          "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else "")
+                          + (" + F438 self-hit drain" if drain else ""))
+        self._after_spawn(keep_poison=bool(self_hit))
+        if self_hit:   # F438: what the drain leaves
+            self.hp, self.armor = self_hit["health"], self_hit["armor"]
+            self.shield = min(self_hit["shield"], self.max_shield if fill else 0)
         # engine.js `_armAfterSpawn`: an unprotected life arms at once while the phase is live. Here that is
         # after the revive write returns, so the take still follows the revive frames, as on the phone.
         if self._arm_pending is not None and self._arm_pending["until"] <= 0 and self.connected:
             self._arm_life("no protection")
-        self._moment = ("redeploy", self.now())                       # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
+        if self_hit is None:   # F438: a self-hit revive shows no REDEPLOYED
+            self._moment = ("redeploy", self.now())                   # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
         self._event_now("respawned", sound=False)                     # the lights; the sound went out with the revive write
         self.carrying = None; self._active_role = None
         if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]):
@@ -2520,7 +2536,7 @@ class GunStage:
         self._operator_resync_pending = None
         self._log("operator resync stopped -- no answer from the gun; no re-arm burst sent", "warn")
 
-    def _after_spawn(self) -> None:
+    def _after_spawn(self, keep_poison: bool = False) -> None:
         self.spawned = True; self.alive = True
         # F264 (engine.js `_lifeSeq`): "once per life" reads `self._life` below, which the gun-take
         # generation counter already bumps once per `_after_spawn()` call -- the same "which life is this"
@@ -2544,8 +2560,9 @@ class GunStage:
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
         # `reload_outcome` on the page to be read as this life's (polish review 2026-09-12).
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
-        self._poison_clear("new life")          # S16: a stack never survives a life (engine.js `_spawn`/`_revive`)
-        self._dot_kill = None; self._dot_echo = None
+        if not keep_poison:   # F438 polish r1 (engine.js `_revive` `selfHit`): a self-hit revive is the same life
+            self._poison_clear("new life")          # S16: a stack never survives a life (engine.js `_spawn`/`_revive`)
+            self._dot_kill = None; self._dot_echo = None
         self._gun_band = None; self._gun_taken = False
         # A16 §3.1/§5: a fresh life starts with no readout -- any hold from the last life is dead the
         # moment `_gun_taken` drops False (mirrors engine.js `_gunTake`'s reset).
@@ -3106,20 +3123,25 @@ class GunStage:
                 # F354 (engine.js `_dmgLatch`): a word whose `$SIR` cell moves no pool or grants one (the Haze, the stun
                 # EMP, a med kit) is not the damage behind the next `$HP`; only a word that CAN do damage is kept here.
                 if proto is not None and _tok_int(t, 4) is not None and not self._non_damaging(proto, _tok_int(t, 7)):
-                    self._dmg_hir = (proto, now)
+                    self._dmg_hir = (proto, now, _tok_int(t, 3) or 0, self._hir_seq + 1)
+                    if not self._own_shot({"num": _tok_int(t, 3) or 0}):
+                        self._foreign_dmg_at = now
                 if _tok_int(t, 4) is not None:
-                    self._hir_word = {"num": _tok_int(t, 3) or 0, "team": _tok_int(t, 4), "at": now,
+                    self._hir_seq += 1
+                    self._hir_word = {"num": _tok_int(t, 3) or 0, "team": _tok_int(t, 4), "at": now, "seq": self._hir_seq,
                                       "no_pool": self._non_damaging(proto, _tok_int(t, 7))}
                 if _tok_int(t, 4) is not None:
                     self._shield_reassert()      # 2026-09-19 (engine.js: a registered hit, shooter team parsed)
-                if len(t) > 2 and t[2] == "8":
+                own = _tok_int(t, 4) is not None and self._own_shot(self._hir_word)   # F438: our own word never stuns or poisons
+                if len(t) > 2 and t[2] == "8" and not own:
                     self._stun()             # F15: an EMP word (proto 8) -- a no-op unless config.stun is on; a status row, so no $HP follows
                 # S16 (engine.js `feedFrame` HIR): a readable team is a real hit word -- stamp the clock the
                 # poison echo/kill windows both read, and let `_dot_spec` decide whether this protocol poisons.
                 team = _tok_int(t, 4)
                 if team is not None:
                     self._last_hir_at = now
-                    self._poison_hit(proto, _tok_int(t, 3) or 0, team)   # the RAW protocol, as engine.js `_poisonHit(parseInt(t[2]))`
+                    if not own:
+                        self._poison_hit(proto, _tok_int(t, 3) or 0, team)   # the RAW protocol, as engine.js `_poisonHit(parseInt(t[2]))`
             elif cmd == "ALCD" and len(t) > 4:
                 self.tele["mag"], self.tele["reserve"] = int(t[1] or 0), int(t[4] or 0)
                 # engine.js `feedFrame` ALCD: `_onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] || 0, heat)`
@@ -3594,16 +3616,114 @@ class GunStage:
         takes the poison tick's echo: a non-lethal `$LCD` between a tick write and its `$HP` leaves `_dot_echo`
         for that `$HP` (review 2026-09-19). A zero goes through `_on_pools`, whose death branch is the one
         death path."""
+        if self._self_hit_lcd(hp):   # F438 polish r2: the lethal self-hit's own `$LCD,0` twin
+            return
         if hp == 0 and self.alive and self.auto_react and self.spawned:
-            self._on_pools(hp, armor, None, desync=desync)
+            self._on_pools(hp, armor, None, desync=desync, lcd=True)
             return
         self.hp, self.armor = hp, armor
 
-    def _on_pools(self, hp: int, armor: int, shield: int | None = None, desync: bool = False) -> None:
+    def _own_shot(self, word: dict | None) -> bool:
+        """F438 (engine.js `_ownShot`): the word's shooter id is our own `player_num`. Wire id 0 is never us."""
+        me = (self.player or {}).get("player_num")
+        return bool(word) and me is not None and int(me) > 0 and int(word.get("num") or 0) == int(me)
+
+    def _self_hit_hp(self, hp: int, armor: int, shield: int) -> bool:
+        """F438 (engine.js `_selfHitHp`, bench 2026-10-02): our own shot never hurts or kills us. True = this pool frame
+        is handled here. The echo of a restore/revive we wrote updates the pools and nothing else; a self-hit is given
+        back (`$LIFE`) or, when lethal, revived with the timed revive burst plus a drain back to the pre-hit pools.
+        Pairs like engine.js (F354): the fresh DAMAGING word owns the drop, else the raw latch; never when another
+        player's damaging word landed inside the same 1.0 s (polish r1); one word is given back once, and a give-back
+        is measured from the pools the GUN last reported (polish r2).
+        Deliberate partial parity (like the F264 cure, `_arm_life`): the stage has no `phase`, `tutorial`, `ended`,
+        `resync` or `reconciling`, so it gates on `spawned`/`alive` only."""
+        now, w, se = self.now(), self._hir_word, self._self_echo
+        rep = {"health": hp, "armor": armor, "shield": shield}
+        gun = self._self_gun_pools or {"health": self.hp, "armor": self.armor, "shield": self.shield}
+
+        def fall() -> bool:   # engine.js `fall`: the normal path measures from the model, so give it the gun's pools
+            if self._self_gun_pools:
+                self.hp, self.armor, self.shield = gun["health"], gun["armor"], gun["shield"]
+                self._self_gun_pools = None
+            return False
+        echo = self._dot_echo
+        if echo is not None and now - echo["at"] <= DOT_ECHO_S and dot_echo_matches(echo, gun, rep):
+            return fall()   # polish r2: our poison tick's answer is the tick, even inside a restore's echo window
+        if se is not None:
+            if now - se["at"] > SELF_HIT_ECHO_S or (w or {}).get("seq") != se["seq"]:   # polish r3: a new word, never a later clock
+                self._self_echo = None
+            elif hp == 0 and armor == 0 and shield == 0:
+                if se.get("lethal") and not se.get("saw_life"):
+                    self._log("self-hit: a stale zero from before the revive, ignored", "info")   # engine.js: the old zero
+                    return True
+                self._self_echo = None   # after a live pool (or a non-lethal restore) a zero is real: judge it below
+            else:
+                self.hp, self.armor, self.shield = hp, armor, shield
+                self._self_gun_pools = None
+                if hp > 0:
+                    se["saw_life"] = True
+                if (hp, armor, shield) == (se["health"], se["armor"], se["shield"]):
+                    self._self_echo = None; self._shield_fill_at = 0.0
+                    self._log(f"self-hit: the gun is back at {hp}/{armor}/{shield}", "info")
+                return True
+        if not (self.spawned and self.alive) or not w or now - w["at"] > 1.0:
+            return fall()
+        d = self._dmg_hir
+        hl = {"num": d[2], "at": d[1], "seq": d[3]} if d is not None and now - d[1] <= DEATH_LATCH_MS / 1000 else w   # engine.js `hl` (F354)
+        if not self._own_shot(hl) or hl["seq"] == self._self_hit_used:
+            return fall()   # polish r2: one word, one give-back
+        if self._foreign_dmg_at is not None and now - self._foreign_dmg_at <= 1.0:
+            return fall()
+        took = sum(gun.values()) - (hp + armor + shield)
+        if took <= 0:
+            return fall()
+        target = {"health": self.hp, "armor": self.armor, "shield": self.shield}
+        what = f"proto {self._last_hir_proto}"
+        self._self_hit_used = hl["seq"]
+        if hp > 0:
+            give = [max(0, gun[k] - rep[k]) for k in ("health", "armor", "shield")]   # polish r2: never a restore paid twice
+            self._spawn_task(self.write([f"$LIFE,{give[0]},{give[1]},{give[2]},*"], "F438 self-hit restore", gap_ms=0))
+            self._self_gun_pools = rep
+            self._self_echo = {"at": now, "seq": w["seq"], **target}
+            self._log(f"self-hit: own shot ({what}) took {took}, restored", "info")
+            return True
+        rp = self._respawn_profile()
+        burst = rp["revive"] if rp else self.bundle.get("revive")
+        # Deliberate partial parity: engine.js also refuses on `ended`/`resync`/`reconciling`, which the stage does not have.
+        why = "link down" if not self.connected else "no revive burst" if not burst else None
+        if why:
+            self._log(f"self-hit: own shot was lethal, no revive ({why}): booked as a down by nobody", "warn")
+            return fall()
+        self._self_gun_pools = None
+        self._self_echo = {"at": now, "lethal": True, "seq": w["seq"], **target}
+        self._spawn_task(self.revive(self_hit=target))
+        self._log(f"self-hit: own shot was lethal, revived at {target['health']}/{target['armor']}/{target['shield']}", "warn")
+        return True
+
+    def _self_hit_lcd(self, hp: int) -> bool:
+        """F438 polish r2 (engine.js `_selfHitLcd`): drop exactly ONE `$LCD,0` (the lethal self-hit's own twin) inside the
+        lethal echo window, with no newer `$HIR` and no live pool since; a later zero (grenade, poison) still kills.
+        Accepted gaps (engine.js comment): an `$LCD,0` before its `$HP,0` books an ordinary death; lost frames wait
+        for the F264 poll."""
+        se, w = self._self_echo, self._hir_word
+        if se is None or not se.get("lethal") or self.now() - se["at"] > SELF_HIT_ECHO_S or (w or {}).get("seq") != se["seq"]:
+            return False
+        if hp > 0:
+            se["saw_life"] = True
+            return False
+        if se.get("lcd_dropped") or se.get("saw_life"):
+            return False
+        se["lcd_dropped"] = True
+        self._log("self-hit: the lethal shot's own `$LCD,0` twin, ignored", "info")
+        return True
+
+    def _on_pools(self, hp: int, armor: int, shield: int | None = None, desync: bool = False, lcd: bool = False) -> None:
         if shield is None:
             shield = self.shield          # not reported on this frame (an $LCD): keep the last known value
         if not (self.auto_react and self.spawned):
             self.hp, self.armor, self.shield = hp, armor, shield
+            return
+        if not lcd and self._self_hit_hp(hp, armor, shield):   # F438 (engine.js: an `$LCD` never reaches `_onHp`): our own shot, or the gun's echo of us giving it back
             return
         before = self.hp + self.armor + self.shield
         prev_hp, prev_armor, prev_shield = self.hp, self.armor, self.shield

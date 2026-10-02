@@ -74,7 +74,8 @@ Rules:
    (`_dropWaitingPlays`), which the old model would have stopped on the gun. A queue-slot cue that waited past
    `PLAY_QUEUE_STALE_MS` (6 s, the kill line's own lateness limit) is dropped, not played late. The stage's `write`
    mirrors the wait.
-4. **Spawn and revive** (`X3`): the phone sends the spawn line and klaxon before F348's `$LIFE,0,0,<max>,*` fill.
+4. **Spawn and revive** (`X3`): the phone sends the klaxon, then the spawn line, before F348's `$LIFE,0,0,<max>,*` fill.
+   The klaxon is on the interrupt slot, so it goes first: sent after the line, it cut the line after one word (F437).
    Spacing splits those sounds across writes. A must-hear line may flush the queue that remains.
 
 **Not modelled** (assumed not to use the announcer FIFO, unconfirmed): the gun's own fire, reload, empty-click and

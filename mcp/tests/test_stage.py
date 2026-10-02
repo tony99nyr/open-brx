@@ -349,6 +349,160 @@ def _hit_via_on_frame(st, mgr, alias="stage"):
     return n0
 
 
+def test_f438_our_own_shot_is_given_back_and_a_lethal_one_revives_with_a_drain():
+    """F438 (engine.js `_selfHitHp`, app/test/self-hit.test.mjs): the stage gun is player 7, so a `$HIR` naming id 7 is
+    our own round. A hit is given back with one `$LIFE`; a kill revives at once and drains back to the pre-hit pools.
+    The emitter's id (42) is the control: it still hurts."""
+    async def run():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)
+        st.poll(); await settle(st)
+        s = mgr.sessions["stage"]
+        def hit(word, pools):
+            s.record("rx", word); s.record("rx", "$HP,%d,%d,%d,*" % pools); st.poll()
+        hp, ar, sh = st.hp, st.armor, st.shield
+        assert ar >= 9, (hp, ar, sh)
+        n = len(tx(mgr))
+        hit("$HIR,4,0,42,2,9,0,3,*", (hp, ar - 9, sh)); await settle(st)        # the control: someone else's round
+        assert not [f for f in tx(mgr)[n:] if f.startswith("$LIFE,") and f != "$LIFE,0,0,0,*"], "no restore for another shooter"
+        assert st.armor == ar - 9
+        st._self_echo = None
+        hit("$HIR,4,0,0,2,9,0,3,*", (hp, ar - 18, sh)); await settle(st)        # wire id 0 is never us
+        assert "$LIFE,0,9,0,*" not in tx(mgr)[n:]
+        st._foreign_dmg_at = None   # the real clock: stand in for the 1.0 s that would pass after those two rounds (polish r1)
+        n = len(tx(mgr))
+        hit("$HIR,4,0,7,1,9,0,3,*", (hp, ar - 27, sh)); await settle(st)        # our own round
+        assert "$LIFE,0,9,0,*" in tx(mgr)[n:], tx(mgr)[n:]
+        assert (st.hp, st.armor) == (hp, ar - 18), "the model is back at the pre-hit pools"
+        st.poll(); await settle(st); st._self_echo = None
+        st.hp, st.armor = hp, ar - 18   # the fake gun never took the injected hits, so its own `$HP` answers read full
+        n = len(tx(mgr))
+        s.record("rx", "$HIR,4,0,7,1,9,0,3,*"); s.record("rx", "$HP,0,0,0,*")    # our own round, lethal...
+        s.record("rx", "$LCD,0,0,0,1,1,1,*"); st.poll(); await settle(st)        # ...and its `$LCD,0` twin (dev.md)
+        new = tx(mgr)[n:]
+        assert st.alive, "a self-kill never downs the player"
+        assert "$SPAWN,,*" in new, new
+        drain = "$LIFE,0,-18,0,*"
+        assert drain in new and new.index(drain) > new.index("$SPAWN,,*"), [f for f in new if f.startswith(("$LIFE", "$SPAWN"))]
+        assert (st.hp, st.armor) == (hp, ar - 18)
+    asyncio.run(run())
+
+
+async def _f438_stage():
+    """A live stage gun (player 7) past spawn protection, pools synced, the fake's own answers drained."""
+    st, mgr = mk()
+    await st.connect("FA:KE:00:00:00:01")
+    await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)
+    st.poll(); await settle(st)
+    s = mgr.sessions["stage"]
+    def hit(*frames):
+        for f in frames:
+            s.record("rx", f)
+        st.poll()
+    return st, mgr, hit
+
+
+def _restores(frames):
+    return [f for f in frames if f.startswith("$LIFE,") and f != "$LIFE,0,0,0,*"]
+
+
+def test_f438_polish_stage_pairs_on_the_damaging_word_and_never_swallows_an_enemy_drop():
+    """F438 polish r1 (engine.js `_selfHitHp`): HIGH 3, the drop belongs to the fresh DAMAGING word (F354), so our own
+    damaging round followed by an enemy's no-pool word is still ours; HIGH 2, an enemy's damaging word inside the same
+    1000 ms means the drop may be theirs, so it is a real hit."""
+    async def run():
+        st, mgr, hit = await _f438_stage()
+        fns = dict(st._sir_fns() or {}); fns["7:0"] = 23   # the Haze's fn-23 cell: registers a `$HIR`, moves no pool
+        st._sir_fns = lambda: fns
+        assert st._non_damaging(7, 0)
+        proto, sub = 7, 0
+        hp, ar, sh = st.hp, st.armor, st.shield
+        n = len(tx(mgr))
+        hit("$HIR,4,0,7,1,9,0,3,*", f"$HIR,4,{proto},42,2,5,0,{sub},*", f"$HP,{hp},{ar - 9},{sh},*"); await settle(st)
+        assert "$LIFE,0,9,0,*" in tx(mgr)[n:], "HIGH 3: our damaging word, not the enemy's no-pool word, owns the drop"
+        st.poll(); await settle(st); st._self_echo = None
+        st.hp, st.armor, st.shield = hp, ar, sh
+        st._dmg_hir = None; st._hir_word = None; st._foreign_dmg_at = None
+        n = len(tx(mgr))
+        hit("$HIR,4,0,42,2,9,0,3,*", "$HIR,4,0,7,1,9,0,3,*", f"$HP,{hp},{ar - 9},{sh},*"); await settle(st)
+        assert not _restores(tx(mgr)[n:]), "HIGH 2: an enemy's damaging word in the window makes it a real hit"
+        assert st.armor == ar - 9
+    asyncio.run(run())
+
+
+def test_f438_polish_stage_a_repeated_zero_after_a_lethal_self_hit_is_not_a_pool():
+    """F438 polish r1 HIGH 1 (engine.js `_selfHitHp` echo branch): the gun's repeated zero before the revive lands is
+    the old zero, so the model never reads 0 and the stage never goes down."""
+    async def run():
+        st, mgr, hit = await _f438_stage()
+        hp, ar, sh = st.hp, st.armor, st.shield
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*")
+        hit("$HP,0,0,0,*")
+        assert st.alive and st.hp > 0, (st.alive, st.hp)   # before the revive task runs: the zero itself moved nothing
+        await settle(st)
+        assert st.alive and st.hp > 0, (st.alive, st.hp)
+    asyncio.run(run())
+
+
+def test_f438_polish_r2_stage_drops_one_lcd_twin_only_and_never_heals_on_two_quick_self_hits():
+    """F438 polish r2 (engine.js `_selfHitLcd`, `_selfGunPools`): the lethal self-hit's own `$LCD,0` twin is dropped, a
+    second zero `$LCD` (grenade, poison) still kills; and two self-hits before the first `$LIFE` lands give back 9 each."""
+    async def run():
+        st, mgr, hit = await _f438_stage()
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*")
+        assert st.alive, "the twin is not a death"
+        hit("$LCD,0,0,0,1,1,1,*")
+        assert not st.alive, "a second zero is real"
+
+        st, mgr, hit = await _f438_stage()
+        hp, ar, sh = st.hp, st.armor, st.shield
+        n = len(tx(mgr))
+        hit("$HIR,4,0,7,1,9,0,3,*", f"$HP,{hp},{ar - 9},{sh},*")
+        hit("$HIR,4,0,7,1,9,0,3,*", f"$HP,{hp},{ar - 18},{sh},*"); await settle(st)
+        assert _restores(tx(mgr)[n:]) == ["$LIFE,0,9,0,*", "$LIFE,0,9,0,*"], tx(mgr)[n:]
+    asyncio.run(run())
+
+
+def test_f438_polish_r3_stage_frames_in_the_same_instant_are_still_new_words():
+    """F438 polish r3 (engine.js `L !== se.latch`): "a newer `$HIR`" is a new word (the `$HIR` counter), never a later
+    clock reading. Frozen clock: an enemy hit right after our restore is a real hit, and a second self-hit is paid."""
+    async def run():
+        st, mgr, hit = await _f438_stage()
+        t0 = st.now(); st.now = lambda: t0
+        hp, ar, sh = st.hp, st.armor, st.shield
+        n = len(tx(mgr))
+        hit("$HIR,4,0,7,1,9,0,3,*", f"$HP,{hp},{ar - 9},{sh},*")
+        hit("$HIR,4,0,42,2,9,0,3,*", f"$HP,{hp},{ar - 18},{sh},*")
+        await settle(st)
+        assert _restores(tx(mgr)[n:]) == ["$LIFE,0,9,0,*"], tx(mgr)[n:]
+        assert st.armor == ar - 18
+        assert st._hit_word is not None and st._hit_word["num"] == 42, "the enemy's 9 is booked as a hit, never our echo"
+
+        st, mgr, hit = await _f438_stage()
+        t0 = st.now(); st.now = lambda: t0
+        hp, ar, sh = st.hp, st.armor, st.shield
+        n = len(tx(mgr))
+        hit("$HIR,4,0,7,1,9,0,3,*", f"$HP,{hp},{ar - 9},{sh},*")
+        hit("$HIR,4,0,7,1,9,0,3,*", f"$HP,{hp},{ar - 18},{sh},*"); await settle(st)
+        assert _restores(tx(mgr)[n:]) == ["$LIFE,0,9,0,*", "$LIFE,0,9,0,*"], tx(mgr)[n:]
+    asyncio.run(run())
+
+
+def test_f438_polish_stage_the_restore_echo_is_swallowed_with_no_second_write():
+    """F438 polish r1 LOW b: the gun's own `$HP` answering the restore changes the pools only: no write, no hit."""
+    async def run():
+        st, mgr, hit = await _f438_stage()
+        hp, ar, sh = st.hp, st.armor, st.shield
+        hit("$HIR,4,0,7,1,9,0,3,*", f"$HP,{hp},{ar - 9},{sh},*"); await settle(st)
+        assert st._self_echo is not None
+        n = len(tx(mgr))
+        hit(f"$HP,{hp},{ar},{sh},*"); await settle(st)
+        assert tx(mgr)[n:] == [], tx(mgr)[n:]
+        assert st._self_echo is None and (st.hp, st.armor, st.shield) == (hp, ar, sh)
+    asyncio.run(run())
+
+
 def test_a_hit_reacts_the_instant_its_frame_decodes_not_on_the_next_poll_tick():
     async def run():
         mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])

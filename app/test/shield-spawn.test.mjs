@@ -155,7 +155,7 @@ test('F348 control: a shield broken in play still recharges the old way (and, To
 // ---------- integration review 2026-09-24 (X1, X3, X5, X6, X7): the fill against the audio model and the pool repair ----------
 const REPAIRS = (h, n) => h.since(n).filter(w => /^\$LIFE,\d+,\d+,\d+,1,\*$/.test(w));
 
-test('X3: the spawn line and klaxon precede the fill in separate writes 150 ms apart', () => {
+test('X3: the klaxon, then the spawn line, precede the fill in separate writes 150 ms apart', () => {
   const h = harness();
   const burst = h.since(h.startAt);
   const fill = burst.indexOf(FILL), line = burst.indexOf(golden.cues.spawn), klaxon = burst.indexOf(golden.cues.klaxon);
@@ -164,8 +164,13 @@ test('X3: the spawn line and klaxon precede the fill in separate writes 150 ms a
   const lineWrite = h.writeGroups.findIndex(g => g.frames.includes(golden.cues.spawn));
   const klaxonWrite = h.writeGroups.findIndex(g => g.frames.includes(golden.cues.klaxon));
   assert.notEqual(lineWrite, klaxonWrite, 'the spawn line and klaxon use separate writes');
-  assert.equal(h.writeGroups[klaxonWrite].gapMs, 150,
-    'the klaxon waits 150 ms after the spawn line transmission');
+  // Bench 2026-10-02: the klaxon is on the interrupt slot (token 1). Sent after the queue-slot spawn line, it cut the
+  // taunt after one word. It goes first, so the line plays whole behind it.
+  assert.ok(/^\$PLAY,[^,]+,/.test(golden.cues.klaxon) && /^\$PLAY,,/.test(golden.cues.spawn), 'setup: klaxon token 1, line token 4');
+  assert.ok(klaxon < line && klaxonWrite < lineWrite, `the klaxon goes before the spawn line: ${JSON.stringify(burst)}`);
+  assert.ok(h.writeGroups[lineWrite].gapMs >= 150, 'the spawn line waits at least 150 ms after the klaxon');
+  assert.ok(h.writeGroups.slice(lineWrite + 1).every(g => !g.frames.some(f => /^\$PLAY,[^,]+,/.test(f) || /^\$PLAYX/.test(f))),
+    'no interrupt-slot $PLAY or $PLAYX follows the spawn line in the go-live burst');
 });
 
 test('X3: a revive puts its line before the fill', () => {

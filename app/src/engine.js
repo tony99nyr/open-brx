@@ -129,6 +129,9 @@ export const SHIELD_REGEN_WRITE_BUDGET = SHIELD_REGEN_GRANTS + 2;   // one recha
 // with `$HP`; that rise is the spawn fill, not a recharge, so it says nothing (SHIELD_FILL_ECHO_MS).
 export const SPAWN_SHIELD_FULL = true;
 const SHIELD_FILL_ECHO_MS = 5000;     // a shield rise this soon after a spawn fill is the fill's own echo (under SHIELD_REGEN_DELAY_MS, so a recharge never reads as one)
+// F438 (bench 2026-10-02): every `$HP` this soon after a self-hit's restore (or its revive) is the gun answering OUR write,
+// unless a newer `$HIR` landed since. The revive burst is ~17 frames at 30-90 ms each (SPAWN_PROBE_MS), so ~1.5 s to land.
+const SELF_HIT_ECHO_MS = 2000;
 const SHIELD_CHARGING_MIN_MS = 1000;  // C4: a refill shorter than this is not announced ("Shields charging" would outlast it)
 // A gun that stops echoing `$HP` would otherwise be granted at forever, so a refill is capped at the grants a
 // full pool can possibly need plus slack for the ones that landed while a hit was in flight.
@@ -820,6 +823,10 @@ export class Engine {
     this._activeRole = null;        // A16 §3.3: {name, tid} — the ONE headset role currently held (carrier|infected|vip|beacon|extracted), re-asserted after every hit, cleared on death
     this._lastHeadsetFlashAt = null; // led-language.md §2 (safety: bursts ≥ 1 s apart) / §5: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto, ir_subtype, sensor}
+    this._foreignDmgAt = null;      // F438 polish r1: when another player's damaging word last landed (a self-hit inside 1000 ms of one is a real hit)
+    this._selfGunPools = null;      // F438 polish r2: the pools the gun reported on a self-hit whose restore has not landed
+    this._selfHitUsed = null;       // F438 polish r2: the last word given back (one word, one give-back)
+    this._selfEcho = null;          // F438: {at, health, armor, shield} -- the pools a self-hit restore or revive put back, while its echo is due
     this._dmgLatch = null;          // F354: the last latch whose `$SIR` cell can move a pool (`_nonDamaging`); the `$HP` that follows is ITS damage
     this._sirFnsFor = undefined; this._sirFnsMap = null;   // F354: `_sirFns()`'s cache, keyed on the bundle object
     this._hitGroupSeq = 0;
@@ -3091,9 +3098,9 @@ export class Engine {
     if (!SPAWN_SHIELD_FULL || !this.shieldRegenOn) return [];
     return [`$LIFE,0,0,${this.maxShield},*`];
   }
-  /** X3: a spawn or revive burst, with the fill LAST after the spawn line and klaxon. */
-  _writeSpawnBurst(frames, fill, why, life) {
-    this._writeLife([...frames, ...fill], why, life);
+  /** X3: a spawn or revive burst, with the fill LAST after the klaxon and spawn line. */
+  _writeSpawnBurst(frames, fill, why, life, tail = []) {
+    this._writeLife([...frames, ...fill, ...tail], why, life);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
     this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
   }
   _spawn(withCountdown) {
@@ -3114,10 +3121,12 @@ export class Engine {
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
-    // X3: keep the klaxon after the spawn line and before the fill
+    // X3: the fill goes last. Bench 2026-10-02 (0.4.16, Tony): the klaxon is on the INTERRUPT slot (token 1), and sent
+    // after the spawn line it cut the taunt after one word ("no where to hide" played as "no.."). So the klaxon goes
+    // FIRST, and the line, on the queue slot (token 4), plays whole after it.
     const kx = this.frames.cues && this.frames.cues.klaxon && !this.cuesFired.has('klaxon') ? this.frames.cues.klaxon : null;
     if (kx) this.cuesFired.add('klaxon');
-    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : []), ...(kx ? [kx] : [])], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + this._lineTag(sp) + (kx ? ' + klaxon' : '') + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
+    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(kx ? [kx] : []), ...(sp.frame ? [sp.frame] : [])], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? ' + klaxon' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
     if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;
@@ -4074,14 +4083,17 @@ export class Engine {
     if (this.resync) this._resyncTick();
   }
 
-  _revive(resync, stationId = null, operator = false) {
+  /** `selfHit` (F438): the pools held just before our own shot killed us. The revive writes the same burst a timed
+   *  respawn does, ending in a `$LIFE` that drains back to those pools, and to MC and the HUD it never happened: no
+   *  respawn fact, no REDEPLOYED moment, and the life's ledger and spawn-kill clock carry on. */
+  _revive(resync, stationId = null, operator = false, selfHit = null) {
     this.reloading = null; this._reloadOutcome = null; this.held = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
     if (this._overshield || this._puHeld || this._puBackPending?.equipped === false) this._puDeath(true);   // a live respawn also retires a delayed empty switch-back
     const down = this.frames.headset && this.frames.headset.down;
     if (down && down.stop) this._write([down.stop], 'down stop');   // §3.2: `$HLOOP,0,0,*` before $SPAWN — belt-and-braces, $SPAWN clears the loop on its own
     this._downRearmSent = false;   // §3.2: fresh rearm gate for the next life
-    const sp = this._pickCue('respawned');   // A15.2: the spawn line rides in the revive write (one line, never two)
+    const sp = selfHit ? { frame: null, tag: '' } : this._pickCue('respawned');   // A15.2: the spawn line rides in the revive write (one line, never two); F438 polish: a self-hit revive says nothing
     const ps = this._pickFrame('pset_pool');   // A15.3: a fresh death scream for this life, written before $SPAWN
     if (ps.frame) this._psetNow = ps.frame;   // A56: ...and, at the preset shield max, it undoes an overshield's raised one
     // A17: a fresh $SIR table too, so the sound a given WEAPON makes on us changes between lives. It rides the
@@ -4102,10 +4114,14 @@ export class Engine {
     const revive = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
+    // F438: the revive leaves full health and armour and the fill's shield; the drain takes back the difference, per pool
+    // (a negative floors at 0 and never spills, docs/manual/dev.md `$LIFE`). Never a heal: a self-kill costs what it cost.
+    const selfDrain = selfHit ? [selfHit.health - this.maxHp, selfHit.armor - this.maxArmor, selfHit.shield - (fill.length ? this.maxShield : 0)].map(d => Math.min(0, d)) : null;
+    const drain = selfDrain && selfDrain.some(d => d < 0) ? [`$LIFE,${selfDrain[0]},${selfDrain[1]},${selfDrain[2]},*`] : [];
     // docs/announcer.md: the dead queue ends here. Only my kill confirm and the lead change survive it, and they wait for
     // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
-    this._ann.respawn(this.now(), revive.includes(PLAYX));
-    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);   // X3: the line before the fill
+    if (!selfHit || revive.includes(PLAYX)) this._ann.respawn(this.now(), revive.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
+    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain);   // X3: the line before the fill
     this.hurtFired = false; this._hurtSent = false;
     this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
@@ -4118,9 +4134,12 @@ export class Engine {
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
     this._puRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
-    this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
-    this._resetLifeLedger();   // S56: nor does the "what hit me" ledger
+    // F438 polish r1: a self-hit revive is the same life, so an enemy's poison keeps ticking and a smoke keeps its clock.
+    // ⚠ Unbenched: the revive's `$SPAWN` clears every `$TMP`, so the gun may have dropped the smoke's accuracy hold already.
+    if (!selfHit) { this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null; }   // S16/S53: a new life carries neither
+    if (!selfHit) this._resetLifeLedger();   // S56: nor does the "what hit me" ledger (F438: a self-hit revive is the same life)
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null; this.downReason = null;
+    if (selfHit) { this.hp = selfHit.health; this.armor = selfHit.armor; this.shield = Math.min(selfHit.shield, fill.length ? this.maxShield : 0); }   // F438: what the drain leaves
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._gunLifeAt = this._spawnAt; this._armedThisLife = false;   // B5/F272: settle and silence clocks start with this life
@@ -4130,8 +4149,9 @@ export class Engine {
     // SHIELD_REGEN_DELAY_MS in and never inside the spawn write.
     this._shieldRegen = null; this._shieldDown = false; this._shieldLoopAt = 0; this._shieldGaveUp = false; this._shieldQuietAt = this.now();
     this._armAfterSpawn(false, kind);   // F209; 2026-09-19: the profile this revive used
-    this._timedLifeAt = kind === 'timed' && stationId == null ? this.now() : null;   // a legacy bundle's station revive is not a timed one   // 2026-09-19: the spawn-kill window runs from a timed respawn
+    if (!selfHit) this._timedLifeAt = kind === 'timed' && stationId == null ? this.now() : null;   // a legacy bundle's station revive is not a timed one   // 2026-09-19: the spawn-kill window runs from a timed respawn   // F438: a self-hit revive is no respawn
     this._gunTake();   // A11.7
+    if (!selfHit) {   // F438: a self-hit revive tells MC and the HUD nothing; the gun's lights below still follow its `$SPAWN`
     const protectMs = this._protectOwedMs();   // F289: sent at once, so MC knows of the window even if the phone dies inside it
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}), ...(protectMs ? { protect_ms: protectMs } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     // F368: `_redeployOutAt` is when the HUD's REDEPLOYED gives up the centre (lanes.js `redeployOutMs`, the weapon delay read here)
@@ -4139,6 +4159,7 @@ export class Engine {
     this._redeployOutAt = this.now() + redeployOutMs(this._triggerPending ? Math.max(0, this._triggerPending.due - this.now()) : 0);   // kept apart: a kill overwrites the moment slot
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): a kill from the old life never draws in, nor joins, this one
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
+    }
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
     if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
@@ -5504,6 +5525,7 @@ export class Engine {
     switch (cmd) {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); this._poolVerify(this.hp, this.armor, this.shield, solicited); if (solicited || this._operatorResyncPending) this._operatorResyncAnswer('HP', t, solicited); if (solicited) this._cureAnswer('HP', t); break;
       case 'LCD': {
+        if (this._selfHitLcd(+t[1] || 0)) break;   // F438 polish r2: the lethal self-hit's own `$LCD,0` twin
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
         if (this.hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
@@ -5603,14 +5625,18 @@ export class Engine {
         // word), latched raw and unmapped to any pool -- `_resolveHitWeapon` matches it against the roster's
         // `RosterWeapon.hir` to name what hit us. Never confused with the `dmg` `_onHp` computes from the
         // pool delta a moment later: that number is armour/shield-adjusted, this one is the wire magnitude.
-        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10), mag: parseInt(t[5], 10) }; if (!this._nonDamaging(this.latch)) this._dmgLatch = this.latch; this.lastHitAt = this.now(); this._shieldReassert(); }
-        if (t[2] === '8') this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
+        // F438: our OWN word (a bounce off a wall into our own headset, bench 2026-10-02) still latches, so the `$HP` that
+        // follows can be recognised and given back, but it is not "under fire", never stuns and never poisons.
+        // `_shieldReassert` still runs: the gun's native hit flash wiped the protection light whoever fired.
+        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10), mag: parseInt(t[5], 10) }; if (!this._nonDamaging(this.latch)) { this._dmgLatch = this.latch; if (!this._ownShot(this.latch)) this._foreignDmgAt = this.now(); } if (!this._ownShot(this.latch)) this.lastHitAt = this.now(); this._shieldReassert(); }
+        const own = !Number.isNaN(team) && this._ownShot(this.latch);
+        if (t[2] === '8' && !own) this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
         if (t[2] === '7') {               // S55: the Haze's fn-23 cell; repeated hits arrive while accuracy is already 0
           const until = this.now() + SMOKE_MS;
           this._nativeAccuracyHold('smoke', until);
           if (this.smoke) this.smoke.until = until;
         }
-        if (!Number.isNaN(team)) this._poisonHit(parseInt(t[2], 10));   // S16: a protocol in `frames.dot` starts or refreshes the stack
+        if (!Number.isNaN(team) && !own) this._poisonHit(parseInt(t[2], 10));   // S16: a protocol in `frames.dot` starts or refreshes the stack
         this._smokeHirAt = this.now(); this._smokeCheck();               // S53: half of a smoke landing (the other half is the $ALCD drop to 0)
         break;
       }
@@ -7005,6 +7031,111 @@ export class Engine {
     // heat itself is recorded at the top of this function, before the stunned return.
   }
 
+  /** F438: a word whose shooter id (`$HIR` token 3, the shooter's `$PSET` id) is our own `player_num`. Wire id 0 is
+   *  "no identity" (A5.1) and never us, and a node with no player assigned has no self to hit. */
+  _ownShot(latch) {
+    const me = this.player && this.player.player_num;
+    return !!latch && me != null && Number(me) > 0 && Number(latch.shooter_num) === Number(me);
+  }
+
+  /** F438 (bench 2026-10-02, Tony: "a player's OWN shot must never hurt or kill them"): a sniper's round bounced off a
+   *  wall into his own headset with friendly fire off, and the gun's own gates (its 124 ms self-hit window, FF-off) let
+   *  it through: he went down "by" his own sticker name. The firmware half is a bench item; this is the node's half.
+   *  Returns true when this `$HP` is handled here and `_onHp` must do nothing else with it:
+   *   - the gun's ECHO of a restore or revive we wrote (`_selfEcho`, no newer `$HIR` since): pools only, no cue (and
+   *     after a lethal self-hit a repeated all-zero `$HP` is the old zero, not a pool);
+   *   - a SELF-HIT (the damaging word paired with this `$HP` by the usual 1000 ms gate is our own): it never happened.
+   *     Non-lethal: one `$LIFE` gives back exactly what this `$HP` took. Lethal: the timed respawn's own revive write
+   *     at once, ending in a `$LIFE` that drains back to the pre-hit pools, so a self-kill never heals. No fact reaches
+   *     MC (no hit_taken, no death, no respawn), no cue, no flash, no ledger entry, no poison. Never when another
+   *     player's damaging word landed inside the same 1000 ms: that drop may be theirs (polish r1).
+   *  A lethal self-hit the node cannot revive (link down, match over, no revive burst) falls through to the normal
+   *  death, which `_death` books as a down by nobody, never by us. */
+  _selfHitHp(hp, armor, shield) {
+    const now = this.now(), L = this.latch, se = this._selfEcho, rep = { health: hp, armor, shield };
+    // Polish r2: the pools the GUN last reported. After a restore the model already holds the pre-hit pools, but the gun
+    // holds them only once our `$LIFE` lands; a second self-hit or a poison tick before then is measured from the gun's.
+    const gun = this._selfGunPools || { health: this.hp, armor: this.armor, shield: this.shield };
+    const fall = () => {   // the normal path measures from the model, so give it the gun's pools first
+      if (this._selfGunPools) { this.hp = gun.health; this.armor = gun.armor; this.shield = gun.shield; this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; this._selfGunPools = null; }
+      return false;
+    };
+    // Polish r2 (LOW): our own poison tick's answer is the tick, even inside a restore's echo window (S16 `dotEcho`).
+    if (this._dotEcho && now - this._dotEcho.at <= DOT_ECHO_MS && dotEchoMatches(this._dotEcho, gun, rep)) return fall();
+    if (se) {
+      // Polish r3: "a new word" is a different latch OBJECT, never a later timestamp: frames handled in the same millisecond
+      // (`Date.now()`) made an enemy's `$HP` read as our echo and a second self-hit go unpaid.
+      if (now - se.at > SELF_HIT_ECHO_MS || L !== se.latch) this._selfEcho = null;   // expired, or a new word: judge it below
+      else if (hp === 0 && armor === 0 && shield === 0) {
+        // F438 polish r1/r2: the gun repeats its zero before it has processed the revive. Taking it as the pools left hp 0,
+        // and the next tick's B5 re-examination booked a death. With no newer `$HIR`, and no live pool reported since the
+        // revive, it can only be the old zero. After a live pool, or after a non-lethal restore, a zero is real (a
+        // grenade or poison has no `$HIR` of ours), so the window closes and the normal path judges it.
+        if (se.lethal && !se.sawLife) { this.log('self-hit: a stale zero from before the revive, ignored', 'li'); return true; }
+        this._selfEcho = null;
+      } else {
+        this.hp = hp; this.armor = armor; this.shield = shield; this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
+        this._selfGunPools = null;   // the model is the gun's word again
+        if (hp > 0) se.sawLife = true;
+        this._spawnCheckSeen(hp, armor, shield);   // F416: a revive's echo still proves the revive landed
+        if (hp === se.health && armor === se.armor && shield === se.shield) { this._selfEcho = null; this._shieldFillAt = 0; this.log(`self-hit: the gun is back at ${hp}/${armor}/${shield}`, 'li'); }
+        this._changed();
+        return true;
+      }
+    }
+    if (!(this.phase === 'live' && this.spawned && this.alive && !this.tutorial) || !L || now - L.at > 1000) return fall();
+    const dl = this._dmgLatch, hl = dl && now - dl.at <= C.DEATH_LATCH_MS ? dl : L;   // `_onHp`'s own pairing (F354)
+    if (!this._ownShot(hl)) return fall();
+    // Polish r2: one word is given back once. A later drop paired with the same word (a grenade's zero after the revive)
+    // is not that shot's damage.
+    if (hl === this._selfHitUsed) return fall();
+    // F438 polish r1: another player's damaging word inside the same pairing window may have done some or all of this
+    // damage, and the pool drop cannot say which. A real hit is never swallowed, so this one takes the normal path.
+    if (this._foreignDmgAt != null && now - this._foreignDmgAt <= 1000) return fall();
+    const took = gun.health + gun.armor + gun.shield - (hp + armor + shield);
+    if (took <= 0) return fall();   // nothing taken: not a hit
+    const target = { health: this.hp, armor: this.armor, shield: this.shield };   // the pre-hit pools (a restore still in flight included)
+    const r = this._resolveHitWeapon(hl);
+    const what = r && r.name ? r.name : `proto ${hl.ir_proto}/subtype ${hl.ir_subtype}`;
+    this._selfHitUsed = hl;
+    if (hp > 0) {
+      // Per pool, and only what THIS frame took from what the gun held: a pool that rose in the same frame keeps its rise,
+      // and a restore still in flight is never paid twice (polish r2: two quick self-hits healed 30 -> 39).
+      const give = [gun.health - hp, gun.armor - armor, gun.shield - shield].map(d => Math.max(0, d));
+      this._write([`$LIFE,${give[0]},${give[1]},${give[2]},*`], 'F438 self-hit restore');
+      this._selfGunPools = rep;
+      this._selfEcho = { at: now, latch: L, ...target };
+      this.log(`self-hit: own shot (${what}) took ${took}, restored`, 'li');
+      this._changed();
+      return true;
+    }
+    const rp = this._respawnProfile(), burst = this.frames && (rp ? rp.revive : this.frames.revive);
+    const why = !this.bleUp ? 'link down' : this.ended ? 'match over' : (this.resync || this.reconciling) ? 'resync' : !(burst && burst.length) ? 'no revive burst' : null;
+    if (why) { this.log(`self-hit: own shot was lethal, no revive (${why}): booked as a down by nobody`, 'le'); return fall(); }
+    this._selfGunPools = null;
+    this._revive(false, null, false, target);
+    this._selfEcho = { at: now, lethal: true, latch: L, ...target };
+    this.log(`self-hit: own shot was lethal, revived at ${target.health}/${target.armor}/${target.shield}`, 'le');
+    this._changed();
+    return true;
+  }
+
+  /** F438 polish r2: a lethal hit sends `$HP,0` and then `$LCD,0,...` at once (docs/manual/dev.md). The `$HP` revived
+   *  us; its `$LCD` twin must not book the death. True = drop this `$LCD` (no pool write): exactly ONE zero, inside the
+   *  lethal echo window, with no newer `$HIR` and no live pool reported since, so a later real zero (a grenade or a
+   *  poison kill, which carry no `$HIR` of ours) still kills. ⚠ Known gaps, accepted (polish r3): an `$LCD,0` that
+   *  arrives BEFORE its `$HP,0` books an ordinary death (named nobody, `_ownShot` in `_death`) before any revive; a lost
+   *  `$HIR` + `$HP` + `$LCD` triple, or a lethal grenade whose `$LCD` is lost, leaves the zero to the F264 poll. */
+  _selfHitLcd(hp) {
+    const se = this._selfEcho, L = this.latch;
+    if (!se || !se.lethal || this.now() - se.at > SELF_HIT_ECHO_MS || L !== se.latch) return false;   // polish r3: identity, not time
+    if (hp > 0) { se.sawLife = true; return false; }
+    if (se.lcdDropped || se.sawLife) return false;
+    se.lcdDropped = true;
+    this.log('self-hit: the lethal shot\'s own `$LCD,0` twin, ignored', 'li');
+    return true;
+  }
+
   _onHp(hp, armor, shield, solicited = false) {
     this._puHpAt = this.now();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
@@ -7013,6 +7144,7 @@ export class Engine {
     // total made every shield-absorbed hit compute dmg === 0, which the guard below then
     // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
+    if (this._selfHitHp(hp, armor, shield)) return;   // F438: our own shot, or the gun's echo of us giving it back
     const before = this.hp + this.armor + this.shield;
     const pools0 = { health: this.hp, armor: this.armor, shield: this.shield };   // S16: what `dmg` measures from, read by the echo match
     if (this._prevHp === undefined) { this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; }
@@ -7356,7 +7488,10 @@ export class Engine {
     // never landed (F80). Its team field is the hill's OWNER, so naming that team as the killer told the player a
     // specific lie ("KILLED BY GREEN" when nobody shot them). MC already refuses to credit wire 0; the phone now
     // says the killer is unknown. A stale latch (older than DEATH_LATCH_MS) is the same case: nobody we can name.
-    const unknown = !fresh || shooter_num === 0;
+    // F438 (bench 2026-10-02): our OWN id is nobody we can name either. A self-hit the node could not revive (or one whose
+    // `$HP` missed the 1000 ms pairing gate) still downs the player, but "down by <your own name>" is never the story.
+    // The fact keeps the raw id: MC's `_kill_pair` already credits nobody for killer == victim.
+    const unknown = !fresh || shooter_num === 0 || this._ownShot(src);
     this.alive = false; this.deaths++; this.deadAt = this.now(); this.downReason = reason; this._downRearmSent = false;   // §3.2: fresh rearm gate for this life
     // F149 (field 2026-09-12, "the low-health breathing loop played AFTER a death"): `cues.hurt` (A17.2) is a
     // several-second voice sample, and a death can land while it is still playing -- the killing hit itself
