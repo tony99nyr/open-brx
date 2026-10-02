@@ -600,8 +600,10 @@ export function Lobby() {
 }
 
 const MOVE_OPEN_EVENT = 'mc-move-open';
-/** The player whose MOVE should take focus when its row mounts again in its new team column. */
-let focusAfterMove: string | null = null;
+/** The player whose MOVE should take focus when its row mounts again in its new team column. It expires:
+ *  a REFUSED move never remounts the row, and must not pull focus there on some later, unrelated mount. */
+let focusAfterMove: { id: string; until: number } | null = null;
+const FOCUS_AFTER_MOVE_MS = 2000;
 
 /** A roster row's MOVE: neutral until pressed, then the OTHER teams inline, each in its own colour. A pick
  *  moves the player at once (no warning, the same `patchPlayer`); Escape or MOVE again closes it. Inline,
@@ -619,8 +621,16 @@ function MoveMenu({ id, name, others, onMove }: { id: string; name: string; othe
   }, [id]);
   // A pick moves the row to another team column, which mounts a NEW MoveMenu: that one takes the focus,
   // so a keyboard operator stays on the player they just moved (polish 2026-10-02).
-  useEffect(() => { if (focusAfterMove === id) { focusAfterMove = null; openRef.current?.focus(); } }, [id]);
-  const toggle = () => setOpen(o => { if (!o) window.dispatchEvent(new CustomEvent(MOVE_OPEN_EVENT, { detail: id })); return !o; });
+  useEffect(() => {
+    if (focusAfterMove?.id !== id) return;
+    const fresh = Date.now() < focusAfterMove.until;
+    focusAfterMove = null;
+    if (fresh) openRef.current?.focus();
+  }, [id]);
+  const toggle = () => {
+    if (!open) window.dispatchEvent(new CustomEvent(MOVE_OPEN_EVENT, { detail: id }));
+    setOpen(!open);
+  };
   const close = () => { setOpen(false); openRef.current?.focus(); };
   return (
     <span role="group" aria-label={`move ${name} to`} style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}
@@ -633,7 +643,7 @@ function MoveMenu({ id, name, others, onMove }: { id: string; name: string; othe
       </button>
       {open && others.map((t, i) => (
         <button key={t} ref={i === 0 ? firstRef : undefined} type="button" className="hit44" data-move-to={t}
-          onClick={() => { focusAfterMove = id; close(); onMove(t); }} title={`Move ${name} to ${t.toUpperCase()}`}
+          onClick={() => { focusAfterMove = { id, until: Date.now() + FOCUS_AFTER_MOVE_MS }; close(); onMove(t); }} title={`Move ${name} to ${t.toUpperCase()}`}
           style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 12px', color: teamColor(t),
             border: `1px solid ${teamColor(t)}`, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>
           {t.toUpperCase()}

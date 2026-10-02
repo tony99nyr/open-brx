@@ -2,7 +2,7 @@
 // red on the blue team guy." The row now has one neutral MOVE button; it opens a picker of the OTHER
 // teams, each in its own colour, and a pick moves the player at once (no warning, same patchPlayer).
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Api, State } from '../src/api/types';
 import { Lobby } from '../src/screens/Lobby';
 import { TEAM } from '../src/tokens';
@@ -98,6 +98,27 @@ describe('LOBBY — one neutral MOVE button opens a picker of the other teams', 
     moveBtn().dispatchEvent(ev);
     expect(ev.defaultPrevented, 'the row refuses a drag that began on a button').toBe(true);
     m.unmount();
+  });
+
+  it('a REFUSED move never pulls focus back to that player later (the pending focus expires)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const d = await demo();
+      const api = fixtureApi({ patchPlayer: (async () => { throw new Error('PLAYER NOT FOUND'); }) as Api['patchPlayer'] }, d.api);
+      const state: State = { ...d.state, phase: 'lobby' };
+      const p = state.players[0];
+      const m = await mountScreen(<Lobby />, { ...d, api, state, view: 'lobby' });
+      const move = () => (m.find(`[aria-label="move ${p.display} to"]`)[0] as HTMLElement).querySelector('[data-move-open]') as HTMLButtonElement;
+      await act(async () => { move().click(); });
+      const opt = (m.find(`[aria-label="move ${p.display} to"]`)[0] as HTMLElement).querySelector('[data-move-to]') as HTMLButtonElement;
+      await act(async () => { opt.click(); });
+      m.unmount();
+      (document.activeElement as HTMLElement | null)?.blur();
+      vi.setSystemTime(Date.now() + 5000);   // much later: a tab switch back to LOBBY
+      const m2 = await mountScreen(<Lobby />, { ...d, api, state, view: 'lobby' });
+      expect(document.activeElement?.hasAttribute('data-move-open') ?? false, 'no focus theft on an unrelated remount').toBe(false);
+      m2.unmount();
+    } finally { vi.useRealTimers(); }
   });
 });
 
