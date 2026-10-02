@@ -1,7 +1,5 @@
-// F416 (P0, bench part 1, 2026-09-26): a spawn write that failed at go-live was logged "not re-sent", the gun stayed
-// unspawned, and the node booked a death on its 0 pool two seconds later. A blind second `$SPAWN` is unsafe (a refill,
-// re-applied protection: pl4, F11), so the node ASKS the gun first: a 0 pool with no `$HIR` since the write means it
-// never spawned, and only then is the burst re-sent. These drive the real Engine on a mocked clock.
+// F416: a failed spawn write needs a pool read, then a weapon read from a live gun.
+// A whole burst is safe before any hit, trigger pull or shot. These tests drive Engine on a mocked clock.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -16,7 +14,7 @@ function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m
  *  state: `spawned` flips on a `$SPAWN` write that did not fail, and a probe is answered from it. */
 function harness({ fail = () => false, profile = true } = {}) {
   const writes = [], logs = []; let clock = 1_000_000; const timers = [];
-  const gun = { spawned: false, answer: true };
+  const gun = { spawned: false, answer: true, slot: 0, mag: 32, reserve: 192, hp: 0, armor: 0, shield: 0 };
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 900,
     respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70, max_shield: 0 }, teams };
@@ -26,8 +24,9 @@ function harness({ fail = () => false, profile = true } = {}) {
   const writer = fr => {
     writes.push(...fr.map(f => ({ f, t: clock })));
     if (fail(fr)) return false;
-    if (fr.some(f => f.startsWith('$SPAWN'))) { gun.spawned = true; replies.push('$LCD,45,70,0,0,32,192,*'); }
-    if (fr.includes(PROBE_LIFE) && gun.answer) replies.push(gun.spawned ? '$HP,45,70,0,*' : '$HP,0,0,0,*');
+    if (fr.some(f => f.startsWith('$SPAWN'))) { Object.assign(gun, { spawned: true, slot: 0, mag: 32, reserve: 192, hp: 45, armor: 70 }); replies.push('$LCD,45,70,0,0,32,192,*'); }
+    if (fr.includes(PROBE_LIFE) && gun.answer) replies.push(`$HP,${gun.hp || (gun.spawned ? 45 : 0)},${gun.armor || (gun.spawned ? 70 : 0)},${gun.shield},*`);
+    if (fr.includes('$QUERY,*') && gun.answer) replies.push(`$LCD,${gun.hp || (gun.spawned ? 45 : 0)},${gun.armor || (gun.spawned ? 70 : 0)},${gun.shield},${gun.slot},${gun.mag},${gun.reserve},*`);
     return undefined;
   };
   const eng = new Engine({ writer, emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: mkStorage(),
@@ -177,7 +176,7 @@ test('F416 review: a re-sent TIMED revive that lands after the weapon delay maps
   let n = 0;   // the T-0 spawn lands; the first revive is lost
   const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && n++ === 1 }).live();
   await h.adv(4000 + 1000);
-  h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); h.gun.spawned = false;
+  h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); Object.assign(h.gun, { spawned: false, hp: 0, armor: 0 });
   await h.adv(200);
   assert.equal(h.eng.state().alive, false, 'setup: the hit killed the player');
   h.gun.answer = false;                            // the gun answers only after the weapon delay has run out
@@ -210,4 +209,111 @@ test('F416 review: an $LCD 0/0 does not close the check on the engine\'s own shi
   h.eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   assert.ok(!h.logs.some(l => /the gun reads its pools/.test(l)), 'the check stays open');
   assert.ok(h.eng._spawnCheck, 'the spawn check is still open');
+});
+
+test('F416 weapon: stale positive pools and pickup slot 2 re-send the whole go-live burst', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { hp: 45, armor: 70, shield: 105, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  await h.adv(4000 + 3000);
+  assert.ok(h.writes.some(w => w.f === '$QUERY,*'), 'the live gun was asked for its weapon state');
+  assert.equal(h.spawns(), 2, `the full burst, including $SPAWN, went again: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+  assert.equal(h.eng.state().spawnLost, false);
+});
+
+test('F416 weapon: matching slot 0 and magazine prove a failed write landed', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 0, mag: 32, reserve: 192 }), true) }).live();
+  await h.adv(4000 + 3000);
+  const spawnedAt = h.writes.find(w => w.f.startsWith('$SPAWN')).t;
+  assert.ok(h.writes.some(w => w.f === '$QUERY,*' && w.t > spawnedAt), 'the failed spawn triggered a weapon query');
+  assert.equal(h.spawns(), 1, 'the confirmed burst was not repeated');
+  assert.ok(h.logs.some(l => /weapon state.*landed/.test(l)));
+});
+
+test('F416 weapon: a pull with no shot (a dead trigger) still gets the whole burst, $SPAWN included', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { hp: 45, armor: 70, shield: 105, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  await h.adv(4000 + 100);
+  h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame('$BUT,0,0,*');   // the player pulls; an unspawned gun fires nothing
+  await h.adv(3000);
+  assert.equal(h.spawns(), 2, `a pull is not play: the burst goes again: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+});
+
+test('F416 weapon: a hit before a mismatch repairs only team, live ammo and trigger, never $SPAWN', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  await h.adv(4000 + 100);
+  h.eng.feedFrame('$HIR,4,0,19,2,5,0,3,*'); h.eng.feedFrame('$HP,40,70,0,*');   // play: a hit since the write
+  await h.adv(3000);
+  assert.equal(h.spawns(), 1, 'play forbids a second $SPAWN (a refill)');
+  const spawnedAt = h.writes.find(w => w.f.startsWith('$SPAWN')).t;
+  const queryAt = h.writes.findIndex(w => w.f === '$QUERY,*' && w.t > spawnedAt);
+  const repair = h.writes.slice(queryAt + 1).map(w => w.f);
+  assert.ok(repair.some(f => f.startsWith('$TID,')));
+  assert.ok(repair.some(f => f.startsWith('$AMMO,0,')), `the live slot-0 count (_liveAmmo): ${JSON.stringify(repair)}`);
+  assert.ok(repair.some(f => f.startsWith('$BMAP,0,')));
+  assert.ok(!repair.some(f => f.startsWith('$SPAWN') || f.startsWith('$PSET')), JSON.stringify(repair));
+});
+
+test('F416 weapon review: a landed spawn, then ALT and three rounds on slot 1, still matches (no repair, no refill)', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 1, mag: 3, reserve: 24 }), true) }).live();
+  await h.adv(4000 + 50);
+  h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');
+  for (const m of [5, 4, 3]) { h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame(`$ALCD,${m},100,1,24,0,*`); h.eng.feedFrame('$BUT,0,0,*'); }
+  await h.adv(3000);
+  assert.equal(h.eng.activeSlot, 1);
+  assert.ok(h.logs.some(l => /weapon state matches/.test(l)), `landed: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+  assert.equal(h.eng.state().spawnLost, false);
+});
+
+test('F416 weapon: exhausted re-sends show HOST: FORCE RESPAWN and stop', async () => {
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && (Object.assign(h.gun, { hp: 45, armor: 70, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  await h.adv(4000 + 6000);
+  assert.equal(h.spawns(), 1 + E.SPAWN_RESENDS);
+  assert.equal(h.eng.state().spawnLost, true);
+  assert.ok(h.logs.some(l => l.includes('HOST: FORCE RESPAWN')));
+  await h.adv(3000);
+  assert.equal(h.spawns(), 1 + E.SPAWN_RESENDS, 'no more burst after the budget');
+});
+
+test('F416 weapon review: once the re-sends are spent, a hit to 0 is still a death (never an undying player)', async () => {
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && (Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  await h.adv(4000 + 6000);
+  assert.equal(h.eng.state().spawnLost, true, 'setup: the budget is spent');
+  h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(h.eng.state().alive, false, 'the hit to 0 books a death; the respawn is the cure');
+});
+
+test('F416 weapon review: the zero-pool answer that spends the budget books the death at once', async () => {
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) }).live();   // every burst fails; the gun stays at 0
+  await h.adv(4000 + 6000);
+  const st = h.eng.state();
+  assert.equal(st.alive, false, `the budget is spent and the 0 pool is booked; the respawn is the cure: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+});
+
+test('F416 weapon review r2: an ALT swap still in its window defers the verdict instead of re-sending $SPAWN', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 1, mag: 6, reserve: 24 }), true) }).live();
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } };   // two weapons: ALT is a swap
+  await h.adv(4000 + 50);
+  h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');   // ALT before the check's query: the gun is on slot 1, the node still waits
+  await h.adv(3000);
+  assert.equal(h.spawns(), 1, `no second $SPAWN over the player's ALT: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+});
+
+test('F416 weapon review r3: pulling a dead trigger on an unspawned gun does not defer the check to a silent close', async () => {
+  // Round 3 probe d6: a slot-0 account exists (an earlier `$ALCD` or repair seeded it), the gun is unspawned on slot 2
+  // at 2/1, every `$SPAWN` is lost, and the player pulls the dead trigger every second.
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && (Object.assign(h.gun, { spawned: false, hp: 45, armor: 70, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  await h.adv(4000); const t0 = h.now();
+  h.eng._shotAcct[0] = { mag: 32, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0 };
+  for (let t = 0; t < 14000; t += 50) {
+    if (t % 1000 === 0 && t < 12000) { h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame('$BUT,0,0,*'); }
+    await h.adv(50);
+  }
+  assert.ok(h.spawns() >= 2, `the unspawned gun gets the burst again: ${JSON.stringify(h.logs.filter(l => l.includes('F416')).slice(-3))}`);
+  assert.equal(h.eng.state().spawnLost, true, 'the budget ends on a visible HOST: FORCE RESPAWN, never a silent close');
+  const queries = h.writes.filter(w => w.t >= t0 && w.f === '$QUERY,*').length;
+  assert.ok(queries <= 10, `one probe chain, no fan-out: ${queries} queries`);
 });
