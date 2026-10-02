@@ -111,18 +111,24 @@ the pools move. **Pass:** no damage to self on any of the 5 shots. Any self `$HI
 or death. Then the firmware A/B: the same 5 wall shots in an FFA match (friendly fire ON) against TDM (OFF). Log
 every `$HIR` with its shooter id and team (tokens 3 and 4), and whether the gun applied it. Row: F438.
 
+**12. F439, every death scream is heard (10 min).** Standard health, then Shields, at the match's play volume. Six
+fast kills on one victim: bring them under 15 HP, then kill within about 1 s, so the low-health alert (and, on
+Shields, the shield-down heartbeat) is in flight at the death. Control: one slow kill from full health, scream heard.
+**Pass:** the scream is heard on 6 of 6, no Health critical and no heartbeat after a scream, and the victim log has no
+`death: stop ... ahead of the scream` line. Log any `death: stop N for a body cue queued behind the scream` lines with their times. Row: F439.
+
 STOP POINT: the core is done. Everything below is lower value per minute.
 
-**12. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with
+**13. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with
 the black Pixel as the hill (release it from the powerup role first). Rows: F420, F421, F424.
 
-**13. F400, the pickup switch card (10 min).** Follow *Group 4*, item 2. Row: F400.
+**14. F400, the pickup switch card (10 min).** Follow *Group 4*, item 2. Row: F400.
 
-**14. F419, the phone's own queue path (10 min).** Follow *Group 4*, item 3. Row: F419.
+**15. F419, the phone's own queue path (10 min).** Follow *Group 4*, item 3. Row: F419.
 
-**15. 11.8, death first (15 min).** Follow *Group 4*, item 6. Rows: F158, F3, F21, F375.
+**16. 11.8, death first (15 min).** Follow *Group 4*, item 6. Rows: F158, F3, F21, F375.
 
-**16. 11.4, the phone station's range edit (10 min).** Follow *Group 4*, item 1. Row: F365.
+**17. 11.4, the phone station's range edit (10 min).** Follow *Group 4*, item 1. Row: F365.
 
 ## Close
 

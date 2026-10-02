@@ -44,6 +44,8 @@ APK 0.4.15 (built from `efd1961c`) carries the phone tid-0 kill-confirm fix and 
   Bench: `bench-standard-2026-09-29.md` step 10.
 - **F438 (2026-10-02):** our own `$HIR` is a self-hit: the pools are given back, and a lethal one revives at once. Bench
   step 11 (and the FF A/B, a possible firmware finding).
+- **F439 (2026-10-02):** the native death scream interrupts, so the phone sends no stop at death; body cues behind it
+  are stopped after it ends. Bench step 12.
 - **Next:** Tony's GAMES check at the bench. F429/F430 (browser-closed flakes): close after 3 clean lander runs once
   brx1's test-all headroom fix lands.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.
