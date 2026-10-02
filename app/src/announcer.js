@@ -63,9 +63,6 @@ export const STREAK_SILENT = new Set(['lead_taken', 'lead_lost', 'hill_captured'
  *  (0.76 s) + two medal lines (up to 2.5 s each) + a lead line (2.7 s) = about 10 s: my own kill confirm is still said
  *  after the longest stack a trade makes. The respawn (5-8 s in the shipped modes) ends the dead rules sooner. */
 export const DEAD_QUEUE_TTL_MS = 10000;
-/** At my death, a clip the model says ends within this long is left alone: the model's clock is an estimate, and a stop
- *  that arrives after the clip has ended lands on the scream (review of 7173d400, H2). */
-export const DEATH_STOP_SLACK_MS = 150;
 /** What survives my respawn from the dead queue: my kill confirm and the lead change. The medal and hill lines left are
  *  dropped, so nothing waits to flush over the spawn line (review of 7173d400, M2). */
 export const KEEP_AT_RESPAWN = new Set(['kill_confirmed', 'lead_taken', 'lead_lost']);
@@ -139,8 +136,8 @@ export class Announcer {
   _isDead() { return !!(this.dead && this.dead()); }
 
   /** I just died (the engine calls this in `_death`, after the scream joined the gun model). Everything waiting gets the
-   *  dead-queue TTL. An item whose line is still sounding is cut by the death stop: it goes back in the queue, whole, and
-   *  is said again after the scream (Tony: "your death wins"). Its pending lines check `cut` and do not go out. */
+   *  dead-queue TTL. An item whose line is still sounding is cut by the scream (or F149's stop): its unsaid rest goes
+   *  back in the queue and is said after the scream (Tony: "your death wins"). Its pending lines check `cut` and do not go out. */
   death(now = this.now(), stopped = false) {
     for (const q of this.queue) q.deadQueued = true;
     const again = this._cutOnAir(now, stopped, 'my death: the scream goes first');
@@ -352,8 +349,7 @@ export class Announcer {
  * `$SIR` row sound, the native death scream) goes in with its length, so "the gun's FIFO holds these clips until T"
  * is one question with one answer. It over-counts rather than under-counts before a must-hear line: an extra stop
  * there costs a fragment, and a missing one leaves the line late. An extra stop is NOT harmless everywhere: at my death
- * it lands on the native scream, so `_death` counts only clips truly ahead of it (`DEATH_STOP_SLACK_MS`, and never the
- * lethal hit's own row sound).
+ * it lands on the native scream, so `_death` sends none when the scream is known (F439: the scream `interrupt`s).
  */
 export class GunAudio {
   constructor(log = () => {}) { this.log = log; this.clips = []; }
@@ -381,6 +377,21 @@ export class GunAudio {
     const c = { ms: line.ms, why: line.why, id: line.id || null, start: now, end: now + line.ms, at: now };
     this.clips.push(c);
     return c;
+  }
+  /** F439 (bench 2026-10-02): a clip that starts AT ONCE and cuts the clip playing (the native death scream, like a
+   *  token-1 clip). The clip playing leaves the model; the clips queued behind it wait behind the new one. Returns the
+   *  clip it cut, or null when the gun was quiet. `late(clip)` true = the clip playing in the model in fact reached the
+   *  gun after the scream started (its write went out just before the phone heard the death): it is not cut, and waits
+   *  behind the new one. */
+  interrupt(ms, why, now, id = null, late = () => false) {
+    this._prune(now);
+    const playing = this.clips.length && this.clips[0].start <= now && !late(this.clips[0]) ? this.clips[0] : null;
+    if (playing) this.clips.shift();
+    const c = { ms, why, start: now, end: now + ms, id, at: now };
+    let tail = c.end;
+    for (const q of this.clips) { q.start = tail; q.end = tail + q.ms; tail = q.end; }
+    this.clips.unshift(c);
+    return playing;
   }
   _prune(now) { this.clips = this.clips.filter(c => c.end > now); }
 }
