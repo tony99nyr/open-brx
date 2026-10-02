@@ -1342,3 +1342,14 @@ test('F436 reconcile: an ALT swap in flight at the re-arm is left alone (no forc
   const after = h.batches.slice(b0).flat();
   assert.ok(!after.includes(WEAP[2]), `the re-arm does not force $WEAP,2 over the player's ALT: ${JSON.stringify(after.filter(f => f.startsWith('$WEAP')))}`);
 });
+
+test('F436: an equip before the first trigger pull of the life is logged as unconfirmed; one after a pull is not', () => {
+  const h = harness(ROCKET_GAME); h.at(121); const logs = []; h.eng.log = m => logs.push(String(m));
+  h.take(4);
+  assert.equal(h.eng._puHeld?.unconfirmed, true, 'no pull since the spawn: the gun may ignore the slot change');
+  assert.ok(logs.some(m => /before the first trigger pull of this life: unconfirmed \(F436\)/.test(m)));
+  const g = armed(); const glogs = []; g.eng.log = m => glogs.push(String(m));   // armed() fires two rounds this life
+  g.take(4);
+  assert.ok(!g.eng._puHeld?.unconfirmed, 'a pull this life: the equip takes (bench 4/4 + 9/9)');
+  assert.ok(!glogs.some(m => /unconfirmed \(F436\)/.test(m)));
+});
