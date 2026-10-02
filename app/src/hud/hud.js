@@ -58,6 +58,10 @@ const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? 
 /** A11.4: alert families → banner colour. Objective = team colour, clock = amber, danger = red, the rest = glow. */
 /** The hill badge's words (the OBJECTIVE lane). `hill_capture_started` (Tony, 2026-10-02): any team's capture BEGINS
  *  (engine.js `_hillBegins`); everyone sees it, tinted in the CAPTURING team's colour (`o.team`). */
+/** HILL CAPTURE STARTED is a NEUTRAL badge (the glow accent, Tony 2026-10-02: never a team tint, so it cannot read as
+ *  HILL LOST's red). This marker before the words names the CAPTURING team: a block in its colour token with its
+ *  initial, so at night (red only) the letter still says which team. */
+const capMark = team => { const k = TEAM_COLOR[team] ? team : null; return `<b class="ltm" style="--tc:${k ? TEAM_COLOR[k] : 'var(--mut)'}" aria-label="${esc(k ? k.toUpperCase() : 'A TEAM')}">${esc(k ? k[0].toUpperCase() : '?')}</b>`; };
 const HILL_WORD = { hill_captured: 'HILL CAPTURED', hill_lost: 'HILL LOST', hill_capture_started: 'HILL CAPTURE STARTED' };
 const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objective', flag_returned: 'objective', point_captured: 'objective', hill_captured: 'objective',
   time_60: 'clock', time_30: 'clock', time_10: 'clock',
@@ -2215,9 +2219,9 @@ export class Hud {
     const ICON = { lead: lost => `<svg viewBox="0 0 16 16"><path d="${lost ? 'M2 5h12L8 13z' : 'M2 11h12L8 3z'}"/></svg>`,
       hill: () => '<svg viewBox="0 0 16 16"><path d="M4 1h1.6v14H4zM5.6 2h8l-2.2 3.2 2.2 3.2h-8z"/></svg>' };
     const obj = ['lead', 'hill'].filter(key => O[key]).map(key => {
-      const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost';
+      const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost', cap = o.kind === 'hill_capture_started';
       const kick = lead ? (tk ? tk.toUpperCase() : 'YOU') : 'OBJECTIVE', text = lead ? (lost ? 'LOST THE LEAD' : 'TAKES THE LEAD') : (HILL_WORD[o.kind] || 'HILL CAPTURED');
-      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.id || o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : o.kind === 'hill_capture_started' && TEAM_COLOR[o.team] ? TEAM_COLOR[o.team] : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span><span class="low">${esc(text)}</span></span></div>`;
+      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.id || o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : cap ? 'var(--glow)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span>${cap ? `<span class="lowr">${capMark(o.team)}<span class="low">${esc(text)}</span></span>` : `<span class="low">${esc(text)}</span>`}</span></div>`;
     });
     // FEED (an alert's family names its colour and its kicker, as the old banner did)
     const FAM = { objective: ['OBJECTIVE', ours], clock: ['CLOCK', 'var(--warn)'], danger: ['ALERT', 'var(--bad)'], info: ['MATCH', 'var(--glow)'] };

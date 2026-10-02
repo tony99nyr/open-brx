@@ -44,8 +44,8 @@ const fail = (pg, what) => { if (pg.__err.length) throw new Error(`${what}: ${pg
 
 // ---- each badge over time, from its first frame: the arrival, held, and settled (dimmed after 4 s) ----
 const BADGES = [
-  ['hill_capture_started', 'live-hill-capture-ours', 'HILL CAPTURE STARTED, our team (blue)', 'Our bar leaves 0 on a point nobody holds. Everyone in range sees this badge, in BLUE.'],
-  ['hill_capture_started', 'live-hill-capture-enemy', 'HILL CAPTURE STARTED, the other team (red)', 'RED`s bar leaves 0. We see it too, in RED: the badge always wears the capturing team`s colour.'],
+  ['hill_capture_started', 'live-hill-capture-ours', 'HILL CAPTURE STARTED, our team (blue)', 'Our bar leaves 0 on a point nobody holds. Everyone in range sees this badge: neutral, with a BLUE marker (B).'],
+  ['hill_capture_started', 'live-hill-capture-enemy', 'HILL CAPTURE STARTED, the other team (red)', 'RED`s bar leaves 0. We see the same neutral badge, with a RED marker (R) naming the capturing team.'],
   ['hill_captured', 'live-hill-captured', 'HILL CAPTURED (ships)', 'For comparison: the badge that ships today.'],
   ['hill_lost', 'live-hill-lost', 'HILL LOST (ships)', 'For comparison: the badge that ships today.'],
 ];
@@ -123,6 +123,7 @@ const CHANGED = [
   ['2', 'attackers draining an enemy point see it too', 'built: a drain is a capture starting, for both sides. One episode per capturing team, so a steal (the drain, then the build) is one badge.'],
   ['3', 'if we have the voice then we dont need the badge', 'no CONTESTED badge.'],
   ['4', 'if you are down you miss game alerts', 'built: a hill badge arriving while I am down is dropped, and one up at my death goes with it; nothing draws after the respawn. The hill voice lines keep the death-first rule (docs/announcer.md, "My death wins" rules 3 and 8): they still queue while down and are said after the scream. See "Dropped while down".'],
+  ['Badge', 'a NEUTRAL badge, the standard objective colours, with a team-coloured stripe or marker naming the capturing team; it must read at night too', 'built: the badge wears the neutral glow accent, never a team tint, so it cannot read as HILL LOST`s red. A small block before the words names the capturing team, in its colour token, with its initial (R, B, Y, P). At night every badge is red, so the block keeps the letter, outlined: the team reads by the letter. See the side by side, by day and by night.'],
   ['Down', 'any hud alerts a down player doesnt get tho', 'built for every HUD alert, through one gate: kill cards and medals, the lead and hill badges, and every feed row. The voice lines still queue while down.'],
   ['Voice', 'Hill contested should play whenever you stop scoring points because of the other team`s presence', 'built: the HOLDING team hears it once each time a contest stops its scoring, and again after scoring resumed and stopped again. The attacker does not. See the timeline.'],
 ];
@@ -158,7 +159,7 @@ ol,ul{margin:4px 0 10px;padding-left:20px;max-width:1000px}li{margin-bottom:6px}
 .axis{border:0;background:none;height:16px}.axis span{position:absolute;font-size:11px;color:var(--mut);transform:translateX(-50%)}</style></head><body><main>
 <h1>King of the Hill: a capture begins</h1>
 <p class="mut">Frozen renders of the real phone HUD. The demo stages drive the real engine with phone control-point adverts. Day and night, at the two screen-gate widths. Built ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC on ${esc(BASE)} (branch hud-capture-begins-alert, not on main yet).</p>
-<div class="q"><h2>All questions answered</h2><p>1, the copy: one badge, HILL CAPTURE STARTED, in the capturing team's colour. 2, the attackers' drain: everyone sees the badge, attackers too. 3, no CONTESTED badge: the holder's "Hill Contested" voice line is the whole signal. 4, down: you miss game alerts, so a hill badge is dropped while down. This page now shows what is built; see "Changed since your notes".</p></div>
+<div class="q"><h2>All questions answered</h2><p>1, the copy: one badge, HILL CAPTURE STARTED, neutral, with a marker naming the capturing team. 2, the attackers' drain: everyone sees the badge, attackers too. 3, no CONTESTED badge: the holder's "Hill Contested" voice line is the whole signal. 4, down: you miss game alerts, so a hill badge is dropped while down. This page now shows what is built; see "Changed since your notes".</p></div>
 ${CHANGED.length ? `<div class="q"><h2>Changed since your notes</h2><ul>${CHANGED.map(([n, note, what]) => `<li><b>${n}</b> “${esc(note)}” → ${what}</li>`).join('')}</ul></div>` : ''}
 <h2>How it decides</h2>
 <ul><li>The phone decides from the control point's advert it already hears (owner, held, contested, rising, falling, progress). No MC.</li>
@@ -168,7 +169,7 @@ ${CHANGED.length ? `<div class="q"><h2>Changed since your notes</h2><ul>${CHANGE
 <li>It is the same OBJECTIVE hill badge as HILL CAPTURED and HILL LOST, so the newest hill fact replaces the last one, and it waits under the weapon switch card exactly as they do.</li>
 <li>Down, you miss game alerts: every HUD alert (a hill badge, the lead, a kill card, a feed row) that arrives while I am down is dropped, and what is up when I die goes with the life. Nothing is drawn after the respawn. The hill voice lines keep the death-first rule: queued while down, said after the scream, and dropped at the respawn.</li>
 <li>⚠ The advert names the point's team, never the drainer. With two teams the drainer is the other one. With three or more a drain shows nothing, and the badge waits for the thief's own build, which the advert does name.</li>
-<li>Night keeps its red-only rule, so by night the badge is not tinted by team; the words are the same.</li>
+<li>The badge is neutral (the glow accent). A block before the words names the capturing team: its colour token and its initial by day; by night, when every badge is red, the initial alone.</li>
 <li>Phone control points only. A grenade hill sends no progress, so it cannot say when a capture begins.</li></ul>
 <h2>Side by side: the new badges beside the ones that ship</h2>
 <p class="mut">Each 1 s after it appeared.</p>

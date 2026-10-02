@@ -4546,22 +4546,38 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [stage, 
   });
 }
 
-// Tony, 2026-10-02: HILL CAPTURE STARTED is tinted in the CAPTURING team's colour, ours and theirs alike (the team colour
-// tokens; night keeps its own red-only rule, so the check is by day).
-for (const view of VIEWS) await step(`${view.name} capture started: tinted in the capturing team's colour, ours and theirs`, async () => {
-  const lc = {};
-  for (const [stage, token] of [['live-hill-capture-ours', '--team-blue'], ['live-hill-capture-enemy', '--team-red']]) {
-    const pg = await open(view, stage, '', 1200);
-    let r = null; for (let t = 0; t < 3600 && !(r = (await lnRead(pg)).obj.find(o => o.kind === 'hill_capture_started')); t += 100) await pg.waitForTimeout(100);
-    const want = await pg.evaluate(t => getComputedStyle(document.querySelector('#lanes .lo')).getPropertyValue(t).trim(), token);
-    const cut = await pg.evaluate(() => { const w = document.querySelector('#lanes .lo[data-kind="hill_capture_started"] .low'); return w ? { sw: w.scrollWidth, cw: w.clientWidth } : null; });
-    must(cut && cut.sw <= cut.cw + 1, `${stage}: the words are cut off (an ellipsis): ${JSON.stringify(cut)}`);
-    await pg.close();
-    must(r && r.text === 'HILL CAPTURE STARTED', `${stage}: the badge must read HILL CAPTURE STARTED: ${JSON.stringify(r)}`);
-    lc[stage] = r.lc; must(want && r.lc === want, `${stage}: tint ${r.lc}, want ${token} (${want})`);
-  }
-  must(lc['live-hill-capture-ours'] !== lc['live-hill-capture-enemy'], `ours and theirs must differ: ${JSON.stringify(lc)}`);
+// Tony, 2026-10-02: HILL CAPTURE STARTED is a NEUTRAL objective badge (the glow accent, never a team tint, so it cannot read
+// as HILL LOST's red), and a marker before the words names the CAPTURING team: a block in the team's colour token with the
+// team's initial. Night is red only, so there the marker keeps its letter (and an outline): the team still reads by shape.
+const capRead = pg => pg.evaluate(() => {
+  const o = document.querySelector('#lanes .lo[data-kind="hill_capture_started"]'); if (!o) return null;
+  const m = o.querySelector('.ltm'), w = o.querySelector('.low'), cs = getComputedStyle(o), ms = m ? getComputedStyle(m) : null;
+  const tok = t => cs.getPropertyValue(t).trim();
+  const ob = o.getBoundingClientRect(), over = [...o.querySelectorAll('.lok, .low, .ltm')].some(e => e.getBoundingClientRect().right > ob.right + 1);
+  return { over, text: w.textContent.trim(), lc: tok('--lc'), glow: tok('--glow'), blue: tok('--team-blue'), red: tok('--team-red'), bad: tok('--bad'),
+    cut: w.scrollWidth > w.clientWidth + 1, marker: m ? { letter: m.textContent.trim(), bg: ms.backgroundColor, border: ms.borderTopColor, color: ms.color, w: m.offsetWidth, h: m.offsetHeight, shown: m.offsetWidth > 0 && ms.visibility !== 'hidden' } : null };
 });
+const hex = c => { const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c || ''); return m ? '#' + m.slice(1, 4).map(x => (+x).toString(16).padStart(2, '0')).join('') : String(c || '').toLowerCase(); };
+for (const view of VIEWS) for (const night of [false, true]) {
+  await step(`${view.name} capture started ${night ? 'night' : 'day'}: a neutral badge, and a marker that names the capturing team`, async () => {
+    const got = {};
+    for (const [stage, team] of [['live-hill-capture-ours', 'blue'], ['live-hill-capture-enemy', 'red']]) {
+      const pg = await open(view, stage, night ? '&night' : '', 1200);
+      let r = null; for (let t = 0; t < 3600 && !(r = await capRead(pg)); t += 100) await pg.waitForTimeout(100);
+      await pg.close();
+      must(r && r.text === 'HILL CAPTURE STARTED' && !r.cut, `${stage}: the badge must read HILL CAPTURE STARTED in full: ${JSON.stringify(r)}`);
+      must(r.marker && r.marker.shown && r.marker.w >= 14 && r.marker.h >= 14, `${stage}: the team marker must show: ${JSON.stringify(r.marker)}`);
+      must(!r.over, `${stage}: the kicker, the words and the marker stay inside the badge: ${JSON.stringify(r)}`);
+      must(r.marker.letter === team[0].toUpperCase(), `${stage}: the marker names ${team} by its initial: ${JSON.stringify(r.marker)}`);
+      if (!night) {
+        must(r.lc === r.glow && r.lc !== r.blue && r.lc !== r.red && r.lc !== r.bad, `${stage}: the badge is neutral (the glow accent), not a team tint or --bad: ${JSON.stringify(r)}`);
+        must(hex(r.marker.bg) === r[team].toLowerCase(), `${stage}: the marker uses --team-${team}: ${JSON.stringify(r.marker)} vs ${r[team]}`);
+      }
+      got[team] = r.marker;
+    }
+    must(got.blue.letter !== got.red.letter, `two teams must differ by something other than colour: ${JSON.stringify(got)}`);
+  });
+}
 // Tony, 2026-10-02 (storyboard question 4): "if you are down you miss game alerts". A capture that starts while I am DOWN
 // is dropped: no badge over the down screen, and none after the respawn.
 for (const view of VIEWS) for (const night of [false, true]) {

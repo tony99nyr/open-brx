@@ -604,6 +604,8 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 #lanes .lok{display:flex;justify-content:space-between;gap:6px;font-family:var(--fl);font-size:14px;line-height:1.05;letter-spacing:.14em;color:var(--lc);font-weight:700}
 #lanes .low{font-family:var(--fd);font-weight:700;font-size:16px;line-height:1;letter-spacing:.06em;color:var(--num);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #lanes .lo[data-kind="hill_capture_started"] .low{white-space:normal}   /* HILL CAPTURE STARTED is wider than the 180 px lane: two lines, never an ellipsis */
+#lanes .lo .lowr{display:flex;align-items:center;gap:6px;min-width:0}   /* the team marker beside the words, under the full-width kicker */
+#lanes .lo .ltm{flex:none;display:grid;place-items:center;width:18px;height:18px;background:var(--tc);color:#04121e;font-family:var(--fd);font-style:normal;font-weight:700;font-size:13px;line-height:1}   /* hud.js capMark: the capturing team's colour and initial */
 #lanes .lo.settled{opacity:.75}
 #lanes .lfs{position:absolute;left:34px;top:68px;width:192px;display:flex;flex-direction:column;gap:3px}
 #lanes .lf{display:flex;align-items:stretch;gap:7px;padding:2px 7px 2px 0;background:var(--ln-bg);transition:opacity .3s;animation:lanein .2s ease-out}
@@ -622,6 +624,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] #lanes .lhm .medal[data-k="streak"],[data-env="night"] #lanes .lhm .medal[data-k="first"]{color:#b58432!important}
 [data-env="night"] #lanes .lm{border-color:#5a1c1c!important;color:#ef6868!important}
 [data-env="night"] #lanes .lo,[data-env="night"] #lanes .lf{--lc:#c9484a!important;background:#120505}
+[data-env="night"] #lanes .lo .ltm{background:transparent;color:#e0664a;border:1px solid #e0664a}   /* night is red only: the initial names the team */
 [data-env="night"] #lanes .lf[data-kind="teammate_down"],[data-env="night"] #lanes .lo.lost{--lc:#a8782a!important}
 /* HIT TAKEN -- one fade in, one fade out. NEVER a repeating flash: this feedback lives on the
    phone precisely because holding the gun's LEDs needs ~30Hz repaints that strobe, and flicker in
