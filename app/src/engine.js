@@ -6741,10 +6741,10 @@ export class Engine {
       if (this._easyReload()) this._reloadPulled();
       return;
     }
-    // A swap ABANDONS a running reload: the gun is putting a different weapon in your hands, so the old
-    // slot's magazine stops moving and no further $ALCD can reconcile the takeover. Left running it would
-    // sit on the chip bar to its deadline (`reloadUp` outranks `switchUp` in hud.js) and hide SWITCHING.
-    if (this.reloading) this._endReload('swapped');
+    // Bench 2026-10-02 (captured wire, USP-S): the gun IGNORES ALT while a reload runs. The lever at mag 8, ALT 1.16 s
+    // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
+    // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
+    if (this.reloading) { this.log(`ALT ignored by the gun mid-reload (slot ${this.activeSlot})`, 'li'); return; }
     this._puBackPending = null;
     const from = this._altPtr, to = this._nextAltSlot();
     this._altPtr = to;
