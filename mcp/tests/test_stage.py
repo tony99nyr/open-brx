@@ -1920,7 +1920,6 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
         return int(m.group(1))
 
     assert S.CONTROL_STALE_S == num("CONTROL_STALE_MS") / 1000.0, "a station point's window is SECONDS here"
-    assert S.HILL_CONTESTED_MIN_S == num("HILL_CONTESTED_MIN_MS") / 1000.0
     assert S.HILL_CALLOUT_MIN_S == num("HILL_CALLOUT_MIN_MS") / 1000.0
     assert S.HILL_TICK_LOSING_S == num("HILL_TICK_LOSING_MS") / 1000.0
     assert S.RARE_GUARD_S == num("RARE_GUARD_MS") / 1000.0, "F58(b): the pool-rise guard is SECONDS here"

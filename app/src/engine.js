@@ -578,17 +578,13 @@ const HILL_PRESENCE_MS = 12000;
 const CONTROL_STALE_MS = 4000;
 // Keep a point owner across a short reconnect, but do not turn a long absence into old handover news.
 export const CONTROL_RECONNECT_MS = 30000;
-// §5d.5: "a floor between repeats of the same line (proposed 10 s for contested, which can otherwise
-// oscillate at net 0)". Unlike the IR path (F75) this is a MEASURED state, so it may play at all -- but a
-// station at 2 v 2 crosses the line repeatedly and the clip is 2.078 s.
-const HILL_CONTESTED_MIN_MS = 10000;
 // The same rule for the transition lines, which had no floor at all. Two control-point phones left on the
 // DEFAULT station id 1 are ONE presence entry (`beacon.js` keys `station:<id>`), so their fields alternate
 // per scan callback and the decoded owner flips several times a second -- each callout preempting the last.
 // The id latch in `_controlStation` fixes the distinct-id case; nothing on the reader side can separate two
 // phones that claim the same id, so the floor is what bounds the damage to one line per 3 s.
 const HILL_CALLOUT_MIN_MS = 3000;
-// The floor for the capture-BEGINS cards (`_hillBegins`), per kind, on the same reasoning as contested's.
+// The floor for the capture-BEGINS cards (`_hillBegins`), per kind: two stations on one id flip their fields per scan.
 const HILL_BEGINS_MIN_MS = 10000;
 // D: while OUR point is draining, the possession tick doubles. That is the "you are losing this, get help"
 // signal, delivered by audio rather than by a screen the defender is not looking at -- and it is the only
@@ -885,8 +881,7 @@ export class Engine {
     this.hillCallout = null;        // QA-05: {kind: 'hill_captured'|'hill_lost', at} — the last transition `_hillSay` announced, for the HUD card (read-only)
     this._hillTickAt = 0;           // when the possession tick last played (0 = not ticking)
     this._hillTeam2Warned = false;  // F82 is logged once per game, not once per beacon
-    this._hillContestedAt = 0;      // K1: when "Hill Contested" last played, so a flapping bit cannot repeat it
-    this._hillWasContested = false; // the contested bit we last read off a control point's advert (edge-triggered)
+    this._hillWasContested = false; // our point was held AND contested at the last advert: the holder's stall episode (edge-triggered)
     this._controlSig = '';          // the control-point advert fields that are worth a re-render
     this._controlSite = null;       // the point we are latched to, so walking between two does not read as a capture
     this._controlLastOwner = null;  // keep the last owner across presence expiry, for a returning point
@@ -3566,9 +3561,8 @@ export class Engine {
    *     owner up to a conversion later. `_hillCallout` already resolves both from one owner change.
    *   - **"Hill Contested" (VB0O) IS wired here.** F75 forbids it on the IR path because a non-capturing hit
    *     emits nothing and the state could only be INFERRED from a miss. A station COUNTS living bodies of
-   *     each team inside its own bubble, so the contested bit is a measurement. It is announced only to
-   *     players the fight belongs to: someone standing on the point, or the team that owns it (a defender
-   *     hearing their own point go contested is the whole reason the cue exists).
+   *     each team inside its own bubble, so the contested bit is a measurement. It is the HOLDER's line, once
+   *     each time a contest stops their scoring (Tony, 2026-10-02); see the block that says it below.
    *
    *  ⚠ ONE point. A station advert does name its own id, so unlike F88's grenades several points ARE
    *  distinguishable on this wire -- but `this.hill` models a single point, so the nearest/occupied one wins
@@ -3672,54 +3666,73 @@ export class Engine {
     this._controlLastOwner = { site: e.id, owner, at: now - advertAge };
     // Track the owner we last heard with audio ON, so the line above can be owed across a death window.
     this._hillOwnerWhenSilenced = audio ? undefined : (this._hillOwnerWhenSilenced === undefined ? prevOwner : this._hillOwnerWhenSilenced);
-    // Contested, on the rising edge only. A capture callout in the same advert wins outright: `_hillSay`
-    // preempts, so announcing both would cut "Hill Captured" off with "Hill Contested" and leave the player
-    // with the less important of the two facts.
+    // Tony, 2026-10-02: "Hill contested should play whenever you stop scoring points because of the other team's
+    // presence." Scoring pauses exactly while a point is HELD and contested (`_accrueHold`, `_hillTick`, and the
+    // station's own tally in control.js), and contested is the station's count of two teams in the circle. So the
+    // line is the HOLDER's, wherever they stand, once per stall: on the edge into "our point held and contested",
+    // and again only after scoring has resumed (the bit cleared, or the point left our hands) and stopped again.
+    // Nobody else hears it: an attacker's presence stops the holder's scoring, not theirs, and a contest on a point
+    // nobody holds stops nobody's. No time floor: an episode is the rate limit, and F440's debounced presence is
+    // what keeps the bit from flapping at the edge of the circle. A capture callout in the same advert wins
+    // outright (`_hillSay` preempts; the episode still counts as started, so it is not said late).
     const mine = this.teamTid;
-    if (contested && !this._hillWasContested && !said && audio
-        && mine != null && mine !== HILL_NEUTRAL_TEAM && (e.present || owner === mine)
-        && now - this._hillContestedAt >= HILL_CONTESTED_MIN_MS) {
-      this._hillContestedAt = now;
-      this._hillSay('hill_contested', `control point ${e.id} is contested (${e.value}% for team ${e.team})`);
+    const stalled = contested && held && mine != null && mine !== HILL_NEUTRAL_TEAM && owner === mine;
+    if (stalled && !this._hillWasContested && !said && audio) {
+      this._hillSay('hill_contested', `control point ${e.id}: our scoring stopped, the other team is in the circle (${e.value}%)`);
     }
     this._hillBegins(e.id, now, audio && !said);
-    this._hillWasContested = contested;
+    this._hillWasContested = stalled;
     // 4 Hz: only a fact the screen shows is worth a render (progress to the whole percent, like the RSSI
     // rounding in `setStations`).
     const sig = `${e.id}:${owner}:${held}:${contested}:${this.hill.progress}:${this.hill.holding}:${rising}:${falling}:${e.present}`;
     if (sig !== this._controlSig) { this._controlSig = sig; this._changed(); }
   }
-  /** Tony, bench 2026-10-02: a capture BEGINNING is news too, not only its end. Two HUD cards on the hill badge
-   *  (the same OBJECTIVE lane item as HILL CAPTURED / HILL LOST, so the same queue and clash rules):
-   *   - `hill_taking`: our progress leaves 0 on a point nobody holds (we start to build it).
-   *   - `hill_attack`: the other team starts to drain a point we hold, or one we are building (`falling`).
-   *  Once per EPISODE, never per advert. A taking episode lasts while our build is above 0; an attack episode
-   *  lasts while the point is still ours (held, or our build above 0) and below 100. So a capture that stalls
-   *  and resumes is one episode; it ends when the progress returns to 0 or the point changes owner (or, for an
-   *  attack, when we build it back to 100). Station adverts only: a grenade beacon carries no progress.
-   *  The first advert of a point (or one heard again after `CONTROL_RECONNECT_MS`) is adopted silently, as the
-   *  owner is: we did not see that capture begin. `HILL_BEGINS_MIN_MS` bounds a flapping advert (two stations on
-   *  one id alternate their fields per scan) to one card per kind per 10 s. No voice line: the catalogue has
-   *  no "capturing" or "under attack" clip, and the badge's own tap is the buzz. */
+  /** Tony, 2026-10-02: HILL CAPTURE STARTED. One badge on the hill lane (the same OBJECTIVE item as HILL CAPTURED /
+   *  HILL LOST, so the same queue and clash rules), tinted in the CAPTURING team's colour and shown to EVERYONE,
+   *  whenever any team's capture progress starts rising: a team building a point nobody holds, or draining a point
+   *  another team holds or is building (`falling`). The defenders and the attackers see the same badge.
+   *
+   *  Once per EPISODE per capturing team, never per advert. A team's episode lasts while it builds a neutral point
+   *  (its bar above 0), or while the point it drains is still another team's and between 0 and 100. So a capture
+   *  that stalls and resumes is one episode, and so is a steal (the drain to 0, then the thief's build); it ends
+   *  when that team's progress is gone, the point is whole again, or the team owns it. Station adverts only: a
+   *  grenade beacon carries no progress. The first advert of a point (or one heard again after
+   *  `CONTROL_RECONNECT_MS`) is adopted silently, as the owner is: we did not see that capture begin.
+   *  `HILL_BEGINS_MIN_MS` bounds a flapping advert (two stations on one id alternate their fields per scan) to one
+   *  badge per team per 10 s. No voice line: the catalogue has no "capturing" clip, and the badge's own tap is the buzz.
+   *
+   *  ⚠ The advert names the point's team (owner while held, else the builder), never the DRAINER. With two teams in
+   *  the game the drainer is the other one; with three or more it is unknown, so a drain shows nothing and the badge
+   *  waits for the thief's own build, which the advert does name. */
   _hillBegins(site, now, on) {
-    const h = this.hill, mine = this.teamTid;
-    if (!h || h.source !== 'station' || mine == null || mine === HILL_NEUTRAL_TEAM) { this._hillEp = null; return; }
-    const held = h.owner === mine;
-    const build = h.owner === HILL_NEUTRAL_TEAM && h.holding === mine && h.progress > 0;
+    const h = this.hill;
+    if (!h || h.source !== 'station') { this._hillEp = null; return; }
+    const neutral = h.owner === HILL_NEUTRAL_TEAM, x = neutral ? h.holding : h.owner, p = h.progress;
     const prev = this._hillEp && this._hillEp.site === site && now - this._hillEp.at <= CONTROL_RECONNECT_MS ? this._hillEp : null;
-    const take = build;
-    const attack = (held || build) && h.progress < 100 && (h.falling || !!(prev && prev.attack));
-    this._hillEp = { site, at: now, take, attack };
+    const eps = {};
+    if (neutral && x != null && p > 0) eps[x] = 'build';
+    const drainer = x != null && h.falling ? this._hillRival(x) : null;
+    if (drainer != null) eps[drainer] = 'drain';
+    for (const t of Object.keys(prev ? prev.eps : {}).map(Number)) {   // a drain that stalls is still that team's capture
+      if (eps[t] == null && prev.eps[t] === 'drain' && x != null && x !== t && p > 0 && p < 100) eps[t] = 'drain';
+    }
+    this._hillEp = { site, at: now, eps };
     if (!prev || !on) return;
     const at = this._hillBeginsAt || (this._hillBeginsAt = {});
-    for (const [kind, is, was, why] of [['hill_taking', take, prev.take, `our team started to build it (${h.progress}%)`],
-      ['hill_attack', attack, prev.attack, `the other team started to drain our point (${h.progress}%)`]]) {
-      if (!is || was) continue;
-      if (at[kind] != null && now - at[kind] < HILL_BEGINS_MIN_MS) { this.log(`hill ${kind} not shown: inside the ${HILL_BEGINS_MIN_MS / 1000} s floor (control point ${site})`, 'li'); continue; }
-      at[kind] = now;
-      this.log(`hill ${kind}: control point ${site}, ${why}`, 'li');
-      this._laneObj('hill', { kind, src: 'BLE' });
+    for (const t of Object.keys(eps).map(Number)) {
+      if (prev.eps[t] != null) continue;
+      const key = TEAM_KEY[t] || String(t);
+      if (at[t] != null && now - at[t] < HILL_BEGINS_MIN_MS) { this.log(`hill capture started not shown: team ${key} inside the ${HILL_BEGINS_MIN_MS / 1000} s floor (control point ${site})`, 'li'); continue; }
+      at[t] = now;
+      this.log(`hill capture started: team ${key} ${eps[t] === 'build' ? 'started to build' : 'started to drain'} control point ${site} (${p}%)`, 'li');
+      this._laneObj('hill', { kind: 'hill_capture_started', team: key, tid: t, src: 'BLE' });
     }
+  }
+  /** The one team that can be draining a point team `x` holds or is building: the only OTHER claimable team in this
+   *  game, or null when there are none or several (the advert does not name the drainer). */
+  _hillRival(x) {
+    const tids = [...new Set(((this.config && this.config.teams) || []).map(t => t && t.tid).filter(t => Number.isInteger(t) && claimable(t) && t !== x))];
+    return tids.length === 1 ? tids[0] : null;
   }
   /**
    * POSSESSION, the thing an objective mode is actually scored on. Nothing anywhere counted it: the hill
@@ -3776,7 +3789,7 @@ export class Engine {
   _resetHill() {
     this.hill = null; this.hillCallout = null; this._hillTickAt = 0;
     this._controlSite = null; this._controlLastOwner = null; this._controlSpokenOwner = null; this._hillPendingCallout = null; this._controlSig = ''; this._hillSaidAt = 0;
-    this._hillWasContested = false; this._hillContestedAt = 0; this._hillOwnerWhenSilenced = undefined;
+    this._hillWasContested = false; this._hillOwnerWhenSilenced = undefined;
     this._hillTeam2Warned = false; this._hillSourceWarned = '';
     this._hillEp = null; this._hillBeginsAt = {};
     this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null;

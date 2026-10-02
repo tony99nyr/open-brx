@@ -288,7 +288,6 @@ BEACON_DEDUPE_S = 0.150        # engine.js's 150 ms F85 identity window (see `_o
 # a BLE station advertises continuously, so its point goes stale on the §3 presence rule, 4 s.
 CONTROL_STALE_S = 4.0          # engine.js CONTROL_STALE_MS 4000
 CONTROL_RECONNECT_S = 30.0     # engine.js CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
-HILL_CONTESTED_MIN_S = 10.0    # engine.js HILL_CONTESTED_MIN_MS: a floor between "Hill Contested" repeats (2 v 2 flaps)
 HILL_CALLOUT_MIN_S = 3.0       # engine.js HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
 HILL_TICK_LOSING_S = 1.5       # engine.js HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
 RARE_GUARD_S = 0.25            # engine.js RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
@@ -711,8 +710,7 @@ class GunStage:
         self._hill_pending_callout: dict | None = None  # a transition inside the 3 s floor, replaced by a newer owner edge
         self._control_sig = ""                     # last published advert signature (a change is worth a log line)
         self._hill_said_at = 0.0                   # when a captured/lost line last played, for HILL_CALLOUT_MIN_S
-        self._hill_contested_at = 0.0              # when "Hill Contested" last played, so a flapping bit cannot repeat it
-        self._hill_was_contested = False           # the contested bit we last read off an advert (edge-triggered)
+        self._hill_was_contested = False           # our point held AND contested at the last advert (the holder's stall, edge-triggered)
         self._hill_owner_when_silenced: Any = _UNSET   # C: the owner as we last heard it while audio was ON (_UNSET = never)
         self._hill_source_warned = ""              # B: the refused objective source, logged once per game
         # F58(b): the pool-RISE events (`healed` / `armour_up` / `shield_up`) are dropped inside RARE_GUARD_S of a
@@ -3433,7 +3431,7 @@ class GunStage:
         self._hill_scream_pending = None
         self._control_site = None; self._control_last_owner = None; self._control_spoken_owner = None; self._hill_pending_callout = None
         self._control_sig = ""; self._hill_said_at = 0.0
-        self._hill_was_contested = False; self._hill_contested_at = 0.0; self._hill_owner_when_silenced = _UNSET
+        self._hill_was_contested = False; self._hill_owner_when_silenced = _UNSET
         self._hill_team2_warned = False; self._hill_source_warned = ""
 
     # ---- K1 / F102: the phone CONTROL POINT (kind 5), a faithful port of engine.js `_onControlAdvert` -----
@@ -3543,15 +3541,16 @@ class GunStage:
             self._hill_pending_callout = None
         self._control_last_owner = {"site": e["id"], "owner": owner, "at": e["seen_at"]}
         self._hill_owner_when_silenced = _UNSET if audio else (prev_owner if silenced is _UNSET else silenced)
-        # Contested, on the RISING EDGE only, floored at HILL_CONTESTED_MIN_S, and only to players the fight
-        # belongs to (on the point, or the owning team). A capture callout in the same advert wins outright.
+        # Tony, 2026-10-02 (engine.js `_onControlAdvert`): "Hill contested should play whenever you stop scoring
+        # points because of the other team's presence." Scoring pauses while the point is HELD and contested, so it is
+        # the HOLDER's line, wherever they stand, once per stall episode: on the edge into "our point held and
+        # contested", again only after scoring resumed and stopped again. No time floor. A capture callout in the same
+        # advert wins outright (the episode still counts as started).
         mine = self._hill_tid()
-        if (contested and not self._hill_was_contested and not said and audio
-                and mine is not None and mine != HILL_NEUTRAL_TEAM and (e.get("present") or owner == mine)
-                and now - self._hill_contested_at >= HILL_CONTESTED_MIN_S):
-            self._hill_contested_at = now
-            self._hill_say("hill_contested", f"control point {e['id']} is contested ({e['value']}% for team {e['team']})")
-        self._hill_was_contested = contested
+        stalled = bool(contested and held and mine is not None and mine != HILL_NEUTRAL_TEAM and owner == mine)
+        if stalled and not self._hill_was_contested and not said and audio:
+            self._hill_say("hill_contested", f"control point {e['id']}: our scoring stopped, the other team is in the circle ({e['value']}%)")
+        self._hill_was_contested = stalled
         sig = f"{e['id']}:{owner}:{held}:{contested}:{self.hill['progress']}:{self.hill['holding']}:{rising}:{falling}:{bool(e.get('present'))}"
         if sig != self._control_sig:
             self._control_sig = sig

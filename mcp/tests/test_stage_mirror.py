@@ -217,10 +217,10 @@ def test_the_station_window_is_4s_and_the_grenade_window_is_12s_on_purpose():
     asyncio.run(go())
 
 
-def test_hill_contested_is_wired_on_the_station_path_with_a_10s_floor_and_never_on_the_ir_path():
-    """The station COUNTS living bodies of each team in its bubble, so contested is a measurement and VB0O
-    plays -- on the rising edge only, floored at HILL_CONTESTED_MIN_S, and only to players the fight belongs to
-    (on the point, or the owning team). F75 keeps it off the IR path: a non-capturing IR hit emits nothing."""
+def test_hill_contested_is_the_holders_line_once_per_stall_and_never_on_the_ir_path():
+    """Tony, 2026-10-02: "Hill contested should play whenever you stop scoring points because of the other team's
+    presence." Scoring pauses while the point is HELD and contested, so VB0O is the HOLDER's line, once per stall
+    episode, again after scoring resumed (no time floor). F75 keeps it off the IR path: a non-capturing IR hit emits nothing."""
     async def go():
         st, mgr, clock = mk_point(tid=1)
         await in_play(st)
@@ -230,22 +230,20 @@ def test_hill_contested_is_wired_on_the_station_path_with_a_10s_floor_and_never_
         n = mark(mgr)
         await adv(st, id=1, team=1, held=True, contested=True, falling=True, value=90, present=True)
         assert audio(mgr, n) == [CONTESTED], audio(mgr, n)
-        # a flapping bit inside the floor does not repeat the line
-        await adv(st, id=1, team=1, held=True, value=85, present=True)
+        await adv(st, id=1, team=1, held=True, contested=True, falling=True, value=88, present=True)
+        assert audio(mgr, n).count(CONTESTED) == 1, "one line per stall, never per advert"
+        await ticks(st, clock, S.HILL_CUES["hill_contested"]["s"] + 0.1)
+        await adv(st, id=1, team=1, held=True, value=85, present=True)       # scoring resumed
         await adv(st, id=1, team=1, held=True, contested=True, falling=True, value=80, present=True)
-        assert audio(mgr, n).count(CONTESTED) == 1, "a repeat inside HILL_CONTESTED_MIN_S is dropped"
-        clock.advance(S.HILL_CONTESTED_MIN_S)
-        await adv(st, id=1, team=1, held=True, value=75, present=True)
-        await adv(st, id=1, team=1, held=True, contested=True, falling=True, value=70, present=True)
-        assert audio(mgr, n).count(CONTESTED) == 2, "past the floor, the next rising edge speaks again"
-        # CONTROL 1: a bystander (not on the point, not the owner) is not told
+        assert audio(mgr, n).count(CONTESTED) == 2, "a new stall after scoring resumed speaks again"
+        # CONTROL 1: the attacker, standing ON team 1's point, is not told: it stops team 1's scoring, not theirs
         b, bm, bclock = mk_point(tid=0)
         await in_play(b)
-        await adv(b, id=1, team=None, value=0, present=False)
-        await adv(b, id=1, team=1, held=True, value=100, present=False)
+        await adv(b, id=1, team=None, value=0, present=True)
+        await adv(b, id=1, team=1, held=True, value=100, present=True)
         n = mark(bm)
-        await adv(b, id=1, team=1, held=True, contested=True, value=90, present=False)
-        assert audio(bm, n) == [], "team 0, in range but off an enemy point: not their fight"
+        await adv(b, id=1, team=1, held=True, contested=True, value=90, present=True)
+        assert audio(bm, n) == [], "team 0 on team 1's point: not their line"
         # CONTROL 2: a capture in the SAME advert wins outright over contested (it would preempt it)
         c, cm, cclock = mk_point(tid=1)
         await in_play(c)
@@ -1791,9 +1789,9 @@ KNOWN_UNMIRRORED = {
     "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
     # 2026-09-26 (F400 final): the switch card pauses the lanes' clocks. Presentation only, as above.
     "_cardTick", "_switchCardUp", "_lanePaused", "_laneAge", "_lanesShown",
-    # 2026-10-02 (Tony, bench): the hill badge when a capture BEGINS (TAKING THE HILL, HILL UNDER ATTACK). It writes only
-    # that lane badge and a log line: no gun frame, no voice line, no score. Presentation only, as above.
-    "_hillBegins",
+    # 2026-10-02 (Tony): HILL CAPTURE STARTED, the hill badge when any team's capture begins, and the drainer it infers.
+    # It writes only that lane badge and a log line: no gun frame, no voice line, no score. Presentation only, as above.
+    "_hillBegins", "_hillRival",
     # 2026-09-24 (docs/announcer.md, "The gun's audio FIFO"): the phone's model of the gun's audio queue and the
     # must-hear $PLAYX flush. NOT yet ported: the stage's own writes do not model the FIFO, and its heartbeat does not
     # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.

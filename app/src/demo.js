@@ -786,12 +786,15 @@ export function startDemo({ engine, log }) {
       'live-callout-by':    [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${21 + foe.tid},0,0,*`)]],   // DOWN_BY naming MAVERICK: ENEMY DOWN · BY MAVERICK
       'live-hill-captured': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(2)], [2400, () => ev.hillTaken(team.tid)]],
       'live-hill-lost':     [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(team.tid)], [2400, () => ev.hillTaken(team.tid === 0 ? 3 : 0)]],   // we hold it (adopted silently), then an enemy's capture word
-      // Tony, bench 2026-10-02: a capture BEGINS, on a phone control point (engine.js `_hillBegins`). The first advert is
-      // adopted silently, so each stage shows the point first and then the change.
-      'live-hill-taking':   [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(255, 0, 0)], [2400, () => ev.point(team.tid, 4, 6)]],   // our bar leaves 0: TAKING THE HILL
-      'live-hill-attack':   [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(team.tid, 1, 100)], [2400, () => ev.point(team.tid, 1 | 8, 96)]],   // our point starts to drain: HILL UNDER ATTACK
-      // the clash: the attack lands while I am DOWN, waits on the badge, and shows when I am back
-      'down-hill-attack':   [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(team.tid, 1, 100)], [2300, 'die'], [2600, () => ev.point(team.tid, 1 | 8, 96)], [4600, 'respawn']],
+      // Tony, 2026-10-02: HILL CAPTURE STARTED, on a phone control point (engine.js `_hillBegins`), tinted in the
+      // CAPTURING team's colour and shown to everyone. The first advert is adopted silently, so each stage shows the point
+      // first and then the change. The other team here is RED (tid 0; PURPLE when I am RED): the demo's YELLOW is tid 2,
+      // which can never hold or build a point (F82).
+      'live-koth':               [[0, () => { config.mode = 'koth'; }], ...live],   // a KOTH match and nothing else: a gallery drives the point itself
+      'live-hill-capture-ours':  [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(255, 0, 0)], [2400, () => ev.point(team.tid, 4, 6)]],   // our bar leaves 0
+      'live-hill-capture-enemy': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(255, 0, 0)], [2400, () => ev.point(team.tid === 0 ? 3 : 0, 4, 6)]],   // theirs does
+      // the clash: the enemy's capture starts while I am DOWN, waits on the badge, and shows when I am back
+      'down-hill-capture':       [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(255, 0, 0)], [2300, 'die'], [2600, () => ev.point(team.tid === 0 ? 3 : 0, 4, 6)], [4600, 'respawn']],
       // ---- A56 powerups: every state below is the REAL engine, fed a powerup game and fake station adverts ----
       'live-pu':             [[0, () => ev.powerups()], ...live],                                                      // a powerup game, nothing near: the HUD is unchanged
       'live-pu-spawn':       [[0, () => ev.powerups(1)], ...live],                                                     // OVERSHIELD AVAILABLE, 1 s after go-live

@@ -683,43 +683,45 @@ test('control point F382 (Tony, Q1): the possession clock pauses while contested
   assert.ok(h.eng.hold['11'][1] >= held + 2500, 'the clock resumes when the contest clears');
 });
 
-test('control point: contested reaches a defender whose point it is, and a player standing on it, and nobody else', () => {
-  // A neutral point we are NOT standing on: contested there is somebody else's fight.
-  const away = koth();
-  control(away, { team: 0, state: 0, value: 20, present: false });
-  control(away, { team: 0, state: CONTESTED, value: 20, present: false });
-  assert.equal(nWrites(away, HILL_CONTESTED_F), 0, 'a contest across the map is not our callout');
-  // The two positive halves on the same code path: standing on it, or owning it.
-  const on = koth();
-  control(on, { team: 0, state: 0, value: 20, present: true });
-  control(on, { team: 0, state: CONTESTED, value: 20, present: true });
-  assert.equal(nWrites(on, HILL_CONTESTED_F), 1, 'standing on it, we hear it');
-  const ours = koth();
-  control(ours, { team: 1, state: HELD, value: 100, present: false });
-  control(ours, { team: 1, state: HELD | CONTESTED, value: 98, present: false });
-  assert.equal(nWrites(ours, HILL_CONTESTED_F), 1, 'and a defender hears their own point go contested from off it');
+// Tony, 2026-10-02: "Hill contested should play whenever you stop scoring points because of the other team's presence."
+// Scoring (the phone's hold clock and tick, the station's own tally) pauses exactly while the point is HELD and the
+// advert's contested bit is set: two teams' players in the circle. So the line is the HOLDER's, once per stall episode.
+const OWNER_RED = { team: 0, state: HELD, value: 100 };
+test('control point: Hill Contested is the holder`s line: once when a contest stops our scoring, wherever we stand', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100, present: false });
+  control(h, { team: 1, state: HELD | CONTESTED, value: 98, present: false });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1, 'our point stopped scoring: we hear it from off the point too');
+  runControl(h, 6000, { team: 1, state: HELD | CONTESTED, value: 98, present: false });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1, 'never per advert or per tick inside one episode');
 });
 
-test('control point: a flapping contested bit cannot repeat the 2 s callout, but a later contest does', () => {
+test('control point: the attacker does not hear Hill Contested, on the point or off it', () => {
+  const on = koth();
+  control(on, { ...OWNER_RED, present: true });
+  control(on, { ...OWNER_RED, state: HELD | CONTESTED, present: true });
+  assert.equal(nWrites(on, HILL_CONTESTED_F), 0, 'standing on RED`s point stops RED`s scoring, not ours');
+  const neutral = koth();
+  control(neutral, { team: 0, state: 0, value: 20, present: true });
+  control(neutral, { team: 0, state: CONTESTED, value: 20, present: true });
+  assert.equal(nWrites(neutral, HILL_CONTESTED_F), 0, 'a contest on a point nobody holds stops nobody`s scoring');
+  // the positive half, same code path: once BLUE holds it, the same contested advert is BLUE's line
+  control(on, { team: 0, state: 0, value: 0, present: true });
+  control(on, { team: 1, state: HELD, value: 100, present: true });
+  control(on, { team: 1, state: HELD | CONTESTED, value: 98, present: true });
+  assert.equal(nWrites(on, HILL_CONTESTED_F), 1);
+});
+
+test('control point: a second contest after scoring resumed plays again, however soon', () => {
   const h = koth();
   control(h, { team: 1, state: HELD, value: 100 });
   control(h, { team: 1, state: HELD | CONTESTED, value: 98 });
   assert.equal(nWrites(h, HILL_CONTESTED_F), 1);
-  const t0 = h.eng.now();                       // when the one allowed callout played
-  for (let i = 0; i < 4; i++) {                 // in and out at the edge of the bubble, twice a second
-    runControl(h, 500, { team: 1, state: HELD, value: 98 });
-    runControl(h, 500, { team: 1, state: HELD | CONTESTED, value: 98 });
-  }
-  assert.equal(nWrites(h, HILL_CONTESTED_F), 1, 'four more crossings inside the floor announce nothing');
-  // §5d.5 puts the floor at 10 s, so a crossing at 9 s must still be silent and one at 11 s must not be —
-  // otherwise "a floor" and "a mute" are indistinguishable, and so are 8 s and 10 s.
-  const uncontestedUntil = ms => { while (h.eng.now() - t0 < ms) { h.adv(250); h.eng.setStations([controlEntry({ team: 1, state: HELD, value: 98 })]); h.eng.tick(); } };
-  uncontestedUntil(9000);
+  runControl(h, 3000, { team: 1, state: HELD, value: 98 });                 // the enemy left: scoring resumed
   control(h, { team: 1, state: HELD | CONTESTED, value: 98 });
-  assert.equal(nWrites(h, HILL_CONTESTED_F), 1, `a crossing ${h.eng.now() - t0} ms after the last one is still inside the 10 s floor`);
-  uncontestedUntil(11000);
-  control(h, { team: 1, state: HELD | CONTESTED, value: 98 });
-  assert.equal(nWrites(h, HILL_CONTESTED_F), 2, `past the floor (${h.eng.now() - t0} ms) a genuinely later contest is announced`);
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 2, 'a new stall 3 s later is a new episode');
+  runControl(h, 2000, { team: 1, state: HELD | CONTESTED | CONTROL_STATE.falling, value: 90 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 2, 'and its ticks never replay it');
 });
 
 test('control point: a capture in the same advert wins outright over contested', () => {
