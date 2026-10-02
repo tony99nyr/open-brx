@@ -6987,7 +6987,7 @@ export class Engine {
       if (held.back && held.back.slot === slot) held.back = { slot, mag, res: this._prevReserve[slot] || 0 };
       held.equipRepairs = (held.equipRepairs || 0) + 1;
       this.log(`powerup: gun fired slot ${slot} while ${held.name} was expected in slot ${held.slot}; equip repair ${held.equipRepairs}/${PU_COUNT_REPAIRS}`, 'le');
-      if (held.equipRepairs <= PU_COUNT_REPAIRS) this._puEquip(held.slot, held.left, PU_RESERVE, `powerup: ${held.name} equip re-sent after slot ${slot} shot`);
+      if (held.equipRepairs <= PU_COUNT_REPAIRS && this._puEquip(held.slot, held.left, PU_RESERVE, `powerup: ${held.name} equip re-sent after slot ${slot} shot`)) this._puSwitchCard(slot, held.slot);   // the player sees the move onto the heavy, so SELECT is not pressed blind
       this._save();
     }
     // heat itself is recorded at the top of this function, before the stunned return.
@@ -7507,8 +7507,12 @@ export class Engine {
         return l && !pu.has(slot) ? `$AMMO,${slot},${l[0]},${l[1]},1,*` : f;
       });
       const h = this._puHeld;
-      const ammo = this._puRearmRows(rows);   // A56: a held heavy keeps its charges
-      if (ammo.length) {
+      // F436 (bench 2026-10-02): a heavy ON the trigger is re-equipped in the re-arm itself. An `$AMMO` row never moves
+      // the trigger, and after the disarm the gun was on slot 0 while the engine kept slot 2, so the first pull fired
+      // the loadout weapon. `_puEquip` writes the loadout rows first, then the heavy's `$WEAP` + `$AMMO`, in one write.
+      const reequip = !!(h && h.trig === h.slot && this._puHeadWeap(h.slot) && !(this.switching && !this.switching.pu));   // an ALT swap in flight is the player's choice: leave the trigger to it
+      const ammo = reequip ? rows.filter(f => !f.startsWith(`$AMMO,${h.slot},`)) : this._puRearmRows(rows);   // A56: a held heavy keeps its charges
+      if (ammo.length || reequip) {
         // F259: the account takes the re-armed counts and opens the echo window, as `_puEquip` does, so the gun's
         // echo of this write is bookkeeping (never a shot, never a refill) and every later restore carries these
         // counts. `_puRearmRows` has already done this for a held heavy's slot: one write, one echo expected.
@@ -7517,7 +7521,8 @@ export class Engine {
           if (h && slot === h.slot) continue;
           this._acctWrote(slot, mag, res); this._prevAmmo[slot] = mag; this._prevReserve[slot] = res;
         }
-        this._write(ammo, 'reconcile: re-arm');
+        if (reequip) this._puEquip(h.slot, h.left, PU_RESERVE, `reconcile: re-arm + ${h.name} back on the trigger`, ammo);
+        else this._write(ammo, 'reconcile: re-arm');
         if (this._puBackPending) { this._puBackPending.tries = 0; this._puBackResend(this.now(), 'after the reconcile'); }   // A56 r2 M1: the re-arm is not the switch-back
         // S42/S55: the accuracy writer is `$TMP` t4 only and never writes `$AMMO`, so it cannot put an old
         // magazine back over this re-arm; every other `$AMMO` owner restores from the account set above.
