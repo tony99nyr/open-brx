@@ -22,7 +22,7 @@ import time
 import uuid
 from typing import Any, Callable, Mapping
 
-from ..storage import home_dir
+from ..storage import atomic_write_text, home_dir
 from . import policy as _policy
 from .types import RESPAWN_DELAY_MAX_S   # review #4: the bound Session._merge_config checks
 import functools
@@ -371,10 +371,7 @@ class PieceStore:
     def _save(self) -> None:
         if not self.path:
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"v": PIECES_STORE_V, "pieces": self._rows}, indent=1))
-        tmp.replace(self.path)                                # atomic on POSIX + NTFS
+        atomic_write_text(self.path, json.dumps({"v": PIECES_STORE_V, "pieces": self._rows}, indent=1))
 
     # ---------- validation ----------
     @staticmethod
