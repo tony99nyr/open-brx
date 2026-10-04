@@ -46,6 +46,12 @@ only the jobs whose names match, and `-- --list` prints the names. It builds `ap
 e2e script its own free ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety
 rules it depends on).
 
+`pnpm run test:all -- --cache` reuses successful job results when the job inputs, command, and tools match. Caching
+is off by default. Entries live at `$(git rev-parse --git-common-dir)/brx-test-cache`; delete that directory to clear
+them. Use `--no-cache` to run
+without cached results. The land lane uses the cache for its full gate and disables it for failure reruns. Run
+`pnpm run test:all -- --no-cache` nightly as the cache canary.
+
 **After merging `origin/main`** into a branch that was already green, re-run only what the merge could have
 touched: `pnpm run test:all -- --changed [base]` (the base, if given, goes right after `--changed`) diffs
 against `base` (tracked changes plus any untracked files), maps the changed paths to jobs (`scripts/lib/changed.mjs`),

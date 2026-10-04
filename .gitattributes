@@ -2,3 +2,9 @@
 *.sh text eol=lf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+
+# Append-only logs: two branches that each add a row or an entry at the end merge cleanly, keeping both, instead of
+# conflicting (the land lane hit this twice in a row on 2026-10-04). Caveat: union keeps BOTH sides of any clash, so
+# two branches that edit the same existing line also merge silently, with both lines kept. Read the merged diff.
+docs/archive/followups-closed.md merge=union
+docs/experiment-log/*.md merge=union

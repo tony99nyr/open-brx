@@ -1,0 +1,201 @@
+{
+  "name": "reconcile-poisoned",
+  "why": "S16/S7.1: poison ticks stand down inside the reconcile window (no $LIFE write while the node infers nothing) and resume once the re-arm is out; the stack runs out on its own clock.",
+  "source": "app/test/fixtures/traces/poison-ticks.json (the poison shape); app/src/engine.js `_poisonTick` stand-down",
+  "runners": ["engine"],
+  "setup": {
+    "config": {"respawn":{"type":"auto","delay_s":5}},
+    "frames": {"dot":{"11":{"weapon_id":"toxin_rifle","per_tick":4,"tick_ms":1000,"duration_ms":5000}}},
+    "delay": "timers",
+    "gun": {"life":true},
+    "fields": ["poison","reconciling"]
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"check":"live","preamble":true},
+    {"frames":["$HIR,0,11,3,2,8,0,0,*","$HP,45,62,0,*"]},
+    {"check":"poisoned"},
+    {"advance_ms":1000},
+    {"check":"tick_1"},
+    {"ble":"drop"},
+    {"ble":"relink"},
+    {"advance_ms":2000},
+    {"check":"no_ticks_inside_window"},
+    {"advance_ms":1250},
+    {"check":"reconciled"},
+    {"advance_ms":2000},
+    {"check":"ticks_resumed"},
+    {"advance_ms":4000},
+    {"check":"stack_ran_out"}
+  ],
+  "stage_ignores": [
+    {"what":"trace","why":"The stage has no relink reconcile (engine.js `onBleConnected` mid-match): its BLE drop only marks the link down until the next write reconnects."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":null,"reconciling":false},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$LIFE,0,0,0,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$QUERY,*",
+        "$HLED,9,0,,,10,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$LIFE,0,0,0,*",
+        "$PLAY,,4,6,VA1G,,,,*",
+        "$GLED,3,3,3,0,10,,*"
+      ]
+    },
+    {
+      "at": "poisoned",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":62,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":0,"perTick":4},"reconciling":false},
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":3,"shooter_team":2,"dmg":8,"ir_proto":11,"ir_subtype":0,"sensor":0,"shot_group":"epoch:1"}],
+      "reports": [],
+      "writes": [
+        "$PLAY,H12,4,6,,,,,*",
+        "$GLED,4,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "tick_1",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":58,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":1,"perTick":4},"reconciling":false},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,4,4,4,0,10,,*",
+        "$LIFE,0,-4,0,*",
+        "$GLED,9,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "no_ticks_inside_window",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":58,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":1,"perTick":4},"reconciling":true},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$PHONE,*",
+        "$AMMO,0,0,0,1,*",
+        "$AMMO,1,0,0,1,*",
+        "$LIFE,0,0,0,*",
+        "$GLED,4,4,4,0,10,,*",
+        "$GLED,9,4,4,0,10,,*",
+        "$GLED,4,4,4,0,10,,*",
+        "$GLED,9,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "reconciled",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":54,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":2,"perTick":4},"reconciling":false},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$GLED,4,4,4,0,10,,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$TMP,,,,,,,,0,,,,*",
+        "$BMAP,0,0,,,,,*",
+        "$LIFE,0,-4,0,*",
+        "$PLAY,,4,6,H31,,,,*",
+        "$GLED,9,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "ticks_resumed",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":50,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":null,"reconciling":false},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$GLED,1,1,1,0,1,,*",
+        "$LIFE,0,-4,0,*",
+        "$PLAY,,4,6,H31,,,,*",
+        "$TMP,,,,0,,,,,,,,*",
+        "$GLED,4,4,4,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,9,4,4,0,10,,*",
+        "$TMP,,,,0,,,,,,,,*",
+        "$TMP,,,,0,,,,,,,,*"
+      ]
+    },
+    {
+      "at": "stack_ran_out",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":50,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":null,"reconciling":false},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$GLED,1,1,1,0,1,,*"
+      ]
+    }
+  ]
+}

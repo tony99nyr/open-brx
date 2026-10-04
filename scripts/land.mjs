@@ -23,6 +23,7 @@ import { execFile, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { parseGate } from './lib/land-gate.mjs';
 import { entryPid, isStale } from './lib/lock.mjs';
 
 const argv = process.argv.slice(2);
@@ -251,24 +252,6 @@ function runLogged(cmd, cwd = WT) {
   });
 }
 const runGate = args => runLogged(STUB ? [...JSON.parse(STUB), ...args] : ['node', 'scripts/test-all.mjs', ...args]);
-/** test-all's result table (header `job result secs`, rows up to the first blank line), its per-job log paths, and a
- *  failed shared build (`app-build failed, see <log>`), which runs before the table and replaces it. */
-function parseGate(out) {
-  const all = out.split('\n');
-  const h = all.findIndex(l => /^job\s+result\s+secs\s*$/.test(l));
-  const rows = [];
-  if (h >= 0) {
-    for (const l of all.slice(h + 1)) {
-      const m = /^(\S+?)\s*(ok|FAIL|TIMEOUT)\s+\d+\s*$/.exec(l);   // a name of 18+ characters has no pad after it
-      if (!m) break;
-      rows.push({ name: m[1], ok: m[2] === 'ok' });
-    }
-  }
-  const logs = {};
-  for (const m of out.matchAll(/^---- (\S+) \(exit [^)]*\), last \d+ lines of (.+)$/gm)) logs[m[1]] = m[2].trim();
-  const build = /^(app-build|mc-dist-build|mc-build) failed, see (.+)$/m.exec(out);   // mc-dist-build: the console build (renamed off the mc-build e2e log)
-  return { rows, logs, build: build ? { name: build[1], log: build[2].trim() } : null };
-}
 const listJobs = out => lines(out).filter(l => /^[a-z][a-z0-9-]*$/.test(l));
 /** The first failing test named in a job's log, when the log says (run_tests.py's `FAIL file::test`). A browser
  *  gate's log never says that -- it throws instead -- so falls back to the first line naming the actual error
@@ -291,8 +274,8 @@ class LandError extends Error {
 /** Gate the candidate at WT once. Returns { green, failed: [{name, log}], log }. A failed job is rerun alone once:
  *  green on the rerun is a flake (recorded, and the gate counts as green). Throws LandError when the gate cannot be
  *  trusted either way (it ran a different number of jobs than --list named). */
-async function gate(changedBase, ids) {
-  const sel = ['--changed', changedBase, '--ui'];
+async function gate(ids, useCache = true) {
+  const sel = [useCache ? '--cache' : '--no-cache', '--ui'];
   const list = await runGate([...sel, '--list']);
   if (list.code !== 0) throw new LandError(`the gate's --list failed (exit ${list.code}); see ${list.log}`);
   const expected = listJobs(list.out).length;
@@ -313,7 +296,7 @@ async function gate(changedBase, ids) {
   for (const f of failed) {
     // A failed shared build has no job of its own to rerun: rerun the whole gate.
     const isBuild = p.build !== null;
-    const r = await runGate(isBuild ? sel : [f.name, '--ui']);
+    const r = await runGate(isBuild ? ['--no-cache', '--ui'] : [f.name, '--no-cache', '--ui']);
     const rp = parseGate(r.out);
     const green = isBuild
       ? r.code === 0 && !rp.build && rp.rows.length === expected && rp.rows.every(x => x.ok)
@@ -407,7 +390,7 @@ async function conflictsWith(base, tip, accepted, tips) {
 
 /** Gate `ids` on `base`; on red, bisect. Each half is gated on top of what has already proven green, so a branch that
  *  breaks only in combination is still caught, and `acceptedSha` is always a candidate that passed a gate. */
-async function settle(base, changedBase, ids, tips) {
+async function settle(base, ids, tips) {
   let accepted = [], acceptedSha = null;
   const mainAlone = new Map();   // failed job names -> is main green for them on its own
   const red = [];
@@ -422,9 +405,9 @@ async function settle(base, changedBase, ids, tips) {
       await resetWorktree(base);
       await prepareDeps();
       let green;
-      if (failed.some(f => f.kind === 'build')) green = (await gate(changedBase, [])).green;   // a build is not a job
+      if (failed.some(f => f.kind === 'build')) green = (await gate([], false)).green;   // a build is not a job
       else {
-        const r = await runGate([...names, '--ui']);
+        const r = await runGate([...names, '--no-cache', '--ui']);
         const p = parseGate(r.out);
         green = r.code === 0 && p.rows.length === names.length && p.rows.every(x => x.ok);
       }
@@ -442,7 +425,7 @@ async function settle(base, changedBase, ids, tips) {
     if (!ok.length) return;
     console.log(`land: gating ${ok.join(', ')}${accepted.length ? ` on top of ${accepted.join(', ')}` : ''}`);
     const deps = await prepareDeps();
-    const g = deps.ok ? await gate(changedBase, ok) : { green: false, failed: deps.failed };
+    const g = deps.ok ? await gate(ok) : { green: false, failed: deps.failed };
     if (g.green) { accepted = c.merged; acceptedSha = c.sha; return; }
     if (ok.length === 1) {
       if (!accepted.length && (await mainIsRed(g.failed))) {
@@ -509,8 +492,8 @@ async function landBatch(ids, dry) {
       const x = c.conflicts.find(k => k.id === id);
       console.log(`land:   ${id}: ${x ? `conflict (${x.files.join(', ') || 'no file list'})` : 'merges cleanly'}`);
     }
-    const l = await runGate(['--changed', origBase, '--ui', '--list']);
-    console.log(`land: the gate would run (test-all --changed ${origBase.slice(0, 10)} --ui):\n${l.out.trimEnd()}`);
+    const l = await runGate(['--cache', '--ui', '--list']);
+    console.log(`land: the gate would run (test-all --cache --ui):\n${l.out.trimEnd()}`);
     console.log('land: --dry-run: no gate, no push, no ref changed');
     return;
   }
@@ -526,7 +509,7 @@ async function landBatch(ids, dry) {
       } else fresh.push(id);
     }
     if (!fresh.length) return;
-    const s = await settle(base, origBase, fresh, tips);
+    const s = await settle(base, fresh, tips);
     for (const x of s.conflicts) await markFailed(x.id, tips[x.id], { status: 'conflict', conflict_files: x.files, conflicts_with: x.with });
     for (const x of s.red) {
       await markFailed(x.id, tips[x.id], { status: 'red', failed_jobs: x.failed.map(f => f.name), log: x.failed[0]?.log || null });
