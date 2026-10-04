@@ -122,7 +122,9 @@ the pools move. **Pass:** no damage to self on any of the 5 shots. Any self `$HI
 or death. Then the firmware A/B: the same 5 wall shots in an FFA match (friendly fire ON) against TDM (OFF). Log
 every `$HIR` with its shooter id and team (tokens 3 and 4), and whether the gun applied it. Lethal case: the other
 player takes the victim to under 10 health, the victim fires a few rounds, then a wall shot. **Pass:** the victim
-lives at the pre-shot pools and the magazine count is unchanged. Row: F438.
+lives at the pre-shot pools and the magazine count is unchanged. Repeat the lethal case holding a heavy pickup: **Pass:**
+the heavy is still held with the same charges, and the next trigger pull fires the heavy (one slot-0 shot then a
+re-equip is the F436 backstop, also a pass; log which). Row: F438.
 
 **12. F439, every death scream is heard (10 min).** Standard health, then Shields, at the match's play volume. Six
 fast kills on one victim: bring them under 15 HP, then kill within about 1 s, so the low-health alert (and, on

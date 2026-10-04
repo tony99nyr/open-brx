@@ -384,9 +384,10 @@ static std::string cfg(const std::string& kind, int team, int id, const std::str
          ",\"game\":7" + extra + "}";
 }
 // F374: MC's station_update at a spawn (`_pu_catch_up`): the item is there. At START itself MC sends
-// available:false with the countdown to first_at_s (pickup_first_spawn_countdown).
+// available:false with the countdown to first_at_s (pickup_first_spawn_countdown). MC always sends the time to the
+// next spawn (powerups.md), and a claim with no anchor advertises 0 (A2), so the scenarios carry one interval.
 static std::string spawn_update(int id) {
-  return "{\"id\":" + std::to_string(id) + ",\"available\":true}";
+  return "{\"id\":" + std::to_string(id) + ",\"available\":true,\"next_spawn_in_ms\":90000}";
 }
 static void start_hill(SimStick& s) {
   const int64_t end = s.link.assignment().ends_in_ms;

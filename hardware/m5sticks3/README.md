@@ -342,8 +342,8 @@ FYI'd by brx5, never seen on our own bench; the button timing
 (2 s hold, 5 s confirm timeout) at arm's length; the operator screen's legibility on the real
 1.14" panel (`paintOperator()` has never been seen lit); whether `LINK RECONNECT` actually needs
 typing over serial in practice or wants a button/timeout of its own; and the `available:true`
-refuse/accept rule (polish round 2) -- built from the coordinator's brief alone, since
-`app/src/powerup.js` does not exist in this checkout to mirror.
+refuse/accept rule (polish round 2), which mirrors `app/src/powerup.js` and is held to it by
+`app/test/fixtures/powerup-station-cases.json`.
 
 **Bench steps (Tony's):**
 

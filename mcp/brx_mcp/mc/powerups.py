@@ -85,6 +85,15 @@ def expand(preset: str, catalog: _Magazines | None = None) -> StationItem:
     return item   # type: ignore[return-value]
 
 
+def preset_of(item: StationItem | dict | None) -> str | None:
+    """The preset a stored item was expanded from. An assignment keeps only the expanded item, so the match is
+    on what makes an item THAT item, its kind and weapon (the console's `Items.tsx presetOf` uses the same rule)."""
+    if not isinstance(item, dict):
+        return None
+    return next((pid for pid, row in _PRESETS.items()
+                 if row["kind"] == item.get("kind") and row.get("weapon_id") == item.get("weapon_id")), None)
+
+
 def _in_range(v: object, lo: int, hi: int, step: int) -> bool:
     return isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi and (v - lo) % step == 0
 

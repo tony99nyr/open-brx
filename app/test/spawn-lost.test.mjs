@@ -24,6 +24,7 @@ function harness({ fail = () => false, profile = true } = {}) {
   const writer = fr => {
     writes.push(...fr.map(f => ({ f, t: clock })));
     if (fail(fr)) return false;
+    if (gun.ammo) for (const f of fr) { const t = f.split(','); if (t[0] === '$AMMO' && +t[1] === gun.slot) Object.assign(gun, { mag: +t[2], reserve: +t[3] }); }   // opt-in: the gun takes `$AMMO` rows on its own slot
     if (fr.some(f => f.startsWith('$SPAWN'))) { Object.assign(gun, { spawned: true, slot: 0, mag: 32, reserve: 192, hp: 45, armor: 70 }); replies.push('$LCD,45,70,0,0,32,192,*'); }
     if (fr.includes(PROBE_LIFE) && gun.answer) replies.push(`$HP,${gun.hp || (gun.spawned ? 45 : 0)},${gun.armor || (gun.spawned ? 70 : 0)},${gun.shield},*`);
     if (fr.includes('$QUERY,*') && gun.answer) replies.push(`$LCD,${gun.hp || (gun.spawned ? 45 : 0)},${gun.armor || (gun.spawned ? 70 : 0)},${gun.shield},${gun.slot},${gun.mag},${gun.reserve},*`);
@@ -316,4 +317,80 @@ test('F416 weapon review r3: pulling a dead trigger on an unspawned gun does not
   assert.equal(h.eng.state().spawnLost, true, 'the budget ends on a visible HOST: FORCE RESPAWN, never a silent close');
   const queries = h.writes.filter(w => w.t >= t0 && w.f === '$QUERY,*').length;
   assert.ok(queries <= 10, `one probe chain, no fan-out: ${queries} queries`);
+});
+
+const relink = h => h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+
+test('F416 r4: a landed spawn whose write failed, then a BLE drop and relink, is not re-sent over the reconcile disarm', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 0, mag: 32, reserve: 192 }), true) }).live();
+  h.gun.ammo = true;
+  await h.adv(4000 + 100);
+  h.eng.onBleDropped();
+  await h.adv(800);
+  relink(h);
+  await h.adv(6000);
+  assert.equal(h.spawns(), 1, `the reconcile disarm is not a lost spawn: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+  assert.equal(h.eng._spawnCheck, null, 'the check still closes after the reconcile');
+  assert.ok(h.logs.some(l => /weapon state matches/.test(l)), JSON.stringify(h.logs.filter(l => l.includes('F416'))));
+});
+
+for (const dropMs of [800, 4000, 6000]) {
+  test(`F416 r4/r2: a genuinely lost spawn across a ${dropMs} ms BLE drop and relink is still re-sent once the reconcile ends`, async () => {
+    let failed = false;
+    const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { hp: 45, armor: 70, shield: 105, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+    h.gun.ammo = true;
+    await h.adv(4000 + 100);
+    h.eng.onBleDropped();
+    await h.adv(dropMs);
+    relink(h);
+    await h.adv(8000);
+    assert.equal(h.spawns(), 2, `the unspawned gun gets the burst after the reconcile: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+    const second = h.writes.filter(w => w.f.startsWith('$SPAWN'))[1].t;
+    assert.ok(!h.eng.reconciling, 'setup: the reconcile is over');
+    assert.ok(h.writes.some(w => w.f.startsWith('$AMMO,0,') && w.t < second), 'setup: the reconcile re-arm went first');
+  });
+}
+
+test('F416 r2: several $HP answers inside one reconcile start one ask chain, not several', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 0, mag: 32, reserve: 192 }), true) }).live();
+  await h.adv(4000 + 100);
+  h.eng.onBleDropped(); await h.adv(800); relink(h);
+  for (let i = 0; i < 4; i++) { h.eng.feedFrame('$HP,45,70,0,*'); await h.adv(100); }
+  const t0 = h.now();
+  await h.adv(6000);
+  const asks = h.logs.filter(l => /write F416 spawn check/.test(l)).length;
+  assert.ok(asks <= 1, `one deferred ask after the reconcile, not one per answer: ${asks}`);
+  assert.ok(h.writes.filter(w => w.t >= t0 && w.f === E.PROBE_LIFE).length <= 2, 'no probe fan-out');
+});
+
+test('F416 r3: a late mismatched $LCD after the whistle re-sends nothing (the gun stays down in kitted)', async () => {
+  const h = harness({ fail: spawnOnce() }).live();
+  h.gun.answer = false;
+  await h.adv(4000 + 300);
+  const c = h.eng._spawnCheck; assert.ok(c, 'setup: the check is open');
+  h.eng._spawnQuery(c);            // the weapon query is on the air at the whistle
+  h.eng._endLocal('time');
+  assert.equal(h.eng._spawnCheck, null, 'the end retires the check');
+  h.eng._spawnCheck = c;           // even a check that somehow survived the end must not act
+  const n = h.writes.length;
+  h.eng.feedFrame('$LCD,45,70,0,2,2,1,*'); await h.adv(2000);
+  const after = h.writes.slice(n).map(w => w.f).filter(f => /SPAWN|AMMO|QUERY|BMAP/.test(f));
+  assert.deepEqual(after, [], `no burst after the end: ${JSON.stringify(after)}`);
+});
+
+test('F416 r3: a positive $HP after the whistle sends no $QUERY, and a panic or a new match retires the check', async () => {
+  const h = harness({ fail: spawnOnce() }).live();
+  h.gun.answer = false;
+  await h.adv(4000 + 300);
+  const c = h.eng._spawnCheck; assert.ok(c, 'setup: the check is open');
+  h.eng._endLocal('time');
+  h.eng._spawnCheck = c;
+  const n = h.writes.length;
+  h.eng.feedFrame('$HP,45,70,0,*'); await h.adv(2000);
+  assert.ok(!h.writes.slice(n).some(w => w.f === '$QUERY,*'), 'no stray $QUERY');
+  h.eng._spawnCheck = c;
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'panic' } });
+  assert.equal(h.eng._spawnCheck, null, 'a panic retires the check');
 });

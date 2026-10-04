@@ -1646,7 +1646,7 @@ def test_stage_spaces_play_frames_and_drops_fillers_inside_the_gap():
         await st.write([line_a, "$SFLASH,*", line_b], "spacing regression", gap_ms=0)
         plays = [event for event in mgr.sessions["stage"].buffer if event.direction == "tx" and event.raw.startswith("$PLAY,")]
         assert [event.raw for event in plays] == [line_a, line_b]
-        assert abs(clock.t - (1000 + S.clip_s("VA6D"))) < 1e-9, clock.t   # F419: a queue-slot line waits for the clip before it, not only PLAY_GAP_MS
+        assert abs(clock.t - (1000 + S.clip_s("VA6D"))) < 1e-9, clock.t   # F419: a queue-slot line waits for the clip before it, not only PLAY_GAP_S
 
         await st.write([tick], "filler regression", gap_ms=0)
         plays = [event.raw for event in mgr.sessions["stage"].buffer if event.direction == "tx" and event.raw.startswith("$PLAY,")]
@@ -1680,7 +1680,7 @@ def test_stage_reserves_concurrent_play_slots_before_waiting():
         )
         assert len(sent) == 3
         starts = [at for at, _frames in sent]
-        assert all(right - left >= S.PLAY_GAP_MS / 1000 - 1e-9 for left, right in zip(starts, starts[1:])), starts
+        assert all(right - left >= S.PLAY_GAP_S - 1e-9 for left, right in zip(starts, starts[1:])), starts
         assert st._last_play_sent_at == clock()
 
     asyncio.run(run())
@@ -1707,8 +1707,8 @@ def test_stage_play_gap_starts_when_previous_transmission_finishes():
         await st.write(["$PLAY,,4,6,VA6D,,,,*"], "slow A", gap_ms=0)
         await st.write(["$PLAY,,4,6,VA6E,,,,*"], "slow B", gap_ms=0)
         assert len(sent) == 2
-        assert sent[1][0] - (sent[0][0] + 0.2) >= S.PLAY_GAP_MS / 1000 - 1e-9
-        assert waits and waits[0] >= S.PLAY_GAP_MS / 1000 - 1e-9
+        assert sent[1][0] - (sent[0][0] + 0.2) >= S.PLAY_GAP_S - 1e-9
+        assert waits and waits[0] >= S.PLAY_GAP_S - 1e-9
 
     asyncio.run(run())
 
@@ -1716,7 +1716,7 @@ def test_stage_play_gap_starts_when_previous_transmission_finishes():
 def test_f419_stage_queue_slot_cues_wait_for_the_clip_on_the_gun():
     """engine.js `_drainPlayWrites` (F419, bench 2026-09-26): the gun's QUEUE slot drops and reorders cues fed faster
     than they play, so a queue-slot `$PLAY` waits until the last one it sent has played. CONTROL: an INTERRUPT-slot
-    `$PLAY` keeps only the plain PLAY_GAP_MS."""
+    `$PLAY` keeps only the plain PLAY_GAP_S."""
     async def run():
         clock = _Clock()
 

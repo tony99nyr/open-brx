@@ -304,6 +304,12 @@ button, and the gun's buttons play no part.
    instant, even while available). The station counts it down itself, spawns at 0 and then every `spawn_every_s`,
    and re-anchors on every update, never spawning one instant twice. A lost MC link therefore does not freeze a station.
 
+   *Phone and StickS3 agree (A2, 2026-10-03; `app/test/fixtures/powerup-station-cases.json` holds both to it).* A
+   station that has awarded a spawn refuses a plain `available: true` unless its next spawn is at least half an
+   interval past the NEXT spawn (the one after the claim); `reset: true` is always accepted. With no
+   `spawn_every_s` the interval is 60 s on both. A claim with no known next spawn advertises `value` 0 until MC
+   anchors it, and, once anchored, the taken `value` never reads 0. The tie window and the claim-age check stay as stated in item 5.
+
 The HUD walks GET CLOSER → HOLD STILL (the ring) → <ITEM> READY, and the item then shows beside the ammo with its
 charges. **A taken (cooling) station shows nothing** on the claiming player's HUD (F425, below).
 

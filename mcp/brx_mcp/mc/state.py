@@ -40,7 +40,7 @@ from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PH
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
-                    SnapshotFeedRow, SlotRule, State, StationAssignment, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
+                    SnapshotFeedRow, SlotRule, State, StationAssignment, StationDeparture, StationRestore, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
                     StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
                     StartNodeView, StartView, Stun, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
@@ -506,6 +506,11 @@ class Session:
         # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
         # an MC restart. `_auto_station_id` reads it; the operator never types an id.
         self._station_id_of: dict[str, int] = {}
+        # Bench 2026-10-02 (option B): an ASSIGNED station that left ITEMS (its own BACK TO HUD, or an MC RELEASE),
+        # node_id -> what it was. Named in the LOAD refusal and on ITEMS; RESTORE re-applies it once the same node is
+        # back. Kept across NEXT MATCH and an MC restart (the snapshot); gone when that node is assigned again or on a
+        # FRESH SESSION. `line` and the view are derived (`_station_departures_view`).
+        self._station_departures: dict[str, dict] = {}
         # A56 (S58, F372): on by default. With `--no-powerups`, MC refuses an item preset, compiles no spare
         # slot, sends no `item` and runs no spawn schedule; a stored item (a restored snapshot) is inert.
         # `__main__` sets it from the CLI; a bare `Session()` (tests, callers with no CLI) still starts on.
@@ -806,6 +811,10 @@ class Session:
                     "sync_pending": {"end_t": self._match_end_t, "nodes": dict(self._sync_pending)},
                     # F364: every id MC handed out, so a restarted MC gives a cleared station its old number back.
                     "station_ids": dict(self._station_id_of),
+                    # bench 2026-10-02: the stations that left, so a restarted MC still names them. `returned` is
+                    # not kept: a new process has heard nobody yet.
+                    "station_departures": {nid: {k: v for k, v in d.items() if k != "returned"}
+                                           for nid, d in self._station_departures.items()},
                     # F337 (a): the lock bookkeeping, so a restarted MC keeps an UNLOCK and every restart it counted.
                     "stations_unlocked": self._stations_unlocked,
                     "station_locks": {nid: {k: st[k] for k in _STATION_LOCK_KEYS if k in st}
@@ -1063,6 +1072,9 @@ class Session:
             for nid, st in self.stations.items():
                 if isinstance(sid := (st.get("assigned") or {}).get("id"), int):
                     self._station_id_of[nid] = sid
+            for nid, d in (snap.get("station_departures") or {}).items():
+                if isinstance(nid, str) and self._departure_ok(d) and not (self.stations.get(nid) or {}).get("assigned"):
+                    self._station_departures[nid] = {**d, "returned": False}
             self.game_no = snap.get("game_no", self.game_no)
             self._game_no_started = bool(snap.get("game_no_started", False))
             if isinstance(snap.get("range_epoch"), int):
@@ -3411,7 +3423,9 @@ class Session:
             return self._KOTH_HILL_FAULT_SOURCE
         kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
         if "control" not in kinds:
-            return self._KOTH_HILL_FAULT_NONE
+            # Bench 2026-10-02: a hill that left (BACK TO HUD, RELEASE) is named, so the refusal says WHY.
+            gone = [self._departure_line(d) for d in self._station_departures.values() if d["kind"] == "control"]
+            return "KING OF THE HILL NEEDS A HILL: " + "; ".join(gone) if gone else self._KOTH_HILL_FAULT_NONE
         return None
 
     def _refuse_koth_hill(self) -> None:
@@ -3546,12 +3560,117 @@ class Session:
             assignment["item"] = item
         st["assigned"] = assignment
         self._station_id_of[nid] = sid
+        self._station_departures.pop(nid, None)   # bench 2026-10-02: assigned again (RESTORE or anew), so it is back
+        if kind == "control":
+            # polish r1 M2(a): KOTH has one hill, so a new hill answers every hill that left. Respawn and powerup
+            # departures can coexist, so they wait for DISMISS, RESTORE, their own node, or a FRESH SESSION.
+            for gone_nid in [n for n, d in self._station_departures.items() if d["kind"] == "control"]:
+                self._station_departures.pop(gone_nid, None)
         self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
         self._after_station_change(slots_before, pickups_before)
         self._validate()
         self._changed()
         return self._station_view(nid)
+
+    _DEPARTURE_NAME = {"control": "HILL", "respawn": "RESPAWN", "powerup": "POWERUP", "extraction": "EXTRACT",
+                       "bomb": "BOMB"}
+
+    def _departure_label(self, d: dict) -> str:
+        """Polish r1 M3: what the operator can SEE. Once the phone's HUD identity is bound, the player holding it
+        ("NOW REAPER'S HUD"); else the device word and the id head the ITEMS card shows (`Items.tsx deviceOf`,
+        `node_id.slice(0, 12)`). The phone never shows its own id, and MC knows no name or colour for it."""
+        pid = self.node_player.get(d.get("successor") or "")
+        if pid and (pl := self.players.get(pid)) and pl.get("node_id") == d.get("successor"):
+            return f"NOW {str(pl.get('display') or pid).upper()}'S HUD"
+        device = "STICKS3" if d.get("platform") == "esp32" else "PHONE"
+        return f"{device} {d['node_id'][:12]}"
+
+    def _record_departure(self, nid: str, reason: str, successor: str | None = None) -> None:
+        """Bench 2026-10-02 (option B): remember an ASSIGNED station that is leaving ITEMS, with everything RESTORE
+        needs to put it back through the normal `set_station` path. `successor` is the HUD node the phone became
+        (BACK TO HUD), so the label can name that player once it is bound."""
+        st = self.stations.get(nid) or {}
+        a = st.get("assigned")
+        platform = st.get("platform") or (self.nodes.get(nid) or {}).get("platform")
+        if not a:
+            # Polish r1 M1: a node that came back and left again before anyone assigned it is not back any more.
+            # Nothing new to restore: the record keeps describing the station it was.
+            if (old := self._station_departures.get(nid)) is not None:
+                # Polish r2: a GENUINE second departure (the node had come back) restamps when and how it left. The
+                # HUD hello that follows a RELEASE (never back in between) must not overwrite the release.
+                if old.get("returned"):
+                    old["reason"] = reason
+                    old["at_ms"] = self.now_ms()
+                old["returned"] = reason == "released" and platform == "esp32"
+                if successor:
+                    old["successor"] = successor
+            return
+        restore: StationRestore = {"kind": a["kind"], "team": a["team"], "threshold": a["threshold"]}
+        if a.get("tx_power"):
+            restore["tx_power"] = a["tx_power"]
+        item = a.get("item")
+        if item and (preset := _pu.preset_of(item)):
+            # the console's own full-replace contract: the effective value of every field the item carries
+            restore["item_preset"] = preset
+            restore["spawn_every_s"] = item["spawn_every_s"]
+            if item["kind"] == "weapon" and isinstance(item.get("charges"), int):
+                restore["charges"] = item["charges"]
+            if item["kind"] == "overshield" and isinstance(item.get("amount"), int):
+                restore["amount"] = item["amount"]
+        rec: dict = {"node_id": nid, "kind": a["kind"], "id": a["id"], "team": a["team"], "threshold": a["threshold"],
+                     "reason": reason, "at_ms": self.now_ms(),
+                     # a released Stick has no HUD to go to: it stays linked, so it is back at once
+                     "returned": reason == "released" and platform == "esp32", "restore": restore}
+        if a.get("tx_power"):
+            rec["tx_power"] = a["tx_power"]
+        if item:
+            rec["item"] = dict(item)
+        if platform:
+            rec["platform"] = platform
+        if successor:
+            rec["successor"] = successor
+        self._station_departures[nid] = rec
+
+    @staticmethod
+    def _departure_ok(d: object) -> bool:
+        """A persisted departure MC can still read. A bad row is dropped, never fatal."""
+        return (isinstance(d, dict) and is_station_kind(d.get("kind")) and d.get("reason") in ("back_to_hud", "released")
+                and all(isinstance(d.get(k), int) and not isinstance(d.get(k), bool) for k in ("id", "team", "threshold", "at_ms"))
+                and isinstance(d.get("restore"), dict)
+                and isinstance(d.get("node_id"), str))
+
+    def _departure_line(self, d: dict) -> str:
+        """The one sentence for a departure, in the station voice. The LOAD refusal and ITEMS use it as it is."""
+        stick = d.get("platform") == "esp32"
+        what = ("WENT BACK TO HUD" if d["reason"] == "back_to_hud"
+                else "WAS RELEASED" if stick else "WAS RELEASED TO ITS HUD")
+        at = time.strftime("%H:%M", time.localtime(d["at_ms"] / 1000))
+        online = d.get("returned") and not (self.nodes.get(d["node_id"]) or {}).get("stale")
+        act = ("IT IS BACK, SO TAP RESTORE ON ITS ITEMS CARD TO ASSIGN IT AGAIN" if online
+               else "IT IS BACK BUT OUT OF WI-FI: BRING IT BACK INTO WI-FI, THEN TAP RESTORE ON ITS ITEMS CARD"
+               if d.get("returned") else "BRING IT BACK INTO WI-FI, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN" if stick
+               else "SWITCH IT BACK TO UTILITY, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN")
+        return (f"{self._DEPARTURE_NAME.get(d['kind'], str(d['kind']).upper())} {d['id']} ({self._departure_label(d)}) "
+                f"{what} AT {at}: {act}")
+
+    def _station_departures_view(self) -> list[StationDeparture]:
+        return [cast(StationDeparture, {**d, "returned": bool(d.get("returned")), "label": self._departure_label(d),
+                                        "id_free": self._departure_id_free(nid, d), "line": self._departure_line(d)})
+                for nid, d in sorted(self._station_departures.items(), key=lambda kv: kv[1]["at_ms"])]
+
+    def _departure_id_free(self, nid: str, d: dict) -> bool:
+        """Polish r1 L1: would RESTORE get the old number back (`_auto_station_id`'s departure rule)?"""
+        used = {a["id"] for n, st in self.stations.items() if n != nid and (a := st.get("assigned"))}
+        return d["id"] not in used and d["id"] not in {i for n, i in self._station_id_of.items() if n != nid}
+
+    def dismiss_departure(self, nid: str) -> bool:
+        """Polish r1 M2(b): the operator's DISMISS on an away line. False when there is no such departure."""
+        if self._station_departures.pop(nid, None) is None:
+            return False
+        self._validate()
+        self._changed()
+        return True
 
     def _auto_station_id(self, nid: str) -> int:
         """F364: the id MC gives a station assigned with no `id`. A station keeps the id it already holds, then the
@@ -3564,6 +3683,11 @@ class Session:
             if isinstance(cand, int) and 1 <= cand <= 65535 and cand not in used:
                 return cand
         taken = used | {i for n, i in self._station_id_of.items() if n != nid}
+        # Bench 2026-10-02: a departed station gets its old number back on RESTORE (or any new assignment) when no
+        # station holds it and MC has not handed it to another node since; otherwise the rule below.
+        gone = (self._station_departures.get(nid) or {}).get("id")
+        if isinstance(gone, int) and 1 <= gone <= 65535 and gone not in taken:
+            return gone
         sid = 1
         while sid in taken:
             sid += 1
@@ -3613,6 +3737,8 @@ class Session:
             return False
         ok = self.net.push(nid, "control", {"cmd": "release_utility"}) is not False
         st = self.stations.get(nid)
+        if ok and st is not None:
+            self._record_departure(nid, "released")   # bench 2026-10-02 (+ polish r1 M1: an unassigned return leaves again)
         if ok and st is not None and (st.get("assigned") or st.get("armed")):
             if self.scorer and self.phase in ("armed", "live"):
                 rec = self._station_recap_row(self._station_view(nid))
@@ -4644,6 +4770,8 @@ class Session:
             st["last_seen_ms"] = nv["last_seen_ms"]
             st["app_ver"] = n.get("app_ver") or st.get("app_ver")
             st["platform"] = nv.get("platform") or st.get("platform")   # A29: stations report the same way
+            if (gone := self._station_departures.get(nid)) is not None:
+                gone["returned"] = True            # bench 2026-10-02: ITEMS offers RESTORE; it is never automatic
             if st.get("assigned"):
                 self._arm_station(nid)
                 self._push_station_update(nid)     # A56: a powerup station re-anchors its spawn countdown
@@ -4661,6 +4789,7 @@ class Session:
             if rec is not None:
                 self._departed_match_stations[prior_nid] = rec
         if prior_station:
+            self._record_departure(prior_nid, "back_to_hud", successor=nid if nid != prior_nid else None)   # bench 2026-10-02
             self.stations.pop(prior_nid, None)
             self._station_id_of.pop(prior_nid, None)   # F364: a station that became a HUD frees its number
             if prior_nid != nid:
@@ -8268,6 +8397,7 @@ class Session:
             self.restored_from = None      # F142: FRESH SESSION is the answer to the restore notice
             # F364: a fresh session hands ids out from 1 again; a station still assigned keeps its own.
             self._station_id_of = {n: a["id"] for n, st in self.stations.items() if (a := st.get("assigned"))}
+            self._station_departures = {}          # bench 2026-10-02: NEXT MATCH keeps them; a FRESH SESSION does not
         self._changed()
         if keep_roster:
             self.persist_now()                       # roster survives a crash right after NEW MATCH
@@ -8425,6 +8555,7 @@ class Session:
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
                 "nodes": nodes,
                 "stations": self.stations_view(), "game_byte": self._game_byte(),   # A13.5: the ITEMS panel
+                "station_departures": self._station_departures_view(),            # bench 2026-10-02
                 # X10: `game_no` is the old name for the same byte (it wraps at 255; the count does not). Kept
                 # for an older console. Remove it once every console reads `game_byte`.
                 "game_no": self._game_byte(),

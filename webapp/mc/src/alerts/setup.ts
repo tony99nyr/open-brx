@@ -39,6 +39,8 @@ export const SETUP_ALERTS: Record<string, AlertDef> = {
   'items-link-out-of-wifi': { sev: 'neutral', text: '{AGE} AGO: OUT OF WI-FI' },
 
   'items-apply-err': { sev: 'amber', text: 'NOT ARMED: {error}' },
+  'items-station-departed': { sev: 'amber', text: '{KIND} {id} ({DEVICE}) WENT BACK TO HUD AT {HH:MM}: {RESTORE OR SWITCH BACK}',
+    why: 'bench 2026-10-02: an assigned station that left ITEMS is a setup step to redo before the next LOAD, not a fault.' },
   'items-itempicker-err': { sev: 'amber', text: 'COULD NOT READ THE ITEM LIST: {msg}' },
   'items-itempicker-loading': { sev: 'neutral', text: 'READING THE ITEM LIST…' },
   'items-itempicker-locked': { sev: 'neutral', text: "LOCKED FOR THE MATCH: RECALL OR END IT TO CHANGE THIS STATION'S ITEM" },
