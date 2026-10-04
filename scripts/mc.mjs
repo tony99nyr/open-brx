@@ -2,7 +2,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 // Run Mission Control from an environment that is already set up. `start.mjs` (./start.sh, start.cmd)
 // sets it up first and then runs this. Arguments after the script name go to `python -m brx_mcp.mc`.
-import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, renameSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
@@ -25,6 +25,13 @@ const logPath = join(evidence, 'mc.log');
 const manifestPath = join(evidence, 'manifest.json');
 mkdirSync(evidence, { recursive: true, mode: 0o700 });
 chmodSync(evidence, 0o700);
+// The manifest (status `starting`) goes in at once and atomically, so a concurrent launch's prune finds a
+// folder it can read. (The pruner also never removes a folder younger than ten minutes.)
+{
+  const early = `${manifestPath}.tmp`;
+  writeFileSync(early, JSON.stringify({ format: 1, launch_id: launchId, started_at: new Date().toISOString(), evidence_dir: evidence, status: 'starting' }, null, 2) + '\n', { mode: 0o600 });
+  renameSync(early, manifestPath);
+}
 // Old evidence: print the size, then remove launch folders that are BOTH outside the newest N and older than D days
 // (BRX_MC_KEEP_SESSIONS / BRX_MC_KEEP_DAYS, default 30 / 30). This launch is never touched. `--keep-all` skips it.
 {

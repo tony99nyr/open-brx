@@ -24,14 +24,39 @@ export function redactText(text) {
   return out;
 }
 
+// A head that ends in one of these is waiting for its value (`#tok=`, `"secret":`, `Bearer`, `operator token:`),
+// so a cut there would send the value to the next write unredacted.
+const WAITING = /(?:[:=]\s*"?|\bBearer|\b(?:tok|token|secret|key|s|authorization))\s*$/i;
+
+/** The index of the last whitespace where `text` can be cut, or -1. Neither half may hold half a secret. */
+function safeCut(text) {
+  for (let i = text.length - 1; i > 0; i--) {
+    if (/\s/.test(text[i]) && !WAITING.test(text.slice(0, i))) return i + 1;
+  }
+  return -1;
+}
+
 /**
  * Redact a stream by complete line. A secret split across two chunks is whole again once its line is
  * complete. `push(chunk)` writes every finished line to `write`; `end()` writes the trailing partial line.
- * A line that grows past `maxLine` with no newline is flushed except its last 512 characters, so one
- * endless line cannot grow the buffer without limit (a secret is far shorter than 512 characters).
+ * Two cases write part of a line: it grows past `maxLine` with no newline, or it sits unfinished for
+ * `idleMs`. Both cut only at whitespace that no rule can span and hold back the rest. A forced flush that
+ * finds no such cut writes `[REDACTED-LONG-LINE]` for the whole pending text, so no secret leaks.
  */
-export function lineRedactor(write, maxLine = 1_000_000) {
+export function lineRedactor(write, maxLine = 1_000_000, idleMs = 3000) {
   let pending = '';
+  let timer = null;
+  const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  const flushPartial = force => {
+    const cut = safeCut(pending);
+    if (cut > 0) {
+      write(redactText(pending.slice(0, cut)));
+      pending = pending.slice(cut);
+    } else if (force) {
+      write('[REDACTED-LONG-LINE]\n');
+      pending = '';
+    }
+  };
   return {
     push(chunk) {
       pending += chunk.toString();
@@ -40,12 +65,15 @@ export function lineRedactor(write, maxLine = 1_000_000) {
         write(redactText(pending.slice(0, cut + 1)));
         pending = pending.slice(cut + 1);
       }
-      if (pending.length > maxLine) {
-        write(redactText(pending.slice(0, -512)));
-        pending = pending.slice(-512);
+      if (pending.length > maxLine) flushPartial(true);
+      clear();
+      if (pending && idleMs > 0) {
+        timer = setTimeout(() => { timer = null; flushPartial(false); }, idleMs);
+        timer.unref?.();
       }
     },
     end() {
+      clear();
       if (pending) write(redactText(pending));
       pending = '';
     }
