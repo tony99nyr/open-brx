@@ -137,6 +137,22 @@ def test_corrupt_file_is_moved_aside_not_fatal():
     assert path.exists()
 
 
+def test_a_store_from_another_version_is_moved_aside_not_loaded():
+    """D15: the file carries `v`; a loader that does not know it never guesses, it starts clean."""
+    import json
+    from brx_mcp.mc.types import FAVOURITES_STORE_V
+    st, path = _store()
+    st.create("Friday Sniper", 30, _pick())
+    raw = json.loads(path.read_text())
+    assert raw["v"] == FAVOURITES_STORE_V
+    raw["v"] = FAVOURITES_STORE_V + 1
+    path.write_text(json.dumps(raw))
+    assert FavouriteStore(path).list() == []
+    kept = [f for f in path.parent.iterdir() if f.name.startswith(f"favourites.json.v{raw['v']}-")]
+    assert len(kept) == 1 and json.loads(kept[0].read_text())["v"] == raw["v"]   # kept whole, under its version
+    assert not path.exists()
+
+
 def test_a_hand_written_file_drops_only_the_bad_row():
     _, path = _store()
     path.write_text(json.dumps({"v": 1, "favourites": [

@@ -17,6 +17,7 @@ import copy
 import json
 import logging
 import pathlib
+import re
 import time
 import uuid
 from typing import Any, Callable, Mapping
@@ -27,7 +28,7 @@ import functools
 
 from .compile import HEALTH_PRESETS, WeaponCatalog, respawn_settings
 from .perks import default_perks
-from .types import GamePiece, PieceKind, PIECE_KINDS
+from .types import GamePiece, PieceKind, PIECE_KINDS, PIECES_STORE_V
 
 log = logging.getLogger("brx.mc.pieces")
 
@@ -291,11 +292,21 @@ class PieceStore:
             return
         try:
             raw = json.loads(self.path.read_text())
+            v = raw.get("v") if isinstance(raw, dict) else None   # a list or a dict with no `v` is the first shape
+            if v is not None and v != PIECES_STORE_V:
+                # D15: a store from another MC version (usually a newer one after a downgrade) is never guessed at
+                # and never overwritten: it is kept beside the live file under its version, and this MC starts clean.
+                tag = re.sub(r"[^0-9A-Za-z]", "", str(v))[:8] or "x"
+                kept = self.path.with_name(f"{self.path.name}.v{tag}-{int(time.time() * 1000)}")
+                self.path.replace(kept)
+                log.warning("pieces.json was saved by an MC with store version %r; this MC reads %d. Kept as %s "
+                            "(restore it with the MC that wrote it); starting clean", v, PIECES_STORE_V, kept)
+                return
             rows = raw.get("pieces") if isinstance(raw, dict) else raw
             if not isinstance(rows, list):
                 raise ValueError("pieces.json: expected a list")
         except Exception as e:
-            aside = self.path.with_name(f"{self.path.name}.corrupt-{int(time.time())}")
+            aside = self.path.with_name(f"{self.path.name}.corrupt-{int(time.time() * 1000)}")
             try:
                 self.path.replace(aside)
             except Exception:
@@ -361,7 +372,7 @@ class PieceStore:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"v": 1, "pieces": self._rows}, indent=1))
+        tmp.write_text(json.dumps({"v": PIECES_STORE_V, "pieces": self._rows}, indent=1))
         tmp.replace(self.path)                                # atomic on POSIX + NTFS
 
     # ---------- validation ----------
