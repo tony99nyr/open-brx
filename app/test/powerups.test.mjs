@@ -1667,3 +1667,46 @@ test('bug 3 r1 M1: the echo window runs from when the write LANDS, so a slow rev
     assert.equal(h.eng.state().ammo, 32);
   });
 });
+
+// ---- Bug 3 echo family r2 (the final review round, 2026-10-04) ----
+test('bug 3 r2 H1: the F417 retry of a pickup equip reopens its `$WEAP`-bearing echo window', async () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(1000); h.flush();
+  assert.equal(h.eng.pu.held && h.eng.pu.held.slot, 2, 'setup: ROCKETS held in slot 2');
+  const real = h.eng.writer; let failed = false;
+  // The first equip write reaches the gun (it echoes) but the link reports `false` after a chunk error (brxlink.js).
+  h.eng.writer = (fr, why, o) => { real(fr, why, o); if (!failed && fr.some(f => f.startsWith('$WEAP,2,'))) { failed = true; return false; } return undefined; };
+  const s0 = h.eng.shots;
+  h.eng.pu._equip(2, 1, 0, 'test equip at 1 charge');
+  await Promise.resolve(); await Promise.resolve();
+  assert.ok(failed, 'setup: the first write reported a failure');
+  h.flush();   // both writes' echoes: the `$WEAP` reset at the clip (2), then the restore (1), twice
+  assert.equal(h.eng.shots - s0, 0, 'neither the reset echo nor the restore is a round');
+  assert.equal(h.eng.state().ammo, 1, 'and no reset echo books as a refill');
+});
+
+test('bug 3 r2 M2: a report after the window expired retires its pending echo, so the old write\'s completion cannot reopen it', async () => {
+  const h = armed({ stun: { duration_s: 3 } });
+  const pending = [], real = h.eng.writer;
+  h.eng.writer = (fr, why, o) => { real(fr, why, o); return new Promise(r => pending.push(r)); };
+  h.eng._stun(); h.adv(3000);
+  assert.equal(h.eng.stunned, null, 'setup: the restore went out (still queued on the link)');
+  h.adv(E.ACC_ECHO_MS + 100);                // the window expires with the write still queued
+  h.fire(0, 29, 190);                          // a newer gun report on slot 0
+  pending.splice(0).forEach(r => r(true));     // ...and only then does the old write complete
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(h.eng.am.acctEchoing(0), false, 'the stale completion must not reopen slot 0\'s window');
+});
+
+test('bug 3 r2 M2: a write that no longer owns the window cannot restart it (the generation guard)', () => {
+  const h = armed();
+  const old = ['$AMMO,0,20,160,1,*'];
+  h.eng.am.acctWrote(0, 20, 160);
+  const gens = h.eng.am.echoGens(old);   // taken when that write is called, as engine.js `_write` does
+  h.eng.am.acctWrote(0, 18, 160);        // a newer write takes the window
+  const until = h.eng.am.acct[0].echoUntil;
+  h.adv(300);
+  h.eng.am.restampEchoes(old, gens);
+  assert.equal(h.eng.am.acct[0].echoUntil, until, 'only the newer write\'s own completion restarts its window');
+  h.eng.am.restampEchoes(['$AMMO,0,18,160,1,*'], h.eng.am.echoGens(['$AMMO,0,18,160,1,*']));
+  assert.ok(h.eng.am.acct[0].echoUntil > until, 'CONTROL: the owner restarts it');
+});

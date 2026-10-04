@@ -1273,10 +1273,12 @@ export class Engine {
         if (frame === PLAYX) applyStop();
         if (typeof frame === 'string' && frame.startsWith('$PLAY,')) notePlay(frame);
       } } : options;
+      const ammoRows = frames.some(f => typeof f === 'string' && (f.startsWith('$AMMO,') || f.startsWith('$WEAP,')));
+      const gens = ammoRows ? this.am.echoGens(frames) : null;   // bug 3 r2 M2: the windows this write owns, at call time
       const result = this.writer(frames, why, writeOptions);
       // Bug 3 r1 M1: the gun's echo of an `$AMMO`/`$WEAP` row comes after the write LANDS, so its window restarts then.
-      if (result && typeof result.then === 'function' && frames.some(f => typeof f === 'string' && (f.startsWith('$AMMO,') || f.startsWith('$WEAP,')))) {
-        result.then(ok => { if (ok !== false) this.am.restampEchoes(frames); }, () => {});
+      if (ammoRows && result && typeof result.then === 'function') {
+        result.then(ok => { if (ok !== false) this.am.restampEchoes(frames, gens); }, () => {});
       }
       if (!hasPlay && onSent) onSent();
       const playFrame = hasPlay ? frames.find(f => typeof f === 'string' && f.startsWith('$PLAY,')) : null;

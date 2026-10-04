@@ -1226,7 +1226,7 @@ class GunStage:
         return tid
 
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
-                    on_start: Callable[[], None] | None = None) -> None:
+                    on_start: Callable[[], None] | None = None) -> bool | None:
         frames = [f for f in frames if f]
         # DENY FIRST, THEN THE TEAM. Do not swap these two for tidiness -- the order is the behaviour, and
         # engine.js `_write` does it in exactly this order (`test_stage_mirror` fails if either source moves).
@@ -1264,6 +1264,7 @@ class GunStage:
             if start < len(frames):
                 chunks[-1].extend(frames[start:])
             take_pending = take
+            delivered = None
             for index, chunk in enumerate(chunks):
                 # The outer write has already filtered and transformed the frames. Re-entry must
                 # not restore `$TID` again, claim the SIR pool again, or repeat the start callback.
@@ -1276,8 +1277,9 @@ class GunStage:
                 take_pending = take_pending and not chunk_changes_sir
                 if index == 0 and on_start is not None:
                     options["on_start"] = on_start
-                await self.write(chunk, why, **options)
-            return
+                if await self.write(chunk, why, **options) is False:   # bug 3 r2 M1: report an undelivered chunk
+                    delivered = False
+            return delivered
         if play_indexes:
             play_generation = self._play_generation
             await self._play_lock.acquire()
@@ -1342,7 +1344,7 @@ class GunStage:
         if not self.connected:
             if play_lock_held:
                 self._play_lock.release()
-            return
+            return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
         try:
             await self._send(frames, gap_ms, on_start=on_start)
             if play_indexes:
@@ -1664,6 +1666,7 @@ class GunStage:
             a["echo_pending"] = 0   # the last window lapsed unanswered: do not carry its count
             a["echo_weap"] = False
         a["echo_pending"] = a.get("echo_pending", 0) + 1
+        a["echo_gen"] = a.get("echo_gen", 0) + 1   # bug 3 r2 M2: the write that owns the window now
         if weap:
             a["echo_weap"] = True
         a["echo_until"] = now + self.ACC_ECHO_S
@@ -1690,21 +1693,37 @@ class GunStage:
             self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res   # should the echo never come back
         return frames
 
-    def _restamp_echoes(self, frames) -> None:
+    def _restamp_echoes(self, frames, gens: dict | None = None) -> None:
         """ammo.js `restampEchoes` (bug 3 r1 M1): the write has LANDED, so each slot it named that still waits for its
-        echo gets a fresh window from now."""
+        echo gets a fresh window from now. r2 M2: only while that write still owns the window (`gens`)."""
         now = self.now()
         for f in frames or []:
             t = str(f).split(",")
             if t[0] in ("$AMMO", "$WEAP"):
-                a = self._shot_acct.get(_tok_int(t, 1))
+                slot = _tok_int(t, 1)
+                a = self._shot_acct.get(slot)
+                if gens is not None and (a is None or gens.get(slot) != a.get("echo_gen")):
+                    continue
                 if a is not None and a.get("echo_pending"):
                     a["echo_until"] = now + self.ACC_ECHO_S
 
+    def _echo_gens(self, frames) -> dict:
+        """ammo.js `echoGens` (bug 3 r2 M2): {slot: echo_gen} for each slot a write names, taken when it is called."""
+        out = {}
+        for f in frames or []:
+            t = str(f).split(",")
+            if t[0] in ("$AMMO", "$WEAP"):
+                slot = _tok_int(t, 1)
+                a = self._shot_acct.get(slot)
+                out[slot] = a.get("echo_gen") if a is not None else None
+        return out
+
     async def _write_ammo(self, frames: list[str], why: str, **kw) -> None:
-        """A write that carries `$AMMO` rows: its echo windows restart when it lands (bug 3 r1 M1)."""
-        await self.write(frames, why, **kw)
-        self._restamp_echoes(frames)
+        """A write that carries `$AMMO` rows: its echo windows restart when it lands (bug 3 r1 M1), and only when
+        `write` DELIVERED it (r2 M1: a write while the link is down returns False and lands nothing)."""
+        gens = self._echo_gens(frames)
+        if await self.write(frames, why, **kw) is not False:
+            self._restamp_echoes(frames, gens)
 
     def _forget_counts(self) -> None:
         """ammo.js `forgetCounts`: a new life or head forgets the counts and the ALT pointer, but KEEPS an echo window
@@ -1713,7 +1732,7 @@ class GunStage:
         now = self.now()
         keep = {sl: {"mag": a["mag"], "fired": 0, "at": 0.0, "res": a.get("res"), "echo_until": a["echo_until"],
                      "echo_expect": a.get("echo_expect"), "echo_pending": a["echo_pending"],
-                     "echo_weap": bool(a.get("echo_weap"))}
+                     "echo_weap": bool(a.get("echo_weap")), "echo_gen": a.get("echo_gen", 0)}
                 for sl, a in self._shot_acct.items() if a.get("echo_pending") and now < a["echo_until"]}
         self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = keep
         self._alt_ptr = 0; self._alt_evidence_pending = None
@@ -1801,7 +1820,7 @@ class GunStage:
             else:
                 prev = int(a["mag"])                # the restore has landed: measure from the number the node wrote
                 a["echo_pending"] -= 1              # ...and it answered one write. Another may be in the air behind it.
-        if not a.get("echo_pending", 0) > 0:
+        if not a.get("echo_pending", 0) > 0 or not self._acct_echoing(slot):   # r2 M2: a report after expiry retires it
             a["echo_pending"] = 0
             a["echo_until"] = 0.0
             a["echo_expect"] = None

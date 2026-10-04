@@ -395,6 +395,10 @@ export class PlayerPowerups {
       // without its counts. It is safe to repeat while nothing moved: no round, no hit, the same item on the same slot.
       if (h.actSeq !== act || this._held !== held || h.activeSlot !== slot || (h.switching && !h.switching.pu) || !h.bleUp || h.phase !== 'live') { h.log(`write ${why} failed -- the game moved on, not re-sent`, 'li'); return; }
       h.log(`*** write ${why} failed -- re-sending once (F417) ***`, 'le');
+      // Bug 3 r2 H1: a write the link called failed can still have reached the gun (a chunk error after the frames went
+      // out), so the retry's `$WEAP` reset and `$AMMO` echo come on top of the first pair's. Reopen the windows for them.
+      for (const f of pre) { const t = f.split(','); if (t[0] === '$AMMO') h.acctWrote(+t[1], +t[2] || 0, +t[3] || 0); }
+      h.acctWrote(slot, mag, res, true);
       h.quietWrite(frames, `${why} (retry)`);
     });
     h.equipped(slot, mag, res);   // the trigger is on `slot` now (the engine's side: the swap, the reload, the ammo block)

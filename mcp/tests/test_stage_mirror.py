@@ -1674,6 +1674,47 @@ def test_bug3_r1_m2_echoes_that_land_during_the_revive_write_are_bookkeeping():
     asyncio.run(go())
 
 
+# ---- Bug 3 echo family r2 (the final review round, 2026-10-04) ----
+
+def test_bug3_r2_m1_a_write_that_never_left_does_not_restart_the_echo_window():
+    """stage.py `_write_ammo` (bug 3 r2 M1): `write()` returns normally while the link is down, so the window may
+    restart only when the write was DELIVERED; a prompt reconnect must not find a stale window open."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st._acct_wrote(0, 30, 160)
+        clock.advance(st.ACC_ECHO_S + 0.1)
+        st.connected = False
+        await st._write_ammo(["$AMMO,0,30,160,1,*"], "restore while the link is down")
+        assert st._acct_echoing(0) is False, st._shot_acct[0]
+    asyncio.run(go())
+
+
+def test_bug3_r2_m2_a_report_after_expiry_retires_the_pending_echo():
+    """ammo.js `acctAmmo` (bug 3 r2 M2): a report after the window expired retires its pending echo, so a late
+    completion of the old write cannot reopen it. CONTROL: a completion from a write that no longer owns the window
+    (a newer write on the slot) leaves the newer window's clock alone."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=31, reserve=160); await settle(st)
+        st._acct_wrote(0, 30, 160)
+        clock.advance(st.ACC_ECHO_S + 0.1)
+        st._on_rx("$ALCD,29,100,0,160,0,*")
+        st._restamp_echoes(["$AMMO,0,30,160,1,*"])
+        assert st._acct_echoing(0) is False, st._shot_acct[0]
+        st._acct_wrote(0, 20, 160)
+        gens = st._echo_gens(["$AMMO,0,20,160,1,*"])   # taken when that write is called, as `_write_ammo` does
+        st._acct_wrote(0, 18, 160)               # a newer write takes the window
+        until = st._shot_acct[0]["echo_until"]
+        clock.advance(0.3)
+        st._restamp_echoes(["$AMMO,0,20,160,1,*"], gens)
+        assert st._shot_acct[0]["echo_until"] == until
+    asyncio.run(go())
+
+
 def test_f393_poison_damage_ignores_the_audio_gate_but_its_sound_waits():
     """engine.js `_poisonStrike`: `$LIFE` is gameplay; a poison `$PLAY` waits behind must-hear audio. The stage models
     only the hill callout of that audio (it has no gun cue or announcer queue), so that is the gate it proves."""
@@ -1918,7 +1959,7 @@ _AMMO_PAIRS = {
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
     "am.acctWroteRows": "_acct_wrote_rows", "am.forgetCounts": "_forget_counts",
     # bug 3 r1 M1: the window restarts when the write lands
-    "am.restampEchoes": "_restamp_echoes",
+    "am.restampEchoes": "_restamp_echoes", "am.echoGens": "_echo_gens",
 }
 
 

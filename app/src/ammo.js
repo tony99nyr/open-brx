@@ -11,7 +11,7 @@
 //   TRIGGER_NO_FIRE_MS · ACC_ECHO_MS · OVERHEAT_CAP_MS · HEAT_STALE_MS · OVERHEAT_SHOWN_MS · ENERGY_REFILL_MAX_MS
 //   Ammo(host)
 //     account     acctLive(slot, now) · acctOutstanding(slot, now) · acctEchoing(slot, now) · pressedRounds(slot) ·
-//                 acctWrote(slot, mag, res, weap) · acctWroteRows(frames, skip, weap) · restampEchoes(frames) · acctPress() · acctAmmo(slot, mag, prev)
+//                 acctWrote(slot, mag, res, weap) · acctWroteRows(frames, skip, weap) · restampEchoes(frames, gens) · echoGens(frames) · acctPress() · acctAmmo(slot, mag, prev)
 //     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · setMag(slot, mag) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
@@ -711,6 +711,7 @@ export class Ammo {
     // the same leak the window exists to stop. Each write adds one, each restore answers one.
     if (!(now < a.echoUntil)) { a.echoPending = 0; a.echoWeap = false; }   // the last window lapsed unanswered: do not carry its count
     a.echoPending++;
+    a.echoGen = (a.echoGen || 0) + 1;   // bug 3 r2 M2: the write that owns the window now (`restampEchoes`)
     if (weap) a.echoWeap = true;
     a.echoUntil = now + ACC_ECHO_MS; a.echoExpect = mag;
   }
@@ -736,13 +737,25 @@ export class Ammo {
    *  stamped when the write was called, and the link sends 20-byte chunks at up to 50 ms per acknowledgement, so a
    *  long burst can outlast ACC_ECHO_MS before the gun has even read it. Restart the window for each slot the write
    *  named that still waits for its echo. */
-  restampEchoes(frames) {
+  restampEchoes(frames, gens = null) {
     const now = this.host.now();
     for (const f of frames || []) {
       if (typeof f !== 'string' || !(f.startsWith('$AMMO,') || f.startsWith('$WEAP,'))) continue;
-      const a = this.acct[+f.split(',')[1]];
+      const slot = +f.split(',')[1], a = this.acct[slot];
+      // Bug 3 r2 M2: only the write that still owns the window restarts it; a newer write owns its own completion.
+      if (gens && (!a || gens[slot] !== a.echoGen)) continue;
       if (a && a.echoPending > 0) a.echoUntil = now + ACC_ECHO_MS;
     }
+  }
+  /** Bug 3 r2 M2: {slot: echoGen} for each slot a write's rows name, taken when the write is called. PURE. */
+  echoGens(frames) {
+    const out = {};
+    for (const f of frames || []) {
+      if (typeof f !== 'string' || !(f.startsWith('$AMMO,') || f.startsWith('$WEAP,'))) continue;
+      const slot = +f.split(',')[1], a = this.acct[slot];
+      out[slot] = a ? a.echoGen : undefined;
+    }
+    return out;
   }
   /** A trigger press that must produce a round (`_awaitShot` has already cleared every reason it would not).
    *  Books it against the account NOW, so a write between this press and the gun's `$ALCD` restores the
@@ -804,7 +817,9 @@ export class Ammo {
         a.echoPending--;      // ...and it answered one write. Another may still be in the air behind it.
       }
     }
-    if (!(a.echoPending > 0)) { a.echoPending = 0; a.echoUntil = 0; a.echoExpect = null; a.echoWeap = false; }
+    // Bug 3 r2 M2: a report after the window expired retires its pending echoes too, so a stale completion of the old
+    // write (`restampEchoes`) finds nothing to reopen.
+    if (!(a.echoPending > 0) || !this.acctEchoing(slot)) { a.echoPending = 0; a.echoUntil = 0; a.echoExpect = null; a.echoWeap = false; }
     const before = a.mag;   // the ACCOUNT's magazine, which the echo window keeps clear of the node's own writes
     const d = prev != null && mag < prev ? prev - mag : 0;
     if (d) { a.fired = Math.max(0, a.fired - d); if (!a.fired) a.at = 0; }   // the gun has answered that many presses
