@@ -3590,6 +3590,26 @@ await step('se shot cue reduced motion: a brightness step, no moving shine', asy
   must(r.trace.some(x => x.v === 'ready'), `pre-condition: the ready cue must fire: ${JSON.stringify(r.trace)}`);
   must(r.shine && r.shine.display === 'none' && /brightness/.test(r.shine.filter), `reduced motion must swap the shine for a brightness step: ${JSON.stringify(r.shine)}`);
 });
+// Tony, bench 2026-10-02: "The little green animation doesn't play for rockets." A held heavy's round dims the gauge and
+// shines when the next round is due, like a slow loadout weapon (the demo's Rockets head `$WEAP` says 1000 ms).
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  await step(`${tag} shot cue: a Rockets round dims the gauge and shines green when the next rocket is due`, async () => {
+    const pg = await open(view, 'live-pu-rockets');
+    await pg.waitForFunction(() => { const s = window.brxDemo.state(); return s.activeSlot === 2 && !s.switchCard && !document.querySelector('#overlay .mo.switched, #overlay .mo.switching'); }, null, { timeout: 9000 });
+    const r = await pg.evaluate(async () => {
+      const fr = document.getElementById('frame'), trace = [], t0 = performance.now(); let shine = null;
+      const mo = new MutationObserver(() => { const v = fr.dataset.cool || ''; trace.push({ v, t: Math.round(performance.now() - t0) });
+        if (v === 'ready' && !shine) shine = getComputedStyle(document.querySelector('.ammo .pips'), '::after').animationName; });
+      mo.observe(fr, { attributes: true, attributeFilter: ['data-cool'] });
+      window.brxDemo.puFire(); await new Promise(res => setTimeout(res, 1500)); mo.disconnect();
+      return { trace, shine };
+    });
+    await pg.close();
+    const on = r.trace.find(x => x.v === 'on'), ready = r.trace.find(x => x.v === 'ready');
+    must(on && on.t < 150, `the gauge must dim at the rocket: ${JSON.stringify(r)}`);
+    must(ready && ready.t >= 1000 && ready.t < 1300 && r.shine === 'readyshine', `the green shine must run when the next rocket is due: ${JSON.stringify(r)}`);
+  });
+}
 await step('se shot cue CONTROL: an automatic weapon (assault rifle, 140 ms a round) gets no dim and no shine', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setWeap(pg, 0, 140);
@@ -4495,6 +4515,9 @@ const CO_CASES = [
   ['live-kill', 'hero', 'kill', 'VIPER', 30, 3400, 2900],
   ['live-hill-captured', 'obj', 'hill_captured', 'HILL CAPTURED', 15, 3600, null],
   ['live-hill-lost', 'obj', 'hill_lost', 'HILL LOST', 15, 3600, null],
+  // Tony, 2026-10-02: HILL CAPTURE STARTED (engine.js `_hillBegins`), on the same hill badge, ours and theirs
+  ['live-hill-capture-ours', 'obj', 'hill_capture_started', 'HILL CAPTURE STARTED', 15, 3600, null],
+  ['live-hill-capture-enemy', 'obj', 'hill_capture_started', 'HILL CAPTURE STARTED', 15, 3600, null],
 ];
 const coRead = (pg, lane, kind) => lnRead(pg).then(r => {
   const it = lane === 'hero' ? (r.hero ? { name: r.hero.name, px: r.hero.namePx, boxes: r.hero.parts } : null)
@@ -4520,6 +4543,56 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [stage, 
     const took = await pg.evaluate(t => performance.now() - t, t0); await pg.close();
     if (holdMs) must(gone && took <= holdMs + 150, `still up ${Math.round(took)} ms after it appeared (hold ${holdMs})`);
     else must(!gone, `the ${kind} badge left after ${Math.round(took)} ms; it stays until the next one replaces it`);
+  });
+}
+
+// Tony, 2026-10-02: HILL CAPTURE STARTED is a NEUTRAL objective badge (the glow accent, never a team tint, so it cannot read
+// as HILL LOST's red), and a marker before the words names the CAPTURING team: a block in the team's colour token with the
+// team's initial. Night is red only, so there the marker keeps its letter (and an outline): the team still reads by shape.
+const capRead = pg => pg.evaluate(() => {
+  const o = document.querySelector('#lanes .lo[data-kind="hill_capture_started"]'); if (!o) return null;
+  const m = o.querySelector('.ltm'), w = o.querySelector('.low'), cs = getComputedStyle(o), ms = m ? getComputedStyle(m) : null;
+  const tok = t => cs.getPropertyValue(t).trim();
+  const ob = o.getBoundingClientRect(), over = [...o.querySelectorAll('.lok, .low, .ltm')].some(e => e.getBoundingClientRect().right > ob.right + 1);
+  return { over, text: w.textContent.trim(), lc: tok('--lc'), glow: tok('--glow'), blue: tok('--team-blue'), red: tok('--team-red'), bad: tok('--bad'),
+    cut: w.scrollWidth > w.clientWidth + 1, marker: m ? { letter: m.textContent.trim(), bg: ms.backgroundColor, border: ms.borderTopColor, color: ms.color, w: m.offsetWidth, h: m.offsetHeight, shown: m.offsetWidth > 0 && ms.visibility !== 'hidden' } : null };
+});
+const hex = c => { const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c || ''); return m ? '#' + m.slice(1, 4).map(x => (+x).toString(16).padStart(2, '0')).join('') : String(c || '').toLowerCase(); };
+for (const view of VIEWS) for (const night of [false, true]) {
+  await step(`${view.name} capture started ${night ? 'night' : 'day'}: a neutral badge, and a marker that names the capturing team`, async () => {
+    const got = {};
+    for (const [stage, team] of [['live-hill-capture-ours', 'blue'], ['live-hill-capture-enemy', 'red']]) {
+      const pg = await open(view, stage, night ? '&night' : '', 1200);
+      let r = null; for (let t = 0; t < 3600 && !(r = await capRead(pg)); t += 100) await pg.waitForTimeout(100);
+      await pg.close();
+      must(r && r.text === 'HILL CAPTURE STARTED' && !r.cut, `${stage}: the badge must read HILL CAPTURE STARTED in full: ${JSON.stringify(r)}`);
+      must(r.marker && r.marker.shown && r.marker.w >= 14 && r.marker.h >= 14, `${stage}: the team marker must show: ${JSON.stringify(r.marker)}`);
+      must(!r.over, `${stage}: the kicker, the words and the marker stay inside the badge: ${JSON.stringify(r)}`);
+      must(r.marker.letter === team[0].toUpperCase(), `${stage}: the marker names ${team} by its initial: ${JSON.stringify(r.marker)}`);
+      if (!night) {
+        must(r.lc === r.glow && r.lc !== r.blue && r.lc !== r.red && r.lc !== r.bad, `${stage}: the badge is neutral (the glow accent), not a team tint or --bad: ${JSON.stringify(r)}`);
+        must(hex(r.marker.bg) === r[team].toLowerCase(), `${stage}: the marker uses --team-${team}: ${JSON.stringify(r.marker)} vs ${r[team]}`);
+      }
+      got[team] = r.marker;
+    }
+    must(got.blue.letter !== got.red.letter, `two teams must differ by something other than colour: ${JSON.stringify(got)}`);
+  });
+}
+// Tony, 2026-10-02 (storyboard question 4): "if you are down you miss game alerts". A capture that starts while I am DOWN
+// is dropped: no badge over the down screen, and none after the respawn.
+for (const view of VIEWS) for (const night of [false, true]) {
+  await step(`${view.name} capture started while down ${night ? 'night' : 'day'}: dropped, not drawn over the down screen nor after the respawn`, async () => {
+    const pg = await open(view, 'down-hill-capture', night ? '&night' : '', 1200);
+    await pg.waitForFunction(() => { const s = window.brxDemo.state(); return !s.alive && s.hill && s.hill.holding != null && s.hill.progress > 0; }, null, { timeout: 6000 });
+    await pg.waitForTimeout(300);
+    const down = await lnRead(pg), eng = await pg.evaluate(() => { const L = window.brxDemo.state().lanes; return L && L.obj && L.obj.hill ? L.obj.hill.kind : null; });
+    await pg.screenshot({ path: `${OUT}/${view.name}-hill-capture-down${night ? '-night' : ''}.png` });
+    must(down.obj.length === 0 && eng === null, `nothing over the down screen, and nothing waiting: ${JSON.stringify({ obj: down.obj, eng })}`);
+    await pg.waitForFunction(() => window.brxDemo.state().alive, null, { timeout: 6000 });
+    let seen = null; for (let t = 0; t < 2500 && !seen; t += 100) { await pg.waitForTimeout(100); seen = (await lnRead(pg)).obj.find(o => o.key === 'hill') || null; }
+    await pg.screenshot({ path: `${OUT}/${view.name}-hill-capture-back${night ? '-night' : ''}.png` });
+    await pg.close();
+    must(!seen, `a hill badge drew after the respawn: ${JSON.stringify(seen)}`);
   });
 }
 
@@ -5853,19 +5926,24 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: the recharge, over time through the real engine: broken, the delay fill creeps, then the refill sweeps, then full; no SHIELD toast`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3300);
-    const seen = []; let brokeAt = null, chargeAt = null, dly = [], sweep = '', toast = false, last = null;
+    const seen = []; let brokeAt = null, chargeAt = null, engineGap = null, dly = [], sweep = '', toast = false, last = null;
     for (let t = 0; t < 13000; t += 150) {
       const r = await svRead(pg); last = r; toast = toast || r.toast;
       if (r.s === 'down' && brokeAt == null) brokeAt = Date.now();
       if (r.s === 'down' && r.wait) dly.push(r.dly);
-      if (r.s === 'charge' && chargeAt == null) { chargeAt = Date.now(); sweep = r.sweep; }
+      if (r.s === 'charge' && chargeAt == null) {
+        chargeAt = Date.now(); sweep = r.sweep;
+        // measured on the ENGINE's clock from its own last-damage stamp, not from when this loop first SAW the break: under
+        // load the page opens late, the first look comes after the break, and a wall-clock gap measured from it shrinks
+        engineGap = await pg.evaluate(() => { const e = window.brx.engine, q = e.state().shieldRegen; return q && q.quietAt ? e.now() - q.quietAt : null; });
+      }
       if (!seen.length || seen[seen.length - 1] !== r.s) seen.push(r.s);
       if (chargeAt && r.s === 'ok' && r.shield >= 105) break;
       await pg.waitForTimeout(150);
     }
     await pg.close();
     must(seen.join('>').includes('down>charge>ok'), `the states in order: ${seen.join('>')}`);
-    must(brokeAt && chargeAt && chargeAt - brokeAt >= 5800, `the refill waits for the engine's 6.5 s: ${chargeAt && brokeAt ? chargeAt - brokeAt : 'never'} ms`);
+    must(chargeAt && engineGap != null && engineGap >= 6500, `the refill waits for the engine's 6.5 s since the last damage (engine clock): ${engineGap == null ? 'never' : engineGap} ms`);
     must(dly.length > 5 && dly[dly.length - 1] > dly[0] + 100, `the delay fill creeps along the track: ${dly.slice(0, 3)} ... ${dly.slice(-3)}`);
     must(night ? sweep === 'none' || sweep === '' : sweep === 'svsweep', `the refill ${night ? 'has no sweep at night' : 'sweeps'}: "${sweep}"`);
     must(last && last.s === 'ok' && last.shield >= 105, `full again: ${JSON.stringify({ s: last && last.s, shield: last && last.shield })}`);

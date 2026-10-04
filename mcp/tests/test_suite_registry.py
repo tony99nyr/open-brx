@@ -29,6 +29,7 @@ NOT_GATES = {
     "app/tools/shots.mjs": "writes screenshots of the demo HUD for review; asserts nothing",
     "app/tools/alert-gallery.mjs": "writes the HUD alert lanes gallery for review (outside the repo); asserts nothing",
     "app/tools/medal-gallery.mjs": "writes the medal icon style gallery for review (outside the repo); asserts nothing",
+    "app/tools/koth-capture-alert-gallery.mjs": "writes the KOTH capture-begins alert gallery for review (outside the repo); asserts nothing",
     "app/tools/rig.mjs": "drives a HUD against a live MC you started by hand; a screenshot rig, not a gate",
     "app/tools/scenarios.mjs": "drives scenarios against a live MC you started by hand; screenshots, not a gate",
     "app/tools/gun-audio-sim.mjs": "a pure library (the gun-audio simulator); its gate is app/test/audio-queue.test.mjs",
