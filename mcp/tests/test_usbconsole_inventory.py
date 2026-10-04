@@ -120,3 +120,90 @@ def test_an_unreadable_but_valid_armory_is_not_moved_aside():
             _raises(PermissionError, _uc.load_inventory)
         assert (base / "armory.json").exists() and not list(base.glob("armory.json.bad-*"))
     _on_base(run)
+
+
+def test_a_reader_never_moves_aside_a_valid_file_that_replaced_the_corrupt_one_mid_read():
+    """Review HIGH: an unlocked reader parsed the corrupt bytes, a writer atomically swapped in a valid
+    armory, and the reader then quarantined the NEW file. It must read again instead."""
+    def run(base):
+        p = base / "armory.json"
+        p.write_text("{corrupt", encoding="utf-8")
+        real_loads, swapped = _uc.json.loads, []
+
+        def loads_then_swap(text, *a, **k):
+            if not swapped:
+                swapped.append(1)
+                _storage.atomic_write_text(p, '{"S1": {"gun_name": "NEW"}}')
+            return real_loads(text, *a, **k)
+        with mock.patch.object(_uc.json, "loads", loads_then_swap):
+            inv = _uc.load_inventory()
+        assert inv == {"S1": {"gun_name": "NEW"}}
+        assert p.exists() and not list(base.glob("armory.json.bad-*"))
+    _on_base(run)
+
+
+def test_the_public_read_waits_for_the_inventory_lock():
+    def run(base):
+        held, release, done = threading.Event(), threading.Event(), threading.Event()
+
+        def holder():
+            with _uc._inventory_lock():
+                held.set()
+                release.wait(10)
+        t = threading.Thread(target=holder); t.start()
+        assert held.wait(5)
+        out = []
+        r = threading.Thread(target=lambda: (out.append(_uc.load_inventory()), done.set()))
+        r.start()
+        assert not done.wait(0.3), "load_inventory read without taking the lock"
+        release.set()
+        assert done.wait(5) and out == [{}]
+        t.join(); r.join()
+    _on_base(run)
+
+
+def test_a_record_that_is_not_an_object_makes_the_file_corrupt():
+    def run(base):
+        (base / "armory.json").write_text('{"S1": 7}', encoding="utf-8")
+        _raises(_uc.InventoryCorrupt, _uc.load_inventory)
+        assert len(list(base.glob("armory.json.bad-*"))) == 1
+        assert _uc.load_inventory() == {}
+    _on_base(run)
+
+
+def test_atomic_write_retries_a_sharing_violation_then_succeeds():
+    d = pathlib.Path(tempfile.mkdtemp())
+    real, calls = os.replace, []
+
+    def flaky(src, dst):
+        calls.append(1)
+        if len(calls) <= 2:
+            raise PermissionError("sharing violation")
+        return real(src, dst)
+    with mock.patch.object(os, "replace", flaky):
+        _storage.atomic_write_text(d / "f.json", "{}")
+    assert len(calls) == 3 and (d / "f.json").read_text() == "{}"
+
+
+def test_atomic_write_gives_up_on_a_permanent_sharing_violation_and_cleans_up():
+    d = pathlib.Path(tempfile.mkdtemp())
+    (d / "f.json").write_text("old")
+
+    def deny(src, dst):
+        raise PermissionError("held open")
+    with mock.patch.object(os, "replace", deny), mock.patch.object(_storage, "_REPLACE_BUDGET_S", 0.1):
+        _raises(PermissionError, _storage.atomic_write_text, d / "f.json", "new")
+    assert (d / "f.json").read_text() == "old" and [x.name for x in d.iterdir()] == ["f.json"]
+
+
+def test_move_aside_never_overwrites_a_name_another_process_took():
+    d = pathlib.Path(tempfile.mkdtemp())
+    (d / "armory.json").write_text("bad")
+    with mock.patch("time.time_ns", return_value=1_700_000_000_123_000_000):
+        first = _storage.move_aside_exclusive(d / "armory.json")
+        (d / "armory.json").write_text("bad2")
+        taken = first                           # the very name the next call would pick
+        taken.write_text("precious")
+        second = _storage.move_aside_exclusive(d / "armory.json")
+    assert second != taken and second.read_text() == "bad2" and taken.read_text() == "precious"
+    assert not (d / "armory.json").exists()

@@ -8,6 +8,7 @@ import type { AlertDef } from './index';
 
 export const LIVE_ALERTS: Record<string, AlertDef> = {
   'frame-bench-vol': { sev: 'neutral', text: 'BENCH VOL {n}' },
+  'frame-store-errors': { sev: 'amber', text: 'MATCH HISTORY NOT SAVING ({n})' },
   'frame-connecting': { sev: 'neutral', text: 'CONNECTING TO MISSION CONTROL… IF THIS DOES NOT CLEAR, CHECK THAT THE MC SERVER IS RUNNING.' },
   'frame-console-error': { sev: 'red', text: 'CONSOLE ERROR: {message}' },
   'frame-debug-gun-link-lost': { sev: 'red', text: 'GUN LINK LOST' },

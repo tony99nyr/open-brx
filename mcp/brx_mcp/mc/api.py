@@ -193,7 +193,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return JSONResponse(rows)
 
     async def armory_list(_):
-        return JSONResponse(s.armory.list())
+        import asyncio
+        return JSONResponse(await asyncio.to_thread(s.armory.list))   # file lock + disk read: off the event loop
 
     async def voices(_):
         """The selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack and

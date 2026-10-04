@@ -1008,16 +1008,10 @@ class Session:
         path = self._persist_path
         if path is None:
             return None
-        kept = path.with_name(f"{path.name}.bad-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}")
-        n = 1
-        while kept.exists():
-            kept = path.with_name(f"{path.name}.bad-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{n}")
-            n += 1
-        try:
-            path.replace(kept)
-        except OSError:
-            import logging; logging.getLogger("brx.mc").exception("could not move the bad session snapshot aside")
-            return None
+        from ..storage import move_aside_exclusive
+        kept = move_aside_exclusive(path, "bad")
+        if kept is None:
+            import logging; logging.getLogger("brx.mc").error("could not move the bad session snapshot aside")
         return kept
 
     def restore_snapshot(self) -> int:
@@ -1264,13 +1258,14 @@ class Session:
         except Exception:   # a store error must never lose a fact the node has already pruned
             import logging; logging.getLogger("brx.mc").exception("store.log failed (fact still scored in memory)")
 
-    def _gun_index(self):
-        self.guns: dict[str, dict] = {}
+    def _read_guns(self) -> dict[str, dict]:
         try:
-            for r in self.armory.list():
-                self.guns[r["gun_id"]] = r
+            return {r["gun_id"]: r for r in self.armory.list()}
         except Exception:
-            self.guns = {}
+            return {}
+
+    def _gun_index(self):
+        self.guns: dict[str, dict] = self._read_guns()
 
     def _attach_net(self):
         n = self.net
@@ -6988,8 +6983,9 @@ class Session:
                 "go": all(r["status"] not in ("red", "waiting") for r in board) and bool(board) and not roster_faults}
 
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:
+        import asyncio
         self.scan_rows = await self.armory.scan(duration_s)
-        self._gun_index()
+        self.guns = await asyncio.to_thread(self._read_guns)     # the inventory read takes a file lock: never on the loop
         self._changed()
         return self.scan_rows
 
@@ -8672,6 +8668,9 @@ class Session:
             state["restore_failed"] = self.restore_failed
         if self.store_errors:
             state["store_errors"] = self.store_errors
+        armory_corrupt = getattr(self.armory, "corrupt", None)   # O2: LocalArmory only; fakes have none
+        if armory_corrupt:
+            state["armory_corrupt"] = armory_corrupt
         bench_volume = getattr(self.compiler, "bench_volume", None)   # `--bench-volume`: the compiler owns it
         if bench_volume is not None:
             state["bench_volume"] = bench_volume

@@ -1966,6 +1966,11 @@ export interface RestoreFailedView {
   kept: string | null;
 }
 
+export interface ArmoryCorruptView {
+  kept: string | null;
+  error: string;
+}
+
 export interface SnapshotFeedRow {
   t_match_s: number;
   text: string;
@@ -2010,6 +2015,8 @@ export interface State {
   store_errors?: number;
   /** O1: session.json could not be restored; kept aside */
   restore_failed?: RestoreFailedView;
+  /** O2: armory.json was corrupt, moved aside; the armory shown is NOT the full one. ABSENT once a read succeeds */
+  armory_corrupt?: ArmoryCorruptView;
   game?: GameAnnouncementView;
   sync?: SyncView;
   options?: SessionOptions;

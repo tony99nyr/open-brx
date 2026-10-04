@@ -199,6 +199,15 @@ export function CommandBar() {
             </span>
           )}
 
+          {/* O3: match rows MC could not write to its history store. Absent (not 0) when all is well. */}
+          {!!state?.store_errors && (
+            <span data-testid="store-errors-chip" data-alert="frame-store-errors" data-sev="amber"
+              title="Match results could not be saved to the history store, so they may be missing from RECAP history and bug reports. Check MC's log."
+              style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: colourOf('frame-store-errors'), border: `1px solid ${T.line2}`, padding: '5px 10px', whiteSpace: 'nowrap' }}>
+              MATCH HISTORY NOT SAVING ({state.store_errors})
+            </span>
+          )}
+
           {/* One button instead of a red hazard control and a wall of telemetry (Tony, 2026-09-02):
               "the header should be cleaner and simpler. less intimidating and less confusing." */}
           <div style={{ position: 'relative' }}>

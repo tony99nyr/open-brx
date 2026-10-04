@@ -701,3 +701,18 @@ def test_o1_rollback_list_covers_every_field_restore_assigns():
     assigned = set(re.findall(r"self\.([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^\]]*\])?\s*(?:=|\.update\(|\.clear\(|\.append\(|\.setdefault\()", src))
     missing = assigned - set(st.Session._RESTORE_ATTRS) - {"_persist_path", "restore_failed"}
     assert not missing, f"restore_snapshot assigns {sorted(missing)} but a failed restore would not roll them back"
+
+
+def test_o1_the_kept_name_is_reserved_exclusively_and_a_taken_name_is_never_overwritten():
+    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+    path = tmp_dir / "session.json"
+    path.write_text("{not json")
+    s = _fresh(path)
+    stamp_ns = 1_700_000_000_123_000_000
+    taken = tmp_dir / "session.json.bad-20231114T221320123"      # the name that stamp resolves to
+    taken.write_text("someone else's file")
+    with mock.patch("time.time_ns", return_value=stamp_ns):
+        assert s.restore_snapshot() == 0
+    kept = s.snapshot()["restore_failed"]["kept"]
+    assert kept and kept != str(taken)
+    assert pathlib.Path(kept).read_text() == "{not json" and taken.read_text() == "someone else's file"

@@ -2,6 +2,7 @@
 scan-only BLE presence/identity → ScanRow[], bind_player validation. Thin by design."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import platform
 import time
@@ -26,11 +27,29 @@ def _to_record(serial: str, r: dict) -> ArmoryRecord:
 
 
 class LocalArmory:
+    # O2: set when the last inventory read hit a corrupt armory.json (moved aside), cleared by the next good read.
+    # Session.snapshot() surfaces it as `armory_corrupt`; never an empty armory shown as if it were the real one.
+    corrupt: dict | None = None
+
+    def _note_read(self, exc: Exception | None, inv: dict | None = None) -> None:
+        # A corrupt file is moved aside, so the NEXT read finds no file and returns {}: that is not a recovery.
+        # Only an inventory with guns in it (re-enrolled or restored by hand) clears the flag.
+        try:
+            from brx_mcp.usbconsole import InventoryCorrupt
+        except Exception:      # usbconsole itself cannot be imported: nothing to classify
+            return
+        if isinstance(exc, InventoryCorrupt):
+            self.corrupt = {"kept": str(exc.kept) if exc.kept else None, "error": exc.error}
+        elif exc is None and inv:
+            self.corrupt = None
+
     def list(self) -> list[ArmoryRecord]:
         try:
             from brx_mcp.usbconsole import load_inventory
             inv = load_inventory()
+            self._note_read(None, inv)
         except Exception as e:
+            self._note_read(e)
             log.error("armory inventory unavailable: %s", e)
             return []
         return [_to_record(s, r) for s, r in inv.items()]
@@ -48,13 +67,15 @@ class LocalArmory:
             log.warning("BLE scan failed: %s", e)
             return []
         taggers = [d for d in devices if d.get("has_uart_service")]
-        try:
-            correlate([{"name": d["name"], "address": d["address"]} for d in taggers])
+        try:     # blocking (file lock, up to a 10 s wait): off the event loop
+            await asyncio.to_thread(correlate, [{"name": d["name"], "address": d["address"]} for d in taggers])
         except Exception as e:
             log.warning("correlate failed: %s", e)
         try:
-            inv = load_inventory()
+            inv = await asyncio.to_thread(load_inventory)
+            self._note_read(None, inv)
         except Exception as e:
+            self._note_read(e)
             log.error("armory inventory unavailable: %s", e)
             inv = {}
         by_name = {}

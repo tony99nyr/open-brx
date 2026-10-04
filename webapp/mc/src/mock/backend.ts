@@ -542,6 +542,8 @@ export class MockBackend implements Api {
    *  advertised address is already correct, so the CommandBar's reachability banner must be visible
    *  without a real WSL host to boot MC on. Wording mirrors `netinfo.WSL_UNREACHABLE_WARNING` server-side
    *  (kept in sync by hand -- there is no shared string across the Python/TS boundary). */
+  private demoArmoryCorrupt = typeof location !== 'undefined' && new URLSearchParams(location.search).get('armorycorrupt') === '1';
+  private demoStoreErrors = typeof location !== 'undefined' && new URLSearchParams(location.search).get('storeerrors') === '1';
   private demoLanWarning = typeof location !== 'undefined' && new URLSearchParams(location.search).get('lanwarn') === '1';
   /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
    *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
@@ -924,6 +926,9 @@ export class MockBackend implements Api {
         warning: this.demoLanWarning ? WSL_UNREACHABLE_WARNING : null,
       },
       ...(this.restoredFrom ? { restored_from: this.restoredFrom } : {}),
+      // `?mock&armorycorrupt=1` / `?mock&storeerrors=1` demo the O2 / O3 warnings.
+      ...(this.demoArmoryCorrupt ? { armory_corrupt: { kept: '/home/op/.brx-mcp/armory.json.bad-20261004T010203', error: 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)' } } : {}),
+      ...(this.demoStoreErrors ? { store_errors: 2 } : {}),
       coverage: this.coverage(nodes),
       // The demo keeps one off-grid node in the confidence sample so the same MC-gating view is
       // available in ?mock as in the advanced presentation panel.

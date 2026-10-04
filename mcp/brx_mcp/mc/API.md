@@ -53,6 +53,8 @@ State {
   store_errors?: number,                        // O3: match rows MC could not write to its SQLite store this run (each one logged). ABSENT when 0
   restore_failed?: { reason: string, kept: string | null },   // O1: session.json could not be restored; nothing partial was kept and
                                                // the file was moved to `kept` (session.json.bad-<UTC time>). ABSENT otherwise.
+  armory_corrupt?: { kept: string | null, error: string },   // O2: armory.json was corrupt and moved to `kept`; the armory MC shows is NOT
+                                               // the full one. Set on the read that hit it, cleared by a later read that finds guns. ABSENT otherwise.
   session_id, phase, t,                      // server time (Unix ms)
   mc_confidence: { confident: boolean, missing: string[], stale: string[], unflushed: string[] },   // A11.5: player_ids; gates the MC-driven global-state events
   lan: { mode: "router"|"hotspot"|"lan", ssid: string|null, ip: string, port: number, ws_url: string,

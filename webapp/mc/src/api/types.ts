@@ -10,7 +10,7 @@
 
 // ---- generated wire shapes (contract.gen.ts) ----
 export type {
-  ArmoryRecord, BleId, ConfigView, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
+  ArmoryCorruptView, ArmoryRecord, BleId, ConfigView, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
   LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkEffectsResolved, PerkView, Player, Preflight, ReadinessRow,
   ReadinessSnapshot, Respawn, RosterEntry, RosterWeapon, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
   Stun, Recoil, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,

@@ -16,6 +16,7 @@ Review the gallery (`python3 hardware/m5sticks3/sim/stick_sim.py`) before flashi
 """
 import importlib.util
 import pathlib
+import re
 import shutil
 
 from _skip import needs
@@ -115,3 +116,10 @@ def test_o_team_3_is_purple_on_the_stick_as_everywhere_else():
     tokens = (ROOT / "webapp/mc/src/tokens.ts").read_text(encoding="utf-8")
     hx = re.search(r"purple:\s*'#([0-9a-fA-F]{6})'", tokens).group(1)
     assert (r, g, b) == (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16)), "the Stick's purple is not the console's"
+
+
+def test_mockup_palette_has_no_green_team_and_purple_matches_the_console():
+    """hardware/m5sticks3/mockups/render.py still drew team 3 green after the Stick itself went purple."""
+    src = (ROOT / "hardware/m5sticks3/mockups/render.py").read_text(encoding="utf-8")
+    colours = re.search(r"TEAM_COLOR = \{(.*?)\n\}", src, re.S).group(1)
+    assert '"green"' not in colours and '"purple": (191, 76, 230)' in colours

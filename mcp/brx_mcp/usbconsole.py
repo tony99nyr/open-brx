@@ -175,31 +175,53 @@ class InventoryCorrupt(Exception):
 
 
 def _keep_corrupt_inventory(p: Path) -> Optional[Path]:
-    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
-    kept, n = p.with_name(f"{p.name}.bad-{stamp}"), 1
-    while kept.exists():
-        kept, n = p.with_name(f"{p.name}.bad-{stamp}-{n}"), n + 1
-    try:
-        p.replace(kept)
-    except OSError:
-        return None
-    return kept
+    from .storage import move_aside_exclusive
+    return move_aside_exclusive(p, "bad")
+
+
+def _stat_key(p: Path):
+    st = p.stat()
+    return (st.st_ino, st.st_size, st.st_mtime_ns)
+
+
+def _validate_inventory(inv) -> dict:
+    if not isinstance(inv, dict):
+        raise ValueError(f"expected a JSON object, found {type(inv).__name__}")
+    for k, v in inv.items():
+        if not isinstance(k, str) or not isinstance(v, dict):
+            raise ValueError(f"record {k!r} is a {type(v).__name__}, expected an object")
+    return inv
+
+
+def _read_inventory_locked() -> dict:
+    """The read itself. The caller MUST hold `_inventory_lock` (it is not re-entrant, so the locked write
+    ops call this, never `load_inventory`). A corrupt file is moved aside only if it is still the very
+    file that failed to parse: if another writer replaced it meanwhile, read again instead."""
+    p = inventory_path()
+    for _ in range(5):
+        try:
+            before = _stat_key(p)
+        except FileNotFoundError:
+            return {}
+        try:
+            return _validate_inventory(json.loads(p.read_text(encoding="utf-8")))
+        except ValueError as exc:      # JSONDecodeError and UnicodeDecodeError are ValueErrors; an OSError
+            # (permissions, a sharing violation) is NOT corruption and must not move a valid armory aside
+            try:
+                same = _stat_key(p) == before
+            except FileNotFoundError:
+                continue
+            if same:
+                raise InventoryCorrupt(p, _keep_corrupt_inventory(p), f"{type(exc).__name__}: {exc}") from exc
+    raise OSError(f"{p} kept changing while it was read")
 
 
 def load_inventory() -> dict:
-    """The armory, or {} when no file exists yet. A file that exists but is not a JSON object raises
-    InventoryCorrupt after moving it aside: an unreadable armory is never the same as an empty one."""
-    p = inventory_path()
-    if not p.exists():
-        return {}
-    try:
-        inv = json.loads(p.read_text(encoding="utf-8"))
-        if not isinstance(inv, dict):
-            raise ValueError(f"expected a JSON object, found {type(inv).__name__}")
-        return inv
-    except ValueError as exc:      # JSONDecodeError and UnicodeDecodeError are ValueErrors; an OSError (permissions, a
-        # sharing violation) is NOT corruption and must not move a valid armory aside
-        raise InventoryCorrupt(p, _keep_corrupt_inventory(p), f"{type(exc).__name__}: {exc}") from exc
+    """The armory, or {} when no file exists yet. A file that exists but is not a JSON object of objects
+    raises InventoryCorrupt after moving it aside: an unreadable armory is never the same as an empty one.
+    Takes the inventory lock, so it never quarantines a file that a writer is replacing."""
+    with _inventory_lock():
+        return _read_inventory_locked()
 
 
 def _save_inventory(inv: dict) -> None:
@@ -278,8 +300,8 @@ def add_to_inventory(record: dict) -> dict:
     never the repo. Returns the full inventory."""
     key = record.get("serial_head_pin")
     if not key:
-        return load_inventory()
-    inv = load_inventory()
+        return _read_inventory_locked()
+    inv = _read_inventory_locked()
     entry = inv.get(key, {})
     old_name = entry.get("gun_name")
     for f in INVENTORY_FIELDS:
@@ -311,7 +333,7 @@ def correlate(scan_entries: list) -> list:
     and the post-rename reconfirm. `scan_entries`: [{'name','address'}, ...].
     Returns [(serial, address), ...] newly confirmed."""
     from collections import Counter
-    inv = load_inventory()
+    inv = _read_inventory_locked()
     name_counts = Counter((r.get("gun_name") or "").strip().lower() for r in inv.values())
     adv: dict[str, list] = {}
     for e in scan_entries:
@@ -337,7 +359,7 @@ def bind_address(serial: str, address: str, name: Optional[str] = None) -> bool:
     """Bind a BLE MAC to an inventory record with certainty (isolation enroll: the
     gun was the only one powered, so this address IS this serial). Optionally set the
     name too. Marks name_confirmed=True (we know both facts). Returns True if bound."""
-    inv = load_inventory()
+    inv = _read_inventory_locked()
     if serial not in inv:
         return False
     inv[serial]["ble_address"] = address
@@ -354,7 +376,7 @@ def mark_rename(new_name: str, serial: Optional[str] = None,
     """Record a just-sent rename: set the target record's gun_name to `new_name` and
     clear `name_confirmed` (the advert won't match until the gun reboots). Target by
     serial, else by bound ble_address. Returns the serial updated, or None."""
-    inv = load_inventory()
+    inv = _read_inventory_locked()
     key = serial
     if key is None and address is not None:
         key = next((s for s, r in inv.items() if r.get("ble_address") == address), None)
