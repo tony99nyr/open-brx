@@ -1547,6 +1547,41 @@ test('S7.1 rejoin reconcile: a live gun disarms then re-arms, never a heal', () 
   assert.ok(!h.writes.slice(before).some(f => f.startsWith('$SPAWN')), 'never spawns on a rejoin');
 });
 
+test('Reconcile bug 1: an EMP inside the window is not undone when the window ends; the stun expiry re-arms the live counts', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.config.stun = { duration_s: 3 };
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  assert.ok(h.eng.state().reconciling, 'setup: the relink reconciles');
+  h.adv(1000); h.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.ok(h.eng.stunned, 'setup: the EMP lands inside the window');
+  const before = h.writes.length;
+  h.adv(2000); h.eng.tick();                                  // the window ends, 2 s of stun remain
+  assert.equal(h.eng.state().reconciling, false, 'the window ended');
+  assert.ok(h.eng.stunned, 'CONTROL: still stunned');
+  const armed = h.writes.slice(before).filter(f => /^\$AMMO,\d+,[1-9]/.test(f));
+  assert.deepEqual(armed, [], 'no live $AMMO row is written while the stun holds the gun disarmed');
+  h.adv(1000); h.eng.tick();                                  // the stun expires
+  assert.equal(h.eng.stunned, null, 'the stun expired');
+  assert.ok(h.writes.slice(before).some(f => f.startsWith('$AMMO,0,32,192,')), 'the stun expiry restore sends the live counts');
+});
+
+test('Reconcile bug 2: a window that ends with the link down writes nothing; the next relink re-arms', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  h.adv(500); h.eng.onBleDropped();
+  const before = h.writes.length;
+  h.adv(2600); h.eng.tick();
+  assert.equal(h.eng.state().reconciling, false, 'the window still ends on the clock');
+  assert.deepEqual(h.writes.slice(before).filter(f => /^\$(AMMO|SIR|TMP|BMAP)/.test(f)), [], 'no re-arm, hit table or trigger repair is written to a dead link');
+  h.eng.onBleConnected();
+  assert.ok(h.eng.state().reconciling, 'the relink opens a fresh window');
+  const mid = h.writes.length;
+  h.adv(3000); h.eng.tick();
+  assert.ok(h.writes.slice(mid).some(f => f.startsWith('$AMMO,0,32,192,')), 'the next relink re-arms the live counts');
+});
+
 test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a slot never counted this life falls back to spawn', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$ALCD,32,100,0,192,0,*');                          // the life's first slot-0 report seeds the account

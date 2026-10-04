@@ -722,6 +722,7 @@ function reconcileHost(e) {
     write: (frames, why) => e._write(frames, why), delay: (ms, fn) => e.delay(ms, fn), askGun: why => e._askGun(why),
     // the engine state the module reads (never writes)
     get alive() { return e.alive; }, get hp() { return e.hp; }, get phase() { return e.phase; }, get ended() { return e.ended; },
+    get bleUp() { return e.bleUp; }, get stunned() { return e.stunned; },
     get config() { return e.config; }, get frames() { return e.frames; }, get triggerPending() { return e._triggerPending; },
     get pu() { return e.pu; },
     liveAmmo: () => e.am.liveAmmo(), protectsSpawn: () => e._protectsSpawn(), respawnProfile: () => e._respawnProfile(),

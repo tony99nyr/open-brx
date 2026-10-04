@@ -28,7 +28,7 @@
 //
 // HOST INTERFACE (engine.js `reconcileHost`; every member looks the engine up at call time)
 //   services    now() · log(line, cls) · changed() · write(frames, why) · delay(ms, fn) · askGun(why)
-//   read-only   alive · hp · phase · ended · config · frames · triggerPending · pu (the PlayerPowerups instance:
+//   read-only   alive · hp · phase · ended · bleUp · stunned · config · frames · triggerPending · pu (the PlayerPowerups instance:
 //               disarmRows · reconcileRearm · isHeldSlot · reequipInRearm · afterRearm)
 //   lookups     liveAmmo() · protectsSpawn() · respawnProfile()
 //   writes      clearResync() · stunRestore(why) · acctWrote(slot, mag, res) · setPrev(slot, mag, res) ·
@@ -104,7 +104,19 @@ export class Reconcile {
     if (!this._win) return;   // no window, nothing to end: a re-arm from the spawn rows would hand back a full magazine
     const h = this.host, w = this._win, live = (w && w.ammo) || {};
     this._win = null;
+    // The link dropped again inside the window: the write would go to a dead link, and its echo window, accuracy hold and
+    // `_armLife` would run against nothing. The window still closes on the clock; the next relink's `begin` owns the re-arm
+    // (nothing else needs this end: `tick` gates the F416 hold, `_armPending` and the trigger due time on `bleUp`).
+    if (!h.bleUp) {
+      h.log('reconcile window ended with the link down: no re-arm; the next relink reconciles afresh', 'lk');
+      h.changed();
+      return;
+    }
     if (h.alive) {
+      // A stun that landed inside the window keeps the gun disarmed: the re-arm rows would undo it. The stun's expiry restore
+      // (`_stunRestore`) re-sends the live counts, a held pickup's included. Exception: a heavy on the trigger still needs the
+      // re-equip that only this re-arm does (F436); the stun restore never moves the trigger.
+      const stunHolds = !!h.stunned && !h.pu.heavyOnTrigger();
       // F164: re-arm each slot to the LIVE count snapshotted when the reconcile began (ammo.js `liveAmmo`: the node's
       // magazine account, else that slot's spawn row). The spawn row alone was a free full magazine plus the
       // spawn reserve on every relink. A pickup slot keeps its spawn row here; `pu.reconcileRearm` owns a held heavy.
@@ -114,7 +126,7 @@ export class Reconcile {
         return l && !pu.has(slot) ? `$AMMO,${slot},${l[0]},${l[1]},1,*` : f;
       });
       // A56: a held heavy keeps its charges, and one on the trigger goes back on it (F436): `pu.reconcileRearm` says how.
-      const { reequip, ammo } = h.pu.reconcileRearm(rows);
+      const { reequip, ammo } = stunHolds ? { reequip: false, ammo: [] } : h.pu.reconcileRearm(rows);
       if (ammo.length || reequip) {
         // F259: the account takes the re-armed counts and opens the echo window, as the powerup equip does, so the gun's
         // echo of this write is bookkeeping (never a shot, never a refill) and every later restore carries these
