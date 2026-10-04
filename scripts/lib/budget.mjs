@@ -42,11 +42,11 @@ export function screensBudget(cpus, budgetMb, otherUiMb = 0) {
 // HEADROOM's comment): the 700 tier covers the lighter e2e scripts, 900 covers the ones already known heavier
 // (2026-09-23's MC visual QA note), each nudged up now that a direct measurement showed 700 itself runs low.
 export const E2E_SPECS = [
-  ['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87, 1100], ['m2-ui', 46],
-  ['game-edit', 32, 850], ['operator-menu', 18], ['report', 15],
-  ['frame', 7, 1050], ['lobby-updating', 3, 1050], ['recap-next', 20, 1050], ['feed-reload', 9, 1050],
-  ['mc-restart', 13, 1050], ['live-board', 19, 1050],
-  ['vqa2', 27, 1050], ['play', 35, 1100], ['build', 8, 1050], ['lobby-outcome', 7, 1050], ['observability', 25, 1050],
+  ['koth', 34], ['backhaul', 16], ['kit-continue', 18], ['end-delivery', 10], ['standby', 86, 1100], ['m2-ui', 43],
+  ['game-edit', 86, 850], ['operator-menu', 24], ['report', 4],
+  ['frame', 6, 1050], ['lobby-updating', 3, 1050], ['recap-next', 20, 1050], ['feed-reload', 9, 1050],
+  ['mc-restart', 13, 1050], ['live-board', 18, 1050],
+  ['vqa2', 26, 1050], ['play', 45, 1100], ['build', 16, 1050], ['lobby-outcome', 6, 1050], ['observability', 25, 1050],
 ];
 const E2E_DEFAULT_MB = 850;
 

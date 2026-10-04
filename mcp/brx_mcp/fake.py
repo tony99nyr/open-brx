@@ -79,6 +79,9 @@ class FakeTagger:
         # slot nobody has armed yet as empty, which is the honest answer, not a guess.
         self.mag: dict[int, int] = {}
         self.reserve: dict[int, int] = {}
+        # The counts a `$SPAWN` refills each `$WEAP`-armed slot to: (clip t16, carried reserve t17). protocol/brx-protocol.md
+        # `$SPAWN` row: it restores ammo and echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*` for the current weapon.
+        self._spawn_fill: dict[int, tuple[int, int]] = {}
         self.active_slot = 0
         # `clock` lets a test drive time deterministically (no real sleep, so nothing races
         # under load); a live caller (the stage, `run_live`) takes the real wall clock.
@@ -232,7 +235,12 @@ class FakeTagger:
             # first hit's damage and produced a false bug report. The `$PSET` value is kept (`cfg_shield`)
             # as the CEILING an IR grant fills toward, never as a starting pool.
             self.hp, self.armor, self.shield = self.cfg_hp, self.cfg_armor, 0
-            self._out.append(f"$LCD,{self.hp},{self.armor},0,0,0,0,*")
+            # Golden traces #6 polish r1: the echo carries slot 0's refilled magazine and reserve, as the protocol row says
+            # (it used to say 0/0, which only an unconfigured gun sends, and a node that reads `$LCD` t5/t6 took it as empty).
+            for sl, (clip, full) in self._spawn_fill.items():
+                self.mag[sl], self.reserve[sl] = clip, full
+            self.active_slot = 0
+            self._out.append(f"$LCD,{self.hp},{self.armor},0,0,{self.mag.get(0, 0)},{self.reserve.get(0, 0)},*")
         elif cmd == "LIFE":
             # F264 v3: the dead-gun PROBE is `$LIFE,0,0,0,*` (`PROBE_LIFE` in stage.py/engine.js) -- a
             # zero add to an ALREADY-DEAD gun, asking it to speak without healing or harming anything.
@@ -308,6 +316,10 @@ class FakeTagger:
                     rsv = None if full is None else full // 2
                 if rsv is not None:
                     self.reserve[slot] = rsv
+                full = _int(t[18]) if len(t) > 18 else None   # t17: the reserve a player carries, what `$SPAWN` refills
+                carried = full if full is not None else rsv
+                if clip is not None and carried is not None:
+                    self._spawn_fill[slot] = (clip, carried)
                 self._queue_alcd(slot)
         elif cmd == "AMMO":
             # `$AMMO,<slot>,<mag>,<reserve>,…` SETS the magazine and reserve outright -- the

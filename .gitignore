@@ -52,6 +52,7 @@ test-results/
 node_modules
 .venv
 .test-all.lock*
+proofshot-artifacts/
 .pytest_cache/
 # Stock firmware and sound-bank files are private inputs, never repository content (R4).
 *.bin

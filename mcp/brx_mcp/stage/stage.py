@@ -16,9 +16,11 @@ import asyncio
 import math
 import random
 import time
+import dataclasses as _dc
 from collections import deque
 from typing import Any, Awaitable, Callable, Literal, NotRequired, TypeGuard, TypedDict
 
+from .. import beacon as _beacon
 from .. import poolgauge as _pg
 from .. import sounds as _snd
 from .. import voices as _voices
@@ -105,6 +107,7 @@ class PoisonState(TypedDict):
     by: dict[str, int]
     ticks: int
     cue_pending: NotRequired[bool]   # polish 2026-10-03 (engine.js `cuePending`): `poisoned` waits for a pool frame that says we live
+    onset_until: NotRequired[float]  # #6 polish r1: no tick sound until the `poisoned` onset clip has played (engine.js: an idle announcer)
 
 
 class DotEchoState(TypedDict):
@@ -318,12 +321,12 @@ def dot_echo_matches(echo: "DotEchoState", before: dict[str, int], after: dict[s
 # so `rising` and `falling` CAN both be set, and that reads as direction UNKNOWN (§5d.3), never as either.
 CONTROL_STATE = {"held": 1, "contested": 2, "rising": 4, "falling": 8}
 STATION_TEAM_ANY = 255         # beacon.js TEAM_ANY: advert byte 9 "neutral / any team"
-# app/src/beacon.js: the 16-byte advert layout the phone's scanner decodes (one 128-bit service UUID).
-ADVERT_MAGIC = (0x4F, 0x42, 0x52, 0x58)
-ADVERT_VERSION = 1
-ADVERT_ROLE = {"station": 1, "player": 2}
-ADVERT_KIND = {"respawn": 1, "powerup": 2, "extraction": 3, "bomb": 4, "control": 5}
-_ADVERT_KIND_NAME = {v: k for k, v in ADVERT_KIND.items()}
+# The 16-byte advert layout the phone's scanner decodes is beacon.py's codec (the Python twin of app/src/beacon.js);
+# the stage only adapts it to its own JSON-boundary dict shape.
+ADVERT_MAGIC = tuple(_beacon.MAGIC)
+ADVERT_VERSION = _beacon.VERSION
+ADVERT_ROLE = _beacon.ROLE
+ADVERT_KIND = _beacon.KIND
 _UNSET = object()              # engine.js `undefined` (distinct from `null`/None) for `_hillOwnerWhenSilenced`
 
 
@@ -336,35 +339,19 @@ def claimable(tid) -> bool:
 def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = STATION_TEAM_ANY, state: int = 0,
                        value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0) -> str:
     """beacon.js `encodeUuid`, byte for byte: what a phone station puts on the air."""
-    r = ADVERT_ROLE.get(role) if isinstance(role, str) else int(role)
-    if not r:
+    r = _beacon.ROLE.get(role) if isinstance(role, str) else int(role)
+    if r not in _beacon.ROLE_NAME:
         raise ValueError("role required (station|player)")
-    k = ADVERT_KIND.get(kind, 0) if isinstance(kind, str) else int(kind)
-    thr = 0 if not threshold else (256 + max(-128, round(threshold)) if threshold < 0 else min(127, round(threshold)))
-    b = [*ADVERT_MAGIC, ADVERT_VERSION, r, (int(id) >> 8) & 0xFF, int(id) & 0xFF, k, int(team) & 0xFF,
-         int(state) & 0xFF, int(value) & 0xFF, int(seq) & 0xFF, int(game) & 0xFF, thr & 0xFF, int(taker) & 0xFF]
-    h = "".join(f"{x & 0xFF:02x}" for x in b)
-    return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+    return _beacon.encode(_beacon.ROLE_NAME[r], int(id), kind, int(team), int(state), int(value), int(seq), int(game),
+                          threshold, int(taker))
 
 
 def decode_advert_uuid(s: str) -> Advert | None:
     """beacon.js `decodeUuid`: the advert as the phone's scanner reads it, or None when it is not ours.
     The stage feeds an injected advert through THIS, never straight into the hill model, so the byte
     positions (team 9, flags 10, value 11) are exercised exactly as on the phone."""
-    import re
-    h = str(s or "").replace("-", "").lower()
-    if not re.fullmatch(r"[0-9a-f]{32}", h):
-        return None
-    b = [int(h[i:i + 2], 16) for i in range(0, 32, 2)]
-    if tuple(b[0:4]) != ADVERT_MAGIC or b[4] != ADVERT_VERSION:
-        return None
-    role = "station" if b[5] == ADVERT_ROLE["station"] else "player" if b[5] == ADVERT_ROLE["player"] else None
-    if not role:
-        return None
-    thr = 0 if b[14] == 0 else (b[14] - 256 if b[14] > 127 else b[14])
-    return {"role": role, "id": (b[6] << 8) | b[7],
-            "kind": (_ADVERT_KIND_NAME.get(b[8], f"kind{b[8]}") if role == "station" else None),
-            "team": b[9], "state": b[10], "value": b[11], "seq": b[12], "game": b[13], "threshold": thr, "taker": b[15]}
+    a = _beacon.decode(s)
+    return Advert(**_dc.asdict(a)) if a else None
 # The literal fallbacks and their REAL clip lengths, straight off engine.js `HILL_CUES` (ids confirmed by ear on
 # hardware 2026-09-10, rung S; lengths from mcp/brx_mcp/data/sound_catalog.json). `s` is what keeps the 0.114 s
 # tick out from under a 1.9-3.0 s callout. The compiled bundle overrides a frame the moment it carries the key.
@@ -697,6 +684,7 @@ class GunStage:
         self._last_beacon_at = 0.0                 # F85: self.now() of that acceptance
         self.hill: HillState | None = None         # {owner, at, from_neutral[, source: 'station', site, progress, …]} -- state from the wire; the cadence below is ours
         self._hill_busy_until = 0.0                # a hill callout owns the announcer until here: the tick waits, it never overlaps
+        self._last_event_cue: str | None = None    # the last `_event_now` cue frame written (the poison onset times it)
         self._hill_scream_until = 0.0               # the native death scream owns the gun until this time
         self._hill_scream_pending: dict | None = None  # no announcer queue here: defer a hill line until the scream ends
         self._hill_tick_at = 0.0                   # when the possession tick last played (0 = not ticking)
@@ -2692,6 +2680,7 @@ class GunStage:
         """`event()` without the state build — the path every in-game reaction uses (see the warning there)."""
         cues = self.bundle.get("cues", {})
         cue, tag = self._pick_cue(kind) if sound else (None, "")
+        self._last_event_cue = cue   # the take actually played, for a caller that times it (`_poison_cue`)
         if cue:
             self._spawn_task(self.write([cue], f"event cue {kind}{tag}", gap_ms=0))
         elif kind in cues and sound:
@@ -3193,7 +3182,10 @@ class GunStage:
                 shield = int(t[3] or 0) if cmd == "HP" and len(t) > 3 and t[3] != "" else None
                 self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
                 if cmd == "LCD":
-                    self._on_lcd(hp, armor, desync=solicited)
+                    # engine.js LCD case: t5/t6 are the active slot's magazine and reserve, taken through `_onAmmo`
+                    # (golden traces #6 polish r1: the stage used to drop them, so a respawn kept the last life's count)
+                    mag = int(t[5] or 0) if len(t) > 5 else None
+                    self._on_lcd(hp, armor, desync=solicited, ammo=(mag, _tok_int(t, 6)) if mag is not None else None)
                     self._pool_verify(self.hp, self.armor, self.shield, False)   # F341: a `$SPAWN`'s own `$LCD`
                 else:
                     self._on_pools(hp, armor, shield, desync=solicited)
@@ -3651,7 +3643,7 @@ class GunStage:
         if self.stations:
             self._on_control_advert(now)
 
-    def _on_lcd(self, hp: int, armor: int, desync: bool = False) -> None:
+    def _on_lcd(self, hp: int, armor: int, desync: bool = False, ammo: tuple[int, int | None] | None = None) -> None:
         """engine.js `feedFrame`'s LCD case: an `$LCD` sets the pools and books a death on a zero, and it does
         nothing else. It never reaches `_onHp` there, so it books no hit, plays no pool-rise line and, S16, never
         takes the poison tick's echo: a non-lethal `$LCD` between a tick write and its `$HP` leaves `_dot_echo`
@@ -3659,6 +3651,8 @@ class GunStage:
         death path."""
         if self._self_hit_lcd(hp):   # F438 polish r2: the lethal self-hit's own `$LCD,0` twin
             return
+        if ammo is not None:   # engine.js: `_onAmmo(t5, t6, activeSlot)`, after the twin check and before the zero
+            self._on_ammo(ammo[0], ammo[1], self.active_slot)
         if hp == 0 and self.alive and self.auto_react and self.spawned:
             self._on_pools(hp, armor, None, desync=desync, lcd=True)
             return
@@ -4453,7 +4447,24 @@ class GunStage:
         if not p or not p.get("cue_pending") or not self.alive:
             return
         p["cue_pending"] = False
+        # engine.js `_poisonStrike` plays a tick only while the announcer is idle, so no tick sounds over this onset clip
+        # (F446: the first tick is silent under H12). The stage models no announcer, so it holds the tick for the clip.
+        # #6 polish r2: the hold is the PLAYED take's length (a `cue_pools` pick, or a `cue_ms` override), as the gun model
+        # in engine.js times it (`_clipLen`).
+        self._last_event_cue = None
         self._event_now("poisoned")
+        p["onset_until"] = self.now() + self._clip_len(self._last_event_cue)
+
+    def _clip_len(self, frame: str | None) -> float:
+        """engine.js `_clipLen`, in seconds: the bundle's `cue_ms[kind]` for the kind whose `cues[kind]` is this exact
+        frame, else the clip's catalogue length (`clipMs`); no frame is no sound."""
+        if not frame:
+            return 0.0
+        cues, cue_ms = self.bundle.get("cues") or {}, self.bundle.get("cue_ms") or {}
+        for k, ms in cue_ms.items():
+            if cues.get(k) == frame:
+                return float(ms) / 1000.0
+        return clip_s(_cue_id(frame))
 
     def _poison_tick(self, now: float) -> None:
         """engine.js `_poisonTick`: the clock, from `poll()` while LIVE. One tick per call at most -- a poll
@@ -4494,8 +4505,8 @@ class GunStage:
         p["ticks"] += 1
         self._spawn_task(self.write([frame], f"poison tick {p['ticks']}: -{n} {pool}" + (" (lethal)" if lethal else "")))
         # engine.js also waits for a quiet gun and an empty announcer queue (F393); the stage models neither, so it
-        # gates on the one callout it does model, the hill's.
-        if not lethal and now >= self._hill_busy_until:
+        # gates on the clips it does time: the hill's callout and the stack's own onset (`poisoned`, see `_poison_cue`).
+        if not lethal and now >= self._hill_busy_until and now >= p.get("onset_until", 0.0):
             self._event_now("poison_tick")
 
     def _poison_clear(self, why: str) -> None:

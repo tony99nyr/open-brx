@@ -54,7 +54,7 @@ TABLE = [
     ("HILL_MAG", "engine.js", "HILL_MAG", 1),
     ("HILL_CAPTURE_MAG", "engine.js", "HILL_CAPTURE_MAG", 1),
     ("HILL_WAS_NEUTRAL_MAG", "engine.js", "HILL_WAS_NEUTRAL_MAG", 1),
-    ("HILL_NEUTRAL_TEAM", "engine.js", "HILL_NEUTRAL_TEAM", 1),
+    ("HILL_NEUTRAL_TEAM", "transport/contract.gen.js", "HILL_REFUSED_TID", 1),   # engine.js aliases it (review #4)
     ("HILL_TICK_S", "engine.js", "HILL_TICK_MS", 1000),
     ("HILL_PRESENCE_S", "engine.js", "HILL_PRESENCE_MS", 1000),
     ("CONTROL_STALE_S", "engine.js", "CONTROL_STALE_MS", 1000),
@@ -65,7 +65,7 @@ TABLE = [
     ("STUN_DEFAULT_S", "engine.js", "STUN_DEFAULT_S", 1),      # already seconds in the JS
     ("DOT_ECHO_S", "engine.js", "DOT_ECHO_MS", 1000),
     ("DOT_KILL_S", "engine.js", "DOT_KILL_MS", 1000),
-    ("STATION_TEAM_ANY", "beacon.js", "TEAM_ANY", 1),
+    ("STATION_TEAM_ANY", "transport/contract.gen.js", "STATION_TEAM_ANY", 1),
 ]
 
 # Stage constants deliberately absent from the table, each with the reason.

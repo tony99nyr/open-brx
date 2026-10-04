@@ -31,6 +31,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
+from .types import HOLD_TARGET_MAX_S, RESPAWN_DELAY_MAX_S, TIME_LIMIT_MAX_S   # A11: generated for the console
 from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_CONTROL_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, ADOPT_SLACK_MS, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
@@ -2931,8 +2932,8 @@ class Session:
             if k not in self._CONFIG_KEYS:
                 continue                         # ignore unknown / client-injected keys
             if k == "time_limit_s":
-                if v is not None and not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 7200):
-                    raise ValueError("time_limit_s must be an integer 1..7200 or null")
+                if v is not None and not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= TIME_LIMIT_MAX_S):
+                    raise ValueError(f"time_limit_s must be an integer 1..{TIME_LIMIT_MAX_S} or null")
                 cfg["time_limit_s"] = v
             elif k == "environment":
                 if v not in ("indoor", "outdoor"):
@@ -2967,8 +2968,8 @@ class Session:
                     if merged.get("type") not in ("auto", "scanner", "none"):
                         raise ValueError("respawn.type must be auto|scanner|none")
                     d = merged.get("delay_s", 0)
-                    if not (isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= 600):
-                        raise ValueError("respawn.delay_s must be 0..600")
+                    if not (isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= RESPAWN_DELAY_MAX_S):
+                        raise ValueError(f"respawn.delay_s must be 0..{RESPAWN_DELAY_MAX_S}")
                     # F34 (2026-09-07): 0 is the sentinel for "unset / no respawn" (respawn.type ==
                     # "none", e.g. Last Man Standing's default) and stays valid. 1-2 s is the one range
                     # actually forbidden: F13 (bench) wedges the headset in the relay's out-blink when
@@ -3007,7 +3008,7 @@ class Session:
                     if hts is not None:
                         if mode != "koth":
                             raise ValueError("A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL")
-                        if not (isinstance(hts, int) and not isinstance(hts, bool) and 0 < hts <= 7200):
+                        if not (isinstance(hts, int) and not isinstance(hts, bool) and 0 < hts <= HOLD_TARGET_MAX_S):
                             raise ValueError("HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET")
                     # `merged["win_by"]` is not guaranteed: a RESTORED snapshot's config can be missing
                     # it (see `set_config`'s own comment on `cfg` above), and a patch that only touches
@@ -3405,14 +3406,20 @@ class Session:
     def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None) -> bool:
         """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
         already taken is a no-op, and so is a report from before the item became available (`since`)."""
+        # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
+        # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
+        self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
         row = self._pu_sched["st"][nid]
         if not row["available"] or t < row["since"]:
             return False
         a = self.stations[nid]["assigned"]
         num = player.get("player_num") if player else player_num
+        # A taker is player_num 1..63 (0 = none, powerups.md item 6): the item is taken either way, but a number
+        # outside that range is never credited.
+        valid = isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
         row["available"] = False
-        row["taken_by"] = num if isinstance(num, int) and not isinstance(num, bool) else None
-        who = (player or {}).get("display") or (f"PLAYER {num}" if row["taken_by"] is not None else "A PLAYER")
+        row["taken_by"] = num if valid else None
+        who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
         self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info",
                        "text": f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"})
         self._push_station_update(nid)

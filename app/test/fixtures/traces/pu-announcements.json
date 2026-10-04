@@ -1,0 +1,169 @@
+{
+  "name": "pu-announcements",
+  "why": "A56 spawn announcements from the phone's own schedule: nothing before first_at_s, <ITEM> AVAILABLE at it, skipped at the next spawn when the station advertised the item was never taken, announced again once it was taken.",
+  "source": "app/test/powerups.test.mjs 'announcement: <ITEM> AVAILABLE at each spawn time, skipped when the station advert said the item is still there'",
+  "runners": ["engine"],
+  "setup": {
+    "config": {"stations":[{"id":4,"kind":"powerup","item":{"kind":"overshield","amount":75,"spawn_every_s":60,"first_at_s":60,"name":"OVERSHIELD","color":"#ff4fd8"}}]},
+    "fields": ["held","claim","switching","powerup"]
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"frame":"$HP,45,70,0,*"},
+    {"check":"live"},
+    {"advance_ms":55990},
+    {"check":"nothing_before_60s"},
+    {"advance_ms":1500},
+    {"check":"announced_at_60s"},
+    {"stations":[{"id":4,"kind":"powerup","state":1,"median":-85}]},
+    {"advance_ms":60000},
+    {"check":"skipped_item_still_there"},
+    {"stations":[{"id":4,"kind":"powerup","state":0,"median":-85,"value":50}]},
+    {"advance_ms":60000},
+    {"check":"announced_again_after_a_take"},
+    {"advance_ms":6000},
+    {"check":"card_gone"}
+  ],
+  "stage_ignores": [
+    {"what":"trace","why":"The stage has no powerup model: GunStage decodes control-point (kind 5) adverts only and has no claim, grant, overshield, SELECT or switch-back (architecture review section 1)."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*",
+        "$LIFE,0,0,0,*",
+        "$QUERY,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "nothing_before_60s",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "announced_at_60s",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":{"name":"OVERSHIELD","color":"#ff4fd8","station":4,"at":60000},"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "skipped_item_still_there",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "announced_again_after_a_take",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":{"name":"OVERSHIELD","color":"#ff4fd8","station":4,"at":180000},"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "card_gone",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$LIFE,0,0,0,*"
+      ]
+    }
+  ]
+}

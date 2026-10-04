@@ -29,6 +29,7 @@
 #include <esp_task_wdt.h>  // the loop watchdog while the match lock is on (pmicWatchLoop)
 
 #include "brx_advert.h"
+#include "contract.gen.h"
 #include "json_lite.h"
 #include "presence.h"
 #include "station_link.h"
@@ -40,7 +41,7 @@ namespace brx_glue {
 using namespace brx;
 
 // ---- tunables (bench to confirm all of them) ---------------------------------------------------
-constexpr uint32_t STATUS_HEARTBEAT_MS = 2000;   // utility.md §5g.2
+constexpr uint32_t STATUS_HEARTBEAT_MS = contract::STATUS_HEARTBEAT_MS;
 constexpr uint32_t MDNS_RETRY_MS = 4000;         // how often to re-browse _openbrx._tcp
 constexpr uint32_t SCAN_WINDOW_S = 1;      // BLEScan duration per window (async, non-blocking)
 // Polish round 1 (2026-09-24): this MUST stay longer than SCAN_WINDOW_S's 1000 ms, or a new window
@@ -187,7 +188,7 @@ SavedHill savedHill;
 static void mcLoadSavedHill() {
   mcPrefs.begin("brxmc", true);
   bool has = mcPrefs.isKey("hill_owner");
-  int owner = mcPrefs.getUChar("hill_owner", 255);
+  int owner = mcPrefs.getUChar("hill_owner", TEAM_ANY);
   int game = mcPrefs.getUChar("hill_game", 0);
   int id = mcPrefs.getUShort("hill_id", 0);
   String sid = mcPrefs.getString("hill_sid", "");
@@ -1082,7 +1083,7 @@ static void mcLoop(uint32_t now) {
     f.app_ver = link.identity().app_ver;
     const StationAssignment& a = link.assignment();
     f.kind = a.present ? a.kind : "respawn";
-    f.team = a.present ? a.team : 255;
+    f.team = a.present ? a.team : TEAM_ANY;
     f.station_id = a.present ? a.id : 0;
     f.threshold = stick_default_threshold_dbm(f.kind);  // D5: per-kind, overwritten below once assigned
     // A67: the threshold and TX power applied NOW, where each came from, and the on-station edit log

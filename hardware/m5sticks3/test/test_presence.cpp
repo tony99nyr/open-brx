@@ -2,9 +2,11 @@
 //   g++ -std=c++17 -I.. test_presence.cpp -o /tmp/test_presence && /tmp/test_presence
 // mcp/tests/test_sticks3_core.py does exactly that when g++ exists.
 //
-// Every expectation here is what app/src/beacon.js Presence, app/src/control.js ControlPoint or
-// app/src/utility.js tick() does with the same inputs: the Stick must give a phone the answer a phone
-// station standing at the same spot would give.
+// The F440 presence and hill rules (the circle, the exit band and grace, the window median, contest, the
+// capture arithmetic) live in app/test/fixtures/presence-hill-cases.json and run in test_presence_cases.cpp. What
+// is left here is what that file does not say: the Stick's own defaults, slot handling, the 64-slot drop, the
+// HillUpdate edge events (captured_from, contested_edge, neutralised_by), the lead of a tie, revive counting, the
+// sighting ring and the IR words. Each expectation is still what app/src/beacon.js or app/src/control.js does.
 #include <cstdio>
 #include <string>
 
@@ -117,65 +119,6 @@ static void test_presence_ema_is_beacon_js() {
   CHECK_EQ(pr.get(7)->raw, -80);
 }
 
-// F440 (Tony, 2026-10-02): a 3 dB exit band, and leaving is debounced by the exit grace.
-static void test_presence_exit_band_and_grace() {
-  PlayerPresence pr;  // threshold -74, exit level -77
-  pr.alpha = 1.0;
-  pr.observe(player(7, 0), -70, 0);
-  pr.tick(0);
-  pr.tick(800);
-  CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -77, 900);   // exactly thr - 3: `<` is strict, still present
-  pr.tick(900);
-  CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -76, 1000);  // inside the band: still present, no dwell needed
-  pr.tick(1000);
-  CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -79, 1100);  // 5 dB below: a dip, not yet a step out (the exit grace)
-  pr.tick(1100);
-  CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -76, 1500);  // back inside the band: the dip is over, the grace resets
-  pr.tick(1500);
-  CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -79, 1600);  // below again ...
-  pr.tick(1600);
-  pr.observe(player(7, 0), -79, 3000);
-  pr.tick(3000);
-  CHECK(pr.get(7)->present);            // ... 1.4 s: still inside the grace
-  pr.observe(player(7, 0), -79, 4100);
-  pr.tick(4100);                        // 2.5 s: still inside the 4 s grace (P-M2: body shadowing)
-  CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -79, 5600);
-  pr.tick(5600);                        // round 2: the exit reads the 2 s window median, below the band only since 3 s
-  CHECK(pr.get(7)->present);
-  pr.observe(player(7, 0), -79, 7000);
-  pr.tick(7000);                        // 4 s with the window median below the exit level: off
-  CHECK(!pr.get(7)->present);
-  pr.observe(player(7, 0), -75, 7100);  // back inside the band but below the threshold: stays off
-  pr.tick(7100);
-  pr.tick(9000);
-  CHECK(!pr.get(7)->present);
-}
-
-// F440 (beacon.js parity): the circle. A sighting is the median of the last 2 s of adverts at or above the threshold,
-// so a sparse player's first advert at the threshold puts it in the circle at once (before the dwell), while a DENSE
-// player whose noise only touches the threshold never enters (review round 2: the circle edge must not move with
-// advert rate).
-static void test_presence_f438_circle() {
-  PlayerPresence pr;  // threshold -74 (the default), 3 dB band, 800 ms dwell
-  pr.observe(player(7, 0), -70, 0);
-  pr.tick(0);
-  CHECK(!pr.get(7)->present);   // still dwelling ...
-  CHECK(pr.get(7)->in_circle);  // ... but in the circle at once: an opponent contests now
-  PlayerPresence out;
-  for (uint32_t t = 0; t < 10000; t += 250) {
-    out.observe(player(8, 1), (t / 250) % 2 ? -73 : -87, t);  // a peak at the threshold every other advert
-    out.tick(t);
-    CHECK(!out.get(8)->in_circle);
-    CHECK(!out.get(8)->present);
-  }
-}
-
 // P-M2 (beacon.js parity, review 2026-10-03): body shadowing (about 12 dB for 2-5 s) must not drop a player who stands
 // 3-6 dB inside the circle. A 3.5 s shadow is not a step out with the 4 s exit grace; 2.5 s dropped it.
 static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
@@ -197,50 +140,6 @@ static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
     }
     CHECK_EQ(drops, 0);
   }
-}
-
-// P-L1 (beacon.js parity, review 2026-10-03): the sighting window holds the last 64 adverts on both sides.
-static bool sighted_after(int below, int above) {
-  PlayerPresence pr;
-  uint32_t t = 0;
-  for (int i = 0; i < below; i++, t += 20) pr.observe(player(5, 0), -90, t);
-  for (int i = 0; i < above; i++, t += 20) pr.observe(player(5, 0), -50, t);  // 80 adverts in 1.6 s: one window
-  return pr.get(5)->sighted;
-}
-static void test_presence_sighting_window_holds_64() {
-  CHECK_EQ(SIGHT_RECENT_MAX, (size_t)64);
-  CHECK(sighted_after(40, 40));   // the last 64 hold 40 above
-  CHECK(!sighted_after(50, 30));  // the last 64 hold 30 above (a window of 24 would hold 24 above)
-}
-
-// Round 2 (beacon.js parity, review 2026-10-04): the EXIT reads the median of the last 2 s of raw samples (the last
-// raw sample when the window is empty), not the EMA, whose per-advert alpha lags further on a sparse phone. A dense
-// phone at -60 turns sparse at -84: the lone low samples step it out 4 s after the window median falls, where the EMA
-// needed three low adverts (7.5 s) to cross the exit level. beacon.test.mjs runs the same numbers.
-static void test_presence_exit_reads_the_window_median_not_the_ema() {
-  PlayerPresence pr;  // threshold -74, exit level -77, alpha 0.35, 4 s grace
-  bool at_7500 = false, at_8000 = true;
-  for (uint32_t t = 0; t <= 9000; t += 250) {
-    if (t <= 2000) pr.observe(player(4, 0), -60, t);
-    else if (t % 2500 == 0) pr.observe(player(4, 0), -84, t);
-    pr.tick(t);
-    if (t == 7500) at_7500 = pr.get(4)->present;
-    if (t == 8000) at_8000 = pr.get(4)->present;
-  }
-  CHECK(at_7500);   // inside the grace, which starts at 3.75 s, once the dense -60 run no longer holds the 2 s window median
-  CHECK(!at_8000);  // out once the grace has run (the EMA would hold it until about 11.5 s)
-}
-
-static void test_hill_counts_the_circle_not_only_present() {
-  BleControlPoint cp;
-  PlayerPresence pr;  // the real dwell: the sighting, not presence, makes this count on the first tick
-  pr.observe(player(3, 1), -60, 0);
-  pr.tick(0);
-  cp.update(pr, 0);
-  pr.observe(player(3, 1), -60, STATION_TICK_MS);
-  pr.tick(STATION_TICK_MS);
-  cp.update(pr, STATION_TICK_MS);
-  CHECK_EQ(cp.counts[1], 1);
 }
 
 static void test_presence_four_second_expiry() {
@@ -289,30 +188,26 @@ static void test_presence_drops_a_65th_player_and_counts_it() {
 
 // ---- BleControlPoint ------------------------------------------------------------------------------
 
-static void test_lone_player_takes_a_neutral_point_in_ten_seconds() {
+// The edge events and the lead of a tie, which the shared case file (outcomes only) does not carry.
+static void test_hill_edge_events_and_a_tied_lead() {
   Field f;
   f.add(1, 0);
   f.settle();
   BleControlPoint cp;
-  cp.update(f.pr, f.t);  // the first update measures no time
-  CHECK_EQ(cp.advert().team, (uint8_t)TEAM_ANY);
-  CHECK_EQ(cp.advert().state, (uint8_t)0);
-  HillUpdate u = run(cp, f, 9750);
-  CHECK(!u.captured);
-  CHECK_EQ(cp.owner, HILL_NEUTRAL);
-  CHECK_EQ(cp.capturing, 0);
-  // Rising for red, not held, 97.5 -> Math.round = 98.
-  CHECK_EQ(cp.advert().team, (uint8_t)0);
-  CHECK_EQ(cp.advert().state, (uint8_t)CONTROL_RISING);
-  CHECK_EQ(cp.advert().value, (uint8_t)98);
-  u = run(cp, f, 250);
+  cp.update(f.pr, f.t);
+  HillUpdate u = run(cp, f, 10000);
   CHECK(u.captured);
   CHECK_EQ(u.captured_team, 0);
-  CHECK_EQ(u.captured_from, -1);
-  CHECK_EQ(cp.owner, 0);
-  CHECK_EQ(cp.advert().state, (uint8_t)CONTROL_HELD);  // at 100: held, no direction
-  CHECK_EQ(cp.advert().value, (uint8_t)100);
+  CHECK_EQ(u.captured_from, -1);  // a first capture robs nobody
   CHECK_EQ(cp.captures, 1u);
+  Field g;
+  g.add(1, 0);
+  g.add(2, 1);
+  g.settle();
+  BleControlPoint cp2;
+  CHECK(cp2.update(g.pr, g.t).contested_edge);  // contested on the first update
+  CHECK_EQ(cp2.lead, 0);                        // a tie for the lead goes to the lower tid (control.js `|| a - b`)
+  CHECK_EQ(cp2.net, 0);
 }
 
 static void test_team_two_is_refused_and_dead_players_count_for_nothing() {
@@ -334,47 +229,6 @@ static void test_team_two_is_refused_and_dead_players_count_for_nothing() {
   CHECK(cp2.update(f.pr, f.t).refused);
   CHECK(!cp2.update(f.pr, f.t + 250).refused);
   (void)u;
-}
-
-static void test_net_is_the_leader_minus_the_largest_other_team_capped_at_three() {
-  Field f;
-  for (uint16_t i = 1; i <= 5; i++) f.add(i, 0);  // five red
-  f.settle();
-  BleControlPoint cp;
-  cp.update(f.pr, f.t);
-  run(cp, f, 1000);
-  CHECK_EQ(cp.net, 3);  // capped
-  CHECK(cp.progress > 29.99 && cp.progress < 30.01);
-  // 2v1v1 converts slowly rather than stalling: net = 2 - 1.
-  Field g;
-  g.add(1, 0); g.add(2, 0); g.add(3, 1); g.add(4, 3);
-  g.settle();
-  BleControlPoint cp2;
-  cp2.update(g.pr, g.t);
-  run(cp2, g, 1000);
-  CHECK_EQ(cp2.lead, 0);
-  CHECK_EQ(cp2.net, 1);
-  CHECK(cp2.contested);
-  CHECK(cp2.progress > 9.99 && cp2.progress < 10.01);
-  CHECK_EQ(cp2.advert().state, (uint8_t)(CONTROL_CONTESTED | CONTROL_RISING));
-}
-
-static void test_an_even_fight_stalls_and_is_contested() {
-  Field f;
-  f.add(1, 0);
-  f.add(2, 1);
-  f.settle();
-  BleControlPoint cp;
-  HillUpdate first = cp.update(f.pr, f.t);
-  CHECK(first.contested_edge);
-  run(cp, f, 3000);
-  CHECK_EQ(cp.net, 0);
-  CHECK_EQ(cp.dir, 0);
-  CHECK_EQ(cp.progress, 0.0);
-  // A tie for the lead goes to the lower tid (control.js `|| a - b`), but nets zero.
-  CHECK_EQ(cp.lead, 0);
-  CHECK_EQ(cp.advert().state, (uint8_t)CONTROL_CONTESTED);
-  CHECK_EQ(cp.advert().team, (uint8_t)TEAM_ANY);
 }
 
 static void test_an_enemy_held_point_drains_to_neutral_before_it_builds() {
@@ -676,19 +530,12 @@ int main() {
   test_presence_dwell();
   test_presence_dwell_restarts_when_the_ema_dips();
   test_presence_ema_is_beacon_js();
-  test_presence_exit_band_and_grace();
   test_presence_body_shadowing_does_not_drop_a_standing_player();
-  test_presence_sighting_window_holds_64();
-  test_presence_exit_reads_the_window_median_not_the_ema();
-  test_presence_f438_circle();
-  test_hill_counts_the_circle_not_only_present();
   test_presence_four_second_expiry();
   test_presence_game_byte_and_roles();
   test_presence_drops_a_65th_player_and_counts_it();
-  test_lone_player_takes_a_neutral_point_in_ten_seconds();
+  test_hill_edge_events_and_a_tied_lead();
   test_team_two_is_refused_and_dead_players_count_for_nothing();
-  test_net_is_the_leader_minus_the_largest_other_team_capped_at_three();
-  test_an_even_fight_stalls_and_is_contested();
   test_an_enemy_held_point_drains_to_neutral_before_it_builds();
   test_a_zero_crossing_carries_the_remaining_work_into_the_build();
   test_a_part_built_bar_with_nobody_on_it_stalls();
