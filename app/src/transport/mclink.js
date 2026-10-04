@@ -65,7 +65,7 @@ export class McLink {
     if (this.policy.rememberAtDial(options)) this.remember(url, false);
     const previous = this.current();
     if (previous) { try { previous.close(); } catch (_) { /* ignore */ } }
-    const transport = this.makeTransport(previous, options);
+    const transport = this.makeTransport(previous, { wsFactory: options.wsFactory });   // never the join secrets
     this.setCurrent(transport);
     this.userDial = options.user === true ? transport : null;
     this.firstContactDial = options.firstContact === true ? transport : null;
@@ -76,7 +76,8 @@ export class McLink {
   /** @param {Transport} transport @param {string|null} url @param {DialOptions} options */
   bound(transport, url, options) {
     // Review #8 (a named change): a transport that binds after a redial replaced it is stale. The old code still
-    // remembered the CURRENT dial's URL then (an unproven proof dial on the HUD); nothing is remembered now.
+    // remembered the CURRENT dial's URL then (an unproven proof dial on the HUD) and reset the auto-join state
+    // (candidates, the proof cooldown); now a stale bind does neither.
     if (this.current() !== transport) return;
     if (this.policy.rememberAtBound(options) && url) this.remember(url, true);
     if (this.policy.autoJoin === 'proof') this.autoJoin.onBound();

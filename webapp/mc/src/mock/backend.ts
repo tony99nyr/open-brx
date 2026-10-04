@@ -111,8 +111,8 @@ const MOCK_SOURCE_DESC: Record<StationSourceId, string> = {
   phone: 'a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)',
 };
 const MOCK_STATION_SOURCES = STATION_SOURCE_IDS.map(value => ({ value, desc: MOCK_SOURCE_DESC[value] }));
-// Respawn profiles (2026-09-19, mirrors `compile.TIMED_PROTECT_S_OPTIONS` / `WEAPON_DELAY_MS_OPTIONS` /
-// `STATION_PROTECT_S_OPTIONS`: `TimedProtectS`/`WeaponDelayMs`/`StationProtectS`'s `get_args()` on the
+// Respawn profiles (2026-09-19, mirrors `configcheck.respawn_profile_options`:
+// `TimedProtectS`/`WeaponDelayMs`/`StationProtectS`'s `get_args()` on the
 // server; those are TYPE aliases here, so the option lists are hand-kept in step with them).
 const TIMED_PROTECT_S_OPTIONS = [0, 1, 2] as const;
 const WEAPON_DELAY_MS_OPTIONS = [500, 1000, 3000] as const;

@@ -87,6 +87,9 @@ test('a transport that binds after a redial replaced it is stale: nothing is rem
     r.link.dial('ws://10.0.0.9:8766/ws', { remember: false, trusted: false, connect: { url: 'ws://10.0.0.9:8766/ws' } }, () => {});
     r.link.bound(old.transport, 'ws://10.0.0.5:8766/ws', { trusted: false });
     assert.deepEqual(r.saved, [], 'a stale bind remembers nothing');
+    let onBound = 0; r.link.autoJoin.onBound = () => { onBound++; };
+    r.link.bound(old.transport, 'ws://10.0.0.5:8766/ws', { trusted: false });
+    assert.equal(onBound, 0, 'and resets no auto-join state');
   }
 });
 

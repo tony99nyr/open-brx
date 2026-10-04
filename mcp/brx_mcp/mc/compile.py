@@ -13,7 +13,7 @@ import dataclasses
 import json
 import math
 import pathlib
-from typing import Any, Literal, cast, get_args
+from typing import Any, Literal, cast
 
 import random as _random
 
@@ -25,8 +25,8 @@ from .perks import PerkCatalog
 from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
 from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STATION_SOURCES, TIMED_PROTECT_S_DEFAULT,
                     TRIGGER_AFTER_PROTECT_MS, WEAPON_DELAY_MS_DEFAULT, DotSpec, FrameBundle, GameConfig, Health,
-                    HealthPreset, HirCell, PerkEffectsResolved, PerkView, Player, PowerupSlot, RespawnProfile, StationProtectS, Team,
-                    TimedProtectS, ValuePair, VoiceOption, WeaponDelayMs, Weapon, parse_app_ver, parse_win_by)
+                    HealthPreset, HirCell, PerkEffectsResolved, PerkView, Player, PowerupSlot, RespawnProfile, Team,
+                    ValuePair, VoiceOption, Weapon, parse_app_ver, parse_win_by)
 from .types import GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR   # K8
 from .types import SIR_GRANT_FNS, SIR_NO_POOL_FNS   # A9: one copy, generated for the phone
 from . import presentation as _pres
@@ -826,10 +826,8 @@ def assert_trigger_held_until_spawn(head: list[str], spawn: list[str], revive: l
 # shooters can see why their hits do nothing. Neither profile ends protection on the first shot. The T-0 spawn is
 # neither (Tony, field 2026-09-19: at match start everyone is equal): no t8 and the trigger live at go-live, with
 # the live table already on the gun (the node writes it at T-3, while the head still holds every trigger).
-# These lists live in `respawn_profile`; the legacy `spawn`/`revive` lists stay as they were for an app < 0.4.3.
-TIMED_PROTECT_S_OPTIONS = get_args(TimedProtectS)
-WEAPON_DELAY_MS_OPTIONS = get_args(WeaponDelayMs)
-STATION_PROTECT_S_OPTIONS = get_args(StationProtectS)
+# These lists live in `respawn_profile` (checked by configcheck.respawn_profile_options); the legacy `spawn`/`revive`
+# lists stay as they were for an app < 0.4.3.
 _SHIELD_COLOUR = 6        # white: the native hit flash is the SMALL green LED, so a white big-LED blink reads apart
 _SHIELD_BLINK_MS = 150    # on and off; the blink form `$HLED,<c>,2,<on>,<off>,<b>,<count>` is bench-proven in game
 
