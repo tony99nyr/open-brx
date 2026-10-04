@@ -39,3 +39,12 @@ def test_threshold_int8_and_clamp():
     assert decode(encode("station", 1, "respawn", threshold=-90)).threshold == -90
     assert decode(encode("station", 1, "respawn", threshold=-200)).threshold == -128
     assert decode(encode("station", 1, "respawn", threshold=0)).threshold == 0
+
+
+def test_taker_byte_15_round_trips_like_beacon_js():
+    """A56: a powerup station's winner rides in byte 15 (beacon.js `taker`); 0 on every other advert."""
+    u = encode("station", 4, "powerup", team=TEAM_ANY, state=0, value=110, taker=7)
+    assert u.replace("-", "")[30:32] == "07"
+    assert decode(u).taker == 7
+    assert decode(encode("station", 4, "powerup")).taker == 0
+    assert encode("station", 4, "powerup", taker=263).replace("-", "")[30:32] == "07"   # masked to a byte, as beacon.js
