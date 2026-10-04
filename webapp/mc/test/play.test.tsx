@@ -11,6 +11,7 @@ import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Api } from '../src/api/types';
 import { MockBackend } from '../src/mock/backend';
+import { HOLD_TARGET_MAX_S } from '../src/api/contract.gen';
 import { clearNotice, useNotice } from '../src/notice';
 import { getRunway, setRunway } from '../src/runway';
 import { Games } from '../src/screens/Games';
@@ -854,21 +855,21 @@ describe('PLAY — F415: HOLD strip item (KOTH only)', () => {
 
   // Low (b): the server refuses past 2:00:00 (7200 s) -- the stepper must not walk up to a value it
   // would only send back refused.
-  it('the + stepper clamps at 120 MIN and then disables itself', async () => {
+  it('the console steppers stop at the generated server bounds', async () => {
     const api = new MockBackend();
     await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
-    await api.pick({ match: { hold_target_s: 7140 } });   // 119 MIN -- one step short of the ceiling
+    await api.pick({ match: { hold_target_s: HOLD_TARGET_MAX_S - 60 } });
     const { m, settle } = await renderPlay(api);
     const plus = m.find('button[aria-label="hold target plus"]')[0] as HTMLButtonElement;
     await act(async () => { plus.click(); });
     m.unmount();
     // a settled RE-RENDER: the step is a server round trip like any other pick (see the TEAMS tests above).
     const m2 = await settle();
-    expect((await api.getState()).config.scoring.hold_target_s, 'one step reaches the ceiling exactly').toBe(7200);
+    expect((await api.getState()).config.scoring.hold_target_s, 'one step reaches the ceiling exactly').toBe(HOLD_TARGET_MAX_S);
     const plusAfter = m2.find('button[aria-label="hold target plus"]')[0] as HTMLButtonElement;
     expect(plusAfter.disabled, 'at the ceiling, + disables rather than inviting a refused step').toBe(true);
     await act(async () => { plusAfter.click(); });
-    expect((await api.getState()).config.scoring.hold_target_s, 'a disabled + button does nothing').toBe(7200);
+    expect((await api.getState()).config.scoring.hold_target_s, 'a disabled + button does nothing').toBe(HOLD_TARGET_MAX_S);
     m2.unmount();
   });
 });

@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
-import { PHONE_CONTROL_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
+import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
@@ -28,21 +28,13 @@ const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: '
 // `bomb` keep their code, their type and their recap label (`KIND_LABEL` above) so an OLD assignment of
 // either still renders -- they just drop off the kind picker a host assigns a NEW station from.
 const MVP_STATION_KINDS: StationKind[] = STATION_KINDS.filter(k => k !== 'extraction' && k !== 'bomb');
-const TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE', 255: 'ANY' };   // F423: tid 3 paints purple, not green
-/** H1: what threshold 0 resolves to, as the server resolves it (state.py `_wire_threshold`, F345) and the phone
- *  applies it (app/src/beacon.js `phoneStationThreshold`): a phone respawn station -70, a phone powerup station
- *  -55 (S58), a phone control (hill) station -75 (F383, Tony 2026-09-27, until the outdoor walk), any other phone
- *  kind -74, a StickS3 its own. `start` is where an edit begins: that number, or for a Stick its own respawn default
- *  (-57, the F345 note in state.py) or powerup default (-45, F434), and the phone value otherwise. */
+const TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY' };   // F423: tid 3 paints purple, not green
+/** H1: what threshold 0 resolves to, and where an edit begins: the generated STATION_DEFAULT_THRESHOLD_DBM for the
+ *  station's platform and kind (types.py), the same table MC's `_wire_threshold`, the phone and the Stick read. */
 export function bubbleDefault(kind: StationKind, stick: boolean): { label: string; start: number } {
-  const phone = kind === 'respawn' ? PHONE_RESPAWN_THRESHOLD_DBM
-    : kind === 'powerup' ? PHONE_POWERUP_THRESHOLD_DBM
-    : kind === 'control' ? PHONE_CONTROL_THRESHOLD_DBM : PHONE_STATION_THRESHOLD_DBM;
-  return stick ? { label: "DEFAULT (the Stick's own)", start: kind === 'respawn' ? STICK_RESPAWN_DBM : kind === 'powerup' ? STICK_POWERUP_DBM : phone }
-    : { label: `DEFAULT (${phone}, phone)`, start: phone };
+  const start = STATION_DEFAULT_THRESHOLD_DBM[stick ? 'sticks3' : 'phone'][kind];
+  return stick ? { label: "DEFAULT (the Stick's own)", start } : { label: `DEFAULT (${start}, phone)`, start };
 }
-const STICK_RESPAWN_DBM = -57;
-const STICK_POWERUP_DBM = -45;   // F434: station_range.h STICK_POWERUP_DEFAULT_THRESHOLD_DBM
 /** A67 (F365): the station's advert strength, weakest first. A stronger advert is heard farther, so it moves the range too. */
 const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: 'LOW', medium: 'MEDIUM', high: 'HIGH' };
 const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));
@@ -177,7 +169,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
   const a = s.assigned;
   // The draft is the operator's edit in progress; it starts from the assignment (or what the phone reports).
   const [kind, setKind] = useState<StationKind>(a?.kind ?? s.report.kind ?? 'respawn');
-  const [team, setTeam] = useState<number>(a?.team ?? s.report.team ?? 255);
+  const [team, setTeam] = useState<number>(a?.team ?? s.report.team ?? STATION_TEAM_ANY);
   // F364 (Tony 2026-09-25): MC assigns the station id at ASSIGN + ARM, unique across phones and Sticks and kept
   // across restarts. The card shows it read-only and the PUT sends no id.
   const [applyErr, setApplyErr] = useState<string | null>(null);   // a refused write, on THIS card (the header may be off-screen)
@@ -276,7 +268,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
     (chosenKind === 'weapon' && chargesEdit != null && chargesEdit !== assignedItem.charges)
     || (chosenKind === 'overshield' && amountEdit != null && amountEdit !== assignedItem.amount)
     || (everyEdit != null && everyEdit !== assignedItem.spawn_every_s));
-  const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.threshold !== threshold
+  const dirty = !a || a.kind !== kind || a.team !== (control ? STATION_TEAM_ANY : team) || a.threshold !== threshold
     || (tx != null && tx !== a.tx_power) || (picking && chosen !== assignedPreset) || itemOverrideDirty;
   // a powerup station still waiting for its item pick is not a live button, so it must not look like one
   const lit = (dirty || needsRearm) && !(dirty && needsPick);
@@ -287,7 +279,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
       // S-powerup-overrides: always resend the EFFECTIVE value for a field that applies to the chosen item,
       // not only when it just changed -- the same full-replace contract `item_preset` itself already has
       // (state.py `set_station` recomputes the whole item from this request; nothing carries over unsent).
-      const body = { kind, team: control ? 255 : team, threshold, ...(tx ? { tx_power: tx } : {}),
+      const body = { kind, team: control ? STATION_TEAM_ANY : team, threshold, ...(tx ? { tx_power: tx } : {}),
         ...(picking && chosen ? { item_preset: chosen, spawn_every_s: every,
           ...(chosenKind === 'weapon' ? { charges } : {}), ...(chosenKind === 'overshield' ? { amount } : {}) } : {}) };
       if (dirty) await run(keep(() => api.putStation(s.node_id, body).catch(e => {
@@ -311,7 +303,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
   };
   const rep = s.report;
   const age = s.last_seen_ms;
-  const teamOptions = [...teams.map(t => ({ value: String(t.tid), label: t.name.toUpperCase().replace(/ TEAM$/, '') })), { value: '255', label: 'ANY' }];
+  const teamOptions = [...teams.map(t => ({ value: String(t.tid), label: t.name.toUpperCase().replace(/ TEAM$/, '') })), { value: String(STATION_TEAM_ANY), label: 'ANY' }];
   return (
     <div data-station-card={s.node_id} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
       {/* M3 (visual QA 2026-09-24): the name owns its row. With LOCKED and the status beside it, the name was
@@ -336,14 +328,14 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
             fault (AMBER) only once the station IS assigned and the phone disagrees with it. */}
         <Micro>{deviceOf(s)} SAYS</Micro>
         <Val color={rep.armed !== false ? T.dim : !a ? colourOf('items-rep-not-armed') : colourOf('items-rep-not-armed-advertising')}>
-          {rep.kind ? `${KIND_LABEL[rep.kind] ?? rep.kind} ${rep.station_id ?? '?'} · ${TID_NAME[rep.team ?? 255] ?? rep.team}` : '—'}
+          {rep.kind ? `${KIND_LABEL[rep.kind] ?? rep.kind} ${rep.station_id ?? '?'} · ${TID_NAME[rep.team ?? STATION_TEAM_ANY] ?? rep.team}` : '—'}
           {rep.armed === false && ' · NOT ARMED'}{rep.live ? ' · ADVERTISING' : ''}
         </Val>
         {rep.revives != null && kind === 'respawn' && (<><Micro>REVIVES</Micro><Val color={T.dim}>{rep.revives}</Val></>)}
         {rep.control && (<>
           <Micro>POINT</Micro>
           <Val color={T.dim}>
-            {rep.control.owner == null || rep.control.owner === 255 ? 'NEUTRAL' : (TID_NAME[rep.control.owner] ?? rep.control.owner)}
+            {rep.control.owner == null || rep.control.owner === STATION_TEAM_ANY ? 'NEUTRAL' : (TID_NAME[rep.control.owner] ?? rep.control.owner)}
             {rep.control.progress != null && ` · ${rep.control.progress}%`}{rep.control.contested && ' · CONTESTED'}
           </Val>
           {rep.control.hold_ms && Object.keys(rep.control.hold_ms).length > 0 && (<>
@@ -396,7 +388,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
         <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHAT IS THIS {deviceOf(s)}?</div>
         <Seg label={`kind for ${s.node_id}`} value={kind} size={11} pad="5px 8px" wrap
           options={kindOptions.map(k => ({ value: k, label: KIND_SHORT[k] }))} titles={Object.fromEntries(kindOptions.map(k => [k, KIND_LABEL[k]]))}
-          onChange={k => { setKind(k); if (k === 'control') setTeam(255); }} />
+          onChange={k => { setKind(k); if (k === 'control') setTeam(STATION_TEAM_ANY); }} />
         {kind === 'powerup' && <ItemPicker node={s.node_id} pu={pu} chosen={chosen} locked={locked} onPick={p => { setItemPick(p); setChargesEdit(null); setAmountEdit(null); setEveryEdit(null); }}
           effective={chosenPreset ? { ...chosenPreset.item, ...(chosenKind === 'weapon' ? { charges } : {}), ...(chosenKind === 'overshield' ? { amount } : {}), spawn_every_s: every, first_at_s: every } : null} />}
         {kind === 'powerup' && chosen && chosenPreset && (

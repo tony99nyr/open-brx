@@ -13,6 +13,7 @@ import { makeEnvelope, encode } from './transport/envelope.js';   // stage harne
 import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
 import { parseMcJoin } from './mcurl.js';
+import { TEAM_NAMES as CONTRACT_TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS as CONTRACT_TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_LOCK_MAX_S, STATION_TICK_MS } from './transport/contract.gen.js';
 import { startUtilitySweep, resolveTypedMc } from './transport/utility-join.js';   // bench 2026-09-24: the LAN sweep fallback + typed-address parsing
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
 import { RangeEdits, RANGE_KEY, TX_TO_WIRE, txFromWire, rangeHoldMs, RANGE_IDLE_MS } from './rangeedit.js';   // F365 / A67: the on-station range edit, synced to MC
@@ -28,9 +29,9 @@ const $ = id => document.getElementById(id);
 // F423: tid 3 paints purple, not green (the gun/headset paint, `poolgauge.TEAM_DISPLAY_COLOURS`) --
 // MC's own roster names it team_id "purple" now (state.py TEAM_DEFS), and these three maps must track
 // that (`test_team_color_consistency.py`), even though the WIRE identity stays green (F35).
-const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE', [TEAM_ANY]: 'ANY TEAM' };
-const TEAM_ABBR = { 0: 'RED', 1: 'BLU', 2: 'YEL', 3: 'PUR', [TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
-const TEAM_KEYS = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple', [TEAM_ANY]: 'any' };
+const TEAM_NAME_BY_TID = { ...Object.fromEntries(CONTRACT_TEAM_NAMES.map((name, tid) => [tid, name])), [TEAM_ANY]: 'ANY TEAM' };
+const TEAM_ABBR = { ...Object.fromEntries(TEAM_ABBRS.map((abbr, tid) => [tid, abbr])), [TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
+const TEAM_KEY_BY_TID = { ...Object.fromEntries(CONTRACT_TEAM_KEYS.map((key, tid) => [tid, key])), [TEAM_ANY]: 'any' };
 const KIND_LABEL = { respawn: 'RESPAWN STATION', powerup: 'POWERUP', extraction: 'EXTRACTION POINT', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 const TX_LEVELS = ['ultraLow', 'low', 'medium', 'high'];
 const TX_HINT = { ultraLow: '~ -21 dBm · a few metres', low: '~ -15 dBm', medium: '~ -7 dBm', high: '~ +1 dBm · whole room' };
@@ -47,7 +48,7 @@ function log(msg, cls = 'li') {
 // a control (hill) station -75, exit band EXIT_BAND_DB (beacon.js), until the outdoor walk, F383; every other kind -74); anything
 // else is the operator's or MC's override. 0.8 s dwell = get in range, brief pause, green (bench-tuned 2026-09-04). captureS/netCap belong to kind 5 (§5d.1): seconds ONE net
 // player needs for ONE phase, and the clamp on how much a rush can stack.
-const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false, mcLastBoundAt: 0,
+const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: PRESENCE_DWELL_MS, game: 0, mcArmed: null, mc: '', mc_auto: false, mcLastBoundAt: 0,
   captureS: DEFAULT_CAPTURE_S, netCap: DEFAULT_NET_CAP };
 const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
 // F345: settings saved before thrV 2 hold the old -74 default as if chosen; migrateThreshold reads it as 0 once.
@@ -129,7 +130,7 @@ const link = new BrxLink({ log });
 // point, must not count as a body. The player side already assigns this every second (`app.js` presenceTick);
 // the station never did, so `beacon.js`'s filter was dead code here. It only bites once MC arms a non-zero
 // game (v1 manual stations stay at 0 = any), which is exactly when two games share a field.
-const presence = new Presence({ defaultThreshold: thr(), dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
+const presence = new Presence({ defaultThreshold: thr(), dwellMs: settings.dwell, alpha: PRESENCE_ALPHA, game: settings.game });
 const wasAlive = new Map();          // player id → { alive, died } for THIS game, to count revives that happened here (beacon.js countRevives)
 const _quietLogged = new Set();   // F440: players already logged as quiet in the current silence
 const QUIET_MS = 1500;
@@ -170,14 +171,14 @@ async function startAdvert(quiet = false) {
     const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: true });
     advertising = !!(r && r.advertising);
     settings.live = advertising; save();   // a reload mid-game comes back advertising (the settings stay behind the ⓘ gate)
-    if (!quiet) log(`advertising ${name} as ${TEAM_NAMES[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${thr()} dBm · ${uuid}`, 'lk');
+    if (!quiet) log(`advertising ${name} as ${TEAM_NAME_BY_TID[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${thr()} dBm · ${uuid}`, 'lk');
   } catch (e) { advertising = false; settings.live = false; save(); log('advertise failed: ' + (e && e.message || e), 'le'); }
   finally { advertisingPending = Math.max(0, advertisingPending - 1); }
   render();
 }
 // ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
 let transport = null, mcState = 'offline', mcFormOpen = false, _wasLinked = false;   // mcFormOpen: CHANGE unfolded the linked MC panel
-const TEAM_ID_TO_TID = { blue: 1, yellow: 2, red: 0, purple: 3, any: TEAM_ANY, ffa: TEAM_ANY };   // F423/F432: MC's roster team_id for tid 3 is "purple" now
+const TEAM_ID_TO_TID = { ...Object.fromEntries(CONTRACT_TEAM_KEYS.map((key, tid) => [key, tid])), any: TEAM_ANY, ffa: TEAM_ANY };   // F423/F432: MC's roster team_id for tid 3 is "purple" now
 function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } }
 /** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
 async function applyStationConfig(body) {
@@ -202,7 +203,7 @@ async function applyStationConfig(body) {
   const mcTx = txFromWire(body.tx_power);
   if (mcTx && support.txPowerControl && range.mcDecides('tx_power', body.tx_power, body.tx_power_age_ms)) settings.tx = mcTx;
   // A58: the tamper lock, seconds from receipt (0-7200); absent or 0 = unlocked, and every station_config replaces it.
-  const lockS = Number.isFinite(+body.lock_s) ? Math.max(0, Math.min(7200, +body.lock_s)) : 0;
+  const lockS = Number.isFinite(+body.lock_s) ? Math.max(0, Math.min(STATION_LOCK_MAX_S, +body.lock_s)) : 0;
   settings.lockUntil = lockS > 0 ? Date.now() + lockS * 1000 : 0;
   const wasGame = settings.game;
   settings.game = Number.isFinite(+body.game) ? (+body.game & 0xff) : 0;   // absent = 0 (any game), v1
@@ -223,7 +224,7 @@ async function applyStationConfig(body) {
     else render();   // the lock may have moved: the RANGE hold's cue follows it
     return;
   }
-  log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAMES[settings.team] || settings.team} · station ${settings.id} · threshold ${thr()} dBm · game ${settings.game}`, 'lk');
+  log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAME_BY_TID[settings.team] || settings.team} · station ${settings.id} · threshold ${thr()} dBm · game ${settings.game}`, 'lk');
   if (window.brxUtilityGate) window.brxUtilityGate.close();   // the operator armed it: the drawer has no business being open
   await startAdvert();
 }
@@ -493,16 +494,16 @@ function tick() {
   // advertiser that still clears the dwell would otherwise stall a capture with nothing in the log.
   for (const p of presence.players()) {
     const quiet = (p.present || p.inCircle) && now - p.seenAt >= QUIET_MS;   // the point's own in-circle rule (control.js)
-    if (quiet && !_quietLogged.has(p.id)) { _quietLogged.add(p.id); log(`player ${p.id} (${TEAM_NAMES[p.team] ?? `team ${p.team}`}) quiet ${((now - p.seenAt) / 1000).toFixed(1)} s while in the circle · recent gaps ${(p.gaps || []).slice(-6).join(' ')} ms`, 'li'); }
+    if (quiet && !_quietLogged.has(p.id)) { _quietLogged.add(p.id); log(`player ${p.id} (${TEAM_NAME_BY_TID[p.team] ?? `team ${p.team}`}) quiet ${((now - p.seenAt) / 1000).toFixed(1)} s while in the circle · recent gaps ${(p.gaps || []).slice(-6).join(' ')} ms`, 'li'); }
     else if (!quiet) _quietLogged.delete(p.id);
   }
   for (const e of playerEdges(presence, _playerWas)) {
-    log(`player ${e.id} (${TEAM_NAMES[e.team] ?? `team ${e.team}`}) ${e.present ? 'IN THE CIRCLE' : 'left the circle'} at ${Math.round(Number.isFinite(e.median) ? e.median : e.rssi)} dBm`, e.present ? 'lk' : 'li');
+    log(`player ${e.id} (${TEAM_NAME_BY_TID[e.team] ?? `team ${e.team}`}) ${e.present ? 'IN THE CIRCLE' : 'left the circle'} at ${Math.round(Number.isFinite(e.median) ? e.median : e.rssi)} dBm`, e.present ? 'lk' : 'li');
   }
   // F344: a revive counts on the player being NEAR, not `present` (beacon.js countRevives says why).
   for (const p of countRevives(presence, wasAlive, { team: settings.team })) {
     if (settings.kind !== 'respawn') continue;
-    revives++; ping(); log(`player ${p.id} (${TEAM_NAMES[p.team] || p.team}) revived here at ${Math.round(Number.isFinite(p.median) ? p.median : p.rssi)} dBm`, 'lk');
+    revives++; ping(); log(`player ${p.id} (${TEAM_NAME_BY_TID[p.team] || p.team}) revived here at ${Math.round(Number.isFinite(p.median) ? p.median : p.rssi)} dBm`, 'lk');
   }
   if (settings.kind === 'control') controlTick(now);
   if (settings.kind === 'powerup') powerupTick(now);
@@ -564,8 +565,8 @@ function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
   const { changed, events } = point.update(presence.players(), now);
   for (const e of events) {
-    if (e.type === 'captured') { log(`${TEAM_NAMES[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAMES[e.from]}` : ''}`, 'lk'); flash('CAPTURED', TEAM_KEYS[e.team]); }   // the big word already names the team
-    else if (e.type === 'neutralised') { log(`${TEAM_NAMES[e.team]} LOST the point — ${TEAM_NAMES[e.by]} drained it to neutral`, 'lk'); flash('NEUTRAL', 'any'); }
+    if (e.type === 'captured') { log(`${TEAM_NAME_BY_TID[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAME_BY_TID[e.from]}` : ''}`, 'lk'); flash('CAPTURED', TEAM_KEY_BY_TID[e.team]); }   // the big word already names the team
+    else if (e.type === 'neutralised') { log(`${TEAM_NAME_BY_TID[e.team]} LOST the point — ${TEAM_NAME_BY_TID[e.by]} drained it to neutral`, 'lk'); flash('NEUTRAL', 'any'); }
     else if (e.type === 'contested') log(`CONTESTED: ${netLine()}`, 'li');
     else if (e.type === 'uncontested') log('no longer contested', 'li');
     else if (e.type === 'refused') log('F82: a player on tid 2 is standing here. Team 2 is what a NEUTRAL point broadcasts, so it can never hold one — reassign that team in Mission Control (use red/blue/green).', 'le');
@@ -638,7 +639,7 @@ function render() {
   const heldBy = (v.state & CONTROL_STATE.held) ? v.team : null;    // who OWNS it (null = nobody)
   // A control point paints the whole screen the OWNER's colour, so a glance from across the field reads
   // ownership before anything else; every other kind paints its assigned team, as before.
-  const t = TEAM_KEYS[isControl ? (heldBy == null ? TEAM_ANY : heldBy) : settings.team] || 'any';
+  const t = TEAM_KEY_BY_TID[isControl ? (heldBy == null ? TEAM_ANY : heldBy) : settings.team] || 'any';
   document.documentElement.dataset.team = t;
   document.documentElement.dataset.cstate = !isControl ? 'off'
     : point.contested ? 'contested' : point.dir > 0 ? 'rising' : point.dir < 0 ? 'falling' : (heldBy != null ? 'held' : 'idle');
@@ -646,11 +647,11 @@ function render() {
   // control: the word is whose the ring IS (byte 9: the claimant while it builds, the owner while it drains), so the
   // word and the % always agree; NEUTRAL only when nobody has any of it
   const holderT = isControl && v.team !== CONTROL_NEUTRAL && v.value > 0 ? v.team : heldBy;
-  $('team').textContent = isControl ? (holderT == null ? 'NEUTRAL' : (TEAM_NAMES[holderT] || `TEAM ${holderT}`))
-    : (TEAM_NAMES[settings.team] || `TEAM ${settings.team}`);
+  $('team').textContent = isControl ? (holderT == null ? 'NEUTRAL' : (TEAM_NAME_BY_TID[holderT] || `TEAM ${holderT}`))
+    : (TEAM_NAME_BY_TID[settings.team] || `TEAM ${settings.team}`);
   renderControl(isControl, v, heldBy);
   fitWord();
-  if ($('team').style) $('team').style.setProperty('--wordc', isControl && holderT != null ? `var(--team-${TEAM_KEYS[holderT] || 'any'})` : '');
+  if ($('team').style) $('team').style.setProperty('--wordc', isControl && holderT != null ? `var(--team-${TEAM_KEY_BY_TID[holderT] || 'any'})` : '');
   renderPowerup();
   fitWord();
   if (_flashAt && Date.now() - _flashAt > 2600) { _flashAt = 0; $('cflash').hidden = true; }
@@ -726,7 +727,7 @@ function render() {
     const near = isControl ? inCircle : p.present;
     const label = isControl ? (refused ? "CAN'T HOLD" : near ? 'ON POINT' : '') : (p.present ? 'AT STATION' : '');
     const mark = !isControl ? '' : `${alive ? '' : ' dead'}${near ? '' : ' far'}${claim ? ' claim' : ''}${refused ? ' refused' : ''}`;
-    return `<div class="row ${near ? 'near' : ''}${mark}" style="--rowteam:var(--team-${TEAM_KEYS[p.team] || 'any'})"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres${refused ? ' no' : ''}">${label}</span></div>`;
+    return `<div class="row ${near ? 'near' : ''}${mark}" style="--rowteam:var(--team-${TEAM_KEY_BY_TID[p.team] || 'any'})"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEY_BY_TID[p.team] || 'any'}">${TEAM_NAME_BY_TID[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres${refused ? ' no' : ''}">${label}</span></div>`;
   });
   $('players').innerHTML = rows.join('') || '<div class="row empty">no player phones in range</div>';
   $('ptitle').textContent = isControl ? 'WHO IS ON THE POINT' : 'PLAYER PHONES IN RANGE';
@@ -956,8 +957,8 @@ function renderControl(isControl, v, heldBy) {
     return;
   }
   const holder = v.team;                          // whose progress the ring is (255 = nobody)
-  const hname = holder === CONTROL_NEUTRAL ? null : (TEAM_NAMES[holder] || `TEAM ${holder}`);
-  const key = t => TEAM_KEYS[t] || 'any';
+  const hname = holder === CONTROL_NEUTRAL ? null : (TEAM_NAME_BY_TID[holder] || `TEAM ${holder}`);
+  const key = t => TEAM_KEY_BY_TID[t] || 'any';
   // the rival: the leading team when it is not the holder, else the strongest other team standing there
   const others = Object.keys(point.counts || {}).map(Number).filter(t => t !== holder && claimable(t)).sort((a, b) => point.counts[b] - point.counts[a]);
   const rival = point.lead != null && point.lead !== holder ? point.lead : (others.length ? others[0] : null);
@@ -1138,7 +1139,7 @@ function wireExit() {
   else startUtilityDiscovery();   // utility mode is an explicit choice: auto-join MC when it advertises on this LAN
   if (!plugins.beacon || !support.advertising) log('this phone cannot advertise; check Bluetooth is on', 'le');
   await startScan();
-  setInterval(tick, 250);
+  setInterval(tick, STATION_TICK_MS);
   if (DEMO) seedDemo();
   window.brxUtility = { diag: utilityDiag, settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; },
     // test seam (app/test/utility-join-wiring): `startLanSweep(over)` spreads `over` into the sweep options unchecked

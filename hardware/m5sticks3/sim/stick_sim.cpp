@@ -584,7 +584,7 @@ static std::vector<Scenario> scenarios() {
     start_hill(s);
     s.arrive(11, 1); s.advance(26000);
   }});
-  v.push_back({"hill_held_green", "hill", "Green (tid 3) captured it 15 s ago.", [](SimStick& s) {
+  v.push_back({"hill_held_purple", "hill", "Purple (tid 3) captured it 15 s ago.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("control", 255, 3));
     start_hill(s);
     s.arrive(21, 3); s.advance(26000);

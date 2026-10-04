@@ -39,10 +39,13 @@
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
 
+import { PHONE_POWERUP_THRESHOLD_DBM } from './transport/contract.gen.js';   // #4: the generated contract owns the claim threshold
+
 // ---------- A56 (S58): powerups (docs/spec/powerups.md) ----------
 // Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one
 // unless it was started with `--no-powerups`; powerups are ON by default, F372). Tony's defaults (2026-09-24),
 // each a named constant so a change is one line:
+
 export const PU_RESERVE = 0;                // a weapon item grants its charges as the MAGAZINE and no reserve
 export const PU_LOST_AT_DEATH = true;       // a weapon item's unused charges do not carry into the next life
 export const PU_ACTIVE_CARD_MS = 1200;      // F400: the ACTIVE confirm bubble's life after SWITCHING (hud.js `_swap('switched', el, 900, 1200)`)
@@ -61,7 +64,7 @@ export const PU_READY_MS = 2500;            // how long the station hint names t
 export const PU_NEAR_DB = 10;               // GET CLOSER shows only within this of the station's own threshold
 // The claim (Tony 2026-09-24, via the brx5 lead): stand about a foot from the station for 1 s, no button. Range is the
 // MEDIAN of the last three samples of the station's advert (beacon.js `median`), never the respawn path's EMA.
-export const POWERUP_THRESHOLD_DEFAULT = -55;   // byte 14 = 0: a placeholder for ~1 ft until the bench calibrates it
+export const POWERUP_THRESHOLD_DEFAULT = PHONE_POWERUP_THRESHOLD_DBM;   // byte 14 = 0: a placeholder for ~1 ft until the bench calibrates it
 export const POWERUP_EXIT_DB = 3;               // out of range = the median below the threshold minus this
 export const POWERUP_DWELL_MS = 1000;           // continuously in range this long = `claim_ready`; leaving range resets it
 export const POWERUP_NO_ANSWER_MS = 15000;      // Bench B: Stick confirmation took up to 13 s; no answer at 15 s still allows a later taker advert.

@@ -14,6 +14,8 @@ from __future__ import annotations
 from typing import Iterable, Protocol
 
 from .types import PowerupPreset, PowerupSlot, PowerupsView, StationItem
+from .types import (POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN,
+                    POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP)
 
 # The schedule (Tony, 2026-09-24: "like Halo"): first spawn after one interval, then every interval.
 HEAVY_SPAWN_EVERY_S = 120
@@ -55,11 +57,12 @@ REFUSED_FLAG_OFF = ("powerups are OFF: Mission Control was started with --no-pow
 # remaining-seconds DISPLAY for a spawn further off than that -- exactly the same harmless cap that would
 # already apply to a heavy just taken with more than 255 s left -- while `station_update.next_spawn_in_ms`
 # carries the true remaining time as a full integer, so the schedule itself is never wrong.
-CHARGES_MIN, CHARGES_MAX = 1, 4
-AMOUNT_MIN, AMOUNT_MAX, AMOUNT_STEP = 25, 150, 25
+# The values live in types.py (POWERUP_*), generated for the console steppers (architecture review #4, A11).
+CHARGES_MIN, CHARGES_MAX = POWERUP_CHARGES_MIN, POWERUP_CHARGES_MAX
+AMOUNT_MIN, AMOUNT_MAX, AMOUNT_STEP = POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_STEP
 # 240, not 300: the StickS3 carries spawn_every_s in one byte (station_link.h parse_item clamps at 255), so
 # 270 or 300 would reach a Stick as 255 and it would respawn early while offline (polish 2026-09-28).
-SPAWN_EVERY_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_STEP = 30, 240, 30
+SPAWN_EVERY_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_STEP = POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_STEP
 OVERRIDE_KEYS = ("charges", "amount", "spawn_every_s")
 
 
