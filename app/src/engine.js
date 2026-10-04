@@ -3684,7 +3684,7 @@ export class Engine {
       this._hillContestedAt = now;
       this._hillSay('hill_contested', `control point ${e.id}: our scoring stopped, the other team is in the circle (${e.value}%)`);
     }
-    this._hillBegins(e.id, now, audio && !said && !this._alertsMissed());   // down: the episode is marked, its badge missed (and its 10 s floor not spent)
+    this._hillBegins(e.id, now, audio && !said && !this._alertsMissed(), said && !this._alertsMissed());   // down: the episode is marked, its badge missed (and its 10 s floor not spent)
     this._hillWasContested = stalled;
     // 4 Hz: only a fact the screen shows is worth a render (progress to the whole percent, like the RSSI
     // rounding in `setStations`).
@@ -3708,7 +3708,7 @@ export class Engine {
    *  ⚠ The advert names the point's team (owner while held, else the builder), never the DRAINER. With two teams in
    *  the game the drainer is the other one; with three or more it is unknown, so a drain shows nothing and the badge
    *  waits for the thief's own build, which the advert does name. */
-  _hillBegins(site, now, on) {
+  _hillBegins(site, now, on, deferNew = false) {
     const h = this.hill;
     if (!h || h.source !== 'station') { this._hillEp = null; return; }
     const neutral = h.owner === HILL_NEUTRAL_TEAM, x = neutral ? h.holding : h.owner, p = h.progress;
@@ -3721,6 +3721,9 @@ export class Engine {
       if (eps[t] == null && prev.eps[t] === 'drain' && x != null && x !== t && p > 0 && p < 100) eps[t] = 'drain';
     }
     this._hillEp = { site, at: now, eps };
+    // H-M1 (review 2026-10-03): a callout in this advert (`deferNew`) wins it, so a team whose episode starts here is
+    // left unmarked and badged on the next advert. A three-team steal's zero crossing says HILL LOST to the holder.
+    if (prev && deferNew) for (const t of Object.keys(eps)) if (prev.eps[t] == null) delete eps[t];
     if (!prev || !on) return;
     const at = this._hillBeginsAt || (this._hillBeginsAt = {});
     for (const t of Object.keys(eps).map(Number)) {
