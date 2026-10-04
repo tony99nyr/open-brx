@@ -165,15 +165,19 @@ template <class P> HillLoad load_saved_hill(P& p, int team_any) {
   return h;
 }
 
-// DUAL-WRITE: `hill_v1` first (one value: a power cut cannot split it), then the five legacy keys, so a
-// downgraded firmware still reads a current owner and tally. Returns true when every write landed.
+// DUAL-WRITE, legacy keys FIRST and `hill_v1` LAST. If the `hill_v1` write fails it is removed, so the next boot
+// falls back to the legacy keys, which are current. If a legacy write fails, `hill_v1` is still written and wins
+// at boot; the stale legacy keys matter only after a downgrade. Returns true when every write landed.
 template <class P> bool save_hill(P& p, NvsFailures& f, int owner, int game, int id, const uint32_t* hold, const std::string& sid) {
-  bool ok = nvs_put_str(p, f, "hill_v1", encode_saved_hill(owner, game, id, hold, sid).c_str());
-  ok = nvs_put_u8(p, f, "hill_owner", (uint8_t)owner) && ok;
+  bool ok = nvs_put_u8(p, f, "hill_owner", (uint8_t)owner);
   ok = nvs_put_u8(p, f, "hill_game", (uint8_t)game) && ok;
   ok = nvs_put_u16(p, f, "hill_id", (uint16_t)id) && ok;
   ok = nvs_put_str(p, f, "hill_sid", sid.c_str()) && ok;
   ok = f.note("hill_hold", p.putBytes("hill_hold", hold, 4 * sizeof(uint32_t)), 4 * sizeof(uint32_t)) && ok;
+  if (!nvs_put_str(p, f, "hill_v1", encode_saved_hill(owner, game, id, hold, sid).c_str())) {
+    p.remove("hill_v1");  // never leave an older v1 that would outrank the newer legacy keys
+    return false;
+  }
   return ok;
 }
 

@@ -42,8 +42,9 @@ struct FakePrefs {
     blob[k] = std::string((const char*)v, n);
     return n;
   }
+  std::set<std::string> bad_remove;  // keys whose clear fails (a failed WRITE does not imply a failed remove)
   bool remove(const char* k) {
-    if (fails(k)) return false;
+    if (full || bad_remove.count(k)) return false;
     return str.erase(k) + num.erase(k) + blob.erase(k) > 0;
   }
   bool isKey(const char* k) { return str.count(k) || num.count(k) || blob.count(k); }
@@ -68,10 +69,10 @@ int main() {
   CHECK(std::string(f.last_line) == "ERR NVS mc_url write failed (0 of 11 bytes)");
   p.full = false;
   p.str["pass"] = "secret";
-  p.bad.insert("pass");  // a clear that fails must be counted (putString("") returns 0 either way)
+  p.bad_remove.insert("pass");  // a clear that fails must be counted (putString("") returns 0 either way)
   const uint32_t before = f.count;
   CHECK(!nvs_put_str(p, f, "pass", "") && f.count == before + 1 && p.isKey("pass"));
-  p.bad.clear();
+  p.bad_remove.clear();
   CHECK(nvs_put_str(p, f, "pass", "") && !p.isKey("pass") && f.count == before + 1);
   p.full = true;
   f.count = before;
@@ -134,10 +135,20 @@ int main() {
       d.str["hill_v1"] = bad;
       CHECK(!load_saved_hill(d, 3).has);
     }
+    {  // v1 write fails after an earlier good save: the next boot must read the NEW state, not the old v1
+      FakePrefs z;
+      NvsFailures zf;
+      const uint32_t old_hold[4] = {1, 1, 1, 1};
+      CHECK(save_hill(z, zf, 0, 1, 2, old_hold, "s"));
+      z.bad.insert("hill_v1");
+      CHECK(!save_hill(z, zf, 2, 1, 2, h1, "s"));
+      HillLoad r = load_saved_hill(z, 3);
+      CHECK(std::string(r.source) == "legacy" && r.owner == 2 && r.hold[0] == 10);
+    }
     FakePrefs w;  // a failed legacy write is counted but v1 still landed
     w.bad.insert("hill_id");
     NvsFailures wf;
-    CHECK(!save_hill(w, wf, 1, 1, 1, h1, "s") && wf.count == 1 && w.isKey("hill_v1"));
+    CHECK(!save_hill(w, wf, 1, 1, 1, h1, "s") && wf.count == 1 && w.isKey("hill_v1"));  // v1 still written, and wins
   }
 
   // an unusable typed MC URL has a reason; a good one has none
