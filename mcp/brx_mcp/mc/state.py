@@ -1028,7 +1028,7 @@ class Session:
     _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match", "stations",
                       "nodes", "_station_id_of", "game_no", "_game_no_started", "_range_epoch",
                       "_stations_unlocked", "join_secret", "_ended", "_resume_pending", "_pu_restored",
-                      "_match_end_t", "_sync_pending", "restored_from", "_station_departures")
+                      "_match_end_t", "_sync_pending", "restored_from", "_station_departures", "_feed_seq")
 
     def _keep_bad_snapshot(self) -> Path | None:
         """O1: move an unrestorable session.json aside (never delete it, never leave it where the next
