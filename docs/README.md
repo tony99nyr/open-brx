@@ -178,4 +178,4 @@ or the Companion) is the game engine that drives spawn/respawn/score and feedbac
 scoreboard over a **local Wi-Fi LAN** (WebSocket, no cloud); **objective stations** (QR codes, IR boxes,
 or a phone in utility mode) provide capture/respawn/pickup. Nothing is blocked on unknown protocol — the
 APK teardown decoded the command set, the sound bank, and the game-mode model, and P2 closed per-player
-identity over BLE. Two whole multi-phone matches have run on this stack outdoors (2026-08-30, 2026-09-01).
+identity over BLE. Whole multi-phone matches have run on this stack since 2026-08-30; the evidence per mode is in [`release-1.0.md`](release-1.0.md) (Game modes).

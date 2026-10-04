@@ -497,6 +497,79 @@ def test_the_link_check_reaches_outside_docs():
         assert rel in scanned, f"{rel} is no longer link-checked"
 
 
+# 2026-10-03 review (D6): a backticked path in prose rotted the same way a link does, and nothing caught
+# it, so a spec cited a file that had moved to docs/archive/. A token counts as a path when it starts with a
+# top-level directory of this repo, or is a bare `*.md` name. It resolves from the repo root or from the
+# citing file's own directory. Globs, <placeholders>, `...`, spaces and `~` are not paths.
+_PATH_ROOTS = ("docs/", "app/", "mcp/", "webapp/", "hardware/", "protocol/", "site/", "scripts/", ".claude/")
+# Build output that is git-ignored, so it is absent from a clean checkout by design.
+_GENERATED_PATHS = ("app/ios", "app/android", "app/www", "app/dist", "webapp/mc/dist", "webapp/download",
+                    "hardware/m5sticks3/sim/out", "protocol/callsign-extract/.raw-assets")
+# A line that says the file is gone names it on purpose (a history note), so it is not a live citation.
+_HISTORY_WORDS = ("retired", "formerly", "archived", "dropped", "until 20")
+_CODE_SPAN = re.compile(r"`([^`\n]+)`")
+
+
+def _living_markdown() -> list[pathlib.Path]:
+    out = []
+    for f in _tracked_files():
+        rel = f.relative_to(REPO).as_posix()
+        if f.suffix != ".md" or not f.is_file():
+            continue
+        if rel.startswith(("docs/archive/", "docs/experiment-log/")):
+            continue
+        if (rel.startswith(("docs/", "protocol/", "mcp/")) or "/" not in rel
+                or (rel.startswith("hardware/") and f.name == "README.md")
+                or (rel.startswith(".claude/skills/") and f.name == "SKILL.md")):
+            out.append(f)
+    return out
+
+
+def _cited_path(token: str) -> str | None:
+    """The path a code span names, or None when the span is not a path citation."""
+    if re.search(r"[\s*<>~{}|$]|\.\.\.", token) or "://" in token:
+        return None
+    token = re.sub(r"(?:#.*|§.*|::.*|:\d[\d,:-]*)$", "", token).rstrip("/")
+    if "node_modules" in token or "NNNN" in token:
+        return None   # installed per checkout, or a template name
+    if token.startswith(_PATH_ROOTS) or re.fullmatch(r"[\w.-]+\.md", token):
+        return token
+    return None
+
+
+def _dangling_path_citations() -> list[str]:
+    bad = []
+    # A bare `name.md` is shorthand for a page somewhere in the living tree, so it resolves against every
+    # tracked name outside docs/archive and docs/experiment-log. A name that only exists there is rot.
+    living = {f.name for f in _tracked_files() if f.suffix == ".md"
+              and not f.relative_to(REPO).as_posix().startswith(("docs/archive/", "docs/experiment-log/"))}
+    for f in _living_markdown():
+        for n, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+            if any(w in line for w in _HISTORY_WORDS):
+                continue
+            for m in _CODE_SPAN.finditer(line):
+                path = _cited_path(m.group(1))
+                if not path or path.startswith(_GENERATED_PATHS):
+                    continue
+                if "/" not in path and path in living:
+                    continue
+                if not (REPO / path).exists() and not (f.parent / path).exists():
+                    bad.append(f"{f.relative_to(REPO)}:{n} `{path}`")
+    return bad
+
+
+def test_backticked_repo_paths_resolve():
+    bad = _dangling_path_citations()
+    assert not bad, f"{len(bad)} backticked paths do not exist: " + "; ".join(bad[:100])
+
+
+def test_the_path_citation_check_can_actually_fail():
+    assert _cited_path("docs/utility-roadmap.md:12") == "docs/utility-roadmap.md"
+    assert _cited_path("docs/spec/*.md") is None and _cited_path("docs/<name>.md") is None
+    assert _cited_path("beacon.js") is None and _cited_path("post-mvp.md §2") is None
+    assert not (REPO / "docs" / "no-such-page.md").exists()
+
+
 def test_every_package_json_parses():
     """Cloudflare's build starts with `npm run build:ci` at the root. On 2026-09-11 a scripted edit left a
     literal backslash-n after the closing brace of the root package.json; npm refused to parse it, the deploy

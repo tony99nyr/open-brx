@@ -13,7 +13,7 @@
 The per-player node (ADR-0001) must drive a BRX tagger over **BLE** from the field. The attractive,
 zero-install path was a **Web-Bluetooth PWA**: one browser tab per player, no app store, works on any
 old Android. Much early planning (the now-retired `phone-app-spec.md`, `field-architecture.md`,
-`brx-architecture-v0.2.md`, and the tier plans) was built on that assumption, and the repo shipped a
+`brx-architecture-v0.2.md` (also retired), and the tier plans) was built on that assumption, and the repo shipped a
 `webapp/` Web-Bluetooth **test harness** to prove it.
 
 **The spike killed it (2026-08-25, on real devices):**
@@ -51,7 +51,7 @@ clear (see `app/README.md`, experiment-log "native app validated on hardware").
 - **Negative:** players install an app (hosted APK / TestFlight) rather than opening a URL — a one-time
   at-home step (see `app/README.md`).
 - **Supersedes** the Web-Bluetooth-PWA framing in the retired `phone-app-spec.md` /
-  `field-architecture.md` / tier plans. Anything still describing the player path as a browser PWA is
+  `field-architecture.md` (retired) / tier plans. Anything still describing the player path as a browser PWA is
   wrong; cite this ADR.
 
 ## Amended 2026-09-24 (doc accuracy)

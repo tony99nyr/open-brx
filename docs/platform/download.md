@@ -1,5 +1,5 @@
 # Download
-Last verified: 2026-09-18
+Last verified: 2026-10-03
 
 The BRX Companion is the phone app that rides each tagger. Mission Control and brx-mcp are one Python package for the laptop.
 
@@ -15,7 +15,7 @@ download
 2. Open the downloaded file to install it.
 3. Grant Bluetooth and location when the app asks. Android needs both for BLE scanning.
 
-The build is signed with Android's debug key today, so Android shows its usual warning for an app that is not from the Play Store.
+The build is release-signed by Open BRX but does not come from the Play Store, so Android shows its usual warning for an app from outside the store.
 
 ## iOS
 

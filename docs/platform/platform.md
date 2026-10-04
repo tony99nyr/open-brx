@@ -27,7 +27,7 @@ Mission Control scans the armory and shows each tagger's headset, battery and li
 
 ### Pick a mode. Set the rules. Save it under a name.
 
-![Pick the game: stock modes and your saved games](/shots/mc-games.jpg)
+![Pick the game: one choice per row, and your favourites](/shots/mc-games.jpg)
 
 Start from a stock mode. Change the score cap, the clock, respawn, health and armour, and what each loadout slot may carry. Save it, and next time it is one tap. MVP games run outdoors only; indoor play is a post-launch feature.
 

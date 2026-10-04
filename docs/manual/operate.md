@@ -514,7 +514,8 @@ What the numbers on the box mean once the sun comes out.
 - **IR is light.** It needs a clear path to a sensor dome. It does not go through people, walls
   or dense foliage. Shade and dusk improve range, and full noon sun cuts it.
 - **It bounces.** In small rooms and near walls a shot can reflect back onto your own headset.
-  Use indoor mode indoors.
+  Use indoor mode indoors. On 2026-10-02 a wall bounce killed its own shooter with friendly fire off. That was
+  seen once and is not yet repeated.
 - **The headset is the bigger target.** Head-height domes on four sides catch far more than the
   gun's own sensor, so snipers aim for the head.
 - **Close range is chaos.** Point-blank, every dome reports. At distance the facing dome

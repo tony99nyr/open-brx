@@ -21,7 +21,7 @@ The Battle Company BRX is a rifle-shaped laser tag gun with a wireless sensor he
 
 ### Write the game. Muster the taggers. Start. Recap.
 
-Mission Control runs on the laptop. It sees every tagger's headset, battery and link before anyone walks out, holds your saved games, arms the phones and counts down the start. Then it steps back. Each phone runs its own tagger, so the laptop can be out of range and the match keeps going.
+Mission Control runs on the laptop. It sees every tagger's headset, battery and link before anyone walks out, holds your favourite games, arms the phones and counts down the start. Then it steps back. Each phone runs its own tagger, so the laptop can be out of range and the match keeps going.
 
 ![Mission Control readiness board: eight taggers with headset, battery and link state for each](/shots/mc-armory.jpg)
 
@@ -29,7 +29,7 @@ Mission Control runs on the laptop. It sees every tagger's headset, battery and 
 - **Pick or write the game.** Start from a stock mode. Set the rules and who carries what. Save it under a name. MVP games run outdoors only; indoor play is a post-launch feature.
 - **The match, added up.** Scores, kills and the winner, collected from every phone as it comes back into range. Export the sheet.
 
-![Pick the game: stock modes and saved games](/shots/mc-games.jpg) ![Kit: assign taggers, teams and loadout policy](/shots/mc-kit.jpg)
+![Pick the game: one choice per row, and your favourites](/shots/mc-games.jpg) ![Kit: assign taggers, teams and loadout policy](/shots/mc-kit.jpg)
 
 ## The HUD
 
@@ -58,7 +58,7 @@ modes
 
 ### The whole arsenal. Three slots.
 
-Every player carries a primary, a secondary and a perk. Sixteen weapons are in the game, in six classes. Twelve of them can take the primary slot and fourteen can take the secondary, because a weapon that cannot kill makes a fine backup and a poor primary. Two more, the rocket launcher and the rail gun, are held back for a future field pickup. Each weapon is written to the tagger as its own data, not firmware: fire mode, rate of fire, damage, magazine, reload and swap delay. That is why a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
+Every player carries a primary, a secondary and a perk. Sixteen weapons are in the game, in six classes. Twelve of them can take the primary slot and fourteen can take the secondary, because a weapon that cannot kill makes a fine backup and a poor primary. Two more, the rocket launcher and the rail gun, are pickups: you take one from a station during the match. Each weapon is written to the tagger as its own data, not firmware: fire mode, rate of fire, damage, magazine, reload and swap delay. That is why a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
 
 Five perks fill the third slot, and every one costs something. Body Armor gives you more armour, but it slows your reload. Armour Piercing sends your primary straight through armour and shields, but it hits for less. No perk is a free upgrade.
 
@@ -99,7 +99,7 @@ brx-mcp also speaks MCP, the protocol AI agents use to call tools. So an agent c
 
 ![A BRX smart grenade in hill mode, lit](/photos/grenade.jpg)
 
-The King of the Hill point defaults to presence: a spare phone sitting on the objective, reading who is nearby over Bluetooth. Set a BRX smart grenade to hill mode instead and it also works as a king-of-the-hill objective, shot rather than stood on: the taggers already see its beacon, so possession is read off the player's own tagger, with no base, no extra hardware and no firmware change. The same presence idea gives you respawn points: a spare phone works as one today.
+The King of the Hill point defaults to presence: a spare phone or an M5StickS3 sitting on the objective, reading who is nearby over Bluetooth. Set a BRX smart grenade to hill mode instead and it also works as a king-of-the-hill objective, shot rather than stood on: the taggers already see its beacon, so possession is read off the player's own tagger, with no base, no extra hardware and no firmware change. The same presence idea gives you respawn points: a spare phone works as one today.
 
 ## The kit
 

@@ -1,7 +1,7 @@
 # GAMES: PLAY picks, BUILD creates (F411)
 
 **Status:** the server⇄console contract for the F411 build, 2026-09-26. The product brief is
-[`games-redesign.md`](../../archive/spec-design-games-redesign.md) (read it first); the storyboard is Proposal A of
+[games-redesign](../../archive/spec-design-games-redesign.md) (read it first); the storyboard is Proposal A of
 `C:\Users\Tony\brx-games-flow\index.html`. Where this file and the brief differ, this file is the wire. The types are in
 `mcp/brx_mcp/mc/types.py` (`GamePiece`, `GamePick`, `MatchSettings`, `PieceKind`) and generated into
 `webapp/mc/src/api/contract.gen.ts`. The routes are rows in `mcp/brx_mcp/mc/API.md`.
@@ -72,7 +72,8 @@ GamePick = { pieces: { mode, life, spawn, primary, secondary, perks, misc_loadou
 MC composes the `GameConfig` from the pick and applies it through the `PUT /api/config` path (`set_config`):
 same phase gating, the same RECAP roll-forward, the same re-announce while LOADED.
 
-1. Start from `default_config(mode)` when the mode changes. When the mode is the same, start from the current
+1. Start from `default_config(mode)` when the mode changes, except `teams`, which carry when the count fits
+   (§7, `gamepick.carry_teams`). When the mode is the same, start from the current
    config, so teams set on KIT and the fields no piece claims (stations, powerups, vip, stun) survive.
 2. `health` = the `life` value. `sanitize` derives `health.preset` as today.
 3. `respawn` = the `spawn` value, except for a mode whose default respawn type is `"none"` (post-MVP LMS), which
@@ -220,9 +221,10 @@ kill-scored mode.
 - A mode change keeps the current teams when the new mode's default has the same count, and swaps only a
   colour the new mode cannot use for a free legal one (TDM blue/yellow to KOTH is blue/red). A different
   count takes the new mode's default (`gamepick.carry_teams`).
-- None of these asks first (Tony, 2026-09-28: "just change the choices, don't make me read warnings"):
-  a mode pick, a TEAMS change, a favourite load and a KIT/LOBBY edit all apply on one tap. The TEAMS
-  chooser offers only the colours the current mode can use.
+- None of these warns that players will move (Tony, 2026-09-28: "just change the choices, don't make me read
+  warnings"): a mode pick, a TEAMS change, a favourite load and a KIT/LOBBY edit apply on one tap. The one
+  question is §6's DISCARD YOUR CHANGES? before a favourite load over changed picks. The TEAMS chooser offers
+  only the colours the current mode can use.
 
 **KOTH hold target (F415).**
 - `match.hold_target_s` (KOTH only): `null` = no target. Otherwise the first team whose possession reaches

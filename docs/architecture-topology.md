@@ -15,8 +15,8 @@ the old `manual/07-platform.md`).
 
 > **Short answer, if you own taggers and a laptop:** you can play **today**, in one room, with the
 > laptop driving the guns directly over BLE — that path is proven on hardware (§3, Tier 0). Phones as
-> nodes have played **three whole matches on two phones** (2026-08-30 outdoors, 2026-09-01 outdoors,
-> 2026-09-11 on the Mac); a field of more than two phones, a dispersed timed start and recovery from a
+> nodes have played whole matches since 2026-08-30 (evidence per mode: [`release-1.0.md`](release-1.0.md),
+> Game modes); a field of more than two player phones, a dispersed timed start and recovery from a
 > real coverage loss have not been run (§7). The optional **backhaul** (a phone's own data plan reaching
 > Mission Control through a tunnel, §2.1) is field-proven, one phone on cellular (2026-09-12, FOLLOWUPS B30).
 
@@ -127,7 +127,7 @@ and per-phone VPNs (Tailscale on every phone is setup on every phone).
 |---|---|---|---|
 | Gun ↔ headset | vendor link | headset must be present or the gun drops BLE entirely | proven, bench |
 | **Node (phone) ↔ gun** | **BLE** | **exactly one gun per node**; link must hold all match | proven, single-gun bench |
-| Node ↔ Mission Control | Wi-Fi (WebSocket) | best-effort; buffered when down | proven, two phones over field Wi-Fi, three whole matches (2026-08-30, 2026-09-01, 2026-09-11) |
+| Node ↔ Mission Control | Wi-Fi (WebSocket) | best-effort; buffered when down | proven, two phones over field Wi-Fi, see [`release-1.0.md`](release-1.0.md) |
 | Node → Mission Control discovery | mDNS `_openbrx._tcp`, or the join QR, or a typed address | mDNS fails on hostile Wi-Fi and some Android stacks; the QR/typed address is the floor | mDNS auto-join proven 2026-09-11 (game test); QR proven |
 | **Node ↔ Mission Control, backhaul** | the phone's own data plan → tunnel → the node socket (`wss://`) | opt-in; laptop needs internet; phone needs a plan and signal; same best-effort rules | proven, one phone on cellular (2026-09-12 field test, FOLLOWUPS B30); merged to `main` |
 | Operator ↔ Mission Control | HTTP on localhost / LAN | `:8765` UI, `:8766` node socket; the tunnel never exposes `:8765` | run at the 2026-09-11 game test (Mac host) |
@@ -171,7 +171,7 @@ flowchart TB
     L0 <-->|BLE| g3
     L0 <-->|BLE| g4
   end
-  subgraph T1["TIER 1 — phones as nodes ⚠ TWO PHONES, THREE WHOLE MATCHES; A BIGGER FIELD UNTESTED"]
+  subgraph T1["TIER 1 — phones as nodes ⚠ TWO PLAYER PHONES PROVEN; A BIGGER FIELD UNTESTED"]
     direction LR
     L1["Laptop = Mission Control<br/>+ field Wi-Fi"]
     p1["phone"]
@@ -196,10 +196,9 @@ scoring, respawn, frag limit, correct winner, BLE holding the whole match
 (B10, archived). The constraint is that **everyone stays in the laptop's BLE range**: a room, a
 yard, a small field.
 
-**Tier 1 is what buys you a real field**, and it is the thinner-tested half. Two phones have played three whole
-matches (FFA 2026-08-30 and TDM 2026-09-01 outdoors on a router LAN; a 1v1 game test 2026-09-11 on the Mac, which
-found the frag-limit end and the END button broken, F124/F125), a phone respawn station has revived a dead gun
-(2026-09-04) and a grenade hill has been captured through the gun (2026-09-10). Not run: more than two phones, a
+**Tier 1 is what buys you a real field**, and it is the thinner-tested half. Two phones have played whole
+matches since 2026-08-30 (evidence per mode: [`release-1.0.md`](release-1.0.md)), a phone respawn station has revived a dead gun
+(2026-09-04) and a grenade hill has been captured through the gun (2026-09-10). Not run: more than two player phones, a
 dispersed timed start, and store-and-forward across a real coverage loss. See §7.
 
 ---
@@ -282,10 +281,10 @@ drops the link).
 
 ## 7. Proven vs. specified — read this before trusting a diagram
 
-The resolution to trust, in one line: **Tier 0 is proven on two guns; two phones have played three whole matches
-(two outdoors on a router LAN, one on the Mac at a 1v1 game test); nobody has run more than two phones, a dispersed
+The resolution to trust, in one line: **Tier 0 is proven on two guns; two phones have played whole matches
+([`release-1.0.md`](release-1.0.md)); nobody has run more than two player phones, a dispersed
 timed start, or store-and-forward recovery across a real outage; backhaul is proven on one phone only.** The Companion is spec only; the Utility Box's IR emit is proven from the rig; the
-utility *phone* station is built and bench-proven.
+utility *phone* station and the StickS3 station are built and bench-proven.
 
 **A green test suite is not a working field.** That distinction is stated in B15 (`archive/pre-2026-09-06-followups-snapshot.md`) in the
 project's own words: "a green test ≠ 'works on real guns' — that's earned on the bench."
@@ -311,8 +310,8 @@ already own. No mods, no builds, no purchases required beyond Tier 0.
 - **Tier 1 — old Android/iOS phones as nodes, ~$0 if you have them (else ~$30–50 used)**: the biggest
   jump in capability for the least money, because the link rides the player. Full-field roaming for
   every Tier-0 mode, a per-player HUD, offline play with results syncing at the base. Native app on
-  Android + iOS (ADR-0003), one phone per gun. Two phones have run two whole matches on real hardware
-  outdoors (2026-08-30, 2026-09-01) and a third on the Mac (2026-09-11); more than two phones is untested.
+  Android + iOS (ADR-0003), one phone per gun. Two phones have run whole matches on real hardware
+  ([`release-1.0.md`](release-1.0.md)); more than two player phones is untested.
   **Optional, ~$0–50 more:** internet at the laptop (a SIM travel router, or tether it) turns on **backhaul**
   (§2.1): any player phone with a data plan then reaches Mission Control from anywhere it has signal, with
   nothing to set up on the phone (proven on one phone, 2026-09-12).
@@ -320,7 +319,9 @@ already own. No mods, no builds, no purchases required beyond Tier 0.
   rugged, phone-free node that rebuilds the native kill flash and audio. Power-ups (extra life,
   faster fire, damage boost, shields) as decoded command sequences. ESP-NOW mesh between Companions
   for instant field-wide kill-confirm. Optional +$5–7 loud custom audio, +$8–12 on-gun HUD.
-- **Tier 3 — objective stations, ~$5–15 each (+ paper QR ~$0)** (design stage; IR emit proven):
+- **Tier 3: objective stations, ~$5–15 each (+ paper QR ~$0)** (the M5StickS3 respawn, pickup and hill
+  stations are built; status in [`release-1.0.md`](release-1.0.md); the device is
+  [`../hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md); IR emit proven):
   Domination (multi-point + live scoreboard), KotH, CTF variants, Assault, Extraction point, bomb
   site, respawn stations (data-mule sync). Grenades cover single-objective modes for $0; stations are
   for multi-point play, live ownership and scoring, and respawn.

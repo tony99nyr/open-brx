@@ -9,7 +9,7 @@ unchanged, so an older citation of `weapon-design.md` §6.x means the same secti
 **What stays in `weapon-design.md`.** The [Balance rules](weapon-design.md#balance-rules) table, the
 damage model (§0), the arsenal table and its derivations (§2), the wire levers (§4), the open unknowns
 (§5) and the triangle (§7). A bare §0 to §5 or §7 below means that page. §7r means
-`session-findings-2026-08.md` §7r, the archived August notebook.
+the archived session-findings-2026-08 §7r, the archived August notebook.
 
 ## Status
 
@@ -375,7 +375,7 @@ is `t16 32 / t17 384 / t39 32 / t40 192`, so a Callsign player carries 192).
 **One piece of evidence for intent, not a conclusion.** The catalogue's `reserve: 192` is exactly the
 capture's **t40**, the stock carry, not half of it. That reads as an author writing down what a player
 should carry, which the compile step then halved a second time. The count in
-`bench-perks-2026-09-18.md` §6 settles it, and nothing else should.
+the archived bench-perks-2026-09-18 §6 settles it, and nothing else should.
 
 Two fixes, and they are not the same game. Writing the catalogue number to t40 **doubles what every
 player carries** in every match, which is a balance decision. Halving what the HUD and the host are

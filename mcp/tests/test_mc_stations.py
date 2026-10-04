@@ -45,9 +45,9 @@ def _pushed(s, kind, nid=None):
 
 # --------------------------------------------------------------------------- the wire
 def test_station_config_is_an_mc_kind_on_both_ends_of_the_wire():
-    """The message must be in BOTH whitelists. MC's `types.MC_KINDS` and the phone's
-    `app/src/transport/envelope.js` MC_KINDS are hand-kept copies; the phone dropped `alert` for two
-    days in September because only one was updated, and `station_config` was in neither."""
+    """The message must be in BOTH whitelists. The phone's MC_KINDS is generated from `types.MC_KINDS`
+    into `app/src/transport/contract.gen.js` (A33), so this checks the generated file. Before A33 the two
+    were hand-kept copies: the phone dropped `alert` for two days in September, and `station_config` was in neither."""
     env = E.make_envelope("station_config", {"kind": "control", "team": 255, "id": 7, "game": 3, "valid_ids": [7]})
     assert E.decode(E.encode(env), direction="mc")["body"]["id"] == 7
     try:
@@ -1220,7 +1220,7 @@ def test_an_old_phone_powerup_station_gets_the_1ft_claim_default_not_the_3m_one(
 
 
 def test_a_control_stations_threshold_defaults_to_75_on_an_old_phone_and_0_elsewhere():
-    """F383, Tony 2026-09-27: the hill's own default is -75 dBm (hysteresis 6, on every path) until the outdoor
+    """F383, Tony 2026-09-27: the hill's own default is -75 dBm (exit band EXIT_BAND_DB, on every path) until the outdoor
     walk measures a real one. A current phone and a StickS3 both read 0 (their own platform default); only a phone
     too old to trust with 0 (F345) gets the explicit value."""
     from brx_mcp.mc.state import Session

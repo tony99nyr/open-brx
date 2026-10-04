@@ -98,7 +98,7 @@ export const SIGHT_WINDOW_MS = 2000;
 /** F440: a credible sighting keeps an entry "in the circle" this long. Tony, 2026-10-02: the sparse-phone edge noise
  *  (one sample in a sparse phone's window) is KEPT as is, with no two-advert rule; bench 10c's ladder decides with real
  *  fading. */
-export const SIGHT_MS = 4000;   // = the silence expiry: heard inside the band in the last 4 s
+export const SIGHT_MS = 4000;   // = the silence expiry: a credible sighting counts for 4 s
 /** P-L1 (review 2026-10-03): the most adverts the sighting window keeps, the same bound as the Stick (presence.h
  *  SIGHT_RECENT_MAX), so a flood reads the same median on both. */
 export const SIGHT_RECENT_MAX = 64;
@@ -215,7 +215,7 @@ export const RESPAWN_RSSI_DBM = Object.freeze({ phone: -70, sticks3: -57 });   /
 export const STATION_THRESHOLD_DBM = -74;
 /** A phone station's own default for `kind` (utility.js, when `settings.threshold` is 0). */
 export const POWERUP_RSSI_DBM = Object.freeze({ phone: -55, sticks3: -45 });   // S58: about 30 cm; placeholders until bench 4.11. The Stick's copy is station_range.h STICK_POWERUP_DEFAULT_THRESHOLD_DBM (F434, Tony 2026-09-28)
-/** F383: the hill's own default is -75 dBm with 6 dB hysteresis, on every path, until the outdoor walk measures a
+/** F383: the hill's own default is -75 dBm, with the exit band EXIT_BAND_DB, on every path, until the outdoor walk measures a
  *  real one (Tony, 2026-09-27). The Stick's copy is `hardware/m5sticks3/station_range.h STICK_HILL_DEFAULT_THRESHOLD_DBM`. */
 export const CONTROL_RSSI_DBM = Object.freeze({ phone: -75, sticks3: -75 });
 export function phoneStationThreshold(kind) { return kind === 'respawn' ? RESPAWN_RSSI_DBM.phone : kind === 'powerup' ? POWERUP_RSSI_DBM.phone : kind === 'control' ? CONTROL_RSSI_DBM.phone : STATION_THRESHOLD_DBM; }

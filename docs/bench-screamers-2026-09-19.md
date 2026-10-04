@@ -74,7 +74,7 @@ to keep it, so it must fit the per-gun write budget (F274): Phase C soaks it.
 
 ## Phase A: make a screamer on demand (one gun, about 60 min)
 
-Each step tries one suspected trigger. Arm the gun with the bench victim head (`bench-perks-2026-09-18.md`) first.
+Each step tries one suspected trigger. Arm the gun with the bench victim head (the archived bench-perks-2026-09-18) first.
 
 | step | trigger | how | expect if the lead is right |
 |---|---|---|---|

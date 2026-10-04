@@ -69,7 +69,7 @@ Rules:
 
 **A = shooter**, player 1, team 1. **B = victim**, player 2, team 2.
 
-Arm B with the victim head from `bench-perks-2026-09-18.md` ("Roles and arming"). Arm A with that doc's bench
+Arm B with the victim head from the archived bench-perks-2026-09-18 ("Roles and arming"). Arm A with that doc's bench
 AR frame, with t6 left empty. The damage key is `<0,0>` and the magnitude is 9, unless a step says otherwise.
 
 The victim head sets HP 999, armour maximum 0 and shield maximum 0. `$PSET` t3, t4 and t5 set the pool **maxima**
@@ -681,7 +681,7 @@ Run §18 (reply decodes, claim 19) in the same session first: the `$QUERY` token
 6. Listen for `$DD` from B at the moment of death (the §13 step 1 reading).
 7. **The second F264 stall: an empty magazine after a timed-out partial reload** (found 2026-09-18 on the playtest
    branch; no detector yet). Arm B with the Energy Rifle. Fire it dry, then pull the reload lever for 1 s only, so the
-   reload times out (`bench-perks-2026-09-18.md` §7 item 2). If the magazine stays at 0, repeat steps 2-4 on this
+   reload times out (the archived bench-perks-2026-09-18 §7 item 2). If the magazine stays at 0, repeat steps 2-4 on this
    live, empty gun. Expect the "alive, stuck another way" row: the node must not revive it. ⚠ The perks bench
    (2026-09-18, log item 8) found that a short pull on an energy weapon does nothing, and a held pull refills 3.8 s
    after it starts. So a 1 s pull may not reproduce the field's `reload partial: 0 -> 12 of 32 (timeout)`. Record what

@@ -48,7 +48,7 @@ Tony's words: "im not convinced you are being scientific about these findings. y
 
 ## Arming and safety
 
-- Arm from the bench sheet's recipe (for example "Roles and arming" in `docs/bench-perks-2026-09-18.md`) or from
+- Arm from the bench sheet's recipe (for example "Roles and arming" in `docs/archive/bench-perks-2026-09-18.md`) or from
   `compile.resolve()`. Never arm from a capture.
 - `$QUERY` and `$LIFE` need `confirm=true`. Poll a gun that may be dead with `$LIFE,*`, not `$QUERY`.
 - `$TMP` frames carry all 12 commas.

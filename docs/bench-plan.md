@@ -1,9 +1,9 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-10-02. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-10-03. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** Part 3 is NOW: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
+**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The re-bench on 0.4.18 is NEXT ([below](#next-the-re-bench-on-apk-0418-2026-10-04)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
 are in `experiment-log/2026-09.md`'s 2026-09-28 entry; its sections below stay as the procedures Part 3 points at.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
@@ -17,32 +17,19 @@ one sheet and runs it. The procedures live in the sheets and in the Part 2 secti
 
 | Sheet | Needs | Core steps | Time |
 |---|---|---|---|
-| ~~[`bench-standard-2026-09-29.md`](bench-standard-2026-09-29.md)~~ RAN 2026-10-02 (`experiment-log/2026-10.md`); steps 1-14 all ran | this box, three Pixels, two guns, no Stick | F297's 10-run repeat, brx4's powerup rechecks (F418, F381, F436 with the `$GLED` gun test), F348 with the poison and shield reads, F394, 4.0, GAMES 9 TEAMS | about 2 h 40 min, plus 70 min lower priority |
+| ~~[`bench-standard-2026-09-29.md`](bench-standard-2026-09-29.md)~~ RAN 2026-10-02 (`experiment-log/2026-10.md`): steps 1-9, 8b, 13 and 14-17; steps 10-12b, 13b and 13c moved to the re-bench sheet | this box, three Pixels, two guns, no Stick | F297's 10-run repeat, brx4's powerup rechecks (F418, F381, F436 with the `$GLED` gun test), F348 with the poison and shield reads, F394, 4.0, GAMES 9 TEAMS | about 2 h 40 min, plus 70 min lower priority |
 | [`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) | the M5StickS3, two Pixels, two guns | reflash, -45 powerup default (F434), the 4.11 ladder, 11.2 with the ARMORY overrides, 11.6, the F417 race | about 3 h |
 | [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md) | the MacBook, the iPhone X, the grey Pixel | the IPHONE block, 11.7 over real mDNS, the iPhone as player 2 | about 75 min |
 
-**Build under test:** app 0.4.16, release-signed and unpublished, at
-`/home/tony/apk-0.4.16/brx-companion-0.4.16-android-release.apk` (branch `release/app-0.4.16`, `6a435152`,
-not on `main`). MC runs from `main`.
+**Build under test:** the standard sheet ran on 0.4.16. The Stick and Mac sheets run on 0.4.18, cut from main
+(`/home/tony/apk-0.4.18/`), the same build as the re-bench. MC runs from `main`.
 
-### Re-bench after the fixes in flight (needs a NEW APK)
+### NEXT: the re-bench on APK 0.4.18 (2026-10-04)
 
-The standard sheet ran on 0.4.16. These fixes land after it, so they need brx1's rebuilt 0.4.16+ (path and sha
-to come from brx1); none can be checked on today's APK. Each row holds its own bench step.
-
-1. **F416, the partial go-live burst (P0, brx4).** The check must verify the weapon state, not only the pools.
-2. **F436, an equip before the first pull since `$SPAWN` (brx4).** Plus one question: hold the trigger on the last
-   Rocket and keep holding through the empty switch-back's swap window. Does the primary fire by itself when the
-   window ends? Note any primary round and its delay.
-3. **F440, the phone hill hears one phone only now and then (brx3).** Steps 13b and 13c of the standard sheet.
-4. **F437 (the whole go-live taunt), F438 (an own-id hit never kills), F439 (the death stop and the heartbeat after
-   the scream) (brx5).** For F439, re-run 11.8 in full, the Shields half included.
-5. **F441 (MOVE opens a picker), F442 (the ACTIVE pip animation), F443 (MC LINK needs the locked hold) (brx3).**
-6. **F445, a USP reload just after an ALT swap.** Capture the wire.
-7. **Open questions:** a powerup take at the cap of 4 used up the item for nothing (now F447); MC's `PUT` of `night=true`
-   in LOBBY did not reach the phones; after a match the hill assignment was gone.
-
-F444 (the capture-begins alert) waits for Tony's storyboard pick, and F446 (the poison tick) for his ears.
+[`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md) re-runs every fix that landed after the 2026-10-02
+standard bench: F416, F438 (with Q13), F439 (11.8 in full), F436, F447, F440 and the hill ladder, F444, F448 and the
+hill across matches, F437, F446, F445, F443 with F365, F442, NIGHT OPS from a LOBBY edit, and F379. It is self-contained (kit,
+setup with the adb re-pair, steps with controls and pass rules). The Stick and Mac sheets above come after it.
 
 ## DONE: part 1, the short bench, 2026-09-26 (1.5 h, on what exists today)
 
@@ -482,9 +469,9 @@ Running total: 387 min.
 
 ### Group 6: a field walk (about 15 min; the Stick and one phone)
 
-1. **F383, Stick-hears-phone at 3, 5 and 7 m (15 min).** The -75 dBm default. Tape-measure the three marks
-   first. Start with an out-of-range control (well beyond 7 m: no presence read). Then walk the phone in to each
-   mark. Pass: present at 3 m and 5 m, absent beyond 7 m, with no flapping. Log: the RSSI at each mark.
+1. **F383, the Stick hill ladder at 5, 7.5, 9 and 12 m (15 min).** The -75 dBm default, with re-bench step 10's
+   method (`bench-rebench-2026-10-04.md`). Pass: IN at 5 and 7.5 m every time, OUT at 12 m every time, and 9 m
+   recorded as the edge. Log: the RSSI at each mark.
 
 STOP POINT 8.
 
@@ -527,7 +514,7 @@ Levers session 1 ran in three sittings on 2026-09-18 (the log's three "firmware 
 answered by §16), §12 steps 1 and 3 (answered by §23), §13 step 1 and step 3 (magnitudes 1-39), §16 steps 1-3 and
 6.1-6.2, §18, §19 step 15 (answered by F71 and F263: one Shotgun pull sends two words), §21 steps 1-10 and 15-18 (t4,
 t5, t6, t7, t8, t9), §22 steps 1-6, and §23 (all five steps). Screamers A1 and A2. F276 (the Shotgun words). The whole perks sheet
-(`bench-perks-2026-09-18.md`, §1-§8). F230 closed, so levers §19 step 18 is dropped.
+(the archived bench-perks-2026-09-18, §1-§8). F230 closed, so levers §19 step 18 is dropped.
 
 **Pre-game check, run 2026-09-19 (Saturday morning office test).** Tony installed the 0.4.0-0.4.2 APKs across the
 session. Levers §1 run f (a real TDM through Mission Control with two guns) **PASSED**: cross-team hits
@@ -546,7 +533,7 @@ eased `heavy` 40 to 45 and the Burst Rifle gap 550 to 540 ms, F308); Block 7 ste
 lost inside the headset's rate guard, and the wider gap is on main); and the evening audio A/B/A on one gun (F347:
 the native shield hum blocks the gun's audio queue). Off the plan the same day: melee (K4, closed) and F336.
 
-**The 2026-09-25 sitting, `bench-2026-09-25.md`, sittings A and B and stop point 2.**
+**The 2026-09-25 sitting, the archived bench-2026-09-25, sittings A and B and stop point 2.**
 Sitting A closed the 0.4.12 gate: A4, F341, F347 (t23 ships EMPTY, no restart delay needed), and F350 (H21 picked,
 playtest confirmation left to sitting C's 11.1(c)); 4.19 parts 2-3 and the Burst Rifle gap stayed INCONCLUSIVE.
 Sitting B closed F332, the Stick pickup online and offline (S58, found F380 and F381), F333 (reopened by Tony for a deliberate walk; F398 filed),
@@ -558,9 +545,9 @@ has not been opened since that install, so 11.7's auto-join must be sitting C's 
 
 ## Sittings, in priority order
 
-### Superseded: `bench-2026-09-25.md`, sitting C
+### Superseded: the archived bench-2026-09-25, sitting C
 
-Folded into "Next sitting: after GAMES and 0.4.14" at the top of this file, which supersedes the list below, the
+Folded into "Part 2: after GAMES, teams, the hold target and 0.4.15" at the top of this file, which supersedes the list below, the
 "Carry into sitting C" list and the "Awaiting Tony" note that used to sit here. Kept only for the sheet's own
 history; do not run from this section.
 
@@ -608,11 +595,12 @@ they need both Pixels and Mission Control. Do not send `$AS,1`.
 
 Levers §1 run f (F206's proof) **already ran and passed**, 2026-09-19; do not re-run it here.
 1. **F264** in a live match. If a gun stalls, send `$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` BEFORE any force respawn,
-   and watch for a trigger answer. The row holds the gate.
+   and watch for a trigger answer. The row holds the gate. If the gun revives, prove its next death still shows the
+   native flash (A16).
 2. Levers §22 step 7: reproduce the timed-out partial reload on the Energy Rifle. **F277**.
 3. **F237** (a slow Pixel 5 re-pick): the row holds its repro.
 4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; the row is **U11′** in [`post-mvp.md`](post-mvp.md)).
-5. The shield recharge cues on the Shields preset (**F349**: `N101`, `N102`, `VA6Y`, `N74`). If the runbook's 4.19
+5. The shield recharge cues on the Shields preset (**F349**: `N101`, `N102`, `N74`; no `VA6Y` voice line, LEDs only). If the runbook's 4.19
    already ran them, do not re-run them here; note the result instead.
 
 ### Sitting 6: levers session 2 (two sittings; 2 guns, the rig for §9 step 5)
@@ -656,7 +644,7 @@ headset-word row was F254 before its renumber and is F275 now.
   post-MVP (**F338**, Tony 2026-09-24); the Stick MVP runs over Bluetooth, Block 9 of the runbook.
   Kit: a Stick, the rig, a laptop, one gun for gates 4 and 5.
 - [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, Z1-Z3, D, B, E, F (C is answered).
-- The unrun rungs of `bench-queue-2026-09-09.md` that the table below does not mark as
+- The unrun rungs of the archived bench-queue-2026-09-09 that the table below does not mark as
   moved. Do not run BQ-A2 (`$AS,1`): it starts a native game, a screamer path.
 - Rows whose method is in the row itself: **F232** and the other "Later" rows of the FOLLOWUPS MVP BENCH group
   that no sheet names yet, and the post-MVP **F167**, **F168** and **F169**.
@@ -690,10 +678,10 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 |---|---|---|
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live | claims 1-27, §1-§26 |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0 | the screamers: Phases A-E (A1, A2 done) |
-| `bench-perks-2026-09-18.md` | history | every section answered 2026-09-18 |
+| the archived bench-perks-2026-09-18 | history | every section answered 2026-09-18 |
 | [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live | the M5StickS3 bring-up gates (**F314**, H7); run with the `m5stick-bench` skill, no fixed sitting |
 | [`bench-grenade.md`](bench-grenade.md) | open, backlog | the grenade and hill rungs |
-| `bench-queue-2026-09-09.md` | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
+| the archived bench-queue-2026-09-09 | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
 | the 2026-09-05 flash-control, 2026-09-07 super-indoor and 2026-09-11 critical sheets | history | archived 2026-09-24: grep only. Critical: BC-A2 is levers §21 step 16 (done) plus grenade Z1; BC-B3 is grenade X; BC-C1 is levers §6; BC-C2 is answered (perks §2). Super-indoor: Q15; Tony defined S48 on 2026-09-23, and its sweep is Block 6 of the runbook. Flash-control: L1-L9 answered; BQ-D8 cites its rungs 9-10 |
 | [`capture-runbook.md`](capture-runbook.md) | method | how to take a capture; no status |
 | the 2026-09-13 runbook and the 2026-09-17 weapons sheet | history | already archived: grep only, open no step from them |
@@ -704,4 +692,4 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | decision | what it blocks |
 |---|---|
 | The ALT indoor/outdoor wording in `manual/fix.md` "IR isn't registering hits" step 4. The page says the field test found no emitted-range change, but V4_31 shows the mode sets emitter power (F171) | no sitting; a manual edit |
-| Should a kill card wait under the pickup switch card, or take over it? Tony's lean is wait, unconfirmed (the switch card itself passed 2026-10-02) | the switch-card clash fix, checked in the "after GAMES and 0.4.14" sitting above |
+| Should a kill card wait under the pickup switch card, or take over it? Tony's lean is wait, unconfirmed (the switch card itself passed 2026-10-02) | the switch-card clash fix, checked in the "Part 2: after GAMES, teams, the hold target and 0.4.15" sitting above |
