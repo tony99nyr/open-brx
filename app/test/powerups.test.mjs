@@ -1392,3 +1392,37 @@ test('F416 r4: a real mismatch while a heavy is held repairs weapon controls onl
   assert.ok(!after.includes('$AMMO,2,0,0,1,*'), 'the heavy is not emptied');
   assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives');
 });
+
+// ---- F438 r4: a lethal self-hit never happened, so it keeps the held heavy and the overshield. The revive's `$SPAWN`
+// refills the loadout weapons and puts the gun on slot 0; that is accepted for loadout weapons only. ----
+const SELF_HIT = '$HIR,4,0,7,1,45,0,3,*';   // shooter id 7 = this player
+
+test('F438 r4: a lethal self-hit keeps the held heavy and puts it back on the trigger behind the revive', () => {
+  const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away(); h.adv(800);
+  assert.equal(h.eng._puHeld?.trig, 2, 'setup: Rockets on the trigger');
+  const n = h.mark();
+  h.frame(SELF_HIT).frame('$HP,0,0,0,*');
+  const after = h.since(n), sp = after.findIndex(f => f.startsWith('$SPAWN'));
+  assert.ok(sp >= 0, `setup: the self-hit revive went out: ${JSON.stringify(after)}`);
+  assert.equal(h.eng.alive, true);
+  assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives with its charges');
+  assert.ok(!after.includes('$AMMO,2,0,0,1,*'), `the revive never empties the heavy: ${JSON.stringify(after)}`);
+  const wi = after.indexOf(WEAP[2]);
+  assert.ok(wi > sp && after.indexOf('$AMMO,2,2,0,1,*', wi) > wi, `the heavy is re-equipped behind the burst: ${JSON.stringify(after)}`);
+  assert.equal(h.eng.activeSlot, 2, 'the trigger is on the heavy');
+});
+
+test('F438 r4: a lethal self-hit keeps the overshield and re-raises its $PSET shield max behind the revive', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.take(6); h.frame('$HP,45,70,75,*'); h.away(); h.adv(3000);
+  assert.ok(h.eng._overshield, 'setup: the overshield is up');
+  const n = h.mark();
+  h.frame(SELF_HIT).frame('$HP,0,0,0,*');
+  const after = h.since(n), sp = after.findIndex(f => f.startsWith('$SPAWN'));
+  assert.ok(sp >= 0, 'setup: the self-hit revive went out');
+  assert.ok(h.eng._overshield, 'the overshield survives');
+  const raised = after.findIndex((f, i) => i > sp && f.startsWith('$PSET,') && f.split(',')[5] === '75');
+  assert.ok(raised > sp, `the raised $PSET follows the burst: ${JSON.stringify(after)}`);
+  assert.ok(after.indexOf('$LIFE,45,70,75,2,*', raised) > raised, `then the pools as they were, overshield included: ${JSON.stringify(after)}`);
+  assert.deepEqual([h.eng.hp, h.eng.armor, h.eng.shield], [45, 70, 75]);
+});

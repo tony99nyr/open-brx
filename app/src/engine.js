@@ -4178,7 +4178,7 @@ export class Engine {
   _revive(resync, stationId = null, operator = false, selfHit = null) {
     this.reloading = null; this._reloadOutcome = null; this.held = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
-    if (this._overshield || this._puHeld || this._puBackPending?.equipped === false) this._puDeath(true);   // a live respawn also retires a delayed empty switch-back
+    if (!selfHit && (this._overshield || this._puHeld || this._puBackPending?.equipped === false)) this._puDeath(true);   // a live respawn also retires a delayed empty switch-back; F438 r4: a self-kill never happened, so it loses no pickup
     const down = this.frames.headset && this.frames.headset.down;
     if (down && down.stop) this._write([down.stop], 'down stop');   // §3.2: `$HLOOP,0,0,*` before $SPAWN — belt-and-braces, $SPAWN clears the loop on its own
     this._downRearmSent = false;   // §3.2: fresh rearm gate for the next life
@@ -4201,16 +4201,23 @@ export class Engine {
     const flipped = this._turned && tf && tf[String(this.teamTid)];
     const kind = rp && stationId != null && !flipped ? 'station' : 'timed';
     const revive = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
+    // F438 r4: a self-hit revive keeps a held heavy's charges in its own `$AMMO` row (as `_puRearmRows`), never the zero.
+    const keep = selfHit ? this._puHeld : null;
+    const burst = keep ? revive.map(f => f.startsWith(`$AMMO,${keep.slot},`) ? `$AMMO,${keep.slot},${keep.left},${PU_RESERVE},1,*` : f) : revive;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
     // F438: the revive leaves full health and armour and the fill's shield; the drain takes back the difference, per pool
     // (a negative floors at 0 and never spills, docs/manual/dev.md `$LIFE`). Never a heal: a self-kill costs what it cost.
     const selfDrain = selfHit ? [selfHit.health - this.maxHp, selfHit.armor - this.maxArmor, selfHit.shield - (fill.length ? this.maxShield : 0)].map(d => Math.min(0, d)) : null;
-    const drain = selfDrain && selfDrain.some(d => d < 0) ? [`$LIFE,${selfDrain[0]},${selfDrain[1]},${selfDrain[2]},*`] : [];
+    // F438 r4: an overshield survives a self-kill. The burst's pool `$PSET` lowers the shield max, so the raised one
+    // and the absolute pools (token 4 = 2, as the grant) go last in place of the drain.
+    const os = selfHit && this._overshield, osPset = os ? this._osPset(os.max) : null;
+    const drain = osPset ? [osPset, `$LIFE,${selfHit.health},${selfHit.armor},${selfHit.shield},2,*`]
+      : selfDrain && selfDrain.some(d => d < 0) ? [`$LIFE,${selfDrain[0]},${selfDrain[1]},${selfDrain[2]},*`] : [];
     // docs/announcer.md: the dead queue ends here. Only my kill confirm and the lead change survive it, and they wait for
     // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
     if (!selfHit || revive.includes(PLAYX)) this._ann.respawn(this.now(), revive.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
-    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain);   // X3: the line before the fill
+    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...burst, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain);   // X3: the line before the fill
     this.hurtFired = false; this._hurtSent = false;
     this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
@@ -4221,14 +4228,14 @@ export class Engine {
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
     this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0; this._altPtr = 0; this._altEvidencePending = null;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
-    this._puRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst
+    if (keep) this._puSelfHitKeep(keep); else this._puRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     // F438 polish r1: a self-hit revive is the same life, so an enemy's poison keeps ticking and a smoke keeps its clock.
     // ⚠ Unbenched: the revive's `$SPAWN` clears every `$TMP`, so the gun may have dropped the smoke's accuracy hold already.
     if (!selfHit) { this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null; }   // S16/S53: a new life carries neither
     if (!selfHit) this._resetLifeLedger();   // S56: nor does the "what hit me" ledger (F438: a self-hit revive is the same life)
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null; this.downReason = null;
-    if (selfHit) { this.hp = selfHit.health; this.armor = selfHit.armor; this.shield = Math.min(selfHit.shield, fill.length ? this.maxShield : 0); }   // F438: what the drain leaves
+    if (selfHit) { this.hp = selfHit.health; this.armor = selfHit.armor; this.shield = osPset ? selfHit.shield : Math.min(selfHit.shield, fill.length ? this.maxShield : 0); }   // F438: what the drain leaves (F438 r4: the overshield's too)
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._gunLifeAt = this._spawnAt; this._armedThisLife = false;   // B5/F272: settle and silence clocks start with this life
@@ -6308,6 +6315,15 @@ export class Engine {
     const row = (burst || []).find(f => typeof f === 'string' && f.startsWith('$AMMO,0,')) || ((this.frames && this.frames.spawn) || []).find(f => f.startsWith('$AMMO,0,'));
     const t = row ? row.split(',') : null;
     if (t) this._puEquip(0, +t[2] || 0, +t[3] || 0, 'powerup: slot 0 re-equipped after the revive');
+    this._save();
+  }
+  /** F438 r4: after a self-hit revive the held heavy keeps its charges (the burst's own row carried them). A heavy that was
+   *  on the trigger goes back on it, as the reconcile re-arm does (F436). The `$SPAWN` refills the loadout weapons and puts
+   *  the gun on slot 0: accepted for loadout weapons, since a self-kill costs nothing and the refill is the gun's own. */
+  _puSelfHitKeep(h) {
+    this._acctWrote(h.slot, h.left, PU_RESERVE); this._prevAmmo[h.slot] = h.left; this._prevReserve[h.slot] = PU_RESERVE;
+    if (h.trig === h.slot && this._puHeadWeap(h.slot)) this._puEquip(h.slot, h.left, PU_RESERVE, `F438 r4: ${h.name} back on the trigger after the self-hit revive`);
+    else h.trig = 0;
     this._save();
   }
   /** The reconcile re-arm's spawn `$AMMO` rows with a held heavy's zero row swapped for its charges, in the SAME write:
