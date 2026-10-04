@@ -104,6 +104,7 @@ class PoisonState(TypedDict):
     next_at: float
     by: dict[str, int]
     ticks: int
+    cue_pending: NotRequired[bool]   # polish 2026-10-03 (engine.js `cuePending`): `poisoned` waits for a pool frame that says we live
 
 
 class DotEchoState(TypedDict):
@@ -2450,7 +2451,8 @@ class GunStage:
                           + (" + F438 self-hit drain" if drain else ""))
         self._after_spawn(keep_poison=bool(self_hit))
         for sl, (mag, res) in (keep or {}).items():   # polish 2026-10-03: the counts the burst carried
-            self._acct_wrote(sl, mag, res); self._prev_ammo[sl] = mag; self._prev_reserve[sl] = res
+            if mag is not None and res is not None:
+                self._acct_wrote(sl, mag, res); self._prev_ammo[sl] = mag; self._prev_reserve[sl] = res
         if self_hit:   # F438: what the drain leaves
             self.hp, self.armor = self_hit["health"], self_hit["armor"]
             self.shield = min(self_hit["shield"], self.max_shield if fill else 0)
