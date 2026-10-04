@@ -296,7 +296,7 @@ button, and the gun's buttons play no part.
    `station_action {id, action: "taken", player_num, t}` to MC (best effort).
 7. **The grant.** A phone applies the item only when the station's advert shows `taker` equal to its own
    `player_num` and it was `claim_ready` for that station. It then sends the `pickup` fact (queued, so it is the
-   reliable record; MC dedupes it against the station's report by station and spawn). **A loser's HUD says
+   reliable record; MC dedupes it against the station's report by station and spawn; F454, Tony 2026-10-04: when the two name different players, the station's report always wins, whatever the arrival order. A phone fact that came first is corrected in place when the report lands, with no second TOOK line and the taker and feed row updated. A later phone fact never overrides a report, and a second report for the same spawn changes nothing). **A loser's HUD says
    nothing** (F425, below: the HUD never names who took a station, or that it was taken at all). A phone that is
    ready for 3 s with no answer still says STATION NOT ANSWERING (that is a claim failure, not a taken report).
 8. **Unavailable until the next spawn.** The next spawn is the fixed schedule above, not a cooldown from the

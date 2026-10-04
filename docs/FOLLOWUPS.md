@@ -9,7 +9,7 @@ Updated: 2026-10-04. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 73.** Desk 1 · bench 69 · decision 3.
+**MVP open: 72.** Desk 1 · bench 69 · decision 2.
 
 **MVP DESK (1),** a keyboard is enough:
 - 🔴 **F452**
@@ -20,8 +20,7 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **S10**
 - 🟢 **F339**
 
-**MVP DECISION (3),** awaiting Tony:
-- 🟡 **F454**
+**MVP DECISION (2),** awaiting Tony:
 - 🟠 **F391**
 - 🟡 **F342**
 
@@ -293,7 +292,6 @@ sheets follow, in the order `bench-plan.md` gives.
 
 ## MVP DECISION: awaiting Tony
 
-- **F454 🟡 WHO TOOK THE ITEM WHEN THE PHONE AND THE STICK DISAGREE?** Desk 2026-10-04 (brx5, the powerup case file's `mc` actor): a player phone's `pickup` fact and a Stick's `taken` report can name different players for one spawn (two players in range, a late flush). MC credits whichever reaches it FIRST, and docs/spec/powerups.md is silent on a disagreement. The spec does say "the station itself decides who took an item". **Recommendation:** the station's report wins whatever the order. If a phone's fact arrived first, MC corrects the taker when the station's report lands, with no second TOOK line. Pickups are never scored, so only the feed, the recap and the station's claim window move. Cases ready to flip: `app/test/fixtures/powerup-station-cases.json` ("either order", "claiming alone takes nothing"). `decision`.
 
 Tony's call. Each row says what the answer unblocks.
 
