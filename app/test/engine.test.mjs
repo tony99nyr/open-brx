@@ -732,6 +732,30 @@ test('control point: a second contest after scoring resumed plays again, past th
   assert.equal(nWrites(h, HILL_CONTESTED_F), 2, 'and its ticks never replay it');
 });
 
+// H-L (review 2026-10-03): the 3 s floor must not swallow a REAL second stall. A contest edge the floor blocks is
+// owed, and said once the floor has passed if our point is still held and contested.
+test('control point: a second stall inside the 3 s floor is said once the floor passes, if it is still a stall', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });
+  control(h, { team: 1, state: HELD | CONTESTED, value: 98 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1);
+  runControl(h, 1000, { team: 1, state: HELD, value: 98 });                 // scoring resumed
+  runControl(h, 1500, { team: 1, state: HELD | CONTESTED, value: 97 });     // a real second stall, inside the floor
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1, 'the floor holds it back');
+  runControl(h, 1500, { team: 1, state: HELD | CONTESTED, value: 97 });     // still contested past the floor
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 2, 'owed, and said once the floor passed');
+  runControl(h, 3000, { team: 1, state: HELD | CONTESTED, value: 97 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 2, 'once, not per advert');
+  // A stall that ended inside the floor owes nothing.
+  const g = koth();
+  control(g, { team: 1, state: HELD, value: 100 });
+  control(g, { team: 1, state: HELD | CONTESTED, value: 98 });
+  runControl(g, 1000, { team: 1, state: HELD, value: 98 });
+  runControl(g, 500, { team: 1, state: HELD | CONTESTED, value: 98 });
+  runControl(g, 4000, { team: 1, state: HELD, value: 98 });
+  assert.equal(nWrites(g, HILL_CONTESTED_F), 1, 'scoring resumed before the floor passed: nothing is owed');
+});
+
 test('control point: a capture in the same advert wins outright over contested', () => {
   // `_hillSay` preempts rather than queues, so announcing both would cut "Hill Captured" off after a few
   // hundred ms and leave the player with the less important of the two facts.

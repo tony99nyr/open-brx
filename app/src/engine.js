@@ -3679,11 +3679,14 @@ export class Engine {
     const stalled = contested && held && mine != null && mine !== HILL_NEUTRAL_TEAM && owner === mine;
     // Polish r1: two stations on one id alternate their fields every scan, so the bit can flap where F440's debounce
     // cannot reach; HILL_CALLOUT_MIN_MS (3 s, the floor the transition lines already have) bounds that. A stall inside
-    // the floor still starts its episode, so it is never said late.
-    if (stalled && !this._hillWasContested && !said && audio && now - (this._hillContestedAt || 0) >= HILL_CALLOUT_MIN_MS) {
-      this._hillContestedAt = now;
+    // the floor is owed, and said when the floor passes only if the point is still held and contested.
+    // H-L (review 2026-10-03): an edge the floor blocks is OWED, and said once the floor passes if it is still a stall.
+    const floorOk = now - (this._hillContestedAt || 0) >= HILL_CALLOUT_MIN_MS;
+    if (stalled && (!this._hillWasContested || this._hillContestOwed) && !said && audio && floorOk) {
+      this._hillContestedAt = now; this._hillContestOwed = false;
       this._hillSay('hill_contested', `control point ${e.id}: our scoring stopped, the other team is in the circle (${e.value}%)`);
-    }
+    } else if (!stalled || said || !audio) this._hillContestOwed = false;
+    else if (!this._hillWasContested && !floorOk) this._hillContestOwed = true;
     this._hillBegins(e.id, now, audio && !said && !this._alertsMissed(), said && !this._alertsMissed());   // down: the episode is marked, its badge missed (and its 10 s floor not spent)
     this._hillWasContested = stalled;
     // 4 Hz: only a fact the screen shows is worth a render (progress to the whole percent, like the RSSI
@@ -3796,7 +3799,7 @@ export class Engine {
   _resetHill() {
     this.hill = null; this.hillCallout = null; this._hillTickAt = 0;
     this._controlSite = null; this._controlLastOwner = null; this._controlSpokenOwner = null; this._hillPendingCallout = null; this._controlSig = ''; this._hillSaidAt = 0;
-    this._hillWasContested = false; this._hillContestedAt = 0; this._hillOwnerWhenSilenced = undefined;
+    this._hillWasContested = false; this._hillContestedAt = 0; this._hillContestOwed = false; this._hillOwnerWhenSilenced = undefined;
     this._hillTeam2Warned = false; this._hillSourceWarned = '';
     this._hillEp = null; this._hillBeginsAt = {};
     this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null;

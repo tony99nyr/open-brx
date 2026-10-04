@@ -712,6 +712,7 @@ class GunStage:
         self._hill_said_at = 0.0                   # when a captured/lost line last played, for HILL_CALLOUT_MIN_S
         self._hill_was_contested = False           # our point held AND contested at the last advert (the holder's stall, edge-triggered)
         self._hill_contested_at = -1e9             # when "Hill Contested" last played (the HILL_CALLOUT_MIN_S floor against a flapping bit)
+        self._hill_contest_owed = False            # H-L: a stall edge the floor blocked, said once the floor passes if still a stall
         self._hill_owner_when_silenced: Any = _UNSET   # C: the owner as we last heard it while audio was ON (_UNSET = never)
         self._hill_source_warned = ""              # B: the refused objective source, logged once per game
         # F58(b): the pool-RISE events (`healed` / `armour_up` / `shield_up`) are dropped inside RARE_GUARD_S of a
@@ -3432,7 +3433,7 @@ class GunStage:
         self._hill_scream_pending = None
         self._control_site = None; self._control_last_owner = None; self._control_spoken_owner = None; self._hill_pending_callout = None
         self._control_sig = ""; self._hill_said_at = 0.0
-        self._hill_was_contested = False; self._hill_contested_at = -1e9; self._hill_owner_when_silenced = _UNSET
+        self._hill_was_contested = False; self._hill_contested_at = -1e9; self._hill_contest_owed = False; self._hill_owner_when_silenced = _UNSET
         self._hill_team2_warned = False; self._hill_source_warned = ""
 
     # ---- K1 / F102: the phone CONTROL POINT (kind 5), a faithful port of engine.js `_onControlAdvert` -----
@@ -3549,11 +3550,17 @@ class GunStage:
         # advert wins outright (the episode still counts as started).
         mine = self._hill_tid()
         stalled = bool(contested and held and mine is not None and mine != HILL_NEUTRAL_TEAM and owner == mine)
-        # Polish r1: HILL_CALLOUT_MIN_S bounds a flapping bit (two stations on one id); a stall inside it still starts
-        # its episode, so it is never said late.
-        if stalled and not self._hill_was_contested and not said and audio and now - self._hill_contested_at >= HILL_CALLOUT_MIN_S:
+        # Polish r1: HILL_CALLOUT_MIN_S bounds a flapping bit (two stations on one id). H-L (review 2026-10-03): an edge the
+        # floor blocks is OWED, and said once the floor passes if it is still a stall (engine.js `_hillContestOwed`).
+        floor_ok = now - self._hill_contested_at >= HILL_CALLOUT_MIN_S
+        if stalled and (not self._hill_was_contested or self._hill_contest_owed) and not said and audio and floor_ok:
             self._hill_contested_at = now
+            self._hill_contest_owed = False
             self._hill_say("hill_contested", f"control point {e['id']}: our scoring stopped, the other team is in the circle ({e['value']}%)")
+        elif not stalled or said or not audio:
+            self._hill_contest_owed = False
+        elif not self._hill_was_contested and not floor_ok:
+            self._hill_contest_owed = True
         self._hill_was_contested = stalled
         sig = f"{e['id']}:{owner}:{held}:{contested}:{self.hill['progress']}:{self.hill['holding']}:{rising}:{falling}:{bool(e.get('present'))}"
         if sig != self._control_sig:
