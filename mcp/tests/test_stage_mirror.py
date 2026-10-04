@@ -2850,3 +2850,12 @@ def test_a65_a_lost_damaging_hit_credits_the_team_of_the_fresh_no_pool_word():
         assert await death_after("$HIR,0,8,5,2,0,0,0,*", 2.5, "$HP,0,0,0,*") is None, "control: a stale latch credits nobody"
         assert await death_after("$HIR,0,8,5,3,0,0,0,*", "$HP,0,0,0,*") is None, "a team not on the roster credits nobody"
     asyncio.run(go())
+
+
+def test_encode_advert_uuid_rejects_an_unknown_role_with_value_error():
+    for bad in (0, 7, "bogus", "", None):
+        try:
+            encode_advert_uuid(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"role {bad!r} should raise ValueError")

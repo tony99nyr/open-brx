@@ -4,9 +4,9 @@
 //
 // The F440 presence and hill rules (the circle, the exit band and grace, the window median, contest, the
 // capture arithmetic) live in app/test/fixtures/presence-hill-cases.json and run in test_presence_cases.cpp. What
-// is left here is what that file does not say: the Stick's own defaults, slot handling, the edge events of
-// HillUpdate, revive counting and the rest of the Stick-only API. Every expectation is still what app/src/beacon.js
-// or app/src/control.js does with the same inputs.
+// is left here is what that file does not say: the Stick's own defaults, slot handling, the 64-slot drop, the
+// HillUpdate edge events (captured_from, contested_edge, neutralised_by), the lead of a tie, revive counting, the
+// sighting ring and the IR words. Each expectation is still what app/src/beacon.js or app/src/control.js does.
 #include <cstdio>
 #include <string>
 
@@ -187,6 +187,28 @@ static void test_presence_drops_a_65th_player_and_counts_it() {
 }
 
 // ---- BleControlPoint ------------------------------------------------------------------------------
+
+// The edge events and the lead of a tie, which the shared case file (outcomes only) does not carry.
+static void test_hill_edge_events_and_a_tied_lead() {
+  Field f;
+  f.add(1, 0);
+  f.settle();
+  BleControlPoint cp;
+  cp.update(f.pr, f.t);
+  HillUpdate u = run(cp, f, 10000);
+  CHECK(u.captured);
+  CHECK_EQ(u.captured_team, 0);
+  CHECK_EQ(u.captured_from, -1);  // a first capture robs nobody
+  CHECK_EQ(cp.captures, 1u);
+  Field g;
+  g.add(1, 0);
+  g.add(2, 1);
+  g.settle();
+  BleControlPoint cp2;
+  CHECK(cp2.update(g.pr, g.t).contested_edge);  // contested on the first update
+  CHECK_EQ(cp2.lead, 0);                        // a tie for the lead goes to the lower tid (control.js `|| a - b`)
+  CHECK_EQ(cp2.net, 0);
+}
 
 static void test_team_two_is_refused_and_dead_players_count_for_nothing() {
   Field f;
@@ -512,6 +534,7 @@ int main() {
   test_presence_four_second_expiry();
   test_presence_game_byte_and_roles();
   test_presence_drops_a_65th_player_and_counts_it();
+  test_hill_edge_events_and_a_tied_lead();
   test_team_two_is_refused_and_dead_players_count_for_nothing();
   test_an_enemy_held_point_drains_to_neutral_before_it_builds();
   test_a_zero_crossing_carries_the_remaining_work_into_the_build();

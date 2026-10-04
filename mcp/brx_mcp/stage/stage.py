@@ -339,7 +339,7 @@ def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = 
                        value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0) -> str:
     """beacon.js `encodeUuid`, byte for byte: what a phone station puts on the air."""
     r = _beacon.ROLE.get(role) if isinstance(role, str) else int(role)
-    if not r:
+    if r not in _beacon.ROLE_NAME:
         raise ValueError("role required (station|player)")
     return _beacon.encode(_beacon.ROLE_NAME[r], int(id), kind, int(team), int(state), int(value), int(seq), int(game),
                           threshold, int(taker))

@@ -84,3 +84,17 @@ def test_every_expected_hill_advert_is_one_a_station_may_send():
             else:
                 assert h["team"] == S.STATION_TEAM_ANY or S.claimable(h["team"]), at
             assert not ("rising" in h["state"] and "falling" in h["state"]), at
+
+
+def test_every_checkpoint_is_on_a_tick_once_and_names_a_player_the_case_has():
+    for c in CASES:
+        seen = set()
+        for ex in c["expect"]:
+            at = f"{c['name']} t={ex['t']}"
+            assert ex["t"] <= c["until_ms"] and ex["t"] % c["setup"]["tick_ms"] == 0, at
+            assert ex["t"] not in seen, f"duplicate checkpoint {at}"
+            seen.add(ex["t"])
+            for id in [*ex.get("in", {}), *ex.get("present", {})]:
+                assert id in c["players"], f"{at} names player {id}, which the case does not have"
+        if "known_fail" in c:
+            assert c["known_fail"].startswith("F"), f"{c['name']}: a known_fail names its follow-up id"

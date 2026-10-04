@@ -23,29 +23,42 @@ RANGE_H = (ROOT / "hardware/m5sticks3/station_range.h").read_text(encoding="utf-
 NUM = r"(-?\d+(?:\.\d+)?)"
 
 
+def code_only(text: str) -> str:
+    """The text with `/* */` blocks and `//` comments removed, so a comment that quotes an old value is never read
+    as a declaration. (Neither language's files read here put `//` or `/*` inside a string.)"""
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"//[^\n]*", "", text)
+
+
 def _num(text: str, pattern: str, where: str) -> float:
-    m = re.search(pattern, text)
-    assert m, f"{where}: cannot find {pattern!r}; if the constant moved or was renamed, update this parity test"
+    m = re.search(pattern, code_only(text))
+    assert m, f"{where}: cannot find {pattern!r} in code; if the constant moved or was renamed, update this parity test"
     return float(m.group(1))
 
 
 def cpp(text: str, name: str) -> float:
-    """`constexpr <type> NAME = 12;` or `NAME = 12,` among several on one line."""
-    return _num(text, rf"\b{name}\s*=\s*{NUM}", name)
+    """A name declared by a `constexpr` statement: `constexpr uint32_t NAME = 12;` or `NAME = 12,` among several."""
+    for stmt in re.findall(r"\bconstexpr\b[^;]*;", code_only(text)):
+        m = re.search(rf"\b{name}\s*=\s*{NUM}", stmt)
+        if m:
+            return float(m.group(1))
+    raise AssertionError(f"{name}: no constexpr declaration found; if it moved or was renamed, update this parity test")
 
 
 def js_const(text: str, name: str) -> float:
-    return _num(text, rf"\b{name}\s*=\s*{NUM}\s*;", name)
+    return _num(text, rf"\bconst\s+{name}\s*=\s*{NUM}\s*;", name)
 
 
 def js_ctor_default(text: str, name: str) -> float:
     """A default in the Presence constructor's destructuring: `expiryMs = 4000`."""
-    return _num(text, rf"\b{name}\s*=\s*{NUM}\s*[,}}]", name)
+    m = re.search(r"constructor\(\{([^)]*)\}\s*=\s*\{\}\)", code_only(text))
+    assert m, "constructor destructuring not found; update this parity test"
+    return _num(m.group(1), rf"\b{name}\s*=\s*{NUM}\s*(?:,|$)", name)
 
 
 def js_object(text: str, name: str) -> dict[str, float]:
-    """`name = { a: 1, b: 2 }` or `name = Object.freeze({ a: 1 })` as {a: 1, b: 2}."""
-    m = re.search(rf"\b{name}\s*=\s*(?:Object\.freeze\(\s*)?\{{([^}}]*)\}}", text)
+    """`const name = { a: 1, b: 2 }` or `= Object.freeze({ a: 1 })` as {a: 1, b: 2}."""
+    m = re.search(rf"\bconst\s+{name}\s*=\s*(?:Object\.freeze\(\s*)?\{{([^}}]*)\}}", code_only(text))
     assert m, f"{name}: object literal not found; update this parity test"
     pairs = dict(re.findall(rf"(\w+)\s*:\s*{NUM}", m.group(1)))
     assert pairs, f"{name}: no numeric members parsed"
@@ -80,8 +93,8 @@ def test_presence_h_constant_matches_its_js_twin(name, twin):
 
 
 def test_hill_neutral_is_the_any_team_byte():
-    assert re.search(r"\bHILL_NEUTRAL\s*=\s*TEAM_ANY\b", PRESENCE_H), "presence.h HILL_NEUTRAL must stay TEAM_ANY (control.js NEUTRAL)"
-    assert re.search(r"export const NEUTRAL\s*=\s*TEAM_ANY\b", CONTROL_JS)
+    assert re.search(r"\bHILL_NEUTRAL\s*=\s*TEAM_ANY\b", code_only(PRESENCE_H)), "presence.h HILL_NEUTRAL must stay TEAM_ANY (control.js NEUTRAL)"
+    assert re.search(r"export const NEUTRAL\s*=\s*TEAM_ANY\b", code_only(CONTROL_JS))
 
 
 def test_the_stick_threshold_defaults_match_the_phones_platform_table():
@@ -97,9 +110,9 @@ def test_the_advert_kind_role_and_team_tables_match():
     assert roles == {"station": cpp(ADVERT_H, "ROLE_STATION"), "player": cpp(ADVERT_H, "ROLE_PLAYER")}
     assert cpp(ADVERT_H, "ADVERT_VERSION") == js_const(BEACON_JS, "VERSION")
     assert cpp(ADVERT_H, "TEAM_ANY") == js_const(BEACON_JS, "TEAM_ANY")
-    magic = [int(x, 16) for x in re.search(r"MAGIC\s*=\s*\[([^\]]*)\]", BEACON_JS).group(1).replace(" ", "").split(",")]
+    magic = [int(x, 16) for x in re.search(r"const MAGIC\s*=\s*\[([^\]]*)\]", code_only(BEACON_JS)).group(1).replace(" ", "").split(",")]
     assert magic == [0x4F, 0x42, 0x52, 0x58]
-    assert "0x4f, 0x42, 0x52, 0x58" in ADVERT_H, "brx_advert.h advert_bytes() magic"
+    assert "0x4f, 0x42, 0x52, 0x58" in code_only(ADVERT_H), "brx_advert.h advert_bytes() magic"
 
 
 def test_the_hill_state_and_player_state_bits_match():
@@ -114,3 +127,18 @@ def test_the_parity_test_can_fail():
     """The reader must see a changed number, or the checks above are decoration."""
     assert js_const(BEACON_JS.replace("EXIT_BAND_DB = 3;", "EXIT_BAND_DB = 4;"), "EXIT_BAND_DB") == 4
     assert cpp(PRESENCE_H.replace("PRESENCE_HYSTERESIS_DB = 3;", "PRESENCE_HYSTERESIS_DB = 5;"), "PRESENCE_HYSTERESIS_DB") == 5
+
+
+def test_a_comment_that_quotes_an_old_value_is_not_read_as_the_declaration():
+    """The readers take declarations only: a `//` or `/* */` comment (or a line mentioning the name) that holds the
+    old number must not win over, or stand in for, the real declaration."""
+    js = "// export const EXIT_BAND_DB = 6;\n/* const EXIT_BAND_DB = 7; */\nexport const EXIT_BAND_DB = 3;\n"
+    assert js_const(js, "EXIT_BAND_DB") == 3
+    h = "// constexpr int PRESENCE_HYSTERESIS_DB = 6;\n/* constexpr int PRESENCE_HYSTERESIS_DB = 7; */\nconstexpr int PRESENCE_HYSTERESIS_DB = 3;  // was 6\n"
+    assert cpp(h, "PRESENCE_HYSTERESIS_DB") == 3
+    with pytest.raises(AssertionError):                       # a name that only a comment declares is not found
+        js_const("// export const EXIT_BAND_DB = 6;\n", "EXIT_BAND_DB")
+    with pytest.raises(AssertionError):
+        cpp("// constexpr int PRESENCE_HYSTERESIS_DB = 6;\n", "PRESENCE_HYSTERESIS_DB")
+    ctor = "constructor({ dwellMs = 2000, expiryMs = 4000, alpha = 0.35 } = {}) {}"
+    assert js_ctor_default("// expiryMs = 9999,\n" + ctor, "expiryMs") == 4000

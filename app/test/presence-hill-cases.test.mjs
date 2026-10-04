@@ -25,42 +25,62 @@ export function expandSightings(c) {
   return out.sort((a, b) => a.t - b.t);
 }
 
+/** Structure a runner must reject, whatever the rules say: a checkpoint off the tick grid, past until_ms, repeated, or naming a player the case does not have. */
+function validate(c) {
+  const seen = new Set();
+  for (const e of c.expect || []) {
+    assert.ok(e.t <= c.until_ms && e.t % c.setup.tick_ms === 0, `checkpoint t=${e.t} must be a tick time within until_ms`);
+    assert.ok(!seen.has(e.t), `duplicate checkpoint t=${e.t}`);
+    seen.add(e.t);
+    for (const id of [...Object.keys(e.in || {}), ...Object.keys(e.present || {})]) assert.ok(id in c.players, `checkpoint t=${e.t} names player ${id}, which the case does not have`);
+  }
+}
+
+function runCase(c) {
+  const s = c.setup;
+  const presence = new Presence({ defaultThreshold: s.threshold_dbm, dwellMs: s.dwell_ms, hysteresisDb: s.exit_band_db,
+    exitGraceMs: s.exit_grace_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha });
+  const point = new ControlPoint({ captureS: s.capture_s, netCap: s.net_cap });
+  const sightings = expandSightings(c);
+  const expects = new Map((c.expect || []).map(e => [e.t, e]));
+  let next = 0;
+  for (let t = 0; t <= c.until_ms; t += s.tick_ms) {
+    while (next < sightings.length && sightings[next].t <= t) {
+      const h = sightings[next++];
+      const p = c.players[String(h.id)];
+      presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(p.state) })], h.rssi, h.t);
+    }
+    presence.tick(t);
+    point.update(presence.players(), t);
+    const adv = point.advert();
+    if (process.env.CASES_TRACE) {
+      const ins = presence.players().map(e => `${e.id}:${e.inCircle ? 'IN' : 'out'}${e.present ? '+P' : ''}`).join(' ');
+      console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value}`);
+    }
+    const ex = expects.get(t);
+    if (!ex) continue;
+    const at = `t=${t}`;
+    for (const [id, want] of Object.entries(ex.in || {})) {
+      const e = presence.players().find(x => x.id === +id);
+      assert.equal(!!(e && e.inCircle), want, `${at} player ${id} in the circle`);
+    }
+    for (const [id, want] of Object.entries(ex.present || {})) {
+      const e = presence.players().find(x => x.id === +id);
+      assert.equal(!!(e && e.present), want, `${at} player ${id} present`);
+    }
+    if (ex.hill) assert.deepEqual(adv, { team: ex.hill.team, state: hillByte(ex.hill.state), value: ex.hill.value }, `${at} hill advert`);
+  }
+}
+
 for (const c of FIXTURE.cases) {
   if (c.only && !c.only.includes('phone')) continue;
-  test(`presence/hill cases: ${c.name}`, () => {
-    const s = c.setup;
-    const presence = new Presence({ defaultThreshold: s.threshold_dbm, dwellMs: s.dwell_ms, hysteresisDb: s.exit_band_db,
-      exitGraceMs: s.exit_grace_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha });
-    const point = new ControlPoint({ captureS: s.capture_s, netCap: s.net_cap });
-    const sightings = expandSightings(c);
-    const expects = new Map((c.expect || []).map(e => [e.t, e]));
-    let next = 0;
-    for (let t = 0; t <= c.until_ms; t += s.tick_ms) {
-      while (next < sightings.length && sightings[next].t <= t) {
-        const h = sightings[next++];
-        const p = c.players[String(h.id)];
-        presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(p.state) })], h.rssi, h.t);
-      }
-      presence.tick(t);
-      point.update(presence.players(), t);
-      const adv = point.advert();
-      if (process.env.CASES_TRACE) {
-        const ins = presence.players().map(e => `${e.id}:${e.inCircle ? 'IN' : 'out'}${e.present ? '+P' : ''}`).join(' ');
-        console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value}`);
-      }
-      const ex = expects.get(t);
-      if (!ex) continue;
-      const at = `t=${t}`;
-      for (const [id, want] of Object.entries(ex.in || {})) {
-        const e = presence.players().find(x => x.id === +id);
-        assert.equal(!!(e && e.inCircle), want, `${at} player ${id} in the circle`);
-      }
-      for (const [id, want] of Object.entries(ex.present || {})) {
-        const e = presence.players().find(x => x.id === +id);
-        assert.equal(!!(e && e.present), want, `${at} player ${id} present`);
-      }
-      if (ex.hill) assert.deepEqual(adv, { team: ex.hill.team, state: hillByte(ex.hill.state), value: ex.hill.value }, `${at} hill advert`);
-    }
-    for (const e of c.expect || []) assert.ok(e.t <= c.until_ms && e.t % s.tick_ms === 0, `checkpoint t=${e.t} must be a tick time within until_ms`);
+  test(`presence/hill cases: ${c.name}${c.known_fail ? ' [KNOWN FAIL]' : ''}`, () => {
+    validate(c);
+    if (!c.known_fail) return runCase(c);
+    // A known failure states the rule and fails today. The case must KEEP failing: when a fix makes it pass, this
+    // test fails and says so, so the label cannot outlive the bug.
+    let failed = false;
+    try { runCase(c); } catch (e) { if (!(e instanceof assert.AssertionError)) throw e; failed = true; }
+    assert.ok(failed, `known_fail "${c.known_fail}" now PASSES on the phone: remove known_fail from this case`);
   });
 }
