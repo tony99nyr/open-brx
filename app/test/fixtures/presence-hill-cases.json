@@ -240,6 +240,29 @@
       ]
     },
     {
+      "name": "the same signal at a third rate (twice as dense) gives the same answer too",
+      "why": "F452(b): the 64-advert bound used to drop the oldest, so the denser the advertiser the shorter its window. Players 1, 2 and 3 send the same signal at one advert per 20, 40 and 10 ms (80, 40 and 160 adverts in 1.6 s: 55% at -90, then -50). All three must read the same answer, out, before the dwell.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
+      "until_ms": 2000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 860, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 880, "to_ms": 1580, "every_ms": 20, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 840, "every_ms": 40, "rssi": [-90]}, {"id": 2, "from_ms": 880, "to_ms": 1560, "every_ms": 40, "rssi": [-50]}, {"id": 3, "from_ms": 0, "to_ms": 870, "every_ms": 10, "rssi": [-90]}, {"id": 3, "from_ms": 880, "to_ms": 1590, "every_ms": 10, "rssi": [-50]}],
+      "expect": [
+        {"t": 1750, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}}
+      ]
+    },
+    {
+      "name": "a full window never drops the newest advert, so a late run of strong adverts still enters",
+      "why": "F452(b): the thinning removes an old sample, never the one just heard. 76 adverts at -90 fill the window (every 20 ms to 1500), then strong adverts keep coming. The dwell is 60 s, so only the sighting window can put the player in the circle. Out while the window is all low; in once strong adverts are most of it. A window that dropped the newest sample when full could never turn.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 4000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 1500, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 1520, "to_ms": 3500, "every_ms": 20, "rssi": [-50]}],
+      "expect": [
+        {"t": 1500, "in": {"1": false}},
+        {"t": 3500, "in": {"1": true}}
+      ]
+    },
+    {
       "name": "net is capped at three, so five red build at three times the rate",
       "why": "\u00a75d.1: net is clamped to net_cap. Five red on an empty point: 30 points a second.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
@@ -294,7 +317,7 @@
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 20000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 2500, "rssi": [-88, -74]}],
-      "known_fail": {"why": "F452: a sparse phone enters on a single peak the dense phone's window median rejects; remove known_fail when the edge is rate-independent", "at": [2500, 5000, 7500, 10000, 20000]},
+      "known_fail": {"why": "F452(a): kept by Tony's decision 2026-10-02 (commit 2504d9b0): the sparse-phone edge noise stays until bench 10c's ladder measures real fading", "at": [2500, 5000, 7500, 10000, 20000]},
       "expect": [
         {"t": 2500, "in": {"1": false}},
         {"t": 5000, "in": {"1": false}},
@@ -304,13 +327,12 @@
       ]
     },
     {
-      "name": "RULE: the same signal at half the advert rate gives the same answer, so a 64-advert cap cannot decide entry [F452]",
-      "why": "Player 1 sends 44 adverts at -90 then 36 at -50 inside 1.6 s (one every 20 ms). Player 2 sends the same signal at half the rate (22 low, 18 high, one every 40 ms). The rule is one answer for both: out. Neither full window is a tie (44 of 80 and 22 of 40 are low, so both middle readings are low), so the answer does not hang on the median's tie rule. Only the 64-advert bound differs: it drops 16 of the dense phone's lows, leaves 28 low and 36 high, and lets it in at t=1750. (Both are in a little later through the dwell, a real 0.8 s above the threshold, so the checkpoint is before that.) Expected to FAIL today at t=1750.",
+      "name": "the same signal at half the advert rate gives the same answer, so the 64-advert cap cannot decide entry",
+      "why": "Player 1 sends 44 adverts at -90 then 36 at -50 inside 1.6 s (one every 20 ms). Player 2 sends the same signal at half the rate (22 low, 18 high, one every 40 ms). The rule is one answer for both: out. Neither full window is a tie (44 of 80 and 22 of 40 are low, so both middle readings are low), so the answer does not hang on the median's tie rule. F452(b): when the window is full it is thinned evenly across time, so the dense phone's window still spans the whole 2 s and reads the same median. (Both are in a little later through the dwell, a real 0.8 s above the threshold, so the checkpoint is before that.)",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 2000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 860, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 880, "to_ms": 1580, "every_ms": 20, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 840, "every_ms": 40, "rssi": [-90]}, {"id": 2, "from_ms": 880, "to_ms": 1560, "every_ms": 40, "rssi": [-50]}],
-      "known_fail": {"why": "F452: the SIGHT_RECENT_MAX bound gives a dense phone a different edge from the same signal at half the rate; remove known_fail when both read alike", "at": [1750]},
       "expect": [
         {"t": 1750, "same_in": ["1", "2"], "in": {"1": false, "2": false}}
       ]

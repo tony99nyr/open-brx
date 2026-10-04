@@ -100,8 +100,32 @@ export const SIGHT_WINDOW_MS = 2000;
  *  fading. */
 export const SIGHT_MS = 4000;   // = the silence expiry: a credible sighting counts for 4 s
 /** P-L1 (review 2026-10-03): the most adverts the sighting window keeps, the same bound as the Stick (presence.h
- *  SIGHT_RECENT_MAX), so a flood reads the same median on both. */
+ *  SIGHT_RECENT_MAX), so a flood reads the same median on both. F452(b): a full window is THINNED EVENLY ACROSS TIME
+ *  (`thinWindow`), never trimmed from the old end, so it always represents the whole SIGHT_WINDOW_MS. */
 export const SIGHT_RECENT_MAX = 64;
+/**
+ * F452(b): thin a sighting window to at most `max` samples ({ t, rssi }, oldest first) while it still spans the
+ * whole window. Each removal takes the sample whose two neighbours are closest together (the smallest span
+ * `t[i+1] - t[i-1]`, so its removal opens the smallest hole), never the oldest and never the newest. Among equal
+ * spans (a steady stream) it takes the one nearest the middle of the list, so removals spread across the window and
+ * do not eat one end. The old rule dropped the OLDEST, so a dense advertiser's window covered under 2 s and its
+ * median leaned on recent samples: the same signal at half the rate read a different answer. PURE, deterministic,
+ * two O(n) passes per removal. The Stick's twin is presence.h `sight_thin_index`.
+ */
+export function thinWindow(samples, max = SIGHT_RECENT_MAX) {
+  const a = samples.slice();
+  while (a.length > max && a.length > 2) {
+    let best = Infinity;
+    for (let i = 1; i < a.length - 1; i++) best = Math.min(best, a[i + 1].t - a[i - 1].t);
+    const mid = (a.length - 1) / 2;
+    let at = -1;
+    for (let i = 1; i < a.length - 1; i++) {
+      if (a[i + 1].t - a[i - 1].t === best && (at < 0 || Math.abs(i - mid) < Math.abs(at - mid))) at = i;
+    }
+    a.splice(at, 1);
+  }
+  return a;
+}
 /** How many recent inter-arrival gaps a Presence entry keeps (F440 diagnostics). */
 export const GAP_SAMPLES = 16;
 
@@ -157,9 +181,10 @@ export class Presence {
     // F440: a credible sighting is the MEDIAN of the adverts heard in the last SIGHT_WINDOW_MS at or above the threshold.
     // Review rounds 1-2: a single sample (or a band that kept a player in) let a DENSE advertiser enter on a noise peak
     // and stay, so the circle edge moved with advert rate. A window median gives every phone the same edge: a sparse
-    // phone's window holds its one advert, a dense phone's holds several. Staying in comes from `present` (the EMA
+    // phone's window holds its one advert, a dense phone's holds several, thinned evenly over the 2 s when there are more than SIGHT_RECENT_MAX (F452(b)). Staying in comes from `present` (the EMA
     // with its debounced exit). Binary: never weighted by how far above.
-    e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }].slice(-SIGHT_RECENT_MAX);
+    e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }];
+    e.recent = thinWindow(e.recent);
     if (medianOf(e.recent.map(x => x.rssi)) >= this.thresholdFor(e)) e.sightedAt = now;
     return e;
   }

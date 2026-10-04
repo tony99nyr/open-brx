@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <climits>
 #include <cstdint>
 #include <string>
 
@@ -59,6 +60,24 @@ constexpr uint32_t PRESENCE_SIGHT_MS = 4000;
 // (beacon.js SIGHT_WINDOW_MS): the same circle edge for a dense and a sparse advertiser. SIGHT_RECENT_MAX bounds it.
 constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
 constexpr size_t SIGHT_RECENT_MAX = 64;  // P-L1: beacon.js SIGHT_RECENT_MAX (about 32 KB across 64 players)
+// F452(b): when the window is full it is thinned evenly across time, never trimmed from the old end. The sample whose
+// two neighbours are closest together (smallest t[i+1] - t[i-1]) goes, never the oldest and never the newest; among
+// equal spans the one nearest the middle of the list (the lower index on a tie), so removals spread across the window.
+// The window still spans PRESENCE_SIGHT_WINDOW_MS at any advert rate. Returns the index to remove from t[0..n), n >= 3.
+// beacon.js `thinWindow` is the twin; the signed difference keeps it wrap-safe on millis().
+inline size_t sight_thin_index(const uint32_t* t, size_t n) {
+  int32_t best = INT32_MAX;
+  for (size_t i = 1; i + 1 < n; i++) { const int32_t s = (int32_t)(t[i + 1] - t[i - 1]); if (s < best) best = s; }
+  size_t at = 0;
+  size_t at_dist2 = 0;  // 2 * |i - mid|, kept integral: 2i - (n - 1)
+  for (size_t i = 1; i + 1 < n; i++) {
+    if ((int32_t)(t[i + 1] - t[i - 1]) != best) continue;
+    const long d = (long)(2 * i) - (long)(n - 1);
+    const size_t d2 = (size_t)(d < 0 ? -d : d);
+    if (at == 0 || d2 < at_dist2) { at = i; at_dist2 = d2; }
+  }
+  return at;
+}
 constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
 constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // beacon.js STATION_THRESHOLD_DBM (the phone station's default for a kind
                                                      // with no value of its own; utility.js DEFAULTS.threshold is 0 = that default)
@@ -182,15 +201,20 @@ class PlayerPresence {
   bool in_circle_now(const PlayerEntry& e, uint32_t now) const {
     return e.present || (e.sighted && now - e.sighted_at <= sight_ms);
   }
-  // F440 (beacon.js observe): the median of the adverts in the last PRESENCE_SIGHT_WINDOW_MS, at or above the threshold.
+  // F440 (beacon.js observe): the median of the adverts in the last PRESENCE_SIGHT_WINDOW_MS, at or above the threshold
+  // (a full window thinned evenly across time, F452(b)).
   void stamp_sighting(PlayerEntry& e, int rssi, uint32_t now) const {
     size_t keep = 0;
     for (size_t i = 0; i < e.n_recent; i++) {
       if (now - e.recent_t[i] < PRESENCE_SIGHT_WINDOW_MS) { e.recent_t[keep] = e.recent_t[i]; e.recent_rssi[keep] = e.recent_rssi[i]; keep++; }
     }
     e.n_recent = keep;
-    if (e.n_recent == SIGHT_RECENT_MAX) {  // full: drop the oldest
-      for (size_t i = 1; i < SIGHT_RECENT_MAX; i++) { e.recent_t[i - 1] = e.recent_t[i]; e.recent_rssi[i - 1] = e.recent_rssi[i]; }
+    if (e.n_recent == SIGHT_RECENT_MAX) {  // full: thin evenly across time (F452(b)), the new sample being the newest of 65
+      uint32_t t[SIGHT_RECENT_MAX + 1];
+      for (size_t i = 0; i < e.n_recent; i++) t[i] = e.recent_t[i];
+      t[e.n_recent] = now;
+      const size_t drop = sight_thin_index(t, e.n_recent + 1);  // 1..n_recent-1: an existing, never the oldest or the new one
+      for (size_t i = drop + 1; i < e.n_recent; i++) { e.recent_t[i - 1] = e.recent_t[i]; e.recent_rssi[i - 1] = e.recent_rssi[i]; }
       e.n_recent--;
     }
     e.recent_t[e.n_recent] = now;

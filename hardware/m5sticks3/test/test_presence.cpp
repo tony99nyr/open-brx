@@ -142,6 +142,44 @@ static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
   }
 }
 
+// F452(b): a full sighting window is thinned evenly across time. app/test/beacon.test.mjs asserts the same vectors
+// (the kept sets are pinned by their sums), so beacon.js `thinWindow` and `sight_thin_index` stay one rule.
+static void test_sight_window_is_thinned_evenly_across_time() {
+  PlayerPresence pr;
+  for (uint32_t k = 0; k < 100; k++) {
+    pr.observe(player(5, 0), -60, k * 20);
+    const PlayerEntry* e = pr.get(5);
+    CHECK_EQ(e->recent_t[e->n_recent - 1], k * 20);  // the newest is never dropped
+    CHECK_EQ(e->recent_t[0], 0u);                    // nor the oldest
+  }
+  const PlayerEntry* e = pr.get(5);
+  CHECK_EQ(e->n_recent, SIGHT_RECENT_MAX);
+  uint32_t sum = 0, max_gap = 0, min_gap = 1000000;
+  for (size_t i = 0; i < e->n_recent; i++) {
+    sum += e->recent_t[i];
+    if (i) { const uint32_t g = e->recent_t[i] - e->recent_t[i - 1]; if (g > max_gap) max_gap = g; if (g < min_gap) min_gap = g; }
+  }
+  CHECK_EQ(sum, 63720u);
+  CHECK(max_gap <= 40 && min_gap >= 20);
+  // A burst plus a sparse tail keeps every tail sample.
+  uint32_t t[106];
+  size_t n = 0;
+  for (uint32_t k = 0; k < 100; k++) t[n++] = k * 5;
+  for (uint32_t k = 0; k < 6; k++) t[n++] = 500 + k * 250;
+  while (n > SIGHT_RECENT_MAX) {
+    const size_t at = sight_thin_index(t, n);
+    CHECK(at >= 1 && at + 1 < n);
+    for (size_t i = at + 1; i < n; i++) t[i - 1] = t[i];
+    n--;
+  }
+  uint32_t tail = 0, total = 0;
+  for (size_t i = 0; i < n; i++) { total += t[i]; if (t[i] >= 500) tail++; }
+  CHECK_EQ(tail, 6u);
+  CHECK_EQ(total, 20370u);
+  CHECK_EQ(t[0], 0u);
+  CHECK_EQ(t[n - 1], 1750u);
+}
+
 static void test_presence_four_second_expiry() {
   PlayerPresence pr;
   pr.observe(player(7, 0), -50, 0);
@@ -531,6 +569,7 @@ int main() {
   test_presence_dwell_restarts_when_the_ema_dips();
   test_presence_ema_is_beacon_js();
   test_presence_body_shadowing_does_not_drop_a_standing_player();
+  test_sight_window_is_thinned_evenly_across_time();
   test_presence_four_second_expiry();
   test_presence_game_byte_and_roles();
   test_presence_drops_a_65th_player_and_counts_it();
