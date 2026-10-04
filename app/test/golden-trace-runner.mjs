@@ -58,7 +58,15 @@ export const FIELDS = {
   switching: (e, s) => s.switching,
   reloading: (e, s) => s.reloading,
   poison: (e, s) => (s.poison ? { ticks: s.poison.ticks, perTick: s.poison.perTick } : null),
-  held: (e, s) => { const h = s.powerup && s.powerup.held; return h ? { weapon_id: h.weapon_id, slot: h.slot, left: h.left, charges: h.charges, active: h.active } : null; },
+  // the held heavy: the HUD view plus the engine's own record (`trig`: the trigger slot it believes; `suspect`/`unconfirmed`:
+  // F436's doubts about the gun having taken the equip; `base`: the charges one item gives)
+  held: (e, s) => { const h = s.powerup && s.powerup.held, r = e._puHeld;
+    return h ? { weapon_id: h.weapon_id, slot: h.slot, left: h.left, charges: h.charges, active: h.active, back: h.back,
+      base: r ? r.base : null, trig: r ? r.trig : null, suspect: !!(r && r.suspect), unconfirmed: !!(r && r.unconfirmed) } : null; },
+  // every other powerup surface: the HUD cards, the hint, the overshield, the item a death took and the switch-back
+  powerup: (e, s) => { const v = s.powerup;
+    return { hint: v ? v.hint : null, overshield: v ? v.overshield : null, grant: s.powerupGrant, swap: s.powerupSwap, spawn: s.powerupSpawn,
+      lost: s.puLost, back: e._puBack || null, backPending: e._puBackPending ? { tries: e._puBackPending.tries, equipped: e._puBackPending.equipped } : null }; },
   claim: (e, s) => (s.powerupClaim ? { station: s.powerupClaim.station, ready: s.powerupClaim.ready } : null),
   hill: (e, s) => (s.hill ? { owner: s.hill.owner, contested: !!s.hill.contested, progress: s.hill.progress != null ? s.hill.progress : null } : null),
 };
@@ -144,7 +152,8 @@ export async function runEngine(trace) {
     return undefined;
   };
   const delay = setup.delay === 'timers' ? (ms, fn) => timers.push({ at: clock + ms, fn }) : (ms, fn) => fn();
-  const eng = new E.Engine({ writer, emit: () => {}, report: () => {}, now: () => clock, synced: () => true,
+  const facts = [], reports = [];            // what MC hears: `emit` facts and `report` messages
+  const eng = new E.Engine({ writer, emit: f => facts.push(f), report: (k, b) => reports.push({ kind: k, body: b }), now: () => clock, synced: () => true,
     storage: memStorage(), log: m => logs.push(String(m)), delay, rng: () => 0 });
   let stations = null;                       // the sticky advert list, re-pushed every sub-step like app.js's presence tick
   const runTimers = () => { for (;;) { timers.sort((a, b) => a.at - b.at); if (!timers.length || timers[0].at > clock) return; timers.shift().fn(); } };
@@ -152,7 +161,7 @@ export async function runEngine(trace) {
   const flush = () => { for (let n = 0; n < 20; n++) { const rs = gun.take(); if (!rs.length) return; for (const r of rs) { gun.heard(r); eng.feedFrame(r); } } };
   const settle = () => new Promise(r => setImmediate(r));
   const step = setup.tick_ms || 250;
-  const checkpoints = []; let mark = 0;
+  const checkpoints = []; let mark = 0, fmark = 0, rmark = 0;
   const fields = fieldsOf(trace);
 
   // the MC path to a running match: link, assign, config, the head's echo, start (README "Preamble")
@@ -193,8 +202,8 @@ export async function runEngine(trace) {
       await settle();
       const st = eng.state(), state = {};
       for (const k of fields) state[k] = FIELDS[k](eng, st);
-      checkpoints.push({ at: s.check, step: i, writes: out.slice(mark), state });
-      mark = out.length;
+      checkpoints.push({ at: s.check, step: i, writes: out.slice(mark), state: norm(state), facts: norm(facts.slice(fmark)), reports: norm(reports.slice(rmark)) });
+      mark = out.length; fmark = facts.length; rmark = reports.length;
     } else {
       throw new Error(`trace ${trace.name}: step ${i} has no known type: ${JSON.stringify(s)}`);
     }
@@ -206,26 +215,48 @@ export async function runEngine(trace) {
 function memStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** The `expect` block a recording stores: one entry per checkpoint. */
-export function toExpect(run) { return run.checkpoints.map(c => ({ at: c.at, writes: c.writes, state: c.state })); }
+export function toExpect(run) { return run.checkpoints.map(c => ({ at: c.at, writes: c.writes, state: c.state, facts: c.facts, reports: c.reports })); }
+
+/** Timestamps as ms since the trace's start clock (`_base.json` clock0_ms), so a recording reads as a timeline. Any
+ *  number under a time-like key (`at`, `t`, `…At`, `…_at`, `until`) that sits on the trace clock is rebased. The clock is
+ *  injected, so the values are deterministic either way; this only makes them readable and start-independent. */
+export function norm(v, key = '') {
+  if (Array.isArray(v)) return v.map(x => norm(x));
+  if (v && typeof v === 'object') { const o = {}; for (const [k, x] of Object.entries(v)) o[k] = norm(x, k); return o; }
+  if (typeof v === 'number' && /^(at|t|until|due)$|At$|_at$|Until$/.test(key) && v >= base.clock0_ms - 600000) return v - base.clock0_ms;
+  if (key === 'shot_group' && typeof v === 'string') return v.replace(/^[^:]*:/, 'epoch:');   // the one random value: the constructor's `Math.random` hit-group epoch
+  return v === undefined ? null : v;
+}
 
 /** The first difference between a replay and `expect`, as a readable message, or null when they match. */
-export function firstDiff(trace, run) {
-  const exp = trace.expect || [];
-  if (exp.length !== run.checkpoints.length) return `checkpoint count: expected ${exp.length}, got ${run.checkpoints.length}`;
-  for (let i = 0; i < exp.length; i++) {
-    const e = exp[i], g = run.checkpoints[i];
-    const where = `checkpoint "${e.at}" (step ${g.step})`;
-    if (e.at !== g.at) return `${where}: label ${JSON.stringify(g.at)} != ${JSON.stringify(e.at)}`;
-    const n = Math.max(e.writes.length, g.writes.length);
-    for (let j = 0; j < n; j++) {
-      if (e.writes[j] !== g.writes[j]) {
-        return `${where}: write #${j} differs\n  expected: ${e.writes[j] === undefined ? '(none)' : e.writes[j]}\n  got:      ${g.writes[j] === undefined ? '(none)' : g.writes[j]}\n`
-          + `  expected writes: ${JSON.stringify(e.writes)}\n  got writes:      ${JSON.stringify(g.writes)}`;
-      }
+/** Every difference between a replay and `expect`, one readable message per differing checkpoint (empty when they match). */
+export function allDiffs(trace, run) {
+  const exp = trace.expect || [], out = [];
+  if (exp.length !== run.checkpoints.length) out.push(`checkpoint count: expected ${exp.length}, got ${run.checkpoints.length}`);
+  for (let i = 0; i < Math.min(exp.length, run.checkpoints.length); i++) {
+    const d = checkpointDiff(exp[i], run.checkpoints[i]);
+    if (d) out.push(d);
+  }
+  return out;
+}
+/** The first difference, or null when the replay matches. */
+export function firstDiff(trace, run) { return allDiffs(trace, run)[0] || null; }
+
+function checkpointDiff(e, g) {
+  const where = `checkpoint "${e.at}" (step ${g.step})`;
+  if (e.at !== g.at) return `${where}: label ${JSON.stringify(g.at)} != ${JSON.stringify(e.at)}`;
+  const n = Math.max(e.writes.length, g.writes.length);
+  for (let j = 0; j < n; j++) {
+    if (e.writes[j] !== g.writes[j]) {
+      return `${where}: write #${j} differs\n  expected: ${e.writes[j] === undefined ? '(none)' : e.writes[j]}\n  got:      ${g.writes[j] === undefined ? '(none)' : g.writes[j]}\n`
+        + `  expected writes: ${JSON.stringify(e.writes)}\n  got writes:      ${JSON.stringify(g.writes)}`;
     }
-    for (const k of new Set([...Object.keys(e.state), ...Object.keys(g.state)])) {
-      if (JSON.stringify(e.state[k]) !== JSON.stringify(g.state[k])) return `${where}: state.${k} expected ${JSON.stringify(e.state[k])}, got ${JSON.stringify(g.state[k])}`;
-    }
+  }
+  for (const k of ['facts', 'reports']) {
+    if (JSON.stringify(e[k] || []) !== JSON.stringify(g[k] || [])) return `${where}: ${k} expected ${JSON.stringify(e[k] || [])}, got ${JSON.stringify(g[k] || [])}`;
+  }
+  for (const k of new Set([...Object.keys(e.state), ...Object.keys(g.state)])) {
+    if (JSON.stringify(e.state[k]) !== JSON.stringify(g.state[k])) return `${where}: state.${k} expected ${JSON.stringify(e.state[k])}, got ${JSON.stringify(g.state[k])}`;
   }
   return null;
 }
