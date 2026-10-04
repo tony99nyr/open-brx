@@ -36,3 +36,22 @@ def xfail(reason: str, fn) -> None:
     except AssertionError:
         raise Skipped(f"xfail: {reason}") from None
     raise AssertionError(f"XPASS: expected to fail ({reason}), but it passed. Remove the xfail marker.")
+
+
+def pytest_only(fn):
+    """A test that needs pytest fixtures (tmp_path, monkeypatch, ...). run_tests.py calls every `test_*` with no
+    arguments, so this reports a skip there; pytest still sees the real signature (`functools.wraps`) and runs it.
+
+        @pytest_only
+        def test_x(tmp_path): ...
+
+    Prefer a plain zero-argument test: a pytest-only test never runs in `test:all`.
+    """
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not args and not kwargs:
+            raise Skipped(f"pytest-only: {fn.__name__} needs pytest fixtures")
+        return fn(*args, **kwargs)
+    return wrapper

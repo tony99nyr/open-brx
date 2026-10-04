@@ -1801,6 +1801,28 @@ def _ammo_methods() -> set[str]:
     return {f"am.{n}" for n in names}
 
 
+# Refactor #1 (2026-10-04) moved the powerup code out of the Engine class into `PlayerPowerups`. The scan reads
+# it too, with a `pu.` prefix so a name the two classes share (`tick`, `reset`, `view`) cannot hide behind the other.
+_POWERUP_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "powerup-player.js"
+_POWERUP_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+PlayerPowerups\s*\{", _re.M)
+_POWERUP_FN = _re.compile(r"^export\s+(?:async\s+)?function\s+(\w+)\s*\(", _re.M)
+
+
+def _powerup_methods() -> set[str]:
+    """`pu.<name>` for every `PlayerPowerups` method and every exported function in powerup-player.js."""
+    text = _POWERUP_JS.read_text(encoding="utf-8")
+    decl = _POWERUP_CLASS_DECL.search(text)
+    assert decl, f"no `class PlayerPowerups {{` declaration found in {_POWERUP_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[0].end()]
+    names = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS - {"constructor"}
+    names |= {m.group(1) for m in _POWERUP_FN.finditer(text)}
+    assert len(names) > 30, f"only {len(names)} powerup-player.js names parsed: the slice is wrong, not the file"
+    return {f"pu.{n}" for n in names}
+
+
 def _engine_methods() -> set[str]:
     """Names declared at one indent level inside the Engine class body -- and ONLY the class body.
 
@@ -1826,7 +1848,7 @@ def _engine_methods() -> set[str]:
         body = body[:closes[0].end()]      # the FIRST column-0 `}` closes THIS class; a later one is the next declaration
     methods = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
     assert methods, f"no methods found inside the Engine class body in {_ENGINE_JS} -- the slice is wrong, not the file"
-    return methods | _reconcile_methods() | _ammo_methods()
+    return methods | _reconcile_methods() | _ammo_methods() | _powerup_methods()
 
 
 def _stage_methods() -> set[str]:
@@ -1919,8 +1941,8 @@ KNOWN_UNMIRRORED = {
     # attribute on the stage); `am.switchingMs` is the HUD's SWITCHING clock (display; the Engine's `switchingMs`
     # delegate is pinned below); `am.swapOpen` is the stand-down table's question and `am.cancelSwap` the death/revive
     # clear, both inline on the stage; `am.setSwitching` and `am.equipped` are the powerup module's doors, and the stage
-    # models no powerup (see the A56 note below).
-    "switching", "am.switchingMs", "am.swapOpen", "am.cancelSwap", "am.setSwitching", "am.equipped",
+    # models no powerup (see the A56 note below). `am.setMag` is the same: the reconcile re-arm of a held heavy.
+    "switching", "am.switchingMs", "am.swapOpen", "am.cancelSwap", "am.setSwitching", "am.equipped", "am.setMag",
     # Engine split (b): the engine's side of one ammo report (ammo.js `onAmmo` calls each one). The stage does
     # `_roundsLeft`'s work (the first-shot arm, the shot count) inline in `_on_ammo`; `_tryoutAmmo` is the try-out
     # panel's confirmation (`_tutorial`, pinned below); `_resyncAmmo` is the §3.10 resync, pinned with `_resyncEvidence`.
@@ -2019,6 +2041,22 @@ KNOWN_UNMIRRORED = {
     # are still the part to port, as a hand-driven stage button, once Sitting A has proved the spare slot. The engine's
     # side is now only calls into `this.pu` from methods already pinned or mirrored here (`tick`, `_revive`, `_death`,
     # `rc.end`, `_stunRestore`, `am.onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
+    # Every `pu.` name below is app/src/powerup-player.js (`PlayerPowerups` + its exported functions). ONE reason for the
+    # whole group: the bench stage has no powerup stations. It models neither a station's advert (median RSSI, `taker`
+    # byte) nor the match clock's spawn schedule. Port them, as a hand-driven stage button, once Sitting A has proved the
+    # spare slot. The engine's own side is only calls into `this.pu` from methods already pinned or mirrored here.
+    "pu._advertOf", "pu._atCap", "pu._backResend", "pu._backTick", "pu._claimTick", "pu._counts", "pu._elapsed",
+    "pu._equip", "pu._headWeap", "pu._itemCharges", "pu._loadoutSlot", "pu._median", "pu._onHeavy",
+    "pu._osProtectFrames", "pu._osRestore", "pu._osTick", "pu._station", "pu._switchCard", "pu._takerCheck",
+    "pu._threshold", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
+    "pu.claimable", "pu.disarmRows", "pu.end", "pu.grant", "pu.grantShield", "pu.grantWeapon",
+    "pu.heavyMatches", "pu.heavyOnTrigger", "pu.held", "pu.isHeldSlot", "pu.items", "pu.keepHeld",
+    "pu.lostEquip", "pu.onAltPressed", "pu.onAmmo", "pu.onAssumedSwap", "pu.onConfirmedSwap", "pu.onDeath",
+    "pu.onHp", "pu.onRevive", "pu.onReviveStart", "pu.onSelect", "pu.onShieldFrame", "pu.onStations",
+    "pu.overshield", "pu.overshieldPset", "pu.protectUntil", "pu.psetNow", "pu.psetWithShieldMax",
+    "pu.reconcileRearm", "pu.reequipInRearm", "pu.repairLostEquip", "pu.repairUnpulled", "pu.reset",
+    "pu.restore", "pu.restoreRows", "pu.setPset", "pu.snapshot", "pu.spawnCard", "pu.swapCard", "pu.tick",
+    "pu.tickAnnounce", "pu.view", "pu.puSpawnIndex", "pu.puSpawnAt", "pu.burstWithHeld",
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
     # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a
@@ -2154,7 +2192,7 @@ def test_stage_ports_every_engine_method_it_claims():
     unmirrored = _unmirrored()
     new = sorted(unmirrored - KNOWN_UNMIRRORED)
     assert not new, (
-        "new engine.js method(s) with no GunStage counterpart — port them to the stage, or pin them in "
+        "new engine.js or powerup-player.js (`pu.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
         "KNOWN_UNMIRRORED with a reason: " + ", ".join(new))
     # A pinned name that no longer turns up unmirrored is EITHER ported to the stage OR gone from
     # engine.js (removed, renamed, or moved out of the class body). Those need opposite follow-ups, and
@@ -2167,7 +2205,7 @@ def test_stage_ports_every_engine_method_it_claims():
     assert not stale, "; ".join(filter(None, [
         ("now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps shrinking: "
          + ", ".join(ported)) if ported else "",
-        ("no longer declared in app/src/engine.js at all (REMOVED or RENAMED, not mirrored) — find the new "
+        ("no longer declared in app/src/engine.js or powerup-player.js at all (REMOVED or RENAMED, not mirrored) — find the new "
          "name and re-pin it, or drop the entry: " + ", ".join(vanished)) if vanished else "",
     ]))
 

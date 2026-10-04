@@ -474,7 +474,7 @@ test('F394: an echo of a slot that is not on the trigger never changes the numbe
 
 test('F394 r2: a real shot on the ALT target confirms the swap, even inside the echo window a relink opened', () => {
   const h = armed();
-  h.eng.am.acctWrote(1, 6, 24);   // `_endReconcile` re-arms both loadout slots and opens both echo windows
+  h.eng.am.acctWrote(1, 6, 24);   // `rc.end()` re-arms both loadout slots and opens both echo windows
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   h.fire(1, 5, 24);
   assert.equal(h.eng.switching, null, 'the shot confirmed the swap');
@@ -669,7 +669,7 @@ test('F400: the empty switch-back shows the card too, naming the player\'s own w
   assert.ok(h.eng.switching, 'the empty switch-back opens the same card');
   assert.equal(h.eng.switching.from, 2); assert.equal(h.eng.switching.to, 0);
   const going = h.eng.state().powerup.going;
-  assert.equal(going && going.slot, 2, '`going` keeps the heavy\'s identity for the STOWING tile past `_puHeld` going null');
+  assert.equal(going && going.slot, 2, '`going` keeps the heavy\'s identity for the STOWING tile past `pu.held` going null');
   assert.equal(going.name, 'ROCKETS'); assert.equal(going.charges, 0);
 });
 
@@ -1405,7 +1405,7 @@ test('down: <ITEM> AVAILABLE while I am down is never drawn, during or after the
 
 // ---- F416 r4: a spawn check open while a heavy is held. F436: before the first pull of the life the gun may ignore the
 // equip, so a queried `$LCD` can read the loadout slot. A whole re-send carries `$SPAWN` + `$AMMO,2,0,0,1` and wipes the
-// heavy that `_puHeld` still holds. ----
+// heavy that `pu.held` still holds. ----
 const openCheck = e => { const now = e.now(); e._spawnCheck = { life: e._lifeSeq, frames: [...e.frames.spawn], why: 'spawn', resends: 0, firstAt: now, writeAt: now - 1, shotsAt: e.shots, asks: 0, heardAt: 0, queryAt: now, lost: false }; };
 
 test('F416 r4: a queried $LCD on the switch-back slot while a heavy is held is a match, never a whole re-send', () => {

@@ -701,7 +701,8 @@ function powerupHost(e) {
     setShield: v => { e.shield = v; e._prevShield = v; e._shieldRegen = null; },   // the overshield grant's pools
     setWriteLost: life => { e._writeLost = life; },   // a lost protection-off: MC offers RESYNC GUN
     acctWrote: (slot, mag, res) => e.am.acctWrote(slot, mag, res),   // F259: an echo of this write is bookkeeping, never a shot
-    setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now
+    setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now, mag and reserve
+    setMag: (slot, mag) => e.am.setMag(slot, mag),   // the reconcile re-arm: the magazine only, the reserve is left alone on purpose
     setSwitching: card => e.am.setSwitching(card),   // F400: a pickup switch card is the engine's own `switching`
     // a phone equip put `slot` on the trigger: the engine's side of it (the swap, a reload, the ammo block)
     equipped: (slot, mag, res) => {
@@ -4746,7 +4747,7 @@ export class Engine {
    *  its value. Returns what was written (a lane's own return), or null when dropped. */
   show(channel, item) {
     const rule = PRESENT[channel];
-    if (!rule || channel === 'hint') throw new Error(`show: '${channel}' is not a channel that is written (the hint is computed in powerupView)`);
+    if (!rule || channel === 'hint') throw new Error(`show: '${channel}' is not a channel that is written (the hint is computed in pu.view, powerup-player.js)`);
     const lane = channel === 'hero' || channel === 'objective' || channel === 'feed';
     if (rule === 'alive' && this._alertsMissed()) {
       // Review r2: the standing LEAD badge survives my death, so a lead change I miss while down must retire it, or it

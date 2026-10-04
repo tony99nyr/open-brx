@@ -12,7 +12,7 @@
 //   Ammo(host)
 //     account     acctLive(slot, now) · acctOutstanding(slot, now) · acctEchoing(slot, now) · pressedRounds(slot) ·
 //                 acctWrote(slot, mag, res) · acctPress() · acctAmmo(slot, mag, prev)
-//     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · saved() · restore(saved) ·
+//     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · setMag(slot, mag) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
 //     heat        noteHeat(slot, heat) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
@@ -186,6 +186,7 @@ export class Ammo {
   /** What a slot holds now, after a write the node made (the reconcile re-arm, a powerup equip, a self-hit revive). A
    *  `res` left undefined keeps the slot's last reserve. */
   setPrev(slot, mag, res) { this.prevAmmo[slot] = mag; if (res !== undefined) this.prevReserve[slot] = res; }
+  setMag(slot, mag) { this.prevAmmo[slot] = mag; }   // the magazine only (the reconcile re-arm of a held heavy)
   /** The slot's last magazine seen, or null before one (F147: a try-out's baseline). PURE. */
   lastMag(slot) { return this.prevAmmo[slot] != null ? this.prevAmmo[slot] : null; }
   /** F416 round 2: the rounds the trigger has asked for on `slot` that may still come back (0 once the press expires). */

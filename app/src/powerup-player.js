@@ -34,7 +34,7 @@
 //   read-only   phase · alive · bleUp · ended · stunned · reconciling · resync · tutorial · gunLocked · frames · config ·
 //               player · matchId · stations · goLiveT · lifeSeq · pulledLife · armPending · actSeq · activeSlot ·
 //               switching · weaponName · hp · armor · shield · maxShield · latch · lastHitAt
-//   writes      acctWrote(slot, mag, res) · setPrev(slot, mag, res?) · equipped(slot, mag, res) · setSwitching(card) ·
+//   writes      acctWrote(slot, mag, res) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
 //               recoilArm(why) · setShield(v) · setWriteLost(life)
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
@@ -477,7 +477,7 @@ export class PlayerPowerups {
    *  active while the empty heavy waits for its delayed switch-back, else null. */
   onAmmo(slot, mag, prev) {
     const h = this.host, bp = this._backPending;
-    // Polish M3: the gun answered the switch-back. Never the reconcile disarm's echo (r2 M1): `_endReconcile` re-sends it.
+    // Polish M3: the gun answered the switch-back. Never the reconcile disarm's echo (r2 M1): `rc.end()` re-sends it.
     // A real round from a loadout slot means the player is shooting something else by choice: stop re-sending (r2 low).
     if (bp && !h.reconciling && ((bp.equipped !== false && (slot === bp.slot || slot < 2)) || (slot < 2 && prev != null && mag < prev))) this._backPending = null;   // a loadout shot is a player choice, even before the delayed write
     const held = this._held; if (!held || slot === 4 || (slot >= 2 && slot !== held.slot) || h.reconciling) return null;   // polish H1: the disarm's echo is not a shot
@@ -662,7 +662,7 @@ export class PlayerPowerups {
     const h = this.host, held = this._held, sw = h.switching;
     const reequip = !!(held && held.trig === held.slot && this._headWeap(held.slot) && !(sw && !sw.pu));   // an ALT swap in flight is the player's choice: leave the trigger to it
     if (reequip) return { reequip, ammo: rows.filter(f => !f.startsWith(`$AMMO,${held.slot},`)) };
-    if (held) { h.acctWrote(held.slot, held.left, PU_RESERVE); h.setPrev(held.slot, held.left); }
+    if (held) { h.acctWrote(held.slot, held.left, PU_RESERVE); h.setMag(held.slot, held.left); }
     return { reequip, ammo: burstWithHeld(rows, held) };
   }
   /** The re-arm write when `reconcileRearm` said `reequip`: the loadout rows, then the heavy's `$WEAP` + `$AMMO`, in one write. */

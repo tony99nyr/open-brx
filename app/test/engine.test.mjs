@@ -6526,8 +6526,8 @@ const LINK_STALE_MS = 150000;
 // Round-2 fix pass I (2026-09-12): the watchdog SHIPS DISABLED (`linkWatchdog`, default
 // `LINK_WATCHDOG_ENABLED = false`) until the bench gives it a real number -- FOLLOWUPS F163. 150 s is
 // a desk guess at "five $VOLTS cadences", `$VOLTS` is the only idle traffic and is unreliable at
-// marginal RSSI, and what a false trip costs is not nothing: `_beginReconcile` disarms both slots for
-// RECONCILE_MS and `_endReconcile` re-arms from `frames.spawn`'s $AMMO -- a mid-firefight disarm plus
+// marginal RSSI, and what a false trip costs is not nothing: `rc.begin()` disarms both slots for
+// RECONCILE_MS and `rc.end()` re-arms from `frames.spawn`'s $AMMO -- a mid-firefight disarm plus
 // a free full magazine, which is exactly the cheat RESUME_GAP_MS exists to deny. A defender at the
 // edge of range who neither fires nor is hit is the player it would hit. Every B4 test below turns it
 // ON explicitly, because the MECHANISM still has to be correct for the day the bench says 90 or 300.
@@ -6825,8 +6825,8 @@ test('B5: a death suppressed by the spawn-settle window is RE-EXAMINED once the 
 test('B4: a marginal link that gaps two or three $VOLTS cadences is NOT force-dropped', () => {
   // The watchdog shipped at 75 s — only ~2.5 $VOLTS cadences, and the protocol says $VOLTS is "only
   // reliably returned at good RSSI". A healthy-but-marginal link whose player took no hits and fired no
-  // shots for 75 s was force-disconnected mid-firefight: `_beginReconcile` disarms both slots for
-  // RECONCILE_MS and `_endReconcile` re-arms from `frames.spawn`'s $AMMO — a free full magazine, the
+  // shots for 75 s was force-disconnected mid-firefight: `rc.begin()` disarms both slots for
+  // RECONCILE_MS and `rc.end()` re-arms from `frames.spawn`'s $AMMO — a free full magazine, the
   // exact cheat RESUME_GAP_MS exists to close. The real number is bench-gated (FOLLOWUPS F136).
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   let staleFired = 0; h.eng.onGunStale = () => { staleFired++; };
