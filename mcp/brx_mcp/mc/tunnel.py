@@ -38,6 +38,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Awaitable, Callable
 
+from ..storage import atomic_write_text
 from .types import LanPublic, TunnelProviderValue, TunnelStatus
 
 log = logging.getLogger("brx.mc.tunnel")
@@ -325,10 +326,9 @@ class Tunnel:
 
     def _write_pid(self, pid: int) -> None:
         try:
-            self._pid_dir.mkdir(parents=True, exist_ok=True)
             # `owner` is THIS MC. A file whose owner is still alive belongs to a running Mission
             # Control, not to a crash, and must never be reaped out from under it.
-            self.pid_path.write_text(json.dumps({"pid": pid, "owner": os.getpid(), "ws_port": self.ws_port}))
+            atomic_write_text(self.pid_path, json.dumps({"pid": pid, "owner": os.getpid(), "ws_port": self.ws_port}))
             self._pid_owned = True
         except Exception:          # a pid file we cannot write must never stop the tunnel
             log.debug("could not write %s", self.pid_path, exc_info=True)

@@ -82,7 +82,7 @@ def save_device(address: str, alias: str | None = None,
             "address": address, "alias": alias,
             "generation": generation, "name": name,
         })
-    REGISTRY_PATH.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+    atomic_write_text(REGISTRY_PATH, json.dumps(registry, indent=2))
 
 
 def atomic_write_text(path: Path, text: str, mode: int | None = None) -> None:
