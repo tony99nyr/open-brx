@@ -2710,6 +2710,19 @@ class Compiler:
                     bundle["cues"]["spawn"] = fr
                 if len(spawn_ids) > 1:
                     bundle["cue_pools"]["spawn"] = [f"$PLAY,,4,6,{i},,,,*" for i in spawn_ids]
+        # F446 (Tony's bench, 2026-10-02, $VOL 80): `poison_tick`'s pool is FIXED -- H31/H32, the same two takes for
+        # every player -- unlike the pains/spawn pools above, which resolve through this player's own `voice_map`.
+        # `presentation.EVENTS["poison_tick"]["pool"]` is the one source of truth; ships only when the cue itself is
+        # live (`frames["poison_tick"]`, already "" when `hud_events` is off -- `cue_frames()`'s own mute check).
+        # Review 2026-10-02: a host override of the tick's `sound` wins. The phone prefers a pool over `cues`, so a pool
+        # shipped beside an overridden sound would silently play the default bubbles instead.
+        poison_tick_pool = prof["events"]["poison_tick"].get("pool")
+        if poison_tick_pool and prof["events"]["poison_tick"].get("sound") != poison_tick_pool[0]:
+            poison_tick_pool = None
+        if poison_tick_pool and frames.get("poison_tick"):
+            poison_tick_slot = prof["events"]["poison_tick"].get("slot")
+            bundle["cue_pools"]["poison_tick"] = [fr for i in poison_tick_pool
+                                                   if (fr := _pres.play_frame(i, voice_map, poison_tick_slot)) is not None]
         low = frames.pop("low_health", None)
         bundle["cues"].update(frames)
         # low_health is the node's existing `hurt` cue. The default profile now plays the player's OWN

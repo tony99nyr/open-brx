@@ -124,6 +124,11 @@ Shields, the shield-down heartbeat) is in flight at the death. Control: one slow
 **Pass:** the scream is heard on 6 of 6, no Health critical and no heartbeat after a scream, and the victim log has no
 `death: stop ... ahead of the scream` line. Log any `death: stop N for a body cue queued behind the scream` lines with their times. Row: F439.
 
+**12b. F446, the poison sounds (5 min).** A Toxin Rifle hit on a victim, at the match's play volume. Control: an
+ordinary hit plays its normal hit sound. **Pass:** the hit plays H12 "Bubble Acid" once. Then bubbles (H31 or H32) play
+on each tick, with no voice and no cough, about 4 times, 1 s apart. A second Toxin hit during the poison plays no
+second H12. Row: F446.
+
 STOP POINT: the core is done. Everything below is lower value per minute.
 
 **13. KOTH, the phone hill, plus F420, F421, F424 and F415 (20 min).** Follow *Group 2*, game 1 and item 3, with

@@ -91,8 +91,8 @@
     "shield_online": "$PLAY,,4,6,VA6Y,,,,*",
     "shield_loop": "$PLAY,,4,6,N74,,,,*",
     "reload_nag": "$PLAY,,4,6,VX73,,,,*",
-    "poisoned": "$PLAY,H23,4,6,,,,,*",
-    "poison_tick": "$PLAY,,4,6,V4G,,,,*",
+    "poisoned": "$PLAY,H12,4,6,,,,,*",
+    "poison_tick": "$PLAY,,4,6,H31,,,,*",
     "first_blood": "$PLAY,,4,6,VA7H,,,,*",
     "double_kill": "$PLAY,,4,6,VA7E,,,,*",
     "triple_kill": "$PLAY,,4,6,VA7Q,,,,*",
@@ -195,6 +195,10 @@
       "$PLAY,,4,6,VAI,,,,*",
       "$PLAY,,4,6,VAN,,,,*",
       "$PLAY,,4,6,VAO,,,,*"
+    ],
+    "poison_tick": [
+      "$PLAY,,4,6,H31,,,,*",
+      "$PLAY,,4,6,H32,,,,*"
     ]
   },
   "pset_pool": [

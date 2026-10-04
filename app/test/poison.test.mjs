@@ -85,11 +85,40 @@ test('S16: a toxin hit starts the stack, plays `poisoned` once, and the HUD sees
   assert.equal(st.poison.leftMs, 5000);
   assert.equal(st.poison.perTick, 4);
   assert.equal(st.poison.by.num, 3, 'the applier is named');
-  assert.equal(h.cues('H23').length, 1, 'the start cue played once');
+  assert.equal(h.cues('H12').length, 1, 'the start cue played once');   // F446: H12 "Bubble Acid" replaced H23
   assert.equal(h.ticks().length, 0, 'no tick before the first interval');
   h.adv(1000);
   assert.deepEqual(h.ticks(), ['$LIFE,0,-4,0,*'], 'one tick at +1 s, off the armour');
   assert.equal(h.eng.state().poison.leftMs, 4000);
+});
+
+// F446 (Tony's bench, 2026-10-02, $VOL 80): `poison_tick` is now a POOL of two takes, H31 and H32 ("squishy
+// bubbles"), picked at random per tick via the same `_pickCue` every other A15 pool uses.
+test('F446: a poison tick picks a pool take at random, H31 then H32 with a seeded rng', () => {
+  const h = harness();
+  h.eng.rng = (() => { const seq = [0, 0.9]; let i = 0; return () => seq[i++ % seq.length]; })();
+  h.toxin();
+  h.eng._gun.clear();                                 // isolate the tick sound from the still-playing H12 onset (see below)
+  h.adv(1000);
+  assert.equal(h.cues('H31').length, 1, 'rng() = 0 picks pool[0] = H31');
+  h.eng._gun.clear();
+  h.adv(1000);
+  assert.equal(h.cues('H32').length, 1, 'rng() = 0.9 picks pool[1] = H32');
+  assert.equal(h.cues('H31').length, 1, 'still just the one H31, from the first tick');
+});
+
+// F446: H12 ("Bubble Acid") is 1.9 s, longer than the 1 s tick cadence, so the FIRST tick lands while the onset is
+// still sounding and (as today, F393) drops its sound; it still writes the $LIFE. Every later tick's own queue-slot
+// clip (H31/H32, 0.55-0.56 s) ends well inside the next 1 s window, so it never blocks the next one. The harness's
+// own go-live klaxon + spawn line (`VAI`) is given time to clear first, so only the poison's own cues are in play.
+test('F446: in a plain 5 s poison with nothing else playing, 4 of the 5 ticks are audible (the first is silent under the H12 onset)', () => {
+  const h = harness();
+  h.adv(2500);                                        // past the go-live klaxon + spawn line
+  h.toxin();
+  h.adv(5000);
+  assert.equal(h.ticks().length, 5, 'five damage ticks, as the balance numbers assume');
+  const audible = h.cues('H31').length + h.cues('H32').length;
+  assert.equal(audible, 4, 'the first tick is silent (H12 still on the gun at +1 s); ticks 2-5 are heard');
 });
 
 test('S16: a hit on another protocol, or a bundle with no dot table, never poisons', () => {
@@ -216,7 +245,7 @@ test('S16: a second hit REFRESHES to full duration, keeps the cadence, never sta
   h.toxin(5, 2);                                      // another shooter, 2.5 s in
   assert.equal(h.eng.state().poison.leftMs, 5000, 'refreshed to the full duration');
   assert.equal(h.eng.state().poison.by.num, 5, 'the most recent applier');
-  assert.equal(h.cues('H23').length, 1, 'a refresh does not replay the start cue');
+  assert.equal(h.cues('H12').length, 1, 'a refresh does not replay the start cue');
   h.adv(1000);
   assert.equal(h.ticks().length, 3, 'still one tick a second: two applications did not add a second clock');
   h.adv(10000);
@@ -234,7 +263,7 @@ test('S16: a LETHAL tick books the death to the applier, flagged dot:true, and p
   const h = harness();
   h.setPools(4, 0, 0);
   h.toxin(3, 2, 0);
-  const cuesBefore = h.cues('V4G').length;
+  const cuesBefore = h.cues('H31').length;   // F446: rng: () => 0 always picks the pool's first take, H31
   h.adv(1000);
   assert.deepEqual(h.ticks(), ['$LIFE,-4,0,0,*']);
   const d = h.kind('death');
@@ -242,7 +271,7 @@ test('S16: a LETHAL tick books the death to the applier, flagged dot:true, and p
   assert.equal(d[0].shooter_num, 3, 'credit to the player who applied the poison');
   assert.equal(d[0].shooter_team, 2);
   assert.equal(d[0].dot, true);
-  assert.equal(h.cues('V4G').length, cuesBefore, 'no poison_tick cue on the lethal tick');
+  assert.equal(h.cues('H31').length, cuesBefore, 'no poison_tick cue on the lethal tick');
   assert.equal(h.eng.killedBy.dot, true, 'the DOWN screen can say POISONED BY');
   assert.equal(h.eng.state().poison, null, 'death clears the stack');
   h.adv(3000);
@@ -251,11 +280,11 @@ test('S16: a LETHAL tick books the death to the applier, flagged dot:true, and p
 
 test('F393: a poison tick keeps its damage write but drops sound while an announcer line waits', () => {
   const busy = harness(); busy.toxin(); busy.eng._ann.push({ kind: 'kill_confirmed', key: 'test', audioMs: 5000, play: () => {} });
-  const before = busy.cues('V4G').length; busy.adv(1000);
+  const before = busy.cues('H31').length; busy.adv(1000);
   assert.deepEqual(busy.ticks(), ['$LIFE,0,-4,0,*']);
-  assert.equal(busy.cues('V4G').length, before, 'the poison sound does not mask the waiting line');
-  const quiet = harness(); quiet.toxin(); quiet.eng._gun.clear(); const quietBefore = quiet.cues('V4G').length; quiet.adv(1000);
-  assert.equal(quiet.cues('V4G').length, quietBefore + 1, 'control: the quiet gun plays the tick cue');
+  assert.equal(busy.cues('H31').length, before, 'the poison sound does not mask the waiting line');
+  const quiet = harness(); quiet.toxin(); quiet.eng._gun.clear(); const quietBefore = quiet.cues('H31').length; quiet.adv(1000);
+  assert.equal(quiet.cues('H31').length, quietBefore + 1, 'control: the quiet gun plays the tick cue');
 });
 
 test('S16 × S56: the lethal tick, answered by $LCD and never $HP, is still booked as the final tick on the death screen', () => {
