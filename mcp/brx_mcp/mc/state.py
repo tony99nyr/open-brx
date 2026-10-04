@@ -3290,14 +3290,20 @@ class Session:
     def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None) -> bool:
         """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
         already taken is a no-op, and so is a report from before the item became available (`since`)."""
+        # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
+        # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
+        self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
         row = self._pu_sched["st"][nid]
         if not row["available"] or t < row["since"]:
             return False
         a = self.stations[nid]["assigned"]
         num = player.get("player_num") if player else player_num
+        # A taker is player_num 1..63 (0 = none, powerups.md item 6): the item is taken either way, but a number
+        # outside that range is never credited.
+        valid = isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
         row["available"] = False
-        row["taken_by"] = num if isinstance(num, int) and not isinstance(num, bool) else None
-        who = (player or {}).get("display") or (f"PLAYER {num}" if row["taken_by"] is not None else "A PLAYER")
+        row["taken_by"] = num if valid else None
+        who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
         self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info",
                        "text": f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"})
         self._push_station_update(nid)
