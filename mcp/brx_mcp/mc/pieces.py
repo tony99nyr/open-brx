@@ -186,7 +186,7 @@ def _display(item_id: str) -> str:
 _WEAPON_TYPE_IDS = frozenset({"rifle", "close", "long", "sidearm", "support"})
 
 
-def _expand_type_tokens(only_ids: object) -> object:
+def _expand_type_tokens(only_ids: object, kind: str = "secondary") -> object:
     if not isinstance(only_ids, list) or not any(isinstance(i, str) and i in _WEAPON_TYPE_IDS for i in only_ids):
         return only_ids
     weapons = WeaponCatalog().all()   # VISIBLE only -- the same hidden-weapon guard as `_pickable_ids()`
@@ -196,7 +196,11 @@ def _expand_type_tokens(only_ids: object) -> object:
         if isinstance(i, str) and i in _WEAPON_TYPE_IDS:
             for w in weapons:
                 wid = w["weapon_id"]
-                if i in (w.get("types") or []) and not w.get("pickup_only") and wid not in seen:
+                types = w.get("types") or []
+                # PRIMARY never offers a sidearm (`close` is on the usp and deagle too), so its expansion skips them
+                if kind == "primary" and "sidearm" in types:
+                    continue
+                if i in types and not w.get("pickup_only") and wid not in seen:
                     seen.add(wid)
                     out.append(wid)
         elif isinstance(i, str) and i not in seen:
@@ -207,10 +211,11 @@ def _expand_type_tokens(only_ids: object) -> object:
 
 def _migrate_type_tokens(kind: str, value: object) -> object:
     """Read-path only (`PieceStore._load`/`_clean_row`) -- never on a live `create`/`update`, where a
-    bad id in a freshly-sent `only_ids` must still be refused as a typo, not silently rewritten."""
-    if kind not in ("primary", "secondary", "perks") or not isinstance(value, dict) or "only_ids" not in value:
+    bad id in a freshly-sent `only_ids` must still be refused as a typo, not silently rewritten. The weapon
+    slots only: a perks piece holds perk ids, never weapon type words (overnight review L3)."""
+    if kind not in ("primary", "secondary") or not isinstance(value, dict) or "only_ids" not in value:
         return value
-    return {**value, "only_ids": _expand_type_tokens(value["only_ids"])}
+    return {**value, "only_ids": _expand_type_tokens(value["only_ids"], kind)}
 
 
 def _check_slot(kind: PieceKind, v: object) -> dict:
