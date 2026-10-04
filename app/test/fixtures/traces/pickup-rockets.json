@@ -1,0 +1,230 @@
+{
+  "name": "pickup-rockets",
+  "why": "A56/F381/F436: a Rockets pickup end to end. The station names this player: the grant saves the AR's live counts and equips slot 2 with 2 charges; a second take stacks to the cap of 4; at the cap the player does not claim; one rocket fired and the claim opens again; firing the last charge switches back to the AR with its saved counts; a new take, then a slot-0 shot (the gun ignored the equip) re-sends the heavy's equip.",
+  "source": "app/test/powerups.test.mjs 'trigger grant: save the trigger slot', 'F381: a same-weapon stack is capped', 'pickup at the stack cap: the player does not claim', 'the empty magazine switches back', 'F436 backstop: a slot-0 shot repair'",
+  "runners": ["engine"],
+  "setup": {
+    "config": {"stations":[{"id":4,"kind":"powerup","item":{"kind":"weapon","weapon_id":"rocket_launcher","charges":2,"spawn_every_s":120,"first_at_s":120,"name":"ROCKETS","color":"#ff7a1a"}}],"powerups":[{"weapon_id":"rocket_launcher","slot":2}]},
+    "frames_patch": {"head_append":["$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*"],"after_last_ammo":["$AMMO,2,0,0,1,*"]},
+    "gun": {"alcd_echo":true},
+    "fields": ["held","claim","switching"]
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"frame":"$HP,45,70,0,*"},
+    {"check":"live"},
+    {"advance_ms":111990},
+    {"frames":["$BUT,0,1,*","$ALCD,31,100,0,190,0,*","$BUT,0,0,*"]},
+    {"advance_ms":300},
+    {"frames":["$BUT,0,1,*","$ALCD,30,100,0,190,0,*","$BUT,0,0,*"]},
+    {"advance_ms":5700},
+    {"check":"ar_at_30_190_at_121s"},
+    {"stations":[{"id":4,"kind":"powerup","state":1,"median":-50}]},
+    {"advance_ms":1100},
+    {"check":"claim_ready"},
+    {"stations":[{"id":4,"kind":"powerup","state":0,"value":110,"taker":7,"median":-50}]},
+    {"check":"granted_2_rockets"},
+    {"stations":[]},
+    {"advance_ms":800},
+    {"stations":[{"id":4,"kind":"powerup","state":1,"median":-50}]},
+    {"advance_ms":1100},
+    {"stations":[{"id":4,"kind":"powerup","state":0,"value":111,"taker":7,"median":-50}]},
+    {"check":"stacked_to_the_cap_of_4"},
+    {"stations":[]},
+    {"advance_ms":800},
+    {"stations":[{"id":4,"kind":"powerup","state":1,"median":-50}]},
+    {"advance_ms":1100},
+    {"check":"at_the_cap_no_claim"},
+    {"stations":[]},
+    {"frames":["$BUT,0,1,*","$ALCD,3,100,2,0,0,*","$BUT,0,0,*"]},
+    {"advance_ms":3000},
+    {"stations":[{"id":4,"kind":"powerup","state":1,"median":-50}]},
+    {"advance_ms":300},
+    {"check":"one_rocket_fired_claim_opens"},
+    {"stations":[]},
+    {"advance_ms":300},
+    {"frames":["$BUT,0,1,*","$ALCD,2,100,2,0,0,*","$BUT,0,0,*"]},
+    {"advance_ms":300},
+    {"frames":["$BUT,0,1,*","$ALCD,1,100,2,0,0,*","$BUT,0,0,*"]},
+    {"advance_ms":300},
+    {"frames":["$BUT,0,1,*","$ALCD,0,100,2,0,0,*","$BUT,0,0,*"]},
+    {"check":"last_charge_fired"},
+    {"advance_ms":1000},
+    {"check":"switched_back_to_the_ar"},
+    {"advance_ms":5000},
+    {"stations":[{"id":4,"kind":"powerup","state":1,"median":-50}]},
+    {"advance_ms":1100},
+    {"stations":[{"id":4,"kind":"powerup","state":0,"value":112,"taker":7,"median":-50}]},
+    {"stations":[]},
+    {"advance_ms":800},
+    {"check":"rockets_again"},
+    {"frames":["$BUT,0,1,*","$ALCD,29,100,0,190,0,*","$BUT,0,0,*"]},
+    {"check":"slot_0_shot_reequips_the_heavy"},
+    {"advance_ms":1500},
+    {"check":"settled"}
+  ],
+  "stage_ignores": [
+    {"what":"trace","why":"The stage has no powerup model: GunStage decodes control-point (kind 5) adverts only and has no claim, grant, stack or switch-back (architecture review section 1)."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false},
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$AMMO,2,0,0,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*",
+        "$LIFE,0,0,0,*",
+        "$QUERY,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "ar_at_30_190_at_121s",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":190,"deaths":0,"held":null,"claim":null,"switching":false},
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "claim_ready",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":190,"deaths":0,"held":null,"claim":{"station":4,"ready":true},"switching":false},
+      "writes": []
+    },
+    {
+      "at": "granted_2_rockets",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true},"claim":null,"switching":true},
+      "writes": [
+        "$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*",
+        "$AMMO,2,2,0,1,*"
+      ]
+    },
+    {
+      "at": "stacked_to_the_cap_of_4",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":4,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":4,"charges":4,"active":true},"claim":null,"switching":true},
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,4,4,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,4,1,75,100,*",
+        "$AMMO,2,4,0,1,*"
+      ]
+    },
+    {
+      "at": "at_the_cap_no_claim",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":4,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":4,"charges":4,"active":true},"claim":null,"switching":false},
+      "writes": []
+    },
+    {
+      "at": "one_rocket_fired_claim_opens",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":3,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":3,"charges":4,"active":true},"claim":{"station":4,"ready":false},"switching":false},
+      "writes": []
+    },
+    {
+      "at": "last_charge_fired",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":0,"reserve":0,"deaths":0,"held":null,"claim":null,"switching":true},
+      "writes": []
+    },
+    {
+      "at": "switched_back_to_the_ar",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":190,"deaths":0,"held":null,"claim":null,"switching":false},
+      "writes": [
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$AMMO,0,30,190,1,*"
+      ]
+    },
+    {
+      "at": "rockets_again",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true},"claim":null,"switching":true},
+      "writes": [
+        "$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*",
+        "$AMMO,2,2,0,1,*"
+      ]
+    },
+    {
+      "at": "slot_0_shot_reequips_the_heavy",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true},"claim":null,"switching":true},
+      "writes": [
+        "$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*",
+        "$AMMO,2,2,0,1,*"
+      ]
+    },
+    {
+      "at": "settled",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true},"claim":null,"switching":false},
+      "writes": []
+    }
+  ]
+}

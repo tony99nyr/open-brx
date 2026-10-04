@@ -1,0 +1,232 @@
+{
+  "name": "poison-ticks",
+  "why": "S16: a Toxin Rifle hit starts the poison stack, which ticks once a second off the outermost pool; a second hit refreshes it to full duration without a second clock and names the new applier; the stack runs out; then a lethal tick books the death and no tick follows on a dead gun.",
+  "source": "app/test/poison.test.mjs 'S16: a toxin hit starts the stack', 'a second hit REFRESHES', 'a LETHAL tick books the death'",
+  "runners": ["engine","stage"],
+  "setup": {
+    "config": {"respawn":{"type":"auto","delay_s":5}},
+    "frames": {"dot":{"11":{"weapon_id":"toxin_rifle","per_tick":4,"tick_ms":1000,"duration_ms":5000}}},
+    "gun": {"life":true},
+    "fields": ["poison"]
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"check":"live","preamble":true},
+    {"frames":["$HIR,0,11,3,2,8,0,0,*","$HP,45,62,0,*"]},
+    {"check":"poisoned"},
+    {"advance_ms":1000},
+    {"check":"tick_1"},
+    {"advance_ms":1500},
+    {"check":"tick_2"},
+    {"frames":["$HIR,0,11,5,2,8,0,0,*","$HP,45,46,0,*"]},
+    {"check":"refreshed_by_5"},
+    {"advance_ms":1000},
+    {"check":"tick_3"},
+    {"advance_ms":10000},
+    {"check":"stack_ran_out"},
+    {"frames":["$HP,4,0,0,*"]},
+    {"advance_ms":3000},
+    {"frames":["$HIR,0,11,3,2,0,0,0,*"]},
+    {"check":"poisoned_at_4_hp"},
+    {"advance_ms":1000},
+    {"check":"lethal_tick"},
+    {"advance_ms":3000},
+    {"check":"no_ticks_on_a_dead_gun"}
+  ],
+  "stage_ignores": [
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"state.ammo","why":"DIVERGENCE: engine.js `feedFrame` LCD case takes the magazine (t5) into `ammo` through `_onAmmo`; stage.py `_on_lcd` reads only the pools, so the stage's `ammo` stays null until an `$ALCD`."},
+    {"what":"state.reserve","why":"DIVERGENCE: the same LCD gap as state.ammo: the engine takes the `$LCD` reserve (t6), the stage does not."},
+    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
+    {"what":"write:$HLOOP,1,","why":"Harness timing: the down rearm waits 2.5 s on the stage's instant `sleep` but on the engine's clock (both use `rearm_after_ms`), so it lands at a different checkpoint."},
+    {"what":"write:$IRTX","why":"DIVERGENCE: the stage does not model the S57 IR callouts (engine.js `_irCallout`): a dying engine sends the kill-confirm and DOWN words over `$IRTX`, the stage sends nothing."},
+    {"what":"write:$PLAY,,4,6,H31,","at":"tick_1","why":"DIVERGENCE: the first poison tick is silent on the engine (F446: engine.js `_poisonStrike` plays `poison_tick` only when the gun has no write outstanding and the announcer is idle, and the H12 onset is still on air); the stage gates on the hill callout only (stage.py `_poison_tick`), so it plays H31 on every tick."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":null},
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*",
+        "$LIFE,0,0,0,*",
+        "$QUERY,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "poisoned",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":62,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":0,"perTick":4}},
+      "writes": [
+        "$PLAY,H12,4,6,,,,,*",
+        "$GLED,4,4,4,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,4,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "tick_1",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":58,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":1,"perTick":4}},
+      "writes": [
+        "$GLED,9,4,4,0,10,,*",
+        "$LIFE,0,-4,0,*",
+        "$GLED,4,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "tick_2",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":54,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":2,"perTick":4}},
+      "writes": [
+        "$GLED,9,4,4,0,10,,*",
+        "$LIFE,0,-4,0,*",
+        "$PLAY,,4,6,H31,,,,*",
+        "$GLED,4,4,4,0,10,,*",
+        "$GLED,9,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "refreshed_by_5",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":46,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":2,"perTick":4}},
+      "writes": [
+        "$GLED,4,4,4,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,9,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "tick_3",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":42,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":3,"perTick":4}},
+      "writes": [
+        "$LIFE,0,-4,0,*",
+        "$PLAY,,4,6,H31,,,,*"
+      ]
+    },
+    {
+      "at": "stack_ran_out",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":26,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":null},
+      "writes": [
+        "$LIFE,0,-4,0,*",
+        "$PLAY,,4,6,H31,,,,*",
+        "$GLED,9,4,4,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,9,4,4,0,10,,*",
+        "$GLED,9,9,4,0,10,,*",
+        "$LIFE,0,-4,0,*",
+        "$PLAY,,4,6,H31,,,,*",
+        "$GLED,9,4,4,0,10,,*",
+        "$GLED,9,9,4,0,10,,*",
+        "$LIFE,0,-4,0,*",
+        "$PLAY,,4,6,H31,,,,*",
+        "$GLED,9,4,4,0,10,,*",
+        "$GLED,9,9,4,0,10,,*",
+        "$LIFE,0,-4,0,*",
+        "$PLAY,,4,6,H31,,,,*",
+        "$GLED,9,4,4,0,10,,*",
+        "$GLED,9,4,4,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,9,9,4,0,10,,*",
+        "$GLED,1,1,1,0,1,,*"
+      ]
+    },
+    {
+      "at": "poisoned_at_4_hp",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":4,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":0,"perTick":4}},
+      "writes": [
+        "$PLAY,,4,6,VA86,,,,*",
+        "$HLED,7,4,90,90,10,15,*",
+        "$GLED,3,3,3,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,3,3,3,0,10,,*",
+        "$GLED,9,3,3,0,10,,*",
+        "$GLED,9,2,2,0,10,,*",
+        "$GLED,9,9,2,0,10,,*",
+        "$GLED,9,9,0,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,9,9,0,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,9,9,0,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,9,9,0,0,10,,*"
+      ]
+    },
+    {
+      "at": "lethal_tick",
+      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"poison":null},
+      "writes": [
+        "$GLED,9,9,9,0,10,,*",
+        "$PLAY,H12,4,6,,,,,*",
+        "$LIFE,-4,0,0,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$GLED,,,,5,,,*",
+        "$IRTX,100,15,3,0,22,0,0,100,1,,0,*",
+        "$IRTX,100,15,7,0,26,0,0,100,1,,0,*"
+      ]
+    },
+    {
+      "at": "no_ticks_on_a_dead_gun",
+      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"poison":null},
+      "writes": [
+        "$HLOOP,1,2500,*"
+      ]
+    }
+  ]
+}
