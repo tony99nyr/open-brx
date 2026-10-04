@@ -1,5 +1,5 @@
 // ammo.js -- the gun's AMMUNITION as the node keeps it: the magazine account, the counts per weapon slot, the ammo
-// block the HUD shows and the heat lockout (F259, F164, F394, pl4).
+// block the HUD shows, the heat lockout and the reload takeover (F259, F164, F394, pl4, F123).
 //
 // Why a module: the magazine had no single interface. The account (`_shotAcct`), the last counts per slot
 // (`_prevAmmo`/`_prevReserve`), the echo window and the HUD's ammo block were engine fields, read raw by the spawn,
@@ -7,7 +7,7 @@
 // class owns them; the engine holds one instance (`engine.am`), calls its entry points and asks it by name.
 //
 // PUBLIC SURFACE
-//   TRIGGER_NO_FIRE_MS · ACC_ECHO_MS · OVERHEAT_CAP_MS · HEAT_STALE_MS · OVERHEAT_SHOWN_MS
+//   TRIGGER_NO_FIRE_MS · ACC_ECHO_MS · OVERHEAT_CAP_MS · HEAT_STALE_MS · OVERHEAT_SHOWN_MS · ENERGY_REFILL_MAX_MS
 //   Ammo(host)
 //     account     acctLive(slot, now) · acctOutstanding(slot, now) · acctEchoing(slot, now) · pressedRounds(slot) ·
 //                 acctWrote(slot, mag, res) · acctPress() · acctAmmo(slot, mag, prev)
@@ -16,12 +16,16 @@
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
 //     heat        noteHeat(slot, heat) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
 //                 overheatOnHud(now) · heatOf(slot) · heatedEver(slot) · forgetHeat()
-//     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock (read them;
-//                 change them through the methods above)
+//     reload      reloadPulled() · reloadReleased(now) · reloadDeadline() · endReload(why) · reloadTick(now) ·
+//                 reloadingMs() · reloadOpen · dropReload()
+//     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · reloading ·
+//                 reloadOutcome (read them; change them through the methods above)
 //
 // HOST INTERFACE (engine.js `ammoHost`; every member looks the engine up at call time)
-//   services    now() · fireIntervalMs(slot) · recoilStep(n)
-//   read-only   activeSlot · frames · phase · alive · recoil (the engine's live accuracy model, or null)
+//   services    now() · log(line, cls) · changed() · fireIntervalMs(slot) · recoilStep(n) · reloadGlance()
+//   lookups     weaponRow(id) · perkRow(id)
+//   read-only   activeSlot · frames · phase · alive · tutorial · resync · stunned · player · ammo · mag · reserve ·
+//               rc (the Reconcile instance: disarmed) · recoil (the engine's live accuracy model, or null)
 //   writes      setAmmo(ammo, mag) · setReserve(reserve)   the ammo block's numbers (`engine.ammo`, `.mag`, `.reserve`)
 
 /** F208: a trigger press on a live, loaded gun gets its `$ALCD` inside ~5 ms (2026-08-26 burst rifle capture).
@@ -94,6 +98,18 @@ export const HEAT_STALE_MS = 25000;
 // line, or a trigger press that got no shot (the Energy Rifle locks for up to 23 s and sends no $ALCD while it
 // does). A shot or a reading below the line ends it at once; OVERHEAT_CAP_MS bounds it.
 export const OVERHEAT_SHOWN_MS = 6000;
+const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
+// F27 (HANDOFF): handle-pull -> mag-refill on HARDWARE runs consistently LONGER than the catalog
+// `reload_ms` — AR 1701 vs 1400, burst 2160 vs 1700, charge 3220 vs 2500, i.e. ~1.22-1.29x. A flat
+// 600 ms grace covers the first two and misses the charge rifle by 120 ms, which would end the takeover
+// on the frame BEFORE the gun's own echo and book a real reload as failed. The ceiling is therefore
+// proportional as well as flat, and `_reloadDeadline` takes the larger of the two.
+const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which clears every measured overrun
+/** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon refills on a HOLD of the lever, the whole cell in one
+ *  step, 3.5-3.9 s after the pull starts (catalogue 2400 ms: 2400 + max(600, 1200) = 3600 ms missed the slow
+ *  end). An energy weapon's watchdog waits at least this long from the pull, plus RELOAD_GRACE_MS. */
+export const ENERGY_REFILL_MAX_MS = 3900;
+const isEnergyWeaponId = id => /energy|charge/i.test(String(id || ''));   // the same rule as hud.js `isEnergyWeapon`
 
 export class Ammo {
   /** @param {any} host the engine's side (engine.js `ammoHost`) */
@@ -123,6 +139,10 @@ export class Ammo {
     // not "unknown"; reading `heatBySlot[slot] != null` alone would show the bar on every weapon after its
     // first shot).
     this.everHeated = {};
+    // {at, ms, slot, from, cap, mag, lastGainAt} from the reload-handle pull ($BUT,2) until the gun's OWN
+    // $ALCD says the mag came back (review 2026-09-03 #15; reconciled against real ammo for F123).
+    this.reloading = null;
+    this.reloadOutcome = null;     // F123: how the LAST takeover ended — {ok, filled, from, to, cap, gained, slot, ms, why, at}; null before the first reload of a life
   }
 
   // ---- state resets ----
@@ -135,6 +155,8 @@ export class Ammo {
   setPrev(slot, mag, res) { this.prevAmmo[slot] = mag; if (res !== undefined) this.prevReserve[slot] = res; }
   /** F416 round 2: the rounds the trigger has asked for on `slot` that may still come back (0 once the press expires). */
   pressedRounds(slot) { const a = this.acct[slot]; return this.acctOutstanding(slot) && a ? a.fired : 0; }
+  /** A new life, a death or the match end: no takeover follows the player, and no verdict from the last one. */
+  dropReload() { this.reloading = null; this.reloadOutcome = null; }
   /** A new life: no slot has a heat reading or a lockout. */
   forgetHeat() { this.heatBySlot = {}; this.heatAt = {}; this.everHeated = {}; this.heatLock = null; }
 
@@ -213,6 +235,83 @@ export class Ammo {
   overheatOnHud(now = this.host.now()) {
     const L = this.heatLock;
     return !!(L && L.slot === this.host.activeSlot && now - L.lastAt < OVERHEAT_SHOWN_MS && now - L.at < OVERHEAT_CAP_MS);
+  }
+
+  // ---------- the reload takeover (F123) ----------
+  /** Is a reload takeover open (whatever the deadline says)? The engine's stand-down table and the HUD lanes ask. */
+  get reloadOpen() { return !!this.reloading; }
+  /** The reload lever came up. OBSERVATIONAL only: a magazine weapon's handle is let go at once and the reload still
+   *  completes about 1.4 s later, so a release never ends a takeover. */
+  reloadReleased(now) { if (this.reloading) this.reloading.releasedAt = now; }
+  /** Reload handle pulled: the gun refuses fire for the weapon's reload time (catalog reload_s; 1.5 s when unknown). */
+  reloadPulled() {
+    if (this.host.phase !== 'live' || !this.host.alive || this.host.tutorial || this.host.resync || this.host.rc.disarmed) return;   // resync/reconcile: the gun is disarmed and unverified, no takeover
+    // A20/F15: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `_onAmmo` drops every $ALCD for the whole
+    // window, so a takeover started here could never be reconciled: it would run to its deadline and book
+    // `ok:false` on a reload the player never asked the gun for. Refuse the pull instead.
+    if (this.host.stunned) { this.host.log('reload pull ignored — the gun is stunned', 'li'); return; }
+    const cap = this.ammoBySlot()[this.host.activeSlot] ?? this.host.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
+    if (cap && this.host.ammo >= cap && (this.host.reserve || 0) > 0) return;             // nothing to reload — the gun ignores the pull
+    if (!(this.host.reserve > 0)) return;                                           // dry reserve: no reload happens (whatever is in the mag)
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons; const w = ws && (ws[this.host.activeSlot] || ws[0]);
+    const row = w && this.host.weaponRow(w.weapon_id); let secs = row && row.reload_s != null ? +row.reload_s : 1.5;
+    // The perk's reload multiplier is applied to the gun's $WEAP reload token by MC (compile.py apply_perks), so the
+    // takeover must shrink with it too — quick_hands halves the reload (Tony, 2026-09-04).
+    const pk = this.host.player && this.host.player.loadout && this.host.player.loadout.perk ? this.host.perkRow(this.host.player.loadout.perk) : null;
+    const rm = pk && pk.effects && pk.effects.reload_mult ? +pk.effects.reload_mult : 1;
+    if (rm > 0 && rm !== 1 && this.host.activeSlot === 0) secs *= rm;   // compile applies reload_mult to slot 0 only (slot 1 gets swap_mods)
+    const now = this.host.now();
+    // `from`/`cap`/`mag` are what make this a RECONCILIATION and not an animation: `ms` is only the
+    // nominal length, and the takeover ends on what the gun's own $ALCD says the magazine did.
+    this.reloading = { at: now, ms: Math.max(300, Math.round(secs * 1000)), slot: this.host.activeSlot,
+                       from: this.host.ammo, cap: cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
+                       energy: !!(w && isEnergyWeaponId(w.weapon_id)) };
+    this.reloadOutcome = null;
+    this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
+    this.host.changed();
+  }
+  /** When a running takeover gives up waiting for the gun.
+   *
+   *  F123: `reloadingMs()` used to be a PURE TIMER, so a reload that never happened animated exactly like
+   *  one that did — the 2026-09-11 field report ("the hud animates reloading, but the gun doesnt actually
+   *  reload") is that timer. The deadline is now measured from the last time the MAGAZINE MOVED, not from
+   *  the pull, which covers both real behaviours in one rule:
+   *    · a magazine weapon gains its rounds in one $ALCD, late (F27) — the flat+proportional ceiling covers it;
+   *    · a shell-by-shell chain (the shotgun: 6 × ~420 ms) feeds one round at a time, and each shell pushes
+   *      the deadline out again, so the bar runs for as long as the gun is really loading and no longer.
+   *  No per-weapon "is this a chain reload" flag is needed on the phone for this: the gun tells us. */
+  reloadDeadline() {
+    const r = this.reloading; if (!r) return 0;
+    const d = Math.max(r.at, r.lastGainAt || 0) + r.ms + Math.max(RELOAD_GRACE_MS, Math.round(r.ms * RELOAD_OVERRUN));
+    return r.energy ? Math.max(d, r.at + ENERGY_REFILL_MAX_MS + RELOAD_GRACE_MS) : d;   // pl4: a held recharge lands late
+  }
+  /** Book the end of a takeover and record WHAT THE GUN DID, so a failed reload can never read as a success.
+   *  `why`: 'filled' (mag reached the spawn cap) · 'fired' (a round left the mag, the reload is over) ·
+   *  'swapped' (an ALT swap took the weapon away) · 'timeout' (the gun stopped feeding) · 'dropped' (link lost). */
+  endReload(why) {
+    const r = this.reloading; if (!r) return;
+    this.reloading = null;
+    const gained = Math.max(0, (r.mag ?? r.from) - r.from);
+    this.reloadOutcome = { ok: gained > 0, filled: r.cap != null ? r.mag >= r.cap : gained > 0,
+                            from: r.from, to: r.mag, cap: r.cap, gained, slot: r.slot,
+                            ms: this.host.now() - r.at, why, at: this.host.now() };
+    // A shot mid-reload is the PLAYER cancelling it, not the gun failing to feed — 'reload did NOT take'
+    // read as a defect in the log of every chain weapon anybody fires out of (review 2026-09-12).
+    if (why === 'fired' && !this.reloadOutcome.filled) this.host.log(`reload cancelled by a shot: ${r.mag} of ${r.cap ?? r.mag} loaded`, 'li');
+    else if (!gained) this.host.log(`reload did NOT take (${why}) — mag still ${r.mag}`, 'le');
+    else if (!this.reloadOutcome.filled) this.host.log(`reload partial: ${r.from} → ${r.mag} of ${r.cap} (${why})`, 'li');
+    this.host.changed();
+  }
+  /** tick(): end a takeover the gun has stopped feeding. The decision lives HERE, not in `reloadingMs()`,
+   *  which stays pure — but both read the same deadline, so a render between ticks can never disagree. */
+  reloadTick(now) {
+    if (this.reloading && now > this.reloadDeadline()) this.endReload('timeout');
+  }
+  /** Milliseconds into the current reload, or null when none is running (PURE, read by state()). */
+  reloadingMs() {
+    if (!this.reloading) return null;
+    const now = this.host.now();
+    return now > this.reloadDeadline() ? null : now - this.reloading.at;
   }
 
   // ---------- F259: the node's own magazine account ----------

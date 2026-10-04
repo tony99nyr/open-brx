@@ -1776,6 +1776,9 @@ _AMMO_PAIRS = {
     "am.publish": "_publish_ammo", "am.showSlot": "_show_slot_ammo",
     # heat: the mechanic (the display, `am.overheatOnHud`, is pinned below)
     "am.heatBlocksFire": "_heat_blocks_fire",
+    # the reload takeover (F123)
+    "am.reloadPulled": "_reload_pulled", "am.reloadDeadline": "_reload_deadline", "am.endReload": "_end_reload",
+    "am.reloadTick": "_reload_tick",
 }
 
 
@@ -1901,6 +1904,12 @@ KNOWN_UNMIRRORED = {
     # Engine split (b): the heat readings' small doors. The stage records heat inline in `_on_ammo` and clears it inline in
     # `_after_spawn`; `heatOf` and `heatedEver` are the HUD's heat bar (`state().heat`, `heatEverSeen`), display only.
     "am.noteHeat", "am.forgetHeat", "am.heatOf", "am.heatedEver",
+    # Engine split (b): the reload takeover's view and doors. `reloading` is the Engine's accessor over `am.reloading` (the
+    # stage keeps a plain `reloading` attribute, which this def scan cannot see); `am.reloadingMs` is the HUD's clock (the
+    # stage's is `_reloading_view`, pinned with the Engine's `reloadingMs` delegate below); `am.reloadOpen` is the stand-down
+    # table's question, inline on the stage; the stage clears its takeover inline (`dropReload`) and keeps no lever
+    # release time (`reloadReleased`: written, never read, on the phone too).
+    "reloading", "am.reloadingMs", "am.reloadOpen", "am.dropReload", "am.reloadReleased",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # F202: local picker/storage operation; GunStage has no phone-owned gun binding to clear.
@@ -2153,14 +2162,14 @@ def test_the_mirror_scan_sees_both_classes():
     assert len(stg) > 100, f"only {len(stg)} GunStage methods parsed — the class body pattern moved"
     mirrored = eng - _unmirrored()
     assert len(mirrored) > 25, f"only {len(mirrored)} engine methods resolve to a stage method"
-    for known in ("_hillTick", "_reloadTick", "_stun"):
+    for known in ("_hillTick", "am.reloadTick", "_stun"):
         assert known in mirrored, f"{known} should pair engine.js with GunStage but does not"
 
 
 def test_pl4_an_energy_weapon_watchdog_covers_a_held_recharge_that_lands_3_9_s_after_the_pull():
-    """engine.js `_reloadDeadline` (pl4, Energy Rifle bench 2026-09-17): a hold refills the whole cell 3.5-3.9 s
+    """ammo.js `reloadDeadline` (pl4, Energy Rifle bench 2026-09-17): a hold refills the whole cell 3.5-3.9 s
     after the pull. An energy weapon waits at least ENERGY_REFILL_MAX_S + RELOAD_GRACE_S from the pull."""
-    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
+    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "ammo.js").read_text(encoding="utf-8")   # engine split (b)
     assert f"ENERGY_REFILL_MAX_MS = {int(GunStage.ENERGY_REFILL_MAX_S * 1000)};" in js
 
     async def go():
