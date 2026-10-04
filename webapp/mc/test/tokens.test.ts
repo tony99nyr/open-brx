@@ -43,7 +43,7 @@ describe('CLASS_TAG is its own muted palette', () => {
 });
 
 
-// The site reads labels from the generated contract and colours from CLASS_TAG.
+// The site reads labels from the generated contract and colours from tokens.ts ROLE_COLOUR.
 import { describe as describeRole, expect as expectRole, it as itRole } from 'vitest';
 import { CLASS_TAG as CT, ROLE as RL } from '../src/tokens';
 describeRole('ROLE colours are the CLASS_TAG colours', () => {

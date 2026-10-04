@@ -1,4 +1,4 @@
-import { TEAM_KEYS, TEAM_INK_HEX } from '../transport/contract.gen.js';
+import { TEAM_KEYS, TEAM_INK_HEX, HILL_REFUSED_TID } from '../transport/contract.gen.js';
 // The DOWN screen's recap. Tony 2026-09-23: "we can simplify what is shown, what were we killed by and just a few
 // callouts, it doesn't have to be a financial report". Pure functions of engine state; `hud.js` places the HTML.
 //  - The killer line: who, with what, and the hit that finished you (its damage, and gun or headset).
@@ -12,7 +12,7 @@ import { TEAM_KEYS, TEAM_INK_HEX } from '../transport/contract.gen.js';
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', purple: 'var(--team-purple)' };
 const TEAM_INK = Object.fromEntries(TEAM_KEYS.map((key, tid) => [key, TEAM_INK_HEX[tid]]));
 const TID_KEY = Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key]));
-const HILL_NEUTRAL_TID = 2;   // engine.js HILL_NEUTRAL_TEAM: a neutral point broadcasts team 2
+const HILL_NEUTRAL_TID = HILL_REFUSED_TID;   // engine.js HILL_NEUTRAL_TEAM: a neutral point broadcasts team 2
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const num = v => (typeof v === 'number' && Number.isFinite(v)) ? v : null;

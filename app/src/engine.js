@@ -11,7 +11,10 @@
 // carries those cue keys).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
-import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, PHONE_POWERUP_THRESHOLD_DBM, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS } from './transport/contract.gen.js';
+import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, PHONE_POWERUP_THRESHOLD_DBM, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS, HILL_REFUSED_TID } from './transport/contract.gen.js';
+// F354 (types.py SIR_NO_POOL_FNS / SIR_GRANT_FNS, the sets compile.py builds by): a no-pool word registers a `$HIR`
+// and moves no pool, so it latches but never names who did damage; a grant word (heals, armour, shields) HELPS its
+// target, so it is never the damage behind a drop or a kill. The cell decides, never the protocol alone.
 export { SIR_NO_POOL_FNS, SIR_GRANT_FNS };
 import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
@@ -208,9 +211,6 @@ export const PU_COUNT_REPAIRS = 2;
 // which is the load F342 measured.
 export const RADIO_QUIET_AFTER_MS = 1500;
 export const RADIO_QUIET_MAX_MS = 10000;  // a write whose promise never settles cannot hold the scan shut for ever
-/** compile.py `TRIGGER_AFTER_PROTECT_MS` (types.py): a timed trigger goes live at least this long after
- *  protection ends. Mirrored here so a retried protection-off write can push `_triggerPending.due` out by
- *  the same margin -- the trigger must never go live while t8 is still -100 (review finding, 2026-09-19). */
 export { SPAWN_KILL_WINDOW_MS };
 /** The down-screen warning levels: 1 = the normal line, 2 = larger and pulsing, 3 = maximum (held for the match). */
 export const DOWN_WARN_MAX = 3;
@@ -360,12 +360,6 @@ export function dotEchoMatches(echo, before, after) {
 /** S53 (bench 2026-09-18, the controlled redo): a fn-23 smoke holds the victim's live accuracy at 0 for about 6 s,
  *  then the gun restores it in one step (the V4_31 6000 ms timer). */
 export const SMOKE_MS = 6000;
-// F354: the `$SIR` row functions that register a `$HIR` and move no pool. A mirror of compile.py `_SIR_NO_POOL`
-// (app/test/poison.test.mjs guards the copy). A word whose cell holds one of these still latches (the stun and smoke
-// paths read it), but it never names who did damage. The cell decides, never the protocol alone: the stock <8,0> row
-// is fn 1 damage (the Charge Rifle) and becomes the fn-23 EMP only when `config.stun` is on.
-// F354: the grant functions (compile.py `_SIR_GRANT`, fn 9-22: heals, armour, shields). A grant word HELPS its target,
-// so it can never be the damage behind a drop or take a kill. Test-guarded against compile.py like the set above.
 /** S53: the victim's `$ALCD` accuracy drops to 0 "in the same millisecond" as the smoke's `$HIR` (bench 2026-09-18).
  *  A drop to 0 and a `$HIR` this close together, in either order, is a smoke landing. */
 export const SMOKE_PAIR_MS = 400;
@@ -562,7 +556,7 @@ const READOUT_POOL_INWARD = ['shield', 'armor', 'health'];
 const HILL_MAG = 8;                 // $HIR magnitude 8 = a control point / hill (6 = respawn station — never a hill)
 const HILL_CAPTURE_MAG = 50;        // the capture word, carrying the NEW owner in the team field; lands ~50 ms after the shot
 const HILL_WAS_NEUTRAL_MAG = 53;    // "the state being LEFT was neutral" — arrives ~5 s LATER, and only when it was neutral (n=2)
-const HILL_NEUTRAL_TEAM = 2;        // a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
+const HILL_NEUTRAL_TEAM = HILL_REFUSED_TID;   // a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
 const HILL_TICK_MS = 3000;          // the possession tick's cadence — the node's own clock, never the beacon's
 // Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a
 // flat 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception, not

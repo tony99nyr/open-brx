@@ -471,8 +471,12 @@ def test_an_unlisted_tuple_stays_out_and_a_bad_table_shape_is_refused():
     whose shape no renderer handles fails the generator instead of rendering something wrong."""
     import pytest
     gen = _load()
-    assert "export const PHONE_THRESHOLD_ZERO_APP" not in _render()[JS_OUT]
+    from brx_mcp.mc import types as T
+    assert isinstance(T.TX_POWERS, tuple) and all(isinstance(v, str) for v in T.TX_POWERS)   # a renderable shape
+    assert "export const TX_POWERS" not in _render()[JS_OUT]          # ...that stays out, because it is not listed
     with pytest.raises(ValueError):
         gen._table_shape("X", {"a": {"b": "not an int"}})
     with pytest.raises(ValueError):
         gen._table_shape("X", {"phone": {"a": 1}, "sticks3": {"b": 1}})
+    with pytest.raises(ValueError):
+        gen._table_shape("X", {"__proto__": "lost in a JS object literal"})

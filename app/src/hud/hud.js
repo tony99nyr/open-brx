@@ -1,4 +1,4 @@
-import { TEAM_KEYS, TEAM_INK_HEX, ROLE_LABELS } from '../transport/contract.gen.js';
+import { TEAM_KEYS, TEAM_INK_HEX, ROLE_LABELS, PHONE_STATION_THRESHOLD_DBM } from '../transport/contract.gen.js';
 // Phone HUD v2 renderer — a pure function of engine state (node.md §4). Landscape 844×390, scaled to
 // the viewport. Structure re-renders only when the state "signature" changes; live numbers patch in
 // place so CSS animations don't restart every tick. Moments (T-MINUS, KILL, DOWN, REDEPLOY) live in
@@ -1666,7 +1666,7 @@ export class Hud {
     if (st.respawnType === 'scanner' && !st.respawnAuto && (hint === 'timer' || hint === 'wait')) hint = 'find_station';   // older engine fallback
     if (hint === 'timer') return `<span class="n tab" id="rd">${digits(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span>`;
     if (hint === 'out') return `<span class="n nn">✕</span><span class="lab">NO RESPAWNS THIS MODE</span>`;
-    const s = st.station || {}; const thr = s.threshold != null && s.threshold !== 0 ? s.threshold : -74; const rssi = s.rssi != null ? Math.round(s.rssi) : null;   // -74 = the bench-tuned station default (≈10 ft at high TX)
+    const s = st.station || {}; const thr = s.threshold != null && s.threshold !== 0 ? s.threshold : PHONE_STATION_THRESHOLD_DBM; const rssi = s.rssi != null ? Math.round(s.rssi) : null;   // -74 = the bench-tuned station default (≈10 ft at high TX)
     const pct = rssi == null ? 0 : Math.max(0, Math.min(100, Math.round(100 * (rssi - (thr - 30)) / 30)));   // 30 dB below the threshold = 0, at it = 100
     const bar = (cls, w) => `<div class="near ${cls}"><i style="width:${w}%"></i></div>`;
     const presence = st.respawnGate === 'presence';   // some games revive by just being at the station — never tell those players to pull the trigger (polish round 2026-09-04)

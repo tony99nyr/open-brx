@@ -18,6 +18,7 @@ import { Presence, encodeUuid, stationView, AdvertGate, advertChangeReason, conf
 import { playerClaimAdvert } from './powerup.js';                     // A56: the powerup claim bits on the player advert
 import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
+import { PHONE_STATION_THRESHOLD_DBM, PRESENCE_DWELL_MS } from './transport/contract.gen.js';   // review #4
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
 import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
@@ -192,7 +193,7 @@ const logsync = new LogSync({
 // The beacon scan feeds Presence; the engine gets a snapshot every tick (utility.md §3). Nothing here blocks
 // the match: with no plugin (desktop) or no stations in range the HUD behaves exactly as before. The scan
 // policy (when it is open, how often it restarts, one operation at a time) lives in scanwatch.js.
-const presence = new Presence({ defaultThreshold: -74, dwellMs: 800 });   // 0.8s dwell + -74 threshold: get-in-range, brief pause, green (bench-tuned 2026-09-04)
+const presence = new Presence({ defaultThreshold: PHONE_STATION_THRESHOLD_DBM, dwellMs: PRESENCE_DWELL_MS });   // 0.8s dwell + -74 threshold: get-in-range, brief pause, green (bench-tuned 2026-09-04)
 const stationWas = new Map();
 // The match's game byte scopes presence to THIS game (beacon.js Presence `game` filter): a station that
 // advertises a different non-zero game byte is ignored. 0 = "any game" on both sides (manual stations

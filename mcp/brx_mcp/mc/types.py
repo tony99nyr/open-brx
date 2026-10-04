@@ -1001,7 +1001,9 @@ class GamePiece(TypedDict):
 TeamColour = Literal["red", "blue", "yellow", "purple"]   # F413: the four native $TID teams (0-3)
 # A1/A12 (architecture review #4): the team vocabulary by $TID (index 0-3), generated for the phone, the console and
 # the Stick. F423: tid 3 is GREEN on the wire (`$TID,3`) but PAINTS and is NAMED purple everywhere a person sees it.
-# The hex values are the --team-* CSS tokens (app/www/index.html, utility.html); the inks are the dark text on them.
+# The hex values are the --team-* CSS tokens (app/www/index.html, utility.html) and the Stick's screen; the inks are the
+# dark text on them. MC's own console and roster (state.py TEAM_DEFS, webapp/mc/src/tokens.ts TEAM) keep their own
+# palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other.
 TEAM_KEYS = get_args(TeamColour)
 TEAM_NAMES = ("RED", "BLUE", "YELLOW", "PURPLE")
 TEAM_ABBRS = ("RED", "BLU", "YEL", "PUR")

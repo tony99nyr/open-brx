@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
-import { STATION_DEFAULT_THRESHOLD_DBM, TEAM_NAMES } from '../api/contract.gen';
+import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
@@ -28,7 +28,7 @@ const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: '
 // `bomb` keep their code, their type and their recap label (`KIND_LABEL` above) so an OLD assignment of
 // either still renders -- they just drop off the kind picker a host assigns a NEW station from.
 const MVP_STATION_KINDS: StationKind[] = STATION_KINDS.filter(k => k !== 'extraction' && k !== 'bomb');
-const TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), 255: 'ANY' };   // F423: tid 3 paints purple, not green
+const TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY' };   // F423: tid 3 paints purple, not green
 /** H1: what threshold 0 resolves to, and where an edit begins: the generated STATION_DEFAULT_THRESHOLD_DBM for the
  *  station's platform and kind (types.py), the same table MC's `_wire_threshold`, the phone and the Stick read. */
 export function bubbleDefault(kind: StationKind, stick: boolean): { label: string; start: number } {
@@ -169,7 +169,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
   const a = s.assigned;
   // The draft is the operator's edit in progress; it starts from the assignment (or what the phone reports).
   const [kind, setKind] = useState<StationKind>(a?.kind ?? s.report.kind ?? 'respawn');
-  const [team, setTeam] = useState<number>(a?.team ?? s.report.team ?? 255);
+  const [team, setTeam] = useState<number>(a?.team ?? s.report.team ?? STATION_TEAM_ANY);
   // F364 (Tony 2026-09-25): MC assigns the station id at ASSIGN + ARM, unique across phones and Sticks and kept
   // across restarts. The card shows it read-only and the PUT sends no id.
   const [applyErr, setApplyErr] = useState<string | null>(null);   // a refused write, on THIS card (the header may be off-screen)
@@ -268,7 +268,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
     (chosenKind === 'weapon' && chargesEdit != null && chargesEdit !== assignedItem.charges)
     || (chosenKind === 'overshield' && amountEdit != null && amountEdit !== assignedItem.amount)
     || (everyEdit != null && everyEdit !== assignedItem.spawn_every_s));
-  const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.threshold !== threshold
+  const dirty = !a || a.kind !== kind || a.team !== (control ? STATION_TEAM_ANY : team) || a.threshold !== threshold
     || (tx != null && tx !== a.tx_power) || (picking && chosen !== assignedPreset) || itemOverrideDirty;
   // a powerup station still waiting for its item pick is not a live button, so it must not look like one
   const lit = (dirty || needsRearm) && !(dirty && needsPick);
@@ -279,7 +279,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
       // S-powerup-overrides: always resend the EFFECTIVE value for a field that applies to the chosen item,
       // not only when it just changed -- the same full-replace contract `item_preset` itself already has
       // (state.py `set_station` recomputes the whole item from this request; nothing carries over unsent).
-      const body = { kind, team: control ? 255 : team, threshold, ...(tx ? { tx_power: tx } : {}),
+      const body = { kind, team: control ? STATION_TEAM_ANY : team, threshold, ...(tx ? { tx_power: tx } : {}),
         ...(picking && chosen ? { item_preset: chosen, spawn_every_s: every,
           ...(chosenKind === 'weapon' ? { charges } : {}), ...(chosenKind === 'overshield' ? { amount } : {}) } : {}) };
       if (dirty) await run(keep(() => api.putStation(s.node_id, body).catch(e => {
@@ -303,7 +303,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
   };
   const rep = s.report;
   const age = s.last_seen_ms;
-  const teamOptions = [...teams.map(t => ({ value: String(t.tid), label: t.name.toUpperCase().replace(/ TEAM$/, '') })), { value: '255', label: 'ANY' }];
+  const teamOptions = [...teams.map(t => ({ value: String(t.tid), label: t.name.toUpperCase().replace(/ TEAM$/, '') })), { value: String(STATION_TEAM_ANY), label: 'ANY' }];
   return (
     <div data-station-card={s.node_id} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
       {/* M3 (visual QA 2026-09-24): the name owns its row. With LOCKED and the status beside it, the name was
@@ -328,7 +328,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
             fault (AMBER) only once the station IS assigned and the phone disagrees with it. */}
         <Micro>{deviceOf(s)} SAYS</Micro>
         <Val color={rep.armed !== false ? T.dim : !a ? colourOf('items-rep-not-armed') : colourOf('items-rep-not-armed-advertising')}>
-          {rep.kind ? `${KIND_LABEL[rep.kind] ?? rep.kind} ${rep.station_id ?? '?'} · ${TID_NAME[rep.team ?? 255] ?? rep.team}` : '—'}
+          {rep.kind ? `${KIND_LABEL[rep.kind] ?? rep.kind} ${rep.station_id ?? '?'} · ${TID_NAME[rep.team ?? STATION_TEAM_ANY] ?? rep.team}` : '—'}
           {rep.armed === false && ' · NOT ARMED'}{rep.live ? ' · ADVERTISING' : ''}
         </Val>
         {rep.revives != null && kind === 'respawn' && (<><Micro>REVIVES</Micro><Val color={T.dim}>{rep.revives}</Val></>)}

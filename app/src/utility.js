@@ -13,7 +13,7 @@ import { makeEnvelope, encode } from './transport/envelope.js';   // stage harne
 import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
 import { parseMcJoin } from './mcurl.js';
-import { TEAM_NAMES as CONTRACT_TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS as CONTRACT_TEAM_KEYS, PRESENCE_DWELL_MS, STATION_LOCK_MAX_S, STATION_TICK_MS } from './transport/contract.gen.js';
+import { TEAM_NAMES as CONTRACT_TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS as CONTRACT_TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_LOCK_MAX_S, STATION_TICK_MS } from './transport/contract.gen.js';
 import { startUtilitySweep, resolveTypedMc } from './transport/utility-join.js';   // bench 2026-09-24: the LAN sweep fallback + typed-address parsing
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
 import { RangeEdits, RANGE_KEY, TX_TO_WIRE, txFromWire, rangeHoldMs, RANGE_IDLE_MS } from './rangeedit.js';   // F365 / A67: the on-station range edit, synced to MC
@@ -130,7 +130,7 @@ const link = new BrxLink({ log });
 // point, must not count as a body. The player side already assigns this every second (`app.js` presenceTick);
 // the station never did, so `beacon.js`'s filter was dead code here. It only bites once MC arms a non-zero
 // game (v1 manual stations stay at 0 = any), which is exactly when two games share a field.
-const presence = new Presence({ defaultThreshold: thr(), dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
+const presence = new Presence({ defaultThreshold: thr(), dwellMs: settings.dwell, alpha: PRESENCE_ALPHA, game: settings.game });
 const wasAlive = new Map();          // player id → { alive, died } for THIS game, to count revives that happened here (beacon.js countRevives)
 const _quietLogged = new Set();   // F440: players already logged as quiet in the current silence
 const QUIET_MS = 1500;

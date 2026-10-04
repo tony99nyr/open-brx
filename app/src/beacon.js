@@ -207,8 +207,8 @@ export class Presence {
 /**
  * The "at me" threshold a station advertises in byte 14 when MC sent 0 (or nothing): its own PLATFORM default
  * (F345, Tony 2026-09-24: a respawn station reaches 3 m at most). Measured at 3 m on the player phone: a phone
- * station -63 to -68 dBm, a StickS3 -53 to -58. The StickS3's value lives in its firmware
- * (`hardware/m5sticks3/station_link.h` STICK_DEFAULT_THRESHOLD_DBM); this table is the record both sides follow.
+ * station -63 to -68 dBm, a StickS3 -53 to -58. The values live in types.py STATION_DEFAULT_THRESHOLD_DBM, generated
+ * for the phone, the console and the Stick.
  * Same shape as the powerup claim's per-platform default (docs/spec/powerups.md "Threshold").
  */
 export const RESPAWN_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.respawn, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.respawn });
@@ -217,9 +217,9 @@ export const STATION_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM.phone.extract
 /** A phone station's own default for `kind` (utility.js, when `settings.threshold` is 0). */
 export const POWERUP_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.powerup, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.powerup });
 /** F383: the hill's own default is -75 dBm, with the exit band EXIT_BAND_DB, on every path, until the outdoor walk measures a
- *  real one (Tony, 2026-09-27). The Stick's copy is `hardware/m5sticks3/station_range.h STICK_HILL_DEFAULT_THRESHOLD_DBM`. */
+ *  real one (Tony, 2026-09-27). */
 export const CONTROL_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.control, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.control });
-export function phoneStationThreshold(kind) { return kind === 'respawn' ? RESPAWN_RSSI_DBM.phone : kind === 'powerup' ? POWERUP_RSSI_DBM.phone : kind === 'control' ? CONTROL_RSSI_DBM.phone : STATION_THRESHOLD_DBM; }
+export function phoneStationThreshold(kind) { return STATION_DEFAULT_THRESHOLD_DBM.phone[kind] ?? STATION_THRESHOLD_DBM; }
 
 /** utility.js `thr()`: what a phone station advertises and measures by, its override or else its platform default. */
 export function stationThreshold({ threshold, kind }) { return threshold || phoneStationThreshold(kind); }

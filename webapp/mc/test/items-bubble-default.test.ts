@@ -32,4 +32,9 @@ describe('bubbleDefault', () => {
       }
     }
   });
+  it('a Stick extraction or bomb station starts at the Stick default, -57, not the phone -74 (review #4 named change)', () => {
+    expect(bubbleDefault('extraction', true).start).toBe(-57);
+    expect(bubbleDefault('bomb', true).start).toBe(-57);
+    expect(bubbleDefault('extraction', false).start).toBe(-74);
+  });
 });
