@@ -44,7 +44,10 @@ const BENIGN_ENV = new Set([
 // key), terminal colours, the editor git would open, and host details. Checked against every job's readers
 // (git grep in mcp, app/tools, app/test, webapp/mc/test, site, scripts) on 2026-10-04.
 for (const n of ['GH_TOKEN', 'GIT_EDITOR', 'HOSTTYPE', 'JAVA_HOME', 'LSCOLORS', 'LS_COLORS', 'WT_PROFILE_ID', 'WT_SESSION',
-  'NoDefaultCurrentDirectoryInExePath']) BENIGN_ENV.add(n);
+  'NoDefaultCurrentDirectoryInExePath',
+  // What `pnpm run` / `pnpm exec` add for every script (captured from a real run on 2026-10-04): NODE is the node
+  // binary's path (its version is already in the tool fingerprint); the rest describe the invocation.
+  'NODE', 'INIT_CWD', 'PNPM_SCRIPT_SRC_DIR', 'PNPM_PACKAGE_NAME', 'pnpm_config_verify_deps_before_run']) BENIGN_ENV.add(n);
 const BENIGN_PREFIXES = ['WSL_', 'XDG_', 'SSH_', 'npm_'];
 // Locale and time zone CAN change a result (sorting, number and date formats), but every shell sets LANG, so a
 // bypass would switch the cache off for everyone. They go into the key by value instead (keyedEnv below).
