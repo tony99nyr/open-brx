@@ -1,169 +1,255 @@
 {
   "version": 1,
-  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report.",
+  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report. A case's `mc` block (read only by mcp/tests/test_powerup_cases_mc.py) holds Mission Control's side: the item preset is the overshield with `item_spawn_every_s` (null = the preset's 60 s), the arm uses a 3 s runway, and each step's `t` is ms after go-live. Steps: tick (MC's clock tick), taken (a station_action; `player` is a roster index, `age_ms`, `station_id` optional), pickup (a player's pickup fact; `fact_t` its own t as ms after go-live), reset (a station reset action) and hello (the station reconnects). An expect holds `available`, `taken_by` (roster index or null), `feed_took` (TOOK lines in the feed so far) and `updates` (the exact station_update bodies MC pushed in that step). `only: [\"mc\"]` makes the phone and Stick runners skip a case.",
   "cases": [
     {
       "name": "spawns on its own clock, then repeats every interval; a claim folds the next spawn forward",
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "armed": {"updates": [{"id": 4, "available": false, "next_spawn_in_ms": 63000}]}, "steps": [
+        {"t": 0, "do": "tick", "expect": {"available": false, "updates": []}},
+        {"t": 59999, "do": "tick", "expect": {"available": false, "updates": []}},
+        {"t": 60000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}},
+        {"t": 60100, "do": "taken", "player": 0, "expect": {"available": false, "taken_by": 0, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 59900}]}},
+        {"t": 119999, "do": "tick", "expect": {"available": false, "updates": []}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "taken_by": null, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}},
+        {"t": 120100, "do": "taken", "player": 1, "expect": {"available": false, "taken_by": 1, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 59900}]}}
+      ] },
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": false, "next_spawn_in_ms": 1000 }, "expect": { "advert": { "state": 0, "value": 1, "taker": 0 } } },
-        { "t": 999, "do": "tick", "players": [], "expect": { "advert": { "state": 0, "value": 1, "taker": 0 }, "events": [] } },
-        { "t": 1000, "do": "tick", "players": [], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 }, "events": ["spawned"] } },
-        { "t": 1100, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 60, "taker": 7 }, "events": [{ "type": "taken", "player_num": 7 }] } },
-        { "t": 61000, "do": "tick", "players": [], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 }, "events": ["spawned"] } },
-        { "t": 61100, "do": "tick", "players": [{ "id": 8, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 60, "taker": 8 }, "events": [{ "type": "taken", "player_num": 8 }] } }
+        {"t": 0, "do": "update", "body": {"available": false, "next_spawn_in_ms": 1000}, "expect": {"advert": {"state": 0, "value": 1, "taker": 0}}},
+        {"t": 999, "do": "tick", "players": [], "expect": {"advert": {"state": 0, "value": 1, "taker": 0}, "events": []}},
+        {"t": 1000, "do": "tick", "players": [], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"]}},
+        {"t": 1100, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 60, "taker": 7}, "events": [{"type": "taken", "player_num": 7}]}},
+        {"t": 61000, "do": "tick", "players": [], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"]}},
+        {"t": 61100, "do": "tick", "players": [{"id": 8, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 60, "taker": 8}, "events": [{"type": "taken", "player_num": 8}]}}
       ]
     },
     {
       "name": "two claims across a self-spawn carry two different spawn instants (a report must not replace the first)",
       "only": ["stick"],
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": true, "next_spawn_in_ms": 60000 } },
-        { "t": 1000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "claim_key": 60000 } },
-        { "t": 60000, "do": "tick", "players": [], "expect": { "events": ["spawned"] } },
-        { "t": 61000, "do": "tick", "players": [{ "id": 8, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "claim_key": 120000, "advert": { "state": 0, "value": 59, "taker": 8 } } }
+        {"t": 0, "do": "update", "body": {"available": true, "next_spawn_in_ms": 60000}},
+        {"t": 1000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"claim_key": 60000}},
+        {"t": 60000, "do": "tick", "players": [], "expect": {"events": ["spawned"]}},
+        {"t": 61000, "do": "tick", "players": [{"id": 8, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"claim_key": 120000, "advert": {"state": 0, "value": 59, "taker": 8}}}
       ]
     },
     {
       "name": "claiming alone takes nothing; the first claim_ready wins and a later one does not steal",
-      "setup": { "id": 4, "spawn_every_s": 120 },
+      "setup": {"id": 4, "spawn_every_s": 120},
+      "mc": { "item_spawn_every_s": 120, "steps": [
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 121200, "do": "taken", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 118800}]}},
+        {"t": 121500, "do": "taken", "player": 1, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "updates": []}},
+        {"t": 121600, "do": "pickup", "player": 1, "expect": {"taken_by": 0, "feed_took": 1, "updates": []}}
+      ] },
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": true, "next_spawn_in_ms": 120000 } },
-        { "t": 100, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claiming"], "value": 4 }], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 }, "events": [] } },
-        { "t": 1200, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claiming", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 119, "taker": 7 }, "events": [{ "type": "taken", "player_num": 7 }] } },
-        { "t": 1500, "do": "tick", "players": [{ "id": 19, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 119, "taker": 7 }, "events": [] } },
-        { "t": 120000, "do": "tick", "players": [], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 }, "events": ["spawned"] } }
+        {"t": 0, "do": "update", "body": {"available": true, "next_spawn_in_ms": 120000}},
+        {"t": 100, "do": "tick", "players": [{"id": 7, "state": ["alive", "claiming"], "value": 4}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": []}},
+        {"t": 1200, "do": "tick", "players": [{"id": 7, "state": ["alive", "claiming", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 119, "taker": 7}, "events": [{"type": "taken", "player_num": 7}]}},
+        {"t": 1500, "do": "tick", "players": [{"id": 19, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 119, "taker": 7}, "events": []}},
+        {"t": 120000, "do": "tick", "players": [], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"]}}
       ]
     },
     {
       "name": "claims in one instant go to the lowest player_num",
-      "setup": { "id": 4, "spawn_every_s": 120 },
+      "setup": {"id": 4, "spawn_every_s": 120},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": true, "next_spawn_in_ms": 120000 } },
-        { "t": 1000, "do": "tick", "players": [
-          { "id": 19, "state": ["alive", "claim_ready"], "value": 4 },
-          { "id": 7, "state": ["alive", "claim_ready"], "value": 4 },
-          { "id": 12, "state": ["alive", "claim_ready"], "value": 4 }
-        ], "expect": { "advert": { "state": 0, "value": 119, "taker": 7 } } }
+        {"t": 0, "do": "update", "body": {"available": true, "next_spawn_in_ms": 120000}},
+        {"t": 1000, "do": "tick", "players": [{"id": 19, "state": ["alive", "claim_ready"], "value": 4}, {"id": 7, "state": ["alive", "claim_ready"], "value": 4}, {"id": 12, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 119, "taker": 7}}}
       ]
     },
     {
       "name": "a down player and another station id are ignored; no RSSI floor",
-      "setup": { "id": 4, "spawn_every_s": 120 },
+      "setup": {"id": 4, "spawn_every_s": 120},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": true, "next_spawn_in_ms": 120000 } },
-        { "t": 1000, "do": "tick", "players": [{ "id": 7, "state": ["claim_ready"], "value": 4 }], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 } } },
-        { "t": 1100, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 5 }], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 } } },
-        { "t": 1200, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4, "rssi": -95 }], "expect": { "advert": { "state": 0, "value": 119, "taker": 7 } } }
+        {"t": 0, "do": "update", "body": {"available": true, "next_spawn_in_ms": 120000}},
+        {"t": 1000, "do": "tick", "players": [{"id": 7, "state": ["claim_ready"], "value": 4}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}}},
+        {"t": 1100, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 5}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}}},
+        {"t": 1200, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4, "rssi": -95}], "expect": {"advert": {"state": 0, "value": 119, "taker": 7}}}
       ]
     },
     {
       "name": "an unknown schedule never self-spawns and awards nothing",
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
-        { "t": 100000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 0, "taker": 0 }, "events": [] } }
+        {"t": 100000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 0, "taker": 0}, "events": []}}
       ]
     },
     {
       "name": "a claim advert older than 1.5 s is ignored (the phone reads aged Presence entries; the Stick sees only fresh ones)",
       "only": ["phone"],
-      "setup": { "id": 4, "spawn_every_s": 120 },
+      "setup": {"id": 4, "spawn_every_s": 120},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": true, "next_spawn_in_ms": 120000 } },
-        { "t": 1000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4, "age_ms": 5000 }], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 } } }
+        {"t": 0, "do": "update", "body": {"available": true, "next_spawn_in_ms": 120000}},
+        {"t": 1000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4, "age_ms": 5000}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}}}
       ]
     },
     {
       "name": "claims 50 ms apart: the Stick awards the first it hears (documented difference, powerups.md)",
       "only": ["stick"],
-      "setup": { "id": 4, "spawn_every_s": 120 },
+      "setup": {"id": 4, "spawn_every_s": 120},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": true, "next_spawn_in_ms": 120000 } },
-        { "t": 2000, "do": "observe", "players": [{ "id": 9, "state": ["alive", "claim_ready"], "value": 4 }] },
-        { "t": 2050, "do": "observe", "players": [{ "id": 5, "state": ["alive", "claim_ready"], "value": 4 }] },
-        { "t": 2100, "do": "settle", "expect": { "advert": { "state": 0, "value": 118, "taker": 9 }, "events": [{ "type": "taken", "player_num": 9 }] } }
+        {"t": 0, "do": "update", "body": {"available": true, "next_spawn_in_ms": 120000}},
+        {"t": 2000, "do": "observe", "players": [{"id": 9, "state": ["alive", "claim_ready"], "value": 4}]},
+        {"t": 2050, "do": "observe", "players": [{"id": 5, "state": ["alive", "claim_ready"], "value": 4}]},
+        {"t": 2100, "do": "settle", "expect": {"advert": {"state": 0, "value": 118, "taker": 9}, "events": [{"type": "taken", "player_num": 9}]}}
       ]
     },
     {
       "name": "an echoed available:true for the spawn already awarded is refused (the re-sent report keeps the item taken)",
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": false, "next_spawn_in_ms": 1000 } },
-        { "t": 1000, "do": "tick", "players": [] },
-        { "t": 6000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 55, "taker": 7 } } },
-        { "t": 6100, "do": "update", "body": { "available": true, "next_spawn_in_ms": 54900 }, "expect": { "advert": { "state": 0, "value": 55, "taker": 7 } } }
+        {"t": 0, "do": "update", "body": {"available": false, "next_spawn_in_ms": 1000}},
+        {"t": 1000, "do": "tick", "players": []},
+        {"t": 6000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 55, "taker": 7}}},
+        {"t": 6100, "do": "update", "body": {"available": true, "next_spawn_in_ms": 54900}, "expect": {"advert": {"state": 0, "value": 55, "taker": 7}}}
       ]
     },
     {
       "name": "an echoed available:true with no next_spawn_in_ms is refused",
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": false, "next_spawn_in_ms": 1000 } },
-        { "t": 1000, "do": "tick", "players": [] },
-        { "t": 6000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }] },
-        { "t": 6100, "do": "update", "body": { "available": true }, "expect": { "advert": { "state": 0, "value": 55, "taker": 7 } } }
+        {"t": 0, "do": "update", "body": {"available": false, "next_spawn_in_ms": 1000}},
+        {"t": 1000, "do": "tick", "players": []},
+        {"t": 6000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}]},
+        {"t": 6100, "do": "update", "body": {"available": true}, "expect": {"advert": {"state": 0, "value": 55, "taker": 7}}}
       ]
     },
     {
       "name": "an available:true for a genuinely later spawn (one interval on) is accepted",
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": false, "next_spawn_in_ms": 1000 } },
-        { "t": 1000, "do": "tick", "players": [] },
-        { "t": 6000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }] },
-        { "t": 6100, "do": "update", "body": { "available": true, "next_spawn_in_ms": 115000 }, "expect": { "advert": { "state": 1, "value": 0, "taker": 0 } } }
+        {"t": 0, "do": "update", "body": {"available": false, "next_spawn_in_ms": 1000}},
+        {"t": 1000, "do": "tick", "players": []},
+        {"t": 6000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}]},
+        {"t": 6100, "do": "update", "body": {"available": true, "next_spawn_in_ms": 115000}, "expect": {"advert": {"state": 1, "value": 0, "taker": 0}}}
       ]
     },
     {
       "name": "an operator reset (reset:true) is always accepted",
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": false, "next_spawn_in_ms": 1000 } },
-        { "t": 1000, "do": "tick", "players": [] },
-        { "t": 6000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }] },
-        { "t": 6100, "do": "update", "body": { "available": true, "next_spawn_in_ms": 54900, "reset": true }, "expect": { "advert": { "state": 1, "value": 0, "taker": 0 } } }
+        {"t": 0, "do": "update", "body": {"available": false, "next_spawn_in_ms": 1000}},
+        {"t": 1000, "do": "tick", "players": []},
+        {"t": 6000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}]},
+        {"t": 6100, "do": "update", "body": {"available": true, "next_spawn_in_ms": 54900, "reset": true}, "expect": {"advert": {"state": 1, "value": 0, "taker": 0}}}
       ]
     },
     {
       "name": "the refusal window is half the interval: a next spawn 25 s past the awarded one is refused, 30 s or more is accepted",
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": false, "next_spawn_in_ms": 1000 } },
-        { "t": 1000, "do": "tick", "players": [] },
-        { "t": 6000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }] },
-        { "t": 7000, "do": "update", "body": { "available": true, "next_spawn_in_ms": 79000 }, "expect": { "advert": { "state": 0, "value": 54, "taker": 7 } } },
-        { "t": 7100, "do": "update", "body": { "available": true, "next_spawn_in_ms": 83900 }, "expect": { "advert": { "state": 1, "value": 0, "taker": 0 } } }
+        {"t": 0, "do": "update", "body": {"available": false, "next_spawn_in_ms": 1000}},
+        {"t": 1000, "do": "tick", "players": []},
+        {"t": 6000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}]},
+        {"t": 7000, "do": "update", "body": {"available": true, "next_spawn_in_ms": 79000}, "expect": {"advert": {"state": 0, "value": 54, "taker": 7}}},
+        {"t": 7100, "do": "update", "body": {"available": true, "next_spawn_in_ms": 83900}, "expect": {"advert": {"state": 1, "value": 0, "taker": 0}}}
       ]
     },
     {
       "name": "no spawn_every_s: the effective interval is 60 s on both, so the station repeats and refuses an echo",
-      "setup": { "id": 4 },
+      "setup": {"id": 4},
+      "mc": { "item_spawn_every_s": null, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}},
+        {"t": 60100, "do": "taken", "player": 0, "expect": {"available": false, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 59900}]}},
+        {"t": 60200, "do": "taken", "player": 0, "expect": {"available": false, "updates": []}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}}
+      ] },
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": false, "next_spawn_in_ms": 1000 } },
-        { "t": 1000, "do": "tick", "players": [], "expect": { "events": ["spawned"] } },
-        { "t": 1100, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 60, "taker": 7 } } },
-        { "t": 1200, "do": "update", "body": { "available": true, "next_spawn_in_ms": 59800 }, "expect": { "advert": { "state": 0, "value": 60, "taker": 7 } } },
-        { "t": 61000, "do": "tick", "players": [], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 }, "events": ["spawned"] } }
+        {"t": 0, "do": "update", "body": {"available": false, "next_spawn_in_ms": 1000}},
+        {"t": 1000, "do": "tick", "players": [], "expect": {"events": ["spawned"]}},
+        {"t": 1100, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 60, "taker": 7}}},
+        {"t": 1200, "do": "update", "body": {"available": true, "next_spawn_in_ms": 59800}, "expect": {"advert": {"state": 0, "value": 60, "taker": 7}}},
+        {"t": 61000, "do": "tick", "players": [], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"]}}
       ]
     },
     {
       "name": "a claim with no known next spawn advertises value 0 (the station does not know yet), not an invented countdown",
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": true } },
-        { "t": 1000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 0, "taker": 7 } } },
-        { "t": 30000, "do": "advance", "expect": { "advert": { "state": 0, "value": 0, "taker": 7 } } }
+        {"t": 0, "do": "update", "body": {"available": true}},
+        {"t": 1000, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 0, "taker": 7}}},
+        {"t": 30000, "do": "advance", "expect": {"advert": {"state": 0, "value": 0, "taker": 7}}}
       ]
     },
     {
       "name": "the countdown never reads 0 while the item is taken",
-      "setup": { "id": 4, "spawn_every_s": 60 },
+      "setup": {"id": 4, "spawn_every_s": 60},
       "steps": [
-        { "t": 0, "do": "update", "body": { "available": true, "next_spawn_in_ms": 1000 } },
-        { "t": 500, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 1, "taker": 7 } } },
-        { "t": 1000, "do": "advance", "expect": { "advert": { "state": 0, "value": 1, "taker": 7 } } }
+        {"t": 0, "do": "update", "body": {"available": true, "next_spawn_in_ms": 1000}},
+        {"t": 500, "do": "tick", "players": [{"id": 7, "state": ["alive", "claim_ready"], "value": 4}], "expect": {"advert": {"state": 0, "value": 1, "taker": 7}}},
+        {"t": 1000, "do": "advance", "expect": {"advert": {"state": 0, "value": 1, "taker": 7}}}
       ]
+    },
+    {
+      "name": "MC refuses a taken report before the first spawn, and one naming another station id",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 1000, "do": "taken", "player": 0, "expect": {"available": false, "taken_by": null, "feed_took": 0, "updates": []}},
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "taken", "player": 0, "station_id": 99, "expect": {"available": true, "feed_took": 0, "updates": []}},
+        {"t": 60200, "do": "taken", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1}}
+      ] }
+    },
+    {
+      "name": "an untaken item never stacks: the next spawn time re-announces it and changes nothing else",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}},
+        {"t": 120100, "do": "taken", "player": 0, "expect": {"available": false, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 59900}]}}
+      ] }
+    },
+    {
+      "name": "the pickup fact and the station's taken report credit one take per spawn, in either order",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "pickup", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 59900}]}},
+        {"t": 60200, "do": "taken", "player": 1, "expect": {"taken_by": 0, "feed_took": 1, "updates": []}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "taken_by": null}},
+        {"t": 120100, "do": "taken", "player": 1, "expect": {"taken_by": 1, "feed_took": 2}},
+        {"t": 120200, "do": "pickup", "player": 0, "expect": {"taken_by": 1, "feed_took": 2, "updates": []}}
+      ] }
+    },
+    {
+      "name": "a report about an earlier spawn never takes the current one (taken dated by age_ms, pickup by its own t)",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 70000, "do": "tick", "expect": {"available": true}},
+        {"t": 125000, "do": "tick", "expect": {"available": true}},
+        {"t": 125000, "do": "taken", "player": 0, "age_ms": 55000, "expect": {"available": true, "taken_by": null, "updates": []}},
+        {"t": 125000, "do": "pickup", "player": 0, "fact_t": 70000, "expect": {"available": true, "updates": []}},
+        {"t": 125100, "do": "taken", "player": 0, "age_ms": 0, "expect": {"available": false, "taken_by": 0}}
+      ] }
+    },
+    {
+      "name": "an operator reset makes the item available now, keeps the fixed spawn times, and an old fact does not retake it",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 70000, "do": "taken", "player": 0, "expect": {"available": false}},
+        {"t": 80000, "do": "reset", "expect": {"available": true, "taken_by": null, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 40000, "reset": true}]}},
+        {"t": 80100, "do": "pickup", "player": 0, "fact_t": 70000, "expect": {"available": true, "updates": []}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}}
+      ] }
+    },
+    {
+      "name": "a station that reconnects is told the current state, with the time to the next spawn",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 125000, "do": "tick", "expect": {"available": true}},
+        {"t": 125500, "do": "hello", "expect": {"updates": [{"id": 4, "available": true, "next_spawn_in_ms": 54500}]}},
+        {"t": 130000, "do": "taken", "player": 0, "expect": {"available": false}},
+        {"t": 140000, "do": "hello", "expect": {"updates": [{"id": 4, "available": false, "next_spawn_in_ms": 40000}]}}
+      ] }
     }
   ]
 }
