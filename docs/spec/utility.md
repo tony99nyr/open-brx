@@ -90,7 +90,13 @@ better"): a phone station **-70 dBm**, a StickS3 **-57 dBm** (`beacon.js RESPAWN
 `hardware/m5sticks3/station_range.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`: a Stick respawn resolves 0 to -57 and advertises -57; a Stick powerup uses -45, F434). Extraction and bomb stations on a phone keep the
 2026-09-04 bench value, -74 dBm at high TX (about 10 ft); a `control` station's own default is **-75 dBm** on both
 platforms (`beacon.js CONTROL_RSSI_DBM`; Tony, 2026-09-27, exit band `EXIT_BAND_DB`, until the outdoor walk, F383). MC's `StationAssignment.threshold` still overrides; **0**
-(or absent) means the station's own default, which it resolves and advertises in byte 14. A phone app older than
+(or absent) means the station's own default, which it resolves and advertises in byte 14. **One exception, a
+defaulted Stick hill:** it measures players at -75 (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, via
+`stick_default_threshold_dbm`) but advertises **-57** in byte 14 (`threshold_advertised_dbm`, `station_link.h`).
+Byte 14 drives each player phone's own presence decision, and a phone hears the Stick about 25 dB louder than the
+Stick hears the phone, so one number cannot serve both ends. An explicit MC threshold or an on-station RADIUS edit
+sets both to the same value. Pinned in `hardware/m5sticks3/test/test_threshold_default.cpp` and `test_link.cpp`;
+detail in §5g.2 below. A phone app older than
 0.4.12 clamped 0 to -30, so MC sends such a phone the explicit value (`state.py _wire_threshold`). A player phone falls
 back to its own `Presence` default (-74, `app.js`) only for an advert whose byte 14 is 0; an MC-armed station never
 sends that. Dwell stays **0.8 s** on both sides.
