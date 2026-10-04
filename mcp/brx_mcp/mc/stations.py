@@ -1,6 +1,7 @@
 """Station assignment, range, tamper lock, departures and views for Mission Control."""
 from __future__ import annotations
 
+import copy
 import time
 from typing import Callable, Protocol, cast
 
@@ -84,6 +85,16 @@ def _range_edit_ok(e: dict) -> bool:
     if e.get("field") == "threshold":
         return _int(e.get("from")) and _int(e.get("to"))
     return e.get("field") == "tx_power" and e.get("from") in TX_POWERS and e.get("to") in TX_POWERS
+
+
+def _tally_ok(t: object) -> bool:
+    if not isinstance(t, dict) or not isinstance(t.get("key"), list) or not isinstance(t.get("hold_ms"), dict):
+        return False
+    if not all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v >= 0
+               for k, v in t["hold_ms"].items()):
+        return False
+    r = t.get("revives")
+    return r is None or (isinstance(r, int) and not isinstance(r, bool))
 
 
 def _range_word(v) -> str:
@@ -187,6 +198,65 @@ class StationRegistry:
     def reset_for_session(self) -> None:
         self._station_id_of = {n: a["id"] for n, st in self.stations.items() if (a := st.get("assigned"))}
         self._station_departures = {}
+
+    def to_snapshot(self) -> dict:
+        return {
+            "stations": {nid: st["assigned"] for nid, st in self.stations.items() if st.get("assigned")},
+            "station_ids": dict(self._station_id_of),
+            "station_departures": {nid: {k: v for k, v in d.items() if k != "returned"}
+                                   for nid, d in self._station_departures.items()},
+            "stations_unlocked": self._stations_unlocked,
+            "station_locks": {nid: {k: st[k] for k in _STATION_LOCK_KEYS if k in st}
+                              for nid, st in self.stations.items() if st.get("assigned")},
+            "station_range_seen": {nid: st["range_seen"] for nid, st in self.stations.items()
+                                   if st.get("assigned") and st.get("range_seen")},
+            "range_epoch": self._range_epoch,
+        }
+
+    def capture_state(self) -> dict:
+        return copy.deepcopy({
+            "stations": self.stations, "station_ids": self._station_id_of,
+            "station_departures": self._station_departures,
+            "stations_unlocked": self._stations_unlocked, "range_epoch": self._range_epoch,
+        })
+
+    def restore_state(self, state: dict) -> None:
+        self.stations = state["stations"]
+        self._station_id_of = state["station_ids"]
+        self._station_departures = state["station_departures"]
+        self._stations_unlocked = state["stations_unlocked"]
+        self._range_epoch = state["range_epoch"]
+
+    def restore(self, snap: dict) -> list[str]:
+        restored: list[str] = []
+        for nid, a in (snap.get("stations") or {}).items():
+            if not isinstance(a, dict):
+                continue
+            self.stations[nid] = {"node_id": nid, "assigned": a, "report": {}, "armed": None, "arm_pending": True}
+            kept = (snap.get("station_locks") or {}).get(nid)
+            if isinstance(kept, dict):
+                self.stations[nid].update({k: kept[k] for k in _STATION_LOCK_KEYS if k in kept})
+                if not _tally_ok(self.stations[nid].get("tally")):
+                    self.stations[nid].pop("tally", None)
+            seen = (snap.get("station_range_seen") or {}).get(nid)
+            if isinstance(seen, dict) and isinstance(seen.get("max"), int) and isinstance(seen.get("edits"), list):
+                self.stations[nid]["range_seen"] = {"max": seen["max"],
+                                                    "edits": [e for e in seen["edits"] if isinstance(e, dict) and _range_edit_ok(
+                                                        {**e, "age_ms": 0})][-8:]}
+            restored.append(nid)
+        for nid, sid in (snap.get("station_ids") or {}).items():
+            if isinstance(nid, str) and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535:
+                self._station_id_of[nid] = sid
+        for nid, st in self.stations.items():
+            if isinstance(sid := (st.get("assigned") or {}).get("id"), int):
+                self._station_id_of[nid] = sid
+        for nid, d in (snap.get("station_departures") or {}).items():
+            if isinstance(nid, str) and self._departure_ok(d) and not (self.stations.get(nid) or {}).get("assigned"):
+                self._station_departures[nid] = {**d, "returned": False}
+        if isinstance(snap.get("range_epoch"), int):
+            self._range_epoch = snap["range_epoch"]
+        self._stations_unlocked = snap.get("stations_unlocked") is True
+        return restored
 
     def station_ids(self) -> list[StationRef]:
         rows: list[StationRef] = []

@@ -24,6 +24,159 @@ def test_snapshot_round_trip():
     assert q["node_id"] is None and q["ready"] is False
 
 
+def test_rich_live_snapshot_round_trip():
+    """A restart keeps the match, station bookkeeping and the operator's saved work."""
+    from test_mc_result import mk as match_session
+    from test_mc_state import online
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    from brx_mcp.mc.store import Store
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    s, net, clock, players = match_session(2, "tdm")
+    s._persist_path = root / "session.json"
+    reserve = s.add_player("RESERVE", team_id="red")
+    s.stand_down(reserve["player_id"])
+    for i, player in enumerate(players):
+        online(s, net, clock, player, i)
+    for nid, kind, sid in (("station-a", "respawn", 3), ("station-b", "powerup", 4)):
+        net.simulate_utility_hello(nid)
+        s.set_station(nid, {"kind": kind, "team": "blue", "id": sid})
+    s.stations["station-a"]["lock"] = {"at": clock["t"], "s": 600}
+    s.stations["station-a"]["lock_game"] = s._game_byte()
+    s.stations["station-a"]["range_seen"] = {"max": 2, "edits": [
+        {"seq": 2, "field": "threshold", "from": -57, "to": -60, "locked": True}]}
+    s.release_station("station-b")
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"],
+                                  "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    info = s.start(runway_s=10)
+    clock["t"] = info["go_live_t"] + 1
+    s.tick()
+    assert s.phase == "live"
+    s._on_feed({"text": "MATCH LIVE", "t_match_s": 1})
+    s.join_secret = "persisted-join-secret"
+    s.game_no = 7
+    s._game_no_started = True
+    s._ended["earlier-match"] = {"recap": {"winner": "blue"}, "players": {}, "ended_ms": clock["t"] - 1}
+    s._match_end_t = clock["t"] + 5000
+    s._sync_pending = {"node0": "pending"}
+    s.game_pick["pieces"]["mode"] = "builtin:mode:ffa"
+    s.station_registry._range_epoch = 9
+    s.station_registry._stations_unlocked = True
+    s.teams = list(reversed(s.teams))
+    before_view = s.snapshot()
+    s._persist_last = 0.0
+    s._persist()
+    saved = json.loads(s._persist_path.read_text())
+    assert saved["stations"]["station-a"]["id"] == 3
+    assert saved["station_locks"]["station-a"]["lock"] == s.stations["station-a"]["lock"]
+    assert saved["station_range_seen"]["station-a"]["edits"][0]["seq"] == 2
+    assert saved["station_departures"]["station-b"]["id"] == 4
+    assert saved["match"]["match_id"] == info["match_id"]
+    for key in ("join_secret", "game_no", "game_no_started", "standby", "ended", "sync_pending",
+                "game_pick", "range_epoch", "stations_unlocked", "station_ids", "teams"):
+        assert key in saved, key
+
+    restored = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()),
+                       store=Store("restart", root / "restart.sqlite"), now_ms=lambda: clock["t"])
+    restored._persist_path = s._persist_path
+    assert restored.restore_snapshot() == 2
+    assert restored.join_secret == "persisted-join-secret"
+    assert restored.game_no == 7
+    assert restored._game_no_started is True
+    assert restored.standby[reserve["player_id"]]["display"] == "RESERVE"
+    assert restored._ended["earlier-match"] == s._ended["earlier-match"]
+    assert restored._match_end_t == clock["t"] + 5000
+    assert restored._sync_pending == {"node0": "pending"}
+    assert restored.game_pick == s.game_pick
+    assert restored.station_registry._range_epoch == 9
+    assert restored.station_registry._stations_unlocked is True
+    assert restored.station_registry._station_id_of == s.station_registry._station_id_of
+    assert restored.station_registry._station_id_of["station-a"] == 3
+    assert restored.station_registry._station_id_of["station-b"] == 4
+    assert restored.teams == s.teams
+    assert [team["team_id"] for team in restored.teams] == ["blue", "red"]
+    assert restored.feed == s.feed
+    restored_view = restored.snapshot()
+    assert restored_view["config"] == before_view["config"]
+    assert restored_view["game_byte"] == before_view["game_byte"]
+    assert restored_view["options"] == before_view["options"]
+    before_station = next(row for row in before_view["stations"] if row["node_id"] == "station-a")
+    after_station = next(row for row in restored_view["stations"] if row["node_id"] == "station-a")
+    assert after_station["assigned"] == before_station["assigned"]
+    assert after_station.get("range") == before_station.get("range")
+    assert restored_view["station_departures"][0]["id"] == before_view["station_departures"][0]["id"]
+    assert restored.resume_match() == "live"
+    assert restored.config == s.config and restored.teams == s.teams
+    assert [p["display"] for p in restored.players.values()] == [p["display"] for p in s.players.values()]
+    assert restored.stations["station-a"]["assigned"] == s.stations["station-a"]["assigned"]
+    assert restored.stations["station-a"]["lock"] == s.stations["station-a"]["lock"]
+    assert restored.stations["station-a"]["range_seen"] == s.stations["station-a"]["range_seen"]
+    assert restored._station_departures["station-b"]["id"] == 4
+    assert restored.snapshot()["live"]["match_id"] == s.snapshot()["live"]["match_id"]
+
+
+def test_d15_unknown_snapshot_version_is_kept_and_not_loaded():
+    from brx_mcp.mc.types import SESSION_STORE_V
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    path = _written_snapshot(root)
+    saved = json.loads(path.read_text())
+    assert saved["v"] == SESSION_STORE_V == 1
+    saved["v"] = 2
+    path.write_text(json.dumps(saved))
+    original = path.read_text()
+
+    s = _fresh(path)
+    before = dict(s.players)
+    assert s.restore_snapshot() == 0
+    assert s.players == before
+    kept = list(root.glob("session.json.v2-*"))
+    assert len(kept) == 1 and kept[0].read_text() == original
+    assert s.restore_failed == {"reason": "saved by an MC with store version 2; this MC reads 1", "kept": str(kept[0])}
+    if sys.platform != "win32":
+        assert (kept[0].stat().st_mode & 0o777) == 0o600
+    assert not path.exists()
+    s._persist_last = 0.0
+    s._persist()
+    assert json.loads(path.read_text())["v"] == SESSION_STORE_V
+    assert kept[0].read_text() == original
+
+
+def test_d15_versionless_snapshot_still_loads():
+    root = pathlib.Path(tempfile.mkdtemp())
+    path = _written_snapshot(root)
+    saved = json.loads(path.read_text())
+    del saved["v"]
+    path.write_text(json.dumps(saved))
+    s = _fresh(path)
+    assert s.restore_snapshot() == 3
+    assert "ALPHA" in {player["display"] for player in s.players.values()}
+    assert s.restore_failed is None
+
+
+def test_d15_invalid_present_versions_are_kept_and_reported():
+    for version in (None, True, 1.0, 2, "1"):
+        root = pathlib.Path(tempfile.mkdtemp())
+        path = _written_snapshot(root)
+        saved = json.loads(path.read_text())
+        saved["v"] = version
+        path.write_text(json.dumps(saved))
+        original = path.read_text()
+        s = _fresh(path)
+        before = dict(s.players)
+        assert s.restore_snapshot() == 0, version
+        assert s.players == before, version
+        kept = list(root.glob("session.json.v*-*"))
+        assert len(kept) == 1 and kept[0].read_text() == original, version
+        assert not path.exists(), version
+        failure = s.snapshot()["restore_failed"]
+        assert json.dumps(version) in failure["reason"], version
+        assert str(kept[0]) not in failure["reason"] and failure["kept"] == str(kept[0]), version   # the banner prints the path once
+
+
 def test_a_feed_only_change_marks_the_snapshot_dirty():
     """Polish round 2 (F319 d): the feed is in the snapshot, so a new feed row alone must be flushed by
     `persist_now` (atexit and transitions), or a graceful restart loses it."""
@@ -696,11 +849,48 @@ def test_o1_rollback_list_covers_every_field_restore_assigns():
     (brx3's `_station_departures`, 2026-10-04, was the first to slip through) must join `_RESTORE_ATTRS`, or a
     failure leaves it half-restored. `_persist_path` and `restore_failed` are set BY the failure path on purpose."""
     import inspect, re
-    from brx_mcp.mc import state as st
-    src = inspect.getsource(st.Session.restore_snapshot)
-    assigned = set(re.findall(r"self\.([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^\]]*\])?\s*(?:=|\.update\(|\.clear\(|\.append\(|\.setdefault\()", src))
-    missing = assigned - set(st.Session._RESTORE_ATTRS) - {"_persist_path", "restore_failed"}
+    from brx_mcp.mc.snapshot_codec import SnapshotCodec
+    src = inspect.getsource(SnapshotCodec.restore_snapshot)
+    assigned = set(re.findall(r"self\.host\.([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^\]]*\])?\s*"
+                              r"(?:=|\.update\(|\.clear\(|\.append\(|\.setdefault\()", src))
+    assert len(assigned) >= 10, f"restore scan found only {sorted(assigned)}"
+    missing = assigned - set(SnapshotCodec._RESTORE_ATTRS) - {"_persist_path", "restore_failed"}
     assert not missing, f"restore_snapshot assigns {sorted(missing)} but a failed restore would not roll them back"
+
+
+def test_o1_station_registry_restore_fields_are_captured_for_rollback():
+    import inspect, re
+    from brx_mcp.mc.stations import StationRegistry
+
+    src = inspect.getsource(StationRegistry.restore)
+    assigned = set(re.findall(r"self\.([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^\]]*\])?\s*"
+                              r"(?:=|\.update\(|\.clear\(|\.append\(|\.setdefault\()", src))
+    captured = dict(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)": self\.([A-Za-z_][A-Za-z0-9_]*)',
+                               inspect.getsource(StationRegistry.capture_state)))
+    assert len(assigned) >= 5 and len(captured) >= 4, (assigned, captured)
+    missing = assigned - set(captured.values())
+    assert not missing, f"station restore assigns {sorted(missing)} without rollback capture"
+    # and the rollback writes every captured field back (a captured but never restored field rolls back nothing)
+    written = set(re.findall(r"self\.([A-Za-z_][A-Za-z0-9_]*)\s*=", inspect.getsource(StationRegistry.restore_state)))
+    unrestored = set(captured.values()) - written
+    assert not unrestored, f"capture_state saves {sorted(unrestored)} but restore_state never writes it back"
+
+
+def test_o1_codec_rolls_back_registry_after_late_restore_failure():
+    root = pathlib.Path(tempfile.mkdtemp())
+    path = _written_snapshot(root)
+    saved = json.loads(path.read_text())
+    saved["stations"] = {"station-a": {"kind": "respawn", "id": 3, "team": 1}}
+    saved["station_ids"] = {"station-a": 3}
+    saved["config"].pop("mode")
+    path.write_text(json.dumps(saved))
+
+    s = _fresh(path)
+    before = s.station_registry.capture_state()
+    nodes = dict(s.nodes)
+    assert s.restore_snapshot() == 0
+    assert s.station_registry.capture_state() == before
+    assert s.nodes == nodes
 
 
 def test_o1_the_kept_name_is_reserved_exclusively_and_a_taken_name_is_never_overwritten():

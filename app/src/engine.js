@@ -23,6 +23,7 @@ import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, redeployOutMs } from './lanes.js';
 // A56 (S58): the player's side of the powerups (docs/spec/powerups.md) lives in powerup-player.js; its constants are
 // re-exported here so every existing `from './engine.js'` import keeps working.
 import { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_THRESHOLD_DEFAULT, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS, burstWithHeld, PlayerPowerups } from './powerup-player.js';
+import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_THRESHOLD_DEFAULT, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
 import { MEDALS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
@@ -51,7 +52,6 @@ const TEAM_NAME = Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name]))
 // showing the slot the GUN last reported. It deliberately does NOT guess a new slot: $BUT,1 is
 // "alt-fire", which is also the native 3s indoor/outdoor toggle and is remapped to RELOAD by the
 // easy_reload perk, so a press is not proof a weapon changed (review 2026-08-31).
-const RECONCILE_MS = 3000;           // rejoin: hold the gun disarmed this long while we reconcile state (anti-cheat: a restart is slow + gains nothing; a real crash costs 3 s, which is rare and fine — Tony 2026-09-04)
 // node.md §3.11: how long the engine must have been ASLEEP before a foreground counts as a suspension.
 // `resume()` fires on every `visibilitychange` and `pageshow`, which includes a notification shade, a
 // glance at the lock screen and an app switch of half a second — none of which froze the webview. A
@@ -66,15 +66,15 @@ const RESUME_GAP_MS = 5000;
 // normal-length match.
 // Shipped at 75 s and raised to 150 s (~5 cadences) by the round-1 polish review 2026-09-12: 75 s is
 // only ~2.5 cadences, so a healthy-but-marginal link whose player happened to take no hits and fire no
-// shots for 75 s was force-disconnected — and what follows is not free. `_beginReconcile()` disarms
-// both slots for RECONCILE_MS, a mid-firefight disarm. (`_endReconcile()` used to re-arm from
+// shots for 75 s was force-disconnected — and what follows is not free. `rc.begin()` disarms
+// both slots for RECONCILE_MS, a mid-firefight disarm. (`rc.end()` used to re-arm from
 // `frames.spawn`'s $AMMO as well, a free full magazine; F164 made it restore the live counts.)
 // 150 s is still a DESK number: only a gun at the edge of range can say what the real silence
 // looks like, which is FOLLOWUPS F136 (the B4 bench item, with the 20-minute two-node soak).
 const LINK_STALE_MS = 150000;
 // 🔴 ...and it SHIPS OFF (round-2 fix pass I, 2026-09-12). 150 s is a desk number, `$VOLTS` is the only
 // idle traffic the threshold can be measured against and it is unreliable at exactly the marginal RSSI
-// this is supposed to catch, and a FALSE trip is not free: `_beginReconcile()` disarms both slots for
+// this is supposed to catch, and a FALSE trip is not free: `rc.begin()` disarms both slots for
 // RECONCILE_MS, a mid-firefight disarm. (Since F164 the re-arm restores the live counts, not a free spawn
 // magazine and reserve, so the disarm is the whole cost.) The player it would hit is
 // a defender at the edge of range who neither fires nor is hit: the one the watchdog is least able to
@@ -549,7 +549,7 @@ const TEAM_KEY = Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key]));
 // shipped through the bundle, so the phone and the bench stage can never silently disagree on it.
 const READOUT_POOL_INWARD = ['shield', 'armor', 'health'];
 
-// ---------- King of the Hill audio (F70/F72/F74/F85, docs/utility-roadmap.md "Where the hill audio has to live")
+// ---------- King of the Hill audio (F70/F72/F74/F85, docs/archive/utility-roadmap.md "Where the hill audio has to live")
 // The gun CANNOT speak for itself on a beacon: `$SIR` is keyed on <irProtocol, subtype> alone, every hill
 // beacon decodes as the same cell <15,0>, and fn 28 ignores the row's <soundID> outright (measured
 // 2026-09-10, rung Y). So all four hill states are the NODE's job, played over BLE from here.
@@ -712,7 +712,7 @@ const STAND_DOWN = [
   ['bundle',      e => !e.frames],
   ['ble',         e => !e.bleUp],
   ['alive',       e => !e.alive],
-  ['reconciling', e => !!e.reconciling],
+  ['reconciling', e => e.rc.active],
   ['resync',      e => !!e.resync],
   ['tutorial',    e => !!e.tutorial],
   ['switching',   e => !!e.switching],
@@ -775,7 +775,7 @@ function powerupHost(e) {
     // the engine state the module reads (never writes)
     get config() { return e.config; }, get player() { return e.player; }, get weaponName() { return e.weaponName; },
     get activeSlot() { return e.activeSlot; }, get switching() { return e.switching; }, get actSeq() { return e._actSeq; },
-    get pulledLife() { return e._pulledLife; }, get reconciling() { return e.reconciling; }, get stunned() { return e.stunned; },
+    get pulledLife() { return e._pulledLife; }, get reconciling() { return e.rc.active; }, get stunned() { return e.stunned; },
     get resync() { return e.resync; }, get tutorial() { return e.tutorial; },
     get goLiveT() { return e.goLiveT; }, get stations() { return e.stations; }, get gunLocked() { return e.gunLocked; },
     get latch() { return e.latch; }, get matchId() { return e.matchId; }, get lastHitAt() { return e.lastHitAt; },
@@ -800,6 +800,30 @@ function powerupHost(e) {
       e._publishAmmo(slot, mag, res);   // the ammo block shows what is on the trigger now, before the gun's first `$ALCD`
     },
     recoilArm: why => e._recoilArm(why),
+  };
+}
+
+/** The host interface the engine gives its reconcile module (reconcile.js `Reconcile`; the module's header lists the
+ *  same members and says what each is for). Every member looks the engine up at CALL time, as `powerupHost` does. */
+function reconcileHost(e) {
+  return {
+    // the clock, the log, the gun writes and reads
+    now: () => e.now(), log: (line, cls) => e.log(line, cls), changed: () => e._changed(),
+    write: (frames, why) => e._write(frames, why), delay: (ms, fn) => e.delay(ms, fn), askGun: why => e._askGun(why),
+    // the engine state the module reads (never writes)
+    get alive() { return e.alive; }, get hp() { return e.hp; }, get phase() { return e.phase; }, get ended() { return e.ended; },
+    get config() { return e.config; }, get frames() { return e.frames; }, get triggerPending() { return e._triggerPending; },
+    get pu() { return e.pu; },
+    liveAmmo: () => e._liveAmmo(), protectsSpawn: () => e._protectsSpawn(), respawnProfile: () => e._respawnProfile(),
+    // the engine state the module changes, each through one named door
+    clearResync: () => { e.resync = null; },   // a rejoin never runs the infer-death machine
+    stunRestore: why => e._stunRestore(why),
+    acctWrote: (slot, mag, res) => e._acctWrote(slot, mag, res),   // F259: an echo of this write is bookkeeping, never a shot
+    setPrev: (slot, mag, res) => { e._prevAmmo[slot] = mag; e._prevReserve[slot] = res; },   // what the slot holds now
+    holdAccuracyWrites: why => e._holdAccuracyWrites(why), recoilArm: why => e._recoilArm(why),
+    armRepair: why => { e._sirLive = false; e._armPending = e._repairArm(); e._armLife(why); },   // F11: the live table, then protection off
+    setTriggerPending: p => { e._triggerPending = p; },   // a lost `trigger_live` repair is retried by the tick
+    spawnAsk: c => e._spawnAsk(c),   // F416: the check's next ask
   };
 }
 
@@ -989,7 +1013,7 @@ export class Engine {
     this.standby = false;
     this.tryoutSeen = null;         // weapon_id of a try-out panel the player dismissed with DONE (panel hides, gun stays armed)
     this.resync = null;             // §3.10 state machine: {step, since, lastAmmo, lastReserve}
-    this.reconciling = null;        // {since} — a rejoin's disarmed reconcile window (S7.1); no death is inferred here
+    this.rc = new Reconcile(reconcileHost(this));   // S7.1: the relink reconcile; the engine asks it by name (reconcile.js)
     this.rewriteHeadAtT10 = false;  // start-sequence §3 fallback (bench-gated)
     this._headRewritten = false;
     this.moment = null;             // transient HUD moment: {kind, at, data}
@@ -1111,6 +1135,10 @@ export class Engine {
   /** The engine's proof of life: tick() and every frame off the gun stamp it, so `resume()` can tell a
    *  webview that was frozen from one that never stopped ticking (RESUME_GAP_MS). */
   _awake() { this._awakeAt = this.now(); }
+  /** The open reconcile window ({since, ammo}) or null. The engine asks `this.rc` its named questions; this accessor
+   *  is the view tests and older readers use, and the setter stages a window in a test. */
+  get reconciling() { return this.rc.window; }
+  set reconciling(w) { this.rc.window = w; }
 
   // ---------- persistence (§3.7) ----------
   _save() {
@@ -1148,27 +1176,47 @@ export class Engine {
         ammo: this._savedAmmo(), altPtr: this._altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
         pu: this.pu.snapshot(),
       }));
-    } catch (_) { /* ignore */ }
+    } catch (e) {
+      // O9: say so once per failure streak (a full or blocked store fails on every save), and again after a good one.
+      if (!this._saveFailing) this.log(`persist failed: ${e && e.message || e}`, 'le');
+      this._saveFailing = true; return;
+    }
+    this._saveFailing = false;
   }
   _load() {
     if (!this.storage) return;
+    let undo = null;
     try {
       const raw = this.storage.getItem(KEY); if (!raw) return;
       const s = JSON.parse(raw);
+      if (!s || typeof s !== 'object') throw new Error('persisted context is not an object');
       if (s.savedAt && this.now() - s.savedAt > C.CONFIG_TTL_MS) { this.log('persisted context expired', 'li'); return; }
-      Object.assign(this, { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
+      const next = { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
         spawned: !!s.spawned, ended: !!s.ended, endedAt: s.endedAt || 0, result: s.result || null, resultAt: s.resultAt || 0,
         endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null, downReason: s.downReason || null,
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby, _altPtr: Number.isInteger(s.altPtr) ? s.altPtr : 0, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
-        gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null });
+        gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null };
+      // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
+      const touched = [...Object.keys(next), '_prevAmmo', '_prevReserve', '_shotAcct', '_pendingPhase'];
+      const before = {}; for (const k of touched) before[k] = this[k];
+      const puBefore = this.pu.snapshot();
+      undo = () => { Object.assign(this, before); if (puBefore) this.pu.restore(puBefore); else this.pu.reset(); };
+      Object.assign(this, next);
+      this._prevAmmo = { ...this._prevAmmo }; this._prevReserve = { ...this._prevReserve }; this._shotAcct = { ...this._shotAcct };   // the restore below writes copies, so `before` stays untouched
       if (s.phase === 'live' && s.ammo && typeof s.ammo === 'object') this._restoreAmmo(s.ammo);   // F164
       if (s.pu && typeof s.pu === 'object') this.pu.restore(s.pu);   // A56
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
       this._pendingPhase = s.phase;
-    } catch (_) { /* ignore */ }
+    } catch (e) {
+      if (undo) { try { undo(); } catch (_) { /* nothing left to undo */ } }
+      // _load runs inside the constructor, and the host's log callback may read the engine it is still building (app.js):
+      // emit after construction, never during it.
+      const msg = `persisted context unreadable, starting fresh: ${e && e.message || e}`;
+      queueMicrotask(() => this.log(msg, 'le'));
+    }
   }
   /** F164: {slot: [mag, reserve]} for each slot the gun has reported this life (mag from the account, so a round in
    *  flight is not handed back), or null when none has. A null half is a count not seen yet. PURE. */
@@ -1603,13 +1651,7 @@ export class Engine {
     c.heardAt = this.now(); c.lost = false;
     if (hp <= 0) return;
     if (!this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }   // out of time: a positive pool closes it, as before
-    if (this.reconciling) {   // F416 r4: the reconcile disarm is not a lost spawn; ask again once its re-arm is out
-      const gen = c.gen = (c.gen || 0) + 1; c.heardAt = 0; c.asks = 0; c.queryAt = 0;
-      const now = this.now(), until = now + Math.max(0, RECONCILE_MS - (now - this.reconciling.since)) + SPAWN_CHECK_MS;
-      c.heldMs = (c.heldMs || 0) + Math.max(0, until - Math.max(now, c.heldTo || 0)); c.heldTo = Math.max(c.heldTo || 0, until);   // F416 r2: the hold does not spend the check's time
-      this.delay(until - now, () => { if ((c.gen || 0) === gen) this._spawnAsk(c); });   // F416 r2: one chain per reconcile
-      return;
-    }
+    if (this.rc.holdSpawnCheck(c, SPAWN_CHECK_MS)) return;   // F416 r4: the reconcile disarm is not a lost spawn; ask again once its re-arm is out
     if (!lcd || !c.queryAt) { this._spawnQuery(c); return; }
     if (!this._probeShapeOk(lcd) || ![lcd[4], lcd[5]].every(v => v !== '' && Number.isFinite(+v))) return;
     c.queryAt = 0;
@@ -1711,10 +1753,10 @@ export class Engine {
       if (this._protectsSpawn()) {
         if (this._armPending) return;   // the take still follows the first shot or the cap
         this._armPending = this._repairArm();
-        if (this.bleUp && !this.reconciling) this._armLife(`${why} lost`);   // else the cap or the reconcile end arms it
+        if (this.bleUp && !this.rc.ownsRearm) this._armLife(`${why} lost`);   // else the cap or the reconcile end arms it
       } else {
         const sir = frames.filter(f => typeof f === 'string' && f.startsWith('$SIR,'));
-        if (sir.length && this.bleUp && !this.reconciling) this._write(sir, `${why} lost: hit table again`);   // F11 repair: rows only
+        if (sir.length && this.bleUp && !this.rc.ownsRearm) this._write(sir, `${why} lost: hit table again`);   // F11 repair: rows only
       }
       this._changed();
     }
@@ -1949,7 +1991,7 @@ export class Engine {
       // let the configured respawn path bring the player back on its ordinary timer.
       this._gunProbe = null;
       this._beginGunRecovery();
-    } else if (this.phase === 'live') this._beginReconcile();   // S7.1: a rejoin RECONCILES (disarm, keep real pools) — never the infer-death resync that healed on restart
+    } else if (this.phase === 'live') this.rc.begin();   // S7.1: a rejoin RECONCILES (disarm, keep real pools) — never the infer-death resync that healed on restart
     else if (this.phase === 'lobby' || this.phase === 'armed') this._beginResync('ble-reconnect');
     if (first) this.log(`gun ${this.gun ? this.gun.name : '?'} linked`, 'lk');
     // A restored/held schedule is reconciled against the clock now (E5: grace / hot-join / already over).
@@ -2423,7 +2465,7 @@ export class Engine {
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
     // until the player pulls the trigger (bench 2026-09-04, S7). Clear it so the new match spawns clean.
     if (this.resync) { this.log('new match — clearing the old resync so it spawns clean', 'li'); this.resync = null; }
-    if (this.reconciling) { this.log('new match — clearing the in-flight rejoin reconcile', 'li'); this.reconciling = null; }
+    if (this.rc.active) { this.log('new match — clearing the in-flight rejoin reconcile', 'li'); this.rc.clear(); }
     this._spawnCheck = null;   // F416 r3: the old match's check is not this match's news
     // A new match must SPAWN even if the node is already `live` from a rejoin of the OLD match. Without
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
@@ -3026,7 +3068,7 @@ export class Engine {
     this._triggerPending = station ? null : { at: this.now(), due: this.now() + (rp.trigger_ms || 0), flip };
     // Only once the phase is live: the T-0 spawn runs this before `_set('live')`, and `_armLife` cancels a not-live arm,
     // which would leave the head's silent table on the gun for the life. The next tick arms that one instead.
-    if (this._armPending && until <= 0 && this.phase === 'live' && this.bleUp && !this.reconciling) this._armLife('no protection');
+    if (this._armPending && until <= 0 && this.phase === 'live' && this.bleUp && !this.rc.ownsRearm) this._armLife('no protection');
   }
   /** 2026-09-19: write the live `$SIR` table before go-live (PRE_ARM_TABLE_MS), once per match, on a profile bundle.
    *  The head left the silent fn-28 twin on the gun for the countdown; every trigger is still held, so arming the
@@ -4045,7 +4087,7 @@ export class Engine {
 
   _gunLockTick(now) {
     if (this.gunLocked) return;
-    if (this.phase !== 'live' || !this.spawned || !this.alive || !this.bleUp || this.reconciling || this.resync || this.tutorial || this._cure || this._operatorResyncPending) {
+    if (this.phase !== 'live' || !this.spawned || !this.alive || !this.bleUp || this.rc.infersNothing || this.resync || this.tutorial || this._cure || this._operatorResyncPending) {
       this._gunProbe = null; return;
     }
     const p = this._gunProbe;
@@ -4183,9 +4225,9 @@ export class Engine {
       // persisted, and resync observes a dead gun without stamping one. Without a deadAt the respawn logic
       // (timer, scanner hint, revive gate) all bail, so a recovered player is stuck with no way back
       // (bench 2026-09-04: "it isn't sensing the respawn station"). Stamp it: they are down as of now.
-      if (this.reconciling && now - this.reconciling.since >= RECONCILE_MS) this._endReconcile();
-      if (this._armPending && this.bleUp && !this.reconciling && now - this._armPending.at >= (this._armPending.until != null ? this._armPending.until : SPAWN_PROTECT_MAX_MS)) this._armLife(this._armPending.shotEnds === false ? 'protection over' : 'cap');   // F209; 2026-09-19 profiles
-      if (this._triggerPending && this.bleUp && !this.reconciling && now >= this._triggerPending.due) this._triggerLive('weapon delay over');   // 2026-09-19
+      this.rc.tick(now);   // S7.1: the reconcile window ends on the clock
+      if (this._armPending && this.bleUp && !this.rc.ownsRearm && now - this._armPending.at >= (this._armPending.until != null ? this._armPending.until : SPAWN_PROTECT_MAX_MS)) this._armLife(this._armPending.shotEnds === false ? 'protection over' : 'cap');   // F209; 2026-09-19 profiles
+      if (this._triggerPending && this.bleUp && !this.rc.ownsRearm && now >= this._triggerPending.due) this._triggerLive('weapon delay over');   // 2026-09-19
       this._noFireTick(now);   // F208
       this._cureTick(now);     // F264: and once `no_fire` is concluded, ASK the gun, then act on the answer
       this._pollTick(now);     // F264: ...and ask it every QUERY_POLL_MS anyway, so nobody has to pull a dead trigger first
@@ -4202,15 +4244,15 @@ export class Engine {
       // `_deathPending()` outright, so `_onHp` still takes that death immediately with the shooter
       // named. Held off during resync/reconcile, where the engine deliberately infers nothing and the
       // gun's own report is what moves state; the next tick after either ends catches it.
-      if (this.hp === 0 && this.alive && !this.resync && !this.reconciling && !this._deathPending()) this._death(false);
-      if (!this.alive && !this.deadAt && !this.resync && !this.reconciling) { this.deadAt = now; this.log('recovered while down — respawn clock started', 'li'); }
+      if (this.hp === 0 && this.alive && !this.resync && !this.rc.infersNothing && !this._deathPending()) this._death(false);
+      if (!this.alive && !this.deadAt && !this.resync && !this.rc.infersNothing) { this.deadAt = now; this.log('recovered while down — respawn clock started', 'li'); }
       if (this.endT) {   // A11.4 clock callouts from the node's own synced end time: edge-triggered, once each
         const left = this.endT - now, prev = this._prevLeft != null ? this._prevLeft : left; this._prevLeft = left;
         for (const [ms, k] of [[60000, 'time_60'], [30000, 'time_30'], [10000, 'time_10']]) {
           if (prev > ms && left <= ms && !this.cuesFired.has(k)) { this.cuesFired.add(k); this._announceAlert(k, k === 'time_60' ? 'ONE MINUTE LEFT' : k === 'time_30' ? '30 SECONDS' : '10 SECONDS'); }
         }
       }
-      if (!this.alive && this.deadAt && this.timedRespawn && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync && !this.reconciling) {
+      if (!this.alive && this.deadAt && this.timedRespawn && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync && !this.rc.infersNothing) {
         const rs = !!this._resyncRevive; this._resyncRevive = false; this._revive(rs);   // §3.10: a resync re-arm is flagged respawn{resync:true}
       }
       // utility.md §4: a scanner respawn with the presence gate revives the moment the player has dwelt at
@@ -4399,7 +4441,7 @@ export class Engine {
     this._reportPossession(this.now(), true);
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
-    this.spawned = false; this.alive = false; this.downReason = null; this.resync = null; this.reconciling = null; this.start = null; this._resyncRevive = false; this.reloading = null; this._reloadOutcome = null; this.held = {};
+    this.spawned = false; this.alive = false; this.downReason = null; this.resync = null; this.rc.clear(); this.start = null; this._resyncRevive = false; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this.stunned = null;   // F15: the end frames own the gun now
     this._poisonClear('match end'); this._smokeClear('match end');   // S16/S53: no life left to tick or to tell about
     this._life = this._freshLedger(); this._lastLife = null;   // S56: nor a "what hit me" ledger to carry into the next lobby
@@ -4420,7 +4462,7 @@ export class Engine {
    *  - The restore re-sends the LIVE counts snapshotted here (last `$ALCD` per slot, else the frame's spawn
    *    values), because a `$WEAP`/`$AMMO` re-push resets ammo to the frame's numbers (F87) and a stun must not refill.
    *  - Death cancels (`_death` -> `_stunRestore('died')`, no write): `frames.revive` carries its own `$AMMO`.
-   *  - A rejoin's reconcile takes over (`_beginReconcile`), and a link that is down at expiry gets no write --
+   *  - A rejoin's reconcile takes over (`rc.begin`), and a link that is down at expiry gets no write --
    *    the relink's reconcile re-arms it (coarsely, with the frame's counts).
    *  - Not persisted: a reload during a stun loses the timer and the relink reconcile re-arms the gun. */
   _stun() {
@@ -4988,7 +5030,7 @@ export class Engine {
    *  Mirrors hud.js `_moments`; REDEPLOYED is the HUD's own overlay, up until `_redeployOutAt` (lanes.js `redeployOutMs`). */
   _laneTakeover(now = this.now()) {
     if (this.phase !== 'live' || !this.alive) return false;   // review r2 M1: a takeover while down holds no card open
-    if (this.gunLocked || this.reconciling) return true;
+    if (this.gunLocked || this.rc.active) return true;
     if (this.bleUp && (this.reloading || this.switchingMs() != null)) return true;
     if (this._switchCardUp(now)) return true;   // F400 final: the ACTIVE bubble is part of the switch card
     return !!this._redeployOutAt && now < this._redeployOutAt;
@@ -5414,7 +5456,7 @@ export class Engine {
         this._resyncRevive = false;   // a panic does NOT retire the match_id — a NEWER start (higher seq) is still accepted later
         // …but a WS welcome re-delivering the SAME schedule must not re-arm a gun the operator just cleared.
         this._panicked = this.start ? { match_id: this.start.match_id, seq: this.start.seq } : null;
-        this.spawned = false; this.alive = false; this.start = null; this.resync = null; this.reconciling = null; this.ready = false; this._spawnCheck = null;   // F416 r3
+        this.spawned = false; this.alive = false; this.start = null; this.resync = null; this.rc.clear(); this.ready = false; this._spawnCheck = null;   // F416 r3
         if (this.phase !== 'idle' && this.phase !== 'connected' && this.phase !== 'kitted') this._set('kitted');
         else this._changed();   // a cold-restored IDLE latch still owes its clear to storage and the HUD
         return;
@@ -6387,7 +6429,7 @@ export class Engine {
   }
   /** The station a scanner revive may use RIGHT NOW, or null: dead, past the delay, link up, not resyncing, present. */
   _stationRevivable(now) {
-    if (this.alive || !this.deadAt || this.respawnType !== 'scanner' || !this.bleUp || this.resync || this.reconciling || this.phase !== 'live') return null;
+    if (this.alive || !this.deadAt || this.respawnType !== 'scanner' || !this.bleUp || this.resync || this.rc.infersNothing || this.phase !== 'live') return null;
     if (now - this.deadAt < this.respawnDelayMs) return null;
     const st = this._respawnStation();
     return st && st.present ? st : null;
@@ -6546,7 +6588,7 @@ export class Engine {
 
   /** Reload handle pulled: the gun refuses fire for the weapon's reload time (catalog reload_s; 1.5 s when unknown). */
   _reloadPulled() {
-    if (this.phase !== 'live' || !this.alive || this.tutorial || this.resync || this.reconciling) return;   // resync/reconcile: the gun is disarmed and unverified, no takeover
+    if (this.phase !== 'live' || !this.alive || this.tutorial || this.resync || this.rc.disarmed) return;   // resync/reconcile: the gun is disarmed and unverified, no takeover
     // A20/F15: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `_onAmmo` drops every $ALCD for the whole
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book
     // `ok:false` on a reload the player never asked the gun for. Refuse the pull instead.
@@ -6644,17 +6686,17 @@ export class Engine {
     // heat weapon is mid-cooldown, and skipping the token here (as the ammo/reserve fields correctly do)
     // would only add to how long a stale-but-locked reading can sit unrefreshed -- see HEAT_STALE_MS.
     if (heat != null && !Number.isNaN(heat)) { this.heatBySlot[slot] = heat; this._heatAt[slot] = this.now(); if (heat > 0) this._everHeated[slot] = true; }
-    this._heatLockFrame(slot, heat, this.stunned || this.reconciling ? null : this._prevAmmo[slot], mag);   // F164: a disarm echo's drop is not "it fired", so it must not end a lockout
+    this._heatLockFrame(slot, heat, this.stunned || this.rc.disarmed ? null : this._prevAmmo[slot], mag);   // F164: a disarm echo's drop is not "it fired", so it must not end a lockout
     // F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0` (whether
     // it does is hardware-UNVERIFIED; this guard makes it safe either way). Counting it would book a magazine of
     // phantom shots, and recording it would make the restore re-send 0 -- a gun disarmed for the rest of the life.
     if (this.stunned) return;
-    // F164 follow-up: the same guard for a reconcile. `_beginReconcile` disarms with `$AMMO,<slot>,0,0`, and the
+    // F164 follow-up: the same guard for a reconcile. `rc.begin` disarms with `$AMMO,<slot>,0,0`, and the
     // gun's echo reads as a whole magazine leaving: it booked `shots`, the life's rounds, a shot cue and a recoil
-    // burst. Nothing in the window is fire (the gun is disarmed), and `_endReconcile` re-arms from the counts it
+    // burst. Nothing in the window is fire (the gun is disarmed), and `rc.end` re-arms from the counts it
     // snapshotted before the disarm, so the frame is dropped whole. `_prevAmmo` and the account stay where they
     // were; the re-arm re-seats both.
-    if (this.reconciling) return;
+    if (this.rc.disarmed) return;
     // F259 (bench 2026-09-18): the same shape as the stun guard above, and for the same reason. Inside the
     // ECHO WINDOW this frame is the gun reading back the node's OWN `$WEAP` reset -- it is not evidence of
     // anything. Not a shot (it booked 26 phantom rounds into `this.shots` per write), not a try-out
@@ -6700,9 +6742,9 @@ export class Engine {
       else this.tryoutArming.seen = true;
     }
     // F209: a round leaving slot 0 or 1 is the gun's own proof it can fire, so hit reception arms now.
-    // F209/S7.1: a reconcile disarms with its own `$AMMO` write (`_beginReconcile`), and the gun's echo
-    // of that looks exactly like "a round left the mag". The `if (this.reconciling) return` near the top of this
-    // function drops that echo before it gets here, so it cannot arm hit reception early; `_endReconcile`
+    // F209/S7.1: a reconcile disarms with its own `$AMMO` write (`rc.begin`), and the gun's echo
+    // of that looks exactly like "a round left the mag". The `if (this.rc.disarmed) return` near the top of this
+    // function drops that echo before it gets here, so it cannot arm hit reception early; `rc.end`
     // re-arms explicitly once it is done.
     if (this._armPending && this._armPending.shotEnds !== false && (slot === 0 || slot === 1 || this.pu.isHeldSlot(slot)) && prev != null && mag < prev) this._armLife('first shot');   // A56: a heavy's round proves it too   // 2026-09-19: a profile life never ends on a shot
     if (prev != null && mag < prev) this._actSeq++;   // pl4: `_writeMust` never repeats counts past a shot
@@ -6855,7 +6897,7 @@ export class Engine {
       return true;
     }
     const rp = this._respawnProfile(), burst = this.frames && (rp ? rp.revive : this.frames.revive);
-    const why = !this.bleUp ? 'link down' : this.ended ? 'match over' : (this.resync || this.reconciling) ? 'resync' : !(burst && burst.length) ? 'no revive burst' : null;
+    const why = !this.bleUp ? 'link down' : this.ended ? 'match over' : (this.resync || this.rc.infersNothing) ? 'resync' : !(burst && burst.length) ? 'no revive burst' : null;
     if (why) { this.log(`self-hit: own shot was lethal, no revive (${why}): booked as a down by nobody`, 'le'); return fall(); }
     this._selfGunPools = null;
     this._revive(false, null, false, target);
@@ -7147,7 +7189,7 @@ export class Engine {
     this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
     this._audioSync();
     if (hp > 0) this._gunPoolPaint(movedPool);   // A16 §3.1 (readout) / A11.7 legacy (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
-    const wasResync = !!this.resync || !!this.reconciling;
+    const wasResync = !!this.resync || this.rc.outOfBand;
     this._spawnCheckSeen(hp, armor, shield);   // F416: the answer to a spawn check, before any death is weighed
     if (this.resync) this._resyncEvidence('hp');
     // F264: `solicited` means this `$HP` answers our own `$LIFE,0,0,0,*` probe, so the node learned the zero out
@@ -7170,7 +7212,7 @@ export class Engine {
     // path already restores hp/alive from the gun's own state rather than a local write, so there is no
     // queued-before-$SPAWN echo to guard against, and "never infer death" there means never guess one
     // from silence, not suppress one the gun just reported.
-    if (this.reconciling) return false;
+    if (this.rc.outOfBand) return false;
     if (this._armedThisLife) return false;
     const now = this.now();
     if (this.latch && now - this.latch.at <= C.DEATH_LATCH_MS) return false;
@@ -7401,88 +7443,7 @@ export class Engine {
   }
 
   // ---------- §3.10 resync: trigger first, then reload, then trigger ----------
-  // ---------- S7.1 reconnect reconcile: disarm, keep the real pools, re-arm — never infer death ----------
-  /** A rejoin into a LIVE match. The gun keeps its config + pools across a BLE drop, and `_load` restored
-   *  the real alive/hp — so we DON'T guess. Hold a disarmed window (anti-cheat: a restart is slow and
-   *  gains nothing), then re-arm to the restored pools with NO $SPAWN/$PSET (so HP is never reset to full).
-   *  This replaces the old trigger-first resync, which mis-concluded "dead" on reconnect and let the
-   *  auto-respawn HEAL the player — a free respawn on restart (bench 2026-09-04, Tony). */
-  _beginReconcile() {
-    if (this.reconciling) return;
-    // F164: snapshot the counts before the disarm. They are the last counts seen before the drop: `_onAmmo`
-    // ignores every ammo frame while reconciling (the disarm's echo is not fire). Rounds fired while the link was
-    // down were never reported, so the re-arm gives them back: a bounded refund, not a free magazine.
-    this.reconciling = { since: this.now(), ammo: this._liveAmmo() };
-    this.resync = null;                                   // never run the infer-death machine on a rejoin
-    this._stunRestore('reconcile');                       // F15: the reconcile owns the disarm/re-arm from here (F164: it re-arms with the live counts snapshotted above)
-    this._write(['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*', ...this.pu.disarmRows()], 'reconcile: disarm');   // no shots count while we reconcile; A56: nor a held heavy's
-    // F264 (Tony, 2026-09-18): ...and ASK. §3.10's rule is that the node must never INFER inside this window, and
-    // the gun may well have died while the app was away (the S7 gap-death limitation, which inference cannot see).
-    // A probe is not an inference: it is how the node stops needing one. The reply lands through the ordinary
-    // handler, which §3.10 already says to trust verbatim here. Acting still stands down; reading does not.
-    this._askGun('reconcile: read the gun rather than infer it');
-    this.log('reconnect — reconciling (gun held ' + RECONCILE_MS + ' ms)', 'li');
-    this._changed();
-  }
-  /** End the reconcile: re-arm to the RESTORED pools. Alive → restore the loadout mags so the gun fires
-   *  again at its real HP. Down → leave it disarmed (it is out, awaiting a real respawn). Never writes
-   *  $SPAWN or $PSET, so a rejoin can never heal. */
-  _endReconcile() {
-    const live = (this.reconciling && this.reconciling.ammo) || {};
-    this.reconciling = null;
-    if (this.alive) {
-      // F164: re-arm each slot to the LIVE count snapshotted when the reconcile began (`_liveAmmo`: the node's
-      // magazine account, else that slot's spawn row). The spawn row alone was a free full magazine plus the
-      // spawn reserve on every relink. A pickup slot keeps its spawn row here; `pu.reconcileRearm` owns a held heavy.
-      const pu = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
-      const rows = ((this.frames && this.frames.spawn) || []).filter(f => f.startsWith('$AMMO,')).map(f => {
-        const slot = +f.split(',')[1], l = live[slot];
-        return l && !pu.has(slot) ? `$AMMO,${slot},${l[0]},${l[1]},1,*` : f;
-      });
-      // A56: a held heavy keeps its charges, and one on the trigger goes back on it (F436): `pu.reconcileRearm` says how.
-      const { reequip, ammo } = this.pu.reconcileRearm(rows);
-      if (ammo.length || reequip) {
-        // F259: the account takes the re-armed counts and opens the echo window, as the powerup equip does, so the gun's
-        // echo of this write is bookkeeping (never a shot, never a refill) and every later restore carries these
-        // counts. `pu.reconcileRearm` has already done this for a held heavy's slot: one write, one echo expected.
-        for (const f of ammo) {
-          const t = f.split(','), slot = +t[1], mag = +t[2] || 0, res = +t[3] || 0;
-          if (this.pu.isHeldSlot(slot)) continue;
-          this._acctWrote(slot, mag, res); this._prevAmmo[slot] = mag; this._prevReserve[slot] = res;
-        }
-        if (reequip) this.pu.reequipInRearm(ammo);
-        else this._write(ammo, 'reconcile: re-arm');
-        this.pu.afterRearm();   // A56 r2 M1: the re-arm is not the switch-back
-        // S42/S55: the accuracy writer is `$TMP` t4 only and never writes `$AMMO`, so it cannot put an old
-        // magazine back over this re-arm; every other `$AMMO` owner restores from the account set above.
-        // Hold it anyway so this write owns the gun until it has answered, and re-arm the model: it returns to
-        // the weapon's CRISP value, so nothing is written until the burst that degrades it.
-        this._holdAccuracyWrites('reconcile re-arm');
-        this._recoilArm('reconcile');
-      }
-      // F209: the drop may have landed inside spawn protection, or an app restart lost `_armPending`. Re-sending
-      // the real table is the F11 repair path, so a rejoin always ends with hit reception armed. Routed through
-      // `_armLife` (not a bare `_write`) so a `false` resolve on a link that stays up re-arms for retry instead
-      // of silently leaving the gun on fn 28 for the life.
-      // F121 rebuild: a drop may hide a reboot, which empties the table (F11), so the take is re-sent here too.
-      if (this._protectsSpawn()) { this._sirLive = false; this._armPending = this._repairArm(); this._armLife('reconcile'); }
-      // 2026-09-19: a respawn profile's `trigger_live` write can be lost the same way -- a BLE drop in flight, or
-      // an app restart mid-delay -- and nothing else would ever retry it, holding `$BMAP,0,98` for the rest of
-      // the life. `!this._triggerPending` means the weapon delay is already over (or was never running): the
-      // trigger should already be mapped, so re-send it as a repair. A delay still due is left alone -- `tick()`
-      // fires it when it is due, and forcing it early would let the player fire while still protected.
-      const rp = this._respawnProfile();
-      if (rp && !this._triggerPending) {
-        const r = this._write([rp.trigger_live], 'reconcile: weapon systems live');
-        Promise.resolve(r).then(ok => {
-          if (ok !== false || this.phase !== 'live' || this.ended || !this.alive || this._triggerPending) return;
-          this._triggerPending = { at: this.now(), due: this.now(), flip: false };   // as `_armLife` re-arms its own lost take, not `_writeMust`'s one-shot retry
-        });
-      }
-    }
-    this.log(`reconcile done — ${this.alive ? 'live' : 'down'} at hp ${this.hp}`, 'lk');
-    this._changed();
-  }
+  // S7.1 reconnect reconcile (disarm, keep the real pools, re-arm, never infer death): `this.rc`, reconcile.js.
 
   _beginResync(why) {
     if (!(this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')) return;
@@ -7593,7 +7554,7 @@ export class Engine {
       const gap = this._awakeAt ? this.now() - this._awakeAt : Infinity;
       if (!this.bleUp) this.log('resume: gun link down — the relink will reconcile', 'li');
       else if (gap < RESUME_GAP_MS) this.log(`resume: ${gap} ms since the last tick — the app never stopped, nothing to reconcile`, 'li');
-      else this._beginReconcile();
+      else this.rc.begin();
     }
     if (this.start) this.resumeSchedule();
     this._awake();   // both `visibilitychange` and `pageshow` can fire for one foreground: the second must not read the first's gap and reconcile again
@@ -7738,7 +7699,7 @@ export class Engine {
         roundsPerCharge: row && row.rounds_per_charge != null ? +row.rounds_per_charge : null,
       }))(this.weaponRow(this._activeWeaponId())),
       resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
-      reconciling: !!this.reconciling,
+      reconciling: this.rc.active,
       stunned: this.stunned ? { until: this.stunned.until, leftMs: Math.max(0, this.stunned.until - now) } : null,
       // S16: the poison pill's input. `by` names the applier, who gets the kill if a tick finishes the player.
       poison: this.poison ? { leftMs: Math.max(0, this.poison.until - now), durMs: this.poison.durMs, perTick: this.poison.per, tickMs: this.poison.tickMs, ticks: this.poison.ticks,
