@@ -44,7 +44,9 @@ and the head's `$LCD` echo arrives. Then the steps run:
 The state fields: `phase`, `alive`, `spawned`, `hp`, `armor`, `shield`, `activeSlot`, `ammo`, `reserve` and `deaths`
 always, plus any of `spawnLost`, `reconciling`, `switching`, `reloading`, `poison`, `held` (the held heavy, with `back`,
 `base`, `trig`, `suspect` and `unconfirmed`), `claim`, `powerup` (the hint, overshield, grant, swap and spawn cards, the
-item a death took, the switch-back and its retry) and `hill` from `setup.fields` (`FIELDS` in
+item a death took, the switch-back and its retry), `hill`, `mag`, `shots`, `reload` (the takeover's clock and the last
+outcome), `swap` (the ALT window, from, to and the last swap's length), `heat` (the reading, the lockout and the OVERHEAT
+word) and `shotCooldown` from `setup.fields` (`FIELDS` in
 `app/test/golden-trace-runner.mjs`).
 
 After every step that is not a check, the fake gun's answers are fed back before the next step.
