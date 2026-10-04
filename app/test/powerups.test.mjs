@@ -1548,3 +1548,73 @@ test('polish 2026-10-03: a self-kill while holding a heavy keeps the heavy on th
   assert.ok(held && held.slot === 2 && held.left > 0, `the node still holds the heavy: ${JSON.stringify(held)}`);
   assert.ok(ammo2.length && ammo2.every(f => f === `$AMMO,2,${held.left},0,1,*`), `the gun gets the held charges, never the zero: ${ammo2.join(' ')}`);
 });
+
+// ---- Bug 3, the echo family (brx1's frame captures, 2026-10-02, Tactix-9498, v4.32). A real gun echoes EVERY `$AMMO`
+// row of a head or spawn burst as its own `$ALCD`, with that row's slot token and no button pressed: after a spawn it
+// sent `$ALCD,8,100,0,24,0`, `$ALCD,1,100,4,0,0`, `$ALCD,2,100,2,1,0` (slot 0, then 4, then 2). A healthy spawned gun's
+// `$QUERY` reads slot 0 (`$LCD,45,0,105,0,52,360`). The echo of the node's own write is bookkeeping: it must never move
+// the trigger, the ALT pointer or an ALT swap. ----
+const ptr = h => ({ slot: h.eng.activeSlot, ptr: h.eng.am.altPtr });
+
+test('bug 3a: the gun\'s echo of the spawn burst\'s own `$AMMO` rows leaves the trigger and the ALT pointer on slot 0', () => {
+  const h = harness({ ...ROCKET_GAME, echo: true });   // the spawn writes slot 0, slot 1 and the empty pickup slot 2
+  assert.deepEqual(ptr(h), { slot: 0, ptr: 0 }, 'the gun is on slot 0 after a spawn (brx1: `$QUERY` reads slot 0)');
+  assert.deepEqual(shown(h), { slot: 0, ammo: 32, reserve: 192, mag: 32 }, 'the AR on the HUD, at its spawn counts');
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  assert.equal(h.eng.am.switching.to, 1, 'the first ALT goes to the secondary, as the gun does');
+});
+
+test('bug 3a: the echo of a revive burst leaves the trigger on slot 0', () => {
+  const h = armed({ echo: true });
+  alt(h); assert.equal(h.eng.activeSlot, 1, 'setup: on the secondary when killed');
+  h.die(); h.adv(9000);
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  assert.deepEqual(ptr(h), { slot: 0, ptr: 0 });
+  assert.equal(h.eng.state().ammo, 32);
+});
+
+test('bug 3a: the echo of a stun restore leaves the trigger where it was', () => {
+  const h = armed({ echo: true, stun: { duration_s: 3 } });
+  assert.equal(h.eng.activeSlot, 0, 'setup: on the AR');
+  h.eng._stun(); h.adv(3500);
+  assert.equal(h.eng.stunned, null, 'setup: the stun is over and restored');
+  assert.deepEqual(ptr(h), { slot: 0, ptr: 0 });
+  assert.deepEqual(shown(h), { slot: 0, ammo: 30, reserve: 190, mag: 32 });
+});
+
+test('bug 3a: `$LCD` books its magazine and reserve on its OWN slot token, and never moves the trigger', () => {
+  const h = armed();
+  h.frame('$LCD,45,70,0,1,4,20,*');   // a `$QUERY` reply that reports slot 1
+  assert.deepEqual(ptr(h), { slot: 0, ptr: 0 }, 'only a round moves the trigger');
+  assert.deepEqual(shown(h), { slot: 0, ammo: 30, reserve: 190, mag: 32 }, 'the AR\'s counts stay on the HUD');
+  assert.deepEqual(h.eng.am.liveAmmo()[1], [4, 20], 'slot 1 holds what the gun said it holds');
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 190], 'slot 0 is untouched');
+  h.frame('$LCD,45,70,0,0,29,190,*');
+  assert.deepEqual(shown(h), { slot: 0, ammo: 29, reserve: 190, mag: 32 }, 'a slot-0 `$LCD` still books on the AR');
+});
+
+test('bug 3b: the echo of the node\'s own write never confirms an ALT swap; the next real shot does', () => {
+  const h = armed();
+  h.eng.am.acctWrote(1, 6, 24);   // a re-arm has just written slot 1
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.adv(50); h.frame('$ALCD,6,100,1,24,0,*');   // ...and its echo lands inside the ALT window
+  assert.ok(h.eng.am.switching, 'the swap is still open: an echo is not a shot');
+  assert.equal(h.eng.am.lastSwitchMs, null, 'and nothing was timed');
+  assert.equal(h.eng.activeSlot, 0, 'the trigger has not moved yet');
+  h.adv(100); h.fire(1, 5, 24);
+  assert.equal(h.eng.am.switching, null, 'the shot confirmed it');
+  assert.equal(h.eng.am.lastSwitchMs, 150, 'timed from ALT to the shot');
+  assert.deepEqual(ptr(h), { slot: 1, ptr: 1 });
+});
+
+test('F379: the confirming shot on the ALT target moves the pointer, even after an old-slot report cleared the evidence', () => {
+  const h = armed();
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.fire(0, 29, 190);   // an old-slot round inside the swap
+  h.adv(200); h.fire(1, 5, 24);   // the confirming slot-1 round
+  assert.deepEqual(ptr(h), { slot: 1, ptr: 1 }, 'the pointer follows the confirmed swap');
+  h.adv(500); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  assert.equal(h.eng.am.switching.to, 0, 'the next ALT goes back to the AR, as the gun does');
+  h.adv(3000);
+  assert.deepEqual(ptr(h), { slot: 0, ptr: 0 }, 'the assumed swap lands on the AR');
+});

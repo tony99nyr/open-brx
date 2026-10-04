@@ -271,7 +271,7 @@ test('F209/S7.1 reconcile guard: the reconcile disarm echo cannot end protection
   const h = liveArmed();
   revived(h);
   assert.ok(h.eng._armPending, 'setup: the revive left a pending release');
-  h.frame('$ALCD,30,0,0,,*');          // baseline mag on slot 0, so the next echo reads as a decrease
+  h.frame('$ALCD,32,100,0,192,0,*');   // baseline mag on slot 0, so the next echo reads as a decrease (bug 3a: the revive row's own echo, which is no round)
   h.eng.onBleDropped();
   h.eng.onBleConnected();
   assert.ok(h.eng.reconciling, 'setup: reconciling');

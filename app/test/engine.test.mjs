@@ -1594,7 +1594,9 @@ test('F164: an app restart mid-match keeps the live counts, so the reconnect re-
   clock += 20000; eng2.tick();
   assert.equal(eng2.alive, true, 'setup: auto-respawned');
   const saved = JSON.parse(h.eng.storage.getItem('brx.engine'));
-  assert.ok(!saved.ammo || !saved.ammo[0], `a new life saves no old counts: ${JSON.stringify(saved.ammo)}`);
+  // Bug 3a: the revive's own `$AMMO` rows open the account at the counts they wrote (32 in slot 0), so the save may
+  // carry THOSE; never the last life's 4/64.
+  assert.ok(!saved.ammo || !saved.ammo[0] || saved.ammo[0][0] === 32, `a new life saves no old counts: ${JSON.stringify(saved.ammo)}`);
 });
 
 test('F164 follow-up: the gun echoing the reconcile disarm books no shots, no life shots, no shot cue and no recoil', () => {
@@ -1798,7 +1800,7 @@ test('infection: death writes team_flip and emits team_change', () => {
 
 // ---------------- polish iteration 1 regressions ----------------
 test('shots counter is per weapon slot: a weapon swap is not a shot', () => {
-  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick(); spawnEchoes(h);
   h.frame('$ALCD,32,100,0,384,0,*');
   h.frame('$ALCD,6,100,1,24,0,*');     // swap to the shotgun (slot 1) — NOT 26 shots
   assert.equal(h.eng.shots, 0);
@@ -1896,7 +1898,15 @@ test('ARMED + BLE reconnect re-writes the head and still spawns at T-0', () => {
 });
 
 // ---------- polish iteration 2 regressions ----------
-function goLive(h) { h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*'); h.adv(3000); h.eng.tick(); return h; }   // + the go-live audio's 3 s (docs/announcer.md)
+// Bug 3a (brx1's captures, 2026-10-02): a real gun echoes each `$AMMO` row of the spawn burst as its own `$ALCD`, with
+// that row's slot token, and each `$WEAP` of the head at its clip. This harness's writer never answers, and its config
+// and start land at the same clock, so a test that plays straight after the spawn feeds both bursts' echoes itself
+// (the golden head's slots 0, 1 and 4, then the spawn rows), as the gun would, before its own frames.
+const BURST_ECHOES = ['$ALCD,32,100,0,192,0,*', '$ALCD,6,100,1,24,0,*', '$ALCD,1,100,4,0,0,*', '$ALCD,32,100,0,192,0,*', '$ALCD,6,100,1,24,0,*'];
+function spawnEchoes(h, { head = true } = {}) { for (const f of head ? BURST_ECHOES : BURST_ECHOES.slice(3)) h.frame(f); return h; }   // head: false when the head went out long before
+// Bug 3a: the gun's `$LCD` (it holds 36/216, not the bundle's spawn row 32/192, and never echoes) comes after the spawn's
+// echo window has lapsed: inside it, the node owns the count it wrote and a report of anything else is not news.
+function goLive(h) { h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*'); return h; }   // + the go-live audio's 3 s (docs/announcer.md)
 
 test('head re-write mid-match: the $LCD,0,… echo adds 0 shots', () => {
   const h = goLive(harness());
@@ -1907,7 +1917,7 @@ test('head re-write mid-match: the $LCD,0,… echo adds 0 shots', () => {
   assert.ok(headWrites >= 2, 'head re-written');
   h.frame('$LCD,0,0,0,0,0,0,*');                            // the head echo
   assert.equal(h.eng.shots, 2, 'echo counted as a reset, not a magazine dump');
-  h.adv(9000); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.adv(9000); h.eng.tick(); h.adv(ACC_ECHO_MS + 10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');   // bug 3a: past the revive's echo window (this gun never echoes)
   assert.equal(h.eng.shots, 2, 'the refill is an increase, not shots');
   h.frame('$ALCD,35,100,0,216,0,*');
   assert.equal(h.eng.shots, 3, 'real shots still count');
@@ -2202,6 +2212,8 @@ test('config-echo $ALCD cannot poison the mag denominator (real-gun reload/pips 
   h.frame('$ALCD,24,100,1,12,0,*');            // config-time echo: WEAP clip cap 24 on slot 1
   h.adv(1600); h.echo(); h.eng.tick();
   h.start(0); h.eng.tick();                     // spawn
+  spawnEchoes(h, { head: false });              // bug 3a: the gun reads back the spawn rows; that is not a switch
+  assert.equal(h.eng.activeSlot, 0, 'the echo of the spawn rows leaves the trigger on slot 0');
   h.frame('$ALCD,6,100,1,24,0,*');              // player switches to slot 1: real mag is 6
   const st = h.eng.state();
   assert.equal(st.mag, 6, 'denominator comes from the bundle $AMMO, not the config echo (got ' + st.mag + ')');
@@ -3200,12 +3212,16 @@ function armRecoil(recoil, { recoilConfig, dmg = 8 } = {}) {
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
     catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, dmg, recoil }], perks: [] } } });
   if (recoilConfig !== undefined) h.config.recoil = recoilConfig;   // same object `config_()` sends -- mutate in place
-  h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.config_().echo().start(0); h.adv(10); h.eng.tick();
   // Merge 2026-09-17: the SPAWN write owns `$AMMO` for ACC_HOLD_MS (`_holdAccuracyWrites`), so the accuracy
   // writer is deliberately silent at the very start of a life. Step past that window, and re-stamp the F68
   // backstop clock, so every test below measures the writer itself and not the hold. The hold has its own
   // tests ("S42 x A44/A47/F15" further down).
   h.adv(ACC_HOLD_MS + 10); h.eng.tick(); h.eng._lastTeamRepaintAt = h.eng.now();
+  // Bug 3a: the spawn wrote the bundle's `$AMMO,0,32,192` and opened its echo window, so a report of anything else
+  // inside it is not the gun's count. This fake gun holds 36/216 and never echoes, so it reports once that window
+  // has lapsed (ACC_HOLD_MS > ACC_ECHO_MS).
+  h.frame('$LCD,45,70,0,0,36,216,*');
   h.mag = 36;   // the magazine the FAKE gun below is holding, kept in step with the $ALCD frames the tests feed
   return h;
 }
@@ -4242,7 +4258,7 @@ test('S42 x A44: the SPAWN write owns $AMMO -- no accuracy write lands inside th
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
     catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, dmg: 8, recoil: { ...RECOIL_PROFILE, settle_ms: 999999 } }], perks: [] } } });
-  h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.config_().echo().start(0); h.adv(10); h.eng.tick(); spawnEchoes(h); h.frame('$LCD,45,70,0,0,36,216,*');   // bug 3a: the spawn rows echo first
   h.mag = 36; h.writes.length = 0;
   // A burst in the first moments of a life: the model degrades, but the spawn write still owns `$AMMO`.
   // `settle_ms` is enormous so the weapon cannot go crisp again on its own while the hold runs.
@@ -4634,7 +4650,7 @@ test('no reload opens during a rejoin reconcile; a match end clears one in fligh
   assert.equal(h.eng.reloading, null, 'end clears the reload');
 });
 test('ALT with two weapons: switching exposes from/to; the next shot on the new slot confirms with a switched moment', () => {
-  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   let s = h.eng.state(); assert.equal(s.switching, true); assert.equal(s.switchFrom, 0); assert.equal(s.switchTo, 1); assert.equal(s.reloading, false);
@@ -7222,7 +7238,7 @@ test('A42: a re-delivered END is idempotent — no second teardown, no second hi
 test('shot cue: a slow weapon (golden slot 1 shotgun, t14 700) reports a cooldown from the shot, then 0 left', () => {
   // t14 700 (was 800 pre-2026-09-23, R8/F308: the pump gap tightened for the Shotgun-vs-SMG close-range
   // rule -- see docs/weapon-design.md's Balance rules table), read from the regenerated golden bundle.
-  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   assert.equal(h.eng.phase, 'live');
   h.frame('$ALCD,8,100,1,40,0,*');
   assert.equal(h.eng.state().shotCooldown, null, 'no shot yet: the first report is a baseline, not a round');
@@ -7245,7 +7261,7 @@ test('shot cue CONTROL: an automatic weapon (golden slot 0 AR, t14 100) gets no 
 });
 
 test('shot cue: a stub $WEAP with no tokens, another slot, or death gives no cue', () => {
-  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   h.frame('$ALCD,8,100,1,40,0,*'); h.adv(10); h.frame('$ALCD,7,100,1,40,0,*');
   assert.ok(h.eng.state().shotCooldown, 'pre-condition: the shotgun cue is up');
   h.frame('$ALCD,32,100,0,384,0,*');   // the gun reports slot 0 active: the shotgun cue is not this gauge's

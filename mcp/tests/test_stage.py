@@ -1964,7 +1964,7 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     # purpose (a stun window can land mid-cooldown), so this no longer requires zero `}` before the guard --
     # only that the guard still comes before the F147 try-out confirmation logic further down.
     ammo = ENGINE_JS.with_name("ammo.js").read_text(encoding="utf-8")   # engine split (b): the ammo report is ammo.js `onAmmo`
-    assert re.search(r"onAmmo\(mag, reserve, slot = 0(?:, heat = null)?\) \{.*?if \(this\.host\.stunned\) return;.*?F147", ammo, re.S), "ammo.js `onAmmo` no longer ignores $ALCD while stunned before its other logic"
+    assert re.search(r"onAmmo\(mag, reserve, slot = 0(?:, heat = null)?(?:, lcd = false)?\) \{.*?if \(this\.host\.stunned\) return;.*?F147", ammo, re.S), "ammo.js `onAmmo` no longer ignores $ALCD while stunned before its other logic"
     assert re.search(r"this\.stunned\.until = Math\.max\(this\.stunned\.until, now \+ ms\)", src), "a second EMP must EXTEND the stun"
     assert re.search(r"_stunRestore\('died'\)", src), "death must cancel the stun"
     # F57: the low-health crossing plays no grunt and stamps the pain gate

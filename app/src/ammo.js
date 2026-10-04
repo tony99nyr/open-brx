@@ -11,7 +11,7 @@
 //   TRIGGER_NO_FIRE_MS · ACC_ECHO_MS · OVERHEAT_CAP_MS · HEAT_STALE_MS · OVERHEAT_SHOWN_MS · ENERGY_REFILL_MAX_MS
 //   Ammo(host)
 //     account     acctLive(slot, now) · acctOutstanding(slot, now) · acctEchoing(slot, now) · pressedRounds(slot) ·
-//                 acctWrote(slot, mag, res) · acctPress() · acctAmmo(slot, mag, prev)
+//                 acctWrote(slot, mag, res) · acctWroteRows(frames, skip, weap) · acctPress() · acctAmmo(slot, mag, prev)
 //     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · setMag(slot, mag) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
@@ -19,7 +19,7 @@
 //                 overheatOnHud(now) · heatOf(slot) · heatedEver(slot) · forgetHeat()
 //     reload      reloadPulled() · reloadReleased(now) · reloadDeadline() · endReload(why) · reloadTick(now) ·
 //                 reloadingMs() · reloadOpen · dropReload()
-//     a report    onAmmo(mag, reserve, slot, heat) · dryPull() · endDrySpell()
+//     a report    onAmmo(mag, reserve, slot, heat, lcd) · dryPull() · endDrySpell()
 //     ALT         altPressed() · switchTick(now) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
 //                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · equipped(slot, mag, res)
 //     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · reloading ·
@@ -178,8 +178,17 @@ export class Ammo {
   }
 
   // ---- state resets ----
-  /** A new life or a new head: no slot has reported yet, and the gun's ALT position is back on slot 0. */
-  forgetCounts() { this.prevAmmo = {}; this.prevReserve = {}; this.acct = {}; this.altPtr = 0; this.altEvidencePending = null; }
+  /** A new life or a new head: no slot has reported yet, and the gun's ALT position is back on slot 0.
+   *  Bug 3a: an echo window still open is KEPT (its count and expected number only). The gun is still reading back a
+   *  write the node made before this point, such as the head's `$WEAP` rows when the start follows the config at once,
+   *  and that echo landing after the spawn must be bookkeeping too, or it moves the trigger. */
+  forgetCounts() {
+    const now = this.host.now(), open = {};
+    for (const [slot, a] of Object.entries(this.acct)) {
+      if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending };
+    }
+    this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null;
+  }
   /** A new match: config echoes carry `$WEAP` clip caps, not spawn mags, so no old denominator survives, and no old
    *  shot-ready cue. */
   forgetShown() { this.magBySlot = {}; this.lastShot = null; }
@@ -230,8 +239,10 @@ export class Ammo {
 
   // ---------- one ammo report ($ALCD, or the magazine on an $LCD) ----------
   /** $ALCD,<mag>,100,<slot>,<reserve>,<heat> — counts are per weapon SLOT; a weapon swap is never a shot.
-   *  `heat` is null on a frame with no heat token ($LCD's ammo echo) -- leaves the slot's last-known heat alone. */
-  onAmmo(mag, reserve, slot = 0, heat = null) {
+   *  `heat` is null on a frame with no heat token ($LCD's ammo echo) -- leaves the slot's last-known heat alone.
+   *  `lcd` is true for the magazine on an `$LCD` (`$LCD,hp,armor,shield,SLOT,mag,res`): a REPORT the node asked for
+   *  or the `$SPAWN` answered with, never a round, so it books the counts on its own slot and moves nothing (bug 3a). */
+  onAmmo(mag, reserve, slot = 0, heat = null, lcd = false) {
     slot = Number.isFinite(slot) ? slot : 0;
     // Review 2026-09-17: heat is recorded BEFORE the stunned return below. A stun window can land while a
     // heat weapon is mid-cooldown, and skipping the token here (as the ammo/reserve fields correctly do)
@@ -255,11 +266,29 @@ export class Ammo {
     // and not a magazine worth showing: Tony watched the HUD jump to 32 every time he fired. The node
     // already knows the count, because it wrote it -- so book NOTHING, leave `prevAmmo` where it was so
     // the next real frame measures from before the write, and put the ACCOUNT on the screen.
-    // F394: the restore landing for a slot that is NOT on the trigger (a switch-back resend, a stun restore of the
-    // other slot) is the gun reading back our own write, not the trigger moving. Measured before `acctAmmo` closes it.
-    // A report on the slot ALT is switching TO is the player's confirming shot, never an echo (polish round 2).
-    const offSlotEcho = slot !== this.host.activeSlot && !(this.switching && slot === this.switching.to)
-      && this.acctEchoing(slot) && mag <= this.acct[slot].echoExpect;
+    // Bug 3a (brx1's frame captures, 2026-10-02, Tactix-9498, v4.32): a real gun echoes EVERY `$AMMO` row the node
+    // writes as its own `$ALCD`, carrying that row's slot token, with no button pressed. After a spawn burst it sent
+    // `$ALCD,8,100,0,24,0`, `$ALCD,1,100,4,0,0`, `$ALCD,2,100,2,1,0`: slot 0, then 4, then 2. So a frame that lands
+    // inside the slot's echo window AT the number the node wrote is our own write read back (`ownEcho`). It is
+    // bookkeeping and nothing else: it never moves the trigger, never moves the ALT pointer, and never confirms an ALT
+    // swap (bug 3b: a re-arm's echo on the ALT target closed the card early and timed it wrong). Measured before
+    // `acctAmmo` closes the window.
+    const echoing = this.acctEchoing(slot), expect = echoing ? this.acct[slot].echoExpect : null;
+    const ownEcho = echoing && mag === expect;
+    // Bug 3a: the magazine on an `$LCD` inside the slot's echo window is the gun answering before our own row has
+    // echoed (the `$SPAWN`'s `$LCD`, which can still carry the head's clip): the node wrote the number, so the frame
+    // is not news, and it must not use up the echo the `$ALCD` will bring. The ACCOUNT goes on the screen, as for the
+    // `$WEAP` reset below.
+    if (lcd && this.acctEchoing(slot)) {
+      if (slot === this.host.activeSlot) { const a = this.acct[slot]; this.publish(slot, this.acctLive(slot), a ? a.res : null); }
+      return;
+    }
+    // F394: a frame for a slot that is NOT on the trigger, inside its window, is our own write landing (a switch-back
+    // resend, a stun restore of the other slot), even below the number written. The one exception is the slot ALT is
+    // switching TO, where a frame below it is the player's confirming round (polish round 2); AT the number it is still
+    // only the echo (bug 3b). An `$LCD` for another slot is a report, booked and nothing more (bug 3a).
+    const offSlotEcho = slot !== this.host.activeSlot && (lcd || ownEcho
+      || (echoing && mag < expect && !(this.switching && slot === this.switching.to)));
     const expectedBefore = slot < 2 && this.host.pu.isHeldSlot(this.host.activeSlot)
       ? this.liveAmmo()[slot]?.[0] : null;   // a first $ALCD can still prove a shot against the spawn count
     let prev = this.acctAmmo(slot, mag, this.prevAmmo[slot]);
@@ -270,7 +299,7 @@ export class Ammo {
       if (slot === this.host.activeSlot) this.publish(slot, this.acctLive(slot), a ? a.res : null);
       return;
     }
-    if (offSlotEcho) {
+    if (offSlotEcho) {   // another slot's echo, or another slot's `$LCD` report: book its counts, move nothing
       this.prevAmmo[slot] = mag;
       if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
       return;
@@ -311,7 +340,9 @@ export class Ammo {
     // A read-back with no count drop could be an old echo, so only a shot warrants another equip.
     const lostPuEquip = this.host.pu.lostEquip(slot, mag, prev, expectedBefore, this.altEvidencePending);
     const puBack = this.host.pu.onAmmo(slot, mag, prev);   // A56: the held item's magazine; empty ends the item and switches back
-    if (this.switching && !this.switching.pu && slot !== this.switching.from && (slot < 2 || this.host.pu.isHeldSlot(slot))) {
+    // Bug 3b: only a real round confirms (or the assumed timeout in `switchTick`), never the echo of our own write.
+    const moves = !ownEcho && !lcd;
+    if (moves && this.switching && !this.switching.pu && slot !== this.switching.from && (slot < 2 || this.host.pu.isHeldSlot(slot))) {
       // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
       // NB this interval is ALT-press -> next SHOT, so it includes the player's reaction time. It is a
       // lower bound on "the swap had finished by", NOT a measurement of the swap itself (FOLLOWUPS F4).
@@ -325,23 +356,25 @@ export class Ammo {
       // OLD slot, which is the opposite of what the line below says it does. The assignment after the block
       // is now a no-op on this path and still does the work on every other.
       this.host.setActiveSlot(slot);
+      // F379: the confirming round on the ALT target puts the gun's ALT pointer there. An old-slot round inside the swap
+      // has already cleared the evidence below and left the pointer on the old slot, so without this the pointer lagged:
+      // the next ALT showed SWITCHING to the slot the player was on while the gun went to the other one.
+      if (slot < 2) { this.altPtr = slot; this.altEvidencePending = null; }
       this.host.pu.onConfirmedSwap(slot);   // A56 r2 M2: ALT took the trigger off the heavy, as the assumed-swap path says; r3: it supersedes a pending switch-back
       this.host.recoilArm('swap (confirmed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
     }
     this.prevAmmo[slot] = mag;
-    if (slot < 2 && this.altEvidencePending != null && ((prev != null && mag < prev) || slot === this.altEvidencePending)) {
+    if (moves && slot < 2 && this.altEvidencePending != null && ((prev != null && mag < prev) || slot === this.altEvidencePending)) {
       this.altPtr = slot; this.altEvidencePending = null;
     }
-    if (slot < 2 && slot !== this.host.activeSlot && this.host.activeSlot < 2 && !this.switching && this.altEvidencePending == null) this.altPtr = slot;   // ALT r4: a swap the node missed; the pointer follows the gun
+    if (moves && slot < 2 && slot !== this.host.activeSlot && this.host.activeSlot < 2 && !this.switching && this.altEvidencePending == null) this.altPtr = slot;   // ALT r4: a swap the node missed; the pointer follows the gun
     if (puBack != null) {   // A56: the heavy ran dry; keep its empty count until the delayed switch-back
       if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
       this.publish(puBack, this.prevAmmo[puBack], this.prevReserve[puBack]);
       return;
     }
-    // KNOWN BUG (bug 3a, own-write echo moves the trigger): the trigger follows whichever slot spoke last, with no button pressed. The gun's `$ALCD` echo of
-    // the node's own spawn or re-arm `$AMMO` rows therefore moves it too (slot 1 after the spawn's two rows), and a later
-    // `$LCD` books its magazine and reserve on this slot (engine.js `feedFrame`, the same KNOWN BUG note). Pinned as it is
-    // by the golden trace `ammo-spawn-echo-slot`; the fix belongs here.
+    // The trigger follows the slot a round came out of. Bug 3a: an echo of our own write and an `$LCD` report never
+    // reach here for another slot (`offSlotEcho` above), so on this line `slot` is already the trigger's for both.
     this.host.setActiveSlot(slot);
     // S42/F259: recoil is stepped by `_acctSpent`, off the ACCOUNT above, never off this raw decrement.
     // The node's own `$WEAP` reset and `$AMMO` restore arrive here as a 26-round drop that no player fired
@@ -677,6 +710,23 @@ export class Ammo {
     if (!(now < a.echoUntil)) a.echoPending = 0;   // the last window lapsed unanswered: do not carry its count
     a.echoPending++;
     a.echoUntil = now + ACC_ECHO_MS; a.echoExpect = mag;
+  }
+  /** Bug 3a: `acctWrote` for every `$AMMO,<slot>,<mag>,<res>` row in a write the node is about to send, so the gun's
+   *  echo of each row (brx1, 2026-10-02: one `$ALCD` per row, with that row's slot token) is bookkeeping. `skip(slot)`
+   *  leaves a slot whose account another owner books (the held heavy: powerup-player.js). `weap` counts a `$WEAP` row
+   *  too, at its clip and reserve (tokens 17 and 18, the numbers its reset echoes): the head only, where no `$AMMO`
+   *  follows it. Returns the frames. */
+  acctWroteRows(frames, skip = null, weap = false) {
+    for (const f of frames || []) {
+      if (typeof f !== 'string') continue;
+      const t = f.split(','), slot = +t[1];
+      const row = t[0] === '$AMMO' ? [t[2], t[3]] : weap && t[0] === '$WEAP' ? [t[17], t[18]] : null;
+      if (!row || t[1] === '' || !Number.isFinite(slot) || (skip && skip(slot))) continue;
+      const mag = +row[0] || 0, res = +row[1] || 0;
+      this.acctWrote(slot, mag, res);
+      this.setPrev(slot, mag, res);   // what the slot holds now, should the echo never come back (the reconcile re-arm's pattern)
+    }
+    return frames;
   }
   /** A trigger press that must produce a round (`_awaitShot` has already cleared every reason it would not).
    *  Books it against the account NOW, so a write between this press and the gun's `$ALCD` restores the

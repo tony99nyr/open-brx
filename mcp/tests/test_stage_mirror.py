@@ -801,10 +801,11 @@ def test_the_stun_restore_carries_the_nodes_own_magazine_account_not_the_last_al
         # magazine (five shipping weapons carry one) two unanswered pulls took the account to zero while the
         # gun was loaded, which `_live_ammo` then wrote to the gun as `$AMMO,<slot>,0` (polish review
         # 2026-09-18). An expired press is now CLEARED.
+        # Bug 3a: the restore's own `$AMMO,0,19` opened the account at 19 (`_acct_wrote_rows`), so that is the base now.
         st._inject_rx("$BUT,0,1,*"); await settle(st)
-        assert st._acct_live(0) == 19, "one outstanding press, not a stale one stacked under it"
+        assert st._acct_live(0) == 18, "one outstanding press, not a stale one stacked under it"
         clock.advance(st.TRIGGER_NO_FIRE_S + 0.1)
-        assert st._acct_live(0) == 20, "unanswered presses must expire; the gun's number wins"
+        assert st._acct_live(0) == 19, "unanswered presses must expire; the number the gun was given wins"
     asyncio.run(go())
 
 
@@ -832,6 +833,7 @@ def test_the_echo_window_covers_both_answers_to_a_write_and_neither_reads_as_fir
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)   # bug 3a: the head's and the spawn's own echoes land first, as on a real link
         st.alcd(mag=6, reserve=200); await settle(st)
         assert st._acct_live(0) == 6
         st._acct_wrote(0, 6)                       # the node writes $WEAP + $AMMO,0,6
@@ -1042,7 +1044,9 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive and st.reloading is None, "the gun stops the reload when you drop; so does the model"
         await st.revive(); await settle(st)
-        assert st.reloading is None and st._prev_ammo == {} and st._prev_reserve == {}, "revive clears slot memory"
+        # bug 3a: the revive's own `$AMMO` rows are the new life's counts (`_acct_wrote_rows`); the last life's 10/20 is gone
+        assert st.reloading is None and st._prev_ammo.get(0) != 10 and st._prev_reserve.get(0) != 20, "revive clears slot memory"
+        assert set(st._prev_ammo) <= set(st._spawn_ammo()), st._prev_ammo
         assert st.reserve == 20, "revive keeps the last reserve the gun reported"
         # a full mag with reserve: the gun ignores the pull
         st._on_rx("$ALCD,30,100,0,20,0,*")
@@ -1294,7 +1298,8 @@ def test_a_stun_before_the_first_shot_of_a_new_life_restores_this_lifes_reserve_
         assert st.alive
         # both maps reset on spawn; since #6 polish r1 the spawn's own `$LCD` echo (engine.js LCD case, t5/t6) refills slot 0
         # with THIS life's pair, so the check is that life 1's 20/150 is gone, not that the maps stay empty
-        assert st._prev_ammo.get(0) != 20 and st._prev_reserve.get(0) != 150 and set(st._prev_ammo) <= {0}, (st._prev_ammo, st._prev_reserve)
+        # bug 3a: the spawn's own `$AMMO` rows seed every slot they write, so the maps hold the spawn rows' slots only
+        assert st._prev_ammo.get(0) != 20 and st._prev_reserve.get(0) != 150 and set(st._prev_ammo) <= set(spawn), (st._prev_ammo, st._prev_reserve)
         await flush_fake_ammo(st, mgr)   # life 2's own spawn echo must not surface later and stomp the injected shot below
         n = mark(mgr)
         await st.ir("emp"); st.poll(); await settle(st)
@@ -1482,6 +1487,7 @@ def test_alt_r4_a_loadout_alcd_that_moves_the_trigger_heals_the_alt_pointer():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)   # bug 3a: the spawn rows' echoes land first (inside the window a slot-1 frame is our own write)
         st.alcd(mag=10, reserve=20); await settle(st)
         assert st.active_slot == 0 and st._alt_ptr == 0 and st.switching is None
         st._prev_ammo[1] = 6
@@ -1540,6 +1546,80 @@ def test_f394_the_echo_of_a_slot_not_on_the_trigger_never_reaches_the_screen():
         st._on_rx("$BUT,1,1,*")               # ALT to slot 1, then a real round out of it inside the window
         st._on_rx("$ALCD,4,100,1,9,0,*")
         assert st.switching is None and st.active_slot == 1 and st.ammo == 4, (st.switching, st.active_slot, st.ammo)
+    asyncio.run(go())
+
+
+# ---- Bug 3, the echo family (brx1's frame captures, 2026-10-02, Tactix-9498, v4.32): a real gun echoes EVERY `$AMMO` row
+# of a head or spawn burst as its own `$ALCD`, with that row's slot token (`$ALCD,8,100,0,24,0`, `$ALCD,1,100,4,0,0`,
+# `$ALCD,2,100,2,1,0` after a spawn). ammo.js `onAmmo`: the echo of the node's own write moves nothing. ----
+
+def test_bug3a_the_spawn_rows_echo_leaves_the_trigger_and_the_alt_pointer_on_slot_0():
+    """ammo.js `onAmmo` (bug 3a): the fake gun echoes each spawn `$AMMO` row, as brx1's capture shows a real gun does.
+    The echo is bookkeeping, so the trigger and the ALT pointer stay on slot 0 and the first ALT goes to slot 1."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        assert (st.active_slot, st._alt_ptr) == (0, 0), (st.active_slot, st._alt_ptr)
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching and st.switching["to"] == 1, st.switching
+    asyncio.run(go())
+
+
+def test_bug3a_an_lcd_books_its_own_slot_token_and_never_moves_the_trigger():
+    """engine.js `feedFrame` LCD (bug 3a): `$LCD,hp,armor,shield,SLOT,mag,res` books on its own slot token, never on
+    `active_slot`, and a report never moves the trigger (the F416 spawn check reads `active_slot` as the node's view)."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        clock.advance(st.ACC_ECHO_S + 0.1); st.poll(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st._on_rx("$LCD,45,70,0,1,4,20,*")
+        assert st.active_slot == 0 and [st.ammo, st.reserve] == [10, 20], (st.active_slot, st.ammo, st.reserve)
+        assert list(st._live_ammo()[1]) == [4, 20], st._live_ammo()
+        st._on_rx("$LCD,45,70,0,0,9,20,*")   # CONTROL: a slot-0 `$LCD` still books on the trigger slot
+        assert [st.ammo, st.reserve] == [9, 20], (st.ammo, st.reserve)
+    asyncio.run(go())
+
+
+def test_bug3b_the_echo_of_the_nodes_own_write_never_confirms_an_alt_swap():
+    """ammo.js `onAmmo` (bug 3b): ALT pressed while a re-arm's echo window is open. The echo on the ALT target is the
+    node's own write read back, so the swap stays open and untimed; the next real round confirms it."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st._acct_wrote(1, 6, 24)
+        st._on_rx("$BUT,1,1,*")
+        clock.advance(0.05)
+        st._on_rx("$ALCD,6,100,1,24,0,*")
+        assert st.switching and st.last_switch_s is None and st.active_slot == 0, (st.switching, st.last_switch_s, st.active_slot)
+        clock.advance(0.1)
+        st._on_rx("$ALCD,5,100,1,24,0,*")
+        assert st.switching is None and st.last_switch_s == 0.15 and st.active_slot == 1, (st.switching, st.last_switch_s)
+        assert st._alt_ptr == 1
+    asyncio.run(go())
+
+
+def test_f379_the_confirming_round_moves_the_alt_pointer_after_an_old_slot_report():
+    """ammo.js `onAmmo` (F379): ALT, then an old-slot round (it clears the pointer evidence and leaves the pointer on
+    slot 0), then the confirming slot-1 round. The pointer must follow the confirmed swap, or the next ALT shows
+    SWITCHING to the slot the player is already on."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st._on_rx("$BUT,1,1,*")
+        st.alcd(mag=9, reserve=20)            # an old-slot round inside the swap
+        clock.advance(0.2)
+        st._prev_ammo[1] = 6
+        st.alcd(mag=5, reserve=24, slot=1)    # the confirming round
+        assert (st.active_slot, st._alt_ptr) == (1, 1), (st.active_slot, st._alt_ptr)
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching and st.switching["to"] == 0, st.switching
     asyncio.run(go())
 
 
@@ -1784,6 +1864,8 @@ _AMMO_PAIRS = {
     "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s",
     # one ammo report, and the RELOAD nag
     "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull",
+    # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
+    "am.acctWroteRows": "_acct_wrote_rows", "am.forgetCounts": "_forget_counts",
 }
 
 
@@ -2004,9 +2086,9 @@ KNOWN_UNMIRRORED = {
     "rc.begin", "rc.end", "rc.tick", "rc.holdSpawnCheck",
     # Engine split (b), 2026-10-04: the ammo module's small doors. The stage resets its own maps inline where a life or a
     # head starts (`_after_spawn`, and `arm` for the head), and writes `_prev_ammo`/`_prev_reserve` inline after its own re-arms,
-    # so `forgetCounts`, `forgetShown` and `setPrev` have no method to pair with. `pressedRounds` is the F416 spawn
+    # so `forgetShown` and `setPrev` have no method to pair with (bug 3a gave `forgetCounts` one: `_forget_counts`). `pressedRounds` is the F416 spawn
     # check's question (`_spawnCheckSeen`, pinned above): the stage has no F416 check.
-    "am.forgetCounts", "am.forgetShown", "am.setPrev", "am.pressedRounds",
+    "am.forgetShown", "am.setPrev", "am.pressedRounds",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
