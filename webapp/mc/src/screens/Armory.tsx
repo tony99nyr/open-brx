@@ -80,6 +80,16 @@ const kb = (n?: number) => (n == null ? '' : n >= 1024 ? `${Math.round(n / 1024)
 /** O6: the phone's outbox dropped facts THIS match (count or age cap): the recap may be short of what the player did.
  *  `n` is MC's `NodeView.outbox_lost`. A rostered player's card gets the same line from MC in `ambers` (so the card reads
  *  CHECK and counts in the AMBER tile); this is for the unclaimed phone's node card. Absent or 0 draws nothing. */
+/** O11: MC's refusal code for the LOGS button (`POST /api/nodes/{id}/pull_log` -> `reason`), worded WHAT: WHAT TO DO. */
+const PULL_LOG_REFUSAL: Record<string, string> = {
+  utility_node: 'A STATION PHONE HAS NO MATCH LOG: ASK A PLAYER PHONE',
+  no_node: 'MC DOES NOT KNOW THIS PHONE: WAIT FOR IT TO RECONNECT',
+  budget_spent: 'LOG BUDGET SPENT FOR THIS MATCH: WAIT FOR THE NEXT MATCH',
+  push_failed: 'PHONE IS OFF THE NET: RECONNECT IT AND TRY AGAIN',
+  auto_sync_off: 'LOG SYNC IS OFF: SWITCH IT TO AUTO',
+  already_asked: 'ALREADY ASKED: WAIT FOR THE PHONE TO ANSWER',
+};
+
 function OutboxLost({ n }: { n?: number | null }) {
   if (!n || n <= 0) return null;
   return <Alert id="armory-nodecard-outbox-lost" testid="outbox-lost" what={`${n} ${n === 1 ? 'FACT' : 'FACTS'} LOST FROM THE PHONE OUTBOX`} act="CHECK THIS PLAYER'S RECAP BY HAND" />;
@@ -748,7 +758,7 @@ function PullLogButton({ node_id }: { node_id: string }) {
           // outside this lane's files (F221, Tony 2026-09-25); this lane owns only the wording.
           const r = await run(() => api.pullLog(node_id));
           if (r) setNotice(r.ok ? 'ASKED FOR THE LOG: THE PHONE ANSWERS WHEN IT CAN'
-                                : 'COULD NOT ASK FOR THE LOG: THE PHONE IS OFF THE NET, OR PAST ITS UPLOAD BUDGET', !r.ok);
+                                : (PULL_LOG_REFUSAL[r.reason ?? ''] ?? 'COULD NOT ASK FOR THE LOG: THE PHONE IS OFF THE NET, OR PAST ITS UPLOAD BUDGET'), !r.ok);
         } finally { setBusy(false); }
       }}
       style={{ alignSelf: 'flex-start', font: F.chk(700, 11), letterSpacing: '.18em', padding: '9px 14px', minHeight: 36,

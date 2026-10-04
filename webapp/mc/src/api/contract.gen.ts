@@ -204,7 +204,7 @@ export const TEAM_COLOUR_HEX = ['#f43f5e', '#3a86ff', '#ffd23f', '#bf4ce6'] as c
 export const TEAM_INK_HEX = ['#1a0404', '#04121e', '#1a1400', '#140a1c'] as const;
 /** A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag). */
 export const ROLE_LABELS = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE', sidearm: 'SIDEARM' } as const;
-/** net.md §8 size cap */
+/** contracts.md §5 "Size cap" (the retired net.md §8) */
 export const MAX_ENVELOPE_BYTES = 65536;
 /** log_data chunk cap (fits under the envelope cap) */
 export const MAX_LOG_CHUNK_BYTES = 49152;
@@ -2079,6 +2079,8 @@ export interface ArmoryCorruptView {
 }
 
 export interface SnapshotFeedRow {
+  /** F454: a monotonic row id, so `feed_edit` can replace the row; absent on a row restored from an old snapshot */
+  id?: number;
   t_match_s: number;
   text: string;
   tag?: string;

@@ -346,7 +346,12 @@ export class BrxLink {
   // F211: adapter-off detection. `@capacitor-community/bluetooth-le` reports `true` on web, so the demo
   // and the desktop rig see an always-on adapter and behave exactly as before.
   /** Reports whether Bluetooth is on right now. */
-  async isEnabled() { try { return !!(await this.ble.isEnabled()); } catch (_) { return true; } }
+  async isEnabled() {
+    try { return !!(await this.ble.isEnabled()); }
+    // O9: true on a throw is deliberate. "Unknown" must not hide the scan list behind a false "Bluetooth off"; a
+    // genuinely dead adapter fails the next scan or connect with its own error. Log it so the failure is visible.
+    catch (e) { this._log('bluetooth state query failed, assuming on: ' + (e && e.message || e), 'le'); return true; }
+  }
   /** Calls `cb(on)` whenever the adapter turns on or off; returns a stop function. A plugin build too
    *  old to carry the notification (or the web shim) yields a no-op stop, so a call site never has to
    *  branch on plugin version. */

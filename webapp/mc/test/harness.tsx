@@ -55,7 +55,7 @@ export function makeStore(f: Fixture, base?: Partial<Store>): Store {
     dirty: false, setDirty: () => {}, navBlockedTo: null, clearNavBlock: () => {},
     selPlayer: f.selPlayer ?? null, setSelPlayer: () => {}, error: null, clearError: () => {},
     run: async fn => { try { return await fn(); } catch { return undefined; } },
-    serverNow: () => Date.now(), mock: true, connected: true, authRequired: false, serverOld: false,
+    serverNow: () => Date.now(), mock: true, connected: true, authRequired: false, serverOld: false, catalogueDown: false,
     hasToken: true, setToken: () => {}, ...base,
   } as Store;
 }

@@ -489,5 +489,6 @@ def save_backup(record: dict) -> Optional[Path]:
     name = record.get("serial_head_pin") or record.get("port", "tagger")
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(name))
     path = backup_dir() / f"{safe}.txt"
-    path.write_text(raw, encoding="utf-8")
+    from .storage import atomic_write_text
+    atomic_write_text(path, raw)
     return path

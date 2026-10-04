@@ -148,9 +148,17 @@ function flakeSummary() {
   try { rows = lines(fs.readFileSync(FLAKES, 'utf8')).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
   catch { /* no flakes yet */ }
   const since = Date.now() - 7 * 86_400_000;
+  // An incident row ({"incident": {"from", "to", "note"}}) marks a window when the MACHINE failed, not the tests
+  // (2026-10-04: WSL's 4915-task cgroup cap; every rerun then failed too). Flakes inside it stay in the file as
+  // evidence but leave the counts, so they cannot hide or fake a recurring job.
+  const incidents = rows.filter(r => r.incident).map(r => ({ from: Date.parse(r.incident.from), to: Date.parse(r.incident.to), note: r.incident.note }));
+  const inIncident = f => incidents.some(i => Date.parse(f.time) >= i.from && Date.parse(f.time) <= i.to);
+  const recent = rows.filter(f => f.job && Date.parse(f.time) >= since);
+  const excluded = recent.filter(inIncident);
   const count = list => list.reduce((m, f) => m.set(f.job, (m.get(f.job) || 0) + 1), new Map());
   const fmt = m => (m.size ? [...m].sort((a, b) => b[1] - a[1]).map(([j, n]) => `${j} x${n}`).join(', ') : 'none');
-  return `flakes this run: ${fmt(count(runFlakes))}; last 7 days: ${fmt(count(rows.filter(f => Date.parse(f.time) >= since)))}`
+  const note = excluded.length ? `; ${excluded.length} excluded as incident noise (${[...new Set(incidents.map(i => i.note))].join('; ')})` : '';
+  return `flakes this run: ${fmt(count(runFlakes))}; last 7 days: ${fmt(count(recent.filter(f => !inIncident(f))))}${note}`
     + ' (a job that keeps coming back here is a FOLLOWUPS row)';
 }
 

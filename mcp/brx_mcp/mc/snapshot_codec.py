@@ -34,6 +34,7 @@ class SnapshotHost(Protocol):
     config: GameConfig
     nodes: dict[str, dict]
     feed: list[dict]
+    _feed_seq: int
     game_pick: GamePick
     last_match: LastMatch | None
     game_no: int
@@ -264,7 +265,7 @@ class SnapshotCodec:
 
     _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match",
                       "nodes", "game_no", "_game_no_started", "join_secret", "_ended",
-                      "_resume_pending", "_pu_restored", "_match_end_t", "_sync_pending", "restored_from")
+                      "_resume_pending", "_pu_restored", "_feed_seq", "_match_end_t", "_sync_pending", "restored_from")
 
     def _move_aside(self, suffix: str) -> Path | None:
         path = self.host._persist_path
@@ -332,6 +333,9 @@ class SnapshotCodec:
                 self.host._sync_pending = {str(k): str(v) for k, v in sp["nodes"].items()}
             rows = snap.get("feed")
             self.host.feed = [dict(row) for row in rows if isinstance(row, dict)][:200] if isinstance(rows, list) else []
+            # F454: feed row ids never repeat; the counter resumes from the highest restored id
+            self.host._feed_seq = max([r["id"] for r in self.host.feed if isinstance(r.get("id"), int)]
+                                      + [self.host._feed_seq])
             parked: dict[str, Player] = {}
             invalid_parked = 0
             for q in snap.get("standby") or []:

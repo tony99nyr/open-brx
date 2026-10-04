@@ -17,7 +17,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from _skip import needs
+from _skip import Skipped, needs
 from test_mc_report import assert_clean, make_evidence, members
 
 REPO = Path(__file__).resolve().parents[2]
@@ -50,13 +50,214 @@ def test_an_unknown_option_stops_with_the_usage():
     assert "--report" in res.stderr
 
 
+def _install_stamp(repo: Path) -> str:
+    """The python() install stamp: pyproject.toml then constraints.txt (a missing file hashes as empty)."""
+    h = hashlib.sha256()
+    for name in ("pyproject.toml", "constraints.txt"):
+        f = repo / "mcp" / name
+        h.update(f.read_bytes() if f.exists() else b"")
+    return h.hexdigest()[:16]
+
+
+def _node_eval(code: str, *args: str) -> str:
+    res = subprocess.run([NODE or "node", "--input-type=module", "-e", code, *args], cwd=REPO, capture_output=True,
+                         text=True, timeout=60)
+    assert res.returncode == 0, res.stderr
+    return res.stdout.strip()
+
+
+def _types(major: int, minor: int) -> str:
+    return f"APP_MAJOR = {major}\nAPP_MINOR = {minor}\n"
+
+
+def _warning(old: str, new: str) -> str:
+    code = ("import {phonesWarning} from './scripts/lib/launcher.mjs';"
+            "console.log(phonesWarning(process.argv[1], process.argv[2]) ?? 'NONE')")
+    return _node_eval(code, old, new)
+
+
+def test_the_warning_prints_when_the_app_minor_changes_and_not_otherwise():
+    needs(NODE, "node")
+    assert "PHONES MUST UPDATE TOO" in _warning(_types(0, 4), _types(0, 5))
+    assert "0.4 to 0.5" in _warning(_types(0, 4), _types(0, 5))
+    assert "PHONES MUST UPDATE TOO" in _warning(_types(0, 9), _types(1, 0))
+    assert _warning(_types(0, 4), _types(0, 4)) == "NONE"
+    assert _warning(_types(1, 2), _types(1, 3)) == "NONE"  # from 1.0 on only MAJOR is breaking
+    assert _warning("garbage", _types(0, 5)) == "NONE"      # an unreadable file never blocks an update
+
+
+def test_the_install_stamp_changes_when_constraints_change():
+    needs(NODE, "node")
+    root = Path(tempfile.mkdtemp(prefix="brx-stamp-test-"))
+    try:
+        (root / "mcp").mkdir()
+        (root / "mcp" / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        code = "import {installStamp} from './scripts/lib/launcher.mjs'; console.log(installStamp(process.argv[1]))"
+        none = _node_eval(code, str(root))
+        assert none == _install_stamp(root)
+        (root / "mcp" / "constraints.txt").write_text("bleak==1\n", encoding="utf-8")
+        one = _node_eval(code, str(root))
+        (root / "mcp" / "constraints.txt").write_text("bleak==2\n", encoding="utf-8")
+        two = _node_eval(code, str(root))
+        assert len({none, one, two}) == 3
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _norm(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def test_constraints_pin_every_runtime_dependency():
+    from importlib import metadata
+
+    pins = {}
+    for line in (REPO / "mcp" / "constraints.txt").read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.startswith("#"):
+            assert re.fullmatch(r"[A-Za-z0-9_.-]+==[0-9][A-Za-z0-9.]*", line.strip()), line
+            pins[_norm(line.split("==")[0])] = line.strip()
+    assert pins["bleak"] == "bleak==3.0.2", "bleak stays on the tested 3.0.2 (Windows 11 only; see the comment in constraints.txt)"
+    try:
+        from packaging.requirements import Requirement
+    except ImportError:
+        raise Skipped("packaging")
+    roots = ("bleak", "mcp", "websockets", "starlette", "uvicorn", "zeroconf")
+    for r in roots:
+        try:
+            metadata.distribution(r)
+        except metadata.PackageNotFoundError:
+            raise Skipped(f"{r} is not installed here")
+    backends = re.compile(r"^(pyobjc-.*|winrt-.*|dbus-fast)$")  # platform BLE backends, bounded by bleak itself
+    seen, missing = set(), set()
+    todo = [(r, frozenset()) for r in roots]
+    while todo:
+        raw, extras = todo.pop()
+        name = _norm(raw)
+        if (name, extras) in seen:
+            continue
+        seen.add((name, extras))
+        if not backends.match(name) and name not in pins:
+            missing.add(name)
+        try:
+            reqs = metadata.requires(name) or []
+        except metadata.PackageNotFoundError:
+            continue  # an optional or other-platform package that is not installed here
+        for text in reqs:
+            req = Requirement(text)
+            # A requirement behind `extra == "x"` counts only when something asked for that extra
+            # (mcp needs `pyjwt[crypto]`, which is where cryptography and cffi come from).
+            if req.marker is None or any(req.marker.evaluate({"extra": e}) for e in (extras or {""})):
+                todo.append((req.name, frozenset(_norm(e) for e in req.extras)))
+    assert not missing, f"runtime dependencies with no pin in constraints.txt: {sorted(missing)}"
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True,
+                   env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+                        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"})
+
+
+def _update_prompt_run(minor_after: int) -> str:
+    """Run start.mjs in a throwaway clone that is one commit behind, with no python, brew or winget on PATH
+    so the run stops right after the update step. Returns stdout. No terminal is attached."""
+    base = Path(tempfile.mkdtemp(prefix="brx-update-test-"))
+    try:
+        origin, clone = base / "origin", base / "clone"
+        origin.mkdir()
+        _git(origin, "init", "-q", "-b", "main")
+        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs"):
+            (origin / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(REPO / rel, origin / rel)
+        types = origin / "mcp" / "brx_mcp" / "mc" / "types.py"
+        types.parent.mkdir(parents=True)
+        types.write_text(_types(0, 4), encoding="utf-8")
+        _git(origin, "add", "-A")
+        _git(origin, "commit", "-qm", "one")
+        _git(base, "clone", "-q", str(origin), str(clone))
+        types.write_text(_types(0, minor_after), encoding="utf-8")
+        (origin / "new.txt").write_text("x", encoding="utf-8")
+        _git(origin, "add", "-A")
+        _git(origin, "commit", "-qm", "two")
+        bin_dir = base / "bin"
+        bin_dir.mkdir()
+        for tool in ("node", "git"):
+            (bin_dir / tool).symlink_to(shutil.which(tool))
+        env = {"PATH": str(bin_dir), "HOME": str(base), "BRX_MCP_HOME": str(base / "home"), "NO_COLOR": "1"}
+        res = subprocess.run([str(bin_dir / "node"), str(clone / "scripts" / "start.mjs")], cwd=clone, env=env,
+                             stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+        assert (clone / "new.txt").exists() is False, "a run with no terminal must not update"
+        return res.stdout
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+def test_the_update_prompt_defaults_to_no_without_a_terminal():
+    needs(NODE and shutil.which("git"), "node and git")
+    out = _update_prompt_run(4)
+    assert "Update now? [y/N] no (default)" in out, out
+    assert "kept the current version" in out
+    assert "PHONES MUST UPDATE TOO" not in out
+
+
+def test_the_update_prompt_warns_before_the_question_when_the_app_version_changes():
+    needs(NODE and shutil.which("git"), "node and git")
+    out = _update_prompt_run(5)
+    assert "PHONES MUST UPDATE TOO" in out, out
+    assert out.index("PHONES MUST UPDATE TOO") < out.index("Update now?")
+    assert "Update now? [y/N] no (default)" in out
+
+
+def _offline_run(imports_ok: bool) -> subprocess.CompletedProcess:
+    """Run start.mjs --no-update in a throwaway folder whose fake venv python reports 3.12, imports fine or
+    not, and fails every pip call (offline). Only node is on PATH, so the run ends at the console step
+    ("npm is missing") and never installs anything."""
+    base = Path(tempfile.mkdtemp(prefix="brx-offline-test-"))
+    try:
+        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs"):
+            (base / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(REPO / rel, base / rel)
+        (base / "mcp").mkdir()
+        (base / "mcp" / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        (base / "mcp" / "constraints.txt").write_text("bleak<3\n", encoding="utf-8")
+        py = base / ".venv" / "bin" / "python"
+        py.parent.mkdir(parents=True)
+        py.write_text("#!/bin/sh\ncase \"$*\" in\n  *'import sys'*) echo '3 12';;\n  *'-m pip'*) exit 1;;\n"
+                      f"  *) exit {0 if imports_ok else 1};;\nesac\n", encoding="utf-8")
+        py.chmod(0o755)
+        bin_dir = base / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "node").symlink_to(shutil.which("node"))
+        env = {"PATH": str(bin_dir), "HOME": str(base), "BRX_MCP_HOME": str(base / "home"), "NO_COLOR": "1"}
+        return subprocess.run([str(bin_dir / "node"), str(base / "scripts" / "start.mjs"), "--no-update"], cwd=base,
+                              env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+def test_an_offline_reinstall_failure_still_starts_with_the_installed_packages():
+    needs(NODE and os.name != "nt", "node on a POSIX shell")
+    res = _offline_run(imports_ok=True)
+    out = res.stdout + res.stderr
+    assert "could not update Python packages, starting with the installed ones" in out, out
+    assert "run start.sh online before the next match" in out
+    assert "Setup stopped: pip" not in out
+    assert "[3/5]" in out, "the launch must go on to the next step"
+
+
+def test_an_offline_failure_with_a_broken_venv_stays_fatal():
+    needs(NODE and os.name != "nt", "node on a POSIX shell")
+    res = _offline_run(imports_ok=False)
+    out = res.stdout + res.stderr
+    assert "Setup stopped: pip could not install" in out, out
+    assert "[3/5]" not in out
+
+
 def _venv_ready() -> bool:
     """True when start.mjs's python() step will skip the install (same stamp rule as start.mjs)."""
     stamp = REPO / ".venv" / ".open-brx-stamp"
     if not VENV_PY.exists() or not stamp.exists():
         return False
-    want = hashlib.sha256((REPO / "mcp" / "pyproject.toml").read_bytes()).hexdigest()[:16]
-    return stamp.read_text(encoding="utf-8").strip() == want
+    return stamp.read_text(encoding="utf-8").strip() == _install_stamp(REPO)
 
 
 def test_report_makes_a_clean_zip_and_opens_the_issue_form():
