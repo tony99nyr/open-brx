@@ -327,6 +327,10 @@ for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) 
     exitAfterKills(code);
   });
 }
+// Declared before run(): the shared builds call run() before the scheduler below is reached, and run() reads these.
+let screensRunning = false, screensEnding = false, screensShards = 0, screensExtraMb = 0, screensTarget = 0;
+let screensPgid = null;
+const screensExtraLeases = [];
 function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
   const log = path.join(LOGS, `${name}.log`);
   const jobHome = path.join(LOGS, `${name}-brx-mcp-home`);
@@ -482,10 +486,7 @@ if (!JOBS.length) { printAllCached(selectedJobs); process.exit(0); }
 const queue = [...JOBS].sort((a, b) => b.secs - a.secs);
 const results = [];
 let usedMb = 0, running = 0, peakMb = 0;
-let screensRunning = false, screensEnding = false, screensShards = 0, screensExtraMb = 0, screensTarget = 0;
 let screensClosed = false, lastScreensRaise = 0, screensBelowTargetTicks = 0;
-let screensPgid = null;
-const screensExtraLeases = [];
 function releaseSurplusScreensLeases() {
   let keep = Math.max(0, screensShards - (screensJob?.screensShards || 0));
   while (screensExtraLeases.length && screensExtraLeases.reduce((sum, lease) => sum + lease.shards, 0) > keep) {
