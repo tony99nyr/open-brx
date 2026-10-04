@@ -34,7 +34,7 @@
 //   read-only   phase · alive · bleUp · ended · stunned · reconciling · resync · tutorial · gunLocked · frames · config ·
 //               player · matchId · stations · goLiveT · lifeSeq · pulledLife · armPending · actSeq · activeSlot ·
 //               switching · weaponName · hp · armor · shield · maxShield · latch · lastHitAt
-//   writes      acctWrote(slot, mag, res) · setPrev(slot, mag, res?) · equipped(slot, mag, res) · setSwitching(card) ·
+//   writes      acctWrote(slot, mag, res) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
 //               recoilArm(why) · setShield(v) · setWriteLost(life)
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
@@ -662,7 +662,7 @@ export class PlayerPowerups {
     const h = this.host, held = this._held, sw = h.switching;
     const reequip = !!(held && held.trig === held.slot && this._headWeap(held.slot) && !(sw && !sw.pu));   // an ALT swap in flight is the player's choice: leave the trigger to it
     if (reequip) return { reequip, ammo: rows.filter(f => !f.startsWith(`$AMMO,${held.slot},`)) };
-    if (held) { h.acctWrote(held.slot, held.left, PU_RESERVE); h.setPrev(held.slot, held.left); }
+    if (held) { h.acctWrote(held.slot, held.left, PU_RESERVE); h.setMag(held.slot, held.left); }
     return { reequip, ammo: burstWithHeld(rows, held) };
   }
   /** The re-arm write when `reconcileRearm` said `reequip`: the loadout rows, then the heavy's `$WEAP` + `$AMMO`, in one write. */
