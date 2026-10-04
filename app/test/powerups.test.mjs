@@ -1432,6 +1432,18 @@ test('F438 r4: a lethal self-hit keeps the held heavy and puts it back on the tr
   assert.equal(h.eng.activeSlot, 2, 'the trigger is on the heavy');
 });
 
+test('F438 r4 + F436: the heavy re-equipped after a self-hit revive is unconfirmed, and a slot-0 shot re-sends it', () => {
+  const h = harness(ROCKET_GAME); const logs = []; h.eng.log = m => logs.push(String(m));
+  h.at(121); h.take(4); h.away(); h.adv(800);
+  h.pull();   // a pull in the old life: the self-hit revive's new life still owes its own first pull
+  h.frame(SELF_HIT).frame('$HP,0,0,0,*');
+  assert.equal(h.eng._puHeld?.unconfirmed, true, 'the gun may ignore the slot change until the first pull after $SPAWN (F436)');
+  h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); h.fire(0, 31, 192);   // the gun stayed on slot 0 after the revive
+  assert.ok(h.since(n).includes(WEAP[2]), `the slot-0 shot re-sends the heavy's equip: ${JSON.stringify(h.since(n))}`);
+  assert.equal(h.eng._puHeld?.left, 2, 'no rocket was fired');
+});
+
 test('F438 r4: a lethal self-hit keeps the overshield and re-raises its $PSET shield max behind the revive', () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
   h.at(61); h.take(6); h.frame('$HP,45,70,75,*'); h.away(); h.adv(3000);
