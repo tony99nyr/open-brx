@@ -201,20 +201,21 @@ class Store:
                         (match_id, self.session_id, json.dumps(config), go_live_t))
         self.db.commit()
 
-    def match_ended(self, match_id: str, recap: dict) -> None:
-        """Archive the recap. An upsert: when the start row never landed (its write failed, or the match was
-        adopted), the match is still inserted, so it cannot vanish from RECAP history."""
+    def match_ended(self, match_id: str, recap: dict) -> int:
+        """Store the result. Returns the rows updated: 0 means the match has no row (its `match_started` was lost), so the
+        result was NOT kept, and the caller must treat that as a failed write (O7). A closed store returns 1 (not a failure)."""
         if self._closed:
-            return
-        if self.db.execute("SELECT 1 FROM matches WHERE match_id=?", (match_id,)).fetchone() is None:
-            import logging
-            logging.getLogger("brx.mc").warning(
-                "match %s ended with no start row in %s: inserting it from the recap", match_id, self.path)
-        self.db.execute(
-            "INSERT INTO matches(match_id,session_id,ended_t,recap) VALUES (?,?,?,?) "
-            "ON CONFLICT(match_id) DO UPDATE SET ended_t=excluded.ended_t, recap=excluded.recap",
-            (match_id, self.session_id, int(time.time() * 1000), json.dumps(recap, default=str)))
+            return 1
+        cur = self.db.execute("UPDATE matches SET ended_t=?, recap=? WHERE match_id=?",
+                              (int(time.time() * 1000), json.dumps(recap, default=str), match_id))
         self.db.commit()
+        return cur.rowcount
+
+    def has_match(self, match_id: str) -> bool:
+        """Does the archive hold a row for this match? (O7: `new_session` prunes archive failures whose row exists.)"""
+        if self._closed:
+            return True
+        return self.db.execute("SELECT 1 FROM matches WHERE match_id=?", (match_id,)).fetchone() is not None
 
     def matches(self) -> list[dict[str, Any]]:
         """Every finished match in this session, newest first — the history behind MC's RECAP screen.

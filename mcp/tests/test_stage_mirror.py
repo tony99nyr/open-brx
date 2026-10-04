@@ -1849,15 +1849,17 @@ KNOWN_UNMIRRORED = {
     # 2026-09-24 (docs/announcer.md): an MC alert or the node's clock warning as one announcer-queue item. The stage has
     # no MC and no HUD; its only announcer lines are the hill callouts, whose queue behaviour alone (the later hill word
     # preempts, the tick waits out the clip) is what `_hill_busy_until` already mirrors.
-    "_announceAlert", "_announceStatus", "_card",
+    "_announceAlert", "_announceStatus",
     # 2026-09-24 (docs/announcer.md, "The three lanes"): the HUD's alert lanes, written as each event arrives. Presentation
     # only: they write no gun frame, say no line and move no score, and the stage has no HUD to draw them on.
     "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
     # 2026-09-26 (F400 final): the switch card pauses the lanes' clocks. Presentation only, as above.
     "_cardTick", "_switchCardUp", "_lanePaused", "_laneAge", "_lanesShown",
-    # 2026-10-02 (Tony: "any hud alerts a down player doesnt get tho"): the ONE gate every lane write goes through, and its
-    # predicate. Presentation only: it drops a HUD item while down, never a voice line, a gun frame or a score.
-    "_alertsMissed", "_laneWrite",
+    # 2026-10-02 (Tony: "any hud alerts a down player doesnt get tho"), #5 presentation gate (2026-10-04): the ONE gate every
+    # visual channel goes through (the lanes, the announcer's card, the S57 callout, the hill card, the powerup hint, ITEM
+    # LOST), its predicates, and `state().presented`, what the HUD draws. Presentation only: it drops a HUD item while down,
+    # never a voice line, a gun frame or a score, and the stage has no HUD to draw it on.
+    "_alertsMissed", "show", "_presentable", "_presented",
     # 2026-10-02 (Tony): HILL CAPTURE STARTED, the hill badge when any team's capture begins, and the drainer it infers.
     # It writes only that lane badge and a log line: no gun frame, no voice line, no score. Presentation only, as above.
     "_hillBegins", "_hillRival",
@@ -1903,31 +1905,14 @@ KNOWN_UNMIRRORED = {
     "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
-    # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off). PRESENTATION only:
-    # the spawn announcer and the HUD's view (`_puTick`, `powerupView`). GAME STATE, but not portable
-    # yet: the claim, the grant, the end of an item and the overshield all hang off a powerup station's advert (its
-    # median RSSI and its `taker` byte, like `setStations` above) and the MATCH CLOCK's spawn schedule (like `goLiveT`
-    # below), and the stage models neither. The gun-facing writes (`_puGrantWeapon`/`_puGrantShield`/`_puEnd`) are the
-    # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
-    # F425 (2026-09-26): `_puNextInMs` is GONE (the near-station TAKEN/countdown hint it fed is removed from the
-    # HUD), so it is dropped from this list too, not merely unmirrored.
-    "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puMedian", "_puThreshold",
-    "_puStation", "_puObserve", "_puClaimTick",
-    "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puZeroUnpulled", "_puEnd", "_puShieldFrame", "_puDeath",
-    # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
-    # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it
-    # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.
-    "_puHeadWeap", "_puWeapFor", "_puItemCharges", "_puAtCap", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puRearmRows", "_puBackResend", "_puBackTick",
-    # F438 r4: a lethal self-hit keeps the held heavy and re-equips it behind the revive; it hangs off a held item too.
-    "_puSelfHitKeep",
-    # F400 (docs/spec/powerups.md "The switch card"): the pickup-driven weapon-switch card, reusing `switching`'s own
-    # timing and takeover (a `pu` card: no echo confirm, no SELECT or re-send gate, no ALT pointer move). It hangs off
-    # the unmirrored pickup mechanic (`_puEquip`, `_puSelectPressed`, `_puEnd`, above), so it has nothing to mirror onto.
-    "_puSwitchCard",
-    # Tony 2026-09-24, the overshield: the grant burst (spawn protection, the raised `$PSET`, the `$LIFE`), its protection
-    # end, and the `$PSET` restore. They hang off a granted overshield, which only the station grant above creates.
-    "_osPset", "_osProtectFrames", "_osTick", "_osRestore",
-    "powerupView",
+    # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off): NO pins here any more.
+    # Refactor #1 (2026-10-04) moved every powerup method (the claim, the grant, the held heavy, the overshield, the
+    # spawn announcer and the HUD's view) out of the Engine class into `PlayerPowerups` (app/src/powerup-player.js),
+    # which this scan does not read. They are no more mirrored than before: the stage still models neither a powerup
+    # station's advert (its median RSSI and `taker` byte) nor the match clock's spawn schedule, and the gun-facing writes
+    # are still the part to port, as a hand-driven stage button, once Sitting A has proved the spare slot. The engine's
+    # side is now only calls into `this.pu` from methods already pinned or mirrored here (`tick`, `_revive`, `_death`,
+    # `_endReconcile`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
     # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a

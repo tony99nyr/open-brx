@@ -141,9 +141,12 @@ Rules:
 
 - A kill, a lead change and a hill capture at the same moment are all on screen at once.
 - **A down player misses every HUD alert** (Tony 2026-10-02: "any hud alerts a down player doesnt get tho"). Every lane
-  item is written through one gate (`engine.js` `_laneWrite`): while I am down (live, spawned, not alive) it is dropped,
-  not drawn and not kept for the respawn. That covers every family: the HERO kill card and its medals, the lead and hill
-  badges, and every FEED row (MC alerts, the clock warnings, S57 downs, powerup notices). What is up at my death goes
+  item is written through one gate (`engine.js` `show`, with each channel's rule in `PRESENT`): while I am down (live,
+  spawned, not alive) it is dropped, not drawn and not kept for the respawn. That covers every family: the HERO kill card
+  and its medals, the lead and hill badges, and every FEED row (MC alerts, the clock warnings, S57 downs, powerup
+  notices). The same gate holds the other visual channels: the announcer's card, the S57 callout, the hill card and the
+  powerup hint. The engine publishes what the HUD draws as `state().presented`, and the HUD does not re-check `alive`
+  for these channels. The DOWN screen's ITEM LOST line is the one channel drawn only while down. What is up at my death goes
   with the life (`_death` empties the lanes), except the standing lead badge: it says who leads until the next lead
   change replaces it, and it did not arrive while I was down. The DOWN screen's own content (killed by, the respawn countdown) is not a
   lane. **The voice lines are the exception:** they are not gated, and keep rules 3 and 8 of *My death wins (the trade)* below.
@@ -362,7 +365,7 @@ never flashes twice:
   medal replaces MC's plain line) or said nothing, the IR word says the kill line itself, voice only, with no card.
   If MC's item is still waiting, the IR word adds no card either.
 
-**Cards.** The kill card and the alert banner live in `state().card`, which only the queue writes (`_card`). A hit or
+**Cards.** The kill card and the alert banner live in `state().card`, which only the queue writes (through `show`). A hit or
 a stun `moment` in the same render can no longer swallow them.
 
 MC's kill moment carries `ir_at`, the `callout.at` of the exact IR card it paired with. hud.js matches that card, so an

@@ -1134,6 +1134,15 @@ export interface NodeView {
   ammo?: number | null;
   alive?: boolean | null;
   pending?: number | null;
+  /** O6: facts the phone's outbox dropped from the match in play now (the phone's own per-match count,
+   *  `status.outbox_lost.n`, shown only while its `match_id` is the current / resumed / adopted match).
+   *  Absent = nothing lost from this match, or an older node. */
+  outbox_lost?: number;
+  /** O10: CLAIM reports a Stick's queue evicted when full since it was armed for THIS game (`status.actions_dropped`,
+   *  shown only while `status.actions_dropped_game` is the current game byte). MC never heard who took the item, so the
+   *  station's attention line says where to look (the recap's PICKUPS). A Stick has no node card, so the console draws
+   *  it on the station card. Absent = none. */
+  claims_dropped?: number;
   app_ver?: string | null;
   platform?: string | null;
   log?: LogView | null;
@@ -1152,6 +1161,12 @@ export interface NodeView {
   /** F272: the node positively proved that the linked gun stopped answering. Optional and true-only:
    *  absence is an older/healthy node, never evidence of a lock-up. */
   gun_locked?: boolean;
+}
+
+/** O6: `status.outbox_lost`: how many of match `match_id`'s facts the phone's outbox dropped. */
+export interface OutboxLostReport {
+  match_id: string;
+  n: number;
 }
 
 export interface Event {
@@ -1228,6 +1243,13 @@ export interface Event {
   game_byte?: number;
   synced?: boolean;
   dropped?: number;
+  /** O6: the phone's drop count for the match it is playing now, scoped at the source (a bounded per-match map in its
+   *  storage): {match_id, n}. Sent whenever the phone knows its match, 0 included. */
+  outbox_lost?: OutboxLostReport;
+  /** O10: a Stick's CLAIM reports evicted from a full queue since it was armed for the game `actions_dropped_game`
+   *  (it resets on a new game byte or station; 0 included; `_game` absent while the Stick is not armed). */
+  actions_dropped?: number;
+  actions_dropped_game?: number;
   preflight?: Preflight;
   /** A37/R2-3: WHERE `hp`/`armor` above came from THIS LIFE. `engine.js` fills them from
    *  `config.health` at spawn/revive -- the phone's MODEL of the pool -- and overwrites them with the
@@ -2063,6 +2085,32 @@ export interface SnapshotFeedRow {
   kind: 'kill' | 'sync' | 'info' | 'alert';
 }
 
+/** O7/O8: a repeating failure MC counts instead of logging per occurrence. Absent from the snapshot = healthy. */
+export interface FailureView {
+  /** MC clock ms of the first failure of this streak */
+  since: number;
+  /** failures in this streak */
+  count: number;
+  /** the last error's type and text, cut at 200 characters */
+  error: string;
+}
+
+/** O7: which part of MC's persistence is failing. `store` = facts and log rows (a game result can be lost: RED);
+ *  `archive` = the match start / end rows (RED: the game result; cleared only by a later archive write, and an END that
+ *  updates 0 rows counts as a failure); `snapshot` = the roster / match file a restart restores (AMBER, RED while a match is in play). */
+export interface NotSavingView {
+  store?: FailureView;
+  archive?: FailureView;
+  snapshot?: FailureView;
+}
+
+/** O8: the last `join_info()` call raised. `ws_url` is the node URL the QR still holds: "" when none was ever read,
+ *  otherwise an EARLIER address that may be out of date. Cleared by the next successful call. */
+export interface JoinErrorView {
+  error: string;
+  ws_url: string;
+}
+
 /** One complete Mission Control snapshot (`GET /api/state` and `/ui-ws`). */
 export interface State {
   session_id: string;
@@ -2096,8 +2144,6 @@ export interface State {
   /** F411: absent until a match has been played */
   last_match?: LastMatch;
   restored_from?: RestoredFromView;
-  /** O3: match rows MC could not write to its store this run; ABSENT when 0 */
-  store_errors?: number;
   /** O1: session.json could not be restored; kept aside */
   restore_failed?: RestoreFailedView;
   /** O2: armory.json is corrupt (left in place, backup copy at `kept`); the armory shown is NOT the full one. STICKY: ABSENT only until the operator dismisses it (POST /api/armory/corrupt/dismiss) */
@@ -2106,6 +2152,12 @@ export interface State {
   sync?: SyncView;
   options?: SessionOptions;
   versions?: VersionsView;
+  /** O7: absent = everything MC writes is being kept */
+  not_saving?: NotSavingView;
+  /** O8: absent = the match tick runs; armed->live / the timed end do not while present */
+  ticker_failing?: FailureView;
+  /** O8: absent = join_info() worked */
+  join_error?: JoinErrorView;
   start?: StartView | null;
   live?: LiveView | null;
   recap?: RecapView | null;

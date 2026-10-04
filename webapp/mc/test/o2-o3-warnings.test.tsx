@@ -1,39 +1,9 @@
-// O3: the MATCH HISTORY NOT SAVING chip in the header. O2: the corrupt-armory banner on the Armory screen.
+// O2: the corrupt-armory banner on the Armory screen. (O3 is covered by the observability NOT SAVING chips.)
 import { describe, expect, it } from 'vitest';
 import type { State } from '../src/api/types';
-import { CommandBar } from '../src/frame/CommandBar';
 import { Armory } from '../src/screens/Armory';
 import { StoreCtx } from '../src/store';
 import { demo, fixtureApi, makeStore, mount, mountScreen } from './harness';
-
-async function bar(state: State) {
-  const d = await demo();
-  const store = makeStore({ ...d, state, view: 'muster' }, { api: fixtureApi({}, d.api) });
-  return mount(<StoreCtx.Provider value={store}><CommandBar /></StoreCtx.Provider>);
-}
-const chip = (m: { find(s: string): HTMLElement[] }) => m.find('[data-testid="store-errors-chip"]');
-
-describe('O3 · store_errors chip', () => {
-  it('shows an amber chip with the count and a tooltip when match rows were not saved', async () => {
-    const d = await demo();
-    const m = await bar({ ...d.state, store_errors: 3 });
-    expect(chip(m).length).toBe(1);
-    expect(chip(m)[0].textContent).toBe('MATCH HISTORY NOT SAVING (3)');
-    expect(chip(m)[0].getAttribute('data-sev')).toBe('amber');
-    expect(chip(m)[0].getAttribute('title')).toContain('could not be saved');
-    expect(chip(m)[0].getAttribute('title')).toContain("MC's log");
-    m.unmount();
-  });
-
-  it('renders nothing when store_errors is 0 or absent', async () => {
-    const d = await demo();
-    for (const state of [{ ...d.state, store_errors: 0 }, { ...d.state, store_errors: undefined }] as State[]) {
-      const m = await bar(state);
-      expect(chip(m).length).toBe(0);
-      m.unmount();
-    }
-  });
-});
 
 describe('O2 · armory_corrupt banner', () => {
   it('shows a red banner naming the moved file and warning the list is incomplete', async () => {
