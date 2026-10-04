@@ -174,9 +174,40 @@ class InventoryCorrupt(Exception):
                          f"Restore it by hand or re-run `brx-mcp usb-query` for each gun.")
 
 
-def _keep_corrupt_inventory(p: Path) -> Optional[Path]:
+def _keep_corrupt_inventory(p: Path, raw: bytes) -> Optional[Path]:
+    """Quarantine `p`, saving exactly `raw` (the bytes that failed validation) under the reserved name.
+    Raises storage.MoveAsideRaced when the live file no longer holds `raw`."""
     from .storage import move_aside_exclusive
-    return move_aside_exclusive(p, "bad")
+    return move_aside_exclusive(p, "bad", expect=raw)
+
+
+def corrupt_notice_path() -> Path:
+    return inventory_path().with_name("armory.json.corrupt-notice")
+
+
+def _write_corrupt_notice(kept: Optional[Path], error: str) -> None:
+    """Persist the quarantine warning so it survives an MC restart (cleared only by clear_corrupt_notice)."""
+    from .storage import atomic_write_text
+    try:
+        atomic_write_text(corrupt_notice_path(), json.dumps(
+            {"kept": str(kept) if kept else None, "error": error, "at": int(time.time() * 1000)}), mode=0o600)
+    except OSError:
+        pass     # the in-memory warning still stands
+
+
+def read_corrupt_notice() -> Optional[dict]:
+    try:
+        d = json.loads(corrupt_notice_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    return {"kept": d["kept"] if isinstance(d.get("kept"), str) else None, "error": str(d.get("error") or "unknown")}
+
+
+def clear_corrupt_notice() -> None:
+    with contextlib.suppress(OSError):
+        corrupt_notice_path().unlink()
 
 
 def _validate_inventory(inv) -> dict:
@@ -197,7 +228,14 @@ def _read_inventory_locked() -> dict:
     """The read itself. The caller MUST hold `_inventory_lock` (it is not re-entrant, so the locked write
     ops call this, never `load_inventory`). A file that fails to parse is moved aside only if, read AGAIN
     immediately before the move, its bytes are identical to the ones that failed and still fail validation
-    (a stat check can miss a same-size rewrite on a coarse-timestamp filesystem). Otherwise read again."""
+    (a stat check can miss a same-size rewrite on a coarse-timestamp filesystem). Otherwise read again.
+
+    Quarantine writes the EXACT failing bytes into the reserved `.bad-*` name before anything is removed,
+    and sets the live file aside only if a final re-read still matches them (storage.move_aside_exclusive
+    with `expect`); a replacement that appears first is left alone and read again. Residual: every brx-mcp
+    writer holds `_inventory_lock`, so only an external editor that ignores the lock can race, and one that
+    lands in the instant between the final compare and the rename is put back or kept as `.raced`.
+    A quarantine also writes `armory.json.corrupt-notice` so MC can still warn after a restart."""
     p = inventory_path()
     for _ in range(5):
         try:
@@ -214,7 +252,14 @@ def _read_inventory_locked() -> dict:
                 continue
             if again != raw:
                 continue               # a writer replaced it: the loop reads and validates the new bytes
-            raise InventoryCorrupt(p, _keep_corrupt_inventory(p), f"{type(exc).__name__}: {exc}") from exc
+            from .storage import MoveAsideRaced
+            try:
+                kept = _keep_corrupt_inventory(p, raw)
+            except MoveAsideRaced:
+                continue               # replaced before the move: leave it alone, read it again
+            err = f"{type(exc).__name__}: {exc}"
+            _write_corrupt_notice(kept, err)
+            raise InventoryCorrupt(p, kept, err) from exc
     raise InventoryUnstable(f"{p} kept changing while it was read")
 
 

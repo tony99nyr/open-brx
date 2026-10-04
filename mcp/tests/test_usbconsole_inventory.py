@@ -272,3 +272,51 @@ def test_a_failed_move_aside_leaves_the_file_and_no_placeholder():
     with mock.patch("os.replace", deny):
         assert _storage.move_aside_exclusive(d / "armory.json", budget_s=0.05) is None
     assert sorted(p.name for p in d.iterdir()) == ["armory.json"]
+
+
+def test_the_exact_bad_bytes_are_saved_before_the_file_is_set_aside():
+    def run(base):
+        p = base / "armory.json"
+        p.write_bytes(b"{corrupt\xff")
+        e = _raises(_uc.InventoryCorrupt, _uc.load_inventory)
+        assert e.kept.read_bytes() == b"{corrupt\xff" and not p.exists()
+    _on_base(run)
+
+
+def test_a_replacement_that_appears_just_before_the_move_is_not_quarantined():
+    """Review r3 MEDIUM: the final byte-compare and the rename were not atomic with an external writer."""
+    def run(base):
+        p = base / "armory.json"
+        p.write_text("{corrupt", encoding="utf-8")
+        real_read, calls = pathlib.Path.read_bytes, []
+
+        def read_bytes(self):
+            data = real_read(self)
+            if self == p:
+                calls.append(1)
+                if len(calls) == 2:       # the validator's re-read: still bad. Then a writer replaces it.
+                    _storage.atomic_write_text(p, '{"S1": {"gun_name": "NEW"}}')
+            return data
+        with mock.patch.object(pathlib.Path, "read_bytes", read_bytes):
+            inv = _uc.load_inventory()
+        assert inv == {"S1": {"gun_name": "NEW"}}
+        assert p.exists() and not list(base.glob("armory.json.bad-*")) and not _uc.read_corrupt_notice()
+    _on_base(run)
+
+
+def test_a_replacement_between_the_rename_and_the_verify_is_put_back():
+    def run(base):
+        p = base / "armory.json"
+        p.write_bytes(b"{bad")
+        real_replace, n = _storage._replace_with_retry, []
+
+        def replace(src, dst, budget_s=None):
+            real_replace(src, dst, budget_s)
+            if not n:                     # a late writer's bytes are what the rename actually moved
+                n.append(1)
+                pathlib.Path(dst).write_bytes(b'{"S1": {"gun_name": "LATE"}}')
+        with mock.patch.object(_storage, "_replace_with_retry", replace):
+            inv = _uc.load_inventory()
+        assert inv == {"S1": {"gun_name": "LATE"}}
+        assert not list(base.glob("armory.json.bad-*"))
+    _on_base(run)

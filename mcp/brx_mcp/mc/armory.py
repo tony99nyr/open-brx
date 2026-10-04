@@ -28,36 +28,64 @@ def _to_record(serial: str, r: dict) -> ArmoryRecord:
 
 class LocalArmory:
     # O2: set when an inventory read hit a corrupt armory.json (moved aside) or could not read it at all.
-    # STICKY: the next read finds no file and returns {}, and re-enrolling one gun makes a non-empty armory
-    # that is still not the lost one, so only the OPERATOR clears it (`dismiss_corrupt`, the console's
-    # DISMISS). Session.snapshot() surfaces it as `armory_corrupt`.
+    # The QUARANTINED variant is STICKY: the next read finds no file and returns {}, and re-enrolling one gun
+    # makes a non-empty armory that is still not the lost one, so only the OPERATOR clears it
+    # (`dismiss_corrupt`, the console's DISMISS). It is also persisted (armory.json.corrupt-notice) so it
+    # survives an MC restart. The `unreadable` variant (any other read failure) is transient: the next
+    # successful read clears it. Session.snapshot() surfaces it as `armory_corrupt`.
     corrupt: dict | None = None
+
+    def __init__(self) -> None:
+        self._last_good: dict | None = None      # last successful inventory read, served while reads fail
+        try:
+            from brx_mcp.usbconsole import read_corrupt_notice
+            self.corrupt = read_corrupt_notice()
+        except Exception:
+            self.corrupt = None
 
     def _note_read(self, exc: BaseException | None) -> None:
         try:
-            from brx_mcp.usbconsole import InventoryCorrupt, InventoryUnstable
+            from brx_mcp.usbconsole import InventoryCorrupt
         except Exception:      # usbconsole itself cannot be imported: nothing to classify
+            InventoryCorrupt = ()      # type: ignore[assignment]
+        if exc is None:
             return
-        if isinstance(exc, InventoryCorrupt):
+        if InventoryCorrupt and isinstance(exc, InventoryCorrupt):
             self.corrupt = {"kept": str(exc.kept) if exc.kept else None, "error": exc.error}
-        elif isinstance(exc, InventoryUnstable):
-            # nothing was moved aside: the file kept changing under the bounded re-read
-            self.corrupt = {"kept": None, "error": str(exc), "unreadable": True}
+        elif not (self.corrupt and not self.corrupt.get("unreadable")):
+            # nothing was moved aside (unstable, PermissionError, any OSError): the armory could not be read,
+            # which is not the same as empty. Never downgrade a sticky quarantine warning to this one.
+            self.corrupt = {"kept": None, "error": f"{type(exc).__name__}: {exc}", "unreadable": True}
+
+    def _read_ok(self, inv: dict) -> None:
+        self._last_good = dict(inv)
+        if self.corrupt and self.corrupt.get("unreadable"):
+            self.corrupt = None
 
     def dismiss_corrupt(self) -> bool:
         """The operator acknowledged the warning. True when there was one."""
         had, self.corrupt = self.corrupt is not None, None
+        try:
+            from brx_mcp.usbconsole import clear_corrupt_notice
+            clear_corrupt_notice()
+        except Exception:
+            pass
         return had
 
-    def list(self) -> list[ArmoryRecord]:
+    def _load(self) -> dict:
+        """The inventory, or the last known good one when this read fails (never an empty one made by a failure)."""
         try:
             from brx_mcp.usbconsole import load_inventory
             inv = load_inventory()
         except Exception as e:
             self._note_read(e)
             log.error("armory inventory unavailable: %s", e)
-            return []
-        return [_to_record(s, r) for s, r in inv.items()]
+            return dict(self._last_good or {})
+        self._read_ok(inv)
+        return inv
+
+    def list(self) -> list[ArmoryRecord]:
+        return [_to_record(s, r) for s, r in self._load().items()]
 
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:
         try:
@@ -79,10 +107,11 @@ class LocalArmory:
             log.warning("correlate failed: %s", e)
         try:
             inv = await asyncio.to_thread(load_inventory)
+            self._read_ok(inv)
         except Exception as e:
             self._note_read(e)
             log.error("armory inventory unavailable: %s", e)
-            inv = {}
+            inv = dict(self._last_good or {})
         by_name = {}
         for serial, r in inv.items():
             by_name.setdefault((r.get("gun_name") or "").strip().lower(), []).append((serial, r))
