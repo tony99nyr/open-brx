@@ -7359,3 +7359,38 @@ test('F206: the spawn burst carries the $PSET from pset_pool BEFORE $SPAWN, and 
   const pset = h.writes.slice(0, i).filter(f => f.startsWith('$PSET,'));
   assert.ok(pset.length >= 1 && pset.every(f => f.split(',')[2] === '1'), 'every $PSET written carries the $TID team: ' + pset);
 });
+
+test('ALT r4: an ALT in a reload\'s stale tail is a real swap, so the pointer follows the gun', () => {
+  // The rifle's reload is 1.4 s; its takeover runs to 1.4 s + max(600, 700) ms. At +1.5 s with no gain the gun is no
+  // longer reloading, so it takes ALT. Ignoring it left `_altPtr` on 0 while the gun was on 1, and the next ALT then
+  // booked an assumed swap onto slot 1 while the gun went 1 -> 0.
+  const h = shellHarness();
+  h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty
+  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true, 'setup: the takeover runs');
+  h.adv(1500);
+  assert.equal(h.eng.state().reloading, true, 'setup: still inside the takeover\'s stale tail');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // ALT: the gun swaps to the shotgun
+  assert.equal(h.eng.state().switching, true, 'the stale-tail ALT opens the swap');
+  assert.equal(h.eng.state().reloading, false, 'and ends the takeover');
+  h.frame('$BUT,0,1,*'); h.frame('$ALCD,0,100,1,24,0,*'); h.frame('$BUT,0,0,*');   // a shell out of slot 1
+  assert.equal(h.eng.activeSlot, 1);
+  h.adv(700); h.eng.tick();                     // the takeover's deadline passes (a shot on another slot never ends it)
+  assert.equal(h.eng.reloading, null, 'setup: the takeover is over');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // ALT: the gun goes back to the rifle
+  h.frame('$BUT,0,1,*'); h.frame('$ALCD,9,100,0,192,0,*'); h.frame('$BUT,0,0,*');   // a rifle round
+  h.adv(h.eng.switchWindowMs() + 200); h.eng.tick();
+  assert.equal(h.eng.activeSlot, 0, 'the node is on the rifle, as the gun is');
+  assert.equal(h.eng._altPtr, 0, 'and so is the ALT pointer');
+});
+
+test('ALT r4: a loadout $ALCD that moves the trigger with no swap open heals the ALT pointer', () => {
+  const h = shellHarness();
+  h.frame('$ALCD,10,100,0,192,0,*');            // the node on the rifle
+  h.eng._altPtr = 0; h.eng.switching = null;
+  h.frame('$BUT,0,1,*'); h.frame('$ALCD,0,100,1,24,0,*'); h.frame('$BUT,0,0,*');   // the gun fires slot 1: an ALT the node missed
+  assert.equal(h.eng.activeSlot, 1);
+  assert.equal(h.eng._altPtr, 1, 'the pointer follows the slot the gun fired');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.switching && h.eng.switching.to, 0, 'the next ALT goes back to the rifle');
+});

@@ -6894,7 +6894,11 @@ export class Engine {
     // Bench 2026-10-02 (captured wire, USP-S): the gun IGNORES ALT while a reload runs. The lever at mag 8, ALT 1.16 s
     // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
     // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
-    if (this.reloading) { this.log(`ALT ignored by the gun mid-reload (slot ${this.activeSlot})`, 'li'); return; }
+    // ALT r4: only while the gun is really reloading (inside reload_s, no gain yet). In the takeover's stale tail the gun
+    // takes ALT, so ignoring it left `_altPtr` behind the gun; there the press is a swap and ends the takeover.
+    const r = this.reloading;
+    if (r && this.now() < r.at + r.ms && !(r.lastGainAt > r.at)) { this.log(`ALT ignored by the gun mid-reload (slot ${this.activeSlot})`, 'li'); return; }
+    if (r) this._endReload('swapped');
     this._puBackPending = null;
     const from = this._altPtr, to = this._nextAltSlot();
     this._altPtr = to;
@@ -7119,6 +7123,7 @@ export class Engine {
     if (slot < 2 && this._altEvidencePending != null && ((prev != null && mag < prev) || slot === this._altEvidencePending)) {
       this._altPtr = slot; this._altEvidencePending = null;
     }
+    if (slot < 2 && slot !== this.activeSlot && this.activeSlot < 2 && !this.switching && this._altEvidencePending == null) this._altPtr = slot;   // ALT r4: a swap the node missed; the pointer follows the gun
     if (puBack != null) {   // A56: the heavy ran dry; keep its empty count until the delayed switch-back
       if (reserve != null && !Number.isNaN(reserve)) this._prevReserve[slot] = reserve;
       this._publishAmmo(puBack, this._prevAmmo[puBack], this._prevReserve[puBack]);
