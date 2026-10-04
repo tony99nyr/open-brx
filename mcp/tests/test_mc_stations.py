@@ -1215,7 +1215,7 @@ def test_an_old_phone_powerup_station_gets_the_1ft_claim_default_not_the_3m_one(
     from brx_mcp.mc.state import Session
     from brx_mcp.mc.types import PHONE_POWERUP_THRESHOLD_DBM
     assert PHONE_POWERUP_THRESHOLD_DBM == -55
-    got = Session._wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, {"threshold": 0, "kind": "powerup", "team": 255, "id": 9})
+    got = _sess().station_registry.wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, {"threshold": 0, "kind": "powerup", "team": 255, "id": 9})
     assert got == -55, got
 
 
@@ -1227,11 +1227,11 @@ def test_a_control_stations_threshold_defaults_to_75_on_an_old_phone_and_0_elsew
     from brx_mcp.mc.types import PHONE_CONTROL_THRESHOLD_DBM
     assert PHONE_CONTROL_THRESHOLD_DBM == -75
     a = {"threshold": 0, "kind": "control", "team": 255, "id": 9}
-    got_old = Session._wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, a)
+    got_old = _sess().station_registry.wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, a)
     assert got_old == -75, got_old
-    got_new = Session._wire_threshold("util-new", {"app_ver": "0.4.12+abc"}, a)
+    got_new = _sess().station_registry.wire_threshold("util-new", {"app_ver": "0.4.12+abc"}, a)
     assert got_new == 0, got_new
-    got_stick = Session._wire_threshold("stick-1", {"platform": "esp32", "app_ver": "1.0"}, a)
+    got_stick = _sess().station_registry.wire_threshold("stick-1", {"platform": "esp32", "app_ver": "1.0"}, a)
     assert got_stick == 0, got_stick
 
 

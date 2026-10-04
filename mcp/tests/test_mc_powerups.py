@@ -721,6 +721,23 @@ def test_review_a_pickup_fact_flushed_after_the_match_changes_nothing():
     assert _pushed(s, "station_update", "u1") == [] and not any("TOOK" in t for t in _feed(s))
 
 
+def test_null_station_pickup_after_live_powerup_release_is_ignored():
+    s, clock = _sess()
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 61_000; s.tick()
+    assert s.release_station("u1")
+    before = s._station_view("u1")
+    s.net.pushed.clear()
+    p = s.players[s.node_player["phone-0"]]
+    ev = {"type": "pickup", "t": clock.t, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+          "player_id": p["player_id"], "station_id": None, "item_kind": "overshield", "seq": 1}
+    s.net.simulate_event("phone-0", ev, clock.t)
+    assert s._station_view("u1") == before
+    assert _pushed(s, "station_update", "u1") == []
+    assert not any("TOOK" in line for line in _feed(s))
+
+
 def test_a_station_action_naming_another_stations_id_is_refused():
     s, clock = _sess()
     _station(s, "u1", 5, "overshield")
