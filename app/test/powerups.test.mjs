@@ -465,7 +465,7 @@ test('F394: a reload on the secondary after ALT refills the number and the pips 
 
 test('F394: an echo of a slot that is not on the trigger never changes the number on the screen', () => {
   const h = alt(armed());
-  h.eng._acctWrote(0, 29, 189);
+  h.eng.am.acctWrote(0, 29, 189);
   h.frame('$ALCD,32,100,0,192,0,*');   // the `$WEAP` reset of slot 0, inside its echo window
   assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 24, mag: 6 });
   h.frame('$ALCD,29,100,0,189,0,*');   // ...and the restore landing
@@ -474,7 +474,7 @@ test('F394: an echo of a slot that is not on the trigger never changes the numbe
 
 test('F394 r2: a real shot on the ALT target confirms the swap, even inside the echo window a relink opened', () => {
   const h = armed();
-  h.eng._acctWrote(1, 6, 24);   // `_endReconcile` re-arms both loadout slots and opens both echo windows
+  h.eng.am.acctWrote(1, 6, 24);   // `_endReconcile` re-arms both loadout slots and opens both echo windows
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   h.fire(1, 5, 24);
   assert.equal(h.eng.switching, null, 'the shot confirmed the swap');
@@ -488,7 +488,7 @@ test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile 
   h.frame('$ALCD,30,190,0,0,0,*');
   assert.equal(h.eng._altPtr, 1);
   assert.notEqual(h.eng._altEvidencePending, null);
-  h.eng.reconciling = { since: h.eng.now(), ammo: h.eng._liveAmmo() };   // a relink's window, then its end
+  h.eng.reconciling = { since: h.eng.now(), ammo: h.eng.am.liveAmmo() };   // a relink's window, then its end
   h.eng.rc.end();
   assert.equal(h.eng._altPtr, 1);
 });
@@ -514,7 +514,7 @@ test('a weapon grant clears a pending switch-back retry', () => {
 
 test('F379: a switch-back resend reads the current magazine and reserve', () => {
   const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.fire(2, 0);
-  h.eng._acctWrote(0, 29, 189); h.eng._prevReserve[0] = 189;
+  h.eng.am.acctWrote(0, 29, 189); h.eng.am.prevReserve[0] = 189;
   const n = h.mark(); h.adv(E.PU_BACK_RETRY_MS + 100);
   assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,29,189,1,*']);
 });

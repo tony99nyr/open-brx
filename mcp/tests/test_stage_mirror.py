@@ -1760,6 +1760,37 @@ def _reconcile_methods() -> set[str]:
     return {f"rc.{n}" for n in names}
 
 
+# Engine split (b), 2026-10-04: app/src/ammo.js (`Ammo`) holds the ammo, reload and ALT code that was engine.js's, read the
+# same way with an `am.` prefix. Its names are the engine's old ones without the leading underscore (`_acctLive` is now
+# `am.acctLive`), while GunStage kept the engine's old names in snake case (`_acct_live`), so the snake rule cannot pair
+# them. `_AMMO_PAIRS` pairs every module name the stage mirrors with its GunStage method, by hand, and
+# `test_every_ammo_pair_is_real` keeps each pair truthful: both halves must exist.
+_AMMO_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "ammo.js"
+_AMMO_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Ammo\s*\{", _re.M)
+_AMMO_PAIRS = {
+    # the F259 magazine account
+    "am.acctLive": "_acct_live", "am.acctOutstanding": "_acct_outstanding", "am.acctEchoing": "_acct_echoing",
+    "am.acctWrote": "_acct_wrote", "am.acctPress": "_acct_press", "am.acctAmmo": "_acct_ammo", "am._acctSpent": "_acct_spent",
+    # the counts per slot and the HUD's ammo block
+    "am.liveAmmo": "_live_ammo", "am.spawnAmmo": "_spawn_ammo", "am.ammoBySlot": "_ammo_by_slot",
+    "am.publish": "_publish_ammo", "am.showSlot": "_show_slot_ammo",
+}
+
+
+def _ammo_methods() -> set[str]:
+    """`am.<name>` for every `Ammo` method and accessor in ammo.js."""
+    text = _AMMO_JS.read_text(encoding="utf-8")
+    decl = _AMMO_CLASS_DECL.search(text)
+    assert decl, f"no `class Ammo {{` declaration found in {_AMMO_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[0].end()]
+    names = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS - {"constructor"}
+    assert len(names) >= 10, f"only {len(names)} ammo.js names parsed: the slice is wrong, not the file"
+    return {f"am.{n}" for n in names}
+
+
 def _engine_methods() -> set[str]:
     """Names declared at one indent level inside the Engine class body -- and ONLY the class body.
 
@@ -1785,7 +1816,7 @@ def _engine_methods() -> set[str]:
         body = body[:closes[0].end()]      # the FIRST column-0 `}` closes THIS class; a later one is the next declaration
     methods = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
     assert methods, f"no methods found inside the Engine class body in {_ENGINE_JS} -- the slice is wrong, not the file"
-    return methods | _reconcile_methods()
+    return methods | _reconcile_methods() | _ammo_methods()
 
 
 def _stage_methods() -> set[str]:
@@ -1804,7 +1835,17 @@ def _snake(name: str) -> str:
 
 def _unmirrored() -> set[str]:
     stage = _stage_methods()
-    return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage}
+    return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage and _AMMO_PAIRS.get(m) not in stage}
+
+
+def test_every_ammo_pair_is_real():
+    """Each `_AMMO_PAIRS` entry names a method ammo.js declares and a method GunStage declares. A pair whose either half
+    was renamed or removed would otherwise call a rule mirrored when it is not."""
+    ammo, stage = _ammo_methods(), _stage_methods()
+    assert len(_AMMO_PAIRS) >= 10, _AMMO_PAIRS
+    for js, py in sorted(_AMMO_PAIRS.items()):
+        assert js in ammo, f"_AMMO_PAIRS names `{js}`, which ammo.js `Ammo` does not declare"
+        assert py in stage, f"_AMMO_PAIRS pairs `{js}` with `{py}`, which GunStage does not declare"
 
 
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
@@ -1905,10 +1946,15 @@ KNOWN_UNMIRRORED = {
     # to ask. `reconciling` is the Engine's own view of the same window (a test stages one through its setter).
     "reconciling", "rc.window", "rc.clear", "rc.active", "rc.ownsRearm", "rc.infersNothing", "rc.disarmed", "rc.outOfBand",
     "rc.begin", "rc.end", "rc.tick", "rc.holdSpawnCheck",
+    # Engine split (b), 2026-10-04: the ammo module's small doors. The stage resets its own maps inline where a life or a
+    # head starts (`_after_spawn`, and `arm` for the head), and writes `_prev_ammo`/`_prev_reserve` inline after its own re-arms,
+    # so `forgetCounts`, `forgetShown` and `setPrev` have no method to pair with. `pressedRounds` is the F416 spawn
+    # check's question (`_spawnCheckSeen`, pinned above): the stage has no F416 check.
+    "am.forgetCounts", "am.forgetShown", "am.setPrev", "am.pressedRounds",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
-    "_savedAmmo", "_restoreAmmo",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
+    "am.saved", "am.restore",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
 
     "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting

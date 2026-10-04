@@ -237,7 +237,7 @@ test('F264: the re-assert reads the REPLY, not the node belief -- the belief is 
   // `$AMMO` built from a stale one would hand out a free magazine.
   const h = harness();
   h.f('$ALCD,12,100,0,90,0,*');                 // the node believes 12 rounds
-  assert.equal(h.eng._acctLive(0), 12, 'setup: and its account says so');
+  assert.equal(h.eng.am.acctLive(0), 12, 'setup: and its account says so');
   const n = h.writes.length;
   h.eng._cureReassert(0, 90);                   // ...while the gun's reply said 0
   assert.deepEqual(h.since(n), ['$AMMO,0,0,90,1,*', '$BMAP,0,0,,,,,*'], 'the reply wins, always');

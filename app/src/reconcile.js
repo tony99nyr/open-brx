@@ -105,7 +105,7 @@ export class Reconcile {
     const h = this.host, w = this._win, live = (w && w.ammo) || {};
     this._win = null;
     if (h.alive) {
-      // F164: re-arm each slot to the LIVE count snapshotted when the reconcile began (`_liveAmmo`: the node's
+      // F164: re-arm each slot to the LIVE count snapshotted when the reconcile began (ammo.js `liveAmmo`: the node's
       // magazine account, else that slot's spawn row). The spawn row alone was a free full magazine plus the
       // spawn reserve on every relink. A pickup slot keeps its spawn row here; `pu.reconcileRearm` owns a held heavy.
       const pu = new Set(((h.config && h.config.powerups) || []).map(p => +p.slot));
