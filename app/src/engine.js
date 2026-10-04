@@ -4197,7 +4197,10 @@ export class Engine {
     const revive0 = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     // Polish 2026-10-03: a self-kill costs nothing, so it gives nothing either. The burst's own `$AMMO` rows carry the
     // live counts, in the same write (`_puRearmRows`' reason: a separate restore lets the full magazine echo first).
-    const keepAmmo = selfHit ? this._liveAmmo() : null;
+    // A pickup slot keeps compile's empty row: an item never carries a life (`_puRevive` drops it), and its charges left
+    // on the gun would be a heavy the node no longer tracks (polish r2).
+    const puSlots = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
+    const keepAmmo = selfHit ? Object.fromEntries(Object.entries(this._liveAmmo()).filter(([sl]) => !puSlots.has(+sl))) : null;
     const revive = keepAmmo ? revive0.map(f => { const t = f.startsWith('$AMMO,') ? f.split(',') : null; const k = t && keepAmmo[+t[1]]; return k ? `$AMMO,${t[1]},${k[0]},${k[1]},${t.slice(4).join(',')}` : f; }) : revive0;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
