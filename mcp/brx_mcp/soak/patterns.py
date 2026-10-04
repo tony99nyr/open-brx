@@ -83,10 +83,10 @@ from ..gameconfig import SPAWN_SEQUENCE as _SPAWN_SEQUENCE  # noqa: E402
 
 _ARM_SEQUENCE: tuple[str, ...] = (volume_cmd(65), *GAME_CONFIG, *_SPAWN_SEQUENCE)
 
-# Per-hit reaction cues: byte-identical to `mc/compile.py` `Compiler.cues()`'s "hurt"/"hurt_led"
-# entries (the victim-side low-health alert, confirmed by ear 2026-08-25, compile.py ~L1963-1968).
-# HEADSET_ALERT_BRIGHTNESS (compile.py) is 10.
-_HIT_CUE: tuple[str, ...] = ("$PLAY,VA8B,3,6,,,,,*", "$HLED,7,4,90,90,10,15,*")
+# Per-hit reaction cues: `mc/compile.py` `base_cues()`'s "hurt"/"hurt_led" (the victim-side low-health alert, confirmed
+# by ear 2026-08-25). D4 (2026-10-03): read from the one table, never copied.
+from ..mc.compile import base_cues as _base_cues  # noqa: E402
+_HIT_CUE: tuple[str, ...] = (_base_cues()["hurt"], _base_cues()["hurt_led"])
 
 # The transient gun-body LED readout frame: format + brightness token confirmed on hardware
 # 2026-09-02 (mc/compile.py ~L48-53: token 5 on $GLED is brightness, two levels above off), example
