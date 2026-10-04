@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report. A case's `mc` block (read only by mcp/tests/test_powerup_cases_mc.py) holds Mission Control's side: the item preset is the overshield with `item_spawn_every_s` (null = the preset's 60 s), the arm uses a 3 s runway, and each step's `t` is ms after go-live. Steps: tick (MC's clock tick), taken (a station_action; `player` is a roster index, `age_ms`, `station_id` optional), pickup (a player's pickup fact; `fact_t` its own t as ms after go-live), reset (a station reset action) and hello (the station reconnects). An expect holds `available`, `taken_by` (roster index or null), `feed_took` (TOOK lines in the feed so far) and `updates` (the exact station_update bodies MC pushed in that step). `only: [\"mc\"]` makes the phone and Stick runners skip a case.",
+  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report. A case's `mc` block (read only by mcp/tests/test_powerup_cases_mc.py) holds Mission Control's side: the item preset is the overshield with `item_spawn_every_s` (null = the preset's 60 s), the arm uses a 3 s runway, and each step's `t` is ms after go-live. Steps: tick (MC's clock tick), taken (a station_action; `player` is a roster index, `age_ms`, `station_id` optional), pickup (a player's pickup fact; `fact_t` its own t as ms after go-live), reset (a station reset action) hello (the station reconnects), end (the match ends), next_match, restart (MC stops and starts on its snapshot) and reset_api (the console's reset route; expect.refused is a substring of the refusal). A taken step may carry `player_num` (a raw number) and a pickup step `match_id`. An expect may also hold `feed_has` and `feed_lacks` (substrings of the feed). `item_preset` (default overshield) picks the item. An expect holds `available`, `taken_by` (roster index or null), `feed_took` (TOOK lines in the feed so far) and `updates` (the exact station_update bodies MC pushed in that step). `only: [\"mc\"]` makes the phone and Stick runners skip a case.",
   "cases": [
     {
       "name": "spawns on its own clock, then repeats every interval; a claim folds the next spawn forward",
@@ -249,6 +249,130 @@
         {"t": 125500, "do": "hello", "expect": {"updates": [{"id": 4, "available": true, "next_spawn_in_ms": 54500}]}},
         {"t": 130000, "do": "taken", "player": 0, "expect": {"available": false}},
         {"t": 140000, "do": "hello", "expect": {"updates": [{"id": 4, "available": false, "next_spawn_in_ms": 40000}]}}
+      ] }
+    },
+    {
+      "name": "a Stick that self-spawned reports a take before MC's next tick: MC fires the due spawn first, so the take counts",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60500, "do": "taken", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 59500}, {"id": 4, "available": false, "next_spawn_in_ms": 59500}]}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}},
+        {"t": 120500, "do": "pickup", "player": 1, "expect": {"available": false, "taken_by": 1, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "the same, reported by a player's pickup fact before MC's tick",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60500, "do": "pickup", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1}}
+      ] }
+    },
+    {
+      "name": "a due spawn MC has not ticked yet still refuses a report dated before it (age_ms or the fact's own t)",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60500, "do": "taken", "player": 0, "age_ms": 1000, "expect": {"available": true, "taken_by": null, "feed_took": 0}},
+        {"t": 60600, "do": "pickup", "player": 0, "fact_t": 59000, "expect": {"available": true, "feed_took": 0}},
+        {"t": 60700, "do": "taken", "player": 0, "age_ms": 500, "expect": {"available": false, "taken_by": 0, "feed_took": 1}}
+      ] }
+    },
+    {
+      "name": "MC stalls past several spawns: one catch-up, one update, and a report dated before the latest spawn is refused",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 0, "do": "tick", "expect": {"available": false}},
+        {"t": 185000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 55000}]}},
+        {"t": 185000, "do": "taken", "player": 0, "age_ms": 6000, "expect": {"available": true, "updates": []}},
+        {"t": 185000, "do": "taken", "player": 0, "age_ms": 4000, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 55000}]}}
+      ] }
+    },
+    {
+      "name": "a taker number outside 1 to 63 still takes the item but is never credited by number",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "taken", "player": 0, "player_num": 64, "expect": {"available": false, "taken_by": null, "feed_took": 1, "feed_has": ["A PLAYER TOOK OVERSHIELD"], "feed_lacks": ["PLAYER 64"]}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120100, "do": "taken", "player": 0, "player_num": 0, "expect": {"available": false, "taken_by": null, "feed_took": 2, "feed_lacks": ["PLAYER 0"]}},
+        {"t": 180000, "do": "tick", "expect": {"available": true}},
+        {"t": 180100, "do": "taken", "player": 0, "player_num": true, "expect": {"available": false, "taken_by": null, "feed_took": 3, "feed_lacks": ["PLAYER 1 ", "PLAYER TRUE"]}}
+      ] }
+    },
+    {
+      "name": "a negative or boolean age_ms is ignored: the take is dated by its arrival, not by a made-up age",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60000, "do": "taken", "player": 0, "age_ms": true, "expect": {"available": false, "taken_by": 0}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120000, "do": "taken", "player": 1, "age_ms": -5000, "expect": {"available": false, "taken_by": 1}}
+      ] }
+    },
+    {
+      "name": "a restart keeps a taken item taken and the fixed schedule going",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 61000, "do": "tick", "expect": {"available": true}},
+        {"t": 61100, "do": "taken", "player": 0, "expect": {"available": false}},
+        {"t": 70000, "do": "restart"},
+        {"t": 70000, "do": "hello", "expect": {"available": false, "taken_by": 0, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 50000}]}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}}
+      ] }
+    },
+    {
+      "name": "a take after the match ended, after NEXT MATCH, or about another match changes nothing",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "pickup", "player": 0, "match_id": "stale", "expect": {"available": true, "feed_took": 0, "updates": []}},
+        {"t": 60200, "do": "end"},
+        {"t": 60300, "do": "taken", "player": 0, "expect": {"feed_took": 0, "updates": []}},
+        {"t": 60400, "do": "pickup", "player": 0, "expect": {"feed_took": 0, "updates": []}},
+        {"t": 60500, "do": "next_match"},
+        {"t": 60600, "do": "taken", "player": 0, "expect": {"feed_took": 0, "updates": []}},
+        {"t": 60700, "do": "pickup", "player": 0, "expect": {"feed_took": 0, "updates": []}}
+      ] }
+    },
+    {
+      "name": "a pickup dated in the future is dated by its arrival: it takes this spawn and not the next",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "pickup", "player": 0, "fact_t": 150000, "expect": {"available": false, "taken_by": 0}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}}
+      ] }
+    },
+    {
+      "name": "the console reset: refused with no item or outside a match, else the item is there now and the feed says so",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "taken", "player": 0, "expect": {"available": false}},
+        {"t": 60200, "do": "reset_api", "node": "nobody", "expect": {"refused": "nobody"}},
+        {"t": 60300, "do": "reset_api", "expect": {"available": true, "taken_by": null, "feed_has": ["OPERATOR RESET \u00b7 STATION #4"], "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 59700, "reset": true}]}},
+        {"t": 60400, "do": "end"},
+        {"t": 60500, "do": "reset_api", "expect": {"refused": "RECAP"}}
+      ] }
+    },
+    {
+      "name": "a weapon item follows the same schedule and dedupe (Rockets, 120 s)",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 120},
+      "mc": { "item_spawn_every_s": 120, "item_preset": "rockets", "steps": [
+        {"t": 119999, "do": "tick", "expect": {"available": false}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 120000}]}},
+        {"t": 120100, "do": "pickup", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "feed_has": ["TOOK ROCKETS \u00b7 STATION #4"], "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 119900}]}},
+        {"t": 120200, "do": "taken", "player": 1, "expect": {"taken_by": 0, "feed_took": 1, "updates": []}}
       ] }
     }
   ]
