@@ -1,0 +1,9 @@
+# Exact versions of the runtime dependencies in pyproject.toml (base + the `mc` extra), taken from the
+# working dev venv. scripts/start.mjs installs with `pip install -c mcp/constraints.txt`, and its install
+# stamp hashes this file, so a changed pin reinstalls. Bump a pin on purpose, then run the suites.
+bleak==3.0.2
+mcp==2.1.1
+websockets==17.0.1
+starlette==1.6.0
+uvicorn==0.52.4
+zeroconf==0.150.0

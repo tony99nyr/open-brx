@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { isWindows, npm, root, uiStale, venvPython, which } from './lib/launcher.mjs';
+import { installStamp, isWindows, npm, phonesWarning, root, uiStale, venvPython, which } from './lib/launcher.mjs';
 
 const USAGE = `Usage: ./start.sh [options] [-- Mission Control options]     (Windows: start.cmd)
 
@@ -133,7 +133,13 @@ async function update() {
   if (dirty || ahead > 0) {
     return note(`a newer version is on GitHub (${upstream}), but this folder has its own changes. Not updating: run \`git pull\` yourself.`);
   }
-  if (!(await ask(`A newer version is on GitHub (${behind} change${behind === 1 ? '' : 's'}). Update now?`, true))) return note('kept the current version');
+  // An update can change the app version: say so before the question. Read the incoming file, do not merge.
+  const warning = phonesWarning(
+    capture('git', ['show', 'HEAD:mcp/brx_mcp/mc/types.py'], { stdio: ['ignore', 'pipe', 'ignore'] }),
+    capture('git', ['show', '@{u}:mcp/brx_mcp/mc/types.py'], { stdio: ['ignore', 'pipe', 'ignore'] }));
+  if (warning) console.log(`\n${paint('1;31', warning)}\n`);
+  // The default is NO, also with no terminal: an update never happens by accident.
+  if (!(await ask(`A newer version is on GitHub (${behind} change${behind === 1 ? '' : 's'}). Update now?`, false))) return note('kept the current version. Run `git pull` when you want the update.');
   // Merge what the fetch above counted, not a second fetch's worth.
   if (run('git', ['merge', '--ff-only', '--quiet', '@{u}']).status !== 0) {
     return note('the update failed. Continuing with the current version; run `git pull` to see why.');
@@ -214,12 +220,12 @@ async function python() {
   }
   // Reinstall only when the package's dependency list changed or an import fails.
   const stampPath = join(root, '.venv', '.open-brx-stamp');
-  const stamp = hashFiles(join(root, 'mcp', 'pyproject.toml'));
+  const stamp = installStamp();
   const current = existsSync(stampPath) && readFileSync(stampPath, 'utf8').trim() === stamp;
   const imports = current && spawnSync(venv, ['-c', 'import brx_mcp.mc, bleak, websockets, starlette, uvicorn, zeroconf'], { cwd: join(root, 'mcp'), stdio: 'ignore' }).status === 0;
   if (imports) return ok('Mission Control package is installed');
   console.log('  ..  installing the Mission Control package (the first time takes a minute)');
-  const pip = run(venv, ['-m', 'pip', 'install', '--disable-pip-version-check', '--quiet', '-e', './mcp[mc]']);
+  const pip = run(venv, ['-m', 'pip', 'install', '--disable-pip-version-check', '--quiet', '-c', './mcp/constraints.txt', '-e', './mcp[mc]']);
   if (pip.status !== 0) stop('pip could not install the Mission Control package (see the messages above).', 'Check the internet connection.');
   writeFileSync(stampPath, stamp + '\n');
   ok('Mission Control package is installed');
