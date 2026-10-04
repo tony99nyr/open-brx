@@ -70,7 +70,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   The scrub's rules and its guard live in `report.py`'s docstring; a guard refusal means a scrub gap, never
   loosen the guard to get a zip out. Tests: `test_mc_report.py`, `test_launcher.py`, `test/e2e/report.mjs`.
 - **Which tests to run.** Run `pnpm run test:all` from the repo root before committing (about 30 s), not the
-  suites one by one. Add `-- --ui` (about 2 min) before the FIRST push of a change to `app/src`, `webapp/mc/src`,
+  suites one by one. Add `-- --ui` (about 7.5 min) before the FIRST push of a change to `app/src`, `webapp/mc/src`,
   a UI gate or an e2e script: **CI does NOT run app-screens, app-e2e or the `mc-*` e2e scripts** (`site` isn't
   wired into CI at all), so nothing else catches a regression in them. After merging `origin/main`, use
   `pnpm run test:all -- --changed <base>` instead of the full suite. It runs inside a memory budget and a
