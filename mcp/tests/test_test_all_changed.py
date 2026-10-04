@@ -83,19 +83,40 @@ def test_app_paths_select_app_site_mc_and_mcp():
     # HIGH fix: webapp/mc/test/medalicons-gen.test.ts reads app/src/hud/medalicons.js (needs mc-); about 40
     # mcp/tests files read app/ sources (needs mcp).
     r = _select(["app/src/hud/live.js"])
-    assert set(r["filters"]) == {"app-", "site", "mc-", "mcp"}, r
+    assert set(r["filters"]) == {"app-", "site", "mc-vitest", "mcp"}, r
+
+
+def test_app_paths_select_mc_vitest_without_selecting_mc_e2e_jobs():
+    r = _select(["app/src/hud/medalicons.js"])
+    assert "mc-vitest" in r["filters"], r
+    assert "mc-" not in r["filters"], r
+
+
+def test_mcp_paths_select_app_jobs_that_read_mcp_data():
+    r = _select(["mcp/brx_mcp/mc/weapons.json"])
+    assert {"app-e2e", "app-logsync", "app-test", "app-screens"} <= set(r["filters"]), r
+
+
+def test_golden_bundle_changes_select_screens_and_moments():
+    r = _select(["mcp/brx_mcp/mc/golden_bundle.json"])
+    assert {"app-screens", "app-moments"} <= set(r["filters"]), r
+
+
+def test_webapp_mc_changes_select_app_e2e_for_its_built_dist():
+    r = _select(["webapp/mc/src/App.tsx"])
+    assert "app-e2e" in r["filters"], r
 
 
 def test_webapp_mc_paths_select_mc_mcp_and_site():
     # HIGH fix: mcp/tests reads webapp/mc/ (needs mcp); site/lib/facts.mjs reads webapp/mc/src/tokens.ts (needs site).
     r = _select(["webapp/mc/src/api/contract.gen.ts"])
-    assert set(r["filters"]) == {"mc-", "mcp", "site"}, r
+    assert set(r["filters"]) == {"mc-", "mcp", "site", "app-e2e"}, r
 
 
 def test_mcp_paths_select_mcp_chaos_mc_and_site():
     # HIGH fix: site/lib/data.mjs + facts.mjs read mcp/ data files (weapons.json, sound_catalog.json, state.py).
     r = _select(["mcp/brx_mcp/mc/scoring.py"])
-    assert set(r["filters"]) == {"mcp", "chaos", "mc-", "site"}, r
+    assert {"mcp", "chaos", "mc-", "site", "app-e2e", "app-logsync", "app-test"} == set(r["filters"]), r
 
 
 def test_contract_and_catalogue_sources_also_pull_in_app_screens():
@@ -117,12 +138,52 @@ def test_docs_and_markdown_select_mcp_and_site():
     assert set(_select(["hardware/brx-companion-spec.md"])["filters"]) == {"mcp", "site"}
 
 
+def test_announcer_docs_select_app_test():
+    assert "app-test" in _select(["docs/announcer.md"])["filters"]
+
+
+def test_other_docs_do_not_select_app_test():
+    assert "app-test" not in _select(["docs/HANDOFF.md"])["filters"]
+
+
+def test_protocol_paths_select_mcp():
+    assert _select(["protocol/messages.bin"])["filters"] == ["mcp"]
+
+
+def test_root_markdown_keeps_markdown_rule():
+    assert set(_select(["CLAUDE.md"])["filters"]) == {"mcp", "site"}
+
+
+def test_root_build_manifests_select_everything():
+    for path in ["package.json", "pnpm-lock.yaml"]:
+        r = _select([path])
+        assert r["filters"] is None, r
+        assert any("full-suite trigger" in reason for reason in r["reasons"]), r
+
+
+def test_unknown_top_level_directory_selects_mcp_for_repo_wide_hygiene():
+    r = _select(["proofshot-artifacts/result.png"])
+    assert r["filters"] == ["mcp"], r
+    assert any("unknown top-level directory -> mcp" in reason for reason in r["reasons"]), r
+
+
+def test_proofshot_artifacts_are_ignored():
+    assert "proofshot-artifacts/" in (REPO / ".gitignore").read_text()
+
+
+def test_known_tree_without_path_rule_fails_safe():
+    assert _select(["webapp/unclassified-area/file.bin"])["filters"] is None
+
+
 def test_hardware_non_markdown_selects_mcp():
     assert _select(["hardware/m5sticks3/firmware.cpp"])["filters"] == ["mcp"]
 
 
 def test_scripts_lib_selects_mcp_its_own_unit_tests():
-    assert _select(["scripts/lib/budget.mjs"])["filters"] == ["mcp"]
+    for path in ["scripts/lib/budget.mjs", "scripts/lib/lock.mjs"]:
+        r = _select([path])
+        assert r["filters"] is None, r
+        assert any("full-suite trigger" in reason for reason in r["reasons"]), r
 
 
 def test_test_all_itself_is_a_full_suite_trigger():
@@ -134,7 +195,7 @@ def test_a_ci_workflow_change_is_a_full_suite_trigger():
 
 
 def test_an_unmapped_path_fails_safe_to_everything():
-    assert _select(["a-brand-new-top-level-thing.txt"])["filters"] is None
+    assert _select(["brand-new-tree/file.txt"])["filters"] == ["mcp"]
 
 
 def test_no_changed_paths_fails_safe_to_everything():
