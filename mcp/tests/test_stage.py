@@ -10,6 +10,7 @@ from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage import stage as S           # the hill parity tests read its constants by name
 from brx_mcp.stage.stage import GunStage, ir_words
 from brx_mcp.mc import presentation as P
+from brx_mcp.mc import types as T   # review #4: the generated values the stage mirrors
 from brx_mcp.mc.compile import Compiler
 from brx_mcp import poolgauge as PG
 
@@ -1896,7 +1897,9 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
     assert S.HILL_MAG == num("HILL_MAG")
     assert S.HILL_CAPTURE_MAG == num("HILL_CAPTURE_MAG")
     assert S.HILL_WAS_NEUTRAL_MAG == num("HILL_WAS_NEUTRAL_MAG")
-    assert S.HILL_NEUTRAL_TEAM == num("HILL_NEUTRAL_TEAM")
+    # review #4: engine.js aliases the generated HILL_REFUSED_TID (app/test/contract-copies.test.mjs pins the alias)
+    assert re.search(r"^const HILL_NEUTRAL_TEAM = HILL_REFUSED_TID;", src, re.M)
+    assert S.HILL_NEUTRAL_TEAM == T.HILL_REFUSED_TID
     assert S.HILL_TICK_S == num("HILL_TICK_MS") / 1000.0, "the possession tick's cadence is SECONDS here"
     assert S.HILL_PRESENCE_S == num("HILL_PRESENCE_MS") / 1000.0, "the presence window is SECONDS here"
     # …and they are the numbers the bench actually measured, so a matching pair of wrong constants still fails
@@ -1986,7 +1989,8 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     m = re.search(r"export const MAGIC = \[([^\]]*)\];", bj)
     assert m and tuple(int(x, 16) for x in re.findall(r"0x[0-9a-fA-F]+", m.group(1))) == S.ADVERT_MAGIC
     assert S.ADVERT_VERSION == int(re.search(r"export const VERSION = (\d+);", bj).group(1))
-    assert S.STATION_TEAM_ANY == int(re.search(r"export const TEAM_ANY = (\d+);", bj).group(1))
+    assert re.search(r"export const TEAM_ANY = STATION_TEAM_ANY;", bj)   # review #4: the generated value
+    assert S.STATION_TEAM_ANY == T.STATION_TEAM_ANY
     m = re.search(r"export const KIND = \{ ([^}]*) \};", bj)
     assert m and S.ADVERT_KIND == {k: int(v) for k, v in re.findall(r"(\w+): (\d+)", m.group(1))}
     m = re.search(r"export const ROLE = \{ ([^}]*) \};", bj)

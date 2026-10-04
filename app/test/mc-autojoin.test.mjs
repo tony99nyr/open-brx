@@ -322,9 +322,11 @@ test('A60 polish #3: a dial the player named is never overridden inside its welc
   const d = aj.onFound('ws://192.168.1.77:8766/ws', 'mdns', { bound: false, dialling: 'ws://192.168.9.9:8766/ws', verifying: false, hasTrustKey: true, userDialPending: true });
   assert.deepEqual(d, { do: 'ignore' });
   const src = readFileSync(APP_JS, 'utf8');
-  assert.match(src, /userDial = join\.user === true \? \{ t: candidate \} : null;/);
-  assert.match(src, /function userDialPending\(\) \{ return namedDialPending\(userDial, transport\); \}/, 'F346 (c): the window is the transport deadline');
-  assert.match(src, /userDialPending: userDialPending\(\)/);
+  const link = readFileSync(path.resolve(HERE, '../src/transport/mclink.js'), 'utf8');
+  assert.match(src, /mcLink\.dial\(url, \{ remember, user: join\.user/);
+  assert.match(link, /this\.userDial = options\.user === true \? transport : null;/);
+  assert.match(link, /namedDialPending\(this\.userDial && \{ t: this\.userDial \}, this\.current\(\)\)/, 'F346 (c): the window is the transport deadline');
+  assert.match(link, /userDialPending: this\.userDialPending\(\)/);
   for (const caller of ["connectMc(j.url, true, { pub: j.pub, secret: j.secret, user: true })", "connectMc(v, true, { user: true })",
                         "connectMc(join.url, true, { pub: join.pub, secret: join.secret, user: true })", "connectMc(d.url, false, { trusted: false, user: true })"]) {
     assert.ok(src.includes(caller), `the user-named caller is marked: ${caller}`);
@@ -387,7 +389,9 @@ test('A60 guard: app.js routes every discovery hit through autojoin.js and a fai
   const src = readFileSync(APP_JS, 'utf8');
   const i = src.indexOf('function suggestMc(');
   const body = src.slice(i, src.indexOf('\n}\n', i));
-  assert.match(body, /autoJoin\.onFound\(url, source,/);
+  assert.match(body, /mcLink\.found\(url, source,/);
+  const link = readFileSync(path.resolve(HERE, '../src/transport/mclink.js'), 'utf8');
+  assert.match(link, /this\.autoJoin\.onFound\(url, source,/);
   const j = src.indexOf('function onVerifyFailed(');
   const fail = src.slice(j, src.indexOf('\n}\n', j));
   assert.match(fail, /if \(transport !== candidate\) return;/, 'a superseded proof dial changes nothing');
@@ -630,7 +634,10 @@ test('F346 (d) r1 guard: BACK TO HUD stores the MC url with the utility proof; a
   assert.match(u, /if \(transport\.state === 'bound'\) \{ handoff\.mc_url = transport\.url; handoff\.at = Date\.now\(\); \}/);
   assert.match(u, /localStorage\.setItem\(PRIOR_UTILITY_KEY, JSON\.stringify\(handoff\)\);/);
   const src = readFileSync(APP_JS, 'utf8');
-  assert.match(src, /transport\.connect\(\{ url, pub: join\.pub, secret: join\.secret, trusted: join\.trusted !== false, verify, firstContact: join\.firstContact === true \}\)/);
+  assert.match(src, /connect: \{ url, pub: join\.pub, secret: join\.secret, trusted: join\.trusted !== false,/);
+  assert.match(src, /verify, firstContact: join\.firstContact === true \}/);
+  const link = readFileSync(path.resolve(HERE, '../src/transport/mclink.js'), 'utf8');
+  assert.match(link, /transport\.connect\(options\.connect\)/);
 });
 
 test('F346 (d) r1: a first contact that fails after discovery saw a second host gives SEVERAL, not NEW', () => {

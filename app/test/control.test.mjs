@@ -613,3 +613,19 @@ test('F440 (review round 2 High): the circle edge does not move with advert rate
     }
   }
 });
+
+test('F456: a capture that lands within the capture tolerance of 100 is held and STILL, not rising', () => {
+  // capture fires at progress >= 100 - 1e-9, but `dir` read `progress < 100`: a step that lands just under 100 (any
+  // tick length a loaded station happens to take) captured the point AND marked it rising for one tick. The screen
+  // then read held + "rising" (tools/screens.mjs #52 flaked on exactly that), and the advert carried the rising bit.
+  const pt = new ControlPoint({ captureS: 10 });              // 10 %/s at net 1
+  const blue = [{ id: 7, team: 1, state: PLAYER_STATE.alive, present: true }];
+  pt.update(blue, 0);                                         // first tick: the clock starts, nothing moves
+  pt.capturing = 1; pt.progress = 100 - 0.01 - 5e-10;          // 1 ms of work short of a within-tolerance landing
+  const { events } = pt.update(blue, 1);
+  assert.ok(events.some(e => e.type === 'captured'), 'the step captures the point');
+  assert.equal(pt.owner, 1);
+  assert.equal(pt.progress, 100, 'a capture lands on 100 exactly');
+  assert.equal(pt.dir, 0, 'a captured point at 100 is not rising');
+  assert.equal(pt.advert().state & CONTROL_STATE.rising, 0, 'and the advert carries no rising bit');
+});

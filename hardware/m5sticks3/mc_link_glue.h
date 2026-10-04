@@ -29,6 +29,7 @@
 #include <esp_task_wdt.h>  // the loop watchdog while the match lock is on (pmicWatchLoop)
 
 #include "brx_advert.h"
+#include "contract.gen.h"
 #include "json_lite.h"
 #include "presence.h"
 #include "station_link.h"
@@ -40,7 +41,7 @@ namespace brx_glue {
 using namespace brx;
 
 // ---- tunables (bench to confirm all of them) ---------------------------------------------------
-constexpr uint32_t STATUS_HEARTBEAT_MS = 2000;   // utility.md §5g.2
+constexpr uint32_t STATUS_HEARTBEAT_MS = contract::STATUS_HEARTBEAT_MS;
 constexpr uint32_t MDNS_RETRY_MS = 4000;         // how often to re-browse _openbrx._tcp
 constexpr uint32_t SCAN_WINDOW_S = 1;      // BLEScan duration per window (async, non-blocking)
 // Polish round 1 (2026-09-24): this MUST stay longer than SCAN_WINDOW_S's 1000 ms, or a new window
@@ -187,7 +188,7 @@ SavedHill savedHill;
 static void mcLoadSavedHill() {
   mcPrefs.begin("brxmc", true);
   bool has = mcPrefs.isKey("hill_owner");
-  int owner = mcPrefs.getUChar("hill_owner", 255);
+  int owner = mcPrefs.getUChar("hill_owner", TEAM_ANY);
   int game = mcPrefs.getUChar("hill_game", 0);
   int id = mcPrefs.getUShort("hill_id", 0);
   String sid = mcPrefs.getString("hill_sid", "");
@@ -1082,7 +1083,7 @@ static void mcLoop(uint32_t now) {
     f.app_ver = link.identity().app_ver;
     const StationAssignment& a = link.assignment();
     f.kind = a.present ? a.kind : "respawn";
-    f.team = a.present ? a.team : 255;
+    f.team = a.present ? a.team : TEAM_ANY;
     f.station_id = a.present ? a.id : 0;
     f.threshold = stick_default_threshold_dbm(f.kind);  // D5: per-kind, overwritten below once assigned
     // A67: the threshold and TX power applied NOW, where each came from, and the on-station edit log
@@ -1097,6 +1098,8 @@ static void mcLoop(uint32_t now) {
     f.boot_count = bootCount;
     f.assoc = link.mode() == AssocMode::HELD ? "held" : "muster";
     f.lock_s = (long)link.lock().remaining_s(now);
+    f.actions_dropped = link.pending_actions_dropped();   // O10: CLAIM reports the full queue evicted, since this arm
+    if (link.assignment().present) f.actions_dropped_game = link.assignment().game;
     if (link.has_control_assignment()) {
       // §5c: the station is self-authoritative, so it reports the point, as utility.js's status does.
       const BleControlPoint& h = link.hill();
@@ -1123,15 +1126,15 @@ static void mcLoop(uint32_t now) {
   // welcomed this socket and the clock is synced (action_flush_allowed, station_ui.h), left queued otherwise (bounded, station_link.h's PendingActionQueue). `ACTIONS` gates
   // `maybe_build_taken_action` itself, so a report is simply dropped, never built, while it is off.
   if (action_flush_allowed(ws.isConnected(), link.state(), mcClock.synced)) {  // welcomed, clock synced (M3)
-    PendingTakenReport rep;
-    while (link.pop_pending_action(rep)) {
-      std::string body = maybe_build_taken_action(link, rep, now, mcClock.offset_ms);   // age_ms computed now, at send time
-      if (!body.empty()) {
-        std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), mcClock.epoch(now));
-        String envArduino(env.c_str());
-        ws.sendTXT(envArduino);
-      }
-    }
+    // O10: peek, send, and discard only when `sendTXT` returned true. A failed send keeps the report
+    // queued for the next pass (the queue is bounded; an overflow is counted into the status
+    // heartbeat). `station_action` has no acknowledgement on the wire (contracts.md section 5), so a
+    // true `sendTXT` is the strongest signal this link has that the frame left the Stick.
+    flush_pending_actions(link, now, mcClock.offset_ms, [&](const std::string& body) {
+      std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), mcClock.epoch(now));
+      String envArduino(env.c_str());
+      return ws.sendTXT(envArduino);
+    });
   }
 
 }

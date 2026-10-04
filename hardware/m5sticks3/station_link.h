@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "brx_advert.h"
+#include "contract.gen.h"
 #include "json_lite.h"
 #include "presence.h"  // the Bluetooth hill and the revive count a control/respawn assignment runs
 #include "station_range.h"  // F365/A67: the on-station range edit and its sync (STICK_DEFAULT_THRESHOLD_DBM)
@@ -82,7 +83,7 @@ struct StationItem {
 struct StationAssignment {
   bool present = false;
   std::string kind;  // "respawn" | "powerup" | "extraction" | "bomb" | "control"
-  int team = 255;     // TEAM_ANY
+  int team = TEAM_ANY;
   int id = 0;
   int threshold = STICK_DEFAULT_THRESHOLD_DBM;  // dBm; parse_station_config resolves 0/absent to stick_default_threshold_dbm(kind)
   bool threshold_defaulted = false;  // MC sent 0/absent: `threshold` is the Stick's default, not MC's
@@ -121,7 +122,7 @@ inline bool same_powerup_claim_scope(const StationAssignment& before, const Stat
 // re-push (MC re-sends the current config mid-match as the lock's carrier), and lock_s 0 unlocks at
 // once. The state machine is in RAM, while F391 snapshots its remaining time to NVS. An ordinary
 // restart restores that snapshot. A+B held 7 s clears the saved lock before the forced restart.
-constexpr int MATCH_LOCK_MAX_S = 7200;
+constexpr int MATCH_LOCK_MAX_S = contract::STATION_LOCK_MAX_S;
 
 inline int clamp_lock_s(long v) {
   if (v < 0) return 0;
@@ -219,14 +220,14 @@ struct StatusFields {
   std::string app_ver;
   std::string platform = "esp32";
   std::string kind = "respawn";  // the current advert kind, whatever MC last armed (or the default)
-  int team = 255;
+  int team = TEAM_ANY;
   int station_id = 0;
-  int threshold = -57;
+  int threshold = STICK_DEFAULT_THRESHOLD_DBM;
   bool live = false;    // currently advertising
   bool armed = false;   // MC has armed this station (a station_config was applied)
   int battery_pct = -1; // -1 = absent (no battery reading yet)
   bool has_control = false;
-  int control_owner = 255;
+  int control_owner = TEAM_ANY;
   int control_progress = 0;
   bool control_contested = false;
   // Additive (left unset, the body is byte-identical to the older shape and its goldens): the
@@ -254,6 +255,10 @@ struct StatusFields {
   std::string tx_power_src;
   int64_t tx_power_edit_age_ms = -1;
   std::string range_edits_json;
+  // O10 (additive; sent whenever the health fields are, 0 included, so a Stick reboot shows as a LOWER count): CLAIM reports the
+  // queue evicted when full, since this arm (it resets on a new game byte or station). MC keeps the maximum per (node, game, arm), so a Stick reboot in the same game does not erase the loss, and shows it only for the current game.
+  uint32_t actions_dropped = 0;
+  int actions_dropped_game = -1;   // the game byte `actions_dropped` was counted under; -1 = not armed (left out)
 };
 
 inline std::string build_status_body(const StatusFields& f) {
@@ -307,6 +312,8 @@ inline std::string build_status_body(const StatusFields& f) {
       j += ",\"tx_power_edit_age_ms\":" + std::to_string(f.tx_power_edit_age_ms);
   }
   if (!f.range_edits_json.empty() && f.range_edits_json != "[]") j += ",\"range_edits\":" + f.range_edits_json;
+  if (f.has_health || f.actions_dropped > 0) j += ",\"actions_dropped\":" + std::to_string(f.actions_dropped);
+  if (f.actions_dropped_game >= 0) j += ",\"actions_dropped_game\":" + std::to_string(f.actions_dropped_game);
   j += "}";
   return j;
 }
@@ -318,8 +325,8 @@ inline std::string build_status_body(const StatusFields& f) {
 // fixed plausible base; MC dates a station's boots from uptime_s/boot_count, never from `t`
 // (bench 2026-09-24: every Stick hello was refused until this).
 constexpr int64_t CLOCK_BASE_MS = 1'790'000'000'000LL;     // 2026-09, inside MC's accepted range
-constexpr int64_t CLOCK_T_MIN_MS = 1'500'000'000'000LL;    // envelope.py T_MIN_MS
-constexpr int64_t CLOCK_T_MAX_MS = 4'000'000'000'000LL;    // envelope.py T_MAX_MS
+constexpr int64_t CLOCK_T_MIN_MS = contract::T_MIN_MS;
+constexpr int64_t CLOCK_T_MAX_MS = contract::T_MAX_MS;
 struct McClock {
   int64_t offset_ms = CLOCK_BASE_MS;  // epoch ms = offset + millis()
   bool synced = false;
@@ -382,7 +389,7 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   if (!body.is_object() || !body.has("kind") || !body.has("id")) return a;
   a.present = true;
   a.kind = body.get("kind").as_string();
-  a.team = (int)body.get("team").as_int(255);
+  a.team = (int)body.get("team").as_int(TEAM_ANY);
   a.id = (int)body.get("id").as_int();
   int t = (int)body.get("threshold").as_int(0);
   a.threshold = (t == 0) ? stick_default_threshold_dbm(a.kind) : t;  // D5: the per-kind default, resolved once here
@@ -553,10 +560,8 @@ inline std::string parse_control_cmd(const json::Value& body) {
 
 // ---- what a powerup kind maps to on the advert's `kind` byte ----------------------------------
 inline uint8_t station_kind_byte(const std::string& kind) {
-  if (kind == "respawn") return KIND_RESPAWN;
-  if (kind == "powerup") return KIND_POWERUP;
-  if (kind == "extraction") return KIND_EXTRACTION;
-  if (kind == "bomb") return KIND_BOMB;
+  for (size_t i = 0; i < contract::STATION_KINDS_COUNT; ++i)
+    if (kind == contract::STATION_KINDS[i]) return (uint8_t)(i + 1);
   return KIND_CONTROL;  // "control", or anything MC would never actually send (it validates first)
 }
 
@@ -1008,7 +1013,10 @@ class PendingActionQueue {
         return;
       }
     }
-    if (entries_.size() >= CAPACITY) entries_.erase(entries_.begin());
+    if (entries_.size() >= CAPACITY) {
+      entries_.erase(entries_.begin());
+      dropped_++;   // O10: a claim MC will now never hear of. Counted, and reported in the status heartbeat.
+    }
     entries_.push_back(PendingTakenReport{station_id, player_num, spawn_instant_ms, t_ms});
   }
 
@@ -1025,8 +1033,24 @@ class PendingActionQueue {
     return true;
   }
 
+  // O10: the send path reads the oldest report WITHOUT removing it, and removes it (`discard_front`) only
+  // after `sendTXT` returned true, so a failed send keeps the claim queued for the next pass.
+  bool peek_front(PendingTakenReport& out) const {
+    if (entries_.empty()) return false;
+    out = entries_.front();
+    return true;
+  }
+  void discard_front() {
+    if (!entries_.empty()) entries_.erase(entries_.begin());
+  }
+  // O10: how many claims overflow evicted since boot (a clear() at a new game is not a drop: that is
+  // deliberate, and the game those reports belonged to is over).
+  uint32_t dropped() const { return dropped_; }
+  void reset_dropped() { dropped_ = 0; }
+
  private:
   std::vector<PendingTakenReport> entries_;
+  uint32_t dropped_ = 0;
 };
 
 // How long a MUSTER drop after a restore waits for MC's re-anchoring station_update (review round 1).
@@ -1263,7 +1287,7 @@ class StationLink {
   int threshold_advertised_dbm() const {
     return assignment_.present && assignment_.kind == "control" && assignment_.threshold_defaulted &&
                    !threshold_.from_station()
-               ? STICK_DEFAULT_THRESHOLD_DBM : threshold_.applied();
+               ? contract::STICK_HILL_ADVERT_THRESHOLD_DBM : threshold_.applied();
   }
   int tx_power_level() const { return tx_power_.applied(); }
   const SyncedSetting& threshold_setting() const { return threshold_; }
@@ -1466,6 +1490,10 @@ class StationLink {
     }
     // A56 (brx5): unsent `taken` reports belong to the game they were awarded in; a new game drops them.
     if (game_changed) pending_actions_.clear();
+    // O10: the dropped-claim count belongs to the game (and place) it was counted in: a new game byte or a new
+    // station kind/id starts it at 0. The Stick does not know MC's match id, so it names the GAME BYTE it was armed
+    // with (`actions_dropped_game`) and MC shows the count only while that is the current game.
+    if (game_changed || kind_or_id_changed) pending_actions_.reset_dropped();
     assignment_ = a;
     lock_deadline_known_ = a.lock_s > 0;
     assignment_.timed_hill = a.kind == "control" && (deadline_known_ || hill_.frozen || a.duration_ms > 0);
@@ -1665,6 +1693,10 @@ class StationLink {
   }
 
   bool pop_pending_action(PendingTakenReport& out) { return pending_actions_.pop_front(out); }
+  // O10: the send path peeks, sends, and discards only on success (see PendingActionQueue::peek_front).
+  bool peek_pending_action(PendingTakenReport& out) const { return pending_actions_.peek_front(out); }
+  void discard_pending_action() { pending_actions_.discard_front(); }
+  uint32_t pending_actions_dropped() const { return pending_actions_.dropped(); }
   bool has_pending_actions() const { return !pending_actions_.empty(); }
   size_t pending_action_count() const { return pending_actions_.size(); }
 

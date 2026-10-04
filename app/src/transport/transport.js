@@ -218,7 +218,7 @@ export class Transport {
     this.priorUtilityConsumed = false;
     this._priorUtilityOffered = false;
     /** @type {TransportBody} */ this.context = {}; // last welcome.node / assign / config / start
-    this.ring = new Ring({ storage, key: `${keyPrefix}.outbox`, now });
+    this.ring = new Ring({ storage, key: `${keyPrefix}.outbox`, now, log: l => console.warn('[outbox]', l) });
     this.clock = new Clock({ storage, key: `${keyPrefix}.clock`, now });
     // Review pass 1 (security): a url the USER never provided -- one the LAN sweep found by opening a
     // socket to it -- is an UNTRUSTED peer until it proves it is Mission Control by welcoming us. Any
@@ -349,6 +349,10 @@ export class Transport {
                    ...(this._claimedTransport() ? { transport: this._claimedTransport() } : {}),   // F309: restated every beat
                    preflight: { ...this.preflight, ...(body.preflight || {}) } };
     const dropped = this.ring.takeDropped(); if (dropped) full.dropped = (full.dropped || 0) + dropped;
+    // O6: `dropped` is the per-beat delta (MC overwrote it with the latest one, so a lost beat lost the count). `outbox_lost` names the
+    // match it counts and says how many of ITS facts the outbox dropped (a bounded per-match map in storage), so MC shows a loss
+    // only against the match it belongs to and never needs a baseline. Sent whenever the phone knows its match.
+    if (this.matchId) full.outbox_lost = { match_id: this.matchId, n: this.ring.lostFor(this.matchId) };
     return this._sendKind('status', full);
   }
   /** F309: the phone's own connection (Capacitor Network `connectionType`). MC counts a phone as covered

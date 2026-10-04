@@ -16,6 +16,7 @@ Review the gallery (`python3 hardware/m5sticks3/sim/stick_sim.py`) before flashi
 """
 import importlib.util
 import pathlib
+import re
 import shutil
 
 from _skip import needs
@@ -102,3 +103,10 @@ def test_f398_countdown_ring_clears_its_text_in_measured_pixels():
             for t in labels:
                 assert not sim._overlap(ring["box"], t["box"], sim.SHAPE_GAP), (
                     f"{name}: the ring {ring['box']} is within {sim.SHAPE_GAP} px of '{t['text']}' {t['box']}")
+
+
+def test_mockup_palette_has_no_green_team_and_purple_matches_the_console():
+    """hardware/m5sticks3/mockups/render.py still drew team 3 green after the Stick itself went purple."""
+    src = (ROOT / "hardware/m5sticks3/mockups/render.py").read_text(encoding="utf-8")
+    colours = re.search(r"TEAM_COLOR = \{(.*?)\n\}", src, re.S).group(1)
+    assert '"green"' not in colours and '"purple": (191, 76, 230)' in colours

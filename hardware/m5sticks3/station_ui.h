@@ -88,6 +88,30 @@ inline std::string maybe_build_taken_action(const StationLink& link, const Pendi
   return build_station_action_taken_body(rep.station_id, rep.player_num, rep.t_ms + epoch_offset_ms, age);
 }
 
+// O10: drain the queued CLAIM reports through `send(body) -> bool` (the glue passes `ws.sendTXT`). A report
+// leaves the queue only after `send` returned true; the first failure stops the pass and keeps the
+// report (and every one behind it) queued for the next one. A report that `maybe_build_taken_action`
+// builds as empty (ACTIONS off) is discarded: deliberately nothing to send. `station_action` has no
+// acknowledgement on the wire, so a true `send` is the strongest signal the link has. KNOWN GAP (review
+// 2026-10-04): a true `sendTXT` only means the frame was handed to the socket; if the socket dies before MC
+// reads it, the claim is lost with no count. The only acknowledgement in the wire today is `ack{seq_hi}`, and it
+// covers persisted facts (`event` / `event_batch`, per-node `seq`) only: `station_action` is live-only and carries
+// no `seq`, and MC never replies to it. Closing the gap needs a wire change (a seq'd fact or an action ack), so
+// it is filed, not invented here. Returns the number of reports sent.
+template <typename SendFn>
+inline size_t flush_pending_actions(StationLink& link, uint32_t now_ms, int64_t epoch_offset_ms, SendFn send) {
+  size_t sent = 0;
+  PendingTakenReport rep;
+  while (link.peek_pending_action(rep)) {
+    std::string body = maybe_build_taken_action(link, rep, now_ms, epoch_offset_ms);
+    if (body.empty()) { link.discard_pending_action(); continue; }
+    if (!send(body)) break;
+    link.discard_pending_action();
+    sent++;
+  }
+  return sent;
+}
+
 // The stats pages a short press cycles through ("view stats, local only"): station kind, who took
 // the item last, time to the next spawn, MC link, battery. `LAST_ITEM`/`NEXT_SPAWN` only mean
 // anything on a powerup station -- the .ino shows a dash on any other kind, not a crash or a stale

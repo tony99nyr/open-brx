@@ -77,6 +77,14 @@ const kb = (n?: number) => (n == null ? '' : n >= 1024 ? `${Math.round(n / 1024)
 
 /** One node's log line. Always rendered — a row that vanishes when a phone has said nothing reads as
  *  "fine", and "the phone has not said" is exactly what the operator needs to know before a match. */
+/** O6: the phone's outbox dropped facts THIS match (count or age cap): the recap may be short of what the player did.
+ *  `n` is MC's `NodeView.outbox_lost`. A rostered player's card gets the same line from MC in `ambers` (so the card reads
+ *  CHECK and counts in the AMBER tile); this is for the unclaimed phone's node card. Absent or 0 draws nothing. */
+function OutboxLost({ n }: { n?: number | null }) {
+  if (!n || n <= 0) return null;
+  return <Alert id="armory-nodecard-outbox-lost" testid="outbox-lost" what={`${n} ${n === 1 ? 'FACT' : 'FACTS'} LOST FROM THE PHONE OUTBOX`} act="CHECK THIS PLAYER'S RECAP BY HAND" />;
+}
+
 function LogCell({ log }: { log?: LogView }) {
   const st = log?.state ?? 'none';
   const { text, color } = LOG_LABEL[st] ?? LOG_LABEL.none;
@@ -143,6 +151,8 @@ export function Armory() {
 
   return (
     <div className="screen" style={{ maxWidth: 1380, margin: '0 auto' }}>
+      <RestoreFailedBanner />
+      <ArmoryCorruptBanner />
       <RestoredBanner />
       <ScreenHeader kicker="[ A1 // GEAR CHECK ]" title="Readiness Board" right={
         <>
@@ -326,6 +336,45 @@ function useBackhaul(): { control: ReactNode; errLine: ReactNode } {
     );
   }
   return { control, errLine };
+}
+
+/** O1 (operator review 2026-10-03): a session.json that could not be restored used to leave one terminal
+ *  line and a half roster. MC now restores nothing partial and moves the file aside; this says so. */
+function RestoreFailedBanner() {
+  const { state } = useStore();
+  const f = state?.restore_failed;
+  if (!f) return null;
+  const detail = `${f.reason} · ${f.kept ? `KEPT AT ${f.kept}` : 'THE FILE COULD NOT BE MOVED ASIDE'}`;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <Alert id="armory-restore-failed-banner" testid="restore-failed-banner" size={12}
+        what={f.kept ? 'SESSION FILE COULD NOT BE RESTORED, THE ROSTER STARTED EMPTY' : 'SESSION FILE COULD NOT BE RESTORED OR MOVED ASIDE, THE ROSTER STARTED EMPTY'}
+        act="REBUILD THE ROSTER" />
+      <div data-testid="restore-failed-detail" style={{ font: F.mono(500, 11), color: T.dim, marginTop: 4, overflowWrap: 'anywhere' }}>{detail}</div>
+    </div>
+  );
+}
+
+/** O2: armory.json is corrupt. MC leaves it in place (backup copy beside it) and shows whatever guns it can still find, which is
+ *  NOT the operator's armory: say so, with where the file went. Absent on a healthy armory and on an older server. */
+function ArmoryCorruptBanner() {
+  const { state, run, api } = useStore();
+  const c = state?.armory_corrupt;
+  if (!c) return null;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {/* children, not what/act: the helper upper-cases words and the path must stay copyable as it is */}
+      <Alert id="armory-corrupt-banner" testid="armory-corrupt-banner" size={12}>
+        {c.unreadable ? 'ARMORY FILE COULD NOT BE READ: GUNS BELOW MAY NOT BE YOUR FULL ARMORY' : null}
+        {c.unreadable ? null : <>ARMORY FILE IS CORRUPT: {c.kept ? <>BACKUP AT <span style={{ textTransform: 'none' }}>{c.kept}</span></> : 'NO BACKUP COULD BE MADE'}: GUNS BELOW ARE NOT YOUR FULL ARMORY AND NO GUN CAN BE SAVED UNTIL YOU DISMISS. DISMISS MOVES THE CORRUPT FILE ASIDE AND STARTS A FRESH ARMORY</>}
+      </Alert>
+      <div data-testid="armory-corrupt-detail" style={{ font: F.mono(500, 11), color: T.dim, marginTop: 4, overflowWrap: 'anywhere' }}>{c.error}</div>
+      <span data-testid="armory-corrupt-dismiss">
+        <GhostButton size={11} pad="6px 12px" onClick={async () => { await run(() => api.dismissArmoryCorrupt()); }}
+          title="moves the corrupt file aside and starts a fresh armory; the warning stays until you dismiss it">DISMISS</GhostButton>
+      </span>
+    </div>
+  );
 }
 
 /** F142 (field 2026-09-12, ISSUE 11/11b) — a `--demo` session persisted into `~/.brx-mcp/` and was
@@ -575,7 +624,7 @@ function AppVerRow({ app_ver, platform }: { app_ver?: string | null; platform?: 
  *  whole console down with it for the first ~300 ms of every session — the e2e walk had been
  *  sleeping past it rather than seeing it (review 2026-09-12). The skill's rule: write down what
  *  the UI does when a field is absent, because an older server or an earlier snapshot is normal. */
-function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id?: string | null; gun_tail?: string | null; gun_name?: string | null; arm_state?: string | null; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; app_ver?: string | null; platform?: string | null; log?: LogView | null; preflight?: { phone_batt?: number | null } | null; stale?: boolean | null } }) {
+function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id?: string | null; gun_tail?: string | null; gun_name?: string | null; arm_state?: string | null; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; app_ver?: string | null; platform?: string | null; log?: LogView | null; preflight?: { phone_batt?: number | null } | null; stale?: boolean | null; outbox_lost?: number | null } }) {
   const { state, run, api } = useStore();
   const [name, setName] = useState('');
   const hasGun = !!n.gun_name;
@@ -644,6 +693,7 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
       </div>
       {/* A25: always asks, whatever `log_sync` is set to — `reason: "manual"` is never gated. */}
       <PullLogButton node_id={n.node_id ?? ''} />
+      <OutboxLost n={n.outbox_lost} />
       {/* armory-nodecard-waiting-for-gun: NEUTRAL, not amber — a phone with no gun set yet is a normal
           muster step, nothing has gone wrong (F221, Tony 2026-09-25). */}
       {!stale && !hasGun && <Alert id="armory-nodecard-waiting-for-gun" what="WAITING FOR ITS GUN" act="SET IT ON THE PHONE" />}

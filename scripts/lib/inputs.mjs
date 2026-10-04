@@ -34,7 +34,7 @@ const rows = {
 
 for (const name of ['koth', 'backhaul', 'kit-continue', 'end-delivery', 'standby', 'm2-ui', 'game-edit',
   'operator-menu', 'report', 'frame', 'lobby-updating', 'recap-next', 'feed-reload', 'mc-restart',
-  'live-board', 'vqa2', 'play', 'build', 'lobby-outcome']) {
+  'live-board', 'vqa2', 'play', 'build', 'lobby-outcome', 'observability']) {
   rows[`mc-${name}`] = [...MC, DOWNLOAD, ...WEB_LOCK];
 }
 

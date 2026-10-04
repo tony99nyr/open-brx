@@ -47,10 +47,11 @@ a count change re-splits) and the KOTH hold target (F415). `scripts/land.mjs` (t
   0.4.18 cut; both are pushed and need their gates.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.
 ## Lane: brx4, the engine and the StickS3
-**State:** engine polish since 0.4.15 landed (4fc70211): F416 holds through a relink reconcile, re-sends whole over a
-held heavy, needs the live count, stands down at the whistle; ALT in a reload's stale tail is a swap; a self-kill
-keeps the pickup. A2 aligned the phone and Stick stations on one shared fixture; A3 pins every stage constant.
-**Next:** bench: step 11's heavy case (F438), F450 (Stick reflash for A2), F398 from a recorded sha. Stick: as before.
+**State:** architecture items landed: #6 golden traces (6839d50e: `app/test/fixtures/traces/`, engine + GunStage
+runners), #5 the presentation gate (`Engine.show`, `state().presented`) and #1 the powerup module
+(`app/src/powerup-player.js`, pure `burstWithHeld`), together in 60b98c71. A refactor of engine code proves "no
+behaviour change" with the golden traces: never re-record with `--accept` to make one pass.
+**Next:** bench: step 11's heavy case (F438), F450 (Stick reflash for A2), F398 from a recorded sha.
 **Blocked:** none.
 ## Lane: brx5, powerups, the HUD and gun audio
 **State:** overnight 2026-10-03 polish of F437-F439, F446, F434: a lethal toxin hit no longer cuts the scream with

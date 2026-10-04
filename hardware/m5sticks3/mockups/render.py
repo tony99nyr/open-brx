@@ -56,14 +56,14 @@ TEAM_COLOR = {
     "blue": (58, 134, 255),
     "yellow": (255, 210, 63),
     "red": (244, 63, 94),
-    "green": (46, 204, 113),
+    "purple": (191, 76, 230),   # team 3: the console's purple, never green (station_render.h)
     None: (90, 104, 120),      # neutral / unassigned
 }
 TEAM_INK = {
     "blue": (4, 18, 30),
     "yellow": (26, 20, 0),
     "red": (26, 4, 4),
-    "green": (4, 26, 12),
+    "purple": (24, 4, 30),
     None: NUM,
 }
 
