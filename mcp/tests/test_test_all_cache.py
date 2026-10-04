@@ -3,9 +3,8 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
-
-import pytest
 
 from _skip import needs
 
@@ -24,20 +23,29 @@ def _node(expr: str, cwd: Path = REPO, env=None):
     return res.stdout.strip()
 
 
-@pytest.fixture
-def git_repo(tmp_path):
-    needs(GIT, "git")
-    root = tmp_path / "repo"
-    root.mkdir()
-    subprocess.run([GIT, "init", "-q"], cwd=root, check=True)
-    subprocess.run([GIT, "config", "user.email", "test@example.invalid"], cwd=root, check=True)
-    subprocess.run([GIT, "config", "user.name", "Cache Test"], cwd=root, check=True)
-    (root / "src").mkdir()
-    (root / "src" / "input.txt").write_text("one\n")
-    (root / "other.txt").write_text("other\n")
-    subprocess.run([GIT, "add", "-A"], cwd=root, check=True)
-    subprocess.run([GIT, "commit", "-qm", "initial"], cwd=root, check=True)
-    return root
+def _temporary_path(test):
+    def run():
+        with tempfile.TemporaryDirectory() as directory:
+            return test(Path(directory))
+    return run
+
+
+def _git_repo(test):
+    def run():
+        needs(GIT, "git")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"
+            root.mkdir()
+            subprocess.run([GIT, "init", "-q"], cwd=root, check=True)
+            subprocess.run([GIT, "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+            subprocess.run([GIT, "config", "user.name", "Cache Test"], cwd=root, check=True)
+            (root / "src").mkdir()
+            (root / "src" / "input.txt").write_text("one\n")
+            (root / "other.txt").write_text("other\n")
+            subprocess.run([GIT, "add", "-A"], cwd=root, check=True)
+            subprocess.run([GIT, "commit", "-qm", "initial"], cwd=root, check=True)
+            return test(root)
+    return run
 
 
 def _input_hash(root: Path, inputs=("src/**",)) -> str:
@@ -54,6 +62,7 @@ def _needs_node_git(root: Path):
           "Node child_process git access")
 
 
+@_git_repo
 def test_input_tree_hash_tracks_tracked_and_untracked_files_but_ignores_unrelated(git_repo):
     _needs_node_git(git_repo)
     initial = _input_hash(git_repo)
@@ -69,6 +78,7 @@ def test_input_tree_hash_tracks_tracked_and_untracked_files_but_ignores_unrelate
     assert _input_hash(git_repo) == untracked_changed
 
 
+@_git_repo
 def test_input_tree_hash_does_not_change_the_real_git_index(git_repo):
     _needs_node_git(git_repo)
     before = subprocess.check_output([GIT, "write-tree"], cwd=git_repo, text=True).strip()
@@ -80,6 +90,7 @@ def test_input_tree_hash_does_not_change_the_real_git_index(git_repo):
     assert after == before
 
 
+@_git_repo
 def test_input_tree_hash_tracks_same_size_edit_in_same_second(git_repo):
     _needs_node_git(git_repo)
     path = git_repo / "src" / "input.txt"
@@ -100,6 +111,7 @@ def test_cache_key_includes_job_command_environment_fingerprint_and_input_hash()
     assert len(set(keys)) == len(keys)
 
 
+@_git_repo
 def test_cache_stores_only_success_and_rejects_before_after_input_mismatch(git_repo):
     _needs_node_git(git_repo)
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(async m => {{"
@@ -118,6 +130,7 @@ def test_cache_stores_only_success_and_rejects_before_after_input_mismatch(git_r
     assert result["passed"]["exit"] == 0
 
 
+@_git_repo
 def test_expired_cache_entries_are_ignored(git_repo):
     _needs_node_git(git_repo)
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(async m => {{"
@@ -150,6 +163,7 @@ def test_ambient_test_controls_disable_cache_lookups_and_stores():
     assert all(values[:-1]) and values[-1] is None
 
 
+@_git_repo
 def test_environment_allowlist_and_git_index_flags(git_repo):
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(JSON.stringify(["
             "m.cacheBypassReason({PATH:'/bin',HOME:'/home/test',WSL_DISTRO_NAME:'Ubuntu',XDG_RUNTIME_DIR:'/run/user/1',"
@@ -162,6 +176,19 @@ def test_environment_allowlist_and_git_index_flags(git_repo):
     assert "core.splitIndex=false" in source and "core.fsmonitor=false" in source
 
 
+def test_pnpm_environment_does_not_bypass_but_node_options_does():
+    expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(JSON.stringify(["
+            "m.cacheBypassReason({INIT_CWD:'/repo',PNPM_SCRIPT_SRC_DIR:'/repo',npm_lifecycle_event:'test',"
+            "npm_package_name:'brx',npm_config_registry:'https://registry.npmjs.org'}),"
+            "m.cacheBypassReason({NODE_OPTIONS:'--require=hook'}),"
+            "m.cacheBypassReason({npm_config_node_options:'--require=hook'}),"
+            "m.cacheBypassReason({npm_config_script_shell:'/bin/bash'})])))")
+    assert json.loads(_node(expr)) == [None, "environment variable affects test results: NODE_OPTIONS",
+                                      "environment variable affects test results: npm_config_node_options",
+                                      "environment variable affects test results: npm_config_script_shell"]
+
+
+@_git_repo
 def test_input_tree_hash_bypasses_assume_unchanged_and_skip_worktree(git_repo):
     _needs_node_git(git_repo)
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => {{try {{m.inputTreeHash("
@@ -174,6 +201,7 @@ def test_input_tree_hash_bypasses_assume_unchanged_and_skip_worktree(git_repo):
         subprocess.run([GIT, "update-index", "--no-" + flag[2:], "src/input.txt"], cwd=git_repo, check=True)
 
 
+@_temporary_path
 def test_installed_npm_dependency_fingerprint_and_missing_marker(tmp_path):
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => {{"
             f"const root={json.dumps(str(tmp_path))};"
@@ -189,6 +217,7 @@ def test_installed_npm_dependency_fingerprint_and_missing_marker(tmp_path):
     assert first != second
 
 
+@_git_repo
 def test_mcp_cache_context_changes_with_head_and_local_date(git_repo):
     _needs_node_git(git_repo)
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(JSON.stringify(["
@@ -226,6 +255,7 @@ def test_cache_key_ignores_worker_counts_and_shard_parallelism():
     assert other[0] == other[1] and other[2] == other[3]
 
 
+@_git_repo
 def test_old_orphaned_temporary_files_are_pruned(git_repo):
     _needs_node_git(git_repo)
     folder = git_repo / ".git" / "brx-test-cache"
@@ -239,6 +269,7 @@ def test_old_orphaned_temporary_files_are_pruned(git_repo):
     assert not old.exists() and fresh.exists()
 
 
+@_git_repo
 def test_stopping_prevents_cache_store(git_repo):
     _needs_node_git(git_repo)
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(m.storePass("
@@ -257,6 +288,7 @@ def test_runner_hashes_before_shared_builds_and_checks_outputs_before_all_hit_ex
     assert json.loads(_node(expr)) == [True, False, False]
 
 
+@_temporary_path
 def test_output_freshness_rejects_missing_and_stale_bundles(tmp_path):
     (tmp_path / "app/src").mkdir(parents=True)
     (tmp_path / "app/src/view.js").write_text("source")
