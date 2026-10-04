@@ -117,9 +117,9 @@ def test_the_fallback_compiler_does_not_play_the_victory_sting_at_every_game_ove
 
     Pinned as an inequality plus a key check rather than a literal, so it keeps holding if either
     sound id is later re-pinned by ear."""
-    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.compile import golden_bundle
     from brx_mcp.mc.fakes import FakeCompiler
-    real, fake = Compiler().cues("male"), FakeCompiler().cues("male")
+    real, fake = golden_bundle()["cues"], FakeCompiler().cues("male")   # D4: what the real compiler SHIPS
     assert fake["game_over"] != real["victory"], (
         "the fallback compiler files the VICTORY frame under game_over — everyone hears the win sting")
     assert "victory" in fake, "the fallback compiler has no victory cue at all"

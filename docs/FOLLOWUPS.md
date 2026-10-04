@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-03. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-10-04. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,16 +9,16 @@ Updated: 2026-10-03. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 69.** Desk 4 · bench 63 · decision 2.
+**MVP open: 69.** Desk 3 · bench 64 · decision 2.
 
-**MVP DESK (4),** a keyboard is enough:
+**MVP DESK (3),** a keyboard is enough:
 - 🟠 **F444** · **F448**
-- 🟡 **F442** · **F398**
+- 🟡 **F442**
 
-**MVP BENCH (63),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (64),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
-- 🟠 **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F365** · **S57** · **F379** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F376** · **Q13** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231**
-- 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F386** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **S10**
+- 🟠 **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F365** · **S57** · **F379** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231**
+- 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **S10**
 - 🟢 **F339**
 
 **MVP DECISION (2),** awaiting Tony:
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F449 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F450 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -58,7 +58,6 @@ A keyboard is enough. Highest value first.
 
 - **F448 🟠 A STATION THAT LEFT (BACK TO HUD OR RELEASED) IS NOT NAMED, AND CANNOT BE RESTORED IN ONE TAP.** Bench 2026-10-02: after a match the hill assignment was gone. Tony picked option B. Separately, `c5840639` on main pins the hill across END and NEXT MATCH. Built on the unlanded branch `feat/station-departure-restore` (`50035719`, polish rounds 1 and 2 done): MC names the departed station in the KOTH LOAD refusal and on ITEMS, offers a one-tap RESTORE when the same node returns (never automatic), and a DISMISS. Left: `pnpm run test:all -- --ui` on the branch, land it, then bench it (the re-bench sheet). Owner brx3. `build` + `bench`.
 
-- **F398 🟡 THE STICK'S LOBBY COUNTDOWN SCREEN OVERLAPS ITS OWN TEXT.** Sitting B, 2026-09-25 (the deliberate screen walk, closed as F333): the loading indicator on the countdown screen overlaps the word SPAWN. Shift the indicator up. `eyes` + `build`. **→ 2026-09-25 built (`60a52f03`):** the ring moved up, gated in the simulator. **→ 2026-09-26, bench part 1:** the full walk (EMPTY, countdown, READY, TAKEN, CAPTURING, HOLDS, CONTESTED, LOSING, MATCH OVER) read fine at arm's length except this row's own SPAWN overlap, still seen. `bench`. **→ 2026-10-03:** the ring fix (`aeabfc17`) predates bench part 1 and did not hold on the real panel, while the simulator gate passed. Re-fix the ring against the real panel geometry, and make the simulator gate fail on today's layout first. Then bench the countdown screen at arm's length (Stick sheet). Owner brx4. `build` + `eyes`.
 
 ## MVP BENCH
 
@@ -106,6 +105,8 @@ sheets follow, in the order `bench-plan.md` gives.
 - **F392 🟡 AN UNLOCKED SINGLE CLICK STOPPED RESTARTING THE STICK AFTER LINK OFF + LINK HELD + LINK RECONNECT.** After that sequence the Stick sat at JOINING WI-FI (uptime about 5700 s); a single side-button click did not restart it, though the PMIC read `2a/00` (unlocked) and the same click had restarted it earlier in the session. F332's own control (an unlocked click restarts) failed only in this state. Needs a repro: does a long Wi-Fi connect attempt block the M5PM1 register read, or does something re-lock the button mid-join? `bench`. **→ 2026-09-25:** no desk cause found; every PMIC write is now logged with its value and reason (`60a52f03`). Bench: repro with the serial log on.
 
 - **F397 🟡 THE STICK FORGETS ITS TYPED MC ADDRESS ON RESTART.** MC was restarted from `main` this sitting (`6408a3db`); the Stick had to be re-typed with the `MC ws://…` fallback afterwards rather than keeping the last-typed address (Wi-Fi credentials do survive a reflash, `bench-2026-09-24.md` Block 8 step 1, but the typed MC dial did not survive this restart). Save the typed MC URL to NVS alongside the Wi-Fi credentials. `bench` + `build`. **→ 2026-09-25 built (`60a52f03`):** the typed URL persists and wins over mDNS; mDNS takes over after three failed dials. Bench: restart MC, restart the Stick. **→ 2026-10-03:** on main. Bench: restart MC, then the Stick; pass = it rejoins with no re-type (`bench-stick-2026-09-29.md` step 11). Once proven, drop the re-type lines from `bench-plan.md`. Owner brx4. `bench`.
+
+- **F398 🟡 THE STICK'S LOBBY COUNTDOWN SCREEN OVERLAPS ITS OWN TEXT.** Sitting B, 2026-09-25 (the deliberate screen walk, closed as F333): the loading indicator on the countdown screen overlaps the word SPAWN. Shift the indicator up. `eyes` + `build`. **→ 2026-09-25 built (`60a52f03`):** the ring moved up, gated in the simulator. **→ 2026-09-26, bench part 1:** the full walk (EMPTY, countdown, READY, TAKEN, CAPTURING, HOLDS, CONTESTED, LOSING, MATCH OVER) read fine at arm's length except this row's own SPAWN overlap, still seen. **→ 2026-10-03 desk:** the simulator now measures the ring's ink (it saw text only, and the old guard compared a constant with a hand-copied 99); the layout clears NEXT SPAWN by 9 px in real M5GFX 0.2.28 pixels, and the sim uses the same library and 240x135 canvas as the Stick. No sim-panel divergence found; the 2026-09-26 sighting has no firmware sha. Bench check pending: `bench-sticks3-2026-09-23.md` step 6 (flash a known sha, photograph). `bench`.
 
 - **F386 🟡 A STICK HILL KEEPS COUNTING AFTER THE MATCH ENDS.** After a timed match end the Stick still read GREEN HOLDS and its possession tally kept rising; a station has no end-of-match signal (`hardware/m5sticks3/README.md` §5g.2, already known), so an armed hill runs on past the whistle. Desk build, 2026-09-25: MC now sends A68 deadlines and zero on END, RECALL or PANIC; the Stick freezes its hill and RESET cannot restart the tally. A signed go-live offset in `station_config` starts the hill after the countdown. Bench-verify a timed whistle, an early end, MUSTER and an offline restart. `bench`. **→ 2026-09-25, Tony chose A (freeze on MATCH OVER); built:** A68 `starts_in_ms`/`ends_in_ms` at START, and `duration_ms` from LOAD, so a HELD Stick carried out before START anchors go-live on a player heard down then alive and ends at the time limit; the time left survives a restart (NVS). An operator or objective end does not reach an out-of-Wi-Fi Stick (accepted for MVP). Bench: sitting C, the carried-out step. **→ 2026-09-26, bench part 1: the timed-whistle half PASSES** (the Stick froze on "BLUE HOLDS · MATCH OVER", no hold timer shown, unlocked); early end, MUSTER and an offline restart were not re-run. **NEW, same match: the row's fix only ever froze the HILL screen — a powerup station's screen kept reading "NEXT SPAWN ROCKETS" and counting down after END.** A shorter symptom in the same sitting: a 2.8 s RANGE-hold control was cut short by the Stick jumping to "ROCKETS AVAILABLE" mid-hold (this confounded F387's short-hold control, see F387's own arrow). Cause (brx4): both are the 20 s HOME idle timeout (`HomeNav::poll_idle`), which never counted a held button as activity, sending the Stick home over whatever screen or hold was in progress. **→ 2026-09-26, built (brx4):** `c332b662` extends this row's own MATCH OVER freeze to a powerup station (the countdown stops, a post-whistle claim is refused, the screen shows the item plus MATCH OVER, no ring); `01050e27` fixes the idle timeout (`poll_idle` now takes a `button_down` parameter, so a held A/B never gets sent home mid-hold). Both compile clean on `main` (`26084fcf`). Bench part 2, reflash from `main`: (a) END in a powerup match, the Stick shows the item plus MATCH OVER and the countdown stops; (b) stand at the Stick after END, no grant; (c) the idle-timeout control done cleanly (open STATS, wait about 18 s, then hold A; RANGE opens at 5 s, serial log on); (d) after END, no phone sees the pickup as available. `bench`. **→ 2026-10-03:** (a) to (d) are `bench-stick-2026-09-29.md` step 8 (`bench-plan.md` Group 3). The hill half's early end, MUSTER and offline restart are on no current sheet yet (brx2 adds a step). Owner brx4. `bench`.
 
@@ -223,7 +224,7 @@ sheets follow, in the order `bench-plan.md` gives.
 
 - **F322 🟡 THE HEADSET RE-SENDS PROTOCOL 9 AND 10 HITS.** Code read, not bench-proven: the headset re-transmits a protocol-9 or protocol-10 hit it receives. We ship `$SIR,9,3` and `$SIR,10,0` rows (`gameconfig.py`), so one shot could land twice on a neighbour. Bench: capture what one protocol-9/10 hit sends from the victim's headset (Block 2b). `bench`.
 
-- **F376 🟠 IR RIG BOARD B (COM8) NEEDS A REFLASH: `ir_emit.ino` IS OLD AND MISREADS `--gap`.** Bench 2026-09-25, sitting A: board B ran as the F341/F350 shooter with no problem, but `ir-emit --help` fired a live 6-bit IR frame instead of printing help (harmless; no pool moved), and the firmware on board B does not carry the current `--gap` handling, which is misread as a bit count rather than a timing value. Reflash board B from `hardware/esp32-ir-bridge/` `main`. `bench` + `hardware`. **→ 2026-10-03:** the desk half is separate: `ir-emit` takes any first argument as the bits (`mcp/brx_mcp/__main__.py:1812`), so `--help` fires a frame. Make it accept only `[01]+` bits and print usage on `--help`. The bench half stays: reflash board B; pass = `ir-emit` echoes `gap=`. `bench` + `hardware`.
+- **F449 🟠 IR RIG BOARD B (COM8) NEEDS A REFLASH: `ir_emit.ino` IS OLD AND MISREADS `--gap`.** Bench 2026-09-25, sitting A: the firmware on board B does not carry the current `--gap` handling, which is misread as a bit count rather than a timing value. Reflash board B from `hardware/esp32-ir-bridge/` `main`. Split from F376, whose `ir-emit --help` half is closed. `bench` + `hardware`.
 
 ### Later: two guns, phones and Mission Control
 
