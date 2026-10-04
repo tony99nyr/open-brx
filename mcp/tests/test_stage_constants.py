@@ -65,7 +65,7 @@ TABLE = [
     ("STUN_DEFAULT_S", "engine.js", "STUN_DEFAULT_S", 1),      # already seconds in the JS
     ("DOT_ECHO_S", "engine.js", "DOT_ECHO_MS", 1000),
     ("DOT_KILL_S", "engine.js", "DOT_KILL_MS", 1000),
-    ("STATION_TEAM_ANY", "beacon.js", "TEAM_ANY", 1),
+    ("STATION_TEAM_ANY", "transport/contract.gen.js", "STATION_TEAM_ANY", 1),
 ]
 
 # Stage constants deliberately absent from the table, each with the reason.

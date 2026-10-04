@@ -1,3 +1,4 @@
+import { TEAM_KEYS, TEAM_INK_HEX } from '../transport/contract.gen.js';
 // The DOWN screen's recap. Tony 2026-09-23: "we can simplify what is shown, what were we killed by and just a few
 // callouts, it doesn't have to be a financial report". Pure functions of engine state; `hud.js` places the HTML.
 //  - The killer line: who, with what, and the hit that finished you (its damage, and gun or headset).
@@ -9,8 +10,8 @@
 // F423: tid 3 paints purple, not green (the gun/headset paint) -- MC's roster names it team_id
 // "purple" now (state.py TEAM_DEFS), and `st.teamKey` (engine.js TEAM_KEY) tracks that.
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', purple: 'var(--team-purple)' };
-const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', purple: '#140a1c' };
-const TID_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple' };
+const TEAM_INK = Object.fromEntries(TEAM_KEYS.map((key, tid) => [key, TEAM_INK_HEX[tid]]));
+const TID_KEY = Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key]));
 const HILL_NEUTRAL_TID = 2;   // engine.js HILL_NEUTRAL_TEAM: a neutral point broadcasts team 2
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

@@ -56,18 +56,12 @@ def _server_palette() -> dict[int, str]:
     return by_id
 
 
-def _js_team_key(path: pathlib.Path, const_name: str) -> dict[int, str]:
-    """Reads a `const NAME = { 0: 'red', 1: 'blue', ... }` object literal as plain text. Extra
-    non-numeric keys (`utility.js`'s `[TEAM_ANY]: 'any'`) are ignored — only the numbered ids matter
-    here."""
-    text = path.read_text(encoding="utf-8")
-    m = re.search(rf"const {re.escape(const_name)}\s*=\s*\{{([^}}]*)\}}", text)
-    assert m, f"{path.relative_to(REPO)} has no `const {const_name} = {{ ... }}`"
-    body = m.group(1)
-    out: dict[int, str] = {}
-    for tid_s, color in re.findall(r"(\d+)\s*:\s*'(\w+)'", body):
-        out[int(tid_s)] = color
-    return out
+def _generated_team_keys() -> dict[int, str]:
+    """Reads the generated team-key array used by the phone, console, and Stick."""
+    text = (REPO / "app" / "src" / "transport" / "contract.gen.js").read_text(encoding="utf-8")
+    m = re.search(r"export const TEAM_KEYS = Object\.freeze\(\[([^]]*)\]\);", text)
+    assert m, "contract.gen.js has no generated TEAM_KEYS array"
+    return {tid: key for tid, key in enumerate(re.findall(r"'([^']+)'", m.group(1)))}
 
 
 def _mock_teams(path: pathlib.Path) -> dict[int, str]:
@@ -82,8 +76,8 @@ def _mock_teams(path: pathlib.Path) -> dict[int, str]:
 
 
 SOURCES = {
-    "app/src/engine.js": lambda: _js_team_key(REPO / "app" / "src" / "engine.js", "TEAM_KEY"),
-    "app/src/utility.js": lambda: _js_team_key(REPO / "app" / "src" / "utility.js", "TEAM_KEYS"),
+    "app/src/engine.js": _generated_team_keys,
+    "app/src/utility.js": _generated_team_keys,
     "webapp/mc/src/mock/data.ts": lambda: _mock_teams(REPO / "webapp" / "mc" / "src" / "mock" / "data.ts"),
 }
 

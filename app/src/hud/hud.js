@@ -1,3 +1,4 @@
+import { TEAM_KEYS, TEAM_INK_HEX, ROLE_LABELS } from '../transport/contract.gen.js';
 // Phone HUD v2 renderer — a pure function of engine state (node.md §4). Landscape 844×390, scaled to
 // the viewport. Structure re-renders only when the state "signature" changes; live numbers patch in
 // place so CSS animations don't restart every tick. Moments (T-MINUS, KILL, DOWN, REDEPLOY) live in
@@ -15,12 +16,12 @@ import { medalIcon, medalChip } from './medalicons.js';   // the RECAP icons onl
 // (`state.py`'s preset/snapshot loaders) — the gun still paints purple regardless of which string MC
 // sends, so a stray "green" team_id must draw exactly like "purple", not fall back to the plain ink.
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', purple: 'var(--team-purple)', green: 'var(--team-purple)' };
-const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', purple: '#140a1c', green: '#140a1c' };
+const TEAM_INK = { ...Object.fromEntries(TEAM_KEYS.map((key, tid) => [key, TEAM_INK_HEX[tid]])), green: TEAM_INK_HEX[3] };
 // F424: engine.js's own possession tally (`st.possession.by_site`) is keyed by the raw numeric tid the
 // beacon carries (TEAM_KEY in engine.js, 0..3), but the board's teams (MC's `score.board`) come back
 // keyed by the colour string (`t.team_id`, e.g. "blue"). This is the same table, reversed, so a KOTH
 // board can look a team's hold up by its colour.
-const TEAM_TID = { red: 0, blue: 1, yellow: 2, purple: 3, green: 3 };
+const TEAM_TID = { ...Object.fromEntries(TEAM_KEYS.map((key, tid) => [key, tid])), green: 3 };
 const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 /** A countdown as one fixed-width cell per digit (F115). Saira Condensed has no tabular figures, so
  *  `font-variant-numeric:tabular-nums` silently does nothing and every value is a different width:
@@ -258,7 +259,7 @@ const MC_URL_HINT = 'ws://HOST-IP:8766/ws';
 const JOIN_GATED_ACTS = new Set(['onSetUrl', 'onScanQr', 'onJoinDiscovered', 'onReconnectMc']);
 const JOIN_ACT_VERB = { onScanQr: 'SCAN A NEW QR', onJoinDiscovered: 'JOIN THAT ADDRESS', onReconnectMc: 'RECONNECT', onSetUrl: 'RECONNECT' };
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
-const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE', sidearm: 'SIDEARM' };
+const ROLE_NAME = ROLE_LABELS;
 /** A secondary rule whose kinds hold `sidearm` but not `weapon` is a pistols-only slot (policy.py, 2026-09-04). */
 const sidearmOnly = rule => !!(rule && rule.kinds && rule.kinds.includes('sidearm') && !rule.kinds.includes('weapon'));
 const roleName = w => ROLE_NAME[w.role] || (w.tags && w.tags[0] ? String(w.tags[0]).toUpperCase() : 'WEAPON');
