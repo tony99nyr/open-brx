@@ -396,6 +396,9 @@ const DEATH_BODY_STOP_MIN_LEFT_MS = 250;
 const DEATH_LATE_WRITE_MS = 300;
 /** F439: the cues that are the player's BODY, not news: they never play after my death scream. */
 const BODY_CUES = ['hurt', 'pain_short', 'pain_long', 'pain_melee', 'shield_up', 'shield_down', 'shield_charging', 'shield_online', 'shield_loop'];
+// Polish 2026-10-03: `poisoned` and `poison_tick` are left out on purpose. A tick (about 560 ms) behind the scream always
+// has under DEATH_BODY_STOP_MIN_LEFT_MS left at its stop time, so a stop never goes out, and a body clip skipped that
+// way ends the chain: the heartbeat behind it would then play. As a row sound it is waited out and the chain goes on.
 const KILL_CARD_MS = 1800;      // hud.js `_kill`'s card hold: MC's kill card owns the announcer slot at least this long
 const LANE_FEED_MAX = 6;           // docs/announcer.md "The three lanes": the FEED rows kept (the HUD draws the newest three)
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
@@ -4219,8 +4222,14 @@ export class Engine {
     const tf = (rp && rp.team_flip) || this.frames.team_flip;
     const flipped = this._turned && tf && tf[String(this.teamTid)];
     const kind = rp && stationId != null && !flipped ? 'station' : 'timed';
-    const revive = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
-    // F438 r4: a self-hit revive keeps a held heavy's charges in its own `$AMMO` row (as `_puRearmRows`), never the zero.
+    const revive0 = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
+    // Polish 2026-10-03: a self-kill costs nothing, so it gives nothing either. The burst's own `$AMMO` rows carry the
+    // live counts, in the same write (`_puRearmRows`' reason: a separate restore lets the full magazine echo first).
+    // Pickup slots are left to the held heavy below: a slot the node holds nothing in keeps compile's empty row.
+    const puSlots = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
+    const keepAmmo = selfHit ? Object.fromEntries(Object.entries(this._liveAmmo()).filter(([sl]) => !puSlots.has(+sl))) : null;
+    const revive = keepAmmo ? revive0.map(f => { const t = f.startsWith('$AMMO,') ? f.split(',') : null; const k = t && keepAmmo[+t[1]]; return k ? `$AMMO,${t[1]},${k[0]},${k[1]},${t.slice(4).join(',')}` : f; }) : revive0;
+    // F438 r4: a self-hit revive keeps a held heavy (the node still tracks it), its charges in its own `$AMMO` row (as `_puRearmRows`), never the zero.
     const keep = selfHit ? this._puHeld : null;
     const burst = keep ? revive.map(f => f.startsWith(`$AMMO,${keep.slot},`) ? `$AMMO,${keep.slot},${keep.left},${PU_RESERVE},1,*` : f) : revive;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
@@ -4247,7 +4256,8 @@ export class Engine {
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
     this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0; this._altPtr = 0; this._altEvidencePending = null;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
-    if (keep) this._puSelfHitKeep(keep); else this._puRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst
+    if (keepAmmo) for (const [sl, [mag, res]] of Object.entries(keepAmmo)) { this._acctWrote(+sl, mag, res); this._prevAmmo[sl] = mag; this._prevReserve[sl] = res; }   // polish 2026-10-03: the counts the burst carried
+    if (keep) this._puSelfHitKeep(keep); else this._puRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst (F438 r4: a self-kill keeps it)
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     // F438 polish r1: a self-hit revive is the same life, so an enemy's poison keeps ticking and a smoke keeps its clock.
     // ⚠ Unbenched: the revive's `$SPAWN` clears every `$TMP`, so the gun may have dropped the smoke's accuracy hold already.
@@ -4412,8 +4422,11 @@ export class Engine {
       this.log(`☣ poison refreshed by #${by.num}: ${spec.durMs} ms from now`, 'li');
       this._changed(); return;
     }
-    this.poison = { proto, per: spec.per, tickMs: spec.tickMs, durMs: spec.durMs, at: now, until: now + spec.durMs, nextAt: now + spec.tickMs, by, ticks: 0 };
-    this._event('poisoned');   // A11: the gun plays nothing for the `$LIFE` ticks, so the node speaks for the poison
+    // A11: the gun plays nothing for the `$LIFE` ticks, so the node speaks for the poison. Polish 2026-10-03: not yet.
+    // This `$HIR` comes before its `$HP`, and if that `$HP` is lethal the gun is already screaming: H12 rides the
+    // interrupt slot and would cut the scream. `_poisonCue` sends it once an `$HP` says we live, or at the first tick
+    // for a hit that moved no pool (no `$HP` follows one).
+    this.poison = { proto, per: spec.per, tickMs: spec.tickMs, durMs: spec.durMs, at: now, until: now + spec.durMs, nextAt: now + spec.tickMs, by, ticks: 0, cuePending: true };
     this.log(`☣ poisoned by #${by.num}: ${spec.per} every ${spec.tickMs} ms for ${spec.durMs} ms`, 'le');
     this._changed();
   }
@@ -4421,6 +4434,7 @@ export class Engine {
    *  missed rather than firing them in a burst. The stack ends straight after its last tick. */
   _poisonTick(now) {
     const p = this.poison; if (!p || now < p.nextAt) return;
+    this._poisonCue();   // a hit that moved no pool: no `$HP` came to confirm the life, and the gun says nothing at a tick
     if (p.nextAt <= p.until && (now <= p.until || now - p.nextAt < p.tickMs)) this._poisonStrike(p, now);   // a clock that stalled past `until` fires nothing; the last tick is due exactly AT `until`, so a `tick()` up to one interval late still fires it
     if (this.poison !== p) return;   // the strike ended it (nothing does today; a guard for the next change)
     p.nextAt += p.tickMs;
@@ -4451,6 +4465,12 @@ export class Engine {
     this._write([frame], `poison tick ${p.ticks}: -${n} ${pool}${lethal ? ' (lethal)' : ''}`);
     if (!lethal && this._gun.outstanding(now) <= 0 && !this._ann.queue.length && !this._ann.audioBusy(now)) this._event('poison_tick');
     this._changed();
+  }
+  /** The `poisoned` cue a new stack holds until we know we live (see `_poisonHit`). `_death` clears the stack first. */
+  _poisonCue() {
+    const p = this.poison; if (!p || !p.cuePending || !this.alive) return;
+    p.cuePending = false;
+    this._event('poisoned');
   }
   /** The stack ends: expiry, death, respawn, match end. A stack never survives a life (Tony, 2026-09-18). */
   _poisonClear(why) {
@@ -7253,7 +7273,10 @@ export class Engine {
       // Per pool, and only what THIS frame took from what the gun held: a pool that rose in the same frame keeps its rise,
       // and a restore still in flight is never paid twice (polish r2: two quick self-hits healed 30 -> 39).
       const give = [gun.health - hp, gun.armor - armor, gun.shield - shield].map(d => Math.max(0, d));
-      this._write([`$LIFE,${give[0]},${give[1]},${give[2]},*`], 'F438 self-hit restore');
+      // Polish 2026-10-03: a refused write leaves our own damage on the gun. Not re-sent blind (`$LIFE` adds, and a write
+      // that reports failure may still have landed), but never silent: the bug report shows it.
+      Promise.resolve(this._write([`$LIFE,${give[0]},${give[1]},${give[2]},*`], 'F438 self-hit restore'))
+        .then(ok => { if (ok === false) this.log(`self-hit: the restore write failed: +${give.join('/')} not given back`, 'le'); }, () => {});
       this._selfGunPools = rep;
       this._selfEcho = { at: now, latch: L, ...target };
       this.log(`self-hit: own shot (${what}) took ${took}, restored`, 'li');
@@ -7304,6 +7327,7 @@ export class Engine {
     // news). Computed here, BEFORE `_prevHp` etc are overwritten below, and read by `_gunPoolPaint`.
     const movedPool = hp !== this._prevHp ? 'health' : armor !== this._prevArmor ? 'armor' : shield !== this._prevShield ? 'shield' : null;
     this.hp = hp; this.armor = armor; this.shield = shield;
+    if (hp > 0) this._poisonCue();   // polish 2026-10-03: the hit that poisoned us did not kill, so say it now
     this._puShieldFrame(shield);   // A56: the overshield ends when the shield is back to where it started
     const dmg = Math.max(0, before - (hp + armor + shield));
     if (dmg > 0) this._actSeq++;   // pl4: nor past a hit

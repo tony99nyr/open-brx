@@ -104,6 +104,7 @@ class PoisonState(TypedDict):
     next_at: float
     by: dict[str, int]
     ticks: int
+    cue_pending: NotRequired[bool]   # polish 2026-10-03 (engine.js `cuePending`): `poisoned` waits for a pool frame that says we live
 
 
 class DotEchoState(TypedDict):
@@ -2423,6 +2424,15 @@ class GunStage:
         rp = self._respawn_profile()
         kind = "station" if rp and station is not None else "timed"
         revive = (rp["revive_station"] if kind == "station" else rp["revive"]) if rp else self.bundle["revive"]
+        # Polish 2026-10-03 (engine.js `_revive` `keepAmmo`): a self-kill gives nothing, so the burst's own `$AMMO` rows
+        # carry the live counts, in the same write.
+        keep = self._live_ammo() if self_hit else None
+        if keep:
+            def _keep(f: str) -> str:
+                t = f.split(",") if f.startswith("$AMMO,") else None
+                k = keep.get(int(t[1])) if t and t[1].isdigit() else None
+                return f"$AMMO,{t[1]},{k[0]},{k[1]},{','.join(t[4:])}" if t and k else f
+            revive = [_keep(f) for f in revive]
         self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
         self._arm_after_spawn(kind)                              # await, same reasoning as `spawn()` above (F209)
         # engine.js `_revive`: a legacy bundle (no respawn_profile) always computes `kind == "timed"`, station
@@ -2440,6 +2450,9 @@ class GunStage:
                           "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else "")
                           + (" + F438 self-hit drain" if drain else ""))
         self._after_spawn(keep_poison=bool(self_hit))
+        for sl, (mag, res) in (keep or {}).items():   # polish 2026-10-03: the counts the burst carried
+            if mag is not None and res is not None:
+                self._acct_wrote(sl, mag, res); self._prev_ammo[sl] = mag; self._prev_reserve[sl] = res
         if self_hit:   # F438: what the drain leaves
             self.hp, self.armor = self_hit["health"], self_hit["armor"]
             self.shield = min(self_hit["shield"], self.max_shield if fill else 0)
@@ -3751,6 +3764,8 @@ class GunStage:
         # all the way through to HP, health -- the innermost pool -- is the one worth showing).
         moved = "health" if hp != prev_hp else "armor" if armor != prev_armor else "shield" if shield != prev_shield else None
         self.hp, self.armor, self.shield = hp, armor, shield
+        if hp > 0 and not lcd:
+            self._poison_cue()   # polish 2026-10-03 (engine.js `_onHp`): the hit that poisoned us did not kill
         # S16 (engine.js `_onHp` `dotEcho`): the $HP that answers our OWN poison tick's write is the tick, not a
         # hit -- no hit_taken event, no pain grunt, no headset re-flash, even though it is a real pool delta. It
         # reads as the tick's echo when it lands inside DOT_ECHO_S of the write AND the tick's pool is the only
@@ -4416,9 +4431,19 @@ class GunStage:
             return
         self.poison = {"proto": proto if proto is not None else 0, "per": spec["per"], "tick_s": spec["tick_s"],
                         "dur_s": spec["dur_s"], "at": now, "until": now + spec["dur_s"],
-                        "next_at": now + spec["tick_s"], "by": by, "ticks": 0}
-        self._event_now("poisoned")   # A11: the gun plays nothing for the $LIFE ticks, so the stage speaks for the poison
+                        "next_at": now + spec["tick_s"], "by": by, "ticks": 0, "cue_pending": True}
+        # A11: the gun plays nothing for the $LIFE ticks, so the stage speaks for the poison. Polish 2026-10-03 (engine.js
+        # `_poisonCue`): not yet. A lethal pool frame follows this `$HIR` with the gun already screaming, and H12 on the
+        # interrupt slot would cut the scream, so `_poison_cue` sends it once a pool frame says we live, or at the first tick.
         self._log(f"☣ poisoned by #{by['num']}: {spec['per']} every {spec['tick_s']:g} s for {spec['dur_s']:g} s", "warn")
+
+    def _poison_cue(self) -> None:
+        """engine.js `_poisonCue`: the `poisoned` cue a new stack holds until we know we live (see `_poison_hit`)."""
+        p = self.poison
+        if not p or not p.get("cue_pending") or not self.alive:
+            return
+        p["cue_pending"] = False
+        self._event_now("poisoned")
 
     def _poison_tick(self, now: float) -> None:
         """engine.js `_poisonTick`: the clock, from `poll()` while LIVE. One tick per call at most -- a poll
@@ -4427,6 +4452,7 @@ class GunStage:
         p = self.poison
         if not p or now < p["next_at"]:
             return
+        self._poison_cue()   # a hit that moved no pool: no pool frame came to confirm the life
         if p["next_at"] <= p["until"] and (now <= p["until"] or now - p["next_at"] < p["tick_s"]):   # as engine.js: a stall past `until` fires nothing, but the last tick (due AT `until`) fires on a late poll
             self._poison_strike(p, now)
         if self.poison is not p:
