@@ -10,7 +10,7 @@ Run: python3 run_tests.py mc_ready_all
 """
 from contextlib import contextmanager
 
-from _session import mk_session
+from _session import mk_online_session, mk_session
 
 
 
