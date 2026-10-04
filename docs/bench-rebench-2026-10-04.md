@@ -120,8 +120,8 @@ lines) or `window.brx.diag()` over CDP, and each player's `advertising as player
 **7. KOTH: F444 the capture-begins alert, then F448 and the hill across matches (25 min; same setup).**
 - **F444.** One player walks into the empty hill. **Pass:** both HUDs show the neutral HILL CAPTURE STARTED badge
   with the capturing team's colour (by day a block with the team token and initial; at night the initial in a red
-  outline), at the moment capturing begins. The other player walks in: the "Hill Contested" voice plays for the
-  HOLDING team only, once per contest. A DOWN player gets no hill badge; a hill voice line still queues after the
+  outline), at the moment capturing begins. Once that team HOLDS the hill, the other player walks in: the "Hill Contested"
+  voice plays for the holding team only, once per contest. A DOWN player gets no hill badge; a hill voice line still queues after the
   scream. **Control:** a neutral hill (players in another room) shows no badge. Rows: F444.
 - **The hill across matches.** End the match, then NEXT MATCH. **Pass:** the hill assignment is still there, and
   LOAD needs no reassignment (the 2026-10-02 open question; pinned on main at `c5840639`).
