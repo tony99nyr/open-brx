@@ -4135,6 +4135,8 @@ class GunStage:
             self.active_slot = slot; self._recoil_slot = slot
             self._log(f"slot {slot} confirmed the swap {self.last_switch_s:g}s after ALT (incl. reaction)", "info")
         self._prev_ammo[slot] = mag
+        if slot < 2 and slot != self.active_slot and self.active_slot < 2 and not self.switching and self._alt_evidence_pending is None:
+            self._alt_ptr = slot   # ALT r4 (engine.js `_onAmmo`): a swap the node missed; the pointer follows the gun
         self.active_slot = slot
         if slot < 2 and self._alt_evidence_pending is not None and ((prev is not None and mag < prev) or slot == self._alt_evidence_pending):
             self._alt_ptr = slot
@@ -4208,7 +4210,13 @@ class GunStage:
             if self._easy_reload():
                 self._reload_pulled()
             return
-        if self.reloading:
+        # engine.js `_altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
+        # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
+        r = self.reloading
+        if r and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):
+            self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
+            return
+        if r:
             self._end_reload("swapped")
         source = self._alt_ptr
         target = self._next_alt_slot()

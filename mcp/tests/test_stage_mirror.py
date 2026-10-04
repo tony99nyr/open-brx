@@ -1403,30 +1403,51 @@ def test_a_chain_that_loaded_then_fired_books_what_it_LOADED():
     asyncio.run(go())
 
 
-def test_an_alt_swap_abandons_the_takeover_on_the_same_frame():
-    """engine.js `_altPressed`: a swap puts a different weapon in your hands, so the old slot's magazine
-    stops moving and no $ALCD can ever reconcile the takeover. `switching` and `reloading` are never both
-    set. CONTROL: the confirming $ALCD on the other slot clears `switching` and times it."""
+def test_alt_mid_reload_is_ignored_and_a_stale_tail_alt_is_a_swap():
+    """engine.js `_altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading (inside
+    reload_s, no gain yet), so no swap opens and the reload runs on. ALT r4: in the takeover's stale tail (past reload_s,
+    before its deadline) the gun takes ALT, so the press is a swap and ends the takeover. CONTROL: the confirming $ALCD
+    on the other slot clears `switching` and times it."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         st.alcd(mag=10, reserve=20); await settle(st)
         st.reload(); await settle(st)
         assert st.reloading and st._slot_count() == 2
-        st._on_rx("$BUT,1,1,*")                                      # ALT
+        st._on_rx("$BUT,1,1,*")                                      # ALT inside reload_s
+        assert st.reloading and st.switching is None, (st.reloading, st.switching)
+        assert any("ALT ignored" in l["text"] for l in st.log)
+        assert st._alt_ptr == 0
+        clock.advance(st.reloading["s"] + 0.05)                      # the stale tail: past reload_s, before the deadline
+        assert st.reloading
+        st._on_rx("$BUT,1,1,*")                                      # ALT: the gun swaps
         assert st.reloading is None and st.switching, (st.reloading, st.switching)
         assert st.reload_outcome["why"] == "swapped", st.reload_outcome
-        m = st.state()["model"]
-        assert m["reloading"] is None and m["switching"]["from"] == 0, (m["reloading"], m["switching"])
         clock.advance(0.2)
         st.alcd(mag=6, reserve=12, slot=1)
         assert st.switching is None and st.last_switch_s == 0.2, (st.switching, st.last_switch_s)
-        assert st.active_slot == 1
+        assert st.active_slot == 1 and st._alt_ptr == 1
         # and a swap the gun never confirms is ASSUMED past the window rather than shown for ever
         st._on_rx("$BUT,1,1,*")
         assert st.switching
         clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
         assert st.switching is None and st.active_slot == 0, st.active_slot
+    asyncio.run(go())
+
+
+def test_alt_r4_a_loadout_alcd_that_moves_the_trigger_heals_the_alt_pointer():
+    """engine.js `_onAmmo` (ALT r4): a loadout $ALCD that moves the trigger with no swap open is a swap the node missed,
+    so `_alt_ptr` follows the gun and the next ALT goes back the right way."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        assert st.active_slot == 0 and st._alt_ptr == 0 and st.switching is None
+        st._prev_ammo[1] = 6
+        st._on_rx("$ALCD,5,100,1,12,0,*")                            # the gun fires slot 1
+        assert st.active_slot == 1 and st._alt_ptr == 1, (st.active_slot, st._alt_ptr)
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching and st.switching["to"] == 0, st.switching
     asyncio.run(go())
 
 
@@ -1767,6 +1788,7 @@ KNOWN_UNMIRRORED = {
     # runs no station scan of its own.
     # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
     "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "radioQuiet", "_quietWrite",
+    "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
     # Maint review 2026-09-17 renamed the pair so the names say which is which: `_heatBlocksFire` is the
@@ -1848,6 +1870,8 @@ KNOWN_UNMIRRORED = {
     # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it
     # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.
     "_puHeadWeap", "_puWeapFor", "_puItemCharges", "_puAtCap", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puRearmRows", "_puBackResend", "_puBackTick",
+    # F438 r4: a lethal self-hit keeps the held heavy and re-equips it behind the revive; it hangs off a held item too.
+    "_puSelfHitKeep",
     # F400 (docs/spec/powerups.md "The switch card"): the pickup-driven weapon-switch card, reusing `switching`'s own
     # timing and takeover (a `pu` card: no echo confirm, no SELECT or re-send gate, no ALT pointer move). It hangs off
     # the unmirrored pickup mechanic (`_puEquip`, `_puSelectPressed`, `_puEnd`, above), so it has nothing to mirror onto.
