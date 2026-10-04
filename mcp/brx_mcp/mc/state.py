@@ -21,12 +21,13 @@ from . import presentation as _pres
 from .. import voices as _voices
 from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — one coverage model
 from . import config_merge as _config_merge
+from .snapshot_codec import SnapshotCodec
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
-from .stations import StationRegistry, BATTERY_LOW_PCT, _STATION_LOCK_KEYS, _range_edit_ok
+from .stations import StationRegistry, BATTERY_LOW_PCT
 # STATION_* re-exports remain for tests that import them from state.py.
 from .stations import STATION_BRING_BACK, STATION_ARMED_OLDER, STATION_NOT_ARMED, STATION_BATTERY_LOW
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
@@ -425,17 +426,6 @@ def default_config(mode: str = "tdm") -> GameConfig:
     return cfg
 
 
-def _tally_ok(t) -> bool:
-    """A station tally from a snapshot has the shape `_keep_station_tally` writes: a key list, `hold_ms` as team id to
-    non-negative int ms, and `revives` an int or None."""
-    if not isinstance(t, dict) or not isinstance(t.get("key"), list) or not isinstance(t.get("hold_ms"), dict):
-        return False
-    if not all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v >= 0 for k, v in t["hold_ms"].items()):
-        return False
-    r = t.get("revives")
-    return r is None or (isinstance(r, int) and not isinstance(r, bool))
-
-
 def _check_tag(raw: str) -> str:
     """F366: the stored gamertag (trimmed, upper-cased). Longer than MAX_TAG_LEN is refused, never cut."""
     d = raw.strip().upper()
@@ -457,14 +447,6 @@ class Session:
         self.station_registry.stations = value
 
     @property
-    def _station_id_of(self) -> dict[str, int]:
-        return self.station_registry._station_id_of
-
-    @_station_id_of.setter
-    def _station_id_of(self, value: dict[str, int]) -> None:
-        self.station_registry._station_id_of = value
-
-    @property
     def _station_departures(self) -> dict[str, dict]:
         return self.station_registry._station_departures
 
@@ -473,20 +455,16 @@ class Session:
         self.station_registry._station_departures = value
 
     @property
-    def _stations_unlocked(self) -> bool:
-        return self.station_registry._stations_unlocked
-
-    @_stations_unlocked.setter
-    def _stations_unlocked(self, value: bool) -> None:
-        self.station_registry._stations_unlocked = value
+    def _snapshot_failures(self) -> FailureTrack:
+        return self.snapshot_codec.snapshot_failures
 
     @property
-    def _range_epoch(self) -> int:
-        return self.station_registry._range_epoch
+    def restore_failed(self) -> RestoreFailedView | None:
+        return self.snapshot_codec.restore_failed
 
-    @_range_epoch.setter
-    def _range_epoch(self, value: int) -> None:
-        self.station_registry._range_epoch = value
+    @restore_failed.setter
+    def restore_failed(self, value: RestoreFailedView | None) -> None:
+        self.snapshot_codec.restore_failed = value
 
     def __init__(self, compiler: CompilerPort, net, armory, store=None, now_ms: Callable[[], int] | None = None,
                  lan: dict | None = None, voice_rng: random.Random | None = None):
@@ -546,7 +524,6 @@ class Session:
         # shown on the console (`snapshot()`: `not_saving`, `ticker_failing`) until the next success.
         self._store_failures = FailureTrack("store.log", self.now_ms)       # a fact or log row that did not reach the store
         self._archive_failures: dict[str, FailureTrack] = {}       # per match_id: `match_started` / `match_ended` rows (the game result)
-        self._snapshot_failures = FailureTrack("session snapshot", self.now_ms)   # the roster / match file that a restart restores
         self._tick_failures = FailureTrack("match tick", self.now_ms)       # armed->live and the timed end stop while this fails
         self._join_error: str | None = None                                 # O8: join_info() raised; the QR has no URL
         self.tunnel = None                        # A28.1: attached by __main__ (`attach_tunnel`)
@@ -559,7 +536,9 @@ class Session:
         # looking at, and the Lobby then listed four players with two ghosts. `{at, players}` rides on
         # the state so the board can say "restored from <date>" beside a FRESH SESSION control.
         self.restored_from: RestoredFromView | None = None
-        self.restore_failed: RestoreFailedView | None = None   # O1: a session.json that could not be restored
+        self.snapshot_codec = SnapshotCodec(self, default_config,
+                                            frozenset(m["mode"] for m in MODES if m["mvp"]),
+                                            _migrate_green_team_rows, _migrate_green_player_row)
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
@@ -808,461 +787,16 @@ class Session:
             self._persist_last = 0.0
             self._persist()
 
+    _RESTORE_ATTRS = SnapshotCodec._RESTORE_ATTRS
+
     def _persist(self):
-        if not self._persist_path:
-            return
-        now = time.monotonic()
-        if now - self._persist_last < 2.0:
-            self._persist_dirty = True      # a delayed flush (persist_now via atexit/transitions) picks this up
-            return
-        self._persist_last = now
-        self._persist_dirty = False
-        try:
-            # S5(a): assignments used to live for the SESSION only, so an MC restart at the field forgot
-            # every placed station -- the operator had to walk out and re-do ITEMS from scratch. Only an
-            # ASSIGNED station is worth a line (an unassigned entry is just a hello nobody acted on, and
-            # `restore_snapshot` re-derives it from the next hello anyway).
-            stations = {nid: st["assigned"] for nid, st in self.stations.items() if st.get("assigned")}
-            snap = {"v": 1, "saved_ms": self.now_ms(),
-                    # F142: which KIND of run wrote this. Read back by `restore_snapshot`.
-                    "demo": bool(self.demo_session),
-                    "players": [{**p, "node_id": None, "ready": False} for p in self.players.values()],
-                    "standby": [{**p, "node_id": None, "ready": False} for p in self.standby.values()],
-                    "teams": self.teams, "config": self.config, "game_pick": self.game_pick,
-                    **({"last_match": self.last_match} if self.last_match else {}),
-                    "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
-                    "feed": [dict(row) for row in self.feed[:200] if isinstance(row, dict)],
-                    # F401: the stations the last match still waits to hear from, and its whistle time.
-                    "sync_pending": {"end_t": self._match_end_t, "nodes": dict(self._sync_pending)},
-                    # F364: every id MC handed out, so a restarted MC gives a cleared station its old number back.
-                    "station_ids": dict(self._station_id_of),
-                    # bench 2026-10-02: the stations that left, so a restarted MC still names them. `returned` is
-                    # not kept: a new process has heard nobody yet.
-                    "station_departures": {nid: {k: v for k, v in d.items() if k != "returned"}
-                                           for nid, d in self._station_departures.items()},
-                    # F337 (a): the lock bookkeeping, so a restarted MC keeps an UNLOCK and every restart it counted.
-                    "stations_unlocked": self._stations_unlocked,
-                    "station_locks": {nid: {k: st[k] for k in _STATION_LOCK_KEYS if k in st}
-                                      for nid, st in self.stations.items() if st.get("assigned")},
-                    # A67: the on-station range edits already announced, so a restarted MC does not repeat them.
-                    "station_range_seen": {nid: st["range_seen"] for nid, st in self.stations.items()
-                                           if st.get("assigned") and st.get("range_seen")},
-                    "range_epoch": self._range_epoch,
-                    # A28.2: a restore must keep every printed QR valid, so the secret is human work too.
-                    "join_secret": self.join_secret,
-                    # Bench 2026-09-17: the match IN PLAY, so a restarted MC resumes it (`resume_match`).
-                    # Absent outside armed/live: A46 still boots every other restart before any delivery.
-                    **({"match": m} if (m := self._match_snapshot()) else {}),
-                    # A34: the retired matches, so a restarted MC can still end a phone that missed the end.
-                    "ended": self._ended_snapshot(),
-                    # A56 (M1): the powerup schedule of the match in play, so a restart keeps taken items taken.
-                    **({"powerups": self._pu_sched} if self._pu_sched and self.in_play()
-                       and self._pu_sched.get("match_id") == self.current_match_id() else {})}
-            # 0600: the snapshot holds the join secret. Atomic: a crash leaves the old file or the new one.
-            from ..storage import atomic_write_text
-            atomic_write_text(self._persist_path, json.dumps(snap), mode=0o600)
-            if self._snapshot_failures.ok():
-                self._notify_listeners()
-        except Exception as e:
-            # O7: counted, logged once per minute, and shown as NOT SAVING (amber: a restart loses the roster).
-            if self._snapshot_failures.fail(e, "play continues"):
-                self._notify_listeners()
-
-    def _match_snapshot(self) -> dict | None:
-        """The running match, as `resume_match` needs it. Only while ARMED or LIVE with a scorer."""
-        if not self.in_play() or not self.start_info or not self.scorer:
-            return None
-        si = self.start_info
-        players = self._match_players if self._match_players is not None else self.players
-        return {"match_id": si["match_id"], "go_live_t": si["go_live_t"], "seq": si["seq"],
-                "countdown_s": si.get("countdown_s", 0), "adopted": self.is_adopted(),
-                "live": self.phase == "live",   # F451: a resume after a backward clock step must not re-arm it
-                "config": self.config, "players": {pid: dict(p) for pid, p in players.items()},
-                # node_id -> player_id as armed: the stored facts are keyed by node, and a resumed replay
-                # must attribute them before any phone has said hello to the new process.
-                "node_player": {nid: pid for nid, pid in {**self._match_nodes, **self.node_player}.items()
-                                if pid in players},
-                "synced_at_lobby": dict(self.synced_at_lobby),
-                # A63: who hot-joined after go-live, and when. The stored facts cannot say it, and IRON MAN
-                # and SURVIVOR both read it, so a resumed scorer must be handed it.
-                "joined_t": dict(self.scorer.joined_t),
-                # F356: when the frag cap's whistle blew, an arrival fact (`Scorer.cap_recv`). None in every
-                # LIVE snapshot today (`_finish` rewrites the snapshot without the match), carried anyway.
-                "cap_recv": self.scorer.cap_recv,
-                # F362 (k): what the field was already told (the lead, cap - 1, the last survivor), so a
-                # resume does not tell them again and still tells them what they never heard.
-                "alerts": self.scorer.match_state_alerts(),
-                # An accepted LIVE release removes the active row, but its frozen tally still belongs
-                # to this match and must survive an MC restart before the whistle.
-                "departed_stations": [dict(row) for row in sorted(
-                    self._departed_match_stations.values(), key=lambda row: row["node_id"])],
-                "bundles": self.bundles, "acks": self.acks,
-                "store_path": str(self.store.path) if self.store is not None and getattr(self.store, "path", None) else None}
-
-    def _ended_snapshot(self) -> list[dict]:
-        """The newest few A34 ledger rows, JSON-safe. A bad row is dropped, never fatal."""
-        out = []
-        for mid, e in list(self._ended.items())[-4:]:
-            out.append({"match_id": mid, "recap": e.get("recap"), "players": e.get("players"),
-                        "ended_ms": e.get("ended_ms")})
-        return out
-
-    @staticmethod
-    def _snapshot_player(row: object) -> Player | None:
-        """Read a parked player from JSON without asserting that an arbitrary dict is a Player."""
-        if not isinstance(row, dict):
-            return None
-        pid, num, display = row.get("player_id"), row.get("player_num"), row.get("display")
-        voice, ready = row.get("voice"), row.get("ready")
-        if not (isinstance(pid, str) and pid and isinstance(num, int) and not isinstance(num, bool)
-                and isinstance(display, str) and isinstance(voice, str) and isinstance(ready, bool)):
-            return None
-        refs: dict[str, str | None] = {}
-        for key in ("team_id", "node_id", "gun_id"):
-            value = row.get(key)
-            if value is not None and not isinstance(value, str):
-                return None
-            refs[key] = value
-        raw_lo = row.get("loadout")
-        if not isinstance(raw_lo, dict) or not isinstance(raw_lo.get("weapons"), list):
-            return None
-        weapons: list[WeaponSel] = []
-        for weapon in raw_lo["weapons"]:
-            if not isinstance(weapon, dict) or not isinstance(weapon.get("weapon_id"), str):
-                return None
-            weapons.append({"weapon_id": weapon["weapon_id"]})
-        if not weapons or len(weapons) > 2:
-            return None
-        loadout: Loadout = {"weapons": weapons}
-        perk = raw_lo.get("perk")
-        if perk is not None:
-            if not isinstance(perk, str):
-                return None
-            loadout["perk"] = perk
-        overrides = raw_lo.get("overrides")
-        if overrides is not None:
-            if not isinstance(overrides, dict):
-                return None
-            clean: LoadoutOverrides = {}
-            for key in ("max_hp", "max_armor"):
-                value = overrides.get(key)
-                if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
-                    return None
-                if key == "max_hp" and value is not None:
-                    clean["max_hp"] = value
-                if key == "max_armor" and value is not None:
-                    clean["max_armor"] = value
-            # S50 (merge 2026-09-18): `easy_reload` lives in the same block and is the OTHER accessibility
-            # switch, so a restore that copied the pool alone dropped it silently: restart MC between
-            # matches and a player who needs ALT to reload loses it with no message anywhere.
-            if overrides.get("easy_reload") is not None:
-                if not isinstance(overrides["easy_reload"], bool):
-                    return None
-                if overrides["easy_reload"]:
-                    clean["easy_reload"] = True
-            if clean:
-                loadout["overrides"] = clean
-        player: Player = {"player_id": pid, "player_num": num, "display": display,
-                          "team_id": refs["team_id"], "node_id": refs["node_id"],
-                          "gun_id": refs["gun_id"], "loadout": loadout, "voice": voice, "ready": ready}
-        slots = row.get("voice_slots")
-        if slots is not None:
-            if not isinstance(slots, dict) or not all(isinstance(k, str) and isinstance(v, str)
-                                                       for k, v in slots.items()):
-                return None
-            player["voice_slots"] = slots
-        return player
-
-    @staticmethod
-    def _snapshot_departed_station(row: object) -> RecapStationRow | None:
-        """Read one frozen station tally from an untrusted JSON session snapshot."""
-        if not isinstance(row, dict):
-            return None
-        nid, kind = row.get("node_id"), row.get("kind")
-        sid, team, heard = row.get("id"), row.get("team"), row.get("heard")
-        if not (isinstance(nid, str) and nid and is_station_kind(kind)
-                and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535
-                and isinstance(team, int) and not isinstance(team, bool)
-                and (team in (0, 1, 2, 3) or team == STATION_TEAM_ANY)
-                and isinstance(heard, bool)):
-            return None
-        out: RecapStationRow = {"node_id": nid, "kind": kind, "id": sid, "team": team, "heard": heard}
-        if kind == "respawn":
-            revives = row.get("revives")
-            if revives is not None and (not isinstance(revives, int) or isinstance(revives, bool) or revives < 0):
-                return None
-            out["revives"] = revives
-        elif kind == "control":
-            hold_ms, owner = row.get("hold_ms"), row.get("owner")
-            if hold_ms is not None and (not isinstance(hold_ms, dict)
-                                        or not all(isinstance(k, str) and isinstance(v, int)
-                                                   and not isinstance(v, bool) and v >= 0
-                                                   for k, v in hold_ms.items())):
-                return None
-            if owner is not None and (not isinstance(owner, int) or isinstance(owner, bool)
-                                      or owner not in (0, 1, 2, 3, STATION_TEAM_ANY)):
-                return None
-            if "hold_ms" in row:
-                out["hold_ms"] = None if hold_ms is None else dict(hold_ms)
-            if "owner" in row:
-                out["owner"] = owner
-        return out
-
-    _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match", "stations",
-                      "nodes", "_station_id_of", "game_no", "_game_no_started", "_range_epoch",
-                      "_stations_unlocked", "join_secret", "_ended", "_resume_pending", "_pu_restored",
-                      "_match_end_t", "_sync_pending", "restored_from", "_station_departures")
+        self.snapshot_codec._persist()
 
     def _keep_bad_snapshot(self) -> Path | None:
-        """O1: move an unrestorable session.json aside (never delete it, never leave it where the next
-        persist overwrites it). Returns the kept path, or None when even the rename failed."""
-        path = self._persist_path
-        if path is None:
-            return None
-        from ..storage import move_aside_exclusive
-        kept = move_aside_exclusive(path, "bad")
-        if kept is None:
-            import logging; logging.getLogger("brx.mc").error("could not move the bad session snapshot aside")
-        else:
-            import contextlib, os
-            with contextlib.suppress(OSError):
-                os.chmod(kept, 0o600)     # it holds the join secret; a file from an older build may be 0644
-        return kept
+        return self.snapshot_codec._keep_bad_snapshot()
 
     def restore_snapshot(self) -> int:
-        """Load a prior session.json (if any). Returns the number of players restored.
-
-        F142 (field 2026-09-12): a snapshot is restored only into a run of the SAME kind. Two demo
-        players were silently restored into a real field session, sat on the roster with no phone, and
-        tagging the two real phones then CREATED two more — a real match would have been pushed to a
-        four-player roster with two ghosts. The kind is a marker in the file, not a guess about the
-        roster, and the refusal is logged rather than silent.
-        """
-        if not self._persist_path or not self._persist_path.exists():
-            return 0
-        # O1: everything the restore may assign, copied first, so a failure part-way leaves NOTHING partial.
-        before = {a: copy.deepcopy(getattr(self, a)) for a in self._RESTORE_ATTRS}
-        try:
-            snap = json.loads(self._persist_path.read_text())
-            was_demo = bool(snap.get("demo", False))
-            if was_demo != bool(self.demo_session):
-                import logging
-                logging.getLogger("brx.mc").warning(
-                    "session snapshot at %s is from a %s run and this is a %s run — NOT restoring its "
-                    "%d player(s)", self._persist_path, "demo" if was_demo else "real",
-                    "demo" if self.demo_session else "real", len(snap.get("players") or []))
-                return 0
-            self.players = {p["player_id"]: _migrate_green_player_row(p) for p in snap.get("players", [])}
-            sp = snap.get("sync_pending")
-            if isinstance(sp, dict) and isinstance(sp.get("end_t"), int) and isinstance(sp.get("nodes"), dict):
-                self._match_end_t = sp["end_t"]
-                self._sync_pending = {str(k): str(v) for k, v in sp["nodes"].items()}
-            rows = snap.get("feed")
-            self.feed = [dict(row) for row in rows if isinstance(row, dict)][:200] if isinstance(rows, list) else []
-            # a snapshot from before STANDBY existed has no such list; a hand-edited one may hold junk rows
-            parked: dict[str, Player] = {}
-            invalid_parked = 0
-            for q in snap.get("standby") or []:
-                player = self._snapshot_player(_migrate_green_player_row(q))
-                if player is not None:
-                    parked[player["player_id"]] = player
-                else:
-                    invalid_parked += 1
-            if invalid_parked:
-                import logging
-                logging.getLogger("brx.mc").warning("ignored %d malformed standby player row(s) in %s",
-                                                     invalid_parked, self._persist_path)
-            self.standby = parked
-            if snap.get("teams"):
-                # F423/F432: a snapshot saved before tid 3 was renamed GREEN -> PURPLE still carries the
-                # old team_id/name/colour in its frozen `teams` row; migrated on load, same as a preset.
-                self.teams = _migrate_green_team_rows(snap["teams"])
-            if snap.get("config"):
-                self.config = snap["config"]
-                if isinstance(self.config.get("teams"), list):
-                    self.config["teams"] = _migrate_green_team_rows(self.config["teams"])
-                # K8 (polish round 2): a hand-edited volume outside the range is dropped at load (the venue
-                # default), rather than raising later, inside a compile.
-                try:
-                    if _compile.check_game_volume(self.config.get("volume")) is None:
-                        self.config.pop("volume", None)
-                except ValueError:
-                    self.config.pop("volume", None)
-            # F411: a snapshot from before GAMES = PLAY picks, BUILD creates has no `game_pick` at all —
-            # derive one from the config it DOES carry (§2); MC does not recompose the config for this.
-            gp = snap.get("game_pick")
-            self.game_pick = (gp if _gamepick.looks_like_pick(gp) else
-                              _gamepick.derive_pick_from_config(self.config, frozenset(m["mode"] for m in MODES if m["mvp"])))
-            lm = snap.get("last_match")
-            self.last_match = cast(LastMatch, lm) if isinstance(lm, dict) else None
-            # S5(a): a restored station comes back UNARMED -- `armed=None, arm_pending=True` -- because the
-            # phone itself remembers nothing about MC across a restart; the existing "re-arm on next hello"
-            # path (`_on_node`'s utility branch, `if st.get("assigned"): self._arm_station(nid)`) is what
-            # actually pushes `station_config` again the moment the phone (still out on the field) says
-            # hello. `game_no`/`game_no_started` come back too, so a restart mid-match still bumps the byte
-            # on the next muster push instead of re-arming everyone for a game they already played.
-            for nid, a in (snap.get("stations") or {}).items():
-                if not isinstance(a, dict):
-                    continue
-                self.stations[nid] = {"node_id": nid, "assigned": a, "report": {}, "armed": None, "arm_pending": True}
-                # F337 (a): the lock window, the restart count and the last boot seen, as the old process left them.
-                kept = (snap.get("station_locks") or {}).get(nid)
-                if isinstance(kept, dict):
-                    self.stations[nid].update({k: kept[k] for k in _STATION_LOCK_KEYS if k in kept})
-                    if not _tally_ok(self.stations[nid].get("tally")):   # polish r1: a bad tally must not raise per beat
-                        self.stations[nid].pop("tally", None)
-                seen = (snap.get("station_range_seen") or {}).get(nid)   # A67
-                if isinstance(seen, dict) and isinstance(seen.get("max"), int) and isinstance(seen.get("edits"), list):
-                    self.stations[nid]["range_seen"] = {"max": seen["max"],
-                                                        "edits": [e for e in seen["edits"] if isinstance(e, dict) and _range_edit_ok(
-                                                            {**e, "age_ms": 0})][-8:]}
-                self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
-                                            "synced": False, "last_seen_ms": 0})
-            # F364: the ids MC handed out, then each restored assignment's own id (it wins over a stale entry).
-            for nid, sid in (snap.get("station_ids") or {}).items():
-                if isinstance(nid, str) and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535:
-                    self._station_id_of[nid] = sid
-            for nid, st in self.stations.items():
-                if isinstance(sid := (st.get("assigned") or {}).get("id"), int):
-                    self._station_id_of[nid] = sid
-            for nid, d in (snap.get("station_departures") or {}).items():
-                if isinstance(nid, str) and self._departure_ok(d) and not (self.stations.get(nid) or {}).get("assigned"):
-                    self._station_departures[nid] = {**d, "returned": False}
-            self.game_no = snap.get("game_no", self.game_no)
-            self._game_no_started = bool(snap.get("game_no_started", False))
-            if isinstance(snap.get("range_epoch"), int):
-                self._range_epoch = snap["range_epoch"]   # A67
-            self._stations_unlocked = snap.get("stations_unlocked") is True   # F337 (a): an UNLOCK survives
-            if isinstance(snap.get("join_secret"), str) and snap["join_secret"]:
-                self.join_secret = snap["join_secret"]     # A28.2: the QRs already printed stay valid
-                self._render_join()
-            # A34: the retired-match ledger, so a phone still live in a match MC ended before the restart
-            # is told to end. A row MC cannot read is skipped.
-            for row in snap.get("ended") or []:
-                if isinstance(row, dict) and isinstance(row.get("match_id"), str) and row["match_id"]:
-                    players = row.get("players") if isinstance(row.get("players"), dict) else None
-                    recap = row.get("recap") if isinstance(row.get("recap"), dict) else None
-                    at = row.get("ended_ms")
-                    self._ended[row["match_id"]] = {"recap": recap, "players": players,
-                                                    "ended_ms": at if isinstance(at, int) else self.now_ms()}
-            # Bench 2026-09-17: a match in play when the old process stopped. Held until the store is
-            # attached, because the recap is rebuilt from the stored facts (`resume_match`).
-            if isinstance(snap.get("match"), dict):
-                # F-2026-09-17d: `resume_match` needs to know how OLD this snapshot is, to refuse
-                # resuming a match nobody is playing any more. `saved_ms` lives on the outer snapshot,
-                # not the nested match dict, so it is carried across here under its own key.
-                self._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
-                # F423 (polish round 3): the held match carries its own config and players; migrate them too.
-                rp = self._resume_pending
-                if isinstance(rp.get("config"), dict) and isinstance(rp["config"].get("teams"), list):
-                    rp["config"] = {**rp["config"], "teams": _migrate_green_team_rows(rp["config"]["teams"])}
-                if isinstance(rp.get("players"), dict):
-                    rp["players"] = {k: _migrate_green_player_row(v) for k, v in rp["players"].items()}
-                if isinstance(snap.get("powerups"), dict):
-                    self._pu_restored = snap["powerups"]      # A56 (M1): adopted for this same match only
-            self._repair_player_nums()
-            # S45: a snapshot persisted before `health.max_shield`/`preset` existed restores a 2-key
-            # health blob -- normalize it to CUSTOM (the shield intent is unknown) rather than leaving
-            # `.get("max_shield")` calls downstream to each guess 0 on their own. Idempotent on an
-            # already-modern config, same "complete-or-absent" rule as `loadout_policy`/`mode_params` below.
-            self.config["health"] = _compile.normalize_health(self.config.get("health"))
-            # Pre-win_by snapshots carried only the cap. Restore the mode's rule explicitly so the scorer,
-            # compiler and every screen cannot disagree about whether that cap is live.
-            old_scoring = self.config.get("scoring") if isinstance(self.config.get("scoring"), dict) else {}
-            mode_scoring = default_config(self.config["mode"])["scoring"]
-            self.config["scoring"] = {
-                "frag_limit": old_scoring.get("frag_limit", mode_scoring["frag_limit"]),
-                "win_by": parse_win_by(old_scoring.get("win_by"), mode_scoring["win_by"]),
-            }
-            self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
-            # A18: a snapshot persisted before mode_params existed restores a koth/lms/extraction config with
-            # none, and `_validate` skips an ABSENT set, so the wire pushed without it (polish review 2026-09-11).
-            # Complete-or-absent, the same rule as `default_config`.
-            mp, _errs = _validate_mode_params(self.config["mode"], self.config.get("mode_params") or {})
-            if mp:
-                self.config["mode_params"] = mp
-            else:
-                self.config.pop("mode_params", None)
-            # A11: a snapshot persisted before the presentation profile existed gets the mode default, so the
-            # console still reads it as the stock mode it was (the UI compares configs to the mode defaults).
-            if not isinstance(self.config.get("presentation"), dict):
-                self.config["presentation"] = _pres.default_for(self.config["mode"])
-            for pl in self.players.values():                      # a pre-A10 snapshot has no `perk` key; fine
-                pl["loadout"] = _policy.apply(self.config["loadout_policy"], self.loadout_pool(), pl.get("loadout") or {"weapons": []},
-                                              *self._catalog_rows())
-            self._gun_index()
-            if self.players:
-                # F142: the board says what came back, and from when. `saved_ms` is this machine's own
-                # clock at the last write, which is exactly what "restored from <date>" needs — but
-                # session.json is a file on disk that anything can write, and this value goes straight
-                # out on `/api/state` for a UI to hand to `new Date(...)`. Coerce, and drop it rather
-                # than publish a string or a null into a numeric field (round-2 review 2026-09-12).
-                at = snap.get("saved_ms")
-                at = int(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
-                self.restored_from = {"at": at, "players": len(self.players)}
-            if self._sync_pending:
-                self._validate()     # F401: LOAD's sync warning shows at once after a restart, not on the next edit
-            return len(self.players)
-        except Exception as exc:
-            import logging; logging.getLogger("brx.mc").exception("session snapshot restore failed — starting clean")
-            for attr, value in before.items():     # nothing half-restored: every assigned field goes back
-                setattr(self, attr, value)
-            try:
-                self._render_join()
-                self._validate()
-            except Exception:
-                logging.getLogger("brx.mc").exception("rebuilding derived state after a failed restore also failed")
-            kept = self._keep_bad_snapshot()
-            if kept is None:
-                # the bad file is still at the live path: saving now would overwrite the only copy
-                logging.getLogger("brx.mc").error("session saving is OFF for this run: %s could not be moved aside",
-                                                  self._persist_path)
-                self._persist_path = None
-            self.restore_failed = {"reason": f"{type(exc).__name__}: {exc}"[:200],
-                                   "kept": str(kept) if kept else None}
-            return 0
-    def _repair_player_nums(self) -> None:
-        """Every restored player gets a UNIQUE 1..63 `player_num`, whatever the file said.
-
-        `player_num` is what goes on the wire as the `$PSET` player id, so a duplicate is not a
-        cosmetic problem: two guns answer to the same id and every hit either of them takes is
-        attributed to whichever player MC looks up first. The restore path used to take the file's
-        numbers verbatim and only re-derive them at the next config change — so a hand-edited,
-        half-written or two-sessions-merged snapshot could arm a game that scores the wrong people
-        (polish-loop deferred low). Order is stable: the first player to claim a number keeps it.
-        """
-        seen: set[int] = set()
-        needs: list[Player] = []
-        for p in self.players.values():
-            n = p.get("player_num")
-            ok = isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= MAX_PLAYERS and n not in seen
-            if ok:
-                seen.add(n)
-            else:
-                needs.append(p)
-        if not needs:
-            return
-        import logging
-        base = int(self.config.get("player_num_base") or 1)
-        # Prefer the configured base range (A6.5 keeps concurrent games disjoint), but fall back to
-        # the numbers BELOW it before giving up: this path RESTORES a roster, and dropping a real
-        # player while 1..base-1 sat free would destroy data the operator already had. The live add
-        # path (`_next_num`) may refuse; this one must not (review 2026-09-01).
-        start = max(1, min(base, MAX_PLAYERS))
-        order = list(range(start, MAX_PLAYERS + 1)) + list(range(1, start))
-        free = (n for n in order if n not in seen)
-        for p in needs:
-            n = next(free, None)
-            if n is None:                                  # roster fuller than the wire allows
-                logging.getLogger("brx.mc").error(
-                    "snapshot has more players than player_nums (%d) — dropping %s", MAX_PLAYERS, p.get("display"))
-                self.players.pop(p["player_id"], None)
-                continue
-            logging.getLogger("brx.mc").warning(
-                "snapshot player_num %r for %s was invalid or taken — reassigned to %d",
-                p.get("player_num"), p.get("display"), n)
-            p["player_num"] = n
-            seen.add(n)
+        return self.snapshot_codec.restore_snapshot()
 
     def _log(self, node_id, kind, body, t_recv, seq=None, parked=False):
         if not self.store:
@@ -4452,7 +3986,7 @@ class Session:
         raw_departed = m.get("departed_stations")
         if isinstance(raw_departed, list):
             for raw in raw_departed:
-                row = self._snapshot_departed_station(raw)
+                row = self.snapshot_codec._snapshot_departed_station(raw)
                 if row is None or row["node_id"] in self._departed_match_stations:
                     invalid_departed += 1
                     continue
