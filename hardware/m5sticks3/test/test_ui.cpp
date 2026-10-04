@@ -86,6 +86,44 @@ static void test_taken_age_is_computed_at_send_time_and_wrap_safe() {
   CHECK(maybe_build_taken_action(link, late, 100).find("\"age_ms\":356") != std::string::npos);
 }
 
+// O10: a report leaves the queue only after the send returned true. A failed send keeps it (and the ones
+// behind it) queued; an overflow of the bounded queue is counted and reaches the status body.
+static void test_a_failed_send_keeps_the_claim_queued_and_an_overflow_is_counted() {
+  StationLink link;
+  link.set_actions_enabled(true);
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 9;
+  link.apply_station_config(a);
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 9;
+  u.available = true;
+  link.apply_station_update(u, 500);
+  CHECK(link.award_claim(ClaimWinner{true, 5}, 1000));
+  int tries = 0;
+  CHECK_EQ(flush_pending_actions(link, 1400, 0, [&](const std::string&) { tries++; return false; }), (size_t)0);
+  CHECK_EQ(tries, 1);                          // the first failure stops the pass
+  CHECK_EQ(link.pending_action_count(), (size_t)1);   // still queued
+  std::string seen;
+  CHECK_EQ(flush_pending_actions(link, 1400, 0, [&](const std::string& b) { seen = b; return true; }), (size_t)1);
+  CHECK(seen.find("\"player_num\":5") != std::string::npos);
+  CHECK_EQ(link.pending_action_count(), (size_t)0);
+  link.set_actions_enabled(false);             // ACTIONS off: discarded without a send, not kept forever
+  link.award_claim(ClaimWinner{true, 6}, 2000);
+  CHECK_EQ(flush_pending_actions(link, 2400, 0, [&](const std::string&) { return false; }), (size_t)0);
+  CHECK_EQ(link.pending_action_count(), (size_t)0);
+
+  PendingActionQueue q;
+  for (int i = 0; i < (int)PendingActionQueue::CAPACITY + 3; i++) q.push(9, i + 1, (uint32_t)(1000 * i), 1000 + i);
+  CHECK_EQ(q.dropped(), (uint32_t)3);
+  StatusFields f;
+  CHECK(build_status_body(f).find("actions_dropped") == std::string::npos);   // 0 is left out: the older shape
+  f.actions_dropped = q.dropped();
+  CHECK(build_status_body(f).find("\"actions_dropped\":3") != std::string::npos);
+}
+
 static void test_short_press_pages_through_every_page_and_wraps() {
   StationButtons b;
   CHECK(b.page() == StatsPage::KIND);
@@ -348,6 +386,7 @@ int main() {
   test_actions_on_by_default_and_off_builds_nothing();
   test_actions_gate_with_no_assignment_builds_nothing_even_when_enabled();
   test_taken_age_is_computed_at_send_time_and_wrap_safe();
+  test_a_failed_send_keeps_the_claim_queued_and_an_overflow_is_counted();
   test_short_press_pages_through_every_page_and_wraps();
   test_one_long_press_arms_a_second_confirms();
   test_a_second_long_press_past_the_timeout_re_arms_instead_of_confirming();

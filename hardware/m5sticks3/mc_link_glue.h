@@ -1097,6 +1097,7 @@ static void mcLoop(uint32_t now) {
     f.boot_count = bootCount;
     f.assoc = link.mode() == AssocMode::HELD ? "held" : "muster";
     f.lock_s = (long)link.lock().remaining_s(now);
+    f.actions_dropped = link.pending_actions_dropped();   // O10: CLAIM reports the full queue evicted
     if (link.has_control_assignment()) {
       // §5c: the station is self-authoritative, so it reports the point, as utility.js's status does.
       const BleControlPoint& h = link.hill();
@@ -1123,15 +1124,15 @@ static void mcLoop(uint32_t now) {
   // welcomed this socket and the clock is synced (action_flush_allowed, station_ui.h), left queued otherwise (bounded, station_link.h's PendingActionQueue). `ACTIONS` gates
   // `maybe_build_taken_action` itself, so a report is simply dropped, never built, while it is off.
   if (action_flush_allowed(ws.isConnected(), link.state(), mcClock.synced)) {  // welcomed, clock synced (M3)
-    PendingTakenReport rep;
-    while (link.pop_pending_action(rep)) {
-      std::string body = maybe_build_taken_action(link, rep, now, mcClock.offset_ms);   // age_ms computed now, at send time
-      if (!body.empty()) {
-        std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), mcClock.epoch(now));
-        String envArduino(env.c_str());
-        ws.sendTXT(envArduino);
-      }
-    }
+    // O10: peek, send, and discard only when `sendTXT` returned true. A failed send keeps the report
+    // queued for the next pass (the queue is bounded; an overflow is counted into the status
+    // heartbeat). `station_action` has no acknowledgement on the wire (contracts.md section 5), so a
+    // true `sendTXT` is the strongest signal this link has that the frame left the Stick.
+    flush_pending_actions(link, now, mcClock.offset_ms, [&](const std::string& body) {
+      std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), mcClock.epoch(now));
+      String envArduino(env.c_str());
+      return ws.sendTXT(envArduino);
+    });
   }
 
 }

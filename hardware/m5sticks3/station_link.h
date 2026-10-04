@@ -254,6 +254,9 @@ struct StatusFields {
   std::string tx_power_src;
   int64_t tx_power_edit_age_ms = -1;
   std::string range_edits_json;
+  // O10 (additive; 0 = left out, so the body is byte-identical to the older shape): CLAIM reports the
+  // queue evicted when full, cumulative since boot. MC keeps the maximum per node and shows it.
+  uint32_t actions_dropped = 0;
 };
 
 inline std::string build_status_body(const StatusFields& f) {
@@ -307,6 +310,7 @@ inline std::string build_status_body(const StatusFields& f) {
       j += ",\"tx_power_edit_age_ms\":" + std::to_string(f.tx_power_edit_age_ms);
   }
   if (!f.range_edits_json.empty() && f.range_edits_json != "[]") j += ",\"range_edits\":" + f.range_edits_json;
+  if (f.actions_dropped > 0) j += ",\"actions_dropped\":" + std::to_string(f.actions_dropped);
   j += "}";
   return j;
 }
@@ -1008,7 +1012,10 @@ class PendingActionQueue {
         return;
       }
     }
-    if (entries_.size() >= CAPACITY) entries_.erase(entries_.begin());
+    if (entries_.size() >= CAPACITY) {
+      entries_.erase(entries_.begin());
+      dropped_++;   // O10: a claim MC will now never hear of. Counted, and reported in the status heartbeat.
+    }
     entries_.push_back(PendingTakenReport{station_id, player_num, spawn_instant_ms, t_ms});
   }
 
@@ -1025,8 +1032,23 @@ class PendingActionQueue {
     return true;
   }
 
+  // O10: the send path reads the oldest report WITHOUT removing it, and removes it (`discard_front`) only
+  // after `sendTXT` returned true, so a failed send keeps the claim queued for the next pass.
+  bool peek_front(PendingTakenReport& out) const {
+    if (entries_.empty()) return false;
+    out = entries_.front();
+    return true;
+  }
+  void discard_front() {
+    if (!entries_.empty()) entries_.erase(entries_.begin());
+  }
+  // O10: how many claims overflow evicted since boot (a clear() at a new game is not a drop: that is
+  // deliberate, and the game those reports belonged to is over).
+  uint32_t dropped() const { return dropped_; }
+
  private:
   std::vector<PendingTakenReport> entries_;
+  uint32_t dropped_ = 0;
 };
 
 // How long a MUSTER drop after a restore waits for MC's re-anchoring station_update (review round 1).
@@ -1665,6 +1687,10 @@ class StationLink {
   }
 
   bool pop_pending_action(PendingTakenReport& out) { return pending_actions_.pop_front(out); }
+  // O10: the send path peeks, sends, and discards only on success (see PendingActionQueue::peek_front).
+  bool peek_pending_action(PendingTakenReport& out) const { return pending_actions_.peek_front(out); }
+  void discard_pending_action() { pending_actions_.discard_front(); }
+  uint32_t pending_actions_dropped() const { return pending_actions_.dropped(); }
   bool has_pending_actions() const { return !pending_actions_.empty(); }
   size_t pending_action_count() const { return pending_actions_.size(); }
 
