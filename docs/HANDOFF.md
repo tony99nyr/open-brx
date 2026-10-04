@@ -60,10 +60,11 @@ for mDNS: `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_m
 --ws-port 8786 --ephemeral`.
 **Blocked:** none.
 ## Lane: brx5, powerups, the HUD and gun audio
-**State:** powerups ON by default on main (F372); F416, F417 part 1 and F418 are shipped (spawn-write retry, lost
-equip re-send, a held heavy ends only on a trigger pull).
-**Next:** the re-bench list in [`bench-plan.md`](bench-plan.md); F437-F439 bench steps on their rows.
+**State:** overnight 2026-10-03 polish of F437-F439, F446, F434: a lethal toxin hit no longer cuts the scream with
+H12, and a self-kill keeps the magazine (log 2026-10-03).
+**Next:** D4/A8 for brx1, one cue table (`presentation.EVENTS`); then the bench steps on the F437-F439 rows.
 **Blocked:** none.
+
 ## Start here
 
 1. **Next sitting:** [`bench-plan.md`](bench-plan.md) part 2, the 3 h cut first; record evidence and promote or close

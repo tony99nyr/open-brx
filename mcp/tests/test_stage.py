@@ -407,6 +407,27 @@ def _restores(frames):
     return [f for f in frames if f.startswith("$LIFE,") and f != "$LIFE,0,0,0,*"]
 
 
+def test_polish_2026_10_03_stage_a_lethal_self_hit_keeps_the_magazine():
+    """engine.js `_revive` `keepAmmo` (app/test/self-hit.test.mjs): a self-kill gives nothing, so the revive burst's own
+    `$AMMO` rows carry the live counts and no full magazine goes out."""
+    async def run():
+        st, mgr, hit = await _f438_stage()
+        full = st._spawn_ammo()[0]
+        mag, res = full[0] - 3, full[1]
+        hit(f"$ALCD,{mag},100,0,{res},0,*"); await settle(st)
+        assert st._live_ammo()[0] == [mag, res], "setup: three rounds fired"
+        st._foreign_dmg_at = None
+        n = len(tx(mgr))
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*"); await settle(st)
+        new = tx(mgr)[n:]
+        assert st.alive and "$SPAWN,,*" in new, new
+        keep = f"$AMMO,0,{mag},{res},1,*"
+        assert keep in new and new.index(keep) > new.index("$SPAWN,,*"), new
+        assert f"$AMMO,0,{full[0]},{full[1]},1,*" not in new, "no full magazine"
+        assert st._live_ammo()[0] == [mag, res]
+    asyncio.run(run())
+
+
 def test_f438_polish_stage_pairs_on_the_damaging_word_and_never_swallows_an_enemy_drop():
     """F438 polish r1 (engine.js `_selfHitHp`): HIGH 3, the drop belongs to the fresh DAMAGING word (F354), so our own
     damaging round followed by an enemy's no-pool word is still ours; HIGH 2, an enemy's damaging word inside the same
