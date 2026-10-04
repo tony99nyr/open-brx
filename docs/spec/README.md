@@ -79,8 +79,9 @@ Closed on the bench 2026-08-25 (§7r of the [archived August notebook](../archiv
 live with config intact (5-min run still owed); the head write is silent; headset off drops the link, so link +
 echo is the headset proof; an unspawned gun ignores IR; a live `$TID` write flips hit resolution immediately.
 
-Still open (tracked in `docs/FOLLOWUPS.md`): the `$VOLTS` % token; the 5-min hold; a 20-min two-node soak;
-iOS locked-phone BLE; the shield in the `status` body (node.md Q12, FOLLOWUPS Q12′).
+Still open, none of it MVP: the 5-min hold, the 20-min two-node soak, iOS locked-phone BLE and the `$VOLTS` %
+token are in [`post-mvp.md`](../post-mvp.md) §10 (System proofs); the
+shield in the `status` body is **Q12′** in its §3 (node.md Q12).
 
 ## 6. Product qualities every module honours
 
