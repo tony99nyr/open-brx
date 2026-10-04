@@ -1401,3 +1401,17 @@ test('down: <ITEM> AVAILABLE while I am down is never drawn, during or after the
   const g = harness({ stations: [{ id: 4, kind: 'powerup', item: OVERSHIELD }] }); g.at(60.5);
   assert.equal(((g.eng.state().lanes || {}).feed || []).filter(f => f.kind === 'powerup_spawn').length, 1, 'CONTROL: alive, it is drawn');
 });
+
+// polish 2026-10-03 r2: a self-kill revive keeps the LIVE counts (F438), but an item never carries a life, so the pickup
+// slot keeps compile's empty row. Rewriting it to the held charges left a heavy on the gun that the node had dropped.
+test('polish 2026-10-03: a self-kill while holding a heavy keeps the pickup slot empty in the revive burst', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
+  h.at(125); h.take(4); h.adv(500); h.flush();
+  assert.equal(h.eng._puHeld && h.eng._puHeld.slot, 2, 'setup: ROCKETS held in slot 2');
+  h.adv(1500);
+  const n = h.mark();
+  h.eng.feedFrame('$HIR,4,0,7,1,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, true, 'setup: a self-kill revives');
+  const ammo2 = h.since(n).filter(f => f.startsWith('$AMMO,2,'));
+  assert.ok(ammo2.length && ammo2.every(f => f === '$AMMO,2,0,0,1,*'), ammo2.join(' '));
+});

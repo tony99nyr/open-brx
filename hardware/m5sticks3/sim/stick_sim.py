@@ -256,10 +256,12 @@ def run(out_dir: pathlib.Path | None = None, render: bool | None = None,
 
 # ---- the gate ---------------------------------------------------------------------------------------
 MIN_GAP = 2  # px of background between two strings' ink; less and they read as one smudge
+# px of background between a shape's ink and a string's (F398). Wider than MIN_GAP: the countdown ring and
+# NEXT SPAWN are both COL_WARN, and same-colour ink needs more room to read as two things at arm's length.
+SHAPE_GAP = 4
 
 
-def _overlap(a, b) -> bool:
-    g = MIN_GAP
+def _overlap(a, b, g: int = MIN_GAP) -> bool:
     return not (a[2] + g < b[0] or b[2] + g < a[0] or a[3] + g < b[1] or b[3] + g < a[1])
 
 
@@ -288,6 +290,14 @@ def text_problems(res: dict) -> list[str]:
         for j in range(i + 1, len(inked)):
             if _overlap(inked[i]["box"], inked[j]["box"]):
                 out.append(f"'{inked[i]['text']}' and '{inked[j]['text']}' overlap or touch (< {MIN_GAP} px apart)")
+    # F398: a circle or an arc (the pickup countdown ring) against every string, from measured ink. Before
+    # this check the gate saw text only, so a ring drawn onto NEXT SPAWN passed it.
+    for sh in res.get("shapes", []):
+        for t in inked:
+            if _overlap(sh["box"], t["box"], SHAPE_GAP):
+                x0, y0, x1, y1 = sh["box"]
+                out.append(f"the {sh['kind']} (ink x {x0}..{x1} y {y0}..{y1}) and '{t['text']}' "
+                           f"overlap or touch (< {SHAPE_GAP} px apart)")
     return out
 
 

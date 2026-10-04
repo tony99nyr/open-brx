@@ -121,6 +121,25 @@ test('F446: in a plain 5 s poison with nothing else playing, 4 of the 5 ticks ar
   assert.equal(audible, 4, 'the first tick is silent (H12 still on the gun at +1 s); ticks 2-5 are heard');
 });
 
+// polish 2026-10-03: the `$HIR` comes before the lethal `$HP,0`, so a cue sent on the `$HIR` lands on the gun just
+// after the native scream starts, and H12 rides the interrupt slot: it would cut the scream
+test('polish 2026-10-03: a lethal first toxin hit plays no `poisoned` cue (the scream owns the speaker)', () => {
+  const h = harness().setPools(4, 0, 0);
+  const n = h.writes.length;
+  h.eng.feedFrame('$HIR,0,11,3,2,8,0,0,*'); h.eng.feedFrame('$HP,0,0,0,*');
+  h.adv(2000);
+  assert.equal(h.eng.alive, false, 'setup: the hit killed');
+  assert.deepEqual(h.writes.slice(n).filter(f => f.startsWith('$PLAY') && f.includes('H12')), [], 'no H12 over the scream');
+});
+
+test('polish 2026-10-03: a toxin hit that does no damage (no `$HP` follows) still plays `poisoned`, by the first tick', () => {
+  const h = harness();
+  const n = h.writes.length;
+  h.eng.feedFrame('$HIR,0,11,3,2,0,0,0,*');
+  h.adv(1000);
+  assert.equal(h.writes.slice(n).filter(f => f.startsWith('$PLAY') && f.includes('H12')).length, 1);
+});
+
 test('S16: a hit on another protocol, or a bundle with no dot table, never poisons', () => {
   const h = harness();
   h.eng.feedFrame('$HIR,0,0,3,2,8,0,0,*'); h.eng.feedFrame('$HP,45,62,0,*');

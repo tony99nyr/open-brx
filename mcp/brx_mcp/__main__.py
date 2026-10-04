@@ -88,6 +88,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import io
 import json
@@ -1750,6 +1751,44 @@ async def _play(mode: str, addresses: list[str], kvs: list[str]) -> None:
     _print(snap)
 
 
+class _IrEmitParser(argparse.ArgumentParser):
+    """Exit non-zero with the message in the SystemExit, as the old hand parser did."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        raise SystemExit(f"{self.prog}: error: {message}")
+
+
+def _ir_bits(text: str) -> str:
+    if not re.fullmatch(r"[01]+", text):
+        raise argparse.ArgumentTypeError(f"{text!r} is not a bit string (only 0 and 1)")
+    return text
+
+
+def _ir_gap(text: str) -> int:
+    if not text.isdigit():
+        raise argparse.ArgumentTypeError("--gap needs a whole number of milliseconds (0-10000)")
+    return int(text)
+
+
+def _parse_ir_emit(argv: list[str]) -> tuple[str, str | None, int, bool, int | None]:
+    """Parse `ir-emit` arguments. F376: argparse owns `--help` and rejects anything
+    that is not a 0/1 bit string, so bad input can never reach the transmit path.
+    Returns (bits, port, repeat, wait, gap_ms)."""
+    ap = _IrEmitParser(
+        prog="python -m brx_mcp ir-emit",
+        description="Emit one IR frame via the ESP32 bridge. The frame is a bit string of 0 and 1.")
+    ap.add_argument("bits", type=_ir_bits, help="the frame, for example 1111000000010000100000010")
+    ap.add_argument("extra", nargs="*", help="serial port (for example COM8) and repeat count, in either order")
+    ap.add_argument("--gap", type=_ir_gap, default=None, metavar="MS",
+                    help="F321: silence after each word, 0-10000 ms")
+    ap.add_argument("--wait", action="store_true", help="block until the board has finished transmitting")
+    ns = ap.parse_intermixed_args(argv)
+    port = ns.extra[0] if ns.extra and not ns.extra[0].isdigit() else None
+    repeat = next((int(a) for a in ns.extra if a.isdigit()), 1)
+    return ns.bits, port, repeat, ns.wait, ns.gap
+
+
 def _dispatch(cmd: str, args: list[str]) -> None:
     if cmd == "scan":
         asyncio.run(_scan(int(args[1]) if len(args) > 1 else 8))
@@ -1809,19 +1848,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         port = args[1] if len(args) > 1 and not args[1].isdigit() else None
         secs = next((float(a) for a in args[1:] if a.replace(".", "").isdigit()), 15.0)
         _ir_capture(port, secs)
-    elif cmd == "ir-emit" and len([a for a in args[1:] if a != "--wait"]) > 0:
-        wait = "--wait" in args
-        rest = [a for a in args[1:] if a != "--wait"]
-        gap_ms = None
-        if "--gap" in rest:
-            k = rest.index("--gap")
-            if k + 1 >= len(rest) or not rest[k + 1].isdigit():
-                raise SystemExit("--gap needs a whole number of milliseconds (0-10000)")
-            gap_ms = int(rest[k + 1])
-            del rest[k:k + 2]
-        bits = rest[0]
-        port = rest[1] if len(rest) > 1 and not rest[1].isdigit() else None
-        repeat = next((int(a) for a in rest[1:] if a.isdigit()), 1)
+    elif cmd == "ir-emit" and len(args) > 1:
+        bits, port, repeat, wait, gap_ms = _parse_ir_emit(args[1:])
         _ir_emit(bits, port, repeat, wait=wait, gap_ms=gap_ms)
     elif cmd == "reset" and len(args) > 1:
         asyncio.run(_reset(args[1]))
