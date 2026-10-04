@@ -89,6 +89,12 @@ export const VENUE_VOLUME_INDOOR = 80;
 export const VENUE_VOLUME_OUTDOOR = 90;
 export const GAME_VOLUME_MIN = 60;
 export const GAME_VOLUME_MAX = 100;
+/** pieces.json (`pieces.PieceStore`) */
+export const PIECES_STORE_V = 1;
+/** favourites.json (`favourites.FavouriteStore`) */
+export const FAVOURITES_STORE_V = 1;
+/** the session snapshot (`state.Session` persist) */
+export const SESSION_STORE_V = 1;
 export const TIMED_PROTECT_S_DEFAULT = 0;
 export const WEAPON_DELAY_MS_DEFAULT = 500;
 export const STATION_PROTECT_S_DEFAULT = 2;

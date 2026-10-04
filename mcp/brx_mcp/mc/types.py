@@ -138,6 +138,11 @@ VENUE_VOLUME_OUTDOOR = 90
 GAME_VOLUME_MIN = 60
 GAME_VOLUME_MAX = 100
 
+# ---- D15: the schema version of each store MC persists; an unknown `v` is kept aside (contracts.md §9) ----
+PIECES_STORE_V = 1       # pieces.json (`pieces.PieceStore`)
+FAVOURITES_STORE_V = 1   # favourites.json (`favourites.FavouriteStore`)
+SESSION_STORE_V = 1      # the session snapshot (`state.Session` persist)
+
 # ---- A29: the app build MC is compatible with ----
 # Versions are SEMVER and the tiers carry meaning (contracts A29): MAJOR = anything the game or the wire
 # depends on (protocol, engine rules, bundle shape), MINOR = HUD-facing features with no game impact,

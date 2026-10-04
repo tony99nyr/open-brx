@@ -17,12 +17,13 @@ import copy
 import json
 import logging
 import pathlib
+import re
 import time
 import uuid
 from typing import Any, Callable
 
 from ..storage import home_dir
-from .types import Favourite, GamePick, MatchSettings, PIECE_KINDS
+from .types import Favourite, GamePick, MatchSettings, PIECE_KINDS, FAVOURITES_STORE_V
 
 log = logging.getLogger("brx.mc.favourites")
 
@@ -115,11 +116,21 @@ class FavouriteStore:
             return
         try:
             raw = json.loads(self.path.read_text())
+            v = raw.get("v") if isinstance(raw, dict) else None   # a list or a dict with no `v` is the first shape
+            if v is not None and v != FAVOURITES_STORE_V:
+                # D15: a store from another MC version (usually a newer one after a downgrade) is never guessed at
+                # and never overwritten: it is kept beside the live file under its version, and this MC starts clean.
+                tag = re.sub(r"[^0-9A-Za-z]", "", str(v))[:8] or "x"
+                kept = self.path.with_name(f"{self.path.name}.v{tag}-{int(time.time() * 1000)}")
+                self.path.replace(kept)
+                log.warning("favourites.json was saved by an MC with store version %r; this MC reads %d. Kept as %s "
+                            "(restore it with the MC that wrote it); starting clean", v, FAVOURITES_STORE_V, kept)
+                return
             rows = raw.get("favourites") if isinstance(raw, dict) else raw
             if not isinstance(rows, list):
                 raise ValueError("favourites.json: expected a list")
         except Exception as e:
-            aside = self.path.with_name(f"{self.path.name}.corrupt-{int(time.time())}")
+            aside = self.path.with_name(f"{self.path.name}.corrupt-{int(time.time() * 1000)}")
             try:
                 self.path.replace(aside)
             except Exception:
@@ -162,7 +173,7 @@ class FavouriteStore:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"v": 1, "favourites": self._rows}, indent=1))
+        tmp.write_text(json.dumps({"v": FAVOURITES_STORE_V, "favourites": self._rows}, indent=1))
         tmp.replace(self.path)                                # atomic on POSIX + NTFS
 
     def _find_name(self, name: str, exclude_id: str | None = None) -> Favourite | None:
