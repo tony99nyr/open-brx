@@ -41,7 +41,7 @@ const shot = (pg, name) => shotIn(pg, SHOTS, name);
 /** The stand-ins, one command per line (vqa2_nodes.py). */
 async function startNodes(wsUrl, specs) {
   const proc = spawn(devPython(), [path.join(E2E_DIR, 'vqa2_nodes.py'), wsUrl, ...specs],
-    { cwd: path.join(REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: HOME } });
+    { cwd: path.join(REPO, 'mcp'), stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, BRX_MCP_HOME: HOME, PYTHONPATH: path.join(REPO, 'mcp') } });   // F458: PYTHONPATH = this checkout's mcp/, or the venv's editable install (the main checkout) wins and a worktree tests main's MockNode
   let err = ''; proc.stderr.on('data', d => { err += d; });
   const lines = []; let wake = null;
   readline.createInterface({ input: proc.stdout }).on('line', l => { lines.push(l); if (wake) wake(); });
