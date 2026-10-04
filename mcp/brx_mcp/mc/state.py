@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, NotRequired, TypedDict
 from urllib.parse import quote
 
 from . import presentation as _pres
-from .. import poolgauge as _pg
 from .. import voices as _voices
 from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — one coverage model
+from . import configcheck as _check
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
 from . import policy as _policy
@@ -31,7 +31,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import HOLD_TARGET_MAX_S, RESPAWN_DELAY_MAX_S, TIME_LIMIT_MAX_S   # A11: generated for the console
+from .types import RESPAWN_DELAY_MAX_S, TIME_LIMIT_MAX_S   # A11: generated for the console
 from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_CONTROL_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, ADOPT_SLACK_MS, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
@@ -2816,7 +2816,7 @@ class Session:
             if k not in self._CONFIG_KEYS:
                 continue                         # ignore unknown / client-injected keys
             if k == "time_limit_s":
-                if v is not None and not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= TIME_LIMIT_MAX_S):
+                if not _check.patch_time_limit(v):
                     raise ValueError(f"time_limit_s must be an integer 1..{TIME_LIMIT_MAX_S} or null")
                 cfg["time_limit_s"] = v
             elif k == "environment":
@@ -2849,10 +2849,10 @@ class Session:
                 current = cfg["respawn"] if k == "respawn" else cfg["scoring"] if k == "scoring" else cfg["health"]
                 merged: dict[str, Any] = {**current, **v}
                 if k == "respawn":
-                    if merged.get("type") not in ("auto", "scanner", "none"):
+                    if not _check.respawn_type_ok(merged.get("type")):
                         raise ValueError("respawn.type must be auto|scanner|none")
                     d = merged.get("delay_s", 0)
-                    if not (isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= RESPAWN_DELAY_MAX_S):
+                    if not _check.respawn_delay_ok(d):
                         raise ValueError(f"respawn.delay_s must be 0..{RESPAWN_DELAY_MAX_S}")
                     # F34 (2026-09-07): 0 is the sentinel for "unset / no respawn" (respawn.type ==
                     # "none", e.g. Last Man Standing's default) and stays valid. 1-2 s is the one range
@@ -2860,7 +2860,7 @@ class Session:
                     # $SPAWN lands within ~2 s of death (2.5 s measured clean) -- so every value strictly
                     # between "off" and "safe" is rejected rather than silently building a match that
                     # sticks headsets all night.
-                    if d in (1, 2):
+                    if _check.respawn_delay_unsafe(d):
                         raise ValueError("respawn.delay_s of 1-2s wedges the headset in the relay's "
                                          "out-blink (F13); use 0 (no respawn) or >= 3")
                     # 2026-09-19 respawn profiles: the timed and station protection and the weapon delay.
@@ -2883,7 +2883,7 @@ class Session:
                     cfg["respawn"] = respawn
                 if k == "scoring":
                     fl = merged.get("frag_limit")
-                    if fl is not None and not (isinstance(fl, int) and not isinstance(fl, bool) and fl > 0):
+                    if not _check.frag_limit_ok(fl):
                         raise ValueError("scoring.frag_limit must be a positive integer or null")
                     # F415 (2026-09-27): the KOTH hold target -- the first team to hold the hill this
                     # long wins at once (`scoring.Scorer._check_hold_target`), mirroring the frag limit.
@@ -2892,7 +2892,7 @@ class Session:
                     if hts is not None:
                         if mode != "koth":
                             raise ValueError("A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL")
-                        if not (isinstance(hts, int) and not isinstance(hts, bool) and 0 < hts <= HOLD_TARGET_MAX_S):
+                        if not _check.hold_target_ok(hts):
                             raise ValueError("HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET")
                     # `merged["win_by"]` is not guaranteed: a RESTORED snapshot's config can be missing
                     # it (see `set_config`'s own comment on `cfg` above), and a patch that only touches
@@ -2925,7 +2925,7 @@ class Session:
                     pools: dict[str, int] = {}
                     for hk, lo in (("max_hp", 1), ("max_armor", 0), ("max_shield", 0)):
                         hv = merged.get(hk, 0)
-                        if not (isinstance(hv, int) and not isinstance(hv, bool) and lo <= hv <= 255):
+                        if not _check.health_pool_ok(hk, hv):
                             # 255 is a POLICY ceiling, not a hardware one -- $PSET pools are
                             # wider than 8 bits (bench 2026-08-27, see FOLLOWUPS/experiment-log).
                             raise ValueError(f"health.{hk} must be {lo}..255")
@@ -2941,8 +2941,7 @@ class Session:
                     cfg["health"] = {"max_hp": pools["max_hp"], "max_armor": pools["max_armor"],
                                      "max_shield": pools["max_shield"], "preset": preset}
             elif k == "teams":
-                if not (isinstance(v, list) and all(isinstance(t, dict) and "team_id" in t
-                                                   and isinstance(t.get("tid"), int) and not isinstance(t.get("tid"), bool) for t in v)):
+                if not _check.team_patch_shape(v):
                     raise ValueError("teams must be a list of team objects with team_id + integer tid")
                 # A36 belt-and-braces, alongside F35/F82/F97 below. Two teams sharing a `team_id`
                 # make `Session.team()` (a `next(...)` over the list) resolve every player on either
@@ -2952,10 +2951,7 @@ class Session:
                 # because that shape shipped a match that could not register a hit. Neither is worth
                 # detecting downstream when the config can simply refuse to hold it.
                 for key, label in (("team_id", "team_id"), ("tid", "$TID")):
-                    counts_: dict[str, int] = {}
-                    for t in v:
-                        counts_[str(t[key])] = counts_.get(str(t[key]), 0) + 1
-                    dupes = sorted(k for k, n in counts_.items() if n > 1)
+                    dupes = _check.duplicate_team_values(v, key)
                     if dupes:
                         raise ValueError(
                             f"duplicate {label} {dupes} in teams: two teams "
@@ -2967,7 +2963,7 @@ class Session:
                 # side of that split damage each other and a tid>=4 player's shots can read as a lower,
                 # friendly team to everyone else. Only 0-3 are valid team ids; the COLOUR painted for a
                 # team (0-7, `poolgauge.display_colour`) is a separate, unaffected lookup.
-                bad = [t["tid"] for t in v if t["tid"] not in _pg.TEAM_TIDS]
+                bad = _check.invalid_team_tids(_check.team_tids(v))
                 if bad:
                     raise ValueError(f"team tid(s) {sorted(set(bad))} outside 0-3 (F35): the IR word's "
                                      f"team field is 2 bits -- a $TID of 4 or higher makes teammates "
@@ -2975,7 +2971,7 @@ class Session:
                 # F413 (2026-09-27): koth is exactly 2 teams, never 3 or 4 -- checked before F97's own
                 # (looser, other-objective-mode) count limit so a koth pick gets the RIGHT number back,
                 # not "up to three".
-                if mode == "koth" and len({t["tid"] for t in v}) != 2:
+                if mode == "koth" and len(set(_check.team_tids(v))) != 2:
                     raise ValueError("KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS")
                 # 🔴 F82, and this was the LAST open route into it (operator review 2026-09-10). A hill
                 # mode's config was allowed to CONTAIN a tid-2 team as long as nobody was on it yet --
@@ -2988,12 +2984,12 @@ class Session:
                 # mode has, so a four-player free-for-all hill is three players and a pair. Checked
                 # before F82 so the operator is told the real limit rather than "use tid 0, 1 or 3",
                 # which no fourth single-member team can obey.
-                if mode in OBJECTIVE_MODES and len({t["tid"] for t in v}) > 3:
+                if mode in OBJECTIVE_MODES and len(set(_check.team_tids(v))) > 3:
                     raise ValueError(
                         f"F97: mode {mode!r} supports at most three teams (tids 0, 1 and 3): a neutral "
                         f"hill broadcasts team {_NEUTRAL_TEAM} and the IR team field is 2 bits, so a "
                         "fourth player has to share a team -- an FFA hill caps at three players")
-                if mode in OBJECTIVE_MODES and any(t["tid"] == _NEUTRAL_TEAM for t in v):
+                if mode in OBJECTIVE_MODES and _check.neutral_team_ids(v, _NEUTRAL_TEAM):
                     # MEDIUM (brx1 review of e8811fea): this reaches the console through PLAY/FAVOURITES
                     # too (`_merge_config` is shared by `PUT /api/config` and `set_config`'s own
                     # compose/precheck path), so it needs the same ALL-CAPS "WHAT: DO" house style as
@@ -3047,7 +3043,7 @@ class Session:
             elif k == "vip_player_id":
                 # A19 (S10): who the VIP is. Roster membership is `validate()`'s to check (this merge is pure);
                 # here only the shape. `null` clears it.
-                if v is not None and not (isinstance(v, str) and v):
+                if not _check.vip_patch_shape(v):
                     raise ValueError("vip_player_id must be a player_id string or null")
                 if v is None:
                     cfg.pop("vip_player_id", None)
