@@ -7,6 +7,7 @@ may appear in brx_mcp outside the helper (break it: add `p.write_text("x")` to a
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import stat
@@ -156,34 +157,105 @@ def test_device_backup_crash_keeps_the_old_file():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_an_existing_file_keeps_its_mode_and_a_new_one_gets_the_umask_default():
+    if sys.platform == "win32":
+        return
+    d = _tmp()
+    try:
+        p = d / "f.json"
+        p.write_text("old")
+        os.chmod(p, 0o644)
+        storage.atomic_write_text(p, "new")
+        assert p.read_text() == "new" and stat.S_IMODE(p.stat().st_mode) == 0o644
+        old = os.umask(0o022)
+        try:
+            storage.atomic_write_text(d / "fresh", "x")
+        finally:
+            os.umask(old)
+        assert stat.S_IMODE((d / "fresh").stat().st_mode) == 0o644
+        storage.atomic_write_text(d / "secret", "x", mode=0o600)
+        storage.atomic_write_text(d / "secret", "y", mode=0o600)
+        assert stat.S_IMODE((d / "secret").stat().st_mode) == 0o600
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_a_symlinked_target_is_written_through_not_replaced():
+    if sys.platform == "win32":
+        return
+    d = _tmp()
+    try:
+        real = d / "real.json"
+        real.write_text("old")
+        link = d / "link.json"
+        link.symlink_to(real)
+        storage.atomic_write_text(link, "new")
+        assert link.is_symlink(), "the link was replaced by a regular file"
+        assert real.read_text() == "new"
+        assert sorted(p.name for p in d.iterdir()) == ["link.json", "real.json"]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 # ---------- the guard ----------
 
-# file (relative to brx_mcp) -> why a bare write is fine there. Anything not listed must use atomic_write_text.
-_ALLOWED = {
-    "storage.py": "the helper itself (os.fdopen on a mkstemp file)",
-    "usbconsole.py": "the .bad-<stamp> quarantine copy: a new O_EXCL file, never an overwrite (os.fdopen)",
-    "btsnoop.py": "CLI export to a path the operator names on the command line",
-    "__main__.py": "the diag report: generated output, rewritten whole on every run",
-    "chaos/__main__.py": "chaos trace output, generated and disposable",
-    "chaos/runner.py": "chaos trace output, generated and disposable",
-    "mc/__main__.py": "evidence_dir mc-session.json: a launch marker for the e2e harness, rewritten each boot",
-}
-# Append mode ("a") is not scanned: logs and the fsynced append-only trust list never truncate, so a crash cannot
-# lose old content. Only truncating writes ("w", "x", write_text) need the temp-and-rename helper.
-_BARE = re.compile(r"\.write_text\(|\bopen\([^)]*[\"'][wx]b?[\"']|os\.fdopen\([^)]*[\"'][wx]b?[\"']")
+# (file relative to brx_mcp, exact text that must appear on the call's line, reason). Per CALL, so a new bare
+# write in the same file still fails. A stale entry (its text no longer found) fails too.
+_ALLOWED = [
+    ("storage.py", 'os.fdopen(fd, "w"', "the helper itself, on its own mkstemp file"),
+    ("storage.py", 'open(kept, "xb")', "quarantine copy: a new exclusive-create file, never an overwrite"),
+    ("usbconsole.py", 'os.fdopen(fd, "wb")', "the .bad-<stamp> quarantine copy: a new O_EXCL file"),
+    ("btsnoop.py", 'open(sys.argv[2], "w"', "CLI export to a path the operator names"),
+    ("btlink.py", "f.write_bytes(data)", "scratch file inside a TemporaryDirectory, deleted on exit"),
+    ("__main__.py", "path.write_text(json.dumps(report.to_dict()", "diag report: generated output, rewritten whole each run"),
+    ("chaos/__main__.py", "path.write_text(json.dumps(small.trace()", "chaos trace: generated, disposable"),
+    ("chaos/runner.py", "path.write_text(json.dumps(res.trace()", "chaos trace: generated, disposable"),
+    ("mc/__main__.py", '"mc-session.json").write_text(', "evidence-folder launch marker for the e2e harness, rewritten each boot"),
+]
+# Append mode ("a") is not scanned: logs and the fsynced append-only trust list never truncate, so a crash
+# cannot lose old content. Truncating writes need the temp-and-rename helper.
+_MODE = r"[rwxabt+]*[wx][rwxabt+]*"
+_BARE = re.compile(
+    r"\.write_text\(|\.write_bytes\("
+    r"|\b(?:open|fdopen)\([^)]*[\"']" + _MODE + r"[\"']"        # open(p, "w"), "w+", "wt", "wb+", "x", os.fdopen
+    r"|\.open\([^)]*mode\s*=\s*[\"']" + _MODE + r"[\"']"      # Path.open(mode="w")
+)
+
+
+def _scan(root: Path, allowed=_ALLOWED):
+    offenders, used = [], set()
+    for py in sorted(root.rglob("*.py")):
+        rel = py.relative_to(root).as_posix()
+        for n, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]
+            if not _BARE.search(code):
+                continue
+            hit = next((i for i, (f, marker, _r) in enumerate(allowed) if f == rel and marker in code), None)
+            if hit is None:
+                offenders.append(f"{rel}:{n}: {line.strip()}")
+            else:
+                used.add(hit)
+    stale = [allowed[i][:2] for i in range(len(allowed)) if i not in used]
+    return offenders, stale
 
 
 def test_no_persistent_state_writer_bypasses_atomic_write_text():
-    root = Path(storage.__file__).parent
-    offenders = []
-    for py in sorted(root.rglob("*.py")):
-        rel = py.relative_to(root).as_posix()
-        if rel in _ALLOWED:
-            continue
-        for n, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
-            code = line.split("#", 1)[0]
-            if _BARE.search(code):
-                offenders.append(f"{rel}:{n}: {line.strip()}")
-    assert not offenders, "use storage.atomic_write_text (or allowlist with a reason):\n" + "\n".join(offenders)
-    stale = [k for k in _ALLOWED if not (root / k).exists()]
-    assert not stale, f"allowlist names files that do not exist: {stale}"
+    offenders, stale = _scan(Path(storage.__file__).parent)
+    assert not offenders, "use storage.atomic_write_text (or allowlist the call with a reason):\n" + "\n".join(offenders)
+    assert not stale, f"allowlist entries that match no call: {stale}"
+
+
+def test_the_guard_sees_every_write_shape():
+    d = _tmp()
+    try:
+        shapes = ['p.write_text("x")', 'p.write_bytes(b"x")', 'open(p, "w+")', 'open(p, "wt")', 'open(p, "wb+")',
+                  'open(p, "x")', 'p.open(mode="w")', 'p.open("wb")', 'os.fdopen(fd, "wb")']
+        for i, s in enumerate(shapes):
+            (d / f"m{i}.py").write_text(s + "\n")
+        offenders, _ = _scan(d, allowed=[])
+        assert len(offenders) == len(shapes), offenders
+        (d / "ok.py").write_text('open(p, "a")\nopen(p)\nopen(p, "rb")\nx.read_text()\n')
+        offenders, _ = _scan(d, allowed=[])
+        assert not any("ok.py" in o for o in offenders), offenders
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

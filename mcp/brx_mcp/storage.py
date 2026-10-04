@@ -87,18 +87,29 @@ def save_device(address: str, alias: str | None = None,
 
 def atomic_write_text(path: Path, text: str, mode: int | None = None) -> None:
     """Write `text` to `path` so a crash leaves either the old file or the new one, never a partial one:
-    a uniquely named temp file in the same folder, fsynced, then renamed over the target."""
-    import contextlib, os, tempfile
+    a uniquely named temp file in the same folder, fsynced, then renamed over the target.
+
+    A symlink is followed (the temp file and the rename sit beside the real target, as `write_text` did).
+    Permissions: an explicit `mode` wins; else an existing target keeps its mode; else a new file gets
+    the umask default, as `write_text` gave."""
+    import contextlib, os, stat, tempfile
+    path = Path(os.path.realpath(path))
     path.parent.mkdir(parents=True, exist_ok=True)
+    if mode is None:
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except OSError:
+            old = os.umask(0)
+            os.umask(old)
+            mode = 0o666 & ~old
     fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        if mode is not None:
-            with contextlib.suppress(OSError):
-                os.chmod(tmp, mode)
+        with contextlib.suppress(OSError):
+            os.chmod(tmp, mode)
         _replace_with_retry(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
