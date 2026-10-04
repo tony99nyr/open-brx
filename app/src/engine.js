@@ -1562,7 +1562,7 @@ export class Engine {
   }
   /** F416: `$LCD` gives the slot and magazine that a positive pool cannot prove. */
   _spawnQuery(c) {
-    if (c.queryAt || c.done || this._spawnCheck !== c) return;
+    if (c.queryAt || c.done || this._spawnCheck !== c || this._spawnCheckOver()) return;   // F416 r3
     c.queryAt = this.now();
     const gen = c.gen || 0;
     Promise.resolve(this._askMagazine('F416 spawn weapon check')).then(ok => {
@@ -1575,12 +1575,15 @@ export class Engine {
       });
     });
   }
+  /** F416 r3: the match is over or the player is down, so no check may write. PURE. */
+  _spawnCheckOver() { return this.ended || this.phase !== 'live' || !this.alive; }
   /** F416: is the check still inside SPAWN_CHECK_MAX_MS of the first lost write? PURE. */
   _spawnCheckLive(c, now = this.now()) { return !!c && now - c.firstAt < SPAWN_CHECK_MAX_MS + (c.heldMs || 0); }   // F416 r2: plus any reconcile hold
   /** F416: positive health permits a `$QUERY`; only its matching weapon state closes the check. */
   _spawnCheckSeen(hp, armor, shield, lcd = null) {
     const c = this._spawnCheck;
     if (!c || c.done || c.life !== this._lifeSeq || !(this.now() > c.writeAt)) return;
+    if (this._spawnCheckOver()) { this._spawnCheck = null; return; }   // F416 r3: no check acts after the whistle
     c.heardAt = this.now(); c.lost = false;
     if (hp <= 0) return;
     if (!this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }   // out of time: a positive pool closes it, as before
@@ -1626,6 +1629,7 @@ export class Engine {
   }
   /** F416: repeat the burst only before any observed play; otherwise restore its weapon controls. */
   _spawnRetry(c, evidence) {
+    if (this._spawnCheckOver()) { if (this._spawnCheck === c) this._spawnCheck = null; return false; }   // F416 r3: never a burst after the whistle
     if (c.resends >= SPAWN_RESENDS) {
       c.done = true; c.lost = true; c.queryAt = 0;
       this.log(`*** F416: ${c.resends} re-sends and ${evidence}; HOST: FORCE RESPAWN ***`, 'le');
@@ -2402,6 +2406,7 @@ export class Engine {
     // until the player pulls the trigger (bench 2026-09-04, S7). Clear it so the new match spawns clean.
     if (this.resync) { this.log('new match — clearing the old resync so it spawns clean', 'li'); this.resync = null; }
     if (this.reconciling) { this.log('new match — clearing the in-flight rejoin reconcile', 'li'); this.reconciling = null; }
+    this._spawnCheck = null;   // F416 r3: the old match's check is not this match's news
     // A new match must SPAWN even if the node is already `live` from a rejoin of the OLD match. Without
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
     // T-0 spawn never ran and the gun sat alive-with-0-hp (bench 2026-09-04, S7, on hardware). Drop the
@@ -4301,7 +4306,8 @@ export class Engine {
   _endLocal(why) {
     if (this.ended) return;
     this._cancelPendingPlayWrites();
-    this.ended = true; this._panicked = null; this.endAck = false; this._armPending = null; this._triggerPending = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null;   // F209/F272: never arm or keep a lock verdict for an ended match
+    this.ended = true; this._spawnCheck = null; this._panicked = null;   // F416 r3: the check ends with the match
+    this.endAck = false; this._armPending = null; this._triggerPending = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null;   // F209/F272: never arm or keep a lock verdict for an ended match
     this.endedAt = this.now();   // the results screen's settle window runs from HERE, not from the result's arrival
     this._lightGen = (this._lightGen || 0) + 1;   // no delayed $GLED/$HLED/cue step from before teardown may land after it
     this._ann.clear(); this._gun.clear();         // nor a queued announcer line or banner, nor the old audio model
@@ -5259,7 +5265,7 @@ export class Engine {
         this._resyncRevive = false;   // a panic does NOT retire the match_id — a NEWER start (higher seq) is still accepted later
         // …but a WS welcome re-delivering the SAME schedule must not re-arm a gun the operator just cleared.
         this._panicked = this.start ? { match_id: this.start.match_id, seq: this.start.seq } : null;
-        this.spawned = false; this.alive = false; this.start = null; this.resync = null; this.reconciling = null; this.ready = false;
+        this.spawned = false; this.alive = false; this.start = null; this.resync = null; this.reconciling = null; this.ready = false; this._spawnCheck = null;   // F416 r3
         if (this.phase !== 'idle' && this.phase !== 'connected' && this.phase !== 'kitted') this._set('kitted');
         else this._changed();   // a cold-restored IDLE latch still owes its clear to storage and the HUD
         return;

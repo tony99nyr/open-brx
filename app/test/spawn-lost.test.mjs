@@ -364,3 +364,33 @@ test('F416 r2: several $HP answers inside one reconcile start one ask chain, not
   assert.ok(asks <= 1, `one deferred ask after the reconcile, not one per answer: ${asks}`);
   assert.ok(h.writes.filter(w => w.t >= t0 && w.f === E.PROBE_LIFE).length <= 2, 'no probe fan-out');
 });
+
+test('F416 r3: a late mismatched $LCD after the whistle re-sends nothing (the gun stays down in kitted)', async () => {
+  const h = harness({ fail: spawnOnce() }).live();
+  h.gun.answer = false;
+  await h.adv(4000 + 300);
+  const c = h.eng._spawnCheck; assert.ok(c, 'setup: the check is open');
+  h.eng._spawnQuery(c);            // the weapon query is on the air at the whistle
+  h.eng._endLocal('time');
+  assert.equal(h.eng._spawnCheck, null, 'the end retires the check');
+  h.eng._spawnCheck = c;           // even a check that somehow survived the end must not act
+  const n = h.writes.length;
+  h.eng.feedFrame('$LCD,45,70,0,2,2,1,*'); await h.adv(2000);
+  const after = h.writes.slice(n).map(w => w.f).filter(f => /SPAWN|AMMO|QUERY|BMAP/.test(f));
+  assert.deepEqual(after, [], `no burst after the end: ${JSON.stringify(after)}`);
+});
+
+test('F416 r3: a positive $HP after the whistle sends no $QUERY, and a panic or a new match retires the check', async () => {
+  const h = harness({ fail: spawnOnce() }).live();
+  h.gun.answer = false;
+  await h.adv(4000 + 300);
+  const c = h.eng._spawnCheck; assert.ok(c, 'setup: the check is open');
+  h.eng._endLocal('time');
+  h.eng._spawnCheck = c;
+  const n = h.writes.length;
+  h.eng.feedFrame('$HP,45,70,0,*'); await h.adv(2000);
+  assert.ok(!h.writes.slice(n).some(w => w.f === '$QUERY,*'), 'no stray $QUERY');
+  h.eng._spawnCheck = c;
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'panic' } });
+  assert.equal(h.eng._spawnCheck, null, 'a panic retires the check');
+});
