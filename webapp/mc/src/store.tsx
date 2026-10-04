@@ -37,6 +37,7 @@ function writeHash(v: View, want?: View | null) {
     history.replaceState(null, '', location.pathname + location.search + h);
   } catch { /* no history: the view still works, it just will not survive a refresh */ }
 }
+import { loadWithRetry } from './api/retry';
 import { createHttpApi, getToken, onAuthRequired, setToken as saveToken } from './api/client';
 import { MockBackend } from './mock/backend';
 
@@ -96,6 +97,8 @@ export interface Store {
   authRequired: boolean;
   /** the MC process predates this UI: an A10 route (/api/perks, /api/presets) is missing — restart the server */
   serverOld: boolean;
+  /** O5: the weapon or mode list failed to load; the store is retrying with backoff */
+  catalogueDown: boolean;
   hasToken: boolean;
   setToken: (tok: string) => void;
 }
@@ -243,6 +246,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [authRequired, setAuthRequired] = useState(false);
   const [tokenVersion, setTokenVersion] = useState(0);
   const [serverOld, setServerOld] = useState(false);
+  const [modesDown, setModesDown] = useState(false);
+  const [weaponsDown, setWeaponsDown] = useState(false);
   const followed = useRef<Phase | null>(null);
   // The event feed is streamed and appended client-side, and nothing ever cleared it — so a second
   // match's events piled on top of the first's, producing a feed with two FIRST BLOODs and
@@ -279,8 +284,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [guardNav]);
 
   useEffect(() => {
-    api.getModes().then(setModes).catch(() => {});
-    api.getWeapons().then(setWeapons).catch(() => {});
+    // O5: a failed fetch used to be swallowed once at mount, so BUILD showed an empty or wrong picker for ever.
+    const stopModes = loadWithRetry(() => api.getModes(), setModes, setModesDown);
+    const stopWeapons = loadWithRetry(() => api.getWeapons(), setWeapons, setWeaponsDown);
     api.getPerks().then(setPerks).catch(e => { if ((e as { status?: number }).status === 404) setServerOld(true); });   // route missing ⇒ older MC
     const un = api.subscribe(
       s => {
@@ -304,7 +310,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ok => { if (ok) reseedFeed.current = true; setConnected(ok); },
     );
     const unAuth = mock ? () => {} : onAuthRequired(setAuthRequired);
-    return () => { un(); unAuth(); };
+    return () => { un(); unAuth(); stopModes(); stopWeapons(); };
   }, [api, mock, tokenVersion, followPhase]);
 
   // A test hook, and ONLY in `?mock`: the in-browser demo has no server to poke from outside, so a
@@ -341,12 +347,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     openBuild: () => setView('designer'),
     focusHill, setFocusHill,
     dirty, setDirty, navBlockedTo, clearNavBlock,
-    connected: mock ? true : connected, authRequired, serverOld, hasToken: !!getToken(),
+    connected: mock ? true : connected, authRequired, serverOld, catalogueDown: modesDown || weaponsDown, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setError(null); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, serverOld, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, serverOld, modesDown, weaponsDown, focusHill, dirty, setDirty, navBlockedTo, clearNavBlock]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
