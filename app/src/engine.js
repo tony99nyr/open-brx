@@ -647,6 +647,27 @@ const CALLOUT_PAIR_MS = 800;     // ...to this long after it: the sender spaces 
 const CALLOUT_NAME_GAP_MS = 300; // the victim's DOWN word goes out this long after its DOWN_BY was WRITTEN: clear of the headset's 199 ms single-shot guard with margin (bench 2026-09-24: 250 ms from the queue call left 186 ms on the wire, and the name word was lost)
 const CALLOUT_WINDOW_MS = 3000;  // kill-confirm first-to-arrive (Tony), and how long `state().callout` stays lit
 
+// ---------- #5 the presentation gate (architecture review 2026-10-04) ----------
+// The presentation rule for each VISUAL channel, in one place. `Engine.show(channel, item)` writes every item through it
+// and `Engine._presented()` publishes what the HUD draws (`state().presented`). Two rules:
+//   'alive' Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". An item that arrives while I am DOWN (live,
+//           spawned, not alive) is dropped, never kept for the respawn, and the channel draws nothing unless I am live
+//           and alive (the DOWN screen owns a dead phone).
+//   'down'  The DOWN screen's own content: written at the death, drawn only while I am down (as the respawn countdown is).
+// `hint` is computed on each `state()` (`powerupView`), not written, so only the read side applies to it.
+// The VOICE is deliberately not a channel here: docs/announcer.md "My death wins" rule 3 (while dead, every line queues
+// and is said after the scream) and rule 8 (a hill change while dead is said; its badge is not drawn).
+const PRESENT = Object.freeze({
+  hero: 'alive', objective: 'alive', feed: 'alive',   // the three lanes (docs/announcer.md "The three lanes")
+  // C2 (Tony's match 2026-09-24): the announcer's own card, {kind: 'kill'|'alert', at, data}, apart from `moment` so a
+  // later hit or stun in the same render cannot overwrite it; `show` sets `moment` to it too, for the older readers
+  card: 'alive',
+  callout: 'alive',       // S57: the IR callout card (docs/ir-callouts.md)
+  hillCallout: 'alive',   // QA-05: the HILL CAPTURED / HILL LOST card
+  hint: 'alive',          // A56: the powerup hint chip
+  puLost: 'down',         // HUD QA R2-17: the DOWN screen's ITEM LOST line
+});
+
 // ---------- A56 (S58): powerups (docs/spec/powerups.md) ----------
 // Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one
 // unless it was started with `--no-powerups`; powerups are ON by default, F372). Tony's defaults (2026-09-24),
@@ -978,7 +999,7 @@ export class Engine {
     this._headRewritten = false;
     this.moment = null;             // transient HUD moment: {kind, at, data}
     this._lanes = null;             // docs/announcer.md "The three lanes": {hero, obj, feed}, drawn as each event ARRIVES (presentation only)
-    this.card = null;               // C2: the announcer's own card ({kind: 'kill'|'alert', at, data}); only `_card` writes it (docs/announcer.md)
+    this.card = null;               // C2: the announcer's own card ({kind: 'kill'|'alert', at, data}); only `show('card', …)` writes it (docs/announcer.md)
     this.probeSent = false;
     this.night = false;             // the HUD skin on screen (true = night). The player's, not the venue's: see setNight
     this.nightChoice = null;        // {session}: the player chose a skin in that MC session, so NIGHT OPS does not switch it
@@ -2899,10 +2920,6 @@ export class Engine {
     if (pick.frame) { if (must) this._sayMust(pick.frame, `event cue ${kind}${pick.tag}`); else this._write([pick.frame], `event cue ${kind}${pick.tag}`); }
     this._eventLeds(kind);
   }
-  /** C2 (Tony's match 2026-09-24): an announcer card (the kill card, an alert banner). It lands in `card`, a field only the
-   *  announcer queue writes, so a later `moment` (a hit, a stun) in the same render can no longer overwrite it before the
-   *  HUD draws it. `moment` still carries it too, for the readers that have always looked there. */
-  _card(m) { this.card = m; this.moment = m; }
   /** docs/announcer.md: an MC alert (or the node's own clock warning) as ONE announcer item: its cue, its LED burst
    *  and its HUD banner start together when the queue reaches it, never on top of another line. A lead change is
    *  its own kind (it outranks every other alert, Tony); every other alert is `alert`. */
@@ -2922,7 +2939,7 @@ export class Engine {
       ok: () => this._lightGen === lg,
       play: ({ muted, replay }) => {
         if (!replay) this._event(evKind, muted ? { frame: null, tag: '' } : pick, kind !== 'alert');   // a lead change is must-hear; X9: a card shown again fires no second burst
-        if (hud) this._card({ kind: 'alert', at: this.now(), data: { kind: evKind, text: text || evKind, player_id: subject } });
+        if (hud) this.show('card', { kind: 'alert', at: this.now(), data: { kind: evKind, text: text || evKind, player_id: subject } });
         this._changed();
       } });
   }
@@ -3354,13 +3371,13 @@ export class Engine {
     // cuts our own hill callout. Behind any other item (a kill confirm, a lead change) it waits like everything else.
     const cue = this._hillCue(kind);
     const card = kind === 'hill_captured' || kind === 'hill_lost';
-    if (card) this._laneObj('hill', { kind, src: /control point/.test(why) ? 'BLE' : 'IR' });   // `_laneWrite` drops it while I am down; the line still queues (announcer.md, "My death wins" rule 8)
+    if (card) this._laneObj('hill', { kind, src: /control point/.test(why) ? 'BLE' : 'IR' });   // `show` drops it while I am down; the line still queues (announcer.md, "My death wins" rule 8)
     if (!cue.frame && !card) return;
     this._ann.push({ kind: card ? kind : 'alert', key: 'hill', preemptKey: true, stopsOwn: true, audioMs: cue.frame ? cue.ms : 0, ...(card ? {} : { bannerMs: 0 }),
       ok: () => this._hillAudioOn(true),   // Tony 2026-09-25: a hill line already queued is still said while I am dead
       play: ({ preempted, muted }, self) => {
         // QA-05: the HUD's HILL CAPTURED / HILL LOST card reads this, set when the line starts (a muted line still shows).
-        if (card) this.hillCallout = { kind, at: this.now() };
+        if (card) this.show('hillCallout', { kind, at: this.now() });
         if (cue.frame && !muted && preempted && this._ann.dead()) this._sayMust(cue.frame, `hill ${kind} (preempting, while dead: no stop) — ${why}`);   // X4
         else if (cue.frame && !muted) this._write(preempted ? [PLAYX, cue.frame] : [cue.frame], `hill ${kind}${preempted ? ' (preempting the line still playing)' : ''} — ${why}`);
         if (cue.frame && !muted) { const c = this._gun.clips[this._gun.clips.length - 1]; if (c && c.id === clipId(cue.frame)) c.item = self; }   // whose line: see `_death`
@@ -3479,7 +3496,7 @@ export class Engine {
         if (it && player !== myNum) {
           const victim = this.nameOf(player);
           it.callout = { ...it.callout, victim };
-          if (it.shown && this.callout === it.shown) { this.callout = it.shown = { ...this.callout, victim }; this._changed(); }
+          if (it.shown && this.callout === it.shown) { this.show('callout', it.shown = { ...this.callout, victim }); this._changed(); }
         }
         return;
       }
@@ -3502,7 +3519,7 @@ export class Engine {
       callout: { kind, name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, at: now, ...(by ? { by } : {}) },
       ok: () => this.alive && this.phase === 'live',
       play: ({ muted }, self) => {
-        this.callout = self.shown = { ...self.callout, at: self.startedAt };   // the SAME instant the queue stamped (MC's `ir_at` names it): never a second clock read
+        this.show('callout', self.shown = { ...self.callout, at: self.startedAt });   // the SAME instant the queue stamped (MC's `ir_at` names it): never a second clock read
         if (line && !muted) this._write([line], 'S57 ENEMY DOWN');
         this._changed();
       } });
@@ -3550,7 +3567,7 @@ export class Engine {
         ok: () => this._lightGen === lg,
         onDrop: () => { this._irKillOpen = this._irKillOpen.filter(x => x !== entry); },   // unheard: MC's twin must speak for itself
         play: ({ muted }, self) => {
-          this.callout = self.shown = { ...self.callout, at: self.startedAt };   // the SAME instant the queue stamped (MC's `ir_at` names it): never a second clock read
+          this.show('callout', self.shown = { ...self.callout, at: self.startedAt });   // the SAME instant the queue stamped (MC's `ir_at` names it): never a second clock read
           if (pick.frame && !muted) this.delay(120, () => { if (this._lightGen === lg && !self.cut) this._sayMust(pick.frame, `S57 IR kill confirmed cue${pick.tag}`); });
           this._changed();
         } });
@@ -3569,7 +3586,7 @@ export class Engine {
       // MC's item owns this kill. On air, the chip still reflects the word (hud.js keeps MC's named card over it); still
       // queued, nothing is shown, or the IR card would flash first and MC's card flash again for the same kill.
       const mc = this._ann.find(x => x.kind === 'kill_confirmed' && x.src === 'mc');
-      if (!mc || mc === this._ann.current) { if (mc) this.callout = callout; }
+      if (!mc || mc === this._ann.current) { if (mc) this.show('callout', callout); }
       this.log('S57: IR kill confirmed; MC\'s item for this kill says (or said) the kill line, so the IR word adds no sound', 'li');
     }
     this._changed();
@@ -5034,23 +5051,61 @@ export class Engine {
     const obj = {}; for (const k of Object.keys(L.obj || {})) obj[k] = shift(L.obj[k]);
     return { ...L, obj, feed: (L.feed || []).map(shift), heroUntil: this._heroUntil(now) };
   }
-  /** Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". THE gate for every HUD alert: each lane item (the
-   *  HERO kill card and its medals, the OBJECTIVE lead and hill badges, every FEED row: MC alerts, the clock, S57 downs,
-   *  powerup notices) is written here and only here. While I am DOWN the item is dropped, never kept for the respawn,
-   *  and `_death` empties the lanes but the standing lead badge, so what was up at the death goes with the life. The voice side is not gated: an
-   *  announcer line keeps docs/announcer.md "My death wins" rules 3 and 8. The DOWN screen's own content is not a lane. */
-  _alertsMissed() { return this.phase === 'live' && this.spawned && !this.alive; }
-  _laneWrite(what, fn) {
-    if (this._alertsMissed()) { this.log(`down: ${what} not shown (a down player misses HUD alerts)`, 'li'); return null; }
-    const r = fn(this._lanesOf(), this.now()); this._changed(); return r;
+  /** #5 THE presentation gate (architecture review 2026-10-04). Tony, 2026-10-02: "any hud alerts a down player doesnt
+   *  get tho". Every VISUAL channel is written here and only here: each lane item (the HERO kill card and its medals, the
+   *  OBJECTIVE lead and hill badges, every FEED row: MC alerts, the clock, S57 downs, powerup notices), the announcer's
+   *  card, the S57 callout, the hill transition card and the DOWN screen's ITEM LOST line. `PRESENT` (top of this file)
+   *  holds each channel's rule. On an 'alive' channel an item that arrives while I am DOWN is dropped, never kept for the
+   *  respawn; `_death` empties the lanes but the standing lead badge, so what was up at the death goes with the life.
+   *  The VOICE is deliberately outside this gate: an announcer line keeps docs/announcer.md "My death wins" rule 3 (while
+   *  dead, everything queues and is said after the scream) and rule 8 (a hill change while dead is said, its badge is
+   *  not drawn). So a line's `play` can run while I am down: its card comes through here, and is dropped.
+   *  `item`: a lane takes `{what, write(L, now)}` (the objective lane also `key` and `kind`); every other channel takes
+   *  its value. Returns what was written (a lane's own return), or null when dropped. */
+  show(channel, item) {
+    const rule = PRESENT[channel];
+    if (!rule || channel === 'hint') throw new Error(`show: '${channel}' is not a channel that is written (the hint is computed in powerupView)`);
+    const lane = channel === 'hero' || channel === 'objective' || channel === 'feed';
+    if (rule === 'alive' && this._alertsMissed()) {
+      // Review r2: the standing LEAD badge survives my death, so a lead change I miss while down must retire it, or it
+      // says TAKES THE LEAD after the respawn when we lost it. The change itself is still not drawn (I was down).
+      const L = this._lanes, lead = L && L.obj && L.obj.lead;
+      if (channel === 'objective' && item.key === 'lead' && lead && lead.kind !== item.kind) { const { lead: _gone, ...rest } = L.obj; L.obj = rest; this._changed(); }
+      this.log(`down: ${lane ? item.what : `${channel}${item && item.kind ? ` (${item.kind})` : ''}`} not shown (a down player misses HUD alerts)`, 'li');
+      return null;
+    }
+    if (lane) { const r = item.write(this._lanesOf(), this.now()); this._changed(); return r; }
+    if (channel === 'card') this.moment = item;   // C2: `moment` carries the card too, for the readers that have always looked there
+    this[channel] = item;
+    return item;
   }
+  /** May `channel` draw right now? PURE. 'alive': live and alive. 'down': live and down (the DOWN screen). */
+  _presentable(channel) {
+    const live = this.phase === 'live';
+    return PRESENT[channel] === 'down' ? live && !this.alive : live && this.alive;
+  }
+  /** `state().presented`: what the HUD draws, one entry per channel (null: draw nothing). The HUD reads this, and no
+   *  longer works out from `alive` whether a channel may draw. PURE. */
+  _presented(lanes, powerup) {
+    const on = ch => this._presentable(ch);
+    return {
+      lanes: on('hero') ? lanes : null,   // the three lanes share one rule
+      card: on('card') ? this.card || null : null,
+      callout: on('callout') ? this.callout || null : null,
+      hillCallout: on('hillCallout') ? this.hillCallout || null : null,
+      hint: on('hint') && powerup ? powerup.hint : null,
+      puLost: on('puLost') ? this.puLost || null : null,
+    };
+  }
+  /** Is an alert arriving now one a down player misses (live, spawned, not alive)? The write side of the 'alive' rule. */
+  _alertsMissed() { return this.phase === 'live' && this.spawned && !this.alive; }
   _laneKill(k) {
-    return this._laneWrite('kill card', (L, now) => {
+    return this.show('hero', { what: 'kill card', write: (L, now) => {
       if (!L.hero || now >= this._heroUntil(now)) L.hero = { id: (this._laneSeq = (this._laneSeq || 0) + 1), t0: now, kills: [], lastAt: now };   // `id`: the HUD's key
       const row = { victim: k.victim || null, team: k.team || null, medals: (k.medals || []).slice(), src: k.src, at: now };
       L.hero = { ...L.hero, kills: [...L.hero.kills, row], lastAt: now };
       return row;
-    });
+    } });
   }
   _laneUpdate(row, patch) { if (!row || !this._lanes || !this._lanes.hero) return; Object.assign(row, patch); this._lanes.hero = { ...this._lanes.hero }; this._changed(); }
   /** The victim's own DOWN word names a hero row (only when MC has not named it) or a feed row, in place. */
@@ -5060,18 +5115,14 @@ export class Engine {
     if (this._lanes.feed.includes(row)) { row.name = name; this._lanes.feed = [...this._lanes.feed]; this._changed(); }
   }
   _laneObj(key, v) {
-    // Review r2: the standing LEAD badge survives my death, so a lead change I miss while down must retire it, or it
-    // says TAKES THE LEAD after the respawn when we lost it. The change itself is still not drawn (I was down).
-    if (key === 'lead' && this._alertsMissed() && this._lanes && this._lanes.obj && this._lanes.obj.lead && this._lanes.obj.lead.kind !== v.kind) {
-      const { lead, ...rest } = this._lanes.obj; this._lanes.obj = rest; this._changed();
-    }
-    this._laneWrite(`${key} badge (${v.kind})`, (L, now) => { L.obj = { ...L.obj, [key]: { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: now } }; });
+    this.show('objective', { what: `${key} badge (${v.kind})`, key, kind: v.kind,
+      write: (L, now) => { L.obj = { ...L.obj, [key]: { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: now } }; } });
   }
   _laneFeed(v) {
-    return this._laneWrite(`feed row (${v.alert || v.kind})`, (L, now) => {
+    return this.show('feed', { what: `feed row (${v.alert || v.kind})`, write: (L, now) => {
       const row = { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: now };   // `id`: the HUD's key (two rows can share a ms)
       L.feed = [row, ...L.feed].slice(0, LANE_FEED_MAX); return row;
-    });
+    } });
   }
   /** S42 × A44/A47/F15: stand the accuracy writer down while a write that carries its own `$AMMO` is in
    *  flight (spawn, revive, operator RESYNC GUN, stun disarm, stun restore, reconcile re-arm). Any verify
@@ -5604,7 +5655,7 @@ export class Engine {
     } else if (ir && !medalCues.length) {
       // The IR confirm is ON AIR: MC's named card replaces its card in place (no second line, no second flash), and
       // holds the slot for the card's own hold. Nothing new to say, so nothing waits.
-      this._card({ kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: [], ir_paired: true, ir_at: irAt } });
+      this.show('card', { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: [], ir_paired: true, ir_at: irAt } });
       this._ann.extend(ir, this.now() + KILL_CARD_MS);
       this._eventLeds(body.kind);
       this._changed();
@@ -5678,7 +5729,7 @@ export class Engine {
         // `ir_paired` (presentation only): an IR KILL CONFIRMED card already flashed for this kill, so the HUD must not
         // flash and buzz a second time for it (QA polish round 2). `ir_at` is that card's own `callout.at`, so the HUD
         // matches the exact card and an IR card whose MC twin never came can never stand in for it.
-        if (isKill) this._card({ kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: medalList, ir_paired: irAt != null, ir_at: irAt } });
+        if (isKill) this.show('card', { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: medalList, ir_paired: irAt != null, ir_at: irAt } });
         this._changed();
       } });
     if (mcEntry) mcEntry.item = item;
@@ -6403,7 +6454,7 @@ export class Engine {
   _puEnd(why) {
     const h = this._puHeld; if (!h) return;
     this._puHeld = null;
-    if (why === 'death' && PU_LOST_AT_DEATH) { this._puReequip = true; this.puLost = { name: h.name, color: h.color, at: this.now() }; this.log(`powerup: ${h.name} lost at the death`, 'li'); this._save(); return; }   // HUD QA R2-17: the DOWN screen says so
+    if (why === 'death' && PU_LOST_AT_DEATH) { this._puReequip = true; this.show('puLost', { name: h.name, color: h.color, at: this.now() }); this.log(`powerup: ${h.name} lost at the death`, 'li'); this._save(); return; }   // HUD QA R2-17: the DOWN screen says so
     const b = h.back || { slot: 0, mag: this._puCounts(0)[0], res: this._puCounts(0)[1] };
     this.log(`powerup: ${h.name} over (${why}), slot ${b.slot} returns after ${this.switchWindowMs()}ms at ${b.mag}/${b.res}`, 'li');
     // F400 decision 2: the empty switch-back plays the full card too, naming the player's own weapon on the ACTIVE tile;
@@ -6429,7 +6480,7 @@ export class Engine {
   /** `_revive`, after its burst: an item still held (an operator respawn of a LIVE player skips `_death`) is lost the same
    *  way, and slot 0 is re-equipped with its head `$WEAP` and the burst's own `$AMMO,0,…` (a safe re-equip). */
   _puRevive(burst) {
-    this.puLost = null;   // HUD QA R2-17: the DOWN screen's ITEM LOST line belongs to the life that ended
+    this.show('puLost', null);   // HUD QA R2-17: the DOWN screen's ITEM LOST line belongs to the life that ended
     if (this._puHeld) { this._puHeld = null; this._puReequip = true; }
     if (!this._puReequip) return;
     this._puReequip = false;
@@ -6473,7 +6524,7 @@ export class Engine {
     const going = this._puGoing && now < this._puGoing.until
       ? { slot: this._puGoing.slot, name: this._puGoing.name, color: this._puGoing.color, weapon_id: this._puGoing.weapon_id, charges: this._puGoing.charges } : null;
     let hint = null;
-    if (this.phase === 'live' && this.alive) {
+    if (this._presentable('hint')) {   // #5: the presentation gate's rule for the hint (live and alive)
       const st = this._puStation(items), g = this.powerupGrant, cl = this._puClaim;
       const nameOf = item => String(item.name || '').toUpperCase();
       const b = this._puBack;
@@ -7706,7 +7757,7 @@ export class Engine {
     this.reloading = null; this.switching = null; this._reloadOutcome = null; this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): the kill card ends with the life; the down screen owns the phone
     // Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". The lane items up at the death go with the life
-    // (the kill card above, the hill badge, the feed rows), and `_laneWrite` drops any that arrive while I am
+    // (the kill card above, the hill badge, the feed rows), and `show` drops any that arrive while I am
     // down, so nothing draws after the respawn. The voice lines keep docs/announcer.md "My death wins" rules 3 and 8.
     // The standing lead badge stays: it says who leads until the next lead change replaces it, and was not an alert that
     // arrived while I was down. A lead change that arrives while I am down is dropped like any other alert.
@@ -8151,7 +8202,7 @@ export class Engine {
   // ---------- render snapshot ----------
   state() {
     const now = this.now();
-    const r = this.respawnDelayMs;
+    const r = this.respawnDelayMs, lanes = this._lanesShown(now), powerup = this.powerupView(now);   // each read once: `presented` below draws from the same objects
     return {
       phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, headsetJoin: this.headsetJoin, wsState: this.wsState, wsReason: this.wsReason || null, gun: this.gun, night: this.night,   // QA-08: the HUD reads MC's refusal reason (the chip and the READY note both asked for it and got undefined)
       nightOps: !!(this.config && this.config.night),
@@ -8209,13 +8260,16 @@ export class Engine {
       // docs/announcer.md "The three lanes": {hero: {id, t0, kills: [{victim, team, medals, src, at}], lastAt}, heroUntil,
       // obj: {lead?, hill?: {id, kind, text?, src, at}}, feed: [{id, kind, alert?, name?, team?, by?, text?, sub?, color?, src, at}]}
       // `id` is unique per item (`_laneSeq`), the HUD's key: two items can share a ms
-      lanes: this._lanesShown(now),
+      lanes,
+      // #5: what the HUD draws, through the one presentation gate (`show`, `PRESENT`): {lanes, card, callout, hillCallout,
+      // hint, puLost}, each null when its channel draws nothing (a down player gets no HUD alerts; ITEM LOST is the DOWN screen's)
+      presented: this._presented(lanes, powerup),
       switchCard: this._switchCardUp(now),   // F400 final: the ONE clock the HUD hides the lanes by (hud.js `_lanes`)
       announcer: this._ann.view(now),   // docs/announcer.md: {kind, at, ms, queued: [kind…]}: what is on air and what waits (null when idle)
       // A56 (docs/spec/powerups.md): null unless the config carries powerup items. `powerup` = {hint, held, overshield};
       // `powerupSpawn` = {name, color, at} for the "<ITEM> AVAILABLE" card; `powerupGrant` = {name, color, kind, at, replaced?};
       // `powerupSwap` = {name, color, replaced, at} for the swap card. The two cards are set by the announcer queue (docs/announcer.md).
-      powerup: this.powerupView(now), puLost: this.puLost || null, powerupSpawn: this.powerupSpawn || null, powerupGrant: this.powerupGrant || null, powerupSwap: this.powerupSwap || null,
+      powerup, puLost: this.puLost || null, powerupSpawn: this.powerupSpawn || null, powerupGrant: this.powerupGrant || null, powerupSwap: this.powerupSwap || null,
       // A56 claim: {station, claiming, ready, progress} while this phone stands in range of an item that is there. app.js
       // turns it into the player advert's `claiming` / `claim_ready` bits with the station id in `value`.
       powerupClaim: this._puClaim && this._puItems() ? { station: this._puClaim.station, claiming: true, ready: this._puClaim.readyAt != null,

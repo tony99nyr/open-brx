@@ -1846,15 +1846,17 @@ KNOWN_UNMIRRORED = {
     # 2026-09-24 (docs/announcer.md): an MC alert or the node's clock warning as one announcer-queue item. The stage has
     # no MC and no HUD; its only announcer lines are the hill callouts, whose queue behaviour alone (the later hill word
     # preempts, the tick waits out the clip) is what `_hill_busy_until` already mirrors.
-    "_announceAlert", "_announceStatus", "_card",
+    "_announceAlert", "_announceStatus",
     # 2026-09-24 (docs/announcer.md, "The three lanes"): the HUD's alert lanes, written as each event arrives. Presentation
     # only: they write no gun frame, say no line and move no score, and the stage has no HUD to draw them on.
     "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
     # 2026-09-26 (F400 final): the switch card pauses the lanes' clocks. Presentation only, as above.
     "_cardTick", "_switchCardUp", "_lanePaused", "_laneAge", "_lanesShown",
-    # 2026-10-02 (Tony: "any hud alerts a down player doesnt get tho"): the ONE gate every lane write goes through, and its
-    # predicate. Presentation only: it drops a HUD item while down, never a voice line, a gun frame or a score.
-    "_alertsMissed", "_laneWrite",
+    # 2026-10-02 (Tony: "any hud alerts a down player doesnt get tho"), #5 presentation gate (2026-10-04): the ONE gate every
+    # visual channel goes through (the lanes, the announcer's card, the S57 callout, the hill card, the powerup hint, ITEM
+    # LOST), its predicates, and `state().presented`, what the HUD draws. Presentation only: it drops a HUD item while down,
+    # never a voice line, a gun frame or a score, and the stage has no HUD to draw it on.
+    "_alertsMissed", "show", "_presentable", "_presented",
     # 2026-10-02 (Tony): HILL CAPTURE STARTED, the hill badge when any team's capture begins, and the drainer it infers.
     # It writes only that lane badge and a log line: no gun frame, no voice line, no score. Presentation only, as above.
     "_hillBegins", "_hillRival",

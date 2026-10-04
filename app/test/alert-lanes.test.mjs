@@ -387,7 +387,7 @@ test('capture started: a badge during a weapon switch card waits under it, as ev
 // and its medals, the OBJECTIVE lead and hill badges, every FEED row) that arrives while I am DOWN is dropped: not
 // drawn, and not drawn after the respawn. One already up at my death goes with the life. The voice lines are not
 // alerts on the screen: they keep docs/announcer.md "My death wins" rules 3 and 8 (queued while dead, said after the scream).
-// Each family below goes through the same gate (engine.js `_laneWrite`), and each arrives while I am down.
+// Each family below goes through the same gate (engine.js `show`), and each arrives while I am down.
 const downNow = h => { h.eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*'); h.adv(300); assert.equal(h.eng.state().alive, false, 'setup: I am down'); };
 const backUp = h => { for (let t = 0; t < 9000 && !h.eng.state().alive; t += 250) h.adv(250); assert.equal(h.eng.state().alive, true, 'setup: the timed respawn brought me back'); };
 /** Everything in the three lanes, as the HUD reads it. */
@@ -443,4 +443,107 @@ test('down: the voice lines still queue while I am down ("My death wins" rules 3
   h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); h.adv(4000);
   assert.equal(h.plays('VA6D').length, n + 1, 'the lead line is said while I am down, after the scream');
   assert.deepEqual(laneItems(h), [], 'its badge is not drawn');
+});
+
+// ---- #5 presentation gate (architecture review 2026-10-04): EVERY visual channel, not only the lanes, keeps Tony's rule
+// "a down player gets no HUD alerts" (2026-10-02), through ONE engine method (`show`), and the engine publishes what the
+// HUD draws as `state().presented`. The HUD draws `presented` and no longer re-derives aliveness for these channels.
+// The channels: the three lanes (HERO, OBJECTIVE, FEED), the announcer's card (`card`), the S57 callout (`callout`), the
+// hill transition card (`hillCallout`), the powerup hint (`hint`) and the DOWN screen's ITEM LOST line (`puLost`).
+// The exceptions, kept as they were: `puLost` is drawn ONLY while I am down (it is the DOWN screen's own content, like
+// the respawn countdown); the standing lead badge survives the death in the engine (it is not drawn while I am down,
+// and is drawn again after the respawn); and the voice lines are never gated (docs/announcer.md, "My death wins" rules
+// 3 and 8). `shown` falls back to the raw field only so that this block also runs against an engine without the gate.
+const CHANNELS = ['lanes', 'card', 'callout', 'hillCallout', 'hint', 'puLost'];
+const shown = (h, ch) => { const s = h.eng.state(); return s.presented ? s.presented[ch] : ch === 'hint' ? s.powerup && s.powerup.hint : s[ch]; };
+/** Is there something on the channel the HUD would draw: a lane item, or any value? */
+const up = (h, ch) => {
+  const v = shown(h, ch); if (ch !== 'lanes') return v != null;
+  return !!v && (!!(v.hero && v.hero.kills.length) || Object.keys(v.obj || {}).length > 0 || (v.feed || []).length > 0);
+};
+/** Sample a channel for `ms` while I am down, 50 ms a step: was it EVER up? */
+const everUp = (h, ch, ms) => { let seen = false; for (let t = 0; t < ms && !h.eng.state().alive; t += 50) { h.adv(50); if (up(h, ch)) seen = true; } return seen; };
+const OS = { kind: 'overshield', name: 'Overshield', color: '#33ddff' };
+const puGame = h => { h.eng.config.stations = [{ id: 4, kind: 'powerup', item: OS }]; return h; };
+const grant = h => { h.eng.powerupGrant = { kind: 'overshield', name: 'OVERSHIELD', color: OS.color, at: h.now() }; };
+
+test('presented: the engine publishes one entry per visual channel, and nothing else', () => {
+  const h = harness().live();
+  const p = h.eng.state().presented;
+  assert.ok(p && typeof p === 'object', 'state().presented exists');
+  assert.deepEqual(Object.keys(p).sort(), [...CHANNELS].sort());
+});
+
+test('down: card: an MC lead alert said after the scream is never drawn, during or after the respawn', () => {
+  const h = harness({ mode: 'koth' }).live();
+  downNow(h);
+  const n = h.plays('VA6D').length;
+  h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD');
+  assert.equal(everUp(h, 'card', 4000), false, 'no card while I am down');
+  assert.equal(h.plays('VA6D').length, n + 1, 'CONTROL: the line itself was said (the voice is not gated)');
+  backUp(h);
+  assert.equal(up(h, 'card'), false, 'and none after the respawn');
+});
+
+test('down: callout: my IR kill confirm said after the scream is never drawn', () => {
+  const h = harness({ mode: 'koth' }).live();
+  h.alert('next_kill_wins'); h.adv(200);                           // a 2.9 s line on air: the kill confirm waits behind it
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2);
+  assert.equal(up(h, 'callout'), false, 'setup: the kill confirm is still waiting');
+  downNow(h);
+  assert.equal(everUp(h, 'callout', 4000), false, 'no KILL CONFIRMED callout while I am down');
+  backUp(h);
+  assert.equal(up(h, 'callout'), false, 'and none after the respawn');
+});
+
+test('down: hillCallout: HILL LOST while I am down is said, never drawn', () => {
+  const h = koth();
+  hold(h, 1000, { team: BLUE, state: CS.held, value: 100 });
+  die(h);
+  const n = h.plays('VB0P').length; let seen = false;
+  for (let t = 0; t < 4000; t += 250) { hold(h, 250, { team: RED, state: CS.rising, value: 3 }); if (up(h, 'hillCallout')) seen = true; }
+  assert.equal(h.plays('VB0P').length, n + 1, 'CONTROL: the line was said while I am down (rule 8)');
+  assert.equal(seen, false, 'no HILL LOST card while I am down');
+  respawn(h, { team: RED, state: CS.rising, value: 40 });
+  assert.equal(up(h, 'hillCallout'), false, 'and none after the respawn');
+});
+
+test('down: hint: the powerup hint is not drawn while I am down', () => {
+  const h = harness().live(); puGame(h);
+  downNow(h); grant(h);
+  assert.equal(up(h, 'hint'), false);
+});
+
+test('down: lanes: the standing lead badge is kept through the death, not drawn while I am down, and drawn again after', () => {
+  const h = harness({ mode: 'koth' }).live();
+  h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD');
+  downNow(h);
+  assert.equal(up(h, 'lanes'), false, 'the DOWN screen owns the phone: no lane is drawn');
+  backUp(h);
+  assert.equal(shown(h, 'lanes').obj.lead.kind, 'lead_taken', 'the standing lead badge is back after the respawn');
+});
+
+test('down CONTROL: alive, the card, the callout, the hill card, the hint and the lanes are all drawn', () => {
+  const h = harness({ mode: 'koth' }).live();
+  h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); h.adv(300);
+  assert.equal(up(h, 'card'), true, 'card');
+  assert.equal(up(h, 'lanes'), true, 'lanes');
+  h.adv(4000); h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(300);
+  assert.equal(up(h, 'callout'), true, 'callout');
+  puGame(h); grant(h);
+  assert.equal(up(h, 'hint'), true, 'hint');
+  const k = koth();
+  hold(k, 1000, { team: BLUE, state: CS.held, value: 100 });
+  let seen = false; for (let t = 0; t < 3000; t += 250) { hold(k, 250, { team: RED, state: CS.rising, value: 3 }); if (up(k, 'hillCallout')) seen = true; }
+  assert.equal(seen, true, 'hillCallout');
+});
+
+test('down EXCEPTION: puLost (the DOWN screen`s ITEM LOST line) is drawn only while I am down', () => {
+  const h = harness().live(); puGame(h);
+  h.eng._puHeld = { name: 'ROCKETS', color: '#ff5533', weapon_id: 'rocket_launcher', slot: 2, charges: 2, left: 2 };
+  assert.equal(up(h, 'puLost'), false, 'alive: nothing lost');
+  downNow(h);
+  assert.equal(shown(h, 'puLost') && shown(h, 'puLost').name, 'ROCKETS', 'the DOWN screen says which item the death took');
+  backUp(h);
+  assert.equal(up(h, 'puLost'), false, 'the next life does not carry it');
 });
