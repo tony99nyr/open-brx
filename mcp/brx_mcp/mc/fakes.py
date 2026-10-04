@@ -8,7 +8,8 @@ import time
 from typing import Callable
 
 from ..gameconfig import GSET_T2_SAFE
-from .compile import HEADSET_ALERT_BRIGHTNESS, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_capture_row_fn, check_volume, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
+from .compile import HEADSET_ALERT_BRIGHTNESS, base_cues, kill_line, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_capture_row_fn, check_volume, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
+from . import presentation as _pres
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, RespawnProfile, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
                     MAX_PLAYERS)
@@ -133,19 +134,14 @@ class FakeCompiler:
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]
 
     def cues(self, voice: str, slots: dict | None = None, night: bool = False) -> dict[str, str]:   # A15: slots, night as the real compiler
-        # A6.3: cues are pre-composed $PLAY frames the node writes verbatim
-        # `hurt`/`hurt_led` are here so the demo and every fake-backed test exercise the same key set
-        # the real compiler emits — without them the low-health alert path is unreachable in the
-        # demo, and a node bug in it could only ever be found on hardware (review 2026-09-01).
-        # ⚠ `game_over` was `$PLAY,VSF,4,6,JAY,,,,*` until 2026-09-07 -- that is the real compiler's
-        # VICTORY frame, and there was no `victory` key at all. So every `--demo` run, and every
-        # fall back to this compiler, played the victory sting TO EVERYONE at the whistle, winners
-        # and losers alike. This class is a RUNTIME FALLBACK (`__main__.build()` selects it whenever
-        # the real compiler raises on import), not a test-only stub, so that reached real games.
-        return {"countdown": "$PLAY,VA81,4,6,,,,,*", "kill": "$PLAY,,4,6,VAA,,,,*",
-                "game_over": "$PLAY,,4,6,VA33,,,,*",   # neutral "game over" -- what the real compiler ships
-                "victory": "$PLAY,VSF,4,6,JAY,,,,*",   # winners only, and only when MC sends it at recap
-                "hurt": "$PLAY,VA8B,3,6,,,,,*", "hurt_led": f"$HLED,7,4,90,90,{1 if night else HEADSET_ALERT_BRIGHTNESS},15,*"}
+        # A6.3: cues are pre-composed $PLAY frames the node writes verbatim. D4 (2026-10-03): derived, never copied:
+        # the real compiler's base table plus the three event frames a fallback game needs, from `presentation.EVENTS`.
+        # This class is a RUNTIME FALLBACK (`__main__.build()` selects it whenever the real compiler raises on import),
+        # so a hand copy here once played the VICTORY sting to everyone at the whistle (2026-09-07).
+        kill = kill_line(voice)
+        ev = {k: _pres.play_frame(_pres.EVENTS[k]["sound"], kill, _pres.EVENTS[k].get("slot")) for k in ("kill", "game_over", "victory")}
+        ev["hurt"] = _pres.play_frame(_pres.EVENTS["low_health"]["sound"], kill, _pres.EVENTS["low_health"].get("slot"))   # as compile(): the profile's low_health is the hurt cue
+        return {**base_cues(night), **{k: v for k, v in ev.items() if v}}
 
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict:
         errors, warnings = [], []
