@@ -1864,7 +1864,7 @@ KNOWN_UNMIRRORED = {
     # 2026-09-24 (docs/announcer.md, "The gun's audio FIFO"): the phone's model of the gun's audio queue and the
     # must-hear $PLAYX flush. NOT yet ported: the stage's own writes do not model the FIFO, and its heartbeat does not
     # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.
-    "_audioWrite", "_clipLen", "_sayMust", "_audioSync", "_audioHit", "_shieldLoopPeriod",   # the pool voice lines, the same queue; the stage speaks them at once
+    "_audioWrite", "_sayMust", "_audioSync", "_audioHit", "_shieldLoopPeriod",   # the pool voice lines, the same queue; the stage speaks them at once
     # X3 (2026-09-24): the fill-last write order IS mirrored, inline in `spawn`/`revive`; the helper's other half marks
     # the phone schedules sounds after the fill, and the stage has no audio model (see `_audioWrite` above)
     "_writeSpawnBurst",

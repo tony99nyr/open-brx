@@ -698,6 +698,7 @@ class GunStage:
         self._last_beacon_at = 0.0                 # F85: self.now() of that acceptance
         self.hill: HillState | None = None         # {owner, at, from_neutral[, source: 'station', site, progress, …]} -- state from the wire; the cadence below is ours
         self._hill_busy_until = 0.0                # a hill callout owns the announcer until here: the tick waits, it never overlaps
+        self._last_event_cue: str | None = None    # the last `_event_now` cue frame written (the poison onset times it)
         self._hill_scream_until = 0.0               # the native death scream owns the gun until this time
         self._hill_scream_pending: dict | None = None  # no announcer queue here: defer a hill line until the scream ends
         self._hill_tick_at = 0.0                   # when the possession tick last played (0 = not ticking)
@@ -2693,6 +2694,7 @@ class GunStage:
         """`event()` without the state build — the path every in-game reaction uses (see the warning there)."""
         cues = self.bundle.get("cues", {})
         cue, tag = self._pick_cue(kind) if sound else (None, "")
+        self._last_event_cue = cue   # the take actually played, for a caller that times it (`_poison_cue`)
         if cue:
             self._spawn_task(self.write([cue], f"event cue {kind}{tag}", gap_ms=0))
         elif kind in cues and sound:
@@ -4461,9 +4463,22 @@ class GunStage:
         p["cue_pending"] = False
         # engine.js `_poisonStrike` plays a tick only while the announcer is idle, so no tick sounds over this onset clip
         # (F446: the first tick is silent under H12). The stage models no announcer, so it holds the tick for the clip.
-        cue = (self.bundle.get("cues") or {}).get("poisoned")
-        p["onset_until"] = self.now() + clip_s(_cue_id(cue)) if cue else 0.0
+        # #6 polish r2: the hold is the PLAYED take's length (a `cue_pools` pick, or a `cue_ms` override), as the gun model
+        # in engine.js times it (`_clipLen`).
+        self._last_event_cue = None
         self._event_now("poisoned")
+        p["onset_until"] = self.now() + self._clip_len(self._last_event_cue)
+
+    def _clip_len(self, frame: str | None) -> float:
+        """engine.js `_clipLen`, in seconds: the bundle's `cue_ms[kind]` for the kind whose `cues[kind]` is this exact
+        frame, else the clip's catalogue length (`clipMs`); no frame is no sound."""
+        if not frame:
+            return 0.0
+        cues, cue_ms = self.bundle.get("cues") or {}, self.bundle.get("cue_ms") or {}
+        for k, ms in cue_ms.items():
+            if cues.get(k) == frame:
+                return float(ms) / 1000.0
+        return clip_s(_cue_id(frame))
 
     def _poison_tick(self, now: float) -> None:
         """engine.js `_poisonTick`: the clock, from `poll()` while LIVE. One tick per call at most -- a poll
