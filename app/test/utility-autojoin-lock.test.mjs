@@ -115,6 +115,6 @@ test('utility.js stamps mcLastBoundAt whenever the link enters or leaves bound',
 test('the mDNS path takes the same in-play rule as the sweep', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../src/utility.js', import.meta.url), 'utf8');
-  const watch = src.slice(src.indexOf("plugins.zeroconf.watch("), src.indexOf("plugins.zeroconf.watch(") + 900);
+  const watch = src.slice(src.indexOf('mcLink.watch(plugins.zeroconf'), src.indexOf('mcLink.watch(plugins.zeroconf') + 900);
   assert.match(watch, /if \(!autoJoinAllowed\(url\)\) return;/, 'an mDNS hit on another MC must not be dialled in play either');
 });

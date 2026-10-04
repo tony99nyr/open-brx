@@ -14,7 +14,8 @@ import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts
 import jsQR from 'jsqr';
 import { parseMcJoin } from './mcurl.js';
 import { TEAM_NAMES as CONTRACT_TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS as CONTRACT_TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_LOCK_MAX_S, STATION_TICK_MS } from './transport/contract.gen.js';
-import { startUtilitySweep, resolveTypedMc } from './transport/utility-join.js';   // bench 2026-09-24: the LAN sweep fallback + typed-address parsing
+import { resolveTypedMc } from './transport/utility-join.js';
+import { McLink, STATION_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
 import { RangeEdits, RANGE_KEY, TX_TO_WIRE, txFromWire, rangeHoldMs, RANGE_IDLE_MS } from './rangeedit.js';   // F365 / A67: the on-station range edit, synced to MC
 import { createTapHoldGate } from './tapgate.js';   // F365: the RANGE hold reuses the hidden door's knock-safe hold
@@ -250,34 +251,40 @@ function utilityStatusBody() {
     ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
       hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
 }
+const mcLink = new McLink({ policy: STATION_POLICY, current: () => transport, setCurrent: t => { transport = t; },
+  remember: (url, bound) => { settings.mc = url; settings.mc_auto = bound; save(); },
+  makeTransport: (_previous, options) => {
+    let ws = options.wsFactory;
+    if (!ws) { try { ws = makeWsFactory(); } catch (_) { ws = undefined; } }
+    return new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null,
+      keyPrefix: 'brxu', ...(ws ? { wsFactory: ws } : {}) });
+  } });
 function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
   if (!url) return;
-  if (trusted) { settings.mc = url; settings.mc_auto = false; save(); }
-  if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   // Block 9: the same Wi-Fi-bound socket the HUD dials with (F311, BrxNet on Android), so a no-internet game
   // Wi-Fi the sweep just found MC on is the network the connect uses too. The stage passes its own factory.
-  let ws = wsFactory;
-  if (!ws) { try { ws = makeWsFactory(); } catch (_) { ws = undefined; } }
-  transport = new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null, keyPrefix: 'brxu', ...(ws ? { wsFactory: ws } : {}) });   // its own node id: never the HUD's
-  transport.armedOrLive = true;                            // keep dialling — at muster the operator is waiting on this
-  transport.setStatusProvider(utilityStatusBody);
+  const dial = mcLink.dial(url, { trusted, wsFactory, connect: { url, trusted, pub, secret } }, candidate => {
+  candidate.armedOrLive = true;                            // keep dialling — at muster the operator is waiting on this
+  candidate.setStatusProvider(utilityStatusBody);
   // A41: the operator's MC-side release for a phone stuck in utility mode -- makes the ⓘ gesture's own
   // BACK TO HUD a real, reachable fix instead of folklore ("something pushed from MC"). Any phase, any
   // arm state: this is the one message that gets a phone unstuck, so it is never conditioned on anything.
-  transport.onMessage(m => {
+  candidate.onMessage(m => {
     if (!m) return;
     if (m.kind === 'station_config') applyStationConfig(m.body);
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
-  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true;
+  candidate.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true;
     if (s === 'bound' || was === 'bound') { settings.mcLastBoundAt = Date.now(); save(); }   // round 2: the auto-join guard's clock if (s === 'bound' && flushTaken()) savePowerup();
     // a discovered MC that drops (a restart on a new IP) is searched for again, not left to mDNS alone
     if (was === 'bound' && s !== 'bound' && settings.mc_auto && isNative()) setTimeout(startUtilityLanSweep, 0); log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
-  transport.connect({ url, trusted, pub, secret }).then(() => {
+  });
+  const candidate = dial.transport;
+  dial.promise.then(() => {
     // An automatically discovered endpoint becomes the remembered fallback only after MC proves itself
     // with a welcome. Until then another mDNS result may replace a stale or non-MC websocket.
-    if (!trusted && transport && transport.state === 'bound') { settings.mc = url; settings.mc_auto = true; save(); }
+    if (!trusted && transport && transport.state === 'bound') mcLink.bound(candidate, url, { trusted });
   }).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
 // Utility mode is an explicit operator choice, so it may auto-join the MC service on this LAN. A utility
@@ -294,41 +301,22 @@ let _sweeper = null;
  *  the station was bound to its MC within AUTOJOIN_LOCK_MS (`settings.mcLastBoundAt`, stamped whenever the link
  *  enters or leaves bound, and saved so a phone restart mid-match keeps it). A mid-match drop is seconds to minutes;
  *  a match is about 10 minutes; a later session is hours away. A station never bound has no MC to protect. */
-const AUTOJOIN_LOCK_MS = 10 * 60 * 1000;
-const _autoJoinRefusedAt = new Map();
-function hostOf(u) { try { return new URL(String(u).replace(/^ws/, 'http')).hostname.toLowerCase(); } catch (_) { return ''; } }
 function autoJoinAllowed(url) {
-  if (!rangeLocked()) return true;
-  const boundAt = Number(settings.mcLastBoundAt) || 0;
-  if (!boundAt || Date.now() - boundAt >= AUTOJOIN_LOCK_MS) return true;   // not this match any more: any MC
   let held = [settings.mc];
   try { held.push(localStorage.getItem('brxu.pub_url')); } catch (_) { /* ignore */ }
-  held = held.map(hostOf).filter(Boolean);
-  if (held.includes(hostOf(url))) return true;
-  const now = Date.now();
-  if (now - (_autoJoinRefusedAt.get(url) || -Infinity) >= 60000) {
-    _autoJoinRefusedAt.set(url, now);
-    log(`MC FOUND AT ${url}, NOT JOINING: THE STATION IS IN PLAY AND ${held.length ? `ITS MC IS ${settings.mc || held[0]}` : 'HOLDS NO MC ADDRESS'} (HOLD RANGE TO CHANGE IT)`, 'le');
-  }
-  return false;
+  return mcLink.allowAutoJoin(url, { inPlay: rangeLocked(), lastBoundAt: settings.mcLastBoundAt,
+    heldUrls: held, remembered: settings.mc, log });
 }
 function startUtilityDiscovery() {
   if (!isNative() || (mcUrl() && !settings.mc_auto)) return;
   startUtilityLanSweep();
   if (!plugins.zeroconf) return;
-  try {
-    plugins.zeroconf.watch({ type: '_openbrx._tcp.', domain: 'local.' }, res => {
-      if (mcState === 'bound' || !res || (res.action !== 'resolved' && res.action !== 'added')) return;
-      const svc = res.service || {};
-      const ip = svc.ipv4Addresses && svc.ipv4Addresses[0];
-      if (!ip || !svc.port) return;
-      const path = svc.txtRecord && svc.txtRecord.ws_path || '/ws';
-      const url = `ws://${ip}:${svc.port}${path}`;
+  mcLink.watch(plugins.zeroconf, url => {
+      if (mcState === 'bound') return;
       if (!autoJoinAllowed(url)) return;   // U-M2: in play, only the same MC
       log(`MISSION CONTROL FOUND — CONNECTING ${url}`, 'lk');
       if (!transport || transport.url !== url) connectMc(url, { trusted: false });
-    }).catch(e => log('MC discovery: ' + (e && e.message || e)));
-  } catch (e) { log('MC discovery: ' + (e && e.message || e)); }
+    }, e => log('MC discovery: ' + (e && e.message || e)));
 }
 // Bench 2026-09-24: mDNS alone never found an MC in WSL behind a Windows portproxy (its mDNS never reaches
 // the LAN); the player screen's sweep did. Same sweep here (transport/utility-join.js), same guard as above:
@@ -336,7 +324,7 @@ function startUtilityDiscovery() {
 function startUtilityLanSweep(over = {}) {   // `over`: the node test's sweep/timer seam (app/test/utility-join-wiring)
   if (_sweeper && !_sweeper.stopped) return;
   let wsFactory; try { wsFactory = makeWsFactory(); } catch (e) { log('MC sweep: ' + (e && e.message || e)); return; }
-  _sweeper = startUtilitySweep({
+  _sweeper = mcLink.runSweep({
     isBound: () => mcState === 'bound',
     operatorUrl: () => !!(mcUrl() && !settings.mc_auto),
     // the mDNS path's own rule, and never over a connect already in flight (an mDNS hit on another address)
