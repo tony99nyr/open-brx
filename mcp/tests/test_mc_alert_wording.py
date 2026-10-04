@@ -60,7 +60,7 @@ def _named_lines() -> list[str]:
     """The line constants and builders, including the ones a board above cannot reach cheaply."""
     s, *_ = _session(1)
     s.phase = "live"                               # a held station offline is flagged only in play
-    tamper = s._station_tamper_flags(3, "held", {}, 2, online=False, now=T0)
+    tamper = s.station_registry.station_tamper_flags(3, "held", {}, 2, online=False, now=T0)
     return [st.WAITING_FOR_PHONE, st.GUN_LINK_LOST, st.CLOCK_NOT_SYNCED, st.WRONG_WIFI, st.IDENTITY_REVERTED,
             st.GUN_DID_NOT_ANSWER, st.BATTERY_UNREAD, st.PHONE_BATTERY_LOW, st.SCREEN_OFF, st.GUN_FLAPPING_LINE,
             st.STATION_BRING_BACK, st.STATION_ARMED_OLDER, st.STATION_NOT_ARMED, st.STATION_BATTERY_LOW,

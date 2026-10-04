@@ -26,9 +26,9 @@ from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose 
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
-from .stations import (StationRegistry, STATION_BRING_BACK, STATION_ARMED_OLDER,
-                       STATION_NOT_ARMED, STATION_BATTERY_LOW, BATTERY_LOW_PCT, _STATION_LOCK_KEYS,
-                       _range_edit_ok)
+from .stations import StationRegistry, BATTERY_LOW_PCT, _STATION_LOCK_KEYS, _range_edit_ok
+# STATION_* re-exports remain for tests that import them from state.py.
+from .stations import STATION_BRING_BACK, STATION_ARMED_OLDER, STATION_NOT_ARMED, STATION_BATTERY_LOW
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
@@ -716,7 +716,7 @@ class Session:
         self._departed_match_stations: dict[str, RecapStationRow] = {}
         # A58: the operator's UNLOCK STATIONS, or an END-shaped stop (abort-start). Every `station_config`
         # carries `lock_s: 0` while it is set; the next LOAD push or START clears it.
-        self._stations_unlocked = False
+        self.station_registry.reset_for_load()
         # A25 background log sync. `options` is the session option table (`PUT /api/options`);
         # `_log_match` is the match_id of the LAST match that ended, and `_log_done` the match whose log
         # each node has finished delivering -- the pair is the whole "did this node's log ever arrive?"
@@ -2862,7 +2862,7 @@ class Session:
         # Round-2 fix pass J: the same A13.5 re-arm `push_config` does. Without it a team or
         # `station_source` edit left every assigned station on the PRE-EDIT allow-list.
         self.lobby_pushed = True
-        self._stations_unlocked = False        # A58: a LOAD push locks the stations again
+        self.station_registry.reset_for_load()  # A58: a LOAD push locks the stations again
         self.arm_stations()
 
     def _fresh_head_repush(self) -> None:
@@ -2978,7 +2978,7 @@ class Session:
             self._sync_pending = {}
 
     def _station_ids(self) -> list[StationRef]:
-        return self.station_registry._station_ids()
+        return self.station_registry.station_ids()
 
     # ---------- powerups (A56 / S58, docs/spec/powerups.md) ----------
     def powerups_view(self) -> PowerupsView:
@@ -2986,36 +2986,35 @@ class Session:
         return _pu.presets_view(self.powerups_enabled, getattr(self.compiler, "catalog", None))
 
     def _item_stations(self) -> list[tuple[str, dict, StationItem]]:
-        return self.station_registry._item_stations()
+        return self.station_registry.item_stations()
 
     def _powerup_slots(self) -> list[PowerupSlot]:
-        return self.station_registry._powerup_slots()
+        return self.station_registry.powerup_slots()
 
     def _compile_config(self) -> GameConfig:
         """The config `compile()` reads: the operator's, plus the pickup weapons MC armed (A56)."""
         slots = self._powerup_slots()
         return cast(GameConfig, {**self.config, "powerups": slots}) if slots else self.config
 
-    def _pu_update_body(self, nid: str) -> dict | None:
-        """The `station_update` for one item station from the schedule in play, or None when there is none."""
+    def pu_state(self, nid: str) -> tuple[dict | None, dict | None, int | None]:
+        """The update body, scheduled row, and start time for one item station."""
         # Only for the match in play (M2): a station reconnecting in RECAP or LOBBY must not get the old
         # match's state and start counting down to a spawn that will never come.
         if not self.in_play() or self._pu_sched.get("match_id") != self.current_match_id():
-            return None
+            return None, None, None
         row = (self._pu_sched.get("st") or {}).get(nid)
         a = self.station_registry.assignment(nid)
         if row is None or not a:
-            return None
+            return None, None, None
         # The time to the NEXT spawn instant, ALWAYS (even while the item is there): the station counts down
         # and spawns on its own, so a lost MC link never freezes it.
-        return {"id": a["id"], "available": row["available"],
-                "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], self._pu_sched["go"], row["next_k"]) - self.now_ms())}
-
-    def pu_row(self, nid: str) -> tuple[dict, int]:
-        return self._pu_sched["st"][nid], self._pu_sched["go"]
+        go = self._pu_sched["go"]
+        body = {"id": a["id"], "available": row["available"],
+                "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], go, row["next_k"]) - self.now_ms())}
+        return body, row, go
 
     def _push_station_update(self, nid: str, reset: bool = False) -> None:
-        body = self._pu_update_body(nid)
+        body, _, _ = self.pu_state(nid)
         if body is not None:
             if reset:
                 body["reset"] = True   # the station tells an operator reset from a re-send of a spawn it awarded
@@ -3175,16 +3174,15 @@ class Session:
         return cast(GameConfig, {**cfg, **({"stations": ids} if ids else {}), "game_byte": self._game_byte()})
 
     def _station_warnings(self) -> list[str]:
-        return self.station_registry._station_warnings()
+        return self.station_registry.station_warnings()
 
     # F402 wording, shared by the hard refusal and the console (mcp/tests/test_mc_alert_wording.py /
     # webapp/mc/src/alerts/server.ts SERVER_LINES both key on these exact heads).
-    _KOTH_HILL_FAULT_NONE = "KING OF THE HILL NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY"
-    _KOTH_HILL_FAULT_SOURCE = ("KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A "
-                                "PHONE OR STICK AS A HILL IN THE ARMORY")
+    _KOTH_HILL_FAULT_NONE = StationRegistry._KOTH_HILL_FAULT_NONE
+    _KOTH_HILL_FAULT_SOURCE = StationRegistry._KOTH_HILL_FAULT_SOURCE
 
     def _koth_hill_fault(self) -> str | None:
-        return self.station_registry._koth_hill_fault()
+        return self.station_registry.koth_hill_fault()
 
     def _refuse_koth_hill(self) -> None:
         """Deliberately NOT bypassable by `force`, the same reason as `_refuse_push_in_play` /
@@ -3194,10 +3192,10 @@ class Session:
             raise ValueError(fault)
 
     def _koth_hill_offline_warning(self) -> list[str]:
-        return self.station_registry._koth_hill_offline_warning()
+        return self.station_registry.koth_hill_offline_warning()
 
     def _station_sync_warnings(self) -> list[str]:
-        return self.station_registry._station_sync_warnings()
+        return self.station_registry.station_sync_warnings()
 
     def station_sync_state(self) -> tuple[int | None, dict[str, str]]:
         return self._match_end_t, self._sync_pending
@@ -3205,24 +3203,18 @@ class Session:
     def set_station(self, nid: str, a: dict) -> StationView:
         return self.station_registry.set_station(nid, a)
 
-    _DEPARTURE_NAME = {"control": "HILL", "respawn": "RESPAWN", "powerup": "POWERUP", "extraction": "EXTRACT",
-                       "bomb": "BOMB"}
-
     def _record_departure(self, nid: str, reason: str, successor: str | None = None) -> None:
-        return self.station_registry._record_departure(nid, reason, successor)
+        return self.station_registry.record_departure(nid, reason, successor)
 
     @staticmethod
     def _departure_ok(d: object) -> bool:
         return StationRegistry._departure_ok(d)
 
     def _station_departures_view(self) -> list[StationDeparture]:
-        return self.station_registry._station_departures_view()
+        return self.station_registry.departures_view()
 
     def dismiss_departure(self, nid: str) -> bool:
         return self.station_registry.dismiss_departure(nid)
-
-    def _auto_station_id(self, nid: str) -> int:
-        return self.station_registry._auto_station_id(nid)
 
     def clear_station(self, nid: str) -> bool:
         return self.station_registry.clear_station(nid)
@@ -3282,27 +3274,17 @@ class Session:
             if nid and pid in self.bundles:
                 self.net.push(nid, "config", {"config": cfg, "frames": self.bundles[pid], "roster": roster})
 
-    @staticmethod
-    def _wire_threshold(nid: str, st: dict, a: StationAssignment) -> int:
-        return StationRegistry._wire_threshold(nid, st, a)
-
-    def _range_fields(self, prev: StationAssignment | None, thr: int, a: dict) -> dict:
-        return self.station_registry._range_fields(prev, thr, a)
-
     def _note_station_range(self, nid: str, st: dict, body: dict, t_recv: int) -> None:
-        return self.station_registry._note_station_range(nid, st, body, t_recv)
+        return self.station_registry.note_range(nid, st, body, t_recv)
 
     def _arm_station(self, nid: str, relock: bool = False) -> bool:
-        return self.station_registry._arm_station(nid, relock)
-
-    def _note_station_lock(self, st: dict, game: int, lock: int) -> None:
-        return self.station_registry._note_station_lock(st, game, lock)
+        return self.station_registry.arm_station(nid, relock)
 
     def _note_station_boot(self, st: dict, body: dict, t_recv: int) -> None:
-        return self.station_registry._note_station_boot(st, body, t_recv)
+        return self.station_registry.note_boot(st, body, t_recv)
 
     def _keep_station_tally(self, st: dict, t_recv: int) -> None:
-        return self.station_registry._keep_station_tally(st, t_recv)
+        return self.station_registry.keep_tally(st, t_recv)
 
     def unlock_stations(self) -> dict:
         return self.station_registry.unlock_stations()
@@ -3311,11 +3293,7 @@ class Session:
         return self.station_registry.arm_stations(relock)
 
     def _station_view(self, nid: str) -> StationView:
-        return self.station_registry._station_view(nid)
-
-    def _station_tamper_flags(self, sid: int, assoc: str | None, lock: dict, restarts: int, *, online: bool,
-                              now: int) -> list[str]:
-        return self.station_registry._station_tamper_flags(sid, assoc, lock, restarts, online=online, now=now)
+        return self.station_registry.station_view(nid)
 
     def stations_view(self) -> list[StationView]:
         return self.station_registry.stations_view()
@@ -3686,8 +3664,7 @@ class Session:
         # session. Bounded by the ladder, but a delivery fact about a node that no longer exists is not a
         # fact at all.
         self._end_delivery.pop(nid, None)
-        self._station_id_of.pop(nid, None)     # F364: an evicted node (a reinstall) frees its number; a CLEAR keeps it
-        if (self.stations.pop(nid, None) or {}).get("assigned"):
+        if (self.station_registry.forget(nid) or {}).get("assigned"):
             # An assigned station left with its id still in every other station's `valid_ids` and every
             # HUD's `config.stations` (polish review 2026-09-11): shrink both, as `clear_station` does.
             self.arm_stations()
@@ -3706,8 +3683,7 @@ class Session:
                 continue                       # A13.5: an assigned station is placed, not phantom
             if now - self.nodes[nid].get("last_seen_ms", 0) > 600_000:
                 self.nodes.pop(nid, None)
-                self.stations.pop(nid, None)
-                self._station_id_of.pop(nid, None)   # F364: a pruned row releases its reserved id
+                self.station_registry.prune(nid)
                 self._app_blocked_alerted.pop(nid, None)   # F121: a re-hello after this can say WITHHELD again
                 self._plan_blocked_alerted.pop(nid, None)
 
@@ -3778,13 +3754,7 @@ class Session:
             # A13.5: a station phone. No gun, never bound; if the operator already assigned it, this hello
             # (first contact, or a reconnect after a reboot) is what arms it -- with the CURRENT game number,
             # which is how a station that missed the muster push still resets for the new match.
-            st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
-            st["last_seen_ms"] = nv["last_seen_ms"]
-            st["app_ver"] = n.get("app_ver") or st.get("app_ver")
-            st["platform"] = nv.get("platform") or st.get("platform")   # A29: stations report the same way
-            if (gone := self._station_departures.get(nid)) is not None:
-                gone["returned"] = True            # bench 2026-10-02: ITEMS offers RESTORE; it is never automatic
-            if st.get("assigned"):
+            if self.station_registry.on_hello(nid, nv["last_seen_ms"], n.get("app_ver"), nv.get("platform")):
                 self._arm_station(nid)
                 self._push_station_update(nid)     # A56: a powerup station re-anchors its spawn countdown
             self._changed()
@@ -3801,9 +3771,7 @@ class Session:
             if rec is not None:
                 self._departed_match_stations[prior_nid] = rec
         if prior_station:
-            self._record_departure(prior_nid, "back_to_hud", successor=nid if nid != prior_nid else None)   # bench 2026-10-02
-            self.stations.pop(prior_nid, None)
-            self._station_id_of.pop(prior_nid, None)   # F364: a station that became a HUD frees its number
+            self.station_registry.back_to_hud(prior_nid, successor=nid if nid != prior_nid else None)
             if prior_nid != nid:
                 # NetServer consumed the old authenticated identity too. Do not leave its utility node
                 # ghost on ARMORY or in per-node bookkeeping after ITEMS has accepted the role handoff.
@@ -3994,19 +3962,7 @@ class Session:
             # A13.5: the station heartbeat is the ITEMS panel's whole data source and, for a control point,
             # the self-authoritative recap (owner / progress / hold_ms / capture log, utility.md §5c). The
             # player whitelist above dropped every one of these fields, so nothing MC showed came from a station.
-            st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
-            st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
-                                                     "armed", "control", "battery", "uptime_s", "boot_count", "assoc",
-                                                     "threshold_src", "tx_power", "tx_power_src")
-                            if k in body}
-            self._note_station_range(nid, st, body, t_recv)   # A67: last edit wins; new on-station edits announced
-            self._note_station_boot(st, body, t_recv)   # A58: before last_seen moves, a restart is judged on this beat
-            self._keep_station_tally(st, t_recv)
-            st["last_seen_ms"] = t_recv
-            if body.get("app_ver"):                # roadmap A3: the heartbeat, not just the hello, keeps this fresh
-                st["app_ver"] = body["app_ver"]
-            if body.get("platform"):
-                st["platform"] = body["platform"]
+            self.station_registry.on_heartbeat(nid, body, t_recv)
             nv["node_type"] = "utility"
             # RELEASE freezes a fallback row before asking the phone to reload, but the old utility
             # socket may have one final, newer self-authoritative tally already in flight. Preserve the
@@ -4615,7 +4571,7 @@ class Session:
             gb = max(set(bytes_seen), key=lambda b: (bytes_seen.count(b), b))
             self.game_no += (gb - self._game_byte()) % 255
         self._game_no_started = True
-        self._range_epoch += 1                 # A67: an adopted match is a START too
+        self.station_registry.begin_match()     # A67: an adopted match is a START too
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
         self._end_delivery, self._end_delivery_told = {}, None
@@ -6406,7 +6362,7 @@ class Session:
             self._send_config_to(p)
         self.lobby_pushed = True
         self.phase = "lobby"
-        self._stations_unlocked = False        # A58: the LOAD lock (`_station_lock_s` reads the phase set above)
+        self.station_registry.reset_for_load()  # A58: the LOAD lock reads the phase set above
         self.arm_stations()                    # A13.5: every assigned station learns this game's number
         self._changed()
         self.persist_now()                     # A59: a crash in the snapshot debounce must not lose the game_no bump
@@ -6585,7 +6541,7 @@ class Session:
     def _schedule(self, runway_s: int) -> dict:
         self.start_seq += 1
         self._game_no_started = True           # the next muster push is a NEW match to every station
-        self._range_epoch += 1                 # A67: the last match's range-edit lines clear at this START
+        self.station_registry.begin_match()     # A67: the last match's range-edit lines clear at this START
         # F411 LAST MATCH (games-presets.md §2): captured at every START, not just the first — a mode/
         # preset change since the last game must not leave LAST MATCH offering stale values. From
         # `self.config` (H2, polish round 1), not `game_pick["match"]`: `set_config` keeps the two in
@@ -6666,7 +6622,7 @@ class Session:
                 continue
             self.net.push(nid, "start", start_body)
         self.phase = "armed"
-        self._stations_unlocked = False
+        self.station_registry.lock_for_start()
         self.arm_stations(relock=True)                    # A58: the exact lock, to every station still connected (held)
         self._role_due = []                    # a reschedule re-queues from scratch
         self._queue_roles_for_live()
@@ -6697,7 +6653,7 @@ class Session:
         # set, or the following push silently skips a game number and re-arms every station for nothing).
         self._game_no_started = False
         self.phase = "lobby"
-        self._stations_unlocked = True         # A58: the whistle never blew; the next START locks them again
+        self.station_registry.unlock_after_abort()  # A58: the whistle never blew; the next START locks them again
         self.arm_stations(relock=True)
         self._changed()
         self.persist_now()
@@ -7436,8 +7392,7 @@ class Session:
                 nv.pop("player_id", None)
             self.restored_from = None      # F142: FRESH SESSION is the answer to the restore notice
             # F364: a fresh session hands ids out from 1 again; a station still assigned keeps its own.
-            self._station_id_of = {n: a["id"] for n, st in self.stations.items() if (a := st.get("assigned"))}
-            self._station_departures = {}          # bench 2026-10-02: NEXT MATCH keeps them; a FRESH SESSION does not
+            self.station_registry.reset_for_session()  # NEXT MATCH keeps departures; a FRESH SESSION clears them
         self._changed()
         if keep_roster:
             self.persist_now()                       # roster survives a crash right after NEW MATCH

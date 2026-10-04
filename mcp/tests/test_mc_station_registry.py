@@ -1,7 +1,10 @@
 """Characterise station records before and after the registry extraction."""
 
 from types import SimpleNamespace
+import ast
+from pathlib import Path
 
+from brx_mcp.mc import stations
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
@@ -16,6 +19,17 @@ def _session():
     return session, tick
 
 
+def test_station_module_does_not_import_state():
+    source = Path(stations.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
+    assert all((node.module or "").split(".")[-1] != "state"
+               and all(alias.name != "state" for alias in node.names)
+               for node in imports if isinstance(node, ast.ImportFrom))
+    assert all("brx_mcp.mc.state" not in alias.name for node in imports
+               if isinstance(node, ast.Import) for alias in node.names)
+
+
 def test_station_id_reservation_and_departure_restore_shape():
     session, tick = _session()
     first = session.set_station("station-a", {"kind": "respawn", "team": "blue"})
@@ -28,16 +42,16 @@ def test_station_id_reservation_and_departure_restore_shape():
     tick[0] += 10
     second = session.set_station("station-b", {"kind": "respawn", "team": "blue"})
     assert second["assigned"]["id"] == 2
-    assert session._auto_station_id("station-a") == 1
+    assert session.station_registry.auto_station_id("station-a") == 1
 
 
 def test_range_fields_keep_the_original_age_and_source_on_an_unchanged_value():
     session, tick = _session()
-    first = session._range_fields(None, -70, {"tx_power": "low"})
+    first = session.station_registry.range_fields(None, -70, {"tx_power": "low"})
     assert first == {"threshold_set_at": 100_000, "threshold_src": "mc",
                      "tx_power": "low", "tx_power_set_at": 100_000, "tx_power_src": "mc"}
     tick[0] += 500
-    kept = session._range_fields({"threshold": -70, "at": 99_000, **first}, -70, {})
+    kept = session.station_registry.range_fields({"threshold": -70, "at": 99_000, **first}, -70, {})
     assert kept == first
 
 
@@ -48,7 +62,7 @@ def test_station_warning_and_lock_keep_their_exact_operator_voice():
         "SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME "
         "BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT",
     ]
-    session._note_station_lock(session.stations["station-a"], 1, 120)
+    session.station_registry.note_station_lock(session.stations["station-a"], 1, 120)
     assert session.stations["station-a"]["lock"] == {"s": 120, "at": 100_000}
     assert session.stations["station-a"]["locked_since"] == 100_000
 
@@ -57,17 +71,17 @@ def test_registry_allocates_reserved_ids_without_a_session():
     registry = StationRegistry(SimpleNamespace())
     registry.stations["station-a"] = {"assigned": {"id": 1}}
     registry._station_id_of["station-b"] = 2
-    assert registry._auto_station_id("station-c") == 3
+    assert registry.auto_station_id("station-c") == 3
     registry._station_departures["station-c"] = {"id": 7}
-    assert registry._auto_station_id("station-c") == 7
+    assert registry.auto_station_id("station-c") == 7
 
 
 def test_registry_keeps_range_age_without_a_session():
     tick = [100_000]
     registry = StationRegistry(SimpleNamespace(now_ms=lambda: tick[0]))
-    first = registry._range_fields(None, -70, {"tx_power": "low"})
+    first = registry.range_fields(None, -70, {"tx_power": "low"})
     tick[0] += 2_000
-    kept = registry._range_fields({"threshold": -70, "at": 90_000, **first}, -70, {})
+    kept = registry.range_fields({"threshold": -70, "at": 90_000, **first}, -70, {})
     assert kept == first
 
 
@@ -79,15 +93,15 @@ def test_registry_lock_and_warnings_without_a_session():
     ))
     station = {"assigned": {"kind": "respawn", "team": 1, "id": 4}}
     registry.stations["station-a"] = station
-    assert registry._station_warnings() == []
-    registry._note_station_lock(station, 1, 120)
+    assert registry.station_warnings() == []
+    registry.note_station_lock(station, 1, 120)
     assert station["locked_since"] == 100_000
     assert station["lock"] == {"s": 120, "at": 100_000}
 
 
 def test_registry_warns_about_missing_respawn_station_without_a_session():
     registry = StationRegistry(SimpleNamespace(config={"mode": "tdm", "respawn": {"type": "scanner"}}))
-    assert registry._station_warnings() == [
+    assert registry.station_warnings() == [
         "SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME "
         "BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT",
     ]
@@ -102,7 +116,7 @@ def test_registry_view_and_recap_row_without_a_session():
         "assigned": {"kind": "respawn", "team": 1, "id": 4, "threshold": 0, "at": 90_000},
         "report": {"revives": 0}, "last_seen_ms": 99_000,
     }
-    view = registry._station_view("station-a")
+    view = registry.station_view("station-a")
     assert view["online"] is True
     assert view["last_seen_ms"] == 1_000
     assert view["range"]["threshold"] == 0

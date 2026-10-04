@@ -24,7 +24,7 @@ def _defaults(mode: str) -> GameConfig:
     return cfg
 
 
-def test_module_merges_in_patch_order_without_session():
+def test_module_does_not_import_state():
     source = Path(config_merge.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
     imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
@@ -33,6 +33,9 @@ def test_module_merges_in_patch_order_without_session():
                for node in imports if isinstance(node, ast.ImportFrom))
     assert all("brx_mcp.mc.state" not in alias.name for node in imports if isinstance(node, ast.Import)
                for alias in node.names)
+
+
+def test_module_merges_in_patch_order():
     cfg = _base()
     patch = {"night": 1, "coverage": "full", "scoring": {"frag_limit": 5},
              "config_id": "injected", "unknown": 1, "stun": {"duration_s": 4, "extra": 9}}
