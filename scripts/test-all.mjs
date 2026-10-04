@@ -311,6 +311,13 @@ for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) 
     exitAfterKills(code);
   });
 }
+// Every job imports brx_mcp from THIS checkout: <ROOT>/mcp goes first on PYTHONPATH (the dev venv's editable
+// install points at the main checkout), and BRX_MCP_EXPECT_DIR makes brx_mcp/__init__.py refuse any other copy.
+const OWN_MCP = path.join(ROOT, 'mcp');
+function ownBrxMcpEnv(env = {}) {
+  const rest = (env.PYTHONPATH ?? process.env.PYTHONPATH ?? '').split(path.delimiter).filter(p => p && p !== OWN_MCP);
+  return { PYTHONPATH: [OWN_MCP, ...rest].join(path.delimiter), BRX_MCP_EXPECT_DIR: OWN_MCP };
+}
 function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
   const log = path.join(LOGS, `${name}.log`);
   const jobHome = path.join(LOGS, `${name}-brx-mcp-home`);
@@ -320,7 +327,7 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
   const t0 = Date.now();
   return new Promise(resolve => {
     // detached: the job leads its own process group, so a timeout kills its browsers and servers too
-    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome }, stdio: ['ignore', out, out], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env) }, stdio: ['ignore', out, out], detached: true });
     groups.add(child.pid);
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -427,6 +434,17 @@ function samplePss() {
 }
 const sampleTimer = canSamplePss || taskStart ? setInterval(samplePss, 1000) : null;
 // The one shared build output. Built once here, before any reader starts (see the rules at the top).
+// The import probe: from a neutral cwd, with the job env, brx_mcp must resolve inside this checkout. Fails the run
+// before any build if the venv's editable install would shadow it (the guard in brx_mcp/__init__.py says why).
+{
+  const probe = spawnSync(PY, ['-c', 'import brx_mcp, os; print(os.path.realpath(brx_mcp.__file__))'],
+    { cwd: os.tmpdir(), env: { ...process.env, ...ownBrxMcpEnv() }, encoding: 'utf8' });
+  const where = (probe.stdout || '').trim();
+  if (probe.status !== 0 || !where.startsWith(fs.realpathSync(OWN_MCP) + path.sep)) {
+    console.error(`test-all: brx_mcp does not import from this checkout (${OWN_MCP}): ${where || (probe.stderr || '').trim().split('\n').pop()}`);
+    process.exit(2);
+  }
+}
 const builds = [];
 if (selectedJobs.some(j => j.www)) builds.push(run('app-build', 'app', ['npm', 'run', 'build']));
 if (selectedJobs.some(j => j.dist)) builds.push(run('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build']));
