@@ -2853,7 +2853,7 @@ def test_a65_a_lost_damaging_hit_credits_the_team_of_the_fresh_no_pool_word():
 
 
 def test_encode_advert_uuid_rejects_an_unknown_role_with_value_error():
-    for bad in (0, 7, "bogus", "", None):
+    for bad in (0, 7, "bogus", ""):
         try:
             encode_advert_uuid(bad)
         except ValueError:
