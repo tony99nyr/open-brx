@@ -20,7 +20,10 @@ longer needs FAILS too, so a closed gap cannot stay hidden.
 
 The preamble differs on purpose: the engine reaches the match through MC's assign/config/start messages, the stage
 through its own ARM and SPAWN buttons. So `mc` steps are skipped here, and the checkpoint marked `preamble` compares
-state only. Every step after it is replayed identically.
+state only, and it must be the FIRST checkpoint. Every step after it is replayed identically.
+
+The engine recording also holds the facts and reports MC hears (`emit`/`report`). They are never compared here:
+GunStage has no MC link, so it emits neither (the engine test compares them).
 """
 from __future__ import annotations
 
@@ -269,6 +272,8 @@ async def run_stage(trace: dict) -> list[dict]:
             await settle(st)
             writes = [e.raw for e in s.buffer if e.seq > mark and e.direction == "tx"]
             mark = s.seq
+            if step.get("preamble") and out:
+                raise Unsupported(f"step {i}: `preamble` is allowed on the first checkpoint only (a later one would hide its writes)")
             out.append({"at": step["check"], "step": i, "preamble": bool(step.get("preamble")), "writes": writes, "st": st})
             out[-1]["state"] = {k: (FIELDS[k](st) if k in FIELDS else _NoField(k)) for k in _fields(trace)}
         else:

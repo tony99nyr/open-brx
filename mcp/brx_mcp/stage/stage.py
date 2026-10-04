@@ -105,6 +105,7 @@ class PoisonState(TypedDict):
     by: dict[str, int]
     ticks: int
     cue_pending: NotRequired[bool]   # polish 2026-10-03 (engine.js `cuePending`): `poisoned` waits for a pool frame that says we live
+    onset_until: NotRequired[float]  # #6 polish r1: no tick sound until the `poisoned` onset clip has played (engine.js: an idle announcer)
 
 
 class DotEchoState(TypedDict):
@@ -3193,7 +3194,10 @@ class GunStage:
                 shield = int(t[3] or 0) if cmd == "HP" and len(t) > 3 and t[3] != "" else None
                 self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
                 if cmd == "LCD":
-                    self._on_lcd(hp, armor, desync=solicited)
+                    # engine.js LCD case: t5/t6 are the active slot's magazine and reserve, taken through `_onAmmo`
+                    # (golden traces #6 polish r1: the stage used to drop them, so a respawn kept the last life's count)
+                    mag = int(t[5] or 0) if len(t) > 5 else None
+                    self._on_lcd(hp, armor, desync=solicited, ammo=(mag, _tok_int(t, 6)) if mag is not None else None)
                     self._pool_verify(self.hp, self.armor, self.shield, False)   # F341: a `$SPAWN`'s own `$LCD`
                 else:
                     self._on_pools(hp, armor, shield, desync=solicited)
@@ -3651,7 +3655,7 @@ class GunStage:
         if self.stations:
             self._on_control_advert(now)
 
-    def _on_lcd(self, hp: int, armor: int, desync: bool = False) -> None:
+    def _on_lcd(self, hp: int, armor: int, desync: bool = False, ammo: tuple[int, int | None] | None = None) -> None:
         """engine.js `feedFrame`'s LCD case: an `$LCD` sets the pools and books a death on a zero, and it does
         nothing else. It never reaches `_onHp` there, so it books no hit, plays no pool-rise line and, S16, never
         takes the poison tick's echo: a non-lethal `$LCD` between a tick write and its `$HP` leaves `_dot_echo`
@@ -3659,6 +3663,8 @@ class GunStage:
         death path."""
         if self._self_hit_lcd(hp):   # F438 polish r2: the lethal self-hit's own `$LCD,0` twin
             return
+        if ammo is not None:   # engine.js: `_onAmmo(t5, t6, activeSlot)`, after the twin check and before the zero
+            self._on_ammo(ammo[0], ammo[1], self.active_slot)
         if hp == 0 and self.alive and self.auto_react and self.spawned:
             self._on_pools(hp, armor, None, desync=desync, lcd=True)
             return
@@ -4453,6 +4459,10 @@ class GunStage:
         if not p or not p.get("cue_pending") or not self.alive:
             return
         p["cue_pending"] = False
+        # engine.js `_poisonStrike` plays a tick only while the announcer is idle, so no tick sounds over this onset clip
+        # (F446: the first tick is silent under H12). The stage models no announcer, so it holds the tick for the clip.
+        cue = (self.bundle.get("cues") or {}).get("poisoned")
+        p["onset_until"] = self.now() + clip_s(_cue_id(cue)) if cue else 0.0
         self._event_now("poisoned")
 
     def _poison_tick(self, now: float) -> None:
@@ -4494,8 +4504,8 @@ class GunStage:
         p["ticks"] += 1
         self._spawn_task(self.write([frame], f"poison tick {p['ticks']}: -{n} {pool}" + (" (lethal)" if lethal else "")))
         # engine.js also waits for a quiet gun and an empty announcer queue (F393); the stage models neither, so it
-        # gates on the one callout it does model, the hill's.
-        if not lethal and now >= self._hill_busy_until:
+        # gates on the clips it does time: the hill's callout and the stack's own onset (`poisoned`, see `_poison_cue`).
+        if not lethal and now >= self._hill_busy_until and now >= p.get("onset_until", 0.0):
             self._event_now("poison_tick")
 
     def _poison_clear(self, why: str) -> None:

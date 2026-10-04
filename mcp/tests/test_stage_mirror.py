@@ -1292,7 +1292,9 @@ def test_a_stun_before_the_first_shot_of_a_new_life_restores_this_lifes_reserve_
         await st.spawn(); await settle(st); st.poll(); await settle(st)   # life 2: the frame's pair is back on the gun
         st._arm_life("test"); await settle(st)   # F209: past spawn protection
         assert st.alive
-        assert st._prev_ammo == {} and st._prev_reserve == {}, "both $ALCD maps reset on spawn"
+        # both maps reset on spawn; since #6 polish r1 the spawn's own `$LCD` echo (engine.js LCD case, t5/t6) refills slot 0
+        # with THIS life's pair, so the check is that life 1's 20/150 is gone, not that the maps stay empty
+        assert st._prev_ammo.get(0) != 20 and st._prev_reserve.get(0) != 150 and set(st._prev_ammo) <= {0}, (st._prev_ammo, st._prev_reserve)
         await flush_fake_ammo(st, mgr)   # life 2's own spawn echo must not surface later and stomp the injected shot below
         n = mark(mgr)
         await st.ir("emp"); st.poll(); await settle(st)
@@ -1513,6 +1515,7 @@ def test_f394_an_assumed_swap_shows_the_new_slots_own_counts():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.poll(); await settle(st)   # the spawn's `$LCD` echo lands now, as on a real link, not after the ALT below
         st.alcd(mag=10, reserve=20); await settle(st)
         want = list(st._live_ammo()[1])
         assert want != [10, 20], want   # CONTROL: the two slots differ, or the check proves nothing
