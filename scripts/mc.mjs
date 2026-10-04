@@ -7,6 +7,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
 import crypto from 'node:crypto';
+import { lineRedactor } from './lib/redact.mjs';
 import { isWindows, npm, numericFlag, root, uiStale, venvPython, which } from './lib/launcher.mjs';
 
 const mcArgs = process.argv.slice(2);
@@ -90,9 +91,13 @@ child = spawn(python, ['-m', 'brx_mcp.mc', '--evidence-dir', evidence, '-v', ...
 });
 let output = '';
 // Keep only the start-up output: it holds the URL. After that, a long -v match would grow it without limit.
-const capture = chunk => { const text = chunk.toString(); if (output.length < 1_000_000) output += text; log.write(text.replace(/#tok=[^\s)]+/g, '#tok=[REDACTED]').replace(/operator token:\s+\S+/g, 'operator token: [REDACTED]')); process.stdout.write(text); };
-child.stdout.on('data', capture);
-child.stderr.on('data', capture);
+// The log gets whole lines, redacted (scripts/lib/redact.mjs): a token split across two chunks is whole again by then.
+// One redactor per stream, so stdout and stderr lines never join. The console still gets each chunk at once.
+const redactors = [child.stdout, child.stderr].map(stream => {
+  const redactor = lineRedactor(text => log.write(text));
+  stream.on('data', chunk => { const text = chunk.toString(); if (output.length < 1_000_000) output += text; redactor.push(text); process.stdout.write(text); });
+  return redactor;
+});
 child.on('error', error => fail(error.message));
 await waitFor(`http://127.0.0.1:${httpPort}/`, child);
 const urlMatch = output.match(/Mission Control\s+(http:\/\/[^\s]+)/);
@@ -115,6 +120,9 @@ await new Promise(resolveExit => child.once('exit', (code, signal) => {
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
   resolveExit();
 }));
+// `exit` can come before the last pipe data: wait for both pipes to close, then write each trailing partial line.
+await Promise.all([child.stdout, child.stderr].map(stream => stream.readableEnded || stream.destroyed ? null : new Promise(done => { stream.once('close', done); stream.once('end', done); })));
+for (const redactor of redactors) redactor.end();
 log.end();
 process.exitCode = manifest.status === 'stopped' ? 0 : 1;
 // A demo (--ephemeral) keeps no session store here, so there is nothing to report: say nothing then.

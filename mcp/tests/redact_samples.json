@@ -1,0 +1,14 @@
+{
+ "_note": "Shared secret-scrub samples. Python (test_redact_agreement.py) and JS (scripts/test/redact.test.mjs) must both turn `in` into `out`. Made-up values only.",
+ "samples": [
+  {"in": "Mission Control http://example.test:8765/#tok=abcDEF123", "out": "Mission Control http://example.test:8765/#tok=[REDACTED]"},
+  {"in": "open http://x/?token=zz99&a=1", "out": "open http://x/?token=[REDACTED]&a=1"},
+  {"in": "join /j?s=sec123 now", "out": "join /j?s=[REDACTED] now"},
+  {"in": "operator token: AbC123xyz", "out": "operator token: [REDACTED]"},
+  {"in": "Operator Token:   AbC123xyz", "out": "Operator Token:   [REDACTED]"},
+  {"in": "Authorization: Bearer abc.def-123==", "out": "Authorization: Bearer [REDACTED]"},
+  {"in": "{\"node_key\": \"k-998\", \"n\": 1}", "out": "{\"node_key\": \"[REDACTED]\", \"n\": 1}"},
+  {"in": "already #tok=[REDACTED] done", "out": "already #tok=[REDACTED] done"},
+  {"in": "nothing secret on this line", "out": "nothing secret on this line"}
+ ]
+}
