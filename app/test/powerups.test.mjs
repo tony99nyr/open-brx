@@ -465,7 +465,7 @@ test('F394: a reload on the secondary after ALT refills the number and the pips 
 
 test('F394: an echo of a slot that is not on the trigger never changes the number on the screen', () => {
   const h = alt(armed());
-  h.eng.am.acctWrote(0, 29, 189);
+  h.eng.am.acctWrote(0, 29, 189, true);   // a switch-back resend: `$WEAP` + `$AMMO` (bug 3 r1)
   h.frame('$ALCD,32,100,0,192,0,*');   // the `$WEAP` reset of slot 0, inside its echo window
   assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 24, mag: 6 });
   h.frame('$ALCD,29,100,0,189,0,*');   // ...and the restore landing
@@ -1617,4 +1617,53 @@ test('F379: the confirming shot on the ALT target moves the pointer, even after 
   assert.equal(h.eng.am.switching.to, 0, 'the next ALT goes back to the AR, as the gun does');
   h.adv(3000);
   assert.deepEqual(ptr(h), { slot: 0, ptr: 0 }, 'the assumed swap lands on the AR');
+});
+
+// ---- Bug 3 echo family r1 (polish round 1, 2026-10-04) ----
+test('bug 3 r1 H1: a lost restore echo cannot eat a refill and the rounds after it (an `$AMMO`-only window)', () => {
+  const h = armed({ stun: { duration_s: 3 } });   // the fake gun never echoes: the restore's echo is lost
+  h.eng._stun(); h.adv(3000);
+  assert.equal(h.eng.stunned, null, 'setup: restored (slot 0 written at 30)');
+  const s0 = h.eng.shots;
+  h.adv(100); h.frame('$ALCD,32,100,0,160,0,*');   // the reload completes inside the window
+  assert.equal(h.eng.state().ammo, 32, 'the refill is the gun\'s own news: no `$WEAP` went out, so no reset echo exists');
+  h.adv(100); h.fire(0, 31, 160); h.adv(100); h.fire(0, 30, 160); h.adv(100); h.fire(0, 29, 160);
+  assert.equal(h.eng.shots - s0, 3, 'every round books, the one at the written count too');
+  assert.equal(h.eng.state().ammo, 29);
+});
+
+test('bug 3 r1 H1: an energy regen tick inside an `$AMMO`-only window is a rise, not a reset echo', () => {
+  const h = armed({ stun: { duration_s: 3 } });
+  h.eng._stun(); h.adv(3000);
+  h.adv(100); h.frame('$ALCD,31,100,0,190,0,*');   // one regen tick above the written 30
+  assert.equal(h.eng.state().ammo, 31);
+  h.adv(100); h.frame('$ALCD,32,100,0,190,0,*');
+  assert.equal(h.eng.state().ammo, 32);
+});
+
+test('bug 3 r1 H1: inside a `$WEAP`-bearing window the reset echo above the written count is still dropped', () => {
+  const h = armed();
+  h.eng.am.acctWrote(0, 29, 189, true);   // `$WEAP` + `$AMMO,0,29`
+  h.frame('$ALCD,32,100,0,192,0,*');       // the `$WEAP` reset
+  assert.equal(h.eng.state().ammo, 29);
+  const s0 = h.eng.shots;
+  h.frame('$ALCD,29,100,0,189,0,*');       // the restore landing
+  assert.equal(h.eng.shots - s0, 0, 'neither answer is a round');
+});
+
+test('bug 3 r1 M1: the echo window runs from when the write LANDS, so a slow revive burst\'s echoes are still bookkeeping', () => {
+  const h = armed();
+  const pending = [];
+  const real = h.eng.writer;
+  h.eng.writer = (fr, why, o) => { real(fr, why, o); return new Promise(r => pending.push(r)); };
+  h.die(); h.adv(8200);
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  h.adv(750);                                  // the burst is still going out in 20-byte chunks
+  pending.splice(0).forEach(r => r(true));     // ...and lands now
+  return Promise.resolve().then(() => {
+    h.adv(50);
+    h.frame('$ALCD,32,100,0,192,0,*').frame('$ALCD,6,100,1,24,0,*').frame('$ALCD,0,100,2,0,0,*');
+    assert.deepEqual({ slot: h.eng.activeSlot, ptr: h.eng.am.altPtr }, { slot: 0, ptr: 0 });
+    assert.equal(h.eng.state().ammo, 32);
+  });
 });

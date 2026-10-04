@@ -1644,9 +1644,10 @@ class GunStage:
         now = self.now() if now is None else now
         return now < a["echo_until"]
 
-    def _acct_wrote(self, slot: int, mag: int, res: int | None = None) -> None:
+    def _acct_wrote(self, slot: int, mag: int, res: int | None = None, weap: bool = False) -> None:
         """ammo.js `acctWrote`: the node has just written `$AMMO,<slot>,<mag>` and knows what the gun will
-        hold. Take the account there and open the echo window, so the gun's answers cannot read as fire."""
+        hold. Take the account there and open the echo window, so the gun's answers cannot read as fire.
+        `weap`: the write carried a `$WEAP` for the slot, so a reset echo above the count is coming (bug 3 r1 H1)."""
         a = self._shot_acct.get(slot)
         if a is None:
             a = self._shot_acct[slot] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None, "echo_pending": 0}
@@ -1661,7 +1662,10 @@ class GunStage:
         # window. Closing on the first restore left the second reset to land as a magazine rise.
         if not now < a["echo_until"]:
             a["echo_pending"] = 0   # the last window lapsed unanswered: do not carry its count
+            a["echo_weap"] = False
         a["echo_pending"] = a.get("echo_pending", 0) + 1
+        if weap:
+            a["echo_weap"] = True
         a["echo_until"] = now + self.ACC_ECHO_S
         a["echo_expect"] = mag
 
@@ -1669,6 +1673,7 @@ class GunStage:
         """ammo.js `acctWroteRows` (bug 3a, brx1's captures 2026-10-02: the gun echoes each `$AMMO` row with that row's
         slot token): `_acct_wrote` and the last counts for every `$AMMO` row of a write, and with `weap` every `$WEAP`
         row at its clip and reserve (tokens 17 and 18, the head only), so the echo of each row is bookkeeping."""
+        weap_slots = {_tok_int(str(f).split(","), 1) for f in frames or [] if str(f).startswith("$WEAP,")}
         for f in frames or []:
             t = str(f).split(",")
             if t[0] == "$AMMO" and len(t) > 3:
@@ -1681,9 +1686,25 @@ class GunStage:
             if slot is None or (skip and skip(slot)):
                 continue
             mag, res = _tok_int(list(row), 0) or 0, _tok_int(list(row), 1) or 0
-            self._acct_wrote(slot, mag, res)
+            self._acct_wrote(slot, mag, res, weap=slot in weap_slots)
             self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res   # should the echo never come back
         return frames
+
+    def _restamp_echoes(self, frames) -> None:
+        """ammo.js `restampEchoes` (bug 3 r1 M1): the write has LANDED, so each slot it named that still waits for its
+        echo gets a fresh window from now."""
+        now = self.now()
+        for f in frames or []:
+            t = str(f).split(",")
+            if t[0] in ("$AMMO", "$WEAP"):
+                a = self._shot_acct.get(_tok_int(t, 1))
+                if a is not None and a.get("echo_pending"):
+                    a["echo_until"] = now + self.ACC_ECHO_S
+
+    async def _write_ammo(self, frames: list[str], why: str, **kw) -> None:
+        """A write that carries `$AMMO` rows: its echo windows restart when it lands (bug 3 r1 M1)."""
+        await self.write(frames, why, **kw)
+        self._restamp_echoes(frames)
 
     def _forget_counts(self) -> None:
         """ammo.js `forgetCounts`: a new life or head forgets the counts and the ALT pointer, but KEEPS an echo window
@@ -1691,7 +1712,8 @@ class GunStage:
         after the spawn must be bookkeeping too."""
         now = self.now()
         keep = {sl: {"mag": a["mag"], "fired": 0, "at": 0.0, "res": a.get("res"), "echo_until": a["echo_until"],
-                     "echo_expect": a.get("echo_expect"), "echo_pending": a["echo_pending"]}
+                     "echo_expect": a.get("echo_expect"), "echo_pending": a["echo_pending"],
+                     "echo_weap": bool(a.get("echo_weap"))}
                 for sl, a in self._shot_acct.items() if a.get("echo_pending") and now < a["echo_until"]}
         self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = keep
         self._alt_ptr = 0; self._alt_evidence_pending = None
@@ -1771,13 +1793,19 @@ class GunStage:
             return prev                             # the first frame of a life seeds it
         if self._acct_echoing(slot):
             if mag > a["echo_expect"]:
-                return IGNORE
-            prev = int(a["mag"])                    # the restore has landed: measure from the number the node wrote
-            a["echo_pending"] -= 1                  # ...and it answered one write. Another may be in the air behind it.
+                # bug 3 r1 H1 (ammo.js `acctAmmo`): only a `$WEAP`-bearing window has a reset echo above the count; in an
+                # `$AMMO`-only window that frame is the gun's own refill or regen tick, so it closes the window
+                if a.get("echo_weap"):
+                    return IGNORE
+                a["echo_pending"] = 0
+            else:
+                prev = int(a["mag"])                # the restore has landed: measure from the number the node wrote
+                a["echo_pending"] -= 1              # ...and it answered one write. Another may be in the air behind it.
         if not a.get("echo_pending", 0) > 0:
             a["echo_pending"] = 0
             a["echo_until"] = 0.0
             a["echo_expect"] = None
+            a["echo_weap"] = False
         before = int(a["mag"])
         d = prev - mag if prev is not None and mag < prev else 0
         if d:
@@ -2419,13 +2447,16 @@ class GunStage:
         kx = cues.get("klaxon", "")
         both = two_slot_play(kx, fr) if kx and fr else None
         sounds = [both] if both else ([kx] if kx else []) + ([fr] if fr else [])
-        await self.write(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
+        # bug 3 r1 M2 (engine.js `_spawn`): forget the counts and open the rows' echo windows BEFORE the write, so the
+        # echoes that land while it is awaited are bookkeeping (the head already does this)
+        self._forget_counts(); self.active_slot = 0; self._recoil_slot = 0
+        self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])
+        await self._write_ammo(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + sounds + fill,
                           "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
                           + ((" + klaxon (one two-slot frame)" if both else " + klaxon") if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
                           take=bool(late))
         self._after_spawn()
-        self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])   # bug 3a: each row echoes; the echo is bookkeeping
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):
             self._headset(hs["start"], "headset start")
@@ -2470,11 +2501,12 @@ class GunStage:
               min(0, self_hit["shield"] - (self.max_shield if fill else 0))] if self_hit else None
         drain = [f"$LIFE,{sd[0]},{sd[1]},{sd[2]},*"] if sd and any(d < 0 for d in sd) else []
         self._shield_fill_start(fill)
-        await self.write(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
+        self._forget_counts(); self.active_slot = 0; self._recoil_slot = 0   # bug 3 r1 M2: before the await, as the head
+        self._acct_wrote_rows(revive)   # bug 3a: every row echoes (polish 2026-10-03: a self-hit's rows carry the live counts)
+        await self._write_ammo(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
                           "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else "")
                           + (" + F438 self-hit drain" if drain else ""))
         self._after_spawn(keep_poison=bool(self_hit))
-        self._acct_wrote_rows(revive)   # bug 3a: every row echoes (polish 2026-10-03: a self-hit's rows carry the live counts)
         if self_hit:   # F438: what the drain leaves
             self.hp, self.armor = self_hit["health"], self_hit["armor"]
             self.shield = min(self_hit["shield"], self.max_shield if fill else 0)
@@ -2547,7 +2579,7 @@ class GunStage:
         # Mirror engine.js: a timed respawn's weapon delay owns the trigger until `_trigger_live` fires.
         # Re-sending the live map here would let the player shoot early.
         trigger = [] if self._trigger_pending is not None else [bmap]
-        await self.write(([f"$TID,{tid},*"] if tid is not None else []) + ammo + trigger, "operator resync")
+        await self._write_ammo(([f"$TID,{tid},*"] if tid is not None else []) + ammo + trigger, "operator resync")
         if self._protects_spawn():
             if self._arm_pending is None:
                 self._sir_live = False   # engine.js: the resync always re-sends the table (a reboot empties it, F11)
@@ -2607,7 +2639,7 @@ class GunStage:
         # in and never inside the spawn write.
         self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0
         self._shield_gave_up = False; self._shield_quiet_at = self.now()
-        self._forget_counts(); self.active_slot = 0; self._recoil_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
+        self.active_slot = 0; self._recoil_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0. Both ammo maps were reset (stun snapshot, polish 2026-09-11) by `_forget_counts` before the burst (bug 3 r1 M2)
         self.heat_by_slot = {}; self._heat_at = {}                            # engine.js `_afterSpawn`/`_revive`: a fresh life starts cool
         # engine.js `_afterSpawn`/`_revive` clear all THREE: a takeover from the last life, the verdict it
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
@@ -4439,7 +4471,7 @@ class GunStage:
         self.stunned = None
         if why == "expired" and self.alive and self.connected:
             rows = self._acct_wrote_rows([f"$AMMO,{slot},{mag},{res},1,*" for slot, (mag, res) in st["ammo"].items()])   # bug 3a
-            self._spawn_task(self.write(rows, "stun over: restore live ammo", gap_ms=60))
+            self._spawn_task(self._write_ammo(rows, "stun over: restore live ammo", gap_ms=60))
             self._moment = ("stun_over", self.now())
             self._event_now("stun_over")
         self._log(f"stun over ({why})", "info")

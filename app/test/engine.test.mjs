@@ -3640,7 +3640,7 @@ test('F259: the echo window closes on the VALUE, not the clock -- a slow reset i
   const h = armRecoil(RECOIL_PROFILE);
   h.frame('$ALCD,11,100,0,192,0,*');
   h.writes.length = 0;
-  h.eng.am.acctWrote(0, 11, 192);                       // the node writes $WEAP + $AMMO,0,11 and waits
+  h.eng.am.acctWrote(0, 11, 192, true);                 // the node writes $WEAP + $AMMO,0,11 and waits
   h.adv(600);                                         // ...and the gun is slower than one round trip (the F266 regime)
   const shots = h.eng.shots, burst = h.eng._recoil.burst;
   h.frame('$ALCD,32,100,0,192,0,*');                  // the $WEAP reset, late
@@ -4089,7 +4089,7 @@ test('F259: the gun always wins -- an $ALCD with no write in flight re-seats the
   assert.equal(h.eng.am.acctLive(0), 35, 'a press the gun never answered must expire, not hold the account down for the life');
   // CONTROL: inside the ECHO WINDOW the same frame is refused, because the node has just told the gun what
   // to hold and every `$ALCD` until it confirms is the node's own write coming back.
-  h.eng.am.acctWrote(0, 35);
+  h.eng.am.acctWrote(0, 35, undefined, true);   // a `$WEAP` + `$AMMO` write (bug 3 r1: an `$AMMO`-only window books a rise)
   h.frame('$ALCD,36,100,0,215,0,*');
   assert.equal(h.eng.am.acct[0].mag, 35, 'a magazine that moved inside the echo window is the node\'s own write, not news');
 });
@@ -4107,7 +4107,7 @@ test('F259: the echo window covers BOTH answers to a write -- the $WEAP reset AN
   // write's own reset and restore still in the air. This test is about ONE write, so start its count from
   // one: the window now counts unanswered writes, not just the clock (polish review 2026-09-18).
   h.eng.am.acct[0].echoPending = 0;
-  h.eng.am.acctWrote(0, 6);                     // the node writes $WEAP + $AMMO,0,6
+  h.eng.am.acctWrote(0, 6, undefined, true);   // the node writes $WEAP + $AMMO,0,6
   h.frame('$ALCD,32,100,0,215,0,*');          // answer 1: the $WEAP reset, back up to the compiled clip
   assert.equal(h.eng.am.acctLive(0), 6, 'the reset echo must not move the account');
   h.frame('$ALCD,6,100,0,215,0,*');           // answer 2: our own restore landing

@@ -11,7 +11,7 @@
 //   TRIGGER_NO_FIRE_MS · ACC_ECHO_MS · OVERHEAT_CAP_MS · HEAT_STALE_MS · OVERHEAT_SHOWN_MS · ENERGY_REFILL_MAX_MS
 //   Ammo(host)
 //     account     acctLive(slot, now) · acctOutstanding(slot, now) · acctEchoing(slot, now) · pressedRounds(slot) ·
-//                 acctWrote(slot, mag, res) · acctWroteRows(frames, skip, weap) · acctPress() · acctAmmo(slot, mag, prev)
+//                 acctWrote(slot, mag, res, weap) · acctWroteRows(frames, skip, weap) · restampEchoes(frames) · acctPress() · acctAmmo(slot, mag, prev)
 //     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · setMag(slot, mag) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
@@ -185,7 +185,7 @@ export class Ammo {
   forgetCounts() {
     const now = this.host.now(), open = {};
     for (const [slot, a] of Object.entries(this.acct)) {
-      if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending };
+      if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap };
     }
     this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null;
   }
@@ -697,9 +697,11 @@ export class Ammo {
   }
   /** The node has just written `$AMMO,<slot>,<mag>` and knows exactly what the gun will hold. Take the
    *  account there directly and open the echo window, so neither a preceding `$WEAP` reset nor this restore
-   *  can come back as fire. Accuracy no longer calls this; spawn/stun/resync and other ammo owners do. */
-  acctWrote(slot, mag, res) {
-    const a = this.acct[slot] || (this.acct[slot] = { mag, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0 });
+   *  can come back as fire. Accuracy no longer calls this; spawn/stun/resync and other ammo owners do.
+   *  `weap`: the same write carried a `$WEAP` for this slot (a pickup equip, the head), so a reset echo ABOVE the
+   *  written count is coming too (bug 3 r1 H1). An `$AMMO`-only write has no such echo. */
+  acctWrote(slot, mag, res, weap = false) {
+    const a = this.acct[slot] || (this.acct[slot] = { mag, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0, echoWeap: false });
     const now = this.host.now();
     a.mag = mag; a.fired = 0; a.at = 0;
     if (res != null) a.res = res;   // the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well
@@ -707,8 +709,9 @@ export class Ammo {
     // write's frames are still in the air, and then there are two `$WEAP` resets coming back for one window.
     // Closing on the first restore left the second reset to land on the ordinary path as a magazine rise --
     // the same leak the window exists to stop. Each write adds one, each restore answers one.
-    if (!(now < a.echoUntil)) a.echoPending = 0;   // the last window lapsed unanswered: do not carry its count
+    if (!(now < a.echoUntil)) { a.echoPending = 0; a.echoWeap = false; }   // the last window lapsed unanswered: do not carry its count
     a.echoPending++;
+    if (weap) a.echoWeap = true;
     a.echoUntil = now + ACC_ECHO_MS; a.echoExpect = mag;
   }
   /** Bug 3a: `acctWrote` for every `$AMMO,<slot>,<mag>,<res>` row in a write the node is about to send, so the gun's
@@ -717,16 +720,29 @@ export class Ammo {
    *  too, at its clip and reserve (tokens 17 and 18, the numbers its reset echoes): the head only, where no `$AMMO`
    *  follows it. Returns the frames. */
   acctWroteRows(frames, skip = null, weap = false) {
+    const weapSlots = new Set((frames || []).filter(f => typeof f === 'string' && f.startsWith('$WEAP,')).map(f => +f.split(',')[1]));
     for (const f of frames || []) {
       if (typeof f !== 'string') continue;
       const t = f.split(','), slot = +t[1];
       const row = t[0] === '$AMMO' ? [t[2], t[3]] : weap && t[0] === '$WEAP' ? [t[17], t[18]] : null;
       if (!row || t[1] === '' || !Number.isFinite(slot) || (skip && skip(slot))) continue;
       const mag = +row[0] || 0, res = +row[1] || 0;
-      this.acctWrote(slot, mag, res);
+      this.acctWrote(slot, mag, res, weapSlots.has(slot));
       this.setPrev(slot, mag, res);   // what the slot holds now, should the echo never come back (the reconcile re-arm's pattern)
     }
     return frames;
+  }
+  /** Bug 3 r1 M1: a write that carried `$AMMO`/`$WEAP` rows has LANDED (the link resolved it). The echo window was
+   *  stamped when the write was called, and the link sends 20-byte chunks at up to 50 ms per acknowledgement, so a
+   *  long burst can outlast ACC_ECHO_MS before the gun has even read it. Restart the window for each slot the write
+   *  named that still waits for its echo. */
+  restampEchoes(frames) {
+    const now = this.host.now();
+    for (const f of frames || []) {
+      if (typeof f !== 'string' || !(f.startsWith('$AMMO,') || f.startsWith('$WEAP,'))) continue;
+      const a = this.acct[+f.split(',')[1]];
+      if (a && a.echoPending > 0) a.echoUntil = now + ACC_ECHO_MS;
+    }
   }
   /** A trigger press that must produce a round (`_awaitShot` has already cleared every reason it would not).
    *  Books it against the account NOW, so a write between this press and the gun's `$ALCD` restores the
@@ -774,11 +790,21 @@ export class Ammo {
     const a = this.acct[slot];
     if (!a) { this.acct[slot] = { mag, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0 }; return prev; }   // the first frame of a life seeds it
     if (this.acctEchoing(slot)) {
-      if (mag > a.echoExpect) return null;
-      prev = a.mag;         // the restore has landed: measure from the number the node wrote, not from the reset
-      a.echoPending--;      // ...and it answered one write. Another may still be in the air behind it.
+      // Bug 3 r1 H1: only a write that carried a `$WEAP` has a reset echo ABOVE the written count. In an `$AMMO`-only
+      // window (a spawn, revive, stun restore, resync, cure or re-arm) a frame above it is the gun's own news, a refill
+      // or a regen tick, so it closes the window and is booked as an ordinary report. Dropping it there ate the refill
+      // and then took the first real round at the written count for the lost echo (a stun restore with no echo:
+      // refill to 32, then 31, 30, 29 booked one round of three). If the echo is lost AND the gun never took the write,
+      // one round can still be missed; the window closes on that frame, so never more than one.
+      if (mag > a.echoExpect) {
+        if (a.echoWeap) return null;
+        a.echoPending = 0;
+      } else {
+        prev = a.mag;         // the restore has landed: measure from the number the node wrote, not from the reset
+        a.echoPending--;      // ...and it answered one write. Another may still be in the air behind it.
+      }
     }
-    if (!(a.echoPending > 0)) { a.echoPending = 0; a.echoUntil = 0; a.echoExpect = null; }
+    if (!(a.echoPending > 0)) { a.echoPending = 0; a.echoUntil = 0; a.echoExpect = null; a.echoWeap = false; }
     const before = a.mag;   // the ACCOUNT's magazine, which the echo window keeps clear of the node's own writes
     const d = prev != null && mag < prev ? prev - mag : 0;
     if (d) { a.fired = Math.max(0, a.fired - d); if (!a.fired) a.at = 0; }   // the gun has answered that many presses

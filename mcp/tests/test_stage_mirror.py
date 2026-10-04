@@ -836,7 +836,7 @@ def test_the_echo_window_covers_both_answers_to_a_write_and_neither_reads_as_fir
         await flush_fake_ammo(st, mgr)   # bug 3a: the head's and the spawn's own echoes land first, as on a real link
         st.alcd(mag=6, reserve=200); await settle(st)
         assert st._acct_live(0) == 6
-        st._acct_wrote(0, 6)                       # the node writes $WEAP + $AMMO,0,6
+        st._acct_wrote(0, 6, weap=True)            # the node writes $WEAP + $AMMO,0,6
         st._last_spent = 0
         st.alcd(mag=32, reserve=200); await settle(st)     # answer 1: the $WEAP reset, back to the compiled clip
         assert st._acct_live(0) == 6, "the reset echo must not move the account"
@@ -862,7 +862,7 @@ def test_the_echo_never_reaches_the_screen_the_displayed_ammo_does_not_rise():
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         st.alcd(mag=6, reserve=200); await settle(st)
         assert st.ammo == 6 and st.reserve == 200
-        st._acct_wrote(0, 6, 200)                       # the node writes $WEAP + $AMMO,0,6,200
+        st._acct_wrote(0, 6, 200, weap=True)            # the node writes $WEAP + $AMMO,0,6,200
         st.alcd(mag=32, reserve=384); await settle(st)   # the $WEAP reset, reported by the gun
         assert st.ammo == 6, "the reset magazine reached the screen -- that is the flash to 32 Tony saw"
         assert st.reserve == 200, "and the reset reserve reached it too"
@@ -1623,6 +1623,57 @@ def test_f379_the_confirming_round_moves_the_alt_pointer_after_an_old_slot_repor
     asyncio.run(go())
 
 
+# ---- Bug 3 echo family r1 (polish round 1, 2026-10-04) ----
+
+def test_bug3_r1_h1_an_ammo_only_window_books_a_rise_and_a_weap_window_drops_the_reset():
+    """ammo.js `acctAmmo` (bug 3 r1 H1): only a write that carried a `$WEAP` has a reset echo above the written count.
+    In an `$AMMO`-only window (a lost restore echo), a refill above it is the gun's own news; CONTROL: a `$WEAP`-bearing
+    window still drops the reset."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=20, reserve=160); await settle(st)
+        st._acct_wrote(0, 30, 160); st._prev_ammo[0] = 30          # a restore of 30 whose echo is lost
+        clock.advance(0.1); st._on_rx("$ALCD,32,100,0,160,0,*")     # the reload completes
+        assert st.ammo == 32 and not st._acct_echoing(0), (st.ammo, st._shot_acct[0])
+        for m in (31, 30, 29):
+            clock.advance(0.1); st._on_rx(f"$ALCD,{m},100,0,160,0,*")
+        assert st.ammo == 29 and st._acct_live(0) == 29
+        st._acct_wrote(0, 6, None, weap=True)                         # CONTROL: `$WEAP` + `$AMMO,0,6`
+        st._on_rx("$ALCD,32,100,0,160,0,*")
+        assert st.ammo == 6, st.ammo
+    asyncio.run(go())
+
+
+def test_bug3_r1_m2_echoes_that_land_during_the_revive_write_are_bookkeeping():
+    """stage.py `revive`/`spawn` (bug 3 r1 M2): at the bench the gun's echoes arrive WHILE the stage awaits the burst.
+    The windows open before the await (as the head already does), so those echoes never move the trigger or book a
+    drop against the last life's counts."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        real = st.write
+        async def write(frames, why, *a, **k):
+            await real(frames, why, *a, **k)
+            if why.startswith("revive"):
+                for f in frames:
+                    t = f.split(",")
+                    if t[0] == "$AMMO":
+                        st._on_rx(f"$ALCD,{t[2]},100,{t[1]},{t[3]},0,*")   # the echo, inside the await
+                seen.append((st.active_slot, st._alt_ptr))
+        seen = []
+        st.write = write
+        await st.revive(); await settle(st)
+        assert seen == [(0, 0)], f"an echo inside the await moved the trigger: {seen}"
+        assert (st.active_slot, st._alt_ptr) == (0, 0), (st.active_slot, st._alt_ptr)
+        assert not st._acct_echoing(0) and not st._acct_echoing(1), "the echoes that landed answered the windows"
+        assert st._prev_ammo.get(0) != 10, st._prev_ammo
+    asyncio.run(go())
+
+
 def test_f393_poison_damage_ignores_the_audio_gate_but_its_sound_waits():
     """engine.js `_poisonStrike`: `$LIFE` is gameplay; a poison `$PLAY` waits behind must-hear audio. The stage models
     only the hill callout of that audio (it has no gun cue or announcer queue), so that is the gate it proves."""
@@ -1866,6 +1917,8 @@ _AMMO_PAIRS = {
     "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull",
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
     "am.acctWroteRows": "_acct_wrote_rows", "am.forgetCounts": "_forget_counts",
+    # bug 3 r1 M1: the window restarts when the write lands
+    "am.restampEchoes": "_restamp_echoes",
 }
 
 

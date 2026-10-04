@@ -700,7 +700,7 @@ function powerupHost(e) {
     // the engine state the module changes, each through one named door
     setShield: v => { e.shield = v; e._prevShield = v; e._shieldRegen = null; },   // the overshield grant's pools
     setWriteLost: life => { e._writeLost = life; },   // a lost protection-off: MC offers RESYNC GUN
-    acctWrote: (slot, mag, res) => e.am.acctWrote(slot, mag, res),   // F259: an echo of this write is bookkeeping, never a shot
+    acctWrote: (slot, mag, res, weap) => e.am.acctWrote(slot, mag, res, weap),   // F259: an echo of this write is bookkeeping, never a shot
     setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now, mag and reserve
     setMag: (slot, mag) => e.am.setMag(slot, mag),   // the reconcile re-arm: the magazine only, the reserve is left alone on purpose
     setSwitching: card => e.am.setSwitching(card),   // F400: a pickup switch card is the engine's own `switching`
@@ -728,7 +728,7 @@ function reconcileHost(e) {
     // the engine state the module changes, each through one named door
     clearResync: () => { e.resync = null; },   // a rejoin never runs the infer-death machine
     stunRestore: why => e._stunRestore(why),
-    acctWrote: (slot, mag, res) => e.am.acctWrote(slot, mag, res),   // F259: an echo of this write is bookkeeping, never a shot
+    acctWrote: (slot, mag, res, weap) => e.am.acctWrote(slot, mag, res, weap),   // F259: an echo of this write is bookkeeping, never a shot
     setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now
     holdAccuracyWrites: why => e._holdAccuracyWrites(why), recoilArm: why => e._recoilArm(why),
     armRepair: why => { e._sirLive = false; e._armPending = e._repairArm(); e._armLife(why); },   // F11: the live table, then protection off
@@ -1274,6 +1274,10 @@ export class Engine {
         if (typeof frame === 'string' && frame.startsWith('$PLAY,')) notePlay(frame);
       } } : options;
       const result = this.writer(frames, why, writeOptions);
+      // Bug 3 r1 M1: the gun's echo of an `$AMMO`/`$WEAP` row comes after the write LANDS, so its window restarts then.
+      if (result && typeof result.then === 'function' && frames.some(f => typeof f === 'string' && (f.startsWith('$AMMO,') || f.startsWith('$WEAP,')))) {
+        result.then(ok => { if (ok !== false) this.am.restampEchoes(frames); }, () => {});
+      }
       if (!hasPlay && onSent) onSent();
       const playFrame = hasPlay ? frames.find(f => typeof f === 'string' && f.startsWith('$PLAY,')) : null;
       if (hasPlay && result && typeof result.then === 'function') return result.then(ok => { if (ok !== false && ok !== null && !noted) notePlay(playFrame); return ok; });
@@ -6106,7 +6110,8 @@ export class Engine {
       if (id === BTN_ALT) this.am.altPressed();
       else if (id === BTN_RELOAD) this.am.reloadPulled();
       else if (id === BTN_TRIGGER) {
-        // Bug 3a: a pull on a DEAD gun is never a round. When it revives the player at a station (`_triggerPulled`), the
+        // Bug 3 X2 (utility.md line 137: the revive gate is a dead gun plus a trigger pull): a pull on a DEAD gun is never a
+        // round. When it revives the player at a station (`_triggerPulled`), the
         // revive's own `$AMMO` rows have just opened the account, so asking `_awaitShot` would book a round the dead gun
         // never fired and hold the account one short.
         const wasAlive = this.alive;

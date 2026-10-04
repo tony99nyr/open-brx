@@ -34,7 +34,7 @@
 //   read-only   phase · alive · bleUp · ended · stunned · reconciling · resync · tutorial · gunLocked · frames · config ·
 //               player · matchId · stations · goLiveT · lifeSeq · pulledLife · armPending · actSeq · activeSlot ·
 //               switching · weaponName · hp · armor · shield · maxShield · latch · lastHitAt
-//   writes      acctWrote(slot, mag, res) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
+//   writes      acctWrote(slot, mag, res, weap) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
 //               recoilArm(why) · setShield(v) · setWriteLost(life)
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
@@ -386,7 +386,7 @@ export class PlayerPowerups {
     const h = this.host;
     const weap = this._weapFor(slot, mag);
     if (!weap) { h.log(`powerup: the head carries no $WEAP for slot ${slot}; nothing equipped (${why})`, 'le'); return false; }
-    h.acctWrote(slot, mag, res);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot
+    h.acctWrote(slot, mag, res, true);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
     h.setPrev(slot, mag, res);     // what the slot holds now, should the echo never come back
     const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held;
     Promise.resolve(h.quietWrite(frames, why)).then(ok => {   // F416 part 2: a grant is a must-land write too
