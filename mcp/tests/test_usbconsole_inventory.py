@@ -110,13 +110,13 @@ def test_an_unreadable_but_valid_armory_is_not_moved_aside():
     def run(base):
         """A PermissionError or a sharing violation is not corruption: raise it, leave the file where it is."""
         _uc.add_to_inventory(_rec("S1"))
-        real = pathlib.Path.read_text
+        real = pathlib.Path.read_bytes
 
         def deny(self, *a, **k):
             if self.name == "armory.json":
                 raise PermissionError("denied")
             return real(self, *a, **k)
-        with mock.patch.object(pathlib.Path, "read_text", deny):
+        with mock.patch.object(pathlib.Path, "read_bytes", deny):
             _raises(PermissionError, _uc.load_inventory)
         assert (base / "armory.json").exists() and not list(base.glob("armory.json.bad-*"))
     _on_base(run)
@@ -207,3 +207,68 @@ def test_move_aside_never_overwrites_a_name_another_process_took():
         second = _storage.move_aside_exclusive(d / "armory.json")
     assert second != taken and second.read_text() == "bad2" and taken.read_text() == "precious"
     assert not (d / "armory.json").exists()
+
+
+def test_a_same_size_rewrite_with_the_same_mtime_is_not_quarantined():
+    """Review r2 MEDIUM: ino/size/mtime can all match after a same-size rewrite on a coarse-timestamp
+    filesystem. The bytes are what decide."""
+    def run(base):
+        p = base / "armory.json"
+        good = '{"S1": {"gun_name": "NEW"}}'
+        p.write_text("{" + "x" * (len(good) - 1), encoding="utf-8")
+        st = p.stat()
+        real_loads, done = _uc.json.loads, []
+
+        def loads_then_rewrite(text, *a, **k):
+            if not done:
+                done.append(1)
+                with open(p, "r+b") as f:       # in place: same inode, same size
+                    f.write(good.encode())
+                os.utime(p, ns=(st.st_atime_ns, st.st_mtime_ns))
+            return real_loads(text, *a, **k)
+        with mock.patch.object(_uc.json, "loads", loads_then_rewrite):
+            inv = _uc.load_inventory()
+        assert inv == {"S1": {"gun_name": "NEW"}} and not list(base.glob("armory.json.bad-*"))
+    _on_base(run)
+
+
+def test_a_file_that_keeps_changing_raises_unstable_and_is_never_moved():
+    def run(base):
+        p = base / "armory.json"
+        p.write_text("{c0", encoding="utf-8")
+        real_loads, n = _uc.json.loads, []
+
+        def loads_then_change(text, *a, **k):
+            n.append(1)
+            p.write_text("{c%d" % len(n), encoding="utf-8")
+            return real_loads(text, *a, **k)
+        with mock.patch.object(_uc.json, "loads", loads_then_change):
+            _raises(_uc.InventoryUnstable, _uc.load_inventory)
+        assert p.exists() and not list(base.glob("armory.json.bad-*"))
+    _on_base(run)
+
+
+def test_move_aside_retries_a_sharing_violation_then_succeeds():
+    d = pathlib.Path(tempfile.mkdtemp())
+    (d / "armory.json").write_text("x")
+    real, calls = os.replace, []
+
+    def flaky(src, dst):
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError("sharing violation")
+        return real(src, dst)
+    with mock.patch("os.replace", flaky):
+        kept = _storage.move_aside_exclusive(d / "armory.json", budget_s=2.0)
+    assert kept and kept.read_text() == "x" and len(calls) == 3 and not (d / "armory.json").exists()
+
+
+def test_a_failed_move_aside_leaves_the_file_and_no_placeholder():
+    d = pathlib.Path(tempfile.mkdtemp())
+    (d / "armory.json").write_text("x")
+
+    def deny(src, dst):
+        raise PermissionError("locked")
+    with mock.patch("os.replace", deny):
+        assert _storage.move_aside_exclusive(d / "armory.json", budget_s=0.05) is None
+    assert sorted(p.name for p in d.iterdir()) == ["armory.json"]

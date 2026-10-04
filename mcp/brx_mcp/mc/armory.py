@@ -27,27 +27,32 @@ def _to_record(serial: str, r: dict) -> ArmoryRecord:
 
 
 class LocalArmory:
-    # O2: set when the last inventory read hit a corrupt armory.json (moved aside), cleared by the next good read.
-    # Session.snapshot() surfaces it as `armory_corrupt`; never an empty armory shown as if it were the real one.
+    # O2: set when an inventory read hit a corrupt armory.json (moved aside) or could not read it at all.
+    # STICKY: the next read finds no file and returns {}, and re-enrolling one gun makes a non-empty armory
+    # that is still not the lost one, so only the OPERATOR clears it (`dismiss_corrupt`, the console's
+    # DISMISS). Session.snapshot() surfaces it as `armory_corrupt`.
     corrupt: dict | None = None
 
-    def _note_read(self, exc: Exception | None, inv: dict | None = None) -> None:
-        # A corrupt file is moved aside, so the NEXT read finds no file and returns {}: that is not a recovery.
-        # Only an inventory with guns in it (re-enrolled or restored by hand) clears the flag.
+    def _note_read(self, exc: BaseException | None) -> None:
         try:
-            from brx_mcp.usbconsole import InventoryCorrupt
+            from brx_mcp.usbconsole import InventoryCorrupt, InventoryUnstable
         except Exception:      # usbconsole itself cannot be imported: nothing to classify
             return
         if isinstance(exc, InventoryCorrupt):
             self.corrupt = {"kept": str(exc.kept) if exc.kept else None, "error": exc.error}
-        elif exc is None and inv:
-            self.corrupt = None
+        elif isinstance(exc, InventoryUnstable):
+            # nothing was moved aside: the file kept changing under the bounded re-read
+            self.corrupt = {"kept": None, "error": str(exc), "unreadable": True}
+
+    def dismiss_corrupt(self) -> bool:
+        """The operator acknowledged the warning. True when there was one."""
+        had, self.corrupt = self.corrupt is not None, None
+        return had
 
     def list(self) -> list[ArmoryRecord]:
         try:
             from brx_mcp.usbconsole import load_inventory
             inv = load_inventory()
-            self._note_read(None, inv)
         except Exception as e:
             self._note_read(e)
             log.error("armory inventory unavailable: %s", e)
@@ -70,10 +75,10 @@ class LocalArmory:
         try:     # blocking (file lock, up to a 10 s wait): off the event loop
             await asyncio.to_thread(correlate, [{"name": d["name"], "address": d["address"]} for d in taggers])
         except Exception as e:
+            self._note_read(e)      # correlate moves a corrupt file aside: the next read sees none, so record it HERE
             log.warning("correlate failed: %s", e)
         try:
             inv = await asyncio.to_thread(load_inventory)
-            self._note_read(None, inv)
         except Exception as e:
             self._note_read(e)
             log.error("armory inventory unavailable: %s", e)

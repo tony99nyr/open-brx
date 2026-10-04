@@ -614,6 +614,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             return _err("NO DEPARTED STATION BY THAT ID: REFRESH ITEMS", 404)
         return JSONResponse({"ok": True})
 
+    async def dismiss_armory_corrupt(req):
+        """O2: DISMISS on the corrupt-armory banner. The flag is sticky until this is called (operator-token
+        gated like every non-GET). Idempotent: `dismissed` says whether there was a warning to clear."""
+        return JSONResponse({"ok": True, "dismissed": s.dismiss_armory_corrupt()})
+
     async def evict_node(req):
         nid = req.path_params["nid"]
         if not s.evict_node(nid):
@@ -1105,6 +1110,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/stations/{nid}/release", release_station, methods=["POST"]),
         Route("/api/stations/{nid}/departure", dismiss_departure, methods=["DELETE"]),
+        Route("/api/armory/corrupt/dismiss", dismiss_armory_corrupt, methods=["POST"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
         Route("/api/players/{pid}/operator", operator_action, methods=["POST"]),
         Route("/api/lobby/ready_all", ready_all, methods=["POST"]),

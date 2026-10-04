@@ -3725,6 +3725,15 @@ class Session:
         self._changed()
         return True
 
+    def dismiss_armory_corrupt(self) -> bool:
+        """O2: the operator's DISMISS on the corrupt-armory banner. False when there was nothing to dismiss
+        (or the armory has no such flag: fakes). Never touches the moved-aside file."""
+        dismiss = getattr(self.armory, "dismiss_corrupt", None)
+        if not dismiss or not dismiss():
+            return False
+        self._changed()
+        return True
+
     def _auto_station_id(self, nid: str) -> int:
         """F364: the id MC gives a station assigned with no `id`. A station keeps the id it already holds, then the
         one it was handed earlier this session (a clear, a restart or a relink never renumbers it), unless another

@@ -337,6 +337,12 @@ export class MockBackend implements Api {
     if (Object.entries(this.stations).some(([n, s]) => n !== d.node_id && s.assigned?.id === d.id)) return false;
     return !Object.entries(this.stationIdOf).some(([n, i]) => n !== d.node_id && i === d.id);
   }
+  /** O2: `POST /api/armory/corrupt/dismiss`. */
+  async dismissArmoryCorrupt(): Promise<{ ok: boolean; dismissed: boolean }> {
+    const dismissed = this.demoArmoryCorrupt;
+    this.demoArmoryCorrupt = false; this.emit();
+    return { ok: true, dismissed };
+  }
   /** polish r1 M2(b): `DELETE /api/stations/{node_id}/departure`. */
   async dismissDeparture(node_id: string): Promise<{ ok: boolean }> {
     if (!this.departures[node_id]) throw Object.assign(new Error('NO DEPARTED STATION BY THAT ID: REFRESH ITEMS'), { status: 404 });

@@ -26,9 +26,13 @@ def test_armory_corrupt_is_in_state_after_a_corrupt_read_and_cleared_by_a_good_o
     with mock.patch.object(_uc, "load_inventory", return_value={}):
         s.armory.list()
     assert "armory_corrupt" in s.snapshot()
+    # review r2 HIGH: re-enrolling ONE gun must not hide the warning about the many that were lost
     with mock.patch.object(_uc, "load_inventory", return_value={"S1": {"gun_name": "G1", "ble_address": "AA:BB:CC:DD:EE:FF"}}):
         assert len(s.armory.list()) == 1
+    assert s.snapshot()["armory_corrupt"] == {"kept": str(kept), "error": "ValueError: bad"}
+    assert s.dismiss_armory_corrupt() is True
     assert "armory_corrupt" not in s.snapshot()
+    assert s.dismiss_armory_corrupt() is False
 
 
 def test_a_corrupt_armory_that_could_not_be_moved_aside_reports_no_kept_path():
@@ -71,3 +75,43 @@ def test_a_held_inventory_lock_does_not_block_the_event_loop_during_a_scan():
     with mock.patch.object(_st, "BASE_DIR", base), mock.patch.dict(sys.modules, {"brx_mcp.ble": types.SimpleNamespace(ConnectionManager=_Mgr)}):
         rows = asyncio.run(main(base))
     assert rows and rows[0]["name"] == "G1-AABB"
+
+
+def test_a_corrupt_file_hit_by_correlate_during_a_scan_is_still_reported():
+    """Review r2 HIGH: correlate() moves the file aside, so load_inventory then sees none; the flag must be set from correlate."""
+    import asyncio, tempfile, types
+    from brx_mcp import storage as _st
+
+    class _Mgr:
+        async def scan(self, _d):
+            return [{"name": "G1-AABB", "address": "AA:BB", "has_uart_service": True}]
+    base = pathlib.Path(tempfile.mkdtemp())
+    (base / "armory.json").write_text("{corrupt", encoding="utf-8")
+    a = LocalArmory()
+    with mock.patch.object(_st, "BASE_DIR", base), mock.patch.dict(sys.modules, {"brx_mcp.ble": types.SimpleNamespace(ConnectionManager=_Mgr)}):
+        asyncio.run(a.scan(1))
+    assert a.corrupt and a.corrupt["kept"] and "armory.json.bad-" in a.corrupt["kept"]
+
+
+def test_an_armory_that_kept_changing_is_reported_as_unreadable_not_empty():
+    s = _session()
+    with mock.patch.object(_uc, "load_inventory", side_effect=_uc.InventoryUnstable("armory.json kept changing while it was read")):
+        assert s.armory.list() == []
+    c = s.snapshot()["armory_corrupt"]
+    assert c["unreadable"] is True and c["kept"] is None
+
+
+def test_the_dismiss_route_clears_the_flag_and_is_token_gated():
+    try:
+        from starlette.testclient import TestClient
+    except Exception:
+        return
+    from brx_mcp.mc.api import create_app
+    s = _session()
+    s.armory.corrupt = {"kept": None, "error": "x"}
+    c = TestClient(create_app(s, token="tok"))
+    assert c.post("/api/armory/corrupt/dismiss").status_code == 401
+    assert "armory_corrupt" in c.get("/api/state").json()
+    r = c.post("/api/armory/corrupt/dismiss", headers={"Authorization": "Bearer tok"})
+    assert r.status_code == 200 and r.json() == {"ok": True, "dismissed": True}
+    assert "armory_corrupt" not in c.get("/api/state").json()

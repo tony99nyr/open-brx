@@ -180,6 +180,8 @@ export interface Api {
   releaseStation(node_id: string): Promise<{ ok: boolean }>;
   /** Polish r1 M2(b): DISMISS on an ITEMS away line, `DELETE /api/stations/{node_id}/departure`. 404 for an unknown one. */
   dismissDeparture(node_id: string): Promise<{ ok: boolean }>;
+  /** O2: DISMISS on the corrupt-armory banner, `POST /api/armory/corrupt/dismiss`. The warning is sticky until this. */
+  dismissArmoryCorrupt(): Promise<{ ok: boolean; dismissed: boolean }>;
   tryout(id: string, weapon_id: string): Promise<void>;
   rangeVerdicts(): Promise<Record<string, { weapon_id: string; verdict: 'pass' | 'issue'; note: string; t: number }>>;
   rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;

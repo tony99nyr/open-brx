@@ -179,11 +179,6 @@ def _keep_corrupt_inventory(p: Path) -> Optional[Path]:
     return move_aside_exclusive(p, "bad")
 
 
-def _stat_key(p: Path):
-    st = p.stat()
-    return (st.st_ino, st.st_size, st.st_mtime_ns)
-
-
 def _validate_inventory(inv) -> dict:
     if not isinstance(inv, dict):
         raise ValueError(f"expected a JSON object, found {type(inv).__name__}")
@@ -193,27 +188,34 @@ def _validate_inventory(inv) -> dict:
     return inv
 
 
+class InventoryUnstable(OSError):
+    """armory.json kept changing (or vanishing) under every bounded re-read. Nothing was moved aside; the
+    armory could not be read, which is not the same as empty."""
+
+
 def _read_inventory_locked() -> dict:
     """The read itself. The caller MUST hold `_inventory_lock` (it is not re-entrant, so the locked write
-    ops call this, never `load_inventory`). A corrupt file is moved aside only if it is still the very
-    file that failed to parse: if another writer replaced it meanwhile, read again instead."""
+    ops call this, never `load_inventory`). A file that fails to parse is moved aside only if, read AGAIN
+    immediately before the move, its bytes are identical to the ones that failed and still fail validation
+    (a stat check can miss a same-size rewrite on a coarse-timestamp filesystem). Otherwise read again."""
     p = inventory_path()
     for _ in range(5):
         try:
-            before = _stat_key(p)
+            raw = p.read_bytes()
         except FileNotFoundError:
             return {}
         try:
-            return _validate_inventory(json.loads(p.read_text(encoding="utf-8")))
+            return _validate_inventory(json.loads(raw.decode("utf-8")))
         except ValueError as exc:      # JSONDecodeError and UnicodeDecodeError are ValueErrors; an OSError
             # (permissions, a sharing violation) is NOT corruption and must not move a valid armory aside
             try:
-                same = _stat_key(p) == before
+                again = p.read_bytes()
             except FileNotFoundError:
                 continue
-            if same:
-                raise InventoryCorrupt(p, _keep_corrupt_inventory(p), f"{type(exc).__name__}: {exc}") from exc
-    raise OSError(f"{p} kept changing while it was read")
+            if again != raw:
+                continue               # a writer replaced it: the loop reads and validates the new bytes
+            raise InventoryCorrupt(p, _keep_corrupt_inventory(p), f"{type(exc).__name__}: {exc}") from exc
+    raise InventoryUnstable(f"{p} kept changing while it was read")
 
 
 def load_inventory() -> dict:

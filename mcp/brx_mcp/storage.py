@@ -125,7 +125,7 @@ def _replace_with_retry(src, dst, budget_s: float | None = None) -> None:
             delay = min(delay * 2, 0.1)
 
 
-def move_aside_exclusive(path: Path, label: str = "bad") -> Path | None:
+def move_aside_exclusive(path: Path, label: str = "bad", budget_s: float | None = None) -> Path | None:
     """Move `path` to `<name>.<label>-<UTC stamp with ms>[-N]` without ever overwriting an existing file:
     the name is reserved with an exclusive create first, then the file is renamed over the placeholder.
     Returns the new path, or None when the move failed (the original is left where it was)."""
@@ -143,7 +143,7 @@ def move_aside_exclusive(path: Path, label: str = "bad") -> Path | None:
         except OSError:
             return None
     try:
-        os.replace(path, kept)
+        _replace_with_retry(path, kept, budget_s)     # same bounded PermissionError retry as atomic_write_text
     except OSError:
         with contextlib.suppress(OSError):
             os.unlink(kept)

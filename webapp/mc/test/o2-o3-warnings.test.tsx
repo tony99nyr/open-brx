@@ -56,4 +56,32 @@ describe('O2 · armory_corrupt banner', () => {
     expect(m.find('[data-testid="armory-corrupt-banner"]').length).toBe(0);
     m.unmount();
   });
+
+  it('DISMISS calls the route', async () => {
+    const d = await demo();
+    const calls: string[] = [];
+    const state: State = { ...d.state, armory_corrupt: { kept: null, error: 'x' } };
+    const api = fixtureApi({ dismissArmoryCorrupt: async () => { calls.push('dismiss'); return { ok: true, dismissed: true }; } }, d.api);
+    const m = await mountScreen(<Armory />, { ...d, state, api });
+    expect(m.find('[data-testid="armory-corrupt-dismiss"]').length).toBe(1);
+    await m.click('DISMISS');
+    expect(calls).toEqual(['dismiss']);
+    m.unmount();
+  });
+
+  it('the mock backend keeps the flag until dismissed, then drops it from the state', async () => {
+    const { MockBackend } = await import('../src/mock/backend');
+    const b = new MockBackend() as unknown as { demoArmoryCorrupt: boolean; dismissArmoryCorrupt(): Promise<{ dismissed: boolean }>; getState(): Promise<State> };
+    b.demoArmoryCorrupt = true;
+    expect((await b.getState()).armory_corrupt).toBeTruthy();
+    expect(await b.dismissArmoryCorrupt()).toMatchObject({ dismissed: true });
+    expect((await b.getState()).armory_corrupt).toBeUndefined();
+  });
+
+  it('an unreadable armory gets its own wording', async () => {
+    const d = await demo();
+    const m = await mountScreen(<Armory />, { ...d, state: { ...d.state, armory_corrupt: { kept: null, error: 'OSError: kept changing', unreadable: true } } });
+    expect(m.text()).toContain('COULD NOT BE READ');
+    m.unmount();
+  });
 });

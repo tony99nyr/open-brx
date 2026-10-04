@@ -350,16 +350,21 @@ function RestoreFailedBanner() {
 /** O2: armory.json was corrupt. MC moved it aside and shows whatever guns it can still find, which is
  *  NOT the operator's armory: say so, with where the file went. Absent on a healthy armory and on an older server. */
 function ArmoryCorruptBanner() {
-  const { state } = useStore();
+  const { state, run, api } = useStore();
   const c = state?.armory_corrupt;
   if (!c) return null;
   return (
     <div style={{ marginBottom: 16 }}>
       {/* children, not what/act: the helper upper-cases words and the path must stay copyable as it is */}
       <Alert id="armory-corrupt-banner" testid="armory-corrupt-banner" size={12}>
-        ARMORY FILE WAS CORRUPT: {c.kept ? <>MOVED TO <span style={{ textTransform: 'none' }}>{c.kept}</span></> : 'IT COULD NOT BE MOVED ASIDE'}: GUNS BELOW ARE NOT YOUR FULL ARMORY
+        {c.unreadable ? 'ARMORY FILE COULD NOT BE READ (IT KEPT CHANGING): GUNS BELOW MAY NOT BE YOUR FULL ARMORY' : null}
+        {c.unreadable ? null : <>ARMORY FILE WAS CORRUPT: {c.kept ? <>MOVED TO <span style={{ textTransform: 'none' }}>{c.kept}</span></> : 'IT COULD NOT BE MOVED ASIDE'}: GUNS BELOW ARE NOT YOUR FULL ARMORY</>}
       </Alert>
       <div data-testid="armory-corrupt-detail" style={{ font: F.mono(500, 11), color: T.dim, marginTop: 4, overflowWrap: 'anywhere' }}>{c.error}</div>
+      <span data-testid="armory-corrupt-dismiss">
+        <GhostButton size={11} pad="6px 12px" onClick={async () => { await run(() => api.dismissArmoryCorrupt()); }}
+          title="the warning stays until you dismiss it, even after you enrol guns again">DISMISS</GhostButton>
+      </span>
     </div>
   );
 }
