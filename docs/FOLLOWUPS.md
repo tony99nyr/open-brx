@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-02. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-10-03. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -16,7 +16,7 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F438** · **F439** · **F417** · **F434** · **F436** · **F440** · **F416** · **B26** · **F232** · **F293** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
-- 🟠 **F437** · **F349** · **F308** · **F374** · **S58** · **F425** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F383** · **F388** · **F389** · **F391** · **F393** · **F399** · **F443** · **F444**
+- 🟠 **F437** · **F349** · **F308** · **F374** · **S58** · **F425** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F449** · **F380** · **F383** · **F388** · **F389** · **F391** · **F393** · **F399** · **F443** · **F444**
 - 🟡 **Q13** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398** · **F282** · **F441** · **F442** · **F445** · **F446** · **F447**
 - 🟢 **F339** · **F431**
 
@@ -257,7 +257,7 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 
 - **F322 🟡 THE HEADSET RE-SENDS PROTOCOL 9 AND 10 HITS.** Code read, not bench-proven: the headset re-transmits a protocol-9 or protocol-10 hit it receives. We ship `$SIR,9,3` and `$SIR,10,0` rows (`gameconfig.py`), so one shot could land twice on a neighbour. Bench: capture what one protocol-9/10 hit sends from the victim's headset (Block 2b). `bench`.
 
-- **F376 🟠 IR RIG BOARD B (COM8) NEEDS A REFLASH: `ir_emit.ino` IS OLD AND MISREADS `--gap`.** Bench 2026-09-25, sitting A: board B ran as the F341/F350 shooter with no problem, but `ir-emit --help` fired a live 6-bit IR frame instead of printing help (harmless; no pool moved), and the firmware on board B does not carry the current `--gap` handling, which is misread as a bit count rather than a timing value. Reflash board B from `hardware/esp32-ir-bridge/` `main`. `bench` + `hardware`.
+- **F449 🟠 IR RIG BOARD B (COM8) NEEDS A REFLASH: `ir_emit.ino` IS OLD AND MISREADS `--gap`.** Bench 2026-09-25, sitting A: the firmware on board B does not carry the current `--gap` handling, which is misread as a bit count rather than a timing value. Reflash board B from `hardware/esp32-ir-bridge/` `main`. Split from F376, whose `ir-emit --help` half is closed. `bench` + `hardware`.
 
 ### Later: two guns, phones and Mission Control
 
