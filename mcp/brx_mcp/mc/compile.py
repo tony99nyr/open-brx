@@ -1855,33 +1855,37 @@ DISTINCT_CELL_CANDIDATES: tuple[tuple[str, str], ...] = tuple(
     c for c in _ha.FREE_CELLS if c[0] == "0" and c not in _ha.RESERVED_CELLS)
 
 
-@dataclasses.dataclass
-class _CompileContext:
+@dataclasses.dataclass(frozen=True)
+class _Build:
     config: GameConfig
     player: Player
     teams: list[Team]
-    roll: _random.Random | None
-    plan: _ha.Plan | None
-    prof: dict | None = None
-    night: bool | None = None
-    ffa: bool | None = None
-    gc: _GC | None = None
-    pnum: int | None = None
-    tid: int | None = None
-    w0: str | None = None
-    w1: str | None = None
-    mods: dict[str, float | int | bool] | None = None
-    swap_mods: dict[str, float | int | bool] | None = None
-    armor_piercing: bool | None = None
-    voice: str | None = None
-    picks: dict[str, str] | None = None
-    rolled: dict[str, str] | None = None
-    voice_slots: dict[str, str] | None = None
-    hits_rng: _random.Random | None = None
-    pickups: list[PowerupSlot] | None = None
+    plan: _ha.Plan
+    prof: dict
+    night: bool
+    ffa: bool
+    gc: _GC
+    pnum: int
+    tid: int
+    w0: str
+    w1: str | None
+    mods: dict[str, float | int | bool]
+    swap_mods: dict[str, float | int | bool]
+    armor_piercing: bool
+    voice: str | None
+    picks: dict[str, str]
+    rolled: dict[str, str]
+    voice_slots: dict[str, str] | None
+    hits_rng: _random.Random
+    pickups: list[PowerupSlot]
+    cs: bool
+
+
+@dataclasses.dataclass
+class _CompileContext:
+    build: _Build
     head: list[str] | None = None
     play_hled: list[str] | None = None
-    _cs: bool | None = None
     sir_live: list[str] | None = None
     ammo: list[str] | None = None
     spawn: list[str] | None = None
@@ -2468,8 +2472,7 @@ class Compiler:
         ROLLED from their pools (voices.roll_pset) -- since A15.3 that is the death scream only, and the node
         re-rolls it per spawn from `pset_pool` anyway. None = the family defaults, deterministic (tests, the
         golden bundle)."""
-        ctx = _CompileContext(config, player, teams, roll, plan)
-        self._resolve_build(ctx)
+        ctx = _CompileContext(self._resolve_build(config, player, teams, roll, plan))
         self._build_head(ctx)
         self._build_life_frames(ctx)
         self._build_bundle_base(ctx)
@@ -2481,15 +2484,16 @@ class Compiler:
         assert ctx.bundle is not None
         return ctx.bundle
 
-    def _resolve_build(self, ctx: _CompileContext) -> None:
-        ctx.prof = _pres.resolve(ctx.config)
-        ctx.night = bool(ctx.config.get("night", False))
-        ctx.ffa = ctx.config["mode"] == "ffa"          # Q19: FFA paints WHITE on both surfaces, no team identity to protect
-        ctx.gc = self._to_gc(ctx.config, ctx.player, blackout=ctx.prof.get("blackout", False))
-        ctx.pnum = int(ctx.player["player_num"])
-        if not 1 <= ctx.pnum <= MAX_PLAYERS:
-            raise ValueError(f"player_num {ctx.pnum} out of range 1..{MAX_PLAYERS} (0 reserved, A5.1)")
-        ctx.tid = self._tid(ctx.player, ctx.teams)
+    def _resolve_build(self, config: GameConfig, player: Player, teams: list[Team],
+                       roll: _random.Random | None, plan: _ha.Plan | None) -> _Build:
+        prof = _pres.resolve(config)
+        night = bool(config.get("night", False))
+        ffa = config["mode"] == "ffa"          # Q19: FFA paints WHITE on both surfaces, no team identity to protect
+        gc = self._to_gc(config, player, blackout=prof.get("blackout", False))
+        pnum = int(player["player_num"])
+        if not 1 <= pnum <= MAX_PLAYERS:
+            raise ValueError(f"player_num {pnum} out of range 1..{MAX_PLAYERS} (0 reserved, A5.1)")
+        tid = self._tid(player, teams)
         # 🔴 F82 at the last possible moment: a hill mode's head may not carry `$TID,2`. `validate()`
         # reports that as an ERROR, but an error is ADVISORY — `_after_player_change` re-compiles and
         # re-pushes before it runs, so a team change after the push could put the frame on a gun with
@@ -2497,91 +2501,93 @@ class Compiler:
         # 2026-09-10). The config can no longer even HOLD a tid-2 team in these modes (`state.py`
         # `_merge_config`); this makes the frame itself unbuildable, the same way `assert_sir_covers_*`
         # makes a silently-deaf head unbuildable.
-        if ctx.config.get("mode") in _OBJECTIVE_MODES and ctx.tid == _NEUTRAL_TEAM:
+        if config.get("mode") in _OBJECTIVE_MODES and tid == _NEUTRAL_TEAM:
             raise ValueError(
-                f"F82 GUARD: refusing to compile a {ctx.config.get('mode')!r} head on $TID {_NEUTRAL_TEAM} for "
-                f"{ctx.player.get('display') or ctx.player.get('player_id')} — that is the team a NEUTRAL hill "
+                f"F82 GUARD: refusing to compile a {config.get('mode')!r} head on $TID {_NEUTRAL_TEAM} for "
+                f"{player.get('display') or player.get('player_id')} — that is the team a NEUTRAL hill "
                 "broadcasts, so this gun would read every uncaptured point as its own and take no hill "
                 "damage. Move the player to tid 0, 1 or 3.")
-        ctx.w0, ctx.w1 = self._weapon_ids(ctx.player)
-        fx = self.perk_effects(ctx.player)                    # ammo/reload knobs act on the PRIMARY only …
-        ctx.mods = {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult", "switch_mult") if fx.get(k)}
-        ctx.swap_mods = {k: ctx.mods[k] for k in ("switch_mult",) if k in ctx.mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
-        if ctx.prof.get("silent_weapons"):
+        w0, w1 = self._weapon_ids(player)
+        fx = self.perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
+        mods = {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult", "switch_mult") if fx.get(k)}
+        swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
+        if prof.get("silent_weapons"):
             # F282: EVERY compiled weapon (primary, secondary, melee, any pickup), not just the primary
             # `mods` slot -- `resolve()` applies it last, see its docstring.
-            ctx.mods["silent_weapons"] = ctx.swap_mods["silent_weapons"] = True
+            mods["silent_weapons"] = swap_mods["silent_weapons"] = True
         # S50 (Armour Piercing perk): PRIMARY ONLY. `_refuse_if_ap_ineligible` raises before anything
         # is written for a weapon whose damage key is already special (a charge weapon, or a stock
         # grant/heal/status cell); `dmg_mult` rides in `mods` so `resolve()` cuts t5, and the frame's
         # tok3/tok4 are re-keyed onto `_AP_CELL` AFTER the class-sound `plan` rekey below, so Armour
         # Piercing always wins regardless of `hit_audio_class`.
-        ctx.armor_piercing = bool(fx.get("armor_piercing"))
-        if ctx.armor_piercing:
-            self._refuse_if_ap_ineligible(ctx.w0, ctx.player)
-            ap_row = self.catalog._row(ctx.w0)
+        armor_piercing = bool(fx.get("armor_piercing"))
+        if armor_piercing:
+            self._refuse_if_ap_ineligible(w0, player)
+            ap_row = self.catalog._row(w0)
             # BOTH levers (§7.7). Damage alone cannot price the perk, because damage is an integer and
             # the steps are too coarse: on an 8-damage weapon 3 is free and 2 is useless. Slowing the
             # cycle as well makes the trade continuous, and it is what the perk should feel like anyway:
             # heavier rounds, fewer of them, slower.
-            ctx.mods = {**ctx.mods, "dmg_abs": int(ap_row["ap_dmg"]), "fire_abs": int(ap_row["ap_fire_ms"])}
+            mods = {**mods, "dmg_abs": int(ap_row["ap_dmg"]), "fire_abs": int(ap_row["ap_fire_ms"])}
 
         # F278: a crit-chance perk (`crit_pct_add`) checked against BOTH slots -- the catalogue guard it
         # mirrors (`test_a_two_word_weapon_never_also_carries_a_crit_chance`) refuses any row, not just
         # a primary, so a player could still reach the combination by carrying the two-word weapon as
         # their secondary.
         if fx.get("crit_pct_add"):
-            self._refuse_if_crit_perk_ineligible(ctx.w0, ctx.player)
-            if ctx.w1:
-                self._refuse_if_crit_perk_ineligible(ctx.w1, ctx.player)
+            self._refuse_if_crit_perk_ineligible(w0, player)
+            if w1:
+                self._refuse_if_crit_perk_ineligible(w1, player)
 
         # A15.1: roll the un-picked $PSET voice fields for THIS push; explicit picks always win
-        ctx.voice, ctx.picks = ctx.player.get("voice", "male"), (ctx.player.get("voice_slots") or {})
-        ctx.rolled = {}
-        if ctx.roll is not None:
-            full = _voices.roll_pset(ctx.voice, ctx.picks, ctx.roll)
-            fixed = _voices.check_slots(ctx.picks)
-            ctx.rolled = {r: i for r, i in full.items() if r not in fixed and len(_voices.roll_pool(ctx.voice, r)) > 1}   # the real draws only
-        ctx.voice_slots = {**ctx.rolled, **ctx.picks} if ctx.rolled else (ctx.picks or None)
+        voice, picks = player.get("voice", "male"), (player.get("voice_slots") or {})
+        rolled = {}
+        if roll is not None:
+            full = _voices.roll_pset(voice, picks, roll)
+            fixed = _voices.check_slots(picks)
+            rolled = {r: i for r, i in full.items() if r not in fixed and len(_voices.roll_pool(voice, r)) > 1}   # the real draws only
+        voice_slots = {**rolled, **picks} if rolled else (picks or None)
         # A17: the hit-audio plan is a MATCH property -- `state._compile_rolled` computes it once from the
         # whole roster and hands the same object to every player. A caller that passes none (the golden
         # bundle, tests, `bundle_for`) gets an in-place plan built from THIS player's weapons: sounds only,
         # nothing re-keyed, so a per-player plan can never disagree about which cells exist.
-        ctx.hits_rng = ctx.roll if ctx.roll is not None else _random.Random(0)     # None = deterministic, for the golden bundle
+        hits_rng = roll if roll is not None else _random.Random(0)     # None = deterministic, for the golden bundle
         # A56 (S58): the pickup weapons MC armed for this game (`GameConfig.powerups`, set by the session only
         # while powerups are enabled, F372). Absent = none, and then nothing below changes a single frame.
-        ctx.pickups = self._pickup_slots(ctx.config)
-        if ctx.plan is None:
-            ctx.plan = self.hit_plan([ctx.player, *self._pickup_carrier(ctx.pickups)], rekey=False)
+        pickups = self._pickup_slots(config)
+        if plan is None:
+            plan = self.hit_plan([player, *self._pickup_carrier(pickups)], rekey=False)
+
+        return _Build(config=config, player=player, teams=teams, plan=plan, prof=prof,
+                      night=night, ffa=ffa, gc=gc, pnum=pnum, tid=tid, w0=w0, w1=w1,
+                      mods=mods, swap_mods=swap_mods, armor_piercing=armor_piercing,
+                      voice=voice, picks=picks, rolled=rolled, voice_slots=voice_slots,
+                      hits_rng=hits_rng, pickups=pickups, cs=bool(config.get("hit_audio_class", False)))
 
     def _build_head(self, ctx: _CompileContext) -> None:
-        assert (ctx.gc is not None and ctx.pnum is not None and ctx.tid is not None
-                and ctx.w0 is not None and ctx.plan is not None and ctx.pickups is not None
-                and ctx.prof is not None and ctx.night is not None and ctx.ffa is not None
-                and ctx.mods is not None and ctx.swap_mods is not None
-                and ctx.armor_piercing is not None and ctx.hits_rng is not None)
+        build = ctx.build
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
-        env = ctx.config.get("environment")
-        _gset = ctx.gc._gset()
-        ctx.head = [f"$VOL,{self.head_volume(ctx.config)},0,*", "$CLEAR,*", "$START,*",
+        env = build.config.get("environment")
+        _gset = build.gc._gset()
+        ctx.head = [f"$VOL,{self.head_volume(build.config)},0,*", "$CLEAR,*", "$START,*",
                 _gset,
                 # F162: EMPTY today (`DRIVE_IO_MODE` is "off") -- the staged venue-mode candidates,
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.
                 *venue_mode_frames(_gset, env),
-                ctx.gc._pset(ctx.pnum, ctx.player.get("voice"), ctx.voice_slots, team=ctx.tid),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls. F206: t2 = the $TID team
-                self._rekey(self._rekey(self.catalog.resolve(ctx.w0, 0, ctx.mods, environment=env), ctx.plan.cell_for(ctx.w0)),
-                            _AP_CELL if ctx.armor_piercing else None)]
-        if ctx.w1:
-            ctx.head.append(self._rekey(self.catalog.resolve(ctx.w1, 1, ctx.swap_mods, environment=env), ctx.plan.cell_for(ctx.w1)))   # slot 1 only when a secondary exists (A10)
-        ctx.head.append(self._rekey(self.catalog.resolve("melee", 4, ctx.swap_mods, environment=env), ctx.plan.cell_for("melee")))
+                build.gc._pset(build.pnum, build.player.get("voice"), build.voice_slots, team=build.tid),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls. F206: t2 = the $TID team
+                self._rekey(self._rekey(self.catalog.resolve(build.w0, 0, build.mods, environment=env), build.plan.cell_for(build.w0)),
+                            _AP_CELL if build.armor_piercing else None)]
+        if build.w1:
+            ctx.head.append(self._rekey(self.catalog.resolve(build.w1, 1, build.swap_mods, environment=env), build.plan.cell_for(build.w1)))   # slot 1 only when a secondary exists (A10)
+        ctx.head.append(self._rekey(self.catalog.resolve("melee", 4, build.swap_mods, environment=env), build.plan.cell_for("melee")))
         # A56: each pickup weapon in its spare slot with its normal `$WEAP` tokens. It is LOCKED by the empty
         # magazine below and by the ALT `$BMAP` cycle, which stays 0/1 only (`gc._bmap()` is not touched): the
         # player's own phone unlocks it at the station with a mid-life `$AMMO` + `$BMAP` (powerups.md).
-        for pu in ctx.pickups:
-            ctx.head.append(self._rekey(self.catalog.resolve(pu["weapon_id"], pu["slot"], ctx.swap_mods, environment=env),
-                                    ctx.plan.cell_for(pu["weapon_id"])))
-        bmap = list(ctx.gc._bmap())
-        if not ctx.w1 and not ctx.gc.alt_reload:
+        for pu in build.pickups:
+            ctx.head.append(self._rekey(self.catalog.resolve(pu["weapon_id"], pu["slot"], build.swap_mods, environment=env),
+                                    build.plan.cell_for(pu["weapon_id"])))
+        bmap = list(build.gc._bmap())
+        if not build.w1 and not build.gc.alt_reload:
             # Empty slot 2 (A10 §2): with one $WEAP slot loaded, weapon-cycle (fn 100) has nothing to cycle to and
             # falls back to RELOADING (protocol §BMAP; bench 2026-09-17, Tony: "the alt button is reloading the charge
             # rifle"). So ALT gets fn 98, the inert function select/left/right use: alt-fire does nothing.
@@ -2605,15 +2611,15 @@ class Compiler:
         # Keeping the behaviour deliberately: it is the only way to test it, and it cannot be worse
         # than the dark headsets we shipped. But it is UNVERIFIED — see FOLLOWUPS F10, which is an
         # eyeball test, and do not cite this frame as confirmed until that is done.
-        hs = ctx.prof.get("headset") or _pres.HEADSET_DEFAULT
+        hs = build.prof.get("headset") or _pres.HEADSET_DEFAULT
         # A11.6: the lobby team colour is the headset block's `pregame`; the in-play repaint after
         # spawn / revive / hit exists only when `in_play` is "team" (default: dark, native-like).
-        hled = _headset_colour(ctx.tid, ctx.gc.leds, ctx.ffa, ctx.night) if hs.get("pregame", "team") == "team" else []
-        ctx.play_hled = _headset_colour(ctx.tid, ctx.gc.leds, ctx.ffa, ctx.night) if hs.get("in_play") == "team" else []
+        hled = _headset_colour(build.tid, build.gc.leds, build.ffa, build.night) if hs.get("pregame", "team") == "team" else []
+        ctx.play_hled = _headset_colour(build.tid, build.gc.leds, build.ffa, build.night) if hs.get("in_play") == "team" else []
         # A11.7 pregame: the armed gun body in the team colour (a paint holds before $SPAWN), like the headset.
-        gun_pre = _pres.gun_pregame(ctx.prof, ctx.tid, ctx.night, ctx.gc.leds, ctx.ffa)
-        ctx._cs = bool(ctx.config.get("hit_audio_class", False))     # A17 class sounds -> a per-life `sir_pool` take
-        ctx.sir_live = self.sir_table(ctx.plan, ctx.hits_rng, ctx._cs, stun=stun_enabled(ctx.config))
+        gun_pre = _pres.gun_pregame(build.prof, build.tid, build.night, build.gc.leds, build.ffa)
+        # A17 class sounds -> a per-life `sir_pool` take
+        ctx.sir_live = self.sir_table(build.plan, build.hits_rng, build.cs, stun=stun_enabled(build.config))
         # S57 (2026-09-23, docs/ir-callouts.md): the silent proto-15 beacon row now ships in EVERY
         # mode's live table, not only `_OBJECTIVE_MODES` -- the IR callout bus needs a gun in ANY mode
         # to REPORT a dead player's own `$IRTX` word, and fn 28 is the one function proven to register
@@ -2626,25 +2632,25 @@ class Compiler:
         # F121/A23: the HEAD carries the same cells DISARMED -- hits register, nothing moves, no sound. The
         # real table is a `sir_pool` take the node writes behind the first spawn's protection (F121 rebuild).
         sir_pregame = sir_spawn_protected(ctx.sir_live)
-        ctx.head += sir_pregame + hold_trigger(bmap) + ctx.gc._led_frames() + hled + gun_pre + [f"$TID,{ctx.tid},*"]   # §1.1: head ends with $TID
+        ctx.head += sir_pregame + hold_trigger(bmap) + build.gc._led_frames() + hled + gun_pre + [f"$TID,{build.tid},*"]   # §1.1: head ends with $TID
         assert_sir_covers_weapons(ctx.head)      # A17: no armed weapon may key a cell this head has no row for
-        assert_sir_covers_objective(ctx.head, ctx.config["mode"])   # F79: no objective mode may ship with no way to hear its own beacon
+        assert_sir_covers_objective(ctx.head, build.config["mode"])   # F79: no objective mode may ship with no way to hear its own beacon
         assert_spawn_protected(ctx.head)         # F121: and none of those rows may move a pool before go-live
-        if ctx.armor_piercing:
+        if build.armor_piercing:
             assert_armor_piercing_armed(ctx.head)   # S50: refuse to arm a weapon nobody's gun can register
 
     def _build_life_frames(self, ctx: _CompileContext) -> None:
-        assert (ctx.w0 is not None and ctx.mods is not None and ctx.pickups is not None
-                and ctx.tid is not None and ctx.play_hled is not None and ctx.head is not None)
+        build = ctx.build
+        assert ctx.play_hled is not None and ctx.head is not None
 
-        pmag, pres = self.catalog.spawn_ammo(ctx.w0, ctx.mods)
+        pmag, pres = self.catalog.spawn_ammo(build.w0, build.mods)
         ctx.ammo = [f"$AMMO,0,{pmag},{pres},1,*"]
-        if ctx.w1:
-            smag, sres = self.catalog.spawn_ammo(ctx.w1)
+        if build.w1:
+            smag, sres = self.catalog.spawn_ammo(build.w1)
             ctx.ammo.append(f"$AMMO,1,{smag},{sres},1,*")
         # A56: a pickup slot's magazine and reserve are 0 at every spawn and revive, so an item never carries
         # into the next life (`powerups.LOST_AT_DEATH`) even if the gun would restore it after `$SPAWN`.
-        ctx.ammo += [f"$AMMO,{pu['slot']},0,0,1,*" for pu in ctx.pickups]
+        ctx.ammo += [f"$AMMO,{pu['slot']},0,0,1,*" for pu in build.pickups]
 
         # spawn = $PLAYX,0 -> $SPAWN -> $AMMOs -> $BMAP,0,0 (the T-0 tail; M-START wraps VA81 + $SFLASH)
         # ... + the headset team colour LAST. Bench 2026-09-03 (hled_spawned.py): `$SPAWN` CLEARS
@@ -2667,32 +2673,33 @@ class Compiler:
         # frame is the belt to its braces, and it is what LaserTagMods' own hosted-game path does (a
         # second `$TID` after the gun's start). A live `$TID` write changes hit resolution at once and
         # repaints nothing (bench 2026-09-07), so it is safe after `$SPAWN`.
-        ctx.spawn = ["$PLAYX,0,*", "$SPAWN,,*", SPAWN_PROTECT_ON, f"$TID,{ctx.tid},*"] + ctx.ammo + [TRIGGER_LIVE] + ctx.play_hled
+        ctx.spawn = ["$PLAYX,0,*", "$SPAWN,,*", SPAWN_PROTECT_ON, f"$TID,{build.tid},*"] + ctx.ammo + [TRIGGER_LIVE] + ctx.play_hled
 
         # revive = $SPAWN + t8 + $TID + loadout $AMMOs + the trigger row (NO $HLOOP; §1.1 replaces
         # RESPAWN_SEQUENCE). Bench 2026-09-16: the head holds the trigger, and a live resync re-writes the
         # head before it revives, so the revive maps the trigger again too.
-        ctx.revive = _revive_frames(ctx.tid, ctx.ammo, ctx.play_hled)
+        ctx.revive = _revive_frames(build.tid, ctx.ammo, ctx.play_hled)
         assert_trigger_held_until_spawn(ctx.head, ctx.spawn, ctx.revive)
 
     def _build_bundle_base(self, ctx: _CompileContext) -> None:
+        build = ctx.build
         assert (ctx.head is not None and ctx.spawn is not None and ctx.revive is not None
-                and ctx.night is not None and ctx.play_hled is not None)
+                and ctx.play_hled is not None)
 
         ctx.bundle = {
-            "config_id": ctx.config["config_id"],
-            "player_id": ctx.player["player_id"],
+            "config_id": build.config["config_id"],
+            "player_id": build.player["player_id"],
             "head": ctx.head,
             "spawn": ctx.spawn,
             "revive": ctx.revive,
             "spawn_protect_off": SPAWN_PROTECT_OFF,   # F121 rebuild: the node writes it when protection ends
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
-            "cues": base_cues(ctx.night),   # D4: every event cue (kill, game_over, ...) comes from presentation.EVENTS below
+            "cues": base_cues(build.night),   # D4: every event cue (kill, game_over, ...) comes from presentation.EVENTS below
             # the swap delay the gun will actually enforce between slots 0 and 1: the larger tok15 of the two
             # (bench 2026-09-04). The HUD's SWITCHING takeover runs for exactly this long.
             "swap_ms": max([int(f.split(",")[16]) for f in ctx.head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
-            "callout_team": self._callout_team(ctx.teams),   # S57: the IR callout bus's own team id, or None
+            "callout_team": self._callout_team(build.teams),   # S57: the IR callout bus's own team id, or None
         }
         # Every registered hit wipes the headset (native flash, then dark; bench 2026-09-03). The
         # node re-sends this after each hit so the team colour is back for the rest of the life.
@@ -2700,12 +2707,10 @@ class Compiler:
         ctx.bundle["cues"]["team_led"] = ctx.play_hled[0] if ctx.play_hled else ""
 
     def _build_voice_and_hit_audio(self, ctx: _CompileContext) -> None:
+        build = ctx.build
         # polish round 2: no `voice` here -- a player with voice None takes the voice fallback, as before the split
-        assert (ctx.bundle is not None and ctx.prof is not None
-                and ctx.rolled is not None and ctx.picks is not None and ctx.gc is not None
-                and ctx.pnum is not None and ctx.tid is not None and ctx.hits_rng is not None
-                and ctx.head is not None and ctx.spawn is not None and ctx.revive is not None
-                and ctx.plan is not None and ctx.sir_live is not None and ctx._cs is not None)
+        assert (ctx.bundle is not None and ctx.head is not None and ctx.spawn is not None
+                and ctx.revive is not None and ctx.sir_live is not None)
 
         # A11: the PRESENTATION profile -- per-event sounds + lights, preset or custom (presentation.py).
         # Cues it names override the fixed table above; `announcer: false` mutes the voice groups but
@@ -2713,20 +2718,20 @@ class Compiler:
         # team-colour repaint frames added above.
         # A15: every `voice:<role>` sound resolves per PLAYER to that role's line (voices.role_id: the family's
         # slot, or the player's own pick in `voice_slots`) -- the kill line, a boast on respawn, a taunt, …
-        ctx.voice_map = self._voice_map(ctx.voice, ctx.voice_slots)
-        ctx.bundle["voice"] = {"id": ctx.voice, "family": _voices.family(ctx.voice),
-                           "pset": _voices.pset_ids(ctx.voice, ctx.voice_slots), "kill": (ctx.voice_map.get("kill") or [None])[0],
-                           "rolled": ctx.rolled,                                                   # A15.1: this push's draws
-                           "pools": {r: _voices.roll_pool(ctx.voice, r) for r in _voices.PSET_ROLES},
+        ctx.voice_map = self._voice_map(build.voice, build.voice_slots)
+        ctx.bundle["voice"] = {"id": build.voice, "family": _voices.family(build.voice),
+                           "pset": _voices.pset_ids(build.voice, build.voice_slots), "kill": (ctx.voice_map.get("kill") or [None])[0],
+                           "rolled": build.rolled,                                                   # A15.1: this push's draws
+                           "pools": {r: _voices.roll_pool(build.voice, r) for r in _voices.PSET_ROLES},
                            "spawn": list(ctx.voice_map.get("spawn") or []),                       # A15.2: what the node may say at spawn
                            # A15.3: the death scream stays the firmware's but is re-rolled per SPAWN: the node writes
                            # one of `pset_pool` before every $SPAWN. `pset_pool` here = the scream id per frame.
-                           "pset_pool": _voices.roll_pool(ctx.voice, "death_scream") if "death_scream" not in _voices.check_slots(ctx.picks)
-                                        else [_voices.check_slots(ctx.picks)["death_scream"]],
+                           "pset_pool": _voices.roll_pool(build.voice, "death_scream") if "death_scream" not in _voices.check_slots(build.picks)
+                                        else [_voices.check_slots(build.picks)["death_scream"]],
                            # A15.3: the node picks the pain pool by `$HIR` damage -- at or above this = long pain
                            "pain_long_min": _voices.PAIN_LONG_MIN_DAMAGE}
-        ctx.frames = _pres.cue_frames(ctx.prof, ctx.voice_map)
-        ctx.bundle["cue_pools"] = _pres.cue_pool_frames(ctx.prof, ctx.voice_map)   # A15.1: the node rolls one per event
+        ctx.frames = _pres.cue_frames(build.prof, ctx.voice_map)
+        ctx.bundle["cue_pools"] = _pres.cue_pool_frames(build.prof, ctx.voice_map)   # A15.1: the node rolls one per event
         # S12 (Tony, 2026-09-11: "let the config drive it. silenced snipers no grunts could be legit"):
         # `presentation.voice` gates the player's OWN voice lines -- "on" (default) plays both the pain
         # cues and the spawn line; "hits_only" keeps the pain cues but drops the spawn line; "off" drops
@@ -2737,7 +2742,7 @@ class Compiler:
         # engine.js plays `cues.spawn` on the first life and `cues.respawned` on every REVIVE after that
         # (`_spawn`/`_revive`), so it must be dropped alongside `spawn` or every respawn past the first
         # would still speak under "hits_only"/"off".
-        ctx.voice_switch = ctx.prof.get("voice", "on")
+        ctx.voice_switch = build.prof.get("voice", "on")
         if ctx.voice_switch != "on":
             ctx.frames.pop("respawned", None)
             ctx.bundle["cue_pools"].pop("respawned", None)
@@ -2746,7 +2751,7 @@ class Compiler:
         # A17: each take also carries its own draw from the MATERIAL pools (hitHp / hitArrmor /
         # hitShield / hitCrit), so the one write that re-rolls the death scream re-rolls what a hit on
         # each pool sounds like. Variety lands BETWEEN hits; nothing is played over BLE during one.
-        ctx.bundle["pset_pool"] = ctx.gc.pset_frames(ctx.pnum, ctx.player.get("voice"), ctx.picks or None, rng=ctx.hits_rng, team=ctx.tid)   # F206: t2 = the $TID team
+        ctx.bundle["pset_pool"] = build.gc.pset_frames(build.pnum, build.player.get("voice"), build.picks or None, rng=build.hits_rng, team=build.tid)   # F206: t2 = the $TID team
         # F206 GUARD: every $PSET this bundle can write carries the team its $TID frames carry. The node
         # writes one of `pset_pool` in the same burst as every $SPAWN, so a stray 0 here is the whole bug.
         assert_team_byte_consistent(ctx.head + ctx.spawn + ctx.revive + ctx.bundle["pset_pool"])
@@ -2755,8 +2760,8 @@ class Compiler:
         # bench-safe by construction. `sir_pool` is the ONLY carrier of the real table, so it is never empty:
         # one take of the fixed table (the objective row included) when class sounds are off. The node writes a
         # take when protection ends, but only if the gun's table is not the live one or class sounds are on.
-        ctx.bundle["sir_pool"] = ([self._with_capture_row(self.sir_table(ctx.plan, ctx.hits_rng, ctx._cs, stun=stun_enabled(ctx.config)))
-                               for _ in range(_SIR_TAKES)] if ctx._cs else [list(ctx.sir_live)])
+        ctx.bundle["sir_pool"] = ([self._with_capture_row(self.sir_table(build.plan, build.hits_rng, build.cs, stun=stun_enabled(build.config)))
+                               for _ in range(_SIR_TAKES)] if build.cs else [list(ctx.sir_live)])
         # F312 GUARD: every take keys <15,0>; and under `--bench-capture-row` it is the row the banner names,
         # since a bench result read against the wrong function is worse than no result.
         _cap = self.capture_row()
@@ -2765,22 +2770,22 @@ class Compiler:
                 raise ValueError("F312 GUARD: a sir_pool take has no <15,0> row, so the gun cannot report a capture")
             if self.capture_row_fn is not None and _cap not in sir_take:
                 raise ValueError(f"F312 GUARD: --bench-capture-row asked for {_cap}, but a take ships another <15,0> row")
-        ctx.bundle["hit_audio"] = {"rekey": bool(ctx.config.get("hit_audio_rekey", False)),
-                               "cells": {w: f"{c[0]},{c[1]}" for w, c in ctx.plan.cells.items()},
-                               "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in ctx.plan.groups.items()},
-                               "shared": list(ctx.plan.shared),
+        ctx.bundle["hit_audio"] = {"rekey": bool(build.config.get("hit_audio_rekey", False)),
+                               "cells": {w: f"{c[0]},{c[1]}" for w, c in build.plan.cells.items()},
+                               "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in build.plan.groups.items()},
+                               "shared": list(build.plan.shared),
                                "material": list(_ha.MATERIAL_ROLES)}
         # The victim node needs the match's dual-emitter shapes to collapse the two words of
         # one trigger for accuracy. Keep the wire cell and magnitudes together; a shared cell
         # is still safe because the magnitude pair distinguishes the dual weapon.
         dual_emitters = []
-        for wid in ctx.plan.cells:
+        for wid in build.plan.cells:
             row = self.catalog._row(wid)
             headset = (row.get("wire") or {}).get("headset_dmg")
             if headset is None:
                 continue
             frame = self.catalog.resolve(wid, 0).split(",")
-            cell = ctx.plan.cell_for(wid) or self._weapon_cell(wid)
+            cell = build.plan.cell_for(wid) or self._weapon_cell(wid)
             if cell is None:
                 continue
             dual_emitters.append({"proto": int(cell[0] or 0), "subtype": int(cell[1] or 0),
@@ -2791,10 +2796,9 @@ class Compiler:
             ctx.bundle["dual_emitters"] = dual_emitters
 
     def _build_presentation(self, ctx: _CompileContext) -> None:
-        assert (ctx.bundle is not None and ctx.prof is not None and ctx.frames is not None
-                and ctx.voice_map is not None and ctx.voice_switch is not None
-                and ctx.tid is not None and ctx.night is not None and ctx.gc is not None
-                and ctx.ffa is not None and "cue_pools" in ctx.bundle)
+        build = ctx.build
+        assert (ctx.bundle is not None and ctx.frames is not None and ctx.voice_map is not None
+                and ctx.voice_switch is not None and "cue_pools" in ctx.bundle)
         # A15.3: the pains are OURS -- the three $PSET pain fields ship empty and the node plays one of these on each
         # $HIR, the pool chosen by damage (proto 13 -> pain_melee; >= pain_long_min -> pain_long; else pain_short).
         if ctx.voice_switch != "off":
@@ -2826,11 +2830,11 @@ class Compiler:
         # live (`frames["poison_tick"]`, already "" when `hud_events` is off -- `cue_frames()`'s own mute check).
         # Review 2026-10-02: a host override of the tick's `sound` wins. The phone prefers a pool over `cues`, so a pool
         # shipped beside an overridden sound would silently play the default bubbles instead.
-        poison_tick_pool = ctx.prof["events"]["poison_tick"].get("pool")
-        if poison_tick_pool and ctx.prof["events"]["poison_tick"].get("sound") != poison_tick_pool[0]:
+        poison_tick_pool = build.prof["events"]["poison_tick"].get("pool")
+        if poison_tick_pool and build.prof["events"]["poison_tick"].get("sound") != poison_tick_pool[0]:
             poison_tick_pool = None
         if poison_tick_pool and ctx.frames.get("poison_tick"):
-            poison_tick_slot = ctx.prof["events"]["poison_tick"].get("slot")
+            poison_tick_slot = build.prof["events"]["poison_tick"].get("slot")
             ctx.bundle["cue_pools"]["poison_tick"] = [fr for i in poison_tick_pool
                                                    if (fr := _pres.play_frame(i, ctx.voice_map, poison_tick_slot)) is not None]
         low = ctx.frames.pop("low_health", None)
@@ -2839,10 +2843,10 @@ class Compiler:
         # hurt loop once at critical health (Tony, 2026-09-06 bench: "good for when the player is at
         # critical health"); Callsign's byte-identical frame ($PLAY,VA8B,3,6) stays only if the profile
         # was explicitly reverted to that sound.
-        if low is not None and ctx.prof["events"]["low_health"].get("sound") != "VA8B":
+        if low is not None and build.prof["events"]["low_health"].get("sound") != "VA8B":
             ctx.bundle["cues"]["hurt"] = low
-        ctx.bundle["leds"] = _pres.led_table(ctx.prof, ctx.tid, ctx.night, ctx.gc.leds, ctx.ffa)
-        if not ctx.prof.get("headset_team", True):
+        ctx.bundle["leds"] = _pres.led_table(build.prof, build.tid, build.night, build.gc.leds, build.ffa)
+        if not build.prof.get("headset_team", True):
             ctx.bundle["cues"]["team_led"] = ""
             ctx.bundle["spawn"] = [f for f in ctx.bundle["spawn"] if not f.startswith("$HLED,")]
             ctx.bundle["revive"] = [f for f in ctx.bundle["revive"] if not f.startswith("$HLED,")]
@@ -2851,24 +2855,23 @@ class Compiler:
         # team (`pg.display_colour`, F35/finding #11 -- not the raw tid; green stays green on the wire
         # but paints purple). Filtered to valid team tids (F35: 0-3, `pg.TEAM_TIDS`) -- an out-of-range
         # tid is already rejected earlier (state.py / `validate()`), this is belt-and-braces.
-        team_cols = {int(t["tid"]): pg.display_colour(int(t["tid"])) for t in ctx.teams if int(t.get("tid", 99)) in pg.TEAM_TIDS}
-        ctx.bundle["headset"] = _pres.headset_frames(ctx.prof, ctx.tid, ctx.gc.leds, team_cols, ctx.ffa, ctx.night)
-        gun_tbl = _pres.gun_frames(ctx.prof, ctx.tid, ctx.night, ctx.gc.leds, ctx.ffa, ctx.gc.hp, ctx.gc.armor, ctx.gc.shield)
+        team_cols = {int(t["tid"]): pg.display_colour(int(t["tid"])) for t in build.teams if int(t.get("tid", 99)) in pg.TEAM_TIDS}
+        ctx.bundle["headset"] = _pres.headset_frames(build.prof, build.tid, build.gc.leds, team_cols, build.ffa, build.night)
+        gun_tbl = _pres.gun_frames(build.prof, build.tid, build.night, build.gc.leds, build.ffa, build.gc.hp, build.gc.armor, build.gc.shield)
         if gun_tbl:
             ctx.bundle["gun"] = gun_tbl            # A11.7: absent for native (older nodes see nothing new)
-        ctx.bundle["presentation"] = _pres.summary(ctx.config.get("presentation") or _pres.default_for(ctx.config.get("mode")))
+        ctx.bundle["presentation"] = _pres.summary(build.config.get("presentation") or _pres.default_for(build.config.get("mode")))
 
     def _build_infection(self, ctx: _CompileContext) -> None:
-        assert (ctx.tid is not None and ctx.ammo is not None and ctx.play_hled is not None
-                and ctx.prof is not None and ctx.night is not None and ctx.gc is not None
-                and ctx.ffa is not None and ctx.bundle is not None)
-        if ctx.config["mode"] == "infection":
+        build = ctx.build
+        assert ctx.ammo is not None and ctx.play_hled is not None and ctx.bundle is not None
+        if build.config["mode"] == "infection":
             # move THIS gun to each other team's $TID on death, then re-arm (node emits team_change)
             flip: dict[str, list[str]] = {}
             take: dict[str, list[str]] = {}
-            for t in ctx.teams:
-                if int(t["tid"]) != ctx.tid:
-                    # F206: the burst ends on the NEW team's `$TID` (see `_revive_for`), and the node
+            for t in build.teams:
+                if int(t["tid"]) != build.tid:
+                    # F206: the burst ends on the NEW team's `$TID` (see `_revive_frames`), and the node
                     # uses this same list for every later revive of a turned player (`engine._revive`).
                     flip[str(t["tid"])] = [f"$TID,{t['tid']},*"] + _revive_frames(int(t["tid"]), ctx.ammo, ctx.play_hled)
                     # F86: `gun.take` (blank + rest) is compiled for the ARMING team, so after a flip the
@@ -2876,7 +2879,7 @@ class Compiler:
                     # painted the OLD team's colour back onto a gun the firmware had just moved. The node
                     # picks the take for the team it is on now; this is that table. (The headset is the
                     # `infected` ROLE's job, A16 §3.3, and needs nothing here.)
-                    other = _pres.gun_frames(ctx.prof, int(t["tid"]), ctx.night, ctx.gc.leds, ctx.ffa, ctx.gc.hp, ctx.gc.armor, ctx.gc.shield)
+                    other = _pres.gun_frames(build.prof, int(t["tid"]), build.night, build.gc.leds, build.ffa, build.gc.hp, build.gc.armor, build.gc.shield)
                     if other:
                         take[str(t["tid"])] = other["take"]
             ctx.bundle["team_flip"] = flip
@@ -2884,46 +2887,46 @@ class Compiler:
                 ctx.bundle["team_flip_take"] = take
 
     def _build_respawn_profile(self, ctx: _CompileContext) -> None:
-        assert (ctx.play_hled is not None and ctx.prof is not None and ctx.night is not None
-                and ctx.gc is not None and ctx.tid is not None and ctx.ammo is not None
-                and ctx.bundle is not None)
+        build = ctx.build
+        assert ctx.play_hled is not None and ctx.ammo is not None and ctx.bundle is not None
         # 2026-09-19: the respawn profiles. Built from the same ammo and team repaint as the legacy lists above.
-        hled_tail = ctx.play_hled if ctx.prof.get("headset_team", True) else []
-        protect_ms, trigger_ms, station_ms = respawn_settings(ctx.config.get("respawn"))
-        shield_on = shield_frame(station_ms, ctx.night) if station_ms and ctx.gc.leds else ""
+        hled_tail = ctx.play_hled if build.prof.get("headset_team", True) else []
+        protect_ms, trigger_ms, station_ms = respawn_settings(build.config.get("respawn"))
+        shield_on = shield_frame(station_ms, build.night) if station_ms and build.gc.leds else ""
         rp: RespawnProfile = {
             "protect_ms": protect_ms, "trigger_ms": trigger_ms, "station_protect_ms": station_ms,
             # the T-0 spawn is neither profile: everyone goes live AND hittable at go-live, trigger mapped, no t8
             # (Tony, field 2026-09-19). The node writes the live table at T-3, while every trigger is still held.
-            "spawn": life_frames(ctx.tid, ctx.ammo, hled_tail, False, True, lead=["$PLAYX,0,*"]),
-            "revive": life_frames(ctx.tid, ctx.ammo, hled_tail, protect_ms > 0, False, trigger_lead=True),
-            "revive_station": life_frames(ctx.tid, ctx.ammo, hled_tail, station_ms > 0, True, shield_on),
+            "spawn": life_frames(build.tid, ctx.ammo, hled_tail, False, True, lead=["$PLAYX,0,*"]),
+            "revive": life_frames(build.tid, ctx.ammo, hled_tail, protect_ms > 0, False, trigger_lead=True),
+            "revive_station": life_frames(build.tid, ctx.ammo, hled_tail, station_ms > 0, True, shield_on),
             "trigger_live": TRIGGER_LIVE,
             "shield_on": shield_on,
             # the headset's in-play rest: the team repaint when the game paints one, else dark by colour
             "shield_off": (hled_tail[0] if hled_tail else _pres.HEADSET_DARK) if shield_on else "",
         }
-        if ctx.config["mode"] == "infection":
+        if build.config["mode"] == "infection":
             rp["team_flip"] = {str(t["tid"]): [f"$TID,{t['tid']},*"] + life_frames(int(t["tid"]), ctx.ammo, hled_tail, protect_ms > 0, False, trigger_lead=True)
-                               for t in ctx.teams if int(t["tid"]) != ctx.tid}
+                               for t in build.teams if int(t["tid"]) != build.tid}
         assert_respawn_profile(rp)
         assert_team_byte_consistent(rp["spawn"] + rp["revive"] + rp["revive_station"])
         ctx.bundle["respawn_profile"] = rp
         assert_rearms_every_life(ctx.bundle)   # F121: whichever carrier is active, every life gets the real table back
 
     def _finish_bundle(self, ctx: _CompileContext) -> None:
-        assert ctx.bundle is not None and ctx.plan is not None
+        build = ctx.build
+        assert ctx.bundle is not None
         # S50 build 4: {perk_id, mag/reserve/reload_ms/swap_ms/max_armor/max_shield: {base,resolved}},
         # absent when this player carries no perk — persisted on the bundle (not a one-shot message)
         # so a phone/console icon survives an app restart. `perk_effects_resolved()` is also what
         # `State.snapshot()` reads for the console, so the two can never disagree.
-        pe = self.perk_effects_resolved(ctx.config, ctx.player)
+        pe = self.perk_effects_resolved(build.config, build.player)
         if pe:
             ctx.bundle["perk_effects"] = pe
         # S16: the poison tick numbers for every damage-over-time weapon in THIS game, keyed by IR protocol. It is
         # game-wide (the victim's node needs the SHOOTER's numbers), so it comes off the match plan, not this
         # player's loadout. Absent when the game carries no such weapon, so an older bundle reads the same.
-        dot = self.dot_table(ctx.plan)
+        dot = self.dot_table(build.plan)
         if dot:
             ctx.bundle["dot"] = dot
         assert_no_denied_frames(ctx.bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses

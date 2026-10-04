@@ -100,6 +100,15 @@ def _cases():
     # polish round 2: a RE-KEYED hit plan (hit_audio_rekey on), the $WEAP cell rewrite no other case reaches
     cfg = _config(); cfg["hit_audio_rekey"] = True
     yield "rekeyed_hit_plan", cfg, [PLAYER], {}, {"plan": "rekey"}
+    p = copy.deepcopy(PLAYER); p["loadout"]["weapons"][0]["weapon_id"] = None
+    yield "primary_weapon_id_none", _config(), [p], {}
+    cfg = _config(); cfg["stun"] = "malformed"
+    yield "malformed_stun_config", cfg, [PLAYER], {}
+    cfg = _config(); cfg["stun"] = {"enabled": True}; cfg["hit_audio_rekey"] = True
+    yield "stun_hit_audio_rekey_conflict", cfg, [PLAYER], {}
+    cfg = _config(); cfg["stun"] = {"enabled": True}
+    cfg["scoring"]["frag_limit"] = 25; cfg["hit_audio_class"] = True
+    yield "stun_frag_limit_hit_audio_class", cfg, [PLAYER], {}
 
 
 def _inputs(case):
