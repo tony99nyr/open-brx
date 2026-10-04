@@ -562,7 +562,7 @@ Hill Lost, `VB0O` Hill Contested and the `U100` possession tick — are played b
 Two full designs that build on §5d and ship nothing today: **5e roaming hills**, the opt-in LAN-coupled
 variant and a deliberate exception to A4.8 (F95), and **5f TERRITORIES**, multi-point scoring where each
 station keeps its own books and needs no LAN at all (F98). Both live in
-[`../utility-roadmap.md`](../archive/utility-roadmap.md) §8, under the same 5e / 5f numbers. Promote them back here as
+the archived utility-roadmap §8, under the same 5e / 5f numbers. Promote them back here as
 they are built.
 
 ## 5g. A NON-PHONE utility node: the M5StickS3 armed over Wi-Fi (H8)
@@ -728,7 +728,7 @@ in the operator's voice.** Nothing here asks for that to change.
 
 ### 5g.8 What `held` is FOR: roaming hills, and what the firmware must not preclude
 
-`held` exists to make **§5e roaming hills** (`../utility-roadmap.md` §8, **F95**) possible on a Stick. That
+`held` exists to make **§5e roaming hills** (the archived utility-roadmap §8, **F95**) possible on a Stick. That
 design is complete and unbuilt; nothing below asks to build it now. It is written here because these are the
 assumptions that are cheap to honour while writing the client and expensive to retrofit.
 
