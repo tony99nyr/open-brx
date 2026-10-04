@@ -1088,3 +1088,9 @@ def test_type_token_migration_keeps_sidearms_out_of_primary_and_leaves_perks_alo
     assert sidearms <= set(rows["Old Close Secondary"]["value"]["only_ids"])
     # the perks piece is not rewritten into weapon ids (the token stays, and so the piece reads invalid)
     assert rows["Old Perks"]["value"]["only_ids"] == ["close"]
+
+
+def test_round2_a_token_that_expands_to_nothing_is_kept_not_widened():
+    """A PRIMARY piece holding only ["sidearm"] must not migrate to an empty (unrestricted) list."""
+    from brx_mcp.mc.pieces import _migrate_type_tokens
+    assert _migrate_type_tokens("primary", {"only_ids": ["sidearm"]})["only_ids"] == ["sidearm"]

@@ -215,7 +215,12 @@ def _migrate_type_tokens(kind: str, value: object) -> object:
     slots only: a perks piece holds perk ids, never weapon type words (overnight review L3)."""
     if kind not in ("primary", "secondary") or not isinstance(value, dict) or "only_ids" not in value:
         return value
-    return {**value, "only_ids": _expand_type_tokens(value["only_ids"], kind)}
+    expanded = _expand_type_tokens(value["only_ids"], kind)
+    # Round 2: a token that expands to nothing for this kind (["sidearm"] in a PRIMARY piece) must not become an empty
+    # list, which reads as unrestricted; keep the original so the piece shows as invalid instead of silently widening.
+    if isinstance(expanded, list) and not expanded and value["only_ids"]:
+        return value
+    return {**value, "only_ids": expanded}
 
 
 def _check_slot(kind: PieceKind, v: object) -> dict:
