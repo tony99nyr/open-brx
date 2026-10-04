@@ -1,7 +1,7 @@
 {
   "name": "reconcile-second-drop",
   "why": "S7.1: a second drop and relink INSIDE the window opens no second reconcile (one disarm, one end on the first window's clock), and an operator RESYNC inside it is refused. Then a drop that outlasts the window: the window still ends on the clock with the link down, and the next relink reconciles afresh.",
-  "source": "app/src/engine.js `_beginReconcile` guard; app/test/operator.test.mjs refusal 'a relink reconcile is running'",
+  "source": "app/src/reconcile.js `begin` (its re-entry guard); app/test/operator.test.mjs refusal 'a relink reconcile is running'",
   "runners": ["engine"],
   "setup": {
     "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4}],"perks":[]},

@@ -1897,12 +1897,14 @@ KNOWN_UNMIRRORED = {
     # just after a `_spawn`/`_revive` write) against a shooter `latch` the stage has no equivalent of --
     # the bench drives spawn/revive and pool frames deterministically by hand and never races a real echo.
     "_deathPending",
-    "_beginReconcile", "_endReconcile", "_reportPossession", "feedback", "alert", "control", "_cue",
-    # Engine split (a), 2026-10-04: every `rc.` name is app/src/reconcile.js (`Reconcile`), the relink reconcile's window
-    # and the questions the engine asks it. ONE reason for the group: GunStage has no reconcile at all (its BLE drop only
+    "_reportPossession", "feedback", "alert", "control", "_cue",
+    # Engine split (a), 2026-10-04: every `rc.` name is app/src/reconcile.js (`Reconcile`), the relink reconcile (it was
+    # `_beginReconcile`/`_endReconcile` here): its window, begin, end and clock, the F416 spawn-check hold, and the
+    # questions the engine asks it. ONE reason for the group: GunStage has no reconcile at all (its BLE drop only
     # marks the link down until the next write reconnects; stage.py "no reconcile-on-drop re-arm"), so it has no window
     # to ask. `reconciling` is the Engine's own view of the same window (a test stages one through its setter).
     "reconciling", "rc.window", "rc.clear", "rc.active", "rc.ownsRearm", "rc.infersNothing", "rc.disarmed", "rc.outOfBand",
+    "rc.begin", "rc.end", "rc.tick", "rc.holdSpawnCheck",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
@@ -1936,7 +1938,7 @@ KNOWN_UNMIRRORED = {
     # station's advert (its median RSSI and `taker` byte) nor the match clock's spawn schedule, and the gun-facing writes
     # are still the part to port, as a hand-driven stage button, once Sitting A has proved the spare slot. The engine's
     # side is now only calls into `this.pu` from methods already pinned or mirrored here (`tick`, `_revive`, `_death`,
-    # `_endReconcile`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
+    # `rc.end`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
     # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a

@@ -1,7 +1,7 @@
 {
   "name": "reconcile-gun-dead",
   "why": "F264/S7.1: the gun died while the link was down. The reconcile's probe asks, the gun answers $HP,0, and the node books a desync death at once; the window ends with no re-arm, and the timed respawn follows the window.",
-  "source": "app/test/cure.test.mjs F264 relink probe; app/src/engine.js `_beginReconcile` (`_askGun`)",
+  "source": "app/test/cure.test.mjs F264 relink probe; app/src/reconcile.js `begin` (the `askGun` probe)",
   "runners": ["engine"],
   "setup": {
     "delay": "timers",
