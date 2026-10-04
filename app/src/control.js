@@ -203,6 +203,9 @@ export class ControlPoint {
       if (this.lead === holder) {                           // BUILD, up to 100
         const step = Math.min(work, 100 - this.progress);
         this.progress += step; work -= step;
+        // F456: inside the capture tolerance IS 100. Otherwise a step that lands a hair under 100 captured the point and
+        // still read `dir` rising (it asks progress < 100) for a tick: the screen showed held + rising, the advert the bit.
+        if (this.progress >= 100 - 1e-9) this.progress = 100;
         if (this.progress >= 100 - 1e-9 && this.owner === NEUTRAL) {
           this.owner = holder; this.capturing = null;
           events.push({ type: 'captured', team: this.owner, from: this.lastOwner });
@@ -213,6 +216,7 @@ export class ControlPoint {
       }
       const step = Math.min(work, this.progress);           // DRAIN, down to 0
       this.progress -= step; work -= step;
+      if (this.progress <= 1e-9) this.progress = 0;           // F456: the same at the bottom (`dir` asks progress > 0)
       if (this.progress > 1e-9) break;
       if (this.owner !== NEUTRAL) {
         // Phase one is over: whoever held it has LOST it, and the point is nobody's.
