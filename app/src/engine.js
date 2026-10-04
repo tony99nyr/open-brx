@@ -4260,7 +4260,7 @@ export class Engine {
     const revive = keepAmmo ? revive0.map(f => { const t = f.startsWith('$AMMO,') ? f.split(',') : null; const k = t && keepAmmo[+t[1]]; return k ? `$AMMO,${t[1]},${k[0]},${k[1]},${t.slice(4).join(',')}` : f; }) : revive0;
     // F438 r4: a self-hit revive keeps a held heavy (the node still tracks it), its charges in its own `$AMMO` row (as `_puRearmRows`), never the zero.
     const keep = selfHit ? this._puHeld : null;
-    const burst = keep ? revive.map(f => f.startsWith(`$AMMO,${keep.slot},`) ? `$AMMO,${keep.slot},${keep.left},${PU_RESERVE},1,*` : f) : revive;
+    const burst = keep ? burstWithHeld(revive, keep) : revive;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
     // F438: the revive leaves full health and armour and the fill's shield; the drain takes back the difference, per pool
