@@ -1063,3 +1063,34 @@ def test_low_piece_id_length_cap_in_pick():
         assert e.status == 400
     ok = G.merge_piece_ids({}, {"life": "x" * 64})   # exactly 64 is the shape limit, not a real id either way
     assert ok["life"] == "x" * 64
+
+
+def test_type_token_migration_keeps_sidearms_out_of_primary_and_leaves_perks_alone():
+    """Overnight review L3 (2026-10-03): `close` is on the sidearms too (usp, deagle carry `sidearm` AND
+    `close`), so the old expansion put them into a PRIMARY piece -- a slot that never offers a sidearm.
+    A perks piece holds perk ids, and a perk id that happens to spell a type word must not turn into
+    weapon ids: the migration is for the weapon slots only."""
+    _, path = _store()
+    path.write_text(json.dumps({"v": 1, "pieces": [
+        {"piece_id": "z1", "kind": "primary", "name": "Old Close",
+         "value": {"choice": "player", "only_ids": ["close"]}},
+        {"piece_id": "z2", "kind": "secondary", "name": "Old Close Secondary",
+         "value": {"choice": "player", "kinds": ["weapon"], "only_ids": ["close"]}},
+        {"piece_id": "z3", "kind": "perks", "name": "Old Perks",
+         "value": {"choice": "player", "only_ids": ["close"]}},
+    ]}))
+    rows = {r["name"]: r for r in PieceStore(path).list()}
+    sidearms = {w["weapon_id"] for w in WeaponCatalog().all() if "sidearm" in (w.get("types") or [])}
+    assert sidearms, "the catalogue has no sidearm: this test proves nothing"
+    primary = set(rows["Old Close"]["value"]["only_ids"])
+    assert primary and not primary & sidearms, primary
+    # SECONDARY does carry sidearms, so they stay in its expansion
+    assert sidearms <= set(rows["Old Close Secondary"]["value"]["only_ids"])
+    # the perks piece is not rewritten into weapon ids (the token stays, and so the piece reads invalid)
+    assert rows["Old Perks"]["value"]["only_ids"] == ["close"]
+
+
+def test_round2_a_token_that_expands_to_nothing_is_kept_not_widened():
+    """A PRIMARY piece holding only ["sidearm"] must not migrate to an empty (unrestricted) list."""
+    from brx_mcp.mc.pieces import _migrate_type_tokens
+    assert _migrate_type_tokens("primary", {"only_ids": ["sidearm"]})["only_ids"] == ["sidearm"]
