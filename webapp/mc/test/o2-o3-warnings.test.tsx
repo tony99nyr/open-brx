@@ -2,7 +2,6 @@
 import { describe, expect, it } from 'vitest';
 import type { State } from '../src/api/types';
 import { Armory } from '../src/screens/Armory';
-import { StoreCtx } from '../src/store';
 import { demo, fixtureApi, mountScreen } from './harness';
 
 describe('O2 · armory_corrupt banner', () => {
