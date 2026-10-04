@@ -225,7 +225,7 @@ def _set_profile_field(profile: Profile, key: str, value: object) -> None:
 
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
-PLAY_GAP_MS = 150               # F347: keep successive `$PLAY` writes at least 150 ms apart.
+PLAY_GAP_S = 0.150             # F347 (announcer.js PLAY_GAP_MS): keep successive `$PLAY` writes at least 150 ms apart.
 QUERY = "$QUERY,*"             # F264 (engine.js QUERY): one 8-byte ask -- see `_ask_gun`
 # F264 (engine.js PROBE_LIFE): a dead gun ignores $LIFE unless token 1 is 0, so a bare $LIFE,0,0,0,* asks
 # a SILENT dead gun to speak without healing or harming anything. THE HAZARD: a non-zero token 1 is the
@@ -1301,13 +1301,13 @@ class GunStage:
             previous_at = self._last_play_at
             previous_sent_at = self._last_play_sent_at
             if previous_at is not None:
-                elapsed_ms = (now - (previous_sent_at if previous_sent_at is not None else previous_at)) * 1000
-                if elapsed_ms < PLAY_GAP_MS:
+                elapsed_s = now - (previous_sent_at if previous_sent_at is not None else previous_at)
+                if elapsed_s < PLAY_GAP_S:
                     if self._is_exempt_filler(play_frame):
-                        self._log(f"dropped filler inside {PLAY_GAP_MS} ms play gap", "info", why)
+                        self._log(f"dropped filler inside {round(PLAY_GAP_S * 1000)} ms play gap", "info", why)
                         self._play_lock.release()
                         return
-                    planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_MS / 1000
+                    planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_S
                     cancel_event = self._play_cancel_event
                     sleep_task = asyncio.ensure_future(self.sleep(max(0, planned_at - self.now())))
                     cancel_task = asyncio.create_task(cancel_event.wait())
