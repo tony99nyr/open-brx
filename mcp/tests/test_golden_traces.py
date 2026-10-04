@@ -36,7 +36,7 @@ import re
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.stage.stage import PROBE_LIFE, GunStage
-from test_stage import _Clock, _nosleep, settle
+from _stage import _Clock, _nosleep, settle
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TRACE_DIR = ROOT / "app" / "test" / "fixtures" / "traces"

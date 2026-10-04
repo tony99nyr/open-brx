@@ -21,7 +21,7 @@ import random
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage
-from test_stage import _Clock, _nosleep, settle
+from _stage import _Clock, _nosleep, settle
 
 GUN = "FA:KE:00:00:00:01"
 # The same game-wide `dot` table test_stage_poison.py uses: IR protocol 11 (the Toxin Rifle) ticks 4

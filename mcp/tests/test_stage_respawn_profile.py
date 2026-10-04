@@ -15,7 +15,7 @@ import asyncio
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.stage.stage import GunStage
-from test_stage import LegacyCompiler, _Clock, _nosleep, settle, tx
+from _stage import _Clock, _nosleep, LegacyCompiler, settle, tx
 
 GUN = "FA:KE:00:00:00:01"
 ON, OFF = "$TMP,,,,,,,,-100,,,,*", "$TMP,,,,,,,,0,,,,*"

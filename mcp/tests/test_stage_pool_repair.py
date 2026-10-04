@@ -17,7 +17,7 @@ import asyncio
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage, PARSER_RESET
-from test_stage import _Clock, _nosleep, settle
+from _stage import _Clock, _nosleep, settle
 
 GUN = "FA:KE:00:00:00:01"
 
