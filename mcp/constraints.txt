@@ -6,12 +6,12 @@
 # NOT pinned, because a Linux freeze cannot list them: the platform BLE backends (pyobjc-* on macOS,
 # winrt-* on Windows, dbus-fast on Linux). They stay bounded only by bleak's own requirements.
 #
-# bleak is a range, not a pin: bleak 3.x supports Windows 11 (build 22000+) only, and 2.x still
-# supports Windows 10. pyproject allows >=0.22; `<3` keeps Windows 10 BLE working. The dev venv runs
-# 3.0.2 today, so the first reinstall on it moves bleak down to the newest 2.x: run the suites then.
-# The other pins (mcp, websockets, starlette, uvicorn, zeroconf and the packages above) are pure
+# bleak is pinned to the version every machine of this project runs and has been tested with: 3.0.2 (the
+# Windows instrument venv and the WSL venv, 2026-10-04). bleak 3.x needs Windows 11 (build 22000+); the
+# Windows box is build 26200 and the match-day machine is a MacBook. Windows 10 is not supported.
+# The other pins (mcp, websockets, starlette, uvicorn, zeroconf and the packages below) are pure
 # Python or ship wheels for all three platforms, with no platform floor.
-bleak>=0.22,<3
+bleak==3.0.2
 annotated-types==0.8.0
 anyio==4.14.2
 attrs==26.1.0

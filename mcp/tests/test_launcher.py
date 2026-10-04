@@ -110,7 +110,7 @@ def test_constraints_pin_every_runtime_dependency():
         if line.strip() and not line.startswith("#"):
             assert re.fullmatch(r"[A-Za-z0-9_.-]+(==[0-9][A-Za-z0-9.]*|>=[0-9.]+,<[0-9.]+)", line.strip()), line
             pins[re.split(r"[=<>]", line.strip())[0].lower()] = line.strip()
-    assert pins["bleak"] == "bleak>=0.22,<3", "bleak 3.x drops Windows 10 (see the comment in constraints.txt)"
+    assert pins["bleak"] == "bleak==3.0.2", "bleak stays on the tested 3.0.2 (Windows 11 only; see the comment in constraints.txt)"
     for dep in ("mcp", "websockets", "starlette", "uvicorn", "zeroconf", "pydantic", "pydantic-core", "anyio", "h11"):
         assert "==" in pins.get(dep, ""), f"{dep} is not pinned exactly"
 
