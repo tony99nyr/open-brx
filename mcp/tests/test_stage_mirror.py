@@ -1774,6 +1774,8 @@ _AMMO_PAIRS = {
     # the counts per slot and the HUD's ammo block
     "am.liveAmmo": "_live_ammo", "am.spawnAmmo": "_spawn_ammo", "am.ammoBySlot": "_ammo_by_slot",
     "am.publish": "_publish_ammo", "am.showSlot": "_show_slot_ammo",
+    # heat: the mechanic (the display, `am.overheatOnHud`, is pinned below)
+    "am.heatBlocksFire": "_heat_blocks_fire",
 }
 
 
@@ -1893,9 +1895,12 @@ KNOWN_UNMIRRORED = {
     "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
-    # Maint review 2026-09-17 renamed the pair so the names say which is which: `_heatBlocksFire` is the
-    # mechanic (mirrored), `_overheatOnHud` is the display (pinned here).
-    "_heatLockFrame", "_heatLockPress", "_overheatOnHud",
+    # Maint review 2026-09-17 renamed the pair so the names say which is which: `heatBlocksFire` is the
+    # mechanic (mirrored), `overheatOnHud` is the display (pinned here). Both live in app/src/ammo.js now.
+    "am.heatLockFrame", "am.heatLockPress", "am.overheatOnHud",
+    # Engine split (b): the heat readings' small doors. The stage records heat inline in `_on_ammo` and clears it inline in
+    # `_after_spawn`; `heatOf` and `heatedEver` are the HUD's heat bar (`state().heat`, `heatEverSeen`), display only.
+    "am.noteHeat", "am.forgetHeat", "am.heatOf", "am.heatedEver",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # F202: local picker/storage operation; GunStage has no phone-owned gun binding to clear.

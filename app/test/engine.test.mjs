@@ -1454,7 +1454,7 @@ test('review 2026-09-17: heat is recorded even while the gun is STUNNED', () => 
   assert.equal(h.eng.state().heat, 55);
   h.eng.stunned = { at: h.eng.now(), until: h.eng.now() + 5000, ammo: {} };
   h.frame('$ALCD,32,0,0,0,108,*');   // the gun's own disarm echo, still carrying the real heat token
-  assert.equal(h.eng.heatBySlot[0], 108, 'heat updates even though this is a stunned-window $ALCD');
+  assert.equal(h.eng.am.heatBySlot[0], 108, 'heat updates even though this is a stunned-window $ALCD');
   assert.equal(h.eng.ammo, 32, 'ammo is untouched while stunned (F15) -- only heat is recorded early');
 });
 
@@ -4173,11 +4173,11 @@ test('S42/F229: never during an overheat lockout -- the guard reads the gun\'s o
   // Energy Rifle stops firing at heat 99, does not cool on its own, and vents about 35 per lever pull.
   const h = degraded();
   h.frame(`$ALCD,${h.mag},20,0,215,99,*`);                   // the gun reports itself locked out
-  assert.equal(h.eng._heatBlocksFire(), true, 'heat 99 must read as an overheat lockout');
+  assert.equal(h.eng.am.heatBlocksFire(), true, 'heat 99 must read as an overheat lockout');
   settle(h);
   assert.equal(weaps(h).length, 0, 'a write landed WHILE OVERHEATED -- the guard did not hold');
   h.frame(`$ALCD,${h.mag},20,0,215,64,*`);                   // one lever pull vents about 35: 99 -> 64
-  assert.equal(h.eng._heatBlocksFire(), false);
+  assert.equal(h.eng.am.heatBlocksFire(), false);
   h.eng.tick();
   assert.equal(weaps(h).length, 1, 'the write must go out once the gun has vented -- the value was held, not lost');
 });
@@ -4293,12 +4293,12 @@ test('S42 x pl4: no accuracy write during an overheat lockout, and the writer re
   h.writes.length = 0;
   for (let i = 0; i < DEGRADE_AFTER - 1; i++) { h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,0,*`); }
   h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,120,*`);   // the threshold round, with the gun already locked out (heat past the lockout line)
-  assert.equal(h.eng._heatBlocksFire(), true, 'pre-condition: the node must read the lockout');
+  assert.equal(h.eng.am.heatBlocksFire(), true, 'pre-condition: the node must read the lockout');
   h.adv(ACC_HOLD_MS + ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
   assert.equal(weaps(h).length, 0,
     'an accuracy write landed during an overheat lockout -- a locked gun cannot fire, so the write is a $WEAP re-push for nothing');
   h.frame(`$ALCD,${h.mag},100,0,215,4,*`);                 // vented/cooled: heat back under the line
-  assert.equal(h.eng._heatBlocksFire(), false);
+  assert.equal(h.eng.am.heatBlocksFire(), false);
   h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
   assert.equal(weaps(h).length, 1, 'the held value must go out once the lockout clears');
 });
@@ -4375,7 +4375,7 @@ test('F229: a trigger press keeps OVERHEAT up while the player is still trying, 
   // The lever vents about 35 heat: the gun answers with a reading under the line, and OVERHEAT goes at once.
   h.frame('$ALCD,269,100,0,600,64,*');
   assert.equal(h.eng.state().overheatShown, false, 'a vent must clear OVERHEAT immediately, not OVERHEAT_SHOWN_MS later');
-  assert.equal(h.eng._heatBlocksFire(), false, 'and the lockout itself is over: 64 is under the line');
+  assert.equal(h.eng.am.heatBlocksFire(), false, 'and the lockout itself is over: 64 is under the line');
   assert.equal(h.eng.state().heat, 64, 'the bar follows the vent down');
 });
 

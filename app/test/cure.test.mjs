@@ -355,7 +355,7 @@ test('F264: a verdict retires the moment the gun reports on its own -- the board
 // ---------------------------------------------------------------- the stand-downs
 
 for (const [name, apply] of [
-  ['overheat', h => { h.eng.heatBySlot[0] = HEAT_LOCKOUT + 9; h.eng._heatAt[0] = h.eng.now(); }],
+  ['overheat', h => { h.eng.am.heatBySlot[0] = HEAT_LOCKOUT + 9; h.eng.am.heatAt[0] = h.eng.now(); }],
   ['stun', h => { h.eng.stunned = { at: h.eng.now(), until: h.eng.now() + 10000, ammo: { 0: [29, 90] } }; }],
   ['reload', h => { h.eng.reloading = { at: h.eng.now(), slot: 0, ms: 1400 }; }],
   ['switching', h => { h.eng.switching = { at: h.eng.now(), from: 0 }; }],

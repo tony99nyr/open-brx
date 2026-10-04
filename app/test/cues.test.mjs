@@ -142,7 +142,7 @@ test('a slot the gun has never reported a reserve for is never nagged', () => {
 test('an overheated gun is silent -- the magazine is not what stopped the round', () => {
   const h = harness();
   h.f('$ALCD,30,100,0,192,0,*').f('$ALCD,0,100,0,192,99,*');   // empty AND heat-locked (HEAT_LOCKOUT)
-  assert.equal(h.eng._heatBlocksFire(), true, 'setup: the lockout is on');
+  assert.equal(h.eng.am.heatBlocksFire(), true, 'setup: the lockout is on');
   for (let i = 0; i < 9; i++) h.pull();
   assert.equal(h.count(NAG), 0, 'RELOAD would name the wrong fix while the gun is locked out');
 });
