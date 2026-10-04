@@ -1740,6 +1740,25 @@ _METHOD = _re.compile(r"^  (?:static\s+)?(?:async\s+)?(?:(?:get|set)\s+)?(?:\*\s
 
 _CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Engine\s*\{", _re.M)
 
+# Engine split (a), 2026-10-04: the relink reconcile moved out of the Engine class into `Reconcile`. The scan reads it too,
+# with an `rc.` prefix so a name the two classes share (`tick`, `clear`) cannot hide behind an Engine or stage method.
+_RECONCILE_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "reconcile.js"
+_RECONCILE_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Reconcile\s*\{", _re.M)
+
+
+def _reconcile_methods() -> set[str]:
+    """`rc.<name>` for every `Reconcile` method and accessor in reconcile.js."""
+    text = _RECONCILE_JS.read_text(encoding="utf-8")
+    decl = _RECONCILE_CLASS_DECL.search(text)
+    assert decl, f"no `class Reconcile {{` declaration found in {_RECONCILE_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[0].end()]
+    names = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS - {"constructor"}
+    assert len(names) >= 5, f"only {len(names)} reconcile.js names parsed: the slice is wrong, not the file"
+    return {f"rc.{n}" for n in names}
+
 
 def _engine_methods() -> set[str]:
     """Names declared at one indent level inside the Engine class body -- and ONLY the class body.
@@ -1766,7 +1785,7 @@ def _engine_methods() -> set[str]:
         body = body[:closes[0].end()]      # the FIRST column-0 `}` closes THIS class; a later one is the next declaration
     methods = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
     assert methods, f"no methods found inside the Engine class body in {_ENGINE_JS} -- the slice is wrong, not the file"
-    return methods
+    return methods | _reconcile_methods()
 
 
 def _stage_methods() -> set[str]:
@@ -1879,6 +1898,11 @@ KNOWN_UNMIRRORED = {
     # the bench drives spawn/revive and pool frames deterministically by hand and never races a real echo.
     "_deathPending",
     "_beginReconcile", "_endReconcile", "_reportPossession", "feedback", "alert", "control", "_cue",
+    # Engine split (a), 2026-10-04: every `rc.` name is app/src/reconcile.js (`Reconcile`), the relink reconcile's window
+    # and the questions the engine asks it. ONE reason for the group: GunStage has no reconcile at all (its BLE drop only
+    # marks the link down until the next write reconnects; stage.py "no reconcile-on-drop re-arm"), so it has no window
+    # to ask. `reconciling` is the Engine's own view of the same window (a test stages one through its setter).
+    "reconciling", "rc.window", "rc.clear", "rc.active", "rc.ownsRearm", "rc.infersNothing", "rc.disarmed", "rc.outOfBand",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
