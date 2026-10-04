@@ -195,17 +195,20 @@ test('F139 guard: app.js sweeps over ws:// from discover.js, never an http fetch
   const i = src.indexOf('async function sweepForMc(');
   assert.ok(i > 0, 'sweepForMc is gone from app.js — FIX this guard, do not delete it');
   const body = src.slice(i, src.indexOf('\n}', i));
-  assert.doesNotMatch(body, /fetch\(/, 'an http fetch from the https origin is blocked as Mixed Content on Android — every request, every time');
-  assert.doesNotMatch(body, /8765/, 'the operator HTTP port is not reachable from the app at all');
+  const link = readFileSync(new URL('../src/transport/mclink.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(link, /fetch\(/, 'an http fetch from the https origin is blocked as Mixed Content on Android');
+  assert.doesNotMatch(link, /8765/, 'the operator HTTP port is not reachable from the app at all');
+  assert.match(body, /joinUrl: currentJoinUrl/, 'the subnet comes from THIS run\'s join');
   assert.doesNotMatch(body, /settings\.mcUrl\s*\|\||joinUrl:\s*settings\.mcUrl/, 'a remembered address must never pick the subnet');
-  assert.match(body, /sweepPlan\(\{[^}]*joinUrl:\s*currentJoinUrl/, 'the subnet comes from THIS run\'s join');
-  assert.match(body, /sweepSubnetsForMc\(\{[^\n]*wsFactory/, 'the probe uses the shared WebSocket factory');
+  assert.doesNotMatch(link, /mcUrl/, 'the controller never reads a remembered address to plan the sweep');
+  assert.match(link, /sweepPlan\(\{ localIp, joinUrl \}\)/);
+  assert.match(link, /await sweep\(\{ \.\.\.plan, wsFactory, shouldStop, isPaused,/);
   assert.match(src, /const wsFactory = makeWsFactory\(\)/, 'the factory selects the native socket on Android');
   // security (review pass 1): a websocket upgrade is all a squatter on the node port has to answer, and
   // the hello that follows carries this node's takeover key. A hit is a suggestion the player taps.
   assert.doesNotMatch(body, /connectMc\(/, 'the sweep must NEVER dial its own hit');
-  assert.match(body, /suggestMc\(found, 'sweep'\)/, 'it hands the hit to suggestMc (a JOIN row, or an A60 proof dial)');
-  assert.match(src, /import \{ sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc \} from '\.\/transport\/discover\.js'/);
+  assert.match(body, /onFound: suggestMc/, 'it hands the hit to suggestMc (a JOIN row, or an A60 proof dial)');
+  assert.match(link, /import \{ sweepPlan, localIpFrom, sweepForMc \} from '\.\/discover\.js'/);
 });
 
 test('office test 2026-09-19 guard: the sweep is paused for the whole gun connect (onPick\'s `picking`)', () => {
@@ -252,30 +255,30 @@ test('F153c guard: ONE coalesced entry point for the network-came-back signal', 
 
 test('security guard: a SUGGESTED address persists only once it binds us; a USER-PROVIDED one persists at the dial', () => {
   const src = readFileSync(APP_JS, 'utf8');
+  const link = readFileSync(new URL('../src/transport/mclink.js', import.meta.url), 'utf8');
   const writes = [...src.matchAll(/settings\.mcUrl\s*=\s*[^=]/g)];
   // A60 (F203 revised): a remembered url that misses its first welcome is NOT cleared any more; the
   // transport keeps redialling it and a sweep runs beside it. So only the two writes are left.
-  assert.equal(writes.length, 2, 'user dial and successful bind; nothing clears a remembered url');
+  assert.equal(writes.length, 1, 'one callback writes the URL; policy controls when it runs');
 
   // 1. the dial-time write is gated on `remember`, which only a user-provided address gets
   const connect = src.indexOf('function connectMc(');
-  const head = src.slice(connect, src.indexOf('lastMcUrl = url;', connect));
-  assert.match(head, /if \(remember\) \{ settings\.mcUrl = url; hud\.mcUrl = url; \}/,
-    'a QR scanned or an address typed while MC is down must still be there on the next launch');
-  assert.equal([...head.matchAll(/settings\.mcUrl\s*=/g)].length, 1);
+  const head = src.slice(connect, src.indexOf('dial.promise', connect));
+  assert.match(head, /mcLink\.dial\(url, \{ remember,/);
+  assert.match(link, /rememberAtDial: .*remember.*remember === true/);
+  assert.match(link, /if \(this\.policy\.rememberAtDial\(options\)\) this\.remember\(url, false\)/);
 
   // 2. ...and the suggestion path passes remember:false, so nothing is written until it binds
   const tap = src.slice(src.indexOf('onJoinDiscovered:'), src.indexOf('\n  },', src.indexOf('onJoinDiscovered:')));
   assert.match(tap, /connectMc\(d\.url, false, \{ trusted: false, user: true \}\)/,
     'an address the user never named: not persisted at the dial, and keyless on the wire');
 
-  // 3. the second write is the bind — which is what finally remembers a suggestion that was right
+  // 3. the bound branch asks the controller to remember a suggestion that was right
   const bound = src.indexOf("if (s === 'bound')");
   const boundEnd = src.indexOf('else if (!assistTimer)', bound);
-  assert.ok(bound > 0 && boundEnd > bound && writes[1].index > bound && writes[1].index < boundEnd,
-    'the second write is in the bound branch');
-  assert.match(src.slice(writes[1].index, writes[1].index + 60), /settings\.mcUrl = transport\.url/,
-    'and it remembers the url that actually bound us, not whatever was dialled');
+  assert.ok(bound > 0 && boundEnd > bound);
+  assert.match(src.slice(bound, boundEnd), /mcLink\.bound\(candidate, candidate\.url, \{\}\)/);
+  assert.match(link, /rememberAtBound: \(\) => true/);
   const catchAt = src.indexOf('/no welcome within/.test(');
   assert.ok(catchAt > 0, 'the first-welcome-timeout branch is gone: FIX this guard, do not delete it');
   const f203 = src.slice(catchAt, src.indexOf('\n', catchAt));

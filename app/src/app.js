@@ -9,10 +9,10 @@ import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
 import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
-import { McAutoJoin, offerText, hostOf, urlKey, namedDialPending } from './transport/autojoin.js';   // A60: join with no tap where it is safe
+import { offerText, hostOf, urlKey } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
-import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
+import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
 import { Presence, encodeUuid, stationView, AdvertGate, advertChangeReason, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
 import { playerClaimAdvert } from './powerup.js';                     // A56: the powerup claim bits on the player advert
@@ -311,15 +311,17 @@ let lastMcUrl = null;
  *  had joined the previous game test. A remembered address says where MC was, never where we are. */
 let currentJoinUrl = null;
 /** A60: every address discovery turned up this run, and which of them already failed a proof. */
-const autoJoin = new McAutoJoin();
-/** A60 polish: the dial the player named last, while it waits for its first welcome. */
-let userDial = /** @type {{t:any}|null} */ (null);
-/** F346 (d): the first-contact dial in flight (an untrusted dial no person started), and the one timer
- *  that asks autojoin.js again when the discovery window closes. */
-let firstContactDial = /** @type {{t:any}|null} */ (null);
+const mcLink = new McLink({ policy: HUD_POLICY, current: () => transport, setCurrent: t => { transport = t; },
+  remember: url => { settings.mcUrl = url; hud.mcUrl = url; },
+  makeTransport: previous => {
+    const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
+    return new Transport({ node: { app_ver: APP_VER, connection_type: previous ? previous.connectionType : null },
+      gun, priorUtility: priorUtilityHandoff(), wsFactory });
+  } });
+const autoJoin = mcLink.autoJoin;
+/** F346 (d): ask the join policy again when its discovery window closes. */
 let firstContactTimer = /** @type {any} */ (null);
 // F346 (c): the window is the transport's armed deadline, which a 4003 reclaim wait extends past 10 s.
-function userDialPending() { return namedDialPending(userDial, transport); }
 function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl = url; }
 /**
  * @param {string} url the LAN join url
@@ -349,34 +351,28 @@ function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl =
  */
 function connectMc(url, remember = true, join = {}) {
   if (!url) return;
-  if (remember) { settings.mcUrl = url; hud.mcUrl = url; }   // the user named this one; a suggestion waits for the bind
   // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
   // discovery-only connect deliberately never writes — so after an auto-discovered join the button
   // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
   // A60 polish: a proof dial never becomes RECONNECT MC's target. RECONNECT dials as a trusted peer, so
   // only an address the player named or one that bound us may be there (the bound branch sets settings.mcUrl).
   if (join.verify !== true && join.firstContact !== true) lastMcUrl = url;
-  if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
-  const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
-  // F309: carry the last known connection into the new Transport, so a redial is not a 5 s gap in the claim.
-  transport = new Transport({ node: { app_ver: APP_VER, connection_type: transport ? transport.connectionType : null }, gun, priorUtility: priorUtilityHandoff(), wsFactory });
-  const candidate = transport;
-  // A60 polish: a dial the player named (QR, typed, tapped JOIN) owns its welcome window; discovery
-  // must not replace it with a proof dial while it is still waiting for its welcome.
-  userDial = join.user === true ? { t: candidate } : null;
-  firstContactDial = join.firstContact === true ? { t: candidate } : null;
+  const verify = join.verify === true;
+  const dial = mcLink.dial(url, { remember, user: join.user, firstContact: join.firstContact,
+    connect: { url, pub: join.pub, secret: join.secret, trusted: join.trusted !== false,
+      verify, firstContact: join.firstContact === true } }, candidate => {
   // `log` is this node's own view of the sync (A25: MC shows none|offered|pulling|held per node);
   // app_ver/platform are added by the transport itself so every node type reports them (A29).
-  transport.setStatusProvider(() => ({ ...engine.statusBody(preflight), log: logsync.state() }));
-  transport.onHydrate(node => engine.hydrate(node));
-  transport.onMessage(m => {
+  candidate.setStatusProvider(() => ({ ...engine.statusBody(preflight), log: logsync.state() }));
+  candidate.onHydrate(node => engine.hydrate(node));
+  candidate.onMessage(m => {
     engine.onMcMessage(m);
     if (m.kind === 'feedback' && m.body && m.body.kind === 'kill') haptic('kill');
     // A25: MC asks at recap, on an offer, from the LOGS button and on the reconnect of a node whose
     // log never arrived. We answer only when it is safe; the request is parked otherwise, never dropped.
     if (m.kind === 'pull_log') logsync.request((m.body && m.body.reason) || 'pull');
   });
-  transport.onState(s => {
+  candidate.onState(s => {
     // Bound to an MC: no suggestion row, no sweep.
     if (s === 'bound') { if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } logsync.onBound();
       // The server validates the old utility takeover key and explicitly confirms consumption in welcome.
@@ -387,8 +383,7 @@ function connectMc(url, remember = true, join = {}) {
       // a node_key and bound this node. A user-provided one was written at the dial. So everything in
       // `settings.mcUrl` was either named by the user or proved itself, and the boot dial can present the
       // key and the join secret without having to ask which.
-      if (transport && transport.url) { settings.mcUrl = transport.url; hud.mcUrl = transport.url; }
-      autoJoin.onBound();
+      mcLink.bound(candidate, candidate.url, {});
       hud.discovered = null; }   // F139: a url we actually welcomed over IS the current join
     // ...and sweep again if we stay unbound: the boot sweep used to be a one-shot, so after the first
     // successful bind nothing could rescue us again — exactly the case where MC restarts on a new IP
@@ -399,8 +394,9 @@ function connectMc(url, remember = true, join = {}) {
   });
   // `trusted:false` (a LAN-sweep address — nobody typed or scanned it) keeps this node's takeover key
   // and the join secret off the hello until that peer proves it is MC by welcoming us.
-  const verify = join.verify === true;
-  transport.connect({ url, pub: join.pub, secret: join.secret, trusted: join.trusted !== false, verify, firstContact: join.firstContact === true })
+  });
+  const candidate = dial.transport;
+  dial.promise
     .then(() => log(verify ? `MISSION CONTROL AT ${hostOf(url)} PROVED IT IS YOURS — joined with no tap` : 'MC hydrated', 'lk')).catch(e => {
       const message = e && e.message || e;
       if (verify) { onVerifyFailed(candidate, url, join.source || 'sweep', e); return; }
@@ -437,7 +433,7 @@ function onVerifyFailed(candidate, url, source, e) {
 function onFirstContactFailed(candidate, url, source, e) {
   if (transport !== candidate) return;   // superseded by a tap, a QR or a newer dial
   try { candidate.close(); } catch (_) { /* ignore */ }
-  firstContactDial = null; transport = null;
+  mcLink.firstContactDial = null; transport = null;
   log(`MISSION CONTROL AT ${hostOf(url)} did not welcome us (${(e && /** @type {{message?:string}} */ (e).message) || e}) — tap JOIN to try again`, 'le');
   offerMc(url, source, autoJoin.onFirstContactFailed(url));
 }
@@ -827,23 +823,8 @@ window.addEventListener('pageshow', () => engine.resume());
 // ---------- MC auto-discovery (mDNS _openbrx._tcp — MC advertises, we watch) ----------
 function startDiscovery() {
   if (!plugins.zeroconf || !isNative()) return;
-  try {
-    plugins.zeroconf.watch({ type: '_openbrx._tcp.', domain: 'local.' }, res => {
-      try {
-        const svc = res && res.service;
-        if (!svc || (res.action !== 'resolved' && res.action !== 'added')) return;
-        const ip = (svc.ipv4Addresses && svc.ipv4Addresses[0]) || '';
-        if (!ip || !svc.port) return;
-        const path = (svc.txtRecord && svc.txtRecord.ws_path) || '/ws';
-        const url = `ws://${ip}:${svc.port}${path}`;
-        noteJoinUrl(url);
-        // Never dialled with a secret (review pass 2): anything on the field Wi-Fi can advertise
-        // `_openbrx._tcp`, and the phone used to hand the first answer its takeover key and the join
-        // secret with no one having chosen it. `suggestMc` offers it, or (A60) proof-dials it keyless.
-        suggestMc(url, 'mdns');
-      } catch (e) { log('discovery: ' + (e && e.message || e), 'li'); }
-    }).catch(e => log('discovery watch: ' + (e && e.message || e), 'li'));
-  } catch (e) { log('discovery init: ' + (e && e.message || e), 'li'); }
+  mcLink.watch(plugins.zeroconf, url => { noteJoinUrl(url); suggestMc(url, 'mdns'); },
+    (e, phase) => log(`discovery${phase === 'discovery' ? '' : ' ' + phase}: ` + (e && e.message || e), 'li'));
 }
 
 /** An address the PLAYER never named: a sweep hit or an mDNS advert.
@@ -856,10 +837,7 @@ function startDiscovery() {
 function suggestMc(url, source) {
   if (!url) return;
   const live = transport && !transport.closed ? transport : null;
-  const firstContactLive = !!(live && firstContactDial && firstContactDial.t === live && live.state !== 'bound');
-  const d = autoJoin.onFound(url, source, { bound: !!(transport && transport.state === 'bound'),
-    dialling: live && live.url, verifying: !!(live && (live.verify || firstContactLive)), hasTrustKey: holdsTrustKey(),
-    remembered: settings.mcUrl || null, userDialPending: userDialPending() });
+  const d = mcLink.found(url, source, { hasTrustKey: holdsTrustKey(), remembered: settings.mcUrl || null });
   if (d.do === 'ignore') return;
   // F346 (d): the discovery window is still open. Ask again when it closes; a second MC seen by then
   // turns this into the "several" row instead of a join.
@@ -970,32 +948,12 @@ async function scanQrForMc() {
 // Content from the app's https origin — every request, every time, so the sweep had never worked on a
 // phone. It also took its subnet from the REMEMBERED address. Both live in transport/discover.js now,
 // where they are testable; this is the app's half: where the inputs come from, and what to do with a hit.
-let sweeping = false;   // A60: the F203 path starts a sweep beside the remembered dial; one at a time
 async function sweepForMc() {
-  if (sweeping) return;
-  sweeping = true;
-  try {
-    if (transport && transport.state === 'bound') return;
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;   // no network, no sweep
-    let localIp = null;
-    try { if (plugins.network) localIp = localIpFrom(await plugins.network.getStatus()); } catch (_) { /* ignore */ }
-    const plan = sweepPlan({ localIp, joinUrl: currentJoinUrl });
-    const urlAtStart = settings.mcUrl;
-    // the user typing/scanning mid-sweep wins (polish-loop), and a join landing ends it early
-    const shouldStop = () => !!(transport && transport.state === 'bound') || settings.mcUrl !== urlAtStart;
-    log(`sweeping for Mission Control on ${plan.subnets.map(sn => sn + '.x').join(', ')} :${plan.ports.join('/')}…`, 'li');
-    // Office test 2026-09-19 (Pixel 4/5): the sweep running ON TOP of a gun connect was the likely cause of
-    // the 1-2 s freeze before "Connecting to <gun>…" appeared -- `picking` is true from the tap (onPick,
-    // above) until the connect is up or gives up, so the sweep waits out the connect and resumes after.
-    const found = await sweepSubnetsForMc({ ...plan, wsFactory, shouldStop,
-      isPaused: () => picking, onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li') });
-    if (!found) { log('sweep found no Mission Control — QR/manual join', 'li'); return; }
-    if (shouldStop()) return;
-    // Never joined as it stands (review pass 1, security): a websocket upgrade is all this host answered,
-    // which any squatter on the node port can do. `suggestMc` offers it as a JOIN row or, A60, dials it
-    // keyless and joins only if it proves it is the MC install whose trust key this phone holds.
-    suggestMc(found, 'sweep');
-  } finally { sweeping = false; }
+  await mcLink.runSweep({ isBound: () => !!(transport && transport.state === 'bound'),
+    isOnline: () => !(typeof navigator !== 'undefined' && navigator.onLine === false),
+    getNetworkStatus: () => plugins.network ? plugins.network.getStatus() : Promise.resolve(null),
+    joinUrl: currentJoinUrl, remembered: () => settings.mcUrl, wsFactory, isPaused: () => picking,
+    log, onFound: suggestMc });
 }
 
 // ---------- boot ----------
