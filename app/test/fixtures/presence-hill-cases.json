@@ -294,7 +294,7 @@
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 20000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 2500, "rssi": [-88, -74]}],
-      "known_fail": "F452: a sparse phone enters on a single peak the dense phone's window median rejects; remove known_fail when the edge is rate-independent",
+      "known_fail": {"why": "F452: a sparse phone enters on a single peak the dense phone's window median rejects; remove known_fail when the edge is rate-independent", "at": [2500, 5000, 7500, 10000, 20000]},
       "expect": [
         {"t": 2500, "in": {"1": false}},
         {"t": 5000, "in": {"1": false}},
@@ -305,14 +305,14 @@
     },
     {
       "name": "RULE: the same signal at half the advert rate gives the same answer, so a 64-advert cap cannot decide entry [F452]",
-      "why": "Player 1 sends 40 adverts at -90 then 40 at -50 inside 1.6 s (one every 20 ms). Player 2 sends the same signal at half the rate (one every 40 ms). The rule is one answer for both. A half-rate window holds 20 low and 20 high (median low: out), but the 64-advert bound drops the dense phone's oldest lows and lets it in at t=1750. (Both are in a little later through the dwell, which is a real 0.8 s above the threshold, so the checkpoint is before that.) Expected to FAIL today.",
+      "why": "Player 1 sends 44 adverts at -90 then 36 at -50 inside 1.6 s (one every 20 ms). Player 2 sends the same signal at half the rate (22 low, 18 high, one every 40 ms). The rule is one answer for both: out. Neither full window is a tie (44 of 80 and 22 of 40 are low, so both middle readings are low), so the answer does not hang on the median's tie rule. Only the 64-advert bound differs: it drops 16 of the dense phone's lows, leaves 28 low and 36 high, and lets it in at t=1750. (Both are in a little later through the dwell, a real 0.8 s above the threshold, so the checkpoint is before that.) Expected to FAIL today at t=1750.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 2000,
-      "series": [{"id": 1, "from_ms": 0, "to_ms": 780, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 800, "to_ms": 1580, "every_ms": 20, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 760, "every_ms": 40, "rssi": [-90]}, {"id": 2, "from_ms": 800, "to_ms": 1560, "every_ms": 40, "rssi": [-50]}],
-      "known_fail": "F452: the SIGHT_RECENT_MAX bound gives a dense phone a different edge from the same signal at half the rate; remove known_fail when both read alike",
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 860, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 880, "to_ms": 1580, "every_ms": 20, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 840, "every_ms": 40, "rssi": [-90]}, {"id": 2, "from_ms": 880, "to_ms": 1560, "every_ms": 40, "rssi": [-50]}],
+      "known_fail": {"why": "F452: the SIGHT_RECENT_MAX bound gives a dense phone a different edge from the same signal at half the rate; remove known_fail when both read alike", "at": [1750]},
       "expect": [
-        {"t": 1750, "in": {"1": false, "2": false}}
+        {"t": 1750, "same_in": ["1", "2"], "in": {"1": false, "2": false}}
       ]
     },
     {
@@ -440,14 +440,14 @@
     },
     {
       "name": "setup: tick_ms 500 steps the hill in half-second updates",
-      "why": "Mapping check: a non-default tick_ms. Updates at 0, 500, 1000: 5 points per half second.",
+      "why": "Mapping check: a non-default tick_ms. The player is first heard at t=300, between ticks. A hill that ticks every 500 ms counts the whole step to t=500 (5 points); one that ticks every 250 ms counts only the 250 ms after its first tick with the player (3 points at 500, 8 at 1000), so a runner that drops tick_ms gets different values.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 500},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 2000,
-      "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-60]}],
+      "series": [{"id": 1, "from_ms": 300, "to_ms": 2300, "every_ms": 250, "rssi": [-60]}],
       "expect": [
         {"t": 500, "hill": {"team": 0, "state": ["rising"], "value": 5}},
-        {"t": 1000, "present": {"1": true}, "hill": {"team": 0, "state": ["rising"], "value": 10}},
+        {"t": 1000, "hill": {"team": 0, "state": ["rising"], "value": 10}},
         {"t": 2000, "hill": {"team": 0, "state": ["rising"], "value": 20}}
       ]
     }

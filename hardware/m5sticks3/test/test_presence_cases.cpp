@@ -22,13 +22,16 @@ using namespace brx;
 using json::Value;
 
 static int failures = 0;
-static int case_fails = 0;    // failures of the case being run
-static bool known_fail = false;  // the running case is marked known_fail: its failures are expected, so not printed as FAIL
 static std::string current;
+// A checkpoint that does not match is RECORDED against its t. A fixture SHAPE error (unknown state, unknown player, a
+// bad field) is never recorded: it is a hard failure at once, in a known_fail case too.
+static std::vector<std::pair<long long, std::string>> recorded;
 
-static void fail(const std::string& what) {
-  if (!known_fail) std::printf("FAIL [%s] %s\n", current.c_str(), what.c_str());
-  case_fails++;
+static void fail(long long t, const std::string& what) { recorded.push_back({t, what}); }
+
+static void shape(const std::string& what) {
+  std::printf("FAIL [%s] fixture shape: %s\n", current.c_str(), what.c_str());
+  failures++;
 }
 
 struct Heard { long t; int id; int rssi; };
@@ -38,7 +41,7 @@ static uint8_t player_state(const Value& names) {
   for (const Value& n : names.arr) {
     const std::string name = n.as_string();
     if (name == "alive") s |= PLAYER_ALIVE;
-    else fail("unknown player state " + name);
+    else shape("unknown player state " + name);
   }
   return s;
 }
@@ -51,7 +54,7 @@ static uint8_t hill_state(const Value& names) {
     else if (name == "contested") s |= CONTROL_CONTESTED;
     else if (name == "rising") s |= CONTROL_RISING;
     else if (name == "falling") s |= CONTROL_FALLING;
-    else fail("unknown hill state " + name);
+    else shape("unknown hill state " + name);
   }
   return s;
 }
@@ -76,16 +79,30 @@ static bool validate(const Value& c) {
   const long tick = c.get("setup").get("tick_ms").as_int();
   std::vector<long long> seen;
   bool ok = true;
+  const int shape_before = failures;
   for (const Value& ex : c.get("expect").arr) {
     const long long t = ex.get("t").as_int64();
-    if (t > c.get("until_ms").as_int64() || t % tick != 0) { fail("checkpoint t=" + std::to_string(t) + " must be a tick time within until_ms"); ok = false; }
-    if (std::find(seen.begin(), seen.end(), t) != seen.end()) { fail("duplicate checkpoint t=" + std::to_string(t)); ok = false; }
+    if (t > c.get("until_ms").as_int64() || t % tick != 0) { shape("checkpoint t=" + std::to_string(t) + " must be a tick time within until_ms"); ok = false; }
+    if (std::find(seen.begin(), seen.end(), t) != seen.end()) { shape("duplicate checkpoint t=" + std::to_string(t)); ok = false; }
     seen.push_back(t);
     for (const char* key : {"in", "present"})
       for (const auto& kv : ex.get(key).obj)
-        if (!c.get("players").has(kv.first)) { fail("checkpoint t=" + std::to_string(t) + " names player " + kv.first + ", which the case does not have"); ok = false; }
+        if (!c.get("players").has(kv.first)) { shape("checkpoint t=" + std::to_string(t) + " names player " + kv.first + ", which the case does not have"); ok = false; }
+    for (const Value& id : ex.get("same_in").arr)
+      if (!c.get("players").has(id.as_string())) { shape("checkpoint t=" + std::to_string(t) + " same_in names player " + id.as_string() + ", which the case does not have"); ok = false; }
+    if (ex.has("hill")) hill_state(ex.get("hill").get("state"));
   }
-  return ok;
+  for (const auto& kv : c.get("players").obj) player_state(kv.second.get("state"));
+  if (c.has("known_fail")) {
+    const Value& k = c.get("known_fail");
+    if (k.get("why").as_string().empty() || k.get("why").as_string()[0] != 'F' || k.get("at").arr.empty()) { shape("known_fail needs why (a follow-up id) and a non-empty at"); ok = false; }
+    for (const Value& a : k.get("at").arr) {
+      bool found = false;
+      for (const Value& ex : c.get("expect").arr) if (ex.get("t").as_int64() == a.as_int64()) found = true;
+      if (!found) { shape("known_fail.at names t=" + std::to_string(a.as_int64()) + ", which is not a checkpoint"); ok = false; }
+    }
+  }
+  return ok && failures == shape_before;  // an unknown state named above is a shape error too
 }
 
 static void run_case(const Value& c) {
@@ -123,11 +140,16 @@ static void run_case(const Value& c) {
       const std::string at = "t=" + std::to_string(t);
       for (const auto& kv : ex.get("in").obj) {
         const PlayerEntry* e = pr.get((uint16_t)std::stoi(kv.first));
-        if ((e && e->in_circle) != kv.second.as_bool()) fail(at + " player " + kv.first + " in the circle, expected " + (kv.second.as_bool() ? "true" : "false"));
+        if ((e && e->in_circle) != kv.second.as_bool()) fail(t, at + " player " + kv.first + " in the circle, expected " + (kv.second.as_bool() ? "true" : "false"));
+      }
+      if (ex.has("same_in")) {
+        const std::vector<Value>& ids = ex.get("same_in").arr;
+        auto in = [&](const Value& id) { const PlayerEntry* e = pr.get((uint16_t)std::stoi(id.as_string())); return e && e->in_circle; };
+        for (const Value& id : ids) if (in(id) != in(ids[0])) fail(t, at + " players must give the same answer, but " + id.as_string() + " differs from " + ids[0].as_string());
       }
       for (const auto& kv : ex.get("present").obj) {
         const PlayerEntry* e = pr.get((uint16_t)std::stoi(kv.first));
-        if ((e && e->present) != kv.second.as_bool()) fail(at + " player " + kv.first + " present, expected " + (kv.second.as_bool() ? "true" : "false"));
+        if ((e && e->present) != kv.second.as_bool()) fail(t, at + " player " + kv.first + " present, expected " + (kv.second.as_bool() ? "true" : "false"));
       }
       if (ex.has("hill")) {
         const Value& h = ex.get("hill");
@@ -137,7 +159,7 @@ static void run_case(const Value& c) {
           char b[160];
           std::snprintf(b, sizeof b, "%s hill advert {team %d, state %d, value %d} expected {team %ld, state %d, value %ld}", at.c_str(), v.team,
                         v.state, v.value, h.get("team").as_int(), want_state, h.get("value").as_int());
-          fail(b);
+          fail(t, b);
         }
       }
     }
@@ -166,15 +188,31 @@ int main(int argc, char** argv) {
     }
     if (!stick) continue;
     current = c.get("name").as_string();
-    case_fails = 0;
-    known_fail = c.has("known_fail");
+    recorded.clear();
     run_case(c);
-    if (known_fail) {
-      // The case states a rule that fails today. It must KEEP failing: when a fix makes it pass, say so.
-      if (case_fails == 0) { known_fail = false; fail("known_fail \"" + c.get("known_fail").as_string() + "\" now PASSES on the Stick: remove known_fail from this case"); failures++; }
-      else std::printf("known fail [%s]: %s\n", current.c_str(), c.get("known_fail").as_string().c_str());
-    } else failures += case_fails;
-    known_fail = false;
+    if (!c.has("known_fail")) {
+      for (const auto& r : recorded) std::printf("FAIL [%s] %s\n", current.c_str(), r.second.c_str());
+      failures += (int)recorded.size();
+    } else {
+      // The case names the checkpoints that fail today. EXACTLY those must fail and every other checkpoint must
+      // pass. When a fix makes a named one pass, say so, so the label cannot outlive the bug.
+      std::vector<long long> at;
+      for (const Value& a : c.get("known_fail").get("at").arr) at.push_back(a.as_int64());
+      for (const auto& r : recorded)
+        if (std::find(at.begin(), at.end(), r.first) == at.end()) {
+          std::printf("FAIL [%s] %s (known_fail.at does not name t=%lld)\n", current.c_str(), r.second.c_str(), r.first);
+          failures++;
+        }
+      for (long long t : at) {
+        bool failed = false;
+        for (const auto& r : recorded) if (r.first == t) failed = true;
+        if (!failed) {
+          std::printf("FAIL [%s] known_fail \"%s\": checkpoint t=%lld now PASSES on the Stick: remove known_fail (or that t) from this case\n", current.c_str(), c.get("known_fail").get("why").as_string().c_str(), t);
+          failures++;
+        }
+      }
+      std::printf("known fail [%s]: %s\n", current.c_str(), c.get("known_fail").get("why").as_string().c_str());
+    }
     ran++;
   }
   if (ran == 0) failures++;

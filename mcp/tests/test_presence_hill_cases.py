@@ -96,5 +96,7 @@ def test_every_checkpoint_is_on_a_tick_once_and_names_a_player_the_case_has():
             seen.add(ex["t"])
             for id in [*ex.get("in", {}), *ex.get("present", {})]:
                 assert id in c["players"], f"{at} names player {id}, which the case does not have"
-        if "known_fail" in c:
-            assert c["known_fail"].startswith("F"), f"{c['name']}: a known_fail names its follow-up id"
+        kf = c.get("known_fail")
+        if kf:
+            assert kf["why"].startswith("F"), f"{c['name']}: a known_fail names its follow-up id"
+            assert kf["at"] and all(t in seen for t in kf["at"]), f"{c['name']}: known_fail.at must name checkpoints"

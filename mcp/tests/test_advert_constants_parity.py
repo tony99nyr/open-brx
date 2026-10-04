@@ -25,7 +25,8 @@ NUM = r"(-?\d+(?:\.\d+)?)"
 
 def code_only(text: str) -> str:
     """The text with `/* */` blocks and `//` comments removed, so a comment that quotes an old value is never read
-    as a declaration. (Neither language's files read here put `//` or `/*` inside a string.)"""
+    as a declaration. Known limit: a `//` or `/*` inside a string or template literal is also treated as a comment
+    (none of the files read here has one; the readers fail loudly if a declaration goes missing)."""
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     return re.sub(r"//[^\n]*", "", text)
 

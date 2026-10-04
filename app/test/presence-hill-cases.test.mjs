@@ -13,8 +13,9 @@ import { ControlPoint, CONTROL_STATE } from '../src/control.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'presence-hill-cases.json'), 'utf8'));
 
-const stateByte = (names) => names.reduce((m, n) => { assert.ok(n in PLAYER_STATE, `unknown player state ${n}`); return m | PLAYER_STATE[n]; }, 0);
-const hillByte = (names) => names.reduce((m, n) => { assert.ok(n in CONTROL_STATE, `unknown hill state ${n}`); return m | CONTROL_STATE[n]; }, 0);
+// A fixture shape error is a plain Error, never an AssertionError, so a known_fail case can never swallow it.
+const stateByte = (names) => names.reduce((m, n) => { if (!(n in PLAYER_STATE)) throw new Error(`unknown player state ${n}`); return m | PLAYER_STATE[n]; }, 0);
+const hillByte = (names) => names.reduce((m, n) => { if (!(n in CONTROL_STATE)) throw new Error(`unknown hill state ${n}`); return m | CONTROL_STATE[n]; }, 0);
 
 /** The sightings of a case in time order: its explicit `sightings`, then each `series` expanded. */
 export function expandSightings(c) {
@@ -28,15 +29,25 @@ export function expandSightings(c) {
 /** Structure a runner must reject, whatever the rules say: a checkpoint off the tick grid, past until_ms, repeated, or naming a player the case does not have. */
 function validate(c) {
   const seen = new Set();
+  for (const p of Object.values(c.players)) stateByte(p.state);
+  if (c.known_fail) {
+    assert.ok(typeof c.known_fail.why === 'string' && /^F\d+/.test(c.known_fail.why), 'known_fail.why must start with a follow-up id');
+    assert.ok(Array.isArray(c.known_fail.at) && c.known_fail.at.length, 'known_fail.at must list the checkpoints expected to fail');
+    for (const t of c.known_fail.at) assert.ok((c.expect || []).some(e => e.t === t), `known_fail.at names t=${t}, which is not a checkpoint`);
+  }
   for (const e of c.expect || []) {
     assert.ok(e.t <= c.until_ms && e.t % c.setup.tick_ms === 0, `checkpoint t=${e.t} must be a tick time within until_ms`);
     assert.ok(!seen.has(e.t), `duplicate checkpoint t=${e.t}`);
     seen.add(e.t);
+    if (e.hill) hillByte(e.hill.state);
+    for (const id of (e.same_in || [])) assert.ok(id in c.players, `checkpoint t=${e.t} same_in names player ${id}, which the case does not have`);
     for (const id of [...Object.keys(e.in || {}), ...Object.keys(e.present || {})]) assert.ok(id in c.players, `checkpoint t=${e.t} names player ${id}, which the case does not have`);
   }
 }
 
-function runCase(c) {
+/** Runs a case. With `collect`, a checkpoint whose assertions fail is recorded (its t) instead of thrown; returns those t's. */
+function runCase(c, collect = false) {
+  const failed = [];
   const s = c.setup;
   const presence = new Presence({ defaultThreshold: s.threshold_dbm, dwellMs: s.dwell_ms, hysteresisDb: s.exit_band_db,
     exitGraceMs: s.exit_grace_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha });
@@ -59,28 +70,38 @@ function runCase(c) {
     }
     const ex = expects.get(t);
     if (!ex) continue;
-    const at = `t=${t}`;
-    for (const [id, want] of Object.entries(ex.in || {})) {
-      const e = presence.players().find(x => x.id === +id);
-      assert.equal(!!(e && e.inCircle), want, `${at} player ${id} in the circle`);
-    }
-    for (const [id, want] of Object.entries(ex.present || {})) {
-      const e = presence.players().find(x => x.id === +id);
-      assert.equal(!!(e && e.present), want, `${at} player ${id} present`);
-    }
-    if (ex.hill) assert.deepEqual(adv, { team: ex.hill.team, state: hillByte(ex.hill.state), value: ex.hill.value }, `${at} hill advert`);
+    const check = () => {
+      const at = `t=${t}`;
+      const inCircle = (id) => { const e = presence.players().find(x => x.id === +id); return !!(e && e.inCircle); };
+      for (const [id, want] of Object.entries(ex.in || {})) assert.equal(inCircle(id), want, `${at} player ${id} in the circle`);
+      if (ex.same_in) assert.deepEqual(ex.same_in.map(inCircle), ex.same_in.map(() => inCircle(ex.same_in[0])), `${at} players ${ex.same_in} must give the same answer`);
+      for (const [id, want] of Object.entries(ex.present || {})) {
+        const e = presence.players().find(x => x.id === +id);
+        assert.equal(!!(e && e.present), want, `${at} player ${id} present`);
+      }
+      if (ex.hill) assert.deepEqual(adv, { team: ex.hill.team, state: hillByte(ex.hill.state), value: ex.hill.value }, `${at} hill advert`);
+    };
+    if (!collect) check();
+    else try { check(); } catch (e) { if (!(e instanceof assert.AssertionError)) throw e; failed.push(t); }
   }
+  return failed;
 }
 
 for (const c of FIXTURE.cases) {
   if (c.only && !c.only.includes('phone')) continue;
   test(`presence/hill cases: ${c.name}${c.known_fail ? ' [KNOWN FAIL]' : ''}`, () => {
     validate(c);
-    if (!c.known_fail) return runCase(c);
-    // A known failure states the rule and fails today. The case must KEEP failing: when a fix makes it pass, this
-    // test fails and says so, so the label cannot outlive the bug.
-    let failed = false;
-    try { runCase(c); } catch (e) { if (!(e instanceof assert.AssertionError)) throw e; failed = true; }
-    assert.ok(failed, `known_fail "${c.known_fail}" now PASSES on the phone: remove known_fail from this case`);
+    if (!c.known_fail) { runCase(c); return; }
+    // A known failure states the rule and names the checkpoints that fail today. EXACTLY those must fail and every
+    // other checkpoint must pass. When a fix makes a named one pass, this test fails and says so, so the label cannot
+    // outlive the bug; a shape error in the fixture is thrown by validate()/runCase() and is never excused.
+    const failed = runCase(c, true);
+    const want = [...c.known_fail.at].sort((a, b) => a - b);
+    const stillFailing = want.filter(t => failed.includes(t));
+    const nowPass = want.filter(t => !failed.includes(t));
+    const unexpected = failed.filter(t => !want.includes(t));
+    assert.deepEqual(unexpected, [], `checkpoints ${unexpected} fail but known_fail.at does not name them`);
+    assert.deepEqual(nowPass, [], `known_fail "${c.known_fail.why}": checkpoint(s) ${nowPass} now PASS on the phone: remove known_fail (or those t's) from this case`);
+    assert.ok(stillFailing.length > 0);
   });
 }
