@@ -16,6 +16,10 @@ import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utilit
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, PLAY_GAP_MS } from './announcer.js';
 import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, redeployOutMs } from './lanes.js';
+// A56 (S58): the player's side of the powerups (docs/spec/powerups.md) lives in powerup-player.js; its constants are
+// re-exported here so every existing `from './engine.js'` import keeps working.
+import { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_THRESHOLD_DEFAULT, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS, burstWithHeld } from './powerup-player.js';
+export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_THRESHOLD_DEFAULT, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
 import { MEDALS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
 export const C = {
@@ -196,10 +200,6 @@ export const SPAWN_RESEND_WAIT_MS = 1500; // a re-send's own answer gets this lo
 // Review r1: the check holds a 0-pool death at most this long from the first lost write. Past it the pool books as it
 // always did (the auto-respawn is the cure), so a gun that never answers can never leave an undying player at 0.
 export const SPAWN_CHECK_MAX_MS = 8000;
-// F417/F418 (bench 2026-09-26): a held heavy's slot reading 0 with no trigger pull is the gun holding counts the node did
-// not give it (a lost grant `$AMMO`, a lost or late reconcile write), never a round. The node re-sends the held counts
-// this many times before it believes the 0 and ends the item, as it always did.
-export const PU_COUNT_REPAIRS = 2;
 // F416 part 2: a continuous station scan starves GATT writes on Android (F342, brxlink.js header). The scan closes
 // from T-PRE_ARM_TABLE_MS until this long after the spawn or revive write settles (`state().radioQuiet`), and while a
 // spawn check is open. Each part is bounded: a write's window by RADIO_QUIET_MAX_MS, a check by SPAWN_CHECK_MAX_MS.
@@ -667,51 +667,6 @@ export const PRESENT = Object.freeze({
   hint: 'alive',          // A56: the powerup hint chip
   puLost: 'down',         // HUD QA R2-17: the DOWN screen's ITEM LOST line
 });
-
-// ---------- A56 (S58): powerups (docs/spec/powerups.md) ----------
-// Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one
-// unless it was started with `--no-powerups`; powerups are ON by default, F372). Tony's defaults (2026-09-24),
-// each a named constant so a change is one line:
-export const PU_RESERVE = 0;                // a weapon item grants its charges as the MAGAZINE and no reserve
-export const PU_LOST_AT_DEATH = true;       // a weapon item's unused charges do not carry into the next life
-export const PU_ACTIVE_CARD_MS = 1200;      // F400: the ACTIVE confirm bubble's life after SWITCHING (hud.js `_swap('switched', el, 900, 1200)`)
-export const PU_WEAPON_SWAPS = true;        // lead 2026-09-24: a second WEAPON pickup replaces the first (never refused)
-export const PU_STACK_CAP_X = 2;            // F381 (Tony, 2026-09-25): the same weapon stacks up to this many times the item's own charges
-export const OVERSHIELD_AMOUNT = 75;        // the fallback when an item carries no `amount` (MC normally expands it)
-export const OVERSHIELD_DECAY_PER_S = 0;    // Tony: no decay. Not read yet: a non-zero value needs a decay writer first
-// `charges` falls back to the weapon's own catalogue magazine (`clip`) when the item carries none: the fifth default.
-// Tony 2026-09-24: "straight to trigger. id prefer trigger fires it", then "select should equip it if possible". A mid-life
-// `$WEAP,<slot>,…` equips that slot on the trigger at once (bench 2026-09-24, powerups.md "Sitting A 3.3"), so the phone
-// equips the heavy itself and no `$BMAP` is ever written: ALT keeps its job, SELECT stays at the head's `$BMAP,3,98`.
-export const PU_SELECT_DEBOUNCE_MS = 400;   // a second SELECT press inside this is the same press (a double press toggles once)
-export const PU_ANNOUNCE_MS = 2400;         // the spawn card's hold, and the gap between two announcements that land together
-export const PU_ANNOUNCE_LATE_MS = 5000;    // a spawn noticed later than this (a frozen webview) is not announced
-export const PU_READY_MS = 2500;            // how long the station hint names the item after a grant
-export const PU_NEAR_DB = 10;               // GET CLOSER shows only within this of the station's own threshold
-// The claim (Tony 2026-09-24, via the brx5 lead): stand about a foot from the station for 1 s, no button. Range is the
-// MEDIAN of the last three samples of the station's advert (beacon.js `median`), never the respawn path's EMA.
-export const POWERUP_THRESHOLD_DEFAULT = -55;   // byte 14 = 0: a placeholder for ~1 ft until the bench calibrates it
-export const POWERUP_EXIT_DB = 3;               // out of range = the median below the threshold minus this
-export const POWERUP_DWELL_MS = 1000;           // continuously in range this long = `claim_ready`; leaving range resets it
-export const POWERUP_NO_ANSWER_MS = 15000;      // Bench B: Stick confirmation took up to 13 s; no answer at 15 s still allows a later taker advert.
-export const POWERUP_READY_LATCH_MS = 15000;    // a `taker` advert still counts this long after the phone was last ready
-export const PU_ADVERT_STALE_MS = 8000;     // an advert older than this says nothing about the item
-// Tony 2026-09-24: "in halo if you get hit while you are getting overshield the damage is ignored". The grant is one burst
-// (spawn protection on, a `$PSET` with the shield max raised, the absolute `$LIFE`), and protection ends this long after it.
-export const OVERSHIELD_GRANT_MS = 1000;
-export const OVERSHIELD_HIR_WAIT_MS = 1000;  // polish M1: a `$HIR` with no `$HP` after it holds the grant this long at most (a lethal hit in flight)
-export const PU_BACK_RETRY_MS = 1500;       // polish M3: a switch-back the gun has not answered with an `$ALCD` for that slot is re-sent after this
-export const OVERSHIELD_OFF_RETRIES = 3;   // r2: a protection-off that keeps failing is retried this often, then left to RESYNC GUN
-export const PU_BACK_TRIES = 3;             // ...at most this many times
-export const OVERSHIELD_ECHO_MS = 1500;     // a pre-grant `$HP` still in flight must not read as the overshield breaking
-/** The spawn index at `elapsedMs` on the match clock (0 = the first spawn at `first_at_s`), or -1 before the first. PURE. */
-export function puSpawnIndex(item, elapsedMs) {
-  const every = Number(item && item.spawn_every_s) * 1000, first = Number(item && item.first_at_s) * 1000;
-  if (!(every > 0) || !Number.isFinite(first) || !(elapsedMs >= first)) return -1;
-  return Math.floor((elapsedMs - first) / every);
-}
-/** The match-clock time (ms after go-live) of spawn `k`. PURE. */
-export function puSpawnAt(item, k) { return (Number(item.first_at_s) + k * Number(item.spawn_every_s)) * 1000; }
 
 /** A16.5: which pool the readout should actually SHOW, given that `pool` is the one that just moved and
  *  settled at level 0. Mirrors `poolgauge.handover_pool` exactly -- see its docstring for the full
