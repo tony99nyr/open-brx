@@ -220,7 +220,7 @@ export class MockBackend implements Api {
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
       if (batteryLow(rep.battery)) attention.push('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
       if (this.demoObs.has('claims')) attention.push('3 CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP\'S PICKUPS FOR STATION #4');   // O10: state.py station_claims_dropped_line
-      if (this.demoObs.has('nvs')) attention.push('STICK COULD NOT SAVE TO FLASH [2 FAILED WRITES]: RESTART WOULD LOSE ITS SETTINGS, REFLASH OR REPLACE IT');   // O12: stations.py station_nvs_line
+      if (this.demoObs.has('nvs')) attention.push('STICK CANNOT SAVE TO FLASH [2 FAILED WRITES], A RESTART LOSES ITS SETTINGS: REPLACE IT');   // O12: stations.py station_nvs_line
       if (this.demoObs.has('stickfw')) attention.push('STICK FIRMWARE TOO OLD: REFLASH IT');   // O13: stations.py STATION_FW_TOO_OLD
       attention.push(...(st.attention ?? []));   // A58 demo/test seed: STATION #N ... lines
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',

@@ -167,7 +167,7 @@ def parse_station_fw(app_ver: str | None) -> tuple[int, int, int] | None:
     """`"h8-0.2+a1b2c3d"` -> `(8, 0, 2)`; anything else (a phone's `0.4.1`, junk) -> None. The sha is ignored."""
     if not isinstance(app_ver, str):
         return None
-    m = re.fullmatch(r"h(\d+)-(\d+)\.(\d+)", app_ver.strip().split("+", 1)[0])
+    m = re.fullmatch(r"h([0-9]{1,6})-([0-9]{1,6})\.([0-9]{1,6})", app_ver.strip().split("+", 1)[0])
     return (int(m[1]), int(m[2]), int(m[3])) if m else None
 
 

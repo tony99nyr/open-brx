@@ -222,6 +222,24 @@ def test_o13_a_stick_below_the_firmware_floor_gets_a_reflash_line_with_its_versi
                                     "platform": "android", "app_ver": "0.4.1"}, clock["t"])
     ph = next(v for v in s.stations_view() if v["node_id"] == "phone-1")
     assert "STICK FIRMWARE TOO OLD: REFLASH IT" not in ph["attention"], "a phone is never judged by the Stick floor"
+    # a Stick that has gone offline shows no firmware line from its stale report
+    net.simulate_status("stick-1", {**base, "app_ver": "h8-0.1"}, clock["t"])
+    assert "STICK FIRMWARE TOO OLD: REFLASH IT" in stick()["attention"]
+    s.nodes["stick-1"]["stale"] = True
+    assert "STICK FIRMWARE TOO OLD: REFLASH IT" not in stick()["attention"]
+    assert station_fw_too_old("h8-" + "9" * 5000 + ".1") is not None    # a hostile version never raises
+    assert parse_station_fw("h8-" + "9" * 5000 + ".1") is None and parse_station_fw("h8-1234567.0") is None
+    assert parse_station_fw("h8-123456.0+x") == (8, 123456, 0)
+
+
+def test_o13_a_released_stick_with_no_platform_on_record_still_counts_as_returned():
+    s, net, clock, ps = mk()
+    net.simulate_status("stick-1", {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4}, clock["t"])
+    assert "platform" not in (s.stations.get("stick-1") or {}) or not s.stations["stick-1"].get("platform")
+    s.set_station("stick-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": -70})
+    assert s.release_station("stick-1")
+    dep = next(d for d in s.snapshot().get("station_departures", []) if d["node_id"] == "stick-1")
+    assert dep["returned"] is True, "a stick- id with no platform is still a Stick"
 
 
 def test_o12_a_stick_that_failed_flash_writes_says_so_and_a_clean_one_does_not():
@@ -231,7 +249,7 @@ def test_o12_a_stick_that_failed_flash_writes_says_so_and_a_clean_one_does_not()
     net.simulate_status("stick-1", {**base, "platform": "esp32"}, clock["t"])
     assert not any("SAVE TO FLASH" in a for a in stick()["attention"])
     net.simulate_status("stick-1", {**base, "platform": "esp32", "nvs_fail": 2}, clock["t"])
-    assert any(a.startswith("STICK COULD NOT SAVE TO FLASH [2 FAILED WRITES]") for a in stick()["attention"])
+    assert any(a == "STICK CANNOT SAVE TO FLASH [2 FAILED WRITES], A RESTART LOSES ITS SETTINGS: REPLACE IT" for a in stick()["attention"])
     assert stick()["report"]["nvs_fail"] == 2
 
 

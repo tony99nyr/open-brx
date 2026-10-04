@@ -128,7 +128,7 @@ static void mcLoadPrefs(StationLink& link) {
   if (wifiSsid.length()) link.wifi_configured();
 }
 
-// The hill's save is the one key "hill_v1"; the five older keys are read at boot and removed on any rewrite.
+// The hill's save is dual-written: "hill_v1" (read first) and the five older keys (a downgrade still reads them).
 static void mcRemoveHillKeys() {
   mcPrefs.remove("hill_v1");
   mcPrefs.remove("hill_owner");
@@ -211,24 +211,9 @@ SavedHill savedHill;
 
 static void mcLoadSavedHill() {
   mcPrefs.begin("brxmc", true);
-  // O12: the one value first; a Stick last saved by older firmware still has the five separate keys.
-  int bOwner = TEAM_ANY, bGame = 0, bId = 0;
-  uint32_t bHold[4] = {0, 0, 0, 0};
-  std::string bSid;
-  if (decode_saved_hill(mcPrefs.getString("hill_v1", "").c_str(), bOwner, bGame, bId, bHold, bSid)) {
-    mcPrefs.end();
-    savedHill.loaded(true, bOwner, bGame, bId, bSid, bHold);
-    return;
-  }
-  bool has = mcPrefs.isKey("hill_owner");
-  int owner = mcPrefs.getUChar("hill_owner", TEAM_ANY);
-  int game = mcPrefs.getUChar("hill_game", 0);
-  int id = mcPrefs.getUShort("hill_id", 0);
-  String sid = mcPrefs.getString("hill_sid", "");
-  uint32_t hold[4] = {0, 0, 0, 0};
-  bool haveHold = mcPrefs.getBytes("hill_hold", hold, sizeof hold) == sizeof hold;
+  const HillLoad h = load_saved_hill(mcPrefs, TEAM_ANY);  // hill_v1 first, the legacy keys when it is missing or invalid
   mcPrefs.end();
-  savedHill.loaded(has, owner, game, id, sid.c_str(), haveHold ? hold : nullptr);
+  savedHill.loaded(h.has, h.owner, h.game, h.id, h.sid, h.have_hold ? h.hold : nullptr);
 }
 
 // ---- A68 review 2026-09-25: the duration hill's time left ("hclk_game"/"hclk_id"/"hclk_sid"/"hclk_rem") ----
@@ -268,16 +253,9 @@ static void mcEraseSavedClock() {
 
 static void mcWriteSavedHill() {
   mcPrefs.begin("brxmc", false);
-  const std::string blob = encode_saved_hill(savedHill.owner(), savedHill.game(), savedHill.id(), savedHill.hold_ms(),
-                                             savedHill.session_id());
-  const bool ok = nvsOk(nvs_put_str(mcPrefs, nvsFails, "hill_v1", blob.c_str()));
-  if (ok) {  // the one value landed: the older five keys must not outrank it at the next boot
-    mcPrefs.remove("hill_owner");
-    mcPrefs.remove("hill_game");
-    mcPrefs.remove("hill_id");
-    mcPrefs.remove("hill_sid");
-    mcPrefs.remove("hill_hold");
-  }
+  const bool ok = save_hill(mcPrefs, nvsFails, savedHill.owner(), savedHill.game(), savedHill.id(), savedHill.hold_ms(),
+                            savedHill.session_id());
+  if (!ok) Serial.println(nvsFails.last_line);
   mcPrefs.end();
   if (ok) Serial.printf("# hill owner saved: %d (game %d, id %d)\n", savedHill.owner(), savedHill.game(), savedHill.id());
 }

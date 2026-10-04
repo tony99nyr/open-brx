@@ -79,7 +79,8 @@ def is_stick(node: dict) -> bool:
 
 def station_nvs_line(n: int) -> str:
     """O12: the Stick's flash refused `n` writes since it booted (`status.nvs_fail`), so a restart would lose what it failed to save."""
-    return f"STICK COULD NOT SAVE TO FLASH [{n} FAILED WRITE{'' if n == 1 else 'S'}]: RESTART WOULD LOSE ITS SETTINGS, REFLASH OR REPLACE IT"
+    # No erase-flash command exists in stick.py, and an upload leaves the NVS partition as it was, so reflashing does not help.
+    return f"STICK CANNOT SAVE TO FLASH [{n} FAILED WRITE{'' if n == 1 else 'S'}], A RESTART LOSES ITS SETTINGS: REPLACE IT"
 
 
 def station_claims_dropped_line(n: int, station_id: object = None) -> str:
@@ -534,7 +535,7 @@ class StationRegistry:
                 if old.get("returned"):
                     old["reason"] = reason
                     old["at_ms"] = self._host.now_ms()
-                old["returned"] = reason == "released" and platform == "esp32"
+                old["returned"] = reason == "released" and is_stick({"platform": platform, "node_id": nid})
                 if successor:
                     old["successor"] = successor
             return
@@ -553,7 +554,7 @@ class StationRegistry:
         rec: dict = {"node_id": nid, "kind": a["kind"], "id": a["id"], "team": a["team"], "threshold": a["threshold"],
                      "reason": reason, "at_ms": self._host.now_ms(),
                      # a released Stick has no HUD to go to: it stays linked, so it is back at once
-                     "returned": reason == "released" and platform == "esp32", "restore": restore}
+                     "returned": reason == "released" and is_stick({"platform": platform, "node_id": nid}), "restore": restore}
         if a.get("tx_power"):
             rec["tx_power"] = a["tx_power"]
         if item:
@@ -1098,7 +1099,8 @@ class StationRegistry:
             attention.append(station_claims_dropped_line(dropped, a["id"] if a else rep.get("station_id")))   # O10
         if (nvs_fail := rep.get("nvs_fail")) and isinstance(nvs_fail, int) and not isinstance(nvs_fail, bool) and nvs_fail > 0:
             attention.append(station_nvs_line(nvs_fail))   # O12
-        if is_stick(st) and station_fw_too_old(st.get("app_ver")):
+        online_now = bool(seen) and not bool((self._host.nodes.get(nid) or {}).get("stale"))
+        if online_now and is_stick(st) and station_fw_too_old(st.get("app_ver")):   # a stale report of an offline Stick says nothing now
             attention.append(STATION_FW_TOO_OLD)            # O13
         report: StationReport = {}
         kind = rep.get("kind")
