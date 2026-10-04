@@ -313,7 +313,8 @@ class SnapshotCodec:
                     self.host.restore_failed = {"reason": f"snapshot version {version} could not be kept aside",
                                                 "kept": None}
                 else:
-                    self.host.restore_failed = {"reason": f"snapshot version {version} kept at {kept}",
+                    # the banner adds "KEPT AT <path>" itself: the reason names only the cause
+                    self.host.restore_failed = {"reason": f"saved by an MC with store version {version}; this MC reads {SESSION_STORE_V}",
                                                 "kept": str(kept)}
                 return 0
             was_demo = bool(snap.get("demo", False))

@@ -135,7 +135,7 @@ def test_d15_unknown_snapshot_version_is_kept_and_not_loaded():
     assert s.players == before
     kept = list(root.glob("session.json.v2-*"))
     assert len(kept) == 1 and kept[0].read_text() == original
-    assert s.restore_failed == {"reason": f"snapshot version 2 kept at {kept[0]}", "kept": str(kept[0])}
+    assert s.restore_failed == {"reason": "saved by an MC with store version 2; this MC reads 1", "kept": str(kept[0])}
     if sys.platform != "win32":
         assert (kept[0].stat().st_mode & 0o777) == 0o600
     assert not path.exists()
@@ -174,7 +174,7 @@ def test_d15_invalid_present_versions_are_kept_and_reported():
         assert not path.exists(), version
         failure = s.snapshot()["restore_failed"]
         assert json.dumps(version) in failure["reason"], version
-        assert str(kept[0]) in failure["reason"] and failure["kept"] == str(kept[0]), version
+        assert str(kept[0]) not in failure["reason"] and failure["kept"] == str(kept[0]), version   # the banner prints the path once
 
 
 def test_a_feed_only_change_marks_the_snapshot_dirty():
@@ -870,6 +870,10 @@ def test_o1_station_registry_restore_fields_are_captured_for_rollback():
     assert len(assigned) >= 5 and len(captured) >= 4, (assigned, captured)
     missing = assigned - set(captured.values())
     assert not missing, f"station restore assigns {sorted(missing)} without rollback capture"
+    # and the rollback writes every captured field back (a captured but never restored field rolls back nothing)
+    written = set(re.findall(r"self\.([A-Za-z_][A-Za-z0-9_]*)\s*=", inspect.getsource(StationRegistry.restore_state)))
+    unrestored = set(captured.values()) - written
+    assert not unrestored, f"capture_state saves {sorted(unrestored)} but restore_state never writes it back"
 
 
 def test_o1_codec_rolls_back_registry_after_late_restore_failure():
