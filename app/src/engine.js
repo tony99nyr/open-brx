@@ -1613,7 +1613,9 @@ export class Engine {
       return;
     }
     // F416 r4: a held heavy before the first pull (F436) may read its own slot or the switch-back slot; both match.
-    const hv = this._puHeld, heavyOk = !!hv && (gs === hv.slot || (hv.back && gs === hv.back.slot));
+    // F416 r2: at that slot's live count only, or the bench P0 (slot 2 at 2/1) would close as landed.
+    const hv = this._puHeld, hl = this._liveAmmo()[gs], hc = hl ? hl[0] : hv && gs === hv.slot ? hv.left : null;
+    const heavyOk = !!hv && (gs === hv.slot || (hv.back && gs === hv.back.slot)) && hc != null && gm === hc;
     if (heavyOk || (gs === slot && expected != null && gm === expected)) {
       this._spawnCheck = null;
       if (this._writeLost === c.life) this._writeLost = null;

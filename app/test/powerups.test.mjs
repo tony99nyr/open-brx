@@ -1446,3 +1446,21 @@ test('F438 r4: a lethal self-hit keeps the overshield and re-raises its $PSET sh
   assert.ok(after.indexOf('$LIFE,45,70,75,2,*', raised) > raised, `then the pools as they were, overshield included: ${JSON.stringify(after)}`);
   assert.deepEqual([h.eng.hp, h.eng.armor, h.eng.shield], [45, 70, 75]);
 });
+
+test('F416 r2: the bench P0 shape on the held slot (slot 2, a magazine that is not the held count) is re-sent, not landed', () => {
+  const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away();
+  assert.equal(h.eng._puHeld?.left, 2, 'setup: 2 rockets held');
+  openCheck(h.eng); const n = h.mark();
+  h.frame('$LCD,45,70,0,2,1,1,*');   // slot 2 at 1/1: an unspawned gun on the head's last `$WEAP`
+  const after = h.since(n);
+  assert.ok(after.some(f => f.startsWith('$SPAWN')), `the P0 gets the burst again: ${JSON.stringify(after)}`);
+  assert.ok(h.eng._spawnCheck, 'the check stays open for the re-send');
+});
+
+test('F416 r2 control: the held slot at the held count is a match', () => {
+  const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away();
+  openCheck(h.eng); const n = h.mark();
+  h.frame('$LCD,45,70,0,2,2,0,*');
+  assert.ok(!h.since(n).some(f => f.startsWith('$SPAWN')));
+  assert.equal(h.eng._spawnCheck, null);
+});
