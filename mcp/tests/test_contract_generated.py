@@ -394,3 +394,17 @@ def test_accept_min_result_entry_when_present_is_match_id_only():
     ts, js = _ts_js()
     assert "result: ['match_id']," in js
     assert "result: ['match_id']," in ts
+
+
+def test_every_shared_constant_contracts_md_names_is_in_the_generated_js():
+    """contracts.md §9 names the shared wire constants and copies no values (D10). Each name it lists before
+    "Two timings are local" must be exported by the generated phone contract, or the spec names a constant
+    the generator does not own."""
+    spec = (REPO / "docs" / "spec" / "contracts.md").read_text(encoding="utf-8")
+    block = spec[spec.index("- **Constants.**"):]
+    shared = block[:block.index("Two timings are local")]
+    names = set(re.findall(r"`([A-Z][A-Z0-9_]+)`", shared)) - {"MAX_HP", "MAX_AR"}
+    assert len(names) >= 12, names
+    js = (REPO / "app" / "src" / "transport" / "contract.gen.js").read_text(encoding="utf-8")
+    missing = sorted(n for n in names if not re.search(rf"\bexport const {n}\b", js))
+    assert not missing, f"contracts.md §9 names constants the generated contract does not export: {missing}"

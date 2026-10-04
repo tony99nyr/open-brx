@@ -942,6 +942,13 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 ## 9. Versioning, identity tokens, constants
 
 - `Envelope.v` gates protocol compatibility; `app_ver`/`server_ver` are informational.
+- **Store versions [D15].** Three files MC persists carry `v`: `pieces.json` (`PIECES_STORE_V`), `favourites.json`
+  (`FAVOURITES_STORE_V`) and the session snapshot `session.json` (`SESSION_STORE_V`), all in `types.py` and all in
+  `~/.brx-mcp/`. The pieces and favourites loaders never guess a migration: a file whose `v` they do not know (one a
+  newer MC saved, read after a downgrade) is kept whole as `<name>.v<v>-<ms>`, logged, and the store starts clean; a file
+  they cannot parse goes to `<name>.corrupt-<ms>`. A file with no `v` is the first shape and loads. Bump a store's
+  `v` only when an older MC would misread the new shape. `armory.json` and the evidence database `session.sqlite`
+  carry no version.
 - **Three distinct `seq` namespaces** [A2] (do not conflate): `Envelope.seq` = per-node persisted-event counter
   (dedup); `start.seq` = MC's per-session schedule counter; `control.seq` = a reference *to* a `start.seq`
   (which schedule an `abort_start` targets).
@@ -952,15 +959,16 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 - Post-freeze changes: add an index row in §10, fold the text in where it applies with its tag, and bump `v` only
   for wire-breaking changes once a consumer is deployed. Additive fields are non-breaking; consumers ignore
   unknown fields.
-- **Constants** (single source: `mcp/brx_mcp/mc/types.py`'s module-level block on the server side and
-  `app/src/transport/envelope.js` on the node side, which `engine.js` imports wholesale as `W`; modules reference
-  by name, never redefine). **A33:** `envelope.js` no longer hand-mirrors these — it imports them from
-  `contract.gen.js`, generated from `types.py` by `mcp/tools/gen_contract.py`, and re-exports the same names.
-  `ASSIST_WINDOW_MS = 4000`, `MULTI_KILL_MS = 4000`, `FEEDBACK_MAX_AGE_MS = 3000`,
-  `STATUS_HEARTBEAT_MS = 2000`, `STALE_AFTER_MS = 8000`, `SYNC_FRESH_MS = 10000`, `LATE_ARM_GRACE_MS = 8000`,
-  `CONFIG_TTL_MS = 1800000`, `MAX_PLAYERS = 63` (wire ids 1–63; 0 reserved), `DEATH_LATCH_MS = 2000`,
-  `RESYNC_PROBE_S = 10` (the LOBBY/ARMED observe window), `RECONCILE_MS = 3000` (the LIVE rejoin window, A6.8),
-  `DEFAULT_RUNWAY_S = 30` (host-set per game; presets 10/15/30/45/60/90/120/180 still on the console [A5.10]), `MAX_HP`/`MAX_AR` from GameConfig. All are tunable defaults.
+- **Constants.** The single source is `mcp/brx_mcp/mc/types.py`'s module-level block. `mcp/tools/gen_contract.py`
+  generates it into `app/src/transport/contract.gen.js` (which `envelope.js` re-exports, and `engine.js` imports as
+  `W`) and `webapp/mc/src/api/contract.gen.ts` [A33]. Read the values there; this section names them and copies no
+  numbers. The shared constants: `ASSIST_WINDOW_MS`, `MULTI_KILL_MS`, `FEEDBACK_MAX_AGE_MS`, `STATUS_HEARTBEAT_MS`,
+  `STALE_AFTER_MS`, `SYNC_FRESH_MS`, `LATE_ARM_GRACE_MS`, `CONFIG_TTL_MS`, `MAX_PLAYERS` (wire ids from 1; 0 is
+  reserved), `DEATH_LATCH_MS`, `RESYNC_PROBE_S` (the LOBBY/ARMED observe window) and `DEFAULT_RUNWAY_S` (host-set per
+  game [A5.10]). `MAX_HP`/`MAX_AR` come from the GameConfig. Two timings are local to one side and not on the wire:
+  the node's rejoin window (`RECONCILE_MS` in `app/src/engine.js`, A6.8) and MC's role settle delay
+  (`Session.ROLE_SETTLE_MS` in `mcp/brx_mcp/mc/state.py`). `test_contract_generated.py` checks that every shared name
+  above is in the generated file.
 
 ## 10. Amendment index (dates; what; where it now lives)
 
