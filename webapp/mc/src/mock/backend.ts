@@ -6,7 +6,7 @@ import type {
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
-import { HOLD_TARGET_MAX_S, TEAM_KEYS } from '../api/contract.gen';
+import { HOLD_TARGET_MAX_S, STATION_TEAM_ANY, TEAM_KEYS } from '../api/contract.gen';
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
@@ -427,7 +427,7 @@ export class MockBackend implements Api {
     }
     let team: number;
     if (typeof a.team === 'string') {
-      if (a.team === 'any' || a.team === 'ffa') team = 255;
+      if (a.team === 'any' || a.team === 'ffa') team = STATION_TEAM_ANY;
       else { const t = TEAMS.find(t => t.team_id === a.team); if (!t) throw new Error(`team '${a.team}' is not a team_id in this game (or 'any')`); team = t.tid; }
     } else team = a.team;
     if (!([0, 1, 2, 3].includes(team) || team === 255)) throw new Error("team must be a $TID 0-3, a team_id, or 'any' (255)");

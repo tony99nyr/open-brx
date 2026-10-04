@@ -130,8 +130,9 @@ constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_POWERUP = -45;
 constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_EXTRACTION = -57;
 constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_BOMB = -57;
 constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL = -75;
-// A defaulted Stick HILL advertises -57 in byte 14 (the phones' own presence edge), while the Stick itself measures
-// players at STATION_DEFAULT_THRESHOLD_DBM["sticks3"]["control"]. Deliberate, not a copy of the respawn value.
+// A defaulted Stick HILL advertises -57 in byte 14 (the value the Stick advertised before the hill had its own default:
+// Tony's Stick respawn walk, 2026-09-24), while the Stick itself measures players at
+// STATION_DEFAULT_THRESHOLD_DBM["sticks3"]["control"]. Its own constant, so retuning the Stick respawn does not move it.
 constexpr int32_t STICK_HILL_ADVERT_THRESHOLD_DBM = -57;
 // F345: a phone station's defaults, sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP
 // (which clamps 0 to -30 dBm). Read from the table above.

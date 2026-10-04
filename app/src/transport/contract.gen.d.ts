@@ -119,8 +119,9 @@ export declare const SPAWN_KILL_WINDOW_MS: 10000;
  *  2026-09-28, about 30 cm. sticks3 control -75: UNPROVEN, Sitting B 2026-09-25, a 5-7 m target. Any other Stick
  *  kind takes the Stick respawn value. */
 export declare const STATION_DEFAULT_THRESHOLD_DBM: { readonly phone: { readonly respawn: -70; readonly powerup: -55; readonly extraction: -74; readonly bomb: -74; readonly control: -75 }; readonly sticks3: { readonly respawn: -57; readonly powerup: -45; readonly extraction: -57; readonly bomb: -57; readonly control: -75 } };
-/** A defaulted Stick HILL advertises -57 in byte 14 (the phones' own presence edge), while the Stick itself measures
- *  players at STATION_DEFAULT_THRESHOLD_DBM["sticks3"]["control"]. Deliberate, not a copy of the respawn value. */
+/** A defaulted Stick HILL advertises -57 in byte 14 (the value the Stick advertised before the hill had its own default:
+ *  Tony's Stick respawn walk, 2026-09-24), while the Stick itself measures players at
+ *  STATION_DEFAULT_THRESHOLD_DBM["sticks3"]["control"]. Its own constant, so retuning the Stick respawn does not move it. */
 export declare const STICK_HILL_ADVERT_THRESHOLD_DBM: -57;
 /** F345: a phone station's defaults, sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP
  *  (which clamps 0 to -30 dBm). Read from the table above. */

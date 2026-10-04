@@ -219,7 +219,7 @@ export const POWERUP_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD
 /** F383: the hill's own default is -75 dBm, with the exit band EXIT_BAND_DB, on every path, until the outdoor walk measures a
  *  real one (Tony, 2026-09-27). */
 export const CONTROL_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.control, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.control });
-export function phoneStationThreshold(kind) { return STATION_DEFAULT_THRESHOLD_DBM.phone[kind] ?? STATION_THRESHOLD_DBM; }
+export function phoneStationThreshold(kind) { const t = STATION_DEFAULT_THRESHOLD_DBM.phone; return Object.hasOwn(t, kind) ? t[kind] : STATION_THRESHOLD_DBM; }
 
 /** utility.js `thr()`: what a phone station advertises and measures by, its override or else its platform default. */
 export function stationThreshold({ threshold, kind }) { return threshold || phoneStationThreshold(kind); }

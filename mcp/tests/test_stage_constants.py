@@ -54,7 +54,7 @@ TABLE = [
     ("HILL_MAG", "engine.js", "HILL_MAG", 1),
     ("HILL_CAPTURE_MAG", "engine.js", "HILL_CAPTURE_MAG", 1),
     ("HILL_WAS_NEUTRAL_MAG", "engine.js", "HILL_WAS_NEUTRAL_MAG", 1),
-    ("HILL_NEUTRAL_TEAM", "engine.js", "HILL_NEUTRAL_TEAM", 1),
+    ("HILL_NEUTRAL_TEAM", "transport/contract.gen.js", "HILL_REFUSED_TID", 1),   # engine.js aliases it (review #4)
     ("HILL_TICK_S", "engine.js", "HILL_TICK_MS", 1000),
     ("HILL_PRESENCE_S", "engine.js", "HILL_PRESENCE_MS", 1000),
     ("CONTROL_STALE_S", "engine.js", "CONTROL_STALE_MS", 1000),

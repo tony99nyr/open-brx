@@ -18,7 +18,7 @@ import { Presence, encodeUuid, stationView, AdvertGate, advertChangeReason, conf
 import { playerClaimAdvert } from './powerup.js';                     // A56: the powerup claim bits on the player advert
 import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
-import { PHONE_STATION_THRESHOLD_DBM, PRESENCE_DWELL_MS } from './transport/contract.gen.js';   // review #4
+import { PHONE_STATION_THRESHOLD_DBM, PRESENCE_DWELL_MS, STATION_TEAM_ANY } from './transport/contract.gen.js';   // review #4
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
 import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
@@ -215,7 +215,7 @@ function presenceTick() {
   const list = presence.stations();
   for (const e of list) {   // log the edges, not the readings: the log is what a field fault gets debugged from
     const k = `${e.kind}:${e.id}`; const was = stationWas.get(k);
-    if (was !== e.present) { stationWas.set(k, e.present); log(`${e.kind} station ${e.id} (team ${e.team === 255 ? 'any' : e.team}) ${e.present ? 'PRESENT' : 'left'} at ${Math.round(e.rssi)} dBm (threshold ${e.threshold || presence.defaultThreshold})`, e.present ? 'lk' : 'li'); }
+    if (was !== e.present) { stationWas.set(k, e.present); log(`${e.kind} station ${e.id} (team ${e.team === STATION_TEAM_ANY ? 'any' : e.team}) ${e.present ? 'PRESENT' : 'left'} at ${Math.round(e.rssi)} dBm (threshold ${e.threshold || presence.defaultThreshold})`, e.present ? 'lk' : 'li'); }
   }
   engine.setStations(list);
 }

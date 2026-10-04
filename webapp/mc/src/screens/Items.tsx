@@ -335,7 +335,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
         {rep.control && (<>
           <Micro>POINT</Micro>
           <Val color={T.dim}>
-            {rep.control.owner == null || rep.control.owner === 255 ? 'NEUTRAL' : (TID_NAME[rep.control.owner] ?? rep.control.owner)}
+            {rep.control.owner == null || rep.control.owner === STATION_TEAM_ANY ? 'NEUTRAL' : (TID_NAME[rep.control.owner] ?? rep.control.owner)}
             {rep.control.progress != null && ` · ${rep.control.progress}%`}{rep.control.contested && ' · CONTESTED'}
           </Val>
           {rep.control.hold_ms && Object.keys(rep.control.hold_ms).length > 0 && (<>
@@ -388,7 +388,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
         <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHAT IS THIS {deviceOf(s)}?</div>
         <Seg label={`kind for ${s.node_id}`} value={kind} size={11} pad="5px 8px" wrap
           options={kindOptions.map(k => ({ value: k, label: KIND_SHORT[k] }))} titles={Object.fromEntries(kindOptions.map(k => [k, KIND_LABEL[k]]))}
-          onChange={k => { setKind(k); if (k === 'control') setTeam(255); }} />
+          onChange={k => { setKind(k); if (k === 'control') setTeam(STATION_TEAM_ANY); }} />
         {kind === 'powerup' && <ItemPicker node={s.node_id} pu={pu} chosen={chosen} locked={locked} onPick={p => { setItemPick(p); setChargesEdit(null); setAmountEdit(null); setEveryEdit(null); }}
           effective={chosenPreset ? { ...chosenPreset.item, ...(chosenKind === 'weapon' ? { charges } : {}), ...(chosenKind === 'overshield' ? { amount } : {}), spawn_every_s: every, first_at_s: every } : null} />}
         {kind === 'powerup' && chosen && chosenPreset && (

@@ -74,6 +74,8 @@ test('the respawn threshold default is per platform: phone -70, StickS3 -57 (Ton
   assert.ok(Object.isFrozen(RESPAWN_RSSI_DBM));
   assert.equal(phoneStationThreshold('respawn'), -70);
   for (const kind of ['extraction', 'bomb']) assert.equal(phoneStationThreshold(kind), STATION_THRESHOLD_DBM, kind);
+  // review #4 polish: an unknown kind, even one named like an inherited property, falls back to the -74 default
+  for (const kind of ['constructor', 'toString', '__proto__', 'nope', undefined]) assert.equal(phoneStationThreshold(kind), STATION_THRESHOLD_DBM, String(kind));
   // S58 (doc-rot 2026-09-24): a powerup station advertises its OWN ~1 ft default (the claim range), never the 3 m -74
   assert.equal(phoneStationThreshold('powerup'), -55);
   assert.equal(stationThreshold({ threshold: 0, kind: 'powerup' }), -55);
