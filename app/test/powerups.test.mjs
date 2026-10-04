@@ -1387,7 +1387,7 @@ test('pickup at the stack cap: the player does not claim, so the station keeps t
 });
 
 // Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". The "<ITEM> AVAILABLE" feed row that lands while I
-// am DOWN is dropped, during and after the respawn (engine.js `_laneWrite`).
+// am DOWN is dropped, during and after the respawn (engine.js `show`).
 test('down: <ITEM> AVAILABLE while I am down is never drawn, during or after the respawn', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: OVERSHIELD }] });
   h.at(58); h.die(); h.adv(300);

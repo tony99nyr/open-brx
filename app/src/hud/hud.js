@@ -1492,7 +1492,7 @@ export class Hud {
    *  always-on TAKEN hint and its countdown to the next spawn are gone; the left-side "<ITEM> AVAILABLE" feed
    *  alert at each spawn is the only signal for an unclaimed or unclaimable station. */
   _puHint(st) {
-    const h = st.powerup && st.powerup.hint; if (!h) return '';
+    const h = st.presented.hint; if (!h) return '';
     // F400 decision 3: while the switch card is up, hide the small hint chip for a weapon grant or a switch-back --
     // the card says the same thing, louder. The Overshield never gets a card (decision 5), so its own `granted`
     // hint (PICKED UP) is never hidden; the held chip beside the ammo is untouched either way. Read `st.switching`
@@ -2117,7 +2117,7 @@ export class Hud {
    *  last kill, or longer while that kill's own announcer slot is on air). OBJECTIVE, on the right: the lead and the hill,
    *  each up until the next one of its key replaces it. FEED, on the left: downs, pickups and every other alert (BOMB
    *  PLANTED, ONE MINUTE LEFT), 4 s a row. Each item carries a small source line (MC, IR, BLE); no weapon, no "+1". The down screen
-   *  owns a dead phone, so nothing here draws unless the player is live and alive. */
+   *  owns a dead phone: the engine's presentation gate gives `st.presented.lanes` as null unless the player is live and alive. */
   /** Keyed sync for one lane: each item is one element's HTML carrying `data-lk`. A kept node takes the new class,
    *  style, data and content in place (so its own entrance animation does not re-run); a new key is inserted; a gone
    *  key is removed. Content is rewritten only when it changed. */
@@ -2169,9 +2169,9 @@ export class Hud {
   _lanes(st) {
     let root = this.frame.querySelector('#lanes');
     if (!root) { root = document.createElement('div'); root.id = 'lanes'; this.frame.appendChild(root); }
-    const L = st.lanes;
+    const L = st.presented.lanes;   // #5: the engine's presentation gate decides whether the lanes draw (null while down)
     clearTimeout(this._lanesT);
-    if (!L || st.phase !== 'live' || !st.alive) { if (root.firstChild) root.innerHTML = ''; delete this.frame.dataset.hero; this._heroWait = null; return; }
+    if (!L) { if (root.firstChild) root.innerHTML = ''; delete this.frame.dataset.hero; this._heroWait = null; return; }
     const now = Date.now(), FADE = 300;
     // F368 (docs/announcer.md "Layering and priority on the phone HUD"): a play-blocking takeover wins the centre. While
     // one is up the kill card is not drawn; a kill that is due WAITS, and draws when the takeover ends with a full

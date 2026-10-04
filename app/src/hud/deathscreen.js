@@ -48,7 +48,7 @@ export function weaponLabel(w) {
  *  killer means a stale latch). Empty when the phone booked no hit this life (a gun restart, a desync, a restart). */
 /** HUD QA R2-17: a death takes a held weapon item with it (powerups.md). The DOWN screen says so, once, beside the kill. */
 export function itemLostLine(st) {
-  const l = st.puLost; if (!l || !l.name) return '';
+  const l = st.presented.puLost; if (!l || !l.name) return '';   // #5: drawn only while down (the engine's presentation gate)
   return `<span class="pulost" id="dspulost" role="status">${up(l.name)} LOST</span>`;
 }
 export function finalHitLine(st) {
