@@ -806,7 +806,7 @@ class PowerupSchedule {
     if (incoming_next_spawn_in_ms < 0) return false;  // nothing to prove this is a later cycle
     uint32_t incoming_next_ms = received_at_ms + (uint32_t)incoming_next_spawn_in_ms;
     long half_interval_ms = (long)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000L / 2;
-    long advance_ms = (long)(int32_t)(incoming_next_ms - awarded_instant_ms_);  // signed: an earlier spawn is negative  // vs the next spawn after the claim
+    long advance_ms = (long)(int32_t)(incoming_next_ms - awarded_instant_ms_);  // signed (an earlier spawn is negative), against the next spawn after the claim
     return advance_ms >= half_interval_ms;
   }
 
@@ -835,6 +835,11 @@ class PowerupSchedule {
     available_ = true;
     taker_ = 0;
     has_awarded_instant_ = false;
+    // Move the anchor to the first FUTURE spawn, as the phone's tick does. A claim in this cycle then
+    // gets its own spawn instant (the CLAIM report's key), and the queue cannot replace the last
+    // cycle's report. One fold past `now`, so a late tick still spawns once, never twice.
+    uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000u;
+    while ((int32_t)(now_ms - anchor_ms_) >= 0) anchor_ms_ += period_ms;
     return true;
   }
 

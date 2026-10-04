@@ -1181,6 +1181,23 @@ static void test_a_new_game_number_sets_dropped_for_match_again_after_a_reconnec
 
 // --- polish round 2, item 3 (HIGH): the pending station_action queue ----------------------------
 
+// A2 r2 (H1): a self-spawn must move the anchor on, or the next claim reuses the first claim's spawn
+// instant and the queue replaces the first report, so MC never hears of it.
+static void test_two_offline_claims_across_a_self_spawn_leave_two_pending_reports() {
+  PowerupSchedule s;
+  StationUpdateMsg u;
+  u.present = true;
+  u.available = true;
+  u.next_spawn_in_ms = 60000;
+  s.apply_update(u, 0);
+  PendingActionQueue q;
+  q.push(4, 7, s.mark_taken(7, 1000), 1000);
+  CHECK(s.tick(60000));  // the self-spawn
+  q.push(4, 8, s.mark_taken(8, 61000), 61000);
+  CHECK_EQ(q.size(), (size_t)2);
+  CHECK(!s.tick(61000));
+}
+
 static void test_pending_action_queue_is_fifo_and_drops_the_oldest_when_full() {
   PendingActionQueue q;
   for (int i = 0; i < 10; i++) q.push(9, i + 1, (uint32_t)(1000 * i), 1000 + i);
@@ -2896,6 +2913,7 @@ int main(int argc, char** argv) {
   test_a_same_game_repush_does_not_set_dropped_for_match();
   test_dropped_for_match_latches_until_explicitly_cleared();
   test_a_new_game_number_sets_dropped_for_match_again_after_a_reconnect();
+  test_two_offline_claims_across_a_self_spawn_leave_two_pending_reports();
   test_pending_action_queue_is_fifo_and_drops_the_oldest_when_full();
   test_pending_action_queue_newest_per_spawn_instant_wins();
   test_pending_action_queue_pop_front_on_empty_queue_fails();

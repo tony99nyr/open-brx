@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both).",
+  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report.",
   "cases": [
     {
       "name": "spawns on its own clock, then repeats every interval; a claim folds the next spawn forward",
@@ -9,8 +9,20 @@
         { "t": 0, "do": "update", "body": { "available": false, "next_spawn_in_ms": 1000 }, "expect": { "advert": { "state": 0, "value": 1, "taker": 0 } } },
         { "t": 999, "do": "tick", "players": [], "expect": { "advert": { "state": 0, "value": 1, "taker": 0 }, "events": [] } },
         { "t": 1000, "do": "tick", "players": [], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 }, "events": ["spawned"] } },
-        { "t": 61000, "do": "tick", "players": [], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 }, "events": [] } },
-        { "t": 61100, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 60, "taker": 7 }, "events": [{ "type": "taken", "player_num": 7 }] } }
+        { "t": 1100, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 60, "taker": 7 }, "events": [{ "type": "taken", "player_num": 7 }] } },
+        { "t": 61000, "do": "tick", "players": [], "expect": { "advert": { "state": 1, "value": 0, "taker": 0 }, "events": ["spawned"] } },
+        { "t": 61100, "do": "tick", "players": [{ "id": 8, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "advert": { "state": 0, "value": 60, "taker": 8 }, "events": [{ "type": "taken", "player_num": 8 }] } }
+      ]
+    },
+    {
+      "name": "two claims across a self-spawn carry two different spawn instants (a report must not replace the first)",
+      "only": ["stick"],
+      "setup": { "id": 4, "spawn_every_s": 60 },
+      "steps": [
+        { "t": 0, "do": "update", "body": { "available": true, "next_spawn_in_ms": 60000 } },
+        { "t": 1000, "do": "tick", "players": [{ "id": 7, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "claim_key": 60000 } },
+        { "t": 60000, "do": "tick", "players": [], "expect": { "events": ["spawned"] } },
+        { "t": 61000, "do": "tick", "players": [{ "id": 8, "state": ["alive", "claim_ready"], "value": 4 }], "expect": { "claim_key": 120000, "advert": { "state": 0, "value": 59, "taker": 8 } } }
       ]
     },
     {

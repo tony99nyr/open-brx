@@ -11,7 +11,7 @@ import { PLAYER_STATE } from '../src/beacon.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'powerup-station-cases.json'), 'utf8'));
 
-const toPlayer = (p) => ({
+const toPlayer = (p) => (p.state.forEach(n => assert.ok(n in PLAYER_STATE && ['alive', 'claiming', 'claim_ready'].includes(n), `unknown player state ${n}`)), {
   role: 'player', id: p.id, value: p.value, ageMs: p.age_ms ?? 0,
   state: p.state.reduce((m, n) => m | PLAYER_STATE[n], 0),
 });

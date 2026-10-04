@@ -38,6 +38,7 @@ struct Rig {
   PowerupSchedule sched;
   ClaimGate gate;
   std::vector<std::string> events;  // since the last step
+  long last_key = -1;               // the spawn instant mark_taken returned for this step's claim
 
   void observe_all(const Value& players, uint32_t t) {
     for (const Value& p : players.arr) {
@@ -48,6 +49,7 @@ struct Rig {
         if (s == "claiming") claiming = true;
         if (s == "claim_ready") ready = true;
         if (s == "alive") alive = true;
+        if (s != "alive" && s != "claiming" && s != "claim_ready") fail("unknown player state " + s);
       }
       gate.observe((int)p.get("id").as_int(), (int)p.get("value").as_int(), 0, claiming, ready, alive,
                    (int)p.get("rssi").as_int(-60), t);
@@ -56,7 +58,7 @@ struct Rig {
   void resolve(uint32_t t) {
     ClaimWinner w = gate.resolve_batch();
     if (w.won && sched.available()) {
-      sched.mark_taken(w.player_num, t);
+      last_key = (long)sched.mark_taken(w.player_num, t);
       events.push_back("taken:" + std::to_string((int)w.player_num));
     }
   }
@@ -64,6 +66,8 @@ struct Rig {
 
 static void check_expect(Rig& r, const Value& step, uint32_t t) {
   const Value& ex = step.get("expect");
+  if (ex.has("claim_key") && r.last_key != ex.get("claim_key").as_int())
+    fail("t=" + std::to_string(t) + " claim key " + std::to_string(r.last_key) + " expected " + std::to_string(ex.get("claim_key").as_int()));
   if (ex.has("advert")) {
     PowerupAdvertView v = r.sched.view(t);
     const Value& a = ex.get("advert");
@@ -98,6 +102,7 @@ static void run_case(const Value& c) {
     uint32_t t = (uint32_t)step.get("t").as_int64();
     std::string what = step.get("do").as_string();
     r.events.clear();
+    r.last_key = -1;
     if (what == "update") {
       StationUpdateMsg u;
       u.present = true;
