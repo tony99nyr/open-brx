@@ -168,9 +168,15 @@ def test_an_existing_file_keeps_its_mode_and_a_new_one_gets_the_umask_default():
         storage.atomic_write_text(p, "new")
         assert p.read_text() == "new" and stat.S_IMODE(p.stat().st_mode) == 0o644
         old = os.umask(0o022)
+        real_umask = os.umask
+
+        def no_umask(*_a):
+            raise AssertionError("a write must not touch the process-wide umask")
+        os.umask = no_umask
         try:
             storage.atomic_write_text(d / "fresh", "x")
         finally:
+            os.umask = real_umask
             os.umask(old)
         assert stat.S_IMODE((d / "fresh").stat().st_mode) == 0o644
         storage.atomic_write_text(d / "secret", "x", mode=0o600)

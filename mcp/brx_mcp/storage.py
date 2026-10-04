@@ -92,24 +92,30 @@ def atomic_write_text(path: Path, text: str, mode: int | None = None) -> None:
     A symlink is followed (the temp file and the rename sit beside the real target, as `write_text` did).
     Permissions: an explicit `mode` wins; else an existing target keeps its mode; else a new file gets
     the umask default, as `write_text` gave."""
-    import contextlib, os, stat, tempfile
+    import contextlib, os, stat, secrets
     path = Path(os.path.realpath(path))
     path.parent.mkdir(parents=True, exist_ok=True)
     if mode is None:
         try:
             mode = stat.S_IMODE(path.stat().st_mode)
         except OSError:
-            old = os.umask(0)
-            os.umask(old)
-            mode = 0o666 & ~old
-    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+            pass            # a new file: the kernel applies the umask to 0o666 below (never read or set the umask: it is process-wide)
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+    while True:
+        tmp = str(path.parent / f"{path.name}.{secrets.token_hex(4)}.tmp")
+        try:
+            fd = os.open(tmp, flags, 0o666 if mode is None else 0o600)
+            break
+        except FileExistsError:
+            continue
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        with contextlib.suppress(OSError):
-            os.chmod(tmp, mode)
+        if mode is not None:
+            with contextlib.suppress(OSError):
+                os.chmod(tmp, mode)
         _replace_with_retry(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
