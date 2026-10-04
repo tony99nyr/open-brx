@@ -181,3 +181,26 @@ def test_o14_worst_case_config_push_fits_the_envelope_cap():
         biggest = max(biggest, len(E.encode(E.make_envelope("config", body)).encode("utf-8")))
     print(f"worst config frame: {biggest} of {E.MAX_ENVELOPE_BYTES} bytes")
     assert biggest < E.MAX_ENVELOPE_BYTES, f"{biggest} bytes of {E.MAX_ENVELOPE_BYTES}"
+
+
+def test_review1_pull_log_push_returning_false_is_push_failed_and_not_asked():
+    from test_mc_logsync_versions import mk, online
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    net.push = lambda *a, **k: False
+    assert s.pull_log_refusal("node0", "manual") == "push_failed"
+    assert s.pull_log_refusal("node0", "recap") == "push_failed"
+    assert "node0" not in s._log_asked
+
+
+def test_review2_result_is_recorded_pushed_only_when_the_push_landed():
+    from test_mc_logsync_versions import mk, online, run_match
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    run_match(s, net, clock, ps)
+    s._result_pushed = {}
+    real = net.push
+    net.push = lambda *a, **k: False
+    assert s._push_result() == 0 and s._result_pushed == {}
+    net.push = real
+    assert s._push_result() == 1, "the unchanged result must go out once the phone is reachable"

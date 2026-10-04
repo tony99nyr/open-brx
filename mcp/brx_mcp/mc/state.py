@@ -5250,8 +5250,9 @@ class Session:
             key = {k: v for k, v in body.items() if k != "t"}
             if self._result_pushed.get(p["player_id"]) == key:
                 continue
+            if self.net.push(p["node_id"], "result", body) is False:   # no socket or would not encode: stay unrecorded, so the next call retries
+                continue
             self._result_pushed[p["player_id"]] = key
-            self.net.push(p["node_id"], "result", body)
             sent += 1
         return sent
 
@@ -5609,10 +5610,12 @@ class Session:
         if self._log_bytes.get(nid, 0) >= 1_000_000:      # the existing per-MATCH cap
             return "budget_spent"
         try:
-            self.net.push(nid, "pull_log", {"reason": reason})
+            sent = self.net.push(nid, "pull_log", {"reason": reason})
         except Exception:
             import logging
             logging.getLogger("brx.mc").warning("pull_log to %s failed", nid, exc_info=True)
+            return "push_failed"
+        if sent is False:                                 # NetServer: no live socket, or the frame would not encode; a fake returns None
             return "push_failed"
         if reason != "manual":
             self._log_asked.add(nid)
