@@ -85,3 +85,16 @@ test('window.brx is published before the boot awaits the advert or the scan (rev
   assert.ok(at < boot.indexOf('await startAdvert()'), 'before the advert start, which awaits the plugin');
   assert.ok(at < boot.indexOf('await startScan()'), 'and before the scan');
 });
+
+test('the quiet log uses the point`s own in-circle rule: a sighted player not yet present is logged too (review 2026-10-03)', async () => {
+  const dwell = api.presence.dwellMs;
+  api.presence.dwellMs = 60000;   // never present inside this test: only the sighting puts the player in the circle
+  try {
+    const adv = encodeUuid({ role: 'player', id: 12, team: 1, state: PLAYER_STATE.alive, game: api.settings.game || 0 });
+    api.presence.observe([adv], -40, Date.now());
+    for (const t1 = Date.now(); Date.now() - t1 < 3500 && !api.log.some(l => /player 12 .* quiet/.test(l));) await new Promise(r => realSetTimeout(r, 50));
+    const p = api.diag().players.find(x => x.id === 12);
+    assert.equal(p.present, false, 'setup: never present');
+    assert.ok(api.log.some(l => /player 12 \(BLUE\) quiet/.test(l)), 'a player the point counts and does not hear is logged as quiet');
+  } finally { api.presence.dwellMs = dwell; }
+});

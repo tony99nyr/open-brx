@@ -479,11 +479,11 @@ function tick() {
   presence.tick(now);
   // Bench 2026-10-02: say when a player is HEARD on this station and when they leave (edges only), so a field log
   // can tell "never heard him" from "heard him and did not count him".
-  // F440: a PRESENT player not heard for QUIET_MS is logged once per silence, with its last few gaps: a sparse
+  // F440: a player in the circle (present or sighted, as the point counts) not heard for QUIET_MS is logged once per silence, with its last few gaps: a sparse
   // advertiser that still clears the dwell would otherwise stall a capture with nothing in the log.
   for (const p of presence.players()) {
-    const quiet = p.present && now - p.seenAt >= QUIET_MS;
-    if (quiet && !_quietLogged.has(p.id)) { _quietLogged.add(p.id); log(`player ${p.id} (${TEAM_NAMES[p.team] ?? `team ${p.team}`}) quiet ${((now - p.seenAt) / 1000).toFixed(1)} s while present · recent gaps ${(p.gaps || []).slice(-6).join(' ')} ms`, 'li'); }
+    const quiet = (p.present || p.inCircle) && now - p.seenAt >= QUIET_MS;   // the point's own in-circle rule (control.js)
+    if (quiet && !_quietLogged.has(p.id)) { _quietLogged.add(p.id); log(`player ${p.id} (${TEAM_NAMES[p.team] ?? `team ${p.team}`}) quiet ${((now - p.seenAt) / 1000).toFixed(1)} s while in the circle · recent gaps ${(p.gaps || []).slice(-6).join(' ')} ms`, 'li'); }
     else if (!quiet) _quietLogged.delete(p.id);
   }
   for (const e of playerEdges(presence, _playerWas)) {
