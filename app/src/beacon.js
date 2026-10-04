@@ -84,8 +84,11 @@ export function configGameByte(config) {
 }
 
 /** F440: how long a PRESENT entry may sit below the exit level before it leaves (a dip or a sparse advertiser's
- *  silence is not a step out of the circle; a player who walks away still leaves within about this). */
-export const EXIT_GRACE_MS = 2500;
+ *  silence is not a step out of the circle; a player who walks away still leaves within about this).
+ *  P-M2 (review 2026-10-03): 4 s, was 2.5 s. A player's own body takes about 12 dB off its advert for 2-5 s at a
+ *  time, and at 2.5 s a player standing 3-6 dB inside the circle dropped 9-19 times in 10 minutes. Walking out
+ *  costs about 0.5 s more. The Stick keeps the same number (presence.h PRESENCE_EXIT_GRACE_MS). */
+export const EXIT_GRACE_MS = 4000;
 /** F440 (Tony, 2026-10-02): the exit band, how far under the threshold a PRESENT player may read before leaving.
  *  3 dB, not 6: the circle is nearly the same size in and out ("a minimum threshold and you are in the circle"),
  *  and EXIT_GRACE_MS absorbs the dips. Was 6 dB, which kept a player already in out to about twice the radius. */
@@ -96,6 +99,9 @@ export const SIGHT_WINDOW_MS = 2000;
  *  (one sample in a sparse phone's window) is KEPT as is, with no two-advert rule; bench 10c's ladder decides with real
  *  fading. */
 export const SIGHT_MS = 4000;   // = the silence expiry: a credible sighting counts for 4 s
+/** P-L1 (review 2026-10-03): the most adverts the sighting window keeps, the same bound as the Stick (presence.h
+ *  SIGHT_RECENT_MAX), so a flood reads the same median on both. */
+export const SIGHT_RECENT_MAX = 64;
 /** How many recent inter-arrival gaps a Presence entry keeps (F440 diagnostics). */
 export const GAP_SAMPLES = 16;
 
@@ -107,8 +113,9 @@ export const GAP_SAMPLES = 16;
  *   tick(now)                  advance dwell / expiry; call it a few times a second
  *   stations() / players()     current entries; each carries { present, rssi (EMA), raw, seenAt, ... }
  *
- * present flips ON after `dwellMs` continuously at/above the threshold and OFF when the EMA has stayed
- * `hysteresisDb` below it for `exitGraceMs` (F440), or when no advert has arrived for `expiryMs`. The threshold is the
+ * present flips ON after `dwellMs` with the EMA continuously at/above the threshold and OFF when the exit level (the
+ * median of the last SIGHT_WINDOW_MS of raw samples, else the last raw sample) has stayed `hysteresisDb` below it for
+ * `exitGraceMs` (F440, round 2 2026-10-04), or when no advert has arrived for `expiryMs`. The threshold is the
  * station's own advertised one when set, else `defaultThreshold`.
  */
 export class Presence {
@@ -152,7 +159,7 @@ export class Presence {
     // and stay, so the circle edge moved with advert rate. A window median gives every phone the same edge: a sparse
     // phone's window holds its one advert, a dense phone's holds several. Staying in comes from `present` (the EMA
     // with its debounced exit). Binary: never weighted by how far above.
-    e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }];
+    e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }].slice(-SIGHT_RECENT_MAX);
     if (medianOf(e.recent.map(x => x.rssi)) >= this.thresholdFor(e)) e.sightedAt = now;
     return e;
   }
@@ -170,8 +177,13 @@ export class Presence {
       if (now - e.seenAt > this.expiryMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; e.inCircle = false; if (now - e.seenAt > 2 * this.expiryMs) this.entries.delete(key); continue; }
       const thr = this.thresholdFor(e);
       if (e.present) {
-        // F440: leave only after the EMA has stayed below the exit level for `exitGraceMs` (a dip is not a step out)
-        if (e.rssi < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
+        // F440: leave only after the exit level has stayed below the band for `exitGraceMs` (a dip is not a step out).
+        // Round 2 (review 2026-10-04): the level is the MEDIAN of the last SIGHT_WINDOW_MS of raw samples, not the EMA,
+        // whose alpha is applied per advert and so lags further on a sparse phone: exit time must not depend on advert
+        // rate. An empty window (a silence) falls back to the EMA. The EMA still drives the entry dwell.
+        const win = (e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS);
+        e.exitLevel = win.length ? medianOf(win.map(x => x.rssi)) : e.raw;
+        if (e.exitLevel < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
         else e.belowSince = null;
       } else if (e.rssi >= thr) { if (e.sinceAbove == null) e.sinceAbove = now; if (now - e.sinceAbove >= this.dwellMs) e.present = true; }
       else e.sinceAbove = null;

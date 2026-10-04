@@ -49,14 +49,15 @@ constexpr int PRESENCE_HYSTERESIS_DB = 3;
 constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expiryMs
 // F440 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
 // leaves only after the EMA has stayed below the exit level this long, so a dip is not a step out. beacon.js EXIT_GRACE_MS.
-constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 2500;
+// P-M2 (review 2026-10-03): 4 s, was 2.5 s, so body shadowing (about 12 dB for 2-5 s) does not drop a standing player.
+constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 4000;
 // F440: a credible sighting (the window median below, at or above the threshold) keeps a player "in the circle"
 // this long. Staying in otherwise comes from `present`. beacon.js SIGHT_MS.
 constexpr uint32_t PRESENCE_SIGHT_MS = 4000;
 // F440: a sighting is the MEDIAN of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold
 // (beacon.js SIGHT_WINDOW_MS): the same circle edge for a dense and a sparse advertiser. SIGHT_RECENT_MAX bounds it.
 constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
-constexpr size_t SIGHT_RECENT_MAX = 24;
+constexpr size_t SIGHT_RECENT_MAX = 64;  // P-L1: beacon.js SIGHT_RECENT_MAX (about 32 KB across 64 players)
 constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
 constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // utility.js DEFAULTS.threshold (the port's own default;
                                                      // a Stick station passes STICK_DEFAULT_THRESHOLD_DBM, -57)
@@ -212,6 +213,18 @@ class PlayerPresence {
     return e.n_samples ? a[(e.n_samples - 1) / 2] : e.raw;
   }
 
+  // beacon.js tick() `exitLevel`: the lower-middle median of the raw samples heard in the last PRESENCE_SIGHT_WINDOW_MS,
+  // else the last raw sample.
+  static int exit_level(const PlayerEntry& e, uint32_t now) {
+    int a[SIGHT_RECENT_MAX];
+    size_t n = 0;
+    for (size_t i = 0; i < e.n_recent; i++)
+      if (now - e.recent_t[i] < PRESENCE_SIGHT_WINDOW_MS) a[n++] = e.recent_rssi[i];
+    if (!n) return e.raw;
+    std::sort(a, a + n);
+    return a[(n - 1) / 2];
+  }
+
   // beacon.js thresholdFor(): `e.threshold || this.defaultThreshold`.
   int threshold_for(const PlayerEntry& e) const { return e.threshold ? e.threshold : default_threshold; }
 
@@ -231,9 +244,11 @@ class PlayerPresence {
       }
       const int thr = threshold_for(e);
       if (e.present) {
-        // Hysteresis: off only once the EMA is `hysteresis_db` BELOW the threshold (strictly), and (F440) has
-        // stayed there `exit_grace_ms`: a dip is not a step out of the circle.
-        if (e.rssi < thr - hysteresis_db) {
+        // Hysteresis: off only once the exit level is `hysteresis_db` BELOW the threshold (strictly), and (F440) has
+        // stayed there `exit_grace_ms`: a dip is not a step out of the circle. Round 2 (review 2026-10-04): the exit
+        // level is the median of the last PRESENCE_SIGHT_WINDOW_MS of raw samples (the last raw sample when the window
+        // is empty), not the EMA, whose per-advert alpha lags on a sparse phone. beacon.js `exitLevel`.
+        if (exit_level(e, now) < thr - hysteresis_db) {
           if (!e.below) { e.below = true; e.below_since = now; }
           if (now - e.below_since >= exit_grace_ms) { e.present = false; e.above = false; e.below = false; }
         } else {

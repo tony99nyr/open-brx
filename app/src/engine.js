@@ -612,7 +612,7 @@ const IR_RESUME = (now, it, startedSaid) => (startedSaid && now - it.startedAt >
 export const HILL_CUES = {
   hill_captured:  { frame: '$PLAY,,4,6,VB0N,,,,*', ms: 1924 },   // VB0N "Hill Captured"  1.924 s
   hill_lost:      { frame: '$PLAY,,4,6,VB0P,,,,*', ms: 2976 },   // VB0P "Hill Lost!"     2.976 s
-  hill_contested: { frame: '$PLAY,,4,6,VB0O,,,,*', ms: 2078 },   // VB0O "Hill Contested" 2.078 s — the STATION path only (`_onControlAdvert`); never the IR path (F75, see `_hillCallout`)
+  hill_contested: { frame: '$PLAY,,4,6,VB0O,,,,*', ms: 2078 },   // VB0O "Hill Contested" 2.078 s: the holder's stall line, station path only (`_onControlAdvert`); never IR (F75)
   hill_moved:     { frame: '$PLAY,,4,6,VB0Q,,,,*', ms: 2424 },   // VB0Q "Hill Moved"     2.424 s — rotating-hill modes only (F83), no caller yet
   hill_tick:      { frame: '$PLAY,U100,4,6,,,,,*', ms: 114 },    // U100 possession tick  0.114 s
 };
@@ -3710,12 +3710,15 @@ export class Engine {
     const stalled = contested && held && mine != null && mine !== HILL_NEUTRAL_TEAM && owner === mine;
     // Polish r1: two stations on one id alternate their fields every scan, so the bit can flap where F440's debounce
     // cannot reach; HILL_CALLOUT_MIN_MS (3 s, the floor the transition lines already have) bounds that. A stall inside
-    // the floor still starts its episode, so it is never said late.
-    if (stalled && !this._hillWasContested && !said && audio && now - (this._hillContestedAt || 0) >= HILL_CALLOUT_MIN_MS) {
-      this._hillContestedAt = now;
+    // the floor is owed, and said when the floor passes only if the point is still held and contested.
+    // H-L (review 2026-10-03): an edge the floor blocks is OWED, and said once the floor passes if it is still a stall.
+    const floorOk = now - (this._hillContestedAt || 0) >= HILL_CALLOUT_MIN_MS;
+    if (stalled && (!this._hillWasContested || this._hillContestOwed) && !said && audio && floorOk) {
+      this._hillContestedAt = now; this._hillContestOwed = false;
       this._hillSay('hill_contested', `control point ${e.id}: our scoring stopped, the other team is in the circle (${e.value}%)`);
-    }
-    this._hillBegins(e.id, now, audio && !said && !this._alertsMissed());   // down: the episode is marked, its badge missed (and its 10 s floor not spent)
+    } else if (!stalled || said || !audio) this._hillContestOwed = false;
+    else if (!this._hillWasContested && !floorOk) this._hillContestOwed = true;
+    this._hillBegins(e.id, now, audio && !said && !this._alertsMissed(), said && !this._alertsMissed());   // down: the episode is marked, its badge missed (and its 10 s floor not spent)
     this._hillWasContested = stalled;
     // 4 Hz: only a fact the screen shows is worth a render (progress to the whole percent, like the RSSI
     // rounding in `setStations`).
@@ -3739,7 +3742,7 @@ export class Engine {
    *  ⚠ The advert names the point's team (owner while held, else the builder), never the DRAINER. With two teams in
    *  the game the drainer is the other one; with three or more it is unknown, so a drain shows nothing and the badge
    *  waits for the thief's own build, which the advert does name. */
-  _hillBegins(site, now, on) {
+  _hillBegins(site, now, on, deferNew = false) {
     const h = this.hill;
     if (!h || h.source !== 'station') { this._hillEp = null; return; }
     const neutral = h.owner === HILL_NEUTRAL_TEAM, x = neutral ? h.holding : h.owner, p = h.progress;
@@ -3752,6 +3755,9 @@ export class Engine {
       if (eps[t] == null && prev.eps[t] === 'drain' && x != null && x !== t && p > 0 && p < 100) eps[t] = 'drain';
     }
     this._hillEp = { site, at: now, eps };
+    // H-M1 (review 2026-10-03): a callout in this advert (`deferNew`) wins it, so a team whose episode starts here is
+    // left unmarked and badged on the next advert. A three-team steal's zero crossing says HILL LOST to the holder.
+    if (prev && deferNew) for (const t of Object.keys(eps)) if (prev.eps[t] == null) delete eps[t];
     if (!prev || !on) return;
     const at = this._hillBeginsAt || (this._hillBeginsAt = {});
     for (const t of Object.keys(eps).map(Number)) {
@@ -3824,7 +3830,7 @@ export class Engine {
   _resetHill() {
     this.hill = null; this.hillCallout = null; this._hillTickAt = 0;
     this._controlSite = null; this._controlLastOwner = null; this._controlSpokenOwner = null; this._hillPendingCallout = null; this._controlSig = ''; this._hillSaidAt = 0;
-    this._hillWasContested = false; this._hillContestedAt = 0; this._hillOwnerWhenSilenced = undefined;
+    this._hillWasContested = false; this._hillContestedAt = 0; this._hillContestOwed = false; this._hillOwnerWhenSilenced = undefined;
     this._hillTeam2Warned = false; this._hillSourceWarned = '';
     this._hillEp = null; this._hillBeginsAt = {};
     this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null;

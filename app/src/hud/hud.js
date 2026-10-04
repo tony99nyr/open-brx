@@ -55,7 +55,6 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&am
 /** Accuracy is hits/shots where hits come from the VICTIMS' phones — shown only once MC has counted at least one
  *  hit for this player and ten shots have gone out; otherwise it reads 0% for every player without a phone in range. */
 const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? Math.round(st.accuracy) : null;
-/** A11.4: alert families → banner colour. Objective = team colour, clock = amber, danger = red, the rest = glow. */
 /** The hill badge's words (the OBJECTIVE lane). `hill_capture_started` (Tony, 2026-10-02): any team's capture BEGINS
  *  (engine.js `_hillBegins`); everyone sees it as a NEUTRAL badge whose marker names the CAPTURING team (`o.team`). */
 /** HILL CAPTURE STARTED is a NEUTRAL badge (the glow accent, Tony 2026-10-02: never a team tint, so it cannot read as
@@ -63,6 +62,7 @@ const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? 
  *  initial, so at night (red only) the letter still says which team. */
 const capMark = team => { const k = TEAM_COLOR[team] ? team : null; return `<b class="ltm" role="img" style="--tc:${k ? TEAM_COLOR[k] : 'var(--mut)'}" aria-label="${esc(k ? k.toUpperCase() : 'A TEAM')}">${esc(k ? k[0].toUpperCase() : '?')}</b>`; };
 const HILL_WORD = { hill_captured: 'HILL CAPTURED', hill_lost: 'HILL LOST', hill_capture_started: 'HILL CAPTURE STARTED' };
+/** A11.4: alert families → banner colour. Objective = team colour, clock = amber, danger = red, the rest = glow. */
 const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objective', flag_returned: 'objective', point_captured: 'objective', hill_captured: 'objective',
   time_60: 'clock', time_30: 'clock', time_10: 'clock',
   bomb_planted: 'danger', bomb_detonated: 'danger', vip_hit: 'danger', vip_down: 'danger', infected: 'danger', lead_lost: 'danger',

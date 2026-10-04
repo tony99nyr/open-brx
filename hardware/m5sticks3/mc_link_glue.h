@@ -738,7 +738,12 @@ static void mcTickPlayers(uint32_t now) {
   Sighting sp;
   while (seenPop(sp)) {
     link.anchor_hill_on_advert(sp.advert, sp.seen_at);  // A68 fallback: a heard-down player comes alive, any RSSI
-    presence.observe(sp.advert, sp.rssi, now);
+    // P-L2 (review 2026-10-03): the advert's own arrival time, as utility.js stamps each scan hit, not this drain's
+    // `now` (a burst drained together would land on one instant and the sighting window would count it as one).
+    // Clamped to `now`: an advert pushed by the scan callback during this drain must not sit in the future, or
+    // tick(now)'s unsigned `now - seen_at` would wrap and expire the player.
+    const uint32_t at = (int32_t)(sp.seen_at - now) > 0 ? now : sp.seen_at;
+    presence.observe(sp.advert, sp.rssi, at);
   }
   presence.tick(now);
   const uint32_t revivesBefore = link.revives().revives;

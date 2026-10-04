@@ -263,6 +263,44 @@ def test_hill_contested_is_the_holders_line_once_per_stall_and_never_on_the_ir_p
     asyncio.run(go())
 
 
+def test_hill_contested_owed_by_the_floor_is_said_once_it_passes_if_still_a_stall():
+    """H-L (review 2026-10-03, engine.js `_hillContestOwed`): the 3 s floor must not swallow a REAL second stall. An
+    edge the floor blocks is owed, and said at the first advert past the floor if our point is still held and
+    contested; a stall that ended inside the floor owes nothing."""
+    async def go():
+        st, mgr, clock = mk_point(tid=1)
+        await in_play(st)
+        await adv(st, id=1, team=None, value=0, present=True)
+        await adv(st, id=1, team=1, held=True, value=100, present=True)
+        await ticks(st, clock, S.HILL_CUES["hill_captured"]["s"] + 0.1)
+        n = mark(mgr)
+        await adv(st, id=1, team=1, held=True, contested=True, value=98, present=True)
+        await ticks(st, clock, 1.0)
+        await adv(st, id=1, team=1, held=True, value=98, present=True)                    # scoring resumed
+        await adv(st, id=1, team=1, held=True, contested=True, value=97, present=True)    # a second stall, inside the floor
+        assert audio(mgr, n).count(CONTESTED) == 1, "the floor holds it back"
+        await ticks(st, clock, S.HILL_CALLOUT_MIN_S)
+        await adv(st, id=1, team=1, held=True, contested=True, value=97, present=True)    # still a stall past the floor
+        assert audio(mgr, n).count(CONTESTED) == 2, "owed, and said once the floor passed"
+        await adv(st, id=1, team=1, held=True, contested=True, value=97, present=True)
+        assert audio(mgr, n).count(CONTESTED) == 2, "once, not per advert"
+        # CONTROL: a stall that ended inside the floor owes nothing
+        g, gm, gclock = mk_point(tid=1)
+        await in_play(g)
+        await adv(g, id=1, team=None, value=0, present=True)
+        await adv(g, id=1, team=1, held=True, value=100, present=True)
+        await ticks(g, gclock, S.HILL_CUES["hill_captured"]["s"] + 0.1)
+        n = mark(gm)
+        await adv(g, id=1, team=1, held=True, contested=True, value=98, present=True)
+        await adv(g, id=1, team=1, held=True, value=98, present=True)
+        await adv(g, id=1, team=1, held=True, contested=True, value=98, present=True)
+        await adv(g, id=1, team=1, held=True, value=98, present=True)
+        await ticks(g, gclock, S.HILL_CALLOUT_MIN_S + 0.5)
+        await adv(g, id=1, team=1, held=True, value=98, present=True)
+        assert audio(gm, n).count(CONTESTED) == 1, "nothing owed once scoring resumed"
+    asyncio.run(go())
+
+
 def test_rising_and_falling_together_read_as_direction_unknown_and_falling_alone_doubles_the_tick():
     """Byte 10 is FLAGS, not a packed phase: `rising|falling` CAN both be set (an unauthenticated advert can
     say it) and reads as direction UNKNOWN, never as either -- so it does NOT double the tick. `falling`

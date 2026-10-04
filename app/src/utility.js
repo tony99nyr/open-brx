@@ -47,7 +47,7 @@ function log(msg, cls = 'li') {
 // a control (hill) station -75, exit band EXIT_BAND_DB (beacon.js), until the outdoor walk, F383; every other kind -74); anything
 // else is the operator's or MC's override. 0.8 s dwell = get in range, brief pause, green (bench-tuned 2026-09-04). captureS/netCap belong to kind 5 (§5d.1): seconds ONE net
 // player needs for ONE phase, and the clamp on how much a rush can stack.
-const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false,
+const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false, mcLastBoundAt: 0,
   captureS: DEFAULT_CAPTURE_S, netCap: DEFAULT_NET_CAP };
 const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
 // F345: settings saved before thrV 2 hold the old -74 default as if chosen; migrateThreshold reads it as 0 once.
@@ -135,7 +135,7 @@ const _quietLogged = new Set();   // F440: players already logged as quiet in th
 const QUIET_MS = 1500;
 const _playerWas = new Map();   // player id -> present, for the edge lines above (playerEdges)
 let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false, _twin = 0;
-const scanGuard = new ScanGuard(); let _scanModeIdx = 0, _scanModeSince = 0;   // a crowded field drops the player watch to balanced (scanwatch.js)
+const scanGuard = new ScanGuard(); let _scanModeIdx = 0, _scanModeSince = 0, _floodLoggedAt = -Infinity;   // a crowded field drops the player watch to balanced (scanwatch.js)
 const SCAN_RESTART_MS = 8000;        // S6: a long scan STALLS on Android, worse while we also advertise — restart it on this cadence (8s > the ~6s floor Android's ~5-starts/30s throttle imposes)
 
 /** The advert triple this kind publishes. A control point's is LIVE state (owner / progress / contested),
@@ -269,7 +269,8 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
-  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true; if (s === 'bound' && flushTaken()) savePowerup();
+  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true;
+    if (s === 'bound' || was === 'bound') { settings.mcLastBoundAt = Date.now(); save(); }   // round 2: the auto-join guard's clock if (s === 'bound' && flushTaken()) savePowerup();
     // a discovered MC that drops (a restart on a new IP) is searched for again, not left to mDNS alone
     if (was === 'bound' && s !== 'bound' && settings.mc_auto && isNative()) setTimeout(startUtilityLanSweep, 0); log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url, trusted, pub, secret }).then(() => {
@@ -282,6 +283,34 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
 // phone has no player takeover key and cannot silently change a player's binding; discovery therefore skips
 // the player's tap-to-join rule. A typed `?mc=`/remembered URL still wins and remains the offline fallback.
 let _sweeper = null;
+/** U-M2 (review 2026-10-03): F443 locks the MC link in play, and discovery must not get round it. Armed or live and
+ *  not editing, an auto-join goes only to the SAME Mission Control: the host of `settings.mc`, or of the LAN url
+ *  the held tunnel pub belongs to (`brxu.pub_url`). Another MC's welcome would become `settings.mc` and its
+ *  station_config would re-arm the station. Refused, it says why (once a minute per address).
+ *
+ *  Round 2 (review 2026-10-04): `mcArmed` and `live` persist across sessions, so "in play" alone stranded a station
+ *  whose MC came back on a new IP the next day. The guard is for a station repointed MID-MATCH, so it holds only while
+ *  the station was bound to its MC within AUTOJOIN_LOCK_MS (`settings.mcLastBoundAt`, stamped whenever the link
+ *  enters or leaves bound, and saved so a phone restart mid-match keeps it). A mid-match drop is seconds to minutes;
+ *  a match is about 10 minutes; a later session is hours away. A station never bound has no MC to protect. */
+const AUTOJOIN_LOCK_MS = 10 * 60 * 1000;
+const _autoJoinRefusedAt = new Map();
+function hostOf(u) { try { return new URL(String(u).replace(/^ws/, 'http')).hostname.toLowerCase(); } catch (_) { return ''; } }
+function autoJoinAllowed(url) {
+  if (!rangeLocked()) return true;
+  const boundAt = Number(settings.mcLastBoundAt) || 0;
+  if (!boundAt || Date.now() - boundAt >= AUTOJOIN_LOCK_MS) return true;   // not this match any more: any MC
+  let held = [settings.mc];
+  try { held.push(localStorage.getItem('brxu.pub_url')); } catch (_) { /* ignore */ }
+  held = held.map(hostOf).filter(Boolean);
+  if (held.includes(hostOf(url))) return true;
+  const now = Date.now();
+  if (now - (_autoJoinRefusedAt.get(url) || -Infinity) >= 60000) {
+    _autoJoinRefusedAt.set(url, now);
+    log(`MC FOUND AT ${url}, NOT JOINING: THE STATION IS IN PLAY AND ${held.length ? `ITS MC IS ${settings.mc || held[0]}` : 'HOLDS NO MC ADDRESS'} (HOLD RANGE TO CHANGE IT)`, 'le');
+  }
+  return false;
+}
 function startUtilityDiscovery() {
   if (!isNative() || (mcUrl() && !settings.mc_auto)) return;
   startUtilityLanSweep();
@@ -294,6 +323,7 @@ function startUtilityDiscovery() {
       if (!ip || !svc.port) return;
       const path = svc.txtRecord && svc.txtRecord.ws_path || '/ws';
       const url = `ws://${ip}:${svc.port}${path}`;
+      if (!autoJoinAllowed(url)) return;   // U-M2: in play, only the same MC
       log(`MISSION CONTROL FOUND — CONNECTING ${url}`, 'lk');
       if (!transport || transport.url !== url) connectMc(url, { trusted: false });
     }).catch(e => log('MC discovery: ' + (e && e.message || e)));
@@ -309,7 +339,7 @@ function startUtilityLanSweep(over = {}) {   // `over`: the node test's sweep/ti
     isBound: () => mcState === 'bound',
     operatorUrl: () => !!(mcUrl() && !settings.mc_auto),
     // the mDNS path's own rule, and never over a connect already in flight (an mDNS hit on another address)
-    connect: (url, opts) => { if (mcState === 'connecting' || mcState === 'open') return; if (!transport || transport.url !== url) connectMc(url, opts); },
+    connect: (url, opts) => { if (mcState === 'connecting' || mcState === 'open') return; if (!autoJoinAllowed(url)) return; if (!transport || transport.url !== url) connectMc(url, opts); },
     log, wsFactory,
     isOnline: () => !(typeof navigator !== 'undefined' && navigator.onLine === false),
     ...over,
@@ -446,8 +476,10 @@ function tick() {
     if (!scanning) { startScan().catch(() => {}); }
     else {
       const { rate, over } = scanGuard.check(now);
-      const step = stationScanStep({ over, idx: _scanModeIdx, since: _scanModeSince, now });
+      const step = stationScanStep({ over, idx: _scanModeIdx, since: _scanModeSince, now, control: settings.kind === 'control' });
       if (step.tripped) log(`ble scan flood: ${rate} results/s (budget ${scanGuard.budget}); player watch drops to scanMode ${SCAN_MODES[step.idx]}`, 'le');
+      // P-M1: a control point keeps low latency (a balanced scan turns dense phones into sparse ones); say so at most once a minute.
+      if (step.flooded && now - _floodLoggedAt >= 60000) { _floodLoggedAt = now; log(`ble scan flood: ${rate} results/s (budget ${scanGuard.budget}); a control point keeps scanMode ${SCAN_MODES[0]}`, 'le'); }
       _scanModeIdx = step.idx; _scanModeSince = step.since;
       if (step.restart || now - _lastScanRestart >= SCAN_RESTART_MS) refreshScan().catch(() => {});
     }
@@ -457,11 +489,11 @@ function tick() {
   presence.tick(now);
   // Bench 2026-10-02: say when a player is HEARD on this station and when they leave (edges only), so a field log
   // can tell "never heard him" from "heard him and did not count him".
-  // F440: a PRESENT player not heard for QUIET_MS is logged once per silence, with its last few gaps: a sparse
+  // F440: a player in the circle (present or sighted, as the point counts) not heard for QUIET_MS is logged once per silence, with its last few gaps: a sparse
   // advertiser that still clears the dwell would otherwise stall a capture with nothing in the log.
   for (const p of presence.players()) {
-    const quiet = p.present && now - p.seenAt >= QUIET_MS;
-    if (quiet && !_quietLogged.has(p.id)) { _quietLogged.add(p.id); log(`player ${p.id} (${TEAM_NAMES[p.team] ?? `team ${p.team}`}) quiet ${((now - p.seenAt) / 1000).toFixed(1)} s while present · recent gaps ${(p.gaps || []).slice(-6).join(' ')} ms`, 'li'); }
+    const quiet = (p.present || p.inCircle) && now - p.seenAt >= QUIET_MS;   // the point's own in-circle rule (control.js)
+    if (quiet && !_quietLogged.has(p.id)) { _quietLogged.add(p.id); log(`player ${p.id} (${TEAM_NAMES[p.team] ?? `team ${p.team}`}) quiet ${((now - p.seenAt) / 1000).toFixed(1)} s while in the circle · recent gaps ${(p.gaps || []).slice(-6).join(' ')} ms`, 'li'); }
     else if (!quiet) _quietLogged.delete(p.id);
   }
   for (const e of playerEdges(presence, _playerWas)) {
@@ -1089,6 +1121,11 @@ function wireExit() {
   try { if (plugins.beacon) support = await plugins.beacon.isSupported(); } catch (e) { log('isSupported: ' + (e && e.message || e)); }
   if (DEMO) support = { advertising: true, txPowerControl: true, platform: 'stage' };
   log(`utility mode · ${support.platform} · advertise ${support.advertising ? 'yes' : 'NO'} · tx control ${support.txPowerControl ? 'yes' : 'no'}`);
+  // Bench 2026-10-02: CDP found an empty `window.brx` here (that name is the player app's). Expose the same name,
+  // and BEFORE the advert and the scan start (review 2026-10-03: `startAdvert` awaits the plugin too), so a call that
+  // never returns cannot hide the one read that answers "is the hill hearing that player?". `diag()` is a plain
+  // snapshot: the point, its counts, and every player heard.
+  window.brx = { log: logLines, settings, presence, point, diag: utilityDiag };   // the full API replaces it below
   if (settings.live) await startAdvert();   // it was live when the phone last ran: come straight back up
   readBattery().then(b => { lastBattery = b; });
   render();
@@ -1100,10 +1137,6 @@ function wireExit() {
   else if (url) { connectMc(url, { trusted: !settings.mc_auto }); if (settings.mc_auto) startUtilityDiscovery(); }   // setup needs WiFi (A13.5); once armed, play does not
   else startUtilityDiscovery();   // utility mode is an explicit choice: auto-join MC when it advertises on this LAN
   if (!plugins.beacon || !support.advertising) log('this phone cannot advertise; check Bluetooth is on', 'le');
-  // Bench 2026-10-02: CDP found an empty `window.brx` here (that name is the player app's). Expose the same name,
-  // and BEFORE the scan starts, so a scan that never returns cannot hide the one read that answers "is the hill
-  // hearing that player?". `diag()` is a plain snapshot: the point, its counts, and every player heard.
-  window.brx = { log: logLines, settings, presence, point, diag: utilityDiag };   // the full API replaces it below
   await startScan();
   setInterval(tick, 250);
   if (DEMO) seedDemo();
