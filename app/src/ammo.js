@@ -185,7 +185,7 @@ export class Ammo {
   forgetShown() { this.magBySlot = {}; this.lastShot = null; }
   /** What a slot holds now, after a write the node made (the reconcile re-arm, a powerup equip, a self-hit revive). A
    *  `res` left undefined keeps the slot's last reserve. */
-  setPrev(slot, mag, res) { this.prevAmmo[slot] = mag; if (res !== undefined) this.prevReserve[slot] = res; }
+  setPrev(slot, mag, res) { this.prevAmmo[slot] = mag; this.prevReserve[slot] = res; }   // the magazine alone is `setMag`
   setMag(slot, mag) { this.prevAmmo[slot] = mag; }   // the magazine only (the reconcile re-arm of a held heavy)
   /** The slot's last magazine seen, or null before one (F147: a try-out's baseline). PURE. */
   lastMag(slot) { return this.prevAmmo[slot] != null ? this.prevAmmo[slot] : null; }
@@ -338,7 +338,7 @@ export class Ammo {
       this.publish(puBack, this.prevAmmo[puBack], this.prevReserve[puBack]);
       return;
     }
-    // KNOWN BUG (bug 3): the trigger follows whichever slot spoke last, with no button pressed. The gun's `$ALCD` echo of
+    // KNOWN BUG (bug 3a, own-write echo moves the trigger): the trigger follows whichever slot spoke last, with no button pressed. The gun's `$ALCD` echo of
     // the node's own spawn or re-arm `$AMMO` rows therefore moves it too (slot 1 after the spawn's two rows), and a later
     // `$LCD` books its magazine and reserve on this slot (engine.js `feedFrame`, the same KNOWN BUG note). Pinned as it is
     // by the golden trace `ammo-spawn-echo-slot`; the fix belongs here.
@@ -565,6 +565,7 @@ export class Ammo {
   /** How long the ALT indicator has been up, or null once it has expired.
    *  PURE — it is read from state() on every render and must never mutate engine state. */
   switchingMs() {
+    // Through the host, not `this.switchWindowMs()`: the engine's `switchWindowMs` is the one door (tests stub it there).
     if (!this.switching) return null;
     const ms = this.host.now() - this.switching.at;
     return ms > this.host.switchWindowMs() ? null : ms;
@@ -580,6 +581,7 @@ export class Ammo {
   /** tick(): an ALT swap the gun never confirmed with a shot. Past the assumed window the swap is TAKEN as done (the real
    *  duration has never been timed -- FOLLOWUPS F4; the next `$ALCD` corrects the trigger slot if the gun disagrees). */
   switchTick(now) {
+    // Through the host, as in `switchingMs`: never call `this.switchWindowMs()` here, or an engine-side stub stops applying.
     if (this.switching && now - this.switching.at > this.host.switchWindowMs()) {
       const to = this.switching.to != null ? this.switching.to : this.nextAltSlot();
       const pu = !!this.switching.pu; this.switching = null;

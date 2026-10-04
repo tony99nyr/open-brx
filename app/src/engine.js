@@ -5488,7 +5488,7 @@ export class Engine {
         // read 0 in every observed frame -- so writing it can only ZERO a live shield, never set one,
         // which silently recreates the Q12 bug this file just fixed. Re-add only once t3 is
         // bench-confirmed as the shield.
-        // KNOWN BUG (bug 3): `$LCD` carries the gun's slot token (t[4]), but its magazine and reserve are booked on
+        // KNOWN BUG (bug 3a, `$LCD` slot token ignored): `$LCD` carries the gun's slot token (t[4]), but its magazine and reserve are booked on
         // `activeSlot`, and `activeSlot` is whatever `$ALCD` spoke last. The gun's `$ALCD` echo of the node's own spawn or
         // re-arm `$AMMO` rows moves `activeSlot` with no button pressed (ammo.js `onAmmo`, the same KNOWN BUG note), so this
         // books slot 0's counts on another slot. Pinned as it is by the golden trace `ammo-spawn-echo-slot`.

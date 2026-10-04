@@ -2192,7 +2192,7 @@ def test_stage_ports_every_engine_method_it_claims():
     unmirrored = _unmirrored()
     new = sorted(unmirrored - KNOWN_UNMIRRORED)
     assert not new, (
-        "new engine.js or powerup-player.js (`pu.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
+        "new engine.js, powerup-player.js (`pu.`), reconcile.js (`rc.`) or ammo.js (`am.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
         "KNOWN_UNMIRRORED with a reason: " + ", ".join(new))
     # A pinned name that no longer turns up unmirrored is EITHER ported to the stage OR gone from
     # engine.js (removed, renamed, or moved out of the class body). Those need opposite follow-ups, and
@@ -2205,7 +2205,7 @@ def test_stage_ports_every_engine_method_it_claims():
     assert not stale, "; ".join(filter(None, [
         ("now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps shrinking: "
          + ", ".join(ported)) if ported else "",
-        ("no longer declared in app/src/engine.js or powerup-player.js at all (REMOVED or RENAMED, not mirrored) — find the new "
+        ("no longer declared in app/src/engine.js, powerup-player.js, reconcile.js or ammo.js at all (REMOVED or RENAMED, not mirrored) — find the new "
          "name and re-pin it, or drop the entry: " + ", ".join(vanished)) if vanished else "",
     ]))
 
