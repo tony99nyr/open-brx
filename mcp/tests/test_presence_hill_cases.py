@@ -7,6 +7,10 @@ model of its own: a station decides, the stage READS the three advert bytes (tea
 takes each checkpoint's expected `hill` advert, puts it on the stage's air through `station_advert` (which
 encodes and decodes it with the phone's 16-byte layout) and checks the hill the stage derives from it. A case
 that does not name `stage` in its `only` list is run; a checkpoint with no `hill` is not the stage's business.
+
+Limit: the stage echoes its input, so this runner cannot tell a WRONG expected value from a right one (a flipped
+`value` in the file still passes here). The phone and Stick runners are what pin the numbers; the legality test
+below guards the file's shape.
 """
 from __future__ import annotations
 

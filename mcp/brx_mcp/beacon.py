@@ -6,7 +6,8 @@ The layout is pinned against the JS vectors in tests/test_beacon.py so the two n
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import asdict, dataclass
 from typing import Optional
 
 MAGIC = bytes((0x4F, 0x42, 0x52, 0x58))          # 'OBRX'
@@ -30,6 +31,7 @@ class Advert:
     seq: int = 0
     game: int = 0
     threshold: int = 0          # dBm, int8; 0 = scanner default
+    taker: int = 0              # byte 15, A56: a powerup station's winner (player_num), 0 = none
 
     def describe(self) -> str:
         team = "any" if self.team == TEAM_ANY else str(self.team)
@@ -41,14 +43,14 @@ class Advert:
 
 
 def encode(role: str, id: int, kind: str | int | None = None, team: int = TEAM_ANY, state: int = 0,
-           value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0) -> str:
+           value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0) -> str:
     r = ROLE[role]
     k = KIND.get(kind, 0) if isinstance(kind, str) else int(kind or 0)
     thr = 0
     if threshold:
         thr = (256 + max(-128, round(threshold))) if threshold < 0 else min(127, round(threshold))
     b = bytes([*MAGIC, VERSION, r, (id >> 8) & 0xFF, id & 0xFF, k & 0xFF, team & 0xFF, state & 0xFF,
-               value & 0xFF, seq & 0xFF, game & 0xFF, thr & 0xFF, 0])
+               value & 0xFF, seq & 0xFF, game & 0xFF, thr & 0xFF, taker & 0xFF])
     h = b.hex()
     return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
 
@@ -56,12 +58,9 @@ def encode(role: str, id: int, kind: str | int | None = None, team: int = TEAM_A
 def decode(uuid: str) -> Optional[Advert]:
     """An Advert, or None when the UUID is not an Open BRX advert (any case, dashes optional)."""
     h = str(uuid or "").replace("-", "").lower()
-    if len(h) != 32:
+    if not re.fullmatch(r"[0-9a-f]{32}", h):
         return None
-    try:
-        b = bytes.fromhex(h)
-    except ValueError:
-        return None
+    b = bytes.fromhex(h)
     if b[:4] != MAGIC or b[4] != VERSION:
         return None
     role = ROLE_NAME.get(b[5])
@@ -69,7 +68,7 @@ def decode(uuid: str) -> Optional[Advert]:
         return None
     thr = b[14] - 256 if b[14] > 127 else b[14]
     return Advert(role=role, id=(b[6] << 8) | b[7], kind=KIND_NAME.get(b[8], f"kind{b[8]}") if role == "station" else None,
-                  team=b[9], state=b[10], value=b[11], seq=b[12], game=b[13], threshold=thr)
+                  team=b[9], state=b[10], value=b[11], seq=b[12], game=b[13], threshold=thr, taker=b[15])
 
 
 def decode_any(uuids) -> Optional[Advert]:
