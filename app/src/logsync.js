@@ -105,7 +105,7 @@ export class LogSync {
     const t = this._transport();
     if (t && t.state === 'bound') {
       const snap = this._peek();
-      t.report('log_offer', { bytes: byteLength(snap.text), lines: snap.lines, from: this.uploadedThrough, reason: 'reconnect' });
+      if (snap) t.report('log_offer', { bytes: byteLength(snap.text), lines: snap.lines, from: this.uploadedThrough, reason: 'reconnect' });
     }
     this.attempt = 0;
     this._try();
@@ -128,7 +128,11 @@ export class LogSync {
 
   // ---------- internals ----------
   _clear() { if (this._timer) { this.timers.clearTimeout(this._timer); this._timer = null; } }
-  _peek() { try { return this._snapshot(this.uploadedThrough) || { text: '', through: this.uploadedThrough, lines: 0 }; } catch (_) { return { text: '', through: this.uploadedThrough, lines: 0 }; } }
+  /** The log tail from `uploadedThrough`, or null when the snapshot threw (O9: never pass off a failure as an empty log). */
+  _peek() {
+    try { return this._snapshot(this.uploadedThrough) || { text: '', through: this.uploadedThrough, lines: 0 }; }
+    catch (e) { this._log(`log snapshot failed: ${e && e.message || e}`, 'le'); return null; }
+  }
 
   /** null when the log may go now, else the reason it is held. Game sync outranks the log, always. */
   _hold() {
@@ -179,6 +183,7 @@ export class LogSync {
     this.busy = true;
     const t = this._transport();
     const snap = this._peek();
+    if (!snap) throw new Error('the log snapshot failed, upload aborted');   // retried by the caller's backoff; nothing was sent
     const text = snap.text || '';
     const bytes = byteLength(text);
     if (t.report('log_offer', { bytes, lines: snap.lines, from: this.uploadedThrough, reason: this.want }) === false) {

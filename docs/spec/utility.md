@@ -81,8 +81,17 @@ NEAREST PLAYER**; the threshold becomes that phone's smoothed reading minus 3 dB
 The HUD shows the live reading against the threshold on the DOWN screen (§4.3), so the edge is visible.
 
 **Presence** (`beacon.js Presence`, both roles): EMA of RSSI (α 0.35); **present** after `dwellMs` continuously at/above the threshold; **gone** when the EMA drops `hysteresisDb` (`EXIT_BAND_DB`, 3 dB) below it, or after
-`expiryMs` (4 s) with no advert. F440 sharpens the exit. Leaving is debounced: a present player must stay below the exit level for `EXIT_GRACE_MS` (4 s, read from the median of the last 2 s of raw samples). On each advert the phone takes the median of the adverts heard in the last `SIGHT_WINDOW_MS` (2 s). The median is TIME-WEIGHTED (F452(b), `timeWeightedMedian` and `time_weighted_median`): each advert counts for the time it covers, from the midpoint with the advert before it to the midpoint with the advert after it (the oldest covers from its own time and the newest up to now, so no advert is credited with time the window has not seen; the newest holds its level until now), so a burst of adverts cannot outvote a longer stretch of one signal and every advert rate reads the same level; at equal spacing it is the plain median. The exit level is that same time-weighted median, computed when each advert arrives (not recomputed at every tick, which would let the newest advert alone decide a two-advert window); once the last advert is older than the 2 s window the exit level is the last raw sample. The window keeps at most `SIGHT_RECENT_MAX` (64) adverts, a memory bound: only a stream above 32 adverts a second reaches it, and then the window is thinned near-evenly across the 2 s (`thinWindow` and `sight_thin_index`: the advert whose neighbours are closest together goes, never the oldest or the newest), never trimmed from the old end. A median at or above the threshold is a credible sighting. A sighting sets `inCircle` (which the point counts), not `present`, and keeps it set for `SIGHT_MS` (4 s). `inCircle` is `present` OR a sighting within `SIGHT_MS`; `present` still needs the dwell. The values live in `app/src/beacon.js`; the Stick mirrors them in `hardware/m5sticks3/presence.h`. Pinned by tests: dwell, hysteresis band, expiry, a dip restarting the dwell,
+`expiryMs` (4 s) with no advert. F440 sharpens the exit. Leaving is debounced: a present player must stay below the exit level for `EXIT_GRACE_MS` (4 s, read from the median of the last 2 s of raw samples). On each advert the phone takes the median of the adverts heard in the last `SIGHT_WINDOW_MS` (2 s). The median is TIME-WEIGHTED (F452(b), `timeWeightedMedian` and `time_weighted_median`): each advert counts for the time it covers, from the midpoint with the advert before it to the midpoint with the advert after it (the oldest covers from its own time and the newest up to now, so no advert is credited with time the window has not seen; the newest holds its level until now), so a burst of adverts cannot outvote a longer stretch of one signal and every advert rate reads the same level; at equal spacing it is the plain median. The exit level is that same time-weighted median, computed when each advert arrives (not recomputed at every tick, which would let the newest advert alone decide a two-advert window); once the last advert is older than the 2 s window the exit level is the last raw sample. The window keeps at most `SIGHT_RECENT_MAX` (64) adverts, a memory bound: only a stream above 32 adverts a second reaches it, and then the window is thinned near-evenly across the 2 s (`thinWindow` and `sight_thin_index`: the advert whose neighbours are closest together goes, never the oldest or the newest), never trimmed from the old end. A median at or above the threshold is a credible sighting. A sighting sets `inCircle` (which the point counts), not `present`, and keeps it set for `SIGHT_MS` (4 s). `inCircle` is `present` OR a sighting within `SIGHT_MS`; `present` still needs the dwell. The values come from `mcp/brx_mcp/mc/types.py` (`PRESENCE_*`, `HILL_*`) through the generated contract: `app/src/beacon.js` imports them from `app/src/transport/contract.gen.js`, and the Stick's `hardware/m5sticks3/presence.h` reads them from `hardware/m5sticks3/contract.gen.h` (namespace `brx::contract`). Pinned by tests: dwell, hysteresis band, expiry, a dip restarting the dwell,
 the advertised threshold overriding the default, neutral admitting every team, other games ignored.
+
+**One case file, three runners (architecture review #3).** `app/test/fixtures/presence-hill-cases.json` states F440
+presence and the kind-5 hill once, as timed sightings and expected checkpoints (`in`, `present`, and the hill's
+three advert bytes). Three runners drive it: `app/test/presence-hill-cases.test.mjs` (the phone's `Presence` and
+`ControlPoint`), `hardware/m5sticks3/test/test_presence_cases.cpp` (the Stick's `PlayerPresence` and
+`BleControlPoint`, built by `mcp/tests/test_sticks3_core.py`), and `mcp/tests/test_presence_hill_cases.py` (the
+stage, which reads only the hill advert). A case's `only` names the runners it binds. A `known_fail` case pins a
+behaviour that is wrong today but kept by decision: today only F452(a), the sparse-advert entry. Add a presence or
+hill rule as a case here, not as a test in one runner. The file's own `about` field defines the format.
 
 **Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
 -63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
@@ -97,7 +106,7 @@ Byte 14 drives each player phone's own presence decision, and a phone hears the 
 Stick hears the phone, so one number cannot serve both ends. An explicit MC threshold or an on-station RADIUS edit
 sets both to the same value. Pinned in `hardware/m5sticks3/test/test_threshold_default.cpp` and `test_link.cpp`;
 detail in §5g.2 below. A phone app older than
-0.4.12 clamped 0 to -30, so MC sends such a phone the explicit value (`state.py _wire_threshold`). A player phone falls
+0.4.12 clamped 0 to -30, so MC sends such a phone the explicit value (`stations.py` `wire_threshold`). A player phone falls
 back to its own `Presence` default (-74, `app.js`) only for an advert whose byte 14 is 0; an MC-armed station never
 sends that. Dwell stays **0.8 s** on both sides.
 
@@ -562,7 +571,7 @@ Hill Lost, `VB0O` Hill Contested and the `U100` possession tick — are played b
 Two full designs that build on §5d and ship nothing today: **5e roaming hills**, the opt-in LAN-coupled
 variant and a deliberate exception to A4.8 (F95), and **5f TERRITORIES**, multi-point scoring where each
 station keeps its own books and needs no LAN at all (F98). Both live in
-[`../utility-roadmap.md`](../archive/utility-roadmap.md) §8, under the same 5e / 5f numbers. Promote them back here as
+the archived utility-roadmap §8, under the same 5e / 5f numbers. Promote them back here as
 they are built.
 
 ## 5g. A NON-PHONE utility node: the M5StickS3 armed over Wi-Fi (H8)
@@ -590,7 +599,7 @@ A station reaches MC as a `hello` with `node_type: "utility"` (contracts §5). C
 
 - `envelope.py` requires only the KEYS `("node_id", "node_type", "app_ver", "seq_next")` on a `hello`; it does
   not validate `node_type` against a vocabulary.
-- `state.py set_station()` gates on exactly one string: `(self.nodes.get(nid) or {}).get("node_type") != "utility"`.
+- `stations.py` `StationRegistry.set_station()` gates on exactly one string: `(self._host.nodes.get(nid) or {}).get("node_type") != "utility"`.
 - `NodeView.platform` is `str | None` (`types.py:613`) — free text, rendered, never matched on.
 
 So **an ESP32 that speaks the envelope is a utility node today**, with no `contracts.md` amendment, no new kind,
@@ -728,7 +737,7 @@ in the operator's voice.** Nothing here asks for that to change.
 
 ### 5g.8 What `held` is FOR: roaming hills, and what the firmware must not preclude
 
-`held` exists to make **§5e roaming hills** (`../utility-roadmap.md` §8, **F95**) possible on a Stick. That
+`held` exists to make **§5e roaming hills** (the archived utility-roadmap §8, **F95**) possible on a Stick. That
 design is complete and unbuilt; nothing below asks to build it now. It is written here because these are the
 assumptions that are cheap to honour while writing the client and expensive to retrofit.
 

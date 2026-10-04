@@ -69,7 +69,7 @@ brew install python@3.13
 cd <repo>
 python3.13 -m venv .venv
 source .venv/bin/activate
-pip install -e './mcp[mc]'
+pip install -c mcp/constraints.txt -e './mcp[mc]'
 cd webapp/mc && npm ci && npm run build
 ```
 
