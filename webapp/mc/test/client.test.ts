@@ -236,3 +236,21 @@ describe('a request to a stalled MC gives up with a clear error', () => {
     } finally { globalThis.fetch = real; spy.mockRestore(); }
   });
 });
+
+describe('slow routes get their own timeout budget', () => {
+  it('the scan waits its duration plus three 10 s lock waits; the report waits two minutes; the rest 15 s', async () => {
+    const { REQUEST_TIMEOUT_MS, REPORT_TIMEOUT_MS, scanTimeoutMs } = await import('../src/api/client');
+    expect(scanTimeoutMs(6)).toBe(41000);
+    expect(scanTimeoutMs(30)).toBe(65000);
+    expect(REPORT_TIMEOUT_MS).toBe(120000);
+    const real = globalThis.fetch;
+    const seen: number[] = [];
+    const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(ms => { seen.push(ms); return new AbortController().signal; });
+    globalThis.fetch = (async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    try {
+      const api = createHttpApi();
+      await api.scan(6); await api.makeReport(); await api.setPhase('lobby');
+    } finally { globalThis.fetch = real; spy.mockRestore(); }
+    expect(seen).toEqual([41000, REPORT_TIMEOUT_MS, REQUEST_TIMEOUT_MS]);
+  });
+});

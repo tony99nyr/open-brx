@@ -37,6 +37,15 @@ export class AuthError extends Error { constructor() { super(operatorTokenLine()
 
 /** O15: a stalled MC (a blocking scan, a hung executor) must not leave a control busy for ever. */
 export const REQUEST_TIMEOUT_MS = 15000;
+/** Slow routes get a budget from the server's real worst case (mcp/brx_mcp/mc), not the 15 s default.
+ *  SCAN: the BLE scan holds the request for `duration_s` (1-30), then `armory.scan` takes the inventory
+ *  file lock twice (`correlate`, `load_inventory`) and `state.scan` once more (`armory.list`), each with up
+ *  to a 10 s lock wait: duration + 3 x 10 s, plus 5 s of slack. */
+export const scanTimeoutMs = (duration_s: number) => duration_s * 1000 + 3 * 10000 + 5000;
+/** REPORT: `POST /api/report` reads a copy of the session database, scrubs it and zips it in a worker thread
+ *  (api.py `report_build`, report.py `build_report`). The server sets no bound and the zip may pass 25 MB, so
+ *  allow two minutes: a stalled MC still ends, a slow big session does not. */
+export const REPORT_TIMEOUT_MS = 120000;
 
 async function j<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
@@ -158,7 +167,7 @@ export function createHttpApi(): Api {
       open();
       return () => { closed = true; ws?.close(); };
     },
-    scan: (duration_s = 6) => j('/api/armory/scan', { method: 'POST', body: JSON.stringify({ duration_s }) }, REQUEST_TIMEOUT_MS + duration_s * 1000),   // the scan itself holds the request open
+    scan: (duration_s = 6) => j('/api/armory/scan', { method: 'POST', body: JSON.stringify({ duration_s }) }, scanTimeoutMs(duration_s)),
     armory: () => j('/api/armory'),
     setPhase: (phase: string, force?: boolean) => post('/api/phase', force ? { phase, force: true } : { phase }),
     getModes: () => j('/api/modes'),
@@ -241,6 +250,6 @@ export function createHttpApi(): Api {
     }),
     resumeOrphan: match_id => post<State>('/api/match/orphan/resume', { match_id }),
     endOrphan: match_id => post<State>('/api/match/orphan/end', { match_id }),
-    makeReport: () => post<ReportResult>('/api/report').catch(reportSkewOr404),
+    makeReport: () => j<ReportResult>('/api/report', { method: 'POST', body: '{}' }, REPORT_TIMEOUT_MS).catch(reportSkewOr404),
   };
 }
