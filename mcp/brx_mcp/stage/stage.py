@@ -474,8 +474,8 @@ ANNOUNCE_DEFAULT_CLIP_S = 2.5   # engine.js ANNOUNCE_DEFAULT_CLIP_MS: a clip the
 
 
 def clip_s(sound_id: str | None) -> float:
-    """A sound's real length in seconds, off the sound catalogue (engine.js `CLIP_MS` is generated from the same
-    `duration_s`), else the announcer's 2.5 s default."""
+    """A sound's real length in seconds, off the sound catalogue (engine.js `CLIP_MS` is hand-kept, and
+    `announcer.test.mjs` checks each row against the same `duration_s`), else the announcer's 2.5 s default."""
     e = _snd._catalog().get(sound_id or "")
     d = e.get("duration_s") if e else None
     return float(d) if isinstance(d, (int, float)) and d > 0 else ANNOUNCE_DEFAULT_CLIP_S

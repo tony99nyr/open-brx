@@ -83,8 +83,9 @@ from ..gameconfig import SPAWN_SEQUENCE as _SPAWN_SEQUENCE  # noqa: E402
 
 _ARM_SEQUENCE: tuple[str, ...] = (volume_cmd(65), *GAME_CONFIG, *_SPAWN_SEQUENCE)
 
-# Per-hit reaction cues: `mc/compile.py` `base_cues()`'s "hurt"/"hurt_led" (the victim-side low-health alert, confirmed
-# by ear 2026-08-25). D4 (2026-10-03): read from the one table, never copied.
+# Per-hit reaction cues: `mc/compile.py` `base_cues()`'s "hurt"/"hurt_led", Callsign's VA8B low-health alert (confirmed
+# by ear 2026-08-25). The default bundle ships the profile's `low_health` (VA86) instead; the soak keeps the Callsign
+# pair. D4 (2026-10-03): read from the one table, never copied.
 from ..mc.compile import base_cues as _base_cues  # noqa: E402
 _HIT_CUE: tuple[str, ...] = (_base_cues()["hurt"], _base_cues()["hurt_led"])
 

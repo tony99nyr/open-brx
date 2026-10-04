@@ -1122,6 +1122,7 @@ def base_cues(night: bool = False) -> dict[str, str]:
         "runway_10": "$PLAY,,4,6,VA85,,,,*",          # provisional
     }
 
+
 _HERE = pathlib.Path(__file__).resolve().parent
 
 

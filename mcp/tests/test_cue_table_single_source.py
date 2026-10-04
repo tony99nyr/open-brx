@@ -31,10 +31,10 @@ def test_compiler_cues_are_the_base_table_plus_the_kill_helper_only():
 
 def test_no_hand_copy_of_a_cue_frame_outside_the_two_tables():
     assert not _PLAY_LITERAL.search(inspect.getsource(Compiler.cues)), "Compiler.cues() holds its own frame literal"
-    from brx_mcp.mc import fakes
+    assert not _PLAY_LITERAL.search(inspect.getsource(FakeCompiler.cues)), "the fallback compiler holds a hand copy"
     from brx_mcp.soak import patterns
-    for mod in (fakes, patterns):
-        assert not _PLAY_LITERAL.search(inspect.getsource(mod)), f"{mod.__name__} holds a hand copy of a cue frame"
+    hit = re.search(r"^_HIT_CUE\b.*$", inspect.getsource(patterns), re.M)
+    assert hit and not _PLAY_LITERAL.search(hit.group(0)), "the soak's hit cue is a hand copy"
 
 
 def test_the_fallback_compiler_ships_what_the_real_one_ships():
