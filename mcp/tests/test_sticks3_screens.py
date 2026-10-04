@@ -17,7 +17,6 @@ Review the gallery (`python3 hardware/m5sticks3/sim/stick_sim.py`) before flashi
 import importlib.util
 import pathlib
 import shutil
-import re
 
 from _skip import needs
 
@@ -83,10 +82,23 @@ def test_known_stick_findings_still_reproduce():
     assert not fixed, f"fixed, remove from KNOWN in stick_sim.py: {fixed}"
 
 
-def test_f398_countdown_ring_geometry_clears_next_spawn_label():
-    render = (ROOT / "hardware/m5sticks3/station_render.h").read_text(encoding="utf-8")
-    model = (ROOT / "hardware/m5sticks3/station_screen.h").read_text(encoding="utf-8")
-    y = int(re.search(r"PICKUP_COUNTDOWN_INDICATOR_Y\s*=\s*(\d+)", model).group(1))
-    assert "cy = PICKUP_COUNTDOWN_INDICATOR_Y, r = 12" in render
-    assert y - 12 >= 66, f"countdown ring reaches {y - 12}, too close to TAKEN BY text"
-    assert y + 12 < 99, f"countdown ring reaches {y + 12}, too close to NEXT SPAWN text"
+def test_f398_countdown_ring_clears_its_text_in_measured_pixels():
+    """F398: the ring's ink, measured from the real M5GFX drawCircle/drawArc, clears every string by SHAPE_GAP.
+
+    The old guard compared a constant from station_render.h with a hand-copied 99, so it never looked at a
+    pixel; the gate itself saw text only. This one fails if the simulator stops recording the ring (a
+    vacuous pass) or if the ring comes within SHAPE_GAP px of NEXT SPAWN or TAKEN BY."""
+    needs(GXX, "g++")
+    results, rendered, _probs = _run()
+    needs(rendered, "M5GFX (set M5GFX_SRC)")
+    by_name = {r["name"]: r for r in results}
+    for name in ("pickup_countdown", "pickup_taken", "pickup_first_spawn_countdown"):
+        r = by_name[name]
+        rings = [s for s in r["shapes"] if s["kind"] in ("circle", "arc")]
+        assert rings, f"{name}: the simulator recorded no ring"
+        labels = [t for t in r["texts"] if t["inked"] and ("NEXT SPAWN" in t["text"] or "TAKEN BY" in t["text"])]
+        assert any("NEXT SPAWN" in t["text"] for t in labels), f"{name}: no NEXT SPAWN drawn"
+        for ring in rings:
+            for t in labels:
+                assert not sim._overlap(ring["box"], t["box"], sim.SHAPE_GAP), (
+                    f"{name}: the ring {ring['box']} is within {sim.SHAPE_GAP} px of '{t['text']}' {t['box']}")
