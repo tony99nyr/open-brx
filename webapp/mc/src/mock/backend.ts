@@ -6,6 +6,7 @@ import type {
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
+import { HOLD_TARGET_MAX_S, TEAM_KEYS } from '../api/contract.gen';
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
@@ -1464,7 +1465,7 @@ export class MockBackend implements Api {
    *  not this method -- "ok:false changes nothing" (`pick()`'s own rollback) covers them the same way
    *  it already covers `time_limit_s`/`station_source`. */
   private checkTeamsShape(teams: unknown): TeamColour[] {
-    const ALL: TeamColour[] = ['red', 'blue', 'yellow', 'purple'];
+    const ALL: TeamColour[] = [...TEAM_KEYS];
     const validShape = Array.isArray(teams) && teams.length >= 2 && teams.length <= 4
       && teams.every(c => typeof c === 'string' && ALL.includes(c as TeamColour))
       && new Set(teams).size === teams.length;
@@ -1824,7 +1825,7 @@ export class MockBackend implements Api {
     { const hts = this.config.scoring.hold_target_s;
       if (hts != null) {
         if (this.config.mode !== 'koth') errors.push('A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL');
-        else if (!(hts > 0 && hts <= 7200)) errors.push('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET');
+        else if (!(hts > 0 && hts <= HOLD_TARGET_MAX_S)) errors.push('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET');
       } }
     if (this.config.mode === 'ffa') { const t = this.config.teams[0]; if (t) for (const p of this.players) p.team_id = t.team_id; }
     // B3 (2026-09-12, coordinated with the real server's fix): editing a game that had already been
