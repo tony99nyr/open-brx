@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "LOG_EVERY_MS": "O7/O8 (2026-10-04): `mc/failures.py` writes the repeat-failure count line at most this often. It paces a\n"
+                    "log line only; no IR frame or beacon reaches it",
     "ADOPT_SLACK_MS": "A67 polish (2026-09-25): added to the age MC sends for a range value it adopted from a station, so\n"
                       "the station's own edit stays the younger one. It is an age offset, not a timer; no beacon reaches it",
     "LATE_FLUSH_AGES_MS": "Integration review (2026-09-25): the chaos harness's `late_flush` action back-dates a kill\n"

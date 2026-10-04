@@ -1,8 +1,8 @@
 """O6/O7/O8/O10: failures MC used to swallow are counted, logged once, and put on the snapshot."""
-import logging, pathlib, sys
+import logging, pathlib, sys, tempfile
+from contextlib import contextmanager
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from test_mc_state import T0, mk, online
-from brx_mcp.mc.api import Broadcaster
 
 
 class _BrokenStore:
@@ -12,15 +12,48 @@ class _BrokenStore:
         self.rows += 1
 
 
-def _errors(caplog):
-    return [r for r in caplog.records if r.levelno >= logging.ERROR]
+class _Records(logging.Handler):
+    """Collects the `brx.mc` log records (run_tests.py has no pytest `caplog`)."""
+    def __init__(self):
+        super().__init__(logging.INFO)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
 
 
+@contextmanager
+def _capture():
+    h, lg = _Records(), logging.getLogger("brx.mc")
+    old = lg.level
+    lg.addHandler(h)
+    lg.setLevel(logging.INFO)
+    try:
+        yield h
+    finally:
+        lg.removeHandler(h)
+        lg.setLevel(old)
+
+
+def logged(fn):
+    """Run `fn(log)` with the `brx.mc` records collected (no pytest fixture: run_tests.py has none)."""
+    def run():
+        with _capture() as h:
+            fn(h)
+    run.__name__ = fn.__name__
+    return run
+
+
+def _errors(h):
+    return [r for r in h.records if r.levelno >= logging.ERROR]
+
+
+@logged
 def test_o7_a_store_that_raises_sets_not_saving_and_logs_once_not_per_envelope(caplog):
     s, net, clock, ps = mk()
     s.store = _BrokenStore()
     assert "not_saving" not in s.snapshot()
-    with caplog.at_level(logging.INFO, logger="brx.mc"):
+    if True:
         for i in range(50):
             s._log("n", "event", {"t": i}, clock["t"])
     ns = s.snapshot()["not_saving"]
@@ -28,7 +61,7 @@ def test_o7_a_store_that_raises_sets_not_saving_and_logs_once_not_per_envelope(c
     assert "No space left" in ns["store"]["error"]
     assert len(_errors(caplog)) == 1                      # one traceback, not fifty
     clock["t"] += 61_000
-    with caplog.at_level(logging.INFO, logger="brx.mc"):
+    if True:
         s._log("n", "event", {"t": 99}, clock["t"])
     assert len(_errors(caplog)) == 2 and "51 failures" in _errors(caplog)[1].getMessage()
     s.store.fail = False                                  # the next success clears it
@@ -36,11 +69,14 @@ def test_o7_a_store_that_raises_sets_not_saving_and_logs_once_not_per_envelope(c
     assert "not_saving" not in s.snapshot()
 
 
-def test_o7_a_snapshot_that_cannot_be_written_is_the_snapshot_part_only(tmp_path, caplog):
+@logged
+def test_o7_a_snapshot_that_cannot_be_written_is_the_snapshot_part_only(caplog):
+    tmp_dir = tempfile.TemporaryDirectory()
+    tmp_path = pathlib.Path(tmp_dir.name)
     s, net, clock, ps = mk()
     s._persist_path = tmp_path / "no-such-dir" / "a" / "session.json"   # tmp.write_text raises
     s._persist_last = 0.0
-    with caplog.at_level(logging.INFO, logger="brx.mc"):
+    if True:
         s._persist()
     ns = s.snapshot()["not_saving"]
     assert set(ns) == {"snapshot"} and ns["snapshot"]["count"] == 1
@@ -49,12 +85,17 @@ def test_o7_a_snapshot_that_cannot_be_written_is_the_snapshot_part_only(tmp_path
     assert "not_saving" not in s.snapshot()
 
 
+@logged
 def test_o8_a_tick_that_raises_three_times_sets_ticker_failing_and_writes_one_error_line(caplog):
+    try:
+        from brx_mcp.mc.api import Broadcaster      # needs starlette: skips cleanly under the bare system python
+    except ImportError:
+        return
     s, net, clock, ps = mk()
     b = Broadcaster(s)
     def boom(): raise RuntimeError("bad tick")
     s.tick = boom
-    with caplog.at_level(logging.INFO, logger="brx.mc"):
+    if True:
         for _ in range(3): b.tick_once()
     tf = s.snapshot()["ticker_failing"]
     assert tf["count"] == 3 and tf["since"] == T0 and "bad tick" in tf["error"]
@@ -64,11 +105,12 @@ def test_o8_a_tick_that_raises_three_times_sets_ticker_failing_and_writes_one_er
     assert "ticker_failing" not in s.snapshot()
 
 
+@logged
 def test_o8_a_join_info_that_raises_is_logged_with_the_url_and_exposed(caplog):
     s, net, clock, ps = mk()
     def bad(): raise RuntimeError("no interface")
     net.join_info = bad
-    with caplog.at_level(logging.INFO, logger="brx.mc"):
+    if True:
         s._attach_net()
     je = s.snapshot()["join_error"]
     assert "no interface" in je["error"] and je["ws_url"] == s.lan.get("ws_url", "")
@@ -201,13 +243,16 @@ def test_o7_another_matchs_archive_write_does_not_clear_a_missing_row():
     assert "not_saving" not in s.snapshot()
 
 
-def test_o7_match_ended_reports_rows_updated(tmp_path):
+def test_o7_match_ended_reports_rows_updated():
     from brx_mcp.mc.store import Store
-    st = Store("s", tmp_path / "s.sqlite")
-    assert st.match_ended("never-started", {}) == 0
-    st.match_started("m1", {}, 1)
-    assert st.match_ended("m1", {}) == 1
-    st.close()
+    with tempfile.TemporaryDirectory() as d:
+        st = Store("s", pathlib.Path(d) / "s.sqlite")
+        try:
+            assert st.match_ended("never-started", {}) == 0
+            st.match_started("m1", {}, 1)
+            assert st.match_ended("m1", {}) == 1
+        finally:
+            st.close()
 
 
 def test_o8_a_later_join_info_success_clears_the_chip():
