@@ -1,7 +1,7 @@
 {
   "name": "hp-dual-equal",
   "why": "Equal dual-emitter pairs: a slow pair exactly 150 ms apart is one shot_group, and so is a fast pair (cycle 100 ms): its values match the row's body then headset. A different crit, a different shooter, a word with no dual row, two equal words that match no row value, and an off-row value followed by the row value each start a new group.",
-  "source": "app/test/engine.test.mjs shot_group tests; app/src/engine.js `_onHp` `equalDual`",
+  "source": "app/test/engine.test.mjs shot_group tests; app/src/engine.js `_hpShotGroup` (the `equalDual` test it named was dead code, removed 2026-10-04)",
   "runners": ["engine"],
   "setup": {
     "frames": {"dual_emitters":[{"proto":0,"subtype":0,"body":20,"headset":30,"cycle_ms":700},{"proto":0,"subtype":5,"body":15,"headset":15,"cycle_ms":100},{"proto":0,"subtype":6,"body":12,"headset":12,"cycle_ms":700}]},

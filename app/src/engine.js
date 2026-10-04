@@ -6600,12 +6600,14 @@ export class Engine {
    *  else a new group. A new group consumes `_hitGroupSeq`. */
   _hpShotGroup(hl, dmg, prior, now) {
     const candidates = this._dualEmitters.filter(s => Number(s.proto) === hl.ir_proto && Number(s.subtype) === hl.ir_subtype);
-    const valuesMatch = !!candidates.find(s => Number(s.body) === prior?.dmg && Number(s.headset) === dmg);
-    const equalDual = candidates.find(s => Number(s.body) === Number(s.headset) && Number(s.body) === dmg
-      && prior && prior.dmg === dmg && now - prior.at <= 150 && Number(s.cycle_ms) > 150);
+    // An equal-value row (body === headset, the Shotgun's 20/20) pairs by the same rule. Review 2026-10-04: an
+    // `equalDual` test that tried to refuse a fast (cycle <= 150 ms) equal row never decided anything, because this
+    // match already paired every equal pair, and no such row exists or is planned (weapons.json, docs/weapon-design.md).
+    // It is gone. A fast equal row would need `cycle_ms > 150` here, or two pulls 100 ms apart would read as one shot.
+    const valuesMatch = candidates.some(s => Number(s.body) === prior?.dmg && Number(s.headset) === dmg);
     const paired = prior && now - prior.at <= 150 && prior.shooter_num === hl.shooter_num
       && prior.ir_proto === hl.ir_proto && prior.ir_subtype === hl.ir_subtype
-      && prior.crit === hl.crit && (valuesMatch || !!equalDual);
+      && prior.crit === hl.crit && valuesMatch;
     return paired ? prior.shot_group : `${this._hitGroupEpoch}:${++this._hitGroupSeq}`;
   }
 
