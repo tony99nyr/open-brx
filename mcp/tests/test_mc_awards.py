@@ -385,14 +385,15 @@ def test_objective_hero_only_in_an_objective_mode_and_only_for_a_contribution():
 
 # ── the Session carries the hot joiner through a replay and a restart ──────────────────────────
 def test_a_hot_join_survives_the_replay_and_an_mc_restart():
-    from test_mc_resume import _persisting_live, _restart
-    s, _net, clock, _ps, info = _persisting_live(3)
+    from _session import restart_session
+    from _session import persisting_live
+    s, _net, clock, _ps, info = persisting_live(3)
     clock["t"] = info["go_live_t"] + 30_000
     p = s.add_player("LATECOMER")
     assert s.scorer.joined_t == {p["player_id"]: clock["t"]}
     replayed = s._replay(s.scorer, s._match_facts(info["match_id"]))
     assert replayed.joined_t == s.scorer.joined_t, "the reconcile replay keeps who joined late"
-    s2, _net2 = _restart(s, clock)
+    s2, _net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
     assert s2.scorer.joined_t == {p["player_id"]: info["go_live_t"] + 30_000}, "the resumed scorer keeps it too"
 

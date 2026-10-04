@@ -20,36 +20,9 @@ from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.store import Store
 from brx_mcp.mc.types import STALE_AFTER_MS, STALE_LIVE_RETELL_MS
-from _session import go_live_stored, kill, mk_stored_session, online
-
-
-def _persisting_live(n=2, cfg=None):
-    s, net, clock, ps, info = go_live_stored(n, "ffa", cfg)
-    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
-    return s, net, clock, ps, info
-
-
-def _restart(s, clock):
-    """A new process: a new store FILE (each process writes its own), the same session.json."""
-    s._persist_last = 0.0
-    s._persist()
-    return _restart_no_repersist(s, clock)
-
-
-def _restart_no_repersist(s, clock):
-    """Like `_restart`, but the caller already wrote the snapshot it wants read back -- a REAL crash
-    leaves `saved_ms` at the moment of the last write, not at the moment the new process starts."""
-    net2 = FakeNet()
-    store2 = Store("t2", pathlib.Path(tempfile.mkdtemp()) / "s2.sqlite")
-    s2 = Session(FakeCompiler(), net2, FakeArmory(demo_armory()), store=store2, now_ms=lambda: clock["t"])
-    s2._persist_path = s._persist_path
-    assert s2.restore_snapshot() == len(s.players)
-    return s2, net2
-
-
-def _status(net, clock, i, arm, mid, **extra):
-    body = {"arm_state": arm, "synced": True, "alive": True, "pending": 0, **({"match_id": mid} if mid else {}), **extra}
-    net.simulate_status(f"node{i}", body, clock["t"])
+from _session import (
+    fresh_mc_with_phones_in, go_live_stored, kill, mk_stored_session, online, persisting_live,
+    restart_no_repersist, restart_session, resume_status)
 
 
 def _kills(s, pid):
@@ -66,11 +39,11 @@ def _death(net, clock, ps, killer_i, victim_i, mid, seq):
 
 # ── 1. restart mid-LIVE resumes ────────────────────────────────────────────────────────────────────
 def test_a_restart_mid_live_resumes_the_match_and_the_whistle_recaps_facts_from_both_sides():
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     assert _kills(s, ps[0]["player_id"]) == 1, "control: the old process scored the first kill"
     clock["t"] += 20_000
-    s2, net2 = _restart(s, clock)
+    s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
     snap = s2.snapshot()
     assert snap["phase"] == "live" and snap["live"]["match_id"] == info["match_id"]
@@ -82,7 +55,7 @@ def test_a_restart_mid_live_resumes_the_match_and_the_whistle_recaps_facts_from_
         assert "config" not in node and "frames" not in node, "a resume never pushes a config to a phone in play"
         assert node["start"]["match_id"] == info["match_id"] and node["start"]["seq"] == info["seq"], \
             "the re-hello start is the SAME start, which the phone takes as a no-op"
-        _status(net2, clock, i, "live", info["match_id"])
+        resume_status(net2, clock, i, "live", info["match_id"])
     assert not net2.pushes("control"), "heartbeats for the resumed match are the current match"
     assert "orphan_match" not in s2.snapshot()
     kill(s2, net2, clock, ps, 0, 1, info, seq=2)
@@ -124,7 +97,7 @@ def test_a_released_live_station_recap_survives_an_mc_restart():
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_last = 0.0
     s._persist()
-    s2, _net2 = _restart_no_repersist(s, clock)
+    s2, _net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "live"
     s2.control("end")
 
@@ -135,42 +108,42 @@ def test_a_released_live_station_recap_survives_an_mc_restart():
 
 
 def test_the_snapshot_stops_naming_the_match_once_it_ended():
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     s._persist_last = 0.0
     s._persist()
     s.control("end")
-    s2, _net2 = _restart(s, clock)
+    s2, _net2 = restart_session(s, clock)
     assert s2.resume_match() is None and s2.phase == "muster", "an ended match is never resumed"
 
 
 # ── 2. restart after the end time finishes the match ───────────────────────────────────────────────
 def test_a_restart_after_the_end_time_restores_it_finished_and_ends_a_phone_still_live():
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s._persist_last = 0.0
     s._persist()
     clock["t"] = info["go_live_t"] + 600_000 + 6_000
-    s2, net2 = _restart(s, clock)
+    s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "recap"
     assert s2.last_recap is not None
     assert next(r for r in s2.last_recap["rows"] if r["player_id"] == ps[0]["player_id"])["kills"] == 1
     assert [m["match_id"] for m in s2.store.matches()] == [info["match_id"]], "the archive row is written"
     tail = demo_armory()[1]["ble"]["tail"]
     net2.simulate_hello("node1", f"GUN-B-{tail}")
-    _status(net2, clock, 1, "live", info["match_id"])
+    resume_status(net2, clock, 1, "live", info["match_id"])
     assert {"cmd": "end", "match_id": info["match_id"]} in [b for n, _k, b in net2.pushes("control") if n == "node1"], \
         "A34: a phone still live in the finished match is told to end"
     assert "orphan_match" not in s2.snapshot()
 
 
 def test_a_restart_in_recap_still_ends_a_phone_that_missed_the_end():
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     s.control("end")
-    s2, net2 = _restart(s, clock)
+    s2, net2 = restart_session(s, clock)
     assert s2.resume_match() is None
     tail = demo_armory()[1]["ble"]["tail"]
     net2.simulate_hello("node1", f"GUN-B-{tail}")
-    _status(net2, clock, 1, "live", info["match_id"])
+    resume_status(net2, clock, 1, "live", info["match_id"])
     assert [b for n, _k, b in net2.pushes("control") if n == "node1"] == [{"cmd": "end", "match_id": info["match_id"]}]
 
 
@@ -179,14 +152,14 @@ def test_a_snapshot_far_too_old_is_restored_finished_not_resumed():
     """The bound is 2x the time limit -- BELOW where the ordinary "past the time limit" check would
     itself have caught it, so this isolates the age cap and not the existing time-limit check. A crash
     the operator only found later must not boot straight back into a LIVE match nobody is still playing."""
-    s, net, clock, ps, info = _persisting_live(cfg={"time_limit_s": 3})
+    s, net, clock, ps, info = persisting_live(cfg={"time_limit_s": 3})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s._persist_last = 0.0
     s._persist()                                    # `saved_ms` == now: the last write before the crash
     clock["t"] += 2 * 3_000 + 500                    # past the 2x-time-limit AGE bound (6 s)...
     assert clock["t"] < info["go_live_t"] + 3_000 + 5_000, \
         "keep this inside the ordinary time-limit-passed window so only the age cap can be firing"
-    s2, net2 = _restart_no_repersist(s, clock)
+    s2, net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "recap"
     assert s2.phase == "recap"
     row = next(r for r in s2.last_recap["rows"] if r["player_id"] == ps[0]["player_id"])
@@ -195,25 +168,25 @@ def test_a_snapshot_far_too_old_is_restored_finished_not_resumed():
 
 def test_an_untimed_snapshot_over_an_hour_old_is_restored_finished_not_resumed():
     """An untimed config has no clock of its own to catch a stale snapshot, so the bound is a flat hour."""
-    s, net, clock, ps, info = _persisting_live(cfg={"time_limit_s": 30})
+    s, net, clock, ps, info = persisting_live(cfg={"time_limit_s": 30})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s.config["time_limit_s"] = None       # the STORED match's config is untimed (no clock of its own);
     s._persist_last = 0.0                 # set directly -- `set_config` would refuse it on this path today
     s._persist()
     clock["t"] += 3_600_000 + 1
-    s2, net2 = _restart_no_repersist(s, clock)
+    s2, net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "recap"
     assert s2.phase == "recap"
 
 
 def test_a_snapshot_inside_the_bound_still_resumes_live():
     """The age cap must not fire on an ordinary quick restart."""
-    s, net, clock, ps, info = _persisting_live(cfg={"time_limit_s": 30})
+    s, net, clock, ps, info = persisting_live(cfg={"time_limit_s": 30})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s._persist_last = 0.0
     s._persist()
     clock["t"] += 5_000                              # well inside the 2x-time-limit bound
-    s2, net2 = _restart_no_repersist(s, clock)
+    s2, net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "live"
     assert s2.phase == "live"
 
@@ -241,10 +214,10 @@ def test_the_old_store_is_opened_read_only_for_the_resume_import():
 
 
 def test_resume_still_reads_the_old_store_now_that_it_is_opened_read_only():
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     clock["t"] += 20_000
-    s2, net2 = _restart(s, clock)
+    s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
     assert _kills(s2, ps[0]["player_id"]) == 1, "the facts were still read back through the read-only open"
 
@@ -253,7 +226,7 @@ def test_a_failed_facts_import_raises_a_loud_distinct_alert_not_just_a_log_line(
     """Polish review: `_import_facts`'s failure used to be log-only, and `resume_match` goes straight
     on to say RESUMED THE MATCH IN PLAY right after it — which reads as an ordinary resume even though
     the scorer has nothing from before the restart. The operator needs a loud, separate feed line."""
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     clock["t"] += 20_000
     s._persist_last = 0.0
@@ -261,7 +234,7 @@ def test_a_failed_facts_import_raises_a_loud_distinct_alert_not_just_a_log_line(
     old_path = pathlib.Path(s.store.path)
     s.store.close()
     old_path.write_bytes(b"not a sqlite file")   # the old process's store cannot be read back
-    s2, net2 = _restart_no_repersist(s, clock)
+    s2, net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "live"
     assert any(f.get("kind") == "alert" and "COULD NOT READ THE OLD SESSION" in f.get("text", "")
                for f in s2.feed), s2.feed
@@ -274,7 +247,7 @@ def test_restore_snapshot_clears_a_half_set_resume_pending_when_a_later_step_fai
     of THOSE later steps must not leave a half-restored match dict sitting in `_resume_pending` for the
     very next `resume_match()` call to pick up — 'restore failed — starting clean' has to mean the
     whole restore, not just the player roster."""
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     s._persist_last = 0.0
     s._persist()
     snap = json.loads(s._persist_path.read_text())
@@ -308,7 +281,7 @@ def test_a_resume_into_armed_still_queues_the_vip_role_for_go_live():
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_last = 0.0
     s._persist()
-    s2, net2 = _restart_no_repersist(s, clock)
+    s2, net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "armed"
     tail = demo_armory()[1]["ble"]["tail"]
     net2.simulate_hello("node1", f"GUN-B-{tail}")           # the VIP's phone re-binds after the restart
@@ -321,39 +294,26 @@ def test_a_resume_into_armed_still_queues_the_vip_role_for_go_live():
     assert body["role"] == {"name": "vip", "on": True}
 
 
-# ── 3. no snapshot: phones in an unknown match raise a notice and nothing else ─────────────────────
-def _fresh_mc_with_phones_in(n, mids):
-    """A new laptop: the roster is typed in again, the phones bind, and they report `mids[i]`."""
-    s, net, clock, ps = mk_stored_session(n, "ffa")
-    for i, p in enumerate(ps):
-        online(s, net, clock, p, i)
-    before = len(net.pushed)
-    for i, mid in enumerate(mids):
-        if mid:
-            _status(net, clock, i, "live", mid)
-    return s, net, clock, ps, before
-
-
 def test_phones_in_a_match_this_mc_did_not_start_raise_the_notice_and_nothing_happens():
-    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, before = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     orphan = s.snapshot()["orphan_match"]
     assert orphan == {"match_id": "m-old", "phones": 2, "players": ["OP0", "OP1"], "arm_state": "live",
                       "can_resume": True}
     for _ in range(5):
         clock["t"] += 1000
         for i in range(2):
-            _status(net, clock, i, "live", "m-old")
+            resume_status(net, clock, i, "live", "m-old")
         s.tick()
     assert net.pushed[before:] == [], "no control, no config and no start without the operator"
     assert s.phase == "kit" and s.scorer is None and s.start_info is None
 
 
 def test_the_notice_goes_away_when_the_phones_stop_reporting_that_match():
-    s, net, clock, ps, _ = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, _ = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     for i in range(2):
-        _status(net, clock, i, "kitted", "m-old")
+        resume_status(net, clock, i, "kitted", "m-old")
     assert "orphan_match" not in s.snapshot()
-    _status(net, clock, 0, "live", "m-old")
+    resume_status(net, clock, 0, "live", "m-old")
     assert s.snapshot()["orphan_match"]["phones"] == 1
     clock["t"] += 9_000                                    # silent past STALE_AFTER_MS: no claim any more
     assert "orphan_match" not in s.snapshot()
@@ -380,7 +340,7 @@ def test_f261_a_freshly_restarted_mc_with_no_roster_yet_still_sees_the_orphan():
     s, net, clock, ps = mk_stored_session(0, "ffa")
     for i in range(2):
         net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-0000")
-        _status(net, clock, i, "live", "m-old")
+        resume_status(net, clock, i, "live", "m-old")
     assert not s.node_player, "setup: a fresh MC has bound nobody"
     orphan = s.snapshot()["orphan_match"]
     assert orphan["match_id"] == "m-old" and orphan["phones"] == 2
@@ -393,11 +353,11 @@ def test_no_notice_in_a_normal_muster_kit_lobby_live_and_recap():
     assert "orphan_match" not in s.snapshot() and s.phase == "kit"
     s2, net2, clock2, ps2, info = go_live_stored(2, "ffa")
     for i in range(2):
-        _status(net2, clock2, i, "live", info["match_id"])
+        resume_status(net2, clock2, i, "live", info["match_id"])
     assert "orphan_match" not in s2.snapshot()
     s2.control("end")
     for i in range(2):
-        _status(net2, clock2, i, "kitted", info["match_id"])
+        resume_status(net2, clock2, i, "kitted", info["match_id"])
     assert s2.phase == "recap" and "orphan_match" not in s2.snapshot()
     # a phone still armed for a start MC itself replaced (a reschedule mints a new match id)
     s3, net3, clock3, ps3 = mk_stored_session(2, "ffa")
@@ -406,13 +366,13 @@ def test_no_notice_in_a_normal_muster_kit_lobby_live_and_recap():
     s3.push_config(force=True)
     first = s3.start(runway_s=30, force=True)
     s3.reschedule(20)
-    _status(net3, clock3, 0, "armed", first["match_id"])
+    resume_status(net3, clock3, 0, "armed", first["match_id"])
     assert s3.phase == "armed" and "orphan_match" not in s3.snapshot()
 
 
 # ── 4. RESUME MATCH adopts ─────────────────────────────────────────────────────────────────────────
 def test_resume_match_adopts_the_phones_match_and_scores_from_the_facts_mc_holds():
-    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, before = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     _death(net, clock, ps, 0, 1, "m-old", seq=7)          # logged, parked: MC runs no match yet
     assert s.scorer is None
     s.adopt_orphan("m-old")
@@ -421,7 +381,7 @@ def test_resume_match_adopts_the_phones_match_and_scores_from_the_facts_mc_holds
     assert not [k for _n, k, _b in net.pushed[before:] if k in ("config", "start", "control")], \
         "adopting pushes nothing to a phone in play"
     for i in range(2):
-        _status(net, clock, i, "live", "m-old")
+        resume_status(net, clock, i, "live", "m-old")
     assert not net.pushes("control") and "orphan_match" not in s.snapshot()
     tail = demo_armory()[0]["ble"]["tail"]
     node = net.simulate_hello("node0", f"GUN-A-{tail}")
@@ -439,7 +399,7 @@ def test_resume_match_adopts_the_phones_match_and_scores_from_the_facts_mc_holds
 # need not match what the phones are actually playing to. A short draft used to end their match early.
 
 def test_an_adopted_match_never_ends_early_on_mcs_current_draft_time_limit():
-    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, before = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     s.set_config({"time_limit_s": 5})              # the draft's clock, not the real match's
     s.adopt_orphan("m-old")
     assert s.phase == "live"
@@ -452,7 +412,7 @@ def test_an_adopted_match_never_ends_early_on_mcs_current_draft_time_limit():
 
 
 def test_an_adopted_match_never_ends_early_on_mcs_current_draft_frag_limit():
-    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, before = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     s.set_config({"scoring": {"frag_limit": 1}})   # the draft's cap, not the real match's
     s.adopt_orphan("m-old")
     assert s.phase == "live"
@@ -467,7 +427,7 @@ def test_an_adopted_match_never_ends_early_on_mcs_current_draft_frag_limit():
 def test_an_adopted_match_past_the_draft_frag_limit_still_confirms_later_kills():
     """F357 polish r1: the draft's cap sets `limit_reached_t` in an adopted match but ends nothing, so it is not a
     whistle. Kills after it are still confirmed."""
-    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, before = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     s.set_config({"scoring": {"frag_limit": 1}})
     s.adopt_orphan("m-old")
     _death(net, clock, ps, 0, 1, "m-old", seq=1)   # reaches the DRAFT's cap of 1: the match plays on
@@ -479,7 +439,7 @@ def test_an_adopted_match_past_the_draft_frag_limit_still_confirms_later_kills()
 
 
 def test_adopting_notes_but_does_not_end_a_draft_cap_the_replayed_facts_already_reach():
-    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, before = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     _death(net, clock, ps, 0, 1, "m-old", seq=1)   # logged before MC adopts the match
     s.set_config({"scoring": {"frag_limit": 1}})   # the draft's cap the replay already reaches
     s.adopt_orphan("m-old")
@@ -492,7 +452,7 @@ def test_adopting_notes_a_draft_hold_target_the_replayed_facts_already_reach_not
     """Low (brx1 review of e8811fea): the adopt-orphan note named FRAG LIMIT unconditionally, even for
     a koth draft whose own hold target is what the replay actually reached (the same fix as
     `resume_match`'s crossed-limit branch, above)."""
-    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, before = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     clock["t"] += 1000
     net.simulate_event("node0", {"type": "possession", "match_id": "m-old", "node_id": "node0",
                                  "player_id": ps[0]["player_id"], "t": clock["t"], "site": "A",
@@ -507,7 +467,7 @@ def test_adopting_notes_a_draft_hold_target_the_replayed_facts_already_reach_not
 
 def test_resume_is_refused_while_mc_runs_its_own_match():
     s, net, clock, ps, info = go_live_stored(2, "ffa")
-    _status(net, clock, 1, "live", "m-other")
+    resume_status(net, clock, 1, "live", "m-other")
     assert s.snapshot()["orphan_match"]["can_resume"] is False
     try:
         s.adopt_orphan("m-other")
@@ -519,7 +479,7 @@ def test_resume_is_refused_while_mc_runs_its_own_match():
 
 # ── 5. END THEIR MATCH reaches those phones only ───────────────────────────────────────────────────
 def test_end_their_match_tells_only_the_phones_in_that_match():
-    s, net, clock, ps, before = _fresh_mc_with_phones_in(3, ["m-old", "m-old", "m-else"])
+    s, net, clock, ps, before = fresh_mc_with_phones_in(3, ["m-old", "m-old", "m-else"])
     assert s.snapshot()["orphan_match"]["match_id"] == "m-old", "the match most phones report leads"
     s.end_orphan("m-old")
     ends = [(n, b) for n, k, b in net.pushed[before:] if k == "control"]
@@ -528,7 +488,7 @@ def test_end_their_match_tells_only_the_phones_in_that_match():
     assert s.snapshot()["orphan_match"]["match_id"] == "m-else", "the other match is still the operator's call"
     assert s.phase == "kit" and s.scorer is None
     clock["t"] += STALE_LIVE_RETELL_MS + 1000
-    _status(net, clock, 0, "live", "m-old")
+    resume_status(net, clock, 0, "live", "m-old")
     assert len([1 for n, k, b in net.pushed if n == "node0" and k == "control"]) == 2, \
         "a phone that missed the end is told again, as for a match MC retired itself"
     assert not [1 for n, k, b in net.pushed if n == "node2" and k == "control"]
@@ -538,7 +498,7 @@ def test_end_their_match_tells_only_the_phones_in_that_match():
 def test_a_restart_never_finishes_an_adopted_match_on_the_draft_clock():
     """MC holds no config for an adopted match, so the draft's clock and the age bound are guesses. A
     finish here armed the end delivery at phones still playing it."""
-    s, net, clock, ps, _ = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, _ = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     s.set_config({"time_limit_s": 5})
     s.adopt_orphan("m-old")
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
@@ -546,7 +506,7 @@ def test_a_restart_never_finishes_an_adopted_match_on_the_draft_clock():
     s._persist()
     assert s.snapshot()["phase"] == "live"
     clock["t"] += 60_000                                   # past the draft's clock AND the 2x age bound
-    s2, net2 = _restart_no_repersist(s, clock)
+    s2, net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "live", "an adopted match is never finished by a restart"
     assert s2.last_recap is None and not s2._end_delivery, "no recap, and no end delivery at the phones"
     tags = [(e["tag"], e["text"]) for e in s2.feed]
@@ -556,15 +516,15 @@ def test_a_restart_never_finishes_an_adopted_match_on_the_draft_clock():
 
 
 def test_an_untimed_old_snapshot_resumes_when_a_phone_still_plays_the_match():
-    s, net, clock, ps, info = _persisting_live(cfg={"time_limit_s": 30})
+    s, net, clock, ps, info = persisting_live(cfg={"time_limit_s": 30})
     s.config["time_limit_s"] = None
     s._persist_last = 0.0
     s._persist()
     clock["t"] += 3_600_000 + 1
-    s2, net2 = _restart_no_repersist(s, clock)
+    s2, net2 = restart_no_repersist(s, clock)
     tail = demo_armory()[0]["ble"]["tail"]
     net2.simulate_hello("node0", f"GUN-A-{tail}")
-    _status(net2, clock, 0, "live", info["match_id"])      # a fresh heartbeat still names the match
+    resume_status(net2, clock, 0, "live", info["match_id"])      # a fresh heartbeat still names the match
     assert s2.resume_match() == "live"
     assert not s2._end_delivery and s2.last_recap is None
     assert s2.feed[0]["tag"] == "NOTE" and "STILL PLAYS" in s2.feed[0]["text"]
@@ -572,13 +532,13 @@ def test_an_untimed_old_snapshot_resumes_when_a_phone_still_plays_the_match():
 
 # ── A47 review: an adopted match the phones have ended says so on the MATCH screen ─────────────────
 def test_phones_ended_shows_only_when_every_claiming_phone_has_ended_the_adopted_match():
-    s, net, clock, ps, _ = _fresh_mc_with_phones_in(3, ["m-old", "m-old", "m-old"])
+    s, net, clock, ps, _ = fresh_mc_with_phones_in(3, ["m-old", "m-old", "m-old"])
     s.adopt_orphan("m-old")
     assert "phones_ended" not in s.snapshot()["live"]
-    _status(net, clock, 0, "kitted", "m-old")
-    _status(net, clock, 1, "kitted", "m-old")
+    resume_status(net, clock, 0, "kitted", "m-old")
+    resume_status(net, clock, 1, "kitted", "m-old")
     assert "phones_ended" not in s.snapshot()["live"], "one phone still reports LIVE"
-    _status(net, clock, 2, "idle", None)                   # a relaunched phone: no claim either way
+    resume_status(net, clock, 2, "idle", None)                   # a relaunched phone: no claim either way
     assert s.snapshot()["live"]["phones_ended"] is True
     assert s.phase == "live" and not net.pushes("control"), "MC shows it and ends nothing itself"
 
@@ -586,7 +546,7 @@ def test_phones_ended_shows_only_when_every_claiming_phone_has_ended_the_adopted
 def test_phones_ended_is_never_set_on_mcs_own_match():
     s, net, clock, ps, info = go_live_stored(2, "ffa")
     for i in range(2):
-        _status(net, clock, i, "kitted", info["match_id"])
+        resume_status(net, clock, i, "kitted", info["match_id"])
     assert "phones_ended" not in s.snapshot()["live"]
 
 
@@ -594,26 +554,26 @@ def test_pl4_phones_ended_needs_a_heartbeat_from_every_bound_phone_since_mc_star
     s, net, clock, ps = mk_stored_session(3, "ffa")
     for i, p in enumerate(ps[:2]):
         online(s, net, clock, p, i)
-    _status(net, clock, 0, "live", "m-old")
-    _status(net, clock, 1, "live", "m-old")
+    resume_status(net, clock, 0, "live", "m-old")
+    resume_status(net, clock, 1, "live", "m-old")
     s.adopt_orphan("m-old")
     net.simulate_hello("node2", f"GUN-C-{demo_armory()[2]['ble']['tail']}")   # bound, but no heartbeat since this MC started
     assert s.players[ps[2]["player_id"]].get("node_id") == "node2", "setup: bound"
-    _status(net, clock, 0, "kitted", "m-old")
-    _status(net, clock, 1, "kitted", "m-old")
+    resume_status(net, clock, 0, "kitted", "m-old")
+    resume_status(net, clock, 1, "kitted", "m-old")
     assert "phones_ended" not in s.snapshot()["live"], "a phone not heard yet may still be playing"
-    _status(net, clock, 2, "kitted", "m-old")
+    resume_status(net, clock, 2, "kitted", "m-old")
     assert s.snapshot()["live"]["phones_ended"] is True, "control"
 
 
 def test_pl4_phones_ended_counts_only_fresh_heartbeats():
-    s, net, clock, ps, _ = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, _ = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     s.adopt_orphan("m-old")
-    _status(net, clock, 0, "live", "m-other")        # an old claim of another match
+    resume_status(net, clock, 0, "live", "m-other")        # an old claim of another match
     clock["t"] += STALE_AFTER_MS + 1
-    _status(net, clock, 1, "idle", None)             # the other phone: no claim
+    resume_status(net, clock, 1, "idle", None)             # the other phone: no claim
     assert "phones_ended" not in s.snapshot()["live"], "a stale claim is not news"
-    _status(net, clock, 0, "live", "m-other")
+    resume_status(net, clock, 0, "live", "m-other")
     assert s.snapshot()["live"]["phones_ended"] is True, "control: the same claim, fresh"
 
 
@@ -642,7 +602,7 @@ def test_a_restart_from_a_live_snapshot_keeps_a_late_team_kill_frozen_out():
     assert s.scorer.team_scores()[team_a] == 2, "control: the live scorer froze the late team kill out"
     s._persist_path = good
     clock["t"] += 5_000
-    s2, _net2 = _restart_no_repersist(s, clock)
+    s2, _net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "recap", "the resumed facts still reach the cap the field heard"
     assert s2.scorer.team_scores()[team_a] == 2, f"the restart lowered the board: {s2.scorer.team_scores()}"
     assert s2.last_recap["winner"]["team_id"] == team_a
@@ -668,12 +628,12 @@ def test_a_resume_ignores_a_cap_only_the_t_order_replay_passes_and_a_real_cap_st
     team_a = s.scorer.stats[ps[0]["player_id"]].team_id
     assert s.phase == "live" and s.scorer.team_scores()[team_a] == 1, "control: live never reached the cap"
     clock["t"] += 5_000
-    s2, net2 = _restart(s, clock)
+    s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "live", f"the resume ended the match: {s2.phase} {s2.end_reason}"
     for i in range(4):
         tail = demo_armory()[i]["ble"]["tail"]
         net2.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
-        _status(net2, clock, i, "live", mid)
+        resume_status(net2, clock, i, "live", mid)
     clock["t"] += 1000
     net2.simulate_event("node3", {"type": "death", "t": clock["t"], "match_id": mid,
                                   "player_id": ps[3]["player_id"], "shooter_num": ps[0]["player_num"],
@@ -713,7 +673,7 @@ def test_a_restart_after_a_crossed_hold_target_labels_and_records_it_correctly()
     # control: the fact really does cross the target for this (the "old") process
     assert s.phase == "recap" and s.end_reason == "hold_target", (s.phase, s.end_reason)
     s._persist_path.write_text(frozen)   # ...as if that later write never landed; the STORE still has
-    s2, net2 = _restart_no_repersist(s, clock)   # every fact regardless of what the snapshot says
+    s2, net2 = restart_no_repersist(s, clock)   # every fact regardless of what the snapshot says
     assert s2.resume_match() == "recap", s2.phase
     assert s2.end_reason == "hold_target", s2.end_reason
     assert "HOLD TARGET" in s2.feed[0]["text"] and "FRAG LIMIT" not in s2.feed[0]["text"], s2.feed[0]
@@ -724,18 +684,18 @@ def test_a_resume_does_not_tell_the_field_the_lead_and_next_kill_wins_again():
     than FEEDBACK_MAX_AGE_MS, so the replay left `_leader` empty and `next_kill_wins` unannounced. The
     first fresh kill after the resume then told the leader `lead_taken` and the field `next_kill_wins`
     a second time."""
-    s, net, clock, ps, info = _persisting_live(2, {"scoring": {"frag_limit": 3, "win_by": "kills"}})
+    s, net, clock, ps, info = persisting_live(2, {"scoring": {"frag_limit": 3, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     kill(s, net, clock, ps, 0, 1, info, seq=2)          # P0 on 2: the lead, and cap - 1
     told = [b["kind"] for _, k, b in net.pushed if k == "alert"]
     assert "lead_taken" in told and "next_kill_wins" in told, f"control: the live match told them: {told}"
     clock["t"] += 20_000
-    s2, net2 = _restart(s, clock)
+    s2, net2 = restart_session(s, clock)
     assert s2.resume_match() == "live"
     for i in range(2):
         tail = demo_armory()[i]["ble"]["tail"]
         net2.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
-        _status(net2, clock, i, "live", info["match_id"])
+        resume_status(net2, clock, i, "live", info["match_id"])
     net2.pushed.clear()
     kill(s2, net2, clock, ps, 1, 0, info, seq=3)       # P1 on 1: the lead does not change
     again = [b["kind"] for _, k, b in net2.pushed if k == "alert"]
@@ -757,7 +717,7 @@ def test_x2_adopting_takes_the_game_byte_the_phones_report_so_a_station_re_arm_k
     net.simulate_utility_hello("util-x2")
     s.set_station("util-x2", {"kind": "respawn", "team": "any", "id": 4})
     for i in range(2):
-        _status(net, clock, i, "live", "m-old", game_byte=42)
+        resume_status(net, clock, i, "live", "m-old", game_byte=42)
     s.adopt_orphan("m-old")
     assert s._game_byte() == 42, f"the adopted match must run on the phones' byte, not {s._game_byte()}"
     assert s.snapshot()["game_byte"] == 42 and s.snapshot()["game_no"] == 42, "X10: both keys name the byte"
@@ -770,13 +730,13 @@ def test_x2_the_game_number_only_moves_forward_when_it_takes_the_phones_byte():
     s, net, clock, ps = mk_stored_session(1, "ffa")
     online(s, net, clock, ps[0], 0)
     s.game_no = 300                                        # byte 45
-    _status(net, clock, 0, "live", "m-old", game_byte=7)
+    resume_status(net, clock, 0, "live", "m-old", game_byte=7)
     s.adopt_orphan("m-old")
     assert s._game_byte() == 7 and s.game_no > 300, s.game_no
 
 
 def test_x2_an_older_phone_with_no_game_byte_keeps_todays_behaviour():
-    s, net, clock, ps, _ = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s, net, clock, ps, _ = fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     s.adopt_orphan("m-old")
     assert s.game_no == 1 and s._game_byte() == 1
 
@@ -784,7 +744,7 @@ def test_x2_an_older_phone_with_no_game_byte_keeps_todays_behaviour():
 def test_x2_a_malformed_game_byte_is_ignored():
     s, net, clock, ps = mk_stored_session(1, "ffa")
     online(s, net, clock, ps[0], 0)
-    _status(net, clock, 0, "live", "m-old", game_byte=0)   # 0 = "any game", never a match's byte
+    resume_status(net, clock, 0, "live", "m-old", game_byte=0)   # 0 = "any game", never a match's byte
     s.adopt_orphan("m-old")
     assert s._game_byte() == 1
 
@@ -793,10 +753,10 @@ def test_x2_a_malformed_game_byte_is_ignored():
 def test_f451_a_live_match_resumes_live_after_the_wall_clock_steps_back():
     """Chaos 2026-10-03 (crash-mixed seeds 1-2 under test:all): WSL2 TimeSync stepped MC's clock back just after
     go-live, and the resume compared `now` with `go_live_t` and came back ARMED under live phones."""
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     assert s.phase == "live"
     clock["t"] = info["go_live_t"] - 3000          # the wall clock steps back 3 s
-    s2, _ = _restart(s, clock)
+    s2, _ = restart_session(s, clock)
     assert s2.resume_match() == "live"
 
 
@@ -816,16 +776,16 @@ def test_f451_the_live_flip_writes_the_snapshot_at_once_so_a_crash_keeps_it():
     assert s.phase == "live"
     assert json.loads(s._persist_path.read_text())["match"].get("live") is True, "the flip must reach the disk"
     clock["t"] -= 3000                              # then the clock steps back, and MC crashes
-    s2, _ = _restart_no_repersist(s, clock)
+    s2, _ = restart_no_repersist(s, clock)
     assert s2.resume_match() == "live"
 
 
 def test_f451_a_snapshot_with_no_live_flag_resumes_as_before():
     """An older snapshot (no `live` key) keeps the clock rule: before go-live it resumes ARMED."""
-    s, net, clock, ps, info = _persisting_live()
+    s, net, clock, ps, info = persisting_live()
     s._persist_last = 0.0; s._persist()
     snap = json.loads(s._persist_path.read_text()); snap["match"].pop("live", None)
     s._persist_path.write_text(json.dumps(snap))
     clock["t"] = info["go_live_t"] - 3000
-    s2, _ = _restart_no_repersist(s, clock)
+    s2, _ = restart_no_repersist(s, clock)
     assert s2.resume_match() == "armed"

@@ -10,13 +10,13 @@ ConnectionManager`): `scan`/`connect`/`disconnect`/`send`/`get_events`/`is_conne
 30 s hold window takes milliseconds of real test time (CLAUDE.md: "a mocked clock, not sleeps").
 """
 
-import asyncio
 
 from _async import run
 
 from brx_mcp.connmetrics.runner import (
     ConnectAttempt, ConnectRun, run_connect_metrics, summarize,
 )
+from _clock import FakeClock
 
 
 class FakeSession:
@@ -25,21 +25,6 @@ class FakeSession:
         self.buffer: list[dict] = []
         self.log_file = None
         self.log_label = None
-
-
-class FakeClock:
-    """Advances instantly: `sleep(s)` moves the virtual clock forward by `s` and yields once to
-    the event loop, instead of actually waiting."""
-
-    def __init__(self):
-        self.t = 0.0
-
-    def now(self) -> float:
-        return self.t
-
-    async def sleep(self, seconds: float) -> None:
-        self.t += max(0.0, seconds)
-        await asyncio.sleep(0)
 
 
 class FakeMgr:

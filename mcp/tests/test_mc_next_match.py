@@ -13,11 +13,10 @@ it must not cut off anything the finished match is still owed:
 
 Run: python3 run_tests.py mc_next_match
 """
-from test_mc_end_delivery import _ends_to, _hb, _unconfirmed, _view
-from test_mc_stale_live import _controls_to, _stale_status
 
 from brx_mcp.mc.state import END_RETRY_MS, SYNC_ACK_TIMEOUT_MS
-from _session import go_live_stored, kill
+from _session import (
+    controls_to, end_view, ends_to, go_live_stored, kill, node_heartbeat, stale_live_status, unconfirmed)
 
 
 def _kills(recap, pid):
@@ -101,23 +100,23 @@ def test_the_end_delivery_keeps_re_telling_a_straggler_after_the_roll():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
     clock["t"] += 500
-    _hb(net, clock, "node0", ps[0]["player_id"], "kitted", info["match_id"], alive=False)
+    node_heartbeat(net, clock, "node0", ps[0]["player_id"], "kitted", info["match_id"], alive=False)
     s.next_match()
-    assert _unconfirmed(s) == ["OP1"], "the operator still sees who has not confirmed"
-    n1 = len(_ends_to(net, "node1"))
+    assert unconfirmed(s) == ["OP1"], "the operator still sees who has not confirmed"
+    n1 = len(ends_to(net, "node1"))
     clock["t"] += END_RETRY_MS[0]
     s.tick()
-    assert len(_ends_to(net, "node1")) == n1 + 1, "the retry ladder is still running"
-    assert _ends_to(net, "node1")[-1] == {"cmd": "end", "match_id": info["match_id"]}
-    _hb(net, clock, "node1", ps[1]["player_id"], "kitted", info["match_id"])
-    assert _view(s)["confirmed"] == 2, "and the receipt still lands"
+    assert len(ends_to(net, "node1")) == n1 + 1, "the retry ladder is still running"
+    assert ends_to(net, "node1")[-1] == {"cmd": "end", "match_id": info["match_id"]}
+    node_heartbeat(net, clock, "node1", ps[1]["player_id"], "kitted", info["match_id"])
+    assert end_view(s)["confirmed"] == 2, "and the receipt still lands"
 
 
 def test_a_fresh_session_still_ends_the_watch():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
     s.new_session(keep_roster=False)
-    assert _view(s) is None and s._retired_scorer is None
+    assert end_view(s) is None and s._retired_scorer is None
 
 
 # --------------------------------------------------------------------------------------------------
@@ -129,9 +128,9 @@ def test_a34_still_reconciles_a_phone_live_in_the_match_rolled_past():
     assert s.phase == "recap"
     s.next_match()
     clock["t"] += 60_000
-    before = len(_controls_to(net, "node1"))
-    _stale_status(net, clock, "node1", info["match_id"])
-    assert {"cmd": "end", "match_id": info["match_id"]} in _controls_to(net, "node1")[before:]
+    before = len(controls_to(net, "node1"))
+    stale_live_status(net, clock, "node1", info["match_id"])
+    assert {"cmd": "end", "match_id": info["match_id"]} in controls_to(net, "node1")[before:]
     res = [b for n, k, b in net.pushes("result") if n == "node1"]
     assert res and res[-1]["match_id"] == info["match_id"], "told how the retired match ended"
 
@@ -194,9 +193,9 @@ def test_ack_state_fails_on_timeout_but_not_before():
     s.next_match()
     s.push_config(force=True)
     clock["t"] += SYNC_ACK_TIMEOUT_MS - 1_000
-    _hb(net, clock, "node0", ps[0]["player_id"], "kitted", None)
-    _hb(net, clock, "node1", ps[1]["player_id"], "kitted", None)
+    node_heartbeat(net, clock, "node0", ps[0]["player_id"], "kitted", None)
+    node_heartbeat(net, clock, "node1", ps[1]["player_id"], "kitted", None)
     assert _rows(s)[ps[0]["player_id"]]["ack_state"] == "waiting"
     clock["t"] += 2_000
-    _hb(net, clock, "node0", ps[0]["player_id"], "kitted", None)
+    node_heartbeat(net, clock, "node0", ps[0]["player_id"], "kitted", None)
     assert _rows(s)[ps[0]["player_id"]]["ack_state"] == "failed", "no answer in time"

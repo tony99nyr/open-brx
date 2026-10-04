@@ -11,9 +11,8 @@ Run: python3 run_tests.py mc_live_objective
 """
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from test_mc_pool_stale import _status
 from brx_mcp.mc.types import NEVER_SEEN_MS, STALE_AFTER_MS
-from _session import mk_session, online
+from _session import mk_session, online, pool_status
 
 
 def _live(mode="koth", n=2, heard=None):
@@ -35,7 +34,7 @@ def _live(mode="koth", n=2, heard=None):
     clock["t"] = s.start_info["go_live_t"] + 10
     s.tick()
     for i in heard:
-        _status(net, clock, i, ps[i], arm_state="live")
+        pool_status(net, clock, i, ps[i], arm_state="live")
     assert s.phase == "live", s.phase
     return s, net, clock, ps
 

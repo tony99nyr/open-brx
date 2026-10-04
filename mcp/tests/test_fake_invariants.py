@@ -100,10 +100,12 @@ def test_inv_stale_start():
 
 
 def test_inv_protected_stale_only():
-    from test_mc_possibly_protected import go_quiet, live, rows
-    from test_mc_pool_stale import _status
-    s, net, clock, ps = live()
-    _status(net, clock, 0, ps[0], arm_state="live", protected=True)
+    from _session import rows
+    from _session import live_forced
+    from _session import go_quiet
+    from _session import pool_status
+    s, net, clock, ps = live_forced()
+    pool_status(net, clock, 0, ps[0], arm_state="live", protected=True)
     assert not any(r.get("possibly_protected") for r in rows(s).values()), "a phone MC hears is never flagged"
     go_quiet(s, net, clock, ps, 0)
     assert all(r["status"] == "stale" for r in rows(s).values() if r.get("possibly_protected"))

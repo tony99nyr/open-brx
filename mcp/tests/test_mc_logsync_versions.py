@@ -12,7 +12,7 @@ from pathlib import Path
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory, fake_app_ver
 from brx_mcp.mc.state import NotReadyError, Session
 from brx_mcp.mc.types import APP_MAJOR, APP_MINOR, app_tier, compatible, parse_app_ver
-from _session import mk_session, online, T0
+from _session import mk_session, online, run_match, T0
 
 try:
     from starlette.testclient import TestClient
@@ -20,7 +20,6 @@ try:
     HAVE = True
 except Exception:
     HAVE = False
-
 
 
 def test_repo_app_version_covers_every_weapon_runtime_minimum():
@@ -45,21 +44,6 @@ def test_hidden_dual_emitter_still_gates_old_victim():
 
 def pulls(net, nid=None):
     return [(n, b.get("reason")) for n, k, b in net.pushed if k == "pull_log" and (nid is None or n == nid)]
-
-
-def run_match(s, net, clock, ps):
-    """kit → lobby push → start → live → the whistle. Returns the match_id that ended."""
-    for p in ps:
-        s.set_ready(p["player_id"], True, host_override=True)
-    s.push_config(force=True)
-    for i, _ in enumerate(ps):
-        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
-                                                             "gun_echo": "$LCD"}, clock["t"])
-    info = s.start(runway_s=1)
-    clock["t"] += 2000
-    s.tick()
-    s.control("end", confirm=True)
-    return info["match_id"]
 
 
 # ---------------------------------------------------------------- A25: the four triggers

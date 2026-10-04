@@ -7,13 +7,13 @@ from _session import ack_lobby, lobby, mk_online_session
 
 
 def test_nothing_is_updating_before_the_push():
-    s, net, clock, ps = mk_online_session()
+    s, net, clock, ps = mk_online_session(3)
     s.set_ready(ps[0]["player_id"], True, host_override=True)
     assert lobby(s)["updating"] == 0, "no head was pushed, so no phone owes an answer"
 
 
 def test_a_ready_player_with_no_ack_is_updating_and_leaves_the_count_when_it_acks():
-    s, net, clock, ps = mk_online_session()
+    s, net, clock, ps = mk_online_session(3)
     s.push_config()
     s.ready_all()
     assert lobby(s)["ready"] == 3 and lobby(s)["updating"] == 3, lobby(s)

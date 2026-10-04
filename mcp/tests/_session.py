@@ -183,7 +183,7 @@ def go_live_stored(n_players=2, mode="tdm", cfg=None, store=True):
     return _go_live(s, net, clock, ps, koth_hill=(mode == "koth"))
 
 
-def mk_online_session(n=3):
+def mk_online_session(n=2):
     """`mk_session(n)` with every phone online and synced (the lobby is NOT pushed)."""
     s, net, clock, ps = mk_session(n)
     for i, p in enumerate(ps):
@@ -231,3 +231,121 @@ def ack_lobby(s, net, clock, i, config_id=None, ok=True):
     body = {"config_id": config_id or s.config["config_id"], "ok": ok}
     body.update({"gun_echo": LOBBY_ECHO} if ok else {"err": "no_echo"})
     net.simulate_node_message(f"node{i}", "ack_config", body, clock["t"])
+
+
+def pool_status(net, clock, i, p, **extra):
+    body = {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36, "alive": True, "shots": 0,
+            "battery": 80, "fw": "v4.32", "arm_state": "kitted", "synced": True,
+            "preflight": {"ssid_ok": True, "mc_reachable": True, "gun_linked": True}}
+    net.simulate_status(f"node{i}", {**body, **extra}, clock["t"])
+
+
+def go_quiet(s, net, clock, ps, *quiet):
+    """The quiet phones stop talking for 20 s (past STALE_AFTER_MS); every other phone keeps talking."""
+    clock["t"] += 20_000
+    for i, p in enumerate(ps):
+        if i not in quiet:
+            pool_status(net, clock, i, p, arm_state="live")
+
+
+def live_forced(n=2):
+    s, net, clock, ps = mk_online_session(n)
+    s.push_config(force=True)
+    for i in range(n):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                           "gun_echo": "x"}, clock["t"])
+    s.start(force=True)
+    clock["t"] = s.start_info["go_live_t"] + 10
+    s.tick()
+    for i, p in enumerate(ps):
+        pool_status(net, clock, i, p, arm_state="live_forced")
+    return s, net, clock, ps
+
+
+def rows(s):
+    return {r["player_id"]: r for r in s.snapshot()["live"]["rows"]}
+
+
+def ends_to(net, nid):
+    return [b for b in controls_to(net, nid) if b.get("cmd") == "end"]
+
+
+def node_heartbeat(net, clock, nid, pid, arm_state, match_id, alive=True):
+    """One status heartbeat, shaped as `engine.js statusBody` sends it."""
+    net.simulate_status(nid, {"player_id": pid, "arm_state": arm_state, "synced": True, "alive": alive,
+                              "shots": 0, "pending": 0,
+                              **({"match_id": match_id} if match_id else {})}, clock["t"])
+
+
+def unconfirmed(s):
+    return [r["display"] for r in (end_view(s) or {}).get("unconfirmed", [])]
+
+
+def end_view(s):
+    return s.snapshot().get("end_delivery")
+
+
+def controls_to(net, nid):
+    return [b for n, k, b in net.pushes("control") if n == nid]
+
+
+def stale_live_status(net, clock, nid, mid, extra=None):
+    body = {"arm_state": "live", "synced": True, "alive": True, "hp": 12, **({"match_id": mid} if mid else {}), **(extra or {})}
+    net.simulate_status(nid, body, clock["t"])
+
+
+def run_match(s, net, clock, ps):
+    """kit → lobby push → start → live → the whistle. Returns the match_id that ended."""
+    for p in ps:
+        s.set_ready(p["player_id"], True, host_override=True)
+    s.push_config(force=True)
+    for i, _ in enumerate(ps):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                             "gun_echo": "$LCD"}, clock["t"])
+    info = s.start(runway_s=1)
+    clock["t"] += 2000
+    s.tick()
+    s.control("end", confirm=True)
+    return info["match_id"]
+
+
+def resume_status(net, clock, i, arm, mid, **extra):
+    body = {"arm_state": arm, "synced": True, "alive": True, "pending": 0, **({"match_id": mid} if mid else {}), **extra}
+    net.simulate_status(f"node{i}", body, clock["t"])
+
+
+# ── 3. no snapshot: phones in an unknown match raise a notice and nothing else ─────────────────────
+def fresh_mc_with_phones_in(n, mids):
+    """A new laptop: the roster is typed in again, the phones bind, and they report `mids[i]`."""
+    s, net, clock, ps = mk_stored_session(n, "ffa")
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    before = len(net.pushed)
+    for i, mid in enumerate(mids):
+        if mid:
+            resume_status(net, clock, i, "live", mid)
+    return s, net, clock, ps, before
+
+
+def persisting_live(n=2, cfg=None):
+    s, net, clock, ps, info = go_live_stored(n, "ffa", cfg)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    return s, net, clock, ps, info
+
+
+def restart_session(s, clock):
+    """A new process: a new store FILE (each process writes its own), the same session.json."""
+    s._persist_last = 0.0
+    s._persist()
+    return restart_no_repersist(s, clock)
+
+
+def restart_no_repersist(s, clock):
+    """Like `restart_session`, but the caller already wrote the snapshot it wants read back -- a REAL crash
+    leaves `saved_ms` at the moment of the last write, not at the moment the new process starts."""
+    net2 = FakeNet()
+    store2 = Store("t2", pathlib.Path(tempfile.mkdtemp()) / "s2.sqlite")
+    s2 = Session(FakeCompiler(), net2, FakeArmory(demo_armory()), store=store2, now_ms=lambda: clock["t"])
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot() == len(s.players)
+    return s2, net2

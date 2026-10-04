@@ -28,6 +28,7 @@ from brx_mcp.rawbytes import (
     validate_plan,
     write_raw,
 )
+from _clock import FakeClock
 
 
 @contextmanager
@@ -40,24 +41,6 @@ def raises(exc, match=None):
         assert match is None or match in str(e), f"{e!r} does not mention {match!r}"
         return
     raise AssertionError(f"{exc.__name__} not raised")
-
-
-class FakeClock:
-    """Advances instantly: `sleep(s)` moves the virtual clock forward and yields once, instead of
-    actually waiting. Every call is recorded so a test can pin exact delay values and detect a call
-    that should never have happened."""
-
-    def __init__(self):
-        self.t = 0.0
-        self.sleep_calls: list[float] = []
-
-    def now(self) -> float:
-        return self.t
-
-    async def sleep(self, seconds: float) -> None:
-        self.sleep_calls.append(seconds)
-        self.t += max(0.0, seconds)
-        await asyncio.sleep(0)
 
 
 class FakeClient:

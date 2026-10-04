@@ -197,7 +197,7 @@ def test_review1_pull_log_push_returning_false_is_push_failed_and_not_asked():
 
 
 def test_review2_result_is_recorded_pushed_only_when_the_push_landed():
-    from test_mc_logsync_versions import run_match
+    from _session import run_match
     from _session import online
     from _session import mk_session
     s, net, clock, ps = mk_session(1)

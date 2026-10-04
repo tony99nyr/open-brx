@@ -155,15 +155,16 @@ def test_o6_a_loss_shows_only_against_the_current_match():
 
 
 def test_o6_a_resume_shows_losses_reported_after_the_restart():
-    from test_mc_resume import _fresh_mc_with_phones_in, _status
-    s, net, clock, ps, _ = _fresh_mc_with_phones_in(2, [None, None])
-    _status(net, clock, 0, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 12})    # lost during the outage
-    _status(net, clock, 1, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 0})
+    from _session import fresh_mc_with_phones_in
+    from _session import resume_status
+    s, net, clock, ps, _ = fresh_mc_with_phones_in(2, [None, None])
+    resume_status(net, clock, 0, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 12})    # lost during the outage
+    resume_status(net, clock, 1, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 0})
     s.adopt_orphan("m-old")
     assert s.phase == "live"
     row = next(n for n in s.snapshot()["nodes"] if n["node_id"] == "node0")
     assert row["outbox_lost"] == 12                     # the adopted match's outage losses are not hidden
-    _status(net, clock, 0, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 15})
+    resume_status(net, clock, 0, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 15})
     assert next(n for n in s.snapshot()["nodes"] if n["node_id"] == "node0")["outbox_lost"] == 15
 
 
