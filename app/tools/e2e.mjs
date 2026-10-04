@@ -62,10 +62,11 @@ const rxLit = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A port from the environment, else a free one from the OS. Two runs in two worktrees must not share a port. */
 const freePort = () => new Promise((res, rej) => { const s = net.createServer(); s.unref(); s.on('error', rej); s.listen(0, () => { const { port } = s.address(); s.close(() => res(port)); }); });
 const envPort = async (name) => { const v = process.env[name]; if (v === undefined || v === '') return freePort(); const n = Number(v); if (!Number.isInteger(n) || n <= 0 || n > 65535) { console.error(`FATAL: ${name}=${v} is not a port`); process.exit(3); } return n; };
-const MC_PORT = await envPort('E2E_MC_PORT'), MC_WS_PORT = await envPort('E2E_MC_WS_PORT');
-const OLD_MC_PORT = await envPort('E2E_OLD_MC_PORT'), OLD_MC_WS_PORT = await envPort('E2E_OLD_MC_WS_PORT');
+let MC_PORT = await envPort('E2E_MC_PORT'), MC_WS_PORT = await envPort('E2E_MC_WS_PORT');
+let OLD_MC_PORT = await envPort('E2E_OLD_MC_PORT'), OLD_MC_WS_PORT = await envPort('E2E_OLD_MC_WS_PORT');
 const HUD_PORT = await envPort('E2E_HUD_PORT');
-const MC = `http://127.0.0.1:${MC_PORT}`, HUD = `http://127.0.0.1:${HUD_PORT}`;
+let MC = `http://127.0.0.1:${MC_PORT}`;
+const HUD = `http://127.0.0.1:${HUD_PORT}`;
 let WS = '';   // read from lan.ws_url — the NetServer binds the LAN IP, NOT loopback (first-run finding)
 
 // ---------- tiny framework ----------
@@ -130,9 +131,34 @@ const hudBundle = path.join(ROOT, 'www', 'app.js');
 }
 const mcLog = fs.openSync(path.join(OUT, 'mc-server.log'), 'w');
 const PY = process.env.MC_PY || path.join(REPO, '.venv/bin/python');   // test-all passes MC_PY; a worktree may have no .venv
-const mcProc = spawn(PY, ['-m', 'brx_mcp.mc', '--demo', '--no-auth', '--port', String(MC_PORT), '--ws-port', String(MC_WS_PORT), '-v'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', mcLog, mcLog] });
-process.on('exit', () => { try { mcProc.kill(); } catch {} });   // the watchdog/timeout path must not leak the server
-await until(async () => mcProc.exitCode === null && (await fetch(MC + '/api/state')).ok, 30000, 'MC server');
+let mcProc;
+let mcOutput = '';
+const launchMC = () => {
+  mcProc = spawn(PY, ['-m', 'brx_mcp.mc', '--demo', '--no-auth', '--port', String(MC_PORT), '--ws-port', String(MC_WS_PORT), '-v'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'] });
+  mcProc.stdout.on('data', data => { mcOutput += data; fs.writeSync(mcLog, data); });
+  mcProc.stderr.on('data', data => { mcOutput += data; fs.writeSync(mcLog, data); });
+};
+process.on('exit', () => { try { mcProc?.kill(); } catch {} });   // the watchdog/timeout path must not leak the server
+const waitForMC = async () => {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline && mcProc.exitCode === null) {
+    if (await fetch(MC + '/api/state').then(r => r.ok).catch(() => false)) return true;
+    await sleep(100);
+  }
+  return false;
+};
+for (let attempt = 0; attempt < 2; attempt++) {
+  mcOutput = '';
+  launchMC();
+  const ready = await waitForMC();
+  if (ready) break;
+  if (attempt === 0 && mcProc.exitCode === 2 && /could not bind/i.test(mcOutput)) {
+    console.log('retrying after a port race');
+    MC_PORT = await freePort(); MC_WS_PORT = await freePort();
+    MC = `http://127.0.0.1:${MC_PORT}`;
+    continue;
+  }
+}
 // a spawned MC that died (port taken between the pick and the bind) must not let another process answer for it
 await sleep(300);
 if (mcProc.exitCode !== null) { console.error(`FATAL: the suite's MC exited (code ${mcProc.exitCode}) — see ${path.join(OUT, 'mc-server.log')}`); process.exit(3); }
@@ -1114,7 +1140,7 @@ await step('compat-older-server: new UI renders ARMORY / PLAY / BUILD / KIT / LO
 // ═══ F8c · compat: a session persisted BEFORE A10 restores and every page renders (review #12) ═══
 flow('F8c compat-old-session');
 await step('compat-old-session: MC booted from a pre-A10 session.json → PLAY shows the restored mode picked, KIT shows the restored players, GAME RULES = OPEN, no crash', async () => {
-  const MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
+  let MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
   if (await fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false)) throw new Error(`something already listens on ${OLD_MC_PORT}`);
   const tmp = fs.mkdtempSync(path.join(OUT, 'session-'));
   const sf = path.join(tmp, 'session.json');
@@ -1123,12 +1149,30 @@ await step('compat-old-session: MC booted from a pre-A10 session.json → PLAY s
   // NOT --demo: its seeding re-adds GUN-A..H and crashes on the restored players' guns ("gun GUN-A is already assigned",
   // __main__.py build()) — a server finding, recorded in the report; --ephemeral keeps presets off the host's shelf
   findings.push({ kind: 'server', where: 'brx_mcp.mc --demo --session-file', what: '--demo seeding collides with restored players (ValueError: gun GUN-A is already assigned) — the demo seed should skip guns a restored player holds' });
-  const proc2 = spawn(PY, ['-m', 'brx_mcp.mc', '--ephemeral', '--no-auth', '--port', String(OLD_MC_PORT), '--ws-port', String(OLD_MC_WS_PORT), '--session-file', sf], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', log2, log2] });
+  let proc2;
+  const launchOldMC = () => { proc2 = spawn(PY, ['-m', 'brx_mcp.mc', '--ephemeral', '--no-auth', '--port', String(OLD_MC_PORT), '--ws-port', String(OLD_MC_WS_PORT), '--session-file', sf], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', log2, log2] }); };
+  launchOldMC();
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const pg = await ctx.newPage(); pg.setDefaultTimeout(6000);
   const errs = []; pg.on('pageerror', e => errs.push('pageerror: ' + String(e.message).slice(0, 160)));
   try {
-    await until(async () => (await fetch(MC2 + '/api/state')).ok, 30000, 'old-session MC');
+    let ready = false;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const deadline = Date.now() + 30000;
+      while (Date.now() < deadline && proc2.exitCode === null) {
+        if (await fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false)) { ready = true; break; }
+        await sleep(100);
+      }
+      if (ready) break;
+      const startupLog = fs.readFileSync(path.join(OUT, 'mc-server-oldsession.log'), 'utf8');
+      if (attempt === 0 && proc2.exitCode === 2 && /could not bind/i.test(startupLog)) {
+        console.log('retrying after a port race');
+        OLD_MC_PORT = await freePort(); OLD_MC_WS_PORT = await freePort(); MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
+        launchOldMC();
+        continue;
+      }
+      throw new Error(`old-session MC failed to start:\n${startupLog}`);
+    }
     const s2 = await (await fetch(MC2 + '/api/state')).json();
     expect(s2.players.some(p => p.display === 'RESTORED-A') && s2.players.some(p => p.display === 'RESTORED-B'), 'fixture players not restored: ' + s2.players.map(p => p.display).join(','));
     expect(s2.config.loadout_policy && s2.config.loadout_policy.preset === 'open', 'restored config did not get a normalised OPEN policy');

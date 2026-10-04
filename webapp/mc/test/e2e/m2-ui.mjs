@@ -9,19 +9,18 @@
 //   npm run e2e:m2                    # everything
 //   ONLY=mock npm run e2e:m2          # one run: measure | mock | phone | real | refusal | stale | offline
 //   MC_PORT=… VITE_PORT=… MC_PY=…     # move the ports / pick the interpreter
-//   SHOT_DIR=…                        # where the screenshots go (default ~/brx-scratch/m2ui)
+//   SHOT_DIR=…                        # where the screenshots go (default this test's output folder)
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC_DIR = path.resolve(HERE, '../..');
 const REPO = path.resolve(MC_DIR, '../..');
-const SHOTS = process.env.SHOT_DIR || path.join(os.homedir(), 'brx-scratch/m2ui');
+const SHOTS = process.env.SHOT_DIR || path.join(HERE, 'shots', 'm2-ui');
 const MC_PORT = Number(process.env.MC_PORT || 8796);
 const VITE_PORT = Number(process.env.VITE_PORT || 5183);
 const ONLY = process.env.ONLY || '';
