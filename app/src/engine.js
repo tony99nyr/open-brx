@@ -6649,38 +6649,61 @@ export class Engine {
     else if (kind) this._announceStatus(kind);   // A11; docs/announcer.md: a pool voice line waits its turn
   }
 
+  /** One `$HP` pool report from the gun (`feedFrame`'s HP case; `solicited` = it answers our own probe). A flat
+   *  sequence of steps, each a method with one job, in the order their side effects must run. The frame's context
+   *  (`_hpTakePools`) carries the values the steps share; no step stores them on the engine.
+   *    1. the gun's word on the pools: the powerup timing, the pool source, the B5 life evidence
+   *    2. `_selfHitHp`          F438: our own shot, or the gun's echo of us giving it back (ends the frame)
+   *    3. `_hpTakePools`        the pool bookkeeping, and the frame's context
+   *    4. `_hpPoolEffects`      the poison cue, the overshield frame, the action count
+   *    5. `_hpDotEcho`          S16: the poison tick's own echo
+   *    6. `_hpShield`           S29: the recharge clock and the break cue
+   *    7. `_hpLowHealth`        the low-health alert and its line
+   *    8. `_hpHeadsetReassert`  the headset after a hit
+   *    9. `_hpDamageWord`       F354: the word the damage belongs to
+   *   10. `_hpHitTaken`         the `hit_taken` fact, the ledger, the pain grunt
+   *   11. `_hpMoment`           the HUD moment
+   *   12. `_hpSettle`           the previous pools, the audio model, the readout paint
+   *   13. `_hpDeathCheck`       F416, the resync evidence, and a death */
   _onHp(hp, armor, shield, solicited = false) {
     this.pu.onHp();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
     if (hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
     // Damage drains shield -> armor -> HP (bench 2026-08-27). Omitting shield from the
-    // total made every shield-absorbed hit compute dmg === 0, which the guard below then
+    // total made every shield-absorbed hit compute dmg === 0, which the hit guard (`_hpHitTaken`) then
     // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
     if (this._selfHitHp(hp, armor, shield)) return;   // F438: our own shot, or the gun's echo of us giving it back
     const h = this._hpTakePools(hp, armor, shield, solicited);
     this._hpPoolEffects(h);
-    const { before, pools0, movedPool, dmg } = h;
     this._hpDotEcho(h);
-    const dotEcho = h.dotEcho;
     this._hpShield(h);
     this._hpLowHealth(h);
-    let hitWeapon = null;   // S56 "what hit me": set inside the hit_taken block below, read by the HUD 'hit' moment further down
     this._hpHeadsetReassert(h);
     this._hpDamageWord(h);
     this._hpHitTaken(h);
-    const { hl } = h;
-    hitWeapon = h.hitWeapon;
     this._hpMoment(h);
-    this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
+    this._hpSettle(h);
+    this._hpDeathCheck(h);
+  }
+
+  /** `_onHp` step: the frame is done with. The reported pools become the previous ones, the audio model catches up,
+   *  and a frame with health left repaints the readout. */
+  _hpSettle(h) {
+    this._prevHp = h.hp; this._prevArmor = h.armor; this._prevShield = h.shield;
     this._audioSync();
-    if (hp > 0) this._gunPoolPaint(movedPool);   // A16 §3.1 (readout) / A11.7 legacy (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
+    if (h.hp > 0) this._gunPoolPaint(h.movedPool);   // A16 §3.1 (readout) / A11.7 legacy (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
+  }
+
+  /** `_onHp` step, the last: a spawn check's answer and the resync evidence come first, then a zero is weighed as a
+   *  death. No death unless the frame is a zero while alive and live, and outside the B5 settle window. */
+  _hpDeathCheck(h) {
     const wasResync = !!this.resync || this.rc.outOfBand;
-    this._spawnCheckSeen(hp, armor, shield);   // F416: the answer to a spawn check, before any death is weighed
+    this._spawnCheckSeen(h.hp, h.armor, h.shield);   // F416: the answer to a spawn check, before any death is weighed
     if (this.resync) this._resyncEvidence('hp');
     // F264: `solicited` means this `$HP` answers our own `$LIFE,0,0,0,*` probe, so the node learned the zero out
     // of band rather than from a live hit sequence -- a desync death by §3.3's definition, same as a reconcile's.
-    if (hp === 0 && this.alive && this.phase === 'live' && !this._deathPending()) this._death(wasResync || solicited);   // a death learned during resync/reconcile is a desync death
+    if (h.hp === 0 && this.alive && this.phase === 'live' && !this._deathPending()) this._death(wasResync || h.solicited);   // a death learned during resync/reconcile is a desync death
   }
 
   /** B5 (phantom death on spawn race): a zero-HP frame the instant after a `_spawn`/`_revive` write can be a

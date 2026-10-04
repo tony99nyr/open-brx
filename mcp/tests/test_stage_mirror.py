@@ -2206,7 +2206,7 @@ KNOWN_UNMIRRORED = {
     # (its pools, poison echo, shield, low-health alert, hit and moments) plus `_hurt_debounced` (the low-health line).
     "_hpTakePools", "_hpPoolEffects", "_hpDotEcho", "_hpShield", "_hpLowHealth", "_hurtLineArm", "_hurtLineTry",
     "_hpHeadsetReassert", "_hpDamageWord", "_hpHitTaken", "_hpShotGroup", "_hpResolveWeapon", "_hpMoment",
-    "_hpGainMoment",
+    "_hpGainMoment", "_hpSettle", "_hpDeathCheck",
     "armState", "respawnHint", "heldMs", "reloadingMs", "switchingMs", "switchWindowMs", "_accrueHold",
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
