@@ -39,7 +39,7 @@ suite on its own.
 
 **Everything at once:** `pnpm run test:all` from the repo root runs the unit gates of all four pieces in parallel
 (about 30 s). `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
-`webapp/mc` e2e script (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time (capped at one hour) if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min floor). The
+`webapp/mc` e2e script (about 7.5 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time (capped at one hour) if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min floor). The
 lock is machine-wide, per user (a fixed path under `/tmp`, keyed by uid, not the checkout): a run anywhere on the
 box waits for the first, so two worktrees never starve each other's budget. `pnpm run test:all -- site mcp` runs
 only the jobs whose names match, and `-- --list` prints the names. It builds `app/www` once first, gives every
@@ -93,6 +93,10 @@ gate in Chromium at both phone sizes. Install that browser once with `npx playwr
 `--with-deps`). The root parallel runner uses the prebuilt/private-output form so no job rewrites another job's
 bundle or captures. `test/transport.test.mjs` starts its own MC on a free port. See `app/README.md` for
 build/signing/APK details; that file is the authority on anything platform-specific.
+
+**Golden traces** (`app/test/fixtures/traces/`) replay recorded engine runs through `engine.js` and through the bench
+stage. A change to engine behaviour is re-recorded on purpose with `cd app && node tools/record-traces.mjs <name>`;
+read that folder's `README.md` first.
 
 **Mission Control web UI (`webapp/mc/`)**, Vite/React/TS:
 ```bash

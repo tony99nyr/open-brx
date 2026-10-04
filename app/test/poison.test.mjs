@@ -632,22 +632,6 @@ test('A65: a fresh damaging word still names its player (no team credit)', () =>
   assert.equal(d.shooter_num, 3); assert.equal(d.credit, undefined);
 });
 
-test('F354: SIR_GRANT_FNS matches compile.py _SIR_GRANT', () => {
-  const src = readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/compile.py', import.meta.url)), 'utf8');
-  const m = /^_SIR_GRANT = frozenset\(range\((\d+), (\d+)\)\)/m.exec(src);
-  assert.ok(m, 'compile.py still defines _SIR_GRANT as a range (update this guard if its shape changes)');
-  const want = []; for (let i = Number(m[1]); i < Number(m[2]); i++) want.push(i);
-  assert.deepEqual([...SIR_GRANT_FNS].sort((x, y) => x - y), want);
-});
-
-// F354: the engine's copy of compile.py `_SIR_NO_POOL` must not drift from the server's.
-test('F354: SIR_NO_POOL_FNS matches compile.py _SIR_NO_POOL', () => {
-  const src = readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/compile.py', import.meta.url)), 'utf8');
-  const m = /^_SIR_NO_POOL = frozenset\(\{([^}]*)\}\)/m.exec(src);
-  assert.ok(m, 'compile.py still defines _SIR_NO_POOL');
-  assert.deepEqual([...SIR_NO_POOL_FNS].sort((x, y) => x - y), m[1].split(',').map(Number).sort((x, y) => x - y));
-});
-
 test('F354: a lone smoke latch with no damaging hit keeps the latch fallback', () => {
   const h = harness();
   h.eng.feedFrame('$HIR,0,7,5,2,0,0,0,*');

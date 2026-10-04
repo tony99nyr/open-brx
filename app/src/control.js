@@ -40,21 +40,22 @@
 // never in between, which is condition 2 expressed on the wire.
 
 import { TEAM_ANY, PLAYER_STATE } from './beacon.js';
+import { HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
 
 /** Advert byte 10 for kind 5. */
 export const CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 };
 /** Advert byte 9 when nobody owns the point and nobody is advancing on it. */
 export const NEUTRAL = TEAM_ANY;
 /** F82: the tid a NEUTRAL hill broadcasts, so it can never mean a real owner. */
-export const REFUSED_TID = 2;
+export const REFUSED_TID = HILL_REFUSED_TID;
 /** Seconds ONE net player needs for ONE phase (spec §5d.1: `rate = net * 100 / capture_s`). At 10 s a lone
  *  player takes a neutral point in 10 s and steals a held one in 20; two of them halve both. Operator-tunable. */
-export const DEFAULT_CAPTURE_S = 10;
+export const DEFAULT_CAPTURE_S = HILL_CAPTURE_S;
 /** §5d.1: `net` is clamped here so a six-player rush is fast and not instant. Proposed, not measured. */
-export const DEFAULT_NET_CAP = 3;
+export const DEFAULT_NET_CAP = HILL_NET_CAP;
 /** A tick longer than this is a backgrounded phone or a paused debugger, not elapsed play: clamp it so a
  *  station that was asleep does not hand somebody the point on its first tick back. */
-const MAX_STEP_MS = 1000;
+const MAX_STEP_MS = HILL_MAX_STEP_MS;
 
 /** Can this tid own a point at all? 0..3 are the four $TID teams; 4-7 are colours, not teams; 255 is
  *  "any"; and 2 is refused by F82. */

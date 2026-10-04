@@ -1,3 +1,5 @@
+import { ROLE_LABELS } from './api/contract.gen';
+
 // Design tokens — from the Claude Design handoff README ("military armory" system).
 export const T = {
   // ground & structure
@@ -36,14 +38,15 @@ export const CLASS_TAG: Record<'heavy' | 'sniper' | 'assault' | 'cqb' | 'support
 export const CLS_COLOR: Record<string, string> = {
   AR: CLASS_TAG.assault, SMG: CLASS_TAG.cqb, SNIPER: CLASS_TAG.sniper, SHOTGUN: CLASS_TAG.cqb, HEAVY: CLASS_TAG.heavy, LMG: CLASS_TAG.support,
 };
-/** weapons.json `role` → the human class label + colour (review round 3: no raw class ids on screen) */
-// Literal hex on purpose: the site build reads these labels and colours out of this file as text
-// (site/lib/facts.mjs). tokens.test.ts pins each colour to CLASS_TAG, so one class keeps one colour.
-export const ROLE: Record<string, { label: string; color: string }> = {
-  assault: { label: 'ASSAULT', color: '#8d9db4' }, cqb: { label: 'CLOSE RANGE', color: '#b88f8a' }, marksman: { label: 'SNIPER', color: '#86b0a8' },
-  support: { label: 'SUPPORT', color: '#98a880' }, power: { label: 'HEAVY', color: '#b8a07e' }, melee: { label: 'MELEE', color: '#8aa0b4' },
-  sidearm: { label: 'SIDEARM', color: '#bdb8b0' },   // the pistols (2026-09-04) — a slot-2 backup class
+/** weapons.json `role` → the human class label (contract.gen ROLE_LABELS) + colour (review round 3: no raw class ids on screen) */
+// Literal hex on purpose: the site build reads this table out of this file as text (site/lib/facts.mjs).
+// tokens.test.ts pins each colour to CLASS_TAG, so one class keeps one colour.
+export const ROLE_COLOUR: Record<keyof typeof ROLE_LABELS, string> = {
+  assault: '#8d9db4', cqb: '#b88f8a', marksman: '#86b0a8', support: '#98a880', power: '#b8a07e', melee: '#8aa0b4', sidearm: '#bdb8b0',
 };
+export const ROLE: Record<string, { label: string; color: string }> = Object.fromEntries(
+  (Object.keys(ROLE_LABELS) as (keyof typeof ROLE_LABELS)[]).map(role => [role, { label: ROLE_LABELS[role], color: ROLE_COLOUR[role] }]),
+);
 /** older MC (no `role`): no label at all rather than a raw class id (review round 3: no protocol ids on screen) */
 export const roleOf = (role?: string, cls?: string) => ROLE[role ?? ''] ?? { label: CLS_COLOR[cls ?? ''] ? (cls ?? '').toUpperCase() : '', color: CLS_COLOR[cls ?? ''] ?? T.dim };
 export const PERK_COLOR = '#c48bff';

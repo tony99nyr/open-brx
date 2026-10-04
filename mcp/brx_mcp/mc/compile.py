@@ -28,6 +28,7 @@ from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STA
                     HealthPreset, HirCell, PerkEffectsResolved, PerkView, Player, PowerupSlot, RespawnProfile, StationProtectS, Team,
                     TimedProtectS, ValuePair, VoiceOption, WeaponDelayMs, Weapon, parse_app_ver, parse_win_by)
 from .types import GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR   # K8
+from .types import SIR_GRANT_FNS, SIR_NO_POOL_FNS   # A9: one copy, generated for the phone
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -424,7 +425,7 @@ def armed_pool(hp: int, armor: int, perk_id: str | None = None, shields: bool = 
 # ⚠ fn 3 was REMOVED from this set 2026-08-29 (exp-log "FLOOR ARTIFACT CLOSED: fn 3 is DAMAGE").
 # It only looked inert because the original sweep ran with the shield at 0; re-measured with a shield
 # granted first, it drains exactly what fn 1 drains. It is plain damage and lives in _SIR_PLAIN_DAMAGE.
-_SIR_NO_POOL = frozenset({8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})     # registers a $HIR, moves no pool
+_SIR_NO_POOL = SIR_NO_POOL_FNS     # registers a $HIR, moves no pool (types.py: the phone reads the same set)
 # ✅ RESOLVED 2026-09-11 (bench, gun Tactix-3D4F): fn 36/37 only scale the HEADSET sensor, and the scale is a
 # function of the compiled `$GSET` criticalShotModifier (t7), not a fixed constant. On the GUN BODY
 # sensor, fn 1/36/37 all land the raw magnitude (x1) -- five sets of five words, sensor field recorded
@@ -455,7 +456,7 @@ def headset_multiplier(fn: int, crit_modifier: int) -> float:
 
 
 _SIR_ARMOR_PIERCING = frozenset({2, 6})           # bypasses armor AND shields -> straight to bare HP
-_SIR_GRANT = frozenset(range(9, 23))              # heals/armor/shields: a "damage" weapon here HELPS the target
+_SIR_GRANT = SIR_GRANT_FNS              # heals/armor/shields: a "damage" weapon here HELPS the target
 # ALLOW-LIST, deliberately: only these are bench-confirmed plain 1x damage. Anything not listed is
 # warned about, because the failure we are guarding against (a weapon that cannot hurt anyone, or
 # worse, heals what it shoots) lives precisely in the functions we have NOT characterised.

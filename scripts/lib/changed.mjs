@@ -4,34 +4,41 @@
 // JOB_NAME_SUBSTRINGS -- that job could never be picked by --changed, so it would quietly stop running once a
 // branch relies on the re-gate rule in CLAUDE.md instead of the full suite.
 //
-// Fail safe: an unmapped path, or a path that trips a full-suite trigger, selects EVERYTHING (`filters: null`),
-// never a narrower guess.
+// Fail safe: a known tree with no path rule or a full-suite trigger selects EVERYTHING (`filters: null`).
+// Unknown directories select mcp because docs hygiene scans every tracked and unignored repository file.
 //
-// The edges below are derived from the actual cross-directory readers (2026-09-27 review), not guessed:
-//   - app/src/hud/medalicons.js is read by webapp/mc/test/medalicons-gen.test.ts (`mc-` needs app/**);
+// The edges below are derived from the actual cross-directory readers (2026-10-04 review), not guessed:
+//   - app/src/hud/medalicons.js is read by webapp/mc/test/medalicons-gen.test.ts (mc-vitest needs app/**);
 //   - about 40 mcp/tests files read app/ or webapp/mc/ sources directly (test_contract_generated.py,
 //     test_stage_mirror.py, test_suite_registry.py, ...), so `mcp` must run for either tree;
 //   - site/lib/data.mjs and site/lib/facts.mjs read mcp/brx_mcp/mc/weapons.json, mcp/brx_mcp/data/sound_catalog.json,
 //     mcp/brx_mcp/mc/state.py and webapp/mc/src/tokens.ts, so `site` must run for mcp/** and webapp/mc/**.
+//   - app tests read mcp/brx_mcp/mc/golden_bundle.json, compile.py and data/sound_catalog.json; the screens and
+//     moments gates bundle the demo, and app/tools/e2e.mjs reads the built webapp/mc/dist.
+//     app/tools/logsync-gate.mjs starts app/test/mc_server.py, which imports mcp/brx_mcp.
+//   - app/test/announcer.test.mjs reads docs/announcer.md. mcp/tests/test_docs_hygiene.py reads .claude/skills/**.
 import { execFileSync } from 'node:child_process';
 
 /** Every substring a rule below can add to the selection. Keep this in step with the rules themselves. */
-export const JOB_NAME_SUBSTRINGS = ['app-', 'site', 'mc-', 'mcp', 'chaos'];
+export const JOB_NAME_SUBSTRINGS = ['app-', 'site', 'mc-', 'mc-vitest', 'mcp', 'chaos'];
 
 // Files whose change can move the *shape* of test data the phone HUD screen-truth suite (app-screens) reads,
 // so a change to mcp/** that touches one of these also runs app-screens, not just mcp/chaos/mc-*/site.
 const SCREENS_SENSITIVE = new Set([
+  'mcp/brx_mcp/mc/golden_bundle.json',
   'mcp/brx_mcp/mc/types.py', 'mcp/brx_mcp/mc/envelope.py',
   'mcp/tools/gen_contract.py', 'mcp/tools/gen_ui_catalog.py',
 ]);
 const isCatalogueData = p => /\/(weapons|perks)\.json$/.test(p);
 
-const FULL_SUITE_TRIGGERS = new Set(['scripts/test-all.mjs']);
+// Root package metadata controls the test command, and the root lockfile can change installed job tools.
+const FULL_SUITE_TRIGGERS = new Set(['scripts/test-all.mjs', 'scripts/lib/budget.mjs', 'scripts/lib/lock.mjs', 'package.json', 'pnpm-lock.yaml']);
 const isCiWorkflow = p => p.startsWith('.github/workflows/');
+const KNOWN_TOP_LEVEL = new Set(['app', 'webapp', 'mcp', 'site', 'docs', 'protocol', 'hardware', 'scripts', '.github', '.claude']);
 
 /** paths: repo-relative, forward-slash. Returns { filters, reasons }: `filters` is a string[] of job-name
  *  substrings to OR together (test-all.mjs's own `filters.some(f => name.includes(f))`), or null for
- *  "run everything". `reasons` is one line per rule that fired, for the --changed dry-run to print. */
+ *  "run everything". `reasons` is one line per rule that fired. */
 export function selectJobs(paths) {
   if (!paths.length) return { filters: null, reasons: ['no changed paths: running everything'] };
   const trigger = paths.find(p => FULL_SUITE_TRIGGERS.has(p) || isCiWorkflow(p));
@@ -42,24 +49,46 @@ export function selectJobs(paths) {
   for (const p of paths) {
     let matched = false;
     if (p.startsWith('app/')) {
-      filters.add('app-'); filters.add('site'); filters.add('mc-'); filters.add('mcp'); matched = true;
-      reasons.push(`${p}: app/** -> the app-* jobs, site (embeds the HUD demo), mc- (medalicons-gen.test.ts reads app/src/hud/medalicons.js), mcp (its tests read app/ -- test_contract_generated, test_stage_mirror, test_suite_registry)`);
+      filters.add('app-'); filters.add('site'); filters.add('mc-vitest'); filters.add('mcp'); matched = true;
+      reasons.push(`${p}: app/** -> app-*, site (embeds the HUD demo), mc-vitest (medalicons-gen.test.ts reads app/src/hud/medalicons.js), mcp (its tests read app/)`);
     }
     if (p.startsWith('webapp/mc/')) {
-      filters.add('mc-'); filters.add('mcp'); filters.add('site'); matched = true;
-      reasons.push(`${p}: webapp/mc/** -> the mc-* jobs, mcp (its tests read webapp/mc/ -- test_contract_generated, test_suite_registry), site (facts.mjs reads webapp/mc/src/tokens.ts)`);
+      filters.add('mc-'); filters.add('mcp'); filters.add('site'); filters.add('app-e2e'); matched = true;
+      reasons.push(`${p}: webapp/mc/** -> the mc-* jobs, app-e2e (serves webapp/mc/dist), mcp (its tests read webapp/mc/), site (facts.mjs reads webapp/mc/src/tokens.ts)`);
     }
     if (p.startsWith('mcp/')) {
-      filters.add('mcp'); filters.add('chaos'); filters.add('mc-'); filters.add('site'); matched = true;
-      reasons.push(`${p}: mcp/** -> mcp, chaos, the mc-* jobs, site (data.mjs/facts.mjs read weapons.json, sound_catalog.json, state.py)`);
-      if (SCREENS_SENSITIVE.has(p) || isCatalogueData(p)) { filters.add('app-screens'); reasons.push(`${p}: contract/catalogue source -> app-screens too`); }
+      filters.add('mcp'); filters.add('chaos'); filters.add('mc-'); filters.add('site');
+      filters.add('app-e2e'); filters.add('app-logsync'); filters.add('app-test'); matched = true;
+      reasons.push(`${p}: mcp/** -> mcp, chaos, mc-*, app-e2e, app-logsync, app-test, site (the jobs read MC code or data)`);
+      if (SCREENS_SENSITIVE.has(p) || isCatalogueData(p)) {
+        filters.add('app-screens');
+        reasons.push(`${p}: contract/catalogue source -> app-screens too`);
+        if (p === 'mcp/brx_mcp/mc/golden_bundle.json') { filters.add('app-moments'); reasons.push(`${p}: bundled demo source -> app-moments too`); }
+      }
     }
-    if (p.startsWith('docs/') || p.endsWith('.md')) { filters.add('mcp'); filters.add('site'); reasons.push(`${p}: docs/** or *.md -> mcp (docs hygiene) AND site (renders docs/platform, docs/manual)`); matched = true; }
+    if (p.startsWith('docs/') || p.endsWith('.md')) {
+      filters.add('mcp'); filters.add('site'); matched = true;
+      reasons.push(`${p}: docs/** or *.md -> mcp (docs hygiene) and site (renders docs/platform and docs/manual)`);
+      if (p === 'docs/announcer.md') { filters.add('app-test'); reasons.push(`${p}: app/test/announcer.test.mjs reads this file -> app-test`); }
+    }
+    if (p.startsWith('protocol/')) { filters.add('mcp'); matched = true; reasons.push(`${p}: protocol/** -> mcp (docs hygiene)`); }
     if (p.startsWith('hardware/')) { filters.add('mcp'); reasons.push(`${p}: hardware/** -> mcp (the Stick host tests)`); matched = true; }
     // scripts/test-all.mjs itself is a full-suite trigger (above); scripts/lib/** (its scheduling/lock/--changed
     // logic) is unit tested from mcp/tests/test_test_all_*.py, so it runs inside the mcp job.
     if (p.startsWith('scripts/')) { filters.add('mcp'); reasons.push(`${p}: scripts/** -> mcp (its unit tests)`); matched = true; }
-    if (!matched) return { filters: null, reasons: [`${p}: no mapping rule -- fail safe, running everything`] };
+    if (p.startsWith('.claude/')) { filters.add('mcp'); reasons.push(`${p}: .claude/** -> mcp (docs hygiene)`); matched = true; }
+    if (p.startsWith('.github/')) { filters.add('mcp'); reasons.push(`${p}: .github/** -> mcp (docs hygiene)`); matched = true; }
+    if (!matched && !p.includes('/')) { filters.add('mcp'); reasons.push(`${p}: root file -> mcp (docs hygiene)`); matched = true; }
+    if (!matched) {
+      const top = p.split('/')[0];
+      if (!KNOWN_TOP_LEVEL.has(top)) {
+        filters.add('mcp');
+        reasons.push(`${top}/: unknown top-level directory -> mcp (the docs hygiene guards scan the whole repo)`);
+        matched = true;
+        continue;
+      }
+      return { filters: null, reasons: [`${p}: known tree has no mapping rule -- fail safe, running everything`] };
+    }
   }
   return { filters: [...filters], reasons };
 }
