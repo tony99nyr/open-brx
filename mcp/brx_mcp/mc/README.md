@@ -18,7 +18,7 @@ The rest of this section is the manual path, for a dev box that already has the 
 MC needs **no Bluetooth**: the only route that touches a radio is the armory scan. So on the Windows
 dev box it runs under the **WSL venv** (`.venv/bin/python`), not the Windows Python that gun work
 needs; the browser e2e (`webapp/mc/test/e2e/koth.mjs`) uses the same interpreter. On plain Linux or a
-fresh clone: `python3 -m venv .venv && .venv/bin/pip install -e ./mcp websockets starlette uvicorn`, then
+fresh clone: `python3 -m venv .venv && .venv/bin/pip install -c mcp/constraints.txt -e ./mcp websockets starlette uvicorn`, then
 the same command. On the MacBook, do
 `docs/mac-dev-runbook.md` §1 first (the venv ships without starlette/uvicorn/websockets).
 
