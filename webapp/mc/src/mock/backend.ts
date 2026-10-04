@@ -430,8 +430,8 @@ export class MockBackend implements Api {
       if (a.team === 'any' || a.team === 'ffa') team = STATION_TEAM_ANY;
       else { const t = TEAMS.find(t => t.team_id === a.team); if (!t) throw new Error(`team '${a.team}' is not a team_id in this game (or 'any')`); team = t.tid; }
     } else team = a.team;
-    if (!([0, 1, 2, 3].includes(team) || team === 255)) throw new Error("team must be a $TID 0-3, a team_id, or 'any' (255)");
-    if (a.kind === 'control' && team !== 255) throw new Error("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'");
+    if (!([0, 1, 2, 3].includes(team) || team === STATION_TEAM_ANY)) throw new Error("team must be a $TID 0-3, a team_id, or 'any' (255)");
+    if (a.kind === 'control' && team !== STATION_TEAM_ANY) throw new Error("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'");
     const id = a.id ?? this.autoStationId(node_id);
     if (!Number.isInteger(id) || id < 1 || id > 65535) throw new Error('id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one');
     const clash = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned?.id === id);

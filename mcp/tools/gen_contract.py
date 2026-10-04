@@ -568,9 +568,17 @@ def _render_ts(model: "_Model") -> str:
     return "\n".join(out).rstrip("\n") + "\n"
 
 
+def _quote_js(value: str) -> str:
+    """A single-quoted JS/TS string literal. Backslash, quote and every control character are escaped, so a newline in
+    a future label cannot break the generated file."""
+    out = value.replace("\\", "\\\\").replace("'", "\\'")
+    out = "".join(c if ord(c) >= 0x20 and c not in "\u2028\u2029" else f"\\u{ord(c):04x}" for c in out)
+    return "'" + out + "'"
+
+
 def _ts_lit(value: Any) -> str:
     if isinstance(value, str):
-        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+        return _quote_js(value)
     return repr(value)
 
 
@@ -647,7 +655,7 @@ def _js_table(name: str, table: dict[str, tuple[str, ...]]) -> str:
 
 def _js_lit(value: Any) -> str:
     if isinstance(value, str):
-        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+        return _quote_js(value)
     return repr(value)
 
 

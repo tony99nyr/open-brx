@@ -418,13 +418,19 @@ def test_the_render_covers_the_stick_header():
     assert H_OUT in _render()
 
 
-def test_the_header_compiles_and_its_tables_read_back(tmp_path):
+def test_the_header_compiles_and_its_tables_read_back():
     import shutil
     import subprocess
+    import tempfile
+    from _skip import needs   # run_tests.py's own skip (no pytest fixtures: system python must run this file)
     gxx = shutil.which("g++")
-    if gxx is None:
-        import pytest
-        pytest.skip("no g++ on this machine")
+    needs(gxx, "g++")
+    with tempfile.TemporaryDirectory() as tmp:
+        _compile_and_read_header(gxx, pathlib.Path(tmp))
+
+
+def _compile_and_read_header(gxx: str, tmp_path: pathlib.Path) -> None:
+    import subprocess
     (tmp_path / "contract.gen.h").write_text(_render()[H_OUT], encoding="utf-8")
     src = tmp_path / "t.cpp"
     src.write_text("""#include "contract.gen.h"
@@ -467,16 +473,20 @@ def test_the_tables_render_in_every_client_shape():
 
 
 def test_an_unlisted_tuple_stays_out_and_a_bad_table_shape_is_refused():
-    """Tables are opt-in by name: PHONE_THRESHOLD_ZERO_APP (a tuple) never reaches a client; a `_TABLES` constant
+    """Tables are opt-in by name: TX_POWERS (a tuple of str, a renderable shape) never reaches a client; a `_TABLES` constant
     whose shape no renderer handles fails the generator instead of rendering something wrong."""
-    import pytest
     gen = _load()
+
+    def refused(value) -> bool:
+        try:
+            gen._table_shape("X", value)
+        except ValueError:
+            return True
+        return False
+
     from brx_mcp.mc import types as T
     assert isinstance(T.TX_POWERS, tuple) and all(isinstance(v, str) for v in T.TX_POWERS)   # a renderable shape
     assert "export const TX_POWERS" not in _render()[JS_OUT]          # ...that stays out, because it is not listed
-    with pytest.raises(ValueError):
-        gen._table_shape("X", {"a": {"b": "not an int"}})
-    with pytest.raises(ValueError):
-        gen._table_shape("X", {"phone": {"a": 1}, "sticks3": {"b": 1}})
-    with pytest.raises(ValueError):
-        gen._table_shape("X", {"__proto__": "lost in a JS object literal"})
+    assert refused({"a": {"b": "not an int"}})
+    assert refused({"phone": {"a": 1}, "sticks3": {"b": 1}})
+    assert refused({"__proto__": "lost in a JS object literal"})

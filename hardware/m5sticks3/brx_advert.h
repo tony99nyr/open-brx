@@ -24,8 +24,17 @@ constexpr uint8_t KIND_RESPAWN = station_kind_code(0), KIND_POWERUP = station_ki
                   KIND_EXTRACTION = station_kind_code(2), KIND_BOMB = station_kind_code(3),
                   KIND_CONTROL = station_kind_code(4);
 constexpr uint8_t TEAM_ANY = contract::STATION_TEAM_ANY;
-// The advert kind byte is a wire value the phone reads by its own KIND table: a reordered STATION_KINDS must fail here.
-static_assert(KIND_RESPAWN == 1 && KIND_POWERUP == 2 && KIND_EXTRACTION == 3 && KIND_BOMB == 4 && KIND_CONTROL == 5,
+// The advert kind byte is a wire value the phone reads by its own KIND table (beacon.js): a reordered STATION_KINDS
+// must fail the build, so each name is checked at the index its byte comes from.
+constexpr bool kind_name_is(size_t index, const char* want) {
+  const char* got = contract::STATION_KINDS[index];
+  size_t i = 0;
+  for (; got[i] && want[i]; ++i) if (got[i] != want[i]) return false;
+  return got[i] == want[i];
+}
+static_assert(kind_name_is(KIND_RESPAWN - 1, "respawn") && kind_name_is(KIND_POWERUP - 1, "powerup") &&
+              kind_name_is(KIND_EXTRACTION - 1, "extraction") && kind_name_is(KIND_BOMB - 1, "bomb") &&
+              kind_name_is(KIND_CONTROL - 1, "control"),
               "advert kind bytes moved: STATION_KINDS order is wire-visible");
 // CONTROL_STATE bits (app/src/control.js).
 constexpr uint8_t CONTROL_HELD = 1, CONTROL_CONTESTED = 2, CONTROL_RISING = 4, CONTROL_FALLING = 8;

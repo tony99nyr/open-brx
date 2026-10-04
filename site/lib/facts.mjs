@@ -31,14 +31,15 @@ export function modes(repo) {
   return out;
 }
 
-// Both roles() and arsenal() label a weapon the way Mission Control does, off the one ROLE const.
+// Both roles() and arsenal() label a weapon the way Mission Control does, off contract.gen.ts ROLE_LABELS and tokens.ts ROLE_COLOUR.
 const roleLabels = repo => {
   const tok = read(repo, 'webapp/mc/src/tokens.ts');
   const contract = read(repo, 'webapp/mc/src/api/contract.gen.ts');
   const block = contract.match(/export const ROLE_LABELS = \{([^}]+)\} as const;/);
   if (!block) throw new Error('facts: could not find ROLE_LABELS in contract.gen.ts (renamed?)');
   const labels = {};
-  for (const m of block[1].matchAll(/(\w+): '([^']+)'/g)) labels[m[1]] = m[2];
+  // a single-quoted literal as gen_contract writes it (a backslash escapes a quote or another backslash)
+  for (const m of block[1].matchAll(/(\w+): '((?:[^'\\]|\\.)*)'/g)) labels[m[1]] = m[2].replace(/\\(.)/g, '$1');
   const label = {};
   const colours = tok.match(/export const ROLE_COLOUR[\s\S]*?=\s*\{([\s\S]*?)\n\};/);
   if (!colours) throw new Error('facts: could not find ROLE_COLOUR in webapp/mc/src/tokens.ts (renamed?)');
