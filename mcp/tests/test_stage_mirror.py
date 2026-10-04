@@ -1788,6 +1788,7 @@ KNOWN_UNMIRRORED = {
     # runs no station scan of its own.
     # The weapon query and bounded repair also run only after a phone BLE batch resolves false.
     "_spawnAsk", "_spawnQuery", "_spawnCheckSeen", "_spawnRetry", "_spawnIntercept", "_spawnLanded", "_spawnCheckLive", "radioQuiet", "_quietWrite",
+    "_spawnCheckOver",   # F416 r3: the same check's after-the-whistle guard
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
     # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
     # Maint review 2026-09-17 renamed the pair so the names say which is which: `_heatBlocksFire` is the
