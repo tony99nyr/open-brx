@@ -1,0 +1,348 @@
+{
+  "environment": {
+    "input_delta": {
+      "set": {
+        "environment": "indoor"
+      },
+      "removed": []
+    },
+    "value_delta": {
+      "set": {
+        "environment": "indoor"
+      },
+      "removed": []
+    },
+    "same_object": true
+  },
+  "environment_bad": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "exception": "ValueError",
+    "message": "environment must be indoor|outdoor"
+  },
+  "night": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "recoil": {
+    "input_delta": {
+      "set": {
+        "recoil": false
+      },
+      "removed": []
+    },
+    "value_delta": {
+      "set": {
+        "recoil": false
+      },
+      "removed": []
+    },
+    "same_object": true
+  },
+  "volume": {
+    "input_delta": {
+      "set": {
+        "volume": 80
+      },
+      "removed": []
+    },
+    "value_delta": {
+      "set": {
+        "volume": 80
+      },
+      "removed": []
+    },
+    "same_object": true
+  },
+  "volume_clear": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "coverage": {
+    "input_delta": {
+      "set": {
+        "coverage": "full"
+      },
+      "removed": []
+    },
+    "value_delta": {
+      "set": {
+        "coverage": "full"
+      },
+      "removed": []
+    },
+    "same_object": true
+  },
+  "coverage_bad": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "exception": "ValueError",
+    "message": "coverage must be full|partial or null"
+  },
+  "coverage_clear": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "led": {
+    "input_delta": {
+      "set": {
+        "led": {
+          "extra": 1
+        }
+      },
+      "removed": []
+    },
+    "value_delta": {
+      "set": {
+        "led": {
+          "extra": 1
+        }
+      },
+      "removed": []
+    },
+    "same_object": true
+  },
+  "led_clear": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "station_source": {
+    "input_delta": {
+      "set": {},
+      "removed": [
+        "station_source"
+      ]
+    },
+    "value_delta": {
+      "set": {},
+      "removed": [
+        "station_source"
+      ]
+    },
+    "same_object": true
+  },
+  "station_source_bad": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "exception": "ValueError",
+    "message": "station_source must be null or one of: grenade (a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)), ir_station (a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)), phone (a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md \u00a75d))"
+  },
+  "mode_params": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "mode_params_clear": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "vip_clear": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "stun": {
+    "input_delta": {
+      "set": {
+        "stun": {
+          "duration_s": 4
+        }
+      },
+      "removed": []
+    },
+    "value_delta": {
+      "set": {
+        "stun": {
+          "duration_s": 4
+        }
+      },
+      "removed": []
+    },
+    "same_object": true
+  },
+  "stun_bad": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "exception": "ValueError",
+    "message": "stun must be an object {duration_s} or null (F15/A20)"
+  },
+  "stun_clear": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "player_num_base": {
+    "input_delta": {
+      "set": {
+        "player_num_base": 63
+      },
+      "removed": []
+    },
+    "value_delta": {
+      "set": {
+        "player_num_base": 63
+      },
+      "removed": []
+    },
+    "same_object": true
+  },
+  "player_num_base_bad": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "exception": "ValueError",
+    "message": "player_num_base must be 1..63"
+  },
+  "loadout_policy": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "presentation": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "config_id": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "mode": {
+    "input_delta": {
+      "set": {
+        "mode": "ffa"
+      },
+      "removed": []
+    },
+    "value_delta": {
+      "set": {
+        "mode": "ffa"
+      },
+      "removed": []
+    },
+    "same_object": true
+  },
+  "unknown": {
+    "input_delta": {
+      "set": {},
+      "removed": []
+    },
+    "value_delta": {
+      "set": {},
+      "removed": []
+    },
+    "same_object": true
+  },
+  "ordered_failure": {
+    "input_delta": {
+      "set": {
+        "night": true
+      },
+      "removed": []
+    },
+    "exception": "ValueError",
+    "message": "environment must be indoor|outdoor"
+  },
+  "scoring_missing_win_by": {
+    "input_delta": {
+      "set": {
+        "scoring": {
+          "frag_limit": 5,
+          "win_by": "kills"
+        }
+      },
+      "removed": []
+    },
+    "value_delta": {
+      "set": {
+        "scoring": {
+          "frag_limit": 5,
+          "win_by": "kills"
+        }
+      },
+      "removed": []
+    },
+    "same_object": true
+  }
+}
