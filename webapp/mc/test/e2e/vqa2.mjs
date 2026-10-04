@@ -406,12 +406,10 @@ try {
     s = await toLive();
     const tidA = s.config.teams.find(t => t.team_id === teams[0]).tid;
     await nodes.cmd(`die GUN-B ${a.player_num} ${tidA}`);
-    // F428: `nodes.cmd` resolves once the stand-in has QUEUED the death frame -- `mock_node.py`'s
-    // `_send` hands the socket write to its own asyncio task and never awaits it, so the frame can sit
-    // unsent for as long as the stand-in's event loop goes unscheduled. Under `test:all`'s full parallel
-    // load that can run past the ten seconds a DOM poll allows, so wait on MC's OWN record of the kill
-    // (a plain HTTP poll, immune to browser/render timing) before ever opening a page and asking it to
-    // draw. `/api/state` carries the same feed MC seeds a console from.
+    // F428/F458: `nodes.cmd` now resolves once the stand-in has SENT the death frame (vqa2_nodes.py awaits
+    // MockNode.flush); before F458 it resolved on QUEUED, and under test:all's load the frame could sit unsent past
+    // this wait. Still wait on MC's OWN record of the kill (a plain HTTP poll, immune to browser/render timing)
+    // before opening a page and asking it to draw: `/api/state` carries the same feed MC seeds a console from.
     if (!(await until(async () => (await get('/api/state')).feed.some(f => f.tag === 'FIRST BLOOD'), 10000, 'MC to score the kill'))) return;
     const pg = await page(browser, { width: 1440, height: 900 });
     await go(pg, 'MATCH');
