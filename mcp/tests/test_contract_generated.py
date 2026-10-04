@@ -24,6 +24,7 @@ GENERATOR = REPO / "mcp" / "tools" / "gen_contract.py"
 TS_OUT = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
 JS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.js"
 DTS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.d.ts"
+H_OUT = REPO / "hardware" / "m5sticks3" / "contract.gen.h"
 COMMAND = "python3 mcp/tools/gen_contract.py"
 
 # No skip path, deliberately: `brx_mcp.mc.types`/`.envelope` are dependency-free and import cleanly
@@ -62,7 +63,7 @@ def _diff_hint(path: pathlib.Path, want: str, got: str) -> str:
 def test_the_generated_files_exist():
     """A deleted generated contract file is a FAILURE, not a pass-by-vacuity and not a skip: all
     files are checked in, and every consumer (webapp/mc, app/src/transport) imports from them directly."""
-    missing = [str(p.relative_to(REPO)) for p in (TS_OUT, JS_OUT, DTS_OUT) if not p.is_file()]
+    missing = [str(p.relative_to(REPO)) for p in (TS_OUT, JS_OUT, DTS_OUT, H_OUT) if not p.is_file()]
     assert not missing, f"generated contract file(s) missing -- run `{COMMAND}`: {missing}"
 
 
@@ -394,3 +395,69 @@ def test_accept_min_result_entry_when_present_is_match_id_only():
     ts, js = _ts_js()
     assert "result: ['match_id']," in js
     assert "result: ['match_id']," in ts
+
+
+# ---- architecture review #4 (2026-10-04): the C++ header and the table constants ----
+
+def test_the_render_covers_the_stick_header():
+    """The staleness test above iterates `render()`, so the Stick header is checked the same way as the JS/TS."""
+    assert H_OUT in _render()
+
+
+def test_the_header_compiles_and_its_tables_read_back(tmp_path):
+    import shutil
+    import subprocess
+    gxx = shutil.which("g++")
+    if gxx is None:
+        import pytest
+        pytest.skip("no g++ on this machine")
+    (tmp_path / "contract.gen.h").write_text(_render()[H_OUT], encoding="utf-8")
+    src = tmp_path / "t.cpp"
+    src.write_text("""#include "contract.gen.h"
+#include <cstdio>
+using namespace brx::contract;
+int main() {
+  std::printf("%d %d %d %s %d %d\\n",
+    lookup(STATION_DEFAULT_THRESHOLD_DBM_STICKS3, STATION_DEFAULT_THRESHOLD_DBM_KEYS, STATION_DEFAULT_THRESHOLD_DBM_COUNT, "powerup", 0),
+    lookup(STATION_DEFAULT_THRESHOLD_DBM_PHONE, STATION_DEFAULT_THRESHOLD_DBM_KEYS, STATION_DEFAULT_THRESHOLD_DBM_COUNT, "bomb", 0),
+    STICK_HILL_ADVERT_THRESHOLD_DBM, TEAM_NAMES[3], STATION_LOCK_MAX_S, (int)STATION_KINDS_COUNT);
+}
+""", encoding="utf-8")
+    exe = tmp_path / "t"
+    subprocess.run([gxx, "-std=c++17", "-Wall", "-Wextra", "-Werror", f"-I{tmp_path}", str(src), "-o", str(exe)],
+                   check=True, capture_output=True, timeout=120)
+    out = subprocess.run([str(exe)], check=True, capture_output=True, text=True, timeout=30).stdout.split()
+    from brx_mcp.mc import types as T
+    assert out == [str(T.STATION_DEFAULT_THRESHOLD_DBM["sticks3"]["powerup"]), str(T.STATION_DEFAULT_THRESHOLD_DBM["phone"]["bomb"]),
+                   str(T.STICK_HILL_ADVERT_THRESHOLD_DBM), "PURPLE", str(T.STATION_LOCK_MAX_S), str(len(T.STATION_KINDS))]
+
+
+def test_every_station_kind_has_a_default_on_every_platform():
+    """A6: the table is complete, keyed in STATION_KINDS order (the Stick indexes it by advert kind byte - 1)."""
+    from brx_mcp.mc import types as T
+    for platform, row in T.STATION_DEFAULT_THRESHOLD_DBM.items():
+        assert tuple(row) == tuple(T.STATION_KINDS), platform
+
+
+def test_the_tables_render_in_every_client_shape():
+    rendered = _render()
+    js, ts, dts, h = rendered[JS_OUT], rendered[TS_OUT], rendered[DTS_OUT], rendered[H_OUT]
+    assert "export const TEAM_NAMES = Object.freeze(['RED', 'BLUE', 'YELLOW', 'PURPLE']);" in js
+    assert "export const TEAM_NAMES = ['RED', 'BLUE', 'YELLOW', 'PURPLE'] as const;" in ts
+    assert "export declare const TEAM_NAMES: readonly ['RED', 'BLUE', 'YELLOW', 'PURPLE'];" in dts
+    assert "export const SIR_GRANT_FNS = new Set([9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);" in js
+    assert "export const PANIC_SEQUENCE = Object.freeze(['$CLEAR,*', '$SP,99,*']);" in js
+    assert "constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3[] = {-57, -45, -57, -57, -75};" in h
+    assert "ROLE_LABELS = { assault: 'ASSAULT'" in ts
+
+
+def test_an_unlisted_tuple_stays_out_and_a_bad_table_shape_is_refused():
+    """Tables are opt-in by name: PHONE_THRESHOLD_ZERO_APP (a tuple) never reaches a client; a `_TABLES` constant
+    whose shape no renderer handles fails the generator instead of rendering something wrong."""
+    import pytest
+    gen = _load()
+    assert "export const PHONE_THRESHOLD_ZERO_APP" not in _render()[JS_OUT]
+    with pytest.raises(ValueError):
+        gen._table_shape("X", {"a": {"b": "not an int"}})
+    with pytest.raises(ValueError):
+        gen._table_shape("X", {"phone": {"a": 1}, "sticks3": {"b": 1}})
