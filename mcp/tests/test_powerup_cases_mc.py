@@ -60,7 +60,12 @@ def _restart(s, clock, sid, roster):
     s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock, voice_rng=random.Random(7))
     s2.powerups_enabled = True
     s2._persist_path = s._persist_path
-    assert s2.restore_snapshot()
+    try:
+        assert s2.restore_snapshot()
+    finally:   # the snapshot has done its job: leave no folder behind, and no later write into it
+        import shutil
+        shutil.rmtree(s._persist_path.parent, ignore_errors=True)
+        s._persist_path = s2._persist_path = None
     s2.tick()
     assert s2.phase in ("armed", "live") and s2.start_info["match_id"] == s.start_info["match_id"]
     return s2, [s2.players[s2.node_player.get(f"phone-{i}")] if s2.node_player.get(f"phone-{i}") else r
