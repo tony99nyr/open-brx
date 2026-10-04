@@ -142,6 +142,14 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
 
 Tests: `mcp/tests/test_stage.py` (engine, fake gun end-to-end), `test_stage_server.py` (routes).
 
+**Golden traces pin the stage to the phone.** `app/test/fixtures/traces/` holds recorded runs of the phone engine
+(the format, how to add one and when to re-record are in its `README.md`). `app/test/golden-traces.test.mjs`
+replays each trace through the engine, and `mcp/tests/test_golden_traces.py` replays every trace that lists `stage`
+through GunStage. The engine's output is the golden, and the stage must match it except for the trace's
+`stage_ignores` entries. Record with `cd app && node tools/record-traces.mjs <name>` (or `--all`; `--new` for a new
+trace, `--accept` for an intended change). A `stage_ignores` reason that starts with `DIVERGENCE:` is an open gap:
+today the stage sends no S57 IR callouts on a death.
+
 ## Voice
 
 The gun holds ONE line per `$PSET` voice field, so "various hit sounds" is a draw made at ARM, not a rotation on

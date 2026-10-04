@@ -376,6 +376,7 @@ refuse/accept rule (polish round 2), which mirrors `app/src/powerup.js` and is h
 | `brx_advert.h` | pure C++: the 16-byte advert and its UUID string (+ the A56 `taker` byte and its reverse decoder), an exact port of `app/src/beacon.js encodeUuid`; the republish policy from `control.js` |
 | `control_point.h` | pure C++: the bench BRIDGE and IR HILL ownership state machines |
 | `presence.h` | pure C++: the Bluetooth stations -- player presence, the presence hill and the revive count, ports of `beacon.js`/`control.js`/`utility.js` |
+| `contract.gen.h` | GENERATED, never hand-edit: the shared constants and tables from `mcp/brx_mcp/mc/types.py` (namespace `brx::contract`), written by `mcp/tools/gen_contract.py` |
 | `json_lite.h` | pure C++: a tiny tolerant JSON reader/writer for the M-NET envelope bodies (H8) |
 | `station_link.h` | pure C++: the MC link state machine, hello/status builders, station_config/station_update/control parsers, the powerup self-spawn schedule, and the CLAIM award logic (H8, A56) |
 | `station_ui.h` | pure C++: the operator button state machine (page / RESET confirm) and the `station_action` builder (H8) |
@@ -387,6 +388,7 @@ refuse/accept rule (polish round 2), which mirrors `app/src/powerup.js` and is h
 | `test/test_ui.cpp` | host tests for `station_ui.h` |
 | `test/test_screen.cpp` | host tests for `station_screen.h` |
 | `test/test_presence.cpp` | host tests for `presence.h` |
+| `test/test_presence_cases.cpp` | `presence.h` against `app/test/fixtures/presence-hill-cases.json`, the case file the phone and the stage also run (`docs/spec/utility.md` §3) |
 
 All run under `mcp/tests/test_sticks3_core.py` when `g++` exists. The pure headers never include
 Arduino, so the logic is tested on the laptop and the sketch + `mc_link_glue.h` are the only plumbing.

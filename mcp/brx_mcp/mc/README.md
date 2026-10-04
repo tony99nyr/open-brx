@@ -166,12 +166,19 @@ public, so the reporter still opens the zip and checks it before posting.
 
 **Where the wire types come from.** `types.py` (constants, `Literal` aliases, TypedDict shapes, kind
 vocabularies) and `envelope.py` (`REQUIRED`/`EVENT_REQUIRED`/`ACCEPT_MIN`, plus its module-level
-constants — the size caps and the `t` plausibility bounds) are the one hand-edited source; `webapp/mc/src/api/contract.gen.ts` and `app/src/transport/contract.gen.js` are
-generated from them. Regenerate with `python3 mcp/tools/gen_contract.py` (from the repo root) after
+constants — the size caps and the `t` plausibility bounds) are the one hand-edited source; `webapp/mc/src/api/contract.gen.ts`, `app/src/transport/contract.gen.js` and the Stick's
+`hardware/m5sticks3/contract.gen.h` are generated from them. Regenerate with `python3 mcp/tools/gen_contract.py` (from the repo root) after
 touching either module; `mcp/tests/test_contract_generated.py` fails CI when a generated file goes
-stale. **Never hand-edit `contract.gen.ts` or `contract.gen.js`.**
+stale. **Never hand-edit `contract.gen.ts`, `contract.gen.js` or `contract.gen.h`.**
 
 Modules: `state.py` (Session/phases/readiness), `scoring.py`, `compile.py` + `weapons.json`
 (`golden_bundle.json` is the frozen reference bundle), `net.py` (NetServer, A8 takeover rules), `armory.py`
-(bleak scan-only; `fakes.py` for demo), `store.py` (session persistence + CSV), `api.py` + `__main__.py`.
+(bleak scan-only; `fakes.py` for demo), `store.py` (the SQLite event log + CSV), `api.py` + `__main__.py`.
+Session delegates three jobs to their own modules (architecture review #7). `stations.py` (`StationRegistry`)
+owns the station records, ids (A66), range (A67), the tamper lock (A58), departures (F448) and the station views,
+behind a typed `StationHost`. `config_merge.py` (`merge_config`, `CONFIG_KEYS`) applies a config patch per key,
+with no Session state. `snapshot_codec.py` (`SnapshotCodec`) writes `session.json` atomically at mode 0600,
+restores it, rolls a failed restore back, moves a bad or other-version file aside and sets `restore_failed`.
+`configcheck.py` holds the per-key config checks that `Compiler.validate` and `Session._merge_config` share;
+each caller keeps its own messages.
 Tests: `mcp/tests/test_mc_*.py` (`python3 run_tests.py`).
