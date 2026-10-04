@@ -304,6 +304,22 @@ test('capture started: with three teams a drain names nobody, so the badge waits
   assert.deepEqual(started(h), ['blue', 'purple'], 'the thief`s own build names them');
 });
 
+// H-M1 (review 2026-10-03): in a three-team steal the zero crossing {thief, rising, 0} also says HILL LOST to the robbed
+// holder, and that line suppresses the badge. The thief's episode must not be marked as seen then, or the holder never
+// sees who is taking the point.
+test('capture started: three teams, the robbed holder still sees the thief`s capture on the next advert', () => {
+  const h = koth();
+  h.eng.config.teams.push({ team_id: 'purple', name: 'PURPLE', color: 'purple', tid: 3 });
+  hold(h, 4000, { team: BLUE, state: CS.held, value: 100 });         // we hold it (past the 3 s line floor)
+  hold(h, 1000, { team: BLUE, state: CS.held | CS.falling, value: 10 });   // a drain names nobody with three teams
+  assert.deepEqual(started(h), []);
+  h.adv(250); point(h, { team: 3, state: CS.rising, value: 0 });      // the zero crossing: HILL LOST is said
+  assert.equal(badge(h).kind, 'hill_lost', 'setup: HILL LOST was said on the crossing');
+  assert.deepEqual(started(h), [], 'the line wins that advert');
+  h.adv(250); point(h, { team: 3, state: CS.rising, value: 4 });
+  assert.deepEqual(started(h), ['purple'], 'the thief`s capture shows on the next advert');
+});
+
 // Tony, 2026-10-02 (storyboard question 4): "if you are down you miss game alerts". A hill badge (HILL CAPTURE STARTED,
 // HILL CAPTURED, HILL LOST) that arrives while I am DOWN is dropped, never drawn after the respawn; one that was up when
 // I died goes with the life. The hill VOICE lines keep the death-first rule (docs/announcer.md "My death wins" rules 3 and 8):

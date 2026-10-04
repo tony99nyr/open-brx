@@ -2,7 +2,7 @@
 // because the restart stamp was written only after the slow bridge answered, and restarts overlapped.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BeaconWatch, aliveNeedsBeacon, RESCAN_DOWN_MS, RESCAN_IDLE_MS, ScanGuard, stationsInPlay, stationScanStep, SCAN_BUDGET_PER_S, GUARD_WINDOW_MS, GUARD_PAUSE_MS, GUARD_HOLD_MS, PRESENCE_SAMPLE_MS } from '../src/scanwatch.js';
+import { BeaconWatch, aliveNeedsBeacon, RESCAN_DOWN_MS, RESCAN_IDLE_MS, ScanGuard, stationsInPlay, stationScanStep, SCAN_BUDGET_PER_S, GUARD_WINDOW_MS, GUARD_PAUSE_MS, GUARD_HOLD_MS, PRESENCE_SAMPLE_MS, SCAN_MODES } from '../src/scanwatch.js';
 import { Presence, encodeUuid } from '../src/beacon.js';
 
 /** A link whose every scan call takes `lag` ms of fake time to settle, like a starved Capacitor bridge. */
@@ -234,6 +234,30 @@ test('the station player watch drops only to balanced and steps back after the h
   assert.deepEqual(s, { idx: 0, since: 1000 + GUARD_HOLD_MS, restart: true, tripped: false });
 });
 
+// P-M1 (review 2026-10-03): a balanced scan listens 1024 ms in each 4096 ms, so only a burst's first advert
+// lands in the 2 s sighting window and a dense phone reads like a sparse one: a player 6 dB outside then
+// contested a 1v0 capture 14-18 % of the time (0-4 % at low latency). A control point never steps down.
+test('a control point station keeps its player watch at low latency through a flood', () => {
+  let st = { idx: 0, since: 0 };
+  const modes = [];
+  for (let now = 1000; now <= 180000; now += 1000) {   // three minutes of a flood the guard trips on every window
+    const s = stationScanStep({ over: true, idx: st.idx, since: st.since, now, control: true });
+    st = s; modes.push(SCAN_MODES[s.idx]);
+  }
+  assert.ok(modes.every(m => m === 2), 'scanMode 2 (low latency) for the whole flood');
+  // A station that was stepped down as another kind and is now a control point goes back up at once.
+  const back = stationScanStep({ over: true, idx: 1, since: 5000, now: 6000, control: true });
+  assert.deepEqual({ idx: back.idx, restart: back.restart }, { idx: 0, restart: true });
+  // Any other kind still drops to balanced.
+  assert.equal(stationScanStep({ over: true, idx: 0, since: 0, now: 1000, control: false }).idx, 1);
+});
+
+test('utility.js: the station scan step knows when the station is a control point', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/utility.js', import.meta.url), 'utf8');
+  assert.match(src, /stationScanStep\(\{[^}]*control: settings\.kind === 'control' \}\)/, 'without it a hill station steps down to balanced');
+});
+
 // app.js cannot be imported in a test (it boots the HUD), so its two call sites are pinned by source.
 test('app.js: the beacon watch gets the game config, and the player advert needs stations too', async () => {
   const { readFile } = await import('node:fs/promises');
@@ -242,4 +266,17 @@ test('app.js: the beacon watch gets the game config, and the player advert needs
     'without the config the watch cannot tell a station game from a plain TDM');
   const fn = src.slice(src.indexOf('async function syncPlayerAdvert'), src.indexOf('async function syncPlayerAdvert') + 900);
   assert.match(fn, /const want = \([^;]*stationsInPlay\(engine\.config\)/, 'a player advert is carried by every other phone scan: only a station game sends one');
+});
+
+// P-L3 (review 2026-10-03): a re-assert that AdvertGate.minStartMs defers must still log and count as one when its start
+// runs. app.js cannot be imported, so the flag's life is pinned by source: set at the scan reopen, read and cleared at
+// the start.
+test('app.js: a deferred re-assert stays pending until its start runs', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('async function syncPlayerAdvert'), src.indexOf('async function syncPlayerAdvert') + 4000);
+  assert.match(fn, /playerAdvertGate\.refresh\(\); _reassertPending = want;/, 'the reopen marks the advert pending');
+  assert.match(fn, /const reassert = action === 'start' && _reassertPending === want;/, 'read when the start runs, not at the reopen');
+  assert.match(fn, /playerAdvertGate\.started\(want, Date\.now\(\)\); _reassertPending = null;/, 'cleared only once a start worked');
+  assert.doesNotMatch(fn, /let reassert = false;/, 'no per-call flag that a deferred start loses');
 });

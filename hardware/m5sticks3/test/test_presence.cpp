@@ -143,11 +143,17 @@ static void test_presence_exit_band_and_grace() {
   pr.tick(3000);
   CHECK(pr.get(7)->present);            // ... 1.4 s: still inside the grace
   pr.observe(player(7, 0), -79, 4100);
-  pr.tick(4100);                        // 2.5 s below the exit level: off
+  pr.tick(4100);                        // 2.5 s: still inside the 4 s grace (P-M2: body shadowing)
+  CHECK(pr.get(7)->present);
+  pr.observe(player(7, 0), -79, 5600);
+  pr.tick(5600);                        // round 2: the exit reads the 2 s window median, below the band only since 3 s
+  CHECK(pr.get(7)->present);
+  pr.observe(player(7, 0), -79, 7000);
+  pr.tick(7000);                        // 4 s with the window median below the exit level: off
   CHECK(!pr.get(7)->present);
-  pr.observe(player(7, 0), -75, 4200);  // back inside the band but below the threshold: stays off
-  pr.tick(4200);
-  pr.tick(6000);
+  pr.observe(player(7, 0), -75, 7100);  // back inside the band but below the threshold: stays off
+  pr.tick(7100);
+  pr.tick(9000);
   CHECK(!pr.get(7)->present);
 }
 
@@ -168,6 +174,61 @@ static void test_presence_f438_circle() {
     CHECK(!out.get(8)->in_circle);
     CHECK(!out.get(8)->present);
   }
+}
+
+// P-M2 (beacon.js parity, review 2026-10-03): body shadowing (about 12 dB for 2-5 s) must not drop a player who stands
+// 3-6 dB inside the circle. A 3.5 s shadow is not a step out with the 4 s exit grace; 2.5 s dropped it.
+static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
+  const int thr = PRESENCE_DEFAULT_THRESHOLD_DBM;
+  const uint32_t shadows[] = {2000, 2500, 3000, 3500};
+  const int ripple[] = {0, 1, -1, 0};
+  for (int inside : {3, 4, 6}) {
+    PlayerPresence pr;
+    int drops = 0;
+    bool was = false;
+    for (uint32_t t = 0; t <= 600000; t += 250) {
+      const uint32_t k = t / 20000, ph = t % 20000;
+      const bool shadow = ph >= 10000 && ph < 10000 + shadows[k % 4];
+      pr.observe(player(9, 0), thr + inside + ripple[(t / 250) % 4] - (shadow ? 12 : 0), t);
+      pr.tick(t);
+      const bool now = pr.get(9)->present;
+      if (was && !now) drops++;
+      was = now;
+    }
+    CHECK_EQ(drops, 0);
+  }
+}
+
+// P-L1 (beacon.js parity, review 2026-10-03): the sighting window holds the last 64 adverts on both sides.
+static bool sighted_after(int below, int above) {
+  PlayerPresence pr;
+  uint32_t t = 0;
+  for (int i = 0; i < below; i++, t += 20) pr.observe(player(5, 0), -90, t);
+  for (int i = 0; i < above; i++, t += 20) pr.observe(player(5, 0), -50, t);  // 80 adverts in 1.6 s: one window
+  return pr.get(5)->sighted;
+}
+static void test_presence_sighting_window_holds_64() {
+  CHECK_EQ(SIGHT_RECENT_MAX, (size_t)64);
+  CHECK(sighted_after(40, 40));   // the last 64 hold 40 above
+  CHECK(!sighted_after(50, 30));  // the last 64 hold 30 above (a window of 24 would hold 24 above)
+}
+
+// Round 2 (beacon.js parity, review 2026-10-04): the EXIT reads the median of the last 2 s of raw samples (the last
+// raw sample when the window is empty), not the EMA, whose per-advert alpha lags further on a sparse phone. A dense
+// phone at -60 turns sparse at -84: the lone low samples step it out 4 s after the window median falls, where the EMA
+// needed three low adverts (7.5 s) to cross the exit level. beacon.test.mjs runs the same numbers.
+static void test_presence_exit_reads_the_window_median_not_the_ema() {
+  PlayerPresence pr;  // threshold -74, exit level -77, alpha 0.35, 4 s grace
+  bool at_7500 = false, at_8000 = true;
+  for (uint32_t t = 0; t <= 9000; t += 250) {
+    if (t <= 2000) pr.observe(player(4, 0), -60, t);
+    else if (t % 2500 == 0) pr.observe(player(4, 0), -84, t);
+    pr.tick(t);
+    if (t == 7500) at_7500 = pr.get(4)->present;
+    if (t == 8000) at_8000 = pr.get(4)->present;
+  }
+  CHECK(at_7500);   // inside the grace, which starts at 3.75 s, once the dense -60 run no longer holds the 2 s window median
+  CHECK(!at_8000);  // out once the grace has run (the EMA would hold it until about 11.5 s)
 }
 
 static void test_hill_counts_the_circle_not_only_present() {
@@ -616,6 +677,9 @@ int main() {
   test_presence_dwell_restarts_when_the_ema_dips();
   test_presence_ema_is_beacon_js();
   test_presence_exit_band_and_grace();
+  test_presence_body_shadowing_does_not_drop_a_standing_player();
+  test_presence_sighting_window_holds_64();
+  test_presence_exit_reads_the_window_median_not_the_ema();
   test_presence_f438_circle();
   test_hill_counts_the_circle_not_only_present();
   test_presence_four_second_expiry();

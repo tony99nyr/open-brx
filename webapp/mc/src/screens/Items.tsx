@@ -19,7 +19,7 @@ import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, Valu
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
 import { Alert, AlertTag } from '../ui/Alert';
-import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
+import { GLYPH, MC_OLDER, MC_RESTART_CMD, SEV_COLOUR, alertWords, batteryColour, colourOf, serverLine } from '../alerts';
 
 const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 /** the picker's labels: short enough for five in a card row */
@@ -48,7 +48,7 @@ const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: '
 const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));
 
 export function Items() {
-  const { state, focusHill, run, api } = useStore();
+  const { state, focusHill } = useStore();
   const stations = state?.stations ?? [];
   // Bench 2026-10-02: assigned stations that left ITEMS (BACK TO HUD, RELEASE). Absent on an older MC.
   const departures = state?.station_departures ?? [];
@@ -76,10 +76,7 @@ export function Items() {
         <div key={d.node_id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <Alert id="items-station-departed" testid="station-departure">{d.line}</Alert>
           {/* polish r1 M2(b): a phone that stays a player would otherwise leave this line up every match */}
-          <span data-testid="station-departure-dismiss">
-            <GhostButton size={11} pad="6px 12px" onClick={async () => { await run(() => api.dismissDeparture(d.node_id)); }}
-              title="forget this station: it is not coming back as it was">DISMISS</GhostButton>
-          </span>
+          <DismissDeparture node_id={d.node_id} />
         </div>
       ))}
     </div>
@@ -132,6 +129,17 @@ export function Items() {
   );
 }
 
+/** Polish r1 M2(b) / L7: forget a departure. On the away block and on the station's own card. */
+function DismissDeparture({ node_id }: { node_id: string }) {
+  const { run, api } = useStore();
+  return (
+    <span data-testid="station-departure-dismiss">
+      <GhostButton size={11} pad="6px 12px" onClick={async () => { await run(() => api.dismissDeparture(node_id)); }}
+        title="forget this station: it is not coming back as it was">DISMISS</GhostButton>
+    </span>
+  );
+}
+
 /** The preset an assignment's item came from. The assignment stores only the expanded item (A56), so the
  *  match is on what makes an item THAT item: its kind and weapon, never its name or colour. */
 const presetOf = (item: StationItem | undefined, presets: PowerupPreset[] | null) =>
@@ -143,6 +151,19 @@ const deviceOf = (s: StationView) => (s.platform === 'esp32' ? 'STICKS3' : 'PHON
 
 /** An MC older than F364 refuses a PUT with no id in exactly these words (a current MC adds "or absent"). */
 const OLD_MC_WANTS_ID = /^id must be an integer 1\.\.65535 \(the station id in the advert\)$/;
+/** Overnight review M1: the words when an MC older than S-powerup-overrides took the PUT (200) but dropped CHARGES /
+ *  AMOUNT / RESPAWN. Starts with `MC_OLDER.what`, so the command bar shows it as the AMBER version-skew line. */
+export const OVERRIDES_DROPPED = `${alertWords(MC_OLDER.what, MC_OLDER.act)} (${MC_RESTART_CMD}), THEN ARM AGAIN: IT ARMED THE ITEM WITH ITS PRESET DEFAULTS, NOT THIS CARD'S CHARGES, AMOUNT OR RESPAWN`;
+type ItemOverrides = { item_preset?: string; charges?: number; amount?: number; spawn_every_s?: number };
+/** Throws OVERRIDES_DROPPED when the stored item does not carry an override this request sent. An older MC ignores
+ *  the unknown keys and answers 200, so this comparison is the only way the console can tell. */
+export function checkOverrides(sent: ItemOverrides, view: StationView): StationView {
+  if (!sent.item_preset) return view;
+  const item = view.assigned?.item;
+  const dropped = (['charges', 'amount', 'spawn_every_s'] as const).some(k => sent[k] != null && item?.[k] !== sent[k]);
+  if (dropped) throw new Error(OVERRIDES_DROPPED);
+  return view;
+}
 /** The id to send such an MC: the lowest one no other station holds. */
 export function lowestFreeId(stations: StationView[], node_id: string): number {
   const used = new Set(stations.flatMap(o => o.node_id !== node_id && o.assigned ? [o.assigned.id] : []));
@@ -199,10 +220,9 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
   // S-powerup-overrides (2026-09-28): per-station CHARGES/AMOUNT/RESPAWN, editable once an item is chosen.
   // Same null-means-follow idiom as `thrEdit`/`txEdit` above. The BASE is the assignment's own stored item
   // while the preset pick is unchanged (so a stored override still shows), or the newly picked preset's own
-  // default once the preset itself changes. An override that still applies across a preset change (CHARGES
-  // between two weapon presets) is kept -- nothing here clears it on a preset pick -- while one that no
-  // longer applies (AMOUNT on a weapon, CHARGES on the overshield) is simply never read or sent for the
-  // new kind, which is what "reset" means operationally.
+  // default once the preset itself changes. A preset pick clears every edit (`onPick` below), so a new item
+  // always starts from its own defaults; a field that does not apply to the chosen kind (AMOUNT on a weapon,
+  // CHARGES on the overshield) is never read or sent.
   const presetChanged = itemPick != null && itemPick !== assignedPreset;
   const baseItem = (!presetChanged ? assignedItem : undefined) ?? chosenPreset?.item;
   const [chargesEdit, setChargesEdit] = useState<number | null>(null);
@@ -274,19 +294,19 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
         // F364 compatibility: an MC process older than this console (rebuilt, not restarted) still requires an id.
         if (!OLD_MC_WANTS_ID.test((e as Error).message)) throw e;
         return api.putStation(s.node_id, { ...body, id: a?.id ?? lowestFreeId(stations, s.node_id) });
-      })));
+      }).then(v => checkOverrides(body, v))));
       else await run(keep(() => api.armStations()));
     } finally { setBusy(false); }
   };
   // Bench 2026-10-02: RESTORE re-applies the assignment this node held before it left, through the normal PUT and
   // its validation. Offered only once the SAME node is back (`returned`) and reachable; never automatic. A refusal
   // lands on this card like any other apply.
-  const canRestore = !!departure && departure.returned && !a && s.online;
+  const canRestore = !!departure && departure.returned && !a && s.online && !locked;   // L6: MC refuses a PUT while ARMED or LIVE
   const restore = async () => {
     if (!departure) return;
     setBusy(true); setApplyErr(null);
     try {
-      await run(async () => { try { return await api.putStation(s.node_id, departure.restore); } catch (e) { setApplyErr((e as Error).message); throw e; } });
+      await run(async () => { try { return checkOverrides(departure.restore, await api.putStation(s.node_id, departure.restore)); } catch (e) { setApplyErr((e as Error).message); throw e; } });
     } finally { setBusy(false); }
   };
   const rep = s.report;
@@ -349,6 +369,8 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
       {departure && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Alert id="items-station-departed" testid="station-departure">{departure.line}</Alert>
+          {/* L7 (overnight review): DISMISS sits beside RESTORE here too, not only on the away block above */}
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {canRestore && (
             <span data-testid="station-restore">
               <GhostButton disabled={busy} onClick={restore} color={T.ink} border={T.acc}
@@ -359,6 +381,8 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
               </GhostButton>
             </span>
           )}
+          <DismissDeparture node_id={departure.node_id} />
+          </span>
         </div>
       )}
       {s.attention.length > 0 && (
@@ -435,7 +459,7 @@ function StationCard({ s, pu, stations, departure }: { s: StationView; pu: Power
             {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
           {/* F221: a fix-before-match refusal on ARMORY, not an act-now event — AMBER, not red. */}
-          {applyErr && <span data-testid="station-apply-error" role="alert" style={{ flexBasis: '100%', font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-apply-err') }}>{GLYPH} NOT ARMED: {applyErr}</span>}
+          {applyErr && <span data-testid="station-apply-error" role="alert" style={{ flexBasis: '100%', font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-apply-err') }}>{GLYPH} {applyErr.startsWith(MC_OLDER.what) ? '' : 'NOT ARMED: '}{applyErr}</span>}
           {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
           {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
               gesture that opens this card's settings, undiscoverable on the phone and with no feedback on

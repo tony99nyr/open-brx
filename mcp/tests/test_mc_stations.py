@@ -1735,3 +1735,48 @@ def test_l2_a_returned_node_out_of_wifi_is_told_to_come_back_not_to_tap():
     s.nodes["brxu-grey"]["stale"] = True
     line = _departures(s)[0]["line"]
     assert "IT IS BACK, SO TAP RESTORE" not in line and "BRING IT BACK INTO WI-FI" in line, line
+
+
+# --------------------------------------------------------------------------- overnight review 2026-10-03
+def test_l5_the_koth_refusal_lists_departed_hills_oldest_first_like_items():
+    """L5: the refusal listed the hills in dict (insertion) order while ITEMS (`_station_departures_view`) and the
+    mock sort by `at_ms`, so the same two lines read in a different order on two screens."""
+    s = _departed_hill("brxu-late")
+    late = s._station_departures["brxu-late"]
+    s._station_departures["brxu-early"] = {**late, "node_id": "brxu-early", "id": 7, "at_ms": late["at_ms"] - 3_600_000}
+    msg = s._koth_hill_fault() or ""
+    assert "HILL 7" in msg and "HILL 2" in msg, msg
+    assert msg.index("HILL 7") < msg.index("HILL 2"), msg
+    assert [d["node_id"] for d in _departures(s)] == ["brxu-early", "brxu-late"]
+
+
+def test_l8_a_phone_back_as_a_utility_no_longer_reads_as_a_players_hud():
+    """L8: once the SAME utility node is back (`returned`), the phone is not that player's HUD any more."""
+    s = _koth_played_to_recap("brxu-grey")
+    s.stations["brxu-grey"]["platform"] = "android"
+    p1 = list(s.players.values())[1]
+    s.net.simulate_hello("brx-grey", p1["gun_id"], prior_utility_node_id="brxu-grey")
+    assert _departures(s)[0]["label"].startswith("NOW "), "CONTROL: a HUD it is, before the return"
+    s.net.simulate_utility_hello("brxu-grey")
+    d = _departures(s)[0]
+    assert d["returned"] is True and d["label"] == "PHONE brxu-grey", d
+    assert "'S HUD" not in d["line"], d["line"]
+
+
+def test_l4_a_pre_override_console_range_edit_keeps_the_stored_overrides():
+    """L4: a console tab from before S-powerup-overrides sends `item_preset` alone. On a RANGE edit in LOBBY that
+    went down the full path and recomputed the item from the preset's defaults, wiping CHARGES/RESPAWN the host
+    set from a newer tab. The same preset with NO override key now keeps what is stored."""
+    s = _joined(_sess(mode="tdm"))
+    s.net.simulate_utility_hello("brxu-pu")
+    s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "rockets", "charges": 3, "spawn_every_s": 180})
+    v = s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "rockets", "threshold": -60})
+    assert v["assigned"]["threshold"] == -60, v["assigned"]
+    assert v["assigned"]["item"]["charges"] == 3 and v["assigned"]["item"]["spawn_every_s"] == 180, v["assigned"]["item"]
+    # CONTROL 1: a current console names its overrides, and what it names is what is stored (full replace)
+    v = s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "rockets", "spawn_every_s": 120, "charges": 2})
+    assert v["assigned"]["item"]["charges"] == 2 and v["assigned"]["item"]["spawn_every_s"] == 120
+    # CONTROL 2: a different preset with no override key starts from that preset's own defaults
+    s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "rockets", "charges": 4})
+    v = s.set_station("brxu-pu", {"kind": "powerup", "team": "any", "item_preset": "overshield"})
+    assert v["assigned"]["item"]["kind"] == "overshield" and "charges" not in v["assigned"]["item"], v["assigned"]["item"]
