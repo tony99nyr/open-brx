@@ -26,8 +26,10 @@ On Windows, double-click `start.cmd` in the folder, or run `.\start.cmd` in Powe
 First, the script makes sure Node.js 20.11 or later is installed. If it is missing, the script offers
 to install it (Homebrew on a Mac, winget on Windows). Then it prints five numbered steps:
 
-1. It checks GitHub for a newer version and offers to update. It skips this when the folder has
-   changes of its own, or there is no internet.
+1. It checks GitHub for a newer version and offers to update. The answer is no unless you type y,
+   and a run with no terminal also answers no. If the update changes the app version, the script first
+   prints a warning that every phone must update too. It skips this when the folder has changes of its
+   own, or there is no internet.
 2. It finds Python 3.11 or later, or offers to install it the same way. Then it creates a `.venv`
    folder and installs the Mission Control package into it.
 3. It installs and builds the Mission Control console, the web page you open in your browser.
@@ -77,7 +79,7 @@ From a clone of the repository:
 
 ```
 python -m venv .venv
-.venv/bin/python -m pip install -e './mcp[mc]'
+.venv/bin/python -m pip install -c mcp/constraints.txt -e './mcp[mc]'
 ```
 
 Requires Python 3.11 or later. The `[mc]` extra adds the packages Mission Control needs

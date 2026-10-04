@@ -7,6 +7,14 @@ Tony's model: a station (a utility phone or an M5Stick) is assigned a kind and i
 (MC) per game. A powerup station grants an item, for example a pickup-only heavy (rockets). Contract row: A56.
 Roadmap entry it replaces: K3 in the archived utility-roadmap; the station half of S46.
 
+**Where the code lives.** The two sides are two modules. `app/src/powerup.js` is the STATION's side: the station
+phone's own decision. `app/src/powerup-player.js` is the PLAYER's side, and a station phone never loads it. It
+holds every powerup field in one class, `PlayerPowerups`, which the engine holds as `engine.pu` and drives through
+a host object (`powerupHost` in `engine.js`; the module header lists its members). The rule that a held heavy keeps
+its charges and goes back on the trigger is one pure function, `burstWithHeld(frames, held, zero?)`, shared by the
+F416 burst re-send, the reconcile re-arm, the self-hit revive and the stun restore. The `PU_*`, `OVERSHIELD_*` and
+`POWERUP_*` constants live there too, and `engine.js` re-exports them.
+
 ## The mechanism: armed at start, straight onto the trigger
 
 Tony, 2026-09-24: "straight to trigger. id prefer trigger fires it", then "select should equip it if possible". A
@@ -22,7 +30,7 @@ A mid-match config re-push to a live gun clears `spawned` and silences it for th
    account). Then it re-sends the pickup slot's head `$WEAP`, which equips it on the trigger (bench
    2026-09-24), then `$AMMO,<slot>,<charges>,0,1,*`. The `$WEAP` is verbatim unless the charges exceed its clip. An
    `$AMMO` set clamps to the clip, so then t16 (maxClip) and t39 rise to the charges, and t17 (maxAmmo) rises to at
-   least the charges (F381, `engine.js _puWeapFor`). The grant writes no `$BMAP`, so an Easy Reload player is granted
+   least the charges (F381, `powerup-player.js` `_weapFor`). The grant writes no `$BMAP`, so an Easy Reload player is granted
    like anyone.
 3. **A second heavy swaps.** The phone zeroes the old slot's `$AMMO`, then writes the new slot's `$WEAP` and `$AMMO`.
    The switch-back target stays the loadout weapon. The HUD says RAIL GUN, REPLACES ROCKETS.
@@ -54,7 +62,7 @@ the heavy, its charges and SELECT on one line, lit while the heavy is on the tri
 powerups flag. The overshield is unchanged by this section.
 
 **F403 (2026-09-25):** the BRIEFING screen (`app/src/hud/hud.js _briefing`) adds one PICKUPS line, naming each
-distinct item the game's powerup stations carry (the same station config `engine.js _puItems()` reads), in station
+distinct item the game's powerup stations carry (the same station config `powerup-player.js` `items()` reads), in station
 order and each in its own colour by day, collapsing to the one night accent at night; a game with no items shows
 no line.
 
@@ -191,7 +199,7 @@ stations with the same weapon share its slot.
 swap and you would only have 1."
 
 - **Weapon pickups** (Rockets, Rail Gun, later the other heavies) share ONE pickup-weapon holding. Taking the same
-  weapon adds its charges to the charges left and puts it back on the trigger, with no replacement card. The stack caps at twice the item's own charges (`PU_STACK_CAP_X`; Tony, 2026-09-25: "double the drop is max"), so Rockets (2) hold at most 4. With per-station CHARGES the cap is twice the larger of the held and the offered item's charges, and a stack never lowers the held count. A player at the cap does not claim the same weapon: the phone never sets `claiming`, so the station keeps the item for someone else (F447, `engine.js _puAtCap`).
+  weapon adds its charges to the charges left and puts it back on the trigger, with no replacement card. The stack caps at twice the item's own charges (`PU_STACK_CAP_X`; Tony, 2026-09-25: "double the drop is max"), so Rockets (2) hold at most 4. With per-station CHARGES the cap is twice the larger of the held and the offered item's charges, and a stack never lowers the held count. A player at the cap does not claim the same weapon: the phone never sets `claiming`, so the station keeps the item for someone else (F447, `powerup-player.js` `_atCap`).
   Taking a different weapon SWAPS: the new one replaces the old, which is gone (not dropped for someone else; that is an idea for
   later). On the gun: zero the old slot's `$AMMO`, then the new slot's head `$WEAP` and its `$AMMO` with the charges
   (the mechanism above). The HUD says it on the callout card: RAIL GUN replaces ROCKETS. **Bench 2026-09-24, measured: the
@@ -269,7 +277,7 @@ button, and the gun's buttons play no part.
    at or above the station's threshold (advert byte 14). Out of range means below the threshold minus 3 dB. The respawn
    path keeps its EMA.
 2. **Threshold.** RSSI differs by phone and by station hardware, so there are three layers. The player phone
-   judges a pickup against the station's byte 14, and falls back to `POWERUP_THRESHOLD_DEFAULT` (-55, `engine.js`, a
+   judges a pickup against the station's byte 14, and falls back to `POWERUP_THRESHOLD_DEFAULT` (-55, `powerup-player.js`, the generated contract's `PHONE_POWERUP_THRESHOLD_DBM`, a
    placeholder until the calibration step) only when that byte is 0. MC can override the station's value
    (`StationAssignment.threshold`, 0 = the station's own default). A powerup PHONE station at threshold 0 advertises
    its own claim default, -55 (`beacon.js POWERUP_RSSI_DBM.phone`; fixed 2026-09-24, it used to advertise the -74 of
@@ -373,22 +381,22 @@ weapon landing on the trigger showed only the small hint chip (`<ITEM> ON TRIGGE
 6. **No new voice lines.** VA56 ("Rocket Launcher!"), VX0S ("Weapon Swap") and V130 ("Overshield") from the F400
    FOLLOWUPS row's AUDIO panel are unaudited community labels and stay out of scope.
 7. **The ACTIVE bubble's sub-line reads CONFIRMED for a pickup switch, never READY nor CONFIRMED BY YOUR GUN**
-   (desk fix, 2026-09-26). `_puSwitchCard` sets `this.switching.pu = true` precisely so a pickup equip is
+   (desk fix, 2026-09-26). `_switchCard` sets `switching.pu = true` precisely so a pickup equip is
    display-only for `_onAmmo`'s confirm-by-shot code (below): the card can never close early on the gun's own
    echo, so it always reaches the ACTIVE bubble by way of the tick's assumed-timeout. For an ALT swap that path
    means "we never got a shot to prove it, but the window has passed" -- an honest guess, so the bubble says
-   READY. A pickup switch is not a guess: the phone's own equip write (`_puEquip`) already settled the trigger
+   READY. A pickup switch is not a guess: the phone's own equip write (`_equip`) already settled the trigger
    before the card even opened, so `assumed: true` on this moment's data is true only in the sense of "closed by
    the timer", not "unproven". READY would undersell that; CONFIRMED BY YOUR GUN would claim a mechanism
    (the gun's echo) that this path deliberately never uses. CONFIRMED, on its own, is the state the bubble now
    shows (`hud.js` `_switched`, keyed on a new `pu` flag the moment's `data` carries alongside `assumed`).
 
-Engine mechanism: `_puSwitchCard(from, to, going?)` sets `this.switching = {at, from, to, pu: true}`, the SAME
+Mechanism (`app/src/powerup-player.js`): `_switchCard(from, to, going?)` sets the engine's `switching = {at, from, to, pu: true}` (through the host's `setSwitching`), the SAME
 `at`/`from`/`to` shape an ALT press sets (`engine.js` around the `$BUT,1,1` handler), plus the `pu` flag. `_onAmmo`'s
 confirm-by-shot code explicitly excludes a `pu` switch (`this.switching && !this.switching.pu`, so it can only ever
 close on the tick's assumed-timeout, never early on the gun's echo of the equip write itself -- decision 7 is why
 that is the right call, not a gap. `going` is `{name, color, weapon_id, charges}` for a slot about to lose its
-identity this call (the empty switch-back's heavy, whose `_puHeld` is cleared before the equip): the HUD's tile
+identity this call (the empty switch-back's heavy, whose `held` is cleared before the equip): the HUD's tile
 still needs to name it on the render after that, so it rides on `state().powerup.going` until the card's own
 window has passed. The tick's assumed-timeout path never lets a pickup slot (2 or 3) become `_altPtr`: that field
 is the gun's OWN ALT-cycle position (always 0 or 1), and a powerup equip never touches ALT's `$BMAP` row (see
@@ -415,7 +423,7 @@ never a shared timer.
 
 **What changed.** The near-station hint (`_puHint`, `#puhint`) drops its `taken` and `taken_by` states outright:
 standing near a station that is not there to claim now shows nothing, where it used to show `<ITEM> TAKEN · 0:52`
-or `<ITEM> TAKEN · BY <name>` counting down to the next spawn. `engine.js`'s `powerupView()` no longer computes
+or `<ITEM> TAKEN · BY <name>` counting down to the next spawn. The powerup view (then `engine.js`'s `powerupView()`, now `PlayerPowerups.view` in `powerup-player.js`) no longer computes
 either kind (and its `_puNextInMs` helper is gone with them); `hud.js`'s `_puHint` no longer renders them. The
 CSS rule that sized their text (`app/www/index.html`) is gone too.
 

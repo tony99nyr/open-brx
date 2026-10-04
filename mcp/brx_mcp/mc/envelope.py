@@ -1,4 +1,4 @@
-"""Envelope encode / decode / validation for the node↔MC wire (contracts.md §5, net.md §8).
+"""Envelope encode / decode / validation for the node↔MC wire (contracts.md §5; the size cap and rogue-client rules there).
 
 Pure functions, no I/O, no dependencies — importable and testable under the system python.
 
@@ -20,7 +20,7 @@ from typing import Any
 from .types import MAX_PLAYERS, MC_KINDS, NODE_KINDS, PROTOCOL_V
 from ..protocol import ALL_DENIED_COMMANDS as _DENIED_COMMANDS
 
-MAX_ENVELOPE_BYTES = 64 * 1024        # net.md §8 size cap
+MAX_ENVELOPE_BYTES = 64 * 1024        # contracts.md §5 "Size cap" (the retired net.md §8)
 # The command words a NODE must never write to its gun, whatever a bundle or a debug panel says:
 # persistent state, pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which
 # blocks the gun's main loop with the serial port unread (the likely screamer mechanism). One
