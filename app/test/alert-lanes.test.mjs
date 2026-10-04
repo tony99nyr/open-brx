@@ -410,6 +410,16 @@ test('down: what is up at my death goes with the life, except the standing lead 
   backUp(h);
   assert.deepEqual(laneItems(h), ['obj:lead:lead_taken'], 'and nothing else comes back after the respawn');
 });
+test('down (review r2 High): a lead change missed while down retires the standing lead badge, never leaves it stale', () => {
+  const h = harness({ mode: 'koth' }).live();
+  h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD');
+  downNow(h);
+  assert.deepEqual(laneItems(h), ['obj:lead:lead_taken'], 'control: the standing lead badge stays at my death');
+  h.alert('lead_lost', 'YOUR TEAM LOST THE LEAD');   // missed: I am down
+  backUp(h);
+  assert.ok(!laneItems(h).includes('obj:lead:lead_taken'), `after the respawn the badge must not still say TAKES THE LEAD: ${JSON.stringify(laneItems(h))}`);
+  assert.ok(!laneItems(h).some(i => i.startsWith('obj:lead:lead_lost')), 'and the missed change is not drawn after the respawn either');
+});
 test('down: the voice lines still queue while I am down ("My death wins" rules 3 and 8)', () => {
   const h = harness({ mode: 'koth' }).live();
   downNow(h);

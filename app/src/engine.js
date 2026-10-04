@@ -3672,8 +3672,8 @@ export class Engine {
     // line is the HOLDER's, wherever they stand, once per stall: on the edge into "our point held and contested",
     // and again only after scoring has resumed (the bit cleared, or the point left our hands) and stopped again.
     // Nobody else hears it: an attacker's presence stops the holder's scoring, not theirs, and a contest on a point
-    // nobody holds stops nobody's. No time floor: an episode is the rate limit, and F440's debounced presence is
-    // what keeps the bit from flapping at the edge of the circle. A capture callout in the same advert wins
+    // nobody holds stops nobody's. An episode is the rate limit, plus a 3 s floor (polish r1) against two stations on one id flapping
+    // the bit; F440's debounced presence keeps it steady at the edge of the circle. A capture callout in the same advert wins
     // outright (`_hillSay` preempts; the episode still counts as started, so it is not said late).
     const mine = this.teamTid;
     const stalled = contested && held && mine != null && mine !== HILL_NEUTRAL_TEAM && owner === mine;
@@ -3692,7 +3692,7 @@ export class Engine {
     if (sig !== this._controlSig) { this._controlSig = sig; this._changed(); }
   }
   /** Tony, 2026-10-02: HILL CAPTURE STARTED. One badge on the hill lane (the same OBJECTIVE item as HILL CAPTURED /
-   *  HILL LOST, so the same queue and clash rules), tinted in the CAPTURING team's colour and shown to EVERYONE,
+   *  HILL LOST, so the same queue and clash rules), a NEUTRAL badge whose marker names the CAPTURING team, shown to EVERYONE,
    *  whenever any team's capture progress starts rising: a team building a point nobody holds, or draining a point
    *  another team holds or is building (`falling`). The defenders and the attackers see the same badge.
    *
@@ -4997,7 +4997,14 @@ export class Engine {
     if (this._lanes.hero && this._lanes.hero.kills.includes(row)) { if (!row.victim) this._laneUpdate(row, { victim: name }); return; }
     if (this._lanes.feed.includes(row)) { row.name = name; this._lanes.feed = [...this._lanes.feed]; this._changed(); }
   }
-  _laneObj(key, v) { this._laneWrite(`${key} badge (${v.kind})`, (L, now) => { L.obj = { ...L.obj, [key]: { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: now } }; }); }
+  _laneObj(key, v) {
+    // Review r2: the standing LEAD badge survives my death, so a lead change I miss while down must retire it, or it
+    // says TAKES THE LEAD after the respawn when we lost it. The change itself is still not drawn (I was down).
+    if (key === 'lead' && this._alertsMissed() && this._lanes && this._lanes.obj && this._lanes.obj.lead && this._lanes.obj.lead.kind !== v.kind) {
+      const { lead, ...rest } = this._lanes.obj; this._lanes.obj = rest; this._changed();
+    }
+    this._laneWrite(`${key} badge (${v.kind})`, (L, now) => { L.obj = { ...L.obj, [key]: { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: now } }; });
+  }
   _laneFeed(v) {
     return this._laneWrite(`feed row (${v.alert || v.kind})`, (L, now) => {
       const row = { ...v, id: (this._laneSeq = (this._laneSeq || 0) + 1), at: now };   // `id`: the HUD's key (two rows can share a ms)

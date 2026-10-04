@@ -134,7 +134,7 @@ queue, so the screen can show more than the voice says. The timings are in `app/
 | Lane | Where | What | How long |
 |---|---|---|---|
 | HERO | centre, over the HUD | my kill: KILL, the victim's name, my newest medal. A spree adds a ×N count and a ladder of the earlier medals, newest first, fading | 2.5 s after the last kill (`LANE_HERO_MS`), or longer while that kill's slot is on air |
-| OBJECTIVE | right, under the K/D stats | one badge for the lead and one for the hill (HILL CAPTURED, HILL LOST, or HILL CAPTURE STARTED in the capturing team's colour, for everyone) | the lead dims after 4 s and stays until replaced; the hill dims after 4 s and clears 8 s after it was set (`LANE_HILL_CLEAR_MS`). |
+| OBJECTIVE | right, under the K/D stats | one badge for the lead and one for the hill (HILL CAPTURED, HILL LOST, or HILL CAPTURE STARTED: a neutral badge whose marker names the capturing team, for everyone) | the lead dims after 4 s and stays until replaced (a lead change missed while I am down retires it); the hill dims after 4 s and clears 8 s after it was set (`LANE_HILL_CLEAR_MS`). |
 | FEED | left, under the identity block | teammate down, enemy down, a powerup spawn or swap, every other MC alert (BOMB PLANTED, ONE MINUTE LEFT; no full-width banner, F371) | 4 s a row (`LANE_FEED_MS`), the newest three |
 
 Rules:

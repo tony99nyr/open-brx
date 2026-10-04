@@ -793,7 +793,7 @@ export function startDemo({ engine, log }) {
       'live-koth':               [[0, () => { config.mode = 'koth'; }], ...live],   // a KOTH match and nothing else: a gallery drives the point itself
       'live-hill-capture-ours':  [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(255, 0, 0)], [2400, () => ev.point(team.tid, 4, 6)]],   // our bar leaves 0
       'live-hill-capture-enemy': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(255, 0, 0)], [2400, () => ev.point(team.tid === 0 ? 3 : 0, 4, 6)]],   // theirs does
-      // the clash: the enemy's capture starts while I am DOWN, waits on the badge, and shows when I am back
+      // the enemy's capture starts while I am DOWN: the badge is dropped, never shown after the respawn (Tony 2026-10-02)
       'down-hill-capture':       [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(255, 0, 0)], [2300, 'die'], [2600, () => ev.point(team.tid === 0 ? 3 : 0, 4, 6)], [4600, 'respawn']],
       // ---- A56 powerups: every state below is the REAL engine, fed a powerup game and fake station adverts ----
       'live-pu':             [[0, () => ev.powerups()], ...live],                                                      // a powerup game, nothing near: the HUD is unchanged

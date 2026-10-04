@@ -3545,7 +3545,7 @@ class GunStage:
         # Tony, 2026-10-02 (engine.js `_onControlAdvert`): "Hill contested should play whenever you stop scoring
         # points because of the other team's presence." Scoring pauses while the point is HELD and contested, so it is
         # the HOLDER's line, wherever they stand, once per stall episode: on the edge into "our point held and
-        # contested", again only after scoring resumed and stopped again. No time floor. A capture callout in the same
+        # contested", again only after scoring resumed and stopped again. A 3 s floor (engine.js, polish r1) besides the episode. A capture callout in the same
         # advert wins outright (the episode still counts as started).
         mine = self._hill_tid()
         stalled = bool(contested and held and mine is not None and mine != HILL_NEUTRAL_TEAM and owner == mine)
