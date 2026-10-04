@@ -24,6 +24,7 @@ from typing import Any, Callable, Mapping
 
 from ..storage import home_dir
 from . import policy as _policy
+from .types import RESPAWN_DELAY_MAX_S   # review #4: the bound Session._merge_config checks
 import functools
 
 from .compile import HEALTH_PRESETS, WeaponCatalog, respawn_settings
@@ -124,7 +125,7 @@ def _check_spawn(v: object) -> dict:
         # games-presets.md §1: "spawn.type is auto or scanner" — "none" is a mode default (post-MVP LMS),
         # never a host-built piece.
         raise PieceError(400, "SPAWN TYPE NOT SUPPORTED: USE AUTO OR STATION")
-    d = _int_in(v.get("delay_s"), 0, 600, "RESPAWN DELAY")
+    d = _int_in(v.get("delay_s"), 0, RESPAWN_DELAY_MAX_S, "RESPAWN DELAY")
     if d in (1, 2):
         raise PieceError(400, "RESPAWN DELAY OF 1-2S WEDGES THE HEADSET (F13): USE 0 (NO RESPAWN) OR 3 SECONDS OR MORE")
     try:

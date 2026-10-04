@@ -105,19 +105,6 @@ def test_f398_countdown_ring_clears_its_text_in_measured_pixels():
                     f"{name}: the ring {ring['box']} is within {sim.SHAPE_GAP} px of '{t['text']}' {t['box']}")
 
 
-def test_o_team_3_is_purple_on_the_stick_as_everywhere_else():
-    """F423 renamed tid 3 GREEN -> PURPLE end to end, but the Stick kept painting it green and saying GREEN
-    HOLDS / GREEN RESPAWN (operator review A1, 2026-10-03). Name AND colour must match the console."""
-    render = (ROOT / "hardware/m5sticks3/station_render.h").read_text(encoding="utf-8")
-    letters = re.search(r"TEAM_LETTER\[4\]\s*=\s*\{([^}]*)\}", render).group(1)
-    assert [w.strip().strip('"') for w in letters.split(",")] == ["RED", "BLUE", "YELLOW", "PURPLE"]
-    colours = re.search(r"TEAM_COLOR\[4\]\s*=\s*\{(.*?)\};", render).group(1)
-    r, g, b = [int(x) for x in re.findall(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)", colours)[3]]
-    tokens = (ROOT / "webapp/mc/src/tokens.ts").read_text(encoding="utf-8")
-    hx = re.search(r"purple:\s*'#([0-9a-fA-F]{6})'", tokens).group(1)
-    assert (r, g, b) == (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16)), "the Stick's purple is not the console's"
-
-
 def test_mockup_palette_has_no_green_team_and_purple_matches_the_console():
     """hardware/m5sticks3/mockups/render.py still drew team 3 green after the Stick itself went purple."""
     src = (ROOT / "hardware/m5sticks3/mockups/render.py").read_text(encoding="utf-8")

@@ -1292,7 +1292,9 @@ def test_a_stun_before_the_first_shot_of_a_new_life_restores_this_lifes_reserve_
         await st.spawn(); await settle(st); st.poll(); await settle(st)   # life 2: the frame's pair is back on the gun
         st._arm_life("test"); await settle(st)   # F209: past spawn protection
         assert st.alive
-        assert st._prev_ammo == {} and st._prev_reserve == {}, "both $ALCD maps reset on spawn"
+        # both maps reset on spawn; since #6 polish r1 the spawn's own `$LCD` echo (engine.js LCD case, t5/t6) refills slot 0
+        # with THIS life's pair, so the check is that life 1's 20/150 is gone, not that the maps stay empty
+        assert st._prev_ammo.get(0) != 20 and st._prev_reserve.get(0) != 150 and set(st._prev_ammo) <= {0}, (st._prev_ammo, st._prev_reserve)
         await flush_fake_ammo(st, mgr)   # life 2's own spawn echo must not surface later and stomp the injected shot below
         n = mark(mgr)
         await st.ir("emp"); st.poll(); await settle(st)
@@ -1513,6 +1515,7 @@ def test_f394_an_assumed_swap_shows_the_new_slots_own_counts():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.poll(); await settle(st)   # the spawn's `$LCD` echo lands now, as on a real link, not after the ALT below
         st.alcd(mag=10, reserve=20); await settle(st)
         want = list(st._live_ammo()[1])
         assert want != [10, 20], want   # CONTROL: the two slots differ, or the check proves nothing
@@ -1861,7 +1864,7 @@ KNOWN_UNMIRRORED = {
     # 2026-09-24 (docs/announcer.md, "The gun's audio FIFO"): the phone's model of the gun's audio queue and the
     # must-hear $PLAYX flush. NOT yet ported: the stage's own writes do not model the FIFO, and its heartbeat does not
     # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.
-    "_audioWrite", "_clipLen", "_sayMust", "_audioSync", "_audioHit", "_shieldLoopPeriod",   # the pool voice lines, the same queue; the stage speaks them at once
+    "_audioWrite", "_sayMust", "_audioSync", "_audioHit", "_shieldLoopPeriod",   # the pool voice lines, the same queue; the stage speaks them at once
     # X3 (2026-09-24): the fill-last write order IS mirrored, inline in `spawn`/`revive`; the helper's other half marks
     # the phone schedules sounds after the fill, and the stage has no audio model (see `_audioWrite` above)
     "_writeSpawnBurst",
@@ -2850,3 +2853,12 @@ def test_a65_a_lost_damaging_hit_credits_the_team_of_the_fresh_no_pool_word():
         assert await death_after("$HIR,0,8,5,2,0,0,0,*", 2.5, "$HP,0,0,0,*") is None, "control: a stale latch credits nobody"
         assert await death_after("$HIR,0,8,5,3,0,0,0,*", "$HP,0,0,0,*") is None, "a team not on the roster credits nobody"
     asyncio.run(go())
+
+
+def test_encode_advert_uuid_rejects_an_unknown_role_with_value_error():
+    for bad in (0, 7, "bogus", ""):
+        try:
+            encode_advert_uuid(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"role {bad!r} should raise ValueError")

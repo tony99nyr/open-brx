@@ -20,6 +20,7 @@
 #include <M5Unified.h>
 
 #include "station_screen.h"
+#include "station_team.h"
 
 namespace brx_render {
 using namespace brx;
@@ -30,9 +31,6 @@ constexpr int STRIP_H = 14, HINT_H = 14;
 constexpr int MAIN_TOP = STRIP_H, MAIN_BOTTOM = SCREEN_H - HINT_H;
 
 // ---- palette, ported from mockups/render.py's flattened CSS custom properties -----------------
-inline uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {
-  return (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
-}
 const uint16_t COL_BG = rgb(5, 8, 13);
 const uint16_t COL_PLATE = rgb(14, 26, 40);
 const uint16_t COL_EDGE = rgb(42, 78, 110);
@@ -45,12 +43,6 @@ const uint16_t COL_OK = rgb(57, 224, 124);
 const uint16_t COL_DIM = rgb(58, 68, 80);
 const uint16_t COL_SHIELD = rgb(36, 217, 196);
 const uint16_t COL_NEUTRAL = rgb(90, 104, 120);
-
-// team index 0..3 = RED/BLUE/YELLOW/PURPLE. F423: tid 3 paints purple, never green (green is the headset's own
-// death out-blink); the purple is the console's (`webapp/mc/src/tokens.ts`), pinned by test_sticks3_screens.py.
-const uint16_t TEAM_COLOR[4] = {rgb(244, 63, 94), rgb(58, 134, 255), rgb(255, 210, 63), rgb(191, 76, 230)};
-const uint16_t TEAM_INK[4] = {rgb(26, 4, 4), rgb(4, 18, 30), rgb(26, 20, 0), rgb(24, 4, 30)};
-const char* const TEAM_LETTER[4] = {"RED", "BLUE", "YELLOW", "PURPLE"};
 
 inline uint16_t teamColor(int team) { return (team >= 0 && team <= 3) ? TEAM_COLOR[team] : COL_NEUTRAL; }
 inline uint16_t teamInk(int team) { return (team >= 0 && team <= 3) ? TEAM_INK[team] : COL_NUM; }

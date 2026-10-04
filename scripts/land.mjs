@@ -266,7 +266,7 @@ function parseGate(out) {
   }
   const logs = {};
   for (const m of out.matchAll(/^---- (\S+) \(exit [^)]*\), last \d+ lines of (.+)$/gm)) logs[m[1]] = m[2].trim();
-  const build = /^(app-build|mc-build) failed, see (.+)$/m.exec(out);
+  const build = /^(app-build|mc-dist-build|mc-build) failed, see (.+)$/m.exec(out);   // mc-dist-build: the console build (renamed off the mc-build e2e log)
   return { rows, logs, build: build ? { name: build[1], log: build[2].trim() } : null };
 }
 const listJobs = out => lines(out).filter(l => /^[a-z][a-z0-9-]*$/.test(l));

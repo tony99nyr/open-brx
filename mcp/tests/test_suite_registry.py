@@ -35,6 +35,7 @@ NOT_GATES = {
     "app/tools/gun-audio-sim.mjs": "a pure library (the gun-audio simulator); its gate is app/test/audio-queue.test.mjs",
     "app/tools/monotonic-date.mjs": "a pure library (the monotonic Date.now() for gate pages) that the app gates import",
     "app/tools/audio-scenarios.mjs": "a pure library (the audio queue scenarios); its gate is app/test/audio-queue.test.mjs",
+    "app/tools/record-traces.mjs": "re-records the golden traces' `expect` from the real engine on purpose; its gates are app/test/golden-traces.test.mjs and mcp/tests/test_golden_traces.py",
     "webapp/mc/test/e2e/vite.m2.config.mjs": "a vite config that m2-ui.mjs loads",
     "webapp/mc/test/e2e/vite.proxy.config.mjs": "a vite config that the e2e scripts load",
     "webapp/mc/test/e2e/python-path.mjs": "the shared Python resolver imported by kit-continue.mjs; its behavior has a focused Vitest gate",
