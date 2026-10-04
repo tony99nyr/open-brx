@@ -2,7 +2,7 @@
 // `feed_edit` with the corrected row (same id); the store and the mock must each end with ONE row, corrected.
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyFeedEdit, StoreProvider, useStore } from '../src/store';
+import { applyFeedEdit, mergeFeedById, StoreProvider, useStore } from '../src/store';
 import { MockBackend } from '../src/mock/backend';
 import type { FeedEntry } from '../src/api/types';
 import { mount } from './harness';
@@ -66,5 +66,42 @@ describe('feed_edit', () => {
     b.feedEdit({ ...seen[0], text: 'P1 TOOK OVERSHIELD · STATION #4' });
     expect(seen.map(r => r.text)).toEqual(['P1 TOOK OVERSHIELD · STATION #4']);
     expect((internals.live_ as { feed: FeedEntry[] }).feed.map(r => r.text)).toEqual(['P1 TOOK OVERSHIELD · STATION #4']);
+  });
+});
+
+// A tab that missed the `feed_edit` (before its first snapshot, or across a reconnect) holds the stale row until a
+// later snapshot of the same match carries the corrected same-id row.
+class StaleThenSnapshot {
+  onmessage: ((ev: { data: string }) => void) | null = null;
+  onopen: (() => void) | null = null;
+  onclose: ((ev: { code: number }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  constructor() {
+    const send = (m: unknown) => this.onmessage?.({ data: JSON.stringify(m) });
+    setTimeout(() => {
+      this.onopen?.();
+      send({ kind: 'snapshot', state: LIVE });
+      send({ kind: 'feed', entry: ROW });
+      setTimeout(() => send({ kind: 'snapshot', state: { ...LIVE, t: 2, feed: [FIXED] } }), 5);
+    }, 0);
+  }
+  close() {}
+  send() {}
+}
+
+describe('a snapshot heals a missed feed_edit', () => {
+  it('the pure merge replaces a same-id row only', () => {
+    const feed: FeedEntry[] = [{ t_match_s: 2, text: 'NEWER', kind: 'info' }, { ...ROW }];
+    expect(mergeFeedById(feed, [FIXED]).map(r => r.text)).toEqual(['NEWER', FIXED.text]);
+    expect(mergeFeedById(feed, [{ ...FIXED, id: 5 }])).toEqual(feed);
+  });
+
+  it('the store shows the corrected row after a later snapshot', async () => {
+    history.replaceState(null, '', '/');
+    vi.stubGlobal('WebSocket', StaleThenSnapshot);
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => ({ ok: true, status: 200, statusText: 'OK', json: async () => (path === '/api/state' ? LIVE : []) } as Response)));
+    const m = await mount(<StoreProvider><Probe /></StoreProvider>);
+    await act(async () => { await new Promise(r => setTimeout(r, 40)); });
+    expect(m.find('[data-probe]')[0].getAttribute('data-feed')).toBe('P1 TOOK OVERSHIELD · STATION #4');
   });
 });

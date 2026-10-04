@@ -138,6 +138,15 @@ export function applyFeedEdit(feed: FeedEntry[], e: FeedEntry): FeedEntry[] {
   return e.id == null ? feed : feed.map(r => (r.id === e.id ? e : r));
 }
 
+/** F454: a snapshot's feed rows merged BY ID into the feed: a same-id row is replaced, so a `feed_edit` this tab
+ *  missed (before its first snapshot, or across a reconnect) is healed. Rows without an id, and ids the feed lacks,
+ *  are left to the seed logic. */
+export function mergeFeedById(feed: FeedEntry[], snap: FeedEntry[]): FeedEntry[] {
+  const byId = new Map(snap.filter(r => r.id != null).map(r => [r.id, r]));
+  if (!byId.size) return feed;
+  return feed.map(r => (r.id != null && byId.has(r.id) ? byId.get(r.id)! : r));
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const mock = useMemo(isMock, []);
   const api = useMemo<Api>(() => (mock ? new MockBackend() : createHttpApi()), [mock]);
@@ -302,6 +311,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) applySeed(); else seedMemoRef.current = null; }
         else if (mid && reseed) applySeed();
         else if (mid && seed.length) setFeed(f => { if (f.length) return f; seedMemoRef.current = seedMemo(seed, Date.now()); return seed.slice(0, FEED_MAX); });
+        if (mid && hasFeed && seed.length) setFeed(f => mergeFeedById(f, seed));
         setState(s);
         followPhase(s);
       },

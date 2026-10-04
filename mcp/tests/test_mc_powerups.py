@@ -875,10 +875,17 @@ def test_f454_a_corrected_taker_pushes_feed_edit_and_ids_survive_a_restore():
     _action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
     assert len(edits) == 1 and edits[0]["id"] == took["id"] and edits[0]["text"].startswith(f"{p1['display'].upper()} TOOK")
     assert sum(" TOOK " in r["text"] for r in s.feed) == 1
-    # ids never repeat after a restore: the counter resumes from the restored feed's maximum
-    s._feed_seq = 0
-    s.feed = [dict(r) for r in s.feed]
+    # ids never repeat after a REAL persist and restore: the counter resumes from the restored feed's maximum
+    import pathlib
+    import tempfile
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
     top = max(r["id"] for r in s.feed)
-    s._feed_seq = max([r["id"] for r in s.feed] + [0])
-    s._on_feed({"t_match_s": 1, "tag": "X", "kind": "info", "text": "NEXT"})
-    assert s.feed[0]["id"] == top + 1
+    s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock, voice_rng=random.Random(7))
+    s2.powerups_enabled = True
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot()
+    assert max(r["id"] for r in s2.feed) == top
+    s2._on_feed({"t_match_s": 1, "tag": "X", "kind": "info", "text": "NEXT"})
+    assert s2.feed[0]["id"] == top + 1

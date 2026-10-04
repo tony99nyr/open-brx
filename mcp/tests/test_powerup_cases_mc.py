@@ -60,7 +60,7 @@ def _restart(s, clock, sid, roster, old_shape=False):
     if old_shape:     # a snapshot written before F454 had none of these fields
         doc = json.loads(s._persist_path.read_text(encoding="utf-8"))
         for row in doc["powerups"]["st"].values():
-            for k in ("taken", "by_station", "line", "prev"):
+            for k in ("taken", "by_station", "line", "prev", "fid", "hist"):
                 row.pop(k, None)
         s._persist_path.write_text(json.dumps(doc), encoding="utf-8")
     s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock, voice_rng=random.Random(7))
@@ -94,6 +94,8 @@ def _run(case: dict) -> None:
     kind = "weapon" if preset != "overshield" else "overshield"
     s, clock = _session(sid, mc.get("item_spawn_every_s"), preset)
     roster = [s.players[s.node_player[f"phone-{i}"]] for i in range(2)]
+    edits: list[dict] = []
+    s.on_feed_edit(lambda e: edits.append(dict(e)))
     s.net.pushed.clear()
     s.push_config(force=True)
     s.start(runway_s=RUNWAY_S, force=True)
@@ -105,6 +107,7 @@ def _run(case: dict) -> None:
         at = f"{case['name']} @ t={step['t']} {step['do']}"
         clock.t = go + step["t"]
         s.net.pushed.clear()
+        edits.clear()
         what = step["do"]
         player = roster[step["player"]] if "player" in step else None
         if what == "tick":
@@ -131,6 +134,7 @@ def _run(case: dict) -> None:
             s.next_match()
         elif what == "restart":
             s, roster = _restart(s, clock, sid, roster, step.get("old_shape", False))
+            s.on_feed_edit(lambda e: edits.append(dict(e)))
         elif what == "reset_api":
             refused = None
             try:
@@ -149,6 +153,12 @@ def _run(case: dict) -> None:
             assert view.get("taken_by") == want, f"{at}: taken_by {view.get('taken_by')!r} != {want!r}"
         if "feed_took" in ex:
             assert _took(s) == ex["feed_took"], f"{at}: TOOK lines"
+        lines = [r for r in s.feed if " TOOK " in r["text"]]
+        if "took_lines" in ex:
+            assert [r["text"] for r in lines] == ex["took_lines"], f"{at}: TOOK lines {[r['text'] for r in lines]}"
+        if "edited_rows" in ex:
+            ids = [r["id"] for r in lines]
+            assert [ids.index(e["id"]) if e["id"] in ids else None for e in edits] == ex["edited_rows"], f"{at}: feed_edit rows"
         for text in ex.get("feed_has", []):
             assert any(text in r["text"] for r in s.feed), f"{at}: feed lacks {text!r}"
         for text in ex.get("feed_lacks", []):

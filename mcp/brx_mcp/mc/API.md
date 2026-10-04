@@ -21,7 +21,7 @@ disables the gate (bench only — any device on the LAN can then `panic`/`end`/e
 
 ## Realtime feed — `GET /ui-ws` (WebSocket)
 Server sends `{ "kind": "snapshot", "state": <State> }` on connect and on every state change
-(coalesced, ≤4/s), plus `{ "kind": "feed", "entry": <FeedEntry> }` for live events. A feed row carries an `id` (a monotonic counter that survives a snapshot restore; a row restored from an old snapshot has none). **F454:** `{ "kind": "feed_edit", "entry": <FeedEntry> }` replaces the row with the same `id` in place (today only the POWERUP TOOK line, when a station's report corrects the taker); a client ignores one whose id it does not hold, and a row without an id can never be edited.
+(coalesced, ≤4/s), plus `{ "kind": "feed", "entry": <FeedEntry> }` for live events. A feed row carries an `id` (a monotonic counter that survives a snapshot restore; a row restored from an old snapshot has none). **F454:** `{ "kind": "feed_edit", "entry": <FeedEntry> }` replaces the row with the same `id` in place (today only the POWERUP TOOK line, when a station's report corrects the taker); a client ignores one whose id it does not hold, and a row without an id can never be edited. A console tab opened before this message existed ignores it; a reload fixes that (MC serves the console). A console also merges every snapshot's feed rows BY ID into its feed, so an edit it missed is healed.
 ```jsonc
 State {
   game_pick: GamePick,                          // F411: what PLAY has picked — one piece id per kind + the MATCH SETTINGS strip
