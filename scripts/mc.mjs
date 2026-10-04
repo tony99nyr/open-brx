@@ -7,10 +7,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
 import crypto from 'node:crypto';
+import { DAYS_DEFAULT, KEEP_DEFAULT, formatBytes, pruneEvidence } from './lib/evidence.mjs';
 import { lineRedactor } from './lib/redact.mjs';
 import { isWindows, npm, numericFlag, root, uiStale, venvPython, which } from './lib/launcher.mjs';
 
-const mcArgs = process.argv.slice(2);
+// `--keep-all` is ours (no pruning of old sessions): it must not reach Mission Control, whose parser would refuse it.
+const keepAll = process.argv.slice(2).includes('--keep-all');
+const mcArgs = process.argv.slice(2).filter(arg => arg !== '--keep-all');
 const httpPort = numericFlag(mcArgs, '--port', 8765);
 const wsPort = numericFlag(mcArgs, '--ws-port', 8766);
 const noAuth = mcArgs.includes('--no-auth');
@@ -22,6 +25,19 @@ const logPath = join(evidence, 'mc.log');
 const manifestPath = join(evidence, 'manifest.json');
 mkdirSync(evidence, { recursive: true, mode: 0o700 });
 chmodSync(evidence, 0o700);
+// Old evidence: print the size, then remove launch folders that are BOTH outside the newest N and older than D days
+// (BRX_MC_KEEP_SESSIONS / BRX_MC_KEEP_DAYS, default 30 / 30). This launch is never touched. `--keep-all` skips it.
+{
+  const sessionsDir = join(home, 'sessions');
+  const positive = (name, fallback) => { const n = Number(process.env[name]); return Number.isFinite(n) && n >= 0 && process.env[name] ? n : fallback; };
+  try {
+    const result = pruneEvidence({ sessionsDir, currentId: launchId, keepAll, keep: positive('BRX_MC_KEEP_SESSIONS', KEEP_DEFAULT),
+      days: positive('BRX_MC_KEEP_DAYS', DAYS_DEFAULT), log: line => console.log(line) });
+    const freed = result.removed.reduce((sum, r) => sum + r.bytes, 0);
+    console.log(`Evidence: ${result.count} sessions, ${formatBytes(result.sizeBefore)} under ${sessionsDir}` +
+      (keepAll ? ' (--keep-all: nothing removed)' : result.removed.length ? `; removed ${result.removed.length}, freed ${formatBytes(freed)}` : ''));
+  } catch (error) { console.error(`Evidence prune skipped: ${error.message}`); }
+}
 let child = null;
 
 function fail(message) {
