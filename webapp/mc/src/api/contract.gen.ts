@@ -1051,6 +1051,11 @@ export interface NodeView {
   ammo?: number | null;
   alive?: boolean | null;
   pending?: number | null;
+  /** O6: facts the phone's outbox dropped (count/age cap), the MAXIMUM of its cumulative `status.dropped_total`.
+   *  O10: CLAIM reports a Stick's queue evicted when full, the maximum of `status.actions_dropped`.
+   *  Both absent = nothing reported lost (or an older node). */
+  outbox_lost?: number;
+  claims_dropped?: number;
   app_ver?: string | null;
   platform?: string | null;
   log?: LogView | null;
@@ -1145,6 +1150,10 @@ export interface Event {
   game_byte?: number;
   synced?: boolean;
   dropped?: number;
+  /** O6: cumulative facts dropped from the phone's outbox since its storage began; MC keeps the maximum. */
+  dropped_total?: number;
+  /** O10: a Stick's CLAIM reports evicted from a full queue, cumulative since boot (left out while 0). */
+  actions_dropped?: number;
   preflight?: Preflight;
   /** A37/R2-3: WHERE `hp`/`armor` above came from THIS LIFE. `engine.js` fills them from
    *  `config.health` at spawn/revive -- the phone's MODEL of the pool -- and overwrites them with the
@@ -1968,6 +1977,29 @@ export interface SnapshotFeedRow {
   kind: 'kill' | 'sync' | 'info' | 'alert';
 }
 
+/** O7/O8: a repeating failure MC counts instead of logging per occurrence. Absent from the snapshot = healthy. */
+export interface FailureView {
+  /** MC clock ms of the first failure of this streak */
+  since: number;
+  /** failures in this streak */
+  count: number;
+  /** the last error's type and text, cut at 200 characters */
+  error: string;
+}
+
+/** O7: which part of MC's persistence is failing. `store` = facts and log rows (a game result can be lost: RED);
+ *  `snapshot` = the roster / match file a restart restores (AMBER). */
+export interface NotSavingView {
+  store?: FailureView;
+  snapshot?: FailureView;
+}
+
+/** O8: `join_info()` raised, so the join QR has no URL. `ws_url` is the node URL the QR still holds. */
+export interface JoinErrorView {
+  error: string;
+  ws_url: string;
+}
+
 /** One complete Mission Control snapshot (`GET /api/state` and `/ui-ws`). */
 export interface State {
   session_id: string;
@@ -2005,6 +2037,12 @@ export interface State {
   sync?: SyncView;
   options?: SessionOptions;
   versions?: VersionsView;
+  /** O7: absent = everything MC writes is being kept */
+  not_saving?: NotSavingView;
+  /** O8: absent = the match tick runs; armed->live / the timed end do not while present */
+  ticker_failing?: FailureView;
+  /** O8: absent = join_info() worked */
+  join_error?: JoinErrorView;
   start?: StartView | null;
   live?: LiveView | null;
   recap?: RecapView | null;

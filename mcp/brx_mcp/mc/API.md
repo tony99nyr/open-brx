@@ -210,6 +210,10 @@ State {
                                               // a player who walks out of range at the whistle must not be able to hang
                                               // it. Render it as a DELIVERY fact (LIVE notice + STATUS cell, RECAP line),
                                               // never as, or beside, a judgement about how that player played
+  not_saving?: { store?: Failure, snapshot?: Failure },      // O7: absent = everything is being kept. `store` = facts/log rows failing (a game result can be lost: red);
+                                              // `snapshot` = the session file a restart restores (amber). Failure = { since (MC ms), count, error } until the next success.
+  ticker_failing?: Failure,                    // O8: `tick()` is raising; armed->live and the timed end do not happen while present. Logged once, then a count line a minute.
+  join_error?: { error: string, ws_url: string }, // O8: `join_info()` raised; the join QR holds `ws_url` (maybe "")
   orphan_match?: { match_id, phones: number, players: string[], arm_state: "armed"|"live", can_resume: boolean },
                                               // Bench 2026-09-17: ABSENT unless at least one BOUND phone heard in the last
                                               // STALE_AFTER_MS reports armed/live in a match this MC did not schedule,
@@ -248,6 +252,7 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
 NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?, reach?: "lan"|"backhaul" /* A28.3: stamped by MC from the socket's arrival path (loopback / Cf-Connecting-Ip / public peer = backhaul), never from the phone's claim; cleared on disconnect */,
            last_reach?: "lan"|"backhaul" /* F155 (field 2026-09-12): the path this node was last HEARD over. `reach` goes away with the socket; this outlives it, and it is what makes an unreachable row's reason honest */,
            pool_stale?: "silent"|"no_fire"|"write_lost"|"pool_wrong", pool_stale_ms?: number /* F208/A46: the node's current `status.pool_stale` claim (no gun frame for 185 s / three trigger presses with no shot / this life's spawn or revive write lost, pl4 / the gun's pools are not the armed ones after two repairs, F341) and ms since the gun last reported a pool. Absent = not stale, or an older app; each heartbeat restates it */,
+           outbox_lost?: number /* O6: facts the phone's outbox dropped, the MAXIMUM of its cumulative `status.dropped_total`; absent = none reported */, claims_dropped?: number /* O10: a Stick's CLAIM reports evicted from a full queue, the maximum of `status.actions_dropped` */,
            gun_locked?: true /* F272: current positive lock-up verdict; absence, false or junk clears it */,
            transport?: "wifi"|"cellular"|"none"|"unknown" /* F309: the phone's own last `status.transport` claim; absent = never reported */ }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[],

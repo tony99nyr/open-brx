@@ -1030,6 +1030,11 @@ class NodeView(TypedDict):
     ammo: NotRequired[int | None]
     alive: NotRequired[bool | None]
     pending: NotRequired[int | None]
+    # O6: facts the phone's outbox dropped (count/age cap), the MAXIMUM of its cumulative `status.dropped_total`.
+    # O10: CLAIM reports a Stick's queue evicted when full, the maximum of `status.actions_dropped`.
+    # Both absent = nothing reported lost (or an older node).
+    outbox_lost: NotRequired[int]
+    claims_dropped: NotRequired[int]
     app_ver: NotRequired[str | None]
     platform: NotRequired[str | None]
     log: NotRequired[LogView | None]
@@ -1122,6 +1127,10 @@ class Event(TypedDict, total=False):
     game_byte: int
     synced: bool
     dropped: int
+    # O6: cumulative facts dropped from the phone's outbox since its storage began; MC keeps the maximum.
+    dropped_total: int
+    # O10: a Stick's CLAIM reports evicted from a full queue, cumulative since boot (left out while 0).
+    actions_dropped: int
     preflight: Preflight
     # A37/R2-3: WHERE `hp`/`armor` above came from THIS LIFE. `engine.js` fills them from
     # `config.health` at spawn/revive -- the phone's MODEL of the pool -- and overwrites them with the
@@ -1903,6 +1912,26 @@ class SnapshotFeedRow(TypedDict):
     kind: Literal["kill", "sync", "info", "alert"]
 
 
+class FailureView(TypedDict):
+    """O7/O8: a repeating failure MC counts instead of logging per occurrence. Absent from the snapshot = healthy."""
+    since: int     # MC clock ms of the first failure of this streak
+    count: int     # failures in this streak
+    error: str     # the last error's type and text, cut at 200 characters
+
+
+class NotSavingView(TypedDict, total=False):
+    """O7: which part of MC's persistence is failing. `store` = facts and log rows (a game result can be lost: RED);
+    `snapshot` = the roster / match file a restart restores (AMBER)."""
+    store: FailureView
+    snapshot: FailureView
+
+
+class JoinErrorView(TypedDict):
+    """O8: `join_info()` raised, so the join QR has no URL. `ws_url` is the node URL the QR still holds."""
+    error: str
+    ws_url: str
+
+
 class State(TypedDict):
     """One complete Mission Control snapshot (`GET /api/state` and `/ui-ws`)."""
     session_id: str
@@ -1937,6 +1966,9 @@ class State(TypedDict):
     sync: NotRequired[SyncView]
     options: NotRequired[SessionOptions]
     versions: NotRequired[VersionsView]
+    not_saving: NotRequired[NotSavingView]        # O7: absent = everything MC writes is being kept
+    ticker_failing: NotRequired[FailureView]      # O8: absent = the match tick runs; armed->live / the timed end do not while present
+    join_error: NotRequired[JoinErrorView]        # O8: absent = join_info() worked
     start: NotRequired[StartView | None]
     live: NotRequired[LiveView | None]
     recap: NotRequired[RecapView | None]

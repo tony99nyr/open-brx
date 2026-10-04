@@ -40,12 +40,13 @@ from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PH
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
-                    SnapshotFeedRow, SlotRule, State, StationAssignment, StationDeparture, StationRestore, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
+                    SnapshotFeedRow, SlotRule, State, FailureView, NotSavingView, StationAssignment, StationDeparture, StationRestore, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
                     StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
                     StartNodeView, StartView, Stun, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
 
 from . import powerups as _pu
+from .failures import FailureTrack
 
 if TYPE_CHECKING:                      # `pieces.PieceStore`/`favourites.FavouriteStore` are attached by `__main__`/`create_app`
     from .favourites import FavouriteStore
@@ -539,6 +540,12 @@ class Session:
         # T3-A: the boot-time address warning, kept so `_refresh_lan_warning` can put it back if the public
         # path it is suppressed by goes away again.
         self._lan_warning: str | None = self.lan.get("warning")
+        # O7/O8: failures that repeat and used to be log-only. Each is counted, logged once per minute, and
+        # shown on the console (`snapshot()`: `not_saving`, `ticker_failing`) until the next success.
+        self._store_failures = FailureTrack("store.log", self.now_ms)       # a fact or log row that did not reach the store
+        self._snapshot_failures = FailureTrack("session snapshot", self.now_ms)   # the roster / match file that a restart restores
+        self._tick_failures = FailureTrack("match tick", self.now_ms)       # armed->live and the timed end stop while this fails
+        self._join_error: str | None = None                                 # O8: join_info() raised; the QR has no URL
         self.tunnel = None                        # A28.1: attached by __main__ (`attach_tunnel`)
         # F142 (field 2026-09-12): is THIS process a demo? Set by `__main__` when `--demo` seeds the
         # roster, persisted with the snapshot, and compared on restore — a demo roster must never wake
@@ -763,6 +770,20 @@ class Session:
     # ---------- plumbing ----------
     def on_change(self, cb): self._listeners.append(cb)
     def on_feed(self, cb): self._feed_listeners.append(cb)
+    def _notify_listeners(self) -> None:
+        """Tell the console a snapshot field changed, WITHOUT going through `_persist` (it may be the failing part)."""
+        for cb in self._listeners:
+            cb()
+
+    def tick_failed(self, exc: BaseException) -> None:
+        """O8: `tick()` raised. The first failure logs its traceback; a repeat is counted and logged once a minute."""
+        if self._tick_failures.fail(exc, "armed->live and the timed end are not running"):
+            self._notify_listeners()
+
+    def tick_ok(self) -> None:
+        if self._tick_failures.ok():
+            self._notify_listeners()
+
     def _changed(self):
         self._sync_kit_open()          # A10: phase/push flips re-assign the phones (setting-up ⇄ kit editor)
         for cb in self._listeners:
@@ -836,8 +857,12 @@ class Session:
             tmp = self._persist_path.with_suffix(".tmp")
             tmp.write_text(json.dumps(snap))
             tmp.replace(self._persist_path)
-        except Exception:
-            import logging; logging.getLogger("brx.mc").exception("session snapshot failed (play continues)")
+            if self._snapshot_failures.ok():
+                self._notify_listeners()
+        except Exception as e:
+            # O7: counted, logged once per minute, and shown as NOT SAVING (amber: a restart loses the roster).
+            if self._snapshot_failures.fail(e, "play continues"):
+                self._notify_listeners()
 
     def _match_snapshot(self) -> dict | None:
         """The running match, as `resume_match` needs it. Only while ARMED or LIVE with a scorer."""
@@ -1208,8 +1233,12 @@ class Session:
         try:
             mid = body.get("match_id") if isinstance(body, dict) else None
             self.store.log(node_id, kind, seq, body.get("t") if isinstance(body, dict) else None, t_recv, mid, parked, body)
-        except Exception:   # a store error must never lose a fact the node has already pruned
-            import logging; logging.getLogger("brx.mc").exception("store.log failed (fact still scored in memory)")
+            if self._store_failures.ok():
+                self._notify_listeners()
+        except Exception as e:   # a store error must never lose a fact the node has already pruned
+            # O7: counted, logged once per minute, and shown as NOT SAVING (red: a result can be lost).
+            if self._store_failures.fail(e, "the fact is still scored in memory"):
+                self._notify_listeners()
 
     def _gun_index(self):
         self.guns: dict[str, dict] = {}
@@ -1237,8 +1266,14 @@ class Session:
         try:
             ji = n.join_info()
             self.set_ws_url(ji.get("url", ""))
-        except Exception:
-            pass
+            self._join_error = None
+        except Exception as e:
+            # O8: this used to pass in silence and leave the join QR blank. The URL it fell back on is the
+            # last one `set_ws_url` kept (the construction default is ""), so name it.
+            import logging
+            self._join_error = f"{type(e).__name__}: {e}"[:200]
+            logging.getLogger("brx.mc").error("join_info failed (%s); the join QR keeps node URL %r",
+                                              self._join_error, self.lan.get("ws_url", ""), exc_info=True)
 
     # ---------- A28 backhaul: the join QR, the tunnel, derived coverage ----------
     def set_ws_url(self, url: str) -> None:
@@ -4920,6 +4955,13 @@ class Session:
         nv = self._node_view(nid)
         was_alive = nv.get("alive")          # A36: read BEFORE the update -- a life starts on the edge
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending", "config_id") if k in body})
+        # O6/O10: a node's CUMULATIVE loss counters. `dropped` (the old per-beat delta) was overwritten by the
+        # latest beat, so a lost beat lost the count; these keep the MAXIMUM ever reported (a restarted
+        # phone with cleared storage restarts its own count at 0, and must not erase what was already lost).
+        for wire, key in (("dropped_total", "outbox_lost"), ("actions_dropped", "claims_dropped")):
+            v = body.get(wire)
+            if isinstance(v, int) and not isinstance(v, bool) and v > 0 and v > nv.get(key, 0):
+                nv[key] = v
         # F208: the pool-staleness claim is re-stated on EVERY heartbeat, so absent means "not stale" and
         # must clear the last one. Only a known reason is kept, and only a whole non-negative age.
         reason, stale_ms = body.get("pool_stale"), body.get("pool_stale_ms")
@@ -8570,7 +8612,7 @@ class Session:
                     "node_id", "node_type", "arm_state", "synced", "gun_name", "gun_tail", "player_id",
                     "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "pending", "app_ver",
                     "platform", "transport", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure",
-                    "gun_locked") if key in nv
+                    "gun_locked", "outbox_lost", "claims_dropped") if key in nv
             })
             row.setdefault("node_id", "")
             row.setdefault("node_type", "phone")
@@ -8583,6 +8625,8 @@ class Session:
             # all), and none of them agreed with the one MC already computes.
             row["stale"] = bool(nv.get("stale"))
             nodes.append(row)
+        failing = {part: v for part, track in (("store", self._store_failures), ("snapshot", self._snapshot_failures))
+                   if (v := track.view())}
         state: State = {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
@@ -8631,6 +8675,13 @@ class Session:
         orphan = self.orphan_match_view()
         if orphan is not None:
             state["orphan_match"] = orphan
+        # O7/O8: absent = healthy. Each is a streak that ends at the next success.
+        if failing:
+            state["not_saving"] = cast(NotSavingView, failing)
+        if (tick_failing := self._tick_failures.view()) is not None:
+            state["ticker_failing"] = cast(FailureView, tick_failing)
+        if self._join_error:
+            state["join_error"] = {"error": self._join_error, "ws_url": self.lan.get("ws_url", "")}
         # S50 build 4: the SAME resolved perk numbers `FrameBundle.perk_effects` carries, per player,
         # for the console — `Compiler.perk_effects_resolved()` is the one arithmetic both read, so the
         # two can never disagree. Absent players carry no perk; the whole key absent when nobody does.
