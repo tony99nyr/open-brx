@@ -6762,7 +6762,7 @@ export class Engine {
     // drains shield -> armor -> HP (bench 2026-08-27); omitting shield from the total made every shield-absorbed hit
     // compute dmg === 0, which the hit guard (`_hpHitTaken`) then dropped entirely. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
-    const paired = this._hpPaired; this._hpPaired = this._dmgLatch;   // polish r1: this frame pairs the damaging word, if it has not been
+    const paired = this._hpPaired;   // polish r1: the damaging word an earlier `$HP` paired (this frame pairs it below)
     const fillAnswer = this._hpFillCheck(hp, armor, shield, paired);   // F348: the spawn fill's answer, before anything measures the pools
     if (this._selfHitHp(hp, armor, shield)) return;   // F438: our own shot, or the gun's echo of us giving it back
     // Order dependencies left: `_hpLowHealth` sets `h.hurtNow` (read by the re-assert and the hit), `_hpDamageWord` sets
@@ -6771,6 +6771,9 @@ export class Engine {
     h.paired = paired;
     this._hpPoolEffects(h);
     this._hpDotEcho(h);
+    // Polish r2: this frame pairs the damaging word only now, past the self-hit and poison-echo checks. Our own shot's
+    // frame (it returned above) or our poison tick's answer is not the enemy word's `$HP`, so it never consumes it.
+    if (!h.dotEcho) this._hpPaired = this._dmgLatch;
     this._hpShield(h);
     this._hpLowHealth(h);
     this._hpHeadsetReassert(h);

@@ -3888,9 +3888,7 @@ class GunStage:
         if not (self.auto_react and self.spawned):
             self.hp, self.armor, self.shield = hp, armor, shield
             return
-        paired = self._hp_paired_seq
-        if not lcd:   # polish r1 (engine.js `_hpPaired`): this `$HP` pairs the damaging word, if it has not been
-            self._hp_paired_seq = self._dmg_hir[3] if self._dmg_hir is not None else None
+        paired = self._hp_paired_seq   # polish r1 (engine.js `_hpPaired`): the damaging word an earlier `$HP` paired
         fill_answer = not lcd and self._hp_fill_check(hp, armor, shield, paired)   # engine.js `_hpFillCheck`: before anything measures the pools
         if not lcd and self._self_hit_hp(hp, armor, shield):   # F438 (engine.js: an `$LCD` never reaches `_onHp`): our own shot, or the gun's echo of us giving it back
             return
@@ -3915,6 +3913,8 @@ class GunStage:
                                              {"health": hp, "armor": armor, "shield": shield}))
         if dot_echo:
             self._dot_echo = None
+        elif not lcd:   # polish r2 (engine.js): pair the damaging word only past the self-hit and poison-echo checks
+            self._hp_paired_seq = self._dmg_hir[3] if self._dmg_hir is not None else None
         if dmg > 0 and not dot_echo and self._last_hir_at is not None and self.now() - self._last_hir_at <= 1.0:
             self._last_dmg_hit_at = self.now()   # engine.js: `_lastHitFact` is stamped only by a hit that moved a pool
             # A65 (engine.js `hl`): the hit is the damaging word's while it is fresh, else the raw latch's (which may be a

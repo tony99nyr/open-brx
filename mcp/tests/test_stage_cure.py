@@ -885,3 +885,21 @@ def test_a_hit_already_paired_does_not_hide_a_later_out_of_band_zero_like_the_ph
         await _reply_life(st, 0, 0, 0)
         assert "desync" in _deaths(st)[0]["text"]
     asyncio.run(run())
+
+
+def test_a_poison_ticks_own_hp_does_not_pair_an_enemy_word_like_the_phone():
+    """Polish r2 (engine.js `_onHp`): the damaging word is paired only past the self-hit and poison-echo checks. Our
+    poison tick's own `$HP` does not consume an enemy's fresh lethal word, so when the hit's `$HP` is lost, the lethal
+    `$LCD` answering our `$QUERY` is no desync."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await st._ask_magazine("test magazine read"); await settle(st)
+        clock.advance(0.2)
+        st._inject_rx("$HIR,4,0,19,2,200,0,3,*")
+        st._dot_echo = {"at": clock(), "pool": "health", "n": 3}
+        st._inject_rx("$HP,42,70,0,*")
+        st._inject_rx("$LCD,0,0,0,0,29,90,*"); await settle(st)
+        deaths = _deaths(st)
+        assert len(deaths) == 1 and "desync" not in deaths[0]["text"], deaths
+    asyncio.run(run())

@@ -578,3 +578,16 @@ test('polish r1 (M1): a hit already paired by its `$HP` does not hide a later ou
   assert.equal(deaths.length, 1);
   assert.equal(deaths[0].desync, true);
 });
+
+test('polish r2: a poison tick\'s own `$HP` does not pair an enemy\'s fresh word, so a lethal `$LCD` after a lost hit `$HP` is no desync', () => {
+  const h = harness();
+  h.eng._askMagazine('test magazine read');
+  h.adv(200);
+  h.f(KILL_HIR);                                             // the enemy's lethal word; its `$HP` is lost
+  h.eng._dotEcho = { at: h.eng.now(), pool: 'health', n: 3 };   // our poison tick just went out
+  h.f('$HP,42,70,0,*');                                      // the tick's own answer
+  h.f('$LCD,0,0,0,0,29,90,*');                               // the `$QUERY` reply: the gun is dead
+  const deaths = h.facts.filter(f => f.type === 'death');
+  assert.equal(deaths.length, 1, 'setup: one death');
+  assert.equal(!!deaths[0].desync, false, 'the enemy word is still unpaired: a live hit sequence');
+});
