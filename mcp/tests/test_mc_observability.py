@@ -89,3 +89,11 @@ def test_o6_o10_the_node_keeps_the_maximum_cumulative_loss_counts():
     beat(actions_dropped=3)
     beat(actions_dropped=1)
     assert row()["claims_dropped"] == 3
+
+
+def test_o10_a_stick_that_dropped_claims_gets_a_station_attention_line():
+    s, net, clock, ps = mk()
+    net.simulate_status("stick-1", {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "actions_dropped": 3}, clock["t"])
+    assert s.nodes["stick-1"]["claims_dropped"] == 3
+    st = next(v for v in s.stations_view() if v["node_id"] == "stick-1")
+    assert "3 CLAIM REPORTS DROPPED BY THE STICK: CHECK WHO TOOK THE ITEM" in st["attention"]

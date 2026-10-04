@@ -356,6 +356,11 @@ STATION_BRING_BACK = "NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM"
 STATION_ARMED_OLDER = f"ARMED FOR AN OLDER GAME: {STATION_REARM}"
 STATION_NOT_ARMED = f"PHONE SAYS NOT ARMED: {STATION_REARM}"
 STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE"
+
+
+def station_claims_dropped_line(n: int) -> str:
+    """O10: a Stick's full queue evicted CLAIM reports MC will never hear of (`status.actions_dropped`, the maximum kept)."""
+    return f"{n} CLAIM REPORT{'' if n == 1 else 'S'} DROPPED BY THE STICK: CHECK WHO TOOK THE ITEM"
 # F221 battery rule: under 30 % is AMBER for the gun, the phone and the station alike.
 BATTERY_LOW_PCT = 30
 
@@ -4250,6 +4255,8 @@ class Session:
             attention.append(f"PHONE ADVERTISES ID {rep.get('station_id')}, ASSIGNED {a['id']}: {STATION_REARM}")
         if isinstance(rep.get("battery"), (int, float)) and rep["battery"] < BATTERY_LOW_PCT:
             attention.append(STATION_BATTERY_LOW)
+        if (dropped := (self.nodes.get(nid) or {}).get("claims_dropped")):
+            attention.append(station_claims_dropped_line(dropped))   # O10
         report: StationReport = {}
         kind = rep.get("kind")
         if is_station_kind(kind):
