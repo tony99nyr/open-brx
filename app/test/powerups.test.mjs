@@ -1343,6 +1343,26 @@ test('F436 reconcile: an ALT swap in flight at the re-arm is left alone (no forc
   assert.ok(!after.includes(WEAP[2]), `the re-arm does not force $WEAP,2 over the player's ALT: ${JSON.stringify(after.filter(f => f.startsWith('$WEAP')))}`);
 });
 
+// Tony, bench 2026-10-02 (0.4.16): "The little green animation doesn't play for rockets." That animation is the
+// shot-ready cue (hud.js `_shotCue`, index.html `readyshine`): after a round from a weapon with >= 400 ms between
+// rounds the gauge dims, then shines green once when the next round is due. It read only slots 0 and 1, so a held
+// heavy in its pickup slot never had one, whatever its interval (the Rockets' is 1000 ms, `$WEAP` token 14).
+test('bench 2026-10-02: a Rockets round gets the same shot-ready cue as a slow loadout weapon', () => {
+  const h = armed(); h.take(4); h.adv(2000);
+  assert.equal(h.eng.state().activeSlot, 2, 'setup: the Rockets are on the trigger');
+  assert.equal(h.eng.state().shotCooldown, null, 'no round yet: no cue');
+  const at = h.eng.now(); h.fire(2, 1);
+  assert.deepEqual(h.eng.state().shotCooldown, { at, ms: 1000, leftMs: 1000 }, 'the first rocket starts the cue, timed from the gun`s own report');
+  h.adv(1000);
+  assert.equal(h.eng.state().shotCooldown.leftMs, 0, 'and the next rocket is due 1 s later: the HUD shines then');
+});
+
+test('bench 2026-10-02 CONTROL: the cue stays off a pickup slot the player does not hold', () => {
+  const h = armed();
+  h.frame('$ALCD,2,100,2,0,0,*'); h.fire(2, 1);   // a stray round reported from the pickup slot while nothing is held
+  assert.equal(h.eng.state().shotCooldown, null);
+});
+
 test('F436: an equip before the first trigger pull of the life is logged as unconfirmed; one after a pull is not', () => {
   const h = harness(ROCKET_GAME); h.at(121); const logs = []; h.eng.log = m => logs.push(String(m));
   h.take(4);
@@ -1364,6 +1384,22 @@ test('pickup at the stack cap: the player does not claim, so the station keeps t
   assert.equal(h.eng._puClaimable(4, item, h.eng.now()), false, 'at the cap: no claim, no claim_ready');
   h.fire(2, 3); h.adv(3000);
   assert.equal(h.eng._puClaimable(4, item, h.eng.now()), h.eng._puClaimable(4, { ...item, weapon_id: 'nope' }, h.eng.now()), 'one rocket fired: the cap no longer blocks the claim');
+});
+
+// Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". The "<ITEM> AVAILABLE" feed row that lands while I
+// am DOWN is dropped, during and after the respawn (engine.js `_laneWrite`).
+test('down: <ITEM> AVAILABLE while I am down is never drawn, during or after the respawn', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(58); h.die(); h.adv(300);
+  assert.equal(h.eng.state().alive, false, 'setup: down');
+  h.at(60.5);
+  const rows = () => ((h.eng.state().lanes || {}).feed || []).filter(f => f.kind === 'powerup_spawn');
+  assert.deepEqual(rows(), [], 'not drawn while I am down');
+  for (let t = 0; t < 12000 && !h.eng.state().alive; t += 250) h.adv(250);
+  assert.equal(h.eng.state().alive, true, 'setup: back');
+  assert.deepEqual(rows(), [], 'not drawn after the respawn');
+  const g = harness({ stations: [{ id: 4, kind: 'powerup', item: OVERSHIELD }] }); g.at(60.5);
+  assert.equal(((g.eng.state().lanes || {}).feed || []).filter(f => f.kind === 'powerup_spawn').length, 1, 'CONTROL: alive, it is drawn');
 });
 
 // ---- F416 r4: a spawn check open while a heavy is held. F436: before the first pull of the life the gun may ignore the

@@ -59,7 +59,6 @@ TABLE = [
     ("HILL_PRESENCE_S", "engine.js", "HILL_PRESENCE_MS", 1000),
     ("CONTROL_STALE_S", "engine.js", "CONTROL_STALE_MS", 1000),
     ("CONTROL_RECONNECT_S", "engine.js", "CONTROL_RECONNECT_MS", 1000),
-    ("HILL_CONTESTED_MIN_S", "engine.js", "HILL_CONTESTED_MIN_MS", 1000),
     ("HILL_CALLOUT_MIN_S", "engine.js", "HILL_CALLOUT_MIN_MS", 1000),
     ("HILL_TICK_LOSING_S", "engine.js", "HILL_TICK_LOSING_MS", 1000),
     ("RARE_GUARD_S", "engine.js", "RARE_GUARD_MS", 1000),
