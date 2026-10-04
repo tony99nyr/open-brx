@@ -309,7 +309,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores ||
               taskBlocked || (preceding.length && !bypass)) return { lease: null, usedMb, availableMb,
                 requestMb: request.mb, taskCap, requestTasks: request.tasks, taskBlocked,
-                blocker, reason };
+                blocker, reason, liveLeases: leases.length };
           const leaseFile = path.join(dir, `${id}.lease`);
           const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
             tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0,
@@ -329,17 +329,22 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
             log(`waiting for a run on the old machine lock (pid ${admitted.oldPid})`);
             lastOldNotice = Date.now();
           }
+          taskWaitAt = null;   // waiting for another run is not "cannot fit"
           await delay(pollMs);
           continue;
         }
         if (admitted.lease) return admitted.lease;
-        if (admitted.taskBlocked) {
+        // The "cannot fit" timeout counts only while the pool is otherwise EMPTY: a run that waits while other runs
+        // (any checkout, or its own earlier jobs) hold leases is queueing, not stuck (2026-10-04: a run that waited
+        // behind other lanes' gates hit the limit the moment it was admitted).
+        if (admitted.taskBlocked && admitted.liveLeases === 0) {
           taskWaitAt ??= Date.now();
           if (Date.now() - taskWaitAt >= 10 * 60_000)
             throw new Error(`task cap ${admitted.taskCap.max} did not leave room for ${admitted.requestTasks} tasks after reserve ${taskReserve}`);
         } else taskWaitAt = null;
         if (Date.now() - lastNotice >= 30_000) {
-          const behind = admitted.blocker ? ` behind ticket ${admitted.blocker.ticket} (job ${admitted.blocker.job}, pid ${admitted.blocker.pid})` : '';
+          const own = admitted.blocker && admitted.blocker.pid === process.pid;
+          const behind = admitted.blocker ? ` behind ${own ? 'this run\'s own earlier' : ''} ticket ${admitted.blocker.ticket} (job ${admitted.blocker.job}${own ? '' : `, pid ${admitted.blocker.pid}`})` : '';
           log(`waiting${behind}: ${admitted.reason}`);
           lastNotice = Date.now();
         }
