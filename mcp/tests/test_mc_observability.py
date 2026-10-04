@@ -74,13 +74,15 @@ def test_o7_a_snapshot_that_cannot_be_written_is_the_snapshot_part_only(caplog):
     tmp_dir = tempfile.TemporaryDirectory()
     tmp_path = pathlib.Path(tmp_dir.name)
     s, net, clock, ps = mk()
-    s._persist_path = tmp_path / "no-such-dir" / "a" / "session.json"   # tmp.write_text raises
+    blocker = tmp_path / "blocker"                  # a FILE where the snapshot's folder should be: the write cannot
+    blocker.write_text("x")                         # succeed (atomic_write_text creates a missing folder, but not this)
+    s._persist_path = blocker / "session.json"
     s._persist_last = 0.0
     if True:
         s._persist()
     ns = s.snapshot()["not_saving"]
     assert set(ns) == {"snapshot"} and ns["snapshot"]["count"] == 1
-    s._persist_path.parent.mkdir(parents=True); s._persist_last = 0.0
+    blocker.unlink(); blocker.mkdir(); s._persist_last = 0.0
     s._persist()
     assert "not_saving" not in s.snapshot()
 

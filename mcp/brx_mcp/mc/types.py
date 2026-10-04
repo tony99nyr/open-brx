@@ -1987,6 +1987,17 @@ class RestoredFromView(TypedDict):
     players: int
 
 
+class RestoreFailedView(TypedDict):
+    reason: str
+    kept: str | None
+
+
+class ArmoryCorruptView(TypedDict):
+    kept: str | None
+    error: str
+    unreadable: NotRequired[bool]   # true: armory.json could not be read at all (transient; the next good read clears it)
+
+
 class SnapshotFeedRow(TypedDict):
     t_match_s: int
     text: str
@@ -2047,6 +2058,8 @@ class State(TypedDict):
     game_pick: NotRequired[GamePick]   # F411: absent = a server that predates PLAY/BUILD
     last_match: NotRequired[LastMatch]   # F411: absent until a match has been played
     restored_from: NotRequired[RestoredFromView]
+    restore_failed: NotRequired[RestoreFailedView]   # O1: session.json could not be restored; kept aside
+    armory_corrupt: NotRequired[ArmoryCorruptView]   # O2: armory.json is corrupt (left in place, backup copy at `kept`); the armory shown is NOT the full one. STICKY: ABSENT only until the operator dismisses it (POST /api/armory/corrupt/dismiss)
     game: NotRequired[GameAnnouncementView]
     sync: NotRequired[SyncView]
     options: NotRequired[SessionOptions]

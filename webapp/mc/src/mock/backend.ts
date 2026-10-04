@@ -339,6 +339,12 @@ export class MockBackend implements Api {
     if (Object.entries(this.stations).some(([n, s]) => n !== d.node_id && s.assigned?.id === d.id)) return false;
     return !Object.entries(this.stationIdOf).some(([n, i]) => n !== d.node_id && i === d.id);
   }
+  /** O2: `POST /api/armory/corrupt/dismiss`. */
+  async dismissArmoryCorrupt(): Promise<{ ok: boolean; dismissed: boolean }> {
+    const dismissed = this.demoArmoryCorrupt;
+    this.demoArmoryCorrupt = false; this.emit();
+    return { ok: true, dismissed };
+  }
   /** polish r1 M2(b): `DELETE /api/stations/{node_id}/departure`. */
   async dismissDeparture(node_id: string): Promise<{ ok: boolean }> {
     if (!this.departures[node_id]) throw Object.assign(new Error('NO DEPARTED STATION BY THAT ID: REFRESH ITEMS'), { status: 404 });
@@ -544,6 +550,7 @@ export class MockBackend implements Api {
    *  advertised address is already correct, so the CommandBar's reachability banner must be visible
    *  without a real WSL host to boot MC on. Wording mirrors `netinfo.WSL_UNREACHABLE_WARNING` server-side
    *  (kept in sync by hand -- there is no shared string across the Python/TS boundary). */
+  private demoArmoryCorrupt = typeof location !== 'undefined' && new URLSearchParams(location.search).get('armorycorrupt') === '1';
   private demoLanWarning = typeof location !== 'undefined' && new URLSearchParams(location.search).get('lanwarn') === '1';
   /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
    *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
@@ -932,6 +939,8 @@ export class MockBackend implements Api {
         warning: this.demoLanWarning ? WSL_UNREACHABLE_WARNING : null,
       },
       ...(this.restoredFrom ? { restored_from: this.restoredFrom } : {}),
+      // `?mock&armorycorrupt=1` demos the O2 warning.
+      ...(this.demoArmoryCorrupt ? { armory_corrupt: { kept: '/home/op/.brx-mcp/armory.json.bad-20261004T010203', error: 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)' } } : {}),
       coverage: this.coverage(nodes),
       // The demo keeps one off-grid node in the confidence sample so the same MC-gating view is
       // available in ?mock as in the advanced presentation panel.
