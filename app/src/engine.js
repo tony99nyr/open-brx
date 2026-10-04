@@ -6312,6 +6312,36 @@ export class Engine {
     return true;
   }
 
+  /** `_onHp` step: the pool bookkeeping. Reads the pools held before this frame, works out which pool moved and by how
+   *  much, and writes the reported pools. Pure apart from those writes (and the first-frame seed of `_prevHp`). Returns
+   *  the frame's context, the one object every later step reads and fills in:
+   *    hp, armor, shield, solicited   the frame as reported
+   *    before, pools0                 the total and the pools held before this frame
+   *    movedPool                      'health', 'armor', 'shield' or null (read by the paint)
+   *    dmg                            the pool total lost, never negative
+   *    dotEcho, hurtNow               filled in by `_hpDotEcho` and `_hpLowHealth`
+   *    dl, hl, hitWeapon              filled in by `_hpDamageWord` and `_hpHitTaken` */
+  _hpTakePools(hp, armor, shield, solicited) {
+    const before = this.hp + this.armor + this.shield;
+    const pools0 = { health: this.hp, armor: this.armor, shield: this.shield };   // S16: what `dmg` measures from, read by the echo match
+    if (this._prevHp === undefined) { this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; }
+    // A16 §3.1/§5: which pool actually moved -- health, then armour, then shield (mirrors poolgauge.changed_pool:
+    // BRX depletes shield -> armour -> health, so when a hit spills across two pools the INNER one is the
+    // news). Computed here, BEFORE `_prevHp` etc are overwritten by `_hpSettle`, and read by `_gunPoolPaint`.
+    const movedPool = hp !== this._prevHp ? 'health' : armor !== this._prevArmor ? 'armor' : shield !== this._prevShield ? 'shield' : null;
+    this.hp = hp; this.armor = armor; this.shield = shield;
+    const dmg = Math.max(0, before - (hp + armor + shield));
+    return { hp, armor, shield, solicited, before, pools0, movedPool, dmg, dotEcho: false, hurtNow: false, dl: null, hl: null, hitWeapon: null };
+  }
+
+  /** `_onHp` step: what the new pools set off at once, in this order: the deferred poison cue, the overshield's end, and
+   *  the action count a hit moves. */
+  _hpPoolEffects(h) {
+    if (h.hp > 0) this._poisonCue();   // polish 2026-10-03: the hit that poisoned us did not kill, so say it now
+    this.pu.onShieldFrame(h.shield);   // A56: the overshield ends when the shield is back to where it started
+    if (h.dmg > 0) this._actSeq++;   // pl4: nor past a hit
+  }
+
   _onHp(hp, armor, shield, solicited = false) {
     this.pu.onHp();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
@@ -6321,18 +6351,9 @@ export class Engine {
     // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
     if (this._selfHitHp(hp, armor, shield)) return;   // F438: our own shot, or the gun's echo of us giving it back
-    const before = this.hp + this.armor + this.shield;
-    const pools0 = { health: this.hp, armor: this.armor, shield: this.shield };   // S16: what `dmg` measures from, read by the echo match
-    if (this._prevHp === undefined) { this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; }
-    // A16 §3.1/§5: which pool actually moved -- health, then armour, then shield (mirrors poolgauge.changed_pool:
-    // BRX depletes shield -> armour -> health, so when a hit spills across two pools the INNER one is the
-    // news). Computed here, BEFORE `_prevHp` etc are overwritten below, and read by `_gunPoolPaint`.
-    const movedPool = hp !== this._prevHp ? 'health' : armor !== this._prevArmor ? 'armor' : shield !== this._prevShield ? 'shield' : null;
-    this.hp = hp; this.armor = armor; this.shield = shield;
-    if (hp > 0) this._poisonCue();   // polish 2026-10-03: the hit that poisoned us did not kill, so say it now
-    this.pu.onShieldFrame(shield);   // A56: the overshield ends when the shield is back to where it started
-    const dmg = Math.max(0, before - (hp + armor + shield));
-    if (dmg > 0) this._actSeq++;   // pl4: nor past a hit
+    const h = this._hpTakePools(hp, armor, shield, solicited);
+    this._hpPoolEffects(h);
+    const { before, pools0, movedPool, dmg } = h;
     // S16: the `$HP` that answers our own poison tick is the TICK, not a hit -- no `hit_taken` fact (MC would score a
     // hit nobody fired), no pain grunt, no hit flash. It is the tick's echo when it lands inside DOT_ECHO_MS of the
     // write AND the tick's pool is the only pool that moved, by exactly the tick. A negative floors at 0, so the tick

@@ -2202,6 +2202,9 @@ KNOWN_UNMIRRORED = {
     "openBriefing", "closeBriefing", "historyEntry", "nameOf", "teamOf",
     # lifecycle the stage drives by hand from its own clock
     "startAt", "tick", "_spawn", "_revive", "_death", "_endLocal", "_triggerPulled", "_onHp",
+    # Engine split (c), 2026-10-04: `_onHp`'s steps. No rule moved: GunStage still models them in one body, `_on_pools`
+    # (its pools, poison echo, shield, low-health alert, hit and moments) plus `_hurt_debounced` (the low-health line).
+    "_hpTakePools", "_hpPoolEffects",
     "armState", "respawnHint", "heldMs", "reloadingMs", "switchingMs", "switchWindowMs", "_accrueHold",
     # LED readout internals: the stage models the READOUT, not each paint step
     "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
