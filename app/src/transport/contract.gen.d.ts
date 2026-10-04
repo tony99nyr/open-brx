@@ -174,6 +174,7 @@ export type PieceKind = 'mode' | 'life' | 'spawn' | 'primary' | 'secondary' | 'p
 /** F413: the four native $TID teams (0-3) */
 export type TeamColour = 'red' | 'blue' | 'yellow' | 'purple';
 export type MatchItemKey = 'time' | 'kills' | 'countdown' | 'daynight' | 'silenced' | 'teams' | 'hold';
+export type StationDepartureReason = 'back_to_hud' | 'released';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
@@ -1488,6 +1489,46 @@ export interface StationView {
   range_edits?: RangeEdit[];
 }
 
+/** Bench 2026-10-02: the `PUT /api/stations/{node_id}` body that re-applies a departed station's assignment.
+ *  No `id`: `_auto_station_id` hands the node its old number back when that number is still free. */
+export interface StationRestore {
+  kind: StationKind;
+  team: number;
+  threshold: number;
+  tx_power?: TxPower;
+  item_preset?: string;
+  charges?: number;
+  amount?: number;
+  spawn_every_s?: number;
+}
+
+/** Bench 2026-10-02 (option B): an ASSIGNED station that left ITEMS, by its own BACK TO HUD (F184 handoff) or by
+ *  an MC RELEASE. Kept for the session (it survives NEXT MATCH and an MC restart; a FRESH SESSION drops it) until
+ *  that node is assigned again. `returned` = the same utility node_id said hello since (never before an MC restart);
+ *  only then does ITEMS offer RESTORE, which sends `restore` through the normal station PUT. `line` is MC's own words
+ *  for it (the LOAD refusal names it the same way); `at_ms` is MC's clock. */
+export interface StationDeparture {
+  node_id: string;
+  kind: StationKind;
+  id: number;
+  team: number;
+  threshold: number;
+  tx_power?: TxPower;
+  item?: StationItem;
+  /** polish r1 M3: "NOW <PLAYER>'S HUD" once its HUD is bound, else the device and id head */
+  label: string;
+  platform?: string;
+  /** the HUD node_id the phone became (BACK TO HUD) */
+  successor?: string;
+  /** polish r1 L1: RESTORE would get `id` back (no station holds it, not handed on) */
+  id_free: boolean;
+  reason: StationDepartureReason;
+  at_ms: number;
+  returned: boolean;
+  restore: StationRestore;
+  line: string;
+}
+
 /** One assigned utility station's self-authoritative recap heartbeat. */
 export interface RecapStationRow {
   node_id: string;
@@ -1948,6 +1989,8 @@ export interface State {
    *  optional on the client so rolling a new console back to an older server remains safe. */
   coverage?: Coverage;
   stations?: StationView[];
+  /** bench 2026-10-02: absent on an older MC */
+  station_departures?: StationDeparture[];
   game_byte?: number;
   /** X10: the old name for `game_byte` (the same wrapped byte, not a match count). Kept for an older console. */
   game_no?: number;

@@ -7,7 +7,7 @@
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
 import { useEffect, useState } from 'react';
-import type { PowerupPreset, StationItem, StationKind, StationView, TxPower } from '../api/types';
+import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { PHONE_CONTROL_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
 import { useStore } from '../store';
@@ -48,8 +48,10 @@ const TX_POWER_LABEL: Record<TxPower, string> = { ultra_low: 'ULTRA LOW', low: '
 const TX_POWER_OPTIONS = (Object.keys(TX_POWER_LABEL) as TxPower[]).map(v => ({ value: v, label: TX_POWER_LABEL[v] }));
 
 export function Items() {
-  const { state, focusHill } = useStore();
+  const { state, focusHill, run, api } = useStore();
   const stations = state?.stations ?? [];
+  // Bench 2026-10-02: assigned stations that left ITEMS (BACK TO HUD, RELEASE). Absent on an older MC.
+  const departures = state?.station_departures ?? [];
   const pu = usePowerups();   // A56
   // F411 §8: PLAY's ASSIGN A HILL ▸ lands here. Scroll the panel into view and call out the slot in
   // words (no station is pre-destined as "the hill" — the operator assigns one, any phone or Stick, to
@@ -64,7 +66,24 @@ export function Items() {
     document.querySelector('[data-testid="items-panel"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [focusHill, stations.length]);
   if (!state) return null;
-  if (!stations.length && !focusHill) return null;
+  if (!stations.length && !focusHill && !departures.length) return null;
+  // A departed node with no card yet (still a HUD, or not heard since) is named above the cards; one that is back
+  // carries its line, and RESTORE, on its own card.
+  const away = departures.filter(d => !stations.some(s => s.node_id === d.node_id));
+  const awayBlock = away.length > 0 && (
+    <div data-testid="items-departures" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+      {away.map(d => (
+        <div key={d.node_id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Alert id="items-station-departed" testid="station-departure">{d.line}</Alert>
+          {/* polish r1 M2(b): a phone that stays a player would otherwise leave this line up every match */}
+          <span data-testid="station-departure-dismiss">
+            <GhostButton size={11} pad="6px 12px" onClick={async () => { await run(() => api.dismissDeparture(d.node_id)); }}
+              title="forget this station: it is not coming back as it was">DISMISS</GhostButton>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
   // QA-18: repeated here so it is still on screen once the scroll above has moved Armory's own header
   // button (`armory-back-to-play`) off the top of the viewport.
   const backToPlay = focusHill && <ContinueToPlay testid="items-back-to-play" />;
@@ -73,11 +92,12 @@ export function Items() {
     // below -- render the instruction on its own rather than returning null with nothing to act on.
     return (
       <div style={{ marginTop: 20 }} data-testid="items-panel">
-        <div data-testid="items-hill-focus" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 10, font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
+        {awayBlock}
+        {focusHill && <div data-testid="items-hill-focus" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 10, font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
           color: T.acc, border: `1px solid ${T.acc}`, background: 'rgba(57,180,255,.08)', padding: '9px 12px' }}>
           <span>NO STATION HAS SAID HELLO YET. ON A PHONE, HOLD THE SEVEN-TAP GESTURE ON THE IDLE HUD TO SWITCH IT TO A UTILITY STATION, OR POWER ON A STICKS3. IT THEN APPEARS HERE TO ASSIGN AS CONTROL.</span>
           {backToPlay}
-        </div>
+        </div>}
       </div>
     );
   }
@@ -97,6 +117,7 @@ export function Items() {
       )}
       <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
         hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: colourOf('items-need-attention-count') }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? state.game_no ?? '—'} · ASSIGN, THEN PLACE: A STATION NEEDS NO WI-FI ONCE ARMED</>} />
+      {awayBlock}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
         {/* keyed on the node and the assignment ONLY. The phone's `report` (kind/team/id/threshold/…) is
             deliberately NOT in the key: it starts empty and fills in on the first heartbeat (~2s after
@@ -104,7 +125,8 @@ export function Items() {
             the operator's draft and `busy` (F104 follow-up). So an unassigned card mounted at hello keeps
             the default draft even after the report fills in: PHONE SAYS shows the phone's own state on the
             same card, and the operator has to assign anyway. */}
-        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu} stations={stations} />)}
+        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu} stations={stations}
+          departure={departures.find(d => d.node_id === s.node_id)} />)}
       </div>
     </div>
   );
@@ -128,7 +150,7 @@ export function lowestFreeId(stations: StationView[], node_id: string): number {
   return n;
 }
 
-function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; stations: StationView[] }) {
+function StationCard({ s, pu, stations, departure }: { s: StationView; pu: PowerupsState; stations: StationView[]; departure?: StationDeparture }) {
   const { state, run, api, serverNow } = useStore();
   const teams = state?.teams ?? [];
   const a = s.assigned;
@@ -256,6 +278,17 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
       else await run(keep(() => api.armStations()));
     } finally { setBusy(false); }
   };
+  // Bench 2026-10-02: RESTORE re-applies the assignment this node held before it left, through the normal PUT and
+  // its validation. Offered only once the SAME node is back (`returned`) and reachable; never automatic. A refusal
+  // lands on this card like any other apply.
+  const canRestore = !!departure && departure.returned && !a && s.online;
+  const restore = async () => {
+    if (!departure) return;
+    setBusy(true); setApplyErr(null);
+    try {
+      await run(async () => { try { return await api.putStation(s.node_id, departure.restore); } catch (e) { setApplyErr((e as Error).message); throw e; } });
+    } finally { setBusy(false); }
+  };
   const rep = s.report;
   const age = s.last_seen_ms;
   const teamOptions = [...teams.map(t => ({ value: String(t.tid), label: t.name.toUpperCase().replace(/ TEAM$/, '') })), { value: '255', label: 'ANY' }];
@@ -313,6 +346,21 @@ function StationCard({ s, pu, stations }: { s: StationView; pu: PowerupsState; s
           <Alert id="items-setup-conflict" variant="row" testid="station-setup-conflict">{conflictWords(setupConflict)}</Alert>
         )}
       </div>
+      {departure && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Alert id="items-station-departed" testid="station-departure">{departure.line}</Alert>
+          {canRestore && (
+            <span data-testid="station-restore">
+              <GhostButton disabled={busy} onClick={restore} color={T.ink} border={T.acc}
+                title={departure.id_free ? 'assign this station exactly as it was before it left: the same kind, team, item and range, and its old id'
+                  : 'assign this station as it was before it left: the same kind, team, item and range. Its old id is taken now, so MC gives it a new one'}>
+                {/* polish r1 L1: the number only while RESTORE would really get it back */}
+                RESTORE ▸ {departure.kind === 'control' ? 'HILL' : KIND_SHORT[departure.kind]}{departure.id_free ? ` ${departure.id}` : ''}
+              </GhostButton>
+            </span>
+          )}
+        </div>
+      )}
       {s.attention.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="station-attention">
           {s.attention.map(t => (

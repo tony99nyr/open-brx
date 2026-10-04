@@ -2,7 +2,7 @@
 import type {
   Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, Favourite, GameConfig, GamePick, GamePiece, LanPublic, LastMatch, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView,
   MatchHistoryRow, MatchSettings, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, PieceKind, Player,
-  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationItem, StationKind, StationSourceId,
+  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationDeparture, StationItem, StationKind, StationSourceId,
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
@@ -293,8 +293,69 @@ export class MockBackend implements Api {
     const used = new Set(Object.entries(this.stations).flatMap(([n, s]) => n !== node_id && s.assigned ? [s.assigned.id] : []));
     for (const c of [this.stations[node_id]?.assigned?.id, this.stationIdOf[node_id]]) if (c != null && !used.has(c)) return c;
     for (const [n, i] of Object.entries(this.stationIdOf)) if (n !== node_id) used.add(i);
+    // bench 2026-10-02: a departed station gets its old number back when nobody holds it and it was not handed on
+    const gone = this.departures[node_id]?.id;
+    if (gone != null && !used.has(gone)) return gone;
     let id = 1; while (used.has(id)) id += 1;
     return id;
+  }
+  /** Bench 2026-10-02 (option B), as state.py `_station_departures`: an ASSIGNED station that left ITEMS (its own
+   *  BACK TO HUD, or an accepted RELEASE). `line` is derived on every view, as `_departure_line`. */
+  private departures: Record<string, Omit<StationDeparture, 'line' | 'label' | 'id_free'>> = {};
+  private recordDeparture(node_id: string, reason: StationDeparture['reason'], successor?: string) {
+    const a = this.stations[node_id]?.assigned;
+    if (!a) {
+      // polish r1 M1: back, then gone again before anyone assigned it -- not back any more
+      const old = this.departures[node_id];
+      // polish r2: a genuine second departure (it had come back) restamps when and how it left; the HUD hello after a
+      // RELEASE (never back in between) does not overwrite the release (state.py `_record_departure`)
+      if (old) { if (old.returned) { old.reason = reason; old.at_ms = now(); } old.returned = false; if (successor) old.successor = successor; }
+      return;
+    }
+    const restore: StationDeparture['restore'] = { kind: a.kind, team: a.team, threshold: a.threshold, ...(a.tx_power ? { tx_power: a.tx_power } : {}) };
+    const it = a.item;
+    const preset = it ? POWERUP_PRESETS.find(p => p.item.kind === it.kind && (p.item.weapon_id ?? null) === (it.weapon_id ?? null))?.preset : undefined;
+    if (it && preset) {
+      restore.item_preset = preset; restore.spawn_every_s = it.spawn_every_s;
+      if (it.kind === 'weapon' && it.charges != null) restore.charges = it.charges;
+      if (it.kind === 'overshield' && it.amount != null) restore.amount = it.amount;
+    }
+    // the mock's stations report no platform, so every one is a PHONE (state.py `_device_label`)
+    this.departures[node_id] = { node_id, kind: a.kind, id: a.id, team: a.team, threshold: a.threshold,
+      ...(a.tx_power ? { tx_power: a.tx_power } : {}), ...(it ? { item: clone(it) } : {}),
+      ...(successor ? { successor } : {}), reason, at_ms: now(), returned: false, restore };
+  }
+  /** polish r1 M3, as state.py `_departure_label`: the player whose HUD the phone became, else what the card shows. */
+  private departureLabel(d: Omit<StationDeparture, 'line' | 'label' | 'id_free'>): string {
+    const p = d.successor ? this.players.find(x => x.node_id === d.successor) : undefined;
+    if (p) return `NOW ${p.display.toUpperCase()}'S HUD`;
+    return `${d.platform === 'esp32' ? 'STICKS3' : 'PHONE'} ${d.node_id.slice(0, 12)}`;
+  }
+  /** polish r1 L1, as state.py `_departure_id_free`. */
+  private departureIdFree(d: { node_id: string; id: number }): boolean {
+    if (Object.entries(this.stations).some(([n, s]) => n !== d.node_id && s.assigned?.id === d.id)) return false;
+    return !Object.entries(this.stationIdOf).some(([n, i]) => n !== d.node_id && i === d.id);
+  }
+  /** polish r1 M2(b): `DELETE /api/stations/{node_id}/departure`. */
+  async dismissDeparture(node_id: string): Promise<{ ok: boolean }> {
+    if (!this.departures[node_id]) throw Object.assign(new Error('NO DEPARTED STATION BY THAT ID: REFRESH ITEMS'), { status: 404 });
+    delete this.departures[node_id]; this.emit();
+    return { ok: true };
+  }
+  private departureLine(d: Omit<StationDeparture, 'line' | 'label' | 'id_free'>): string {
+    const stick = d.platform === 'esp32';
+    const what = d.reason === 'back_to_hud' ? 'WENT BACK TO HUD' : stick ? 'WAS RELEASED' : 'WAS RELEASED TO ITS HUD';
+    const t = new Date(d.at_ms), at = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+    const online = d.returned && !this.stations[d.node_id]?.offline;
+    const act = online ? 'IT IS BACK, SO TAP RESTORE ON ITS ITEMS CARD TO ASSIGN IT AGAIN'
+      : d.returned ? 'IT IS BACK BUT OUT OF WI-FI: BRING IT BACK INTO WI-FI, THEN TAP RESTORE ON ITS ITEMS CARD'
+      : stick ? 'BRING IT BACK INTO WI-FI, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN'
+      : 'SWITCH IT BACK TO UTILITY, THEN TAP RESTORE IN THE ARMORY TO ASSIGN IT AGAIN';
+    const name: Record<StationKind, string> = { control: 'HILL', respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB' };
+    return `${name[d.kind] ?? d.kind.toUpperCase()} ${d.id} (${this.departureLabel(d)}) ${what} AT ${at}: ${act}`;
+  }
+  private departureViews(): StationDeparture[] {
+    return Object.values(this.departures).sort((x, y) => x.at_ms - y.at_ms).map(d => ({ ...clone(d), label: this.departureLabel(d), id_free: this.departureIdFree(d), line: this.departureLine(d) }));
   }
   async putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number; item_preset?: string; tx_power?: TxPower;
     charges?: number; amount?: number; spawn_every_s?: number }): Promise<StationView> {
@@ -364,6 +425,9 @@ export class MockBackend implements Api {
     if (!Number.isInteger(threshold) || (threshold !== 0 && (threshold < -100 || threshold > -30))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");
     const st = this.stations[node_id] ?? (this.stations[node_id] = { assigned: null, armed: null, arm_pending: false, report: {}, seen: now() });
     this.stationIdOf[node_id] = id;
+    delete this.departures[node_id];   // bench 2026-10-02: assigned again (RESTORE or anew)
+    // polish r1 M2(a): KOTH has one hill, so a new hill answers every hill that left
+    if (a.kind === 'control') for (const [n, d] of Object.entries(this.departures)) if (d.kind === 'control') delete this.departures[n];
     st.assigned = { kind: a.kind, team, id, threshold, at: now(), ...(item ? { item } : {}), ...(a.tx_power ? { tx_power: a.tx_power } : {}) };
     st.takenAt = undefined; st.takenBy = undefined; st.resetAt = undefined;
     for (const n of Object.keys(this.stations)) this.armStation(n);
@@ -385,13 +449,26 @@ export class MockBackend implements Api {
   async releaseStation(node_id: string): Promise<{ ok: boolean }> {
     const st = this.stations[node_id]; if (!st) throw Object.assign(new Error('no such station'), { status: 404 });
     if (st.offline) return { ok: false };
+    this.recordDeparture(node_id, 'released');   // bench 2026-10-02: before the assignment goes
     st.assigned = null; st.armed = null; st.arm_pending = false;
     for (const n of Object.keys(this.stations)) this.armStation(n);
     this.emit();
     return { ok: true };
   }
   /** Test/demo stand-in for NetServer's authenticated `prior_utility` handoff on the first HUD hello. */
-  confirmStationHud(node_id: string) { delete this.stations[node_id]; this.emit(); }
+  confirmStationHud(node_id: string, successor?: string) {
+    this.recordDeparture(node_id, 'back_to_hud', successor);   // bench 2026-10-02: a no-op after a RELEASE (already unassigned)
+    delete this.stations[node_id]; delete this.stationIdOf[node_id];   // F364: a station that became a HUD frees its number
+    this.emit();
+  }
+  /** Test/demo stand-in for a utility hello (`state.py _on_node`'s utility branch): the node is back as an
+   *  UNASSIGNED station, and a departure of the same node is offered for RESTORE. Never restored on its own. */
+  utilityHello(node_id: string) {
+    this.stations[node_id] ??= { assigned: null, armed: null, arm_pending: false, report: {}, seen: now() };
+    this.stations[node_id].seen = now(); this.stations[node_id].offline = false;
+    const gone = this.departures[node_id]; if (gone) gone.returned = true;
+    this.emit();
+  }
   private pushed = false;
   // LOAD (2026-09-13): the GAME has been announced to the phones. Deliberately SEPARATE from
   // `pushed`, which means "the guns have a head" -- Tony: "weapons have to go with the arm". The
@@ -840,7 +917,7 @@ export class MockBackend implements Api {
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
       nodes, readiness, config: clone(this.config), config_errors: [...this.cfgErrors],
-      stations: this.stationViews(), game_byte: this.gameNo, game_no: this.gameNo,
+      stations: this.stationViews(), station_departures: this.departureViews(), game_byte: this.gameNo, game_no: this.gameNo,
       config_warnings: [
         ...(SETUP_WARNING[this.config.station_source ?? ''] ? [SETUP_WARNING[this.config.station_source ?? '']] : []),
         // mirrors Session._station_warnings(): a station-gated rule with nothing assigned in ITEMS.
@@ -1960,6 +2037,9 @@ export class MockBackend implements Api {
       return 'KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY';
     }
     if (Object.values(this.stations).some(s => s.assigned?.kind === 'control')) return null;
+    // bench 2026-10-02: a hill that left is named, as state.py `_koth_hill_fault`
+    const gone = this.departureViews().filter(d => d.kind === 'control').map(d => d.line);
+    if (gone.length) return `KING OF THE HILL NEEDS A HILL: ${gone.join('; ')}`;
     return 'KING OF THE HILL NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY';
   }
 
@@ -2208,7 +2288,7 @@ export class MockBackend implements Api {
     this.gameLoaded = false; this.gameSent = {};
     this.session_id = uid('sess');
     this.restoredFrom = null;   // F142: NEW SESSION, CLEAR ROSTER is the acknowledgment — a restored banner never lingers
-    if (!keep_roster) this.players = []; else for (const p of this.players) p.ready = false;
+    if (!keep_roster) { this.players = []; this.departures = {}; } else for (const p of this.players) p.ready = false;   // NEXT MATCH keeps departures
     this.emit(); return this.state();
   }
   /** "Report a problem" — mirrors `POST /api/report` (mcp/brx_mcp/mc/api.py, Lane A) closely enough
