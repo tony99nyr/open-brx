@@ -29,12 +29,12 @@ from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
 from .stations import StationRegistry, BATTERY_LOW_PCT
 # STATION_* re-exports remain for tests that import them from state.py.
-from .stations import STATION_BRING_BACK, STATION_ARMED_OLDER, STATION_NOT_ARMED, STATION_BATTERY_LOW
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
+from .types import (CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
+    STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
@@ -318,13 +318,7 @@ KIT_LOCKED = "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE"
 # `all_acked()` was true and the whistle blew on a gun that had just said it is carrying something
 # else. The pool fault is deliberately not a START gate: it can only be earned
 # in LIVE, by which time this game's whistle has already gone.
-_STALE_ACK_FAULT = "ACKED AN OLDER CONFIG"
-# Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off).
-GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON"
-_ECHO_FAULT = "GUN ECHO ≠ CONFIG"
-_POOL_FAULT = "GUN POOL ≠ CONFIG"
-_GUN_CONFIG_FAULT = "GUN CONFIG ≠ PUSHED HEAD"
-PUSH_CURES = (_STALE_ACK_FAULT, _ECHO_FAULT, _POOL_FAULT, _GUN_CONFIG_FAULT)
+PUSH_CURES = (STALE_ACK_FAULT, ECHO_FAULT, POOL_FAULT, GUN_CONFIG_FAULT)
 
 # R2-4/R2-6: the same question asked where the pool can only SUGGEST an answer. Both are AMBER --
 # they ride in `ReadinessRow.ambers`, they gate nothing, and their instruction is the same one the
@@ -343,7 +337,6 @@ def cured_by_push(blocker: str) -> bool:
 # line's head (`webapp/mc/src/alerts/server.ts` SERVER_LINES). So a line never says "BLOCKS START" or
 # "DOES NOT BLOCK": the list and the colour already say it. `test_mc_alert_wording.py` pins the rule.
 WAITING_FOR_PHONE = "WAITING FOR THE PHONE: OPEN THE APP AND SET THE GUN"
-GUN_LINK_LOST = "GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT"
 CLOCK_NOT_SYNCED = "CLOCK NOT SYNCED: WAIT FOR THE PHONE TO SYNC"
 WRONG_WIFI = "WRONG WI-FI OR MC UNREACHABLE: JOIN THE PHONE TO THE FIELD WI-FI"
 TUNNEL_DOWN_ACT = "TUNNEL DOWN: TURN THE TUNNEL ON IN REACH"
@@ -3812,7 +3805,7 @@ class Session:
             # amendment is about, and the cure -- a re-push, which A37 also stopped this row from
             # blocking -- replaces the head and clears it.
             self._pool_ambers.pop(pid, None)
-            self._pool_faults[pid] = (f"{_POOL_FAULT} (REPORTS {got[0]}/{got[1]}, THIS CONFIG GRANTS "
+            self._pool_faults[pid] = (f"{POOL_FAULT} (REPORTS {got[0]}/{got[1]}, THIS CONFIG GRANTS "
                                       f"{want[0]}/{want[1]}, HP/ARMOR, LIKELY AN OLDER HEAD): {tail}")
             who = (self.players[pid].get("display") or pid).upper()
             self._on_feed({"t_match_s": max(0, (t_recv - self.scorer.go_live_t) // 1000) if self.scorer else 0,
@@ -5519,7 +5512,7 @@ class Session:
             # Every one of them compares against the head MC ACTUALLY PUSHED
             # (`self.bundles[pid]["head"]`), never a fresh re-derivation of it.
             if self.lobby_pushed and (older := self._stale_ack_id(p["player_id"])):
-                blockers.append(f"{_STALE_ACK_FAULT} ({older}): RE-PUSH")
+                blockers.append(f"{STALE_ACK_FAULT} ({older}): RE-PUSH")
             if self.lobby_pushed and (echo := self._echo_fault(p["player_id"])):
                 blockers.append(echo)
             if self.lobby_pushed and (readback := self._gun_config_fault(p["player_id"])):
@@ -6113,7 +6106,7 @@ class Session:
         got = _frames.alcd_ammo(ack.get("gun_echo"))
         want = _frames.head_spawn_ammo((self.bundles.get(pid) or {}).get("head"))
         assert got is not None and want is not None      # `_echo_state` only says "mismatch" for these
-        return (f"{_ECHO_FAULT} (WEAPON {got[0]}/{got[1]} ECHOED, {want[0]}/{want[1]} "
+        return (f"{ECHO_FAULT} (WEAPON {got[0]}/{got[1]} ECHOED, {want[0]}/{want[1]} "
                 f"EXPECTED, MAG/RESERVE): RE-PUSH")
 
     def _echo_state(self, pid: str) -> Literal["proven", "mismatch", "not_echoed"] | None:
@@ -6156,7 +6149,7 @@ class Session:
                        if got.get(key) != want[key]]
         if not differences:
             return None
-        return f"{_GUN_CONFIG_FAULT} ({'; '.join(differences)}): RE-PUSH"
+        return f"{GUN_CONFIG_FAULT} ({'; '.join(differences)}): RE-PUSH"
 
     def _refuse_gun_config_mismatch(self) -> None:
         bad = [(self.players[pid].get("display") or pid, fault)

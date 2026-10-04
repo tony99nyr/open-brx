@@ -95,6 +95,21 @@ export const PIECES_STORE_V = 1;
 export const FAVOURITES_STORE_V = 1;
 /** the session snapshot (`state.Session` persist) */
 export const SESSION_STORE_V = 1;
+/** Exported through `gen_contract` so the console (`api/derive.ts`) and its `?mock` backend read the SAME words instead
+ *  of keeping a hand copy that can drift. Every line reads `WHAT IS WRONG: WHAT TO DO` (F221; `test_mc_alert_wording.py`).
+ *  The four proof prefixes whose cure is the push itself (A36/A37): a re-push replaces them (`state.cured_by_push`). */
+export const STALE_ACK_FAULT = 'ACKED AN OLDER CONFIG';
+export const ECHO_FAULT = 'GUN ECHO ≠ CONFIG';
+export const POOL_FAULT = 'GUN POOL ≠ CONFIG';
+export const GUN_CONFIG_FAULT = 'GUN CONFIG ≠ PUSHED HEAD';
+/** Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off). */
+export const GUN_FLAPPING_LINE = 'HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON';
+export const GUN_LINK_LOST = 'GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT';
+export const STATION_REARM = 'RE-ARM IT FROM ITEMS ON ARMORY';
+export const STATION_BRING_BACK = 'NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM';
+export const STATION_ARMED_OLDER = 'ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY';
+export const STATION_NOT_ARMED = 'PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY';
+export const STATION_BATTERY_LOW = 'BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE';
 export const TIMED_PROTECT_S_DEFAULT = 0;
 export const WEAPON_DELAY_MS_DEFAULT = 500;
 export const STATION_PROTECT_S_DEFAULT = 2;
