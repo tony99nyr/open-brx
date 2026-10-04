@@ -106,7 +106,7 @@
     {
       "at": "revived",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"moment":{"kind":"redeploy","data":null}},
-      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":115,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"},{"type":"death","match_id":"m1","shooter_num":19,"shooter_team":2,"desync":true},{"type":"respawn","match_id":"m1"}],
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":115,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"},{"type":"death","match_id":"m1","shooter_num":19,"shooter_team":2},{"type":"respawn","match_id":"m1"}],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
       "writes": [
         "$GLED,,,,5,,,*",

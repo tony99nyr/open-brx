@@ -101,7 +101,7 @@
     {
       "at": "down",
       "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"moment":{"kind":"down","data":null}},
-      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":115,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"},{"type":"death","match_id":"m1","shooter_num":19,"shooter_team":2,"desync":true}],
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":115,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"},{"type":"death","match_id":"m1","shooter_num":19,"shooter_team":2}],
       "reports": [],
       "writes": [
         "$GLED,,,,5,,,*",
