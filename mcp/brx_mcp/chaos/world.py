@@ -301,6 +301,7 @@ class World:
 
         def finish() -> None:
             self.finishes.append({"gen": gen, "phase": s.phase, "reason": s.end_reason, "at_ms": s.now_ms(),
+                                  "mono": time.monotonic(),   # F451: the ORDER across a clock step (MC's clock can step back)
                                   "match_id": (s.start_info or {}).get("match_id")
                                   or (s.scorer.match_id if s.scorer else None), "step": self.step})
             orig()
@@ -311,6 +312,7 @@ class World:
             if kind == "feedback" and isinstance(body, dict) and body.get("kind") == "kill":
                 self.kill_cues.append({"match_id": s.scorer.match_id if s.scorer else None, "player_id": body.get("player_id"),
                                        "victim": body.get("victim"), "t": body.get("t"), "sent_ms": s.now_ms(), "phase": s.phase,
+                                       "mono": time.monotonic(),
                                        # the frag cap that had FROZEN the match when this cue left (None = none yet): a
                                        # same-batch cue after the cap leaves before the finish, so `sent_ms` cannot show it
                                        "cap_t": (sc.limit_reached_t if (sc := s.scorer) is not None and sc.limit_reached_t is not None

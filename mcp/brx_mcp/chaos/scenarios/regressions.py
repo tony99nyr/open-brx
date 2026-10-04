@@ -273,3 +273,31 @@ scenario(Scenario(
     ],
     ci_seeds=(1,),
 ))
+
+
+scenario(Scenario(
+    name="restart-after-clock-step-back", mode="tdm", nodes=4,
+    doc="F451 (chaos 2026-10-03, crash-mixed seeds 1-2 under test:all): MC's wall clock stepped back 3 s just after "
+        "go-live (WSL2 TimeSync), and a restart compared the new clock with go_live_t and resumed a LIVE match in "
+        "ARMED. A snapshot saved at or after go-live now resumes LIVE whatever the clock reads.",
+    script=[
+        {"name": "mc_clock_step", "params": {"delta_ms": -3000}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 2}},
+        {"name": "end", "params": {}},
+    ],
+    ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="crash-after-clock-step-back", mode="tdm", nodes=4,
+    doc="F451: as restart-after-clock-step-back, but a CRASH. The LIVE flip used to wait on the 2 s snapshot "
+        "debounce, so the snapshot on disk still said ARMED. The flip now writes the snapshot at once.",
+    script=[
+        {"name": "mc_clock_step", "params": {"delta_ms": -3000}},
+        {"name": "mc_crash", "params": {}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 2}},
+        {"name": "end", "params": {}},
+    ],
+    ci_seeds=(1,),
+))

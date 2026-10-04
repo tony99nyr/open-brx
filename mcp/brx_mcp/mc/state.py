@@ -847,6 +847,7 @@ class Session:
         players = self._match_players if self._match_players is not None else self.players
         return {"match_id": si["match_id"], "go_live_t": si["go_live_t"], "seq": si["seq"],
                 "countdown_s": si.get("countdown_s", 0), "adopted": self.is_adopted(),
+                "live": self.phase == "live",   # F451: a resume after a backward clock step must not re-arm it
                 "config": self.config, "players": {pid: dict(p) for pid, p in players.items()},
                 # node_id -> player_id as armed: the stored facts are keyed by node, and a resumed replay
                 # must attribute them before any phone has said hello to the new process.
@@ -5476,7 +5477,11 @@ class Session:
                 pass
         now = self.now_ms()
         tl = self.config.get("time_limit_s")
-        if self._promote_phase(go, now) == "armed":
+        # F451 (chaos 2026-10-03): a match the snapshot saw LIVE stays LIVE. A wall clock that stepped back since
+        # (WSL2 TimeSync, an NTP step) put `now` before go-live, and the resume re-armed a match the phones were playing.
+        # `tick()` writes the snapshot at the LIVE flip, so a crash just after it carries the flag too.
+        went_live = m.get("live") is True
+        if self._promote_phase(go, max(now, go) if went_live else now) == "armed":
             # F-2026-09-17e: `_schedule()` queues the VIP role announcement for go-live; a resume that
             # lands back in ARMED (the restart beat the countdown) skipped this, so a resumed match's
             # VIP never heard it.
@@ -8203,6 +8208,7 @@ class Session:
         now = self.now_ms()
         if self.phase == "armed" and self._promote_phase(self.start_info["go_live_t"], now) == "live":
             self._changed()
+            self.persist_now()   # F451: the LIVE flip is not left to the 2 s debounce; a crash just after it resumes LIVE
         self._push_due_roles(now)
         self._powerup_tick(now)                     # A56: the item spawn schedule (a no-op with the flag off)
         self._operator_no_answer(now)

@@ -158,6 +158,9 @@ A field bug works the same way: write the actions that the field saw as a script
   invariant checks the medal rules on that order. The other invariants check which facts scored.
 - Facts of the same step can arrive in either order, so a fact in the step that ended the match is not
   judged by that end (`credited_inside_window`).
+- MC's clock is the host wall clock plus `mc_skew_ms`, and the host clock can step (WSL2 TimeSync stepped it
+  back during a loaded `test:all`, F451). An invariant that ORDERS two MC events reads a monotonic stamp
+  (`mono`), never MC's own `now_ms()`. `mc_clock_step` injects a step in a script.
 - A phone clock that runs AHEAD can put a credited kill after a frag cap that MC reached on an earlier
   arrival. Contracts §4 lets the end move earlier only, so that kill stays credited.
 - A frame that loses its `*` as the LAST frame of a burst waits in the reassembler until the gun sends
