@@ -1902,6 +1902,7 @@ class RestoredFromView(TypedDict):
 
 
 class SnapshotFeedRow(TypedDict):
+    id: NotRequired[int]   # F454: a monotonic row id, so `feed_edit` can replace the row; absent on a row restored from an old snapshot
     t_match_s: int
     text: str
     tag: NotRequired[str]

@@ -135,7 +135,7 @@ const DEMO_READBACK_LINE = 'GUN CONFIG ≠ PUSHED HEAD (TEAM 99 READ BACK, 1 PUS
 const GUN_LINK_LOST = 'GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT';
 const STATION_REARM = 'RE-ARM IT FROM ITEMS ON ARMORY';
 
-type Sub = { snap: (s: State) => void; feed: (e: FeedEntry) => void };
+type Sub = { snap: (s: State) => void; feed: (e: FeedEntry, edit?: boolean) => void };
 
 export class MockBackend implements Api {
   private subs = new Set<Sub>();
@@ -1069,7 +1069,16 @@ export class MockBackend implements Api {
     }
   }
   private emit() { const s = this.state(); this.subs.forEach(x => x.snap(s)); }
-  private feed(e: FeedEntry) { this.live_?.feed.unshift(e); this.subs.forEach(x => x.feed(e)); }
+  private feedSeq = 0;
+  private feed(e: FeedEntry) { e.id = ++this.feedSeq; this.live_?.feed.unshift(e); this.subs.forEach(x => x.feed(e)); }
+  /** F454: replace the feed row with the same id, as the server's `feed_edit` does (an unknown id is a no-op). */
+  feedEdit(e: FeedEntry) {
+    const rows = this.live_?.feed;
+    const i = e.id == null || !rows ? -1 : rows.findIndex(r => r.id === e.id);
+    if (i < 0) return;
+    rows[i] = e;
+    this.subs.forEach(x => x.feed(e, true));
+  }
 
   // ---------- simulation tick ----------
   private tick() {
@@ -1240,7 +1249,7 @@ export class MockBackend implements Api {
 
   // ---------- Api ----------
   async getState() { return this.state(); }
-  subscribe(snap: (s: State) => void, feed: (e: FeedEntry) => void) {
+  subscribe(snap: (s: State) => void, feed: (e: FeedEntry, edit?: boolean) => void) {
     const s = { snap, feed }; this.subs.add(s); queueMicrotask(() => snap(this.state()));
     return () => { this.subs.delete(s); };
   }

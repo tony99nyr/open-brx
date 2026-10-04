@@ -855,3 +855,30 @@ def test_a_stored_item_is_checked_against_the_advert_byte_not_the_override_range
     ok = {**PU.expand("rockets", WeaponCatalog()), "spawn_every_s": 250, "first_at_s": 250}
     assert PU.invalid_reason(ok) is None
     assert "255" in (PU.invalid_reason({**ok, "spawn_every_s": 256}) or "")
+
+
+def test_f454_a_corrected_taker_pushes_feed_edit_and_ids_survive_a_restore():
+    """The console replaces its TOOK row by id: the correction pushes `feed_edit` with the corrected entry, a
+    row without an id (an old snapshot) is edited in place without a push, and a restored feed's ids never repeat."""
+    s, clock = _sess()
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 61_000; s.tick()
+    edits, news = [], []
+    s.on_feed_edit(lambda e: edits.append(dict(e)))
+    s.on_feed(lambda e: news.append(dict(e)))
+    p1 = s.players[s.node_player["phone-1"]]
+    _pickup(s, clock, 5)
+    took = next(r for r in s.feed if " TOOK " in r["text"])
+    assert isinstance(took["id"], int) and [n["id"] for n in news if " TOOK " in n["text"]] == [took["id"]]
+    assert edits == [], "CONTROL: a phone's own fact pushes no edit"
+    _action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
+    assert len(edits) == 1 and edits[0]["id"] == took["id"] and edits[0]["text"].startswith(f"{p1['display'].upper()} TOOK")
+    assert sum(" TOOK " in r["text"] for r in s.feed) == 1
+    # ids never repeat after a restore: the counter resumes from the restored feed's maximum
+    s._feed_seq = 0
+    s.feed = [dict(r) for r in s.feed]
+    top = max(r["id"] for r in s.feed)
+    s._feed_seq = max([r["id"] for r in s.feed] + [0])
+    s._on_feed({"t_match_s": 1, "tag": "X", "kind": "info", "text": "NEXT"})
+    assert s.feed[0]["id"] == top + 1

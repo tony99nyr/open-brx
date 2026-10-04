@@ -133,6 +133,11 @@ export function isSeedEcho(memo: SeedMemo | null, e: FeedEntry, now: number): bo
   return true;
 }
 
+/** F454: the feed with the row of the same id replaced; an unknown id, or an edit without one, changes nothing. */
+export function applyFeedEdit(feed: FeedEntry[], e: FeedEntry): FeedEntry[] {
+  return e.id == null ? feed : feed.map(r => (r.id === e.id ? e : r));
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const mock = useMemo(isMock, []);
   const api = useMemo<Api>(() => (mock ? new MockBackend() : createHttpApi()), [mock]);
@@ -300,7 +305,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setState(s);
         followPhase(s);
       },
-      e => { if (!isSeedEcho(seedMemoRef.current, e, Date.now())) setFeed(f => [e, ...f].slice(0, FEED_MAX)); },
+      (e, edit) => {
+        // F454: a `feed_edit` replaces the row with the same id (an unknown id, or a row without one, is a no-op).
+        if (edit) { setFeed(f => applyFeedEdit(f, e)); return; }
+        if (!isSeedEcho(seedMemoRef.current, e, Date.now())) setFeed(f => [e, ...f].slice(0, FEED_MAX));
+      },
       ok => { if (ok) reseedFeed.current = true; setConnected(ok); },
     );
     const unAuth = mock ? () => {} : onAuthRequired(setAuthRequired);

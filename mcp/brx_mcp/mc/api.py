@@ -39,16 +39,17 @@ class Broadcaster:
         self._task: asyncio.Task | None = None
         session.on_change(self._mark)
         session.on_feed(self._feed)
+        session.on_feed_edit(lambda entry: self._feed(entry, "feed_edit"))
         self.loop: asyncio.AbstractEventLoop | None = None
 
     def _mark(self):
         if self.loop:
             self.loop.call_soon_threadsafe(self._dirty.set)
 
-    def _feed(self, entry: dict):
+    def _feed(self, entry: dict, kind: str = "feed"):
         entry = dict(entry)     # F454: a later in-place edit of the shared row must not change what is serialised on the loop
         if self.loop:
-            self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._send_all({"kind": "feed", "entry": entry})))
+            self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._send_all({"kind": kind, "entry": entry})))
 
     async def _send_all(self, msg: dict):
         data = json.dumps(msg, default=str)

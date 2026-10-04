@@ -727,6 +727,8 @@ class Session:
         self.feed: list[dict] = []
         self._listeners: list[Callable[[], None]] = []
         self._feed_listeners: list[Callable[[dict], None]] = []
+        self._feed_edit_listeners: list[Callable[[dict], None]] = []
+        self._feed_seq = 0     # F454: the last feed row id; restored from the max id of a restored feed
         self._attach_net()
         self._render_join()
         self._gun_index()
@@ -768,6 +770,7 @@ class Session:
     # ---------- plumbing ----------
     def on_change(self, cb): self._listeners.append(cb)
     def on_feed(self, cb): self._feed_listeners.append(cb)
+    def on_feed_edit(self, cb): self._feed_edit_listeners.append(cb)
     def _changed(self):
         self._sync_kit_open()          # A10: phase/push flips re-assign the phones (setting-up ⇄ kit editor)
         for cb in self._listeners:
@@ -1012,6 +1015,7 @@ class Session:
                 self._sync_pending = {str(k): str(v) for k, v in sp["nodes"].items()}
             rows = snap.get("feed")
             self.feed = [dict(row) for row in rows if isinstance(row, dict)][:200] if isinstance(rows, list) else []
+            self._feed_seq = max([r["id"] for r in self.feed if isinstance(r.get("id"), int)] + [self._feed_seq])
             # a snapshot from before STANDBY existed has no such list; a hand-edited one may hold junk rows
             parked: dict[str, Player] = {}
             invalid_parked = 0
@@ -3367,6 +3371,11 @@ class Session:
                 e["text"] = new
                 break
         rec["line"] = new
+        for e in self.feed:
+            if e.get("text") == new and isinstance(e.get("id"), int):
+                for cb in self._feed_edit_listeners:
+                    cb(e)     # the console replaces its row by id (a row from an old snapshot has no id: no push)
+                break
         self._persist_dirty = True
         self._changed()
 
@@ -7966,6 +7975,8 @@ class Session:
             self._relay_hit_feedback(shooter, victim, dmg, t)
 
     def _on_feed(self, entry: dict):
+        self._feed_seq += 1
+        entry["id"] = self._feed_seq       # F454: lets a later `feed_edit` name this row
         self.feed.insert(0, entry)
         del self.feed[200:]
         self._persist_dirty = True      # F319 (d): the feed is in the snapshot, so a feed-only change must flush too

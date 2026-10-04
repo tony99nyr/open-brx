@@ -130,6 +130,7 @@ export function createHttpApi(): Api {
             const m = JSON.parse(ev.data);
             if (m.kind === 'snapshot') onSnapshot(m.state as State);
             else if (m.kind === 'feed') onFeed(m.entry as FeedEntry);
+            else if (m.kind === 'feed_edit') onFeed(m.entry as FeedEntry, true);
             else if (m.kind === 'error' && m.code === 401) notifyAuth(true);
           } catch { /* malformed frame: ignore */ }
         };
