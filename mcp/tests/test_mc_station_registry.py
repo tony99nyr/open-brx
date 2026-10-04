@@ -1,0 +1,103 @@
+"""Characterise station records before and after the registry extraction."""
+
+from brx_mcp.mc.compile import Compiler
+from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+from brx_mcp.mc.state import Session
+from brx_mcp.mc.stations import StationRegistry
+
+
+def _session():
+    tick = [100_000]
+    session = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: tick[0])
+    session.net.simulate_utility_hello("station-a")
+    session.net.simulate_utility_hello("station-b")
+    return session, tick
+
+
+def test_station_id_reservation_and_departure_restore_shape():
+    session, tick = _session()
+    first = session.set_station("station-a", {"kind": "respawn", "team": "blue"})
+    assert first["assigned"]["id"] == 1
+    session._record_departure("station-a", "released")
+    assert session._station_departures["station-a"]["restore"] == {
+        "kind": "respawn", "team": 1, "threshold": 0,
+    }
+    assert session.clear_station("station-a")
+    tick[0] += 10
+    second = session.set_station("station-b", {"kind": "respawn", "team": "blue"})
+    assert second["assigned"]["id"] == 2
+    assert session._auto_station_id("station-a") == 1
+
+
+def test_range_fields_keep_the_original_age_and_source_on_an_unchanged_value():
+    session, tick = _session()
+    first = session._range_fields(None, -70, {"tx_power": "low"})
+    assert first == {"threshold_set_at": 100_000, "threshold_src": "mc",
+                     "tx_power": "low", "tx_power_set_at": 100_000, "tx_power_src": "mc"}
+    tick[0] += 500
+    kept = session._range_fields({"threshold": -70, "at": 99_000, **first}, -70, {})
+    assert kept == first
+
+
+def test_station_warning_and_lock_keep_their_exact_operator_voice():
+    session, _ = _session()
+    session.set_config({"respawn": {"type": "scanner"}})
+    assert session._station_warnings() == [
+        "SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME "
+        "BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT",
+    ]
+    session._note_station_lock(session.stations["station-a"], 1, 120)
+    assert session.stations["station-a"]["lock"] == {"s": 120, "at": 100_000}
+    assert session.stations["station-a"]["locked_since"] == 100_000
+
+
+def test_registry_allocates_reserved_ids_without_a_session():
+    registry = StationRegistry(readers={}, actions={})
+    registry.stations["station-a"] = {"assigned": {"id": 1}}
+    registry._station_id_of["station-b"] = 2
+    assert registry._auto_station_id("station-c") == 3
+    registry._station_departures["station-c"] = {"id": 7}
+    assert registry._auto_station_id("station-c") == 7
+
+
+def test_registry_keeps_range_age_without_a_session():
+    tick = [100_000]
+    registry = StationRegistry(readers={"now_ms": lambda: lambda: tick[0]}, actions={})
+    first = registry._range_fields(None, -70, {"tx_power": "low"})
+    tick[0] += 2_000
+    kept = registry._range_fields({"threshold": -70, "at": 90_000, **first}, -70, {})
+    assert kept == first
+
+
+def test_registry_lock_and_warnings_without_a_session():
+    registry = StationRegistry(
+        readers={"now_ms": lambda: lambda: 100_000,
+                 "config": lambda: {"mode": "tdm", "respawn": {"type": "scanner"},
+                                    "teams": [{"tid": 1, "name": "BLUE TEAM"}]}},
+        actions={},
+    )
+    station = {"assigned": {"kind": "respawn", "team": 1, "id": 4}}
+    registry.stations["station-a"] = station
+    assert registry._station_warnings() == []
+    registry._note_station_lock(station, 1, 120)
+    assert station["locked_since"] == 100_000
+    assert station["lock"] == {"s": 120, "at": 100_000}
+
+
+def test_registry_view_and_recap_row_without_a_session():
+    registry = StationRegistry(
+        readers={"now_ms": lambda: lambda: 100_000, "nodes": lambda: {"station-a": {"stale": False}},
+                 "phase": lambda: "muster", "config": lambda: {}},
+        actions={"_game_byte": lambda: 1, "_node_loss": lambda _node, _kind: 0},
+    )
+    registry.stations["station-a"] = {
+        "assigned": {"kind": "respawn", "team": 1, "id": 4, "threshold": 0, "at": 90_000},
+        "report": {"revives": 0}, "last_seen_ms": 99_000,
+    }
+    view = registry._station_view("station-a")
+    assert view["online"] is True
+    assert view["last_seen_ms"] == 1_000
+    assert view["range"]["threshold"] == 0
+    assert StationRegistry._station_recap_row(view) == {
+        "node_id": "station-a", "kind": "respawn", "id": 4, "team": 1, "heard": True, "revives": 0,
+    }
