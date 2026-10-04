@@ -72,7 +72,7 @@ def test_head_spawn_ammo_falls_back_to_half_t17_when_t40_is_missing():
 
 
 def test_a_real_captured_head_and_echo_prove_the_check_through_state_py():
-    """End to end: swap a compiled bundle's head for the REAL captured one, ack_head with the REAL
+    """End to end: swap a compiled bundle's head for the REAL captured one, ack with the REAL
     echo, and the board must read PROVEN, not a red `GUN ECHO ≠ CONFIG` on a healthy gun."""
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)

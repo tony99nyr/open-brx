@@ -23,7 +23,7 @@ from _session import match_config
 
 # --- the emitted-frame surface ---------------------------------------------- #
 
-TEAMS = (None, 0, 1, 2, 3, 4, 5, 6, 7)
+LED_TEAMS = (None, 0, 1, 2, 3, 4, 5, 6, 7)
 NIGHTS = (False, True)
 
 
@@ -79,7 +79,7 @@ def harvest():
     for tag, b in compiled_bundles():
         _frames(b, f"bundle[{tag}]", out)
     for night in NIGHTS:
-        for team in TEAMS:
+        for team in LED_TEAMS:
             for ffa in (False, True):
                 _frames(pg.team_frame(team, night, ffa), f"pg.team_frame({team},{night},{ffa})", out)
                 _frames(pg.headset_team_frame(team, ffa), f"pg.headset_team_frame({team},{ffa})", out)
@@ -96,7 +96,7 @@ def harvest():
         prof = P.profile_from_preset(name)
         for night in NIGHTS:
             for leds_on in (True, False):
-                for team in TEAMS:
+                for team in LED_TEAMS:
                     for ffa in (False, True):
                         tag = f"{name}/night={night}/leds={leds_on}/team={team}/ffa={ffa}"
                         _frames(P.gun_frames(prof, team, night, leds_on, ffa), f"gun_frames[{tag}]", out)
@@ -135,7 +135,7 @@ def test_a_gun_paint_is_always_preceded_by_the_blank():
     for name in sorted(P.PRESETS):
         prof = P.profile_from_preset(name)
         for night in NIGHTS:
-            for team in TEAMS:
+            for team in LED_TEAMS:
                 g = P.gun_frames(prof, team, night, True)
                 if not g:
                     continue        # in_play "native": nothing is sent, the firmware breathes
@@ -209,7 +209,7 @@ def harvest_gled_paints(night: bool):
     out: list[tuple[str, str]] = []
     for name in sorted(P.PRESETS):
         prof = P.profile_from_preset(name)
-        for team in TEAMS:
+        for team in LED_TEAMS:
             tag = f"{name}/team={team}/night={night}"
             _frames(P.gun_frames(prof, team, night, True), f"gun_frames[{tag}]", out)
             _frames(P.gun_pregame(prof, team, night, True), f"gun_pregame[{tag}]", out)
@@ -386,7 +386,7 @@ def test_no_event_burst_exceeds_three_flashes():
     """Not a style choice: three flashes in any one-second window is a photosensitivity limit."""
     assert pg.BURST_FLASHES == 3, f"BURST_FLASHES is {pg.BURST_FLASHES} — 3 is a safety ceiling, not a taste knob"
     for night in NIGHTS:
-        for team in TEAMS:
+        for team in LED_TEAMS:
             for ev in pg.EVENT_PAINTS:
                 seq = pg.event_burst(ev, team, night)
                 if not seq:
@@ -407,7 +407,7 @@ def test_no_compiled_burst_puts_more_than_three_flashes_in_a_one_second_window()
     for name in sorted(P.PRESETS):
         prof = P.profile_from_preset(name)
         for night in NIGHTS:
-            for team in TEAMS:
+            for team in LED_TEAMS:
                 for ev, seq in P.led_table(prof, team, night, True).items():
                     gled = [(f, h) for f, h in seq if f.startswith("$GLED")]
                     if not gled:

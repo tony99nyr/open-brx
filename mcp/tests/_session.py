@@ -74,6 +74,7 @@ from brx_mcp.mc.state import Session  # noqa: E402
 from brx_mcp.mc.store import Store  # noqa: E402
 
 T0 = 5_000_000
+T0_EPOCH_MS = 1_700_000_000_000   # a wall-clock-sized base, for tests that read real-looking `t` fields
 
 
 def mk_session(n_players=2, compiler=None, *, mode="tdm", time_limit_s=60, cfg=None, net=None, store=None,
@@ -151,7 +152,7 @@ def kill(s, net, clock, ps, killer_i, victim_i, info, seq, dt=1000):
                        clock["t"], seq=seq)
 
 
-def _go_live(s, net, clock, ps, koth_hill=False):
+def drive_to_live(s, net, clock, ps, koth_hill=False):
     n_players = len(ps)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
@@ -174,13 +175,13 @@ def _go_live(s, net, clock, ps, koth_hill=False):
 def go_live(n_players=2, mode="tdm", cfg=None, net=None):
     """The block-B harness driven to LIVE: `(session, net, clock, players, start_info)`."""
     s, net, clock, ps = mk_kit_session(n_players, mode, cfg, net)
-    return _go_live(s, net, clock, ps)
+    return drive_to_live(s, net, clock, ps)
 
 
 def go_live_stored(n_players=2, mode="tdm", cfg=None, store=True):
     """`go_live` with a REAL sqlite store, and a koth hill assigned (F402). `store` defaults to ON."""
     s, net, clock, ps = mk_stored_session(n_players, mode, cfg, store)
-    return _go_live(s, net, clock, ps, koth_hill=(mode == "koth"))
+    return drive_to_live(s, net, clock, ps, koth_hill=(mode == "koth"))
 
 
 def mk_online_session(n=2):
@@ -258,7 +259,7 @@ def live_forced(n=2):
     clock["t"] = s.start_info["go_live_t"] + 10
     s.tick()
     for i, p in enumerate(ps):
-        pool_status(net, clock, i, p, arm_state="live_forced")
+        pool_status(net, clock, i, p, arm_state="live")
     return s, net, clock, ps
 
 

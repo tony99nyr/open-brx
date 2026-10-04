@@ -16,15 +16,15 @@ still pinned below; the re-push itself moved to the LOBBY case, where it is righ
 """
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import KIT_LOCKED, Session
+from _session import T0_EPOCH_MS
 
-T0 = 1_700_000_000_000
 _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
           {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 
 
 def _pushed_session():
     """Two players, both online and acked, config pushed — the LOBBY, nothing started."""
-    clock = {"t": T0}
+    clock = {"t": T0_EPOCH_MS}
     net = FakeNet()
     s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
     s.set_config({"mode": "tdm", "time_limit_s": 60})
@@ -56,7 +56,7 @@ def _live_session(live: bool = True):
     return s, net, clock, ps
 
 
-def _pick(net, i, slot="primary", kind="weapon", rid=None, t=T0):
+def _pick(net, i, slot="primary", kind="weapon", rid=None, t=T0_EPOCH_MS):
     body = {"node_id": f"node{i}", "player_id": "ignored-by-server", "slot": slot, "kind": kind}
     if rid:
         body["id"] = rid
@@ -155,7 +155,7 @@ def test_a_pick_in_the_KIT_phase_applies_without_any_lobby_push():
     never moves the phase (2026-09-17) -- the operator's own way there is CONTINUE TO KIT. The refusal
     in `_on_loadout_request` ("Mission Control is still setting up the game") is reserved for the
     narrower case of a pick arriving while the session is neither in KIT nor pushed."""
-    clock = {"t": T0}
+    clock = {"t": T0_EPOCH_MS}
     net = FakeNet()
     s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
     s.set_config({"mode": "tdm", "time_limit_s": 60})

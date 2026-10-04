@@ -36,13 +36,12 @@ import re
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.stage.stage import PROBE_LIFE, GunStage
-from _stage import _Clock, _nosleep, settle
+from _stage import _nosleep, GUN, settle, StageClock
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TRACE_DIR = ROOT / "app" / "test" / "fixtures" / "traces"
 GOLDEN = json.loads((ROOT / "mcp" / "brx_mcp" / "mc" / "golden_bundle.json").read_text())
 BASE = json.loads((TRACE_DIR / "_base.json").read_text())
-GUN = "FA:KE:00:00:00:01"
 
 
 def trace_names() -> list[str]:
@@ -210,7 +209,7 @@ async def run_stage(trace: dict) -> list[dict]:
     setup = trace.get("setup") or {}
     frames = build_frames(setup)
     gun = TraceGun(setup.get("gun"), head_maxima(frames))
-    clock = _Clock(BASE["clock0_ms"] / 1000)
+    clock = StageClock(BASE["clock0_ms"] / 1000)
     mgr = FakeConnectionManager([_SilentTagger(gun, clock=clock)])
     st = GunStage(mgr, None, compiler=_TraceCompiler(frames), sleep=_nosleep, now=clock,
                   voice_verdict_sink=lambda _r: None, rng=_ZeroRng())   # type: ignore[arg-type]

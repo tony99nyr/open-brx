@@ -21,9 +21,8 @@ import random
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage
-from _stage import _Clock, _nosleep, settle
+from _stage import _nosleep, GUN, settle, StageClock
 
-GUN = "FA:KE:00:00:00:01"
 # The same game-wide `dot` table test_stage_poison.py uses: IR protocol 11 (the Toxin Rifle) ticks 4
 # damage a second for 5 s.
 DOT = {"11": {"weapon_id": "toxin_rifle", "per_tick": 4, "tick_ms": 1000, "duration_ms": 5000}}
@@ -110,7 +109,7 @@ def test_stun_smoke_and_poison_stack_on_one_player_then_more_hits_land():
     """Three hard effects land on the same life at once, then three more hits arrive on top of them.
     No pool ever goes negative or over its armed maximum, and every timed effect ends on its own clock."""
     async def go():
-        clock = _Clock()
+        clock = StageClock()
         st, mgr = _mk(clock, stun=0, max_shield=20)
         await st.connect(GUN)
         await st.arm()
@@ -153,7 +152,7 @@ def test_stun_smoke_and_poison_stack_on_one_player_then_more_hits_land():
 
 def test_death_while_stunned_smoked_and_poisoned_clears_every_effect_once():
     async def go():
-        clock = _Clock()
+        clock = StageClock()
         st, mgr = _mk(clock, stun=0)
         await st.connect(GUN)
         await st.arm()
@@ -200,7 +199,7 @@ def test_death_while_stunned_smoked_and_poisoned_clears_every_effect_once():
 
 def test_death_mid_reload_blocks_the_refill_and_revive_starts_clean():
     async def go():
-        clock = _Clock()
+        clock = StageClock()
         st, mgr = _mk(clock)
         await st.connect(GUN)
         await st.arm()
@@ -238,7 +237,7 @@ def test_death_mid_reload_blocks_the_refill_and_revive_starts_clean():
 
 def test_death_mid_swap_blocks_the_confirm_and_revive_starts_on_slot_zero():
     async def go():
-        clock = _Clock()
+        clock = StageClock()
         st, mgr = _mk(clock)
         await st.connect(GUN)
         await st.arm()
@@ -272,7 +271,7 @@ def test_death_mid_swap_blocks_the_confirm_and_revive_starts_on_slot_zero():
 
 async def _run_chaos_seed(seed: int) -> None:
     rng = random.Random(seed)
-    clock = _Clock()
+    clock = StageClock()
     st, mgr = _mk(clock, stun=0, max_shield=20)
     await st.connect(GUN)
     await st.arm()

@@ -14,7 +14,7 @@ from brx_mcp.mc import types as T   # review #4: the generated values the stage 
 from brx_mcp.mc.compile import Compiler
 from brx_mcp import poolgauge as PG
 from _stage import (
-    _Clock, _nosleep, BLUE_TO_RED, CAPTURED, feed, hill_audio, in_play, install_levels_readout, LegacyCompiler,
+    StageClock, _nosleep, BLUE_TO_RED, CAPTURED, feed, hill_audio, in_play, install_levels_readout, LegacyCompiler,
     LEVELS7, LOST, mark, mk_hill, mk_stage, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, TICK, tid_follows_pset,
     tx)
 
@@ -1488,7 +1488,7 @@ ENGINE_JS = pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engin
 
 def test_stage_spaces_play_frames_and_drops_fillers_inside_the_gap():
     async def run():
-        clock = _Clock()
+        clock = StageClock()
 
         async def sleep(seconds):
             clock.advance(seconds)
@@ -1514,7 +1514,7 @@ def test_stage_spaces_play_frames_and_drops_fillers_inside_the_gap():
 
 def test_stage_reserves_concurrent_play_slots_before_waiting():
     async def run():
-        clock = _Clock()
+        clock = StageClock()
         waits = []
 
         async def sleep(seconds):
@@ -1545,7 +1545,7 @@ def test_stage_reserves_concurrent_play_slots_before_waiting():
 
 def test_stage_play_gap_starts_when_previous_transmission_finishes():
     async def run():
-        clock = _Clock()
+        clock = StageClock()
         waits = []
 
         async def sleep(seconds):
@@ -1575,7 +1575,7 @@ def test_f419_stage_queue_slot_cues_wait_for_the_clip_on_the_gun():
     than they play, so a queue-slot `$PLAY` waits until the last one it sent has played. CONTROL: an INTERRUPT-slot
     `$PLAY` keeps only the plain PLAY_GAP_S."""
     async def run():
-        clock = _Clock()
+        clock = StageClock()
 
         async def sleep(seconds):
             clock.advance(seconds)
@@ -1605,7 +1605,7 @@ def test_f419_stage_queue_slot_cues_wait_for_the_clip_on_the_gun():
 
 def test_stage_death_cancels_a_play_waiting_for_its_gap():
     async def run():
-        clock = _Clock()
+        clock = StageClock()
         waiting = asyncio.Event()
         sent = []
 
@@ -1639,7 +1639,7 @@ def test_stage_death_cancels_a_play_waiting_for_its_gap():
 
 def test_stage_end_panic_and_disconnect_cancel_play_gap_waiters():
     async def exercise(teardown):
-        clock = _Clock()
+        clock = StageClock()
         waiting = asyncio.Event()
         sent = []
 

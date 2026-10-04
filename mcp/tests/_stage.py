@@ -55,7 +55,7 @@ PLAYX = "$PLAYX,0,*"
 TICK = "$PLAY,U100,4,6,,,,,*"                # U100 possession tick
 
 
-class _Clock:
+class StageClock:
     """A hand-driven `now` in SECONDS. `at_ms()` places it on the bench log's own millisecond clock."""
 
     def __init__(self, t: float = 1000.0):
@@ -126,7 +126,7 @@ def mark(mgr, alias="stage") -> int:
 
 def mk_hill(tid: int = 1, **profile):
     """A stage with a driveable clock and a three-team roster. Returns (stage, mgr, clock)."""
-    clock = _Clock()
+    clock = StageClock()
     # the fake's delayed $ALCD replies must age on the SAME clock the test drives (F259 flaky class),
     # not the real wall clock -- see mk_reload/mk_stun/mk_gain in test_stage_mirror.py.
     mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1, clock=clock)])
@@ -209,7 +209,7 @@ def mk_spawn_stage():
     # 2026-09-19: this file is the LEGACY path (a bundle with no `respawn_profile`, an app < 0.4.3), as
     # app/test/spawn-protect.test.mjs is. test_stage_respawn_profile.py covers the profile path.
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
-    clock = _Clock()
+    clock = StageClock()
     st = GunStage(mgr, None, compiler=LegacyCompiler(), sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
 

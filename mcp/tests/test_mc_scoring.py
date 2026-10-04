@@ -2,7 +2,7 @@
 first blood, parking, feedback freshness, batch re-basing, end freeze, hot-swap shots baseline."""
 from brx_mcp.mc.scoring import Scorer
 from brx_mcp.mc.types import ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS
-from _scoring import scoring_players, scoring_teams, death, mk_scorer, SCORER_T0
+from _scoring import scoring_players, scoring_teams, scorer_death, mk_scorer, SCORER_T0
 
 
 def hit(sc, victim_node, victim, shooter_num, t, dmg=9):
@@ -12,7 +12,7 @@ def hit(sc, victim_node, victim, shooter_num, t, dmg=9):
 
 def test_exact_kill_credit():
     sc, fb, feed = mk_scorer()
-    assert death(sc, "n1", "p1", 1, SCORER_T0 + 1000) == "scored"      # p0 (num 1, blue) kills p1 (yellow)
+    assert scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000) == "scored"      # p0 (num 1, blue) kills p1 (yellow)
     rows = {r["player_id"]: r for r in sc.rows()}
     assert rows["p0"]["kills"] == 1 and rows["p1"]["deaths"] == 1
     assert sc.first_blood == "p0" and feed[-1]["tag"] == "FIRST BLOOD"
@@ -23,24 +23,24 @@ def test_kill_feedback_carries_the_victims_gamertag():
     """Field 2026-09-17: the kill banner showed the victim's player_id. `victim` stays the id; the
     name the phone shows rides beside it."""
     sc, fb, _ = mk_scorer("ffa")
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
     body = fb[-1][1]
     assert body["victim"] == "p1" and body["victim_display"] == "VIPER", body
 
 def test_shooter_zero_is_no_killer():
     sc, fb, feed = mk_scorer()
-    death(sc, "n1", "p1", 0, SCORER_T0 + 1000)
+    scorer_death(sc, "n1", "p1", 0, SCORER_T0 + 1000)
     assert sum(r["kills"] for r in sc.rows()) == 0 and sc.rows()[0]["deaths"] + sum(r["deaths"] for r in sc.rows()) >= 1
     assert not fb
 
 
 def test_friendly_in_tdm_but_never_in_ffa():
     sc, fb, _ = mk_scorer("tdm")
-    death(sc, "n2", "p2", 1, SCORER_T0 + 1000)          # p0 blue kills p2 blue → team-kill
+    scorer_death(sc, "n2", "p2", 1, SCORER_T0 + 1000)          # p0 blue kills p2 blue → team-kill
     r = {x["player_id"]: x for x in sc.rows()}
     assert r["p0"]["kills"] == -1 and sc.kills[-1]["friendly"] and not fb
     sc2, fb2, _ = mk_scorer("ffa")
-    death(sc2, "n2", "p2", 1, SCORER_T0 + 1000)
+    scorer_death(sc2, "n2", "p2", 1, SCORER_T0 + 1000)
     r2 = {x["player_id"]: x for x in sc2.rows()}
     assert r2["p0"]["kills"] == 1 and not sc2.kills[-1]["friendly"] and fb2
 
@@ -49,7 +49,7 @@ def test_assist_window():
     sc, _, _ = mk_scorer()
     hit(sc, "n1", "p1", 3, SCORER_T0 + 1000)                         # p2 hits p1 (in window)
     hit(sc, "n1", "p1", 4, SCORER_T0 + 5000 - ASSIST_WINDOW_MS - 1)  # p3 too early
-    death(sc, "n1", "p1", 1, SCORER_T0 + 5000)                       # p0 kills p1
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 5000)                       # p0 kills p1
     r = {x["player_id"]: x for x in sc.rows()}
     assert r["p2"]["assists"] == 1 and r["p3"]["assists"] == 0 and r["p0"]["assists"] == 0
 
@@ -66,11 +66,11 @@ def test_accuracy_non_friendly_and_stale():
 
 def test_multi_kill_and_streak_tags():
     sc, fb, feed = mk_scorer()
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
-    death(sc, "n3", "p3", 1, SCORER_T0 + 2500)   # within MULTI_KILL_MS → double
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
+    scorer_death(sc, "n3", "p3", 1, SCORER_T0 + 2500)   # within MULTI_KILL_MS → double
     assert sc.kills[-1]["multi"] == 2 and feed[-1]["tag"] == "DOUBLE KILL"
     assert fb[-1][1]["kind"] == "kill" and fb[-1][1]["medals"] == ["double_kill"]   # A11.4: kind stays "kill", medals stack
-    death(sc, "n1", "p1", 1, SCORER_T0 + 30000)
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 30000)
     assert feed[-1]["tag"] == "STREAK ×3"
 
 
@@ -78,16 +78,16 @@ def test_parking_and_dedup():
     sc, _, _ = mk_scorer()
     assert sc.ingest("n1", {"type": "death", "t": SCORER_T0 + 1, "match_id": "OLD", "player_id": "p1", "shooter_num": 1}, SCORER_T0 + 1) == "parked"
     assert len(sc.parked) == 1 and sum(r["kills"] for r in sc.rows()) == 0
-    assert death(sc, "n1", "p1", 1, SCORER_T0 + 100, ) == "scored"
+    assert scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 100, ) == "scored"
     assert sc.ingest("n1", {"type": "death", "t": SCORER_T0 + 200, "match_id": "m1", "player_id": "p1", "shooter_num": 1}, SCORER_T0 + 200, seq=5) == "scored"
     assert sc.ingest("n1", {"type": "death", "t": SCORER_T0 + 200, "match_id": "m1", "player_id": "p1", "shooter_num": 1}, SCORER_T0 + 200, seq=5) == "dup"
 
 
 def test_feedback_freshness():
     sc, fb, _ = mk_scorer(now=SCORER_T0 + 100_000)
-    death(sc, "n1", "p1", 1, SCORER_T0 + 100_000 - FEEDBACK_MAX_AGE_MS - 1)   # stale death → scored, no flash
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 100_000 - FEEDBACK_MAX_AGE_MS - 1)   # stale death → scored, no flash
     assert sum(r["kills"] for r in sc.rows()) == 1 and not fb
-    death(sc, "n3", "p3", 1, SCORER_T0 + 100_000 - 100)
+    scorer_death(sc, "n3", "p3", 1, SCORER_T0 + 100_000 - 100)
     assert fb
 
 
@@ -110,22 +110,22 @@ def test_batch_rebasing_for_unsynced_node_suppresses_awards():
 
 def test_winner_ffa_vs_team_and_honors():
     sc, _, _ = mk_scorer("ffa")
-    death(sc, "n1", "p1", 3, SCORER_T0 + 1000); death(sc, "n0", "p0", 3, SCORER_T0 + 9000)
+    scorer_death(sc, "n1", "p1", 3, SCORER_T0 + 1000); scorer_death(sc, "n0", "p0", 3, SCORER_T0 + 9000)
     assert sc.winner() == {"player_id": "p2"}
     h = {x["award"]: x["player_id"] for x in sc.honors()}
     assert h["MVP"] == "p2" and h["MOST KILLS"] == "p2" and h["FIRST BLOOD"] == "p2"
     sc2, _, _ = mk_scorer("tdm")
-    death(sc2, "n1", "p1", 1, SCORER_T0 + 1000)
+    scorer_death(sc2, "n1", "p1", 1, SCORER_T0 + 1000)
     assert sc2.winner() == {"team_id": "blue"} and sc2.team_scores() == {"blue": 1, "yellow": 0}
 
 
 def test_end_freeze_parks_post_end_facts():
     sc, _, _ = mk_scorer(tl=60)
-    death(sc, "n1", "p1", 1, SCORER_T0 + 10_000)
-    assert death(sc, "n1", "p1", 1, SCORER_T0 + 60_000 + 5_000) == "post_end"     # after go_live + 60 s
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 10_000)
+    assert scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 60_000 + 5_000) == "post_end"     # after go_live + 60 s
     assert sum(r["kills"] for r in sc.rows()) == 1 and sc.recap()["post_end"] == 1
     sc.set_end(SCORER_T0 + 5_000)                                                  # host end earlier
-    assert death(sc, "n3", "p3", 1, SCORER_T0 + 8_000) == "post_end"
+    assert scorer_death(sc, "n3", "p3", 1, SCORER_T0 + 8_000) == "post_end"
 
 
 def test_hot_swap_shots_baseline():
@@ -139,7 +139,7 @@ def test_hot_swap_shots_baseline():
 
 def test_csv_and_missing():
     sc, _, _ = mk_scorer()
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
     assert "REAPER" in sc.csv() and "p1" not in sc.missing() and "p2" in sc.missing()
 
 
@@ -157,14 +157,14 @@ def mk_alerts(mode="tdm", cap=None, tl=600):
 def test_first_blood_is_a_medal_and_a_kill_can_stack_a_multi_and_a_spree():
     sc, fb, feed, alerts = mk_alerts()
     # fixture: player_num = index + 1, so shooter_num 1 is p0 (blue); p1/p3 are yellow
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
     assert fb[-1][1]["medals"] == ["first_blood"] and feed[-1]["tag"] == "FIRST BLOOD"
     # four more kills inside the multi window: kills 2,3,4,5 -> double, triple, killtacular, killtrocity+killing_spree
     # (Tony's ear-confirmed ladder, 2026-09-24: every kill from 2 to 8 voiced)
-    death(sc, "n3", "p3", 1, SCORER_T0 + 1500); assert fb[-1][1]["medals"] == ["double_kill"]
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1800); assert fb[-1][1]["medals"] == ["triple_kill"]
-    death(sc, "n3", "p3", 1, SCORER_T0 + 1900); assert fb[-1][1]["medals"] == ["killtacular"]
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1950)
+    scorer_death(sc, "n3", "p3", 1, SCORER_T0 + 1500); assert fb[-1][1]["medals"] == ["double_kill"]
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1800); assert fb[-1][1]["medals"] == ["triple_kill"]
+    scorer_death(sc, "n3", "p3", 1, SCORER_T0 + 1900); assert fb[-1][1]["medals"] == ["killtacular"]
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1950)
     assert fb[-1][1]["medals"] == ["killtrocity", "killing_spree"], fb[-1][1]
     assert fb[-1][1]["kind"] == "kill"
     assert feed[-1]["tag"] == "KILLTROCITY + KILLING SPREE"
@@ -181,38 +181,38 @@ def test_the_halo_3_multi_kill_ladder_by_chain_length_and_its_4_s_window():
     sc, fb, feed, alerts = mk_alerts()
     multis = []
     for i in range(11):                                   # 11 kills, each 300 ms after the last
-        death(sc, "n1" if i % 2 == 0 else "n3", "p1" if i % 2 == 0 else "p3", 1, SCORER_T0 + 1000 + i * 300)
+        scorer_death(sc, "n1" if i % 2 == 0 else "n3", "p1" if i % 2 == 0 else "p3", 1, SCORER_T0 + 1000 + i * 300)
         multis.append([m for m in fb[-1][1]["medals"] if m not in ("first_blood", "killing_spree", "unstoppable")])
     assert multis == [[], ["double_kill"], ["triple_kill"], ["killtacular"], ["killtrocity"], ["killamanjaro"],
                       ["killtastrophe"], ["killionaire"], ["killionaire"], ["killionaire"], ["killionaire"]], multis
     assert "unstoppable" in fb[-2][1]["medals"]           # the 10th kill: the streak ladder is unchanged
     # the window: a kill MORE than MULTI_KILL_MS after the last starts a new chain
     last = SCORER_T0 + 1000 + 10 * 300
-    death(sc, "n1", "p1", 1, last + MULTI_KILL_MS + 1)
+    scorer_death(sc, "n1", "p1", 1, last + MULTI_KILL_MS + 1)
     assert not [m for m in fb[-1][1]["medals"] if m in dict((b, a) for a, b in MULTI_KILL_LADDER)], fb[-1][1]
-    death(sc, "n3", "p3", 1, last + MULTI_KILL_MS + 1 + MULTI_KILL_MS)   # exactly on the window edge still chains
+    scorer_death(sc, "n3", "p3", 1, last + MULTI_KILL_MS + 1 + MULTI_KILL_MS)   # exactly on the window edge still chains
     assert "double_kill" in fb[-1][1]["medals"], fb[-1][1]
 
 
 def test_lead_alerts_go_to_the_teams_they_concern_and_next_kill_wins_fires_once():
     sc, fb, feed, alerts = mk_alerts(cap=3)
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1000)                  # blue (p0, num 1) leads 1-0
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000)                  # blue (p0, num 1) leads 1-0
     assert ("lead_taken", "blue", {}) in alerts and not any(a[0] == "lead_lost" for a in alerts)
-    death(sc, "n0", "p0", 2, SCORER_T0 + 1200)                  # yellow (p1, num 2) ties 1-1: nothing new
+    scorer_death(sc, "n0", "p0", 2, SCORER_T0 + 1200)                  # yellow (p1, num 2) ties 1-1: nothing new
     assert alerts[-1][0] == "lead_taken"
-    death(sc, "n2", "p2", 2, SCORER_T0 + 1400)                  # yellow leads 2-1 = cap-1 -> lead change + next kill wins
+    scorer_death(sc, "n2", "p2", 2, SCORER_T0 + 1400)                  # yellow leads 2-1 = cap-1 -> lead change + next kill wins
     assert ("lead_lost", "blue", {}) in alerts and ("lead_taken", "yellow", {}) in alerts
     assert alerts.count(("next_kill_wins", "all", {})) == 1
-    death(sc, "n0", "p0", 2, SCORER_T0 + 1600)                  # 3-1: no second next_kill_wins
+    scorer_death(sc, "n0", "p0", 2, SCORER_T0 + 1600)                  # 3-1: no second next_kill_wins
     assert alerts.count(("next_kill_wins", "all", {})) == 1
 
 
 def test_last_survivor_and_infected_alerts():
     sc, fb, feed, alerts = mk_alerts(mode="lms")
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
-    death(sc, "n2", "p2", 1, SCORER_T0 + 1001)
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000)
+    scorer_death(sc, "n2", "p2", 1, SCORER_T0 + 1001)
     assert not any(a[0] == "last_survivor" for a in alerts)   # two still alive (p0, p3)
-    death(sc, "n3", "p3", 1, SCORER_T0 + 1100)
+    scorer_death(sc, "n3", "p3", 1, SCORER_T0 + 1100)
     assert alerts[-1] == ("last_survivor", "all", {"player_id": "p0"}), alerts
     sc2, fb2, feed2, alerts2 = mk_alerts(mode="infection")
     r = sc2.ingest("n2", {"type": "team_change", "t": SCORER_T0 + 1000, "match_id": "m1", "node_id": "n2", "player_id": "p2", "tid": 2}, SCORER_T0 + 1000)
@@ -253,18 +253,18 @@ def test_a_team_kill_that_flips_the_lead_still_announces_it():
     """Polish 2026-09-04: alerts ran only inside the enemy-kill branch, so a team kill (kills -= 1) could
     hand the lead over in silence."""
     sc, fb, feed, alerts = mk_alerts()
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1000)          # p0 (blue) kills p1 -> blue leads 1-0
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000)          # p0 (blue) kills p1 -> blue leads 1-0
     assert ("lead_taken", "blue", {}) in alerts
-    death(sc, "n0", "p0", 2, SCORER_T0 + 1100)          # p1 (yellow) kills p0 -> 1-1, no change
+    scorer_death(sc, "n0", "p0", 2, SCORER_T0 + 1100)          # p1 (yellow) kills p0 -> 1-1, no change
     alerts.clear()
-    death(sc, "n2", "p2", 1, SCORER_T0 + 1200)          # p0 team-kills p2 -> blue 0, yellow 1
+    scorer_death(sc, "n2", "p2", 1, SCORER_T0 + 1200)          # p0 team-kills p2 -> blue 0, yellow 1
     assert ("lead_lost", "blue", {}) in alerts and ("lead_taken", "yellow", {}) in alerts, alerts
 
 
 def test_infection_last_survivor_counts_only_the_uninfected_side():
     """Polish 2026-09-04: the infected respawn ALIVE, so counting every alive player never reached one."""
     sc, fb, feed, alerts = mk_alerts(mode="infection")
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1000)          # p1 goes down (still yellow); 3 alive, infected team unknown -> nothing
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000)          # p1 goes down (still yellow); 3 alive, infected team unknown -> nothing
     assert not any(a[0] == "last_survivor" for a in alerts)
     sc.ingest("n1", {"type": "team_change", "t": SCORER_T0 + 1500, "match_id": "m1", "node_id": "n1", "player_id": "p1", "tid": 1}, SCORER_T0 + 1500)
     # p1 turned onto tid 1 (blue) -> blue is the infected side; the only alive non-blue player is p3
@@ -368,13 +368,13 @@ def test_a_melee_kill_is_a_medal_that_stacks_with_the_chain():
     row = next(m for m in MEDALS if m["key"] == "melee_kill")
     assert row["kind"] == "melee" and row["label"] and row["clip"], row
     sc, fb, feed, alerts = mk_alerts()
-    death(sc, "n1", "p1", 1, SCORER_T0 + 1000)                               # a gun kill: no melee medal
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000)                               # a gun kill: no melee medal
     assert "melee_kill" not in fb[-1][1]["medals"], fb[-1][1]
-    death(sc, "n3", "p3", 1, SCORER_T0 + 1500, melee=True)                   # a melee kill that is also a double
+    scorer_death(sc, "n3", "p3", 1, SCORER_T0 + 1500, melee=True)                   # a melee kill that is also a double
     assert fb[-1][1]["medals"] == ["double_kill", "melee_kill"], fb[-1][1]
-    death(sc, "n1", "p1", 1, SCORER_T0 + 9000, melee=True)                   # a lone melee kill, no chain
+    scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 9000, melee=True)                   # a lone melee kill, no chain
     assert fb[-1][1]["medals"] == ["melee_kill"], fb[-1][1]
-    death(sc, "n3", "p3", 1, SCORER_T0 + 9500, melee=False)
+    scorer_death(sc, "n3", "p3", 1, SCORER_T0 + 9500, melee=False)
     assert "melee_kill" not in fb[-1][1]["medals"], fb[-1][1]
 
 

@@ -19,7 +19,6 @@ import pathlib
 from brx_mcp.stage.stage import PROBE_LIFE, GunStage, decode_advert_uuid, encode_advert_uuid
 
 CONTESTED = S.HILL_CUES["hill_contested"]["frame"]     # VB0O "Hill Contested"
-GUN = "FA:KE:00:00:00:01"
 
 
 def audio(mgr, n) -> list[str]:
@@ -574,7 +573,7 @@ def test_a_new_match_forgets_the_point_and_a_tid_2_listener_is_silent_on_the_sta
 
 def mk_gain(**profile):
     """A health-body stage on a driveable clock, with a SOUND on each rise event so the tx stream shows it."""
-    clock = _Clock()
+    clock = StageClock()
     # the fake's delayed $ALCD replies must age on the SAME clock the test drives, not the real wall clock --
     # otherwise a reply queued by an earlier write can come "due" from real CPU load alone (the flaky class).
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
@@ -728,7 +727,7 @@ def test_a_rise_inside_the_rare_moment_guard_is_dropped_and_after_it_fires():
 # ======================================================================================================
 
 def mk_reload():
-    clock = _Clock()
+    clock = StageClock()
     # same clock on both sides (see mk_gain): the fake's ALCD delay must age on the test's own driven time.
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
@@ -1167,7 +1166,7 @@ def test_f374_a_hit_during_the_hold_restarts_it_and_a_heal_drops_the_line():
 # ======================================================================================================
 
 def mk_stun(stun=10, **profile):
-    clock = _Clock()
+    clock = StageClock()
     # same clock on both sides (see mk_gain): the fake's ALCD delay must age on the test's own driven time.
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
@@ -1666,8 +1665,8 @@ def test_the_reload_watchdog_hands_the_deadline_to_poll_instead_of_busy_spinning
 import pathlib as _pathlib
 import re as _re
 from _stage import (
-    _Clock, _nosleep, BLUE_TO_RED, CAPTURED, feed, hill_audio, in_play, install_levels_readout, LOST, mark,
-    mk_hill, mk_point, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, since, TICK, tx)
+    _nosleep, BLUE_TO_RED, CAPTURED, feed, GUN, hill_audio, in_play, install_levels_readout, LOST, mark,
+    mk_hill, mk_point, NEUTRAL_TO_BLUE, PLAYX, run_clock, settle, since, StageClock, TICK, tx)
 
 _REPO = _pathlib.Path(__file__).resolve().parents[2]
 _ENGINE_JS = _REPO / "app" / "src" / "engine.js"

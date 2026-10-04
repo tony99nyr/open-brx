@@ -4,7 +4,7 @@ Field night 2026-09-12: guns ran a PREVIOUS push in nearly every match and nothi
 so. Every signal MC needed was already on the wire and thrown away --
 
   * `ack_config` carries the `config_id` the node applied; `state.py` stored `{ok, gun_echo, err}`
-    and DROPPED it, so an ack_head for last game's head satisfied `all_acked()` and the whistle blew.
+    and DROPPED it, so an ack for last game's head satisfied `all_acked()` and the whistle blew.
   * `gun_echo` is the gun's own answer to the head write and was only ever tested for TRUTHINESS.
   * the status heartbeat reports the pool the gun is actually holding, and nothing compared it to
     the pool MC compiled.
@@ -21,19 +21,19 @@ from brx_mcp.mc.types import POOL_CHECK_SETTLE_MS
 from _session import ack_head, mk_session, online, row
 
 
-# --------------------------------------------------------------- 1. the stale ack_head ---------- #
+# --------------------------------------------------------------- 1. the stale ack ---------- #
 
 def test_a_stale_ack_never_satisfies_start_and_force_does_not_open_it():
-    """The field failure itself. An ack_head for a PREVIOUS head is not an ack_head for this one.
+    """The field failure itself. An ack for a PREVIOUS head is not an ack for this one.
 
     Shape: the lobby is pushed and acked, the operator edits the game (A35 re-pushes and clears the
-    acks), and the node's answer that arrives next is a LATE ack_head for the config it was holding
+    acks), and the node's answer that arrives next is a LATE ack for the config it was holding
     before. Truthiness alone read that as "every gun has answered" and `start()` blew the whistle on
     a roster still running last game's frames.
 
     `force` does NOT open this one, for `_refuse_push_in_play`'s reason: force is the operator's
     override of a READINESS judgement they can see and accept (a phone that is off, a row they know
-    about). A stale ack_head is not a judgement -- it is the gun telling us, in its own words, which game
+    about). A stale ack is not a judgement -- it is the gun telling us, in its own words, which game
     it is running. RE-PUSH is the only answer.
     """
     s, net, clock, ps = mk_session(2)
@@ -49,7 +49,7 @@ def test_a_stale_ack_never_satisfies_start_and_force_does_not_open_it():
     for i, p in enumerate(ps):                    # …and both phones answer for the OLD head
         ack_head(net, s, i, p["player_id"], config_id=old_id)
 
-    assert not s.all_acked(), "an ack_head naming a previous config_id is not an ack_head for this one"
+    assert not s.all_acked(), "an ack naming a previous config_id is not an ack for this one"
     for force in (False, True):
         try:
             s.start(runway_s=10, force=force)
@@ -82,7 +82,7 @@ def test_every_re_push_resets_the_per_node_ack():
     s.push_config()
     ack_head(net, s, 0, ps[0]["player_id"])
     assert s.all_acked()
-    s.push_config()                               # a second push: the old ack_head proves nothing about it
+    s.push_config()                               # a second push: the old ack proves nothing about it
     assert s.acks == {} and not s.all_acked()
 
 
@@ -382,8 +382,8 @@ def test_the_pool_fault_clears_on_the_re_push_and_re_ack():
 
 
 # --------------------------- 8. a blocker that says RE-PUSH must not refuse the push -------- #
-# C-2. All three A36 reds are cured by the push itself: it replaces the head, clears the ack_head, the
-# echo derived from that ack_head and the pool judgement made against that head. `push_config` counted
+# C-2. All three A36 reds are cured by the push itself: it replaces the head, clears the ack, the
+# echo derived from that ack and the pool judgement made against that head. `push_config` counted
 # them as reds standing in its own way, so the only way out of the state the row TOLD the operator to
 # leave was `force` -- an override reserved for judgements they can see and accept.
 
@@ -418,7 +418,7 @@ def test_start_still_refuses_a_stale_ack_that_the_push_gate_now_lets_through():
     s, _net, _clock, _ps, old_id = _stale_acked_roster()
     try:
         s.start(runway_s=10)
-        raise AssertionError("start() accepted a stale ack_head")
+        raise AssertionError("start() accepted a stale ack")
     except ValueError as e:
         assert old_id in str(e) or "OLDER" in str(e).upper(), str(e)
     assert s.phase == "lobby"
@@ -433,7 +433,7 @@ def test_start_still_refuses_a_stale_ack_that_the_push_gate_now_lets_through():
 
 
 def test_a_stale_ack_that_also_changed_weapon_is_ONE_red_not_two():
-    """C-5. The echo is derived FROM the ack_head: if the ack_head is not for this head, its echo is not
+    """C-5. The echo is derived FROM the ack: if the ack is not for this head, its echo is not
     evidence about this head either, and printing both reds describes one cause twice."""
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
@@ -447,7 +447,7 @@ def test_a_stale_ack_that_also_changed_weapon_is_ONE_red_not_two():
 
 
 def test_standing_a_player_down_forgets_the_pool_fault_they_earned():
-    """C-5. `_unroster` already forgets the ack_head and the bundle; the pool fault is a judgement about
+    """C-5. `_unroster` already forgets the ack and the bundle; the pool fault is a judgement about
     the same head and was riding back in on the reinstate."""
     s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
@@ -575,7 +575,7 @@ def test_a_re_push_is_a_fresh_head_not_a_new_game():
     assert res.get("repushed") is True, res
     assert s.config["config_id"] != cid, "the new head must be distinguishable from the old one"
     assert s.game_no == gno, "no gun changed game; the stations must not be re-armed for a new number"
-    assert s.acks == {}, "every ack_head describes the head that was just replaced"
+    assert s.acks == {}, "every ack describes the head that was just replaced"
     assert s.lobby_pushed and s.phase == "lobby"
 
 
@@ -618,14 +618,14 @@ def test_an_unforced_re_push_clears_a_stale_ack_an_echo_mismatch_and_a_pool_faul
 # whistle blew on a gun that had just told us it is holding another weapon.
 
 def test_start_refuses_an_echo_MISMATCH():
-    """R2-5. The mismatch leaves the ack_head CURRENT, so `all_acked()` was true and the whistle blew.
+    """R2-5. The mismatch leaves the ack CURRENT, so `all_acked()` was true and the whistle blew.
     Whether `force` opens it is F2's question, answered in section 14: it does, because the rule
     behind the mismatch is an unbenched inference about this firmware."""
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack_head(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
-    assert s.all_acked(), "control: the ack_head IS current -- this is why the old gate let it through"
+    assert s.all_acked(), "control: the ack IS current -- this is why the old gate let it through"
     try:
         s.start(runway_s=10)
         raise AssertionError("start() accepted an echo mismatch")
@@ -855,7 +855,7 @@ def test_an_echo_mismatch_refuses_the_unforced_start_and_says_what_to_do():
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack_head(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
-    assert s.all_acked(), "control: the ack_head IS current -- it is the ECHO inside it that disagrees"
+    assert s.all_acked(), "control: the ack IS current -- it is the ECHO inside it that disagrees"
     try:
         s.start(runway_s=10)
         raise AssertionError("start() accepted an echo mismatch unforced")
@@ -876,7 +876,7 @@ def test_the_host_override_opens_an_echo_mismatch_because_the_rule_is_unbenched(
 
 
 def test_a_stale_ack_is_still_force_proof_beside_the_forceable_mismatch():
-    """The control for F2: the stale ack_head is the gun NAMING another game, not an inference."""
+    """The control for F2: the stale ack is the gun NAMING another game, not an inference."""
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
@@ -885,7 +885,7 @@ def test_a_stale_ack_is_still_force_proof_beside_the_forceable_mismatch():
     ack_head(net, s, 0, ps[0]["player_id"], config_id=old)
     try:
         s.start(runway_s=10, force=True)
-        raise AssertionError("force opened a stale ack_head")
+        raise AssertionError("force opened a stale ack")
     except ValueError as e:
         assert "OLDER" in str(e).upper(), str(e)
 
@@ -1009,7 +1009,7 @@ def test_the_hp_RED_still_fires_on_a_single_frame():
 
 
 # ------------- F6: a re-push MINTS a fresh `config_id`, so it can be PROVEN to have landed --- #
-# R2-1 kept the id ("the same head again"), and that made the re-push unprovable: an ack_head in flight
+# R2-1 kept the id ("the same head again"), and that made the re-push unprovable: an ack in flight
 # when `_repush_lobby_config` clears `acks` lands afterwards carrying the SAME id and is recorded as
 # current, so the board reads acked for a head that gun never took. The proof matters more.
 
@@ -1028,7 +1028,7 @@ def test_an_ack_in_flight_across_a_re_push_is_not_current():
     s, net, clock, ps = _pushed_and_acked()
     old = s.config["config_id"]
     s.push_config()
-    ack_head(net, s, 0, ps[0]["player_id"], config_id=old)      # the ack_head that was already on the wire
+    ack_head(net, s, 0, ps[0]["player_id"], config_id=old)      # the ack that was already on the wire
     assert not s._ack_is_current(ps[0]["player_id"])
     r = row(s, ps[0]["player_id"])
     line = next((b for b in r["blockers"] if b.startswith("ACKED AN OLDER CONFIG")), None)

@@ -56,4 +56,4 @@ def test_a_player_who_is_not_ready_is_never_counted():
     s, net, clock, ps = mk_online_session(2)
     s.push_config()
     s.set_ready(ps[0]["player_id"], True, host_override=True)
-    assert lobby(s)["updating"] == 1, "only the READY player with no ack_lobby; the other is simply not ready"
+    assert lobby(s)["updating"] == 1, "only the READY player with no ack; the other is simply not ready"

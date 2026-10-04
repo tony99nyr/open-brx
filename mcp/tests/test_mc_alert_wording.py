@@ -20,9 +20,7 @@ from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.types import POOL_CHECK_SETTLE_MS
-from _session import ack_head
-
-T0 = 5_000_000
+from _session import ack_head, T0
 
 
 def _session(n_players=4, compiler=None):

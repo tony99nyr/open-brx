@@ -12,16 +12,15 @@ import asyncio
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage
-from _stage import _Clock, _nosleep, settle
+from _stage import _nosleep, GUN, settle, StageClock
 
-GUN = "FA:KE:00:00:00:01"
 VOLTS = "$VOLTS,8428,4164,100,100,*"
 ENGINE_JS = __import__("pathlib").Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js"
 
 
 def _mk():
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
-    clock = _Clock()
+    clock = StageClock()
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
 

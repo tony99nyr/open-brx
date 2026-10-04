@@ -8,7 +8,7 @@ from brx_mcp.mc.scoring import Scorer
 SCORER_T0 = 1_000_000
 
 
-def death(sc, victim_node, victim, shooter_num, t, **kw):
+def scorer_death(sc, victim_node, victim, shooter_num, t, **kw):
     return sc.ingest(victim_node, {"type": "death", "t": t, "match_id": "m1", "node_id": victim_node, "player_id": victim,
                                    "shooter_num": shooter_num, "shooter_team": 1, **kw}, t)
 

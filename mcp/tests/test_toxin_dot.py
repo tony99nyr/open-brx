@@ -12,7 +12,7 @@ from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.scoring import Scorer
 from brx_mcp.mc.state import Session
 
-from _scoring import death, mk_scorer, SCORER_T0
+from _scoring import scorer_death, mk_scorer, SCORER_T0
 
 
 def _player(pid, num, team, *weapons):
@@ -178,13 +178,13 @@ def test_a_lethal_tick_credits_the_player_who_applied_the_poison():
     the fact `dot: true`; the scorer must credit that player exactly as it credits a hit, first blood included.
     Control: the same death with shooter 0 (the pre-S16 unattributed lethal tick) credits nobody."""
     sc, fb, feed = mk_scorer()
-    assert death(sc, "n1", "p1", 1, SCORER_T0 + 1000, dot=True) == "scored"      # p0 (num 1) poisoned p1
+    assert scorer_death(sc, "n1", "p1", 1, SCORER_T0 + 1000, dot=True) == "scored"      # p0 (num 1) poisoned p1
     rows = {r["player_id"]: r for r in sc.rows()}
     assert rows["p0"]["kills"] == 1 and rows["p1"]["deaths"] == 1
     assert sc.first_blood == "p0" and fb and fb[0][0] == "p0" and fb[0][1]["kind"] == "kill"
 
     sc2, fb2, _ = mk_scorer()
-    death(sc2, "n1", "p1", 0, SCORER_T0 + 1000, dot=True)
+    scorer_death(sc2, "n1", "p1", 0, SCORER_T0 + 1000, dot=True)
     rows2 = {r["player_id"]: r for r in sc2.rows()}
     assert rows2["p0"]["kills"] == 0 and rows2["p1"]["deaths"] == 1 and not fb2
 
@@ -193,7 +193,7 @@ def test_a_lethal_tick_on_a_teammate_is_a_team_kill_like_any_other():
     """A friendly applier gets the same friendly-fire booking a friendly bullet would. Poison is not a way
     round the friendly rule. p2 (num 3) and p0 are both blue in the scorer fixture."""
     sc, _fb, feed = mk_scorer()
-    death(sc, "n0", "p0", 3, SCORER_T0 + 1000, dot=True)
+    scorer_death(sc, "n0", "p0", 3, SCORER_T0 + 1000, dot=True)
     rows = {r["player_id"]: r for r in sc.rows()}
     assert rows["p2"]["kills"] == -1 and feed[-1]["tag"] == "TEAM KILL"
 
