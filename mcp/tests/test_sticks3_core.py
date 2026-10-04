@@ -99,3 +99,12 @@ def test_f391_lock_snapshot_checks_nvs_result():
     glue = (CORE / "mc_link_glue.h").read_text(encoding="utf-8")
     assert "lockSnapshotWritten" in glue
     assert "lockClearPending" in glue
+
+
+def test_p_l2_presence_observes_the_advert_arrival_time():
+    # P-L2 (review 2026-10-03): the drain feeds each sighting at its own arrival time (clamped to `now`), not the
+    # drain's `now`, so a burst drained together is not one instant in the sighting window.
+    glue = (CORE / "mc_link_glue.h").read_text(encoding="utf-8")
+    assert "presence.observe(sp.advert, sp.rssi, at)" in glue
+    assert "(int32_t)(sp.seen_at - now) > 0 ? now : sp.seen_at" in glue
+    assert "presence.observe(sp.advert, sp.rssi, now)" not in glue
