@@ -1111,6 +1111,11 @@ function wireExit() {
   try { if (plugins.beacon) support = await plugins.beacon.isSupported(); } catch (e) { log('isSupported: ' + (e && e.message || e)); }
   if (DEMO) support = { advertising: true, txPowerControl: true, platform: 'stage' };
   log(`utility mode · ${support.platform} · advertise ${support.advertising ? 'yes' : 'NO'} · tx control ${support.txPowerControl ? 'yes' : 'no'}`);
+  // Bench 2026-10-02: CDP found an empty `window.brx` here (that name is the player app's). Expose the same name,
+  // and BEFORE the advert and the scan start (review 2026-10-03: `startAdvert` awaits the plugin too), so a call that
+  // never returns cannot hide the one read that answers "is the hill hearing that player?". `diag()` is a plain
+  // snapshot: the point, its counts, and every player heard.
+  window.brx = { log: logLines, settings, presence, point, diag: utilityDiag };   // the full API replaces it below
   if (settings.live) await startAdvert();   // it was live when the phone last ran: come straight back up
   readBattery().then(b => { lastBattery = b; });
   render();
@@ -1122,10 +1127,6 @@ function wireExit() {
   else if (url) { connectMc(url, { trusted: !settings.mc_auto }); if (settings.mc_auto) startUtilityDiscovery(); }   // setup needs WiFi (A13.5); once armed, play does not
   else startUtilityDiscovery();   // utility mode is an explicit choice: auto-join MC when it advertises on this LAN
   if (!plugins.beacon || !support.advertising) log('this phone cannot advertise; check Bluetooth is on', 'le');
-  // Bench 2026-10-02: CDP found an empty `window.brx` here (that name is the player app's). Expose the same name,
-  // and BEFORE the scan starts, so a scan that never returns cannot hide the one read that answers "is the hill
-  // hearing that player?". `diag()` is a plain snapshot: the point, its counts, and every player heard.
-  window.brx = { log: logLines, settings, presence, point, diag: utilityDiag };   // the full API replaces it below
   await startScan();
   setInterval(tick, 250);
   if (DEMO) seedDemo();

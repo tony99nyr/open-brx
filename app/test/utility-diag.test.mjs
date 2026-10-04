@@ -75,3 +75,13 @@ test('the MC link cannot be changed on the field until the hold opens editing', 
   assert.ok(api.log.some(l => /MC link changed on the station/.test(l)), 'and it is logged');
   api.settings.mcArmed = false; api.settings.lockUntil = 0;
 });
+
+test('window.brx is published before the boot awaits the advert or the scan (review 2026-10-03)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/utility.js', import.meta.url), 'utf8');
+  const boot = src.slice(src.lastIndexOf('(async () => {'));
+  const at = boot.indexOf('window.brx = { log: logLines');
+  assert.ok(at > 0, 'the early window.brx is still there');
+  assert.ok(at < boot.indexOf('await startAdvert()'), 'before the advert start, which awaits the plugin');
+  assert.ok(at < boot.indexOf('await startScan()'), 'and before the scan');
+});
