@@ -2662,7 +2662,7 @@ test('an $ALCD on a new weapon slot confirms the swap; melee (slot 4) does not',
   assert.equal(st.switching, false);
   assert.equal(st.activeSlot, 1);
   assert.equal(st.ammo, 6, 'ammo follows the confirmed slot');
-  assert.ok(h.eng.lastSwitchMs >= 500, 'records ALT -> confirming shot (includes reaction time)');
+  assert.ok(h.eng.am.lastSwitchMs >= 500, 'records ALT -> confirming shot (includes reaction time)');
 });
 
 test('death clears the swap indicator', () => {
@@ -7415,16 +7415,16 @@ test('ALT r4: an ALT in a reload\'s stale tail is a real swap, so the pointer fo
   h.frame('$BUT,0,1,*'); h.frame('$ALCD,9,100,0,192,0,*'); h.frame('$BUT,0,0,*');   // a rifle round
   h.adv(h.eng.switchWindowMs() + 200); h.eng.tick();
   assert.equal(h.eng.activeSlot, 0, 'the node is on the rifle, as the gun is');
-  assert.equal(h.eng._altPtr, 0, 'and so is the ALT pointer');
+  assert.equal(h.eng.am.altPtr, 0, 'and so is the ALT pointer');
 });
 
 test('ALT r4: a loadout $ALCD that moves the trigger with no swap open heals the ALT pointer', () => {
   const h = shellHarness();
   h.frame('$ALCD,10,100,0,192,0,*');            // the node on the rifle
-  h.eng._altPtr = 0; h.eng.switching = null;
+  h.eng.am.altPtr = 0; h.eng.switching = null;
   h.frame('$BUT,0,1,*'); h.frame('$ALCD,0,100,1,24,0,*'); h.frame('$BUT,0,0,*');   // the gun fires slot 1: an ALT the node missed
   assert.equal(h.eng.activeSlot, 1);
-  assert.equal(h.eng._altPtr, 1, 'the pointer follows the slot the gun fired');
+  assert.equal(h.eng.am.altPtr, 1, 'the pointer follows the slot the gun fired');
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.switching && h.eng.switching.to, 0, 'the next ALT goes back to the rifle');
 });

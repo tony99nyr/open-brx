@@ -367,7 +367,7 @@ test('F379: after ALT to the secondary and a rocket switch-back, the next ALT fo
   h.eng.switchWindowMs = () => 10_000;
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   assert.equal(h.eng.activeSlot, 0, 'setup: the phone waits for an assumed swap');
-  assert.equal(h.eng._altPtr, 1, 'the accepted ALT press moves the gun pointer');
+  assert.equal(h.eng.am.altPtr, 1, 'the accepted ALT press moves the gun pointer');
   assert.equal(h.eng.state().switchTo, 1, 'SWITCHING shows the pointer target');
   h.take(4); h.away(); h.eng.pu.held.left = 1; h.fire(2, 0);
   h.adv(h.eng.switchWindowMs());
@@ -478,7 +478,7 @@ test('F394 r2: a real shot on the ALT target confirms the swap, even inside the 
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   h.fire(1, 5, 24);
   assert.equal(h.eng.switching, null, 'the shot confirmed the swap');
-  assert.ok(h.eng.lastSwitchMs != null, 'and timed it');
+  assert.ok(h.eng.am.lastSwitchMs != null, 'and timed it');
   assert.deepEqual(shown(h), { slot: 1, ammo: 5, reserve: 24, mag: 6 });
 });
 
@@ -486,23 +486,23 @@ test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile 
   const h = armed();
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   h.frame('$ALCD,30,190,0,0,0,*');
-  assert.equal(h.eng._altPtr, 1);
-  assert.notEqual(h.eng._altEvidencePending, null);
+  assert.equal(h.eng.am.altPtr, 1);
+  assert.notEqual(h.eng.am.altEvidencePending, null);
   h.eng.reconciling = { since: h.eng.now(), ammo: h.eng.am.liveAmmo() };   // a relink's window, then its end
   h.eng.rc.end();
-  assert.equal(h.eng._altPtr, 1);
+  assert.equal(h.eng.am.altPtr, 1);
 });
 
 test('F379: ALT pointer persists across an app restart', () => {
-  const h = armed(); h.eng._altPtr = 1; h.eng._save(); h.restart();
-  assert.equal(h.eng._altPtr, 1);
+  const h = armed(); h.eng.am.altPtr = 1; h.eng._save(); h.restart();
+  assert.equal(h.eng.am.altPtr, 1);
 });
 
 test('head rewrite resets ALT pointer and pending evidence', () => {
-  const h = armed(); h.eng._altPtr = 1; h.eng._altEvidencePending = 1;
+  const h = armed(); h.eng.am.altPtr = 1; h.eng.am.altEvidencePending = 1;
   h.eng._writeHead('test head');
-  assert.equal(h.eng._altPtr, 0);
-  assert.equal(h.eng._altEvidencePending, null);
+  assert.equal(h.eng.am.altPtr, 0);
+  assert.equal(h.eng.am.altEvidencePending, null);
 });
 
 test('a weapon grant clears a pending switch-back retry', () => {
@@ -615,7 +615,7 @@ test('F400: the trigger grant sets the switch card (SWITCHING, ALT\'s own from/t
   assert.equal(h.eng.moment && h.eng.moment.kind, 'switched');
   assert.deepEqual(h.eng.moment.data, { slot: 2, assumed: true, pu: true });
   assert.equal(h.eng.activeSlot, 2, 'the equip itself was never in doubt -- only the CARD waited');
-  assert.equal(h.eng._altPtr, 0, 'F400: a pickup slot (2) never becomes the gun\'s own ALT cycle pointer');
+  assert.equal(h.eng.am.altPtr, 0, 'F400: a pickup slot (2) never becomes the gun\'s own ALT cycle pointer');
 });
 
 test('F400 r1: the gun\'s echo of the equip does not cut the pickup card short: it runs ALT\'s full window', () => {
@@ -642,10 +642,10 @@ test('F400 r1: SELECT acts while a pickup card is up (the gun can already fire)'
 });
 
 test('F400 r1: a pickup card closing never moves the gun\'s ALT pointer', () => {
-  const h = armed(); h.eng._altPtr = 1; h.take(4); h.adv(500); h.select();
+  const h = armed(); h.eng.am.altPtr = 1; h.take(4); h.adv(500); h.select();
   h.adv(h.eng.switchWindowMs() + 100);
   assert.equal(h.eng.activeSlot, 0, 'setup: SELECT went back to slot 0');
-  assert.equal(h.eng._altPtr, 1, 'a phone equip moves the trigger, not ALT');
+  assert.equal(h.eng.am.altPtr, 1, 'a phone equip moves the trigger, not ALT');
 });
 test('F400: a same-weapon stack re-equip shows the card too, from and to the same slot', () => {
   const h = armed(); h.take(4); h.eng.pu.held.left = 1;
@@ -1055,20 +1055,20 @@ test('r3 low: a round from slot 1 clears a pending switch-back', () => {
 });
 
 test('F379 r2 M: an ALT target of slot 0 is settled by the gun (0 is a real slot, not "nothing pending")', () => {
-  const h = armed(); h.eng._altPtr = 1;
+  const h = armed(); h.eng.am.altPtr = 1;
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  assert.equal(h.eng._altEvidencePending, 0, 'setup: the pointer went 1 -> 0');
+  assert.equal(h.eng.am.altEvidencePending, 0, 'setup: the pointer went 1 -> 0');
   h.frame('$ALCD,30,190,0,0,0,*');
-  assert.equal(h.eng._altEvidencePending, null);
-  assert.equal(h.eng._altPtr, 0);
+  assert.equal(h.eng.am.altEvidencePending, null);
+  assert.equal(h.eng.am.altPtr, 0);
 });
 
 test('F379 r2 M: a phone equip ends the ALT evidence window', () => {
   const h = armed();
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  assert.equal(h.eng._altEvidencePending, 1, 'setup: ALT pressed');
+  assert.equal(h.eng.am.altEvidencePending, 1, 'setup: ALT pressed');
   h.take(4);
-  assert.equal(h.eng._altEvidencePending, null, 'the heavy on the trigger is no ALT answer');
+  assert.equal(h.eng.am.altEvidencePending, null, 'the heavy on the trigger is no ALT answer');
 });
 
 test('r3 M2: a protection-off that failed every retry books the life as write-lost, so MC offers RESYNC GUN', async () => {

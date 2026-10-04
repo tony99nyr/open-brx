@@ -86,7 +86,6 @@ const LINK_STALE_MS = 150000;
 const LINK_WATCHDOG_ENABLED = false;
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const PICK_DEBOUNCE_MS = 400;        // A26 (S20): a WEAPON pick equips AND arms it for test-firing, so every tap costs an MC round-trip and a $WEAP write on the gun. Scrolling the rack must not spam either: only the last row tapped inside this window is sent (loadout.md §4.5)
-const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 const EVENT_MIN_GAP_MS = 1000;
 const RESULT_SETTLE_MS = 30000;     // A24/node.md §3.13: after the whistle the results screen says PENDING for this long; only
                                     // then, and only with MC unreachable, does it say MC NOT REACHED. It NEVER says lost.
@@ -635,7 +634,7 @@ const STAND_DOWN = [
   ['reconciling', e => e.rc.active],
   ['resync',      e => !!e.resync],
   ['tutorial',    e => !!e.tutorial],
-  ['switching',   e => !!e.switching],
+  ['switching',   e => e.am.swapOpen],
   ['reloading',   e => e.am.reloadOpen],
   ['stunned',     e => !!e.stunned],
   ['heat',        (e, now) => e.am.heatBlocksFire(now)],
@@ -694,7 +693,7 @@ function powerupHost(e) {
     recentPull: (slot, now) => { const p = e._pull; return !!(p && p.slot === slot && now - p.at < TRIGGER_NO_FIRE_MS); },
     // the engine state the module reads (never writes)
     get config() { return e.config; }, get player() { return e.player; }, get weaponName() { return e.weaponName; },
-    get activeSlot() { return e.activeSlot; }, get switching() { return e.switching; }, get actSeq() { return e._actSeq; },
+    get activeSlot() { return e.activeSlot; }, get switching() { return e.am.switching; }, get actSeq() { return e._actSeq; },
     get pulledLife() { return e._pulledLife; }, get reconciling() { return e.rc.active; }, get stunned() { return e.stunned; },
     get resync() { return e.resync; }, get tutorial() { return e.tutorial; },
     get goLiveT() { return e.goLiveT; }, get stations() { return e.stations; }, get gunLocked() { return e.gunLocked; },
@@ -709,14 +708,11 @@ function powerupHost(e) {
     setWriteLost: life => { e._writeLost = life; },   // a lost protection-off: MC offers RESYNC GUN
     acctWrote: (slot, mag, res) => e.am.acctWrote(slot, mag, res),   // F259: an echo of this write is bookkeeping, never a shot
     setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now
-    setSwitching: card => { e.switching = card; },   // F400: a pickup switch card is the engine's own `switching`
+    setSwitching: card => e.am.setSwitching(card),   // F400: a pickup switch card is the engine's own `switching`
     // a phone equip put `slot` on the trigger: the engine's side of it (the swap, a reload, the ammo block)
     equipped: (slot, mag, res) => {
       e._holdAccuracyWrites('powerup equip');
-      if (e.am.reloading) e.am.endReload('swapped');
-      e.switching = null; e.activeSlot = slot; e._pull = null;   // a pull before this equip cannot prove the new count was spent
-      e._altEvidencePending = null;   // F379 r2: a phone equip moves the trigger, not ALT: a later loadout round is no ALT evidence
-      e.am.publish(slot, mag, res);   // the ammo block shows what is on the trigger now, before the gun's first `$ALCD`
+      e.am.equipped(slot, mag, res);   // ends a reload, closes a swap, moves the trigger, shows the new counts (ammo.js)
     },
     recoilArm: why => e._recoilArm(why),
   };
@@ -757,6 +753,8 @@ function ammoHost(e) {
     weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id),
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
+    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
+    setActiveSlot: slot => { e.activeSlot = slot; }, setMoment: m => { e.moment = m; }, clearPull: () => { e._pull = null; },
     setAmmo: (ammo, mag) => { e.ammo = ammo; e.mag = mag; }, setReserve: reserve => { e.reserve = reserve; },
   };
 }
@@ -1017,14 +1015,10 @@ export class Engine {
     this._lastTeamRepaintAt = null; // F68: last periodic team-colour repaint (tick(), TEAM_REPAINT_MS)
     this._accHoldUntil = 0;         // S42 × A44/A47/F15: the accuracy writer stands down until this time (`_holdAccuracyWrites`)
     this._accHoldWhy = null;        // ...and which write asked it to, published as `state().accHold` so a reader can see why
-    this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
     this.held = {};                 // F123: $BUT id -> the `now()` of the press that is still down (a release deletes the entry)
     this.lastButton = null;         // the last $BUT edge either way: {id, state, at, heldMs}
-    this.lastSwitchMs = null;       // measured duration of the last completed swap
     this.am = new Ammo(ammoHost(this));   // F259/F164: the magazine account and the counts per weapon slot (ammo.js)
     this.activeSlot = 0;
-    this._altPtr = 0;                 // the gun's BMAP position is separate from the trigger slot
-    this._altEvidencePending = null;   // the ALT target awaiting gun evidence (0 is a real slot: test != null)
     // Bench 2026-09-17: the last round that left a weapon slot, {slot, at, ms}, where `ms` is that slot's
     // `$WEAP` token 14 from the head (null when the head carries no full frame). Display only: the HUD cue.
     this.lastShot = null;
@@ -1054,6 +1048,10 @@ export class Engine {
    *  accessor is the view the demo, the HUD tests and older readers use; the setter stages a takeover in a test. */
   get reloading() { return this.am.reloading; }
   set reloading(r) { this.am.reloading = r; }
+  /** The ALT swap in flight ({at, from, to}, or a pickup's switch card with `pu`) or null: ammo.js owns it. The view
+   *  the HUD tests and older readers use; the setter stages or clears a swap in a test. */
+  get switching() { return this.am.switching; }
+  set switching(s) { this.am.switching = s; }
   /** Milliseconds into the current reload, or null when none is running (PURE; ammo.js `reloadingMs`). */
   reloadingMs() { return this.am.reloadingMs(); }
 
@@ -1090,7 +1088,7 @@ export class Engine {
         // F164: this life's live counts, per slot the gun has reported: {slot: [mag, reserve]}. Without them a restart
         // mid-match left `am.liveAmmo()` on the spawn rows, and the relink's reconcile handed out a full magazine and
         // reserve. A spawn or revive empties the maps, so the next save drops the old life's counts.
-        ammo: this.am.saved(), altPtr: this._altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
+        ammo: this.am.saved(), altPtr: this.am.altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
         pu: this.pu.snapshot(),
       }));
     } catch (_) { /* ignore */ }
@@ -1107,8 +1105,9 @@ export class Engine {
         endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null, downReason: s.downReason || null,
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
-        probeSent: !!s.probeSent, standby: !!s.standby, _altPtr: Number.isInteger(s.altPtr) ? s.altPtr : 0, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
+        probeSent: !!s.probeSent, standby: !!s.standby, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
         gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null });
+      this.am.altPtr = Number.isInteger(s.altPtr) ? s.altPtr : 0;   // the gun's ALT position (ammo.js)
       if (s.phase === 'live' && s.ammo && typeof s.ammo === 'object') this.am.restore(s.ammo);   // F164
       if (s.pu && typeof s.pu === 'object') this.pu.restore(s.pu);   // A56
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
@@ -1543,7 +1542,7 @@ export class Engine {
     // window (the gun on its from or to slot), or a stun holding the gun at 0. Anything else, such as the P0's slot 2
     // at 2/1 while the player pulls a dead trigger, is decided now, or it would defer to a silent close.
     const pressed = this.am.pressedRounds(slot);
-    const sw = this.switching && !this.switching.pu ? this.switching : null;
+    const sw = this.am.switching && !this.am.switching.pu ? this.am.switching : null;
     const motion = (pressed && gs === slot && expected != null && gm >= expected && gm <= expected + pressed)
       || (sw && (gs === sw.from || gs === sw.to)) || this.stunned;
     if (motion) {
@@ -1898,7 +1897,7 @@ export class Engine {
     const pendingResync = this._operatorResyncPending;
     this.bleUp = false; this.lastGunFrameAt = 0; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this._cure = null; this._queryAt = 0; this._operatorResyncPending = null; this.configQuery = null;   // F264/F287: no link, no answer -- an ask in flight can never resolve, and it must not act on the relink
     if (pendingResync) this._operatorResult('resync', 'gun link down (RELINK first)', pendingResync);
-    this.am.endReload('dropped'); this.switching = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this._ann.clear(); this._gun.clear(); this.log('gun link lost', 'le'); this._changed();
+    this.am.endReload('dropped'); this.am.cancelSwap(); this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this._ann.clear(); this._gun.clear(); this.log('gun link lost', 'le'); this._changed();
   }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; if (s !== 'bound' && this._life) this._life.wsEverDown = true; this._changed(); }   // S56: dealtPartial reads this for the running life
 
@@ -3168,7 +3167,7 @@ export class Engine {
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;
     this._pendingHurtWrite = false;
-    this.am.forgetCounts(); this.activeSlot = 0; this._altPtr = 0; this._altEvidencePending = null; this.am.forgetShown(); this.am.forgetHeat(); this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
+    this.am.forgetCounts(); this.activeSlot = 0; this.am.forgetShown(); this.am.forgetHeat(); this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._holdAccuracyWrites('spawn');   // the spawn write owns `$AMMO` until the gun has answered it
     this._lastTeamRepaintAt = this.now();   // F68: the spawn flash IS this life's first paint; the backstop clock runs from it
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // `$SPAWN` clears every `$TMP`
@@ -4158,23 +4157,7 @@ export class Engine {
       if (this.card && now - this.card.at > 4000) { this.card = null; }
       if (this.callout && now - this.callout.at > CALLOUT_WINDOW_MS) { this.callout = null; }   // S57: the HUD chip's own lifetime, independent of `moment`'s
       if (this.hillCallout && now - this.hillCallout.at > CALLOUT_WINDOW_MS) { this.hillCallout = null; }   // QA-05: the same lifetime
-      // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
-      // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
-      if (this.switching && now - this.switching.at > this.switchWindowMs()) {
-        const to = this.switching.to != null ? this.switching.to : this._nextAltSlot();
-        const pu = !!this.switching.pu; this.switching = null;
-        if (!pu) this.activeSlot = to;   // F400 r2: the powerup equip already moved a pickup card's trigger; a shot since may have moved it again
-        if (!pu) this._altPtr = to;   // F400 r1: a pickup card is a phone equip, which moves the trigger and never the gun's ALT pointer
-        if (!pu) this.pu.onAssumedSwap(to);   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
-        if (!pu) this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile (the powerup equip already armed a pickup card's)
-        if (!pu) this.am.showSlot(to);   // F394: the gun sends no `$ALCD` on ALT, so the new slot's counts come from the node
-        // `pu` rides along so the HUD can tell a pickup's ACTIVE bubble from ALT's own (docs/spec/powerups.md
-        // "The switch card"): a pickup switch is never "assumed" the way an unconfirmed ALT swap is -- it is
-        // display-only for `_onAmmo`'s confirm-by-shot code (powerup-player.js `_switchCard`), so it always closes here, on its
-        // own timer, with the equip already a settled fact.
-        this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true, pu } };
-        this.log(pu ? `pickup switch card to slot ${to} closed after ${this.switchWindowMs()}ms` : `swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
-      }
+      this.am.switchTick(now);         // an ALT swap the gun never confirmed is assumed done past its window (ammo.js)
       this._changed();
     }
     if (this.resync) this._resyncTick();
@@ -4237,10 +4220,10 @@ export class Engine {
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
     // operator respawn of a LIVE player skips `_death`, which is the only other place `switching` was cleared, so a
     // stale swap could flip the slot a second later, and a stale lockout reading kept OVERHEAT up. stage.py `_after_spawn` clears the same.
-    this.switching = null; this.am.forgetHeat();
+    this.am.cancelSwap(); this.am.forgetHeat();
     this._holdAccuracyWrites('revive');   // the revive write owns `$AMMO` until the gun has answered it
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
-    this.am.forgetCounts(); this.activeSlot = 0; this._altPtr = 0; this._altEvidencePending = null;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
+    this.am.forgetCounts(); this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
     if (keepAmmo) for (const [sl, [mag, res]] of Object.entries(keepAmmo)) { this.am.acctWrote(+sl, mag, res); this.am.setPrev(sl, mag, res); }   // polish 2026-10-03: the counts the burst carried
     if (keep) this.pu.keepHeld(keep); else this.pu.onRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst (F438 r4: a self-kill keeps it)
@@ -4706,7 +4689,7 @@ export class Engine {
   _laneTakeover(now = this.now()) {
     if (this.phase !== 'live' || !this.alive) return false;   // review r2 M1: a takeover while down holds no card open
     if (this.gunLocked || this.rc.active) return true;
-    if (this.bleUp && (this.am.reloadOpen || this.switchingMs() != null)) return true;
+    if (this.bleUp && (this.am.reloadOpen || this.am.switchingMs() != null)) return true;
     if (this._switchCardUp(now)) return true;   // F400 final: the ACTIVE bubble is part of the switch card
     return !!this._redeployOutAt && now < this._redeployOutAt;
   }
@@ -4721,9 +4704,9 @@ export class Engine {
     // Review r2: the bubble keeps its OWN deadline once seen. A hit or a gain overwrites `moment` inside it, and
     // re-reading `moment` alone closed the card early while the ACTIVE bubble was still on screen.
     const mEnd = live && m && now < m.at + PU_ACTIVE_CARD_MS ? m.at + PU_ACTIVE_CARD_MS : null;
-    const sw = live && this.switchingMs() != null, bubble = mEnd != null || (live && open && open.until != null && now < open.until);
+    const sw = live && this.am.switchingMs() != null, bubble = mEnd != null || (live && open && open.until != null && now < open.until);
     if (sw || bubble) {
-      const span = open || (S.push({ from: sw ? this.switching.at : m.at, to: null, until: null }), S[S.length - 1]);
+      const span = open || (S.push({ from: sw ? this.am.switching.at : m.at, to: null, until: null }), S[S.length - 1]);
       span.until = sw ? null : mEnd != null ? mEnd : span.until;
     } else if (open) open.to = open.until != null ? Math.min(now, open.until) : now;
     // Keep a closed span while anything that can still be on screen started before its end (review r1: a fixed cap
@@ -4735,7 +4718,7 @@ export class Engine {
   /** Is the switch card on screen? PURE (the open span, or a swap `_cardTick` has not seen yet). */
   _switchCardUp(now = this.now()) {
     if (this.phase !== 'live' || !this.alive) return false;
-    if (this.switchingMs() != null) return true;
+    if (this.am.switchingMs() != null) return true;
     const S = this._cardSpans, last = S && S[S.length - 1];
     return !!(last && last.to == null && (last.until == null || now < last.until));
   }
@@ -5708,10 +5691,6 @@ export class Engine {
   // UNLOCKED with small mid-life writes -- never a config re-push, which would clear `spawned` (utility.md §5g.6).
   // The player's side of it all (the claim, the grant, the held heavy, the overshield, the cards) is `this.pu`, a
   // PlayerPowerups (powerup-player.js); the engine calls its entry points and reads its accessors, nothing else.
-  /** The ALT cycle as the gun runs it right now (for an ASSUMED swap and the HUD's SWITCHING target). A heavy is never in
-   *  it: the phone puts the heavy on the trigger with its `$WEAP` and never rewrites ALT (Tony, 2026-09-24). */
-  _altCycle() { return this._slotCount() >= 2 ? [0, 1] : [0]; }
-  _nextAltSlot() { const c = this._altCycle(), i = c.indexOf(this._altPtr); return i < 0 ? c[0] : c[(i + 1) % c.length]; }
   /** F208: a trigger press the gun should answer with a shot. Only counted where a shot must follow: live, alive,
    *  loaded, and not swapping, reloading, stunned, resyncing, reconciling or overheat-locked. A press while
    *  one is due keeps the first. */
@@ -6144,7 +6123,7 @@ export class Engine {
       // Field 2026-08-30: the HUD only ever learned the live slot from $ALCD, which the gun sends on a
       // SHOT -- so after an ALT swap it kept showing the old weapon "until you press trigger". The
       // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
-      if (id === BTN_ALT) this._altPressed();
+      if (id === BTN_ALT) this.am.altPressed();
       else if (id === BTN_RELOAD) this.am.reloadPulled();
       else if (id === BTN_TRIGGER) { this._pull = { at: this.now(), slot: this.activeSlot }; this._pulledLife = this._lifeSeq; this._triggerPulled(); this.am.heatLockPress(); this._awaitShot(); }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
       else if (id === BTN_SELECT) this.pu.onSelect();   // A56: a PRESS only; `$PHONE` also sends `$BUT,3,0`, a release, which never acts
@@ -6177,7 +6156,6 @@ export class Engine {
     return out;
   }
 
-  /** ALT pressed: a weapon swap has begun. Shooting is disabled until the gun finishes it. */
   /** S50: is ALT a reload for THIS player? `loadout.overrides.easy_reload` is the live shape (the
    *  per-player accessibility block, `docs/spec/loadout.md` §2); the `alt_reload` perk effect is the
    *  pre-move shape and stays readable so an older bundle still works. */
@@ -6187,63 +6165,17 @@ export class Engine {
     const pk = lo.perk ? this.perkRow(lo.perk) : null;
     return !!(pk && pk.effects && pk.effects.alt_reload);
   }
-  _altPressed() {
-    if (this.phase !== 'live' || !this.alive || this.tutorial) return;
-    // A20/F15, the same reason ammo.js `reloadPulled` refuses: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and
-    // `_onAmmo` drops every $ALCD for the whole window, so a SWITCHING takeover opened here has nothing
-    // that can confirm it — it runs to `switchWindowMs()` and then books an ASSUMED swap, leaving
-    // `activeSlot` on a weapon the player is not holding for the rest of the life (review 2026-09-12).
-    if (this.stunned) { this.log('ALT ignored — the gun is stunned', 'li'); return; }
-    if (this._slotCount() < 2) {
-      // Bench 2026-09-17 (match 592e444eff): with an empty slot 1, compile.py maps ALT to fn 98 (inert)
-      // UNLESS the player is running easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose
-      // (loadout.md §2 `alt_reload`). Calling `reloadPulled()` for anyone else opened a RELOADING
-      // takeover the gun could never complete, since no $ALCD ever answers a no-op button.
-      // S50 (merge 2026-09-18): Easy Reload left the perk slot for `loadout.overrides`, where the rest of
-      // the per-player accessibility block lives. `compile.py` reads `overrides.easy_reload` and keeps
-      // ALT on fn 97 for that player, so the node must ask the same question: reading the retired perk
-      // slot left the feature dead on the phone for anyone whose host switched it on. The old perk row
-      // is still honoured for a bundle compiled before the move.
-      if (this._easyReload()) this.am.reloadPulled();
-      return;
-    }
-    // Bench 2026-10-02 (captured wire, USP-S): the gun IGNORES ALT while a reload runs. The lever at mag 8, ALT 1.16 s
-    // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
-    // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
-    // ALT r4: only while the gun is really reloading (inside reload_s, no gain yet). In the takeover's stale tail the gun
-    // takes ALT, so ignoring it left `_altPtr` behind the gun; there the press is a swap and ends the takeover.
-    const r = this.am.reloading;
-    if (r && this.now() < r.at + r.ms && !(r.lastGainAt > r.at)) { this.log(`ALT ignored by the gun mid-reload (slot ${this.activeSlot})`, 'li'); return; }
-    if (r) this.am.endReload('swapped');
-    this.pu.onAltPressed();
-    const from = this._altPtr, to = this._nextAltSlot();
-    this._altPtr = to;
-    this._altEvidencePending = to;
-    this.switching = { at: this.now(), from, to };
-    this._changed();
-  }
 
 
   _slotCount() {
     const ws = this.player && this.player.loadout && this.player.loadout.weapons;
     return ws ? ws.length : 0;
   }
+  /** How long the ALT indicator has been up, or null once it has expired (PURE; ammo.js `switchingMs`). */
+  switchingMs() { return this.am.switchingMs(); }
+  /** The swap window in ms (ammo.js `switchWindowMs`: the bundle's swap_ms, else the stock 850 and a switch_mult perk). */
+  switchWindowMs() { return this.am.switchWindowMs(); }
 
-  /** How long the ALT indicator has been up, or null once it has expired.
-   *  PURE — it is read from state() on every render and must never mutate engine state. */
-  switchingMs() {
-    if (!this.switching) return null;
-    const ms = this.now() - this.switching.at;
-    return ms > this.switchWindowMs() ? null : ms;
-  }
-  /** The swap window: MC's `frames.swap_ms` (the tok15 the gun was actually given, perks applied — bench 2026-09-04);
-   *  an older MC without it falls back to the stock 850 scaled by an equipped `switch_mult` perk. */
-  switchWindowMs() {
-    if (this.frames && Number(this.frames.swap_ms) > 0) return Number(this.frames.swap_ms);
-    const pk = this.player && this.player.loadout && this.player.loadout.perk ? this.perkRow(this.player.loadout.perk) : null;
-    const sm = pk && pk.effects && pk.effects.switch_mult ? +pk.effects.switch_mult : 1;
-    return Math.round(SWITCH_MAX_MS * (sm > 0 ? sm : 1));
-  }
 
   /** $ALCD,<mag>,100,<slot>,<reserve>,<heat> — counts are per weapon SLOT; a weapon swap is never a shot.
    *  `heat` is null on a frame with no heat token ($LCD's ammo echo) -- leaves the slot's last-known heat alone. */
@@ -6274,7 +6206,7 @@ export class Engine {
     // F394: the restore landing for a slot that is NOT on the trigger (a switch-back resend, a stun restore of the
     // other slot) is the gun reading back our own write, not the trigger moving. Measured before `_acctAmmo` closes it.
     // A report on the slot ALT is switching TO is the player's confirming shot, never an echo (polish round 2).
-    const offSlotEcho = slot !== this.activeSlot && !(this.switching && slot === this.switching.to)
+    const offSlotEcho = slot !== this.activeSlot && !(this.am.switching && slot === this.am.switching.to)
       && this.am.acctEchoing(slot) && mag <= this.am.acct[slot].echoExpect;
     const expectedBefore = slot < 2 && this.pu.isHeldSlot(this.activeSlot)
       ? this.am.liveAmmo()[slot]?.[0] : null;   // a first $ALCD can still prove a shot against the spawn count
@@ -6343,15 +6275,15 @@ export class Engine {
     if (prev != null && mag > prev) this._dryPulls = 0;
     // A loadout shot without ALT or SELECT proves that a recent phone equip did not put the held weapon on the trigger.
     // A read-back with no count drop could be an old echo, so only a shot warrants another equip.
-    const lostPuEquip = this.pu.lostEquip(slot, mag, prev, expectedBefore, this._altEvidencePending);
+    const lostPuEquip = this.pu.lostEquip(slot, mag, prev, expectedBefore, this.am.altEvidencePending);
     const puBack = this.pu.onAmmo(slot, mag, prev);   // A56: the held item's magazine; empty ends the item and switches back
-    if (this.switching && !this.switching.pu && slot !== this.switching.from && (slot < 2 || this.pu.isHeldSlot(slot))) {
+    if (this.am.switching && !this.am.switching.pu && slot !== this.am.switching.from && (slot < 2 || this.pu.isHeldSlot(slot))) {
       // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
       // NB this interval is ALT-press -> next SHOT, so it includes the player's reaction time. It is a
       // lower bound on "the swap had finished by", NOT a measurement of the swap itself (FOLLOWUPS F4).
-      this.lastSwitchMs = this.now() - this.switching.at;
-      this.log(`slot ${this.switching.from}->${slot} confirmed ${this.lastSwitchMs}ms after ALT (incl. reaction)`, 'li');
-      this.switching = null;
+      this.am.lastSwitchMs = this.now() - this.am.switching.at;
+      this.log(`slot ${this.am.switching.from}->${slot} confirmed ${this.am.lastSwitchMs}ms after ALT (incl. reaction)`, 'li');
+      this.am.switching = null;
       this.moment = { kind: 'switched', at: this.now(), data: { slot } };   // the HUD flips SWITCHING → ACTIVE
       // ⚠ The slot moves BEFORE the re-arm (polish review 2026-09-18). `_recoilArm` reads `this.activeSlot`
       // for both the weapon it looks up (`_activeWeaponId`) and the slot it records, and the assignment used
@@ -6363,10 +6295,10 @@ export class Engine {
       this._recoilArm('swap (confirmed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
     }
     this.am.prevAmmo[slot] = mag;
-    if (slot < 2 && this._altEvidencePending != null && ((prev != null && mag < prev) || slot === this._altEvidencePending)) {
-      this._altPtr = slot; this._altEvidencePending = null;
+    if (slot < 2 && this.am.altEvidencePending != null && ((prev != null && mag < prev) || slot === this.am.altEvidencePending)) {
+      this.am.altPtr = slot; this.am.altEvidencePending = null;
     }
-    if (slot < 2 && slot !== this.activeSlot && this.activeSlot < 2 && !this.switching && this._altEvidencePending == null) this._altPtr = slot;   // ALT r4: a swap the node missed; the pointer follows the gun
+    if (slot < 2 && slot !== this.activeSlot && this.activeSlot < 2 && !this.am.switching && this.am.altEvidencePending == null) this.am.altPtr = slot;   // ALT r4: a swap the node missed; the pointer follows the gun
     if (puBack != null) {   // A56: the heavy ran dry; keep its empty count until the delayed switch-back
       if (reserve != null && !Number.isNaN(reserve)) this.am.prevReserve[slot] = reserve;
       this.am.publish(puBack, this.am.prevAmmo[puBack], this.am.prevReserve[puBack]);
@@ -6801,7 +6733,7 @@ export class Engine {
     this._timedLifeAt = null;
     this._shieldRegen = null; this._shieldDown = false;   // S29: a dead gun is not refilled, and the heartbeat stops with the life
     this._shieldFillAt = 0;   // X3: a dead gun holds no shield, so a fill still unanswered no longer blocks the audio model
-    this.am.dropReload(); this.switching = null; this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
+    this.am.dropReload(); this.am.cancelSwap(); this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
     if (this._lanes) this._lanes.hero = null;   // F368 (review r2 M1): the kill card ends with the life; the down screen owns the phone
     // Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". The lane items up at the death go with the life
     // (the kill card above, the hill badge, the feed rows), and `show` drops any that arrive while I am
@@ -7000,7 +6932,7 @@ export class Engine {
         }
       }
     }
-    this.switching = null;          // a swap indicator must not outlive the player
+    this.am.cancelSwap();          // a swap indicator must not outlive the player
     this.moment = { kind: 'down', at: this.now() };
     this._event('died');   // A11
     if (this._headsetDeath().length) { this._headset(this._headsetDeath(), 'death'); this._deathBlinkAt = this.now(); }   // A11.6 out-blink (empty = the 'native' opt-out; nothing to paint)
@@ -7079,7 +7011,7 @@ export class Engine {
   /** Every head write starts with $CLEAR → the gun is back on weapon slot 0 (so $LCD, which carries no slot, books to slot 0). */
   _writeHead(label) {
     this._armPending = null; this._triggerPending = null;   // F209: a head is fn 28 throughout (and holds the trigger); only a spawn/revive starts a new arm
-    this.am.forgetCounts(); this.activeSlot = 0; this._altPtr = 0; this._altEvidencePending = null;
+    this.am.forgetCounts(); this.activeSlot = 0;
     this._recoil = null;   // S42: a fresh head is a fresh weapon table -- `_spawn`/`_revive` re-arm it for the life that actually follows
     // B1 guard: the gun's COMBAT team is whatever `$TID` this head carries, and only a config re-push
     // can change it. Remember it so `_assign` can catch a roster re-team that the head never followed.
@@ -7273,9 +7205,9 @@ export class Engine {
         by: { num: this.poison.by.num, team: this.poison.by.team, name: this.nameOf(this.poison.by.num), teamKey: TEAM_KEY[this.poison.by.team] || null } } : null,
       aim: this._aimView(now),   // S53/S55: why accuracy is held down ({reason, acc, leftMs}), or null   // F15: the HUD's STUNNED takeover reads this
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
-      ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.switchingMs()),
-      switchWindowMs: this.switchWindowMs(), lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,
-      switchFrom: this.switching ? this.switching.from : null, switchTo: this.switching ? (this.switching.to != null ? this.switching.to : this._nextAltSlot()) : null,
+      ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.am.switchingMs()),
+      switchWindowMs: this.switchWindowMs(), lastSwitchMs: this.am.lastSwitchMs, activeSlot: this.activeSlot,
+      switchFrom: this.am.switching ? this.am.switching.from : null, switchTo: this.am.switching ? (this.am.switching.to != null ? this.am.switching.to : this.am.nextAltSlot()) : null,
       // F123: `reloading` is no longer a timer's opinion — it runs until the GUN's ammo says the reload is
       // done (or stopped). `reloadOverrun` is true once the nominal time has passed and the magazine still
       // has not come back (normal on hardware: F27 measures handle-to-refill at ~1.25x the catalog figure).

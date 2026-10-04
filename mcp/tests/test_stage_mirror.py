@@ -1779,6 +1779,9 @@ _AMMO_PAIRS = {
     # the reload takeover (F123)
     "am.reloadPulled": "_reload_pulled", "am.reloadDeadline": "_reload_deadline", "am.endReload": "_end_reload",
     "am.reloadTick": "_reload_tick",
+    # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
+    "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
+    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s",
 }
 
 
@@ -1910,6 +1913,12 @@ KNOWN_UNMIRRORED = {
     # table's question, inline on the stage; the stage clears its takeover inline (`dropReload`) and keeps no lever
     # release time (`reloadReleased`: written, never read, on the phone too).
     "reloading", "am.reloadingMs", "am.reloadOpen", "am.dropReload", "am.reloadReleased",
+    # Engine split (b): the ALT swap's view and doors. `switching` is the Engine's accessor over `am.switching` (a plain
+    # attribute on the stage); `am.switchingMs` is the HUD's SWITCHING clock (display; the Engine's `switchingMs`
+    # delegate is pinned below); `am.swapOpen` is the stand-down table's question and `am.cancelSwap` the death/revive
+    # clear, both inline on the stage; `am.setSwitching` and `am.equipped` are the powerup module's doors, and the stage
+    # models no powerup (see the A56 note below).
+    "switching", "am.switchingMs", "am.swapOpen", "am.cancelSwap", "am.setSwitching", "am.equipped",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # F202: local picker/storage operation; GunStage has no phone-owned gun binding to clear.
