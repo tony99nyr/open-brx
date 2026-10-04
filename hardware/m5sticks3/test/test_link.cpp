@@ -398,8 +398,8 @@ static void test_powerup_schedule_taken_counts_down_locally_from_the_last_update
   CHECK_EQ(v0.value, (uint8_t)10);
   PowerupAdvertView v1 = s.view(104001);  // 4.001 s later: 6 s left (ceiling)
   CHECK_EQ(v1.value, (uint8_t)6);
-  PowerupAdvertView v2 = s.view(130000);  // long past due: never negative
-  CHECK_EQ(v2.value, (uint8_t)0);
+  PowerupAdvertView v2 = s.view(130000);  // long past due: never negative, and never 0 while taken (the phone's floor)
+  CHECK_EQ(v2.value, (uint8_t)1);
 }
 
 static void test_powerup_schedule_caps_value_at_255() {
@@ -1181,6 +1181,23 @@ static void test_a_new_game_number_sets_dropped_for_match_again_after_a_reconnec
 
 // --- polish round 2, item 3 (HIGH): the pending station_action queue ----------------------------
 
+// A2 r2 (H1): a self-spawn must move the anchor on, or the next claim reuses the first claim's spawn
+// instant and the queue replaces the first report, so MC never hears of it.
+static void test_two_offline_claims_across_a_self_spawn_leave_two_pending_reports() {
+  PowerupSchedule s;
+  StationUpdateMsg u;
+  u.present = true;
+  u.available = true;
+  u.next_spawn_in_ms = 60000;
+  s.apply_update(u, 0);
+  PendingActionQueue q;
+  q.push(4, 7, s.mark_taken(7, 1000), 1000);
+  CHECK(s.tick(60000));  // the self-spawn
+  q.push(4, 8, s.mark_taken(8, 61000), 61000);
+  CHECK_EQ(q.size(), (size_t)2);
+  CHECK(!s.tick(61000));
+}
+
 static void test_pending_action_queue_is_fifo_and_drops_the_oldest_when_full() {
   PendingActionQueue q;
   for (int i = 0; i < 10; i++) q.push(9, i + 1, (uint32_t)(1000 * i), 1000 + i);
@@ -1277,13 +1294,13 @@ static void test_an_available_true_too_soon_after_the_awarded_instant_is_refused
   u.available = false;
   u.next_spawn_in_ms = 1000;
   s.apply_update(u, 0);
-  s.mark_taken(5, 1000);  // awarded instant = 1000; spawn_every_s defaults to 60 (half interval 30000 ms)
+  s.mark_taken(5, 1000);  // the next spawn is now 61000; spawn_every_s defaults to 60 (half interval 30000 ms)
   StationUpdateMsg tooSoon;
   tooSoon.present = true;
   tooSoon.available = true;
-  tooSoon.next_spawn_in_ms = 5000;  // implies the next spawn is at 1100 + 5000 = 6100 (5100 ms past 1000)
+  tooSoon.next_spawn_in_ms = 5000;  // implies the next spawn is at 1100 + 5000 = 6100, before 61000
   s.apply_update(tooSoon, 1100);
-  CHECK(!s.available());  // 5100 ms < half of 60 s: still refused
+  CHECK(!s.available());  // not half an interval past the next spawn: still refused
   CHECK_EQ(s.taker(), (uint8_t)5);
 }
 
@@ -1294,11 +1311,11 @@ static void test_an_available_true_far_enough_past_the_awarded_instant_is_accept
   u.available = false;
   u.next_spawn_in_ms = 1000;
   s.apply_update(u, 0);
-  s.mark_taken(5, 1000);  // awarded instant = 1000; half interval = 30000 ms
+  s.mark_taken(5, 1000);  // the next spawn is now 61000; half interval = 30000 ms
   StationUpdateMsg later;
   later.present = true;
   later.available = true;
-  later.next_spawn_in_ms = 30000;  // implies the next spawn is at 1000 + 30000 = 31000 (30000 ms past)
+  later.next_spawn_in_ms = 90000;  // implies the next spawn is at 1000 + 90000 = 91000 (30000 ms past 61000)
   s.apply_update(later, 1000);
   CHECK(s.available());  // at the half-interval boundary: accepted
   CHECK_EQ(s.taker(), (uint8_t)0);
@@ -2896,6 +2913,7 @@ int main(int argc, char** argv) {
   test_a_same_game_repush_does_not_set_dropped_for_match();
   test_dropped_for_match_latches_until_explicitly_cleared();
   test_a_new_game_number_sets_dropped_for_match_again_after_a_reconnect();
+  test_two_offline_claims_across_a_self_spawn_leave_two_pending_reports();
   test_pending_action_queue_is_fifo_and_drops_the_oldest_when_full();
   test_pending_action_queue_newest_per_spawn_instant_wins();
   test_pending_action_queue_pop_front_on_empty_queue_fails();

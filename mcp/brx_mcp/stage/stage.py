@@ -226,7 +226,7 @@ def _set_profile_field(profile: Profile, key: str, value: object) -> None:
 
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
-PLAY_GAP_MS = 150               # F347: keep successive `$PLAY` writes at least 150 ms apart.
+PLAY_GAP_S = 0.150             # F347 (announcer.js PLAY_GAP_MS): keep successive `$PLAY` writes at least 150 ms apart.
 QUERY = "$QUERY,*"             # F264 (engine.js QUERY): one 8-byte ask -- see `_ask_gun`
 # F264 (engine.js PROBE_LIFE): a dead gun ignores $LIFE unless token 1 is 0, so a bare $LIFE,0,0,0,* asks
 # a SILENT dead gun to speak without healing or harming anything. THE HAZARD: a non-zero token 1 is the
@@ -474,8 +474,8 @@ ANNOUNCE_DEFAULT_CLIP_S = 2.5   # engine.js ANNOUNCE_DEFAULT_CLIP_MS: a clip the
 
 
 def clip_s(sound_id: str | None) -> float:
-    """A sound's real length in seconds, off the sound catalogue (engine.js `CLIP_MS` is generated from the same
-    `duration_s`), else the announcer's 2.5 s default."""
+    """A sound's real length in seconds, off the sound catalogue (engine.js `CLIP_MS` is hand-kept, and
+    `announcer.test.mjs` checks each row against the same `duration_s`), else the announcer's 2.5 s default."""
     e = _snd._catalog().get(sound_id or "")
     d = e.get("duration_s") if e else None
     return float(d) if isinstance(d, (int, float)) and d > 0 else ANNOUNCE_DEFAULT_CLIP_S
@@ -1302,13 +1302,13 @@ class GunStage:
             previous_at = self._last_play_at
             previous_sent_at = self._last_play_sent_at
             if previous_at is not None:
-                elapsed_ms = (now - (previous_sent_at if previous_sent_at is not None else previous_at)) * 1000
-                if elapsed_ms < PLAY_GAP_MS:
+                elapsed_s = now - (previous_sent_at if previous_sent_at is not None else previous_at)
+                if elapsed_s < PLAY_GAP_S:
                     if self._is_exempt_filler(play_frame):
-                        self._log(f"dropped filler inside {PLAY_GAP_MS} ms play gap", "info", why)
+                        self._log(f"dropped filler inside {round(PLAY_GAP_S * 1000)} ms play gap", "info", why)
                         self._play_lock.release()
                         return
-                    planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_MS / 1000
+                    planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_S
                     cancel_event = self._play_cancel_event
                     sleep_task = asyncio.ensure_future(self.sleep(max(0, planned_at - self.now())))
                     cancel_task = asyncio.create_task(cancel_event.wait())
@@ -4145,6 +4145,8 @@ class GunStage:
             self.active_slot = slot; self._recoil_slot = slot
             self._log(f"slot {slot} confirmed the swap {self.last_switch_s:g}s after ALT (incl. reaction)", "info")
         self._prev_ammo[slot] = mag
+        if slot < 2 and slot != self.active_slot and self.active_slot < 2 and not self.switching and self._alt_evidence_pending is None:
+            self._alt_ptr = slot   # ALT r4 (engine.js `_onAmmo`): a swap the node missed; the pointer follows the gun
         self.active_slot = slot
         if slot < 2 and self._alt_evidence_pending is not None and ((prev is not None and mag < prev) or slot == self._alt_evidence_pending):
             self._alt_ptr = slot
@@ -4218,7 +4220,13 @@ class GunStage:
             if self._easy_reload():
                 self._reload_pulled()
             return
-        if self.reloading:
+        # engine.js `_altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
+        # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
+        r = self.reloading
+        if r and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):
+            self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
+            return
+        if r:
             self._end_reload("swapped")
         source = self._alt_ptr
         target = self._next_alt_slot()
