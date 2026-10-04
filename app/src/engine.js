@@ -4415,8 +4415,8 @@ export class Engine {
       const life = this._lifeSeq;
       // A56: a pickup slot is restored to the held heavy's count as it is NOW (0 for one not held), never the snapshot's.
       const pu = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot)), h = this._puHeld;
-      const cnt = (slot, mag, res) => !pu.has(+slot) ? [mag, res] : h && h.slot === +slot ? [h.left, PU_RESERVE] : [0, 0];
-      this._writeMust(Object.entries(st.ammo).map(([slot, [mag, res]]) => { const [m, r] = cnt(slot, mag, res); return `$AMMO,${slot},${m},${r},1,*`; }), 'stun over: restore live ammo',
+      const rows = Object.entries(st.ammo).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`);
+      this._writeMust(burstWithHeld(rows, h && pu.has(h.slot) ? h : null, pu), 'stun over: restore live ammo',
         () => this._lifeSeq === life && !this._standDown(['phase', 'ble', 'alive', 'reconciling', 'stunned']));
       this._holdAccuracyWrites('stun restore');
       this.moment = { kind: 'stun_over', at: this.now() };
