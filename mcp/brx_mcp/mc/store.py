@@ -201,12 +201,21 @@ class Store:
                         (match_id, self.session_id, json.dumps(config), go_live_t))
         self.db.commit()
 
-    def match_ended(self, match_id: str, recap: dict) -> None:
+    def match_ended(self, match_id: str, recap: dict) -> int:
+        """Store the result. Returns the rows updated: 0 means the match has no row (its `match_started` was lost), so the
+        result was NOT kept, and the caller must treat that as a failed write (O7). A closed store returns 1 (not a failure)."""
         if self._closed:
-            return
-        self.db.execute("UPDATE matches SET ended_t=?, recap=? WHERE match_id=?",
-                        (int(time.time() * 1000), json.dumps(recap, default=str), match_id))
+            return 1
+        cur = self.db.execute("UPDATE matches SET ended_t=?, recap=? WHERE match_id=?",
+                              (int(time.time() * 1000), json.dumps(recap, default=str), match_id))
         self.db.commit()
+        return cur.rowcount
+
+    def has_match(self, match_id: str) -> bool:
+        """Does the archive hold a row for this match? (O7: `new_session` prunes archive failures whose row exists.)"""
+        if self._closed:
+            return True
+        return self.db.execute("SELECT 1 FROM matches WHERE match_id=?", (match_id,)).fetchone() is not None
 
     def matches(self) -> list[dict[str, Any]]:
         """Every finished match in this session, newest first — the history behind MC's RECAP screen.

@@ -1099,6 +1099,15 @@ class NodeView(TypedDict):
     ammo: NotRequired[int | None]
     alive: NotRequired[bool | None]
     pending: NotRequired[int | None]
+    # O6: facts the phone's outbox dropped from the match in play now (the phone's own per-match count,
+    # `status.outbox_lost.n`, shown only while its `match_id` is the current / resumed / adopted match).
+    # Absent = nothing lost from this match, or an older node.
+    outbox_lost: NotRequired[int]
+    # O10: CLAIM reports a Stick's queue evicted when full since it was armed for THIS game (`status.actions_dropped`,
+    # shown only while `status.actions_dropped_game` is the current game byte). MC never heard who took the item, so the
+    # station's attention line says where to look (the recap's PICKUPS). A Stick has no node card, so the console draws
+    # it on the station card. Absent = none.
+    claims_dropped: NotRequired[int]
     app_ver: NotRequired[str | None]
     platform: NotRequired[str | None]
     log: NotRequired[LogView | None]
@@ -1117,6 +1126,12 @@ class NodeView(TypedDict):
     # F272: the node positively proved that the linked gun stopped answering. Optional and true-only:
     # absence is an older/healthy node, never evidence of a lock-up.
     gun_locked: NotRequired[bool]
+
+
+class OutboxLostReport(TypedDict):
+    """O6: `status.outbox_lost`: how many of match `match_id`'s facts the phone's outbox dropped."""
+    match_id: str
+    n: int
 
 
 class Event(TypedDict, total=False):
@@ -1191,6 +1206,13 @@ class Event(TypedDict, total=False):
     game_byte: int
     synced: bool
     dropped: int
+    # O6: the phone's drop count for the match it is playing now, scoped at the source (a bounded per-match map in its
+    # storage): {match_id, n}. Sent whenever the phone knows its match, 0 included.
+    outbox_lost: OutboxLostReport
+    # O10: a Stick's CLAIM reports evicted from a full queue since it was armed for the game `actions_dropped_game`
+    # (it resets on a new game byte or station; 0 included; `_game` absent while the Stick is not armed).
+    actions_dropped: int
+    actions_dropped_game: int
     preflight: Preflight
     # A37/R2-3: WHERE `hp`/`armor` above came from THIS LIFE. `engine.js` fills them from
     # `config.health` at spawn/revive -- the phone's MODEL of the pool -- and overwrites them with the
@@ -1972,6 +1994,29 @@ class SnapshotFeedRow(TypedDict):
     kind: Literal["kill", "sync", "info", "alert"]
 
 
+class FailureView(TypedDict):
+    """O7/O8: a repeating failure MC counts instead of logging per occurrence. Absent from the snapshot = healthy."""
+    since: int     # MC clock ms of the first failure of this streak
+    count: int     # failures in this streak
+    error: str     # the last error's type and text, cut at 200 characters
+
+
+class NotSavingView(TypedDict, total=False):
+    """O7: which part of MC's persistence is failing. `store` = facts and log rows (a game result can be lost: RED);
+    `archive` = the match start / end rows (RED: the game result; cleared only by a later archive write, and an END that
+    updates 0 rows counts as a failure); `snapshot` = the roster / match file a restart restores (AMBER, RED while a match is in play)."""
+    store: FailureView
+    archive: FailureView
+    snapshot: FailureView
+
+
+class JoinErrorView(TypedDict):
+    """O8: the last `join_info()` call raised. `ws_url` is the node URL the QR still holds: "" when none was ever read,
+    otherwise an EARLIER address that may be out of date. Cleared by the next successful call."""
+    error: str
+    ws_url: str
+
+
 class State(TypedDict):
     """One complete Mission Control snapshot (`GET /api/state` and `/ui-ws`)."""
     session_id: str
@@ -2006,6 +2051,9 @@ class State(TypedDict):
     sync: NotRequired[SyncView]
     options: NotRequired[SessionOptions]
     versions: NotRequired[VersionsView]
+    not_saving: NotRequired[NotSavingView]        # O7: absent = everything MC writes is being kept
+    ticker_failing: NotRequired[FailureView]      # O8: absent = the match tick runs; armed->live / the timed end do not while present
+    join_error: NotRequired[JoinErrorView]        # O8: absent = join_info() worked
     start: NotRequired[StartView | None]
     live: NotRequired[LiveView | None]
     recap: NotRequired[RecapView | None]

@@ -99,6 +99,20 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   // F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of Wi-Fi
   // range; MC only gets its result once it is heard again. Shown beside LOAD for any station of the
   // LAST FINISHED match MC has not heard since that match's whistle -- advisory, clears on its own.
+  // ---- O7 / O8: MC's own failures, drawn by src/ui/ServerFailures.tsx in the shared frame (state.py
+  // `snapshot()`: `not_saving`, `ticker_failing`, `join_error`). Each stands until MC's next success. ----
+  'server-not-saving-store': { sev: 'red', text: 'NOT SAVING GAME DATA, A RESULT CAN BE LOST: CHECK THE DISK AND THE MC LOG' },
+  // the match start / end archive rows (`not_saving.archive`): the game result itself, cleared only by a later archive write
+  'server-not-saving-archive': { sev: 'red', text: "NOT SAVING THIS MATCH'S RESULT, IT CAN BE LOST: CHECK THE DISK AND THE MC LOG" },
+  'server-not-saving-snapshot': { sev: 'amber', text: 'NOT SAVING THE SESSION, A RESTART LOSES THE ROSTER: CHECK THE DISK AND THE MC LOG' },
+  // the same fact while a match is ARMED or LIVE: a restart now resumes from that file, so it is RED (ServerFailures.tsx)
+  'server-not-saving-snapshot-live': { sev: 'red', text: 'NOT SAVING THE SESSION, A RESTART CANNOT RESUME THIS MATCH: CHECK THE DISK AND THE MC LOG' },
+  'server-ticker-failing': { sev: 'red', text: 'MATCH CLOCK FAILING, A MATCH WILL NOT GO LIVE OR END: RESTART MC | CHECK THE MC LOG (DO NOT RESTART WHILE IT IS NOT SAVING)' },
+  'server-join-info-failed': { sev: 'amber', text: 'JOIN QR HAS NO ADDRESS | JOIN ADDRESS NOT REFRESHED: CHECK THE LAPTOP NETWORK, THEN RESTART MC' },
+  // O6: MC words it (state.py `outbox_lost_line`, in a card's `ambers`); also drawn by the unclaimed phone's node card.
+  'armory-nodecard-outbox-lost': { sev: 'amber', text: '{N} FACTS LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER\'S RECAP BY HAND' },
+  // O10: the station line MC writes (state.py `station_claims_dropped_line`), on the Stick's card in ITEMS.
+  'station-attention-claims-dropped': { sev: 'amber', text: '{N} CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP\'S PICKUPS FOR STATION #{ID}' },
   'server-station-not-synced': {
     sev: 'amber',
     text: '{KIND} {ID} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST',
@@ -160,6 +174,8 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'STATION #', id: 'station-attention-restarted', re: /^STATION #\d+ RESTARTED/ },
   { head: 'STATION #', id: 'station-attention-offline', re: /^STATION #\d+ OFFLINE/ },
   { head: 'STATION #', id: 'station-attention-lock-expires', re: /^STATION #\d+ LOCK EXPIRES/ },
+  { head: '', id: 'armory-nodecard-outbox-lost', re: /^\d+ FACTS? LOST FROM THE PHONE OUTBOX/ },
+  { head: '', id: 'station-attention-claims-dropped', re: /^\d+ CLAIM REPORTS? DROPPED BY THE STICK/ },
   { head: 'RANGE EDITED ON STATION', id: 'server-station-range-edited' },
   { head: 'STRENGTH EDITED ON STATION', id: 'server-station-range-edited' },
   // one head per `StationKind` (state.py `_station_sync_warnings`: `f"{row['kind'].upper()} {row['id']} …"`)

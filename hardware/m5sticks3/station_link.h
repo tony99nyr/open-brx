@@ -255,6 +255,10 @@ struct StatusFields {
   std::string tx_power_src;
   int64_t tx_power_edit_age_ms = -1;
   std::string range_edits_json;
+  // O10 (additive; sent whenever the health fields are, 0 included, so a Stick reboot shows as a LOWER count): CLAIM reports the
+  // queue evicted when full, since this arm (it resets on a new game byte or station). MC keeps the maximum per (node, game, arm), so a Stick reboot in the same game does not erase the loss, and shows it only for the current game.
+  uint32_t actions_dropped = 0;
+  int actions_dropped_game = -1;   // the game byte `actions_dropped` was counted under; -1 = not armed (left out)
 };
 
 inline std::string build_status_body(const StatusFields& f) {
@@ -308,6 +312,8 @@ inline std::string build_status_body(const StatusFields& f) {
       j += ",\"tx_power_edit_age_ms\":" + std::to_string(f.tx_power_edit_age_ms);
   }
   if (!f.range_edits_json.empty() && f.range_edits_json != "[]") j += ",\"range_edits\":" + f.range_edits_json;
+  if (f.has_health || f.actions_dropped > 0) j += ",\"actions_dropped\":" + std::to_string(f.actions_dropped);
+  if (f.actions_dropped_game >= 0) j += ",\"actions_dropped_game\":" + std::to_string(f.actions_dropped_game);
   j += "}";
   return j;
 }
@@ -1007,7 +1013,10 @@ class PendingActionQueue {
         return;
       }
     }
-    if (entries_.size() >= CAPACITY) entries_.erase(entries_.begin());
+    if (entries_.size() >= CAPACITY) {
+      entries_.erase(entries_.begin());
+      dropped_++;   // O10: a claim MC will now never hear of. Counted, and reported in the status heartbeat.
+    }
     entries_.push_back(PendingTakenReport{station_id, player_num, spawn_instant_ms, t_ms});
   }
 
@@ -1024,8 +1033,24 @@ class PendingActionQueue {
     return true;
   }
 
+  // O10: the send path reads the oldest report WITHOUT removing it, and removes it (`discard_front`) only
+  // after `sendTXT` returned true, so a failed send keeps the claim queued for the next pass.
+  bool peek_front(PendingTakenReport& out) const {
+    if (entries_.empty()) return false;
+    out = entries_.front();
+    return true;
+  }
+  void discard_front() {
+    if (!entries_.empty()) entries_.erase(entries_.begin());
+  }
+  // O10: how many claims overflow evicted since boot (a clear() at a new game is not a drop: that is
+  // deliberate, and the game those reports belonged to is over).
+  uint32_t dropped() const { return dropped_; }
+  void reset_dropped() { dropped_ = 0; }
+
  private:
   std::vector<PendingTakenReport> entries_;
+  uint32_t dropped_ = 0;
 };
 
 // How long a MUSTER drop after a restore waits for MC's re-anchoring station_update (review round 1).
@@ -1465,6 +1490,10 @@ class StationLink {
     }
     // A56 (brx5): unsent `taken` reports belong to the game they were awarded in; a new game drops them.
     if (game_changed) pending_actions_.clear();
+    // O10: the dropped-claim count belongs to the game (and place) it was counted in: a new game byte or a new
+    // station kind/id starts it at 0. The Stick does not know MC's match id, so it names the GAME BYTE it was armed
+    // with (`actions_dropped_game`) and MC shows the count only while that is the current game.
+    if (game_changed || kind_or_id_changed) pending_actions_.reset_dropped();
     assignment_ = a;
     lock_deadline_known_ = a.lock_s > 0;
     assignment_.timed_hill = a.kind == "control" && (deadline_known_ || hill_.frozen || a.duration_ms > 0);
@@ -1664,6 +1693,10 @@ class StationLink {
   }
 
   bool pop_pending_action(PendingTakenReport& out) { return pending_actions_.pop_front(out); }
+  // O10: the send path peeks, sends, and discards only on success (see PendingActionQueue::peek_front).
+  bool peek_pending_action(PendingTakenReport& out) const { return pending_actions_.peek_front(out); }
+  void discard_pending_action() { pending_actions_.discard_front(); }
+  uint32_t pending_actions_dropped() const { return pending_actions_.dropped(); }
   bool has_pending_actions() const { return !pending_actions_.empty(); }
   size_t pending_action_count() const { return pending_actions_.size(); }
 

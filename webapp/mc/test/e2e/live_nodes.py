@@ -7,6 +7,8 @@ server suite uses) against a real `python -m brx_mcp.mc` on its real node socket
 on stdin, one per line:
 
     possession <gun> <tid>=<ms>[,<tid>=<ms>...] [observed_ms]
+    lost <gun> <n> [match_id]   # the phone's own per-match drop count (O6 `outbox_lost`); the match it is playing unless named
+    status <gun> <key>=<int|text>[,...]   # extra heartbeat fields (O6 dropped_total, O10 actions_dropped)
     drop <gun>        # walk out of range: the socket closes and the node stays quiet
     up <gun>          # walk back: it reconnects and heartbeats again
     die <gun> <shooter_num> <shooter_tid>   # this gun's player is killed by that shooter
@@ -29,10 +31,11 @@ from brx_mcp.mc.mock_node import MockNode
 async def main(url: str, guns: list[str]) -> None:
     nodes: dict[str, MockNode] = {}
     for spec in guns:
-        name, _, tail = spec.partition(":")
+        name, _, rest = spec.partition(":")
+        tail, _, kind = rest.partition(":")     # GUN-A:3D4F, or STICK-1:AAAA:utility for a station stand-in
         # the shipped release, not the tier floor: a loadout gun can need a newer app than x.y.0
         n = MockNode(url, gun_name=name, gun_tail=tail or "3D4F", gun_echo="$LCD,45,70,0,0,36,216,*",
-                     app_ver=fake_app_ver())
+                     app_ver=fake_app_ver(), node_type=kind or "phone")
         nodes[name] = n
         await n.start()
     for name, n in nodes.items():
@@ -60,6 +63,10 @@ async def main(url: str, guns: list[str]) -> None:
                     if not node.match_id:
                         raise RuntimeError("the node has no match yet")
                     node.emit(ev)
+                elif cmd == "lost":
+                    node.extra_status["outbox_lost"] = {"match_id": args[2] if len(args) > 2 else node.match_id, "n": int(args[1])}
+                elif cmd == "status":
+                    node.extra_status.update({k: (int(v) if v.lstrip("-").isdigit() else v) for k, v in (kv.split("=") for kv in args[1].split(","))})
                 elif cmd == "drop":
                     await node.disconnect()
                 elif cmd == "die":
