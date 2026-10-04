@@ -18,7 +18,7 @@ test('team colours and inks in both HTML files match the generated contract', ()
   }
 });
 
-const MODULES = ['src/engine.js', 'src/beacon.js', 'src/control.js', 'src/utility.js', 'src/app.js', 'src/hud/hud.js', 'src/hud/deathscreen.js'];
+const MODULES = ['src/engine.js', 'src/powerup-player.js', 'src/beacon.js', 'src/control.js', 'src/utility.js', 'src/app.js', 'src/hud/hud.js', 'src/hud/deathscreen.js'];
 
 test('phone modules do not redeclare generated contract constants', () => {
   const names = Object.keys(contract).join('|');
@@ -37,7 +37,8 @@ const ALIASES = {
     SIGHT_RECENT_MAX: 'PRESENCE_SIGHT_RECENT_MAX' },
   'src/control.js': { REFUSED_TID: 'HILL_REFUSED_TID', DEFAULT_CAPTURE_S: 'HILL_CAPTURE_S', DEFAULT_NET_CAP: 'HILL_NET_CAP',
     MAX_STEP_MS: 'HILL_MAX_STEP_MS' },
-  'src/engine.js': { POWERUP_THRESHOLD_DEFAULT: 'PHONE_POWERUP_THRESHOLD_DBM', HILL_NEUTRAL_TEAM: 'HILL_REFUSED_TID' },
+  'src/engine.js': { HILL_NEUTRAL_TEAM: 'HILL_REFUSED_TID' },
+  'src/powerup-player.js': { POWERUP_THRESHOLD_DEFAULT: 'PHONE_POWERUP_THRESHOLD_DBM' },
   'src/hud/deathscreen.js': { HILL_NEUTRAL_TID: 'HILL_REFUSED_TID' },
 };
 
