@@ -612,7 +612,7 @@ const IR_RESUME = (now, it, startedSaid) => (startedSaid && now - it.startedAt >
 export const HILL_CUES = {
   hill_captured:  { frame: '$PLAY,,4,6,VB0N,,,,*', ms: 1924 },   // VB0N "Hill Captured"  1.924 s
   hill_lost:      { frame: '$PLAY,,4,6,VB0P,,,,*', ms: 2976 },   // VB0P "Hill Lost!"     2.976 s
-  hill_contested: { frame: '$PLAY,,4,6,VB0O,,,,*', ms: 2078 },   // VB0O "Hill Contested" 2.078 s — NOT WIRED, see `_hillCallout` (F75)
+  hill_contested: { frame: '$PLAY,,4,6,VB0O,,,,*', ms: 2078 },   // VB0O "Hill Contested" 2.078 s — the STATION path only (`_onControlAdvert`); never the IR path (F75, see `_hillCallout`)
   hill_moved:     { frame: '$PLAY,,4,6,VB0Q,,,,*', ms: 2424 },   // VB0Q "Hill Moved"     2.424 s — rotating-hill modes only (F83), no caller yet
   hill_tick:      { frame: '$PLAY,U100,4,6,,,,,*', ms: 114 },    // U100 possession tick  0.114 s
 };
@@ -1562,7 +1562,7 @@ export class Engine {
   }
   /** F416: `$LCD` gives the slot and magazine that a positive pool cannot prove. */
   _spawnQuery(c) {
-    if (c.queryAt || c.done || this._spawnCheck !== c) return;
+    if (c.queryAt || c.done || this._spawnCheck !== c || this._spawnCheckOver()) return;   // F416 r3
     c.queryAt = this.now();
     const gen = c.gen || 0;
     Promise.resolve(this._askMagazine('F416 spawn weapon check')).then(ok => {
@@ -1575,15 +1575,25 @@ export class Engine {
       });
     });
   }
+  /** F416 r3: the match is over or the player is down, so no check may write. PURE. */
+  _spawnCheckOver() { return this.ended || this.phase !== 'live' || !this.alive; }
   /** F416: is the check still inside SPAWN_CHECK_MAX_MS of the first lost write? PURE. */
-  _spawnCheckLive(c, now = this.now()) { return !!c && now - c.firstAt < SPAWN_CHECK_MAX_MS; }
+  _spawnCheckLive(c, now = this.now()) { return !!c && now - c.firstAt < SPAWN_CHECK_MAX_MS + (c.heldMs || 0); }   // F416 r2: plus any reconcile hold
   /** F416: positive health permits a `$QUERY`; only its matching weapon state closes the check. */
   _spawnCheckSeen(hp, armor, shield, lcd = null) {
     const c = this._spawnCheck;
     if (!c || c.done || c.life !== this._lifeSeq || !(this.now() > c.writeAt)) return;
+    if (this._spawnCheckOver()) { this._spawnCheck = null; return; }   // F416 r3: no check acts after the whistle
     c.heardAt = this.now(); c.lost = false;
     if (hp <= 0) return;
     if (!this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }   // out of time: a positive pool closes it, as before
+    if (this.reconciling) {   // F416 r4: the reconcile disarm is not a lost spawn; ask again once its re-arm is out
+      const gen = c.gen = (c.gen || 0) + 1; c.heardAt = 0; c.asks = 0; c.queryAt = 0;
+      const now = this.now(), until = now + Math.max(0, RECONCILE_MS - (now - this.reconciling.since)) + SPAWN_CHECK_MS;
+      c.heldMs = (c.heldMs || 0) + Math.max(0, until - Math.max(now, c.heldTo || 0)); c.heldTo = Math.max(c.heldTo || 0, until);   // F416 r2: the hold does not spend the check's time
+      this.delay(until - now, () => { if ((c.gen || 0) === gen) this._spawnAsk(c); });   // F416 r2: one chain per reconcile
+      return;
+    }
     if (!lcd || !c.queryAt) { this._spawnQuery(c); return; }
     if (!this._probeShapeOk(lcd) || ![lcd[4], lcd[5]].every(v => v !== '' && Number.isFinite(+v))) return;
     c.queryAt = 0;
@@ -1605,7 +1615,11 @@ export class Engine {
       this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
       return;
     }
-    if (gs === slot && expected != null && gm === expected) {
+    // F416 r4: a held heavy before the first pull (F436) may read its own slot or the switch-back slot; both match.
+    // F416 r2: at that slot's live count only, or the bench P0 (slot 2 at 2/1) would close as landed.
+    const hv = this._puHeld, hl = this._liveAmmo()[gs], hc = hl ? hl[0] : hv && gs === hv.slot ? hv.left : null;
+    const heavyOk = !!hv && (gs === hv.slot || (hv.back && gs === hv.back.slot)) && hc != null && gm === hc;
+    if (heavyOk || (gs === slot && expected != null && gm === expected)) {
       this._spawnCheck = null;
       if (this._writeLost === c.life) this._writeLost = null;
       this.log(`F416: the gun's weapon state matches ${c.why}; landed, no re-send`, 'lk');
@@ -1615,6 +1629,7 @@ export class Engine {
   }
   /** F416: repeat the burst only before any observed play; otherwise restore its weapon controls. */
   _spawnRetry(c, evidence) {
+    if (this._spawnCheckOver()) { if (this._spawnCheck === c) this._spawnCheck = null; return false; }   // F416 r3: never a burst after the whistle
     if (c.resends >= SPAWN_RESENDS) {
       c.done = true; c.lost = true; c.queryAt = 0;
       this.log(`*** F416: ${c.resends} re-sends and ${evidence}; HOST: FORCE RESPAWN ***`, 'le');
@@ -1624,7 +1639,19 @@ export class Engine {
     // Only a round or a hit is play. A pull is NOT: a dead trigger on an unspawned gun is exactly what makes players pull.
     const whole = !(this.lastHitAt > c.firstAt) && this.shots === c.shotsAt;
     this.log(`F416: ${evidence}; re-sending ${whole ? 'whole burst' : 'weapon controls'} (${c.resends}/${SPAWN_RESENDS})`, 'le');
-    if (whole) { this._writeLife(c.frames, `${c.why} (re-sent ${c.resends})`, c.life, c); return; }
+    if (whole) {
+      // F416 r2: a held heavy keeps its charges in the burst's own row, and goes back on the trigger behind it.
+      const h = this._puHeld;
+      // F416 r3: each re-send is built from the original burst, never a mutated one: every pickup slot is zeroed, then
+      // only the heavy held NOW gets its charges (a swap since the last re-send must not leave two slots loaded).
+      const base = c.frames0 || (c.frames0 = c.frames), pu = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
+      if (h) pu.add(h.slot);
+      const frames = base.map(f => { if (typeof f !== 'string' || !f.startsWith('$AMMO,')) return f; const s = +f.split(',')[1];
+        return !pu.has(s) ? f : h && s === h.slot ? `$AMMO,${s},${h.left},${PU_RESERVE},1,*` : `$AMMO,${s},0,0,1,*`; });
+      this._writeLife(frames, `${c.why} (re-sent ${c.resends})`, c.life, c);
+      if (h) this._puSelfHitKeep(h);
+      return;
+    }
     const rp = this._respawnProfile();
     const map = this._triggerPending ? c.frames.find(f => f.startsWith('$BMAP,0,')) : (rp && rp.trigger_live) || c.frames.find(f => f.startsWith('$BMAP,0,'));
     const live = this._liveAmmo();   // live counts, never the spawn rows: a repair after play must not refill the magazine
@@ -2384,6 +2411,7 @@ export class Engine {
     // until the player pulls the trigger (bench 2026-09-04, S7). Clear it so the new match spawns clean.
     if (this.resync) { this.log('new match — clearing the old resync so it spawns clean', 'li'); this.resync = null; }
     if (this.reconciling) { this.log('new match — clearing the in-flight rejoin reconcile', 'li'); this.reconciling = null; }
+    this._spawnCheck = null;   // F416 r3: the old match's check is not this match's news
     // A new match must SPAWN even if the node is already `live` from a rejoin of the OLD match. Without
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
     // T-0 spawn never ran and the gun sat alive-with-0-hp (bench 2026-09-04, S7, on hardware). Drop the
@@ -4225,7 +4253,7 @@ export class Engine {
   _revive(resync, stationId = null, operator = false, selfHit = null) {
     this.reloading = null; this._reloadOutcome = null; this.held = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
-    if (this._overshield || this._puHeld || this._puBackPending?.equipped === false) this._puDeath(true);   // a live respawn also retires a delayed empty switch-back
+    if (!selfHit && (this._overshield || this._puHeld || this._puBackPending?.equipped === false)) this._puDeath(true);   // a live respawn also retires a delayed empty switch-back; F438 r4: a self-kill never happened, so it loses no pickup
     const down = this.frames.headset && this.frames.headset.down;
     if (down && down.stop) this._write([down.stop], 'down stop');   // §3.2: `$HLOOP,0,0,*` before $SPAWN — belt-and-braces, $SPAWN clears the loop on its own
     this._downRearmSent = false;   // §3.2: fresh rearm gate for the next life
@@ -4250,21 +4278,27 @@ export class Engine {
     const revive0 = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     // Polish 2026-10-03: a self-kill costs nothing, so it gives nothing either. The burst's own `$AMMO` rows carry the
     // live counts, in the same write (`_puRearmRows`' reason: a separate restore lets the full magazine echo first).
-    // A pickup slot keeps compile's empty row: an item never carries a life (`_puRevive` drops it), and its charges left
-    // on the gun would be a heavy the node no longer tracks (polish r2).
+    // Pickup slots are left to the held heavy below: a slot the node holds nothing in keeps compile's empty row.
     const puSlots = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
     const keepAmmo = selfHit ? Object.fromEntries(Object.entries(this._liveAmmo()).filter(([sl]) => !puSlots.has(+sl))) : null;
     const revive = keepAmmo ? revive0.map(f => { const t = f.startsWith('$AMMO,') ? f.split(',') : null; const k = t && keepAmmo[+t[1]]; return k ? `$AMMO,${t[1]},${k[0]},${k[1]},${t.slice(4).join(',')}` : f; }) : revive0;
+    // F438 r4: a self-hit revive keeps a held heavy (the node still tracks it), its charges in its own `$AMMO` row (as `_puRearmRows`), never the zero.
+    const keep = selfHit ? this._puHeld : null;
+    const burst = keep ? revive.map(f => f.startsWith(`$AMMO,${keep.slot},`) ? `$AMMO,${keep.slot},${keep.left},${PU_RESERVE},1,*` : f) : revive;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
     // F438: the revive leaves full health and armour and the fill's shield; the drain takes back the difference, per pool
     // (a negative floors at 0 and never spills, docs/manual/dev.md `$LIFE`). Never a heal: a self-kill costs what it cost.
     const selfDrain = selfHit ? [selfHit.health - this.maxHp, selfHit.armor - this.maxArmor, selfHit.shield - (fill.length ? this.maxShield : 0)].map(d => Math.min(0, d)) : null;
-    const drain = selfDrain && selfDrain.some(d => d < 0) ? [`$LIFE,${selfDrain[0]},${selfDrain[1]},${selfDrain[2]},*`] : [];
+    // F438 r4: an overshield survives a self-kill. The burst's pool `$PSET` lowers the shield max, so the raised one
+    // and the absolute pools (token 4 = 2, as the grant) go last in place of the drain.
+    const os = selfHit && this._overshield, osPset = os ? this._osPset(os.max) : null;
+    const drain = osPset ? [osPset, `$LIFE,${selfHit.health},${selfHit.armor},${selfHit.shield},2,*`]
+      : selfDrain && selfDrain.some(d => d < 0) ? [`$LIFE,${selfDrain[0]},${selfDrain[1]},${selfDrain[2]},*`] : [];
     // docs/announcer.md: the dead queue ends here. Only my kill confirm and the lead change survive it, and they wait for
     // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
     if (!selfHit || revive.includes(PLAYX)) this._ann.respawn(this.now(), revive.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
-    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain);   // X3: the line before the fill
+    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...burst, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain);   // X3: the line before the fill
     this.hurtFired = false; this._hurtSent = false;
     this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
@@ -4276,14 +4310,14 @@ export class Engine {
     this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0; this._altPtr = 0; this._altEvidencePending = null;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
     if (keepAmmo) for (const [sl, [mag, res]] of Object.entries(keepAmmo)) { this._acctWrote(+sl, mag, res); this._prevAmmo[sl] = mag; this._prevReserve[sl] = res; }   // polish 2026-10-03: the counts the burst carried
-    this._puRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst
+    if (keep) this._puSelfHitKeep(keep); else this._puRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst (F438 r4: a self-kill keeps it)
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     // F438 polish r1: a self-hit revive is the same life, so an enemy's poison keeps ticking and a smoke keeps its clock.
     // ⚠ Unbenched: the revive's `$SPAWN` clears every `$TMP`, so the gun may have dropped the smoke's accuracy hold already.
     if (!selfHit) { this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null; }   // S16/S53: a new life carries neither
     if (!selfHit) this._resetLifeLedger();   // S56: nor does the "what hit me" ledger (F438: a self-hit revive is the same life)
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null; this.downReason = null;
-    if (selfHit) { this.hp = selfHit.health; this.armor = selfHit.armor; this.shield = Math.min(selfHit.shield, fill.length ? this.maxShield : 0); }   // F438: what the drain leaves
+    if (selfHit) { this.hp = selfHit.health; this.armor = selfHit.armor; this.shield = osPset ? selfHit.shield : Math.min(selfHit.shield, fill.length ? this.maxShield : 0); }   // F438: what the drain leaves (F438 r4: the overshield's too)
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._gunLifeAt = this._spawnAt; this._armedThisLife = false;   // B5/F272: settle and silence clocks start with this life
@@ -4340,7 +4374,8 @@ export class Engine {
   _endLocal(why) {
     if (this.ended) return;
     this._cancelPendingPlayWrites();
-    this.ended = true; this._panicked = null; this.endAck = false; this._armPending = null; this._triggerPending = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null;   // F209/F272: never arm or keep a lock verdict for an ended match
+    this.ended = true; this._spawnCheck = null; this._panicked = null;   // F416 r3: the check ends with the match
+    this.endAck = false; this._armPending = null; this._triggerPending = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null;   // F209/F272: never arm or keep a lock verdict for an ended match
     this.endedAt = this.now();   // the results screen's settle window runs from HERE, not from the result's arrival
     this._lightGen = (this._lightGen || 0) + 1;   // no delayed $GLED/$HLED/cue step from before teardown may land after it
     this._ann.clear(); this._gun.clear();         // nor a queued announcer line or banner, nor the old audio model
@@ -5330,7 +5365,7 @@ export class Engine {
         this._resyncRevive = false;   // a panic does NOT retire the match_id — a NEWER start (higher seq) is still accepted later
         // …but a WS welcome re-delivering the SAME schedule must not re-arm a gun the operator just cleared.
         this._panicked = this.start ? { match_id: this.start.match_id, seq: this.start.seq } : null;
-        this.spawned = false; this.alive = false; this.start = null; this.resync = null; this.reconciling = null; this.ready = false;
+        this.spawned = false; this.alive = false; this.start = null; this.resync = null; this.reconciling = null; this.ready = false; this._spawnCheck = null;   // F416 r3
         if (this.phase !== 'idle' && this.phase !== 'connected' && this.phase !== 'kitted') this._set('kitted');
         else this._changed();   // a cold-restored IDLE latch still owes its clear to storage and the HUD
         return;
@@ -6397,6 +6432,15 @@ export class Engine {
     if (t) this._puEquip(0, +t[2] || 0, +t[3] || 0, 'powerup: slot 0 re-equipped after the revive');
     this._save();
   }
+  /** F438 r4 (and F416 r2, after a re-sent burst): the held heavy keeps its charges (the burst's own row carried them). A heavy that was
+   *  on the trigger goes back on it, as the reconcile re-arm does (F436). The `$SPAWN` refills the loadout weapons and puts
+   *  the gun on slot 0: accepted for loadout weapons, since a self-kill costs nothing and the refill is the gun's own. */
+  _puSelfHitKeep(h) {
+    this._acctWrote(h.slot, h.left, PU_RESERVE); this._prevAmmo[h.slot] = h.left; this._prevReserve[h.slot] = PU_RESERVE;
+    if (h.trig === h.slot && this._puHeadWeap(h.slot)) this._puEquip(h.slot, h.left, PU_RESERVE, `F438 r4: ${h.name} back on the trigger after the self-hit revive`);
+    else h.trig = 0;
+    this._save();
+  }
   /** The reconcile re-arm's spawn `$AMMO` rows with a held heavy's zero row swapped for its charges, in the SAME write:
    *  a separate restore opened the echo window after the zero had gone out, so the gun's echo of 0 read as the charges
    *  fired and ended the item (polish H1). */
@@ -6981,7 +7025,11 @@ export class Engine {
     // Bench 2026-10-02 (captured wire, USP-S): the gun IGNORES ALT while a reload runs. The lever at mag 8, ALT 1.16 s
     // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
     // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
-    if (this.reloading) { this.log(`ALT ignored by the gun mid-reload (slot ${this.activeSlot})`, 'li'); return; }
+    // ALT r4: only while the gun is really reloading (inside reload_s, no gain yet). In the takeover's stale tail the gun
+    // takes ALT, so ignoring it left `_altPtr` behind the gun; there the press is a swap and ends the takeover.
+    const r = this.reloading;
+    if (r && this.now() < r.at + r.ms && !(r.lastGainAt > r.at)) { this.log(`ALT ignored by the gun mid-reload (slot ${this.activeSlot})`, 'li'); return; }
+    if (r) this._endReload('swapped');
     this._puBackPending = null;
     const from = this._altPtr, to = this._nextAltSlot();
     this._altPtr = to;
@@ -7207,6 +7255,7 @@ export class Engine {
     if (slot < 2 && this._altEvidencePending != null && ((prev != null && mag < prev) || slot === this._altEvidencePending)) {
       this._altPtr = slot; this._altEvidencePending = null;
     }
+    if (slot < 2 && slot !== this.activeSlot && this.activeSlot < 2 && !this.switching && this._altEvidencePending == null) this._altPtr = slot;   // ALT r4: a swap the node missed; the pointer follows the gun
     if (puBack != null) {   // A56: the heavy ran dry; keep its empty count until the delayed switch-back
       if (reserve != null && !Number.isNaN(reserve)) this._prevReserve[slot] = reserve;
       this._publishAmmo(puBack, this._prevAmmo[puBack], this._prevReserve[puBack]);

@@ -367,6 +367,10 @@ export function Games() {
       {!staleServer && !realFault && kothNoHill && (
         <Alert id="games-koth-no-hill" testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ lineHeight: 1.5 }}>NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.</span>
+          {/* bench 2026-10-02: the hill that LEFT (BACK TO HUD, RELEASE), in MC's own words, so the block says why */}
+          {(state.station_departures ?? []).filter(d => d.kind === 'control').map(d => (
+            <span key={d.node_id} data-testid="games-hill-departed" style={{ flexBasis: '100%', lineHeight: 1.5 }}>{d.line}</span>
+          ))}
           <span data-testid="assign-a-hill">
             <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={assignAHill}>ASSIGN A HILL ▸</GhostButton>
           </span>

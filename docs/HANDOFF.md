@@ -50,14 +50,11 @@ APK 0.4.15 (built from `efd1961c`) carries the phone tid-0 kill-confirm fix and 
 - **Next:** Tony's GAMES check at the bench. F429/F430 (browser-closed flakes): close after 3 clean lander runs once
   brx1's test-all headroom fix lands.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.
-## Lane: brx4, the StickS3
-**State:** Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); IR receive, the grenade hill and
-revive counting are post-MVP. HELD is the boot default. Hill default: -75 dBm, hysteresis 6, until the outdoor
-walk (F383).
-**Next:** bench part 2, reflash from `6f042126`, then F386's a-d and sitting C (F388, F383's 3/7 m readings, F399,
-F391, F392, F397). Desk: F342 (the scan-flood fix). Resume in a fresh worktree off `origin/main`; native Windows MC
-for mDNS: `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785
---ws-port 8786 --ephemeral`.
+## Lane: brx4, the engine and the StickS3
+**State:** engine polish since 0.4.15 landed (4fc70211): F416 holds through a relink reconcile, re-sends whole over a
+held heavy, needs the live count, stands down at the whistle; ALT in a reload's stale tail is a swap; a self-kill
+keeps the pickup. A2 aligned the phone and Stick stations on one shared fixture; A3 pins every stage constant.
+**Next:** bench: step 11's heavy case (F438), F450 (Stick reflash for A2), F398 from a recorded sha. Stick: as before.
 **Blocked:** none.
 ## Lane: brx5, powerups, the HUD and gun audio
 **State:** overnight 2026-10-03 polish of F437-F439, F446, F434: a lethal toxin hit no longer cuts the scream with

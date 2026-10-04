@@ -607,6 +607,12 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             return _err("no such station", 404)
         return JSONResponse({"ok": s.release_station(nid)})
 
+    async def dismiss_departure(req):
+        """Polish r1 M2(b): DISMISS on an ITEMS away line -- forget one departed station. Any phase."""
+        if not s.dismiss_departure(req.path_params["nid"]):
+            return _err("NO DEPARTED STATION BY THAT ID: REFRESH ITEMS", 404)
+        return JSONResponse({"ok": True})
+
     async def evict_node(req):
         nid = req.path_params["nid"]
         if not s.evict_node(nid):
@@ -1097,6 +1103,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/{nid}", put_station, methods=["PUT"]),
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/stations/{nid}/release", release_station, methods=["POST"]),
+        Route("/api/stations/{nid}/departure", dismiss_departure, methods=["DELETE"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
         Route("/api/players/{pid}/operator", operator_action, methods=["POST"]),
         Route("/api/lobby/ready_all", ready_all, methods=["POST"]),
