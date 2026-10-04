@@ -6,8 +6,7 @@ relay, is what it just hit. So MC relays the VICTIM's own `hit_taken` fact back 
 node, best-effort -- no queue, no retry, exactly like the existing "kill" feedback
 (`scoring.Scorer._death`) -- so the shooter can book it as damage dealt.
 `state.Session._relay_hit_feedback`/`_relay_batch_hits`."""
-from test_mc_block_b import go_live
-from _session import mk_kit_session, online
+from _session import go_live, mk_kit_session, online
 
 
 def _hits(net):

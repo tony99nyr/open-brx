@@ -19,8 +19,7 @@ Run: python3 run_tests.py mc_end_delivery
 """
 from brx_mcp.mc.fakes import FakeNet
 from brx_mcp.mc.state import END_RETRY_MS
-from test_mc_block_b import DeafNet, go_live
-from _session import mk_kit_session, online
+from _session import DeafNet, go_live, mk_kit_session, online
 
 
 def _controls_to(net, nid):

@@ -6,11 +6,9 @@ heartbeat says `arm_state: live, match_id: <old>`, and that heartbeat is the mom
 reachable and wrong. So MC answers it from there: `control{end, match_id}`, the retired match's `result`
 when it holds one for that player, and the CURRENT `start` when a new match is already scheduled.
 """
-from test_mc_block_b import kill
-from test_mc_result import go_live, results
 
 from brx_mcp.mc.types import STALE_LIVE_RETELL_MS
-from _session import mk_kit_session, online
+from _session import go_live_stored, kill, mk_kit_session, online, results
 
 
 def _stale_status(net, clock, nid, mid, extra=None):
@@ -29,7 +27,7 @@ def _reconciled(s):
 def _ended_by_cap_and_moved_on(cap_scorer_i=0, victim_i=1):
     """Two phones, a frag-cap end, then RECALL (the RECAP screen's way back to KIT). node1 was silent
     through the whistle -- exactly the phone that never took the end."""
-    s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     kill(s, net, clock, ps, cap_scorer_i, victim_i, info, seq=1)
     assert s.phase == "recap"
     n_before = len(_controls_to(net, "node1"))
@@ -56,7 +54,7 @@ def test_a_phone_still_live_in_the_retired_match_is_told_to_end_and_given_its_re
 
 
 def test_a_live_status_for_the_current_match_while_mc_is_live_pushes_nothing():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_stored(2, "ffa")
     before = len(_controls_to(net, "node1")); nres = len(net.pushes("result"))
     _stale_status(net, clock, "node1", info["match_id"])
     assert len(_controls_to(net, "node1")) == before and len(net.pushes("result")) == nres
@@ -153,7 +151,7 @@ def test_a_player_added_after_the_match_gets_the_end_but_no_result():
 
 def test_an_aborted_start_is_retired_too():
     """A phone that missed `abort_start` and comes back ARMED for the aborted schedule is ended."""
-    s, net, clock, ps = go_live(2, "ffa")[:4]
+    s, net, clock, ps = go_live_stored(2, "ffa")[:4]
     s.control("recall")
     s.push_config(force=True)
     info = s.start(runway_s=60, force=True)
@@ -167,7 +165,7 @@ def test_an_aborted_start_is_retired_too():
 
 def test_the_existing_result_paths_are_unchanged():
     """`_result_body` grew keyword-only knobs; every existing caller must produce the same body as before."""
-    s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     got = results(net)
     assert got["node0"]["outcome"] == "win" and got["node1"]["outcome"] == "lose"

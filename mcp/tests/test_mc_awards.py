@@ -398,9 +398,9 @@ def test_a_hot_join_survives_the_replay_and_an_mc_restart():
 
 
 def test_the_result_push_carries_each_honor_key():
-    from test_mc_block_b import kill as s_kill
-    from test_mc_result import go_live
-    s, net, clock, ps, info = go_live(3, "ffa")
+    from _session import kill as s_kill
+    from _session import go_live_stored
+    s, net, clock, ps, info = go_live_stored(3, "ffa")
     s_kill(s, net, clock, ps, 0, 1, info, seq=1)
     s_kill(s, net, clock, ps, 0, 2, info, seq=2)
     s.control("end")

@@ -13,42 +13,12 @@ Three things are proved here, each of which the server could not do before:
   the end AND the venue is not full coverage AND some rostered phone has no backhaul.
 """
 
-from test_mc_block_b import heartbeat, kill
 
 from brx_mcp.mc import compile as C
 from brx_mcp.mc.fakes import demo_armory
 from brx_mcp.mc.scoring import rows_csv
 from brx_mcp.mc.types import CLOCK_TIE_MS
-from _session import mk_stored_session, online
-
-
-
-def go_live(n_players=2, mode="tdm", cfg=None, store=True):
-    s, net, clock, ps = mk_stored_session(n_players, mode, cfg, store)
-    for i, p in enumerate(ps):
-        online(s, net, clock, p, i)
-    if mode == "koth":
-        # F402: push/start refuses a koth game with nothing on the field that IS the hill.
-        net.simulate_utility_hello("util-hill")
-        s.set_station("util-hill", {"kind": "control"})
-    s.push_config()
-    for i in range(n_players):
-        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
-                                                             "gun_echo": "$LCD"}, clock["t"])
-    info = s.start(runway_s=10)
-    clock["t"] = info["go_live_t"] + 1
-    s.tick()
-    assert s.phase == "live"
-    heartbeat(s, net, clock, ps)
-    return s, net, clock, ps, info
-
-
-def results(net):
-    """The LATEST `result` body each node was pushed."""
-    out = {}
-    for nid, _kind, body in net.pushes("result"):
-        out[nid] = body
-    return out
+from _session import go_live_stored, kill, mk_stored_session, online, results
 
 
 # ---------------------------------------------------------------------------------------------
@@ -60,7 +30,7 @@ def test_result_is_pushed_to_every_node_with_a_per_recipient_outcome():
     Before A24 the losers got nothing at all — `_push_victory` only ever reached the winning team's
     guns — so a phone could not tell a loss from a dropped socket.
     """
-    s, net, clock, ps, info = go_live(4, "tdm")          # F413: ps[0]/ps[2] red, ps[1]/ps[3] blue
+    s, net, clock, ps, info = go_live_stored(4, "tdm")          # F413: ps[0]/ps[2] red, ps[1]/ps[3] blue
     kill(s, net, clock, ps, 0, 1, info, seq=1)           # red 1 - 0 blue
     s.control("end")
     got = results(net)
@@ -91,7 +61,7 @@ def test_the_result_stops_being_provisional_once_every_node_has_flushed():
 def test_result_says_undecided_rather_than_inventing_a_winner():
     """An objective match nobody reported on is UNDECIDED (A5.9/A6.1 — the host decides). MC says so
     to every phone; it must never fall back to the kills table it happens to have."""
-    s, net, clock, ps, info = go_live(2, "koth", {"scoring": {"win_by": "objective"}, "station_source": "phone"})
+    s, net, clock, ps, info = go_live_stored(2, "koth", {"scoring": {"win_by": "objective"}, "station_source": "phone"})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s.control("end")
     got = results(net)
@@ -102,14 +72,14 @@ def test_result_says_undecided_rather_than_inventing_a_winner():
 def test_welcome_carries_the_result_while_the_session_is_in_recap():
     """A phone that was out of coverage at the whistle learns the result on its next hello — the only
     route there is for a node MC could not push to."""
-    s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     assert s.phase == "recap"
     node = net.simulate_hello("node1", f"GUN-B-{demo_armory()[1]['ble']['tail']}")
     assert node and node["result"]["outcome"] == "lose", node.get("result")
     assert node["result"]["winner"]["player_id"] == ps[0]["player_id"]
     # ...and never while a match is still being played: a live `welcome` carries `score`, not a verdict.
-    s2, net2, clock2, ps2, info2 = go_live(2, "ffa")
+    s2, net2, clock2, ps2, info2 = go_live_stored(2, "ffa")
     live = net2.simulate_hello("node1", f"GUN-B-{demo_armory()[1]['ble']['tail']}")
     assert "result" not in live and live["score"]["rows"], "a live welcome carries the leaderboard, not a result"
 
@@ -117,7 +87,7 @@ def test_welcome_carries_the_result_while_the_session_is_in_recap():
 def test_score_pushes_carry_every_row_in_every_mode():
     """A24: `_push_scores` already looped over every player's row and sent each node only its own.
     The data was withheld, not missing — a team match could not show per-player lines."""
-    s, net, clock, ps, info = go_live(3, "tdm")
+    s, net, clock, ps, info = go_live_stored(3, "tdm")
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     body = [p for p in net.pushes("score") if p[0] == "node2"][-1][2]
     assert len(body["rows"]) == 3 and {r["player_id"] for r in body["rows"]} == {p["player_id"] for p in ps}
@@ -132,7 +102,7 @@ def test_status_only_shot_change_pushes_the_new_score_to_every_phone_once():
     phone's leaderboard frozen while Mission Control showed the new total.  An identical heartbeat
     must still be quiet: `_push_scores` owns the full-body de-duplication.
     """
-    s, net, clock, ps, _info = go_live(2, "tdm")
+    s, net, clock, ps, _info = go_live_stored(2, "tdm")
     net.pushed.clear()
 
     clock["t"] += 2_000
@@ -163,7 +133,7 @@ def _late_cap_scenario():
     Four players: A (node0) kills C (node2, online), B (node1) kills D (node3, whose facts arrive as a
     store-and-forward batch AFTER the whistle).
     """
-    s, net, clock, ps, info = go_live(4, "ffa", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(4, "ffa", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
     g = info["go_live_t"]
     def death(victim_i, killer_i, t, seq, batch=False):
         ev = {"type": "death", "t": t, "match_id": info["match_id"], "player_id": ps[victim_i]["player_id"],
@@ -231,7 +201,7 @@ def test_the_field_is_re_told_the_result_when_the_replay_changes_it():
 def test_a_host_end_and_a_timed_end_are_never_re_derived():
     """A6.1: a whistle and a clock are moments the whole field lived through. A late fact updates the
     tallies (it always has) but must not move the END, or a match could re-end in the past."""
-    s, net, clock, ps, info = go_live(3, "ffa", {"scoring": {"frag_limit": 9, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(3, "ffa", {"scoring": {"frag_limit": 9, "win_by": "kills"}})
     g = info["go_live_t"]
     clock["t"] = g + 5000
     s.control("end")
@@ -247,7 +217,7 @@ def test_a_host_end_and_a_timed_end_are_never_re_derived():
 def test_two_cap_kills_inside_the_clock_band_are_a_tie():
     """contracts §7: phone clocks agree to well under a second, so inside `CLOCK_TIE_MS` MC cannot
     order two kills — and must not pretend to. Both sides are at the cap; that is a draw."""
-    s, net, clock, ps, info = go_live(4, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(4, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     g = info["go_live_t"]
     net.simulate_event("node2", {"type": "death", "t": g + 5000, "match_id": info["match_id"],
                                  "player_id": ps[2]["player_id"], "shooter_num": ps[0]["player_num"],
@@ -264,7 +234,7 @@ def test_two_cap_kills_inside_the_clock_band_are_a_tie():
     assert got["node0"]["outcome"] == "draw" and got["node1"]["outcome"] == "draw"
     assert got["node2"]["outcome"] == "lose"
     # CONTROL: the same kill one tolerance LATER is just a late kill, and A keeps the win.
-    s2, net2, clock2, ps2, info2 = go_live(4, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
+    s2, net2, clock2, ps2, info2 = go_live_stored(4, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     g2 = info2["go_live_t"]
     net2.simulate_event("node2", {"type": "death", "t": g2 + 5000, "match_id": info2["match_id"],
                                   "player_id": ps2[2]["player_id"], "shooter_num": ps2[0]["player_num"],
@@ -349,7 +319,7 @@ def test_the_replay_scores_the_teams_the_field_actually_wore():
     nobody wore. Here yellow's cap kills land late; if the replay reads the live roster it sees their
     scorer on BLUE, calls both kills friendly fire, finds no cap at all and leaves blue the winner.
     """
-    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
     g = info["go_live_t"]
     blue, yellow = ps[0]["team_id"], ps[1]["team_id"]
     assert blue != yellow and ps[2]["team_id"] == blue and ps[3]["team_id"] == yellow
@@ -491,7 +461,7 @@ def test_the_result_tells_a_re_teamed_player_the_outcome_of_the_side_they_wore()
     it `outcome: "lose"` — because the operator had already moved them to blue for the next match. The
     recipient's side is a fact about the match that was played, so it comes from `_match_players`.
     """
-    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
     g = info["go_live_t"]
     blue, yellow = ps[0]["team_id"], ps[1]["team_id"]
     for n, t in enumerate((g + 1000, g + 2000), start=1):
@@ -521,7 +491,7 @@ def test_a_player_added_during_the_debrief_is_told_no_result_at_all():
     they never played — and put a 0/0 row in the archived recap. They get no `result` (their HUD shows
     the neutral "no result for you" state) and the recap rows stay the roster that played.
     """
-    s, net, clock, ps, info = go_live(2, "tdm")
+    s, net, clock, ps, info = go_live_stored(2, "tdm")
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s.control("end")
     rows_before = sorted(r["player_id"] for r in s.recap()["rows"])
@@ -546,7 +516,7 @@ def test_a_late_friendly_kill_never_moves_the_whistle_FORWARD():
     after-the-whistle into the official tally, minutes after the field was told `control{end}`.
     Contracts §4 lets the end move EARLIER only.
     """
-    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 3, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(4, "tdm", {"scoring": {"frag_limit": 3, "win_by": "kills"}})
     g = info["go_live_t"]
     for n, t in enumerate((g + 1000, g + 2000, g + 3000), start=1):     # blue caps at g+3000
         net.simulate_event("node1", {"type": "death", "t": t, "match_id": info["match_id"],
@@ -582,7 +552,7 @@ def test_late_team_kill_and_late_enemy_kill_give_the_same_board_in_either_arriva
     scored it: one order ended at the late enemy kill, the other at the original capping kill.
     """
     def run(order):
-        s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+        s, net, clock, ps, info = go_live_stored(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
         t0 = clock["t"]
         kill(s, net, clock, ps, 0, 1, info, seq=1)      # team A 1, at t0+1000
         kill(s, net, clock, ps, 2, 3, info, seq=2)      # team A 2, the cap, at t0+2000

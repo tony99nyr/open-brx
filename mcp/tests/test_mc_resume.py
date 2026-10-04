@@ -15,18 +15,16 @@ import pathlib
 import sqlite3
 import tempfile
 
-from test_mc_block_b import kill
-from test_mc_result import go_live
 
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.store import Store
 from brx_mcp.mc.types import STALE_AFTER_MS, STALE_LIVE_RETELL_MS
-from _session import mk_stored_session, online
+from _session import go_live_stored, kill, mk_stored_session, online
 
 
 def _persisting_live(n=2, cfg=None):
-    s, net, clock, ps, info = go_live(n, "ffa", cfg)
+    s, net, clock, ps, info = go_live_stored(n, "ffa", cfg)
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     return s, net, clock, ps, info
 
@@ -393,7 +391,7 @@ def test_f261_a_freshly_restarted_mc_with_no_roster_yet_still_sees_the_orphan():
 def test_no_notice_in_a_normal_muster_kit_lobby_live_and_recap():
     s, net, clock, ps = mk_stored_session(2, "ffa")
     assert "orphan_match" not in s.snapshot() and s.phase == "kit"
-    s2, net2, clock2, ps2, info = go_live(2, "ffa")
+    s2, net2, clock2, ps2, info = go_live_stored(2, "ffa")
     for i in range(2):
         _status(net2, clock2, i, "live", info["match_id"])
     assert "orphan_match" not in s2.snapshot()
@@ -508,7 +506,7 @@ def test_adopting_notes_a_draft_hold_target_the_replayed_facts_already_reach_not
 
 
 def test_resume_is_refused_while_mc_runs_its_own_match():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_stored(2, "ffa")
     _status(net, clock, 1, "live", "m-other")
     assert s.snapshot()["orphan_match"]["can_resume"] is False
     try:
@@ -586,7 +584,7 @@ def test_phones_ended_shows_only_when_every_claiming_phone_has_ended_the_adopted
 
 
 def test_phones_ended_is_never_set_on_mcs_own_match():
-    s, net, clock, ps, info = go_live(2, "ffa")
+    s, net, clock, ps, info = go_live_stored(2, "ffa")
     for i in range(2):
         _status(net, clock, i, "kitted", info["match_id"])
     assert "phones_ended" not in s.snapshot()["live"]
@@ -627,7 +625,7 @@ def test_a_restart_from_a_live_snapshot_keeps_a_late_team_kill_frozen_out():
     heard end. The whistle's moment is an arrival fact, so the resume derives it from the stored facts in
     arrival order and freezes the same team kill the live scorer froze.
     """
-    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
     good = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = good
     t0 = clock["t"]
@@ -654,7 +652,7 @@ def test_a_resume_ignores_a_cap_only_the_t_order_replay_passes_and_a_real_cap_st
     """F363: the live board (arrival order) never reached the cap, but the `t`-order replay passes it for a
     moment before a team kill takes it back. The resume must keep the match live, and a real cap after it
     must still end the match."""
-    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    s, net, clock, ps, info = go_live_stored(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     t0, mid = clock["t"], info["match_id"]
 
@@ -702,7 +700,7 @@ def test_a_restart_after_a_crossed_hold_target_labels_and_records_it_correctly()
 
     This proves all three: the resume lands in recap, `end_reason` is `"hold_target"`, and the feed
     says HOLD TARGET, never FRAG LIMIT."""
-    s, net, clock, ps, info = go_live(2, "koth", {"scoring": {"hold_target_s": 60}})
+    s, net, clock, ps, info = go_live_stored(2, "koth", {"scoring": {"hold_target_s": 60}})
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist()                         # a snapshot from BEFORE the target was crossed
     frozen = s._persist_path.read_text()   # ...frozen here, as a real crash would leave it: the LIVE

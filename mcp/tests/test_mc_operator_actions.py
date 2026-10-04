@@ -11,8 +11,7 @@ from _skip import needs
 
 from brx_mcp.mc import envelope as E
 from brx_mcp.mc.state import STALE_AFTER_MS, ConflictError
-from test_mc_block_b import DeafNet, go_live, heartbeat, kill
-from _session import mk_kit_session, online
+from _session import DeafNet, go_live, heartbeat, kill, mk_kit_session, online
 
 try:
     from starlette.testclient import TestClient

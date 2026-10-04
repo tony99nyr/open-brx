@@ -4,7 +4,7 @@ Field night 2026-09-12: guns ran a PREVIOUS push in nearly every match and nothi
 so. Every signal MC needed was already on the wire and thrown away --
 
   * `ack_config` carries the `config_id` the node applied; `state.py` stored `{ok, gun_echo, err}`
-    and DROPPED it, so an ack for last game's head satisfied `all_acked()` and the whistle blew.
+    and DROPPED it, so an ack_head for last game's head satisfied `all_acked()` and the whistle blew.
   * `gun_echo` is the gun's own answer to the head write and was only ever tested for TRUTHINESS.
   * the status heartbeat reports the pool the gun is actually holding, and nothing compared it to
     the pool MC compiled.
@@ -18,41 +18,22 @@ Run: python3 run_tests.py mc_config_proof
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.state import PUSH_CURES
 from brx_mcp.mc.types import POOL_CHECK_SETTLE_MS
-from _session import mk_session, online
+from _session import ack_head, mk_session, online, row
 
 
-
-def echo_for(s, pid, slot=0):
-    """The `$ALCD` a gun holding THIS player's pushed head would answer with."""
-    from brx_mcp.mc import frames as _f
-    mag, reserve = _f.head_spawn_ammo(s.bundles[pid]["head"]) or (0, 0)
-    return f"$ALCD,{mag},100,{slot},{reserve},0,*"
-
-
-def ack(net, s, i, pid, *, config_id=None, echo=None, t=None):
-    net.simulate_node_message(f"node{i}", "ack_config",
-                              {"config_id": config_id or s.config["config_id"], "ok": True,
-                               "gun_echo": echo if echo is not None else echo_for(s, pid)},
-                              t if t is not None else s.now_ms())
-
-
-def row(s, pid):
-    return next(r for r in s.readiness()["board"] if r["player_id"] == pid)
-
-
-# --------------------------------------------------------------- 1. the stale ack ---------- #
+# --------------------------------------------------------------- 1. the stale ack_head ---------- #
 
 def test_a_stale_ack_never_satisfies_start_and_force_does_not_open_it():
-    """The field failure itself. An ack for a PREVIOUS head is not an ack for this one.
+    """The field failure itself. An ack_head for a PREVIOUS head is not an ack_head for this one.
 
     Shape: the lobby is pushed and acked, the operator edits the game (A35 re-pushes and clears the
-    acks), and the node's answer that arrives next is a LATE ack for the config it was holding
+    acks), and the node's answer that arrives next is a LATE ack_head for the config it was holding
     before. Truthiness alone read that as "every gun has answered" and `start()` blew the whistle on
     a roster still running last game's frames.
 
     `force` does NOT open this one, for `_refuse_push_in_play`'s reason: force is the operator's
     override of a READINESS judgement they can see and accept (a phone that is off, a row they know
-    about). A stale ack is not a judgement -- it is the gun telling us, in its own words, which game
+    about). A stale ack_head is not a judgement -- it is the gun telling us, in its own words, which game
     it is running. RE-PUSH is the only answer.
     """
     s, net, clock, ps = mk_session(2)
@@ -60,19 +41,19 @@ def test_a_stale_ack_never_satisfies_start_and_force_does_not_open_it():
     s.push_config()
     old_id = s.config["config_id"]
     for i, p in enumerate(ps):
-        ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     assert s.all_acked()
 
     s.set_config({"time_limit_s": 120})          # A35 re-push: new config_id, acks cleared
     assert s.config["config_id"] != old_id and s.acks == {}
     for i, p in enumerate(ps):                    # …and both phones answer for the OLD head
-        ack(net, s, i, p["player_id"], config_id=old_id)
+        ack_head(net, s, i, p["player_id"], config_id=old_id)
 
-    assert not s.all_acked(), "an ack naming a previous config_id is not an ack for this one"
+    assert not s.all_acked(), "an ack_head naming a previous config_id is not an ack_head for this one"
     for force in (False, True):
         try:
             s.start(runway_s=10, force=force)
-            raise AssertionError(f"start(force={force}) accepted a stale ack")
+            raise AssertionError(f"start(force={force}) accepted a stale ack_head")
         except ValueError as e:
             assert old_id in str(e) or "OLDER CONFIG" in str(e).upper() or "stale" in str(e).lower()
     assert s.phase == "lobby"
@@ -84,10 +65,10 @@ def test_the_board_names_the_older_config_the_gun_acked():
     s.push_config()
     old_id = s.config["config_id"]
     for i, p in enumerate(ps):
-        ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     s.set_config({"time_limit_s": 90})
-    ack(net, s, 0, ps[0]["player_id"], config_id=old_id)
-    ack(net, s, 1, ps[1]["player_id"])            # node1 answers the CURRENT head
+    ack_head(net, s, 0, ps[0]["player_id"], config_id=old_id)
+    ack_head(net, s, 1, ps[1]["player_id"])            # node1 answers the CURRENT head
 
     r0, r1 = row(s, ps[0]["player_id"]), row(s, ps[1]["player_id"])
     assert r0["status"] == "red" and any("ACKED AN OLDER CONFIG" in b and old_id in b for b in r0["blockers"]), r0["blockers"]
@@ -99,9 +80,9 @@ def test_every_re_push_resets_the_per_node_ack():
     s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s.push_config()
-    ack(net, s, 0, ps[0]["player_id"])
+    ack_head(net, s, 0, ps[0]["player_id"])
     assert s.all_acked()
-    s.push_config()                               # a second push: the old ack proves nothing about it
+    s.push_config()                               # a second push: the old ack_head proves nothing about it
     assert s.acks == {} and not s.all_acked()
 
 
@@ -122,8 +103,8 @@ def test_gun_echo_mag_reserve_must_match_the_pushed_weapon():
     mag, reserve = _f.head_spawn_ammo(s.bundles[ps[0]["player_id"]]["head"])
     assert mag > 0 and reserve > 0, "the real compiler's head must carry a readable $WEAP,0"
 
-    ack(net, s, 0, ps[0]["player_id"])                                            # exact echo
-    ack(net, s, 1, ps[1]["player_id"], echo=f"$ALCD,{mag - 1},100,0,{reserve},0,*")   # one round short
+    ack_head(net, s, 0, ps[0]["player_id"])                                            # exact echo
+    ack_head(net, s, 1, ps[1]["player_id"], echo=f"$ALCD,{mag - 1},100,0,{reserve},0,*")   # one round short
 
     r0, r1 = row(s, ps[0]["player_id"]), row(s, ps[1]["player_id"])
     assert not any("GUN ECHO" in b for b in r0["blockers"]), r0["blockers"]
@@ -143,7 +124,7 @@ def test_a_non_ammo_echo_makes_no_claim_about_the_weapon():
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
-    ack(net, s, 0, ps[0]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
+    ack_head(net, s, 0, ps[0]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
     assert not any("GUN ECHO" in b for b in row(s, ps[0]["player_id"])["blockers"])
 
 
@@ -163,7 +144,7 @@ def test_the_engine_reports_the_ammo_echo_when_the_gun_gives_one():
 def _go_live(s, net, clock, ps, runway_s=10):
     s.push_config()
     for i, p in enumerate(ps):
-        ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     info = s.start(runway_s=runway_s)
     clock["t"] = info["go_live_t"] + 1
     s.tick()
@@ -232,7 +213,7 @@ def test_a_heartbeat_holding_an_older_config_is_amber_until_it_re_acks():
     s.push_config()
     old_id = s.config["config_id"]
     for i, p in enumerate(ps):
-        ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     s.set_config({"time_limit_s": 120})
     online(s, net, clock, ps[0], 0, config_id=old_id)    # the gun still holds the previous head
     online(s, net, clock, ps[1], 1, config_id=s.config["config_id"])
@@ -241,7 +222,7 @@ def test_a_heartbeat_holding_an_older_config_is_amber_until_it_re_acks():
     assert any("HOLDING OLDER CONFIG" in a for a in r0["ambers"]), r0["ambers"]
     assert not any("HOLDING OLDER CONFIG" in a for a in r1["ambers"]), r1["ambers"]
 
-    ack(net, s, 0, ps[0]["player_id"])                   # re-acked: the drift is settled
+    ack_head(net, s, 0, ps[0]["player_id"])                   # re-acked: the drift is settled
     assert not any("HOLDING OLDER CONFIG" in a for a in row(s, ps[0]["player_id"])["ambers"])
 
 
@@ -395,14 +376,14 @@ def test_the_pool_fault_clears_on_the_re_push_and_re_ack():
     s.control("end", confirm=True)                              # back out of play so a push is allowed
     s.push_config(force=True)
     for i, p in enumerate(ps):
-        ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     assert s._pool_faults == {}
     assert not any("GUN POOL" in b for b in row(s, ps[1]["player_id"])["blockers"])
 
 
 # --------------------------- 8. a blocker that says RE-PUSH must not refuse the push -------- #
-# C-2. All three A36 reds are cured by the push itself: it replaces the head, clears the ack, the
-# echo derived from that ack and the pool judgement made against that head. `push_config` counted
+# C-2. All three A36 reds are cured by the push itself: it replaces the head, clears the ack_head, the
+# echo derived from that ack_head and the pool judgement made against that head. `push_config` counted
 # them as reds standing in its own way, so the only way out of the state the row TOLD the operator to
 # leave was `force` -- an override reserved for judgements they can see and accept.
 
@@ -413,10 +394,10 @@ def _stale_acked_roster():
     s.push_config()
     old_id = s.config["config_id"]
     for i, p in enumerate(ps):
-        ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     s.set_config({"time_limit_s": 120})
     for i, p in enumerate(ps):
-        ack(net, s, i, p["player_id"], config_id=old_id)
+        ack_head(net, s, i, p["player_id"], config_id=old_id)
     return s, net, clock, ps, old_id
 
 
@@ -428,7 +409,7 @@ def test_an_unforced_push_clears_the_three_a36_reds_instead_of_being_refused_by_
     s.push_config()                                   # UNFORCED: the cure must not be blocked by the wound
     assert s.acks == {} and s.lobby_pushed
     for i, p in enumerate(ps):
-        ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     assert s.all_acked()
     assert not any(r["blockers"] for r in s.readiness()["board"]), s.readiness()["board"]
 
@@ -437,7 +418,7 @@ def test_start_still_refuses_a_stale_ack_that_the_push_gate_now_lets_through():
     s, _net, _clock, _ps, old_id = _stale_acked_roster()
     try:
         s.start(runway_s=10)
-        raise AssertionError("start() accepted a stale ack")
+        raise AssertionError("start() accepted a stale ack_head")
     except ValueError as e:
         assert old_id in str(e) or "OLDER" in str(e).upper(), str(e)
     assert s.phase == "lobby"
@@ -452,21 +433,21 @@ def test_start_still_refuses_a_stale_ack_that_the_push_gate_now_lets_through():
 
 
 def test_a_stale_ack_that_also_changed_weapon_is_ONE_red_not_two():
-    """C-5. The echo is derived FROM the ack: if the ack is not for this head, its echo is not
+    """C-5. The echo is derived FROM the ack_head: if the ack_head is not for this head, its echo is not
     evidence about this head either, and printing both reds describes one cause twice."""
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     old_id = s.config["config_id"]
     s.set_config({"time_limit_s": 120})
-    ack(net, s, 0, ps[0]["player_id"], config_id=old_id, echo="$ALCD,1,100,0,2,0,*")
+    ack_head(net, s, 0, ps[0]["player_id"], config_id=old_id, echo="$ALCD,1,100,0,2,0,*")
     r = row(s, ps[0]["player_id"])
     assert any("ACKED AN OLDER CONFIG" in b for b in r["blockers"]), r["blockers"]
     assert not any("GUN ECHO" in b for b in r["blockers"]), r["blockers"]
 
 
 def test_standing_a_player_down_forgets_the_pool_fault_they_earned():
-    """C-5. `_unroster` already forgets the ack and the bundle; the pool fault is a judgement about
+    """C-5. `_unroster` already forgets the ack_head and the bundle; the pool fault is a judgement about
     the same head and was riding back in on the reinstate."""
     s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
@@ -499,9 +480,9 @@ def test_the_echo_check_reports_proven_mismatch_and_not_echoed():
 
     from brx_mcp.mc import frames as _f
     mag, reserve = _f.head_spawn_ammo(s.bundles[ps[0]["player_id"]]["head"])
-    ack(net, s, 0, ps[0]["player_id"])                                             # exact echo
-    ack(net, s, 1, ps[1]["player_id"], echo=f"$ALCD,{mag - 1},100,0,{reserve},0,*")  # one round short
-    ack(net, s, 2, ps[2]["player_id"], echo="$LCD,0,0,0,0,0,0,*")                  # answered, said nothing
+    ack_head(net, s, 0, ps[0]["player_id"])                                             # exact echo
+    ack_head(net, s, 1, ps[1]["player_id"], echo=f"$ALCD,{mag - 1},100,0,{reserve},0,*")  # one round short
+    ack_head(net, s, 2, ps[2]["player_id"], echo="$LCD,0,0,0,0,0,0,*")                  # answered, said nothing
 
     r0, r1, r2 = (row(s, p["player_id"]) for p in ps)
     assert r0["echo"] == "proven" and r0["status"] == "green", r0
@@ -519,8 +500,8 @@ def test_an_unproven_echo_is_not_a_proven_one_even_on_a_green_board():
     s, net, clock, ps = mk_session(2, compiler=Compiler())
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
-    ack(net, s, 0, ps[0]["player_id"])
-    ack(net, s, 1, ps[1]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
+    ack_head(net, s, 0, ps[0]["player_id"])
+    ack_head(net, s, 1, ps[1]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
     r0, r1 = (row(s, p["player_id"]) for p in ps)
     assert r0["status"] == r1["status"] == "green"
     assert r0["echo"] != r1["echo"], "two green rows, two DIFFERENT amounts of proof"
@@ -533,7 +514,7 @@ def test_a_stub_head_makes_no_echo_claim_at_all():
     s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s.push_config()
-    ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,32,100,0,192,0,*")
+    ack_head(net, s, 0, ps[0]["player_id"], echo="$ALCD,32,100,0,192,0,*")
     assert row(s, ps[0]["player_id"])["echo"] is None
 
 
@@ -555,7 +536,7 @@ def test_the_push_curable_proofs_share_one_frame_of_reference():
     s.push_config()
     from brx_mcp.mc import frames as _f
     mag, reserve = _f.head_spawn_ammo(s.bundles[ps[0]["player_id"]]["head"])
-    ack(net, s, 0, ps[0]["player_id"], echo=f"$ALCD,{mag - 1},100,0,{reserve},0,*")
+    ack_head(net, s, 0, ps[0]["player_id"], echo=f"$ALCD,{mag - 1},100,0,{reserve},0,*")
     fault = next(b for b in row(s, ps[0]["player_id"])["blockers"] if "GUN ECHO" in b)
     assert fault.startswith("GUN ECHO ≠ CONFIG (WEAPON"), fault
 
@@ -579,7 +560,7 @@ def _pushed_and_acked():
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     for i, p in enumerate(ps):
-        ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     return s, net, clock, ps
 
 
@@ -594,7 +575,7 @@ def test_a_re_push_is_a_fresh_head_not_a_new_game():
     assert res.get("repushed") is True, res
     assert s.config["config_id"] != cid, "the new head must be distinguishable from the old one"
     assert s.game_no == gno, "no gun changed game; the stations must not be re-armed for a new number"
-    assert s.acks == {}, "every ack describes the head that was just replaced"
+    assert s.acks == {}, "every ack_head describes the head that was just replaced"
     assert s.lobby_pushed and s.phase == "lobby"
 
 
@@ -615,9 +596,9 @@ def test_an_unforced_re_push_clears_a_stale_ack_an_echo_mismatch_and_a_pool_faul
     s.push_config()
     old_id = s.config["config_id"]
     s.set_config({"time_limit_s": 120})                  # A35 re-push: acks clear, then these land
-    ack(net, s, 0, ps[0]["player_id"], config_id=old_id)                  # stale
-    ack(net, s, 1, ps[1]["player_id"], echo="$ALCD,1,100,0,2,0,*")        # echo mismatch
-    ack(net, s, 2, ps[2]["player_id"])
+    ack_head(net, s, 0, ps[0]["player_id"], config_id=old_id)                  # stale
+    ack_head(net, s, 1, ps[1]["player_id"], echo="$ALCD,1,100,0,2,0,*")        # echo mismatch
+    ack_head(net, s, 2, ps[2]["player_id"])
     s._pool_faults[ps[2]["player_id"]] = "GUN POOL ≠ CONFIG (REPORTS 60/70, THIS CONFIG GRANTS 45/70, hp/armor) — LIKELY ON AN OLDER HEAD; RE-PUSH BEFORE THE NEXT GAME"
     lines = [b for r in s.readiness()["board"] for b in r["blockers"]]
     assert sum(b.startswith(PUSH_CURES) for b in lines) == 3, lines
@@ -626,7 +607,7 @@ def test_an_unforced_re_push_clears_a_stale_ack_an_echo_mismatch_and_a_pool_faul
     assert res.get("repushed") is True
     assert s._pool_faults == {}, "the pool judgement was made against a head that no longer exists"
     for i in range(3):
-        ack(net, s, i, ps[i]["player_id"])
+        ack_head(net, s, i, ps[i]["player_id"])
     assert s.all_acked()
     assert not any(r["blockers"] for r in s.readiness()["board"]), s.readiness()["board"]
 
@@ -637,14 +618,14 @@ def test_an_unforced_re_push_clears_a_stale_ack_an_echo_mismatch_and_a_pool_faul
 # whistle blew on a gun that had just told us it is holding another weapon.
 
 def test_start_refuses_an_echo_MISMATCH():
-    """R2-5. The mismatch leaves the ack CURRENT, so `all_acked()` was true and the whistle blew.
+    """R2-5. The mismatch leaves the ack_head CURRENT, so `all_acked()` was true and the whistle blew.
     Whether `force` opens it is F2's question, answered in section 14: it does, because the rule
     behind the mismatch is an unbenched inference about this firmware."""
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
-    ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
-    assert s.all_acked(), "control: the ack IS current -- this is why the old gate let it through"
+    ack_head(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
+    assert s.all_acked(), "control: the ack_head IS current -- this is why the old gate let it through"
     try:
         s.start(runway_s=10)
         raise AssertionError("start() accepted an echo mismatch")
@@ -659,7 +640,7 @@ def test_a_gun_that_simply_did_not_echo_never_refuses_the_start():
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
-    ack(net, s, 0, ps[0]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
+    ack_head(net, s, 0, ps[0]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
     assert s._echo_state(ps[0]["player_id"]) == "not_echoed"
     s.start(runway_s=10)
     assert s.phase == "armed"
@@ -873,8 +854,8 @@ def test_an_echo_mismatch_refuses_the_unforced_start_and_says_what_to_do():
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
-    ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
-    assert s.all_acked(), "control: the ack IS current -- it is the ECHO inside it that disagrees"
+    ack_head(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
+    assert s.all_acked(), "control: the ack_head IS current -- it is the ECHO inside it that disagrees"
     try:
         s.start(runway_s=10)
         raise AssertionError("start() accepted an echo mismatch unforced")
@@ -889,22 +870,22 @@ def test_the_host_override_opens_an_echo_mismatch_because_the_rule_is_unbenched(
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
-    ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
+    ack_head(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
     s.start(runway_s=10, force=True)
     assert s.phase == "armed", "the operator must have a way past an unbenched inference"
 
 
 def test_a_stale_ack_is_still_force_proof_beside_the_forceable_mismatch():
-    """The control for F2: the stale ack is the gun NAMING another game, not an inference."""
+    """The control for F2: the stale ack_head is the gun NAMING another game, not an inference."""
     s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     old = s.config["config_id"]
     s.set_config({"time_limit_s": 120})
-    ack(net, s, 0, ps[0]["player_id"], config_id=old)
+    ack_head(net, s, 0, ps[0]["player_id"], config_id=old)
     try:
         s.start(runway_s=10, force=True)
-        raise AssertionError("force opened a stale ack")
+        raise AssertionError("force opened a stale ack_head")
     except ValueError as e:
         assert "OLDER" in str(e).upper(), str(e)
 
@@ -1028,7 +1009,7 @@ def test_the_hp_RED_still_fires_on_a_single_frame():
 
 
 # ------------- F6: a re-push MINTS a fresh `config_id`, so it can be PROVEN to have landed --- #
-# R2-1 kept the id ("the same head again"), and that made the re-push unprovable: an ack in flight
+# R2-1 kept the id ("the same head again"), and that made the re-push unprovable: an ack_head in flight
 # when `_repush_lobby_config` clears `acks` lands afterwards carrying the SAME id and is recorded as
 # current, so the board reads acked for a head that gun never took. The proof matters more.
 
@@ -1047,12 +1028,12 @@ def test_an_ack_in_flight_across_a_re_push_is_not_current():
     s, net, clock, ps = _pushed_and_acked()
     old = s.config["config_id"]
     s.push_config()
-    ack(net, s, 0, ps[0]["player_id"], config_id=old)      # the ack that was already on the wire
+    ack_head(net, s, 0, ps[0]["player_id"], config_id=old)      # the ack_head that was already on the wire
     assert not s._ack_is_current(ps[0]["player_id"])
     r = row(s, ps[0]["player_id"])
     line = next((b for b in r["blockers"] if b.startswith("ACKED AN OLDER CONFIG")), None)
     assert line and old in line, r["blockers"]
-    ack(net, s, 0, ps[0]["player_id"])                     # ...and the real one clears it
+    ack_head(net, s, 0, ps[0]["player_id"])                     # ...and the real one clears it
     assert s._ack_is_current(ps[0]["player_id"])
     assert not any(b.startswith("ACKED AN OLDER CONFIG") for b in row(s, ps[0]["player_id"])["blockers"])
 

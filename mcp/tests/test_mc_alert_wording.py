@@ -20,6 +20,7 @@ from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.types import POOL_CHECK_SETTLE_MS
+from _session import ack_head
 
 T0 = 5_000_000
 
@@ -104,20 +105,6 @@ def _online(s, net, clock, p, i, synced=True, app_ver=None, **body):
                                      **body}, clock["t"])
 
 
-def _echo_for(s, pid, slot=0):
-    from brx_mcp.mc import frames as _f
-    mag, reserve = _f.head_spawn_ammo(s.bundles[pid]["head"]) or (0, 0)
-    return f"$ALCD,{mag},100,{slot},{reserve},0,*"
-
-
-def _ack(net, s, i, pid, *, config_id=None, echo=None, gun_config=None):
-    body = {"config_id": config_id or s.config["config_id"], "ok": True,
-            "gun_echo": echo if echo is not None else _echo_for(s, pid)}
-    if gun_config is not None:
-        body["gun_config"] = gun_config
-    net.simulate_node_message(f"node{i}", "ack_config", body, s.now_ms())
-
-
 def _expected_gun_config(s, pid):
     """Mirrors `test_mc_query_readback._expected_from_pushed_head`: the literal values in the head
     MC actually pushed, read independently of the fault check itself."""
@@ -165,13 +152,13 @@ def _fstring_lines() -> list[str]:
     s.push_config()
     old_id = s.config["config_id"]
     for i, p in enumerate(ps):
-        _ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     s.set_config({"time_limit_s": 120})                             # A35 re-push: acks clear, then these land
-    _ack(net, s, 0, ps[0]["player_id"], config_id=old_id)                     # ACKED AN OLDER CONFIG
-    _ack(net, s, 1, ps[1]["player_id"], echo="$ALCD,1,100,0,2,0,*")           # GUN ECHO ≠ CONFIG
+    ack_head(net, s, 0, ps[0]["player_id"], config_id=old_id)                     # ACKED AN OLDER CONFIG
+    ack_head(net, s, 1, ps[1]["player_id"], echo="$ALCD,1,100,0,2,0,*")           # GUN ECHO ≠ CONFIG
     expected = _expected_gun_config(s, ps[2]["player_id"])
     wrong = deepcopy(expected); wrong["hp"] += 1
-    _ack(net, s, 2, ps[2]["player_id"], gun_config=wrong)                     # GUN CONFIG ≠ PUSHED HEAD
+    ack_head(net, s, 2, ps[2]["player_id"], gun_config=wrong)                     # GUN CONFIG ≠ PUSHED HEAD
     lines += [x for r in s.readiness()["board"] for x in r["blockers"] + r["ambers"]]
 
     # ---- pool fault: a live gun reporting a previous game's pool (state.py `_pool_faults`) ----
@@ -180,7 +167,7 @@ def _fstring_lines() -> list[str]:
         _online(s, net, clock, p, i)
     s.push_config()
     for i, p in enumerate(ps):
-        _ack(net, s, i, p["player_id"])
+        ack_head(net, s, i, p["player_id"])
     info = s.start(runway_s=10)
     clock["t"] = info["go_live_t"] + 1
     s.tick()

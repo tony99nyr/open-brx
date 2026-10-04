@@ -9,8 +9,7 @@ Run: python3 run_tests.py mc_query_readback
 from copy import deepcopy
 
 from brx_mcp.mc.compile import Compiler
-from test_mc_config_proof import ack, row
-from _session import mk_session, online
+from _session import ack_head, mk_session, online, row
 
 
 def _expected_from_pushed_head(s, pid):
@@ -69,7 +68,7 @@ def test_matching_gun_config_is_preserved_in_the_ack_and_allows_start():
 def test_missing_gun_config_is_compatible_with_an_older_phone_and_makes_no_claim():
     s, net, _clock, _ps, pid = _pushed_one_player()
 
-    ack(net, s, 0, pid, echo="$LCD,0,0,0,0,0,0,*")
+    ack_head(net, s, 0, pid, echo="$LCD,0,0,0,0,0,0,*")
 
     assert "gun_config" not in s.acks[pid]
     assert not any("READ-BACK" in b or "GUN CONFIG" in b for b in row(s, pid)["blockers"])

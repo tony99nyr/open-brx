@@ -119,3 +119,115 @@ def online(s, net, clock, p, i, synced=True, app_ver=None, platform="android", *
                                      "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90,
                                                    "screen_on": True, "foreground": True, "gun_linked": True},
                                      **body}, clock["t"])
+
+
+class DeafNet(FakeNet):
+    """A FakeNet where named nodes are out of coverage: `push` returns False, as the real net does."""
+
+    def __init__(self, deaf=()):
+        super().__init__()
+        self.deaf = set(deaf)
+
+    def push(self, node_id, kind, body):
+        super().push(node_id, kind, body)
+        return False if node_id in self.deaf else None
+
+
+def heartbeat(s, net, clock, ps, shots=0):
+    """A11.5: MC withholds a global-state alert while any node is stale, so a live-feed test has to
+    keep the board fresh or it measures the WITHHELD path instead of the one it means to."""
+    for i, p in enumerate(ps):
+        net.simulate_status(f"node{i}", {"player_id": p["player_id"], "shots": shots, "alive": True,
+                                         "synced": True, "pending": 0}, clock["t"])
+    assert s.mc_confidence()["confident"], s.mc_confidence()
+
+
+def kill(s, net, clock, ps, killer_i, victim_i, info, seq, dt=1000):
+    """`killer` shoots `victim`, one second later than the last fact."""
+    clock["t"] += dt
+    net.simulate_event(f"node{victim_i}", {"type": "death", "t": clock["t"], "match_id": info["match_id"],
+                                           "player_id": ps[victim_i]["player_id"],
+                                           "shooter_num": ps[killer_i]["player_num"], "shooter_team": 1},
+                       clock["t"], seq=seq)
+
+
+def _go_live(s, net, clock, ps, koth_hill=False):
+    n_players = len(ps)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    if koth_hill:
+        # F402: push/start refuses a koth game with nothing on the field that IS the hill.
+        net.simulate_utility_hello("util-hill")
+        s.set_station("util-hill", {"kind": "control"})
+    s.push_config()
+    for i in range(n_players):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                             "gun_echo": "$LCD"}, clock["t"])
+    info = s.start(runway_s=10)
+    clock["t"] = info["go_live_t"] + 1
+    s.tick()
+    assert s.phase == "live"
+    heartbeat(s, net, clock, ps)
+    return s, net, clock, ps, info
+
+
+def go_live(n_players=2, mode="tdm", cfg=None, net=None):
+    """The block-B harness driven to LIVE: `(session, net, clock, players, start_info)`."""
+    s, net, clock, ps = mk_kit_session(n_players, mode, cfg, net)
+    return _go_live(s, net, clock, ps)
+
+
+def go_live_stored(n_players=2, mode="tdm", cfg=None, store=True):
+    """`go_live` with a REAL sqlite store, and a koth hill assigned (F402). `store` defaults to ON."""
+    s, net, clock, ps = mk_stored_session(n_players, mode, cfg, store)
+    return _go_live(s, net, clock, ps, koth_hill=(mode == "koth"))
+
+
+def mk_online_session(n=3):
+    """`mk_session(n)` with every phone online and synced (the lobby is NOT pushed)."""
+    s, net, clock, ps = mk_session(n)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    return s, net, clock, ps
+
+
+def results(net):
+    """The LATEST `result` body each node was pushed."""
+    out = {}
+    for nid, _kind, body in net.pushes("result"):
+        out[nid] = body
+    return out
+
+
+def row(s, pid):
+    return next(r for r in s.readiness()["board"] if r["player_id"] == pid)
+
+
+def lobby(s):
+    return s.snapshot()["lobby"]
+
+
+def echo_for(s, pid, slot=0):
+    """The `$ALCD` a gun holding THIS player's pushed head would answer with."""
+    from brx_mcp.mc import frames as _f
+    mag, reserve = _f.head_spawn_ammo(s.bundles[pid]["head"]) or (0, 0)
+    return f"$ALCD,{mag},100,{slot},{reserve},0,*"
+
+
+def ack_head(net, s, i, pid, *, config_id=None, echo=None, t=None, gun_config=None):
+    """Node `i` acks the current config with the `$ALCD` THIS player's head would produce (or `echo`)."""
+    body = {"config_id": config_id or s.config["config_id"], "ok": True,
+            "gun_echo": echo if echo is not None else echo_for(s, pid)}
+    if gun_config is not None:
+        body["gun_config"] = gun_config
+    net.simulate_node_message(f"node{i}", "ack_config", body, t if t is not None else s.now_ms())
+
+
+LOBBY_ECHO = "$ALCD,32,100,0,192,0,*"
+
+
+def ack_lobby(s, net, clock, i, config_id=None, ok=True):
+    """Node `i` answers the lobby push with a fixed echo (`ok=False`: it could not echo)."""
+    body = {"config_id": config_id or s.config["config_id"], "ok": ok}
+    body.update({"gun_echo": LOBBY_ECHO} if ok else {"err": "no_echo"})
+    net.simulate_node_message(f"node{i}", "ack_config", body, clock["t"])

@@ -15,10 +15,9 @@ keeps `lobby_pushed` True (acks reset + re-collected). A team change while armed
 FFA must stay green throughout.
 """
 from brx_mcp.mc.fakes import demo_armory
-from test_mc_block_b import go_live
 
 from brx_mcp.mc.state import ConflictError
-from _session import mk_kit_session, online
+from _session import go_live, mk_kit_session, online
 
 # the FakeCompiler writes `$TID,<tid>,*` as the LAST frame of `head`; TDM defaults are red=0, blue=1
 # (F413, 2026-09-27; was blue=1, yellow=2).
