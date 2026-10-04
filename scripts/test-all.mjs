@@ -41,7 +41,7 @@ import { sumTreePssKb } from './lib/pss.mjs';
 import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, deriveTimeoutS, planPeakMb, screensBudget, workerCount } from './lib/budget.mjs';
 import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
-import { cacheBypassReason, cacheKey, canExitAllCached, headOf, inputTreeHash, installedNpmState,
+import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash, installedNpmState,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
 import { inputsForJob } from './lib/inputs.mjs';
 
@@ -211,7 +211,7 @@ if (CACHE) {
   try { pruneCache(ROOT); fingerprint = toolFingerprint(ROOT, PY); }
   catch (e) { console.error(`test-all: cache unavailable (${e.message}); running jobs`); CACHE = false; }
 }
-const staticEnv = j => ({ MC_PY: PY, ...Object.fromEntries(
+const staticEnv = j => ({ MC_PY: PY, ...keyedEnv(process.env), ...Object.fromEntries(
   Object.entries(typeof j.env === 'object' && j.env ? j.env : {}).filter(([name]) => name !== 'SCREENS_OUT')
 ) });
 const cacheIdentity = (j, before, context) => cacheKey({

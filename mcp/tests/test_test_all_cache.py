@@ -167,10 +167,10 @@ def test_ambient_test_controls_disable_cache_lookups_and_stores():
 def test_environment_allowlist_and_git_index_flags(git_repo):
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(JSON.stringify(["
             "m.cacheBypassReason({PATH:'/bin',HOME:'/home/test',WSL_DISTRO_NAME:'Ubuntu',XDG_RUNTIME_DIR:'/run/user/1',"
-            "MC_PY:'python',BRX_MCP_HOME:'/tmp/mcp'}),m.cacheBypassReason({LANG:'C'}),"
+            "MC_PY:'python',BRX_MCP_HOME:'/tmp/mcp'}),m.cacheBypassReason({LANG:'C'}),m.cacheBypassReason({NODE_OPTIONS:'--x'}),"
             "m.cacheBypassReason({UNEXPECTED_TEST_FLAG:'1'})])))")
     values = json.loads(_node(expr, cwd=git_repo))
-    assert values == [None, "environment variable affects test results: LANG",
+    assert values == [None, None, "environment variable affects test results: NODE_OPTIONS",
                       "environment variable affects test results: UNEXPECTED_TEST_FLAG"]
     source = CACHE_MOD.read_text()
     assert "core.splitIndex=false" in source and "core.fsmonitor=false" in source
@@ -330,3 +330,20 @@ def test_land_parse_gate_accepts_cached_result_rows():
             "'job               result  secs\\nmcp                ok      0\\n\\nmcp cached'))))")
     result = json.loads(_node(expr))
     assert result["rows"] == [{"name": "mcp", "ok": True}]
+
+
+def test_an_ordinary_shell_keeps_the_cache_and_keys_its_locale():
+    """Every shell sets LANG, so locale goes into the key by value rather than switching the cache off; a
+    credential no test reads (GH_TOKEN) is benign; NODE_OPTIONS still bypasses."""
+    base = {"PATH": "/usr/bin", "HOME": "/home/x", "LANG": "C.UTF-8", "LC_ALL": "C", "GH_TOKEN": "secret",
+            "WT_SESSION": "1", "TZ": "UTC"}
+    out = _node(
+        "import * as c from './scripts/lib/cache.mjs';"
+        f"const env = {json.dumps(base)};"
+        "console.log(JSON.stringify({bypass: c.cacheBypassReason(env), keyed: c.keyedEnv(env),"
+        " node: c.cacheBypassReason({...env, NODE_OPTIONS: '--x'})}));")
+    got = json.loads(out)
+    assert got["bypass"] is None, got
+    assert got["keyed"] == {"LANG": "C.UTF-8", "LC_ALL": "C", "TZ": "UTC"}, got
+    assert "GH_TOKEN" not in json.dumps(got["keyed"])
+    assert got["node"] and "NODE_OPTIONS" in got["node"], got
