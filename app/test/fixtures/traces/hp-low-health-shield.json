@@ -1,7 +1,7 @@
 {
   "name": "hp-low-health-shield",
   "why": "A shields game: the heartbeat that runs while the shield is gone pauses only while the low-health line is pending. It resumes after the line is dropped by a heal, after the line is sent, and after the line is dropped by a burst that never goes quiet.",
-  "source": "app/test/engine.test.mjs low-health tests (A17.2, F57, F375); app/src/engine.js `_onHp` `tryHurt`; app/test/shield-recharge.test.mjs heartbeat tests (F439)",
+  "source": "app/test/engine.test.mjs low-health tests (A17.2, F57, F375); app/src/engine.js `_hurtLineArm` and `_hurtLineTry`; app/test/shield-recharge.test.mjs heartbeat tests (F439)",
   "runners": ["engine"],
   "setup": {
     "config": {"health":{"max_hp":45,"max_armor":0,"max_shield":108},"respawn":{"type":"auto","delay_s":5}},

@@ -1,7 +1,7 @@
 {
   "name": "hp-low-health-heal",
   "why": "A heal back to exactly 15 before the line's debounce ends drops the line: no longer critical. The alert is once per life, so a later hit under 15 says nothing either.",
-  "source": "app/test/engine.test.mjs low-health tests (A17.2, F57, F375); app/src/engine.js `_onHp` `tryHurt`",
+  "source": "app/test/engine.test.mjs low-health tests (A17.2, F57, F375); app/src/engine.js `_hurtLineArm` and `_hurtLineTry`",
   "runners": ["engine"],
   "setup": {
     "delay": "timers",

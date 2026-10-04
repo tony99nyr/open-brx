@@ -1,7 +1,7 @@
 {
   "name": "hp-low-health-relink",
   "why": "After a relink, a hit's headset flash still has its rest step pending when the next hit crosses the low-health threshold: the alert's teardown snapshot reads the light generation and leaves it alone, so that rest step still lands.",
-  "source": "app/test/engine.test.mjs low-health tests (A17.2, F57, F375); app/src/engine.js `_onHp` `tryHurt`; app/test/engine.test.mjs headset hit flash tests (A11.6)",
+  "source": "app/test/engine.test.mjs low-health tests (A17.2, F57, F375); app/src/engine.js `_hurtLineArm` and `_hurtLineTry`; app/test/engine.test.mjs headset hit flash tests (A11.6)",
   "runners": ["engine"],
   "setup": {
     "frames": {"headset":{"in_play":"dark","rest":"$HLED,9,0,,,10,,*","blank":"$HLED,9,0,,,10,,*","down":{"rearm":"$HLOOP,1,2500,*","stop":"$HLOOP,0,0,*","rearm_after_ms":2500},"pregame":["$HLED,1,0,,,10,,*"],"start":[["$HLED,6,2,120,120,10,2,*",0.6],["$HLED,9,0,,,10,,*",0]],"hit":[["$HLED,6,2,120,120,10,2,*",0.2],["$HLED,9,0,,,10,,*",0]],"death":[],"respawn":[["$HLED,6,2,120,120,10,2,*",0.6],["$HLED,9,0,,,10,,*",0]],"role":{"carrier":[["$HLED,6,2,300,300,10,200,*",0]],"vip":[["$HLED,6,0,,,10,,*",0]],"beacon":[["$HLED,8,2,300,300,10,200,*",0]],"extracted":[["$HLED,6,0,,,10,,*",0]],"infected":{"1":[["$HLED,1,0,,,10,,*",0]],"2":[["$HLED,2,0,,,10,,*",0]]}},"carrier":{"1":[["$HLED,1,2,300,300,10,200,*",0]],"2":[["$HLED,2,2,300,300,10,200,*",0]]}}},

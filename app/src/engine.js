@@ -6381,6 +6381,75 @@ export class Engine {
     this._event('shield_down');
   }
 
+  /** `_onHp` step: the victim-side low-health alert, once per life. Sets `h.hurtNow` on the hit that crosses the
+   *  threshold and arms the line (`_hurtLineArm`). Any other damaging frame only restarts a waiting line's quiet time.
+   *
+   *  Callsign sends $PLAY,VA8B + $HLED,7,4,90,90,10,15 shortly after ARMOUR reaches 0 and HP starts dropping (capture
+   *  2026-08-23-two-tagger-combat: 2 deaths, 2 alerts, both at $HP,34,0,0). We sent neither, which is why our headsets
+   *  stayed dark.
+   *
+   *  A17.2 (Tony, bench 2026-09-07: "low_health shouldn't be used there. it should be used when total
+   *  hp is under 20"): it now fires on an ACTUAL HEALTH THRESHOLD, not on armour running out. The old
+   *  condition (armour 0 AND any HP lost) fired on the FIRST health hit of a life -- at 44/45 HP if
+   *  that is where you were -- so an alert named "low health" meant "your armour just failed". A17 made
+   *  that impossible to ignore rather than causing it: health hits are now silent from the gun, so this
+   *  alert became the ONLY sound on the armour->health transition and read as the hit sound itself.
+   *  The `maxArmor > 0` guard is gone with it: a HP threshold is meaningful whether or not the loadout
+   *  ever had armour, which is what that guard was working around. */
+  _hpLowHealth(h) {
+    if (!(this.phase === 'live' && this.spawned && this.alive && !this.tutorial
+        // `dmg > 0` mirrors stage.py, which imposes it structurally (its check is nested inside
+        // `if dmg > 0`). Without it a ZERO-damage $HP frame -- a heal or regen tick, or a plain resend --
+        // could trip the alert while merely LEAVING you under the threshold, and a heal is the opposite
+        // of the news this alert exists to carry. A genuinely damaging drop always has dmg > 0, so
+        // nothing real is lost. Found by review 2026-09-07: the two mirrors had diverged here.
+        && !this.hurtFired && h.dmg > 0 && this.hp > 0 && this.hp < LOW_HEALTH_HP)) {
+      if (this._pendingHurtWrite && h.dmg > 0) this._hurtQuietAt = this.now();   // F375: a hit while the line waits restarts the quiet time
+      return;
+    }
+    this.hurtFired = true; h.hurtNow = true;
+    const c = this.frames && this.frames.cues;
+    const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];
+    // logged explicitly: after the last field session we could not tell whether the alert had
+    // fired at all, because the frame ring only holds 60 frames and had rolled past it.
+    this.log(`low-health alert: hp ${this.hp} < ${LOW_HEALTH_HP} — ${fr.length} frame(s)`, 'lk');
+    if (fr.length) this._hurtLineArm(fr);
+  }
+
+  /** The low-health line's debounce. Office test 2026-09-19 (Pixel 4/5): a killing hit landing within the same second
+   *  as this alert let the voice line reach the gun BEFORE `_death`'s $PLAYX (F149) could stop it -- the write was
+   *  already away over BLE by the time the death frame arrived a few tens of ms later. HURT_DEBOUNCE_MS holds the write
+   *  here instead of sending it at once; `_death` cancels it outright (never sent) when it lands inside the window, and
+   *  falls back to the existing $PLAYX stop once the debounce has already fired.
+   *  F375 (field 2026-09-24, Tony: "health critical" played AFTER the death scream): the hold now ends only when BOTH
+   *  are true: no damaging `$HP` for HURT_DEBOUNCE_MS (every hit restarts it: a burst still landing means a death may
+   *  be coming), and the gun model holds no clip that can still play (the line never queues behind another clip, where
+   *  a scream can overtake it). Why: the gun screams on the lethal `$HP,0` before the phone hears it, so a line written
+   *  in that gap queues BEHIND the scream, and `_death`'s stop then cuts the scream. */
+  _hurtLineArm(fr) {
+    this._pendingHurtWrite = true; this._hurtQuietAt = this.now();
+    const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: match end/panic/BLE drop must not let this land late
+    const hg = (this._hurtGen = (this._hurtGen || 0) + 1);   // a timer left over from an earlier life never sends this one
+    const crossedAt = this.now();
+    const line = { fr, lg, hg, crossedAt, due: crossedAt + HURT_DEBOUNCE_MS };
+    this.delay(HURT_DEBOUNCE_MS, () => this._hurtLineTry(line));
+  }
+
+  /** One try at the armed low-health line (`_hurtLineArm`): drop it, wait again, or send it. `line` is
+   *  {fr, lg, hg, crossedAt, due}; `due` moves on with each wait. */
+  _hurtLineTry(line) {
+    if (!this._pendingHurtWrite || this._hurtGen !== line.hg) return;   // cancelled by a death that landed first
+    if (this._lightGen !== line.lg || !this.alive || this.ended || !(this.hp > 0 && this.hp < LOW_HEALTH_HP)) { this._pendingHurtWrite = false; return; }   // match ended/panicked/relinked (review 2026-09-19), or no longer critical
+    const now = this.now(); this._audioSync(now);
+    const busy = this._gun.playingUntil(now), want = Math.max(this._hurtQuietAt + HURT_DEBOUNCE_MS, busy > now ? busy : 0);
+    if (want > line.due && want > now) {   // `want > due`: a clock that does not move cannot loop; `want > now`: a late timer does not wait again
+      if (want - line.crossedAt > HURT_MAX_WAIT_MS) { this._pendingHurtWrite = false; this.log(`low-health line dropped: no quiet gun within ${HURT_MAX_WAIT_MS} ms (F375)`, 'lk'); return; }
+      const wait = want - Math.max(line.due, now); line.due = want; this.delay(wait, () => this._hurtLineTry(line)); return;
+    }
+    this._hsGen = (this._hsGen || 0) + 1;
+    this._write(line.fr, 'low health', undefined, false, () => { this._pendingHurtWrite = false; this._hurtSent = true; });   // cancels a pending hit-flash rest step (polish 2026-09-04)
+  }
+
   _onHp(hp, armor, shield, solicited = false) {
     this.pu.onHp();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
@@ -6396,66 +6465,9 @@ export class Engine {
     this._hpDotEcho(h);
     const dotEcho = h.dotEcho;
     this._hpShield(h);
-    // Victim-side low-health alert, once per life. Callsign sends $PLAY,VA8B + $HLED,7,4,90,90,10,15
-    // shortly after ARMOUR reaches 0 and HP starts dropping (capture 2026-08-23-two-tagger-combat:
-    // 2 deaths, 2 alerts, both at $HP,34,0,0). We sent neither, which is why our headsets stayed dark.
-    //
-    // A17.2 (Tony, bench 2026-09-07: "low_health shouldn't be used there. it should be used when total
-    // hp is under 20"): it now fires on an ACTUAL HEALTH THRESHOLD, not on armour running out. The old
-    // condition (armour 0 AND any HP lost) fired on the FIRST health hit of a life -- at 44/45 HP if
-    // that is where you were -- so an alert named "low health" meant "your armour just failed". A17 made
-    // that impossible to ignore rather than causing it: health hits are now silent from the gun, so this
-    // alert became the ONLY sound on the armour->health transition and read as the hit sound itself.
-    // The `maxArmor > 0` guard is gone with it: a HP threshold is meaningful whether or not the loadout
-    // ever had armour, which is what that guard was working around.
-    let hurtNow = false;
+    this._hpLowHealth(h);
+    const hurtNow = h.hurtNow;
     let hitWeapon = null;   // S56 "what hit me": set inside the hit_taken block below, read by the HUD 'hit' moment further down
-    if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial
-        // `dmg > 0` mirrors stage.py, which imposes it structurally (its check is nested inside
-        // `if dmg > 0`). Without it a ZERO-damage $HP frame -- a heal or regen tick, or a plain resend --
-        // could trip the alert while merely LEAVING you under the threshold, and a heal is the opposite
-        // of the news this alert exists to carry. A genuinely damaging drop always has dmg > 0, so
-        // nothing real is lost. Found by review 2026-09-07: the two mirrors had diverged here.
-        && !this.hurtFired && dmg > 0 && this.hp > 0 && this.hp < LOW_HEALTH_HP) {
-      this.hurtFired = true; hurtNow = true;
-      const c = this.frames && this.frames.cues;
-      const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];
-      // logged explicitly: after the last field session we could not tell whether the alert had
-      // fired at all, because the frame ring only holds 60 frames and had rolled past it.
-      this.log(`low-health alert: hp ${this.hp} < ${LOW_HEALTH_HP} — ${fr.length} frame(s)`, 'lk');
-      // Office test 2026-09-19 (Pixel 4/5): a killing hit landing within the same second as this alert let the
-      // voice line reach the gun BEFORE `_death`'s $PLAYX (F149, below) could stop it -- the write was already
-      // away over BLE by the time the death frame arrived a few tens of ms later. HURT_DEBOUNCE_MS holds the
-      // write here instead of sending it at once; `_death` cancels it outright (never sent) when it lands
-      // inside the window, and falls back to the existing $PLAYX stop once the debounce has already fired.
-      // F375 (field 2026-09-24, Tony: "health critical" played AFTER the death scream): the hold now ends only when
-      // BOTH are true: no damaging `$HP` for HURT_DEBOUNCE_MS (every hit restarts it: a burst still landing means a
-      // death may be coming), and the gun model holds no clip that can still play (the line never queues behind
-      // another clip, where a scream can overtake it). Why: the gun screams on the lethal `$HP,0` before the phone
-      // hears it, so a line written in that gap queues BEHIND the scream, and `_death`'s stop then cuts the scream.
-      if (fr.length) {
-        this._pendingHurtWrite = true; this._hurtQuietAt = this.now();
-        const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: match end/panic/BLE drop must not let this land late
-        const hg = (this._hurtGen = (this._hurtGen || 0) + 1);   // a timer left over from an earlier life never sends this one
-        const crossedAt = this.now();
-        let due = crossedAt + HURT_DEBOUNCE_MS;
-        const tryHurt = () => {
-          if (!this._pendingHurtWrite || this._hurtGen !== hg) return;   // cancelled by a death that landed first
-          if (this._lightGen !== lg || !this.alive || this.ended || !(this.hp > 0 && this.hp < LOW_HEALTH_HP)) { this._pendingHurtWrite = false; return; }   // match ended/panicked/relinked (review 2026-09-19), or no longer critical
-          const now = this.now(); this._audioSync(now);
-          const busy = this._gun.playingUntil(now), want = Math.max(this._hurtQuietAt + HURT_DEBOUNCE_MS, busy > now ? busy : 0);
-          if (want > due && want > now) {   // `want > due`: a clock that does not move cannot loop; `want > now`: a late timer does not wait again
-            if (want - crossedAt > HURT_MAX_WAIT_MS) { this._pendingHurtWrite = false; this.log(`low-health line dropped: no quiet gun within ${HURT_MAX_WAIT_MS} ms (F375)`, 'lk'); return; }
-            const wait = want - Math.max(due, now); due = want; this.delay(wait, tryHurt); return;
-          }
-          this._hsGen = (this._hsGen || 0) + 1;
-          this._write(fr, 'low health', undefined, false, () => { this._pendingHurtWrite = false; this._hurtSent = true; });   // cancels a pending hit-flash rest step (polish 2026-09-04)
-        };
-        this.delay(HURT_DEBOUNCE_MS, tryHurt);
-      }
-    } else if (this._pendingHurtWrite && dmg > 0) {
-      this._hurtQuietAt = this.now();   // F375: a hit while the line waits restarts the quiet time
-    }
     if (this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && dmg > 0 && !this.tutorial && !dotEcho) {
       // A registered hit WIPES the headset: the native flash runs, then it goes dark and our team
       // colour never comes back (bench 2026-09-03, hled_spawned.py). Re-send it so other players
