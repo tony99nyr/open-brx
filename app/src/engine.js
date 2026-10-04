@@ -6348,6 +6348,7 @@ export class Engine {
    *  the frame's context, the one object every later step reads and fills in:
    *    hp, armor, shield, solicited   the frame as reported
    *    before, pools0                 the total and the pools held before this frame
+   *    prev                           {hp, armor, shield}: the last frame's pools (`_prevHp` etc), captured before `_hpSettle` moves them on
    *    movedPool                      'health', 'armor', 'shield' or null (read by the paint)
    *    dmg                            the pool total lost, never negative
    *    dotEcho, hurtNow               filled in by `_hpDotEcho` and `_hpLowHealth`
@@ -6359,10 +6360,11 @@ export class Engine {
     // A16 §3.1/§5: which pool actually moved -- health, then armour, then shield (mirrors poolgauge.changed_pool:
     // BRX depletes shield -> armour -> health, so when a hit spills across two pools the INNER one is the
     // news). Computed here, BEFORE `_prevHp` etc are overwritten by `_hpSettle`, and read by `_gunPoolPaint`.
-    const movedPool = hp !== this._prevHp ? 'health' : armor !== this._prevArmor ? 'armor' : shield !== this._prevShield ? 'shield' : null;
+    const prev = { hp: this._prevHp, armor: this._prevArmor, shield: this._prevShield };   // the last frame's pools, read by the steps (never the live fields)
+    const movedPool = hp !== prev.hp ? 'health' : armor !== prev.armor ? 'armor' : shield !== prev.shield ? 'shield' : null;
     this.hp = hp; this.armor = armor; this.shield = shield;
     const dmg = Math.max(0, before - (hp + armor + shield));
-    return { hp, armor, shield, solicited, before, pools0, movedPool, dmg, dotEcho: false, hurtNow: false, dl: null, hl: null, hitWeapon: null };
+    return { hp, armor, shield, solicited, before, pools0, prev, movedPool, dmg, dotEcho: false, hurtNow: false, dl: null, hl: null, hitWeapon: null };
   }
 
   /** `_onHp` step: what the new pools set off at once, in this order: the deferred poison cue, the overshield's end, and
@@ -6405,7 +6407,7 @@ export class Engine {
     // nothing in those windows (§3.10), and the gun's first word back after a relink is it catching us up on
     // a break that happened while we were away. Announcing it then names a hit the player took minutes ago.
     if (this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'])
-        || !(this.maxShield > 0 && this._prevShield > 0 && h.shield === 0)) return;
+        || !(this.maxShield > 0 && h.prev.shield > 0 && h.shield === 0)) return;
     this._shieldDown = true;
     this._shieldLoopAt = this.now();   // the heartbeat starts one period LATER, so it does not land under the break cue
     this.log(`shield depleted (${this.maxShield} gone) -- health is all that is left`, 'lk');
@@ -6434,7 +6436,7 @@ export class Engine {
         // could trip the alert while merely LEAVING you under the threshold, and a heal is the opposite
         // of the news this alert exists to carry. A genuinely damaging drop always has dmg > 0, so
         // nothing real is lost. Found by review 2026-09-07: the two mirrors had diverged here.
-        && !this.hurtFired && h.dmg > 0 && this.hp > 0 && this.hp < LOW_HEALTH_HP)) {
+        && !this.hurtFired && h.dmg > 0 && h.hp > 0 && h.hp < LOW_HEALTH_HP)) {
       if (this._pendingHurtWrite && h.dmg > 0) this._hurtQuietAt = this.now();   // F375: a hit while the line waits restarts the quiet time
       return;
     }
@@ -6443,7 +6445,7 @@ export class Engine {
     const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];
     // logged explicitly: after the last field session we could not tell whether the alert had
     // fired at all, because the frame ring only holds 60 frames and had rolled past it.
-    this.log(`low-health alert: hp ${this.hp} < ${LOW_HEALTH_HP} — ${fr.length} frame(s)`, 'lk');
+    this.log(`low-health alert: hp ${h.hp} < ${LOW_HEALTH_HP} — ${fr.length} frame(s)`, 'lk');
     if (fr.length) this._hurtLineArm(fr);
   }
 
@@ -6487,7 +6489,7 @@ export class Engine {
    *  echo, and on the hit that fired the low-health alert -- that alert IS the headset for the next ~3 s and a repaint
    *  would cut it short. A static frame, one write per hit, never hammered. Empty cue = LEDs off or unknown colour. */
   _hpHeadsetReassert(h) {
-    if (!(this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && h.dmg > 0 && !this.tutorial && !h.dotEcho)) return;
+    if (!(this.phase === 'live' && this.spawned && this.alive && h.hp > 0 && h.dmg > 0 && !this.tutorial && !h.dotEcho)) return;
     if (h.hurtNow) return;
     const hs = this.frames && this.frames.headset;
     if (!hs) {
@@ -6505,7 +6507,7 @@ export class Engine {
   }
 
   /** `_onHp` step: F354, the word this frame's damage belongs to. Sets `h.dl` (the last damaging word) and `h.hl` (the
-   *  word the damage is booked to). Reads only.
+   *  word the damage is booked to). Reads the engine; writes only the context.
    *
    *  F354: the damage belongs to the last word that CAN do damage (`_dmgLatch`), not to a smoke or EMP word that
    *  landed between that word and this `$HP` -- those move no pool, so this drop is never theirs. With no fresh
@@ -6601,7 +6603,7 @@ export class Engine {
     // F348 / polish r2: a shield rise inside the fill window is the gun's answer to the spawn fill. It ends the window
     // HERE, before the moment gates below, because a revive's `redeploy` moment would otherwise swallow the echo and
     // keep the spawn-fill accounting until the gun answers the pool update.
-    const fillAnswer = !!this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS && h.shield > this._prevShield;
+    const fillAnswer = !!this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS && h.shield > h.prev.shield;
     if (fillAnswer) this._shieldFillAt = 0;
     const m = this.moment;
     const busy = m && ['kill', 'redeploy', 'down', 'match_over'].includes(m.kind)
@@ -6632,8 +6634,8 @@ export class Engine {
    *  ceiling. Otherwise it sets `gain` for the largest rise and says the pool's line. */
   _hpGainMoment(h, fillAnswer) {
     const { hp, armor, shield } = h;
-    const gains = [['health', hp - this._prevHp], ['armor', armor - this._prevArmor],
-                   ['shield', shield - this._prevShield]].filter(g => g[1] > 0);
+    const gains = [['health', hp - h.prev.hp], ['armor', armor - h.prev.armor],
+                   ['shield', shield - h.prev.shield]].filter(g => g[1] > 0);
     if (!gains.length) return;
     // F348: the gun's answer to the spawn fill. The life started full; this is not a pickup or a recharge.
     if (gains[0][0] === 'shield' && fillAnswer) {   // `fillAnswer` ended the window: from here `this.shield` says whether the loop runs
@@ -6700,11 +6702,13 @@ export class Engine {
     this.pu.onHp();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
     if (hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
-    // Damage drains shield -> armor -> HP (bench 2026-08-27). Omitting shield from the
-    // total made every shield-absorbed hit compute dmg === 0, which the hit guard (`_hpHitTaken`) then
-    // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
+    // A guard for direct callers: `feedFrame` always passes a number (it substitutes `this.shield` itself). Damage
+    // drains shield -> armor -> HP (bench 2026-08-27); omitting shield from the total made every shield-absorbed hit
+    // compute dmg === 0, which the hit guard (`_hpHitTaken`) then dropped entirely. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
     if (this._selfHitHp(hp, armor, shield)) return;   // F438: our own shot, or the gun's echo of us giving it back
+    // Order dependencies left: `_hpLowHealth` sets `h.hurtNow` (read by the re-assert and the hit), `_hpDamageWord` sets
+    // `h.hl` and `_hpHitTaken` sets `h.hitWeapon` (both read by `_hpMoment`); `_hpDotEcho` sets `h.dotEcho` for all after it.
     const h = this._hpTakePools(hp, armor, shield, solicited);
     this._hpPoolEffects(h);
     this._hpDotEcho(h);
