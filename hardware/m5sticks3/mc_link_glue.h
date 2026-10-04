@@ -1079,7 +1079,7 @@ static void mcLoop(uint32_t now) {
     f.kind = a.present ? a.kind : "respawn";
     f.team = a.present ? a.team : 255;
     f.station_id = a.present ? a.id : 0;
-    f.threshold = STICK_DEFAULT_THRESHOLD_DBM;
+    f.threshold = stick_default_threshold_dbm(f.kind);  // D5: per-kind, overwritten below once assigned
     // A67: the threshold and TX power applied NOW, where each came from, and the on-station edit log
     // (restated every beat; MC dedupes by seq). The log goes out even unassigned, so a release cannot hide
     // an edit MC has not seen yet.
