@@ -11,7 +11,6 @@ from __future__ import annotations
 import pathlib
 import re
 
-import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BEACON_JS = (ROOT / "app/src/beacon.js").read_text(encoding="utf-8")
@@ -88,9 +87,10 @@ PRESENCE_PAIRS = [
 ]
 
 
-@pytest.mark.parametrize("name,twin", PRESENCE_PAIRS, ids=[p[0] for p in PRESENCE_PAIRS])
-def test_presence_h_constant_matches_its_js_twin(name, twin):
-    assert cpp(PRESENCE_H, name) == twin(), f"presence.h {name} differs from its JS twin"
+def test_presence_h_constant_matches_its_js_twin():
+    # a plain loop: run_tests.py runs these under system python, which has no test framework to parametrize with
+    for name, twin in PRESENCE_PAIRS:
+        assert cpp(PRESENCE_H, name) == twin(), f"presence.h {name} differs from its JS twin"
 
 
 def test_hill_neutral_is_the_any_team_byte():
@@ -137,9 +137,12 @@ def test_a_comment_that_quotes_an_old_value_is_not_read_as_the_declaration():
     assert js_const(js, "EXIT_BAND_DB") == 3
     h = "// constexpr int PRESENCE_HYSTERESIS_DB = 6;\n/* constexpr int PRESENCE_HYSTERESIS_DB = 7; */\nconstexpr int PRESENCE_HYSTERESIS_DB = 3;  // was 6\n"
     assert cpp(h, "PRESENCE_HYSTERESIS_DB") == 3
-    with pytest.raises(AssertionError):                       # a name that only a comment declares is not found
-        js_const("// export const EXIT_BAND_DB = 6;\n", "EXIT_BAND_DB")
-    with pytest.raises(AssertionError):
-        cpp("// constexpr int PRESENCE_HYSTERESIS_DB = 6;\n", "PRESENCE_HYSTERESIS_DB")
+    for read, src, name in ((js_const, "// export const EXIT_BAND_DB = 6;\n", "EXIT_BAND_DB"),   # a name that only a comment
+                            (cpp, "// constexpr int PRESENCE_HYSTERESIS_DB = 6;\n", "PRESENCE_HYSTERESIS_DB")):   # declares is not found
+        try:
+            read(src, name)
+        except AssertionError:
+            continue
+        raise AssertionError(f"{name}: a commented-out declaration was read")
     ctor = "constructor({ dwellMs = 2000, expiryMs = 4000, alpha = 0.35 } = {}) {}"
     assert js_ctor_default("// expiryMs = 9999,\n" + ctor, "expiryMs") == 4000

@@ -18,7 +18,6 @@ import asyncio
 import json
 import pathlib
 
-import pytest
 
 from brx_mcp.stage import stage as S
 from test_stage_mirror import mk_point
@@ -43,15 +42,20 @@ async def _stage_reads(hill: dict) -> dict:
     return dict(st.hill)
 
 
-@pytest.mark.parametrize("case", STAGE_CASES, ids=lambda c: c["name"])
-def test_the_stage_reads_every_expected_hill_advert(case):
+def test_the_stage_reads_every_expected_hill_advert():
+    # a plain loop: run_tests.py runs these under system python, which has no test framework to parametrize with
+    for case in STAGE_CASES:
+        _stage_case(case)
+
+
+def _stage_case(case):
     for ex in case["expect"]:
         hill = ex.get("hill")
         if not hill:
             continue
         got = asyncio.run(_stage_reads(hill))
         held = "held" in hill["state"]
-        at = f"t={ex['t']} hill {hill}"
+        at = f"{case['name']}: t={ex['t']} hill {hill}"
         # control.js advert(): byte 9 is the owner while held, else the team building it, else 255.
         assert got["owner"] == (hill["team"] if held and S.claimable(hill["team"]) else S.HILL_NEUTRAL_TEAM), at
         assert got["progress"] == hill["value"], at
