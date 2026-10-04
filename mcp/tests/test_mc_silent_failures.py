@@ -120,3 +120,64 @@ def test_o11_route_returns_the_reason():
     assert ok["ok"] is True and ok["reason"] is None
     bad = c.post("/api/nodes/util-1/pull_log").json()
     assert bad["ok"] is False and bad["reason"] == "utility_node", bad
+
+
+def test_o14_oversize_push_is_logged_counted_and_not_raised():
+    from _skip import needs
+    try:
+        import websockets  # noqa: F401
+        have = True
+    except ImportError:
+        have = False
+    needs(have, "websockets")
+    import asyncio
+    from brx_mcp.mc import envelope as E
+    from brx_mcp.mc.net import NetServer, NodeRecord
+
+    sent = []
+
+    class WS:
+        async def send(self, text):
+            sent.append(text)
+
+    async def go():
+        net = NetServer()
+        net._loop = asyncio.get_running_loop()
+        net.nodes["node7"] = NodeRecord("node7", ws=WS())
+        cap, lg = _Capture(), logging.getLogger("brx.mc.net")
+        lg.addHandler(cap)
+        try:
+            ok_small = net.push("node7", "config", {"x": 1})
+            ok_big = net.push("node7", "config", {"blob": "x" * (E.MAX_ENVELOPE_BYTES + 1)})
+        finally:
+            lg.removeHandler(cap)
+        await asyncio.sleep(0)
+        return net, ok_small, ok_big, cap
+
+    net, ok_small, ok_big, cap = asyncio.run(go())
+    assert ok_small is True and ok_big is False
+    assert len(sent) == 1, "only the small frame went out"
+    assert net.encode_failures == {"config": 1}
+    msg = cap.records[0].getMessage()
+    assert "node7" in msg and "config" in msg and "oversize" in msg, msg
+
+
+def test_o14_worst_case_config_push_fits_the_envelope_cap():
+    """A full-size field (every player number) with the real compiler: each `config` frame MC pushes must encode."""
+    from brx_mcp.mc import envelope as E
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    from brx_mcp.mc.types import MAX_PLAYERS
+    net = FakeNet()
+    s = Session(Compiler(), net, FakeArmory(demo_armory()))
+    s.set_config({"mode": "tdm", "time_limit_s": 60})
+    for i in range(MAX_PLAYERS):
+        s.add_player(f"OP{i}", gun_id=f"GUN-{i}")
+    biggest = 0
+    for p in s.players.values():
+        s._compile_and_store(p)
+        body = {"config": s._wire_config(), "frames": s.bundles[p["player_id"]], "roster": s.roster()}
+        biggest = max(biggest, len(E.encode(E.make_envelope("config", body)).encode("utf-8")))
+    print(f"worst config frame: {biggest} of {E.MAX_ENVELOPE_BYTES} bytes")
+    assert biggest < E.MAX_ENVELOPE_BYTES, f"{biggest} bytes of {E.MAX_ENVELOPE_BYTES}"
