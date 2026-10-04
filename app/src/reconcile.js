@@ -50,7 +50,12 @@ export class Reconcile {
 
   // ---- state ----
   get window() { return this._win; }
-  set window(w) { this._win = w; }
+  /** Stage a window (tests) or close one. A window must carry a numeric `since`: without one `tick` never ends it and
+   *  `holdSpawnCheck` computes a NaN delay, so a malformed window is refused rather than stored. */
+  set window(w) {
+    if (w != null && !(typeof w === 'object' && Number.isFinite(w.since))) throw new TypeError('reconcile window needs a numeric `since`');
+    this._win = w;
+  }
   /** Close the window with no re-arm: a new match, the match end and a panic each own the gun from here. */
   clear() { this._win = null; }
 
@@ -96,6 +101,7 @@ export class Reconcile {
    *  again at its real HP. Down: leave it disarmed (it is out, awaiting a real respawn). Never writes
    *  $SPAWN or $PSET, so a rejoin can never heal. */
   end() {
+    if (!this._win) return;   // no window, nothing to end: a re-arm from the spawn rows would hand back a full magazine
     const h = this.host, w = this._win, live = (w && w.ammo) || {};
     this._win = null;
     if (h.alive) {

@@ -450,7 +450,7 @@ const REFUSALS = [
   ['spawned', h => { h.eng.spawned = false; }, 'the T-0 spawn has not run'],
   ['bundle', h => { h.eng.frames = null; }, 'no bundle'],
   ['ble', h => { h.eng.bleUp = false; }, 'gun link down (RELINK first)'],
-  ['reconciling', h => { h.eng.reconciling = { at: h.eng.now() }; }, 'a relink reconcile is running'],
+  ['reconciling', h => { h.eng.reconciling = { since: h.eng.now(), ammo: {} }; }, 'a relink reconcile is running'],
   ['resync', h => { h.eng.resync = { at: h.eng.now() }; }, 'a restart resync is running'],
   ['tutorial', h => { h.eng.tutorial = { weapon_id: 'assault_rifle' }; }, 'a try-out is running'],
 ];

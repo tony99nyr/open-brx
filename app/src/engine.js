@@ -6722,7 +6722,7 @@ export class Engine {
     }
     // F209: a round leaving slot 0 or 1 is the gun's own proof it can fire, so hit reception arms now.
     // F209/S7.1: a reconcile disarms with its own `$AMMO` write (`rc.begin`), and the gun's echo
-    // of that looks exactly like "a round left the mag". The `if (this.reconciling) return` near the top of this
+    // of that looks exactly like "a round left the mag". The `if (this.rc.disarmed) return` near the top of this
     // function drops that echo before it gets here, so it cannot arm hit reception early; `rc.end`
     // re-arms explicitly once it is done.
     if (this._armPending && this._armPending.shotEnds !== false && (slot === 0 || slot === 1 || this.pu.isHeldSlot(slot)) && prev != null && mag < prev) this._armLife('first shot');   // A56: a heavy's round proves it too   // 2026-09-19: a profile life never ends on a shot
