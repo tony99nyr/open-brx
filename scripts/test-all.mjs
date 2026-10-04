@@ -122,6 +122,7 @@ function rawJobs(budgetMb) {
   const otherUiMb = OTHER_UI_JOBS.filter(j => UI && (!filters.length || filters.some(f => j.name.includes(f))))
     .reduce((s, j) => s + j.mb, 0);
   const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb, otherUiMb);   // the long pole
+  const screensCap = screensBudget(CPUS, budgetMb).shards;
   return [
     { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 33 },
     // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
@@ -135,7 +136,11 @@ function rawJobs(budgetMb) {
     { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], env: { SCREENS_OUT: path.join(LOGS, 'app-test-screens') }, www: true, mb: 550, secs: 15 },
     { name: 'site', cwd: 'site', cmd: ['npx', 'playwright', 'test', `--workers=${siteW}`], www: true, mb: 300 + 300 * siteW, secs: 34 },
     // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
-    { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: { SCREENS_SHARDS: String(screensS) }, www: true, ui: true, mb: screensMb, secs: screensSecs },
+    { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: {
+      SCREENS_SHARDS: String(screensS), SCREENS_MAX_SHARDS: String(screensCap), SCREENS_DYNAMIC: '1',
+      SCREENS_OUT: path.join(LOGS, 'app-screens-shots'),
+      SCREENS_ACK_FILE: path.join(LOGS, 'app-screens-ack'), SCREENS_WANT_FILE: path.join(LOGS, 'app-screens-want'),
+    }, screensShards: screensS, screensCap, www: true, ui: true, mb: screensMb, secs: screensSecs },
     { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, ...findOtherUi('app-logsync') },
     { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, ...findOtherUi('app-moments') },
     // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
@@ -330,6 +335,41 @@ for (const b of await Promise.all(builds)) {
 const queue = [...JOBS].sort((a, b) => b.secs - a.secs);
 const results = [];
 let usedMb = 0, running = 0, peakMb = 0;
+let screensRunning = false, screensShards = 0, screensExtraMb = 0;
+const screensJob = JOBS.find(j => j.name === 'app-screens');
+const screensWant = screensJob && screensJob.env.SCREENS_WANT_FILE;
+let lastScreensRequest = null;
+if (screensJob) {
+  fs.rmSync(screensJob.env.SCREENS_ACK_FILE, { force: true });
+  fs.rmSync(screensWant, { force: true });
+}
+const raiseScreens = () => {
+  // Only spend newly freed memory after every queued job has started. The coordinator owns the
+  // claim directory and publishes `want` when it is ready for a higher target.
+  if (!screensRunning) return;
+  const ackFile = screensJob.env.SCREENS_ACK_FILE;
+  if (fs.existsSync(ackFile)) {
+    const applied = Number(fs.readFileSync(ackFile, 'utf8'));
+    if (Number.isInteger(applied) && applied > screensShards) {
+      const added = applied - screensShards;
+      screensShards = applied; screensExtraMb += 240 * added; usedMb += 240 * added;
+      peakMb = Math.max(peakMb, usedMb);
+      console.log(`test-all: app-screens applied ${applied} shards (${added} added)`);
+    }
+  }
+  if (queue.length || !fs.existsSync(screensWant)) return;
+  const more = Math.min(screensJob.screensCap - screensShards, Math.floor((PLAN_BUDGET_MB - usedMb) / 240));
+  if (more <= 0) return;
+  const next = screensShards + more;
+  if (next <= (lastScreensRequest ?? 0)) return;
+  const temp = `${screensWant}.${process.pid}`;
+  fs.writeFileSync(temp, String(next));
+  fs.renameSync(temp, screensWant);
+  console.log(`test-all: app-screens requested ${next} shards`);
+  lastScreensRequest = next;
+};
+// A fast final job can finish before screens.mjs creates `want`. Retry while the screens job runs.
+const raiseTimer = screensJob ? setInterval(raiseScreens, 500) : null;
 await new Promise(done => {
   const pump = () => {
     if (stopping) return;
@@ -337,6 +377,7 @@ await new Promise(done => {
       const j = queue[i];
       if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
       queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
+      if (j.name === 'app-screens') { screensRunning = true; screensShards = j.screensShards; }
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
         // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot
@@ -348,13 +389,23 @@ await new Promise(done => {
           r = await run(j.name, j.cwd, j.cmd, env, timeoutS);
         }
         catch (e) { r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' }; }
-        results.push(r); usedMb -= j.mb; running--;
+        results.push(r);
+        if (j.name === 'app-screens') {
+          raiseScreens();
+          const ackFile = screensJob.env.SCREENS_ACK_FILE;
+          const acknowledged = fs.existsSync(ackFile) ? Number(fs.readFileSync(ackFile, 'utf8')) : null;
+          console.log(`test-all: app-screens shard acknowledgement: ${Number.isInteger(acknowledged) ? acknowledged : 'not applied'}`);
+          screensRunning = false; usedMb -= screensExtraMb;
+        }
+        usedMb -= j.mb; running--;
         if (!queue.length && !running) done(); else pump();
       })();
     }
+    raiseScreens();
   };
   pump();
 });
+if (raiseTimer) clearInterval(raiseTimer);
 
 const pad = (s, n) => String(s).padEnd(n);
 console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);

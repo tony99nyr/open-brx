@@ -6,6 +6,8 @@
 //      SCREENS_SHARDS=<n> splits the steps across n child processes (default: half the cores, at most 16, capped by free memory; 1 = serial)
 import { chromium } from 'playwright';
 import { monotonicDate } from './monotonic-date.mjs';
+import { claimStep, finishStep, summariseClaims, namesHash } from './lib/claims.mjs';
+import { createHash } from 'node:crypto';
 import http from 'http'; import fs from 'fs'; import path from 'path'; import os from 'os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -30,45 +32,102 @@ if (EXPECT_STEPS !== null && (!Number.isInteger(EXPECT_STEPS) || EXPECT_STEPS < 
   console.error(`--expect-steps / SCREENS_EXPECT_STEPS must be a positive integer, got ${EXPECT_RAW}`);
   process.exit(2);
 }
-// Sharding (2026-09-16). Serial, this suite took ~22 min: ~330 steps, each opening its own page and waiting out the
-// stage timeline. Every step already runs in its own browser context (`b.newPage()` = a fresh context,
-// so no localStorage or cookie crosses steps), so the steps are independent and a shard is just "every n-th step".
-// The coordinator (no SCREENS_SHARD) checks the bundle, clears OUT once, and runs n children of this file; each child
-// launches its own browser on its own ephemeral port and runs only its share.
+// Each step uses a fresh browser context. Children walk the same list and claim work as they reach it.
+// The coordinator clears OUT once, then starts children with separate browsers and ephemeral ports.
 const SHARD = process.env.SCREENS_SHARD ? process.env.SCREENS_SHARD.split('/').map(Number) : null;   // [index, count]
-// Default shard count: half the cores, at most 16, and never more than a quarter of the free memory (a shard is its own
-// browser, ~240 MB: 16 shards are ~3.8 GB). SCREENS_SHARDS overrides.
+// Default shard count: half the cores, at most 16, and never more than a quarter of free memory.
+// A shard uses about 240 MB. An explicit SCREENS_SHARDS overrides the memory estimate, but not the 16-shard cap.
 const availableMb = () => { try { return Number(/MemAvailable:\s+(\d+)/.exec(fs.readFileSync('/proc/meminfo', 'utf8'))[1]) / 1024; } catch { return os.totalmem() / 1048576 / 2; } };
-const SHARDS = SHARD ? SHARD[1] : Math.max(1, Number(cliValue('--shards') ?? process.env.SCREENS_SHARDS ?? Math.min(16, Math.floor(os.cpus().length / 2), Math.floor(availableMb() * 0.25 / 240))));
+const freeCap = Math.max(1, Math.min(16, Math.floor(os.cpus().length / 2), Math.floor(availableMb() * 0.25 / 240)));
+const SHARDS = SHARD ? SHARD[1] : Math.max(1, Math.min(16, Number(cliValue('--shards') ?? process.env.SCREENS_SHARDS ?? freeCap)));
+const CLAIM_DIR = process.env.SCREENS_CLAIM_DIR;
+const SOURCE_HASH = createHash('sha256').update(fs.readFileSync(fileURLToPath(import.meta.url))).digest('hex');
+if (SHARD && SOURCE_HASH !== process.env.SCREENS_SOURCE_HASH) {
+  console.error(`screens shard refused: source hash ${SOURCE_HASH} does not match coordinator ${process.env.SCREENS_SOURCE_HASH || '(missing)'}`);
+  process.exit(2);
+}
 if (!SHARD) {
   const srcNewest = fs.readdirSync(path.join(ROOT, 'src'), { recursive: true }).map(f => path.join(ROOT, 'src', f)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }).reduce((a, f) => Math.max(a, fs.statSync(f).mtimeMs), 0);
   if (srcNewest > fs.statSync(path.join(WWW, 'app.js')).mtimeMs) { console.error('STALE BUNDLE: run `npm run build` first.'); process.exit(2); }
   fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
 }
-if (!SHARD && SHARDS > 1) {
+if (!SHARD && (SHARDS > 1 || process.env.SCREENS_DYNAMIC === '1')) {
   const t0 = Date.now();
+  const claimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-screens-claims-'));
+  const wantFile = process.env.SCREENS_WANT_FILE || path.join(claimDir, 'want');
+  fs.writeFileSync(wantFile, String(SHARDS));
+  const requestedCap = Number(process.env.SCREENS_MAX_SHARDS ?? freeCap);
   // Selection belongs to every child, but the expected count belongs to the aggregate. Passing the latter through
   // would make each shard demand all selected steps; dropping the former would make a focused run execute everything.
   const { SCREENS_EXPECT_STEPS: _aggregateOnly, ...childEnv } = process.env;
-  const runs = Array.from({ length: SHARDS }, (_, i) => new Promise(resolve => {
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...childEnv, ONLY: ONLY ?? '', SCREENS_SHARD: `${i}/${SHARDS}`, SCREENS_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = ''; child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
-    child.on('close', code => resolve({ i, code, out }));
-  }));
-  let pass = 0, fail = 0; const errs = [];
-  for (const { i, code, out } of await Promise.all(runs)) {
-    console.log(`\n#### shard ${i + 1}/${SHARDS} (exit ${code})`); console.log(out.trimEnd());
-    const m = out.match(/^(\d+) passed, (\d+) failed(?:: (.*))?$/m);
-    // a shard that crashed before its summary line is a failure, never a silent zero
-    if (!m) { fail++; errs.push(`shard ${i + 1} crashed (exit ${code})`); continue; }
-    pass += +m[1]; fail += +m[2]; if (m[3]) errs.push(m[3]);
-    if (code !== 0 && +m[2] === 0) { fail++; errs.push(`shard ${i + 1} exited ${code}`); }
+  const cleanupClaims = () => { try { fs.rmSync(claimDir, { recursive: true, force: true }); } catch {} };
+  process.once('SIGTERM', () => { cleanupClaims(); process.exit(143); });
+  process.once('SIGINT', () => { cleanupClaims(); process.exit(130); });
+  const writeAck = count => { if (process.env.SCREENS_ACK_FILE) fs.writeFileSync(process.env.SCREENS_ACK_FILE, String(count)); };
+  writeAck(SHARDS);
+  let sawSuccess = false;
+  const runs = await new Promise(resolve => {
+    const finished = [];
+    let launched = 0, active = 0;
+    const startWanted = () => {
+      if (sawSuccess && launched >= SHARDS) return;
+      let wanted = SHARDS;
+      try { wanted = Number(fs.readFileSync(wantFile, 'utf8')); } catch { /* Keep the current target. */ }
+      if (!Number.isInteger(wanted)) wanted = launched;
+      const maxShards = Math.max(SHARDS, Math.floor(Math.min(16, Math.floor(os.cpus().length / 2),
+        Number.isFinite(requestedCap) ? requestedCap : 16)));
+      wanted = Math.max(SHARDS, Math.min(maxShards, wanted));
+      while (launched < wanted) {
+        const i = launched++;
+        active++;
+        const child = spawn(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...childEnv, ONLY: ONLY ?? '', SCREENS_SHARD: `${i}/${SHARDS}`, SCREENS_CLAIM_DIR: claimDir, SCREENS_SOURCE_HASH: SOURCE_HASH, SCREENS_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+        let out = '';
+        let settled = false;
+        child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
+        const settle = code => {
+          if (settled) return;
+          settled = true;
+          finished.push({ i, code, out }); active--;
+          if (code === 0) sawSuccess = true;
+          if (!sawSuccess && active > 0) startWanted();
+          if (active === 0) { clearInterval(watch); resolve(finished); }
+        };
+        child.on('error', e => { out += `\nspawn failed: ${e.message}\n`; settle(1); });
+        child.on('close', code => {
+          settle(code ?? 1);
+        });
+      }
+      writeAck(launched);
+    };
+    const watch = setInterval(startWanted, 500);
+    startWanted();
+  });
+  let pass = 0, fail = 0;
+  const errs = [];
+  try {
+    const walks = [];
+    for (const { i } of runs) {
+      try { walks.push({ i, ...JSON.parse(fs.readFileSync(path.join(claimDir, `walk-${i}.json`), 'utf8')) }); }
+      catch { errs.push(`shard ${i + 1} did not write its step walk summary`); }
+    }
+    const reference = walks[0];
+    if (reference && walks.some(w => w.stepCount !== reference.stepCount || w.namesHash !== reference.namesHash)) errs.push('children walked different steps (control-flow drift)');
+    const expected = EXPECT_STEPS ?? reference?.stepCount ?? 0;
+    const summary = summariseClaims(claimDir);
+    pass += summary.pass; fail += summary.fail; errs.push(...summary.errs);
+    const claimed = summary.pass + summary.fail;
+    const neverClaimed = Math.max(0, expected - claimed);
+    if (neverClaimed) { fail += neverClaimed; errs.push(`${neverClaimed} step(s) were never claimed`); }
+    if (EXPECT_STEPS !== null && reference && reference.stepCount !== EXPECT_STEPS) {
+      errs.push(`selected ${reference.stepCount} steps, expected ${EXPECT_STEPS}`); fail++;
+    }
+  } finally { cleanupClaims(); }
+  for (const { i, code, out } of runs.sort((a, b) => a.i - b.i)) {
+    console.log(`\n#### shard ${i + 1}/${runs.length} (exit ${code})`); console.log(out.trimEnd());
+    if (code !== 0) errs.push(`shard ${i + 1} exited ${code}`);
   }
-  if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
-    errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
-  }
-  console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}  (${SHARDS} shards, ${Math.round((Date.now() - t0) / 1000)}s)`);
-  process.exit(fail ? 1 : 0);
+  console.log(`\n${pass} passed, ${fail} failed${errs.length ? ': ' + errs.join(', ') : ''}  (${runs.length} shards, ${Math.round((Date.now() - t0) / 1000)}s)`);
+  process.exit(fail || runs.some(r => r.code !== 0) || errs.length ? 1 : 0);
 }
 const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
   try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : rel.endsWith('.html') ? 'text/html' : 'application/octet-stream'); res.end(fs.readFileSync(path.join(WWW, rel))); } catch { res.statusCode = 404; res.end(); } });
@@ -77,6 +136,12 @@ const PORT = srv.address().port;
 let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = monotonicDate(await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] }));   // scrollbars ON: what a desktop reviewer sees
+let browserDisconnected = false, intentionalBrowserClose = false, consecutiveFailures = 0;
+b.on('disconnected', () => {
+  if (intentionalBrowserClose) return;
+  browserDisconnected = true;
+  if (SHARD) { fail++; errs.push('browser disconnected'); }
+});
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const STAGE_FLOOR_MS = {
   // Down screens need death (~2350) + the 300 ms redflood fade + 2000 ms dealt grace + 250 ms tick = 4900 ms.
@@ -96,8 +161,23 @@ const STAGE_FLOOR_MS = {
   // The weapon delay and entry animations must finish before the contrast check samples redeploy.
   redeploy: 4200,
 };
-let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
-const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
+let stepIdx = 0;   // Each child counts the same selected steps in the same order.
+const walkedNames = [];
+const step = async (name, fn) => {
+  if (ONLY && !name.includes(ONLY)) return;
+  const ordinal = stepIdx++;
+  walkedNames.push(name);
+  if (SHARD && (browserDisconnected || consecutiveFailures >= 5 || !claimStep(CLAIM_DIR, ordinal, name))) return;
+  try {
+    await fn();
+    if (SHARD && browserDisconnected) throw new Error('browser disconnected during step');
+    if (SHARD) finishStep(CLAIM_DIR, ordinal, name, 'pass');
+    console.log(`  ok   ${name}`); pass++; consecutiveFailures = 0;
+  } catch (e) {
+    if (SHARD) finishStep(CLAIM_DIR, ordinal, name, 'fail');
+    console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); consecutiveFailures++;
+  }
+};
 const open = async (view, stage, extra = '', ms, initScript) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
   if (initScript) await pg.addInitScript(initScript);
@@ -6576,9 +6656,11 @@ for (const view of VIEWS) for (const stage of ['live', 'live-pool-wrong']) await
   must(r.n === 0, `night: ${r.n} green pixels, e.g. ${r.first.join(' ; ')}`);
 });
 
+if (SHARD) fs.writeFileSync(path.join(CLAIM_DIR, `walk-${SHARD[0]}.json`), JSON.stringify({ stepCount: stepIdx, namesHash: namesHash(walkedNames) }));
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }
+intentionalBrowserClose = true;
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

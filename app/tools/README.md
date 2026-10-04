@@ -22,11 +22,12 @@ One-time: `cd app && npx playwright install chromium` (`playwright` is a devDepe
   opens a state alone. The states live in `src/demo.js` (STAGES); every load starts from a clean engine.
 - **`screens.mjs`** — `npm run ui:screens`: the screen-truth suite from the 2026-09-03 HUD review (docs/hud-review-2026-09-03.md).
   Every reported item is an assertion about what a person sees (rects, wraps, overlaps, visible text), run over the stage
-  states at the design width AND a 667px phone, with desktop scrollbars ON — both reproduced the report and headless
-  defaults hide them. Shots in `app/shots/screens/`. `ONLY=<substring>` runs matching steps. The steps run in
-  `SCREENS_SHARDS` child processes (default half the cores, at most 16, and at most a quarter of the free memory at ~240 MB a shard; `1` is serial), each with its own browser
-  and a free port: about 100 s instead of 22 min. Every step opens its own browser context, so no step may depend
-  on an earlier one.
+  states at the design width AND a 667px phone, with desktop scrollbars ON, both reproduced the report and headless
+  defaults hide them. Shots in `app/shots/screens/` for direct runs, or under `test-all`'s `app-screens-shots` log directory.
+  `ONLY=<substring>` runs matching steps. The steps are claimed dynamically by `SCREENS_SHARDS` child processes,
+  rather than split into fixed groups. The default uses half the cores, at most 16, and at most a quarter of free
+  memory at ~240 MB per shard; `1` is serial. Each child has its own browser and a free port. Every step opens its own
+  browser context, so no step may depend on an earlier one.
 - **`moments.mjs`** — `npm run ui:moments`: screen-truth for the HUD's transient MOMENTS (hit taken, pool
   gain, kill confirm, death, redeploy) over `?demo`. Every assertion is what a person sees — the rendered
   overlay and its visible text, never engine state — and hits are fed through `engine.feedFrame(...)`, the
