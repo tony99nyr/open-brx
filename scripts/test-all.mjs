@@ -35,6 +35,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sumTreePssKb } from './lib/pss.mjs';
 import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, deriveTimeoutS, planPeakMb, screensBudget, workerCount } from './lib/budget.mjs';
 import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
@@ -122,17 +123,17 @@ function rawJobs(budgetMb) {
     .reduce((s, j) => s + j.mb, 0);
   const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb, otherUiMb);   // the long pole
   return [
-    { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 20 },
+    { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 33 },
     // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
     // stack with a field of MockNodes. Its own job so a red chaos run reads as one, not as "mcp".
-    { name: 'chaos', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), 'chaos'], mb: 150 + 90 * pyJ, secs: 8 },
-    { name: 'mc-tsc', cwd: 'webapp/mc', cmd: ['npx', 'tsc', '-b'], mb: 450, secs: 10 },
-    { name: 'mc-vitest', cwd: 'webapp/mc', cmd: ['npx', 'vitest', 'run', `--maxWorkers=${vitestW}`], mb: 300 + 300 * vitestW, secs: 15 },
-    { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 3 },
+    { name: 'chaos', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), 'chaos'], mb: 150 + 90 * pyJ, secs: 11 },
+    { name: 'mc-tsc', cwd: 'webapp/mc', cmd: ['npx', 'tsc', '-b'], mb: 450, secs: 7 },
+    { name: 'mc-vitest', cwd: 'webapp/mc', cmd: ['npx', 'vitest', 'run', `--maxWorkers=${vitestW}`], mb: 300 + 300 * vitestW, secs: 19 },
+    { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 1 },
     // The root already built shared app/www. The prebuilt form avoids rewriting it under parallel readers, and a
     // private shots dir keeps this focused A38 browser pass isolated from the full app-screens job.
-    { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], env: { SCREENS_OUT: path.join(LOGS, 'app-test-screens') }, www: true, mb: 550, secs: 18 },
-    { name: 'site', cwd: 'site', cmd: ['npx', 'playwright', 'test', `--workers=${siteW}`], www: true, mb: 300 + 300 * siteW, secs: 30 },
+    { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], env: { SCREENS_OUT: path.join(LOGS, 'app-test-screens') }, www: true, mb: 550, secs: 15 },
+    { name: 'site', cwd: 'site', cmd: ['npx', 'playwright', 'test', `--workers=${siteW}`], www: true, mb: 300 + 300 * siteW, secs: 34 },
     // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
     { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: { SCREENS_SHARDS: String(screensS) }, www: true, ui: true, mb: screensMb, secs: screensSecs },
     { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, ...findOtherUi('app-logsync') },
@@ -224,11 +225,14 @@ for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) 
 }
 function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
   const log = path.join(LOGS, `${name}.log`);
+  const jobHome = path.join(LOGS, `${name}-brx-mcp-home`);
+  fs.rmSync(jobHome, { recursive: true, force: true });
+  fs.mkdirSync(jobHome, { recursive: true });
   const out = fs.openSync(log, 'w');
   const t0 = Date.now();
   return new Promise(resolve => {
     // detached: the job leads its own process group, so a timeout kills its browsers and servers too
-    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env }, stdio: ['ignore', out, out], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome }, stdio: ['ignore', out, out], detached: true });
     groups.add(child.pid);
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -306,10 +310,18 @@ const PLAN_BUDGET_MB = Math.floor(BUDGET_MB * HEADROOM);
 const plannedPeakMb = planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB);
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
 console.log(`test-all: planned peak ${plannedPeakMb} MB against a ${PLAN_BUDGET_MB} MB ceiling (${Math.round(HEADROOM * 100)}% of the ${BUDGET_MB} MB budget), ${BUDGET_MB - plannedPeakMb} MB headroom`);
+let measuredPeakMb = null;
+const canSamplePss = fs.existsSync('/proc/self/smaps_rollup');
+function samplePss() {
+  if (!canSamplePss) return;
+  const kb = sumTreePssKb([...groups]);
+  if (kb !== null) measuredPeakMb = Math.max(measuredPeakMb || 0, kb / 1024);
+}
+const sampleTimer = canSamplePss ? setInterval(samplePss, 1000) : null;
 // The one shared build output. Built once here, before any reader starts (see the rules at the top).
 const builds = [];
 if (JOBS.some(j => j.www)) builds.push(run('app-build', 'app', ['npm', 'run', 'build']));
-if (JOBS.some(j => j.dist)) builds.push(run('mc-build', 'webapp/mc', ['npx', 'vite', 'build']));
+if (JOBS.some(j => j.dist)) builds.push(run('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build']));
 for (const b of await Promise.all(builds)) {
   if (b.code !== 0) { console.error(`${b.name} failed, see ${b.log}`); for (const g of groups) killGroup(g); await exitAfterKills(1); }
 }
@@ -331,7 +343,10 @@ await new Promise(done => {
         // hold a hung job -- and an agent -- for hours. JOB_TIMEOUT_S itself is still an explicit floor, never capped.
         const timeoutS = deriveTimeoutS(JOB_TIMEOUT_S, j.secs);
         let r;
-        try { r = await run(j.name, j.cwd, j.cmd, typeof j.env === 'function' ? await j.env() : j.env, timeoutS); }
+        try {
+          const env = typeof j.env === 'function' ? await j.env() : j.env;
+          r = await run(j.name, j.cwd, j.cmd, env, timeoutS);
+        }
         catch (e) { r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' }; }
         results.push(r); usedMb -= j.mb; running--;
         if (!queue.length && !running) done(); else pump();
@@ -350,5 +365,7 @@ for (const r of failed) {
   console.log(`\n---- ${r.name} (exit ${r.code}), last 30 lines of ${r.log}`);
   console.log(lines.slice(-30).join('\n'));
 }
-console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${peakMb} MB against a ${PLAN_BUDGET_MB} MB ceiling, ${BUDGET_MB} MB budget)`);
+if (sampleTimer) { samplePss(); clearInterval(sampleTimer); }
+const realPeak = canSamplePss && measuredPeakMb !== null ? `${measuredPeakMb.toFixed(0)} MB` : 'not measured';
+console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
 await exitAfterKills(failed.length ? 1 : 0);

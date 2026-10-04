@@ -11,7 +11,11 @@
 // carries those cue keys).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
-import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S } from './transport/contract.gen.js';   // the spawn-kill window (2026-09-19) and the A16.3 readout timings (F52)
+import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S, TRIGGER_AFTER_PROTECT_MS, PHONE_POWERUP_THRESHOLD_DBM, SIR_NO_POOL_FNS, SIR_GRANT_FNS, PANIC_SEQUENCE, TEAM_NAMES, TEAM_KEYS, HILL_REFUSED_TID } from './transport/contract.gen.js';
+// F354 (types.py SIR_NO_POOL_FNS / SIR_GRANT_FNS, the sets compile.py builds by): a no-pool word registers a `$HIR`
+// and moves no pool, so it latches but never names who did damage; a grant word (heals, armour, shields) HELPS its
+// target, so it is never the damage behind a drop or a kill. The cell decides, never the protocol alone.
+export { SIR_NO_POOL_FNS, SIR_GRANT_FNS };
 import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, PLAY_GAP_MS } from './announcer.js';
@@ -36,7 +40,7 @@ export const PROBE_VOLTS = ['$PHONE,*'];
 export const PROBE_FW = ['$STOP,*', '$PHONE,*', '$VERSION,*'];
 
 const PHASES = ['idle', 'connected', 'kitted', 'lobby', 'armed', 'live'];
-const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE' };   // F423: tid 3 paints purple, not green
+const TEAM_NAME = Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name]));
 // How long the HUD shows the ALT indicator before giving up on a confirmation.
 // The gun only volunteers $ALCD on a SHOT, so a swap is confirmed by the next trigger pull and this
 // window is a display timeout, nothing more. On expiry the indicator simply clears — the HUD keeps
@@ -207,10 +211,6 @@ export const PU_COUNT_REPAIRS = 2;
 // which is the load F342 measured.
 export const RADIO_QUIET_AFTER_MS = 1500;
 export const RADIO_QUIET_MAX_MS = 10000;  // a write whose promise never settles cannot hold the scan shut for ever
-/** compile.py `TRIGGER_AFTER_PROTECT_MS` (types.py): a timed trigger goes live at least this long after
- *  protection ends. Mirrored here so a retried protection-off write can push `_triggerPending.due` out by
- *  the same margin -- the trigger must never go live while t8 is still -100 (review finding, 2026-09-19). */
-export const TRIGGER_AFTER_PROTECT_MS = 500;
 export { SPAWN_KILL_WINDOW_MS };
 /** The down-screen warning levels: 1 = the normal line, 2 = larger and pulsing, 3 = maximum (held for the match). */
 export const DOWN_WARN_MAX = 3;
@@ -360,14 +360,6 @@ export function dotEchoMatches(echo, before, after) {
 /** S53 (bench 2026-09-18, the controlled redo): a fn-23 smoke holds the victim's live accuracy at 0 for about 6 s,
  *  then the gun restores it in one step (the V4_31 6000 ms timer). */
 export const SMOKE_MS = 6000;
-// F354: the `$SIR` row functions that register a `$HIR` and move no pool. A mirror of compile.py `_SIR_NO_POOL`
-// (app/test/poison.test.mjs guards the copy). A word whose cell holds one of these still latches (the stun and smoke
-// paths read it), but it never names who did damage. The cell decides, never the protocol alone: the stock <8,0> row
-// is fn 1 damage (the Charge Rifle) and becomes the fn-23 EMP only when `config.stun` is on.
-export const SIR_NO_POOL_FNS = new Set([8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34]);
-// F354: the grant functions (compile.py `_SIR_GRANT`, fn 9-22: heals, armour, shields). A grant word HELPS its target,
-// so it can never be the damage behind a drop or take a kill. Test-guarded against compile.py like the set above.
-export const SIR_GRANT_FNS = new Set([9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
 /** S53: the victim's `$ALCD` accuracy drops to 0 "in the same millisecond" as the smoke's `$HIR` (bench 2026-09-18).
  *  A drop to 0 and a `$HIR` this close together, in either order, is a smoke landing. */
 export const SMOKE_PAIR_MS = 400;
@@ -551,7 +543,7 @@ export const RECOIL_REF_DMG = 8;
 export const ACC_ECHO_MS = 700;
 // $BUT ids (protocol §$BUT — `$BUT,<id>,<state>`; state 1 press / 0 release).
 const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2, BTN_SELECT = 3;
-const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple' };   // F423: tid 3 paints purple, not green
+const TEAM_KEY = Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key]));
 // A16.5 (2026-09-09): outermost -> innermost, the order BRX depletes -- shield goes, then armour, then
 // health. Mirrors `poolgauge.py`'s `READOUT_POOL_INWARD`; kept as its own constant here too rather than
 // shipped through the bundle, so the phone and the bench stage can never silently disagree on it.
@@ -564,7 +556,7 @@ const READOUT_POOL_INWARD = ['shield', 'armor', 'health'];
 const HILL_MAG = 8;                 // $HIR magnitude 8 = a control point / hill (6 = respawn station — never a hill)
 const HILL_CAPTURE_MAG = 50;        // the capture word, carrying the NEW owner in the team field; lands ~50 ms after the shot
 const HILL_WAS_NEUTRAL_MAG = 53;    // "the state being LEFT was neutral" — arrives ~5 s LATER, and only when it was neutral (n=2)
-const HILL_NEUTRAL_TEAM = 2;        // a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
+const HILL_NEUTRAL_TEAM = HILL_REFUSED_TID;   // a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
 const HILL_TICK_MS = 3000;          // the possession tick's cadence — the node's own clock, never the beacon's
 // Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a
 // flat 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception, not
@@ -669,7 +661,7 @@ export const PU_READY_MS = 2500;            // how long the station hint names t
 export const PU_NEAR_DB = 10;               // GET CLOSER shows only within this of the station's own threshold
 // The claim (Tony 2026-09-24, via the brx5 lead): stand about a foot from the station for 1 s, no button. Range is the
 // MEDIAN of the last three samples of the station's advert (beacon.js `median`), never the respawn path's EMA.
-export const POWERUP_THRESHOLD_DEFAULT = -55;   // byte 14 = 0: a placeholder for ~1 ft until the bench calibrates it
+export const POWERUP_THRESHOLD_DEFAULT = PHONE_POWERUP_THRESHOLD_DBM;   // byte 14 = 0: a placeholder for ~1 ft until the bench calibrates it
 export const POWERUP_EXIT_DB = 3;               // out of range = the median below the threshold minus this
 export const POWERUP_DWELL_MS = 1000;           // continuously in range this long = `claim_ready`; leaving range resets it
 export const POWERUP_NO_ANSWER_MS = 15000;      // Bench B: Stick confirmation took up to 13 s; no answer at 15 s still allows a later taker advert.
@@ -5323,7 +5315,7 @@ export class Engine {
     this._cancelPendingPlayWrites();
     this._armPending = null; this._triggerPending = null;   // F209
     this._pendingHurtWrite = false;   // review 2026-09-19: panic/end teardown must cancel a queued low-health alert too
-    if (kind === 'panic') { this._shieldFillAt = 0; if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
+    if (kind === 'panic') { this._shieldFillAt = 0; if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(PANIC_SEQUENCE, `panic (${why})`); return; }
     if (this.frames) {
       this._write(this.frames.end, `end (${why})`);
       this.shield = 0; this._shieldFillAt = 0;

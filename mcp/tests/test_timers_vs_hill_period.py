@@ -101,6 +101,12 @@ JUDGED = {
     "REPLY_TIMEOUT_S": "F297: the connect-metrics bench tool's own $PING/$VERSION reply wait. Like LOCKUP_AFTER_S "
                        "above, the connect-metrics run is a standalone BLE bench tool with no objective/mode "
                        "engine running, so no hill beacon can reach it",
+    # Review #4 (2026-10-04): values types.py now owns for the generated contract. None is a timer MC runs.
+    "HILL_CAPTURE_S": "the phone/Stick hill's capture time (control.js DEFAULT_CAPTURE_S), not an MC fuse: the hill "
+                      "itself is what a beacon reports",
+    "TIME_LIMIT_MAX_S": "a config bound (time_limit_s 1..this), not a timer",
+    "RESPAWN_DELAY_MAX_S": "a config bound (respawn.delay_s 0..this), not a timer",
+    "HOLD_TARGET_MAX_S": "a config bound (mode_params.hold_target_s 1..this), not a timer",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)

@@ -1,3 +1,4 @@
+import { STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
 // beacon.js — the utility-item identity codec and the presence tracker (docs/spec/utility.md).
 // DOM/BLE-free and pure so it runs in node tests, the desktop stage and on the phone unchanged.
 //
@@ -28,10 +29,10 @@ export const VERSION = 1;
 export const ROLE = { station: 1, player: 2 };
 export const KIND = { respawn: 1, powerup: 2, extraction: 3, bomb: 4, control: 5 };
 export const KIND_NAME = Object.fromEntries(Object.entries(KIND).map(([k, v]) => [v, k]));
-export const TEAM_ANY = 255;
+export const TEAM_ANY = STATION_TEAM_ANY;
 export const PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extracting: 8, claiming: 16, claim_ready: 32 };
 /** A56: how many raw samples the claim range reads a median over (one wild sample out of three is ignored). */
-export const MEDIAN_SAMPLES = 3;
+export const MEDIAN_SAMPLES = PRESENCE_MEDIAN_SAMPLES;
 /** The median of a short list of RSSI samples (the lower middle for an even count). PURE. */
 export function medianOf(samples) {
   const a = (samples || []).filter(Number.isFinite).slice().sort((x, y) => x - y);
@@ -88,20 +89,20 @@ export function configGameByte(config) {
  *  P-M2 (review 2026-10-03): 4 s, was 2.5 s. A player's own body takes about 12 dB off its advert for 2-5 s at a
  *  time, and at 2.5 s a player standing 3-6 dB inside the circle dropped 9-19 times in 10 minutes. Walking out
  *  costs about 0.5 s more. The Stick keeps the same number (presence.h PRESENCE_EXIT_GRACE_MS). */
-export const EXIT_GRACE_MS = 4000;
+export const EXIT_GRACE_MS = PRESENCE_EXIT_GRACE_MS;
 /** F440 (Tony, 2026-10-02): the exit band, how far under the threshold a PRESENT player may read before leaving.
  *  3 dB, not 6: the circle is nearly the same size in and out ("a minimum threshold and you are in the circle"),
  *  and EXIT_GRACE_MS absorbs the dips. Was 6 dB, which kept a player already in out to about twice the radius. */
-export const EXIT_BAND_DB = 3;
+export const EXIT_BAND_DB = PRESENCE_EXIT_BAND_DB;
 /** F440: the window a credible sighting takes its median over (beacon.js observe). */
-export const SIGHT_WINDOW_MS = 2000;
+export const SIGHT_WINDOW_MS = PRESENCE_SIGHT_WINDOW_MS;
 /** F440: a credible sighting keeps an entry "in the circle" this long. Tony, 2026-10-02: the sparse-phone edge noise
  *  (one sample in a sparse phone's window) is KEPT as is, with no two-advert rule; bench 10c's ladder decides with real
  *  fading. */
-export const SIGHT_MS = 4000;   // = the silence expiry: a credible sighting counts for 4 s
+export const SIGHT_MS = PRESENCE_SIGHT_MS;   // = the silence expiry: a credible sighting counts for 4 s
 /** P-L1 (review 2026-10-03): the most adverts the sighting window keeps, the same bound as the Stick (presence.h
  *  SIGHT_RECENT_MAX), so a flood reads the same median on both. */
-export const SIGHT_RECENT_MAX = 64;
+export const SIGHT_RECENT_MAX = PRESENCE_SIGHT_RECENT_MAX;
 /** How many recent inter-arrival gaps a Presence entry keeps (F440 diagnostics). */
 export const GAP_SAMPLES = 16;
 
@@ -123,7 +124,7 @@ export class Presence {
   // sparse advertiser's dips and silences inside the circle never drop it; `sightMs` keeps a credible sighting (the
   // median of the last SIGHT_WINDOW_MS of adverts at or above the threshold) in the circle that long, so an arriving
   // opponent contests at once, before the dwell.
-  constructor({ dwellMs = 2000, hysteresisDb = EXIT_BAND_DB, expiryMs = 4000, alpha = 0.35, defaultThreshold = -62, game = 0, exitGraceMs = EXIT_GRACE_MS, sightMs = SIGHT_MS } = {}) {
+  constructor({ dwellMs = 2000, hysteresisDb = EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = -62, game = 0, exitGraceMs = EXIT_GRACE_MS, sightMs = SIGHT_MS } = {}) {
     this.entries = new Map();          // key role:id → entry
     Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs });
   }
@@ -206,19 +207,19 @@ export class Presence {
 /**
  * The "at me" threshold a station advertises in byte 14 when MC sent 0 (or nothing): its own PLATFORM default
  * (F345, Tony 2026-09-24: a respawn station reaches 3 m at most). Measured at 3 m on the player phone: a phone
- * station -63 to -68 dBm, a StickS3 -53 to -58. The StickS3's value lives in its firmware
- * (`hardware/m5sticks3/station_link.h` STICK_DEFAULT_THRESHOLD_DBM); this table is the record both sides follow.
+ * station -63 to -68 dBm, a StickS3 -53 to -58. The values live in types.py STATION_DEFAULT_THRESHOLD_DBM, generated
+ * for the phone, the console and the Stick.
  * Same shape as the powerup claim's per-platform default (docs/spec/powerups.md "Threshold").
  */
-export const RESPAWN_RSSI_DBM = Object.freeze({ phone: -70, sticks3: -57 });   // Tony 2026-09-24, walked at 3-5 m
+export const RESPAWN_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.respawn, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.respawn });
 /** Every other kind on a phone station keeps the 2026-09-04 bench value (about 10 ft at high TX). */
-export const STATION_THRESHOLD_DBM = -74;
+export const STATION_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM.phone.extraction;
 /** A phone station's own default for `kind` (utility.js, when `settings.threshold` is 0). */
-export const POWERUP_RSSI_DBM = Object.freeze({ phone: -55, sticks3: -45 });   // S58: about 30 cm; placeholders until bench 4.11. The Stick's copy is station_range.h STICK_POWERUP_DEFAULT_THRESHOLD_DBM (F434, Tony 2026-09-28)
+export const POWERUP_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.powerup, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.powerup });
 /** F383: the hill's own default is -75 dBm, with the exit band EXIT_BAND_DB, on every path, until the outdoor walk measures a
- *  real one (Tony, 2026-09-27). The Stick's copy is `hardware/m5sticks3/station_range.h STICK_HILL_DEFAULT_THRESHOLD_DBM`. */
-export const CONTROL_RSSI_DBM = Object.freeze({ phone: -75, sticks3: -75 });
-export function phoneStationThreshold(kind) { return kind === 'respawn' ? RESPAWN_RSSI_DBM.phone : kind === 'powerup' ? POWERUP_RSSI_DBM.phone : kind === 'control' ? CONTROL_RSSI_DBM.phone : STATION_THRESHOLD_DBM; }
+ *  real one (Tony, 2026-09-27). */
+export const CONTROL_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.control, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.control });
+export function phoneStationThreshold(kind) { const t = STATION_DEFAULT_THRESHOLD_DBM.phone; return Object.hasOwn(t, kind) ? t[kind] : STATION_THRESHOLD_DBM; }
 
 /** utility.js `thr()`: what a phone station advertises and measures by, its override or else its platform default. */
 export function stationThreshold({ threshold, kind }) { return threshold || phoneStationThreshold(kind); }
@@ -252,7 +253,7 @@ export function migrateThreshold(saved) {
  * counts; REVIVE_MEMORY_MAX bounds it. Returns the players counted on this call.
  * The StickS3 copies the old rule (`hardware/m5sticks3/presence.h` ReviveCounter) and needs the same change.
  */
-export const REVIVE_MARGIN_DB = 10;
+export { REVIVE_MARGIN_DB };
 export const REVIVE_MEMORY_MAX = 256;
 export function countRevives(presence, memory, { team = TEAM_ANY } = {}) {
   const revived = [];
