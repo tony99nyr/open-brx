@@ -265,6 +265,11 @@ def test_a_flake_is_rerun_recorded_and_lands():
         assert len(flakes) == 1 and flakes[0]["job"] == "site" and flakes[0]["branches"] == [a, b], flakes
         assert flakes[0]["step"] == "test_site::test_thing"
         assert "site x1" in r.stdout
+        calls = [json.loads(line) for line in (t.dir / "calls.jsonl").read_text().splitlines()]
+        gate_calls = [c for c in calls if "--list" not in c]
+        assert "--cache" in gate_calls[0] and "--ui" in gate_calls[0]
+        assert "--changed" not in gate_calls[0]
+        assert "--no-cache" in gate_calls[1] and "--ui" in gate_calls[1]
 
 
 def test_a_flake_with_no_parseable_step_records_the_error_line_not_null():
@@ -383,6 +388,8 @@ def test_a_red_main_is_not_blamed_on_the_branch():
         assert r.returncode == 5 and "red on its own" in r.stderr, r.stdout + r.stderr
         assert f"refs/heads/land/{a}" in t.remote_refs()
         assert _branch_count(t, "refs/heads/land-failed") == 0
+        calls = [json.loads(line) for line in (t.dir / "calls.jsonl").read_text().splitlines()]
+        assert any("--no-cache" in c and "mcp" in c for c in calls)
 
 
 def test_wait_after_a_lander_stopped_on_a_red_main_exits_5_without_a_second_gate():
