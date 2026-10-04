@@ -10,13 +10,20 @@
 #include <cstdlib>
 #include <string>
 
+#include "contract.gen.h"
+
 namespace brx {
 
 constexpr uint8_t ADVERT_VERSION = 1;
 constexpr uint8_t ROLE_STATION = 1;
 constexpr uint8_t ROLE_PLAYER = 2;
-constexpr uint8_t KIND_RESPAWN = 1, KIND_POWERUP = 2, KIND_EXTRACTION = 3, KIND_BOMB = 4, KIND_CONTROL = 5;
-constexpr uint8_t TEAM_ANY = 255;  // neutral / any team
+constexpr uint8_t station_kind_code(size_t index) {
+  return index < contract::STATION_KINDS_COUNT ? (uint8_t)(index + 1) : 0;
+}
+constexpr uint8_t KIND_RESPAWN = station_kind_code(0), KIND_POWERUP = station_kind_code(1),
+                  KIND_EXTRACTION = station_kind_code(2), KIND_BOMB = station_kind_code(3),
+                  KIND_CONTROL = station_kind_code(4);
+constexpr uint8_t TEAM_ANY = contract::STATION_TEAM_ANY;
 // CONTROL_STATE bits (app/src/control.js).
 constexpr uint8_t CONTROL_HELD = 1, CONTROL_CONTESTED = 2, CONTROL_RISING = 4, CONTROL_FALLING = 8;
 // A56 powerup CLAIM (confirmed 2026-09-24): bits a PLAYER'S OWN advert sets in its `state` byte

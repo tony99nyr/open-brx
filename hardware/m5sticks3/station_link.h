@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "brx_advert.h"
+#include "contract.gen.h"
 #include "json_lite.h"
 #include "presence.h"  // the Bluetooth hill and the revive count a control/respawn assignment runs
 #include "station_range.h"  // F365/A67: the on-station range edit and its sync (STICK_DEFAULT_THRESHOLD_DBM)
@@ -82,7 +83,7 @@ struct StationItem {
 struct StationAssignment {
   bool present = false;
   std::string kind;  // "respawn" | "powerup" | "extraction" | "bomb" | "control"
-  int team = 255;     // TEAM_ANY
+  int team = TEAM_ANY;
   int id = 0;
   int threshold = STICK_DEFAULT_THRESHOLD_DBM;  // dBm; parse_station_config resolves 0/absent to stick_default_threshold_dbm(kind)
   bool threshold_defaulted = false;  // MC sent 0/absent: `threshold` is the Stick's default, not MC's
@@ -121,7 +122,7 @@ inline bool same_powerup_claim_scope(const StationAssignment& before, const Stat
 // re-push (MC re-sends the current config mid-match as the lock's carrier), and lock_s 0 unlocks at
 // once. The state machine is in RAM, while F391 snapshots its remaining time to NVS. An ordinary
 // restart restores that snapshot. A+B held 7 s clears the saved lock before the forced restart.
-constexpr int MATCH_LOCK_MAX_S = 7200;
+constexpr int MATCH_LOCK_MAX_S = contract::STATION_LOCK_MAX_S;
 
 inline int clamp_lock_s(long v) {
   if (v < 0) return 0;
@@ -219,14 +220,14 @@ struct StatusFields {
   std::string app_ver;
   std::string platform = "esp32";
   std::string kind = "respawn";  // the current advert kind, whatever MC last armed (or the default)
-  int team = 255;
+  int team = TEAM_ANY;
   int station_id = 0;
-  int threshold = -57;
+  int threshold = STICK_DEFAULT_THRESHOLD_DBM;
   bool live = false;    // currently advertising
   bool armed = false;   // MC has armed this station (a station_config was applied)
   int battery_pct = -1; // -1 = absent (no battery reading yet)
   bool has_control = false;
-  int control_owner = 255;
+  int control_owner = TEAM_ANY;
   int control_progress = 0;
   bool control_contested = false;
   // Additive (left unset, the body is byte-identical to the older shape and its goldens): the
@@ -318,8 +319,8 @@ inline std::string build_status_body(const StatusFields& f) {
 // fixed plausible base; MC dates a station's boots from uptime_s/boot_count, never from `t`
 // (bench 2026-09-24: every Stick hello was refused until this).
 constexpr int64_t CLOCK_BASE_MS = 1'790'000'000'000LL;     // 2026-09, inside MC's accepted range
-constexpr int64_t CLOCK_T_MIN_MS = 1'500'000'000'000LL;    // envelope.py T_MIN_MS
-constexpr int64_t CLOCK_T_MAX_MS = 4'000'000'000'000LL;    // envelope.py T_MAX_MS
+constexpr int64_t CLOCK_T_MIN_MS = contract::T_MIN_MS;
+constexpr int64_t CLOCK_T_MAX_MS = contract::T_MAX_MS;
 struct McClock {
   int64_t offset_ms = CLOCK_BASE_MS;  // epoch ms = offset + millis()
   bool synced = false;
@@ -382,7 +383,7 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   if (!body.is_object() || !body.has("kind") || !body.has("id")) return a;
   a.present = true;
   a.kind = body.get("kind").as_string();
-  a.team = (int)body.get("team").as_int(255);
+  a.team = (int)body.get("team").as_int(TEAM_ANY);
   a.id = (int)body.get("id").as_int();
   int t = (int)body.get("threshold").as_int(0);
   a.threshold = (t == 0) ? stick_default_threshold_dbm(a.kind) : t;  // D5: the per-kind default, resolved once here
@@ -553,10 +554,8 @@ inline std::string parse_control_cmd(const json::Value& body) {
 
 // ---- what a powerup kind maps to on the advert's `kind` byte ----------------------------------
 inline uint8_t station_kind_byte(const std::string& kind) {
-  if (kind == "respawn") return KIND_RESPAWN;
-  if (kind == "powerup") return KIND_POWERUP;
-  if (kind == "extraction") return KIND_EXTRACTION;
-  if (kind == "bomb") return KIND_BOMB;
+  for (size_t i = 0; i < contract::STATION_KINDS_COUNT; ++i)
+    if (kind == contract::STATION_KINDS[i]) return (uint8_t)(i + 1);
   return KIND_CONTROL;  // "control", or anything MC would never actually send (it validates first)
 }
 
@@ -1263,7 +1262,7 @@ class StationLink {
   int threshold_advertised_dbm() const {
     return assignment_.present && assignment_.kind == "control" && assignment_.threshold_defaulted &&
                    !threshold_.from_station()
-               ? STICK_DEFAULT_THRESHOLD_DBM : threshold_.applied();
+               ? contract::STICK_HILL_ADVERT_THRESHOLD_DBM : threshold_.applied();
   }
   int tx_power_level() const { return tx_power_.applied(); }
   const SyncedSetting& threshold_setting() const { return threshold_; }
