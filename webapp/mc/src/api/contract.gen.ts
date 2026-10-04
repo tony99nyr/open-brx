@@ -1961,6 +1961,11 @@ export interface RestoredFromView {
   players: number;
 }
 
+export interface RestoreFailedView {
+  reason: string;
+  kept: string | null;
+}
+
 export interface SnapshotFeedRow {
   t_match_s: number;
   text: string;
@@ -2001,6 +2006,10 @@ export interface State {
   /** F411: absent until a match has been played */
   last_match?: LastMatch;
   restored_from?: RestoredFromView;
+  /** O3: match rows MC could not write to its store this run; ABSENT when 0 */
+  store_errors?: number;
+  /** O1: session.json could not be restored; kept aside */
+  restore_failed?: RestoreFailedView;
   game?: GameAnnouncementView;
   sync?: SyncView;
   options?: SessionOptions;

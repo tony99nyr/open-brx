@@ -85,6 +85,27 @@ def save_device(address: str, alias: str | None = None,
     REGISTRY_PATH.write_text(json.dumps(registry, indent=2), encoding="utf-8")
 
 
+def atomic_write_text(path: Path, text: str, mode: int | None = None) -> None:
+    """Write `text` to `path` so a crash leaves either the old file or the new one, never a partial one:
+    a uniquely named temp file in the same folder, fsynced, then renamed over the target."""
+    import contextlib, os, tempfile
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        if mode is not None:
+            with contextlib.suppress(OSError):
+                os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
 def capture_path(label: str) -> Path:
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in label)
     return CAPTURES_DIR / f"{safe}.jsonl"

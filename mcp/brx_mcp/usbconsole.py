@@ -14,7 +14,11 @@ Credit: the QUERY/SETUP command set is from LaserTagMods' "Pairing Headset and T
 """
 from __future__ import annotations
 
+import contextlib
+import json
 import re
+import sys
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -159,24 +163,114 @@ def inventory_path() -> Path:
     return BASE_DIR / "armory.json"
 
 
+class InventoryCorrupt(Exception):
+    """armory.json could not be read as a JSON object. The file was moved to `kept` (never deleted, never
+    left where the next write would replace it), so no merge can turn the whole armory into one gun."""
+
+    def __init__(self, path: Path, kept: Optional[Path], error: str):
+        self.path, self.kept, self.error = path, kept, error
+        where = f"kept at {kept}" if kept else "could not be moved aside"
+        super().__init__(f"armory inventory {path} is corrupt ({error}); the file was {where}. "
+                         f"Restore it by hand or re-run `brx-mcp usb-query` for each gun.")
+
+
+def _keep_corrupt_inventory(p: Path) -> Optional[Path]:
+    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
+    kept, n = p.with_name(f"{p.name}.bad-{stamp}"), 1
+    while kept.exists():
+        kept, n = p.with_name(f"{p.name}.bad-{stamp}-{n}"), n + 1
+    try:
+        p.replace(kept)
+    except OSError:
+        return None
+    return kept
+
+
 def load_inventory() -> dict:
-    import json
+    """The armory, or {} when no file exists yet. A file that exists but is not a JSON object raises
+    InventoryCorrupt after moving it aside: an unreadable armory is never the same as an empty one."""
     p = inventory_path()
-    if p.exists():
-        try:
-            return json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-    return {}
+    if not p.exists():
+        return {}
+    try:
+        inv = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(inv, dict):
+            raise ValueError(f"expected a JSON object, found {type(inv).__name__}")
+        return inv
+    except ValueError as exc:      # JSONDecodeError and UnicodeDecodeError are ValueErrors; an OSError (permissions, a
+        # sharing violation) is NOT corruption and must not move a valid armory aside
+        raise InventoryCorrupt(p, _keep_corrupt_inventory(p), f"{type(exc).__name__}: {exc}") from exc
 
 
 def _save_inventory(inv: dict) -> None:
-    import json
+    from .storage import atomic_write_text
+    atomic_write_text(inventory_path(), json.dumps(inv, indent=2), mode=0o600)   # it holds headset PINs
+
+
+_inventory_thread_lock = threading.RLock()
+
+
+if sys.platform == "win32":
+    import msvcrt
+
+    def _lock_file(fh) -> None:
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+
+    def _unlock_file(fh) -> None:
+        fh.seek(0)
+        with contextlib.suppress(OSError):
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _lock_file(fh) -> None:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock_file(fh) -> None:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+@contextlib.contextmanager
+def _inventory_lock(timeout_s: float = 10.0):
+    """Serialise every read-merge-write of armory.json across threads and across processes (MC scans and the
+    bench tools write it from different processes). Take it ONCE per operation: it is not re-entrant
+    across file handles."""
     p = inventory_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(inv, indent=2), encoding="utf-8")
+    with _inventory_thread_lock:
+        fh = open(p.with_name(p.name + ".lock"), "a+b")
+        try:
+            deadline = time.monotonic() + timeout_s
+            while True:
+                try:
+                    _lock_file(fh)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"armory inventory lock {fh.name} still held after {timeout_s:g} s: "
+                                           f"another brx-mcp process is writing it")
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                _unlock_file(fh)
+        finally:
+            fh.close()
 
 
+def _under_inventory_lock(fn):
+    """Run a read-merge-write of armory.json under `_inventory_lock`."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _inventory_lock():
+            return fn(*args, **kwargs)
+    return wrapper
+
+
+@_under_inventory_lock
 def add_to_inventory(record: dict) -> dict:
     """Merge one QUERY record into the armory inventory (keyed by Serial/Head PIN).
     Only non-None fields overwrite, so a USB re-query preserves the BLE binding
@@ -209,6 +303,7 @@ def advert_basename(advert: str) -> str:
     return re.sub(r"-[0-9A-Fa-f]{4}$", "", advert or "").strip() or (advert or "")
 
 
+@_under_inventory_lock
 def correlate(scan_entries: list) -> list:
     """Bind `ble_address` + set `name_confirmed` for inventory records whose gun_name
     matches exactly one BLE advert basename — and only when that name is UNIQUE in the
@@ -237,6 +332,7 @@ def correlate(scan_entries: list) -> list:
     return bound
 
 
+@_under_inventory_lock
 def bind_address(serial: str, address: str, name: Optional[str] = None) -> bool:
     """Bind a BLE MAC to an inventory record with certainty (isolation enroll: the
     gun was the only one powered, so this address IS this serial). Optionally set the
@@ -252,6 +348,7 @@ def bind_address(serial: str, address: str, name: Optional[str] = None) -> bool:
     return True
 
 
+@_under_inventory_lock
 def mark_rename(new_name: str, serial: Optional[str] = None,
                 address: Optional[str] = None) -> Optional[str]:
     """Record a just-sent rename: set the target record's gun_name to `new_name` and

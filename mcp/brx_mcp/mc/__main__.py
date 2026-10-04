@@ -227,6 +227,10 @@ def build(args):
         session._persist_path = _P(args.session_file)
         restored_from_file = session.restore_snapshot()
         print(f"  session file {args.session_file}: {restored_from_file} player(s) restored")
+        if session.restore_failed:
+            rf = session.restore_failed
+            print(f"  session file could NOT be restored ({rf['reason']}); "
+                  f"{'kept at ' + rf['kept'] if rf['kept'] else 'it could not be moved aside, saving is OFF'}", flush=True)
     elif not (args.demo or getattr(args, "ephemeral", False)):
         # --demo / --ephemeral runs (e2e, CI) must not inherit or write a bench session:
         # a restored roster with a bare-tail gun_id once stole the e2e fake gun (2026-08-26).
@@ -236,6 +240,10 @@ def build(args):
         restored = session.restore_snapshot()
         if restored:
             print(f"  session restored: {restored} player(s) from the last run (NEW MATCH > fresh session clears it)")
+        elif session.restore_failed:
+            rf = session.restore_failed
+            print(f"  session file could NOT be restored ({rf['reason']}); "
+                  f"{'kept at ' + rf['kept'] if rf['kept'] else 'it could not be moved aside, saving is OFF'}", flush=True)
         elif session._persist_path.exists():
             # F142: a snapshot that was there and was DECLINED (the demo/real boundary) says so out loud;
             # `restore_snapshot` logged the detail.

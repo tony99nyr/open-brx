@@ -98,9 +98,8 @@ EXPECT: dict[str, dict] = {
     "hill_stalled_blue": {"kind": "HILL_CAPTURING", "has": ["BLUE STALLED"]},
     "hill_held_red": {"kind": "HILL_HELD", "has": ["RED HOLDS", "HELD 0:1"]},  # captured ~10 s in, shown at 26 s
     "hill_match_over_red": {"kind": "HILL_HELD", "has": ["RED HOLDS", "MATCH OVER"]},
-    "hill_match_over_red": {"kind": "HILL_HELD", "has": ["RED HOLDS", "MATCH OVER"]},
     "hill_held_blue": {"kind": "HILL_HELD", "has": ["BLUE HOLDS"]},
-    "hill_held_green": {"kind": "HILL_HELD", "has": ["GREEN HOLDS"]},
+    "hill_held_purple": {"kind": "HILL_HELD", "has": ["PURPLE HOLDS"], "lacks": ["GREEN"]},
     "hill_yellow_refused": {"kind": "HILL_NEUTRAL", "has": ["NEUTRAL", "STAND HERE TO CAPTURE"]},
     "hill_contested": {"kind": "HILL_CONTESTED", "has": ["CONTESTED", "TEAMS ON THE POINT"],
                        "lacks": ["BOTH TEAMS FIRING"]},

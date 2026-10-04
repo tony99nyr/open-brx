@@ -29,6 +29,7 @@ export const ARMORY_ALERTS: Record<string, AlertDef> = {
     why: 'the toast itself is drawn by the app frame outside this lane\'s files; this lane owns only the trigger site and its wording, both fixed to plain status.' },
   'armory-reach-install-cloudflared': { sev: 'neutral', text: 'INSTALL CLOUDFLARED' },
   'armory-reach-predates-backhaul': { sev: 'amber', text: 'MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC' },
+  'armory-restore-failed-banner': { sev: 'red', text: 'SESSION FILE COULD NOT BE RESTORED, THE ROSTER STARTED EMPTY: REBUILD THE ROSTER' },
   'armory-restored-banner': { sev: 'amber', text: 'SESSION RESTORED FROM {stamp}, {n} PLAYERS CARRIED OVER: CHECK THE ROSTER BEFORE YOU KIT OUT' },
   'armory-unclaimed-identity-tag': { sev: 'amber', text: '{identity}' },
   'armory-weapon-echo-mismatch-row': { sev: 'red', text: 'ECHO ≠ CONFIG' },

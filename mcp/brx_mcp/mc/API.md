@@ -50,6 +50,9 @@ State {
                                                // (same match and seq, a no-op on a phone in play), never a config.
                                                // Past its end time it is restored finished (recap written, A34/A42
                                                // end the phones still live). `tests/test_mc_resume.py`
+  store_errors?: number,                        // O3: match rows MC could not write to its SQLite store this run (each one logged). ABSENT when 0
+  restore_failed?: { reason: string, kept: string | null },   // O1: session.json could not be restored; nothing partial was kept and
+                                               // the file was moved to `kept` (session.json.bad-<UTC time>). ABSENT otherwise.
   session_id, phase, t,                      // server time (Unix ms)
   mc_confidence: { confident: boolean, missing: string[], stale: string[], unflushed: string[] },   // A11.5: player_ids; gates the MC-driven global-state events
   lan: { mode: "router"|"hotspot"|"lan", ssid: string|null, ip: string, port: number, ws_url: string,

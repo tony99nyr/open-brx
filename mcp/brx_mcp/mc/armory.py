@@ -31,7 +31,7 @@ class LocalArmory:
             from brx_mcp.usbconsole import load_inventory
             inv = load_inventory()
         except Exception as e:
-            log.warning("armory inventory unavailable: %s", e)
+            log.error("armory inventory unavailable: %s", e)
             return []
         return [_to_record(s, r) for s, r in inv.items()]
 
@@ -52,7 +52,11 @@ class LocalArmory:
             correlate([{"name": d["name"], "address": d["address"]} for d in taggers])
         except Exception as e:
             log.warning("correlate failed: %s", e)
-        inv = load_inventory()
+        try:
+            inv = load_inventory()
+        except Exception as e:
+            log.error("armory inventory unavailable: %s", e)
+            inv = {}
         by_name = {}
         for serial, r in inv.items():
             by_name.setdefault((r.get("gun_name") or "").strip().lower(), []).append((serial, r))

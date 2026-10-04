@@ -41,7 +41,7 @@ from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PH
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
                     SnapshotFeedRow, SlotRule, State, StationAssignment, StationDeparture, StationRestore, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
-                    StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
+                    StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView, RestoreFailedView,
                     StartNodeView, StartView, Stun, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
 
@@ -549,6 +549,8 @@ class Session:
         # looking at, and the Lobby then listed four players with two ghosts. `{at, players}` rides on
         # the state so the board can say "restored from <date>" beside a FRESH SESSION control.
         self.restored_from: RestoredFromView | None = None
+        self.store_errors = 0                       # O3: match rows MC could not write to its SQLite store
+        self.restore_failed: RestoreFailedView | None = None   # O1: a session.json that could not be restored
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
@@ -783,6 +785,22 @@ class Session:
             self._persist_last = 0.0
             self._persist()
 
+    def _store_write(self, kind: str, match_id: str, *args) -> bool:
+        """O3: write one match row (`match_started` or `match_ended`) to the store. A failure is logged with the
+        match id and counted on the snapshot, never swallowed: a match that is missing from RECAP history must
+        leave a trace."""
+        if not self.store:
+            return False
+        try:
+            getattr(self.store, kind)(match_id, *args)
+            return True
+        except Exception:
+            self.store_errors += 1
+            import logging
+            logging.getLogger("brx.mc").exception("store.%s failed for match %s (play continues; %d store error(s))",
+                                                  kind, match_id, self.store_errors)
+            return False
+
     def _persist(self):
         if not self._persist_path:
             return
@@ -979,6 +997,29 @@ class Session:
                 out["owner"] = owner
         return out
 
+    _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match", "stations",
+                      "nodes", "_station_id_of", "game_no", "_game_no_started", "_range_epoch",
+                      "_stations_unlocked", "join_secret", "_ended", "_resume_pending", "_pu_restored",
+                      "_match_end_t", "_sync_pending", "restored_from", "_station_departures")
+
+    def _keep_bad_snapshot(self) -> Path | None:
+        """O1: move an unrestorable session.json aside (never delete it, never leave it where the next
+        persist overwrites it). Returns the kept path, or None when even the rename failed."""
+        path = self._persist_path
+        if path is None:
+            return None
+        kept = path.with_name(f"{path.name}.bad-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}")
+        n = 1
+        while kept.exists():
+            kept = path.with_name(f"{path.name}.bad-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{n}")
+            n += 1
+        try:
+            path.replace(kept)
+        except OSError:
+            import logging; logging.getLogger("brx.mc").exception("could not move the bad session snapshot aside")
+            return None
+        return kept
+
     def restore_snapshot(self) -> int:
         """Load a prior session.json (if any). Returns the number of players restored.
 
@@ -990,6 +1031,8 @@ class Session:
         """
         if not self._persist_path or not self._persist_path.exists():
             return 0
+        # O1: everything the restore may assign, copied first, so a failure part-way leaves NOTHING partial.
+        before = {a: copy.deepcopy(getattr(self, a)) for a in self._RESTORE_ATTRS}
         try:
             snap = json.loads(self._persist_path.read_text())
             was_demo = bool(snap.get("demo", False))
@@ -1151,13 +1194,23 @@ class Session:
             if self._sync_pending:
                 self._validate()     # F401: LOAD's sync warning shows at once after a restart, not on the next edit
             return len(self.players)
-        except Exception:
+        except Exception as exc:
             import logging; logging.getLogger("brx.mc").exception("session snapshot restore failed — starting clean")
-            # Polish review: a failure AFTER `self._resume_pending` was set above (e.g. `_repair_player_nums`
-            # or `_gun_index` raising on a half-written file) left it holding a half-restored match dict, so
-            # the NEXT `resume_match()` call -- the store attaches moments later -- would try to resume a
-            # match this restore never actually finished loading. "Starting clean" must mean clean.
-            self._resume_pending = None
+            for attr, value in before.items():     # nothing half-restored: every assigned field goes back
+                setattr(self, attr, value)
+            try:
+                self._render_join()
+                self._validate()
+            except Exception:
+                logging.getLogger("brx.mc").exception("rebuilding derived state after a failed restore also failed")
+            kept = self._keep_bad_snapshot()
+            if kept is None:
+                # the bad file is still at the live path: saving now would overwrite the only copy
+                logging.getLogger("brx.mc").error("session saving is OFF for this run: %s could not be moved aside",
+                                                  self._persist_path)
+                self._persist_path = None
+            self.restore_failed = {"reason": f"{type(exc).__name__}: {exc}"[:200],
+                                   "kept": str(kept) if kept else None}
             return 0
     def _repair_player_nums(self) -> None:
         """Every restored player gets a UNIQUE 1..63 `player_num`, whatever the file said.
@@ -5469,12 +5522,9 @@ class Session:
                                          derive_cap=not m.get("adopted"),
                                          alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
         if self.store:
-            try:
-                snap = dict(self.config)
-                snap["_heads"] = {pid: (b or {}).get("head", []) for pid, b in self.bundles.items()}
-                self.store.match_started(mid, snap, go)
-            except Exception:
-                pass
+            snap = dict(self.config)
+            snap["_heads"] = {pid: b.get("head", []) for pid, b in self.bundles.items() if isinstance(b, dict)}
+            self._store_write("match_started", mid, snap, go)
         now = self.now_ms()
         tl = self.config.get("time_limit_s")
         # F451 (chaos 2026-10-03): a match the snapshot saw LIVE stays LIVE. A wall clock that stepped back since
@@ -5626,10 +5676,7 @@ class Session:
         self.feed = []
         self.scorer = self._build_scorer(match_id, go, {})
         if self.store:
-            try:
-                self.store.match_started(match_id, {**self.config, "_adopted": True}, go)
-            except Exception:
-                pass
+            self._store_write("match_started", match_id, {**self.config, "_adopted": True}, go)
         self._promote_phase(go, now)
         self._orphans = {n: o for n, o in self._orphans.items() if o["match_id"] != match_id}
         self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
@@ -7630,18 +7677,15 @@ class Session:
         self._plan_blocked_alerted.clear()
         self.last_recap = None
         if self.store:
-            try:
-                # The config AND the compiled head we actually pushed. Tony, 2026-09-01: "as we debug,
-                # you should be able to see every single setting for a game on MC. i had to tell you i
-                # ran it again on outdoor." That round cost us a whole theory: I built a case on
-                # `$GSET` outdoorMode without being able to see which venue had been used, or the
-                # frame that carried it. The head is the ground truth — it shows the token, not a
-                # setting that maps to it.
-                snap = dict(self.config)
-                snap["_heads"] = {pid: (b or {}).get("head", []) for pid, b in self.bundles.items()}
-                self.store.match_started(self.start_info["match_id"], snap, self.start_info["go_live_t"])
-            except Exception:
-                pass
+            # The config AND the compiled head we actually pushed. Tony, 2026-09-01: "as we debug,
+            # you should be able to see every single setting for a game on MC. i had to tell you i
+            # ran it again on outdoor." That round cost us a whole theory: I built a case on
+            # `$GSET` outdoorMode without being able to see which venue had been used, or the
+            # frame that carried it. The head is the ground truth — it shows the token, not a
+            # setting that maps to it.
+            snap = dict(self.config)
+            snap["_heads"] = {pid: (b or {}).get("head", []) for pid, b in self.bundles.items()}
+            self._store_write("match_started", self.start_info["match_id"], snap, self.start_info["go_live_t"])
         # A40 (T2 review S2): ADDRESSED, not broadcast. `net.broadcast()` reaches every live socket, and
         # that included a BENCHED phone -- which still holds the frames it took before the bench, so its
         # `config_id` matched, `startAt` carried it armed -> live, and the gun SPAWNED at T-0 for a player
@@ -8162,10 +8206,7 @@ class Session:
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if self.store and self.start_info and self.last_recap:
-            try:
-                self.store.match_ended(self.start_info["match_id"], self.last_recap)
-            except Exception:
-                pass
+            self._store_write("match_ended", self.start_info["match_id"], self.last_recap)
         self.start_info = None            # no re-hydrating a finished match's `start`
         self.phase = "recap"
         # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
@@ -8428,6 +8469,10 @@ class Session:
             for nv in self.nodes.values():
                 nv.pop("player_id", None)
             self.restored_from = None      # F142: FRESH SESSION is the answer to the restore notice
+            # O1: ...and to the failed-restore notice, unless saving is still OFF (the bad file could not be
+            # moved aside): that fact must stay on the board for the rest of the run.
+            if self.restore_failed and self.restore_failed.get("kept") is not None:
+                self.restore_failed = None
             # F364: a fresh session hands ids out from 1 again; a station still assigned keeps its own.
             self._station_id_of = {n: a["id"] for n, st in self.stations.items() if (a := st.get("assigned"))}
             self._station_departures = {}          # bench 2026-10-02: NEXT MATCH keeps them; a FRESH SESSION does not
@@ -8623,6 +8668,10 @@ class Session:
             state["last_match"] = self.last_match
         if self.restored_from is not None:
             state["restored_from"] = self.restored_from
+        if self.restore_failed is not None:
+            state["restore_failed"] = self.restore_failed
+        if self.store_errors:
+            state["store_errors"] = self.store_errors
         bench_volume = getattr(self.compiler, "bench_volume", None)   # `--bench-volume`: the compiler owns it
         if bench_volume is not None:
             state["bench_volume"] = bench_volume

@@ -46,10 +46,11 @@ const uint16_t COL_DIM = rgb(58, 68, 80);
 const uint16_t COL_SHIELD = rgb(36, 217, 196);
 const uint16_t COL_NEUTRAL = rgb(90, 104, 120);
 
-// team index 0..3 = RED/BLUE/YELLOW/GREEN, matching m5sticks3.ino's existing teamColor()/TEAM_NAMES.
-const uint16_t TEAM_COLOR[4] = {rgb(244, 63, 94), rgb(58, 134, 255), rgb(255, 210, 63), rgb(46, 204, 113)};
-const uint16_t TEAM_INK[4] = {rgb(26, 4, 4), rgb(4, 18, 30), rgb(26, 20, 0), rgb(4, 26, 12)};
-const char* const TEAM_LETTER[4] = {"RED", "BLUE", "YELLOW", "GREEN"};
+// team index 0..3 = RED/BLUE/YELLOW/PURPLE. F423: tid 3 paints purple, never green (green is the headset's own
+// death out-blink); the purple is the console's (`webapp/mc/src/tokens.ts`), pinned by test_sticks3_screens.py.
+const uint16_t TEAM_COLOR[4] = {rgb(244, 63, 94), rgb(58, 134, 255), rgb(255, 210, 63), rgb(191, 76, 230)};
+const uint16_t TEAM_INK[4] = {rgb(26, 4, 4), rgb(4, 18, 30), rgb(26, 20, 0), rgb(24, 4, 30)};
+const char* const TEAM_LETTER[4] = {"RED", "BLUE", "YELLOW", "PURPLE"};
 
 inline uint16_t teamColor(int team) { return (team >= 0 && team <= 3) ? TEAM_COLOR[team] : COL_NEUTRAL; }
 inline uint16_t teamInk(int team) { return (team >= 0 && team <= 3) ? TEAM_INK[team] : COL_NUM; }

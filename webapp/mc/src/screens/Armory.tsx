@@ -143,6 +143,7 @@ export function Armory() {
 
   return (
     <div className="screen" style={{ maxWidth: 1380, margin: '0 auto' }}>
+      <RestoreFailedBanner />
       <RestoredBanner />
       <ScreenHeader kicker="[ A1 // GEAR CHECK ]" title="Readiness Board" right={
         <>
@@ -326,6 +327,23 @@ function useBackhaul(): { control: ReactNode; errLine: ReactNode } {
     );
   }
   return { control, errLine };
+}
+
+/** O1 (operator review 2026-10-03): a session.json that could not be restored used to leave one terminal
+ *  line and a half roster. MC now restores nothing partial and moves the file aside; this says so. */
+function RestoreFailedBanner() {
+  const { state } = useStore();
+  const f = state?.restore_failed;
+  if (!f) return null;
+  const detail = `${f.reason} · ${f.kept ? `KEPT AT ${f.kept}` : 'THE FILE COULD NOT BE MOVED ASIDE'}`;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <Alert id="armory-restore-failed-banner" testid="restore-failed-banner" size={12}
+        what={f.kept ? 'SESSION FILE COULD NOT BE RESTORED, THE ROSTER STARTED EMPTY' : 'SESSION FILE COULD NOT BE RESTORED OR MOVED ASIDE, THE ROSTER STARTED EMPTY'}
+        act="REBUILD THE ROSTER" />
+      <div data-testid="restore-failed-detail" style={{ font: F.mono(500, 11), color: T.dim, marginTop: 4, overflowWrap: 'anywhere' }}>{detail}</div>
+    </div>
+  );
 }
 
 /** F142 (field 2026-09-12, ISSUE 11/11b) — a `--demo` session persisted into `~/.brx-mcp/` and was

@@ -1309,7 +1309,7 @@ def _sounds(query: str, addr: str | None) -> None:
 def _armory() -> None:
     """Armory inventory sweep: QUERY the cabled tagger (if one is), then print the
     accumulated tagger↔headset identity table. Cable each tagger in turn + re-run."""
-    from .usbconsole import find_tagger_port, UsbConsole, save_backup, add_to_inventory, load_inventory
+    from .usbconsole import find_tagger_port, UsbConsole, save_backup, add_to_inventory, load_inventory, InventoryCorrupt
     port = find_tagger_port()
     if port:
         try:
@@ -1320,6 +1320,8 @@ def _armory() -> None:
                 save_backup(rec)
                 add_to_inventory(rec)
                 print(f"# added {rec.get('serial_head_pin')} (from {port})", file=sys.stderr)
+        except InventoryCorrupt as e:
+            print(f"# {e}", file=sys.stderr)
         except Exception as e:  # noqa: BLE001
             print(f"# QUERY on {port} failed: {type(e).__name__}: {e}", file=sys.stderr)
     else:
@@ -1338,6 +1340,8 @@ def _armory() -> None:
               file=sys.stderr)
         for serial, addr in bound:
             print(f"# confirmed {serial} <-> {addr}", file=sys.stderr)
+    except InventoryCorrupt as e:
+        print(f"# {e}", file=sys.stderr)
     except Exception as e:  # noqa: BLE001 — no BLE here is fine; just skip correlation
         print(f"# (skipped BLE correlate: {type(e).__name__})", file=sys.stderr)
 

@@ -1896,6 +1896,11 @@ class RestoredFromView(TypedDict):
     players: int
 
 
+class RestoreFailedView(TypedDict):
+    reason: str
+    kept: str | None
+
+
 class SnapshotFeedRow(TypedDict):
     t_match_s: int
     text: str
@@ -1933,6 +1938,8 @@ class State(TypedDict):
     game_pick: NotRequired[GamePick]   # F411: absent = a server that predates PLAY/BUILD
     last_match: NotRequired[LastMatch]   # F411: absent until a match has been played
     restored_from: NotRequired[RestoredFromView]
+    store_errors: NotRequired[int]   # O3: match rows MC could not write to its store this run; ABSENT when 0
+    restore_failed: NotRequired[RestoreFailedView]   # O1: session.json could not be restored; kept aside
     game: NotRequired[GameAnnouncementView]
     sync: NotRequired[SyncView]
     options: NotRequired[SessionOptions]

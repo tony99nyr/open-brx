@@ -202,10 +202,18 @@ class Store:
         self.db.commit()
 
     def match_ended(self, match_id: str, recap: dict) -> None:
+        """Archive the recap. An upsert: when the start row never landed (its write failed, or the match was
+        adopted), the match is still inserted, so it cannot vanish from RECAP history."""
         if self._closed:
             return
-        self.db.execute("UPDATE matches SET ended_t=?, recap=? WHERE match_id=?",
-                        (int(time.time() * 1000), json.dumps(recap, default=str), match_id))
+        if self.db.execute("SELECT 1 FROM matches WHERE match_id=?", (match_id,)).fetchone() is None:
+            import logging
+            logging.getLogger("brx.mc").warning(
+                "match %s ended with no start row in %s: inserting it from the recap", match_id, self.path)
+        self.db.execute(
+            "INSERT INTO matches(match_id,session_id,ended_t,recap) VALUES (?,?,?,?) "
+            "ON CONFLICT(match_id) DO UPDATE SET ended_t=excluded.ended_t, recap=excluded.recap",
+            (match_id, self.session_id, int(time.time() * 1000), json.dumps(recap, default=str)))
         self.db.commit()
 
     def matches(self) -> list[dict[str, Any]]:

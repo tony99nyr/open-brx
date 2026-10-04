@@ -157,6 +157,35 @@ describe('F142 — restored-session banner', () => {
   });
 });
 
+describe('O1 — failed-restore banner', () => {
+  it('shows a red RESTORE FAILED banner naming the reason and the kept file', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, restore_failed: { reason: 'AttributeError: bad config', kept: '/h/session.json.bad-20261003T010203' } };
+    const m = await mountScreen(<Armory />, { ...d, state });
+    expect(m.find('[data-testid="restore-failed-banner"]').length).toBe(1);
+    expect(m.find('[data-testid="restore-failed-banner"]')[0].getAttribute('data-sev')).toBe('red');
+    expect(m.text()).toContain('COULD NOT BE RESTORED');
+    expect(m.text()).toContain('REBUILD THE ROSTER');
+    expect(m.text()).toContain('/h/session.json.bad-20261003T010203');
+    m.unmount();
+  });
+
+  it('says so when the bad file could not even be moved aside', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, restore_failed: { reason: 'OSError: denied', kept: null } };
+    const m = await mountScreen(<Armory />, { ...d, state });
+    expect(m.text()).toContain('COULD NOT BE MOVED ASIDE');
+    m.unmount();
+  });
+
+  it('renders nothing when the restore did not fail', async () => {
+    const d = await demo();
+    const m = await mountScreen(<Armory />, d);
+    expect(m.find('[data-testid="restore-failed-banner"]').length).toBe(0);
+    m.unmount();
+  });
+});
+
 describe('F144/F155 — Armory gun card reach', () => {
   it('a connected node on the internet path shows an INTERNET tag beside READY, never CHECK/amber for that alone', async () => {
     const d = await demo();
