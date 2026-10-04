@@ -348,7 +348,7 @@ test('A60 polish #6: the HUD row texts, exactly, with JOIN once', () => {
   assert.equal(offerText('several', 'ws://10.0.0.6:8766/ws'), 'SEVERAL MISSION CONTROLS · TAP YOURS');
   assert.equal(offerText('unproven', 'ws://10.0.0.6:8766/ws'), 'UNVERIFIED MISSION CONTROL · 10.0.0.6:8766 · TAP JOIN IF YOURS');
   for (const r of ['new', 'several', 'unproven']) assert.doesNotMatch(offerText(r, 'ws://1.2.3.4:1/ws'), /—/);
-  const hud = readFileSync(path.resolve(HERE, '../src/hud/hud.js'), 'utf8');
+  const hud = readFileSync(path.resolve(HERE, '../src/hud/shared.js'), 'utf8');
   assert.match(hud, /const text = d\.text \? esc\(d\.text\) : /, 'the reason text is rendered verbatim');
   assert.match(hud, /<span class="unskew">\$\{text\}<\/span>/, 'with no second JOIN appended');
 });

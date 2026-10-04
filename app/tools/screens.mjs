@@ -2941,7 +2941,7 @@ await step('polish-3 loadout-perk: a perk picked after a timed-out weapon arm sh
   must(r.heroText === '✓ ON', 'the perk hero pane: ' + r.heroText);
 });
 
-// ---------- Bench 2026-09-16: press feedback on EVERY tappable thing (hud.js `_tapDown`/`_tapUp`) ----------
+// ---------- Bench 2026-09-16: press feedback on EVERY tappable thing (hud/hud.js `_tapDown`/`_tapUp`) ----------
 // A player could not tell whether a tap landed. One delegated pointerdown/up pair on #frame adds/clears
 // `.tap-press`. These steps dispatch real pointer events (not clicks) so they prove the mechanism itself,
 // not just that the act still fires.
@@ -3223,7 +3223,7 @@ await step('ammo prompt se: an energy weapon with reserve left reads HOLD TO REC
   await pg.close();
 });
 // ---------- energy severity revision (bench 2026-09-17, item 6 reworked): a charge rifle cell under one
-// full charge (10, `CHARGE_RIFLE_FULL_CHARGE_COST` in hud.js) fires nothing, but the ORIGINAL fix made
+// full charge (10, `CHARGE_RIFLE_FULL_CHARGE_COST` in hud/shared.js) fires nothing, but the ORIGINAL fix made
 // this a second big prompt (NOT ENOUGH ENERGY, red) sitting beside RECHARGE, and dropped it alone with
 // no big prompt at all once the reserve ran out too -- a player with nothing left saw the mildest-looking
 // screen of the three. New rule: severity comes from the RESERVE, not the cell. Below one full charge (or
@@ -4002,7 +4002,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
 // player's eyeline, and at 891x411 they overlapped by about 25px when a player was overheating and smoked at
 // the same time. `.heatword` moved from top:63% to top:74%, and `.aimfx` gets a `.tight` modifier (drops its
 // sub-line) exactly in this combo -- see the comments beside both rules in app/www/index.html and the
-// `tight` class hud.js adds in `_live()`. Order matters: `window.brxDemo.smoke()` overwrites the active
+// `tight` class hud/live.js adds in `_live()`. Order matters: `window.brxDemo.smoke()` overwrites the active
 // slot's `$ALCD` (heat resets to 0), so the smoke fires FIRST and the forced heat lands after it. ----------
 for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
@@ -6391,7 +6391,7 @@ for (const stage of ['connected', 'connected-join-new']) await step(`se R2-19 ${
 // R2-12: the night SECONDARY tier. Every painted text leaf under 14 px on screen reads at >= 4.5:1 and holds still. Out of
 // scope on purpose: a disabled control and a gun another player holds (dimmed as a state), the kill/callout card (the
 // alert redesign owns it: R2-01/03/10/11/22), and F396's `.repin` -- the powerup hint/NIGHT OPS label's brief re-pin
-// dip when the warning rail's height changes underneath them (hud.js `_railFit`). It is a deliberate, ~260 ms transient,
+// dip when the warning rail's height changes underneath them (`hud/lanes.js` `_railFit`). It is a deliberate, ~260 ms transient,
 // the same kind of carve-out as the kill card's; the settled contrast on either side of it is what this gate protects.
 const R2_NIGHT = ['kitted', 'lobby', 'armed', 'live', 'live-pu-rockets', 'live-pu-taken', 'live-shields-os', 'down-find', 'down-recap', 'redeploy', 'loadout-secondary', 'result', 'resync-prompt', 'briefing', 'mc-rejected',
   'live-kill-lead-hill', 'live-callout-by', 'live-pu-spawn', 'result-awards'];   // the three lanes and the AWARDS tab (round-3 M1, M2)
@@ -6416,11 +6416,11 @@ for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name}
 });
 
 // F396 (bench 2026-09-25): R2-12 above carves `.repin` out on purpose, but nothing else exercised the mechanism it
-// carves out. hud.js's `_railFit()` (~line 2140) gives the powerup hint a brief `.repin` opacity dip whenever `--rail`
+// carves out. `hud/lanes.js` `_railFit()` gives the powerup hint a brief `.repin` opacity dip whenever `--rail`
 // (the warning rail's real height) changes underneath it, so the hint re-settles quietly instead of sliding through
 // the QA-04 hit-weapon line. Drop then relink the gun, as the F396 bench diagnosis did, to force `--rail` to change
 // twice while the hint is already showing, and confirm the dip both appears and clears (a condition wait, not a fixed
-// sleep, since the clear timer in hud.js is ~140 ms).
+// sleep, since the clear timer in hud/lanes.js is ~140 ms).
 const repinState = pg => pg.evaluate(() => { const h = document.getElementById('puhint'); return !!(h && h.classList.contains('repin')); });
 await step('F396 layering: the powerup hint gets a brief .repin dip when the rail height changes under it, then clears it', async () => {
   const pg = await open(VIEWS[1], 'live-pu-rockets', '', 3000);
@@ -6437,7 +6437,7 @@ await step('F396 layering: the powerup hint gets a brief .repin dip when the rai
   await pg.screenshot({ path: `${OUT}/pixel-f396-repin.png` }); await pg.close();
 
   must(gotRepinDrop, 'dropGun() must give the powerup hint the .repin dip when the rail height changes under it');
-  must(clearedDrop, 'the .repin dip must clear again (hud.js clears it about 140 ms later)');
+  must(clearedDrop, 'the .repin dip must clear again (hud/lanes.js clears it about 140 ms later)');
   must(gotRepinRelink, 'relinkGun() must also give the hint a fresh .repin dip when the rail changes back');
   must(clearedRelink, 'the second .repin dip must clear too');
 });

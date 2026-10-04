@@ -48,7 +48,7 @@ import { PHONE_POWERUP_THRESHOLD_DBM } from './transport/contract.gen.js';   // 
 
 export const PU_RESERVE = 0;                // a weapon item grants its charges as the MAGAZINE and no reserve
 export const PU_LOST_AT_DEATH = true;       // a weapon item's unused charges do not carry into the next life
-export const PU_ACTIVE_CARD_MS = 1200;      // F400: the ACTIVE confirm bubble's life after SWITCHING (hud.js `_swap('switched', el, 900, 1200)`)
+export const PU_ACTIVE_CARD_MS = 1200;      // F400: the ACTIVE confirm bubble's life after SWITCHING (`hud/moments.js` `_swap('switched', el, 900, 1200)`)
 export const PU_WEAPON_SWAPS = true;        // lead 2026-09-24: a second WEAPON pickup replaces the first (never refused)
 export const PU_STACK_CAP_X = 2;            // F381 (Tony, 2026-09-25): the same weapon stacks up to this many times the item's own charges
 export const OVERSHIELD_AMOUNT = 75;        // the fallback when an item carries no `amount` (MC normally expands it)
@@ -413,7 +413,7 @@ export class PlayerPowerups {
    *  toggle either way, or the empty switch-back) shows the SAME full weapon-switch card an ALT press does, with
    *  ALT's own timing -- it sets the engine's `switching` verbatim, so the gun's own echo of the equip write confirms it
    *  through `_onAmmo`'s existing ALT-confirm code, or the tick's existing assumed-timeout does, exactly as ALT.
-   *  That also makes it a `data-takeover` (hud.js `switchUp`), which is what makes it a takeover for F368's clash
+   *  That also makes it a `data-takeover` (`hud/moments.js` `switchUp`), which is what makes it a takeover for F368's clash
    *  rule (docs/announcer.md) with no HUD change at all. Immediate equips call this after `_equip`; an empty
    *  switch-back opens the card before its delayed equip. `going`, when given, is `{name, color, weapon_id, charges}` for `from`: a slot
    *  about to lose its identity this call (the empty switch-back's heavy, cleared before the equip), kept on
