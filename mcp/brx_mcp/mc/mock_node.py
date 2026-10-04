@@ -52,7 +52,7 @@ class MockNode:
         self.prior_utility = prior_utility
         self.prior_utility_consumed = False
         self.gun_echo = gun_echo
-        self.extra_status: dict[str, Any] = {}   # extra heartbeat fields a test or the e2e stand-ins add (O6 `dropped_total`, O10 `actions_dropped`)
+        self.extra_status: dict[str, Any] = {}   # extra heartbeat fields a test or the e2e stand-ins add (O6 `outbox_lost`, O10 `actions_dropped`)
         self.config_id: str | None = None       # A36: the head this node is holding
         self.spawn_ammo: tuple[int, int] | None = None
         self.heartbeat_ms = heartbeat_ms

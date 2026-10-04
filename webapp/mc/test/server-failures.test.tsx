@@ -26,6 +26,12 @@ describe('O7/O8 server failure chips', () => {
     expect(c.title).toContain('No space left');
   });
 
+  it('the archive failing is its own red chip', async () => {
+    const [c] = await chips({ not_saving: { archive: F } });
+    expect(c).toMatchObject({ id: 'server-not-saving-archive', sev: 'red' });
+    expect(c.text).toBe("▲ NOT SAVING THIS MATCH'S RESULT, IT CAN BE LOST: CHECK THE DISK AND THE MC LOG");
+  });
+
   it('the snapshot alone is amber before a match, and red while ARMED or LIVE', async () => {
     expect((await chips({ phase: 'lobby', not_saving: { snapshot: F } }))[0]).toMatchObject({ id: 'server-not-saving-snapshot', sev: 'amber' });
     for (const phase of ['armed', 'live'] as const)

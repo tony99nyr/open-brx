@@ -17,6 +17,9 @@ export function defaultStorage() {
   return memoryStorage();
 }
 
+/** How many matches' drop counts the ring remembers (storage stays small). */
+export const MAX_MATCHES = 4;
+
 export class Ring {
   /** @param {RingOptions} [options] */
   constructor({ storage = defaultStorage(), key = 'brx.outbox', maxCount = 500, maxAgeMs = 2 * 60 * 60 * 1000, now = () => Date.now(), log = (/** @type {string} */ l) => console.warn('[outbox]', l) } = {}) {
@@ -26,6 +29,8 @@ export class Ring {
     /** @type {RingItem[]} */
     this.items = /** @type {RingItem[]} */ ([]);
     this.dropped = 0; this.droppedSinceStatus = 0;
+    /** O6: facts dropped per `match_id` (insertion order, at most MAX_MATCHES kept): the heartbeat reports the count for the match in play, so MC never has to guess which match a loss belongs to. @type {Record<string, number>} */
+    this.lost = {};
     this._load();
   }
   _load() {
@@ -36,13 +41,14 @@ export class Ring {
       if (Number.isInteger(d.seq_next)) this.seqNext = d.seq_next;
       if (Array.isArray(d.items)) this.items = d.items.filter((/** @type {RingItem} */ i) => Number.isInteger(i.seq) && i.ev && typeof i.ev === 'object');
       if (Number.isInteger(d.dropped)) this.dropped = d.dropped;
+      if (d.lost && typeof d.lost === 'object') for (const [k, v] of Object.entries(d.lost)) if (Number.isInteger(v)) this.lost[k] = /** @type {number} */ (v);
     } catch (e) {   // corrupt store: start clean, keep seq monotonic via welcome.seq_hi
       this.log(`outbox store unreadable (corrupt): starting clean, any facts it held are lost (${e instanceof Error ? e.message : e})`);
     }
   }
   _save() {
     try {
-      this.storage.setItem(this.key, JSON.stringify({ seq_next: this.seqNext, items: this.items, dropped: this.dropped }));
+      this.storage.setItem(this.key, JSON.stringify({ seq_next: this.seqNext, items: this.items, dropped: this.dropped, lost: this.lost }));
       this._saveFailing = false;
     } catch (e) {   // quota: the facts stay in RAM and still go out, but a restart now loses them. Say so once per streak.
       if (!this._saveFailing) this.log(`outbox not saved (quota): ${this.items.length} facts are in memory only (${e instanceof Error ? e.message : e})`);
@@ -62,8 +68,8 @@ export class Ring {
   _bound() {
     const cutoff = this.now() - this.maxAgeMs;
     let age = 0, count = 0;
-    while (this.items.length && this.items[0].at < cutoff) { this.items.shift(); age++; }
-    while (this.items.length > this.maxCount) { this.items.shift(); count++; }
+    while (this.items.length && this.items[0].at < cutoff) { this._lose(/** @type {RingItem} */ (this.items.shift())); age++; }
+    while (this.items.length > this.maxCount) { this._lose(/** @type {RingItem} */ (this.items.shift())); count++; }
     const d = age + count;
     if (d) {
       this.dropped += d; this.droppedSinceStatus += d;
@@ -72,6 +78,15 @@ export class Ring {
       this._dropLogged = true;
     }
   }
+  /** @param {RingItem} item */
+  _lose(item) {
+    const k = typeof item.ev.match_id === 'string' ? item.ev.match_id : '';
+    this.lost[k] = (this.lost[k] || 0) + 1;
+    const keys = Object.keys(this.lost);
+    for (const old of keys.slice(0, Math.max(0, keys.length - MAX_MATCHES))) delete this.lost[old];
+  }
+  /** Facts dropped from the match `matchId` (0 when none, or when it is long gone from the bounded map). @param {string|null|undefined} matchId */
+  lostFor(matchId) { return matchId ? this.lost[matchId] || 0 : 0; }
   /** Oldest-first copies of un-acked facts, each with its seq folded in (the event_batch item shape). */
   pending() { return this.items.map(i => ({ ...i.ev, seq: i.seq })); }
   /** MC durably ingested up to seq_hi — forget those. */
@@ -88,8 +103,6 @@ export class Ring {
     if (Number.isInteger(seqHi) && seqHi + 1 > this.seqNext) { this.seqNext = seqHi + 1; this._save(); }
   }
   /** Drop count since the last status heartbeat (reported as status.dropped), then reset. */
-  /** Cumulative drops, persisted across restarts: the heartbeat's `dropped_total`, which MC keeps the maximum of. */
-  get droppedTotal() { return this.dropped; }
   takeDropped() { const d = this.droppedSinceStatus; this.droppedSinceStatus = 0; return d; }
   clear() { this.items = []; this._save(); }
 }

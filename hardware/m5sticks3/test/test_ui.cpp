@@ -124,6 +124,37 @@ static void test_a_failed_send_keeps_the_claim_queued_and_an_overflow_is_counted
   CHECK(build_status_body(f).find("\"actions_dropped\":0") != std::string::npos);   // a real Stick always reports it, 0 included
   f.actions_dropped = q.dropped();
   CHECK(build_status_body(f).find("\"actions_dropped\":3") != std::string::npos);
+  CHECK(build_status_body(f).find("actions_dropped_game") == std::string::npos);   // not armed: no game to name
+  f.actions_dropped_game = 7;
+  CHECK(build_status_body(f).find("\"actions_dropped_game\":7") != std::string::npos);
+}
+
+// O10: the count restarts when MC arms the Stick for a new game or a new station, and a same-game re-push keeps it.
+static void test_the_dropped_claim_count_restarts_on_a_new_game_not_on_a_repush() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 9;
+  a.game = 5;
+  link.apply_station_config(a);
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 9;
+  u.available = true;
+  link.apply_station_update(u, 500);
+  for (int i = 0; i < 12; i++) {   // overflow the bounded queue by awarding claims on distinct spawn instants
+    u.available = true;
+    link.apply_station_update(u, 500u + (uint32_t)i);
+    link.award_claim(ClaimWinner{true, (uint8_t)(1 + i)}, 1000u + (uint32_t)i);
+  }
+  uint32_t n = link.pending_actions_dropped();
+  CHECK(n > 0);
+  link.apply_station_config(a);                  // same game, same station: the count stays
+  CHECK_EQ(link.pending_actions_dropped(), n);
+  a.game = 6;                                    // a new game
+  link.apply_station_config(a);
+  CHECK_EQ(link.pending_actions_dropped(), (uint32_t)0);
 }
 
 static void test_short_press_pages_through_every_page_and_wraps() {
@@ -389,6 +420,7 @@ int main() {
   test_actions_gate_with_no_assignment_builds_nothing_even_when_enabled();
   test_taken_age_is_computed_at_send_time_and_wrap_safe();
   test_a_failed_send_keeps_the_claim_queued_and_an_overflow_is_counted();
+  test_the_dropped_claim_count_restarts_on_a_new_game_not_on_a_repush();
   test_short_press_pages_through_every_page_and_wraps();
   test_one_long_press_arms_a_second_confirms();
   test_a_second_long_press_past_the_timeout_re_arms_instead_of_confirming();

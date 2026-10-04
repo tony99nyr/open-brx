@@ -257,6 +257,7 @@ struct StatusFields {
   // O10 (additive; sent whenever the health fields are, 0 included, so a Stick reboot shows as a LOWER count): CLAIM reports the
   // queue evicted when full, cumulative since boot. MC keeps the maximum per node and shows it.
   uint32_t actions_dropped = 0;
+  int actions_dropped_game = -1;   // the game byte `actions_dropped` was counted under; -1 = not armed (left out)
 };
 
 inline std::string build_status_body(const StatusFields& f) {
@@ -311,6 +312,7 @@ inline std::string build_status_body(const StatusFields& f) {
   }
   if (!f.range_edits_json.empty() && f.range_edits_json != "[]") j += ",\"range_edits\":" + f.range_edits_json;
   if (f.has_health || f.actions_dropped > 0) j += ",\"actions_dropped\":" + std::to_string(f.actions_dropped);
+  if (f.actions_dropped_game >= 0) j += ",\"actions_dropped_game\":" + std::to_string(f.actions_dropped_game);
   j += "}";
   return j;
 }
@@ -1045,6 +1047,7 @@ class PendingActionQueue {
   // O10: how many claims overflow evicted since boot (a clear() at a new game is not a drop: that is
   // deliberate, and the game those reports belonged to is over).
   uint32_t dropped() const { return dropped_; }
+  void reset_dropped() { dropped_ = 0; }
 
  private:
   std::vector<PendingTakenReport> entries_;
@@ -1488,6 +1491,10 @@ class StationLink {
     }
     // A56 (brx5): unsent `taken` reports belong to the game they were awarded in; a new game drops them.
     if (game_changed) pending_actions_.clear();
+    // O10: the dropped-claim count belongs to the game (and place) it was counted in: a new game byte or a new
+    // station kind/id starts it at 0. The Stick does not know MC's match id, so it names the GAME BYTE it was armed
+    // with (`actions_dropped_game`) and MC shows the count only while that is the current game.
+    if (game_changed || kind_or_id_changed) pending_actions_.reset_dropped();
     assignment_ = a;
     lock_deadline_known_ = a.lock_s > 0;
     assignment_.timed_hill = a.kind == "control" && (deadline_known_ || hill_.frozen || a.duration_ms > 0);

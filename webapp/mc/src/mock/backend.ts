@@ -546,7 +546,7 @@ export class MockBackend implements Api {
   private demoLanWarning = typeof location !== 'undefined' && new URLSearchParams(location.search).get('lanwarn') === '1';
   /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
    *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
-  /** `?mock&obs=store,snapshot,tick,join,outbox,claims` (O6/O7/O8/O10): each names one failure MC reports on the
+  /** `?mock&obs=store,archive,snapshot,tick,join,outbox,claims` (O6/O7/O8/O10): each names one failure MC reports on the
    *  snapshot, mirroring state.py `snapshot()` (per match: `outbox_lost`/`claims_dropped` are "lost THIS match") (`not_saving`, `ticker_failing`, `join_error`, `NodeView.outbox_lost`,
    *  and the station line `station_claims_dropped_line`). Absent = a healthy MC, the default demo. */
   private demoObs = new Set((typeof location !== 'undefined' ? new URLSearchParams(location.search).get('obs') ?? '' : '').split(',').filter(Boolean));
@@ -995,8 +995,9 @@ export class MockBackend implements Api {
       end_delivery: this.endDelivery(),      // A42
       orphan_match: this.orphanView(),
       // O7/O8: absent = healthy, as the server omits them
-      ...(this.demoObs.has('store') || this.demoObs.has('snapshot') ? { not_saving: {
+      ...(this.demoObs.has('store') || this.demoObs.has('archive') || this.demoObs.has('snapshot') ? { not_saving: {
         ...(this.demoObs.has('store') ? { store: { since: now() - 90_000, count: 41, error: 'OSError: [Errno 28] No space left on device' } } : {}),
+        ...(this.demoObs.has('archive') ? { archive: { since: now() - 60_000, count: 1, error: 'LookupError: store.match_ended: no row for match' } } : {}),
         ...(this.demoObs.has('snapshot') ? { snapshot: { since: now() - 30_000, count: 15, error: 'OSError: [Errno 28] No space left on device' } } : {}),
       } } : {}),
       ...(this.demoObs.has('tick') ? { ticker_failing: { since: now() - 20_000, count: 40, error: 'KeyError: go_live_t' } } : {}),

@@ -19,6 +19,11 @@ export function ServerFailures() {
     rows.push({ id: 'server-not-saving-store', testid: 'not-saving-store', title: `${ns.store.count} writes failed${since(ns.store.since, now)}: ${ns.store.error}`,
       what: 'NOT SAVING GAME DATA, A RESULT CAN BE LOST', act: 'CHECK THE DISK AND THE MC LOG' });
   }
+  if (ns?.archive) {
+    // the match's own start / end row: the result itself. Cleared only by a later archive write, never by a log write.
+    rows.push({ id: 'server-not-saving-archive', testid: 'not-saving-archive', title: `${ns.archive.count} writes failed${since(ns.archive.since, now)}: ${ns.archive.error}`,
+      what: "NOT SAVING THIS MATCH'S RESULT, IT CAN BE LOST", act: 'CHECK THE DISK AND THE MC LOG' });
+  }
   if (ns?.snapshot) {
     // a restart resumes an ARMED or LIVE match from this file, so the same failure is RED then
     const inPlay = state.phase === 'armed' || state.phase === 'live';
@@ -29,7 +34,7 @@ export function ServerFailures() {
   if (state.ticker_failing) {
     const t = state.ticker_failing;
     // never advise a restart while the session file is failing: the restart would lose what is not saved
-    const notSaving = !!(ns?.snapshot || ns?.store);
+    const notSaving = !!(ns?.snapshot || ns?.store || ns?.archive);
     rows.push({ id: 'server-ticker-failing', testid: 'ticker-failing', title: `${t.count} ticks failed${since(t.since, now)}: ${t.error}`,
       what: 'MATCH CLOCK FAILING, A MATCH WILL NOT GO LIVE OR END', act: notSaving ? 'CHECK THE MC LOG (DO NOT RESTART WHILE IT IS NOT SAVING)' : 'RESTART MC' });
   }

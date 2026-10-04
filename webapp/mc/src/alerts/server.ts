@@ -102,10 +102,12 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   // ---- O7 / O8: MC's own failures, drawn by src/ui/ServerFailures.tsx in the shared frame (state.py
   // `snapshot()`: `not_saving`, `ticker_failing`, `join_error`). Each stands until MC's next success. ----
   'server-not-saving-store': { sev: 'red', text: 'NOT SAVING GAME DATA, A RESULT CAN BE LOST: CHECK THE DISK AND THE MC LOG' },
+  // the match start / end archive rows (`not_saving.archive`): the game result itself, cleared only by a later archive write
+  'server-not-saving-archive': { sev: 'red', text: "NOT SAVING THIS MATCH'S RESULT, IT CAN BE LOST: CHECK THE DISK AND THE MC LOG" },
   'server-not-saving-snapshot': { sev: 'amber', text: 'NOT SAVING THE SESSION, A RESTART LOSES THE ROSTER: CHECK THE DISK AND THE MC LOG' },
   // the same fact while a match is ARMED or LIVE: a restart now resumes from that file, so it is RED (ServerFailures.tsx)
   'server-not-saving-snapshot-live': { sev: 'red', text: 'NOT SAVING THE SESSION, A RESTART CANNOT RESUME THIS MATCH: CHECK THE DISK AND THE MC LOG' },
-  'server-ticker-failing': { sev: 'red', text: 'MATCH CLOCK FAILING, A MATCH WILL NOT GO LIVE OR END: RESTART MC | CHECK THE MC LOG' },
+  'server-ticker-failing': { sev: 'red', text: 'MATCH CLOCK FAILING, A MATCH WILL NOT GO LIVE OR END: RESTART MC | CHECK THE MC LOG (DO NOT RESTART WHILE IT IS NOT SAVING)' },
   'server-join-info-failed': { sev: 'amber', text: 'JOIN QR HAS NO ADDRESS | JOIN ADDRESS NOT REFRESHED: CHECK THE LAPTOP NETWORK, THEN RESTART MC' },
   // O6: MC words it (state.py `outbox_lost_line`, in a card's `ambers`); also drawn by the unclaimed phone's node card.
   'armory-nodecard-outbox-lost': { sev: 'amber', text: '{N} FACTS LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER\'S RECAP BY HAND' },

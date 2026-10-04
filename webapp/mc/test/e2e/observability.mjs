@@ -70,7 +70,7 @@ async function checkChip(pg, testid, sev, headWords) {
 const open = async (url, width = 1440) => {
   const pg = await H.newPage(browser, { width, height: 900 }, errors, () => c.step);
   await pg.goto(url, { waitUntil: 'domcontentloaded' });
-  await c.until(async () => (await pg.locator('header nav').count()) > 0 && !/CONNECTING TO MISSION CONTROL/.test(await H.bodyText(pg)), 15000, 'the first snapshot');
+  await c.until(async () => (await pg.locator('header nav').count()) > 0 && !/CONNECTING TO MISSION CONTROL/.test(await H.bodyText(pg)), 30000, 'the first snapshot');
   return pg;
 };
 
@@ -79,11 +79,12 @@ const steps = {
     const MOCK = `${vite.base}/?mock`;
     // healthy: nothing
     let pg = await open(`${MOCK}#muster`);
-    for (const id of ['not-saving-store', 'not-saving-snapshot', 'ticker-failing', 'join-info-failed', 'outbox-lost'])
+    for (const id of ['not-saving-store', 'not-saving-archive', 'not-saving-snapshot', 'ticker-failing', 'join-info-failed', 'outbox-lost'])
       c.expect(!(await present(pg, id)), `a healthy mock shows no ${id} chip`);
     await pg.context().close();
     const cases = [
       ['store', 'not-saving-store', 'red', 'NOT SAVING GAME DATA'],
+      ['archive', 'not-saving-archive', 'red', "NOT SAVING THIS MATCH'S RESULT"],
       ['snapshot', 'not-saving-snapshot', 'amber', 'NOT SAVING THE SESSION'],
       ['tick', 'ticker-failing', 'red', 'MATCH CLOCK FAILING'],
       ['join', 'join-info-failed', 'amber', 'JOIN QR HAS NO ADDRESS'],
@@ -133,7 +134,7 @@ const steps = {
     mc = await H.startMC({ port: P.mc, wsPort: P.ws, home: path.join(OUT, 'home'), sessionFile: path.join(sessionDir, 'session.json'), fakeNet: false });
     vite = await H.startVite({ port: P.vite, mcPort: P.mc });
     nodes = await startNodes(mc.wsUrl, ['GUN-A:3D4F', 'STICK-1:AAAA:utility']);
-    await nodes.cmd('status STICK-1 station_id=4,platform=esp32,actions_dropped=0');   // platform esp32: the card says STICKS3, as a real Stick's does
+    await nodes.cmd('status STICK-1 station_id=4,platform=esp32');   // platform esp32: the card says STICKS3, as a real Stick's does
     const srv = H.api(mc.base);
     const state = () => srv.get('/api/state');
     // a harmless roster edit marks the session dirty, so the 2 s-debounced snapshot write runs again
@@ -176,18 +177,21 @@ const steps = {
     await c.until(async () => { await touch(); return !(await state()).not_saving; }, 12000, 'not_saving clears after a good snapshot');
     await c.until(async () => !(await present(pg, 'not-saving-snapshot')), 6000, 'the snapshot chip clears');
 
-    // O6: the phone's cumulative drop count, as a line on the rostered player's card (the demo seeds GUN-A on a player)
-    // wait for a heartbeat to CARRY the 0 first (a condition: the node's last-seen age wraps when a beat lands), so MC's first sight is 0
+    // O6: the phone's per-match drop count, as a line on the rostered player's card. A match must be in play: MC shows
+    // a count only against the current match, so a hot-joiner's old losses, or the last match's, never show.
     const gunA = async () => (await state()).nodes.find(n => n.gun_name?.startsWith('GUN-A'));
-    const nextBeat = async what => { let prev = (await gunA())?.last_seen_ms ?? 0; await c.until(async () => { const a = (await gunA())?.last_seen_ms ?? 0; const hit = a < prev; prev = a; return hit; }, 6000, what); };
-    await nodes.cmd('status GUN-A dropped_total=0');
-    await nextBeat('a heartbeat carrying dropped_total=0');
-    await nodes.cmd('status GUN-A dropped_total=7');
-    await c.until(async () => (await state()).nodes.some(n => n.outbox_lost === 7), 8000, 'outbox_lost=7 on the node');
-    await nodes.cmd('status GUN-A dropped_total=3');          // the phone's storage was reset: its count restarted, and these 3 are new losses
-    await c.until(async () => (await state()).nodes.some(n => n.outbox_lost === 3), 8000, 'a LOWER report restarts the count (3 new losses, not hidden behind the old 7)');
-    await pg.goto(`${vite.base}/#muster`);
+    await H.startAMatch(mc.base);
+    await c.until(async () => (await state()).phase === 'live', 15000, 'a live match');
     const OUTBOX = '[data-alert="armory-nodecard-outbox-lost"]';
+    await nodes.cmd('lost GUN-A 7');
+    await c.until(async () => (await gunA())?.outbox_lost === 7, 8000, 'outbox_lost=7 for the current match');
+    // a hot-joiner / the last match: 30 drops that belong to ANOTHER match. The 7 vanishing PROVES the beat carrying the other
+    // match's report arrived (a positive wait: no timing guess), and 30 must not show in its place.
+    await nodes.cmd('lost GUN-A 30 some-other-match');
+    await c.until(async () => (await gunA())?.outbox_lost === undefined, 8000, 'the other match\'s report replacing the 7 (nothing shows)');
+    await nodes.cmd('lost GUN-A 3');                          // back on this match after a storage reset: no high-water mark hides it
+    await c.until(async () => (await gunA())?.outbox_lost === 3, 8000, 'a reset phone shows its new losses (3, not the old 7)');
+    await pg.goto(`${vite.base}/#muster`);
     if (process.env.DBG) console.log(JSON.stringify((await state()).readiness.board.filter(r => r.node === 'linked')));
     await c.until(() => present(pg, OUTBOX), 8000, 'the outbox-lost line on the player card');
     await checkChip(pg, OUTBOX, 'amber', '3 FACTS LOST FROM THE PHONE OUTBOX');
@@ -196,7 +200,7 @@ const steps = {
     await sh(pg, 'real-outbox');
 
     // O10: a Stick's dropped CLAIM count, as a station attention line
-    await nodes.cmd('status STICK-1 actions_dropped=3');
+    await nodes.cmd(`status STICK-1 actions_dropped=3,actions_dropped_game=${(await state()).game_byte}`);   // the game byte the Stick was armed with
     await c.until(async () => (await state()).nodes.some(n => n.claims_dropped === 3), 8000, 'claims_dropped=3 on the Stick node');
     const claims = pg.locator('[data-alert="station-attention-claims-dropped"]');
     await c.until(async () => (await claims.count()) > 0, 8000, 'the dropped-claims line on the Stick card');

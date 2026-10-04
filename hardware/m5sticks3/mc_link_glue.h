@@ -1097,7 +1097,8 @@ static void mcLoop(uint32_t now) {
     f.boot_count = bootCount;
     f.assoc = link.mode() == AssocMode::HELD ? "held" : "muster";
     f.lock_s = (long)link.lock().remaining_s(now);
-    f.actions_dropped = link.pending_actions_dropped();   // O10: CLAIM reports the full queue evicted
+    f.actions_dropped = link.pending_actions_dropped();   // O10: CLAIM reports the full queue evicted, since this arm
+    if (link.assignment().present) f.actions_dropped_game = link.assignment().game;
     if (link.has_control_assignment()) {
       // §5c: the station is self-authoritative, so it reports the point, as utility.js's status does.
       const BleControlPoint& h = link.hill();

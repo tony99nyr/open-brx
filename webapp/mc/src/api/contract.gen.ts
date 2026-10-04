@@ -1051,13 +1051,14 @@ export interface NodeView {
   ammo?: number | null;
   alive?: boolean | null;
   pending?: number | null;
-  /** O6: facts the phone's outbox dropped DURING THIS MATCH: its cumulative `status.dropped_total` minus the
-   *  baseline MC took at the match start / resume / NEXT MATCH / new session. A report lower than the last one
-   *  (a phone storage reset) restarts the baseline at 0. Absent = nothing lost this match, or an older node. */
+  /** O6: facts the phone's outbox dropped from the match in play now (the phone's own per-match count,
+   *  `status.outbox_lost.n`, shown only while its `match_id` is the current / resumed / adopted match).
+   *  Absent = nothing lost from this match, or an older node. */
   outbox_lost?: number;
-  /** O10: CLAIM reports a Stick's queue evicted when full THIS MATCH (`status.actions_dropped`, same baseline
-   *  rule). MC never heard who took the item, so the station's attention line says where to look (the recap's
-   *  PICKUPS). A Stick has no node card, so the console draws it on the station card. Absent = none. */
+  /** O10: CLAIM reports a Stick's queue evicted when full since it was armed for THIS game (`status.actions_dropped`,
+   *  shown only while `status.actions_dropped_game` is the current game byte). MC never heard who took the item, so the
+   *  station's attention line says where to look (the recap's PICKUPS). A Stick has no node card, so the console draws
+   *  it on the station card. Absent = none. */
   claims_dropped?: number;
   app_ver?: string | null;
   platform?: string | null;
@@ -1077,6 +1078,12 @@ export interface NodeView {
   /** F272: the node positively proved that the linked gun stopped answering. Optional and true-only:
    *  absence is an older/healthy node, never evidence of a lock-up. */
   gun_locked?: boolean;
+}
+
+/** O6: `status.outbox_lost`: how many of match `match_id`'s facts the phone's outbox dropped. */
+export interface OutboxLostReport {
+  match_id: string;
+  n: number;
 }
 
 export interface Event {
@@ -1153,10 +1160,13 @@ export interface Event {
   game_byte?: number;
   synced?: boolean;
   dropped?: number;
-  /** O6: cumulative facts dropped from the phone's outbox since its storage began (0 included); MC subtracts a per-match baseline. */
-  dropped_total?: number;
-  /** O10: a Stick's CLAIM reports evicted from a full queue, cumulative since boot (0 included). */
+  /** O6: the phone's drop count for the match it is playing now, scoped at the source (a bounded per-match map in its
+   *  storage): {match_id, n}. Sent whenever the phone knows its match, 0 included. */
+  outbox_lost?: OutboxLostReport;
+  /** O10: a Stick's CLAIM reports evicted from a full queue since it was armed for the game `actions_dropped_game`
+   *  (it resets on a new game byte or station; 0 included; `_game` absent while the Stick is not armed). */
   actions_dropped?: number;
+  actions_dropped_game?: number;
   preflight?: Preflight;
   /** A37/R2-3: WHERE `hp`/`armor` above came from THIS LIFE. `engine.js` fills them from
    *  `config.health` at spawn/revive -- the phone's MODEL of the pool -- and overwrites them with the
@@ -1991,9 +2001,11 @@ export interface FailureView {
 }
 
 /** O7: which part of MC's persistence is failing. `store` = facts and log rows (a game result can be lost: RED);
- *  `snapshot` = the roster / match file a restart restores (AMBER). */
+ *  `archive` = the match start / end rows (RED: the game result; cleared only by a later archive write, and an END that
+ *  updates 0 rows counts as a failure); `snapshot` = the roster / match file a restart restores (AMBER, RED while a match is in play). */
 export interface NotSavingView {
   store?: FailureView;
+  archive?: FailureView;
   snapshot?: FailureView;
 }
 

@@ -363,12 +363,12 @@ def outbox_lost_line(n: int) -> str:
     return f"{n} {'FACT' if n == 1 else 'FACTS'} LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER'S RECAP BY HAND"
 
 
-# (status wire field, node key for the latest cumulative count, node key for the baseline at match start)
-_LOSS_COUNTERS = (("dropped_total", "outbox_total", "outbox_base"), ("actions_dropped", "claims_total", "claims_base"))
+def _is_count(v: object) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
 
 
 def station_claims_dropped_line(n: int, station_id: object = None) -> str:
-    """O10: a Stick's full queue evicted CLAIM reports this match (`status.actions_dropped` since the match baseline);
+    """O10: a Stick's full queue evicted CLAIM reports this match (`status.actions_dropped`, counted since the Stick was armed for this game);
     MC never heard who took the item, so the recap's PICKUPS list (the phone's own `pickup` fact) is where to look."""
     where = f"STATION #{station_id}" if isinstance(station_id, int) and not isinstance(station_id, bool) else "THIS STATION"
     return f"{n} CLAIM REPORT{'' if n == 1 else 'S'} DROPPED BY THE STICK: CHECK THE RECAP'S PICKUPS FOR {where}"
@@ -559,6 +559,7 @@ class Session:
         # O7/O8: failures that repeat and used to be log-only. Each is counted, logged once per minute, and
         # shown on the console (`snapshot()`: `not_saving`, `ticker_failing`) until the next success.
         self._store_failures = FailureTrack("store.log", self.now_ms)       # a fact or log row that did not reach the store
+        self._archive_failures = FailureTrack("match archive", self.now_ms)       # `match_started` / `match_ended` rows: the game result
         self._snapshot_failures = FailureTrack("session snapshot", self.now_ms)   # the roster / match file that a restart restores
         self._tick_failures = FailureTrack("match tick", self.now_ms)       # armed->live and the timed end stop while this fails
         self._join_error: str | None = None                                 # O8: join_info() raised; the QR has no URL
@@ -1256,30 +1257,36 @@ class Session:
             if self._store_failures.fail(e, "the fact is still scored in memory"):
                 self._notify_listeners()
 
-    def _loss_baseline(self) -> None:
-        """O6/O10: the loss chips mean "lost THIS match". At each match start, resume, NEXT MATCH and new session, every
-        node's cumulative count so far becomes its baseline, and the console shows only what grew after it."""
-        for nv in self.nodes.values():
-            for _wire, tot, base in _LOSS_COUNTERS:
-                if tot in nv:
-                    nv[base] = nv[tot]
+    def _loss_match_id(self) -> str | None:
+        """The match a loss count may belong to: the one in play (started, resumed or adopted), or the one in RECAP."""
+        if (mid := self.current_match_id()) is not None:
+            return mid
+        return self.scorer.match_id if self.phase == "recap" and self.scorer else None
 
     def _node_loss(self, nv: dict, which: str) -> int:
-        """`which` is "outbox" or "claims": the count lost since the baseline (never negative)."""
-        return max(0, nv.get(f"{which}_total", 0) - nv.get(f"{which}_base", 0))
+        """`which` is "outbox" (the phone's facts) or "claims" (a Stick's CLAIM reports): what the node reports lost for the
+        match / game in play now, else 0. A report for another match or game is history, never this match's loss."""
+        if which == "outbox":
+            r = nv.get("outbox_report")
+            return r["n"] if r and r["match_id"] == self._loss_match_id() else 0
+        r = nv.get("claims_report")
+        return r["n"] if r and r["game"] == self._game_byte() else 0
 
     def _archive(self, method: str, *args: Any) -> None:
-        """O7: the archive rows (`Store.match_started`, `Store.match_ended`) feed the same NOT SAVING chip as `store.log`: a
-        whistle write that fails loses the game result. Never raises (play continues)."""
+        """O7: the archive rows (`Store.match_started`, `Store.match_ended`) have their OWN failure kind (`not_saving.archive`,
+        red): a whistle write that fails, or an END that updates 0 rows (the match has no row), loses the game result. It is
+        cleared ONLY by a later successful archive write, never by a `store.log` success. Never raises (play continues)."""
         if not self.store:
             return
         try:
-            getattr(self.store, method)(*args)
+            rows = getattr(self.store, method)(*args)
+            if rows == 0:                      # `match_ended` on a match with no row: nothing was stored
+                raise LookupError(f"store.{method}: no row for match {args[0]!r}, so the result was not kept")
         except Exception as e:
-            if self._store_failures.fail(e, f"store.{method}: the match archive row"):
+            if self._archive_failures.fail(e, f"store.{method}: the match archive row"):
                 self._notify_listeners()
         else:
-            if self._store_failures.ok():
+            if self._archive_failures.ok():
                 self._notify_listeners()
 
     def _gun_index(self):
@@ -5008,19 +5015,14 @@ class Session:
         nv = self._node_view(nid)
         was_alive = nv.get("alive")          # A36: read BEFORE the update -- a life starts on the edge
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending", "config_id") if k in body})
-        # O6/O10: a node's CUMULATIVE loss counters. `dropped` (the old per-beat delta) was overwritten by the
-        # latest beat, so a lost beat lost the count; these keep the MAXIMUM ever reported (a restarted
-        # phone with cleared storage restarts its own count at 0, and must not erase what was already lost).
-        for wire, tot, base in _LOSS_COUNTERS:
-            v = body.get(wire)
-            if isinstance(v, int) and not isinstance(v, bool) and v >= 0:
-                prev = nv.get(tot)
-                if prev is None:
-                    # first sight: what the node lost BEFORE a match is not this match's loss
-                    nv[base] = 0 if self.in_play() else v
-                elif v < prev:
-                    nv[base] = 0         # a phone storage reset or a Stick reboot: its count restarted, so later losses show
-                nv[tot] = v
+        # O6/O10: the loss counts are scoped AT THE SOURCE: the phone names the match its count belongs to
+        # (`outbox_lost {match_id, n}`), the Stick the game byte it was armed with (`actions_dropped_game`).
+        # MC stores the latest report as sent; the snapshot shows it only against the current match / game.
+        ol = body.get("outbox_lost")
+        if isinstance(ol, dict) and isinstance(ol.get("match_id"), str) and _is_count(ol.get("n")):
+            nv["outbox_report"] = {"match_id": ol["match_id"], "n": ol["n"]}
+        if _is_count(body.get("actions_dropped")) and _is_count(body.get("actions_dropped_game")):
+            nv["claims_report"] = {"game": body["actions_dropped_game"], "n": body["actions_dropped"]}
         # F208: the pool-staleness claim is re-stated on EVERY heartbeat, so absent means "not stale" and
         # must clear the last one. Only a known reason is kept, and only a whole non-negative age.
         reason, stale_ms = body.get("pool_stale"), body.get("pool_stale_ms")
@@ -5569,7 +5571,6 @@ class Session:
         self.scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
                                          derive_cap=not m.get("adopted"),
                                          alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
-        self._loss_baseline()      # O6/O10: the loss chips mean "lost THIS match"
         if self.store:
             try:
                 snap = dict(self.config)
@@ -5727,7 +5728,6 @@ class Session:
         self._result_pushed = {}
         self.feed = []
         self.scorer = self._build_scorer(match_id, go, {})
-        self._loss_baseline()      # O6/O10: the loss chips mean "lost THIS match"
         if self.store:
             try:
                 self._archive("match_started", match_id, {**self.config, "_adopted": True}, go)
@@ -7734,7 +7734,6 @@ class Session:
         self._app_blocked_alerted.clear()
         self._plan_blocked_alerted.clear()
         self.last_recap = None
-        self._loss_baseline()      # O6/O10: the loss chips mean "lost THIS match"
         if self.store:
             try:
                 # The config AND the compiled head we actually pushed. Tony, 2026-09-01: "as we debug,
@@ -8408,7 +8407,6 @@ class Session:
         if self.in_play():
             raise ConflictError(f"the match is {self.phase.upper()} — END it before starting the next one")
         self._roll_forward_from_recap()
-        self._loss_baseline()
         return self.load_game()
 
     def _retire_scorer(self) -> None:
@@ -8453,7 +8451,6 @@ class Session:
         self._changed()
 
     def new_session(self, keep_roster: bool = True) -> None:
-        self._loss_baseline()
         if self.start_info and self.in_play():
             self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34
         # 2026-09-16: leaving a finished match with the roster kept is the NEXT MATCH, and the finished
@@ -8692,7 +8689,7 @@ class Session:
             # all), and none of them agreed with the one MC already computes.
             row["stale"] = bool(nv.get("stale"))
             nodes.append(row)
-        failing = {part: v for part, track in (("store", self._store_failures), ("snapshot", self._snapshot_failures))
+        failing = {part: v for part, track in (("store", self._store_failures), ("archive", self._archive_failures), ("snapshot", self._snapshot_failures))
                    if (v := track.view())}
         state: State = {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted
