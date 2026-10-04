@@ -1,0 +1,843 @@
+{
+  "health_armor_max": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "max_armor": 255,
+          "max_hp": 45,
+          "max_shield": 0,
+          "preset": "custom"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "health_hp_bool": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "health.max_hp must be 1..255"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "health_hp_min": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "max_armor": 70,
+          "max_hp": 1,
+          "max_shield": 0,
+          "preset": "custom"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "health_hp_zero": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "health.max_hp must be 1..255"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "health_object": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "health must be an object"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "health_preset": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "health.preset must be one of ('standard', 'shields', 'hardcore', 'custom')"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "health_shield_over": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "health.max_shield must be 0..255"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "mode_params_bound": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "mode 'koth' has no parameter 'hold_target_s' \u2014 its parameters are: points_per_s, score_target"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "mode 'koth' has no parameter 'hold_target_s' \u2014 its parameters are: points_per_s, score_target"
+        ],
+        "ok": false,
+        "warnings": [
+          "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT AWAKE ON THE POINT, AND CHECK ITS BATTERY"
+        ]
+      }
+    }
+  },
+  "mode_params_none": {
+    "patch": {
+      "value": {
+        "key_value": null,
+        "present": false
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "mode_params_object": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "mode_params must be an object (the mode's parameters, GET /api/modes .params)"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "mode_params must be an object (the mode's own parameters, GET /api/modes .params)"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "mode_params_unknown": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "mode 'tdm' takes no mode_params, so 'unknown' would be a control that does nothing"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "mode 'tdm' takes no mode_params, so 'unknown' would be a control that does nothing"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "presentation_bad": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "presentation.preset must be one of ['counter_strike', 'extraction', 'infection', 'last_stand', 'silenced', 'standard', 'vip']"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "presentation_object": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "presentation must be an object"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "presentation_vip": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "announcer": true,
+          "blackout": false,
+          "events": {
+            "vip_down": {
+              "gun_led": 0,
+              "sound": "VA72"
+            },
+            "vip_hit": {
+              "gun_led": 8,
+              "headset": 8,
+              "sound": "VIP"
+            }
+          },
+          "gun": {
+            "in_play": "team",
+            "pregame": "team"
+          },
+          "gun_flash": true,
+          "headset": {
+            "death": "native",
+            "hit": null,
+            "in_play": "dark",
+            "pregame": "team",
+            "respawn_flash": true,
+            "role": true,
+            "start_flash": true
+          },
+          "headset_team": true,
+          "hud_events": true,
+          "mc_confidence": true,
+          "mc_events": true,
+          "preset": "vip",
+          "sight_flash": true,
+          "silent_weapons": false,
+          "voice": "on"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": [
+          "VIP profile with no VIP named \u2014 set config.vip_player_id or nobody's headset holds the white VIP state and vip_hit / vip_down have no subject"
+        ]
+      }
+    }
+  },
+  "respawn_delay_bool": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "respawn.delay_s must be 0..600"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "respawn_delay_max": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "delay_s": 600,
+          "type": "auto"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "respawn_delay_min": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "delay_s": 0,
+          "type": "auto"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "respawn_delay_over": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "respawn.delay_s must be 0..600"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "respawn_delay_unsafe": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "respawn.delay_s of 1-2s wedges the headset in the relay's out-blink (F13); use 0 (no respawn) or >= 3"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "respawn_gate": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "delay_s": 15,
+          "type": "auto"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "respawn_lms": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "delay_s": 0,
+          "type": "auto"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "lms cannot use respawn.type=='auto'"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "respawn_object": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "respawn must be an object"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "respawn_protect": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "respawn.protect_s must be one of 0, 1, 2"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "respawn.protect_s must be one of 0, 1, 2"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "respawn_type": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "respawn.type must be auto|scanner|none"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "scoring_frag_bool": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "scoring.frag_limit must be a positive integer or null"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": [
+          "frag_limit on a non-full-coverage venue is an in-coverage early end only; the guaranteed end is time_limit_s (A4.8) \u2014 winner is provisional until recap"
+        ]
+      }
+    }
+  },
+  "scoring_frag_min": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "frag_limit": 1,
+          "win_by": "kills"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": [
+          "frag_limit on a non-full-coverage venue is an in-coverage early end only; the guaranteed end is time_limit_s (A4.8) \u2014 winner is provisional until recap"
+        ]
+      }
+    }
+  },
+  "scoring_frag_none": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "frag_limit": null,
+          "win_by": "kills"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "scoring_frag_zero": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "scoring.frag_limit must be a positive integer or null"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "scoring_hold_bool": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": [
+          "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT AWAKE ON THE POINT, AND CHECK ITS BATTERY"
+        ]
+      }
+    }
+  },
+  "scoring_hold_max": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "frag_limit": null,
+          "hold_target_s": 7200,
+          "win_by": "objective"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": [
+          "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT AWAKE ON THE POINT, AND CHECK ITS BATTERY"
+        ]
+      }
+    }
+  },
+  "scoring_hold_min": {
+    "patch": {
+      "value": {
+        "key_value": {
+          "frag_limit": null,
+          "hold_target_s": 1,
+          "win_by": "objective"
+        },
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": [
+          "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT AWAKE ON THE POINT, AND CHECK ITS BATTERY"
+        ]
+      }
+    }
+  },
+  "scoring_hold_over": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": [
+          "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT AWAKE ON THE POINT, AND CHECK ITS BATTERY"
+        ]
+      }
+    }
+  },
+  "scoring_hold_wrong_mode": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "scoring_object": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "scoring must be an object"
+    },
+    "validate": {
+      "exception": "AttributeError",
+      "message": "'list' object has no attribute 'get'"
+    }
+  },
+  "scoring_win_by": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "scoring.win_by must be kills, survival or objective"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "scoring.win_by must be kills, survival or objective"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "teams_duplicate": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "duplicate $TID ['0'] in teams: two teams sharing a $TID are one side on the field (a shared $TID cannot register a hit between them; a shared team_id resolves every player to the first of the two). Give each team its own."
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "duplicate team tid"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "teams_koth_count": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": [
+          "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT AWAKE ON THE POINT, AND CHECK ITS BATTERY"
+        ]
+      }
+    }
+  },
+  "teams_neutral": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "F82: mode 'koth' cannot have a team on $TID 2 at all (a), the value a NEUTRAL hill broadcasts, and anyone moved onto it later reads every uncaptured point as their own. Use tid 0, 1 or 3."
+        ],
+        "ok": false,
+        "warnings": [
+          "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT AWAKE ON THE POINT, AND CHECK ITS BATTERY"
+        ]
+      }
+    }
+  },
+  "teams_object": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "teams must be a list of team objects with team_id + integer tid"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "teams_tid_bool": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "teams must be a list of team objects with team_id + integer tid"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "team tid(s) [True] outside 0-3 (F35): the IR word's team field is 2 bits -- a $TID of 4 or higher makes teammates damage each other and can let a gun read its own shots as friendly"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "teams_tid_high": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "team tid(s) [4] outside 0-3 (F35): the IR word's team field is 2 bits -- a $TID of 4 or higher makes teammates damage each other and can let a gun read its own shots as friendly"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "team tid(s) [4] outside 0-3 (F35): the IR word's team field is 2 bits -- a $TID of 4 or higher makes teammates damage each other and can let a gun read its own shots as friendly"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "time_bool": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "time_limit_s must be an integer 1..7200 or null"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "time_max": {
+    "patch": {
+      "value": {
+        "key_value": 7200,
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "time_min": {
+    "patch": {
+      "value": {
+        "key_value": 1,
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "time_none": {
+    "patch": {
+      "value": {
+        "key_value": null,
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "time_limit_s is required (>0) unless opts.venue_coverage=='full' (A4.8; observed backhaul coverage does NOT lift it \u2014 A28.4)"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "time_none_asserted": {
+    "patch": {
+      "value": {
+        "key_value": null,
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "time_over": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "time_limit_s must be an integer 1..7200 or null"
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  },
+  "time_string": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "time_limit_s must be an integer 1..7200 or null"
+    },
+    "validate": {
+      "exception": "TypeError",
+      "message": "'<=' not supported between instances of 'str' and 'int'"
+    }
+  },
+  "time_zero": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "time_limit_s must be an integer 1..7200 or null"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "time_limit_s is required (>0) unless opts.venue_coverage=='full' (A4.8; observed backhaul coverage does NOT lift it \u2014 A28.4)"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "vip_bool": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "vip_player_id must be a player_id string or null"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "vip_player_id True is not on the roster: pick the VIP from the players in this session"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "vip_empty": {
+    "patch": {
+      "exception": "ValueError",
+      "message": "vip_player_id must be a player_id string or null"
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "vip_player_id '' is not on the roster: pick the VIP from the players in this session"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "vip_missing": {
+    "patch": {
+      "value": {
+        "key_value": "absent",
+        "present": true
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [
+          "vip_player_id 'absent' is not on the roster: pick the VIP from the players in this session"
+        ],
+        "ok": false,
+        "warnings": []
+      }
+    }
+  },
+  "vip_none": {
+    "patch": {
+      "value": {
+        "key_value": null,
+        "present": false
+      }
+    },
+    "validate": {
+      "value": {
+        "errors": [],
+        "ok": true,
+        "warnings": []
+      }
+    }
+  }
+}

@@ -30,10 +30,11 @@ from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STA
 from .types import GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR   # K8
 from .types import SIR_GRANT_FNS, SIR_NO_POOL_FNS   # A9: one copy, generated for the phone
 from . import presentation as _pres
+from . import configcheck as _check
+from ..modes.registry import validate_mode_params as _validate_mode_params
 from .. import poolgauge as pg
 from .. import voices as _voices
 from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM
-from ..modes.registry import validate_mode_params as _validate_mode_params
 
 # Field-corrected 2026-08-30 (first live 2-player match on the Mac): $VOL,69 — the value iOS
 # Callsign sends — plays at roughly **on-gun level 2** and Tony called it "super low" outdoors.
@@ -841,11 +842,7 @@ def respawn_settings(respawn) -> tuple[int, int, int]:
     protect_s = r.get("protect_s", TIMED_PROTECT_S_DEFAULT)
     delay_ms = r.get("weapon_delay_ms", WEAPON_DELAY_MS_DEFAULT)
     station_s = r.get("station_protect_s", STATION_PROTECT_S_DEFAULT)
-    for name, v, ok in (("protect_s", protect_s, TIMED_PROTECT_S_OPTIONS),
-                        ("weapon_delay_ms", delay_ms, WEAPON_DELAY_MS_OPTIONS),
-                        ("station_protect_s", station_s, STATION_PROTECT_S_OPTIONS)):
-        if isinstance(v, bool) or v not in ok:
-            raise ValueError(f"respawn.{name} must be one of {', '.join(str(o) for o in ok)}")
+    _check.respawn_profile_options(r)
     protect_ms = int(protect_s) * 1000
     trigger_ms = max(int(delay_ms), protect_ms + TRIGGER_AFTER_PROTECT_MS if protect_ms else 0)
     return protect_ms, trigger_ms, int(station_s) * 1000
@@ -2937,7 +2934,7 @@ class Compiler:
 
         # time limit: required (>0) on the phone path unless a fully-covered venue is asserted
         tl = config.get("time_limit_s")
-        if not asserted and (tl is None or tl <= 0):
+        if _check.config_needs_time_limit(tl, asserted):
             errors.append("time_limit_s is required (>0) unless opts.venue_coverage=='full' (A4.8; "
                           "observed backhaul coverage does NOT lift it — A28.4)")
 
@@ -2951,7 +2948,7 @@ class Compiler:
             errors.append(f"duplicate player_num across roster: {sorted(dupes)}")
 
         # team tids unique
-        tids = [t["tid"] for t in config.get("teams", [])]
+        tids = _check.team_tids(config.get("teams", []))
         if len(tids) != len(set(tids)):
             errors.append("duplicate team tid")
 
@@ -2960,7 +2957,7 @@ class Compiler:
         # other, and a tid>=4 player's own shots read as a lower team to everyone else. `state.py`'s
         # config sanitizer already rejects this at PUT time; this is belt-and-braces for any config
         # that reaches the compiler another way (a hand-built preset, a test, opts.station_source flows).
-        bad_tids = [t for t in tids if not (isinstance(t, int) and not isinstance(t, bool) and t in pg.TEAM_TIDS)]
+        bad_tids = _check.invalid_team_tids(tids)
         if bad_tids:
             errors.append(f"team tid(s) {sorted(set(bad_tids))} outside 0-3 (F35): the IR word's team "
                           f"field is 2 bits -- a $TID of 4 or higher makes teammates damage each other "
@@ -2988,8 +2985,7 @@ class Compiler:
             # target and one drag re-pushes `$TID,2`. `state.py` refuses such a config at PUT time;
             # this catches one that arrives another way (a stored preset from before the refusal, the
             # CLI, a fixture) and names the team rather than waiting for a body to be dropped on it.
-            neutral_teams = sorted({str(t.get("team_id")) for t in config.get("teams", [])
-                                    if t.get("tid") == _NEUTRAL_TEAM})
+            neutral_teams = _check.neutral_team_ids(config.get("teams", []), _NEUTRAL_TEAM)
             if neutral_teams:
                 errors.append(
                     f"F82: mode {mode!r} cannot have a team on $TID {_NEUTRAL_TEAM} at all "
@@ -3024,19 +3020,18 @@ class Compiler:
         # names no person), so a stale id here means the player was removed after being named.
         vip = config.get("vip_player_id")
         if vip is not None:
-            rostered = {str(p.get("player_id")) for p in roster}
-            if not isinstance(vip, str) or vip not in rostered:
+            if not _check.vip_on_roster(vip, roster):
                 errors.append(f"vip_player_id {vip!r} is not on the roster: pick the VIP from the players in this session")
-        elif (config.get("presentation") or {}).get("preset") == "vip":
+        elif _check.vip_presentation(config.get("presentation") or {}):
             warnings.append("VIP profile with no VIP named — set config.vip_player_id or nobody's headset holds the "
                             "white VIP state and vip_hit / vip_down have no subject")
 
         # ffa ⇒ exactly one team (one $TID); friendly fire is forced on in compile (§2/A5.2)
-        if mode == "ffa" and len({t["tid"] for t in config.get("teams", [])}) > 1:
+        if mode == "ffa" and len(set(_check.team_tids(config.get("teams", [])))) > 1:
             errors.append("ffa requires a single $TID (one team); identity is $PSET, not $TID (A4.1)")
 
         # lms ⇔ no auto-respawn (none / finite lives)
-        if mode == "lms" and config.get("respawn", {}).get("type") == "auto":
+        if _check.auto_respawn_in_lms(mode, config.get("respawn", {})):
             errors.append("lms cannot use respawn.type=='auto'")
         try:
             respawn_settings(config.get("respawn"))   # 2026-09-19: the protection and weapon-delay options
@@ -3324,8 +3319,7 @@ class Compiler:
 
         # frag-limit on a non-covered venue is a coverage-zone early end, not a guaranteed win (C1/M7)
         scoring = config.get("scoring", {})
-        if ((scoring.get("frag_limit") or 0) > 0
-                and scoring.get("win_by") in (None, "", "kills") and not covered):
+        if _check.frag_limit_needs_coverage(scoring, covered):
             warnings.append("frag_limit on a non-full-coverage venue is an in-coverage early end only; "
                             "the guaranteed end is time_limit_s (A4.8) — winner is provisional until recap")
 
