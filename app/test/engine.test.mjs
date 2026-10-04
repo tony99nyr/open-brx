@@ -7441,7 +7441,7 @@ test('O9: a failing save logs once per streak, and again after a good save', () 
 });
 
 for (const [name, breakIt] of [['_restoreAmmo', e => { e._restoreAmmo = () => { throw new Error('bad ammo'); }; }], ['pu.restore', e => { const r = e.pu.restore.bind(e.pu); e.pu.restore = p => { r(p); throw new Error('bad pu'); }; }]]) {
-  test(`O9: a stored blob that makes ${name} throw leaves a fresh engine and one log line`, () => {
+  test(`O9: a stored blob that makes ${name} throw leaves a fresh engine and one log line`, async () => {
     const storage = mkStorage();
     const src = new Engine({ writer: () => {}, storage, now: () => 1_000, log: () => {} });
     src.gun = { name: 'ALPHA-FE30', tail: 'FE30' }; src.player = { player_id: 'p1', display: 'REAPER' }; src.matchId = 'm1'; src.hp = 40; src.alive = true;
@@ -7454,8 +7454,21 @@ for (const [name, breakIt] of [['_restoreAmmo', e => { e._restoreAmmo = () => { 
     const eng = new Engine({ writer: () => {}, storage: { getItem: () => null, setItem() {}, removeItem() {} }, now: () => 1_000, log: m => logs.push(m) });
     breakIt(eng); eng.storage = storage;
     assert.doesNotThrow(() => eng._load());
+    await Promise.resolve();   // the line is emitted after the call, not during it
     for (const k of ['gun', 'player', 'matchId', 'hp', 'alive', '_pendingPhase', '_shotAcct', '_prevReserve', '_prevAmmo']) assert.deepEqual(eng[k], fresh[k], `${k} is as in a fresh engine`);
     assert.deepEqual(eng.pu.snapshot(), fresh.pu.snapshot(), 'power-up state is fresh');
     assert.equal(logs.filter(m => m.startsWith('persisted context unreadable, starting fresh')).length, 1, logs.join('|'));
   });
 }
+
+test('O9: a corrupt stored context logs after construction, so a log callback that reads the engine const does not hit its TDZ', async () => {
+  const storage = mkStorage(); storage.setItem('brx.engine', '{not json');
+  const lines = [];
+  const log = m => { lines.push([m, engine.matchId]); };   // app.js shape: reads `engine`, assigned only after `new Engine()` returns
+  let engine;
+  assert.doesNotThrow(() => { engine = new Engine({ writer: () => {}, storage, now: () => 1, log }); });
+  assert.deepEqual(lines, [], 'nothing during construction');
+  await Promise.resolve();
+  assert.equal(lines.length, 1);
+  assert.match(lines[0][0], /^persisted context unreadable, starting fresh/);
+});

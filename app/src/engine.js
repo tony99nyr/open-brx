@@ -1212,7 +1212,10 @@ export class Engine {
       this._pendingPhase = s.phase;
     } catch (e) {
       if (undo) { try { undo(); } catch (_) { /* nothing left to undo */ } }
-      this.log(`persisted context unreadable, starting fresh: ${e && e.message || e}`, 'le');
+      // _load runs inside the constructor, and the host's log callback may read the engine it is still building (app.js):
+      // emit after construction, never during it.
+      const msg = `persisted context unreadable, starting fresh: ${e && e.message || e}`;
+      queueMicrotask(() => this.log(msg, 'le'));
     }
   }
   /** F164: {slot: [mag, reserve]} for each slot the gun has reported this life (mag from the account, so a round in
