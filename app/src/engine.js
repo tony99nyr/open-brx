@@ -1610,7 +1610,9 @@ export class Engine {
       this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
       return;
     }
-    if (gs === slot && expected != null && gm === expected) {
+    // F416 r4: a held heavy before the first pull (F436) may read its own slot or the switch-back slot; both match.
+    const hv = this._puHeld, heavyOk = !!hv && (gs === hv.slot || (hv.back && gs === hv.back.slot));
+    if (heavyOk || (gs === slot && expected != null && gm === expected)) {
       this._spawnCheck = null;
       if (this._writeLost === c.life) this._writeLost = null;
       this.log(`F416: the gun's weapon state matches ${c.why}; landed, no re-send`, 'lk');
@@ -1627,7 +1629,9 @@ export class Engine {
     }
     c.resends++; c.resentAt = this.now();
     // Only a round or a hit is play. A pull is NOT: a dead trigger on an unspawned gun is exactly what makes players pull.
-    const whole = !(this.lastHitAt > c.firstAt) && this.shots === c.shotsAt;
+    const unplayed = !(this.lastHitAt > c.firstAt) && this.shots === c.shotsAt;
+    const whole = unplayed && !this._puHeld;   // F416 r4: a whole burst empties the held heavy's slot; repair controls only
+    if (unplayed && !whole) this.log(`F416: ${this._puHeld.name} held; no whole re-send (it would empty slot ${this._puHeld.slot})`, 'le');
     this.log(`F416: ${evidence}; re-sending ${whole ? 'whole burst' : 'weapon controls'} (${c.resends}/${SPAWN_RESENDS})`, 'le');
     if (whole) { this._writeLife(c.frames, `${c.why} (re-sent ${c.resends})`, c.life, c); return; }
     const rp = this._respawnProfile();

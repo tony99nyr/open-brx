@@ -1365,3 +1365,30 @@ test('pickup at the stack cap: the player does not claim, so the station keeps t
   h.fire(2, 3); h.adv(3000);
   assert.equal(h.eng._puClaimable(4, item, h.eng.now()), h.eng._puClaimable(4, { ...item, weapon_id: 'nope' }, h.eng.now()), 'one rocket fired: the cap no longer blocks the claim');
 });
+
+// ---- F416 r4: a spawn check open while a heavy is held. F436: before the first pull of the life the gun may ignore the
+// equip, so a queried `$LCD` can read the loadout slot. A whole re-send carries `$SPAWN` + `$AMMO,2,0,0,1` and wipes the
+// heavy that `_puHeld` still holds. ----
+const openCheck = e => { const now = e.now(); e._spawnCheck = { life: e._lifeSeq, frames: [...e.frames.spawn], why: 'spawn', resends: 0, firstAt: now, writeAt: now - 1, shotsAt: e.shots, asks: 0, heardAt: 0, queryAt: now, lost: false }; };
+
+test('F416 r4: a queried $LCD on the switch-back slot while a heavy is held is a match, never a whole re-send', () => {
+  const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away();
+  assert.equal(h.eng._puHeld?.slot, 2, 'setup: Rockets held'); assert.equal(h.eng.activeSlot, 2, 'setup: on the trigger');
+  openCheck(h.eng); const n = h.mark();
+  h.frame('$LCD,45,70,0,0,32,192,*');   // the gun still on slot 0 (F436: the equip waits for the first pull)
+  const after = h.since(n);
+  assert.ok(!after.some(f => f.startsWith('$SPAWN')), `no $SPAWN over a held heavy: ${JSON.stringify(after)}`);
+  assert.ok(!after.includes('$AMMO,2,0,0,1,*'), 'the heavy is not emptied');
+  assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives');
+  assert.equal(h.eng._spawnCheck, null, 'the check closes on the held or switch-back slot');
+});
+
+test('F416 r4: a real mismatch while a heavy is held repairs weapon controls only, never the whole burst', () => {
+  const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away();
+  openCheck(h.eng); const n = h.mark();
+  h.frame('$LCD,45,70,0,1,3,24,*');   // slot 1: neither the heavy nor its switch-back slot
+  const after = h.since(n);
+  assert.ok(!after.some(f => f.startsWith('$SPAWN')), `no $SPAWN while a heavy is held: ${JSON.stringify(after)}`);
+  assert.ok(!after.includes('$AMMO,2,0,0,1,*'), 'the heavy is not emptied');
+  assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives');
+});
