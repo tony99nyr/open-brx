@@ -2079,6 +2079,8 @@ export interface ArmoryCorruptView {
 }
 
 export interface SnapshotFeedRow {
+  /** F454: a monotonic row id, so `feed_edit` can replace the row; absent on a row restored from an old snapshot */
+  id?: number;
   t_match_s: number;
   text: string;
   tag?: string;
