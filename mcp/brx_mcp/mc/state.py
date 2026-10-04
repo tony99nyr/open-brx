@@ -851,9 +851,9 @@ class Session:
                     # A56 (M1): the powerup schedule of the match in play, so a restart keeps taken items taken.
                     **({"powerups": self._pu_sched} if self._pu_sched and self.in_play()
                        and self._pu_sched.get("match_id") == self.current_match_id() else {})}
-            tmp = self._persist_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(snap))
-            tmp.replace(self._persist_path)
+            # 0600: the snapshot holds the join secret. Atomic: a crash leaves the old file or the new one.
+            from ..storage import atomic_write_text
+            atomic_write_text(self._persist_path, json.dumps(snap), mode=0o600)
         except Exception:
             import logging; logging.getLogger("brx.mc").exception("session snapshot failed (play continues)")
 
@@ -1012,6 +1012,10 @@ class Session:
         kept = move_aside_exclusive(path, "bad")
         if kept is None:
             import logging; logging.getLogger("brx.mc").error("could not move the bad session snapshot aside")
+        else:
+            import contextlib, os
+            with contextlib.suppress(OSError):
+                os.chmod(kept, 0o600)     # it holds the join secret; a file from an older build may be 0644
         return kept
 
     def restore_snapshot(self) -> int:
@@ -3747,9 +3751,14 @@ class Session:
         dismiss = getattr(self.armory, "dismiss_corrupt", None)
         return bool(dismiss and dismiss())
 
-    def finish_armory_dismiss(self) -> None:
-        """The state half of DISMISS: run on the event loop, after `dismiss_armory_corrupt_io` returned True."""
-        self._gun_index()
+    def finish_armory_dismiss(self, guns: dict[str, dict] | None = None) -> None:
+        """The state half of DISMISS: run on the event loop, after `dismiss_armory_corrupt_io` returned True.
+        `guns` is the fresh armory read in the worker thread (so the loop never waits on the inventory lock);
+        without it (the sync path) this reads it here."""
+        if guns is None:
+            self._gun_index()
+        else:
+            self.guns = guns
         self._changed()
 
     def _auto_station_id(self, nid: str) -> int:
@@ -6164,8 +6173,8 @@ class Session:
             return
         try:
             self.last_recap = self._scorer_recap(self.scorer, self._match_stations)
-            if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
-                self.store.match_ended(self.scorer.match_id, self.last_recap)
+            # the ARCHIVE row; the live recap above is re-taken either way (O3: a failure is counted)
+            self._store_write("match_ended", self.scorer.match_id, self.last_recap)
             self._push_result()          # A24: the field is re-told whenever the recap moves
         except Exception:
             import logging
@@ -8407,8 +8416,7 @@ class Session:
             recap = self._scorer_recap(sc, self._retired_stations)
             if mid in self._ended:
                 self._ended[mid]["recap"] = recap
-            if self.store:
-                self.store.match_ended(mid, recap)
+            self._store_write("match_ended", mid, recap)     # O3: counted and logged, never swallowed
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("late-fact re-store for a retired match failed (play continues)")

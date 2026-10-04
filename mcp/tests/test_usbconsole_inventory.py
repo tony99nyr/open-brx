@@ -322,3 +322,16 @@ def test_a_failed_dismiss_move_raises_and_keeps_the_file_and_the_notice():
         assert p.read_bytes() == _BAD and _uc.read_corrupt_notice()
         assert not list(base.glob("armory.json.dismissed-*"))
     _on_base(run)
+
+
+def test_r5_a_corrupt_record_never_names_its_key():
+    """Review round 5: armory keys are headset PINs, and the corruption text reaches /api/state (no token)."""
+    def run(base):
+        (base / "armory.json").write_text('{"PIN-4821": 7}', encoding="utf-8")
+        try:
+            _uc.load_inventory()
+        except _uc.InventoryCorrupt as e:
+            assert "4821" not in str(e) and "4821" not in e.error, str(e)
+        else:
+            raise AssertionError("a non-object record must be corrupt")
+    _on_base(run)

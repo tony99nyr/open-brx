@@ -79,3 +79,17 @@ def test_a_failed_end_row_is_logged_and_counted():
         msgs = _capturing(lambda: s.control("end"))
     assert s.store_errors >= 1
     assert any("match_ended" in m and info["match_id"] in m for m in msgs)
+
+
+def test_r5_a_failed_late_recap_rewrite_is_counted_too():
+    """Review round 5: the late-fact recap re-write (`_restore_recap`) went straight to the store and bypassed
+    `_store_write`, so its failure was logged but never counted on the board."""
+    s, net, clock, ps, info = go_live(2)
+    s.control("end")
+    before = s.store_errors
+
+    def boom(self, *a, **k):
+        raise RuntimeError("database is locked")
+    with mock.patch.object(Store, "match_ended", boom):
+        s._restore_recap()
+    assert s.store_errors == before + 1

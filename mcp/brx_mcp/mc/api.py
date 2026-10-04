@@ -624,7 +624,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except Exception as e:
             return _err(f"COULD NOT MOVE THE CORRUPT ARMORY ASIDE: {type(e).__name__}: {e}", 500)
         if dismissed:
-            s.finish_armory_dismiss()
+            guns = await asyncio.to_thread(s._read_guns)     # the re-read may wait on the lock: off the loop
+            s.finish_armory_dismiss(guns if guns is not None else {})
         return JSONResponse({"ok": True, "dismissed": dismissed})
 
     async def evict_node(req):

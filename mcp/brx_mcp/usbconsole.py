@@ -248,7 +248,8 @@ def _validate_inventory(inv) -> dict:
         raise ValueError(f"expected a JSON object, found {type(inv).__name__}")
     for k, v in inv.items():
         if not isinstance(k, str) or not isinstance(v, dict):
-            raise ValueError(f"record {k!r} is a {type(v).__name__}, expected an object")
+            # never name the key: armory keys are headset PINs, and this text reaches /api/state
+            raise ValueError(f"a record is a {type(v).__name__}, expected an object")
     return inv
 
 
