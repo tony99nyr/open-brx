@@ -1703,6 +1703,8 @@ class GunStage:
             t = str(f).split(",")
             if t[0] in ("$AMMO", "$WEAP"):
                 slot = _tok_int(t, 1)
+                if slot is None:
+                    continue
                 a = self._shot_acct.get(slot)
                 if gens is not None and (a is None or gens.get(slot) != a.get("echo_gen")):
                     continue
@@ -1716,6 +1718,8 @@ class GunStage:
             t = str(f).split(",")
             if t[0] in ("$AMMO", "$WEAP"):
                 slot = _tok_int(t, 1)
+                if slot is None:
+                    continue
                 a = self._shot_acct.get(slot)
                 out[slot] = a.get("echo_gen") if a is not None else None
         return out
@@ -4226,11 +4230,11 @@ class GunStage:
         # confirms an ALT swap (bug 3b).
         acct = self._shot_acct.get(slot)
         echoing = self._acct_echoing(slot) and acct is not None
-        expect = acct["echo_expect"] if echoing else None
+        expect = acct["echo_expect"] if echoing and acct is not None else None
         own_echo = echoing and mag == expect
         # bug 3a: an `$LCD` inside the window is the gun answering before our row has echoed: not news, and it must
         # not use up the echo. The ACCOUNT goes on the screen.
-        if lcd and echoing:
+        if lcd and echoing and acct is not None:
             if slot == self.active_slot:
                 self._publish_ammo(slot, self._acct_live(slot), acct.get("res"))
             return
@@ -4238,7 +4242,7 @@ class GunStage:
         # the number written -- except below it on the slot ALT is switching TO (the confirming round). AT the number
         # it is only the echo (bug 3b). An `$LCD` for another slot is a report, booked and nothing more (bug 3a).
         off_slot_echo = slot != self.active_slot and (lcd or own_echo or (
-            echoing and mag < expect and not (self.switching and slot == self.switching.get("to"))))
+            echoing and expect is not None and mag < expect and not (self.switching and slot == self.switching.get("to"))))
         seen = self._acct_ammo(slot, mag, self._prev_ammo.get(slot))
         if isinstance(seen, _Ignore):
             a = self._shot_acct.get(slot)
