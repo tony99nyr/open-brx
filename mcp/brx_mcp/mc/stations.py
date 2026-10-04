@@ -2,65 +2,69 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Callable, Protocol, cast
+from typing import Callable, Protocol, cast
 
 from . import powerups as _pu
+from .interfaces import Compiler as CompilerPort
+from .scoring import Scorer
 from .types import (ADOPT_SLACK_MS, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
     STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S, STATION_LOCK_MAX_S,
     STATION_REBOOT_SLACK_MS, STATION_TEAM_ANY, STATUS_HEARTBEAT_MS, TX_POWERS,
-    GameConfig, Phase, PowerupSlot, RangeEdit, RecapStationRow, StationAssignment, StationControl,
+    GameConfig, Phase, Player, PowerupSlot, RangeEdit, RecapStationRow, StationAssignment, StationControl,
     StationDeparture, StationItem, StationRange, StationRef, StationReport, StationRestore,
-    StationView, is_station_kind, parse_app_ver)
+    StationView, Team, is_station_kind, parse_app_ver)
 
 STATION_REARM = "RE-ARM IT FROM ITEMS ON ARMORY"
 STATION_BRING_BACK = "NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM"
 STATION_ARMED_OLDER = f"ARMED FOR AN OLDER GAME: {STATION_REARM}"
 STATION_NOT_ARMED = f"PHONE SAYS NOT ARMED: {STATION_REARM}"
 STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE"
+# F221 battery rule: under 30 % is AMBER for the gun, the phone and the station alike.
 BATTERY_LOW_PCT = 30
 _STATION_LOCK_KEYS = ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "boot", "tally")
 
 
+class StationNet(Protocol):
+    def push(self, node_id: str, kind: str, body: dict) -> bool: ...
+
+
 class StationHost(Protocol):
     """The match interface required by the station registry."""
-    compiler: Any
+    compiler: CompilerPort
     @property
     def config(self) -> GameConfig: ...
     nodes: dict[str, dict]
     now_ms: Callable[[], int]
     powerups_enabled: bool
-    net: Any
+    net: StationNet
     @property
     def phase(self) -> Phase: ...
-    players: dict
-    node_player: dict
-    scorer: Any
-    teams: list
-    _departed_match_stations: Any
-    _game_no_started: bool
+    players: dict[str, Player]
+    node_player: dict[str, str]
+    scorer: Scorer | None
+    teams: list[Team]
     lobby_pushed: bool
-    start_info: Any
-    _sync_pending: Any
-    _match_end_t: Any
-    _pu_sched: Any
-    def _after_station_change(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _brief_pickups(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _changed(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _validate(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _refuse_station_change_in_play(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _game_byte(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _node_loss(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _pu_update_body(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _log(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _on_feed(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _operator_t_match(self, *args: Any, **kwargs: Any) -> Any: ...
-    def in_play(self, *args: Any, **kwargs: Any) -> Any: ...
-    def is_adopted(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _resend_brief_pickups(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _fresh_head_repush(self, *args: Any, **kwargs: Any) -> Any: ...
-    def _repush_stations_to_players(self, *args: Any, **kwargs: Any) -> Any: ...
+    start_info: dict | None
+    def _after_station_change(self, slots_before: list[PowerupSlot], pickups_before: list[dict] | None = None) -> None: ...
+    def _brief_pickups(self) -> list[dict]: ...
+    def _changed(self) -> None: ...
+    def _validate(self, roster: list[Player] | None = None) -> dict: ...
+    def _refuse_station_change_in_play(self) -> None: ...
+    def _game_byte(self) -> int: ...
+    def _node_loss(self, nv: dict, which: str) -> int: ...
+    def _pu_update_body(self, nid: str) -> dict | None: ...
+    def _log(self, node_id: str, kind: str, body: dict, t_recv: int,
+             seq: int | None = None, parked: bool = False) -> None: ...
+    def _on_feed(self, entry: dict) -> None: ...
+    def _operator_t_match(self, now: int) -> int: ...
+    def in_play(self) -> bool: ...
+    def is_adopted(self) -> bool: ...
+    def note_departed_station(self, nid: str, row: RecapStationRow) -> None: ...
+    def station_sync_state(self) -> tuple[int | None, dict[str, str]]: ...
+    def game_no_started(self) -> bool: ...
+    def pu_row(self, nid: str) -> tuple[dict, int]: ...
 
 def station_claims_dropped_line(n: int, station_id: object = None) -> str:
     """O10: a Stick's full queue evicted CLAIM reports this match (`status.actions_dropped`, counted since the Stick was armed for this game);
@@ -107,7 +111,14 @@ class StationRegistry:
 
     def __init__(self, host: StationHost):
         self.stations: dict[str, dict] = {}
+        # F364 (Tony 2026-09-25): the station id MC handed each node_id this session, kept after a clear or a
+        # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
+        # an MC restart. `_auto_station_id` reads it; the operator never types an id.
         self._station_id_of: dict[str, int] = {}
+        # Bench 2026-10-02 (option B): an ASSIGNED station that left ITEMS (its own BACK TO HUD, or an MC RELEASE),
+        # node_id -> what it was. Named in the LOAD refusal and on ITEMS; RESTORE re-applies it once the same node is
+        # back. Kept across NEXT MATCH and an MC restart (the snapshot); gone when that node is assigned again or on a
+        # FRESH SESSION. `line` and the view are derived (`_station_departures_view`).
         self._station_departures: dict[str, dict] = {}
         self._stations_unlocked = False
         self._range_epoch = 0
@@ -248,11 +259,12 @@ class StationRegistry:
         LOAD's new game byte resets a station's own tally (`_arm_station`), so a station still out of
         range at LOAD loses that result for good. Advisory, like `_station_warnings()` beside it: it
         never blocks LOAD or START, and it clears the moment the station's node is heard again."""
-        if self._host._match_end_t is None:
+        match_end_t, pending = self._host.station_sync_state()
+        if match_end_t is None:
             return []
         return [f"{label} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST"
-                for nid, label in self._host._sync_pending.items()
-                if self._host.nodes.get(nid, {}).get("last_seen_ms", 0) < self._host._match_end_t]
+                for nid, label in pending.items()
+                if self._host.nodes.get(nid, {}).get("last_seen_ms", 0) < match_end_t]
 
     def set_station(self, nid: str, a: dict) -> StationView:
         """The operator's ITEMS assignment for one utility phone: kind / team / id / threshold. Validated in
@@ -530,7 +542,7 @@ class StationRegistry:
             if self._host.scorer and self._host.phase in ("armed", "live"):
                 rec = self._station_recap_row(self._station_view(nid))
                 if rec is not None:
-                    self._host._departed_match_stations[nid] = rec
+                    self._host.note_departed_station(nid, rec)
             slots_before, pickups_before = self._powerup_slots(), self._host._brief_pickups()
             st["assigned"], st["armed"], st["arm_pending"] = None, None, False
             for k in _STATION_LOCK_KEYS:
@@ -778,7 +790,7 @@ class StationRegistry:
         # RECALL/PANIC leave the session in KIT with the same game byte. A connected hill
         # must stop then, and a later hello must not restart its tally by omitting this field.
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
-        if self._host.phase == "recap" or (not self._host.in_play() and self._host._game_no_started and not self._host.lobby_pushed):
+        if self._host.phase == "recap" or (not self._host.in_play() and self._host.game_no_started() and not self._host.lobby_pushed):
             body["ends_in_ms"] = 0
         elif self._host.phase in ("armed", "live") and self._host.start_info and not self._host.is_adopted():
             body["starts_in_ms"] = self._host.start_info["go_live_t"] - now
@@ -1021,9 +1033,9 @@ class StationRegistry:
             attention.extend(lines)
         pu = self._host._pu_update_body(nid) if self._host.phase in ("armed", "live") else None
         if pu is not None:                         # A56: only while a schedule runs for the match in play
-            row = self._host._pu_sched["st"][nid]
+            row, go = self._host.pu_row(nid)
             view["item_available"] = row["available"]
-            view["next_spawn_at_ms"] = _pu.spawn_at(row["item"], self._host._pu_sched["go"], row["next_k"])
+            view["next_spawn_at_ms"] = _pu.spawn_at(row["item"], go, row["next_k"])
             if row.get("taken_by") is not None:
                 view["taken_by"] = row["taken_by"]
         return view

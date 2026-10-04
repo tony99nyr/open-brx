@@ -26,27 +26,25 @@ from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose 
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
-from .stations import (StationHost, StationRegistry, STATION_REARM, STATION_BRING_BACK, STATION_ARMED_OLDER,
-                       STATION_NOT_ARMED, STATION_BATTERY_LOW, _STATION_LOCK_KEYS, _range_edit_ok,
-                       station_claims_dropped_line)
-from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM     # F82: the tid a NEUTRAL hill broadcasts
+from .stations import (StationRegistry, STATION_BRING_BACK, STATION_ARMED_OLDER,
+                       STATION_NOT_ARMED, STATION_BATTERY_LOW, BATTERY_LOW_PCT, _STATION_LOCK_KEYS,
+                       _range_edit_ok)
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import RESPAWN_DELAY_MAX_S, TIME_LIMIT_MAX_S   # A11: generated for the console
-from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_CONTROL_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
-                    OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
-                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, ADOPT_SLACK_MS, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
-                    STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, TX_POWERS, Event,
+from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
+                    OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
+                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     GamePick, LastMatch, MatchItemKey, PieceKind,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
-                    SnapshotFeedRow, SlotRule, State, FailureView, NotSavingView, StationAssignment, StationDeparture, StationRestore, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
-                    StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
-                    StartNodeView, StartView, Stun, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
+                    SnapshotFeedRow, State, FailureView, NotSavingView, StationAssignment, StationDeparture,
+                    StationItem, PowerupSlot, PowerupsView, StationRef, StationReport, StationView,
+                    SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
+                    StartNodeView, StartView, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
 
 from . import powerups as _pu
@@ -363,10 +361,6 @@ def _is_count(v: object) -> bool:
     return isinstance(v, int) and not isinstance(v, bool) and v >= 0
 
 
-# F221 battery rule: under 30 % is AMBER for the gun, the phone and the station alike.
-BATTERY_LOW_PCT = 30
-
-
 def not_reached_line(age: str, tunnel_down: bool) -> str:
     """F155: a node whose last path to MC was the internet tunnel. ONE sentence shape, which the console's
     `staleReachReason` (webapp/mc/src/api/derive.ts) writes the same way."""
@@ -521,15 +515,6 @@ class Session:
         # never pruned while it holds an assignment (the operator set it up; a 10-minute silence is a phone
         # propped on a hill, not a phantom).
         self.station_registry = self._make_station_registry()
-        # F364 (Tony 2026-09-25): the station id MC handed each node_id this session, kept after a clear or a
-        # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
-        # an MC restart. `_auto_station_id` reads it; the operator never types an id.
-
-        # Bench 2026-10-02 (option B): an ASSIGNED station that left ITEMS (its own BACK TO HUD, or an MC RELEASE),
-        # node_id -> what it was. Named in the LOAD refusal and on ITEMS; RESTORE re-applies it once the same node is
-        # back. Kept across NEXT MATCH and an MC restart (the snapshot); gone when that node is assigned again or on a
-        # FRESH SESSION. `line` and the view are derived (`_station_departures_view`).
-
         # A56 (S58, F372): on by default. With `--no-powerups`, MC refuses an item preset, compiles no spare
         # slot, sends no `item` and runs no spawn schedule; a stored item (a restored snapshot) is inert.
         # `__main__` sets it from the CLI; a bare `Session()` (tests, callers with no CLI) still starts on.
@@ -2978,6 +2963,9 @@ class Session:
         """The advert `game` byte: 1..255, never 0 (0 = "any game", the v1 no-scoping value)."""
         return ((self.game_no - 1) % 255) + 1
 
+    def game_no_started(self) -> bool:
+        return self._game_no_started
+
     def _next_game_no(self) -> None:
         """Called by `push_config`: if a match has STARTED on the current number, this push is a new match.
         Bumping here rather than at start means a station armed at muster carries the right number before
@@ -2996,9 +2984,6 @@ class Session:
     def powerups_view(self) -> PowerupsView:
         """`GET /api/powerups`: the flag and the item presets, expanded from `powerups.py`'s defaults."""
         return _pu.presets_view(self.powerups_enabled, getattr(self.compiler, "catalog", None))
-
-    def _active_item(self, a: dict | None) -> StationItem | None:
-        return self.station_registry._active_item(a)
 
     def _item_stations(self) -> list[tuple[str, dict, StationItem]]:
         return self.station_registry._item_stations()
@@ -3025,6 +3010,9 @@ class Session:
         # and spawns on its own, so a lost MC link never freezes it.
         return {"id": a["id"], "available": row["available"],
                 "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], self._pu_sched["go"], row["next_k"]) - self.now_ms())}
+
+    def pu_row(self, nid: str) -> tuple[dict, int]:
+        return self._pu_sched["st"][nid], self._pu_sched["go"]
 
     def _push_station_update(self, nid: str, reset: bool = False) -> None:
         body = self._pu_update_body(nid)
@@ -3211,14 +3199,14 @@ class Session:
     def _station_sync_warnings(self) -> list[str]:
         return self.station_registry._station_sync_warnings()
 
+    def station_sync_state(self) -> tuple[int | None, dict[str, str]]:
+        return self._match_end_t, self._sync_pending
+
     def set_station(self, nid: str, a: dict) -> StationView:
         return self.station_registry.set_station(nid, a)
 
     _DEPARTURE_NAME = {"control": "HILL", "respawn": "RESPAWN", "powerup": "POWERUP", "extraction": "EXTRACT",
                        "bomb": "BOMB"}
-
-    def _departure_label(self, d: dict) -> str:
-        return self.station_registry._departure_label(d)
 
     def _record_departure(self, nid: str, reason: str, successor: str | None = None) -> None:
         return self.station_registry._record_departure(nid, reason, successor)
@@ -3227,14 +3215,8 @@ class Session:
     def _departure_ok(d: object) -> bool:
         return StationRegistry._departure_ok(d)
 
-    def _departure_line(self, d: dict) -> str:
-        return self.station_registry._departure_line(d)
-
     def _station_departures_view(self) -> list[StationDeparture]:
         return self.station_registry._station_departures_view()
-
-    def _departure_id_free(self, nid: str, d: dict) -> bool:
-        return self.station_registry._departure_id_free(nid, d)
 
     def dismiss_departure(self, nid: str) -> bool:
         return self.station_registry.dismiss_departure(nid)
@@ -3247,6 +3229,9 @@ class Session:
 
     def release_station(self, nid: str) -> bool:
         return self.station_registry.release_station(nid)
+
+    def note_departed_station(self, nid: str, row: RecapStationRow) -> None:
+        self._departed_match_stations[nid] = row
 
     def _after_station_change(self, slots_before: list[PowerupSlot], pickups_before: list[dict] | None = None) -> None:
         """Re-arm every station and re-push the players' allow-list -- or, when the pickup weapons moved (A56),
@@ -3304,29 +3289,11 @@ class Session:
     def _range_fields(self, prev: StationAssignment | None, thr: int, a: dict) -> dict:
         return self.station_registry._range_fields(prev, thr, a)
 
-    def _keep_stored_overrides(self, nid: str, a: dict) -> dict:
-        return self.station_registry._keep_stored_overrides(nid, a)
-
-    def _set_station_range_only(self, nid: str, a: dict) -> StationView | None:
-        return self.station_registry._set_station_range_only(nid, a)
-
     def _note_station_range(self, nid: str, st: dict, body: dict, t_recv: int) -> None:
         return self.station_registry._note_station_range(nid, st, body, t_recv)
 
-    def _note_range_edits(self, st: dict, edits: object, t_recv: int) -> None:
-        return self.station_registry._note_range_edits(st, edits, t_recv)
-
-    def _range_edit_match(self) -> int:
-        return self.station_registry._range_edit_match()
-
-    def _station_range_view(self, st: dict, rep: StationReport, now: int) -> tuple[StationRange, list[RangeEdit], list[str]]:
-        return self.station_registry._station_range_view(st, rep, now)
-
     def _arm_station(self, nid: str, relock: bool = False) -> bool:
         return self.station_registry._arm_station(nid, relock)
-
-    def _station_lock_s(self) -> int:
-        return self.station_registry._station_lock_s()
 
     def _note_station_lock(self, st: dict, game: int, lock: int) -> None:
         return self.station_registry._note_station_lock(st, game, lock)

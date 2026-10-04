@@ -85,6 +85,14 @@ def test_registry_lock_and_warnings_without_a_session():
     assert station["lock"] == {"s": 120, "at": 100_000}
 
 
+def test_registry_warns_about_missing_respawn_station_without_a_session():
+    registry = StationRegistry(SimpleNamespace(config={"mode": "tdm", "respawn": {"type": "scanner"}}))
+    assert registry._station_warnings() == [
+        "SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME "
+        "BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT",
+    ]
+
+
 def test_registry_view_and_recap_row_without_a_session():
     registry = StationRegistry(SimpleNamespace(
         now_ms=lambda: 100_000, nodes={"station-a": {"stale": False}},

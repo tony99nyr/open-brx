@@ -39,6 +39,7 @@ def _night(cfg: GameConfig, value: Any, mode: str, defaults: Defaults) -> None:
 
 
 def _recoil(cfg: GameConfig, value: Any, mode: str, defaults: Defaults) -> None:
+    # S42: default ON is absence, not a stored True -- see GameConfigBase.recoil.
     cfg["recoil"] = bool(value)
 
 
@@ -245,11 +246,14 @@ _HANDLERS: dict[str, Handler] = {
 
 
 def merge_config(cfg: GameConfig, patch: dict, mode: str, defaults: Defaults) -> GameConfig:
-    """Apply each known key in patch order; retain the caller's config object."""
+    """Whitelist and range-check every key of `patch` onto `cfg` (A8.3). Pure; raises ValueError.
+
+    Every handler writes its literal key rather than `cfg[key]`: `GameConfig` keys do not share a value
+    type. Optional values are removed on null, and handlers rebuild sub-objects so patches cannot smuggle
+    extra keys into them. This keeps the inner bags aligned with the top-level whitelist.
+    """
     for key, value in patch.items():
         if key not in CONFIG_KEYS:
             continue
-        handler = _HANDLERS.get(key)
-        if handler is not None:
-            handler(cfg, value, mode, defaults)
+        _HANDLERS[key](cfg, value, mode, defaults)
     return cfg
