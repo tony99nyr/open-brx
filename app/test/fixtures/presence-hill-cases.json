@@ -73,11 +73,11 @@
     },
     {
       "name": "dense noise that only touches the threshold never enters",
-      "why": "Review round 2: at 4 adverts a second the window holds several adverts, so its median is the low reading and a peak at the threshold does not enter. Every other advert reads -88, and the peak is -74, a dB above the threshold. This is NOT a rate-independent guarantee: a phone sending one advert per 2.5 s enters on the same peaks (the F452 cases at the end of the file).",
+      "why": "Review round 2: at 4 adverts a second the window holds several adverts, so its time-weighted median is the low reading and a peak at the threshold does not enter. Two adverts in three read -88 and the third is -74, a dB above the threshold. This is NOT a rate-independent guarantee: a phone sending one advert per 2.5 s enters on the same peaks (the F452(a) case). (Time-weighting makes a signal that is above the threshold half the time a coin toss that depends on phase, as the plain median did at odd counts, so the case uses a peak one third of the time.)",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 10000,
-      "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-88, -74]}],
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-88, -88, -74]}],
       "expect": [
         {"t": 2000, "present": {"1": false}, "in": {"1": false}, "hill": {"team": 255, "state": [], "value": 0}},
         {"t": 6000, "present": {"1": false}, "in": {"1": false}},
@@ -299,6 +299,31 @@
       ]
     },
     {
+      "name": "one weak advert then a strong one 1.5 s later is not a sighting",
+      "why": "F452(b) round 2: every cover lies inside the 2 s window: the oldest starts at its own time and the newest ends at `now`. At the strong advert (t=1500) the weak one at 0 and the strong one each cover 750 ms, and the tie falls to the lower reading: no sighting. A newest cover that ran past `now` gave the strong advert 1500 ms and a sighting. The dwell is 60 s, so only the sighting window can put the player in the circle.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 3000,
+      "sightings": [{"t": 0, "id": 1, "rssi": -90}, {"t": 1500, "id": 1, "rssi": -50}],
+      "expect": [
+        {"t": 1500, "in": {"1": false}},
+        {"t": 3000, "in": {"1": false}}
+      ]
+    },
+    {
+      "name": "a noise peak 3 dB over the threshold stays out at 100 ms, 1.3 s and 1.4 s intervals alike",
+      "why": "F452(b) round 2: one advert in three is a -72 peak against a -75 threshold, the rest -88. At 1.4 s the window holds two adverts (a peak and a weak one, either way round), each covering 700 ms, and the tie falls to the weak one, as at 100 ms and at 1.3 s. A cover that ran past `now` (or began before its own time) gave the peak 1400 ms and a sighting at 1.4 s only.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 100, "rssi": [-88, -88, -72]}, {"id": 2, "from_ms": 0, "to_ms": 20000, "every_ms": 1300, "rssi": [-88, -88, -72]}, {"id": 3, "from_ms": 0, "to_ms": 20000, "every_ms": 1400, "rssi": [-88, -88, -72]}],
+      "expect": [
+        {"t": 5000, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}},
+        {"t": 10000, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}},
+        {"t": 20000, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}}
+      ]
+    },
+    {
       "name": "net is capped at three, so five red build at three times the rate",
       "why": "\u00a75d.1: net is clamped to net_cap. Five red on an empty point: 30 points a second.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
@@ -334,12 +359,12 @@
       ]
     },
     {
-      "name": "the same alternation at 250 ms and at 1.25 s stays out",
-      "why": "F452 control: a -88/-74 alternation (peak 1 dB over the -75 threshold) at 4 adverts a second and at 0.8 a second never enters, because each window holds more than the peak. The next case is the same signal at one advert per 2.5 s.",
+      "name": "the same noise peaks (one advert in three) at 250 ms and at 1.25 s stay out",
+      "why": "F452 control: one advert in three is a -74 peak (1 dB over the -75 threshold), the rest -88, at 4 adverts a second and at 0.8 a second. It never enters, because the peak covers under half the window. The next case is the same signal at one advert per 2.5 s.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 20000,
-      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 250, "rssi": [-88, -74]}, {"id": 2, "from_ms": 0, "to_ms": 20000, "every_ms": 1250, "rssi": [-88, -74]}],
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 250, "rssi": [-88, -88, -74]}, {"id": 2, "from_ms": 0, "to_ms": 20000, "every_ms": 1250, "rssi": [-88, -88, -74]}],
       "expect": [
         {"t": 5000, "in": {"1": false, "2": false}},
         {"t": 10000, "in": {"1": false, "2": false}},
@@ -348,17 +373,19 @@
     },
     {
       "name": "RULE: the same alternation at one advert per 2.5 s must stay out too [F452]",
-      "why": "The circle edge must not depend on advert rate (F440). A -88/-74 alternation stays out at 250 ms and 1.25 s. At 2.5 s each window holds one advert, the -74 one is a sighting, and the phone is in the circle on every peak. Expected to FAIL today.",
+      "why": "The circle edge must not depend on advert rate (F440). One advert in three is a -74 peak (1 dB over the -75 threshold) and the rest read -88. That stays out at 250 ms and 1.25 s (the control case before this one). At 2.5 s each window holds one advert, so a peak is a sighting and the phone is in the circle for 4 s after each peak. Expected to FAIL today.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 20000,
-      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 2500, "rssi": [-88, -74]}],
-      "known_fail": {"why": "F452(a): kept by Tony's decision 2026-10-02 (commit 2504d9b0): the sparse-phone edge noise stays until bench 10c's ladder measures real fading", "at": [2500, 5000, 7500, 10000, 20000]},
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 2500, "rssi": [-88, -88, -74]}],
+      "known_fail": {"why": "F452(a): kept by Tony's decision 2026-10-02 (commit 2504d9b0): the sparse-phone edge noise stays until bench 10c's ladder measures real fading", "at": [5000, 7500, 12500, 15000, 20000]},
       "expect": [
         {"t": 2500, "in": {"1": false}},
         {"t": 5000, "in": {"1": false}},
         {"t": 7500, "in": {"1": false}},
         {"t": 10000, "in": {"1": false}},
+        {"t": 12500, "in": {"1": false}},
+        {"t": 15000, "in": {"1": false}},
         {"t": 20000, "in": {"1": false}}
       ]
     },

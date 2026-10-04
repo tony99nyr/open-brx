@@ -130,12 +130,14 @@ export function thinWindow(samples, max = SIGHT_RECENT_MAX) {
 /**
  * F452(b): the TIME-WEIGHTED median of a sighting window: each sample speaks for the time it covers, not as one vote,
  * so a burst of adverts cannot outvote a longer stretch of one signal and every advert rate reads the same level.
- * A sample covers from the midpoint with its predecessor to the midpoint with its successor. The OLDEST starts at
- * max(window start, its own t minus half its gap to the next), the window start being `now - windowMs`; the NEWEST ends
- * at max(now, its own t plus half its gap to the previous), so at an observe (`now` = its own t) it covers half a gap
- * each side and an equal-spaced stream gives exactly the plain lower-middle median, and at a later tick it holds its
- * value until `now`. The result is the lowest rssi whose cumulative cover reaches half the total (the lower middle,
- * as `medianOf`). One sample is that sample; a zero total (every sample at one instant) falls back to `medianOf`.
+ * A sample covers from the midpoint with its predecessor to the midpoint with its successor. The two ends are treated
+ * alike: the OLDEST covers from its own time (clipped to the window start `now - windowMs`) and the NEWEST up to `now`,
+ * so no cover leaves [now - windowMs, now] and no sample is credited with time before it or after `now`. (A newest cover
+ * that ran past `now`, or an oldest one that began before its own time, gave an end sample a half gap more than the
+ * window had seen: an advantage for a sparse phone, whose window holds two samples.) At an observe (`now` = the newest's
+ * own t) the newest covers half a gap; at a later tick it holds its level until `now`. A tie in the 2-sample window
+ * falls to the lower rssi, as the lower middle does. The result is the lowest rssi
+ * whose cumulative cover reaches half the total (the lower middle, as `medianOf`). One sample is that sample; a zero total (every sample at one instant) falls back to `medianOf`.
  * Arithmetic is on 2x integer milliseconds relative to `now`, so the Stick's twin (presence.h `time_weighted_median`)
  * gives the same bits. `samples` are oldest first with `now - t < windowMs`. PURE.
  */
@@ -145,9 +147,9 @@ export function timeWeightedMedian(samples, now, windowMs = SIGHT_WINDOW_MS) {
   if (n === 1) return samples[0].rssi;
   const u = samples.map(x => x.t - now);
   const w = new Array(n);
-  w[0] = (u[0] + u[1]) - Math.max(-2 * windowMs, 2 * u[0] - (u[1] - u[0]));
+  w[0] = (u[0] + u[1]) - Math.max(-2 * windowMs, 2 * u[0]);   // the oldest covers from its own time, never from before it
   for (let i = 1; i < n - 1; i++) w[i] = u[i + 1] - u[i - 1];
-  w[n - 1] = Math.max(0, 2 * u[n - 1] + (u[n - 1] - u[n - 2])) - (u[n - 2] + u[n - 1]);
+  w[n - 1] = 0 - (u[n - 2] + u[n - 1]);   // the newest covers from the midpoint to `now`, never past it
   let total = 0;
   for (let i = 0; i < n; i++) { w[i] = Math.max(0, w[i]); total += w[i]; }
   if (total <= 0) return medianOf(samples.map(x => x.rssi));
@@ -235,7 +237,7 @@ export class Presence {
         // F440: leave only after the exit level has stayed below the band for `exitGraceMs` (a dip is not a step out).
         // Round 2 (review 2026-10-04): the level is the time-weighted MEDIAN (F452(b)) of the last SIGHT_WINDOW_MS of raw samples, not the EMA,
         // whose alpha is applied per advert and so lags further on a sparse phone: exit time must not depend on advert
-        // rate. An empty window (a silence) falls back to the EMA. The EMA still drives the entry dwell.
+        // rate. An empty window (a silence) falls back to the last raw sample. The EMA still drives the entry dwell.
         const win = (e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS);
         e.exitLevel = win.length ? timeWeightedMedian(win, now) : e.raw;
         if (e.exitLevel < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }

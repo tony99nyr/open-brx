@@ -197,18 +197,16 @@ static void test_time_weighted_median() {
   }
   CHECK_EQ(twm(t, r, 1750), -50);  // the kept weak ones cover 0.5 s, the 6 strong cover 1.25 s
   CHECK_EQ(twm({0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000}, {-90, -90, -90, -90, -90, -50, -50, -50, -50, -50, -50}, 1000), -50);
-  // Equal spacing at an observe is the plain lower-middle median.
-  const int seq[] = {-70, -60, -90, -80, -50, -65, -85, -55, -75};
-  for (size_t n = 1; n <= 9; n++) {
-    std::vector<uint32_t> tt;
-    std::vector<int> rr(seq, seq + n);
-    for (size_t k = 0; k < n; k++) tt.push_back((uint32_t)(100 * k));
-    std::vector<int> sorted = rr;
-    std::sort(sorted.begin(), sorted.end());
-    CHECK_EQ(twm(tt, rr, (uint32_t)(100 * (n - 1))), sorted[(n - 1) / 2]);
-  }
+  // The end adverts cover half a gap at an observe, the middle ones a full gap.
+  CHECK_EQ(twm({0, 100, 200}, {-50, -90, -60}, 200), -90);
+  CHECK_EQ(twm({0, 100, 200}, {-50, -90, -60}, 250), -60);
+  CHECK_EQ(twm({0, 100, 200, 300, 400, 500, 600, 700, 800}, {-70, -70, -70, -70, -70, -70, -70, -70, -70}, 800), -70);
+  // Every cover is clipped to the window: the newest gets only the time up to now (Codex and Opus, F452(b) round 2).
+  CHECK_EQ(twm({0, 1500}, {-90, -50}, 1500), -90);
+  CHECK_EQ(twm({0, 1400}, {-88, -72}, 1400), -88);
+  CHECK_EQ(twm({0, 1300}, {-88, -72}, 1300), -88);
   CHECK_EQ(twm({500}, {-61}, 1900), -61);
-  CHECK_EQ(twm({0, 500, 1000}, {-50, -50, -90}, 1100), -50);  // just heard: a third each
+  CHECK_EQ(twm({0, 500, 1000}, {-50, -50, -90}, 1100), -50);  // just heard: the two strong ones cover more
   CHECK_EQ(twm({0, 500, 1000}, {-50, -50, -90}, 1900), -90);  // the weak one has held for 1.15 s of the window
   CHECK_EQ(twm({50, 50, 50}, {-90, -50, -60}, 50), -60);      // one instant: the plain lower middle
 }

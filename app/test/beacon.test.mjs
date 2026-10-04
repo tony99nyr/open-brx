@@ -314,19 +314,29 @@ test('timeWeightedMedian: a weak burst with a longer strong stretch reads strong
   assert.equal(medianOf([...burst, ...tail].map(x => x.rssi)), -90);
 });
 
-test('timeWeightedMedian: equal spacing gives the plain lower-middle median at an observe', () => {
-  const seq = [-70, -60, -90, -80, -50, -65, -85, -55, -75];
-  for (let n = 1; n <= seq.length; n++) {
-    const s = seq.slice(0, n).map((rssi, k) => ({ t: 100 * k, rssi }));
-    assert.equal(timeWeightedMedian(s, s[n - 1].t), medianOf(seq.slice(0, n)), `n=${n}`);
-  }
+test('timeWeightedMedian: the end adverts cover half a gap at an observe, the middle ones a full gap', () => {
+  const three = [{ t: 0, rssi: -50 }, { t: 100, rssi: -90 }, { t: 200, rssi: -60 }];
+  assert.equal(timeWeightedMedian(three, 200), -90, 'covers 50 / 100 / 50 ms: the middle one reaches half the total first');
+  assert.equal(timeWeightedMedian(three, 250), -60, 'last heard 50 ms ago: covers 50 / 100 / 100 ms');
+  // equal spacing and equal covers (a flat run) is the plain median of a flat run
+  const flat = Array.from({ length: 9 }, (_, k) => ({ t: k * 100, rssi: -70 }));
+  assert.equal(timeWeightedMedian(flat, 800), -70);
+});
+
+test('timeWeightedMedian: every cover is clipped to the window, so the newest gets only the time up to now', () => {
+  // Codex, F452(b) round 2: a weak advert at 0 and a strong one 1.5 s later: each covers 750 ms, the tie falls to the
+  // lower one: weak. (A newest cover that ran past now gave strong.)
+  assert.equal(timeWeightedMedian([{ t: 0, rssi: -90 }, { t: 1500, rssi: -50 }], 1500), -90);
+  // Opus: at a 1.4 s interval the two adverts each cover 700 ms and the tie falls to the lower one.
+  assert.equal(timeWeightedMedian([{ t: 0, rssi: -88 }, { t: 1400, rssi: -72 }], 1400), -88);
+  assert.equal(timeWeightedMedian([{ t: 0, rssi: -88 }, { t: 1300, rssi: -72 }], 1300), -88);
 });
 
 test('timeWeightedMedian: one sample is itself, the newest holds its level until now, one instant falls back to the plain median', () => {
   assert.equal(timeWeightedMedian([{ t: 500, rssi: -61 }], 1900), -61);
   assert.equal(timeWeightedMedian([], 1000), null);
   const three = [{ t: 0, rssi: -50 }, { t: 500, rssi: -50 }, { t: 1000, rssi: -90 }];
-  assert.equal(timeWeightedMedian(three, 1100), -50, 'just heard: each covers a third, so the two strong ones win');
+  assert.equal(timeWeightedMedian(three, 1100), -50, 'just heard: the two strong ones cover more of the window');
   assert.equal(timeWeightedMedian(three, 1900), -90, 'the weak sample has held for 1.15 s of the 2 s window by now');
   const instant = [{ t: 50, rssi: -90 }, { t: 50, rssi: -50 }, { t: 50, rssi: -60 }];
   assert.equal(timeWeightedMedian(instant, 50), -60);

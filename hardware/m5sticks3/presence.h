@@ -83,12 +83,14 @@ inline size_t sight_thin_index(const uint32_t* t, size_t n) {
 
 // F452(b): the TIME-WEIGHTED median of a sighting window (beacon.js `timeWeightedMedian` is the twin). Each sample speaks
 // for the time it covers, not as one vote: a burst cannot outvote a longer stretch of one signal, so every advert rate
-// reads the same level. A sample covers from the midpoint with its predecessor to the midpoint with its successor. The
-// OLDEST starts at max(window start, its own t minus half its gap to the next), the window start being now - the window
-// length; the NEWEST ends at max(now, its own t plus half its gap to the previous), so at an observe (now = its own t) an
-// equal-spaced stream gives exactly the plain lower-middle median, and at a later tick the newest holds its level until
-// now. The result is the lowest rssi whose cumulative cover reaches half the total (the lower middle); one sample is that
-// sample; a zero total falls back to the plain lower middle. Arithmetic is on 2x integer milliseconds relative to `now`
+// reads the same level. A sample covers from the midpoint with its predecessor to the midpoint with its successor. The two
+// ends are treated alike: the OLDEST covers from its own time (clipped to the window start, now - the window length) and
+// the NEWEST up to now, so no cover leaves [now - window, now] and no sample is credited with time before it or after now
+// (a newest cover that ran past now, or an oldest one that began before its own time, gave an end sample a half gap more
+// than the window had seen: an advantage for a sparse phone, whose window holds two samples). At an observe (now = its own
+// t) the newest covers half a gap; at a later tick it holds its level until now. A tie falls to the lower rssi, as the
+// lower middle does. The result is the lowest rssi whose cumulative
+// cover reaches half the total (the lower middle); one sample is that sample; a zero total falls back to the plain lower middle. Arithmetic is on 2x integer milliseconds relative to `now`
 // (exact, wrap-safe), so it matches beacon.js bit for bit. n samples oldest first, 1 <= n <= SIGHT_RECENT_MAX.
 //
 // COST per call at n = 64 (F452 bench check on the ESP32): weights 64 (3 subtractions each), an insertion sort of 64 index
@@ -102,9 +104,9 @@ inline int time_weighted_median(const uint32_t* t, const int* rssi, size_t n, ui
   size_t order[SIGHT_RECENT_MAX];
   for (size_t i = 0; i < n; i++) u[i] = (int32_t)(t[i] - now);
   const long long ws2 = -2LL * (long long)window_ms;
-  w[0] = (u[0] + u[1]) - std::max(ws2, 2 * u[0] - (u[1] - u[0]));
+  w[0] = (u[0] + u[1]) - std::max(ws2, 2 * u[0]);  // the oldest covers from its own time, never from before it
   for (size_t i = 1; i + 1 < n; i++) w[i] = u[i + 1] - u[i - 1];
-  w[n - 1] = std::max(0LL, 2 * u[n - 1] + (u[n - 1] - u[n - 2])) - (u[n - 2] + u[n - 1]);
+  w[n - 1] = 0 - (u[n - 2] + u[n - 1]);  // the newest covers from the midpoint to now, never past it
   long long total = 0;
   for (size_t i = 0; i < n; i++) { if (w[i] < 0) w[i] = 0; total += w[i]; }
   for (size_t i = 0; i < n; i++) {  // insertion sort of indices by rssi, stable
