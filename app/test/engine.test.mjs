@@ -5774,7 +5774,7 @@ test('A56 overshield: the gun shows shield + overshield as ONE teal pool, max = 
   const h = levelHarness();
   const entry = { pool: 'shield', max: 30 };
   h.eng.shield = 30; h.eng._prevShield = 30;
-  h.eng._puGrantShield('os1', { name: 'OVERSHIELD', amount: 75 }, h.eng.now());   // shield 30 -> 105, past the max
+  h.eng.pu.grantShield('os1', { name: 'OVERSHIELD', amount: 75 }, h.eng.now());   // shield 30 -> 105, past the max
   assert.equal(h.eng.shield, 105);
   assert.equal(h.eng._readoutLevel(entry), 6, 'fresh overshield: 105 of 30+75 -> full');
   h.eng.shield = 60;   // a hit drains the overshield first: 60 of 105
@@ -5791,7 +5791,7 @@ test('A56 overshield on a no-shield preset (Standard, shield entry max 0): the o
   const h = levelHarness();
   const entry = { pool: 'shield', max: 0 };
   h.eng.shield = 0; h.eng._prevShield = 0;
-  h.eng._puGrantShield('os1', { name: 'OVERSHIELD', amount: 75 }, h.eng.now());
+  h.eng.pu.grantShield('os1', { name: 'OVERSHIELD', amount: 75 }, h.eng.now());
   assert.equal(h.eng._readoutLevel(entry), 6, '75 of 0+75 -> full (was floored to 1 against a max of 0)');
   h.eng.shield = 40;
   assert.equal(h.eng._readoutLevel(entry), 3, 'round(40/75*6) = 3');

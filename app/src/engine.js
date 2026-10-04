@@ -768,7 +768,18 @@ export const operatorRefusalFor = (name, engine) => (OPERATOR_REFUSAL[name] || (
  *  swaps `eng.now` or `eng._write` after construction is still honoured. */
 function powerupHost(e) {
   return {
-    show: (channel, item) => e.show(channel, item),
+    // the clock, the log and the gun writes
+    now: () => e.now(), log: (line, cls) => e.log(line, cls),
+    write: (frames, why) => e._write(frames, why), writeMust: (frames, why, still, actExempt) => e._writeMust(frames, why, still, actExempt),
+    // presentation
+    show: (channel, item) => e.show(channel, item), announceStatus: kind => e._announceStatus(kind),
+    // the engine state the module reads (never writes)
+    get phase() { return e.phase; }, get alive() { return e.alive; }, get bleUp() { return e.bleUp; }, get ended() { return e.ended; },
+    get frames() { return e.frames; }, get lifeSeq() { return e._lifeSeq; }, get armPending() { return e._armPending; },
+    get hp() { return e.hp; }, get armor() { return e.armor; }, get shield() { return e.shield; }, get maxShield() { return e.maxShield; },
+    // the engine state the module changes, each through one named door
+    setShield: v => { e.shield = v; e._prevShield = v; e._shieldRegen = null; },   // the overshield grant's pools
+    setWriteLost: life => { e._writeLost = life; },   // a lost protection-off: MC offers RESYNC GUN
   };
 }
 
@@ -2977,7 +2988,7 @@ export class Engine {
    *  player as possibly protected from this (`respawn` fact `protect_ms`, status `protected`). */
   _protectOwedMs() {
     // A56 polish H2: an overshield grant's protection is owed until its end is written (F289).
-    const os = this.pu._osProtectUntil && this.alive ? Math.max(1, this.pu._osProtectUntil - this.now()) : 0;
+    const os = this.pu.protectUntil && this.alive ? Math.max(1, this.pu.protectUntil - this.now()) : 0;
     const p = this._armPending, mode = this._protectMode();
     if (!p || !(this.alive || p.flip) || !(mode === 'twin' || (mode === 'tmp' && p.off !== false))) return os;
     return Math.max(os, 1, p.until != null ? p.until : SPAWN_PROTECT_MAX_MS);
@@ -4202,7 +4213,7 @@ export class Engine {
       this._audioSync(now);
       if (this._ann.tick(now)) this._changed();   // docs/announcer.md: the next queued line or banner, once the one on air is done
       this._puClaimTick(now);          // A56: the claim's dwell runs on the clock too, not only on a fresh advert
-      this._osTick(now);               // A56: the overshield grant's spawn protection ends OVERSHIELD_GRANT_MS after it
+      this.pu._osTick(now);               // A56: the overshield grant's spawn protection ends OVERSHIELD_GRANT_MS after it
       this._puBackTick(now);           // A56 polish M3: a switch-back the gun never answered is re-sent
       this._hillTick(now);             // the possession tick on OUR 3 s clock, and the >= 2-missed-beacon presence expiry
       this._reportPossession(now);     // and the possession CLOCK, which is what the mode is scored on
@@ -4277,7 +4288,7 @@ export class Engine {
     const selfDrain = selfHit ? [selfHit.health - this.maxHp, selfHit.armor - this.maxArmor, selfHit.shield - (fill.length ? this.maxShield : 0)].map(d => Math.min(0, d)) : null;
     // F438 r4: an overshield survives a self-kill. The burst's pool `$PSET` lowers the shield max, so the raised one
     // and the absolute pools (token 4 = 2, as the grant) go last in place of the drain.
-    const os = selfHit && this.pu._overshield, osPset = os ? this._osPset(os.max) : null;
+    const osPset = selfHit ? this.pu.overshieldPset() : null;
     const drain = osPset ? [osPset, `$LIFE,${selfHit.health},${selfHit.armor},${selfHit.shield},2,*`]
       : selfDrain && selfDrain.some(d => d < 0) ? [`$LIFE,${selfDrain[0]},${selfDrain[1]},${selfDrain[2]},*`] : [];
     // docs/announcer.md: the dead queue ends here. Only my kill confirm and the lead change survive it, and they wait for
@@ -6137,47 +6148,6 @@ export class Engine {
     if (cl.readyAt == null && now - cl.since >= POWERUP_DWELL_MS) { cl.readyAt = now; this.log(`powerup: claim ready at station ${st.id}`, 'li'); }
     if (cl.readyAt != null) this.pu._readyFor = { station: st.id, at: now };
   }
-  /** The `$PSET` the gun holds now (the life's `pset_pool` take, else the head's), with its shield max (token 5) set to
-   *  `max`. Everything else is the frame verbatim: the bench raised ONLY the shield max (70 -> 145) and the gun kept
-   *  firing and cycling ALT. `_write` puts the team back behind it (F206). Null when there is no `$PSET` to copy. */
-  _osPset(max) {
-    const head = (this.frames && this.frames.head) || [];
-    const f = this.pu._psetNow || head.find(x => typeof x === 'string' && x.startsWith('$PSET,'));
-    if (!f) return null;
-    const t = f.split(','); if (t.length < 6) return null;
-    t[5] = String(max);
-    return t.join(',');
-  }
-  /** The spawn-protection pair the bundle compiles (`$TMP` t8 = -100, then `spawn_protect_off`), or null for an older
-   *  bundle without it (then the grant simply goes without protection). */
-  _osProtectFrames() {
-    const f = this.frames; if (!f || typeof f.spawn_protect_off !== 'string' || !f.spawn_protect_off.startsWith('$TMP,')) return null;
-    const on = [...(f.spawn || []), ...(f.revive || [])].find(x => typeof x === 'string' && /^\$TMP,(?:[^,]*,){7}-100,/.test(x)) || '$TMP,,,,,,,,-100,,,,*';
-    return { on, off: f.spawn_protect_off };
-  }
-  /** tick(): the grant's protection ends OVERSHIELD_GRANT_MS after it. A death or a new life owns `$TMP` itself (`$SPAWN`
-   *  clears it), so only a live, linked gun gets the write; a lost link waits for the relink. */
-  _osTick(now) {
-    if (!this.pu._osProtectUntil || now < this.pu._osProtectUntil) return;
-    if (!this.alive || this.phase !== 'live') { this.pu._osProtectUntil = 0; return; }
-    if (!this.bleUp) return;
-    const pf = this._osProtectFrames(); this.pu._osProtectUntil = 0;
-    if (!pf || this._armPending) return;   // a life still owed its own protection end keeps it
-    const life = this._lifeSeq;
-    const r = this._write([pf.off], 'overshield: grant window over, spawn protection off');
-    // Polish H2, as `_armLife` does: a false resolve re-arms the end, so the next tick retries it on a live link. A lost
-    // write would otherwise leave the player unhittable for the life.
-    Promise.resolve(r).then(ok => {
-      if (ok !== false || this._lifeSeq !== life || !this.alive || this.phase !== 'live' || this.ended || this.pu._osProtectUntil) return;
-      if ((this.pu._osOffTries = (this.pu._osOffTries || 0) + 1) > OVERSHIELD_OFF_RETRIES) {
-        this._writeLost = life;   // r3: as `_writeLife` does, so the pool reads `write_lost` and MC offers RESYNC GUN
-        this.log(`*** overshield: spawn protection off failed ${OVERSHIELD_OFF_RETRIES + 1} times -- the player may be unhittable (RESYNC GUN) ***`, 'le'); return;
-      }
-      this.log(`overshield: spawn protection off was lost, retrying (${this.pu._osOffTries}/${OVERSHIELD_OFF_RETRIES})`, 'le');
-      this.pu._osProtectUntil = this.now();
-    });
-  }
-
   /** The grant happens only when a station's advert names THIS player as `taker` and this phone was claim_ready for it. */
   _puTakerCheck(items, now) {
     const me = this.player ? this.player.player_num : null;
@@ -6191,7 +6161,7 @@ export class Engine {
       // the absolute `$LIFE`). The claim latch stays warm, so the grant goes out on the next tick once the `$HP` is in.
       if (item.kind === 'overshield' && (this.hp <= 0 || (this.latch && this.latch.at > this.pu._hpAt && now - this.latch.at < OVERSHIELD_HIR_WAIT_MS))) continue;
       this.pu._readyFor = null; this.pu._claim = null;
-      const granted = item.kind === 'weapon' ? this._puGrantWeapon(+id, item, now) : this._puGrantShield(+id, item, now);
+      const granted = item.kind === 'weapon' ? this._puGrantWeapon(+id, item, now) : this.pu.grantShield(+id, item, now);
       if (!granted) continue;
       this.emitFact({ type: 'pickup', match_id: this.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}) });
       this._save();
@@ -6270,36 +6240,6 @@ export class Engine {
       this._ann.push({ kind: 'powerup_swap', key: 'pu_swap', play: () => { this.pu._swapCard = { ...swap, at: this.now() }; this._changed(); } });
     }
     return true;
-  }
-  /** The overshield (Tony, 2026-09-24): one burst of spawn protection on, the `$PSET` with its shield max raised to the
-   *  preset max plus `amount` (bench: the gun clamps a shield past the `$PSET` max back within 0.75 s, and holds it once
-   *  the max is raised), and the absolute `$LIFE` at the pools as they stand now. A hit in flight is overwritten and a hit
-   *  inside the window does nothing: "the damage is ignored". Protection ends OVERSHIELD_GRANT_MS later (`_osTick`). It
-   *  stacks beside a weapon item. */
-  _puGrantShield(id, item, now) {
-    const amount = Number.isFinite(+item.amount) && +item.amount > 0 ? +item.amount : OVERSHIELD_AMOUNT;
-    const base = this.pu._overshield ? this.pu._overshield.base : this.shield;
-    const to = this.shield + amount, max = Math.max(this.maxShield, to);
-    const pset = this._osPset(max), pf = this._armPending ? null : this._osProtectFrames();   // a life still protected keeps its own
-    this._write([...(pf ? [pf.on] : []), ...(pset ? [pset] : []), `$LIFE,${this.hp},${this.armor},${to},2,*`],
-      `powerup: ${item.name} +${amount} (shield ${this.shield} -> ${to}, max ${this.maxShield} -> ${max}${pf ? ', protected' : ''})`);
-    if (pf) { this.pu._osProtectUntil = now + OVERSHIELD_GRANT_MS; this.pu._osOffTries = 0; }
-    this.shield = to; this._prevShield = to;
-    this._shieldRegen = null;   // S29: no refill may be in flight under it
-    const name = String(item.name || 'OVERSHIELD').toUpperCase();
-    this.pu._overshield = { station: id, base, amount: to - base, name, color: item.color || null, at: now, max, hp: this.hp, armor: this.armor };   // hp/armor: the pools the grant wrote (R2-21: its echo is no pickup)
-    this.pu._grant = { kind: 'overshield', name, color: item.color || null, at: now };
-    // F400 decision 5: the Overshield is not a weapon (no switch card); it plays the SAME clip the ordinary S29 recharge
-    // plays on its first grant (`shield_charging`, N102 in the golden bundle -- F349: its own loud tail already reads as
-    // "shields full", and Tony's decision there was no separate "Shields Online" voice). The Visor's shield bar (the
-    // existing gain animation, shieldmeter.js `.svos`) already grows from `state().powerup.overshield` on the next render.
-    this._announceStatus('shield_charging');
-    return true;
-  }
-  /** The overshield is over: the `$PSET` back at the preset shield max, so no later spawn or refill fills to the raised one. */
-  _osRestore(why, life = this._lifeSeq) {
-    const pset = this._osPset(this.maxShield);
-    if (pset) this._writeMust([pset], `overshield over (${why}): shield max back to ${this.maxShield}`, () => this._lifeSeq === life && !this.pu._overshield, true);   // polish M2 (a `$PSET` carries no counts: safe to repeat after a shot or a hit)
   }
   /** Every `$ALCD` that reached the ordinary path: the slot is the trigger's (melee's slot 4 is not, and an unheld pickup
    *  slot is only our own zeroing echo). The heavy's own magazine reaching 0 ends the item. */
@@ -6416,7 +6356,7 @@ export class Engine {
     // max goes back now, or the `$SPAWN` would refill the shield to the raised one. X10: from `_revive` the restore
     // belongs to the life the revive is about to start, so its one retry is not refused as "the game moved on".
     const pool = this.frames && Array.isArray(this.frames.pset_pool) && this.frames.pset_pool.length;
-    if (this.pu._overshield && !pool) this._osRestore('death', inRevive ? (this._lifeSeq || 0) + 1 : this._lifeSeq);
+    if (this.pu._overshield && !pool) this.pu._osRestore('death', inRevive ? (this._lifeSeq || 0) + 1 : this._lifeSeq);
     this.pu._overshield = null; this.pu._back = null; this.pu._osProtectUntil = 0; this.pu._backPending = null;
   }
   /** `_revive`, after its burst: an item still held (an operator respawn of a LIVE player skips `_death`) is lost the same
@@ -6449,12 +6389,6 @@ export class Engine {
     return burstWithHeld(rows, h);
   }
 
-  /** `$HP`: the overshield is gone once the shield is back to where it started (a stale pre-grant frame excepted). */
-  _puShieldFrame(shield) {
-    const o = this.pu._overshield; if (!o) return;
-    if (this.now() - o.at < OVERSHIELD_GRANT_MS) return;   // inside the grant window a lower `$HP` is a pre-grant hit reported late: ignored
-    if (shield < o.base || (shield <= o.base && this.now() - o.at > OVERSHIELD_ECHO_MS)) { this.pu._overshield = null; this.log(`powerup: ${o.name} gone`, 'li'); this._osRestore('drained'); }
-  }
   /** The HUD's powerup view, or null when the game has no powerup items (the inert case). PURE. */
   powerupView(now = this.now()) {
     const items = this._puItems(); if (!items) return null;
@@ -6811,7 +6745,7 @@ export class Engine {
   /** F341: one repair step per tick. Waits out a reconcile, a resync, a dropped link, and any other probe in flight (the
    *  cure, an operator resync, the F272 liveness probe: they share the one reply window). Drops the repair on a new
    *  life or a death (the next `$SPAWN` burst carries its own `$PSET`).
-   *  A write is `$*` (the parser reset), the life's `$PSET` verbatim (`_osPset`, with the shield max it holds now;
+   *  A write is `$*` (the parser reset), the life's `$PSET` verbatim (`pu.psetWithShieldMax`, with the shield max it holds now;
    *  `_write` puts the `$TID` behind it, F206), then `$LIFE,<hp>,<armor>,<shield>,1,*`: an absolute set clamped at the
    *  new maxima (mode 1), at the gun's LATEST pools clamped to the ceilings, so a hit taken meanwhile is kept. The model
    *  takes those numbers at once, so the `$HP` the set echoes reads as no damage.
@@ -6857,7 +6791,7 @@ export class Engine {
     // flight counts as a full shield, so a repair that starts before its echo does not take the life's shield away.
     const shieldNow = this._shieldFillPending(now) ? Math.max(this.shield, this.maxShield) : this.shield;
     const t = { hp: Math.min(this.hp, c.hp), armor: c.armor > 0 ? Math.min(this.armor, c.armor) : this.armor, shield: Math.min(shieldNow, c.shield) };
-    const pset = this._osPset(c.shield);
+    const pset = this.pu.psetWithShieldMax(c.shield);
     this._write([PARSER_RESET, ...(pset ? [pset] : []), `$LIFE,${t.hp},${t.armor},${t.shield},1,*`],
       `pool repair ${rp.attempts}/${POOL_REPAIR_TRIES}: ${this.hp}/${this.armor}/${this.shield} above ${c.hp}/${c.armor}/${c.shield} -> ${t.hp}/${t.armor}/${t.shield}`);
     this.hp = t.hp; this.armor = t.armor; this.shield = t.shield;
@@ -7386,7 +7320,7 @@ export class Engine {
   }
 
   _onHp(hp, armor, shield, solicited = false) {
-    this.pu._hpAt = this.now();   // A56 polish M1: the pools a `$HIR` moved have been reported
+    this.pu.onHp();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
     if (hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
     // Damage drains shield -> armor -> HP (bench 2026-08-27). Omitting shield from the
@@ -7403,7 +7337,7 @@ export class Engine {
     const movedPool = hp !== this._prevHp ? 'health' : armor !== this._prevArmor ? 'armor' : shield !== this._prevShield ? 'shield' : null;
     this.hp = hp; this.armor = armor; this.shield = shield;
     if (hp > 0) this._poisonCue();   // polish 2026-10-03: the hit that poisoned us did not kill, so say it now
-    this._puShieldFrame(shield);   // A56: the overshield ends when the shield is back to where it started
+    this.pu.onShieldFrame(shield);   // A56: the overshield ends when the shield is back to where it started
     const dmg = Math.max(0, before - (hp + armor + shield));
     if (dmg > 0) this._actSeq++;   // pl4: nor past a hit
     // S16: the `$HP` that answers our own poison tick is the TICK, not a hit -- no `hit_taken` fact (MC would score a
