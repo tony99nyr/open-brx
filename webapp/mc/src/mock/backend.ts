@@ -1091,7 +1091,7 @@ export class MockBackend implements Api {
   feedEdit(e: FeedEntry) {
     const rows = this.live_?.feed;
     const i = e.id == null || !rows ? -1 : rows.findIndex(r => r.id === e.id);
-    if (i < 0) return;
+    if (i < 0 || !rows) return;
     rows[i] = e;
     this.subs.forEach(x => x.feed(e, true));
   }
