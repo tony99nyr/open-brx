@@ -52,6 +52,7 @@ class MockNode:
         self.prior_utility = prior_utility
         self.prior_utility_consumed = False
         self.gun_echo = gun_echo
+        self.extra_status: dict[str, Any] = {}   # extra heartbeat fields a test or the e2e stand-ins add (O6 `dropped_total`, O10 `actions_dropped`)
         self.config_id: str | None = None       # A36: the head this node is holding
         self.spawn_ammo: tuple[int, int] | None = None
         self.heartbeat_ms = heartbeat_ms
@@ -221,6 +222,7 @@ class MockNode:
             "preflight": dict(self.preflight),
             "pool_src": "gun",                                               # A37/R2-3: this node's pool IS the gun's word
             **({"config_id": self.config_id} if self.config_id else {}),     # A36
+            **self.extra_status,
         }
         if self.arm_state == "armed" and self.go_live_t:
             body["t_minus_ms"] = max(0, self.go_live_t - self.synced_now())

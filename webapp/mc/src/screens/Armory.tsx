@@ -77,6 +77,13 @@ const kb = (n?: number) => (n == null ? '' : n >= 1024 ? `${Math.round(n / 1024)
 
 /** One node's log line. Always rendered — a row that vanishes when a phone has said nothing reads as
  *  "fine", and "the phone has not said" is exactly what the operator needs to know before a match. */
+/** O6: the phone's outbox dropped facts (count or age cap): the recap may be short of what the player did.
+ *  `n` is MC's `NodeView.outbox_lost` (the maximum of the phone's cumulative count). Absent or 0 draws nothing. */
+function OutboxLost({ n }: { n?: number | null }) {
+  if (!n || n <= 0) return null;
+  return <Alert id="armory-nodecard-outbox-lost" testid="outbox-lost" what={`${n} ${n === 1 ? 'FACT' : 'FACTS'} LOST FROM THE PHONE OUTBOX`} act="CHECK THIS PLAYER'S RECAP BY HAND" />;
+}
+
 function LogCell({ log }: { log?: LogView }) {
   const st = log?.state ?? 'none';
   const { text, color } = LOG_LABEL[st] ?? LOG_LABEL.none;
@@ -509,6 +516,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
           this exact phone (a linked, rostered player). `PullLogButton` is never gated by LOG SYNC — see
           its own docstring — so it belongs wherever the operator is actually looking. */}
       {g.node === 'linked' && nodeId && <PullLogButton node_id={nodeId} />}
+      {g.node === 'linked' && nodeId && <OutboxLost n={(state?.nodes ?? []).find(x => x.node_id === nodeId)?.outbox_lost} />}
       {(() => {
         // The HEADSET OFF amber already sits in the GUN row above: once is enough on the card.
         const raw = [...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).filter(b => b !== GUN_FLAPPING_LINE).map(b => [b, false] as const)];
@@ -575,7 +583,7 @@ function AppVerRow({ app_ver, platform }: { app_ver?: string | null; platform?: 
  *  whole console down with it for the first ~300 ms of every session — the e2e walk had been
  *  sleeping past it rather than seeing it (review 2026-09-12). The skill's rule: write down what
  *  the UI does when a field is absent, because an older server or an earlier snapshot is normal. */
-function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id?: string | null; gun_tail?: string | null; gun_name?: string | null; arm_state?: string | null; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; app_ver?: string | null; platform?: string | null; log?: LogView | null; preflight?: { phone_batt?: number | null } | null; stale?: boolean | null } }) {
+function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id?: string | null; gun_tail?: string | null; gun_name?: string | null; arm_state?: string | null; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; app_ver?: string | null; platform?: string | null; log?: LogView | null; preflight?: { phone_batt?: number | null } | null; stale?: boolean | null; outbox_lost?: number | null } }) {
   const { state, run, api } = useStore();
   const [name, setName] = useState('');
   const hasGun = !!n.gun_name;
@@ -644,6 +652,7 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
       </div>
       {/* A25: always asks, whatever `log_sync` is set to — `reason: "manual"` is never gated. */}
       <PullLogButton node_id={n.node_id ?? ''} />
+      <OutboxLost n={n.outbox_lost} />
       {/* armory-nodecard-waiting-for-gun: NEUTRAL, not amber — a phone with no gun set yet is a normal
           muster step, nothing has gone wrong (F221, Tony 2026-09-25). */}
       {!stale && !hasGun && <Alert id="armory-nodecard-waiting-for-gun" what="WAITING FOR ITS GUN" act="SET IT ON THE PHONE" />}

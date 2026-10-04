@@ -348,5 +348,11 @@
 {"id": "station-attention-lock-expires", "screen": "ARMORY", "file": "mcp/brx_mcp/mc/state.py:3442", "colour": "amber", "proposed": "AMBER", "text": "STATION #{sid} LOCK EXPIRES MID-MATCH, REJOIN IT"},
 {"id": "station-attention-offline", "screen": "ARMORY", "file": "mcp/brx_mcp/mc/state.py:3438", "colour": "amber", "proposed": "AMBER", "text": "STATION #{sid} OFFLINE"},
 {"id": "station-attention-phone-not-armed", "screen": "ARMORY", "file": "mcp/brx_mcp/mc/state.py:3360", "colour": "amber", "proposed": "AMBER", "text": "PHONE SAYS NOT ARMED"},
-{"id": "station-attention-restarted", "screen": "ARMORY", "file": "mcp/brx_mcp/mc/state.py:3436, webapp/mc/src/screens/Items.tsx:210-219", "colour": "amber", "proposed": "AMBER", "text": "STATION #{sid} RESTARTED {n} TIMES"}
+{"id": "station-attention-restarted", "screen": "ARMORY", "file": "mcp/brx_mcp/mc/state.py:3436, webapp/mc/src/screens/Items.tsx:210-219", "colour": "amber", "proposed": "AMBER", "text": "STATION #{sid} RESTARTED {n} TIMES"},
+{"id": "server-not-saving-store", "screen": "FRAME (every screen)", "file": "webapp/mc/src/ui/ServerFailures.tsx", "colour": "red", "proposed": "RED", "text": "NOT SAVING GAME DATA ({ERROR}), A RESULT CAN BE LOST: FREE DISK SPACE ON THE MC LAPTOP"},
+{"id": "server-not-saving-snapshot", "screen": "FRAME (every screen)", "file": "webapp/mc/src/ui/ServerFailures.tsx", "colour": "amber", "proposed": "AMBER", "text": "NOT SAVING THE SESSION ({ERROR}), A RESTART LOSES THE ROSTER: FREE DISK SPACE ON THE MC LAPTOP"},
+{"id": "server-ticker-failing", "screen": "FRAME (every screen)", "file": "webapp/mc/src/ui/ServerFailures.tsx", "colour": "red", "proposed": "RED", "text": "MATCH CLOCK FAILING ({ERROR}), A MATCH WILL NOT GO LIVE OR END: RESTART MC"},
+{"id": "server-join-info-failed", "screen": "FRAME (every screen)", "file": "webapp/mc/src/ui/ServerFailures.tsx", "colour": "amber", "proposed": "AMBER", "text": "JOIN QR HAS NO ADDRESS ({ERROR}): CHECK THE LAPTOP NETWORK, THEN RESTART MC"},
+{"id": "armory-nodecard-outbox-lost", "screen": "ARMORY (node card, gun card)", "file": "webapp/mc/src/screens/Armory.tsx", "colour": "amber", "proposed": "AMBER", "text": "{N} FACTS LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER'S RECAP BY HAND"},
+{"id": "station-attention-claims-dropped", "screen": "ARMORY (ITEMS station card)", "file": "webapp/mc/src/ui/StationAlerts.tsx", "colour": "amber", "proposed": "AMBER", "text": "{N} CLAIM REPORTS DROPPED BY THE STICK: CHECK WHO TOOK THE ITEM"}
 ]

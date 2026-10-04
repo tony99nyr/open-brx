@@ -99,6 +99,14 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   // F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of Wi-Fi
   // range; MC only gets its result once it is heard again. Shown beside LOAD for any station of the
   // LAST FINISHED match MC has not heard since that match's whistle -- advisory, clears on its own.
+  // ---- O7 / O8: MC's own failures, drawn by src/ui/ServerFailures.tsx in the shared frame (state.py
+  // `snapshot()`: `not_saving`, `ticker_failing`, `join_error`). Each stands until MC's next success. ----
+  'server-not-saving-store': { sev: 'red', text: 'NOT SAVING GAME DATA ({ERROR}), A RESULT CAN BE LOST: FREE DISK SPACE ON THE MC LAPTOP' },
+  'server-not-saving-snapshot': { sev: 'amber', text: 'NOT SAVING THE SESSION ({ERROR}), A RESTART LOSES THE ROSTER: FREE DISK SPACE ON THE MC LAPTOP' },
+  'server-ticker-failing': { sev: 'red', text: 'MATCH CLOCK FAILING ({ERROR}), A MATCH WILL NOT GO LIVE OR END: RESTART MC' },
+  'server-join-info-failed': { sev: 'amber', text: 'JOIN QR HAS NO ADDRESS ({ERROR}): CHECK THE LAPTOP NETWORK, THEN RESTART MC' },
+  // O10: the station line MC writes (state.py `station_claims_dropped_line`), on the Stick's card in ITEMS.
+  'station-attention-claims-dropped': { sev: 'amber', text: '{N} CLAIM REPORTS DROPPED BY THE STICK: CHECK WHO TOOK THE ITEM' },
   'server-station-not-synced': {
     sev: 'amber',
     text: '{KIND} {ID} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST',
@@ -160,6 +168,7 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'STATION #', id: 'station-attention-restarted', re: /^STATION #\d+ RESTARTED/ },
   { head: 'STATION #', id: 'station-attention-offline', re: /^STATION #\d+ OFFLINE/ },
   { head: 'STATION #', id: 'station-attention-lock-expires', re: /^STATION #\d+ LOCK EXPIRES/ },
+  { head: '', id: 'station-attention-claims-dropped', re: /^\d+ CLAIM REPORTS? DROPPED BY THE STICK/ },
   { head: 'RANGE EDITED ON STATION', id: 'server-station-range-edited' },
   { head: 'STRENGTH EDITED ON STATION', id: 'server-station-range-edited' },
   // one head per `StationKind` (state.py `_station_sync_warnings`: `f"{row['kind'].upper()} {row['id']} …"`)
