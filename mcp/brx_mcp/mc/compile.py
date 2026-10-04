@@ -1100,6 +1100,29 @@ def kill_line(voice: str | None) -> str:
     return f"{fam}A" if fam else "VAA"
 _CONFIRMED_CUES = {"countdown", "kill"}   # everything else in cues() is provisional (real bank ids)
 
+
+def base_cues(night: bool = False) -> dict[str, str]:
+    """A6 / D4 (2026-10-03): THE table of pre-composed cues that no `presentation.EVENTS` row owns. Every other cue
+    frame comes from `EVENTS`; `fakes.py` and `soak/patterns.py` read this, never a copy
+    (`test_cue_table_single_source`). Two-slot `$PLAY,<fx>,4,6,<voice>,,,,*`: token 1 = SFX, token 4 = voice line.
+    `night` dims the one light here, `hurt_led` (led-language.md §3.4: low health is dim at night, token 5 = 1;
+    bench 2026-09-17 found it still at 10)."""
+    return {
+        "countdown": "$PLAY,VA81,4,6,,,,,*",         # confirmed 3-2-1-GO (VA81, slot 1)
+        # Victim-side low-health alert, byte-identical to Callsign. Fires once per life shortly
+        # after ARMOUR reaches 0 and HP starts dropping — 2 deaths, 2 alerts, both at $HP,34,0,0
+        # in 2026-08-23-two-tagger-combat (@340.5s, @361.5s). The default profile's `low_health` replaces the
+        # sound (compile(): only an explicit revert to VA8B keeps this frame).
+        "hurt":      "$PLAY,VA8B,3,6,,,,,*",
+        "hurt_led":  f"$HLED,7,4,90,90,{pg.BRIGHT_DIM if night else HEADSET_ALERT_BRIGHTNESS},15,*",
+        "tick":      "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25) SFX tick (real bank id)
+        "klaxon":    "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25)
+        "runway_30": "",                              # SILENT for now — VA85 at 30 AND 20 AND 10 stacked the same counting track (bench 2026-08-25); pin distinct lines by ear
+        "runway_20": "",                              # SILENT (see runway_30)
+        "runway_10": "$PLAY,,4,6,VA85,,,,*",          # provisional
+    }
+
+
 _HERE = pathlib.Path(__file__).resolve().parent
 
 
@@ -2592,7 +2615,7 @@ class Compiler:
             "spawn_protect_off": SPAWN_PROTECT_OFF,   # F121 rebuild: the node writes it when protection ends
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
-            "cues": self.cues(voice, voice_slots, night=night),
+            "cues": base_cues(night),   # D4: every event cue (kill, game_over, ...) comes from presentation.EVENTS below
             # the swap delay the gun will actually enforce between slots 0 and 1: the larger tok15 of the two
             # (bench 2026-09-04). The HUD's SWITCHING takeover runs for exactly this long.
             "swap_ms": max([int(f.split(",")[16]) for f in head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
@@ -2861,30 +2884,12 @@ class Compiler:
         return out
 
     def cues(self, voice: str, slots: dict | None = None, night: bool = False) -> dict[str, str]:
-        """A6: pre-composed `$PLAY` frames (node writes verbatim; only $SFLASH/$PLAYX,0 are its own
-        templates). Two-slot `$PLAY,<fx>,4,6,<voice>,,,,*`: token1 = SFX, token4 = voice line.
-        `slots["kill"]` (A15) replaces the family's kill line. `night` dims the one light here, `hurt_led`
-        (led-language.md §3.4: low health is dim at night, token 5 = 1; bench 2026-09-17 found it still at 10)."""
+        """A6: the cues no `presentation.EVENTS` row owns (`base_cues`), plus `kill`: this player's kill line, the
+        voice-pick preview's fallback. The compiled bundle's `kill`, `game_over`, `victory`, `multi` and `medal` come
+        from `presentation.EVENTS` alone (D4, 2026-10-03: this method shipped its own copies, overwritten in silence).
+        `slots["kill"]` (A15) replaces the family's kill line."""
         kill = _voices.role_id(voice, "kill", slots) or kill_line(voice)
-        return {
-            "countdown": "$PLAY,VA81,4,6,,,,,*",         # confirmed 3-2-1-GO (VA81, slot 1)
-            "kill":      f"$PLAY,,4,6,{kill},,,,*",       # confirmed kill line (slot 4, voice-family)
-            "game_over": "$PLAY,VA33,4,6,,,,,*",         # CONFIRMED by ear 2026-08-25: "game over" (neutral — a node ending on its own timer does not know the winner)
-            "victory":   "$PLAY,VSF,4,6,JAY,,,,*",        # CONFIRMED by ear 2026-08-25: victory sting + "victory" (winners only, MC-sent at recap when in coverage)
-            # Victim-side low-health alert, byte-identical to Callsign. Fires once per life shortly
-            # after ARMOUR reaches 0 and HP starts dropping — 2 deaths, 2 alerts, both at $HP,34,0,0
-            # in 2026-08-23-two-tagger-combat (@340.5s, @361.5s). This, not a per-hit flash, is almost
-            # certainly the "headset blinks green" Tony remembered (he flagged his own uncertainty).
-            "hurt":      "$PLAY,VA8B,3,6,,,,,*",
-            "hurt_led":  f"$HLED,7,4,90,90,{pg.BRIGHT_DIM if night else HEADSET_ALERT_BRIGHTNESS},15,*",
-            "tick":      "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25) SFX tick (real bank id)
-            "klaxon":    "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25)
-            "multi":     "$PLAY,,4,6,VA46,,,,*",          # provisional (nRF-native is silent over BLE)
-            "medal":     f"$PLAY,,4,6,{kill},,,,*",       # provisional (reuse kill line until pinned)
-            "runway_30": "",                              # SILENT for now — VA85 at 30 AND 20 AND 10 stacked the same counting track (bench 2026-08-25); pin distinct lines by ear
-            "runway_20": "",                              # SILENT (see runway_30)
-            "runway_10": "$PLAY,,4,6,VA85,,,,*",          # provisional
-        }
+        return {**base_cues(night), "kill": _pres.play_frame("voice:kill", {"kill": kill}) or ""}
 
     def voice_preview(self, voice: str, slots: dict | None = None) -> str | None:
         """S39 (field 2026-09-12, Tony): the ONE frame the A9.1 pick-preview plays — that character's

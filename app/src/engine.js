@@ -614,7 +614,7 @@ const IR_RESUME = (now, it, startedSaid) => (startedSaid && now - it.startedAt >
 export const HILL_CUES = {
   hill_captured:  { frame: '$PLAY,,4,6,VB0N,,,,*', ms: 1924 },   // VB0N "Hill Captured"  1.924 s
   hill_lost:      { frame: '$PLAY,,4,6,VB0P,,,,*', ms: 2976 },   // VB0P "Hill Lost!"     2.976 s
-  hill_contested: { frame: '$PLAY,,4,6,VB0O,,,,*', ms: 2078 },   // VB0O "Hill Contested" 2.078 s — NOT WIRED, see `_hillCallout` (F75)
+  hill_contested: { frame: '$PLAY,,4,6,VB0O,,,,*', ms: 2078 },   // VB0O "Hill Contested" 2.078 s — the STATION path only (`_onControlAdvert`); never the IR path (F75, see `_hillCallout`)
   hill_moved:     { frame: '$PLAY,,4,6,VB0Q,,,,*', ms: 2424 },   // VB0Q "Hill Moved"     2.424 s — rotating-hill modes only (F83), no caller yet
   hill_tick:      { frame: '$PLAY,U100,4,6,,,,,*', ms: 114 },    // U100 possession tick  0.114 s
 };
