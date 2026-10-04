@@ -102,8 +102,10 @@ class SnapshotCodec:
         self.host._persist_last = now
         self.host._persist_dirty = False
         try:
+            # S5(a): keep assigned stations across an MC restart. Unassigned hellos need no saved row.
             station = self.host.station_registry.to_snapshot()
             snap = {"v": SESSION_STORE_V, "saved_ms": self.host.now_ms(),
+                    # F142: mark the run kind so a demo roster cannot enter a real session.
                     "demo": bool(self.host.demo_session),
                     "players": [{**p, "node_id": None, "ready": False} for p in self.host.players.values()],
                     "standby": [{**p, "node_id": None, "ready": False} for p in self.host.standby.values()],
@@ -124,6 +126,7 @@ class SnapshotCodec:
                     "ended": self._ended_snapshot(),
                     **({"powerups": self.host._pu_sched} if self.host._pu_sched and self.host.in_play()
                        and self.host._pu_sched.get("match_id") == self.host.current_match_id() else {})}
+            # 0600: the snapshot holds the join secret. Atomic writing preserves the previous file on a crash.
             from ..storage import atomic_write_text
             atomic_write_text(self.host._persist_path, json.dumps(snap), mode=0o600)
             if self.host._snapshot_failures.ok():
@@ -225,7 +228,7 @@ class SnapshotCodec:
         return player
 
     @staticmethod
-    def _snapshot_departed_station(row: object) -> RecapStationRow | None:
+    def snapshot_departed_station(row: object) -> RecapStationRow | None:
         """Read one frozen station tally from an untrusted JSON session snapshot."""
         if not isinstance(row, dict):
             return None
@@ -285,7 +288,11 @@ class SnapshotCodec:
         return kept
 
     def restore_snapshot(self) -> int:
-        """Load a session snapshot of the same demo or real kind."""
+        """Load a session snapshot of the same demo or real kind.
+
+        F142: a demo roster once appeared in a real session as ghost players. The file's run kind
+        decides whether restore is safe; the roster cannot identify that kind reliably.
+        """
         if not self.host._persist_path or not self.host._persist_path.exists():
             return 0
         before = {a: copy.deepcopy(getattr(self.host, a)) for a in self._RESTORE_ATTRS}
@@ -293,17 +300,21 @@ class SnapshotCodec:
         try:
             snap = json.loads(self.host._persist_path.read_text())
             v = snap.get("v") if isinstance(snap, dict) else None
-            if v is not None and v != SESSION_STORE_V:
+            if isinstance(snap, dict) and "v" in snap and (type(v) is not int or v != SESSION_STORE_V):
                 tag = re.sub(r"[^0-9A-Za-z]", "", str(v))[:8] or "x"
                 kept = self._move_aside(f"v{tag}")
                 import logging
                 logging.getLogger("brx.mc").warning(
                     "session snapshot has store version %r; this MC reads %d. Kept as %s; starting clean",
                     v, SESSION_STORE_V, kept)
+                version = json.dumps(v)[:80]
                 if kept is None:
                     self.host._persist_path = None
-                    self.host.restore_failed = {"reason": "unknown snapshot version could not be kept aside",
+                    self.host.restore_failed = {"reason": f"snapshot version {version} could not be kept aside",
                                                 "kept": None}
+                else:
+                    self.host.restore_failed = {"reason": f"snapshot version {version} kept at {kept}",
+                                                "kept": str(kept)}
                 return 0
             was_demo = bool(snap.get("demo", False))
             if was_demo != bool(self.host.demo_session):
@@ -349,6 +360,8 @@ class SnapshotCodec:
                                        _gamepick.derive_pick_from_config(self.host.config, self.mvp_modes))
             lm = snap.get("last_match")
             self.host.last_match = cast(LastMatch, lm) if isinstance(lm, dict) else None
+            # S5(a): the phone forgets MC across a restart. Restore the assignment unarmed;
+            # its next hello sends station_config. Restore the game byte so the next muster advances it.
             for nid in self.host.station_registry.restore(snap):
                 self.host.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
                                                  "synced": False, "last_seen_ms": 0})
@@ -365,6 +378,7 @@ class SnapshotCodec:
                     self.host._ended[row["match_id"]] = {"recap": recap, "players": players,
                                                     "ended_ms": at if isinstance(at, int) else self.host.now_ms()}
             if isinstance(snap.get("match"), dict):
+                # F-2026-09-17d: resume needs the outer saved time to reject an old match.
                 self.host._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
                 rp = self.host._resume_pending
                 if isinstance(rp.get("config"), dict) and isinstance(rp["config"].get("teams"), list):
@@ -394,6 +408,8 @@ class SnapshotCodec:
                                               *self.host._catalog_rows())
             self.host._gun_index()
             if self.host.players:
+                # F142: show the restored roster on the board. Validate the file's saved time before
+                # the UI uses it as a date; an edited snapshot may contain a string or null.
                 at = snap.get("saved_ms")
                 at = int(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
                 self.host.restored_from = {"at": at, "players": len(self.host.players)}
@@ -419,7 +435,13 @@ class SnapshotCodec:
                                    "kept": str(kept) if kept else None}
             return 0
     def _repair_player_nums(self) -> None:
-        """Give every restored player a unique 1..63 `player_num`."""
+        """Give every restored player a unique 1..63 `player_num`.
+
+        The number is the `$PSET` player id. A duplicate makes two guns answer to one id,
+        so hits can count for the wrong player. Old restores trusted file numbers until a
+        config change, which let an edited or merged snapshot arm with duplicate ids.
+        The first player keeps a valid number.
+        """
         seen: set[int] = set()
         needs: list[Player] = []
         for p in self.host.players.values():
@@ -433,6 +455,8 @@ class SnapshotCodec:
             return
         import logging
         base = int(self.host.config.get("player_num_base") or 1)
+        # Prefer the configured range, but use free numbers below it before dropping a player.
+        # Restoring a roster must preserve every player the wire's 1..63 range can hold.
         start = max(1, min(base, MAX_PLAYERS))
         order = list(range(start, MAX_PLAYERS + 1)) + list(range(1, start))
         free = (n for n in order if n not in seen)

@@ -454,6 +454,7 @@ class Session:
     def _station_departures(self, value: dict[str, dict]) -> None:
         self.station_registry._station_departures = value
 
+    # Keep the restore_failed, _snapshot_failures and _keep_bad_snapshot host detours for mock.patch.object tests.
     @property
     def _snapshot_failures(self) -> FailureTrack:
         return self.snapshot_codec.snapshot_failures
@@ -3986,7 +3987,7 @@ class Session:
         raw_departed = m.get("departed_stations")
         if isinstance(raw_departed, list):
             for raw in raw_departed:
-                row = self.snapshot_codec._snapshot_departed_station(raw)
+                row = self.snapshot_codec.snapshot_departed_station(raw)
                 if row is None or row["node_id"] in self._departed_match_stations:
                     invalid_departed += 1
                     continue
