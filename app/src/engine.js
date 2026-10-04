@@ -6548,6 +6548,107 @@ export class Engine {
     return clamped ? this._lethalWeapon(hl.shooter_num, this._resolveHitWeapon(hl)) : this._resolveHitWeapon(hl);
   }
 
+  /** `_onHp` step: the HUD moment. The gun's own LED strip cannot hold a steady colour in game (the firmware
+   *  animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries the detailed
+   *  feedback — it is the one surface we fully control. See experiment-log 2026-09-02.
+   *  Returns early outside live play; inside it, the spawn fill's answer ends the fill window first. Then, in order of
+   *  precedence: a rarer moment still unrendered keeps the slot, a poison echo sets nothing, a hit that did not kill
+   *  sets `hit`, and a rise in any pool (not a refill from zero) goes to `_hpGainMoment`. */
+  _hpMoment(h) {
+    if (!(this.phase === 'live' && this.spawned && this.alive && !this.tutorial)) return;
+    // A hit must not overwrite a rarer, more important moment that is still on screen. There is
+    // ONE moment slot and `hit` is by far the most frequent producer, so without this a kill
+    // confirm landing in the same tick as a hit is silently lost -- verified, it rendered only the
+    // hit. Kill/redeploy/down own the screen for their own duration.
+    // ONE RENDER TICK, not the overlay's display duration. The race is only that a rarer moment
+    // set in the same tick is overwritten before the HUD has rendered it -- once rendered, the
+    // kill/redeploy overlay is its own DOM node and a later hit does not disturb it.
+    // Guarding for the full display duration was worse than the bug: a player shot while a kill
+    // banner was up would never be told they were hit, and being hit is the one thing they cannot
+    // afford to miss.
+    const RARE_GUARD_MS = 250;
+    // F348 / polish r2: a shield rise inside the fill window is the gun's answer to the spawn fill. It ends the window
+    // HERE, before the moment gates below, because a revive's `redeploy` moment would otherwise swallow the echo and
+    // keep the spawn-fill accounting until the gun answers the pool update.
+    const fillAnswer = !!this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS && h.shield > this._prevShield;
+    if (fillAnswer) this._shieldFillAt = 0;
+    const m = this.moment;
+    const busy = m && ['kill', 'redeploy', 'down', 'match_over'].includes(m.kind)
+      && (this.now() - m.at) < RARE_GUARD_MS;
+    if (busy) return;          // let the rarer moment survive long enough to be rendered
+    if (h.dotEcho) return;     // S16: a poison tick is not a hit; the HUD's poison pill carries it
+    const { hp, armor, shield, hl } = h;
+    if (h.dmg > 0 && hp > 0) {
+      // A death sets its own 'down' moment; a hit that kills must not flash "hit" first.
+      this.moment = { kind: 'hit', at: this.now(),
+        data: { dmg: h.dmg, shooter_team: hl ? hl.shooter_team : 0,
+                // the KEY, not the tid: the engine already owns tid->key (TEAM_KEY), and a second
+                // copy of that mapping in the HUD is a divergence waiting to happen
+                shooter_key: TEAM_KEY[hl ? hl.shooter_team : 0] || 'red',
+                // S56 "what hit me": {id, name, source} resolved, {ambiguous: true, names} two-or-more
+                // candidates share the magnitude, or null (no claim, or an unknown magnitude) -- set by
+                // `_hpHitTaken`, which always runs first (same `dmg > 0` gate) when this fires.
+                sensor: hl ? hl.sensor : null, hp, armor, shield, weapon: h.hitWeapon } };
+      return;
+    }
+    // Pools went UP: a heal, an armour pickup, or a shield grant. `before > 0` keeps the
+    // spawn/respawn refill out of it — that has its own 'redeploy' moment.
+    if (h.before > 0) this._hpGainMoment(h, fillAnswer);
+  }
+
+  /** The `gain` moment for a frame whose pools rose. Returns early, with no moment, when nothing rose, for the spawn
+   *  fill's echo (it charges the shield instead), for the overshield grant's echo, and for a pool above the armed
+   *  ceiling. Otherwise it sets `gain` for the largest rise and says the pool's line. */
+  _hpGainMoment(h, fillAnswer) {
+    const { hp, armor, shield } = h;
+    const gains = [['health', hp - this._prevHp], ['armor', armor - this._prevArmor],
+                   ['shield', shield - this._prevShield]].filter(g => g[1] > 0);
+    if (!gains.length) return;
+    // F348: the gun's answer to the spawn fill. The life started full; this is not a pickup or a recharge.
+    if (gains[0][0] === 'shield' && fillAnswer) {   // `fillAnswer` ended the window: from here `this.shield` says whether the loop runs
+      if (shield >= this.maxShield) this._shieldCharged();
+      this.log(`spawn shield fill: ${shield}/${this.maxShield}`, 'li');
+      return;
+    }
+    if (gains.some(g => g[0] !== 'shield') && this.pu.overshield && this.now() - this.pu.overshield.at <= OVERSHIELD_ECHO_MS
+        && hp === this.pu.overshield.hp && armor === this.pu.overshield.armor) {
+      // HUD QA R2-21: the overshield grant's echo carries the pools the grant wrote. A rise TO exactly those pools is the
+      // gun catching up with the node's own numbers, never a pickup: no "+55 HEALTH" float. Any other rise (a real heal
+      // inside the echo window) still floats.
+      this.log(`pool rise to ${hp}/${armor}/${shield} in the overshield grant's echo: no gain moment`, 'li');
+      return;
+    }
+    if (this._gainOverCeiling(hp, armor, shield)) {
+      // F341 x HUD QA R2-02: a pool ABOVE the armed ceiling is a misread `$PSET` (`$HP,4545,7070`), never a pickup.
+      // No "+7000 ARMOUR" float and no "armour up" line: `_poolVerify` repairs it, and the HUD marks the vitals.
+      this.log(`pool rise to ${hp}/${armor}/${shield} is above the armed ceiling: no gain moment, no voice line (F341)`, 'li');
+      return;
+    }
+    gains.sort((a, b) => b[1] - a[1]);
+    this.moment = { kind: 'gain', at: this.now(),
+      data: { pool: gains[0][0], amount: gains[0][1], hp, armor, shield } };
+    // S29/S45: a RECHARGE is several `$LIFE` grants (F349: 4, a second apart) and the gun plays one clip at a time,
+    // so the per-grant `shield_up` line cannot be allowed to fire twelve times over the top of it. The
+    // recharge owns its own audio: `shield_charging` when `_shieldTick` writes the first grant, then
+    // silence, then `shield_online` on the grant that reaches the ceiling (F57's rule -- two cues, one
+    // speaker, the rarer one wins). `shield_up` survives for what it was always for: a grant that is
+    // NOT our recharge, an IR pickup or a host grant.
+    //
+    // What makes "full" an EDGE is this method, not a comparison of its own: nothing here runs unless a
+    // pool actually ROSE this frame, so a `$HP` that merely reports a shield already at the ceiling is
+    // silent, and a spawn cannot fire it either (a spawn shield is always 0, bench 2026-08-27, so the
+    // first grant of a life is a real charge). `maxShield > 0` is the load-bearing half: a head with no
+    // shield configured must not have every grant read as "full", and 0 >= 0 would say exactly that.
+    const full = this.maxShield > 0 && shield >= this.maxShield;
+    const pool = gains[0][0];
+    if (pool === 'shield' && full) this._shieldCharged();
+    const kind = pool === 'health' ? 'healed' : pool === 'armor' ? 'armour_up'
+      : full ? 'shield_online' : this._shieldRegen ? null : 'shield_up';   // mid-recharge: `shield_charging` already spoke
+    // Tony 2026-09-24: no voice line when the shield comes back online. Its lights stay; the line is gone.
+    if (kind === 'shield_online') this._eventLeds(kind);
+    else if (kind) this._announceStatus(kind);   // A11; docs/announcer.md: a pool voice line waits its turn
+  }
+
   _onHp(hp, armor, shield, solicited = false) {
     this.pu.onHp();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
@@ -6570,89 +6671,7 @@ export class Engine {
     this._hpHitTaken(h);
     const { hl } = h;
     hitWeapon = h.hitWeapon;
-    // HUD moments. The gun's own LED strip cannot hold a steady colour in game (the firmware
-    // animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries
-    // the detailed feedback — it is the one surface we fully control. See experiment-log 2026-09-02.
-    if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial) {
-      // A hit must not overwrite a rarer, more important moment that is still on screen. There is
-      // ONE moment slot and `hit` is by far the most frequent producer, so without this a kill
-      // confirm landing in the same tick as a hit is silently lost -- verified, it rendered only the
-      // hit. Kill/redeploy/down own the screen for their own duration.
-      // ONE RENDER TICK, not the overlay's display duration. The race is only that a rarer moment
-      // set in the same tick is overwritten before the HUD has rendered it -- once rendered, the
-      // kill/redeploy overlay is its own DOM node and a later hit does not disturb it.
-      // Guarding for the full display duration was worse than the bug: a player shot while a kill
-      // banner was up would never be told they were hit, and being hit is the one thing they cannot
-      // afford to miss.
-      const RARE_GUARD_MS = 250;
-      // F348 / polish r2: a shield rise inside the fill window is the gun's answer to the spawn fill. It ends the window
-      // HERE, before the moment gates below, because a revive's `redeploy` moment would otherwise swallow the echo and
-      // keep the spawn-fill accounting until the gun answers the pool update.
-      const fillAnswer = !!this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS && shield > this._prevShield;
-      if (fillAnswer) this._shieldFillAt = 0;
-      const m = this.moment;
-      const busy = m && ['kill', 'redeploy', 'down', 'match_over'].includes(m.kind)
-        && (this.now() - m.at) < RARE_GUARD_MS;
-      if (busy) { /* let the rarer moment survive long enough to be rendered */ }
-      else if (dotEcho) { /* S16: a poison tick is not a hit; the HUD's poison pill carries it */ }
-      else if (dmg > 0 && hp > 0) {
-        // A death sets its own 'down' moment; a hit that kills must not flash "hit" first.
-        this.moment = { kind: 'hit', at: this.now(),
-          data: { dmg, shooter_team: hl ? hl.shooter_team : 0,
-                  // the KEY, not the tid: the engine already owns tid->key (TEAM_KEY), and a second
-                  // copy of that mapping in the HUD is a divergence waiting to happen
-                  shooter_key: TEAM_KEY[hl ? hl.shooter_team : 0] || 'red',
-                  // S56 "what hit me": {id, name, source} resolved, {ambiguous: true, names} two-or-more
-                  // candidates share the magnitude, or null (no claim, or an unknown magnitude) -- set above
-                  // in the hit_taken block, which always runs first (same `dmg > 0` gate) when this fires.
-                  sensor: hl ? hl.sensor : null, hp, armor, shield, weapon: hitWeapon } };
-      } else if (before > 0) {
-        // Pools went UP: a heal, an armour pickup, or a shield grant. `before > 0` keeps the
-        // spawn/respawn refill out of it — that has its own 'redeploy' moment.
-        const gains = [['health', hp - this._prevHp], ['armor', armor - this._prevArmor],
-                       ['shield', shield - this._prevShield]].filter(g => g[1] > 0);
-        // F348: the gun's answer to the spawn fill. The life started full; this is not a pickup or a recharge.
-        const fillEcho = gains.length && gains[0][0] === 'shield' && fillAnswer;
-        if (fillEcho) {   // `fillAnswer` ended the window: from here `this.shield` says whether the loop runs
-          if (shield >= this.maxShield) this._shieldCharged();
-          this.log(`spawn shield fill: ${shield}/${this.maxShield}`, 'li');
-        } else if (gains.length && gains.some(g => g[0] !== 'shield') && this.pu.overshield && this.now() - this.pu.overshield.at <= OVERSHIELD_ECHO_MS
-                   && hp === this.pu.overshield.hp && armor === this.pu.overshield.armor) {
-          // HUD QA R2-21: the overshield grant's echo carries the pools the grant wrote. A rise TO exactly those pools is the
-          // gun catching up with the node's own numbers, never a pickup: no "+55 HEALTH" float. Any other rise (a real heal
-          // inside the echo window) still floats.
-          this.log(`pool rise to ${hp}/${armor}/${shield} in the overshield grant's echo: no gain moment`, 'li');
-        } else if (gains.length && this._gainOverCeiling(hp, armor, shield)) {
-          // F341 x HUD QA R2-02: a pool ABOVE the armed ceiling is a misread `$PSET` (`$HP,4545,7070`), never a pickup.
-          // No "+7000 ARMOUR" float and no "armour up" line: `_poolVerify` repairs it, and the HUD marks the vitals.
-          this.log(`pool rise to ${hp}/${armor}/${shield} is above the armed ceiling: no gain moment, no voice line (F341)`, 'li');
-        } else if (gains.length) {
-          gains.sort((a, b) => b[1] - a[1]);
-          this.moment = { kind: 'gain', at: this.now(),
-            data: { pool: gains[0][0], amount: gains[0][1], hp, armor, shield } };
-          // S29/S45: a RECHARGE is several `$LIFE` grants (F349: 4, a second apart) and the gun plays one clip at a time,
-          // so the per-grant `shield_up` line cannot be allowed to fire twelve times over the top of it. The
-          // recharge owns its own audio: `shield_charging` when `_shieldTick` writes the first grant, then
-          // silence, then `shield_online` on the grant that reaches the ceiling (F57's rule -- two cues, one
-          // speaker, the rarer one wins). `shield_up` survives for what it was always for: a grant that is
-          // NOT our recharge, an IR pickup or a host grant.
-          //
-          // What makes "full" an EDGE is this branch, not a comparison of its own: nothing here runs unless a
-          // pool actually ROSE this frame, so a `$HP` that merely reports a shield already at the ceiling is
-          // silent, and a spawn cannot fire it either (a spawn shield is always 0, bench 2026-08-27, so the
-          // first grant of a life is a real charge). `maxShield > 0` is the load-bearing half: a head with no
-          // shield configured must not have every grant read as "full", and 0 >= 0 would say exactly that.
-          const full = this.maxShield > 0 && shield >= this.maxShield;
-          const pool = gains[0][0];
-          if (pool === 'shield' && full) this._shieldCharged();
-          const kind = pool === 'health' ? 'healed' : pool === 'armor' ? 'armour_up'
-            : full ? 'shield_online' : this._shieldRegen ? null : 'shield_up';   // mid-recharge: `shield_charging` already spoke
-          // Tony 2026-09-24: no voice line when the shield comes back online. Its lights stay; the line is gone.
-          if (kind === 'shield_online') this._eventLeds(kind);
-          else if (kind) this._announceStatus(kind);   // A11; docs/announcer.md: a pool voice line waits its turn
-        }
-      }
-    }
+    this._hpMoment(h);
     this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
     this._audioSync();
     if (hp > 0) this._gunPoolPaint(movedPool);   // A16 §3.1 (readout) / A11.7 legacy (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
