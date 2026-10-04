@@ -6450,6 +6450,29 @@ export class Engine {
     this._write(line.fr, 'low health', undefined, false, () => { this._pendingHurtWrite = false; this._hurtSent = true; });   // cancels a pending hit-flash rest step (polish 2026-09-04)
   }
 
+  /** `_onHp` step: a registered hit WIPES the headset: the native flash runs, then it goes dark and our team
+   *  colour never comes back (bench 2026-09-03, hled_spawned.py). Re-send it so other players keep seeing the team for
+   *  the rest of the life. Skipped (early return) unless this frame is a live, non-lethal hit that is not a poison
+   *  echo, and on the hit that fired the low-health alert -- that alert IS the headset for the next ~3 s and a repaint
+   *  would cut it short. A static frame, one write per hit, never hammered. Empty cue = LEDs off or unknown colour. */
+  _hpHeadsetReassert(h) {
+    if (!(this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && h.dmg > 0 && !this.tutorial && !h.dotEcho)) return;
+    if (h.hurtNow) return;
+    const hs = this.frames && this.frames.headset;
+    if (!hs) {
+      const tl = this.frames && this.frames.cues && this.frames.cues.team_led;   // pre-A11.6 bundle
+      if (tl) this._write([tl], 'team led');
+      return;
+    }
+    // A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the hit — the
+    // rate gate (§C) applies to this re-assert and to the plain hit flash, never to the alert/team-flip
+    // writes that first turned the role on.
+    const role = this._activeRole, roleSeq = role && this._roleSeq(role.name, role.tid);
+    if (roleSeq) this._headsetFlash(roleSeq, `role ${role.name} after hit`);                            // the role blink survives a hit
+    else if (hs.hit && hs.hit.length) this._headsetFlash(hs.hit, 'hit');                                // A11.6: flash, then back to rest
+    else if (hs.rest && hs.in_play === 'team') this._write([hs.rest], 'team led');                     // no flash configured: just restore
+  }
+
   _onHp(hp, armor, shield, solicited = false) {
     this.pu.onHp();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
@@ -6468,26 +6491,7 @@ export class Engine {
     this._hpLowHealth(h);
     const hurtNow = h.hurtNow;
     let hitWeapon = null;   // S56 "what hit me": set inside the hit_taken block below, read by the HUD 'hit' moment further down
-    if (this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && dmg > 0 && !this.tutorial && !dotEcho) {
-      // A registered hit WIPES the headset: the native flash runs, then it goes dark and our team
-      // colour never comes back (bench 2026-09-03, hled_spawned.py). Re-send it so other players
-      // keep seeing the team for the rest of the life. Skipped on the hit that fired the low-health
-      // alert -- that alert IS the headset for the next ~3 s and a repaint would cut it short. A
-      // static frame, one write per hit, never hammered. Empty cue = LEDs off or unknown colour.
-      const hs = this.frames && this.frames.headset;
-      if (hs && !hurtNow) {
-        // A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the hit — the
-        // rate gate (§C) applies to this re-assert and to the plain hit flash, never to the alert/team-flip
-        // writes that first turned the role on.
-        const role = this._activeRole, roleSeq = role && this._roleSeq(role.name, role.tid);
-        if (roleSeq) this._headsetFlash(roleSeq, `role ${role.name} after hit`);                            // the role blink survives a hit
-        else if (hs.hit && hs.hit.length) this._headsetFlash(hs.hit, 'hit');                                // A11.6: flash, then back to rest
-        else if (hs.rest && hs.in_play === 'team') this._write([hs.rest], 'team led');                     // no flash configured: just restore
-      } else {
-        const tl = this.frames && this.frames.cues && this.frames.cues.team_led;   // pre-A11.6 bundle
-        if (tl && !hurtNow) this._write([tl], 'team led');
-      }
-    }
+    this._hpHeadsetReassert(h);
     // F354: the damage belongs to the last word that CAN do damage (`_dmgLatch`), not to a smoke or EMP word that
     // landed between that word and this `$HP` -- those move no pool, so this drop is never theirs. With no fresh
     // damaging word inside DEATH_LATCH_MS (its `$HIR` was lost) the raw latch still names the shooter, as before. The
