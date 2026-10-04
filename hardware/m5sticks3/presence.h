@@ -7,15 +7,11 @@
 //                    by smoothed RSSI against a threshold, with dwell, hysteresis and expiry.
 //   BleControlPoint  app/src/control.js `ControlPoint`: the kind-5 hill, driven by the living,
 //                    present players of each team. Its three advert bytes are what every HUD reads.
-//                    F382: the Stick pauses the hold tally while contested; app/src/control.js:187
-//                    still accrues it and needs the same change.
 //   ReviveCounter    app/src/utility.js tick(): a respawn station counts a present player's alive bit
 //                    going 0 -> 1 as a revive that happened here.
 //
-// The numbers come from the phone station, not from control.js's own class defaults where the two
-// differ: utility.js builds its Presence with a 0.8 s dwell (DEFAULTS.dwell) and a -74 dBm threshold
-// (beacon.js STATION_THRESHOLD_DBM), not beacon.js's 2 s / -62. mcp/tests/test_advert_constants_parity.py fails
-// when a number here drifts from its JS twin. A JS rule that is subtle is copied, not improved, and its JS line is named.
+// The phone station uses a 0.8 s dwell and its extraction threshold from the generated phone defaults.
+// beacon.js has different class defaults. The shared values live in contract.gen.h.
 // Pure C++17, header-only; the clock is passed in so the host tests (test/test_presence.cpp) drive it.
 #pragma once
 #include <algorithm>
@@ -24,6 +20,7 @@
 #include <cstdint>
 #include <string>
 
+#include "contract.gen.h"
 #include "brx_advert.h"
 #include "brx_ir.h"
 
@@ -43,35 +40,32 @@ namespace brx {
 constexpr bool REVIVE_FEEDBACK_ENABLED = BRX_REVIVE_FEEDBACK != 0;
 
 // ---- the phone station's numbers ------------------------------------------------------------
-constexpr uint32_t PRESENCE_DWELL_MS = 800;          // utility.js DEFAULTS.dwell (arm's length, with -74)
+constexpr uint32_t PRESENCE_DWELL_MS = contract::PRESENCE_DWELL_MS;
 // F440 (Tony, 2026-10-02): 3 dB, not 6, so the circle is nearly the same size in and out; the exit grace absorbs
 // the dips. beacon.js EXIT_BAND_DB.
-constexpr int PRESENCE_HYSTERESIS_DB = 3;
-constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expiryMs
+constexpr int PRESENCE_HYSTERESIS_DB = contract::PRESENCE_EXIT_BAND_DB;
+constexpr uint32_t PRESENCE_EXPIRY_MS = contract::PRESENCE_EXPIRY_MS;
 // F440 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
 // leaves only after the EMA has stayed below the exit level this long, so a dip is not a step out. beacon.js EXIT_GRACE_MS.
 // P-M2 (review 2026-10-03): 4 s, was 2.5 s, so body shadowing (about 12 dB for 2-5 s) does not drop a standing player.
-constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 4000;
+constexpr uint32_t PRESENCE_EXIT_GRACE_MS = contract::PRESENCE_EXIT_GRACE_MS;
 // F440: a credible sighting (the window median below, at or above the threshold) keeps a player "in the circle"
 // this long. Staying in otherwise comes from `present`. beacon.js SIGHT_MS.
-constexpr uint32_t PRESENCE_SIGHT_MS = 4000;
+constexpr uint32_t PRESENCE_SIGHT_MS = contract::PRESENCE_SIGHT_MS;
 // F440: a sighting is the MEDIAN of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold
 // (beacon.js SIGHT_WINDOW_MS): the same circle edge for a dense and a sparse advertiser. SIGHT_RECENT_MAX bounds it.
-constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
-constexpr size_t SIGHT_RECENT_MAX = 64;  // P-L1: beacon.js SIGHT_RECENT_MAX (about 32 KB across 64 players)
-constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
-constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // beacon.js STATION_THRESHOLD_DBM (the phone station's default for a kind
-                                                     // with no value of its own; utility.js DEFAULTS.threshold is 0 = that default)
-                                                     // A Stick station passes STICK_DEFAULT_THRESHOLD_DBM (-57),
-                                                     // and a Stick hill STICK_HILL_DEFAULT_THRESHOLD_DBM (-75)
-constexpr size_t MEDIAN_SAMPLES = 3;                 // beacon.js MEDIAN_SAMPLES
-constexpr int REVIVE_MARGIN_DB = 10;                 // beacon.js REVIVE_MARGIN_DB (F344)
-constexpr uint32_t STATION_TICK_MS = 250;            // utility.js `setInterval(tick, 250)`
-constexpr int HILL_CAPTURE_S = 10;                   // control.js DEFAULT_CAPTURE_S
-constexpr int HILL_NET_CAP = 3;                      // control.js DEFAULT_NET_CAP
-constexpr uint32_t HILL_MAX_STEP_MS = 1000;          // control.js MAX_STEP_MS
-constexpr int HILL_NEUTRAL = TEAM_ANY;               // control.js NEUTRAL (advert byte 9 = 255)
-constexpr int HILL_REFUSED_TID = 2;                  // control.js REFUSED_TID (F82)
+constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = contract::PRESENCE_SIGHT_WINDOW_MS;
+constexpr size_t SIGHT_RECENT_MAX = contract::PRESENCE_SIGHT_RECENT_MAX;
+constexpr double PRESENCE_ALPHA = contract::PRESENCE_ALPHA;
+constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION;
+constexpr size_t MEDIAN_SAMPLES = contract::PRESENCE_MEDIAN_SAMPLES;
+constexpr int REVIVE_MARGIN_DB = contract::REVIVE_MARGIN_DB;
+constexpr uint32_t STATION_TICK_MS = contract::STATION_TICK_MS;
+constexpr int HILL_CAPTURE_S = contract::HILL_CAPTURE_S;
+constexpr int HILL_NET_CAP = contract::HILL_NET_CAP;
+constexpr uint32_t HILL_MAX_STEP_MS = contract::HILL_MAX_STEP_MS;
+constexpr int HILL_NEUTRAL = contract::STATION_TEAM_ANY;
+constexpr int HILL_REFUSED_TID = contract::HILL_REFUSED_TID;
 constexpr uint8_t PLAYER_ALIVE = 1;                  // beacon.js PLAYER_STATE.alive (player advert byte 10 bit 0)
 // A player number is 1..63 (the claim advert's own limit), so 64 slots never run out in a real game.
 // beacon.js has no cap; a 65th distinct player is dropped and counted (`dropped()`), never overwrites one.
