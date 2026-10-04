@@ -1,11 +1,12 @@
 // Size report and prune for the launcher's evidence root (`~/.brx-mcp/sessions`, one folder per launch).
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
 
 export const KEEP_DEFAULT = 30;
 export const DAYS_DEFAULT = 30;
 const DAY_MS = 86_400_000;
 // A folder this young is never pruned, whatever the settings: a concurrent launch is still starting in it.
+export const RUNNING_MAX_MS = 7 * DAY_MS;
 export const MIN_AGE_MS = 10 * 60_000;
 // A launch folder is `<UTC stamp>-<6 hex>` (scripts/mc.mjs). Nothing else under the root is ever touched.
 const LAUNCH = /^\d{8}T\d{6}Z-[0-9a-f]{6}$/;
@@ -36,9 +37,12 @@ function alive(pid) {
 }
 // Only `running` is protected by the manifest's own content, never by a directory mtime (file writes do not
 // refresh it). A live pid, or no pid to check, protects the folder whatever its age; a dead pid is a crash.
-function running(dir) {
+// The protection ends after RUNNING_MAX_MS: a crashed folder whose pid was reused would stay alive for ever, and
+// no match-day Mission Control runs a week.
+function running(dir, now) {
   const m = readStatus(dir);
   if (!m || m.status !== 'running') return false;
+  if (now - statSync(join(dir, 'manifest.json')).mtimeMs >= RUNNING_MAX_MS) return false;
   return Number.isInteger(m.pid) ? alive(m.pid) : true;
 }
 // A launch that never got going: no event store, and a manifest still at `starting`.
@@ -79,7 +83,7 @@ export function pruneEvidence({ sessionsDir, currentId = '', keep = KEEP_DEFAULT
       const real = realpathSync(dir);
       if (!real.startsWith(rootReal + sep)) continue;                        // never delete outside the root
       const ageMs = now - lstatSync(dir).mtimeMs;
-      if (ageMs < MIN_AGE_MS || ageMs < days * DAY_MS || running(real)) continue;
+      if (ageMs < MIN_AGE_MS || ageMs < days * DAY_MS || running(real, now)) continue;
       const bytes = dirSize(real);
       rmSync(real, { recursive: true, force: true });
       removed.push({ id, bytes });

@@ -96,6 +96,7 @@ test('an old folder whose manifest says running (live pid) is kept whatever its 
   writeFileSync(join(sessions, ids[0], 'manifest.json'), JSON.stringify({ status: 'running', pid: process.pid }));
   writeFileSync(join(sessions, ids[1], 'manifest.json'), JSON.stringify({ status: 'running' }));
   age(sessions, ids);
+  for (const n of [ids[0], ids[1]]) { const w = new Date(NOW - DAY); utimesSync(join(sessions, n, 'manifest.json'), w, w); }
   const r = pruneEvidence({ sessionsDir: sessions, keep: 0, days: 0, now: NOW });
   assert.deepEqual(r.removed.map(x => x.id), [ids[2]]);
 });
@@ -150,4 +151,15 @@ test('failed launches (no store, never got going) do not count towards the newes
   const r = pruneEvidence({ sessionsDir: sessions, keep: 1, days: 0, now: NOW });
   assert.ok(existsSync(join(sessions, ids[0])), 'the real session holds the newest-1 slot');
   assert.deepEqual(r.removed.map(x => x.id).sort(), ids.slice(1));
+});
+
+test('a running manifest older than seven days is not protected, even with a live pid (a reused pid)', t => {
+  const ids = [1, 2].map(id);
+  const { sessions } = tree(t, ids, { ageDays: 90 });
+  writeFileSync(join(sessions, ids[0], 'manifest.json'), JSON.stringify({ status: 'running', pid: process.pid }));
+  const old = new Date(NOW - 8 * DAY);
+  utimesSync(join(sessions, ids[0], 'manifest.json'), old, old);
+  age(sessions, ids);
+  const r = pruneEvidence({ sessionsDir: sessions, keep: 0, days: 0, now: NOW });
+  assert.deepEqual(r.removed.map(x => x.id).sort(), ids);
 });

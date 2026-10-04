@@ -24,51 +24,54 @@ export function redactText(text) {
   return out;
 }
 
-// A head that ends in one of these is waiting for its value (`#tok=`, `"secret":`, `Bearer`, `operator token:`),
-// so a cut there would send the value to the next write unredacted.
-const WAITING = /(?:[:=]\s*"?|\bBearer|\b(?:tok|token|secret|key|s|authorization))\s*$/i;
-
-/** The index of the last whitespace where `text` can be cut, or -1. Neither half may hold half a secret. */
-function safeCut(text) {
-  for (let i = text.length - 1; i > 0; i--) {
-    if (/\s/.test(text[i]) && !WAITING.test(text.slice(0, i))) return i + 1;
-  }
-  return -1;
-}
+// A partial line holding any of these words may hold a secret whose key and value must stay together, so the idle
+// timer never emits it. The list is in the shared rule file (`hold_keywords`), beside the patterns.
+const HOLD = spec.hold_keywords.map(word => word.toLowerCase());
+const HOLD_TAIL = Math.max(...HOLD.map(word => word.length)) + 2;
+const hasKeyword = text => { const lower = text.toLowerCase(); return HOLD.some(word => lower.includes(word)); };
 
 /**
  * Redact a stream by complete line. A secret split across two chunks is whole again once its line is
- * complete. `push(chunk)` writes every finished line to `write`; `end()` writes the trailing partial line.
- * Two cases write part of a line: it grows past `maxLine` with no newline, or it sits unfinished for
- * `idleMs`. Both cut only at whitespace that no rule can span and hold back the rest. A forced flush that
- * finds no such cut writes `[REDACTED-LONG-LINE]` for the whole pending text, so no secret leaks.
+ * complete. `push(chunk)` writes every finished line to `write`; `end()` redacts the pending text as one line.
+ *  - Idle for `idleMs`: a pending partial line is emitted only if it holds no secret keyword, minus a short tail
+ *    (a keyword may straddle the cut). A line with a keyword is held until its newline or the end.
+ *  - Longer than `maxLine` with no newline: write `[REDACTED-LONG-LINE]` and discard input up to the next newline.
  */
 export function lineRedactor(write, maxLine = 1_000_000, idleMs = 3000) {
   let pending = '';
   let timer = null;
+  let discarding = false;
   const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
-  const flushPartial = force => {
-    const cut = safeCut(pending);
-    if (cut > 0) {
-      write(redactText(pending.slice(0, cut)));
-      pending = pending.slice(cut);
-    } else if (force) {
-      write('[REDACTED-LONG-LINE]\n');
-      pending = '';
-    }
+  const idleFlush = () => {
+    timer = null;
+    if (hasKeyword(pending) || pending.length <= HOLD_TAIL) return;
+    write(redactText(pending.slice(0, -HOLD_TAIL)));
+    pending = pending.slice(-HOLD_TAIL);
   };
   return {
     push(chunk) {
-      pending += chunk.toString();
+      let text = chunk.toString();
+      if (discarding) {
+        const nl = text.indexOf('\n');
+        if (nl < 0) return;
+        discarding = false;
+        write('\n');
+        text = text.slice(nl + 1);
+      }
+      pending += text;
       const cut = pending.lastIndexOf('\n');
       if (cut >= 0) {
         write(redactText(pending.slice(0, cut + 1)));
         pending = pending.slice(cut + 1);
       }
-      if (pending.length > maxLine) flushPartial(true);
+      if (pending.length > maxLine) {
+        write('[REDACTED-LONG-LINE]');
+        pending = '';
+        discarding = true;
+      }
       clear();
       if (pending && idleMs > 0) {
-        timer = setTimeout(() => { timer = null; flushPartial(false); }, idleMs);
+        timer = setTimeout(idleFlush, idleMs);
         timer.unref?.();
       }
     },

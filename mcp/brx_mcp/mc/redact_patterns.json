@@ -26,5 +26,19 @@
    "pattern": "\\b(?:token|authorization)(?![:=]?\\s*\\[REDACTED\\])=?\\s*[^\\s]+",
    "replacement": "token=[REDACTED]"
   }
+ ],
+ "hold_keywords": [
+  "tok",
+  "token",
+  "secret",
+  "key",
+  "bearer",
+  "authorization",
+  "password",
+  "pin",
+  "psk",
+  "operator",
+  "?s=",
+  "&s="
  ]
 }
