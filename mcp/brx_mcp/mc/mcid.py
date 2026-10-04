@@ -34,11 +34,12 @@ import logging
 import os
 import re
 import secrets
-import tempfile
 import time
 from collections import deque
 from typing import Callable
 from pathlib import Path
+
+from ..storage import atomic_write_text
 
 log = logging.getLogger("brx.mc.mcid")
 
@@ -95,25 +96,6 @@ def valid_challenge(value: object) -> bool:
     return isinstance(value, str) and bool(_CHALLENGE.match(value))
 
 
-def _write_private(path: Path, data: bytes) -> None:
-    """Atomic write, mode 600 from the first byte (the temp file is created 600 by mkstemp)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
-    except BaseException:
-        with contextlib.suppress(Exception):
-            os.unlink(tmp)
-        raise
-    with contextlib.suppress(Exception):
-        os.chmod(path, 0o600)
-
-
 def load_install_secret(data_dir: Path | None) -> tuple[bytes, bool]:
     """(secret, created). Created on first use; `None` = in memory only (demo, ephemeral, tests)."""
     if data_dir is None:
@@ -137,8 +119,8 @@ def load_install_secret(data_dir: Path | None) -> tuple[bytes, bool]:
     # The EMPTY enrolled list first, then the secret. A crash between the two leaves a list with no
     # secret, which the next launch reads as a clean new install. The other order would leave a secret
     # with no list, which fails closed until someone deletes the files by hand.
-    _write_private(Path(data_dir) / ENROLLED_FILE, b"")
-    _write_private(path, (b64url(value) + "\n").encode("ascii"))
+    atomic_write_text(Path(data_dir) / ENROLLED_FILE, "", mode=0o600)
+    atomic_write_text(path, b64url(value) + "\n", mode=0o600)
     return value, True
 
 
@@ -293,7 +275,7 @@ class TrustRegistry:
         for nid, (t, nonce_h) in self.unbound.items():
             out.append(f"{nid} u {t} {nonce_h}")
         try:
-            _write_private(self.data_dir / ENROLLED_FILE, ("".join(x + "\n" for x in out)).encode("utf-8"))
+            atomic_write_text(self.data_dir / ENROLLED_FILE, "".join(x + "\n" for x in out), mode=0o600)
             self._lines = len(out)
         except Exception as e:
             log.warning("could not compact %s (%s); it stays as it is", ENROLLED_FILE, e)

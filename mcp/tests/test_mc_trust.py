@@ -287,24 +287,24 @@ def test_a_failed_append_is_cut_back_so_disk_and_memory_agree():
 
 def test_a_crash_between_creating_the_list_and_the_secret_is_a_clean_new_install():
     root = _tmp()
-    real = mcid._write_private
+    real = mcid.atomic_write_text
 
     writes = []
 
-    def crash_on_secret(path, data):     # the power goes after the FIRST of the two files is on disk
+    def crash_on_secret(path, data, mode=None):     # the power goes after the FIRST of the two files is on disk
         writes.append(Path(path).name)
         if len(writes) == 2:
             raise OSError("power cut")
-        return real(path, data)
+        return real(path, data, mode)
     try:
-        mcid._write_private = crash_on_secret
+        mcid.atomic_write_text = crash_on_secret
         try:
             mcid.load_install_secret(root)
             assert False, "the crash did not happen"
         except OSError:
             pass
     finally:
-        mcid._write_private = real
+        mcid.atomic_write_text = real
     try:
         assert writes == [mcid.ENROLLED_FILE, mcid.SECRET_FILE], writes
         reg = TrustRegistry(root)
