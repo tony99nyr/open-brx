@@ -458,6 +458,18 @@ async def mc_restart(world: World) -> None:
     await world.restart_mc()
 
 
+def _never(world: World, rng: random.Random):
+    return None   # script-only: a random mix never draws it
+
+
+@action("mc_clock_step", pick=_never)
+async def mc_clock_step(world: World, delta_ms: int) -> None:
+    """F451: MC's wall clock steps (WSL2 TimeSync, an NTP step on a laptop). Negative = back in time. The nodes
+    keep their own clocks."""
+    assert world.stack is not None
+    world.stack.mc_skew_ms += delta_ms
+
+
 @action("mc_crash", pick=_pick_restart)
 async def mc_crash(world: World) -> None:
     """MC dies without its last snapshot write (a crash, a laptop lid): the new process reads the

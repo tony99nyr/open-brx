@@ -788,3 +788,45 @@ def test_x2_a_malformed_game_byte_is_ignored():
     _status(net, clock, 0, "live", "m-old", game_byte=0)   # 0 = "any game", never a match's byte
     s.adopt_orphan("m-old")
     assert s._game_byte() == 1
+
+
+# ── F451: a backward wall-clock step must not re-arm a live match ─────────────────────────────────────
+def test_f451_a_live_match_resumes_live_after_the_wall_clock_steps_back():
+    """Chaos 2026-10-03 (crash-mixed seeds 1-2 under test:all): WSL2 TimeSync stepped MC's clock back just after
+    go-live, and the resume compared `now` with `go_live_t` and came back ARMED under live phones."""
+    s, net, clock, ps, info = _persisting_live()
+    assert s.phase == "live"
+    clock["t"] = info["go_live_t"] - 3000          # the wall clock steps back 3 s
+    s2, _ = _restart(s, clock)
+    assert s2.resume_match() == "live"
+
+
+def test_f451_the_live_flip_writes_the_snapshot_at_once_so_a_crash_keeps_it():
+    s, net, clock, ps = mk(2, "ffa")
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config(force=True)
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                              "gun_echo": "$LCD"}, clock["t"])
+    info = s.start(runway_s=1, force=True)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s.persist_now(); s._persist_dirty = True; s.persist_now()   # the ARMED snapshot is on disk
+    clock["t"] = info["go_live_t"]
+    s.tick()                                        # the LIVE flip, inside the 2 s debounce of that write
+    assert s.phase == "live"
+    assert json.loads(s._persist_path.read_text())["match"].get("live") is True, "the flip must reach the disk"
+    clock["t"] -= 3000                              # then the clock steps back, and MC crashes
+    s2, _ = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+
+
+def test_f451_a_snapshot_with_no_live_flag_resumes_as_before():
+    """An older snapshot (no `live` key) keeps the clock rule: before go-live it resumes ARMED."""
+    s, net, clock, ps, info = _persisting_live()
+    s._persist_last = 0.0; s._persist()
+    snap = json.loads(s._persist_path.read_text()); snap["match"].pop("live", None)
+    s._persist_path.write_text(json.dumps(snap))
+    clock["t"] = info["go_live_t"] - 3000
+    s2, _ = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "armed"

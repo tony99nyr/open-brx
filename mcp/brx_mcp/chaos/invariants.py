@@ -212,13 +212,17 @@ def no_kill_cue_after_end(world: World) -> None:
     sc = world.session.scorer
     if sc is None or world.match_id is None:
         return
-    fin = next((f.get("at_ms") for f in world.finishes if f["match_id"] == world.match_id), None)
+    # F451: "after the finish" is an ORDER, read off a monotonic clock. MC's own stamps can step back (WSL2 TimeSync,
+    # an NTP step), and then a cue sent before the finish carries a later `sent_ms` than the finish's `at_ms`.
+    fin_rec = next((f for f in world.finishes if f["match_id"] == world.match_id), None)
+    fin = fin_rec.get("at_ms") if fin_rec else None
+    fin_mono = fin_rec.get("mono") if fin_rec else None
     buzzer = sc.go_live_t + sc.time_limit_s * 1000 if sc.time_limit_s else None
     for c in world.kill_cues:
         if c["match_id"] != world.match_id:
             continue
         late = [why for why, bad in (("in RECAP", c["phase"] == "recap"),
-                                     ("after the finish", fin is not None and c["sent_ms"] > fin),
+                                     ("after the finish", fin_mono is not None and c["mono"] > fin_mono),
                                      ("after the time limit", buzzer is not None and c["sent_ms"] > buzzer),
                                      # the cap as it stood WHEN the cue left: a moved-back end makes the final
                                      # `limit_reached_t` earlier than cues that were legitimate at the time
