@@ -4326,8 +4326,9 @@ export class Engine {
    *  - The restore re-sends the LIVE counts snapshotted here (last `$ALCD` per slot, else the frame's spawn
    *    values), because a `$WEAP`/`$AMMO` re-push resets ammo to the frame's numbers (F87) and a stun must not refill.
    *  - Death cancels (`_death` -> `_stunRestore('died')`, no write): `frames.revive` carries its own `$AMMO`.
-   *  - A rejoin's reconcile takes over (`rc.begin`), and a link that is down at expiry gets no write --
-   *    the relink's reconcile re-arms it (coarsely, with the frame's counts).
+   *  - A rejoin's reconcile does not end a stun (r1 S2): its window end arms nothing while the stun runs, and a stun that
+   *    expires inside the window defers to that end (r1 S3). A link that is down at expiry gets no write --
+   *    the relink's reconcile re-arms it.
    *  - Not persisted: a reload during a stun loses the timer and the relink reconcile re-arms the gun. */
   _stun() {
     if (!this.stunEnabled || this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial) return;
@@ -4354,6 +4355,14 @@ export class Engine {
   _stunRestore(why) {
     const st = this.stunned; if (!st) return;
     this.stunned = null;
+    if (why === 'expired' && this.rc.active) {
+      // r1 S3: the window is still holding the gun disarmed, and shots inside it are ignored. A restore now would re-arm the
+      // gun inside the window; the window's end re-arms with the live counts and serves both, so they are written once.
+      this.moment = { kind: 'stun_over', at: this.now() };
+      this._event('stun_over');
+      this.log(`stun over (${why}); the reconcile window's end re-arms`, 'li');
+      this._changed(); return;
+    }
     if (why === 'expired' && this.alive && this.bleUp) {
       const life = this._lifeSeq;
       // A56: a pickup slot is restored to the held heavy's count as it is NOW (0 for one not held), never the snapshot's.

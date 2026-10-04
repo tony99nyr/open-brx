@@ -1313,6 +1313,27 @@ test('F436 reconcile: a heavy on the trigger is re-equipped in the re-arm write,
   assert.ok(!logs.some(m => /gun fired slot 0 while/.test(m)), 'the slot-0 backstop never ran');
 });
 
+test('Reconcile bugs 1+2 r1 S1: an EMP inside the window with a heavy on the trigger re-equips it at ZERO charges; the stun expiry puts the charges back', () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
+  h.eng.config.stun = { duration_s: 8 };
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.adv(1000); h.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.ok(h.eng.stunned, 'setup: the EMP lands inside the window');
+  const b0 = h.batches.length;
+  h.adv(2000); h.eng.tick();
+  assert.equal(h.eng.state().reconciling, false, 'the window ended');
+  const after = h.batches.slice(b0).flat();
+  assert.ok(!after.some(f => /^\$AMMO,\d+,[1-9]/.test(f)), `nothing is armed while stunned: ${JSON.stringify(after.filter(f => f.startsWith('$AMMO')))}`);
+  assert.ok(after.includes(WEAP[2]) && after.includes('$AMMO,2,0,0,1,*'), 'the heavy goes back on the trigger at zero charges (F436)');
+  assert.equal(h.eng.pu.held?.left, 2, 'the item keeps its charges');
+  const b1 = h.batches.length;
+  h.adv(6000); h.eng.tick();
+  assert.equal(h.eng.stunned, null, 'the stun expired');
+  const restore = h.batches.slice(b1).flat();
+  assert.ok(restore.some(f => /^\$AMMO,2,2,\d+,1,\*$/.test(f)), `the expiry restore puts the heavy's charges on slot 2: ${JSON.stringify(restore)}`);
+});
+
 test('F436 reconcile control: a heavy held OFF the trigger is not re-equipped by the re-arm', () => {
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
   h.select(); h.adv(h.eng.switchWindowMs() + 300);

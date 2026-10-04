@@ -80,7 +80,8 @@ export class Reconcile {
     // down were never reported, so the re-arm gives them back: a bounded refund, not a free magazine.
     this._win = { since: h.now(), ammo: h.liveAmmo() };
     h.clearResync();                                      // never run the infer-death machine on a rejoin
-    h.stunRestore('reconcile');                           // F15: the reconcile owns the disarm/re-arm from here (F164: it re-arms with the live counts snapshotted above)
+    // F15, r1 S2: a running stun is NOT ended here. Its deadline survives the relink: `end` re-arms nothing before it, and the
+    // stun's own expiry restore (or this window's end, once the deadline has passed) re-arms with the live counts snapshotted above.
     h.write(['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*', ...h.pu.disarmRows()], 'reconcile: disarm');   // no shots count while we reconcile; A56: nor a held heavy's
     // F264 (Tony, 2026-09-18): ...and ASK. §3.10's rule is that the node must never INFER inside this window, and
     // the gun may well have died while the app was away (the S7 gap-death limitation, which inference cannot see).
@@ -114,9 +115,10 @@ export class Reconcile {
     }
     if (h.alive) {
       // A stun that landed inside the window keeps the gun disarmed: the re-arm rows would undo it. The stun's expiry restore
-      // (`_stunRestore`) re-sends the live counts, a held pickup's included. Exception: a heavy on the trigger still needs the
-      // re-equip that only this re-arm does (F436); the stun restore never moves the trigger.
-      const stunHolds = !!h.stunned && !h.pu.heavyOnTrigger();
+      // (`_stunRestore`) re-sends the live counts, a held pickup's included. A stun whose deadline has already passed (it
+      // expired inside the window, and `_stunRestore` deferred to this end) is over: this re-arm serves both, once.
+      if (h.stunned && h.now() >= h.stunned.until) h.stunRestore('reconcile');
+      const stunHolds = !!h.stunned;
       // F164: re-arm each slot to the LIVE count snapshotted when the reconcile began (ammo.js `liveAmmo`: the node's
       // magazine account, else that slot's spawn row). The spawn row alone was a free full magazine plus the
       // spawn reserve on every relink. A pickup slot keeps its spawn row here; `pu.reconcileRearm` owns a held heavy.
@@ -126,6 +128,12 @@ export class Reconcile {
         return l && !pu.has(slot) ? `$AMMO,${slot},${l[0]},${l[1]},1,*` : f;
       });
       // A56: a held heavy keeps its charges, and one on the trigger goes back on it (F436): `pu.reconcileRearm` says how.
+      if (stunHolds) {
+        // A heavy on the trigger goes back on it at ZERO charges (F436: the stun restore never moves the trigger), so the
+        // player cannot fire it while stunned; the expiry restore (`pu.restoreRows`) writes its charges back.
+        const z = h.pu.stunRearm(rows);
+        if (z.reequip) { h.pu.reequipInRearm(z.ammo, true); h.pu.afterRearm(); h.holdAccuracyWrites('reconcile re-arm (stunned)'); }
+      }
       const { reequip, ammo } = stunHolds ? { reequip: false, ammo: [] } : h.pu.reconcileRearm(rows);
       if (ammo.length || reequip) {
         // F259: the account takes the re-armed counts and opens the echo window, as the powerup equip does, so the gun's

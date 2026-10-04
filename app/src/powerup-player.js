@@ -19,7 +19,7 @@
 //                 altPending) · repairLostEquip(held, slot, mag) · onSelect() · onAltPressed() · onAssumedSwap(to) ·
 //                 onConfirmedSwap(slot) · onHp() · onShieldFrame(shield)
 //     life        onDeath(inRevive?) · onReviveStart() · onRevive(burst) · keepHeld(held)
-//     reconcile   disarmRows() · reconcileRearm(rows) · reequipInRearm(ammo) · afterRearm() · restoreRows(rows, pu)
+//     reconcile   disarmRows() · reconcileRearm(rows) · stunRearm(rows) · reequipInRearm(ammo, zero?) · afterRearm() · restoreRows(rows, pu)
 //     queries     isHeldSlot(slot) · heavyOnTrigger() · heavyMatches(slot, mag) · overshieldPset() · psetWithShieldMax(max)
 //     accessors   held (rw) · overshield (rw) · grant (rw) · back · backPending · protectUntil · psetNow · spawnCard ·
 //                 swapCard (the setters exist for tests that stage a state without a grant)
@@ -670,7 +670,19 @@ export class PlayerPowerups {
     return { reequip, ammo: burstWithHeld(rows, held) };
   }
   /** The re-arm write when `reconcileRearm` said `reequip`: the loadout rows, then the heavy's `$WEAP` + `$AMMO`, in one write. */
-  reequipInRearm(ammo) { const held = this._held; this._equip(held.slot, held.left, PU_RESERVE, `reconcile: re-arm + ${held.name} back on the trigger`, ammo); }
+  reequipInRearm(ammo, zero = false) {
+    const held = this._held;
+    this._equip(held.slot, zero ? 0 : held.left, zero ? 0 : PU_RESERVE, `reconcile: re-arm + ${held.name} back on the trigger${zero ? ' (stunned: zero charges)' : ''}`, ammo);
+  }
+  /** The reconcile re-arm while a stun still holds the gun (r1 S1): nothing is armed. A heavy on the trigger is re-equipped
+   *  at zero charges, with the loadout rows at zero, so the trigger position is right when the stun's restore writes the
+   *  counts. Same `reequip` condition as `reconcileRearm`. */
+  stunRearm(rows) {
+    const h = this.host, held = this._held, sw = h.switching;
+    const reequip = !!(held && held.trig === held.slot && this._headWeap(held.slot) && !(sw && !sw.pu));
+    if (!reequip) return { reequip: false, ammo: [] };
+    return { reequip, ammo: rows.filter(f => !f.startsWith(`$AMMO,${held.slot},`)).map(f => f.replace(/^(\$AMMO,\d+),[^,]*,[^,]*,/, '$1,0,0,')) };
+  }
   /** After the re-arm (A56 r2 M1): the re-arm is not the switch-back, so a pending one is sent again with a fresh budget. */
   afterRearm() { const bp = this._backPending; if (bp) { bp.tries = 0; this._backResend(this.host.now(), 'after the reconcile'); } }
   /** F416 r4: does the gun's `$QUERY` weapon state match a held heavy? Before the first pull (F436) it may read the
