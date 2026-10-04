@@ -188,6 +188,7 @@ class NetServer:
         self.hello_timeout_s = hello_timeout_s
         self.ping_interval_s = ping_interval_s
         self.nodes: dict[str, NodeRecord] = {}
+        self.encode_failures: dict[str, int] = {}   # O14: downlink kind -> frames that failed to encode (not sent)
         # prior utility id -> HUD id while an authenticated F184 welcome is in flight. This keeps the
         # old proof retryable until the acknowledgement is actually delivered.
         self._utility_handoffs: dict[str, str] = {}
@@ -446,25 +447,31 @@ class NetServer:
         rec = self.nodes.get(node_id)
         if rec is None or rec.ws is None:
             return False
-        self._send(rec, kind, body)
-        return True
+        return self._send(rec, kind, body)
 
     def broadcast(self, kind: str, body: dict) -> int:
         n = 0
         for rec in list(self.nodes.values()):
             if rec.ws is not None:
-                self._send(rec, kind, body)
-                n += 1
+                if self._send(rec, kind, body):
+                    n += 1
         return n
 
     def node_views(self) -> list[dict[str, Any]]:
         return [r.view() for r in self.nodes.values()]
 
-    def _send(self, rec: NodeRecord, kind: str, body: dict) -> None:
-        text = E.encode(E.make_envelope(kind, body))
+    def _send(self, rec: NodeRecord, kind: str, body: dict) -> bool:
+        """Encode and queue one frame. An envelope that cannot be encoded (O14: oversize) is logged with the
+        node, the kind and the size, counted in `encode_failures`, and NOT sent: the caller gets False."""
+        try:
+            text = E.encode(E.make_envelope(kind, body))
+        except E.EnvelopeError as e:
+            self.encode_failures[kind] = self.encode_failures.get(kind, 0) + 1
+            log.error("could not encode %s for node %s (%s: %s); not sent", kind, rec.node_id, e.reason, e.detail)
+            return False
         ws = rec.ws
         if ws is None or self._loop is None:
-            return
+            return False
 
         async def _go():
             try:
@@ -473,6 +480,7 @@ class NetServer:
                 log.debug("push %s to %s failed: %s", kind, rec.node_id, e)
 
         self._loop.create_task(_go())
+        return True
 
     # ---------------- per-connection handler ----------------
     async def _handler(self, ws) -> None:

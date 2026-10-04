@@ -183,7 +183,7 @@ def test_pull_log_ask_survives_a_node_offline_exactly_at_finish():
     net2.offline.add("node0")             # the phone drops off the LAN exactly as the whistle blows
     s.control("end", confirm=True)
     assert pulls(net2, "node0") == [], "the push never reached a dead socket"
-    assert "node0" in s._log_asked, "…but pull_log still marks it asked, exactly like a real send that raced a close"
+    assert "node0" not in s._log_asked, "a push that returned False (no socket) is not an ask: it must not block the next one"
 
     net2.offline.discard("node0")
     net2.pushed.clear()

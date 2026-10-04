@@ -140,7 +140,7 @@ describe('A25 · the LOGS button', () => {
   /** The COMMAND BAR is mounted with the screen on purpose: the answer to a LOGS tap is a notice, and
    *  a notice renders in the bar, not on the screen that raised it (`notice.ts`). Asserting against the
    *  screen alone would pass whether or not the operator is ever told anything. */
-  async function armoryWith(result: { ok: boolean; node_id: string; log?: LogView | null }) {
+  async function armoryWith(result: { ok: boolean; node_id: string; reason?: string | null; log?: LogView | null }) {
     clearNotice();
     const d = await demo();
     const asked: string[] = [];
@@ -174,6 +174,13 @@ describe('A25 · the LOGS button', () => {
     await m.click('LOGS');
     expect(m.text()).toMatch(/COULD NOT ASK|NOT ASKED/i);
     expect(m.text()).not.toMatch(/ASKED ✓/);
+    m.unmount();
+  });
+
+  it('O11: names the refusal reason MC gave, in WHAT: WHAT TO DO form', async () => {
+    const m = await armoryWith({ ok: false, reason: 'budget_spent', node_id: 'node_3D4F' });
+    await m.click('LOGS');
+    expect(m.text()).toContain('LOG BUDGET SPENT FOR THIS MATCH: WAIT FOR THE NEXT MATCH');
     m.unmount();
   });
 

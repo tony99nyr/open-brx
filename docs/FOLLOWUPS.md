@@ -29,7 +29,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F458 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F462 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -296,6 +296,7 @@ sheets follow, in the order `bench-plan.md` gives.
 - **S10 🟡** LED language v2 (A16), the MVP half: the L10 hold. The build half closed (A16 shipped in app 0.1.8, `cfe2a8eb`, and passed state by state on a gun 2026-09-09; see the archive). The down signal: never send `$HLED,,6` in play, write nothing at death, and re-arm with one `$HLOOP,1,2500,*` (`0d58d92f`; it was `$HLOOP,2,750`; whether the slow loop reads as down is F296). **Left: L10** dim 2-of-3 **held 60 s** (the render itself is confirmed, only the long hold is not): on a spawned, blanked gun send `$GLED,3,3,9,0,1,,*`; pass is two clean green segments held 60 s, then the paint survives `$PLAY,VA81,4,6,,,,,*`, `$AMMO,0,30,90,1,*`, `$HLED,6,0,,,10,,*` and `$LED,9,1,1,1,*` sent one at a time. ⚠ F35: never leave the gun there. The ladder itself is `archive/bench-flash-control-2026-09-05.md` §6. The post-MVP parts ((a), (b), (d) and the `beacon`/`extracted` signals) are in `post-mvp.md`. Owner brx2. `eyes`.
 
 ## MVP DECISION: awaiting Tony
+
 
 Tony's call. Each row says what the answer unblocks.
 
