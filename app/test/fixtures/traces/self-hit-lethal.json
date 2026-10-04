@@ -1,156 +1,330 @@
 {
-  "name": "self-hit-lethal",
-  "why": "F438: our own round never hurts us. An enemy hit lands, then a lethal self-hit revives at once and drains back to the pre-hit pools with no death; the gun's own echoes of the revive and the drain book nothing; a later enemy kill still counts.",
-  "source": "app/test/self-hit.test.mjs 'F438 (b)'",
-  "runners": ["engine","stage"],
-  "setup": {
-    "gun": {"life":true}
+ "name": "self-hit-lethal",
+ "why": "F438: our own round never hurts us. An enemy hit lands, then a lethal self-hit revives at once and drains back to the pre-hit pools with no death; the gun's own echoes of the revive and the drain book nothing; a later enemy kill still counts.",
+ "source": "app/test/self-hit.test.mjs 'F438 (b)'",
+ "runners": [
+  "engine",
+  "stage"
+ ],
+ "setup": {
+  "gun": {
+   "life": true
+  }
+ },
+ "steps": [
+  {
+   "advance_ms": 10
   },
-  "steps": [
-    {"advance_ms":10},
-    {"advance_ms":3000},
-    {"check":"live","preamble":true},
-    {"frames":["$HIR,4,0,19,2,9,0,3,*","$HP,45,61,0,*"]},
-    {"check":"enemy_hit"},
-    {"advance_ms":1500},
-    {"frames":["$HIR,4,0,7,1,9,0,3,*","$HP,0,0,0,*","$LCD,0,0,0,1,1,1,*"]},
-    {"check":"self_kill_revived_and_echoed"},
-    {"advance_ms":3000},
-    {"check":"quiet"},
-    {"frames":["$HIR,4,0,19,2,9,0,3,*","$HP,0,0,0,*"]},
-    {"check":"real_death"},
-    {"advance_ms":1000},
-    {"check":"down"}
-  ],
-  "stage_ignores": [
-    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
-    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
-    {"what":"state.ammo","why":"DIVERGENCE: engine.js `feedFrame` LCD case takes the magazine (t5) into `ammo` through `_onAmmo`; stage.py `_on_lcd` reads only the pools, so the stage's `ammo` stays null until an `$ALCD`."},
-    {"what":"state.reserve","why":"DIVERGENCE: the same LCD gap as state.ammo: the engine takes the `$LCD` reserve (t6), the stage does not."},
-    {"what":"write:$GLED","why":"Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."},
-    {"what":"write:$HLOOP,1,","why":"Harness timing: the down rearm waits 2.5 s on the stage's instant `sleep` but on the engine's clock (both use `rearm_after_ms`), so it lands at a different checkpoint."},
-    {"what":"write:$IRTX","why":"DIVERGENCE: the stage does not model the S57 IR callouts (engine.js `_irCallout`): a dying engine sends the kill-confirm and DOWN words over `$IRTX`, the stage sends nothing."}
-  ],
-  "expect": [
+  {
+   "advance_ms": 3000
+  },
+  {
+   "check": "live",
+   "preamble": true
+  },
+  {
+   "frames": [
+    "$HIR,4,0,19,2,9,0,3,*",
+    "$HP,45,61,0,*"
+   ]
+  },
+  {
+   "check": "enemy_hit"
+  },
+  {
+   "advance_ms": 1500
+  },
+  {
+   "frames": [
+    "$HIR,4,0,7,1,9,0,3,*",
+    "$HP,0,0,0,*",
+    "$LCD,0,0,0,1,1,1,*"
+   ]
+  },
+  {
+   "check": "self_kill_revived_and_echoed"
+  },
+  {
+   "advance_ms": 3000
+  },
+  {
+   "check": "quiet"
+  },
+  {
+   "frames": [
+    "$HIR,4,0,19,2,9,0,3,*",
+    "$HP,0,0,0,*"
+   ]
+  },
+  {
+   "check": "real_death"
+  },
+  {
+   "advance_ms": 1000
+  },
+  {
+   "check": "down"
+  }
+ ],
+ "stage_ignores": [
+  {
+   "what": "state.phase",
+   "why": "The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."
+  },
+  {
+   "what": "state.deaths",
+   "why": "The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."
+  },
+  {
+   "what": "write:$GLED",
+   "why": "Harness timing: the stage's gun-body readout animation runs on its injected `sleep`, which is instant in this runner, while the engine's runs on its tick clock, so the same frames land at different checkpoints."
+  },
+  {
+   "what": "write:$HLOOP,1,",
+   "why": "Harness timing: the down rearm waits 2.5 s on the stage's instant `sleep` but on the engine's clock (both use `rearm_after_ms`), so it lands at a different checkpoint."
+  },
+  {
+   "what": "write:$IRTX",
+   "why": "DIVERGENCE: the stage does not model the S57 IR callouts. A dying engine sends the kill-confirm and DOWN words over `$IRTX` from inside `_death` (engine.js, the `S57 IR callout` write); the stage sends nothing."
+  }
+ ],
+ "expect": [
+  {
+   "at": "live",
+   "state": {
+    "phase": "live",
+    "alive": true,
+    "spawned": true,
+    "hp": 45,
+    "armor": 70,
+    "shield": 0,
+    "activeSlot": 0,
+    "ammo": 32,
+    "reserve": 192,
+    "deaths": 0
+   },
+   "facts": [],
+   "reports": [],
+   "writes": [
+    "$STOP,*",
+    "$PHONE,*",
+    "$VERSION,*",
+    "$VOL,80,0,*",
+    "$CLEAR,*",
+    "$START,*",
+    "$GSET,0,0,1,0,1,0,0,1,*",
+    "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+    "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+    "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+    "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+    "$SIR,0,0,,28,0,0,1,,*",
+    "$SIR,0,1,,28,0,0,1,,*",
+    "$SIR,0,3,,28,0,0,1,,*",
+    "$SIR,8,0,,28,0,0,1,,*",
+    "$SIR,9,3,,28,0,0,1,,*",
+    "$SIR,10,0,,28,0,0,1,,*",
+    "$SIR,6,0,,28,0,0,1,,*",
+    "$SIR,13,1,,28,0,0,1,,*",
+    "$SIR,13,0,,28,0,0,1,,*",
+    "$SIR,13,3,,28,0,0,1,,*",
+    "$SIR,4,0,,28,0,0,1,,*",
+    "$SIR,15,0,,28,0,0,1,,*",
+    "$BMAP,0,98,,,,,*",
+    "$BMAP,1,100,0,1,99,99,*",
+    "$BMAP,2,97,,,,,*",
+    "$BMAP,3,98,,,,,*",
+    "$BMAP,4,98,,,,,*",
+    "$BMAP,5,98,,,,,*",
+    "$BMAP,8,4,,,,,*",
+    "$HLED,1,0,,,10,,*",
+    "$GLED,1,1,1,0,10,,*",
+    "$TID,1,*",
+    "$PLAY,VA81,4,6,,,,,*",
+    "$SIR,0,0,,1,0,0,1,,*",
+    "$SIR,0,1,,36,0,0,1,,*",
+    "$SIR,0,3,,37,0,0,1,,*",
+    "$SIR,8,0,,1,0,0,1,,*",
+    "$SIR,9,3,,1,0,0,1,,*",
+    "$SIR,10,0,X13,1,0,100,2,60,*",
+    "$SIR,6,0,H02,1,0,90,1,40,*",
+    "$SIR,13,1,H57,1,0,0,1,,*",
+    "$SIR,13,0,H50,1,0,0,1,,*",
+    "$SIR,13,3,H49,1,0,100,0,60,*",
+    "$SIR,4,0,,2,0,0,1,,*",
+    "$SIR,15,0,,28,0,0,1,,*",
+    "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+    "$PLAYX,0,*",
+    "$SPAWN,,*",
+    "$TID,1,*",
+    "$AMMO,0,32,192,1,*",
+    "$AMMO,1,6,24,1,*",
+    "$BMAP,0,0,,,,,*",
+    "$SFLASH,*",
+    "$PLAY,U16,4,6,VAI,,,,*",
+    "$GLED,,,,5,,,*",
+    "$GLED,1,1,1,0,1,,*",
+    "$HLED,6,2,120,120,10,2,*",
+    "$HLED,9,0,,,10,,*",
+    "$LIFE,0,0,0,*",
+    "$QUERY,*",
+    "$LIFE,0,0,0,*"
+   ]
+  },
+  {
+   "at": "enemy_hit",
+   "state": {
+    "phase": "live",
+    "alive": true,
+    "spawned": true,
+    "hp": 45,
+    "armor": 61,
+    "shield": 0,
+    "activeSlot": 0,
+    "ammo": 32,
+    "reserve": 192,
+    "deaths": 0
+   },
+   "facts": [
     {
-      "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0},
-      "writes": [
-        "$STOP,*",
-        "$PHONE,*",
-        "$VERSION,*",
-        "$VOL,80,0,*",
-        "$CLEAR,*",
-        "$START,*",
-        "$GSET,0,0,1,0,1,0,0,1,*",
-        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
-        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
-        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
-        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
-        "$SIR,0,0,,28,0,0,1,,*",
-        "$SIR,0,1,,28,0,0,1,,*",
-        "$SIR,0,3,,28,0,0,1,,*",
-        "$SIR,8,0,,28,0,0,1,,*",
-        "$SIR,9,3,,28,0,0,1,,*",
-        "$SIR,10,0,,28,0,0,1,,*",
-        "$SIR,6,0,,28,0,0,1,,*",
-        "$SIR,13,1,,28,0,0,1,,*",
-        "$SIR,13,0,,28,0,0,1,,*",
-        "$SIR,13,3,,28,0,0,1,,*",
-        "$SIR,4,0,,28,0,0,1,,*",
-        "$SIR,15,0,,28,0,0,1,,*",
-        "$BMAP,0,98,,,,,*",
-        "$BMAP,1,100,0,1,99,99,*",
-        "$BMAP,2,97,,,,,*",
-        "$BMAP,3,98,,,,,*",
-        "$BMAP,4,98,,,,,*",
-        "$BMAP,5,98,,,,,*",
-        "$BMAP,8,4,,,,,*",
-        "$HLED,1,0,,,10,,*",
-        "$GLED,1,1,1,0,10,,*",
-        "$TID,1,*",
-        "$PLAY,VA81,4,6,,,,,*",
-        "$SIR,0,0,,1,0,0,1,,*",
-        "$SIR,0,1,,36,0,0,1,,*",
-        "$SIR,0,3,,37,0,0,1,,*",
-        "$SIR,8,0,,1,0,0,1,,*",
-        "$SIR,9,3,,1,0,0,1,,*",
-        "$SIR,10,0,X13,1,0,100,2,60,*",
-        "$SIR,6,0,H02,1,0,90,1,40,*",
-        "$SIR,13,1,H57,1,0,0,1,,*",
-        "$SIR,13,0,H50,1,0,0,1,,*",
-        "$SIR,13,3,H49,1,0,100,0,60,*",
-        "$SIR,4,0,,2,0,0,1,,*",
-        "$SIR,15,0,,28,0,0,1,,*",
-        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
-        "$PLAYX,0,*",
-        "$SPAWN,,*",
-        "$TID,1,*",
-        "$AMMO,0,32,192,1,*",
-        "$AMMO,1,6,24,1,*",
-        "$BMAP,0,0,,,,,*",
-        "$SFLASH,*",
-        "$PLAY,U16,4,6,VAI,,,,*",
-        "$GLED,,,,5,,,*",
-        "$GLED,1,1,1,0,1,,*",
-        "$HLED,6,2,120,120,10,2,*",
-        "$HLED,9,0,,,10,,*",
-        "$LIFE,0,0,0,*",
-        "$QUERY,*",
-        "$LIFE,0,0,0,*"
-      ]
-    },
-    {
-      "at": "enemy_hit",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":61,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0},
-      "writes": [
-        "$GLED,4,4,4,0,10,,*",
-        "$GLED,9,9,9,0,10,,*",
-        "$GLED,4,4,4,0,10,,*"
-      ]
-    },
-    {
-      "at": "self_kill_revived_and_echoed",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":61,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0},
-      "writes": [
-        "$GLED,9,4,4,0,10,,*",
-        "$GLED,4,4,4,0,10,,*",
-        "$GLED,9,4,4,0,10,,*",
-        "$HLOOP,0,0,*",
-        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
-        "$BMAP,0,98,,,,,*",
-        "$SPAWN,,*",
-        "$TID,1,*",
-        "$AMMO,0,32,192,1,*",
-        "$AMMO,1,6,24,1,*",
-        "$LIFE,0,-9,0,*",
-        "$GLED,,,,5,,,*",
-        "$GLED,1,1,1,0,1,,*",
-        "$HLED,6,2,120,120,10,2,*",
-        "$HLED,9,0,,,10,,*"
-      ]
-    },
-    {
-      "at": "quiet",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":61,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0},
-      "writes": [
-        "$BMAP,0,0,,,,,*",
-        "$LIFE,0,0,0,*"
-      ]
-    },
-    {
-      "at": "real_death",
-      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1},
-      "writes": [
-        "$GLED,,,,5,,,*",
-        "$IRTX,100,15,19,0,22,0,0,100,1,,0,*",
-        "$IRTX,100,15,7,0,26,0,0,100,1,,0,*"
-      ]
-    },
-    {
-      "at": "down",
-      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1},
-      "writes": []
+     "type": "hit_taken",
+     "match_id": "m1",
+     "shooter_num": 19,
+     "shooter_team": 2,
+     "dmg": 9,
+     "ir_proto": 0,
+     "ir_subtype": 3,
+     "sensor": 4,
+     "shot_group": "epoch:1"
     }
-  ]
+   ],
+   "reports": [],
+   "writes": [
+    "$GLED,4,4,4,0,10,,*",
+    "$GLED,9,9,9,0,10,,*",
+    "$GLED,4,4,4,0,10,,*"
+   ]
+  },
+  {
+   "at": "self_kill_revived_and_echoed",
+   "state": {
+    "phase": "live",
+    "alive": true,
+    "spawned": true,
+    "hp": 45,
+    "armor": 61,
+    "shield": 0,
+    "activeSlot": 0,
+    "ammo": 32,
+    "reserve": 192,
+    "deaths": 0
+   },
+   "facts": [],
+   "reports": [
+    {
+     "kind": "ack_config",
+     "body": {
+      "config_id": "golden-tdm",
+      "ok": true,
+      "gun_echo": "$LCD,0,0,0,0,0,0,*"
+     }
+    }
+   ],
+   "writes": [
+    "$GLED,9,4,4,0,10,,*",
+    "$GLED,4,4,4,0,10,,*",
+    "$GLED,9,4,4,0,10,,*",
+    "$HLOOP,0,0,*",
+    "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+    "$BMAP,0,98,,,,,*",
+    "$SPAWN,,*",
+    "$TID,1,*",
+    "$AMMO,0,32,192,1,*",
+    "$AMMO,1,6,24,1,*",
+    "$LIFE,0,-9,0,*",
+    "$GLED,,,,5,,,*",
+    "$GLED,1,1,1,0,1,,*",
+    "$HLED,6,2,120,120,10,2,*",
+    "$HLED,9,0,,,10,,*"
+   ]
+  },
+  {
+   "at": "quiet",
+   "state": {
+    "phase": "live",
+    "alive": true,
+    "spawned": true,
+    "hp": 45,
+    "armor": 61,
+    "shield": 0,
+    "activeSlot": 0,
+    "ammo": 32,
+    "reserve": 192,
+    "deaths": 0
+   },
+   "facts": [],
+   "reports": [],
+   "writes": [
+    "$BMAP,0,0,,,,,*",
+    "$LIFE,0,0,0,*"
+   ]
+  },
+  {
+   "at": "real_death",
+   "state": {
+    "phase": "live",
+    "alive": false,
+    "spawned": true,
+    "hp": 0,
+    "armor": 0,
+    "shield": 0,
+    "activeSlot": 0,
+    "ammo": 32,
+    "reserve": 192,
+    "deaths": 1
+   },
+   "facts": [
+    {
+     "type": "hit_taken",
+     "match_id": "m1",
+     "shooter_num": 19,
+     "shooter_team": 2,
+     "dmg": 106,
+     "ir_proto": 0,
+     "ir_subtype": 3,
+     "sensor": 4,
+     "shot_group": "epoch:2"
+    },
+    {
+     "type": "death",
+     "match_id": "m1",
+     "shooter_num": 19,
+     "shooter_team": 2
+    }
+   ],
+   "reports": [],
+   "writes": [
+    "$GLED,,,,5,,,*",
+    "$IRTX,100,15,19,0,22,0,0,100,1,,0,*",
+    "$IRTX,100,15,7,0,26,0,0,100,1,,0,*"
+   ]
+  },
+  {
+   "at": "down",
+   "state": {
+    "phase": "live",
+    "alive": false,
+    "spawned": true,
+    "hp": 0,
+    "armor": 0,
+    "shield": 0,
+    "activeSlot": 0,
+    "ammo": 32,
+    "reserve": 192,
+    "deaths": 1
+   },
+   "facts": [],
+   "reports": [],
+   "writes": []
+  }
+ ]
 }

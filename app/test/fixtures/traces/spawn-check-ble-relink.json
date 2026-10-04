@@ -31,6 +31,8 @@
     {
       "at": "t0_spawn_lost",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":105,"activeSlot":0,"ammo":2,"reserve":1,"deaths":0,"spawnLost":false,"reconciling":false},
+      "facts": [],
+      "reports": [],
       "writes": [
         "$STOP,*",
         "$PHONE,*",
@@ -97,11 +99,15 @@
     {
       "at": "link_down",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":105,"activeSlot":0,"ammo":2,"reserve":1,"deaths":0,"spawnLost":false,"reconciling":false},
+      "facts": [],
+      "reports": [],
       "writes": []
     },
     {
       "at": "reconciling",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":105,"activeSlot":0,"ammo":2,"reserve":1,"deaths":0,"spawnLost":false,"reconciling":true},
+      "facts": [],
+      "reports": [],
       "writes": [
         "$PHONE,*",
         "$AMMO,0,0,0,1,*",
@@ -113,6 +119,8 @@
     {
       "at": "resent_after_the_reconcile",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":105,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"spawnLost":false,"reconciling":false},
+      "facts": [],
+      "reports": [],
       "writes": [
         "$AMMO,0,32,192,1,*",
         "$AMMO,1,6,24,1,*",
