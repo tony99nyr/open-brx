@@ -12,9 +12,8 @@ from brx_mcp.mc.compile import Compiler, WeaponCatalog
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.perks import EFFECT_KEYS, PerkCatalog, default_perks
 from brx_mcp.mc.state import Session, default_config
-from _session import match_config
+from _session import match_config, mk_loadout_session, online, T0
 
-T0 = 5_000_000
 C = Compiler()
 W = [w for w in C.weapon_catalog()]
 # the RAW catalogue rows (not the trimmed views): `ap_dmg` and the other design fields live here
@@ -31,27 +30,6 @@ def _cfg(mode="tdm"):
 def _player(lo, num=7):
     return {"player_id": f"p{num}", "player_num": num, "display": "REAPER", "team_id": "blue", "node_id": None,
             "gun_id": None, "voice": "male", "ready": True, "loadout": lo}
-
-
-def mk(n=2, mode="tdm", compiler=None):
-    clock = {"t": T0}
-    net = FakeNet()
-    s = Session(compiler or FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
-    s.set_config({"mode": mode, "time_limit_s": 60})
-    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n)]
-    # Adding a player never moves the phase (2026-09-17) -- reach KIT the way the operator does,
-    # with an explicit CONTINUE TO KIT, so the loadout picks below land in the open window.
-    s.set_phase("kit")
-    return s, net, clock, ps
-
-
-def online(s, net, clock, p, i, synced=True):
-    tail = demo_armory()[i]["ble"]["tail"]
-    net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
-    net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36, "alive": True, "shots": 0,
-                                     "battery": 80, "fw": "v4.32", "arm_state": "kitted", "synced": synced,
-                                     "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90, "screen_on": True,
-                                                   "foreground": True, "gun_linked": True}}, clock["t"])
 
 
 def _req(net, i, slot, kind, rid=None, try_=False, t=T0):
@@ -225,7 +203,7 @@ def test_check_request_matrix():
 
 # ------------------------------------------------------------------ _check_loadout
 def test_check_loadout_matrix():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_loadout_session(1)
     pid = ps[0]["player_id"]
     ok = s.patch_player(pid, loadout={"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"})
     assert ok["loadout"] == {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"}
@@ -251,7 +229,7 @@ def test_check_loadout_matrix():
 
 
 def test_host_patch_is_policy_checked_and_apply_policy_on_config_change():
-    s, net, clock, ps = mk(2, mode="ffa")
+    s, net, clock, ps = mk_loadout_session(2, mode="ffa")
     assert s.config["loadout_policy"]["preset"] == "no_heavies"
     try:
         s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "rail_gun"}]}); assert False
@@ -287,7 +265,7 @@ def test_host_patch_is_policy_checked_and_apply_policy_on_config_change():
 def test_restore_snapshot_without_policy_fills_default(tmp_path=None):
     import pathlib, tempfile, json
     d = pathlib.Path(tempfile.mkdtemp())
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_loadout_session(1)
     s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]})
     cfg = dict(s.config); cfg.pop("loadout_policy")
     (d / "session.json").write_text(json.dumps({"v": 1, "saved_ms": 1, "players": list(s.players.values()), "teams": s.teams, "config": cfg}))
@@ -682,7 +660,7 @@ def test_easy_reload_is_refused_beside_a_second_weapon_end_to_end():
     """End to end through `patch_player` (host PATCH /api/players): S50's host-only accessibility
     override still can't ride with a second weapon or a chain-reload primary, and the reason is the
     one the console shows verbatim."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_loadout_session(1)
     pid = ps[0]["player_id"]
     online(s, net, clock, ps[0], 0)
     try:
@@ -703,7 +681,7 @@ def test_easy_reload_is_refused_beside_a_second_weapon_end_to_end():
 
 
 def test_compile_sniper_fixed_end_to_end_through_session():
-    s, net, clock, ps = mk(1, compiler=C)
+    s, net, clock, ps = mk_loadout_session(1, compiler=C)
     s.set_config({"loadout_policy": {"preset": "snipers"}})
     online(s, net, clock, ps[0], 0)
     s.push_config()
@@ -731,7 +709,7 @@ def test_envelope_accepts_loadout_kinds_and_optional_fields():
 
 # ------------------------------------------------------------------ assign carries catalog + policy
 def test_assign_and_welcome_carry_catalog_and_policy():
-    s, net, clock, ps = mk(1, mode="ffa")
+    s, net, clock, ps = mk_loadout_session(1, mode="ffa")
     online(s, net, clock, ps[0], 0)
     ctx = s._hydrate({"node_id": "nodeX", "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
     assert ctx and "catalog" in ctx and "policy" in ctx           # welcome hydration carries both
@@ -756,7 +734,7 @@ def test_assign_and_welcome_carry_catalog_and_policy():
 
 # ------------------------------------------------------------------ loadout_request happy + rejects (with ack DELIVERY)
 def test_loadout_request_happy_paths_with_try():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     pid = ps[0]["player_id"]
     _req(net, 0, "primary", "weapon", "smg", try_=True)
@@ -797,7 +775,7 @@ def test_loadout_request_happy_paths_with_try():
 
 
 def test_loadout_request_reject_paths_each_deliver_an_ack():
-    s, net, clock, ps = mk(1, mode="ffa")           # no_heavies
+    s, net, clock, ps = mk_loadout_session(1, mode="ffa")           # no_heavies
     online(s, net, clock, ps[0], 0)
     pid = ps[0]["player_id"]
     before = dict(s.players[pid]["loadout"])
@@ -850,7 +828,7 @@ def test_loadout_request_reject_paths_each_deliver_an_ack():
 
 # ------------------------------------------------------------------ ready semantics (§4.4)
 def test_all_ready_advances_not_first_ready():
-    s, net, clock, ps = mk(3)
+    s, net, clock, ps = mk_loadout_session(3)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     assert s.phase == "kit"
@@ -864,7 +842,7 @@ def test_all_ready_advances_not_first_ready():
 
 
 def test_ready_ends_that_players_tryout_only():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.tryout(ps[0]["player_id"], "smg"); s.tryout(ps[1]["player_id"], "shotgun")
     net.simulate_node_message("node0", "ready", {"node_id": "node0", "player_id": "x", "ready": True}, clock["t"])
@@ -892,7 +870,7 @@ def test_demo_fake_net_populates_varied_loadouts():
 
 # ------------------------------------------------------------------ brx-opus2 additions (2026-08-27)
 def test_apply_policy_cancels_tryouts_and_warns_the_host():
-    s, net, clock, ps = mk(2, compiler=C)
+    s, net, clock, ps = mk_loadout_session(2, compiler=C)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     # rail_gun is `pickup_only` now (2026-09-17): `patch_player` refuses it under EVERY preset, so a
     # player can no longer legally pick it up before the ruleset changes. Seed the state directly —
@@ -943,7 +921,7 @@ def test_weapon_view_htk_ttk_caution():
     assert views["energy_rifle"]["weapon_class"] == "energy"
     assert views["assault_rifle"]["weapon_class"] == "ballistic"
     # the phone gets the same rows in assign.catalog, cautions included
-    s, net, clock, ps = mk(1, compiler=C)
+    s, net, clock, ps = mk_loadout_session(1, compiler=C)
     online(s, net, clock, ps[0], 0)
     s.patch_player(ps[0]["player_id"], display="X")
     cat = net.pushes("assign", "node0")[-1][2]["catalog"]["weapons"]
@@ -969,7 +947,7 @@ def test_loadout_pool_preview_route():
     except ImportError:
         return
     from brx_mcp.mc.api import create_app
-    s, _net, _clock, _ps = mk()
+    s, _net, _clock, _ps = mk_loadout_session()
     app = create_app(s)
     with TestClient(app) as c:
         before = s.config["loadout_policy"]["preset"]
@@ -987,7 +965,7 @@ def test_loadout_pool_preview_route():
 def test_kit_open_gates_phone_picks_and_assign_carries_game_brief():
     """A10 §4.1/§4.6: phones may pick only on KIT before the push; `assign` carries kit_open + a game brief; the
     flag flipping re-assigns every bound node."""
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_loadout_session()
     # the first assign body rides inside `welcome` (hydrate) — FakeNet.simulate_hello returns it
     s.phase = "build"; s._changed()          # the host is still on GAMES (adding a player had moved the phase on)
     tail = demo_armory()[0]["ble"]["tail"]
@@ -1016,7 +994,7 @@ def test_kit_open_gates_phone_picks_and_assign_carries_game_brief():
 
 def test_game_brief_reports_the_configured_kill_rule():
     """The phone must show the rule in force, not the mode's menu capability copy."""
-    s, _net, _clock, _ps = mk()
+    s, _net, _clock, _ps = mk_loadout_session()
     assert s.game_brief()["win_text"] == "TIME ONLY"
     s.set_config({"scoring": {"frag_limit": 12, "win_by": "kills"}})
     assert s.game_brief()["win_text"] == "SCORE CAP 12 / TIME"
@@ -1029,7 +1007,7 @@ def test_put_config_never_touches_the_game_pick():
     """F411 (games-presets.md §4): the whole-game "saved game" this test used to cover (`active_preset_id`,
     cleared by any real edit) is gone with no migration. What replaces it is simpler: `PUT /api/config`
     (KIT/LOBBY's inline edits) never touches `game_pick` at all — only `POST /api/play/pick` does."""
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_loadout_session()
     before = s.game_pick
     s.set_config({"night": True})
     assert s.game_pick is before
@@ -1044,7 +1022,7 @@ def test_put_config_never_touches_the_game_pick():
 def test_push_config_force_overrides_a_red_board():
     """A red row hard-blocked the push with no operator recourse, which stranded a live session while
     everything else on the field was ready. `start()` has always had a force; push now matches."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     # drop one gun's BLE link -> that row goes red -> the plain push must refuse
@@ -1099,7 +1077,7 @@ def test_settling_is_advisory_and_never_wedges_the_recap():
     an earlier attempt folded this condition into `_mark_flushed_live`, which left a phone that went
     quiet at the whistle permanently un-flushable and the recap permanently PROVISIONAL.
     """
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.push_config()
@@ -1218,7 +1196,7 @@ def test_s37_the_phones_pick_is_refused_with_a_reason_that_says_why():
     """`loadout_ack.reason` is shown verbatim on the HUD, so "Quick Switch isn't allowed in this game"
     (what the generic pool rejection said) is not good enough: the operator did not ban the perk, the
     ruleset left nothing to switch to."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_loadout_session(1)
     s.set_config({"loadout_policy": {"preset": "custom", "secondary": {"choice": "off"}}})
     online(s, net, clock, ps[0], 0)
     _req(net, 0, "perk", "perk", "quick_switch")
@@ -1245,7 +1223,7 @@ def test_f146_a_primary_filter_that_excludes_every_weapon_is_refused_at_validate
     primary, `apply()` fell through to whatever was held, and the operator got "2 LOADOUTS RESET BY
     PISTOLS ONLY" (a warning) followed by a hard weapon error about a pistol they never chose. The
     empty ruleset is the actual mistake and it has to say so, naming the control to touch."""
-    s, net, clock, ps = mk(2, compiler=Compiler())
+    s, net, clock, ps = mk_loadout_session(2, compiler=Compiler())
     assert not s._validate()["errors"] or not any("PRIMARY FILTER" in e for e in s.config_errors)
     s.set_config({"loadout_policy": {
         "preset": "custom",
@@ -1266,7 +1244,7 @@ def test_f146_a_primary_filter_that_excludes_every_weapon_is_refused_at_validate
 def test_f146_a_players_own_illegal_pick_still_gets_the_reset_warning():
     """The half that is KEPT: a ruleset with a legal pool that simply does not admit what somebody was
     already holding is a reset, not a refusal, and the notice is how the host learns it happened."""
-    s, net, clock, ps = mk(2, compiler=Compiler())
+    s, net, clock, ps = mk_loadout_session(2, compiler=Compiler())
     # rocket_launcher is `pickup_only` now (2026-09-17): `patch_player` refuses it under every preset.
     # Seed the state directly (see test_apply_policy_cancels_tryouts_and_warns_the_host for why) so the
     # ruleset switch below still finds a player already holding something no longer offered.
@@ -1292,7 +1270,7 @@ def test_s39_the_voice_pick_preview_plays_the_characters_intro_line():
 
 
 def test_s39_the_preview_frame_reaches_the_bound_node_on_a_voice_change():
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_loadout_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.patch_player(ps[0]["player_id"], voice="female")
     pushes = [b for _k, _n, b in net.pushes("apply", "node0") if b.get("preview")]
@@ -1313,7 +1291,7 @@ def test_f146_an_empty_primary_pool_names_the_control_that_is_actually_wrong():
     the class chips even when a `fixed_id` named a weapon this game does not have — where there are no
     exclusions to clear at all."""
     def sess():
-        s, _net, _clock, _ps = mk(1, compiler=Compiler())
+        s, _net, _clock, _ps = mk_loadout_session(1, compiler=Compiler())
         return s
 
     # (a) fixed to a weapon the catalog does not contain
@@ -1357,7 +1335,7 @@ def test_f146_a_primary_rule_that_admits_no_kind_of_weapon_is_healed_not_refused
     and `normalize` fills a missing one, so a policy in this shape reached `self.config` past both (a
     hand-edited session.json, a fixture). Blocking the push on a filter nobody set is the wrong answer;
     `policy()` normalises it back. Round-2 review 2026-09-12."""
-    s, _net, _clock, _ps = mk(1, compiler=Compiler())
+    s, _net, _clock, _ps = mk_loadout_session(1, compiler=Compiler())
     blank = {"choice": "player", "kinds": [], "exclude_tags": [], "exclude_ids": [],
              "only_ids": [], "fixed_id": None}
     s.config["loadout_policy"] = {
@@ -1372,7 +1350,7 @@ def test_f146_a_primary_rule_that_admits_no_kind_of_weapon_is_healed_not_refused
 def test_f146_a_healthy_ruleset_is_never_refused():
     """The guard must stay quiet for every shipped preset — it is an ERROR and it blocks the whistle."""
     for preset in P.PRESET_NAMES:
-        s, _net, _clock, _ps = mk(1, compiler=Compiler())
+        s, _net, _clock, _ps = mk_loadout_session(1, compiler=Compiler())
         s.set_config({"loadout_policy": {"preset": preset}})
         s._validate()
         assert not any("PRIMARY" in e for e in s.config_errors), (preset, s.config_errors)
@@ -1383,7 +1361,7 @@ def test_policy_is_a_read_and_never_writes_the_config():
     `GET /api/state` mutated the session config — and with no `config_id` bump, nothing downstream
     could tell it had moved. The repair belongs on the write paths."""
     import copy as _copy
-    s, _net, _clock, _ps = mk(1, compiler=Compiler())
+    s, _net, _clock, _ps = mk_loadout_session(1, compiler=Compiler())
     blank = {"choice": "player", "kinds": [], "exclude_tags": [], "exclude_ids": [],
              "only_ids": [], "fixed_id": None}
     broken = {"preset": "custom", "hud_select": True, "primary": dict(blank),
@@ -1407,7 +1385,7 @@ def test_policy_is_a_read_and_never_writes_the_config():
 def test_policy_falls_back_without_installing_a_default_either():
     """The same rule for the older self-heal: an absent policy reads as the mode default, and the
     config is left exactly as the operator left it."""
-    s, _net, _clock, _ps = mk(1, compiler=Compiler())
+    s, _net, _clock, _ps = mk_loadout_session(1, compiler=Compiler())
     s.config.pop("loadout_policy", None)
     assert s.policy() == P.default_policy(s.config["mode"])
     assert "loadout_policy" not in s.config, "a read installed a policy the operator never set"
@@ -1446,7 +1424,7 @@ def test_an_empty_slot_says_WHICH_control_emptied_it():
 
 def test_the_console_copy_is_driven_by_the_pool_code():
     """One classifier, two vocabularies — the console line must follow the code, not re-derive it."""
-    s, _net, _clock, _ps = mk(1, compiler=Compiler())
+    s, _net, _clock, _ps = mk_loadout_session(1, compiler=Compiler())
     s.set_config({"loadout_policy": {"preset": "custom",
                                      "primary": {"choice": "fixed", "fixed_id": "plasma_bazooka"}}})
     assert s.loadout_pool()["reasons"]["primary"] == "fixed_missing"
@@ -1514,7 +1492,7 @@ def test_round3_merge4_a_policy_fixed_to_an_unplayable_weapon_self_corrects_and_
     # weapon is offered but blocked) — a REFUSAL (`config_errors`), not MERGE-4's silent self-heal.
     # That silent-self-heal path is still live for any future UNPLAYABLE_IDS entry that stays visible;
     # `test_round3_ux2_...` above and the `P.apply` call directly above cover it.
-    s, _net, _clock, _ps = mk(2, compiler=Compiler())
+    s, _net, _clock, _ps = mk_loadout_session(2, compiler=Compiler())
     res = s.set_config({"loadout_policy": {"preset": "custom",
                                            "primary": {"choice": "fixed", "fixed_id": "energy_launcher"}}})
     assert s.loadout_pool()["reasons"]["primary"] == "fixed_missing"
@@ -1570,7 +1548,7 @@ def test_f282_a_silenced_games_tryout_pushes_the_quiet_weapon_frame():
     from brx_mcp.mc.compile import WeaponCatalog
     t25, t26, t27 = WeaponCatalog()._silent_weapon_tokens()
     for preset, quiet in (("silenced", True), ("standard", False)):
-        s, net, clock, ps = mk(1, compiler=C)
+        s, net, clock, ps = mk_loadout_session(1, compiler=C)
         online(s, net, clock, ps[0], 0)
         s.set_config({"presentation": {"preset": preset}})
         s.tryout(ps[0]["player_id"], "assault_rifle")

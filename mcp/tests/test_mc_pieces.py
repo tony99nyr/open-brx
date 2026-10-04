@@ -22,7 +22,7 @@ from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.pieces import BUILTIN_IDS, PieceError, PieceStore, check_value
 from brx_mcp.mc.state import MODES, Session, TEAM_DEFS, default_config
 from brx_mcp.mc.types import PIECE_KINDS
-from test_mc_loadout import mk, online
+from _session import mk_loadout_session, online
 
 try:
     from starlette.testclient import TestClient
@@ -268,7 +268,7 @@ def _pclient_with_pieces_file(rows):
     load path, not a hand-poked internal list."""
     path = pathlib.Path(tempfile.mkdtemp()) / "pieces.json"
     path.write_text(json.dumps({"v": 1, "pieces": rows}))
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.attach_pieces(PieceStore(path))
@@ -324,7 +324,7 @@ def test_medium_attach_pieces_falls_back_a_restored_pick_naming_an_invalid_piece
             "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
     path = pathlib.Path(tempfile.mkdtemp()) / "pieces.json"
     path.write_text(json.dumps({"v": 1, "pieces": [ghost]}))
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     s.game_pick["pieces"]["primary"] = "ghost1"   # as if restored, pointing at what is now an invalid piece
     s.attach_pieces(PieceStore(path))
     assert s.game_pick["pieces"]["primary"] == BUILTIN_IDS["primary"], s.game_pick["pieces"]["primary"]
@@ -527,7 +527,7 @@ def test_restore_a_real_f411_snapshot_round_trips_game_pick_and_last_match():
 # ---------------------------------------------------------------- routes
 def _pclient():
     from brx_mcp.mc.api import create_app
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_loadout_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     return TestClient(create_app(s)), s, net, clock, ps
@@ -773,7 +773,7 @@ def test_m1_a_stale_inherited_piece_id_does_not_404_an_unrelated_pick():
 
 
 def test_m1_attach_pieces_reconciles_a_stale_restored_pick():
-    s2, net2, clock2, ps2 = mk(1)
+    s2, net2, clock2, ps2 = mk_loadout_session(1)
     s2.game_pick["pieces"]["primary"] = "gone-id"
     s2.attach_pieces(PieceStore(None))
     assert s2.game_pick["pieces"]["primary"] == BUILTIN_IDS["primary"]
@@ -787,7 +787,7 @@ def test_m2_compose_precheck_reteams_and_repolicies_for_real_then_restores_every
     """M2: the precheck must run set_config's OWN reteam + policy-fit steps (so a validate() error that
     only shows up post-reteam/post-refit is caught), but leave every real player, team and config
     exactly as found -- and never send a single frame (apply_policy's pure half only)."""
-    s, net, clock, ps = mk(2, mode="tdm")
+    s, net, clock, ps = mk_loadout_session(2, mode="tdm")
     online(s, net, clock, ps[0], 0)
     online(s, net, clock, ps[1], 1)
     before_config = copy.deepcopy(s.config)

@@ -144,7 +144,7 @@ def test_the_recap_log_ask_survives_the_roll():
     s._on_node_message("node0", "log_data", {"node_id": "node0", "seq": 0, "chunk": "x", "last": True}, clock["t"])
     s.next_match()
     net.pushed.clear()
-    from test_mc_block_b import online
+    from _session import online
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     asks = [(n, b.get("reason")) for n, k, b in net.pushed if k == "pull_log"]
     assert asks == [("node1", "reconnect")], asks

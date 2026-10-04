@@ -9,7 +9,8 @@ Run: python3 run_tests.py mc_query_readback
 from copy import deepcopy
 
 from brx_mcp.mc.compile import Compiler
-from test_mc_config_proof import ack, mk, online, row
+from test_mc_config_proof import ack, row
+from _session import mk_session, online
 
 
 def _expected_from_pushed_head(s, pid):
@@ -47,7 +48,7 @@ def _ack_with_config(net, s, pid, gun_config):
 
 
 def _pushed_one_player():
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     return s, net, clock, ps, ps[0]["player_id"]

@@ -7,6 +7,12 @@ noticing all five. Import from here instead:
 
     from _session import mc_session, match_config, TEAMS
 
+2026-10-04 (A19): the "Session on fakes with N phones" builders (`mk_session`, `mk_kit_session`,
+`mk_loadout_session`, `mk_stored_session`), `online`, `go_live` and friends live here too. They used to
+be defined in a dozen test modules and imported from each other (`from test_mc_state import mk`).
+`test_helpers_lint.py` fails if a test module imports another test module or redefines a name from
+here.
+
 The files keep their own `_sess`/`_cfg` names as thin wrappers where their call sites
 pass different knobs (`_TEAMS` is genuinely per-file: `test_armed_pool_formula.py`
 runs one team, `test_spawn_protection.py` gives yellow tid 3).
@@ -55,3 +61,61 @@ def match_config(mode="tdm", *, teams=None, max_hp=45, max_armor=70, max_shield=
         c["led"] = led
     c.update(extra)
     return c
+
+
+# --------------------------------------------------------------------------------------------------
+# A real Session on fakes, N phones on GUN-A, GUN-B, ... and an injectable clock.
+# --------------------------------------------------------------------------------------------------
+import pathlib  # noqa: E402
+import tempfile  # noqa: E402
+
+from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory  # noqa: E402
+from brx_mcp.mc.state import Session  # noqa: E402
+from brx_mcp.mc.store import Store  # noqa: E402
+
+T0 = 5_000_000
+
+
+def mk_session(n_players=2, compiler=None, *, mode="tdm", time_limit_s=60, cfg=None, net=None, store=None,
+               kit=False):
+    """Returns `(session, net, clock, players)`. The phase stays at setup unless `kit=True`, which
+    reaches KIT the way the operator does (an explicit CONTINUE TO KIT): adding a player never moves
+    the phase (2026-09-17), and `online()` only latches `synced_at_lobby` while the phase is
+    kit/lobby/armed (A5.7), so a test that reports `synced` needs the KIT phase first."""
+    clock = {"t": T0}
+    net = net or FakeNet()
+    kw = {"store": store} if store is not None else {}
+    s = Session(compiler or FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"], **kw)
+    s.set_config({"mode": mode, "time_limit_s": time_limit_s, **(cfg or {})})
+    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n_players)]
+    if kit:
+        s.set_phase("kit")
+    return s, net, clock, ps
+
+
+def mk_kit_session(n_players=2, mode="tdm", cfg=None, net=None, store=None, compiler=None):
+    """`mk_session` in the KIT phase with a 600 s match (the block-B harness)."""
+    return mk_session(n_players, compiler, mode=mode, time_limit_s=600, cfg=cfg, net=net, store=store, kit=True)
+
+
+def mk_loadout_session(n=2, mode="tdm", compiler=None):
+    """`mk_session` in the KIT phase with a 60 s match: the loadout picks land in the open window."""
+    return mk_session(n, compiler, mode=mode, time_limit_s=60, kit=True)
+
+
+def mk_stored_session(n_players=2, mode="tdm", cfg=None, store=True):
+    """`mk_kit_session` with a REAL sqlite store attached (the replay's only input)."""
+    st = Store("t", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite") if store else None
+    return mk_kit_session(n_players, mode, cfg, store=st)
+
+
+def online(s, net, clock, p, i, synced=True, app_ver=None, platform="android", **body):
+    """Phone `i` says hello and reports a healthy, kitted status. `body` overrides/extends the status."""
+    tail = demo_armory()[i]["ble"]["tail"]
+    net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}", app_ver=app_ver, platform=platform)
+    net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36,
+                                     "alive": True, "shots": 0, "battery": 80, "fw": "v4.32",
+                                     "arm_state": "kitted", "synced": synced,
+                                     "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90,
+                                                   "screen_on": True, "foreground": True, "gun_linked": True},
+                                     **body}, clock["t"])

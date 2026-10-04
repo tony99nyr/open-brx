@@ -10,10 +10,8 @@ Run: python3 run_tests.py mc_ready_all
 """
 from contextlib import contextmanager
 
-from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
-from brx_mcp.mc.state import Session
+from _session import mk_session, online
 
-T0 = 5_000_000
 
 
 @contextmanager
@@ -27,28 +25,8 @@ def raises(exc, match=None):
     raise AssertionError(f"{exc.__name__} not raised")
 
 
-def mk(n_players=2):
-    clock = {"t": T0}
-    net = FakeNet()
-    s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
-    s.set_config({"mode": "tdm", "time_limit_s": 60})
-    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n_players)]
-    return s, net, clock, ps
-
-
-def online(s, net, clock, p, i, synced=True):
-    tail = demo_armory()[i]["ble"]["tail"]
-    net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
-    net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36,
-                                     "alive": True, "shots": 0, "battery": 80, "fw": "v4.32",
-                                     "arm_state": "kitted", "synced": synced,
-                                     "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90,
-                                                   "screen_on": True, "foreground": True, "gun_linked": True}},
-                        clock["t"])
-
-
 def to_lobby(n_players=2):
-    s, net, clock, ps = mk(n_players)
+    s, net, clock, ps = mk_session(n_players)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.push_config()
@@ -94,7 +72,7 @@ def test_ready_all_keeps_standby_players_out():
 
 
 def test_ready_all_refused_outside_lobby():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     assert s.phase != "lobby"
     with raises(ValueError, match="needs the lobby"):
         s.ready_all()

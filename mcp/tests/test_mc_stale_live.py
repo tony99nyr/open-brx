@@ -6,10 +6,11 @@ heartbeat says `arm_state: live, match_id: <old>`, and that heartbeat is the mom
 reachable and wrong. So MC answers it from there: `control{end, match_id}`, the retired match's `result`
 when it holds one for that player, and the CURRENT `start` when a new match is already scheduled.
 """
-from test_mc_block_b import kill, mk, online
+from test_mc_block_b import kill
 from test_mc_result import go_live, results
 
 from brx_mcp.mc.types import STALE_LIVE_RETELL_MS
+from _session import mk_kit_session, online
 
 
 def _stale_status(net, clock, nid, mid, extra=None):
@@ -124,7 +125,7 @@ def test_a_stale_live_status_with_no_match_id_in_kit_gets_an_end_but_no_result()
     assert ctl == [{"cmd": "end"}], "no match named: the operator-style end, nothing to attribute a result to"
     assert len(net.pushes("result")) == nres
 
-    s2, net2, clock2, ps2 = mk(2, "ffa")
+    s2, net2, clock2, ps2 = mk_kit_session(2, "ffa")
     for i, p in enumerate(ps2):
         online(s2, net2, clock2, p, i)
     assert not s2._ended and s2.start_info is None
@@ -185,7 +186,7 @@ def test_a_fresh_mc_never_ends_a_match_it_has_simply_never_heard_of():
 
     Only a match MC KNOWS it retired may be reconciled. A match it has never heard of -- another
     session's, or its own from before the restart -- is left strictly alone."""
-    s, net, clock, ps = mk(2, "ffa")
+    s, net, clock, ps = mk_kit_session(2, "ffa")
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     assert not s._ended and s.start_info is None, "a fresh MC: nothing retired, nothing running"

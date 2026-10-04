@@ -15,13 +15,14 @@ import pathlib
 import sqlite3
 import tempfile
 
-from test_mc_block_b import kill, online
-from test_mc_result import go_live, mk
+from test_mc_block_b import kill
+from test_mc_result import go_live
 
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.store import Store
 from brx_mcp.mc.types import STALE_AFTER_MS, STALE_LIVE_RETELL_MS
+from _session import mk_stored_session, online
 
 
 def _persisting_live(n=2, cfg=None):
@@ -99,7 +100,7 @@ def test_a_restart_mid_live_resumes_the_match_and_the_whistle_recaps_facts_from_
 
 def test_a_released_live_station_recap_survives_an_mc_restart():
     """F184 polish: RELEASE removes the only live row, so its frozen tally belongs in the snapshot."""
-    s, net, clock, ps = mk(2, "tdm", {"respawn": {"type": "scanner", "delay_s": 15}})
+    s, net, clock, ps = mk_stored_session(2, "tdm", {"respawn": {"type": "scanner", "delay_s": 15}})
     net.simulate_utility_hello("brxu-live")
     s.set_station("brxu-live", {"kind": "respawn", "team": "blue", "id": 3})
     for i, p in enumerate(ps):
@@ -296,7 +297,7 @@ def test_restore_snapshot_clears_a_half_set_resume_pending_when_a_later_step_fai
 def test_a_resume_into_armed_still_queues_the_vip_role_for_go_live():
     """`_schedule()` queues the VIP announcement itself (`_queue_roles_for_live`); a resume that lands
     back in ARMED -- a restart that beat the countdown -- must queue it too, or the VIP never hears it."""
-    s, net, clock, ps = mk(2, "ffa")
+    s, net, clock, ps = mk_stored_session(2, "ffa")
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.set_config({"vip_player_id": ps[1]["player_id"]})
@@ -325,7 +326,7 @@ def test_a_resume_into_armed_still_queues_the_vip_role_for_go_live():
 # ── 3. no snapshot: phones in an unknown match raise a notice and nothing else ─────────────────────
 def _fresh_mc_with_phones_in(n, mids):
     """A new laptop: the roster is typed in again, the phones bind, and they report `mids[i]`."""
-    s, net, clock, ps = mk(n, "ffa")
+    s, net, clock, ps = mk_stored_session(n, "ffa")
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     before = len(net.pushed)
@@ -364,7 +365,7 @@ def test_an_unbound_phone_in_an_unknown_match_raises_the_notice_too():
     """F261, bench 2026-09-18: a phone MC has never bound to a player still gets to claim an orphan
     match. Before the fix this stranger raised nothing, the same gap that hid the exact case the
     feature exists for -- a freshly restarted MC with no roster typed in yet (below)."""
-    s, net, clock, ps = mk(1, "ffa")
+    s, net, clock, ps = mk_stored_session(1, "ffa")
     net.simulate_hello("stranger", "GUN-Z-0000")
     net.simulate_status("stranger", {"arm_state": "live", "match_id": "m-old"}, clock["t"])
     assert "stranger" not in s.node_player, "setup: the hello never matched a player"
@@ -378,7 +379,7 @@ def test_f261_a_freshly_restarted_mc_with_no_roster_yet_still_sees_the_orphan():
     with NO roster and NO node bindings at all -- the field case of MC coming up on a different
     laptop. The phones carry on LIVE regardless, and their heartbeats must be enough on their own:
     `orphan_match` must not stay absent just because nothing is bound yet."""
-    s, net, clock, ps = mk(0, "ffa")
+    s, net, clock, ps = mk_stored_session(0, "ffa")
     for i in range(2):
         net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-0000")
         _status(net, clock, i, "live", "m-old")
@@ -390,7 +391,7 @@ def test_f261_a_freshly_restarted_mc_with_no_roster_yet_still_sees_the_orphan():
 
 
 def test_no_notice_in_a_normal_muster_kit_lobby_live_and_recap():
-    s, net, clock, ps = mk(2, "ffa")
+    s, net, clock, ps = mk_stored_session(2, "ffa")
     assert "orphan_match" not in s.snapshot() and s.phase == "kit"
     s2, net2, clock2, ps2, info = go_live(2, "ffa")
     for i in range(2):
@@ -401,7 +402,7 @@ def test_no_notice_in_a_normal_muster_kit_lobby_live_and_recap():
         _status(net2, clock2, i, "kitted", info["match_id"])
     assert s2.phase == "recap" and "orphan_match" not in s2.snapshot()
     # a phone still armed for a start MC itself replaced (a reschedule mints a new match id)
-    s3, net3, clock3, ps3 = mk(2, "ffa")
+    s3, net3, clock3, ps3 = mk_stored_session(2, "ffa")
     for i, p in enumerate(ps3):
         online(s3, net3, clock3, p, i)
     s3.push_config(force=True)
@@ -592,7 +593,7 @@ def test_phones_ended_is_never_set_on_mcs_own_match():
 
 
 def test_pl4_phones_ended_needs_a_heartbeat_from_every_bound_phone_since_mc_started():
-    s, net, clock, ps = mk(3, "ffa")
+    s, net, clock, ps = mk_stored_session(3, "ffa")
     for i, p in enumerate(ps[:2]):
         online(s, net, clock, p, i)
     _status(net, clock, 0, "live", "m-old")
@@ -752,7 +753,7 @@ def _stations_game(net, nid):
 
 
 def test_x2_adopting_takes_the_game_byte_the_phones_report_so_a_station_re_arm_keeps_it():
-    s, net, clock, ps = mk(2, "ffa")
+    s, net, clock, ps = mk_stored_session(2, "ffa")
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     net.simulate_utility_hello("util-x2")
@@ -768,7 +769,7 @@ def test_x2_adopting_takes_the_game_byte_the_phones_report_so_a_station_re_arm_k
 
 
 def test_x2_the_game_number_only_moves_forward_when_it_takes_the_phones_byte():
-    s, net, clock, ps = mk(1, "ffa")
+    s, net, clock, ps = mk_stored_session(1, "ffa")
     online(s, net, clock, ps[0], 0)
     s.game_no = 300                                        # byte 45
     _status(net, clock, 0, "live", "m-old", game_byte=7)
@@ -783,7 +784,7 @@ def test_x2_an_older_phone_with_no_game_byte_keeps_todays_behaviour():
 
 
 def test_x2_a_malformed_game_byte_is_ignored():
-    s, net, clock, ps = mk(1, "ffa")
+    s, net, clock, ps = mk_stored_session(1, "ffa")
     online(s, net, clock, ps[0], 0)
     _status(net, clock, 0, "live", "m-old", game_byte=0)   # 0 = "any game", never a match's byte
     s.adopt_orphan("m-old")
@@ -802,7 +803,7 @@ def test_f451_a_live_match_resumes_live_after_the_wall_clock_steps_back():
 
 
 def test_f451_the_live_flip_writes_the_snapshot_at_once_so_a_crash_keeps_it():
-    s, net, clock, ps = mk(2, "ffa")
+    s, net, clock, ps = mk_stored_session(2, "ffa")
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.push_config(force=True)

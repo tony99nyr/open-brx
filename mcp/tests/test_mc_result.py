@@ -12,37 +12,19 @@ Three things are proved here, each of which the server could not do before:
 * **A31 `mc_verify`** — the pre-game "a win is confirmed at MC" warning, present only when MC decides
   the end AND the venue is not full coverage AND some rostered phone has no backhaul.
 """
-import pathlib
-import tempfile
 
-from test_mc_block_b import heartbeat, kill, online
+from test_mc_block_b import heartbeat, kill
 
 from brx_mcp.mc import compile as C
-from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+from brx_mcp.mc.fakes import demo_armory
 from brx_mcp.mc.scoring import rows_csv
-from brx_mcp.mc.state import Session
-from brx_mcp.mc.store import Store
 from brx_mcp.mc.types import CLOCK_TIE_MS
+from _session import mk_stored_session, online
 
-T0 = 5_000_000
-
-
-def mk(n_players=2, mode="tdm", cfg=None, store=True):
-    """The block-B harness with a REAL sqlite store attached — the replay's only input."""
-    clock = {"t": T0}
-    net = FakeNet()
-    st = Store("t", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite") if store else None
-    s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), store=st, now_ms=lambda: clock["t"])
-    s.set_config({"mode": mode, "time_limit_s": 600, **(cfg or {})})
-    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n_players)]
-    # Adding a player never moves the phase (2026-09-17): reach KIT the way the operator does, with an
-    # explicit CONTINUE TO KIT, BEFORE `online()` reports `synced` -- see test_mc_block_b.mk for why.
-    s.set_phase("kit")
-    return s, net, clock, ps
 
 
 def go_live(n_players=2, mode="tdm", cfg=None, store=True):
-    s, net, clock, ps = mk(n_players, mode, cfg, store)
+    s, net, clock, ps = mk_stored_session(n_players, mode, cfg, store)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     if mode == "koth":
@@ -308,7 +290,7 @@ def test_rows_csv_reports_the_after_the_whistle_columns_last():
 # A31 — the "verify at MC" pre-game warning
 # ---------------------------------------------------------------------------------------------
 def _armed(cfg=None, backhaul=False, coverage=None):
-    s, net, clock, ps = mk(2, (cfg or {}).pop("mode", "tdm"), cfg)
+    s, net, clock, ps = mk_stored_session(2, (cfg or {}).pop("mode", "tdm"), cfg)
     if coverage:
         s.set_config({"coverage": coverage})
     for i, p in enumerate(ps):
@@ -485,7 +467,7 @@ def test_the_venue_survives_a_mode_change():
     patch and hid two thirds of it; `coverage` it did not, so a full-coverage site quietly became
     partial and the verify-at-MC warning appeared out of nowhere on a match that had never earned it.
     """
-    s, _net, _clock, _ps = mk(2, "tdm")
+    s, _net, _clock, _ps = mk_stored_session(2, "tdm")
     s.set_config({"environment": "indoor", "night": True, "coverage": "full"})
     assert "mc_verify" not in s.set_config({"mode": "tdm", "scoring": {"frag_limit": 5, "win_by": "kills"}})["config"]
     s.set_config({"mode": "ffa"})                     # the operator picks a different game, same field
@@ -494,7 +476,7 @@ def test_the_venue_survives_a_mode_change():
     s.set_config({"mode": "koth", "coverage": "partial"})   # …and a patch that NAMES it still wins
     assert s.config["coverage"] == "partial"
     # a venue MC was never told about stays untold — the key is absent, not invented
-    s2, _n2, _c2, _p2 = mk(2, "tdm")
+    s2, _n2, _c2, _p2 = mk_stored_session(2, "tdm")
     s2.set_config({"mode": "ffa"})
     assert "coverage" not in s2.config
 

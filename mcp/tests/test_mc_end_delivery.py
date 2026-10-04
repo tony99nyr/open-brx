@@ -19,7 +19,8 @@ Run: python3 run_tests.py mc_end_delivery
 """
 from brx_mcp.mc.fakes import FakeNet
 from brx_mcp.mc.state import END_RETRY_MS
-from test_mc_block_b import DeafNet, go_live, mk, online
+from test_mc_block_b import DeafNet, go_live
+from _session import mk_kit_session, online
 
 
 def _controls_to(net, nid):
@@ -251,7 +252,7 @@ def test_the_timed_end_is_watched_too():
 
 
 def test_an_end_with_nothing_to_end_arms_nothing():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_kit_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     r = s.control("end")

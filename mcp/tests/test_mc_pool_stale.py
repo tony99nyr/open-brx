@@ -8,7 +8,7 @@ F264 (field 2026-09-18): the node now probes a `pool_stale` gun itself and repor
 below."""
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from test_mc_state import mk, online
+from _session import mk_session, online
 
 
 def _status(net, clock, i, p, **extra):
@@ -27,7 +27,7 @@ def _ready_row(s, p):
 
 
 def _session(n=2):
-    s, net, clock, ps = mk(n)
+    s, net, clock, ps = mk_session(n)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     return s, net, clock, ps

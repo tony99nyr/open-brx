@@ -613,8 +613,9 @@ def test_koth_session_ends_live_the_moment_the_hold_target_is_reached():
     `_on_hold_target`/`_end_on_hold_target` (the frag-limit path's own mirror), which flips the phase to
     recap immediately -- not at the clock -- and records `end_reason == "hold_target"` (internal only,
     never on the wire)."""
-    from test_mc_state import mk, online
-    s, net, clock, ps = mk(2)
+    from _session import online
+    from _session import mk_session
+    s, net, clock, ps = mk_session(2)
     s.set_config({"mode": "koth", "time_limit_s": 600, "scoring": {"hold_target_s": 60}})
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)

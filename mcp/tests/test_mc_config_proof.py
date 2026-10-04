@@ -16,31 +16,10 @@ agree with itself.
 Run: python3 run_tests.py mc_config_proof
 """
 from brx_mcp.mc.compile import Compiler
-from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
-from brx_mcp.mc.state import PUSH_CURES, Session
+from brx_mcp.mc.state import PUSH_CURES
 from brx_mcp.mc.types import POOL_CHECK_SETTLE_MS
+from _session import mk_session, online
 
-T0 = 5_000_000
-
-
-def mk(n_players=2, compiler=None):
-    clock = {"t": T0}
-    net = FakeNet()
-    s = Session(compiler or FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
-    s.set_config({"mode": "tdm", "time_limit_s": 60})
-    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n_players)]
-    return s, net, clock, ps
-
-
-def online(s, net, clock, p, i, synced=True, **body):
-    tail = demo_armory()[i]["ble"]["tail"]
-    net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
-    net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36,
-                                     "alive": True, "shots": 0, "battery": 80, "fw": "v4.32",
-                                     "arm_state": "kitted", "synced": synced,
-                                     "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90,
-                                                   "screen_on": True, "foreground": True, "gun_linked": True},
-                                     **body}, clock["t"])
 
 
 def echo_for(s, pid, slot=0):
@@ -76,7 +55,7 @@ def test_a_stale_ack_never_satisfies_start_and_force_does_not_open_it():
     about). A stale ack is not a judgement -- it is the gun telling us, in its own words, which game
     it is running. RE-PUSH is the only answer.
     """
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     old_id = s.config["config_id"]
@@ -100,7 +79,7 @@ def test_a_stale_ack_never_satisfies_start_and_force_does_not_open_it():
 
 
 def test_the_board_names_the_older_config_the_gun_acked():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     old_id = s.config["config_id"]
@@ -117,7 +96,7 @@ def test_the_board_names_the_older_config_the_gun_acked():
 
 
 def test_every_re_push_resets_the_per_node_ack():
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack(net, s, 0, ps[0]["player_id"])
@@ -136,7 +115,7 @@ def test_gun_echo_mag_reserve_must_match_the_pushed_weapon():
     expected numbers from the same catalog the push came from would make the two sides the same
     statement twice.
     """
-    s, net, clock, ps = mk(2, compiler=Compiler())
+    s, net, clock, ps = mk_session(2, compiler=Compiler())
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     from brx_mcp.mc import frames as _f
@@ -161,7 +140,7 @@ def test_a_non_ammo_echo_makes_no_claim_about_the_weapon():
     a red on every row of a field running last week's build would be worse than the silence this
     check replaces.
     """
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack(net, s, 0, ps[0]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
@@ -206,7 +185,7 @@ def test_first_settled_pool_above_the_pushed_pset_is_the_fault():
     """This is the check that caught the staleness retroactively: a gun on last game's head spawns
     into last game's pool, and it says so on every heartbeat. Since A37 the claim is EXCESS, not
     equality -- see section 7 below for why equality could not be asked for honestly."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -227,7 +206,7 @@ def test_first_settled_pool_above_the_pushed_pset_is_the_fault():
 def test_the_settle_window_and_a_damaged_pool_both_suppress_the_pool_check():
     """Two honest silences. Inside the settle window the gun may not have applied the head yet; and a
     pool BELOW the compiled one is the game working, hit fact or no hit fact (A37)."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -248,7 +227,7 @@ def test_the_settle_window_and_a_damaged_pool_both_suppress_the_pool_check():
 # ------------------------------------------------- 4. the heartbeat's held config ---------- #
 
 def test_a_heartbeat_holding_an_older_config_is_amber_until_it_re_acks():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     old_id = s.config["config_id"]
@@ -279,7 +258,7 @@ def test_the_phone_puts_its_held_config_id_on_every_heartbeat():
 def test_next_match_clears_every_proof_and_demands_a_fresh_full_push():
     # The REAL compiler on purpose: `FakeCompiler` has no `hit_plan`, so `_pinned_hit_plan` never
     # gets set with it and the A17 half of this assertion would pass by never having been true.
-    s, net, clock, ps = mk(2, compiler=Compiler())
+    s, net, clock, ps = mk_session(2, compiler=Compiler())
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     _live_status(net, clock, 0, ps[0], 45, 70, info["match_id"])
@@ -312,7 +291,7 @@ def test_next_match_clears_every_proof_and_demands_a_fresh_full_push():
 # -------------------------------------------------- 6. duplicate team_id / tid ------------- #
 
 def test_duplicate_team_id_or_tid_is_refused_by_name():
-    s, _net, _clock, _ps = mk(0)
+    s, _net, _clock, _ps = mk_session(0)
     for teams, needle in (
         ([{"team_id": "blue", "tid": 1, "name": "BLUE"}, {"team_id": "blue", "tid": 3, "name": "ALSO BLUE"}], "blue"),
         ([{"team_id": "blue", "tid": 1, "name": "BLUE"}, {"team_id": "red", "tid": 1, "name": "RED"}], "1"),
@@ -325,7 +304,7 @@ def test_duplicate_team_id_or_tid_is_refused_by_name():
 
 
 def test_distinct_teams_still_pass():
-    s, _net, _clock, _ps = mk(0)
+    s, _net, _clock, _ps = mk_session(0)
     res = s.set_config({"mode": "tdm", "teams": [{"team_id": "blue", "tid": 1, "name": "BLUE"},
                                                  {"team_id": "yellow", "tid": 3, "name": "YELLOW"}]})
     assert res["ok"] or res["errors"]     # valid SHAPE; roster errors are a different judgement
@@ -351,7 +330,7 @@ def test_distinct_teams_still_pass():
 
 def test_a_hit_that_lands_before_the_next_heartbeat_is_never_a_stale_head():
     """C-1's exact sequence: respawn, then a hit that arrives BEFORE the next status."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -376,7 +355,7 @@ def test_a_hit_that_lands_before_the_next_heartbeat_is_never_a_stale_head():
 def test_an_unattributed_pool_drop_is_damage_not_a_stale_head():
     """F-1. The engine emits `hit_taken` only for a hit it could ATTRIBUTE; the pool moves whether it
     could or not. A drop with no fact behind it is still a drop, and must never read as staleness."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -389,7 +368,7 @@ def test_an_unattributed_pool_drop_is_damage_not_a_stale_head():
 
 
 def test_a_pool_ABOVE_what_the_head_grants_is_the_fault_and_says_so_as_a_suspicion():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -405,7 +384,7 @@ def test_a_pool_ABOVE_what_the_head_grants_is_the_fault_and_says_so_as_a_suspici
 
 
 def test_the_pool_fault_clears_on_the_re_push_and_re_ack():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -429,7 +408,7 @@ def test_the_pool_fault_clears_on_the_re_push_and_re_ack():
 
 def _stale_acked_roster():
     """Two guns, pushed, acked, the game edited -- and both phones answering for the OLD head."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     old_id = s.config["config_id"]
@@ -475,7 +454,7 @@ def test_start_still_refuses_a_stale_ack_that_the_push_gate_now_lets_through():
 def test_a_stale_ack_that_also_changed_weapon_is_ONE_red_not_two():
     """C-5. The echo is derived FROM the ack: if the ack is not for this head, its echo is not
     evidence about this head either, and printing both reds describes one cause twice."""
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     old_id = s.config["config_id"]
@@ -489,7 +468,7 @@ def test_a_stale_ack_that_also_changed_weapon_is_ONE_red_not_two():
 def test_standing_a_player_down_forgets_the_pool_fault_they_earned():
     """C-5. `_unroster` already forgets the ack and the bundle; the pool fault is a judgement about
     the same head and was riding back in on the reinstate."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     _live_status(net, clock, 1, ps[1], 45, 70, info["match_id"])
@@ -511,7 +490,7 @@ def test_standing_a_player_down_forgets_the_pool_fault_they_earned():
 # it must not be dressed as one.
 
 def test_the_echo_check_reports_proven_mismatch_and_not_echoed():
-    s, net, clock, ps = mk(3, compiler=Compiler())
+    s, net, clock, ps = mk_session(3, compiler=Compiler())
     for i in range(3):
         online(s, net, clock, ps[i], i)
     assert all(row(s, p["player_id"])["echo"] is None for p in ps), "nothing pushed: nothing to say"
@@ -537,7 +516,7 @@ def test_the_echo_check_reports_proven_mismatch_and_not_echoed():
 def test_an_unproven_echo_is_not_a_proven_one_even_on_a_green_board():
     """The whole point of the third state: a green row that never ran the weapon check must be
     distinguishable from one that ran it and passed."""
-    s, net, clock, ps = mk(2, compiler=Compiler())
+    s, net, clock, ps = mk_session(2, compiler=Compiler())
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     ack(net, s, 0, ps[0]["player_id"])
@@ -551,7 +530,7 @@ def test_an_unproven_echo_is_not_a_proven_one_even_on_a_green_board():
 def test_a_stub_head_makes_no_echo_claim_at_all():
     """`FakeCompiler` writes `$WEAP,0,<id>,*` -- no numbers. Nothing to compare, so nothing to say:
     not `not_echoed` (that is a statement about the GUN), just silence."""
-    s, net, clock, ps = mk(1)
+    s, net, clock, ps = mk_session(1)
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,32,100,0,192,0,*")
@@ -571,7 +550,7 @@ def test_the_push_curable_proofs_share_one_frame_of_reference():
     """Vocabulary. Every proof names either the old config or the pushed head/config."""
     from brx_mcp.mc.state import PUSH_CURES
     assert all(p.endswith("≠ CONFIG") or "OLDER CONFIG" in p or "PUSHED HEAD" in p for p in PUSH_CURES), PUSH_CURES
-    s, net, clock, ps = mk(2, compiler=Compiler())
+    s, net, clock, ps = mk_session(2, compiler=Compiler())
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     from brx_mcp.mc import frames as _f
@@ -596,7 +575,7 @@ def test_the_push_curable_proofs_share_one_frame_of_reference():
 # action is how the console came to have a button for only one of them.
 
 def _pushed_and_acked():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()
     for i, p in enumerate(ps):
@@ -621,7 +600,7 @@ def test_a_re_push_is_a_fresh_head_not_a_new_game():
 
 def test_a_first_push_is_not_reported_as_a_re_push():
     """The control for the flag the console reads."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     res = s.push_config()
     assert not res.get("repushed"), res
@@ -630,7 +609,7 @@ def test_a_first_push_is_not_reported_as_a_re_push():
 
 def test_an_unforced_re_push_clears_a_stale_ack_an_echo_mismatch_and_a_pool_fault():
     """All three A36 reds, on three guns, cured by the one action all three of them name."""
-    s, net, clock, ps = mk(3, compiler=Compiler())
+    s, net, clock, ps = mk_session(3, compiler=Compiler())
     for i in range(3):
         online(s, net, clock, ps[i], i)
     s.push_config()
@@ -661,7 +640,7 @@ def test_start_refuses_an_echo_MISMATCH():
     """R2-5. The mismatch leaves the ack CURRENT, so `all_acked()` was true and the whistle blew.
     Whether `force` opens it is F2's question, answered in section 14: it does, because the rule
     behind the mismatch is an unbenched inference about this firmware."""
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
@@ -677,7 +656,7 @@ def test_start_refuses_an_echo_MISMATCH():
 def test_a_gun_that_simply_did_not_echo_never_refuses_the_start():
     """`not_echoed` is the ORDINARY field answer on v4.32 (A37). It is the absence of a proof, and
     an absence must never hold the whistle."""
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack(net, s, 0, ps[0]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
@@ -704,7 +683,7 @@ def _live_status_src(net, clock, i, p, hp, armor, mid, src="gun", alive=True):
 
 def _overridden_roster(max_hp=30, max_armor=0):
     """One player whose `$PSET` grants LESS than `config.health` does -- the shape R2-3 is about."""
-    s, net, clock, ps = mk(2, compiler=Compiler())
+    s, net, clock, ps = mk_session(2, compiler=Compiler())
     s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}],
                                                 "overrides": {"max_hp": max_hp, "max_armor": max_armor}})
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
@@ -746,7 +725,7 @@ def test_only_hp_ABOVE_the_compiled_head_is_red_armour_above_it_is_an_amber_advi
     """R2-6. `compile._SIR_GRANT` (fn 9-22) and `engine.js armour_up` can ADD armour mid-life, and
     the replayed store shows a body-armor node's first life going 70 -> 120 as the baked perk
     arrives. Armour above the ceiling is therefore a MECHANISM, not proof of a stale head."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -772,7 +751,7 @@ def test_only_hp_ABOVE_the_compiled_head_is_red_armour_above_it_is_an_amber_advi
 def test_a_pool_BELOW_the_config_on_a_clean_first_life_is_an_amber_advisory():
     """R2-4. EXCEEDS-only is blind to the SMALLER stale pool: match 1 grants 45/0, match 2 grants
     100/70, and a gun still on match 1's head reports 45 <= 100 in silence forever."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -791,7 +770,7 @@ def test_a_pool_BELOW_the_config_on_a_clean_first_life_is_an_amber_advisory():
 def test_the_below_config_advisory_makes_no_claim_after_a_hit_or_on_a_later_life():
     """The two ways a smaller pool has an ordinary explanation: damage this life, or any life after
     the first (there is no life after the first that has not been played)."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -819,7 +798,7 @@ def test_the_below_config_advisory_makes_no_claim_after_a_hit_or_on_a_later_life
 def test_the_pool_fault_tells_the_operator_when_the_push_is_possible():
     """R2-7. The pool red can only arise in LIVE, and `push_config` is refused in LIVE -- so a bare
     'RE-PUSH' names an action the operator cannot take at the moment they read it."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -832,7 +811,7 @@ def test_the_pool_fault_tells_the_operator_when_the_push_is_possible():
 
 def test_a_pool_fault_earned_in_play_is_gone_by_the_next_lobby():
     """R2-7's other half: END -> recap -> the next push must leave nothing of it behind."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     _live_status_src(net, clock, 1, ps[1], 45, 70, info["match_id"])
@@ -852,7 +831,7 @@ def test_a_pool_fault_earned_in_play_is_gone_by_the_next_lobby():
 def test_a_red_carrying_a_blocker_no_push_can_cure_still_refuses_the_unforced_push():
     """R2-9. The control for C-2 used a `waiting` row, which `_blocks_push` refuses on its own
     branch -- so it passed with the whole red branch deleted. This one is a RED."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0)
     online(s, net, clock, ps[1], 1, synced=False)     # CLOCK NOT SYNCED -- a red no push can cure
     r = row(s, ps[1]["player_id"])
@@ -867,7 +846,7 @@ def test_a_red_carrying_a_blocker_no_push_can_cure_still_refuses_the_unforced_pu
 def test_a_waiting_row_still_refuses_the_unforced_push_and_the_message_names_the_phone():
     """R2-10. The refusal listed RED rows only, so a roster blocked solely by a phone that has not
     arrived printed 'readiness has reds ... : ' with an empty list after the colon."""
-    s, net, clock, ps = mk(3)
+    s, net, clock, ps = mk_session(3)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)   # ps[2] never brings a phone
     try:
         s.push_config()
@@ -891,7 +870,7 @@ def test_a_waiting_row_still_refuses_the_unforced_push_and_the_message_names_the
 # refusal leaves STANDBY as the only way to field that player.
 
 def test_an_echo_mismatch_refuses_the_unforced_start_and_says_what_to_do():
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
@@ -907,7 +886,7 @@ def test_an_echo_mismatch_refuses_the_unforced_start_and_says_what_to_do():
 
 def test_the_host_override_opens_an_echo_mismatch_because_the_rule_is_unbenched():
     """F2. A gun whose echo mismatch is reproducible would otherwise be unfieldable."""
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
@@ -917,7 +896,7 @@ def test_the_host_override_opens_an_echo_mismatch_because_the_rule_is_unbenched(
 
 def test_a_stale_ack_is_still_force_proof_beside_the_forceable_mismatch():
     """The control for F2: the stale ack is the gun NAMING another game, not an inference."""
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     old = s.config["config_id"]
@@ -936,7 +915,7 @@ def test_a_stale_ack_is_still_force_proof_beside_the_forceable_mismatch():
 # blocker made the ordinary re-push render as the forcing variant.
 
 def test_a_phone_that_has_not_arrived_does_not_block_a_RE_push():
-    s, net, clock, ps = mk(3)
+    s, net, clock, ps = mk_session(3)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)   # ps[2] never brings a phone
     s.push_config(force=True)                                         # the FIRST push needs the override
     res = s.push_config()                                             # ...the re-push does NOT
@@ -946,7 +925,7 @@ def test_a_phone_that_has_not_arrived_does_not_block_a_RE_push():
 
 def test_the_first_push_still_refuses_a_phone_that_has_not_arrived():
     """The control. Field 2026-09-01: the first push must not go out half-delivered in silence."""
-    s, net, clock, ps = mk(3)
+    s, net, clock, ps = mk_session(3)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     try:
         s.push_config()
@@ -957,7 +936,7 @@ def test_the_first_push_still_refuses_a_phone_that_has_not_arrived():
 
 def test_a_red_no_push_can_cure_still_refuses_the_RE_push():
     """...and the re-push exemption is about WAITING only, not about every red."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0)
     online(s, net, clock, ps[1], 1, synced=False)     # CLOCK NOT SYNCED
     s.push_config(force=True)
@@ -973,7 +952,7 @@ def test_a_red_no_push_can_cure_still_refuses_the_RE_push():
 def test_a_hit_that_beats_the_first_heartbeat_of_a_life_still_counts_as_a_hit():
     """F4. `_check_pool`'s life-start branch wrote `pool_life_hit = False`, so a `hit_taken` that
     arrived before the first heartbeat of that life was ERASED and the pool read as never shot."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -995,7 +974,7 @@ def test_a_hit_that_beats_the_first_heartbeat_of_a_life_still_counts_as_a_hit():
 # so exactly one frame of a correct gun can be sampled mid-application.
 
 def test_one_low_frame_followed_by_a_correct_one_is_not_an_amber():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -1010,7 +989,7 @@ def test_one_low_frame_followed_by_a_correct_one_is_not_an_amber():
 
 def test_two_agreeing_low_frames_are_the_amber():
     """The positive control: a gun that keeps saying the same smaller pool is not mid-application."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -1024,7 +1003,7 @@ def test_two_agreeing_low_frames_are_the_amber():
 
 
 def test_one_high_armour_frame_followed_by_a_correct_one_is_not_an_amber():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -1038,7 +1017,7 @@ def test_one_high_armour_frame_followed_by_a_correct_one_is_not_an_amber():
 
 def test_the_hp_RED_still_fires_on_a_single_frame():
     """The control for F5: the red is the one claim a pool can prove, and it is not softened."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     mid = info["match_id"]
@@ -1079,7 +1058,7 @@ def test_an_ack_in_flight_across_a_re_push_is_not_current():
 
 
 def test_a_first_push_reports_its_config_id_too():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     res = s.push_config()
     assert res.get("config_id") == s.config["config_id"] and not res.get("repushed"), res
@@ -1089,7 +1068,7 @@ def test_a_half_made_amber_claim_does_not_survive_a_fresh_head():
     """F5's `pool_amber_pending` is a half-finished claim about ONE head. A re-push (and a new
     session) replaces the head, so the pair must start again -- otherwise one frame from the old
     head and one from the new could agree with each other and amber a gun on the right config."""
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_session(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     _live_status_src(net, clock, 1, ps[1], 45, 70, info["match_id"])

@@ -2,7 +2,7 @@
 import logging, pathlib, sys, tempfile
 from contextlib import contextmanager
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from test_mc_state import T0, mk, online
+from _session import mk_session, online, T0
 
 
 class _BrokenStore:
@@ -50,7 +50,7 @@ def _errors(h):
 
 @logged
 def test_o7_a_store_that_raises_sets_not_saving_and_logs_once_not_per_envelope(caplog):
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     s.store = _BrokenStore()
     assert "not_saving" not in s.snapshot()
     if True:
@@ -73,7 +73,7 @@ def test_o7_a_store_that_raises_sets_not_saving_and_logs_once_not_per_envelope(c
 def test_o7_a_snapshot_that_cannot_be_written_is_the_snapshot_part_only(caplog):
     tmp_dir = tempfile.TemporaryDirectory()
     tmp_path = pathlib.Path(tmp_dir.name)
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     blocker = tmp_path / "blocker"                  # a FILE where the snapshot's folder should be: the write cannot
     blocker.write_text("x")                         # succeed (atomic_write_text creates a missing folder, but not this)
     s._persist_path = blocker / "session.json"
@@ -93,7 +93,7 @@ def test_o8_a_tick_that_raises_three_times_sets_ticker_failing_and_writes_one_er
         from brx_mcp.mc.api import Broadcaster      # needs starlette: skips cleanly under the bare system python
     except ImportError:
         return
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     b = Broadcaster(s)
     def boom(): raise RuntimeError("bad tick")
     s.tick = boom
@@ -109,7 +109,7 @@ def test_o8_a_tick_that_raises_three_times_sets_ticker_failing_and_writes_one_er
 
 @logged
 def test_o8_a_join_info_that_raises_is_logged_with_the_url_and_exposed(caplog):
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     def bad(): raise RuntimeError("no interface")
     net.join_info = bad
     if True:
@@ -137,7 +137,7 @@ def _arm(s, net, clock, ps, mid="m-now"):
 
 
 def test_o6_a_loss_shows_only_against_the_current_match():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     online(s, net, clock, ps[0], 0)
     _arm(s, net, clock, ps)
     _beat(net, clock, ps, lost=("m-old", 30))           # a hot-joiner: 30 drops from ANOTHER match
@@ -168,7 +168,7 @@ def test_o6_a_resume_shows_losses_reported_after_the_restart():
 
 
 def test_o6_a_malformed_loss_report_is_ignored():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     online(s, net, clock, ps[0], 0)
     _arm(s, net, clock, ps)
     _beat(net, clock, ps, lost=("m-now", 4))
@@ -178,7 +178,7 @@ def test_o6_a_malformed_loss_report_is_ignored():
 
 
 def test_o10_dropped_claims_are_scoped_to_the_game_and_say_where_to_look():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4}
     game = s._game_byte()
     net.simulate_status("stick-1", {**base, "actions_dropped": 0, "actions_dropped_game": game}, clock["t"])
@@ -195,7 +195,7 @@ def test_o10_dropped_claims_are_scoped_to_the_game_and_say_where_to_look():
 
 
 def test_o10_a_match_start_clears_stored_stick_counts_so_a_wrapped_game_byte_never_shows_a_stale_one():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4}
     game = s._game_byte()
     net.simulate_status("stick-1", {**base, "actions_dropped": 3, "actions_dropped_game": game}, clock["t"])
@@ -206,7 +206,7 @@ def test_o10_a_match_start_clears_stored_stick_counts_so_a_wrapped_game_byte_nev
 
 
 def test_o7_the_archive_has_its_own_red_kind_that_only_an_archive_write_clears():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     class Store:
         started_fails = True
         def log(self, *a, **k): pass
@@ -230,7 +230,7 @@ def test_o7_the_archive_has_its_own_red_kind_that_only_an_archive_write_clears()
 
 
 def test_o7_another_matchs_archive_write_does_not_clear_a_missing_row():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     class Store:
         def log(self, *a, **k): pass
         def match_started(self, *a, **k): pass
@@ -258,7 +258,7 @@ def test_o7_match_ended_reports_rows_updated():
 
 
 def test_o8_a_later_join_info_success_clears_the_chip():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     real = net.join_info
     def bad(): raise RuntimeError("no interface")
     net.join_info = bad
@@ -268,7 +268,7 @@ def test_o8_a_later_join_info_success_clears_the_chip():
 
 
 def test_o6_a_player_card_with_lost_facts_reads_amber_not_ready():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     online(s, net, clock, ps[0], 0)
     _arm(s, net, clock, ps)
     pf = {"gun_linked": True, "screen_on": True, "foreground": True, "phone_batt": 90}
@@ -283,7 +283,7 @@ def test_o6_a_player_card_with_lost_facts_reads_amber_not_ready():
 
 
 def test_o7_an_end_with_no_row_recreates_it_and_clears_the_chip():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     class Store:
         def __init__(self): self.rows = set(); self.start_fails = True; self.recreate_fails = False
         def log(self, *a, **k): pass

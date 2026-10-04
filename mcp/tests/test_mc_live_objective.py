@@ -12,13 +12,13 @@ Run: python3 run_tests.py mc_live_objective
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from test_mc_pool_stale import _status
-from test_mc_state import mk, online
 from brx_mcp.mc.types import NEVER_SEEN_MS, STALE_AFTER_MS
+from _session import mk_session, online
 
 
 def _live(mode="koth", n=2, heard=None):
     """A session walked to LIVE. `heard` = the indexes whose node came online (default: all)."""
-    s, net, clock, ps = mk(n)
+    s, net, clock, ps = mk_session(n)
     s.set_config({"mode": mode, "time_limit_s": 600})
     ids = [t["team_id"] for t in s.config["teams"]]
     for i, p in enumerate(ps):

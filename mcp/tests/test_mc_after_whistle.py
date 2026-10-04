@@ -9,7 +9,8 @@
 """
 from brx_mcp.mc.scoring import Scorer
 
-from test_mc_block_b import T0, go_live, kill
+from test_mc_block_b import go_live, kill
+from _session import T0
 
 
 def _kill_cues(net, ps, i):

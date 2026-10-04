@@ -13,7 +13,8 @@ Run: python3 run_tests.py frames_echo
 """
 from brx_mcp.mc import frames as _f
 from brx_mcp.mc.compile import Compiler
-from test_mc_config_proof import ack, mk, online, row
+from test_mc_config_proof import ack, row
+from _session import mk_session, online
 
 # Real `$WEAP,0` heads, byte for byte off the gun, one per weapon.
 SNIPER_EXTENDED_MAGS_HEAD = [
@@ -74,7 +75,7 @@ def test_head_spawn_ammo_falls_back_to_half_t17_when_t40_is_missing():
 def test_a_real_captured_head_and_echo_prove_the_check_through_state_py():
     """End to end: swap a compiled bundle's head for the REAL captured one, ack with the REAL
     echo, and the board must read PROVEN, not a red `GUN ECHO ≠ CONFIG` on a healthy gun."""
-    s, net, clock, ps = mk(1, compiler=Compiler())
+    s, net, clock, ps = mk_session(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     pid = ps[0]["player_id"]

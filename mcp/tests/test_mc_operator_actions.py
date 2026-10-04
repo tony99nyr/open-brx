@@ -11,7 +11,8 @@ from _skip import needs
 
 from brx_mcp.mc import envelope as E
 from brx_mcp.mc.state import STALE_AFTER_MS, ConflictError
-from test_mc_block_b import DeafNet, go_live, heartbeat, kill, mk, online
+from test_mc_block_b import DeafNet, go_live, heartbeat, kill
+from _session import mk_kit_session, online
 
 try:
     from starlette.testclient import TestClient
@@ -58,7 +59,7 @@ def test_the_send_says_sent_and_claims_nothing_about_the_phone():
 
 
 def test_refused_outside_armed_and_live():
-    s, net, clock, ps = mk(2)
+    s, net, clock, ps = mk_kit_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     before = len(net.pushed)
@@ -205,8 +206,7 @@ def test_the_wire_accepts_an_operator_result_event():
 
 
 def test_resync_and_respawn_need_live_while_relink_works_in_armed():
-    from test_mc_block_b import mk as mk_b
-    s, net, clock, ps = mk_b(2)
+    s, net, clock, ps = mk_kit_session(2)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     s.push_config()

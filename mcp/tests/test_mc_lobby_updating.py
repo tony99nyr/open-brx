@@ -5,8 +5,8 @@ Run: python3 run_tests.py mc_lobby_updating
 """
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
+from _session import T0
 
-T0 = 5_000_000
 ECHO = "$ALCD,32,100,0,192,0,*"
 
 
