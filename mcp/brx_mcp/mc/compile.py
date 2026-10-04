@@ -1860,36 +1860,36 @@ class _CompileContext:
     config: GameConfig
     player: Player
     teams: list[Team]
-    roll: Any
-    plan: Any
-    prof: Any = None
-    night: Any = None
-    ffa: Any = None
-    gc: Any = None
-    pnum: Any = None
-    tid: Any = None
-    w0: Any = None
-    w1: Any = None
-    mods: Any = None
-    swap_mods: Any = None
-    armor_piercing: Any = None
-    voice: Any = None
-    picks: Any = None
-    rolled: Any = None
-    voice_slots: Any = None
-    hits_rng: Any = None
-    pickups: Any = None
-    head: Any = None
-    play_hled: Any = None
-    _cs: Any = None
-    sir_live: Any = None
-    ammo: Any = None
-    spawn: Any = None
-    revive: Any = None
-    bundle: Any = None
-    voice_map: Any = None
-    frames: Any = None
-    voice_switch: Any = None
+    roll: _random.Random | None
+    plan: _ha.Plan | None
+    prof: dict | None = None
+    night: bool | None = None
+    ffa: bool | None = None
+    gc: _GC | None = None
+    pnum: int | None = None
+    tid: int | None = None
+    w0: str | None = None
+    w1: str | None = None
+    mods: dict[str, float | int | bool] | None = None
+    swap_mods: dict[str, float | int | bool] | None = None
+    armor_piercing: bool | None = None
+    voice: str | None = None
+    picks: dict[str, str] | None = None
+    rolled: dict[str, str] | None = None
+    voice_slots: dict[str, str] | None = None
+    hits_rng: _random.Random | None = None
+    pickups: list[PowerupSlot] | None = None
+    head: list[str] | None = None
+    play_hled: list[str] | None = None
+    _cs: bool | None = None
+    sir_live: list[str] | None = None
+    ammo: list[str] | None = None
+    spawn: list[str] | None = None
+    revive: list[str] | None = None
+    bundle: FrameBundle | None = None
+    voice_map: dict[str, list[str]] | None = None
+    frames: dict[str, str] | None = None
+    voice_switch: str | None = None
 
 
 @dataclasses.dataclass
@@ -1899,9 +1899,9 @@ class _ValidationContext:
     opts: dict
     errors: list[str]
     warnings: list[str]
-    mode: Any = None
-    covered: Any = None
-    asserted: Any = None
+    mode: str
+    covered: bool
+    asserted: bool
 
 
 def _revive_frames(team: int, ammo: list[str], play_hled: list[str]) -> list[str]:
@@ -2361,11 +2361,12 @@ class Compiler:
         except (IndexError, ValueError, KeyError):
             return None
 
-    def _validate_stun(self, config, roster, errors: list[str], warnings: list[str]) -> None:
+    def _check_stun(self, ctx: _ValidationContext) -> None:
         """F15 / A20 `config.stun`: `{duration_s?}`, 1..60 s, default 10. Says which rostered weapons become the EMP
         source (they stop dealing damage), and says so if NOTHING in the game can stun. Refused together with
         `hit_audio_rekey`: a re-key would move the charge rifle off `<8,0>` with its fn-38 damage intact and leave
         the stun row keying nothing."""
+        config, roster, errors, warnings = ctx.config, ctx.roster, ctx.errors, ctx.warnings
         st = config.get("stun")
         if st is None:
             return
@@ -2477,6 +2478,7 @@ class Compiler:
         self._build_infection(ctx)
         self._build_respawn_profile(ctx)
         self._finish_bundle(ctx)
+        assert ctx.bundle is not None
         return ctx.bundle
 
     def _resolve_build(self, ctx: _CompileContext) -> None:
@@ -2553,6 +2555,11 @@ class Compiler:
             ctx.plan = self.hit_plan([ctx.player, *self._pickup_carrier(ctx.pickups)], rekey=False)
 
     def _build_head(self, ctx: _CompileContext) -> None:
+        assert (ctx.gc is not None and ctx.pnum is not None and ctx.tid is not None
+                and ctx.w0 is not None and ctx.plan is not None and ctx.pickups is not None
+                and ctx.prof is not None and ctx.night is not None and ctx.ffa is not None
+                and ctx.mods is not None and ctx.swap_mods is not None
+                and ctx.armor_piercing is not None and ctx.hits_rng is not None)
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         env = ctx.config.get("environment")
         _gset = ctx.gc._gset()
@@ -2627,6 +2634,8 @@ class Compiler:
             assert_armor_piercing_armed(ctx.head)   # S50: refuse to arm a weapon nobody's gun can register
 
     def _build_life_frames(self, ctx: _CompileContext) -> None:
+        assert (ctx.w0 is not None and ctx.mods is not None and ctx.pickups is not None
+                and ctx.tid is not None and ctx.play_hled is not None and ctx.head is not None)
 
         pmag, pres = self.catalog.spawn_ammo(ctx.w0, ctx.mods)
         ctx.ammo = [f"$AMMO,0,{pmag},{pres},1,*"]
@@ -2667,6 +2676,8 @@ class Compiler:
         assert_trigger_held_until_spawn(ctx.head, ctx.spawn, ctx.revive)
 
     def _build_bundle_base(self, ctx: _CompileContext) -> None:
+        assert (ctx.head is not None and ctx.spawn is not None and ctx.revive is not None
+                and ctx.night is not None and ctx.play_hled is not None)
 
         ctx.bundle = {
             "config_id": ctx.config["config_id"],
@@ -2689,6 +2700,11 @@ class Compiler:
         ctx.bundle["cues"]["team_led"] = ctx.play_hled[0] if ctx.play_hled else ""
 
     def _build_voice_and_hit_audio(self, ctx: _CompileContext) -> None:
+        assert (ctx.voice is not None and ctx.bundle is not None and ctx.prof is not None
+                and ctx.rolled is not None and ctx.picks is not None and ctx.gc is not None
+                and ctx.pnum is not None and ctx.tid is not None and ctx.hits_rng is not None
+                and ctx.head is not None and ctx.spawn is not None and ctx.revive is not None
+                and ctx.plan is not None and ctx.sir_live is not None and ctx._cs is not None)
 
         # A11: the PRESENTATION profile -- per-event sounds + lights, preset or custom (presentation.py).
         # Cues it names override the fixed table above; `announcer: false` mutes the voice groups but
@@ -2774,6 +2790,10 @@ class Compiler:
             ctx.bundle["dual_emitters"] = dual_emitters
 
     def _build_presentation(self, ctx: _CompileContext) -> None:
+        assert (ctx.bundle is not None and ctx.prof is not None and ctx.frames is not None
+                and ctx.voice_map is not None and ctx.voice_switch is not None
+                and ctx.tid is not None and ctx.night is not None and ctx.gc is not None
+                and ctx.ffa is not None and "cue_pools" in ctx.bundle)
         # A15.3: the pains are OURS -- the three $PSET pain fields ship empty and the node plays one of these on each
         # $HIR, the pool chosen by damage (proto 13 -> pain_melee; >= pain_long_min -> pain_long; else pain_short).
         if ctx.voice_switch != "off":
@@ -2838,6 +2858,9 @@ class Compiler:
         ctx.bundle["presentation"] = _pres.summary(ctx.config.get("presentation") or _pres.default_for(ctx.config.get("mode")))
 
     def _build_infection(self, ctx: _CompileContext) -> None:
+        assert (ctx.tid is not None and ctx.ammo is not None and ctx.play_hled is not None
+                and ctx.prof is not None and ctx.night is not None and ctx.gc is not None
+                and ctx.ffa is not None and ctx.bundle is not None)
         if ctx.config["mode"] == "infection":
             # move THIS gun to each other team's $TID on death, then re-arm (node emits team_change)
             flip: dict[str, list[str]] = {}
@@ -2860,6 +2883,9 @@ class Compiler:
                 ctx.bundle["team_flip_take"] = take
 
     def _build_respawn_profile(self, ctx: _CompileContext) -> None:
+        assert (ctx.play_hled is not None and ctx.prof is not None and ctx.night is not None
+                and ctx.gc is not None and ctx.tid is not None and ctx.ammo is not None
+                and ctx.bundle is not None)
         # 2026-09-19: the respawn profiles. Built from the same ammo and team repaint as the legacy lists above.
         hled_tail = ctx.play_hled if ctx.prof.get("headset_team", True) else []
         protect_ms, trigger_ms, station_ms = respawn_settings(ctx.config.get("respawn"))
@@ -2885,6 +2911,7 @@ class Compiler:
         assert_rearms_every_life(ctx.bundle)   # F121: whichever carrier is active, every life gets the real table back
 
     def _finish_bundle(self, ctx: _CompileContext) -> None:
+        assert ctx.bundle is not None and ctx.plan is not None
         # S50 build 4: {perk_id, mag/reserve/reload_ms/swap_ms/max_armor/max_shield: {base,resolved}},
         # absent when this player carries no perk — persisted on the bundle (not a one-shot message)
         # so a phone/console icon survives an app restart. `perk_effects_resolved()` is also what
@@ -2995,7 +3022,10 @@ class Compiler:
         and a phone that loses data mid-match must still hold an end it can reach alone. One opt could
         not express that, so the derived value got the new name and the old one kept its meaning.
         """
-        ctx = _ValidationContext(config, roster, opts or {}, [], [])
+        resolved_opts = opts or {}
+        ctx = _ValidationContext(config, roster, resolved_opts, [], [],
+                                 config.get("mode", "tdm"), full_coverage(config, resolved_opts),
+                                 resolved_opts.get("venue_coverage") == "full")
         self._check_scoring(ctx)
         self._check_time_limit(ctx)
         self._check_roster_numbers(ctx)
@@ -3010,18 +3040,15 @@ class Compiler:
         self._check_magazine_capacity(ctx)
         self._check_sir_effects(ctx)
         self._check_frag_coverage(ctx)
-        self._validate_stun(ctx.config, ctx.roster, ctx.errors, ctx.warnings)
+        self._check_stun(ctx)   # F15/A20: the stun's shape and source
         self._check_shields(ctx)
         return {"ok": not ctx.errors, "errors": ctx.errors, "warnings": ctx.warnings}
 
     def _check_scoring(self, ctx: _ValidationContext) -> None:
-        ctx.mode = ctx.config.get("mode", "tdm")
         try:
             parse_win_by((ctx.config.get("scoring") or {}).get("win_by"), "kills")
         except ValueError as exc:
             ctx.errors.append(str(exc))
-        ctx.covered = full_coverage(ctx.config, ctx.opts)      # A31: one coverage model, `opts` over the venue setting
-        ctx.asserted = (ctx.opts or {}).get("venue_coverage") == "full"   # A28: the explicit venue assertion (the time-limit rule keys on it alone)
 
     def _check_time_limit(self, ctx: _ValidationContext) -> None:
         # time limit: required (>0) on the phone path unless a fully-covered venue is asserted
