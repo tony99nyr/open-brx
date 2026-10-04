@@ -549,7 +549,7 @@ const TEAM_KEY = Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key]));
 // shipped through the bundle, so the phone and the bench stage can never silently disagree on it.
 const READOUT_POOL_INWARD = ['shield', 'armor', 'health'];
 
-// ---------- King of the Hill audio (F70/F72/F74/F85, docs/utility-roadmap.md "Where the hill audio has to live")
+// ---------- King of the Hill audio (F70/F72/F74/F85, docs/archive/utility-roadmap.md "Where the hill audio has to live")
 // The gun CANNOT speak for itself on a beacon: `$SIR` is keyed on <irProtocol, subtype> alone, every hill
 // beacon decodes as the same cell <15,0>, and fn 28 ignores the row's <soundID> outright (measured
 // 2026-09-10, rung Y). So all four hill states are the NODE's job, played over BLE from here.

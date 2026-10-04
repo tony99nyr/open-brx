@@ -204,7 +204,7 @@ export declare const TEAM_COLOUR_HEX: readonly ['#f43f5e', '#3a86ff', '#ffd23f',
 export declare const TEAM_INK_HEX: readonly ['#1a0404', '#04121e', '#1a1400', '#140a1c'];
 /** A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag). */
 export declare const ROLE_LABELS: { readonly assault: 'ASSAULT'; readonly cqb: 'CLOSE RANGE'; readonly marksman: 'SNIPER'; readonly support: 'SUPPORT'; readonly power: 'HEAVY'; readonly melee: 'MELEE'; readonly sidearm: 'SIDEARM' };
-/** net.md §8 size cap */
+/** contracts.md §5 "Size cap" (the retired net.md §8) */
 export declare const MAX_ENVELOPE_BYTES: 65536;
 /** log_data chunk cap (fits under the envelope cap) */
 export declare const MAX_LOG_CHUNK_BYTES: 49152;
