@@ -21,7 +21,8 @@ from brx_mcp.fake import FakeTagger
 from brx_mcp.mc import envelope as E
 from brx_mcp.mc.compile import Compiler, assert_no_denied_frames, golden_bundle
 from _session import match_config
-from test_server_safety import _fake_manager, run, server
+from _async import run
+from _server_stub import fake_server_manager, server
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 GEN_JS = REPO / "app" / "src" / "transport" / "contract.gen.js"
@@ -53,7 +54,7 @@ def test_the_brick_and_hang_classes_are_all_denied():
 
 def test_a_hang_prone_frame_needs_both_flags_on_send_and_never_goes_in_a_batch():
     """The bench makes a screamer on demand with $DPLAY (levers sheet §14.4); nothing else may send it."""
-    with _fake_manager([FakeTagger("AA:1")]) as mgr:
+    with fake_server_manager([FakeTagger("AA:1")]) as mgr:
         run(mgr.connect("AA:1", "t1"))
         for kw in ({}, {"confirm": True}, {"allow_hang": True}):
             result = run(server.send("t1", "$DPLAY,A10,4,*", **kw))
@@ -114,7 +115,7 @@ def test_unproven_and_arity_notes():
 
 # ---- the instrument (server.py) --------------------------------------------------------------------
 def test_send_refuses_a_denied_command_even_with_confirm_true():
-    with _fake_manager([FakeTagger("AA:1")]) as mgr:
+    with fake_server_manager([FakeTagger("AA:1")]) as mgr:
         run(mgr.connect("AA:1", "t1"))
         for cmd in ("$FACTORY,*", "$DPLAY,A10,4,*", "$!FSFORMAT,*"):
             result = run(server.send("t1", cmd, confirm=True))
@@ -124,7 +125,7 @@ def test_send_refuses_a_denied_command_even_with_confirm_true():
 
 
 def test_version_conflicted_commands_require_explicit_confirm():
-    with _fake_manager([FakeTagger("AA:1")]) as mgr:
+    with fake_server_manager([FakeTagger("AA:1")]) as mgr:
         run(mgr.connect("AA:1", "t1"))
         frames = ("$PRES,0,0,-50,*", "$INVU,*", "$BHIT,8,*", "$FIREX,1,2,3,4,5,*")
         for frame in frames:
@@ -135,7 +136,7 @@ def test_version_conflicted_commands_require_explicit_confirm():
 
 
 def test_send_batch_refuses_the_whole_batch_on_one_denied_command_even_with_confirm():
-    with _fake_manager([FakeTagger("AA:1")]) as mgr:
+    with fake_server_manager([FakeTagger("AA:1")]) as mgr:
         run(mgr.connect("AA:1", "t1"))
         result = run(server.send_batch("t1", ["$PING,*", "$CDFU,*", "$PING,*"], confirm=True))
         assert result["error"].startswith("refused, confirm or not:") and result["command"] == "$CDFU,*", result
@@ -143,7 +144,7 @@ def test_send_batch_refuses_the_whole_batch_on_one_denied_command_even_with_conf
 
 
 def test_send_lets_an_unproven_known_command_through_and_says_so():
-    with _fake_manager([FakeTagger("AA:1")]) as mgr:
+    with fake_server_manager([FakeTagger("AA:1")]) as mgr:
         run(mgr.connect("AA:1", "t1"))
         result = run(server.send("t1", "$TEAM,2,*"))             # no confirm needed: it is KNOWN
         assert result["sent"] == "$TEAM,2,*" and "NOT bench-proven" in result["note"], result
@@ -158,7 +159,7 @@ def test_the_deny_gate_runs_before_the_confirm_gate_and_is_load_bearing():
     old = protocol.deny_reason
     protocol.deny_reason = lambda _c, **_kw: None
     try:
-        with _fake_manager([FakeTagger("AA:1")]) as mgr:
+        with fake_server_manager([FakeTagger("AA:1")]) as mgr:
             run(mgr.connect("AA:1", "t1"))
             result = run(server.send("t1", "$FACTORY,*", confirm=True))
             assert result.get("sent") == "$FACTORY,*", result
