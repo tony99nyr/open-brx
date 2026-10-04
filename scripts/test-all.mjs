@@ -38,9 +38,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb } from './lib/pss.mjs';
-import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, admissionShare, deriveTimeoutS, planPeakMb, screensBudget, workerCount } from './lib/budget.mjs';
+import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
 import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss } from './lib/pool.mjs';
+import { taskHeadroom } from './lib/tasks.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash, installedNpmState,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
@@ -127,8 +128,13 @@ function rawJobs(budgetMb, cpus = CPUS) {
   // its historical fair half; a filtered/--changed run that drops most of them leaves app-screens the rest.
   const otherUiMb = OTHER_UI_JOBS.filter(j => UI && (!filters.length || filters.some(f => j.name.includes(f))))
     .reduce((s, j) => s + j.mb, 0);
-  const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(cpus, budgetMb, otherUiMb);   // the long pole
+  let { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(cpus, budgetMb, otherUiMb);   // the long pole
   const screensCap = screensBudget(cpus, budgetMb).shards;
+  const tasks = taskHeadroom();
+  if (tasks) {
+    screensS = taskScreensShards(screensS, tasks.free, TASK_RESERVE);
+    screensMb = 100 + 240 * screensS; screensSecs = 6300 / screensS;
+  }
   return [
     { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 33 },
     // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
@@ -331,6 +337,13 @@ for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) 
 let screensRunning = false, screensEnding = false, screensShards = 0, screensExtraMb = 0, screensTarget = 0;
 let screensPgid = null;
 const screensExtraLeases = [];
+// Every job imports brx_mcp from THIS checkout: <ROOT>/mcp goes first on PYTHONPATH (the dev venv's editable
+// install points at the main checkout), and BRX_MCP_EXPECT_DIR makes brx_mcp/__init__.py refuse any other copy.
+const OWN_MCP = path.join(ROOT, 'mcp');
+function ownBrxMcpEnv(env = {}) {
+  const rest = (env.PYTHONPATH ?? process.env.PYTHONPATH ?? '').split(path.delimiter).filter(p => p && p !== OWN_MCP);
+  return { PYTHONPATH: [OWN_MCP, ...rest].join(path.delimiter), BRX_MCP_EXPECT_DIR: OWN_MCP };
+}
 function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
   const log = path.join(LOGS, `${name}.log`);
   const jobHome = path.join(LOGS, `${name}-brx-mcp-home`);
@@ -340,7 +353,7 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
   const t0 = Date.now();
   return new Promise((resolve, reject) => {
     // detached: the job leads its own process group, so a timeout kills its browsers and servers too
-    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome }, stdio: ['ignore', out, out], detached: true });
+    const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome, ...ownBrxMcpEnv(env) }, stdio: ['ignore', out, out], detached: true });
     if (child.pid) {
       groups.add(child.pid);
       if (name === 'app-screens') screensPgid = child.pid;
@@ -405,29 +418,38 @@ const PLAN_BUDGET_MB = Math.floor(BUDGET_MB * HEADROOM);
 const plannedPeakMb = planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB);
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
 console.log(`test-all: planned peak ${plannedPeakMb} MB against a ${PLAN_BUDGET_MB} MB ceiling (${Math.round(HEADROOM * 100)}% of the ${BUDGET_MB} MB budget), ${BUDGET_MB - plannedPeakMb} MB headroom`);
+const taskStart = taskHeadroom();
+if (taskStart) console.log(`test-all: tasks ${taskStart.free} free of ${taskStart.max} (reserve ${TASK_RESERVE})`);
 let measuredPeakMb = null;
+let measuredPeakTasks = taskStart?.current ?? null;
+function sampleTasks() {
+  const sample = taskHeadroom();
+  if (sample) measuredPeakTasks = Math.max(measuredPeakTasks ?? 0, sample.current);
+}
 const canSamplePss = fs.existsSync('/proc/self/smaps_rollup');
 function samplePss() {
-  if (!canSamplePss) return;
-  const kb = sumTreePssKb([...groups]);
-  if (kb !== null) measuredPeakMb = Math.max(measuredPeakMb || 0, kb / 1024);
-  for (const [pgid, lease] of groupLeases) {
-    const jobKb = sumTreePssKb([pgid]);
-    if (jobKb !== null) {
-      const groupMb = jobKb / 1024;
-      lease.setPss(groupMb);
-      if (pgid === screensPgid && screensExtraLeases.length) {
-        extraLeasePss(groupMb, lease.mb, screensExtraLeases.length).forEach((pss, i) => screensExtraLeases[i].setPss(pss));
+  if (canSamplePss) {
+    const kb = sumTreePssKb([...groups]);
+    if (kb !== null) measuredPeakMb = Math.max(measuredPeakMb || 0, kb / 1024);
+    for (const [pgid, lease] of groupLeases) {
+      const jobKb = sumTreePssKb([pgid]);
+      if (jobKb !== null) {
+        const groupMb = jobKb / 1024;
+        lease.setPss(groupMb);
+        if (pgid === screensPgid && screensExtraLeases.length) {
+          extraLeasePss(groupMb, lease.mb, screensExtraLeases.length).forEach((pss, i) => screensExtraLeases[i].setPss(pss));
+        }
       }
     }
   }
+  sampleTasks();
 }
-const sampleTimer = canSamplePss ? setInterval(() => {
+const sampleTimer = canSamplePss || taskStart ? setInterval(() => {
   try { samplePss(); }
   catch (error) { console.error(`test-all: memory sample failed: ${error.message}`); stopGroups(error); }
 }, 1000) : null;
 async function withBuildLease(name, cwd, cmd, mb) {
-  const lease = await pool.acquire({ runId: RUN_ID, job: name, mb, cores: 2,
+  const lease = await pool.acquire({ runId: RUN_ID, job: name, mb, cores: 2, tasks: TASK_ALLOWANCES.other,
     size: ({ freeCores }) => ({ mb, cores: Math.max(1, Math.min(2, freeCores)) }) });
   try {
     if (stopping) throw new Error('test run is stopping');
@@ -437,15 +459,31 @@ async function withBuildLease(name, cwd, cmd, mb) {
 }
 async function acquireJobLease(j) {
   let sized = j;
-  const lease = await pool.acquire({ runId: RUN_ID, job: j.name, mb: j.mb, cores: j.cores,
-    size: ({ freeMb, freeCores }) => {
+  const lease = await pool.acquire({ runId: RUN_ID, job: j.name, mb: j.mb, cores: j.cores, tasks: jobTaskAllowance(j),
+    size: ({ freeMb, freeCores, freeTasks }) => {
       const share = admissionShare(BUDGET_MB, freeMb, CPUS, freeCores);
       sized = rawJobs(share.budgetMb, share.cpus).find(candidate => candidate.name === j.name);
-      return { mb: sized.mb, cores: sized.cores };
+      if (j.name === 'app-screens' && Number.isFinite(freeTasks)) {
+        const shards = Math.max(1, Math.min(sized.screensShards, Math.floor(freeTasks / TASK_ALLOWANCES.screensShard)));
+        sized = { ...sized, screensShards: shards, cores: shards, mb: 100 + 240 * shards,
+          secs: 6300 / shards, env: { ...sized.env, SCREENS_SHARDS: String(shards) } };
+      }
+      return { mb: sized.mb, cores: sized.cores, tasks: jobTaskAllowance(sized) };
     } });
   return { lease, sized };
 }
 // The one shared build output. Built once here, before any reader starts (see the rules at the top).
+// The import probe: from a neutral cwd, with the job env, brx_mcp must resolve inside this checkout. Fails the run
+// before any build if the venv's editable install would shadow it (the guard in brx_mcp/__init__.py says why).
+{
+  const probe = spawnSync(PY, ['-c', 'import brx_mcp, os; print(os.path.realpath(brx_mcp.__file__))'],
+    { cwd: os.tmpdir(), env: { ...process.env, ...ownBrxMcpEnv() }, encoding: 'utf8' });
+  const where = (probe.stdout || '').trim();
+  if (probe.status !== 0 || !where.startsWith(fs.realpathSync(OWN_MCP) + path.sep)) {
+    console.error(`test-all: brx_mcp does not import from this checkout (${OWN_MCP}): ${where || (probe.stderr || '').trim().split('\n').pop()}`);
+    process.exit(2);
+  }
+}
 const builds = [];
 if (selectedJobs.some(j => j.www)) builds.push(withBuildLease('app-build', 'app', ['npm', 'run', 'build'], 800));
 if (selectedJobs.some(j => j.dist)) builds.push(withBuildLease('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build'], 550));
@@ -531,10 +569,13 @@ const raiseScreens = () => {
   let admitted = 0;
   lastScreensRaise = Date.now();
   extraLease = pool.tryAcquire({ runId: RUN_ID, job: 'app-screens-extra', mb: 240, cores: 1,
-    size: ({ freeMb, freeCores }) => {
-      admitted = Math.min(more, Math.floor(freeMb / 240), Math.floor(freeCores));
+    tasks: TASK_ALLOWANCES.screensShard,
+    size: ({ freeMb, freeCores, freeTasks }) => {
+      admitted = Math.min(more, Math.floor(freeMb / 240), Math.floor(freeCores),
+        Math.floor(freeTasks / TASK_ALLOWANCES.screensShard));
       admitted = extraLeaseCores(admitted, freeCores);
-      return { mb: 240 * Math.max(1, admitted), cores: Math.max(1, admitted) };
+      return { mb: 240 * Math.max(1, admitted), cores: Math.max(1, admitted),
+        tasks: TASK_ALLOWANCES.screensShard * Math.max(1, admitted) };
     } });
   if (!extraLease) { lastScreensRaise = Date.now() + 1500; return; }
   extraLease.setPgid(screensPgid);
@@ -646,7 +687,8 @@ for (const r of failed) {
 }
 if (sampleTimer) { clearInterval(sampleTimer); if (!fatalError) samplePss(); }
 const realPeak = canSamplePss && measuredPeakMb !== null ? `${measuredPeakMb.toFixed(0)} MB` : 'not measured';
-console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
+const taskPeak = measuredPeakTasks === null ? 'not measured' : `${measuredPeakTasks} tasks`;
+console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, peak ${taskPeak}, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
 await exitAfterKills(failed.length || fatalError ? 1 : 0);
 } catch (error) {
   stopGroups(error);

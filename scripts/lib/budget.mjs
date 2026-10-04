@@ -24,6 +24,24 @@ export function admissionShare(ownMb, freeMb, ownCores, freeCores) {
 // each, not under load): mc-standby 1043 MB against a declared 700 (49% low), mc-game-edit 787 MB against 700
 // (12% low), app-logsync 438 MB against 300 (46% low) -- a real, not hypothetical, undercount across the board.
 export const HEADROOM = 0.85;
+export const TASK_RESERVE = Number(process.env.BRX_TEST_TASK_RESERVE || 1500);
+export const TASK_ALLOWANCES = { screensShard: 60, ui: 250, other: 80 };
+
+/** Pure task admission check for the scheduler. */
+export function taskAdmission(free, reserve, pending, allowance) {
+  return free - reserve - pending >= allowance ? 'start' : 'wait';
+}
+
+/** Bound app-screens shards by live task headroom while keeping the memory and CPU cap. */
+export function taskScreensShards(cap, free, reserve, pending = 0) {
+  return Math.max(1, Math.min(cap, Math.floor((free - reserve - pending) / TASK_ALLOWANCES.screensShard)));
+}
+
+export function jobTaskAllowance(job) {
+  if (job.tasks != null) return job.tasks;
+  if (job.name === 'app-screens') return TASK_ALLOWANCES.screensShard * (job.screensShards || 1);
+  return job.ui ? TASK_ALLOWANCES.ui : TASK_ALLOWANCES.other;
+}
 
 /** app-screens' shard count and the `mb`/`secs` JOBS needs for it: half the cores, at most 16, and never more
  *  than the HEADROOM-adjusted budget minus `otherUiMb` (every OTHER ui:true job test-all.mjs is about to run

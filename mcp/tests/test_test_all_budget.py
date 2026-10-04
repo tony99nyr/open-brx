@@ -203,7 +203,7 @@ def test_pss_sampler_counts_detached_descendant_processes():
 def test_runner_samples_pss_and_isolates_each_job_home():
     source = RUNNER.read_text()
     assert "sumTreePssKb" in source
-    assert "const sampleTimer = canSamplePss ? setInterval(" in source
+    assert "const sampleTimer = canSamplePss || taskStart ? setInterval(" in source
     assert "try { samplePss(); }" in source
     assert "realPeak" in source and "not measured" in source
     assert "${name}-brx-mcp-home" in source

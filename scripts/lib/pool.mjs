@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pidAlive } from './lock.mjs';
+import { taskHeadroom as systemTaskHeadroom } from './tasks.mjs';
+import { TASK_RESERVE } from './budget.mjs';
 
 export const poolDirName = (uid = os.userInfo().uid) => path.join('/tmp', `brx-test-pool-${uid}`);
 
@@ -42,6 +44,7 @@ const nonnegative = (value, fallback) => value !== undefined && Number.isFinite(
 export function createPool({ dir = poolDirName(), poolMb = positive(process.env.BRX_TEST_POOL_MB, 10000),
   reserveMb = nonnegative(process.env.BRX_TEST_POOL_RESERVE_MB, 3000),
   poolCores = positive(process.env.BRX_TEST_POOL_CORES, 24), readAvailableMb = memAvailableMb,
+  taskHeadroom = systemTaskHeadroom, taskReserve = TASK_RESERVE, taskPendingMs = 20_000,
   pollMs = 200, heartbeatMs = 2_000, staleMs = 300_000, bypassMs = 60_000,
   log = message => console.error(`test pool: ${message}`) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
@@ -177,9 +180,25 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
     try { fs.rmSync(file, { force: true }); } catch { /* already gone */ }
   }
 
+  function taskCapacity(leases) {
+    const headroom = taskHeadroom();
+    if (!headroom) return null;
+    const now = Date.now();
+    const pending = leases.reduce((sum, item) => sum +
+      (now - item.data.admittedAt < taskPendingMs ? (item.data.tasks || 0) : 0), 0);
+    return { free: headroom.free, available: headroom.free - taskReserve - pending,
+      max: headroom.max, pending };
+  }
+
+  function validRequest(request, job) {
+    if (!request || !Number.isFinite(request.mb) || !Number.isFinite(request.cores) ||
+        !Number.isFinite(request.tasks) || request.mb <= 0 || request.cores <= 0 || request.tasks < 0)
+      throw new Error(`invalid pool request for ${job}`);
+  }
+
   // Late work must not queue behind a job that already holds memory while waiting for more.
   // Give existing tickets priority and make the capacity check and lease write atomic.
-  function tryAcquire({ runId, job, mb, cores = 1, size } = {}) {
+  function tryAcquire({ runId, job, mb, cores = 1, tasks = 0, size } = {}) {
     if (closed) return null;
     return withMutex(() => {
       if (entries('ticket').length) return null;
@@ -190,14 +209,16 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       const freeCores = Math.max(0, poolCores - usedCores);
       const unused = leases.reduce((sum, item) => sum + Math.max(0, item.data.mb - (item.data.pss || 0)), 0);
       const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused);
-      const request = size ? size({ freeMb: Math.min(freeMb, availableMb), freeCores, usedMb, usedCores }) : { mb, cores };
-      if (!request || !Number.isFinite(request.mb) || !Number.isFinite(request.cores) ||
-          request.mb <= 0 || request.cores <= 0) throw new Error(`invalid pool request for ${job}`);
+      const taskCap = taskCapacity(leases);
+      const request = { tasks, ...(size ? size({ freeMb: Math.min(freeMb, availableMb), freeCores,
+        freeTasks: taskCap?.available ?? Infinity, usedMb, usedCores }) : { mb, cores }) };
+      validRequest(request, job);
       if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores) return null;
+      if (taskCap && request.tasks > taskCap.available) return null;
       const id = `extra-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       const file = path.join(dir, `${id}.lease`);
       const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
-        pss: 0, pgid: null, heartbeat: Date.now() };
+        tasks: request.tasks, admittedAt: Date.now(), pss: 0, pgid: null, heartbeat: Date.now() };
       writeJson(file, record);
       ownLeases.set(file, record);
       const update = values => { Object.assign(record, values); record.heartbeat = Date.now(); writeJson(file, record); };
@@ -206,7 +227,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
     });
   }
 
-  async function acquire({ runId, job, mb, cores, size, onTicket } = {}) {
+  async function acquire({ runId, job, mb, cores, tasks = 0, size, onTicket } = {}) {
     if (closed) throw new Error('test pool is closed');
     let id, ticket, ticketRecord;
     withMutex(() => {
@@ -224,11 +245,12 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       writeJson(counter, next);
       id = `${String(next).padStart(15, '0')}-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       ticket = path.join(dir, `${id}.ticket`);
-      ticketRecord = { pid: process.pid, runId, job, mb, cores, heartbeat: Date.now(), queuedAt: Date.now() };
+      ticketRecord = { pid: process.pid, runId, job, mb, cores, tasks, heartbeat: Date.now(), queuedAt: Date.now() };
       writeJson(ticket, ticketRecord);
       ownTickets.set(ticket, ticketRecord);
     });
     let lastNotice = Date.now();
+    let taskWaitAt = null;
     try {
       onTicket?.(Number(id.slice(0, 15)));
       while (!closed) {
@@ -245,22 +267,27 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           // The waiting notice below tells the operator why the job remains queued.
           const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused);
           const fitMb = Math.min(freeMb, availableMb);
-          const request = size ? size({ freeMb: fitMb, freeCores, usedMb, usedCores }) : { mb, cores };
-          if (!request || !Number.isFinite(request.mb) || !Number.isFinite(request.cores) ||
-              request.mb <= 0 || request.cores <= 0) throw new Error(`invalid pool request for ${job}`);
+          const taskCap = taskCapacity(leases);
+          const request = { tasks, ...(size ? size({ freeMb: fitMb, freeCores,
+            freeTasks: taskCap?.available ?? Infinity, usedMb, usedCores }) : { mb, cores }) };
+          validRequest(request, job);
           ticketRecord.mb = request.mb;
           ticketRecord.cores = request.cores;
+          ticketRecord.tasks = request.tasks;
           writeJson(ticket, ticketRecord);
           const preceding = tickets.filter(item => item.file !== ticket && item.name < path.basename(ticket));
           const bypass = preceding.length > 0 && preceding.every(item =>
             Date.now() - (item.data.queuedAt || item.data.heartbeat) > bypassMs &&
             Date.now() - (item.data.queuedAt || item.data.heartbeat) < 2 * bypassMs &&
-            (item.data.mb > fitMb || item.data.cores > freeCores));
+            (item.data.mb > fitMb || item.data.cores > freeCores ||
+              (taskCap && item.data.tasks > taskCap.available)));
+          const taskBlocked = taskCap && request.tasks > taskCap.available;
           if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores ||
-              (preceding.length && !bypass)) return { lease: null, usedMb, availableMb, requestMb: request.mb };
+              taskBlocked || (preceding.length && !bypass)) return { lease: null, usedMb, availableMb,
+                requestMb: request.mb, taskCap, requestTasks: request.tasks, taskBlocked };
           const leaseFile = path.join(dir, `${id}.lease`);
           const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
-            pss: 0, pgid: null, heartbeat: Date.now() };
+            tasks: request.tasks, admittedAt: Date.now(), pss: 0, pgid: null, heartbeat: Date.now() };
           writeJson(leaseFile, record);
           fs.rmSync(ticket, { force: true });
           ownTickets.delete(ticket);
@@ -271,8 +298,14 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
             release: () => releaseFile(leaseFile) } };
         });
         if (admitted.lease) return admitted.lease;
+        if (admitted.taskBlocked) {
+          taskWaitAt ??= Date.now();
+          if (Date.now() - taskWaitAt >= 10 * 60_000)
+            throw new Error(`task cap ${admitted.taskCap.max} did not leave room for ${admitted.requestTasks} tasks after reserve ${taskReserve}`);
+        } else taskWaitAt = null;
         if (Date.now() - lastNotice >= 30_000) {
-          log(`waiting for ${Math.ceil(admitted.requestMb)} MB (pool ${Math.ceil(admitted.usedMb)}/${poolMb}, available ${Math.floor(admitted.availableMb)})`);
+          if (admitted.taskBlocked) log(`waiting for task headroom (free ${admitted.taskCap.free}, need ${taskReserve + admitted.taskCap.pending + admitted.requestTasks})`);
+          else log(`waiting for ${Math.ceil(admitted.requestMb)} MB (pool ${Math.ceil(admitted.usedMb)}/${poolMb}, available ${Math.floor(admitted.availableMb)})`);
           lastNotice = Date.now();
         }
         await delay(pollMs);

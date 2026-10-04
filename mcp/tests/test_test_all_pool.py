@@ -84,6 +84,76 @@ def _wait_file(file: Path, timeout: float = 3):
     raise AssertionError(f"expected file {file}")
 
 
+def _run_pool_script(script):
+    needs(NODE, "node")
+    result = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=REPO,
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+
+
+@_temporary_path
+def test_task_headroom_blocks_pool_admission_until_room_returns(tmp_path):
+    script = f"""
+      import fs from 'node:fs';
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const dir = {json.dumps(str(tmp_path / 'pool'))};
+      let free = 149;
+      const pool = createPool({{ dir, poolMb: 1000, reserveMb: 0, poolCores: 4,
+        readAvailableMb: () => 10000, taskHeadroom: () => ({{ max: 500, free }}),
+        taskReserve: 100, pollMs: 10 }});
+      const waiting = pool.acquire({{ runId: 'one', job: 'solo', mb: 100, cores: 1, tasks: 50 }});
+      if (fs.readdirSync(dir).some(name => name.endsWith('.lease'))) throw new Error('task check admitted solo job');
+      free = 150;
+      const lease = await waiting;
+      if (lease.tasks !== 50) throw new Error('lease did not record task allowance');
+      lease.release(); pool.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_recent_lease_allowance_blocks_cross_run_admission(tmp_path):
+    script = f"""
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const dir = {json.dumps(str(tmp_path / 'pool'))};
+      const pool = createPool({{ dir, poolMb: 1000, reserveMb: 0, poolCores: 4,
+        readAvailableMb: () => 10000, taskHeadroom: () => ({{ max: 500, free: 250 }}),
+        taskReserve: 0, pollMs: 10 }});
+      const first = await pool.acquire({{ runId: 'checkout-a', job: 'first', mb: 100, cores: 1, tasks: 200 }});
+      const second = pool.acquire({{ runId: 'checkout-b', job: 'second', mb: 100, cores: 1, tasks: 100 }});
+      if (fs.readdirSync(dir).filter(name => name.endsWith('.lease')).length !== 1)
+        throw new Error('recent lease allowance was ignored');
+      const record = JSON.parse(fs.readFileSync(first.file, 'utf8'));
+      record.admittedAt = Date.now() - 20001;
+      fs.writeFileSync(first.file, JSON.stringify(record));
+      const admitted = await second;
+      if (admitted.tasks !== 100) throw new Error('second allowance missing');
+      admitted.release(); first.release(); pool.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_late_raise_checks_live_tasks_and_recent_allowance(tmp_path):
+    script = f"""
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const pool = createPool({{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000,
+        reserveMb: 0, poolCores: 4, readAvailableMb: () => 10000,
+        taskHeadroom: () => ({{ max: 500, free }}), taskReserve: 100 }});
+      let free = 250;
+      const base = await pool.acquire({{ runId: 'one', job: 'screens', mb: 300, cores: 1, tasks: 100 }});
+      const extra = {{ runId: 'one', job: 'screens-extra', mb: 240, cores: 1, tasks: 60 }};
+      if (pool.tryAcquire(extra) !== null) throw new Error('late raise ignored recent allowance');
+      free = 260;
+      const raised = pool.tryAcquire(extra);
+      if (!raised || raised.tasks !== 60) throw new Error('late raise did not admit with enough tasks');
+      raised.release(); base.release(); pool.close();
+    """
+    _run_pool_script(script)
+
+
 @_temporary_path
 def test_late_lease_is_nonblocking_and_respects_waiting_jobs(tmp_path):
     needs(NODE, "node")
