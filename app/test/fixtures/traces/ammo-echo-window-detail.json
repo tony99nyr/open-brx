@@ -24,10 +24,10 @@
     {"check":"rearmed"},
     {"frames":["$BUT,0,1,*"]},
     {"frame":"$ALCD,32,100,0,192,0,*"},
-    {"check":"reset_echo_shows_account"},
+    {"check":"refill_above_written"},
     {"frame":"$ALCD,28,100,0,192,0,*"},
     {"frames":["$BUT,0,0,*"]},
-    {"check":"landed"},
+    {"check":"rounds_after_refill"},
     {"frame":"$ALCD,5,100,1,23,0,*"},
     {"check":"off_slot_echo_low"},
     {"frames":["$BUT,1,1,*","$BUT,1,0,*"]},
@@ -155,14 +155,14 @@
       ]
     },
     {
-      "at": "reset_echo_shows_account",
+      "at": "refill_above_written",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"gain","data":{"pool":"armor","amount":70,"hp":45,"armor":70,"shield":0}},"reconciling":false},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
-      "at": "landed",
+      "at": "rounds_after_refill",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":28,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"gain","data":{"pool":"armor","amount":70,"hp":45,"armor":70,"shield":0}},"reconciling":false},
       "facts": [],
       "reports": [],
