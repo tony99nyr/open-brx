@@ -94,6 +94,10 @@ gate in Chromium at both phone sizes. Install that browser once with `npx playwr
 bundle or captures. `test/transport.test.mjs` starts its own MC on a free port. See `app/README.md` for
 build/signing/APK details; that file is the authority on anything platform-specific.
 
+**Golden traces** (`app/test/fixtures/traces/`) replay recorded engine runs through `engine.js` and through the bench
+stage. A change to engine behaviour is re-recorded on purpose with `cd app && node tools/record-traces.mjs <name>`;
+read that folder's `README.md` first.
+
 **Mission Control web UI (`webapp/mc/`)**, Vite/React/TS:
 ```bash
 cd webapp/mc && npm run build   # tsc -b && vite build

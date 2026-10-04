@@ -1,0 +1,190 @@
+{
+  "name": "pu-overshield",
+  "why": "A56 overshield: the grant goes out as spawn protection on, the $PSET with the shield max raised by the amount and an absolute $LIFE at the current pools; protection ends 1 s later; hits take the overshield first, and once the shield is back at its base the $PSET max is restored. The item names no amount, so the engine's OVERSHIELD_AMOUNT fallback applies.",
+  "source": "app/test/powerups.test.mjs 'overshield: current shield + amount', 'overshield grant burst: protection on', 'the $PSET goes back to the preset max once the overshield has drained'",
+  "runners": ["engine"],
+  "setup": {
+    "config": {"stations":[{"id":6,"kind":"powerup","item":{"kind":"overshield","spawn_every_s":60,"first_at_s":60,"name":"OVERSHIELD","color":"#ff4fd8"}}]},
+    "fields": ["held","claim","switching","powerup"]
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"frame":"$HP,45,70,0,*"},
+    {"check":"live"},
+    {"advance_ms":57990},
+    {"frame":"$HP,40,55,0,*"},
+    {"stations":[{"id":6,"kind":"powerup","state":1,"median":-50}]},
+    {"advance_ms":1100},
+    {"stations":[{"id":6,"kind":"powerup","state":0,"median":-50,"value":110,"taker":7}]},
+    {"check":"granted"},
+    {"frame":"$HP,40,55,75,*"},
+    {"stations":[]},
+    {"advance_ms":800},
+    {"check":"protection_holds"},
+    {"advance_ms":300},
+    {"check":"protection_off"},
+    {"advance_ms":1000},
+    {"frames":["$HIR,4,0,19,2,9,0,3,*","$HP,40,55,30,*"]},
+    {"check":"hit_takes_the_overshield_first"},
+    {"advance_ms":1000},
+    {"frames":["$HIR,4,0,19,2,9,0,3,*","$HP,40,50,0,*"]},
+    {"check":"drained_back_to_base"},
+    {"advance_ms":1500},
+    {"check":"settled"}
+  ],
+  "stage_ignores": [
+    {"what":"trace","why":"The stage has no powerup model: GunStage decodes control-point (kind 5) adverts only and has no claim, grant, overshield, SELECT or switch-back (architecture review section 1)."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*",
+        "$LIFE,0,0,0,*",
+        "$QUERY,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "granted",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":40,"armor":55,"shield":75,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":{"kind":"granted","name":"OVERSHIELD","color":"#ff4fd8","itemKind":"overshield"},"overshield":{"name":"OVERSHIELD","color":"#ff4fd8","amount":75,"left":75,"base":0},"grant":{"kind":"overshield","name":"OVERSHIELD","color":"#ff4fd8","at":62100},"swap":null,"spawn":{"name":"OVERSHIELD","color":"#ff4fd8","station":6,"at":60010},"lost":null,"back":null,"backPending":null}},
+      "facts": [{"type":"pickup","match_id":"m1","station_id":6,"item_kind":"overshield"}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$LIFE,0,0,0,*",
+        "$GLED,3,3,3,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,3,3,3,0,10,,*",
+        "$GLED,9,3,3,0,10,,*",
+        "$GLED,3,3,3,0,10,,*",
+        "$TMP,,,,,,,,-100,,,,*",
+        "$PSET,7,1,45,70,75,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$TID,1,*",
+        "$LIFE,40,55,75,2,*"
+      ]
+    },
+    {
+      "at": "protection_holds",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":40,"armor":55,"shield":75,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":{"kind":"granted","name":"OVERSHIELD","color":"#ff4fd8","itemKind":"overshield"},"overshield":{"name":"OVERSHIELD","color":"#ff4fd8","amount":75,"left":75,"base":0},"grant":{"kind":"overshield","name":"OVERSHIELD","color":"#ff4fd8","at":62100},"swap":null,"spawn":{"name":"OVERSHIELD","color":"#ff4fd8","station":6,"at":60010},"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$GLED,9,3,3,0,10,,*",
+        "$PLAY,,4,6,N102,,,,*"
+      ]
+    },
+    {
+      "at": "protection_off",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":40,"armor":55,"shield":75,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":{"kind":"granted","name":"OVERSHIELD","color":"#ff4fd8","itemKind":"overshield"},"overshield":{"name":"OVERSHIELD","color":"#ff4fd8","amount":75,"left":75,"base":0},"grant":{"kind":"overshield","name":"OVERSHIELD","color":"#ff4fd8","at":62100},"swap":null,"spawn":{"name":"OVERSHIELD","color":"#ff4fd8","station":6,"at":60010},"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$GLED,3,3,3,0,10,,*",
+        "$TMP,,,,,,,,0,,,,*"
+      ]
+    },
+    {
+      "at": "hit_takes_the_overshield_first",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":40,"armor":55,"shield":30,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":{"name":"OVERSHIELD","color":"#ff4fd8","amount":75,"left":30,"base":0},"grant":{"kind":"overshield","name":"OVERSHIELD","color":"#ff4fd8","at":62100},"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":45,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"}],
+      "reports": [],
+      "writes": [
+        "$GLED,9,3,3,0,10,,*",
+        "$GLED,3,3,3,0,10,,*",
+        "$GLED,9,9,5,0,10,,*",
+        "$GLED,9,9,5,0,10,,*"
+      ]
+    },
+    {
+      "at": "drained_back_to_base",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":40,"armor":50,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":{"kind":"overshield","name":"OVERSHIELD","color":"#ff4fd8","at":62100},"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":35,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:2"}],
+      "reports": [],
+      "writes": [
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$TID,1,*",
+        "$GLED,4,4,4,0,10,,*",
+        "$GLED,9,9,9,0,10,,*",
+        "$GLED,4,4,4,0,10,,*",
+        "$GLED,9,4,4,0,10,,*"
+      ]
+    },
+    {
+      "at": "settled",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":40,"armor":50,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    }
+  ]
+}
