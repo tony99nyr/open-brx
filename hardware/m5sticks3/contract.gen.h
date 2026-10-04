@@ -87,6 +87,12 @@ constexpr int32_t VENUE_VOLUME_INDOOR = 80;
 constexpr int32_t VENUE_VOLUME_OUTDOOR = 90;
 constexpr int32_t GAME_VOLUME_MIN = 60;
 constexpr int32_t GAME_VOLUME_MAX = 100;
+// pieces.json (`pieces.PieceStore`)
+constexpr int32_t PIECES_STORE_V = 1;
+// favourites.json (`favourites.FavouriteStore`)
+constexpr int32_t FAVOURITES_STORE_V = 1;
+// the session snapshot (`state.Session` persist)
+constexpr int32_t SESSION_STORE_V = 1;
 constexpr int32_t TIMED_PROTECT_S_DEFAULT = 0;
 constexpr int32_t WEAPON_DELAY_MS_DEFAULT = 500;
 constexpr int32_t STATION_PROTECT_S_DEFAULT = 2;

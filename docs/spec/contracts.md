@@ -942,6 +942,13 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 ## 9. Versioning, identity tokens, constants
 
 - `Envelope.v` gates protocol compatibility; `app_ver`/`server_ver` are informational.
+- **Store versions [D15].** Three files MC persists carry `v`: `pieces.json` (`PIECES_STORE_V`), `favourites.json`
+  (`FAVOURITES_STORE_V`) and the session snapshot `session.json` (`SESSION_STORE_V`), all in `types.py` and all in
+  `~/.brx-mcp/`. The pieces and favourites loaders never guess a migration: a file whose `v` they do not know (one a
+  newer MC saved, read after a downgrade) is kept whole as `<name>.v<v>-<ms>`, logged, and the store starts clean; a file
+  they cannot parse goes to `<name>.corrupt-<ms>`. A file with no `v` is the first shape and loads. Bump a store's
+  `v` only when an older MC would misread the new shape. `armory.json` and the evidence database `session.sqlite`
+  carry no version.
 - **Three distinct `seq` namespaces** [A2] (do not conflate): `Envelope.seq` = per-node persisted-event counter
   (dedup); `start.seq` = MC's per-session schedule counter; `control.seq` = a reference *to* a `start.seq`
   (which schedule an `abort_start` targets).
@@ -952,19 +959,19 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 - Post-freeze changes: add an index row in §10, fold the text in where it applies with its tag, and bump `v` only
   for wire-breaking changes once a consumer is deployed. Additive fields are non-breaking; consumers ignore
   unknown fields.
-- **Constants.** One source: `mcp/brx_mcp/mc/types.py` (plus `envelope.py`'s module-level constants).
-  `mcp/tools/gen_contract.py` generates every client copy: `app/src/transport/contract.gen.js` (the phone;
-  `envelope.js` re-exports it and `engine.js` imports it as `W`), `webapp/mc/src/api/contract.gen.ts` (the console)
-  and `hardware/m5sticks3/contract.gen.h` (the Stick, architecture review #4). Read the values there; this section
-  does not copy them, so it cannot drift. A module references a constant by name and never redefines it;
-  `mcp/tests/test_contract_generated.py` fails on a stale generated file. The wire timing names are
-  `ASSIST_WINDOW_MS`, `MULTI_KILL_MS`, `FEEDBACK_MAX_AGE_MS`, `STATUS_HEARTBEAT_MS`, `STALE_AFTER_MS`,
-  `SYNC_FRESH_MS`, `LATE_ARM_GRACE_MS`, `CONFIG_TTL_MS`, `DEATH_LATCH_MS`, `RESYNC_PROBE_S` (the LOBBY/ARMED observe
-  window) and `DEFAULT_RUNWAY_S` (host-set per game); `MAX_PLAYERS` bounds the wire ids (0 reserved); `MAX_HP`/`MAX_AR`
-  come from GameConfig. Two are NOT in the contract: `RECONCILE_MS` (the LIVE rejoin window, A6.8) is private to
-  `app/src/engine.js`, and `ROLE_SETTLE_MS` is a `Session` attribute in `state.py`. All are tunable defaults.
-  The generated tables include the station presence defaults (`STATION_DEFAULT_THRESHOLD_DBM`, by platform and kind),
-  the team vocabulary (`TEAM_KEYS`, `TEAM_NAMES`, colour and ink hex by `$TID`) and the presence and hill numbers.
+- **Constants.** The single source is `mcp/brx_mcp/mc/types.py`'s module-level block. `mcp/tools/gen_contract.py`
+  generates it into `app/src/transport/contract.gen.js` (which `envelope.js` re-exports, and `engine.js` imports as
+  `W`) and `webapp/mc/src/api/contract.gen.ts` [A33], and
+  the Stick's `hardware/m5sticks3/contract.gen.h` (architecture review #4). Read the values there; this section names them and copies no
+  numbers. The shared constants: `ASSIST_WINDOW_MS`, `MULTI_KILL_MS`, `FEEDBACK_MAX_AGE_MS`, `STATUS_HEARTBEAT_MS`,
+  `STALE_AFTER_MS`, `SYNC_FRESH_MS`, `LATE_ARM_GRACE_MS`, `CONFIG_TTL_MS`, `MAX_PLAYERS` (wire ids from 1; 0 is
+  reserved), `DEATH_LATCH_MS`, `RESYNC_PROBE_S` (the LOBBY/ARMED observe window) and `DEFAULT_RUNWAY_S` (host-set per
+  game [A5.10]). `MAX_HP`/`MAX_AR` come from the GameConfig. Two timings are local to one side and not on the wire:
+  the node's rejoin window (`RECONCILE_MS` in `app/src/engine.js`, A6.8) and MC's role settle delay
+  (`Session.ROLE_SETTLE_MS` in `mcp/brx_mcp/mc/state.py`). `test_contract_generated.py` checks that every shared name
+  above is in the generated file.
+  The generated tables also carry the station presence defaults (`STATION_DEFAULT_THRESHOLD_DBM`, by platform and
+  kind), the team vocabulary (`TEAM_KEYS`, `TEAM_NAMES`, colour and ink hex by `$TID`) and the presence and hill numbers.
 
 ## 10. Amendment index (dates; what; where it now lives)
 
