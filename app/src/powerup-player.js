@@ -106,6 +106,198 @@ export class PlayerPowerups {
   /** A spawn or revive wrote this life's `pset_pool` take: the overshield raises THIS frame's shield max, and restores it. */
   setPset(frame) { this._psetNow = frame; }
 
+  // ---- the claim and the spawn announcements (Tony 2026-09-24, via the brx5 lead) ----
+  /** `{id: item}` for every powerup station in this game's config, or null when there is none (the inert case). */
+  items() {
+    const cfg = this.host.config, st = cfg && Array.isArray(cfg.stations) ? cfg.stations : [];
+    let out = null;
+    for (const s of st) {
+      if (!s || typeof s !== 'object' || s.kind !== 'powerup' || !s.item || typeof s.item !== 'object') continue;
+      if (s.item.kind !== 'weapon' && s.item.kind !== 'overshield') continue;
+      (out || (out = {}))[s.id] = s.item;
+    }
+    return out;
+  }
+  /** ms since go-live on the synced match clock, or null outside a live match. */
+  _elapsed(now) { const h = this.host; return h.phase === 'live' && h.goLiveT ? now - h.goLiveT : null; }
+  /** The station's own advert, when it is fresh and says something: state 1 (available) or state 0 with a
+   *  countdown. State 0 with value 0 is a station that does not know yet (no `station_update` since it was armed),
+   *  and reads as no advert at all, so the phone's own schedule decides. */
+  _advertOf(id, now) {
+    const a = this._advert[id];
+    if (!a || now - a.at > PU_ADVERT_STALE_MS) return null;
+    if (a.state === 0 && !a.value) return null;
+    return a;
+  }
+  /** Bench 2026-10-02 (ROBP1): a re-claim of the same weapon at the stack cap took the station's item and gave nothing.
+   *  At the cap the player does not claim, so the item stays for someone else. Same cap rule as the stack grant. PURE. */
+  _atCap(item) {
+    const h = this._held;
+    if (!h || !item || item.kind !== 'weapon' || h.weapon_id !== item.weapon_id) return false;
+    const c = this._itemCharges(item);
+    return h.left >= PU_STACK_CAP_X * Math.max(c, h.base || c);   // the stack grant's own formula, byte for byte
+  }
+  /** Is the item at station `id` there to claim? The station owns taken and untaken, so its advert decides; only a
+   *  station with nothing to say yet falls back to the phone's own schedule (and then decides nothing: it names the taker). */
+  claimable(id, item, now) {
+    if (this._atCap(item)) return false;
+    const el = this._elapsed(now); if (el == null) return false;
+    const a = this._advertOf(id, now);
+    if (a) return a.state === 1 && puSpawnIndex(item, el) >= 0;   // F374: never before the first spawn, whatever a station says
+    return puSpawnIndex(item, el) >= 0;
+  }
+  /** The claim's range reading for a station entry: the median of its last three samples (beacon.js). */
+  _median(e) { return Number.isFinite(e.median) ? e.median : Number.isFinite(e.raw) ? e.raw : e.rssi; }
+  _threshold(e) { return e.threshold || POWERUP_THRESHOLD_DEFAULT; }
+  /** The powerup station this player reads: the one being claimed while it is still heard, else the loudest median. */
+  _station(items = this.items()) {
+    if (!items) return null;
+    const h = this.host;
+    const mine = h.stations.filter(e => e && e.kind === 'powerup' && items[e.id] && h.stationAllowed(e)
+      && !(Number.isFinite(e.ageMs) && e.ageMs > PU_ADVERT_STALE_MS));
+    const held = this._claim ? mine.find(e => e.id === this._claim.station) : null;
+    return held || mine.sort((a, b) => this._median(b) - this._median(a))[0] || null;
+  }
+  /** Called from `setStations`: remember each powerup station's advert (the "taken early" relay reaches phones this way). */
+  onStations(now) {
+    const h = this.host;
+    for (const e of h.stations) {
+      if (!e || e.kind !== 'powerup') continue;
+      const at = now - (Number.isFinite(e.ageMs) ? e.ageMs : 0);
+      const prev = this._advert[e.id];
+      if (!prev || at >= prev.at) {
+        // F417 (bench 2026-09-26): two phones both granted themselves one Stick's Rockets, and nothing on either phone said
+        // which taker it had heard, or when. One line per CHANGE of state or taker (not per advert: a flood is 50/s).
+        if (!prev || prev.state !== e.state || prev.taker !== (e.taker || 0)) h.log(`powerup: station ${e.id} advert state ${e.state} taker ${e.taker || 0} value ${e.value} seq ${e.seq != null ? e.seq : '-'} (${Number.isFinite(e.median) ? e.median : e.rssi} dBm, ${Math.round(e.ageMs || 0)} ms old)`, 'li');
+        this._advert[e.id] = { state: e.state, value: e.value, taker: e.taker || 0, at };
+      }
+    }
+    this._claimTick(now);
+  }
+  /** The claim: 1 s continuously within range of a station whose item is there. `state().powerupClaim` carries it to
+   *  the player advert (app.js: `claiming`, then `claim_ready`, with the station id in `value`) and to the HUD's ring.
+   *  The STATION picks the winner; the grant waits for its `taker` byte (`_takerCheck`). */
+  _claimTick(now) {
+    const h = this.host;
+    const items = this.items(); if (!items) { this._claim = null; return; }
+    const ok = h.phase === 'live' && h.alive && h.bleUp && !h.resync && !h.reconciling && !h.gunLocked && !h.tutorial;
+    // Polish M2: a STUNNED gun is disarmed and `_stunRestore` rewrites its ammo, which would erase a weapon grant. The claim
+    // is not dropped: the ready latch is kept warm, so the station's answer is taken the moment the stun ends.
+    // F331: but only while the player stays in range; walking out drops the claim, so no claim_ready goes out.
+    if (ok && h.stunned) {
+      const cl = this._claim, st = cl ? this._station(items) : null;
+      const held = st && st.id === cl.station && Number.isFinite(this._median(st)) && this._median(st) >= this._threshold(st) - POWERUP_EXIT_DB;
+      if (!held) { this._claim = null; this._readyFor = null; } else if (this._readyFor) this._readyFor.at = now;
+      return;
+    }
+    if (!ok) { this._claim = null; this._readyFor = null; return; }
+    this._takerCheck(items, now);
+    const st = this._station(items);
+    if (!st) { this._claim = null; return; }
+    const c = this._claim && this._claim.station === st.id ? this._claim : null;
+    const med = this._median(st), thr = this._threshold(st);
+    const inRange = Number.isFinite(med) && (c ? med >= thr - POWERUP_EXIT_DB : med >= thr);   // enter at the threshold, leave 3 dB under it
+    if (!inRange || !this.claimable(st.id, items[st.id], now)) { this._claim = null; return; }
+    if (!c) this._claim = { station: st.id, since: now, readyAt: null };
+    const cl = this._claim;
+    if (cl.readyAt == null && now - cl.since >= POWERUP_DWELL_MS) { cl.readyAt = now; h.log(`powerup: claim ready at station ${st.id}`, 'li'); }
+    if (cl.readyAt != null) this._readyFor = { station: st.id, at: now };
+  }
+  /** The grant happens only when a station's advert names THIS player as `taker` and this phone was claim_ready for it. */
+  _takerCheck(items, now) {
+    const h = this.host;
+    const me = h.player ? h.player.player_num : null;
+    for (const id of Object.keys(items)) {
+      const a = this._advert[id]; if (!a || now - a.at > PU_ADVERT_STALE_MS) continue;
+      if (a.state !== 0 || !a.taker || a.taker !== me) continue;
+      const r = this._readyFor;   // cleared by the grant: one ready claim, one grant
+      if (!r || String(r.station) !== String(id) || now - r.at > POWERUP_READY_LATCH_MS) continue;
+      const item = items[id];
+      // Never to a dead gun, and never over a hit whose `$HP` is still in flight (polish M1: a lethal one would be revived by
+      // the absolute `$LIFE`). The claim latch stays warm, so the grant goes out on the next tick once the `$HP` is in.
+      if (item.kind === 'overshield' && (h.hp <= 0 || (h.latch && h.latch.at > this._hpAt && now - h.latch.at < OVERSHIELD_HIR_WAIT_MS))) continue;
+      this._readyFor = null; this._claim = null;
+      const granted = item.kind === 'weapon' ? this.grantWeapon(+id, item, now) : this.grantShield(+id, item, now);
+      if (!granted) continue;
+      h.emitFact({ type: 'pickup', match_id: h.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}) });
+      h.save();
+      h.changed();
+    }
+  }
+  /** tick(), early: the spawn announcements, from the phone's own schedule and the match clock. Presentation only. */
+  tickAnnounce(now) {
+    const h = this.host;
+    const items = this.items(); if (!items) return;
+    const el = this._elapsed(now); if (el == null) return;
+    const batch = [];
+    for (const id of Object.keys(items)) {
+      const item = items[id], k = puSpawnIndex(item, el);
+      const seen = this._seen[id] != null ? this._seen[id] : -1;
+      if (k <= seen) continue;
+      this._seen[id] = k;
+      if (el - puSpawnAt(item, k) > PU_ANNOUNCE_LATE_MS) continue;   // a resumed webview does not replay old news
+      // Skipped when the phone KNOWS nobody took the last one: the station advertised it available after that spawn.
+      const a = this._advert[id];
+      if (k >= 1 && a && a.state === 1 && a.at >= h.goLiveT + puSpawnAt(item, k - 1)) continue;
+      if (!batch.some(b => b.name === item.name)) batch.push({ name: String(item.name || '').toUpperCase(), color: item.color || null, station: +id });
+    }
+    // docs/announcer.md: each spawn is one announcer item (the lowest priority), so two that land together show one at a
+    // time, PU_ANNOUNCE_MS each, and never on top of a kill confirm or a lead change.
+    for (const next of batch) h.laneFeed({ kind: 'powerup_spawn', text: `${next.name} AVAILABLE`, sub: next.station != null ? `AT STATION ${next.station}` : null, color: next.color, src: null });   // no source line: the phone's own schedule; the station names it   // HUD QA R2-16: name the station   // the FEED lane, at once
+    for (const next of batch) h.announce({ kind: 'powerup_spawn', key: `pu:${next.name}`, bannerMs: PU_ANNOUNCE_MS,
+      play: () => { this._spawnCard = { ...next, at: h.now() }; h.log(`powerup: ${next.name} AVAILABLE (station ${next.station})`, 'li'); h.changed(); } });
+    if (this._spawnCard && now - this._spawnCard.at > PU_ANNOUNCE_MS + 1000) this._spawnCard = null;
+    if (this._swapCard && now - this._swapCard.at > PU_ANNOUNCE_MS + 1000) this._swapCard = null;
+    if (this._grant && h.laneAge(this._grant.at, now) > PU_READY_MS + 1000) this._grant = null;   // F400 r1: past the card, then the hint
+  }
+  /** tick(), after the announcer: the claim's dwell (it runs on the clock too, not only on a fresh advert), the end of the
+   *  overshield grant's spawn protection, and a switch-back the gun never answered (polish M3). */
+  tick(now) {
+    this._claimTick(now);
+    this._osTick(now);
+    this._backTick(now);
+  }
+  /** `state().powerupClaim`: {station, claiming, ready, progress} while standing in a claim, else null. PURE. */
+  claimView(now) {
+    const cl = this._claim;
+    return cl && this.items() ? { station: cl.station, claiming: true, ready: cl.readyAt != null,
+      progress: Math.min(1, (now - cl.since) / POWERUP_DWELL_MS) } : null;
+  }
+  /** The HUD's powerup view (`state().powerup`), or null when the game has no powerup items (the inert case). PURE. */
+  view(now) {
+    const h = this.host;
+    const items = this.items(); if (!items) return null;
+    const hd = this._held, o = this._overshield;
+    const held = hd ? { name: hd.name, color: hd.color, weapon_id: hd.weapon_id, slot: hd.slot, charges: hd.charges, left: hd.left, active: this._onHeavy(), back: hd.back ? { ...hd.back } : null } : null;
+    const overshield = o ? { name: o.name, color: o.color, amount: o.amount, left: Math.max(0, Math.min(o.amount, h.shield - o.base)), base: o.base } : null;
+    // F400: a slot that lost its identity to a switch-back THIS life, so the HUD's switch card can still name it
+    // on the render after `_held` moved on (see `_switchCard`). Gone once its own card's window has passed.
+    const going = this._going && now < this._going.until
+      ? { slot: this._going.slot, name: this._going.name, color: this._going.color, weapon_id: this._going.weapon_id, charges: this._going.charges } : null;
+    let hint = null;
+    if (h.presentable('hint')) {   // #5: the presentation gate's rule for the hint (live and alive)
+      const st = this._station(items), g = this._grant, cl = this._claim;
+      const nameOf = item => String(item.name || '').toUpperCase();
+      const b = this._back;
+      // F400 final: the hint's own PU_READY_MS runs only while no switch card is up (its own card, and any after it)
+      if (b && h.laneAge(b.at, now) < PU_READY_MS) hint = { kind: 'switched_back', name: b.name, to: b.to, color: null };
+      else if (g && h.laneAge(g.at, now) < PU_READY_MS && !(h.lastHitAt > g.at)) hint = { kind: 'granted',   // HUD QA R2-18: a hit retires the pickup card: the hit stack owns the centre
+        name: g.name, color: g.color, itemKind: g.kind, ...(g.charges != null ? { charges: g.charges } : {}), ...(g.replaced ? { replaced: g.replaced } : {}) };
+      else if (cl && items[cl.station]) {
+        const item = items[cl.station], base = { name: nameOf(item), color: item.color || null, station: cl.station };
+        hint = cl.readyAt != null && now - cl.readyAt >= POWERUP_NO_ANSWER_MS ? { kind: 'no_answer', ...base }
+          : { kind: 'claiming', ...base, progress: Math.min(1, (now - cl.since) / POWERUP_DWELL_MS), ready: cl.readyAt != null };
+      } else if (st) {
+        // F425 (Tony, 2026-09-26): drop the always-on TAKEN/countdown hint here -- an unclaimable near station
+        // now shows nothing; the left-side "<ITEM> AVAILABLE" feed alert (unchanged) is the only spawn signal.
+        const item = items[st.id], base = { name: nameOf(item), color: item.color || null, station: st.id };
+        const med = this._median(st), near = Number.isFinite(med) && med >= this._threshold(st) - PU_NEAR_DB;
+        if (near && this.claimable(st.id, item, now)) hint = { kind: 'approach', ...base };
+      }
+    }
+    return { hint, held, overshield, going };
+  }
+
   // ---- the weapon item: a heavy straight onto the trigger (Tony, 2026-09-24) ----
   // Tony 2026-09-24: "straight to trigger. id prefer trigger fires it", then "select should equip it if possible". A mid-life
   // `$WEAP,<slot>,…` equips that slot on the trigger at once (bench 2026-09-24, powerups.md "Sitting A 3.3"), so the phone

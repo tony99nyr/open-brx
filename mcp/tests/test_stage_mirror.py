@@ -1905,26 +1905,14 @@ KNOWN_UNMIRRORED = {
     "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
-    # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off). PRESENTATION only:
-    # the spawn announcer and the HUD's view (`_puTick`, `powerupView`). GAME STATE, but not portable
-    # yet: the claim, the grant, the end of an item and the overshield all hang off a powerup station's advert (its
-    # median RSSI and its `taker` byte, like `setStations` above) and the MATCH CLOCK's spawn schedule (like `goLiveT`
-    # below), and the stage models neither. The gun-facing writes (`_puGrantWeapon`/`_puGrantShield`/`_puEnd`) are the
-    # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
-    # F425 (2026-09-26): `_puNextInMs` is GONE (the near-station TAKEN/countdown hint it fed is removed from the
-    # HUD), so it is dropped from this list too, not merely unmirrored.
-    "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puMedian", "_puThreshold",
-    "_puStation", "_puObserve", "_puClaimTick",
-    "_puTakerCheck", "_puTick",
-    # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
-    # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it
-    # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.
-    "_puAtCap",
-    # F438 r4: a lethal self-hit keeps the held heavy and re-equips it behind the revive; it hangs off a held item too.
-    # F400 (docs/spec/powerups.md "The switch card"): the pickup-driven weapon-switch card, reusing `switching`'s own
-    # timing and takeover (a `pu` card: no echo confirm, no SELECT or re-send gate, no ALT pointer move). It hangs off
-    # the unmirrored pickup mechanic (`_puEquip`, `_puSelectPressed`, `_puEnd`, above), so it has nothing to mirror onto.
-    "powerupView",
+    # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off): NO pins here any more.
+    # Refactor #1 (2026-10-04) moved every powerup method (the claim, the grant, the held heavy, the overshield, the
+    # spawn announcer and the HUD's view) out of the Engine class into `PlayerPowerups` (app/src/powerup-player.js),
+    # which this scan does not read. They are no more mirrored than before: the stage still models neither a powerup
+    # station's advert (its median RSSI and `taker` byte) nor the match clock's spawn schedule, and the gun-facing writes
+    # are still the part to port, as a hand-driven stage button, once Sitting A has proved the spare slot. The engine's
+    # side is now only calls into `this.pu` from methods already pinned or mirrored here (`tick`, `_revive`, `_death`,
+    # `_endReconcile`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
     # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a
