@@ -99,6 +99,9 @@ export const SIGHT_WINDOW_MS = 2000;
  *  (one sample in a sparse phone's window) is KEPT as is, with no two-advert rule; bench 10c's ladder decides with real
  *  fading. */
 export const SIGHT_MS = 4000;   // = the silence expiry: heard inside the band in the last 4 s
+/** P-L1 (review 2026-10-03): the most adverts the sighting window keeps, the same bound as the Stick (presence.h
+ *  SIGHT_RECENT_MAX), so a flood reads the same median on both. */
+export const SIGHT_RECENT_MAX = 64;
 /** How many recent inter-arrival gaps a Presence entry keeps (F440 diagnostics). */
 export const GAP_SAMPLES = 16;
 
@@ -155,7 +158,7 @@ export class Presence {
     // and stay, so the circle edge moved with advert rate. A window median gives every phone the same edge: a sparse
     // phone's window holds its one advert, a dense phone's holds several. Staying in comes from `present` (the EMA
     // with its debounced exit). Binary: never weighted by how far above.
-    e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }];
+    e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }].slice(-SIGHT_RECENT_MAX);
     if (medianOf(e.recent.map(x => x.rssi)) >= this.thresholdFor(e)) e.sightedAt = now;
     return e;
   }

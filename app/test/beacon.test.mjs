@@ -1,7 +1,7 @@
 // beacon.js — the utility-item UUID codec and the presence tracker (docs/spec/utility.md).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeUuid, decodeUuid, decodeAdvert, Presence, TEAM_ANY, PLAYER_STATE, EXIT_GRACE_MS } from '../src/beacon.js';
+import { encodeUuid, decodeUuid, decodeAdvert, Presence, TEAM_ANY, PLAYER_STATE, EXIT_GRACE_MS, SIGHT_RECENT_MAX } from '../src/beacon.js';
 
 test('station uuid round-trips every field, and is a well-formed 128-bit uuid', () => {
   const u = encodeUuid({ role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58 });
@@ -194,4 +194,20 @@ test('presence: body shadowing of up to 3.5 s never drops a player standing insi
     }
     assert.equal(drops, 0, `${inside} dB inside the circle: ${drops} drops in 10 minutes`);
   }
+});
+
+// P-L1 (review 2026-10-03): the sighting window holds the last 64 adverts on the phone and on the Stick
+// (presence.h SIGHT_RECENT_MAX), so a flood reads the same circle edge on both.
+test('presence: the sighting median reads the last 64 adverts in the window, as the Stick does', () => {
+  const sighted = (below, above) => {
+    const p = new Presence({ defaultThreshold: -74, dwellMs: 800 });
+    const adv = encodeUuid({ role: 'player', id: 5, team: 0, state: PLAYER_STATE.alive, game: 0 });
+    let t = 0;
+    for (let i = 0; i < below; i++, t += 20) p.observe([adv], -90, t);
+    for (let i = 0; i < above; i++, t += 20) p.observe([adv], -50, t);   // 80 adverts in 1.6 s: all inside the 2 s window
+    return p.players()[0].sightedAt != null;
+  };
+  assert.equal(sighted(40, 40), true, 'the last 64 hold 40 above: sighted (an unbounded window holds 40 of 80, a tie at the lower middle)');
+  assert.equal(sighted(50, 30), false, 'the last 64 hold only 30 above: not sighted (a window of 24 would hold 24 above)');
+  assert.equal(SIGHT_RECENT_MAX, 64);
 });

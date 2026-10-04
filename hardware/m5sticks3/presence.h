@@ -57,7 +57,7 @@ constexpr uint32_t PRESENCE_SIGHT_MS = 4000;
 // F440: a sighting is the MEDIAN of the adverts heard in the last PRESENCE_SIGHT_WINDOW_MS at or above the threshold
 // (beacon.js SIGHT_WINDOW_MS): the same circle edge for a dense and a sparse advertiser. SIGHT_RECENT_MAX bounds it.
 constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
-constexpr size_t SIGHT_RECENT_MAX = 24;
+constexpr size_t SIGHT_RECENT_MAX = 64;  // P-L1: beacon.js SIGHT_RECENT_MAX (about 32 KB across 64 players)
 constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
 constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // utility.js DEFAULTS.threshold (the port's own default;
                                                      // a Stick station passes STICK_DEFAULT_THRESHOLD_DBM, -57)

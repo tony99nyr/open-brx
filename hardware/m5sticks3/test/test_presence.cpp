@@ -196,6 +196,20 @@ static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
   }
 }
 
+// P-L1 (beacon.js parity, review 2026-10-03): the sighting window holds the last 64 adverts on both sides.
+static bool sighted_after(int below, int above) {
+  PlayerPresence pr;
+  uint32_t t = 0;
+  for (int i = 0; i < below; i++, t += 20) pr.observe(player(5, 0), -90, t);
+  for (int i = 0; i < above; i++, t += 20) pr.observe(player(5, 0), -50, t);  // 80 adverts in 1.6 s: one window
+  return pr.get(5)->sighted;
+}
+static void test_presence_sighting_window_holds_64() {
+  CHECK_EQ(SIGHT_RECENT_MAX, (size_t)64);
+  CHECK(sighted_after(40, 40));   // the last 64 hold 40 above
+  CHECK(!sighted_after(50, 30));  // the last 64 hold 30 above (a window of 24 would hold 24 above)
+}
+
 static void test_hill_counts_the_circle_not_only_present() {
   BleControlPoint cp;
   PlayerPresence pr;  // the real dwell: the sighting, not presence, makes this count on the first tick
@@ -643,6 +657,7 @@ int main() {
   test_presence_ema_is_beacon_js();
   test_presence_exit_band_and_grace();
   test_presence_body_shadowing_does_not_drop_a_standing_player();
+  test_presence_sighting_window_holds_64();
   test_presence_f438_circle();
   test_hill_counts_the_circle_not_only_present();
   test_presence_four_second_expiry();
