@@ -9,6 +9,7 @@
 // sighting ring and the IR words. Each expectation is still what app/src/beacon.js or app/src/control.js does.
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "brx_advert.h"
 #include "control_point.h"
@@ -178,6 +179,38 @@ static void test_sight_window_is_thinned_evenly_across_time() {
   CHECK_EQ(total, 20370u);
   CHECK_EQ(t[0], 0u);
   CHECK_EQ(t[n - 1], 1750u);
+}
+
+// F452(b): the TIME-WEIGHTED median. app/test/beacon.test.mjs asserts the same vectors against `timeWeightedMedian`.
+static int twm(std::vector<uint32_t> t, std::vector<int> r, uint32_t now) {
+  return time_weighted_median(t.data(), r.data(), t.size(), now, PRESENCE_SIGHT_WINDOW_MS);
+}
+static void test_time_weighted_median() {
+  std::vector<uint32_t> t;
+  std::vector<int> r;
+  for (uint32_t k = 0; k < 100; k++) { t.push_back(k * 5); r.push_back(-90); }
+  for (uint32_t k = 0; k < 6; k++) { t.push_back(500 + k * 250); r.push_back(-50); }
+  while (t.size() > SIGHT_RECENT_MAX) {  // the window holds at most 64: thin it as stamp_sighting does
+    const size_t at = sight_thin_index(t.data(), t.size());
+    t.erase(t.begin() + (long)at);
+    r.erase(r.begin() + (long)at);
+  }
+  CHECK_EQ(twm(t, r, 1750), -50);  // the kept weak ones cover 0.5 s, the 6 strong cover 1.25 s
+  CHECK_EQ(twm({0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000}, {-90, -90, -90, -90, -90, -50, -50, -50, -50, -50, -50}, 1000), -50);
+  // Equal spacing at an observe is the plain lower-middle median.
+  const int seq[] = {-70, -60, -90, -80, -50, -65, -85, -55, -75};
+  for (size_t n = 1; n <= 9; n++) {
+    std::vector<uint32_t> tt;
+    std::vector<int> rr(seq, seq + n);
+    for (size_t k = 0; k < n; k++) tt.push_back((uint32_t)(100 * k));
+    std::vector<int> sorted = rr;
+    std::sort(sorted.begin(), sorted.end());
+    CHECK_EQ(twm(tt, rr, (uint32_t)(100 * (n - 1))), sorted[(n - 1) / 2]);
+  }
+  CHECK_EQ(twm({500}, {-61}, 1900), -61);
+  CHECK_EQ(twm({0, 500, 1000}, {-50, -50, -90}, 1100), -50);  // just heard: a third each
+  CHECK_EQ(twm({0, 500, 1000}, {-50, -50, -90}, 1900), -90);  // the weak one has held for 1.15 s of the window
+  CHECK_EQ(twm({50, 50, 50}, {-90, -50, -60}, 50), -60);      // one instant: the plain lower middle
 }
 
 static void test_presence_four_second_expiry() {
@@ -570,6 +603,7 @@ int main() {
   test_presence_ema_is_beacon_js();
   test_presence_body_shadowing_does_not_drop_a_standing_player();
   test_sight_window_is_thinned_evenly_across_time();
+  test_time_weighted_median();
   test_presence_four_second_expiry();
   test_presence_game_byte_and_roles();
   test_presence_drops_a_65th_player_and_counts_it();

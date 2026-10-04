@@ -104,13 +104,14 @@ export const SIGHT_MS = 4000;   // = the silence expiry: a credible sighting cou
  *  (`thinWindow`), never trimmed from the old end, so it always represents the whole SIGHT_WINDOW_MS. */
 export const SIGHT_RECENT_MAX = 64;
 /**
- * F452(b): thin a sighting window to at most `max` samples ({ t, rssi }, oldest first) while it still spans the
- * whole window. Each removal takes the sample whose two neighbours are closest together (the smallest span
- * `t[i+1] - t[i-1]`, so its removal opens the smallest hole), never the oldest and never the newest. Among equal
- * spans (a steady stream) it takes the one nearest the middle of the list, so removals spread across the window and
- * do not eat one end. The old rule dropped the OLDEST, so a dense advertiser's window covered under 2 s and its
- * median leaned on recent samples: the same signal at half the rate read a different answer. PURE, deterministic,
- * two O(n) passes per removal. The Stick's twin is presence.h `sight_thin_index`.
+ * F452(b): bound a sighting window to at most `max` samples ({ t, rssi }, oldest first) while it still spans the whole
+ * window. This is the MEMORY CAP only; what the window says is `timeWeightedMedian`. Each removal takes the sample whose
+ * two neighbours are closest together (the smallest span `t[i+1] - t[i-1]`, so its removal opens the smallest hole),
+ * never the oldest and never the newest. Among equal spans (a steady stream) it takes the one nearest the middle of the
+ * list, so removals spread across the window and the kept samples stay near-even in time. The old rule dropped the
+ * OLDEST, so a dense advertiser's window covered under 2 s. A steady stream is thinned only above
+ * SIGHT_RECENT_MAX / SIGHT_WINDOW_MS = 32 adverts a second. PURE, deterministic, two O(n) passes per removal. The
+ * Stick's twin is presence.h `sight_thin_index`.
  */
 export function thinWindow(samples, max = SIGHT_RECENT_MAX) {
   const a = samples.slice();
@@ -125,6 +126,35 @@ export function thinWindow(samples, max = SIGHT_RECENT_MAX) {
     a.splice(at, 1);
   }
   return a;
+}
+/**
+ * F452(b): the TIME-WEIGHTED median of a sighting window: each sample speaks for the time it covers, not as one vote,
+ * so a burst of adverts cannot outvote a longer stretch of one signal and every advert rate reads the same level.
+ * A sample covers from the midpoint with its predecessor to the midpoint with its successor. The OLDEST starts at
+ * max(window start, its own t minus half its gap to the next), the window start being `now - windowMs`; the NEWEST ends
+ * at max(now, its own t plus half its gap to the previous), so at an observe (`now` = its own t) it covers half a gap
+ * each side and an equal-spaced stream gives exactly the plain lower-middle median, and at a later tick it holds its
+ * value until `now`. The result is the lowest rssi whose cumulative cover reaches half the total (the lower middle,
+ * as `medianOf`). One sample is that sample; a zero total (every sample at one instant) falls back to `medianOf`.
+ * Arithmetic is on 2x integer milliseconds relative to `now`, so the Stick's twin (presence.h `time_weighted_median`)
+ * gives the same bits. `samples` are oldest first with `now - t < windowMs`. PURE.
+ */
+export function timeWeightedMedian(samples, now, windowMs = SIGHT_WINDOW_MS) {
+  const n = (samples || []).length;
+  if (!n) return null;
+  if (n === 1) return samples[0].rssi;
+  const u = samples.map(x => x.t - now);
+  const w = new Array(n);
+  w[0] = (u[0] + u[1]) - Math.max(-2 * windowMs, 2 * u[0] - (u[1] - u[0]));
+  for (let i = 1; i < n - 1; i++) w[i] = u[i + 1] - u[i - 1];
+  w[n - 1] = Math.max(0, 2 * u[n - 1] + (u[n - 1] - u[n - 2])) - (u[n - 2] + u[n - 1]);
+  let total = 0;
+  for (let i = 0; i < n; i++) { w[i] = Math.max(0, w[i]); total += w[i]; }
+  if (total <= 0) return medianOf(samples.map(x => x.rssi));
+  const order = samples.map((x, i) => i).sort((i, j) => samples[i].rssi - samples[j].rssi || i - j);
+  let cum = 0;
+  for (const i of order) { cum += w[i]; if (2 * cum >= total) return samples[i].rssi; }
+  return samples[order[n - 1]].rssi;
 }
 /** How many recent inter-arrival gaps a Presence entry keeps (F440 diagnostics). */
 export const GAP_SAMPLES = 16;
@@ -178,14 +208,14 @@ export class Presence {
       e.samples = [...(e.samples || []), rssi].slice(-MEDIAN_SAMPLES); e.median = medianOf(e.samples);
       if (fresh) e.changedAt = now;
     }
-    // F440: a credible sighting is the MEDIAN of the adverts heard in the last SIGHT_WINDOW_MS at or above the threshold.
+    // F440: a credible sighting is the TIME-WEIGHTED median (F452(b), `timeWeightedMedian`) of the adverts heard in the last SIGHT_WINDOW_MS at or above the threshold.
     // Review rounds 1-2: a single sample (or a band that kept a player in) let a DENSE advertiser enter on a noise peak
     // and stay, so the circle edge moved with advert rate. A window median gives every phone the same edge: a sparse
-    // phone's window holds its one advert, a dense phone's holds several, thinned evenly over the 2 s when there are more than SIGHT_RECENT_MAX (F452(b)). Staying in comes from `present` (the EMA
+    // phone's window holds its one advert, a dense phone's holds several. Each advert counts for the time it covers, so a burst cannot outvote a longer stretch of one signal; above SIGHT_RECENT_MAX adverts the window is thinned near-evenly across the 2 s (F452(b)). Staying in comes from `present` (the EMA
     // with its debounced exit). Binary: never weighted by how far above.
     e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }];
     e.recent = thinWindow(e.recent);
-    if (medianOf(e.recent.map(x => x.rssi)) >= this.thresholdFor(e)) e.sightedAt = now;
+    if (timeWeightedMedian(e.recent, now) >= this.thresholdFor(e)) e.sightedAt = now;
     return e;
   }
   thresholdFor(e) { return e.threshold || this.defaultThreshold; }
@@ -203,11 +233,11 @@ export class Presence {
       const thr = this.thresholdFor(e);
       if (e.present) {
         // F440: leave only after the exit level has stayed below the band for `exitGraceMs` (a dip is not a step out).
-        // Round 2 (review 2026-10-04): the level is the MEDIAN of the last SIGHT_WINDOW_MS of raw samples, not the EMA,
+        // Round 2 (review 2026-10-04): the level is the time-weighted MEDIAN (F452(b)) of the last SIGHT_WINDOW_MS of raw samples, not the EMA,
         // whose alpha is applied per advert and so lags further on a sparse phone: exit time must not depend on advert
         // rate. An empty window (a silence) falls back to the EMA. The EMA still drives the entry dwell.
         const win = (e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS);
-        e.exitLevel = win.length ? medianOf(win.map(x => x.rssi)) : e.raw;
+        e.exitLevel = win.length ? timeWeightedMedian(win, now) : e.raw;
         if (e.exitLevel < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
         else e.belowSince = null;
       } else if (e.rssi >= thr) { if (e.sinceAbove == null) e.sinceAbove = now; if (now - e.sinceAbove >= this.dwellMs) e.present = true; }

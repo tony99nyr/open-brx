@@ -1,7 +1,7 @@
 // beacon.js — the utility-item UUID codec and the presence tracker (docs/spec/utility.md).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeUuid, decodeUuid, decodeAdvert, Presence, TEAM_ANY, PLAYER_STATE, EXIT_GRACE_MS, SIGHT_RECENT_MAX, SIGHT_WINDOW_MS, thinWindow } from '../src/beacon.js';
+import { encodeUuid, decodeUuid, decodeAdvert, Presence, TEAM_ANY, PLAYER_STATE, EXIT_GRACE_MS, SIGHT_RECENT_MAX, SIGHT_WINDOW_MS, thinWindow, timeWeightedMedian, medianOf } from '../src/beacon.js';
 
 test('station uuid round-trips every field, and is a well-formed 128-bit uuid', () => {
   const u = encodeUuid({ role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58 });
@@ -257,10 +257,10 @@ test('presence: the exit reads the window median, not the EMA (the Stick runs th
   for (let t = 0; t <= 9000; t += 250) {
     if (t <= 2000) p.observe([adv], -60, t); else if (t % 2500 === 0) p.observe([adv], -84, t);
     p.tick(t);
-    if (t === 7500) at7500 = p.players()[0].present;
-    if (t === 8000) at8000 = p.players()[0].present;
+    if (t === 7000) at7500 = p.players()[0].present;
+    if (t === 7250) at8000 = p.players()[0].present;
   }
-  assert.equal(at7500, true, 'inside the grace, which starts at 3.75 s, once the dense -60 run no longer holds the 2 s window median');
+  assert.equal(at7500, true, 'inside the grace, which starts at 3.25 s, when the held -84 covers half the 2 s window (time-weighted, F452(b))');
   assert.equal(at8000, false, 'out once the grace has run (the EMA would hold it until about 11.5 s)');
 });
 
@@ -299,4 +299,35 @@ test('thinWindow: under the bound it changes nothing, and it never mutates its i
   assert.deepEqual(thinWindow(s), copy);
   assert.deepEqual(thinWindow(Array.from({ length: 80 }, (_, k) => ({ t: k * 20, rssi: -70 })), 64).length, 64);
   assert.deepEqual(s, copy);
+});
+
+// F452(b): the sighting window is read as a TIME-WEIGHTED median. hardware/m5sticks3/test/test_presence.cpp asserts the
+// same vectors against `time_weighted_median`.
+test('timeWeightedMedian: a weak burst with a longer strong stretch reads strong, whatever the advert count', () => {
+  const burst = Array.from({ length: 100 }, (_, k) => ({ t: k * 5, rssi: -90 }));
+  const tail = Array.from({ length: 6 }, (_, k) => ({ t: 500 + k * 250, rssi: -50 }));
+  assert.equal(timeWeightedMedian([...burst, ...tail], 1750), -50, '100 weak votes cover 0.5 s, 6 strong cover 1.25 s');
+  assert.equal(timeWeightedMedian(thinWindow([...burst, ...tail]), 1750), -50, 'and the 64 kept samples say the same');
+  const sparse = [...Array.from({ length: 5 }, (_, k) => ({ t: k * 100, rssi: -90 })), ...tail];
+  assert.equal(timeWeightedMedian(sparse, 1750), -50);
+  // the plain median of the 106 votes is weak: the number of adverts is not what the window says
+  assert.equal(medianOf([...burst, ...tail].map(x => x.rssi)), -90);
+});
+
+test('timeWeightedMedian: equal spacing gives the plain lower-middle median at an observe', () => {
+  const seq = [-70, -60, -90, -80, -50, -65, -85, -55, -75];
+  for (let n = 1; n <= seq.length; n++) {
+    const s = seq.slice(0, n).map((rssi, k) => ({ t: 100 * k, rssi }));
+    assert.equal(timeWeightedMedian(s, s[n - 1].t), medianOf(seq.slice(0, n)), `n=${n}`);
+  }
+});
+
+test('timeWeightedMedian: one sample is itself, the newest holds its level until now, one instant falls back to the plain median', () => {
+  assert.equal(timeWeightedMedian([{ t: 500, rssi: -61 }], 1900), -61);
+  assert.equal(timeWeightedMedian([], 1000), null);
+  const three = [{ t: 0, rssi: -50 }, { t: 500, rssi: -50 }, { t: 1000, rssi: -90 }];
+  assert.equal(timeWeightedMedian(three, 1100), -50, 'just heard: each covers a third, so the two strong ones win');
+  assert.equal(timeWeightedMedian(three, 1900), -90, 'the weak sample has held for 1.15 s of the 2 s window by now');
+  const instant = [{ t: 50, rssi: -90 }, { t: 50, rssi: -50 }, { t: 50, rssi: -60 }];
+  assert.equal(timeWeightedMedian(instant, 50), -60);
 });

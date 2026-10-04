@@ -229,14 +229,14 @@
     },
     {
       "name": "the exit reads the 2 s window median, not the lagging average",
-      "why": "Round 2: a dense player at -60 turns sparse at -84 (one advert per 2.5 s). The exit must not wait for the per-advert average to cross: present drops once the debounced window median has stayed under the band for the grace, about 4 s after the dense run stops holding the window.",
+      "why": "Round 2: a dense player at -60 turns sparse at -84 (one advert per 2.5 s). The exit must not wait for the per-advert average to cross: present drops once the debounced window median has stayed under the band for the grace, about 4 s after the sparse -84 has covered half the window (the time-weighted median holds the last advert's level until the next one, F452(b)).",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 2500, "to_ms": 12000, "every_ms": 2500, "rssi": [-84]}],
       "expect": [
-        {"t": 7500, "present": {"1": true}},
-        {"t": 8000, "present": {"1": false}}
+        {"t": 7000, "present": {"1": true}},
+        {"t": 7250, "present": {"1": false}}
       ]
     },
     {
@@ -260,6 +260,42 @@
       "expect": [
         {"t": 1500, "in": {"1": false}},
         {"t": 3500, "in": {"1": true}}
+      ]
+    },
+    {
+      "name": "a dense weak burst then a strong tail enters like its sparse twin",
+      "why": "F452(b): each advert used to be one vote, so a burst outvoted a longer stretch of signal. Player 1 (dense) sends 100 weak adverts in 0-495 ms (one every 5 ms) then 6 strong ones at 500-1750 ms. Player 2 (sparse) sends 5 weak ones (every 100 ms to 400) then the same 6 strong ones. Weak covers about 0.5 s and strong about 1.25 s of the 2 s window for both, so the time-weighted median is strong and both are in. One vote each said out for the dense phone (58 weak to 6 strong after thinning) and in for the sparse one. The dwell is 60 s, so only the sighting window can put either in the circle.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 2000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 495, "every_ms": 5, "rssi": [-90]}, {"id": 1, "from_ms": 500, "to_ms": 1750, "every_ms": 250, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 400, "every_ms": 100, "rssi": [-90]}, {"id": 2, "from_ms": 500, "to_ms": 1750, "every_ms": 250, "rssi": [-50]}],
+      "expect": [
+        {"t": 1750, "same_in": ["1", "2"], "in": {"1": true, "2": true}}
+      ]
+    },
+    {
+      "name": "the exit time does not depend on advert rate: a dense and a sparse phone leave together",
+      "why": "F452(b): both phones stand at -60 (present), then the signal falls to -90 at 10000 ms. Player 1 sends every 10 ms and player 2 every 250 ms. The exit level is a time-weighted median, so each reads weak once weak covers half the 2 s window and both leave after the same 4 s grace. The sparse phone's last strong advert is 240 ms older, so it leaves one tick (250 ms) before the dense one: that is the pinned skew, 14750 ms, and no more than one tick.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 9990, "every_ms": 10, "rssi": [-60]}, {"id": 1, "from_ms": 10000, "to_ms": 20000, "every_ms": 10, "rssi": [-90]}, {"id": 2, "from_ms": 0, "to_ms": 9750, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 20000, "every_ms": 250, "rssi": [-90]}],
+      "expect": [
+        {"t": 14500, "present": {"1": true, "2": true}},
+        {"t": 14750, "present": {"1": true, "2": false}},
+        {"t": 15000, "present": {"1": false, "2": false}}
+      ]
+    },
+    {
+      "name": "the exit time does not depend on the shape of the last stretch: a strong burst then weak tail leaves like its sparse twin",
+      "why": "F452(b): the mirror of the entry case. Both phones stand at -60 until 10000 ms. Then player 1 (dense) sends 100 strong adverts in 10000-10495 (every 5 ms) and player 2 (sparse) 5 (every 100 ms), and both send the same weak adverts every 250 ms from 10500 on. A burst of strong votes used to hold the dense phone in longer. By time both have the same strong stretch and the same weak stretch, so present drops on the same tick.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 9750, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 10000, "to_ms": 10495, "every_ms": 5, "rssi": [-60]}, {"id": 1, "from_ms": 10500, "to_ms": 20000, "every_ms": 250, "rssi": [-90]}, {"id": 2, "from_ms": 0, "to_ms": 9750, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 10400, "every_ms": 100, "rssi": [-60]}, {"id": 2, "from_ms": 10500, "to_ms": 20000, "every_ms": 250, "rssi": [-90]}],
+      "expect": [
+        {"t": 15250, "present": {"1": true, "2": true}},
+        {"t": 15500, "present": {"1": false, "2": false}}
       ]
     },
     {
