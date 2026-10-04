@@ -282,6 +282,25 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
 // phone has no player takeover key and cannot silently change a player's binding; discovery therefore skips
 // the player's tap-to-join rule. A typed `?mc=`/remembered URL still wins and remains the offline fallback.
 let _sweeper = null;
+/** U-M2 (review 2026-10-03): F443 locks the MC link in play, and discovery must not get round it. Armed or live and
+ *  not editing, an auto-join goes only to the SAME Mission Control: the host of `settings.mc`, or of the LAN url
+ *  the held tunnel pub belongs to (`brxu.pub_url`). Another MC's welcome would become `settings.mc` and its
+ *  station_config would re-arm the station. Refused, it says why (once a minute per address). */
+const _autoJoinRefusedAt = new Map();
+function hostOf(u) { try { return new URL(String(u).replace(/^ws/, 'http')).hostname.toLowerCase(); } catch (_) { return ''; } }
+function autoJoinAllowed(url) {
+  if (!rangeLocked()) return true;
+  let held = [settings.mc];
+  try { held.push(localStorage.getItem('brxu.pub_url')); } catch (_) { /* ignore */ }
+  held = held.map(hostOf).filter(Boolean);
+  if (held.includes(hostOf(url))) return true;
+  const now = Date.now();
+  if (now - (_autoJoinRefusedAt.get(url) || -Infinity) >= 60000) {
+    _autoJoinRefusedAt.set(url, now);
+    log(`MC FOUND AT ${url}, NOT JOINING: THE STATION IS IN PLAY AND ${held.length ? `ITS MC IS ${settings.mc || held[0]}` : 'HOLDS NO MC ADDRESS'} (HOLD RANGE TO CHANGE IT)`, 'le');
+  }
+  return false;
+}
 function startUtilityDiscovery() {
   if (!isNative() || (mcUrl() && !settings.mc_auto)) return;
   startUtilityLanSweep();
@@ -294,6 +313,7 @@ function startUtilityDiscovery() {
       if (!ip || !svc.port) return;
       const path = svc.txtRecord && svc.txtRecord.ws_path || '/ws';
       const url = `ws://${ip}:${svc.port}${path}`;
+      if (!autoJoinAllowed(url)) return;   // U-M2: in play, only the same MC
       log(`MISSION CONTROL FOUND — CONNECTING ${url}`, 'lk');
       if (!transport || transport.url !== url) connectMc(url, { trusted: false });
     }).catch(e => log('MC discovery: ' + (e && e.message || e)));
@@ -309,7 +329,7 @@ function startUtilityLanSweep(over = {}) {   // `over`: the node test's sweep/ti
     isBound: () => mcState === 'bound',
     operatorUrl: () => !!(mcUrl() && !settings.mc_auto),
     // the mDNS path's own rule, and never over a connect already in flight (an mDNS hit on another address)
-    connect: (url, opts) => { if (mcState === 'connecting' || mcState === 'open') return; if (!transport || transport.url !== url) connectMc(url, opts); },
+    connect: (url, opts) => { if (mcState === 'connecting' || mcState === 'open') return; if (!autoJoinAllowed(url)) return; if (!transport || transport.url !== url) connectMc(url, opts); },
     log, wsFactory,
     isOnline: () => !(typeof navigator !== 'undefined' && navigator.onLine === false),
     ...over,
