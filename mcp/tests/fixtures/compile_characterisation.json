@@ -41354,5 +41354,1015 @@
         }
       }
     }
+  },
+  {
+    "name": "rekeyed_hit_plan",
+    "config": {
+      "config_id": "c1",
+      "mode": "tdm",
+      "environment": "indoor",
+      "night": false,
+      "time_limit_s": 600,
+      "respawn": {
+        "type": "auto",
+        "delay_s": 15
+      },
+      "scoring": {
+        "frag_limit": 0,
+        "win_by": "kills"
+      },
+      "health": {
+        "max_hp": 45,
+        "max_armor": 70,
+        "max_shield": 0,
+        "preset": "standard"
+      },
+      "teams": [
+        {
+          "team_id": "blue",
+          "name": "Blue",
+          "color": "blue",
+          "tid": 1
+        },
+        {
+          "team_id": "yellow",
+          "name": "Yellow",
+          "color": "yellow",
+          "tid": 2
+        }
+      ],
+      "hit_audio_rekey": true
+    },
+    "validate": {
+      "ok": true,
+      "errors": [],
+      "warnings": []
+    },
+    "compile": {
+      "bundle": {
+        "config_id": "c1",
+        "player_id": "p7",
+        "head": [
+          "$VOL,80,0,*",
+          "$CLEAR,*",
+          "$START,*",
+          "$GSET,0,0,1,0,1,0,0,1,*",
+          "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+          "$WEAP,0,,100,12,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+          "$WEAP,1,2,100,14,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+          "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+          "$SIR,0,0,,28,0,0,1,,*",
+          "$SIR,0,1,,28,0,0,1,,*",
+          "$SIR,0,3,,28,0,0,1,,*",
+          "$SIR,8,0,,28,0,0,1,,*",
+          "$SIR,9,3,,28,0,0,1,,*",
+          "$SIR,10,0,,28,0,0,1,,*",
+          "$SIR,6,0,,28,0,0,1,,*",
+          "$SIR,13,1,,28,0,0,1,,*",
+          "$SIR,13,0,,28,0,0,1,,*",
+          "$SIR,13,3,,28,0,0,1,,*",
+          "$SIR,4,0,,28,0,0,1,,*",
+          "$SIR,12,0,,28,0,0,1,,*",
+          "$SIR,14,0,,28,0,0,1,,*",
+          "$SIR,15,0,,28,0,0,1,,*",
+          "$BMAP,0,98,,,,,*",
+          "$BMAP,1,100,0,1,99,99,*",
+          "$BMAP,2,97,,,,,*",
+          "$BMAP,3,98,,,,,*",
+          "$BMAP,4,98,,,,,*",
+          "$BMAP,5,98,,,,,*",
+          "$BMAP,8,4,,,,,*",
+          "$HLED,1,0,,,10,,*",
+          "$GLED,1,1,1,0,10,,*",
+          "$TID,1,*"
+        ],
+        "spawn": [
+          "$PLAYX,0,*",
+          "$SPAWN,,*",
+          "$TMP,,,,,,,,-100,,,,*",
+          "$TID,1,*",
+          "$AMMO,0,32,192,1,*",
+          "$AMMO,1,6,24,1,*",
+          "$BMAP,0,0,,,,,*"
+        ],
+        "revive": [
+          "$SPAWN,,*",
+          "$TMP,,,,,,,,-100,,,,*",
+          "$TID,1,*",
+          "$AMMO,0,32,192,1,*",
+          "$AMMO,1,6,24,1,*",
+          "$BMAP,0,0,,,,,*"
+        ],
+        "spawn_protect_off": "$TMP,,,,,,,,0,,,,*",
+        "end": [
+          "$SPAWN,,*",
+          "$PLAYX,0,*",
+          "$STOP,*",
+          "$CLEAR,*",
+          "$HLOOP,0,0,*",
+          "$HLED,0,0,0,0,0,0,*"
+        ],
+        "panic": [
+          "$CLEAR,*",
+          "$SP,99,*"
+        ],
+        "cues": {
+          "countdown": "$PLAY,VA81,4,6,,,,,*",
+          "hurt": "$PLAY,,4,6,VA86,,,,*",
+          "hurt_led": "$HLED,7,4,90,90,10,15,*",
+          "tick": "$PLAY,U16,4,6,,,,,*",
+          "klaxon": "$PLAY,U16,4,6,,,,,*",
+          "runway_30": "",
+          "runway_20": "",
+          "runway_10": "$PLAY,,4,6,VA85,,,,*",
+          "team_led": "",
+          "pain_short": "$PLAY,,4,6,VAG,,,,*",
+          "pain_long": "$PLAY,,4,6,VAE,,,,*",
+          "pain_melee": "$PLAY,,4,6,VAC,,,,*",
+          "spawn": "$PLAY,,4,6,VAI,,,,*",
+          "respawned": "$PLAY,,4,6,VAI,,,,*",
+          "healed": "$PLAY,,4,6,VA7,,,,*",
+          "armour_up": "$PLAY,,4,6,VA1G,,,,*",
+          "shield_up": "$PLAY,,4,6,VA8C,,,,*",
+          "shield_down": "$PLAY,,4,6,N101,,,,*",
+          "shield_charging": "$PLAY,,4,6,N102,,,,*",
+          "shield_online": "$PLAY,,4,6,VA6Y,,,,*",
+          "shield_loop": "$PLAY,,4,6,N74,,,,*",
+          "reload_nag": "$PLAY,,4,6,VX73,,,,*",
+          "poisoned": "$PLAY,H12,4,6,,,,,*",
+          "poison_tick": "$PLAY,,4,6,H31,,,,*",
+          "kill": "$PLAY,,4,6,VAA,,,,*",
+          "first_blood": "$PLAY,,4,6,VA7H,,,,*",
+          "double_kill": "$PLAY,,4,6,VA7E,,,,*",
+          "triple_kill": "$PLAY,,4,6,VA7Q,,,,*",
+          "killtacular": "$PLAY,,4,6,VA7M,,,,*",
+          "killing_spree": "$PLAY,,4,6,VA7K,,,,*",
+          "unstoppable": "$PLAY,,4,6,VX0U,,,,*",
+          "multi": "$PLAY,,4,6,VA7E,,,,*",
+          "medal": "$PLAY,,4,6,VA7K,,,,*",
+          "lead_taken": "$PLAY,,4,6,VA6D,,,,*",
+          "lead_lost": "$PLAY,,4,6,VA6E,,,,*",
+          "next_kill_wins": "$PLAY,,4,6,V115,,,,*",
+          "infected": "$PLAY,,4,6,VB1M,,,,*",
+          "survivors_win": "$PLAY,,4,6,VB1T,,,,*",
+          "time_60": "$PLAY,,4,6,V113,,,,*",
+          "time_30": "$PLAY,,4,6,V112,,,,*",
+          "time_10": "$PLAY,,4,6,V114,,,,*",
+          "victory": "$PLAY,VSF,4,6,JAY,,,,*",
+          "game_over": "$PLAY,,4,6,VA33,,,,*",
+          "objective_taken": "$PLAY,,4,6,VB0E,,,,*",
+          "objective_scored": "$PLAY,,4,6,VB0C,,,,*",
+          "flag_returned": "$PLAY,,4,6,VB0D,,,,*",
+          "point_captured": "$PLAY,,4,6,VA23,,,,*",
+          "hill_captured": "$PLAY,,4,6,VB0N,,,,*",
+          "extraction_called": "$PLAY,,4,6,VA1C,,,,*",
+          "extraction_tick": "$PLAY,,4,6,JAS,,,,*",
+          "extraction_open": "$PLAY,,4,6,VA1U,,,,*",
+          "extraction_closing": "$PLAY,,4,6,V114,,,,*",
+          "extraction_complete": "$PLAY,,4,6,VS7,,,,*",
+          "extraction_failed": "$PLAY,,4,6,VA8X,,,,*",
+          "loot_picked": "$PLAY,,4,6,VA1Q,,,,*",
+          "raid_ending": "$PLAY,,4,6,VA3U,,,,*",
+          "raid_over": "$PLAY,X20,4,6,,,,,*",
+          "killtrocity": "$PLAY,,4,6,VA7O,,,,*",
+          "killamanjaro": "$PLAY,,4,6,VA7J,,,,*",
+          "killtastrophe": "$PLAY,,4,6,VA7N,,,,*",
+          "killionaire": "$PLAY,,4,6,VA7L,,,,*",
+          "melee_kill": "$PLAY,,4,6,VA7F,,,,*"
+        },
+        "swap_ms": 850,
+        "callout_team": 0,
+        "voice": {
+          "id": "male",
+          "family": "VA",
+          "pset": {
+            "death_scream": "VA3",
+            "respawn_cry": "",
+            "melee_grunt": "",
+            "short_pain": "",
+            "long_pain": "",
+            "pain_relief": "VA7"
+          },
+          "kill": "VAA",
+          "rolled": {},
+          "pools": {
+            "death_scream": [
+              "VA3",
+              "VA4",
+              "VA5"
+            ],
+            "respawn_cry": [],
+            "melee_grunt": [],
+            "short_pain": [],
+            "long_pain": [],
+            "pain_relief": [
+              "VA7"
+            ]
+          },
+          "spawn": [
+            "VAI",
+            "VAN",
+            "VAO"
+          ],
+          "pset_pool": [
+            "VA3",
+            "VA4",
+            "VA5"
+          ],
+          "pain_long_min": 40
+        },
+        "cue_pools": {
+          "respawned": [
+            "$PLAY,,4,6,VAI,,,,*",
+            "$PLAY,,4,6,VAN,,,,*",
+            "$PLAY,,4,6,VAO,,,,*"
+          ],
+          "kill": [
+            "$PLAY,,4,6,VAA,,,,*",
+            "$PLAY,,4,6,VA8,,,,*",
+            "$PLAY,,4,6,VA9,,,,*",
+            "$PLAY,,4,6,VAK,,,,*",
+            "$PLAY,,4,6,VAL,,,,*"
+          ],
+          "pain_short": [
+            "$PLAY,,4,6,VAG,,,,*",
+            "$PLAY,,4,6,VAH,,,,*",
+            "$PLAY,,4,6,VAD,,,,*",
+            "$PLAY,,4,6,VAC,,,,*"
+          ],
+          "pain_long": [
+            "$PLAY,,4,6,VAE,,,,*",
+            "$PLAY,,4,6,VAF,,,,*"
+          ],
+          "spawn": [
+            "$PLAY,,4,6,VAI,,,,*",
+            "$PLAY,,4,6,VAN,,,,*",
+            "$PLAY,,4,6,VAO,,,,*"
+          ],
+          "poison_tick": [
+            "$PLAY,,4,6,H31,,,,*",
+            "$PLAY,,4,6,H32,,,,*"
+          ]
+        },
+        "pset_pool": [
+          "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+          "$PSET,7,1,45,70,0,50,,H44,JAD,VA4,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+          "$PSET,7,1,45,70,0,50,,H44,JAD,VA5,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*"
+        ],
+        "sir_pool": [
+          [
+            "$SIR,0,0,,1,0,0,1,,*",
+            "$SIR,0,1,,36,0,0,1,,*",
+            "$SIR,0,3,,37,0,0,1,,*",
+            "$SIR,8,0,,1,0,0,1,,*",
+            "$SIR,9,3,,1,0,0,1,,*",
+            "$SIR,10,0,X13,1,0,100,2,60,*",
+            "$SIR,6,0,H02,1,0,90,1,40,*",
+            "$SIR,13,1,H57,1,0,0,1,,*",
+            "$SIR,13,0,H50,1,0,0,1,,*",
+            "$SIR,13,3,H49,1,0,100,0,60,*",
+            "$SIR,4,0,,2,0,0,1,,*",
+            "$SIR,12,0,,1,0,0,1,,*",
+            "$SIR,14,0,,1,0,0,1,,*",
+            "$SIR,15,0,,28,0,0,1,,*"
+          ]
+        ],
+        "hit_audio": {
+          "rekey": true,
+          "cells": {
+            "assault_rifle": "12,0",
+            "shotgun": "14,0",
+            "melee": "13,1"
+          },
+          "classes": {
+            "13,1": "melee",
+            "12,0": "rifle",
+            "14,0": "cqb"
+          },
+          "shared": [],
+          "material": [
+            "hit_hp",
+            "hit_armor",
+            "hit_shield",
+            "hit_crit"
+          ]
+        },
+        "dual_emitters": [
+          {
+            "proto": 14,
+            "subtype": 0,
+            "body": 20,
+            "headset": 20,
+            "cycle_ms": 700
+          }
+        ],
+        "leds": {
+          "kill": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "first_blood": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "double_kill": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "triple_kill": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "killtacular": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "killing_spree": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "unstoppable": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "objective_taken": [
+            [
+              "$GLED,8,8,8,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,8,8,8,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,8,8,8,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "objective_scored": [
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "point_captured": [
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "hill_captured": [
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "extraction_called": [
+            [
+              "$GLED,8,8,8,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,8,8,8,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,8,8,8,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "extraction_open": [
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "extraction_closing": [
+            [
+              "$GLED,8,8,8,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,8,8,8,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,8,8,8,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "extraction_complete": [
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "extraction_failed": [
+            [
+              "$GLED,0,0,0,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,0,0,0,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,0,0,0,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "loot_picked": [
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,6,6,6,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "raid_ending": [
+            [
+              "$GLED,0,0,0,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,0,0,0,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,0,0,0,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "raid_over": [
+            [
+              "$GLED,0,0,0,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,0,0,0,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.1
+            ],
+            [
+              "$GLED,0,0,0,0,10,,*",
+              0.08
+            ],
+            [
+              "$GLED,1,1,1,0,1,,*",
+              0.0
+            ]
+          ],
+          "killtrocity": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "killamanjaro": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "killtastrophe": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "killionaire": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "melee_kill": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ],
+          "killjoy": [
+            [
+              "$LED,9,1,1,1,*",
+              0.0
+            ]
+          ]
+        },
+        "headset": {
+          "in_play": "dark",
+          "rest": "$HLED,9,0,,,10,,*",
+          "blank": "$HLED,9,0,,,10,,*",
+          "down": {
+            "rearm": "$HLOOP,1,2500,*",
+            "stop": "$HLOOP,0,0,*",
+            "rearm_after_ms": 2500
+          },
+          "pregame": [
+            "$HLED,1,0,,,10,,*"
+          ],
+          "start": [
+            [
+              "$HLED,6,2,120,120,10,2,*",
+              0.6
+            ],
+            [
+              "$HLED,9,0,,,10,,*",
+              0.0
+            ]
+          ],
+          "hit": [],
+          "death": [],
+          "respawn": [
+            [
+              "$HLED,6,2,120,120,10,2,*",
+              0.6
+            ],
+            [
+              "$HLED,9,0,,,10,,*",
+              0.0
+            ]
+          ],
+          "role": {
+            "carrier": [
+              [
+                "$HLED,6,2,300,300,10,200,*",
+                0.0
+              ]
+            ],
+            "vip": [
+              [
+                "$HLED,6,0,,,10,,*",
+                0.0
+              ]
+            ],
+            "beacon": [
+              [
+                "$HLED,8,2,300,300,10,200,*",
+                0.0
+              ]
+            ],
+            "extracted": [
+              [
+                "$HLED,6,0,,,10,,*",
+                0.0
+              ]
+            ],
+            "infected": {
+              "1": [
+                [
+                  "$HLED,1,0,,,10,,*",
+                  0.0
+                ]
+              ],
+              "2": [
+                [
+                  "$HLED,2,0,,,10,,*",
+                  0.0
+                ]
+              ]
+            }
+          },
+          "carrier": {
+            "1": [
+              [
+                "$HLED,1,2,300,300,10,200,*",
+                0.0
+              ]
+            ],
+            "2": [
+              [
+                "$HLED,2,2,300,300,10,200,*",
+                0.0
+              ]
+            ]
+          }
+        },
+        "gun": {
+          "in_play": "team",
+          "blank": "$GLED,,,,5,,,*",
+          "after_spawn_s": 2.5,
+          "rest": "$GLED,1,1,1,0,1,,*",
+          "take": [
+            "$GLED,,,,5,,,*",
+            "$GLED,1,1,1,0,1,,*"
+          ],
+          "readout": {
+            "hold_s": 4,
+            "reload_glance_s": 2,
+            "lead_ms": 180,
+            "blink_gap_ms": 80,
+            "step_ms": 120,
+            "blink_ms": 400,
+            "min_gap_ms": 400,
+            "pools": [
+              {
+                "pool": "shield",
+                "max": 0,
+                "bands": [
+                  [
+                    0.66,
+                    "$GLED,5,5,5,0,10,,*"
+                  ],
+                  [
+                    0.33,
+                    "$GLED,9,5,5,0,10,,*"
+                  ],
+                  [
+                    0.0,
+                    "$GLED,9,9,5,0,10,,*"
+                  ]
+                ],
+                "levels": [
+                  [
+                    "$GLED,9,9,9,0,10,,*",
+                    null
+                  ],
+                  [
+                    "$GLED,9,9,5,0,10,,*",
+                    "$GLED,9,9,9,0,10,,*"
+                  ],
+                  [
+                    "$GLED,9,9,5,0,10,,*",
+                    null
+                  ],
+                  [
+                    "$GLED,9,5,5,0,10,,*",
+                    "$GLED,9,9,5,0,10,,*"
+                  ],
+                  [
+                    "$GLED,9,5,5,0,10,,*",
+                    null
+                  ],
+                  [
+                    "$GLED,5,5,5,0,10,,*",
+                    "$GLED,9,5,5,0,10,,*"
+                  ],
+                  [
+                    "$GLED,5,5,5,0,10,,*",
+                    null
+                  ]
+                ]
+              },
+              {
+                "pool": "armor",
+                "max": 70,
+                "bands": [
+                  [
+                    0.66,
+                    "$GLED,4,4,4,0,10,,*"
+                  ],
+                  [
+                    0.33,
+                    "$GLED,9,4,4,0,10,,*"
+                  ],
+                  [
+                    0.0,
+                    "$GLED,9,9,4,0,10,,*"
+                  ]
+                ],
+                "levels": [
+                  [
+                    "$GLED,9,9,9,0,10,,*",
+                    null
+                  ],
+                  [
+                    "$GLED,9,9,4,0,10,,*",
+                    "$GLED,9,9,9,0,10,,*"
+                  ],
+                  [
+                    "$GLED,9,9,4,0,10,,*",
+                    null
+                  ],
+                  [
+                    "$GLED,9,4,4,0,10,,*",
+                    "$GLED,9,9,4,0,10,,*"
+                  ],
+                  [
+                    "$GLED,9,4,4,0,10,,*",
+                    null
+                  ],
+                  [
+                    "$GLED,4,4,4,0,10,,*",
+                    "$GLED,9,4,4,0,10,,*"
+                  ],
+                  [
+                    "$GLED,4,4,4,0,10,,*",
+                    null
+                  ]
+                ]
+              },
+              {
+                "pool": "health",
+                "max": 45,
+                "bands": [
+                  [
+                    0.66,
+                    "$GLED,3,3,3,0,10,,*"
+                  ],
+                  [
+                    0.33,
+                    "$GLED,9,2,2,0,10,,*"
+                  ],
+                  [
+                    0.0,
+                    "$GLED,9,9,0,0,10,,*"
+                  ]
+                ],
+                "levels": [
+                  [
+                    "$GLED,9,9,9,0,10,,*",
+                    null
+                  ],
+                  [
+                    "$GLED,9,9,0,0,10,,*",
+                    "$GLED,9,9,9,0,10,,*"
+                  ],
+                  [
+                    "$GLED,9,9,2,0,10,,*",
+                    null
+                  ],
+                  [
+                    "$GLED,9,2,2,0,10,,*",
+                    "$GLED,9,9,2,0,10,,*"
+                  ],
+                  [
+                    "$GLED,9,3,3,0,10,,*",
+                    null
+                  ],
+                  [
+                    "$GLED,3,3,3,0,10,,*",
+                    "$GLED,9,3,3,0,10,,*"
+                  ],
+                  [
+                    "$GLED,3,3,3,0,10,,*",
+                    null
+                  ]
+                ]
+              }
+            ]
+          }
+        },
+        "presentation": {
+          "preset": "standard",
+          "announcer": true,
+          "gun_flash": true,
+          "headset_team": true,
+          "sight_flash": true,
+          "hud_events": true,
+          "mc_events": true,
+          "mc_confidence": true,
+          "blackout": false,
+          "silent_weapons": false,
+          "voice": "on",
+          "headset": {
+            "pregame": "team",
+            "start_flash": true,
+            "in_play": "dark",
+            "hit": null,
+            "death": "native",
+            "respawn_flash": true,
+            "role": true,
+            "carrier": true
+          },
+          "gun": {
+            "in_play": "team",
+            "pregame": "team"
+          },
+          "custom_events": []
+        },
+        "respawn_profile": {
+          "protect_ms": 0,
+          "trigger_ms": 500,
+          "station_protect_ms": 2000,
+          "spawn": [
+            "$PLAYX,0,*",
+            "$SPAWN,,*",
+            "$TID,1,*",
+            "$AMMO,0,32,192,1,*",
+            "$AMMO,1,6,24,1,*",
+            "$BMAP,0,0,,,,,*"
+          ],
+          "revive": [
+            "$BMAP,0,98,,,,,*",
+            "$SPAWN,,*",
+            "$TID,1,*",
+            "$AMMO,0,32,192,1,*",
+            "$AMMO,1,6,24,1,*"
+          ],
+          "revive_station": [
+            "$SPAWN,,*",
+            "$TMP,,,,,,,,-100,,,,*",
+            "$TID,1,*",
+            "$AMMO,0,32,192,1,*",
+            "$AMMO,1,6,24,1,*",
+            "$BMAP,0,0,,,,,*",
+            "$HLED,6,2,150,150,10,7,*"
+          ],
+          "trigger_live": "$BMAP,0,0,,,,,*",
+          "shield_on": "$HLED,6,2,150,150,10,7,*",
+          "shield_off": "$HLED,9,0,,,10,,*"
+        }
+      }
+    }
   }
 ]

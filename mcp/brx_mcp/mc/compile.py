@@ -2700,7 +2700,8 @@ class Compiler:
         ctx.bundle["cues"]["team_led"] = ctx.play_hled[0] if ctx.play_hled else ""
 
     def _build_voice_and_hit_audio(self, ctx: _CompileContext) -> None:
-        assert (ctx.voice is not None and ctx.bundle is not None and ctx.prof is not None
+        # polish round 2: no `voice` here -- a player with voice None takes the voice fallback, as before the split
+        assert (ctx.bundle is not None and ctx.prof is not None
                 and ctx.rolled is not None and ctx.picks is not None and ctx.gc is not None
                 and ctx.pnum is not None and ctx.tid is not None and ctx.hits_rng is not None
                 and ctx.head is not None and ctx.spawn is not None and ctx.revive is not None

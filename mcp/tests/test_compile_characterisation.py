@@ -97,6 +97,9 @@ def _cases():
     yield "night", cfg, [PLAYER], {}
     yield "infection_two_team_flip", _config("infection"), [PLAYER], {}
     yield "explicit_hit_plan", _config(), [PLAYER], {}, {"plan": True}
+    # polish round 2: a RE-KEYED hit plan (hit_audio_rekey on), the $WEAP cell rewrite no other case reaches
+    cfg = _config(); cfg["hit_audio_rekey"] = True
+    yield "rekeyed_hit_plan", cfg, [PLAYER], {}, {"plan": "rekey"}
 
 
 def _inputs(case):
@@ -122,7 +125,7 @@ def _observe(name, cfg, roster, opts, compile_args):
     if "roll_seed" in compile_args:
         kwargs["roll"] = random.Random(compile_args["roll_seed"])
     if compile_args.get("plan"):
-        kwargs["plan"] = compiler.hit_plan(roster, rekey=False)
+        kwargs["plan"] = compiler.hit_plan(roster, rekey=compile_args["plan"] == "rekey")
     try:
         compiled = {"bundle": compiler.compile(cfg, roster[0], cfg.get("teams", TEAMS), **kwargs)}
     except Exception as exc:
