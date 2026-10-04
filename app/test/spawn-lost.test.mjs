@@ -335,17 +335,32 @@ test('F416 r4: a landed spawn whose write failed, then a BLE drop and relink, is
   assert.ok(h.logs.some(l => /weapon state matches/.test(l)), JSON.stringify(h.logs.filter(l => l.includes('F416'))));
 });
 
-test('F416 r4: a genuinely lost spawn across a BLE drop and relink is still re-sent once the reconcile ends', async () => {
+for (const dropMs of [800, 4000, 6000]) {
+  test(`F416 r4/r2: a genuinely lost spawn across a ${dropMs} ms BLE drop and relink is still re-sent once the reconcile ends`, async () => {
+    let failed = false;
+    const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { hp: 45, armor: 70, shield: 105, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+    h.gun.ammo = true;
+    await h.adv(4000 + 100);
+    h.eng.onBleDropped();
+    await h.adv(dropMs);
+    relink(h);
+    await h.adv(8000);
+    assert.equal(h.spawns(), 2, `the unspawned gun gets the burst after the reconcile: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+    const second = h.writes.filter(w => w.f.startsWith('$SPAWN'))[1].t;
+    assert.ok(!h.eng.reconciling, 'setup: the reconcile is over');
+    assert.ok(h.writes.some(w => w.f.startsWith('$AMMO,0,') && w.t < second), 'setup: the reconcile re-arm went first');
+  });
+}
+
+test('F416 r2: several $HP answers inside one reconcile start one ask chain, not several', async () => {
   let failed = false;
-  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { hp: 45, armor: 70, shield: 105, slot: 2, mag: 2, reserve: 1 }), true) }).live();
-  h.gun.ammo = true;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 0, mag: 32, reserve: 192 }), true) }).live();
   await h.adv(4000 + 100);
-  h.eng.onBleDropped();
-  await h.adv(800);
-  relink(h);
+  h.eng.onBleDropped(); await h.adv(800); relink(h);
+  for (let i = 0; i < 4; i++) { h.eng.feedFrame('$HP,45,70,0,*'); await h.adv(100); }
+  const t0 = h.now();
   await h.adv(6000);
-  assert.equal(h.spawns(), 2, `the unspawned gun gets the burst after the reconcile: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
-  const second = h.writes.filter(w => w.f.startsWith('$SPAWN'))[1].t;
-  assert.ok(!h.eng.reconciling, 'setup: the reconcile is over');
-  assert.ok(h.writes.some(w => w.f.startsWith('$AMMO,0,') && w.t < second), 'setup: the reconcile re-arm went first');
+  const asks = h.logs.filter(l => /write F416 spawn check/.test(l)).length;
+  assert.ok(asks <= 1, `one deferred ask after the reconcile, not one per answer: ${asks}`);
+  assert.ok(h.writes.filter(w => w.t >= t0 && w.f === E.PROBE_LIFE).length <= 2, 'no probe fan-out');
 });

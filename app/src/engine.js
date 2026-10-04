@@ -1576,7 +1576,7 @@ export class Engine {
     });
   }
   /** F416: is the check still inside SPAWN_CHECK_MAX_MS of the first lost write? PURE. */
-  _spawnCheckLive(c, now = this.now()) { return !!c && now - c.firstAt < SPAWN_CHECK_MAX_MS; }
+  _spawnCheckLive(c, now = this.now()) { return !!c && now - c.firstAt < SPAWN_CHECK_MAX_MS + (c.heldMs || 0); }   // F416 r2: plus any reconcile hold
   /** F416: positive health permits a `$QUERY`; only its matching weapon state closes the check. */
   _spawnCheckSeen(hp, armor, shield, lcd = null) {
     const c = this._spawnCheck;
@@ -1585,8 +1585,10 @@ export class Engine {
     if (hp <= 0) return;
     if (!this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }   // out of time: a positive pool closes it, as before
     if (this.reconciling) {   // F416 r4: the reconcile disarm is not a lost spawn; ask again once its re-arm is out
-      c.gen = (c.gen || 0) + 1; c.heardAt = 0; c.asks = 0; c.queryAt = 0;
-      this.delay(Math.max(0, RECONCILE_MS - (this.now() - this.reconciling.since)) + SPAWN_CHECK_MS, () => this._spawnAsk(c));
+      const gen = c.gen = (c.gen || 0) + 1; c.heardAt = 0; c.asks = 0; c.queryAt = 0;
+      const now = this.now(), until = now + Math.max(0, RECONCILE_MS - (now - this.reconciling.since)) + SPAWN_CHECK_MS;
+      c.heldMs = (c.heldMs || 0) + Math.max(0, until - Math.max(now, c.heldTo || 0)); c.heldTo = Math.max(c.heldTo || 0, until);   // F416 r2: the hold does not spend the check's time
+      this.delay(until - now, () => { if ((c.gen || 0) === gen) this._spawnAsk(c); });   // F416 r2: one chain per reconcile
       return;
     }
     if (!lcd || !c.queryAt) { this._spawnQuery(c); return; }
