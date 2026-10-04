@@ -1564,8 +1564,8 @@ class Session:
         return out
 
     def game_brief(self) -> dict:
-        """A10 §4.6: what the phone's BRIEFING screen shows — the chosen game in human terms. Saved-game name/desc
-        when the live config matches one, else the stock mode; rules as short lines; the loadout rules as one line."""
+        """A10 §4.6: what the phone's BRIEFING screen shows — the chosen game in human terms. The mode's name
+        and brief (F411 removed saved games); rules as short lines; the loadout rules as one line."""
         cfg = self.config
         mode = next((m for m in MODES if m["mode"] == cfg.get("mode")), None) or {}
         pol = self.policy()

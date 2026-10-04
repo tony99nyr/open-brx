@@ -218,6 +218,10 @@ group.
 - **Byte-identical asset directories** described as "downscaled copies" (md5 three files).
 - **The same product under four names on the public site** (grep the app's name variants).
 - **An index table that stopped at a date** (the log index, the FOLLOWUPS lane index).
+- **A backticked path to an archived file** (`utility-roadmap.md` in eight living docs, 2026-10-03); the link
+  check read only markdown links. `test_docs_hygiene` now resolves backticked repo paths too.
+- **A FOLLOWUPS row that names a merged branch** ("branch `fix/...`, no fix yet" a day after it landed): run
+  `git merge-base --is-ancestor` on every sha and branch a row cites.
 
 Original list:
 
@@ -230,7 +234,7 @@ Original list:
 - **Two fake backends**: a Python fake and a TS mock of the same server, no drift guard.
 - **The status layer re-grows**: any file outside HANDOFF/FOLLOWUPS/log carrying "open", "TODO",
   "not yet", "as of 2026-", a "status per X" table; bench sheets whose ids all appear in the log.
-- **Closed ids in comments**: `F\d+|S\d+|A\d+` in code/docs comments ∩ `followups-closed.md`.
+- **Closed ids in comments**: `F\d+|S\d+|A\d+` in code/docs comments ∩ `docs/archive/followups-closed.md`.
 - **Stale runbook commands**: every `--flag`, `npm run x`, `python -m y z`, port and path in a
   runbook, grepped against argparse / package.json / the code.
 - **Contract drift**: routes in API.md vs `api.py`; fields in `types.ts` vs `types.py`; messages in

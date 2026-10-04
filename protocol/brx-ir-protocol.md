@@ -161,7 +161,7 @@ is silently dropped (this is why an incomplete table produced repeated false neg
 ⚠ **Consequence for the grenade beacon specifically:** every hill/respawn beacon decodes to the same cell,
 `<15,0>` — a row's `<soundID>` can make it audible on the gun (design + an unmeasured bench rung, `bench-grenade.md`
 rung Y), but the cell holds one sound for every owner and mode, so team-aware audio (captured/contested/lost)
-cannot be expressed in the table and is node work — see `docs/utility-roadmap.md` "Where the hill audio has to
+cannot be expressed in the table and is node work — see the archived utility-roadmap "Where the hill audio has to
 live".
 
 > **Correction (same session):** an earlier note here called the 4-bit protocol field "a hard

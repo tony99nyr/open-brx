@@ -1,54 +1,50 @@
-# Handoff: Open BRX, state on the morning of bench part 2
-**State as of 2026-09-27.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
+# Handoff: Open BRX, state on the eve of the 0.4.18 re-bench
+**State as of 2026-10-03.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 Open MVP work is [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench, decision); ideas and the roadmap are [`post-mvp.md`](post-mvp.md);
 what is done is [`archive/followups-closed.md`](archive/followups-closed.md). The bench order is [`bench-plan.md`](bench-plan.md).
 What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is [`post-launch.md`](post-launch.md).
 Update only the lane you worked.
-## State of main (2026-09-27)
-**App 0.4.14 is published** (`app-v0.4.14`, release-signed, main 56fbece4) and installed on the three bench Pixel 5s.
-It carries powerups on by default (F372), the go-live spawn check (F416), held pickups that survive a resume (F418,
-F417 part 1), the switch card with paused lanes (F400), no pickup countdown (F425), F394, F420-F424 and mode art C.
-Three polish rounds ran before the cut. **MC GAMES (F411) is on main** (c2c51679, review fixes 222b1a81), with PLAY,
-BUILD, MATCH SETTINGS, FAVOURITES and the weapon-type toggles; F413 (teams) and F415 (per-mode items, the KOTH hold
-target) are in progress (brx3). The Stick firmware is b79de96d + RANGE CLEAR (6f042126); the hill default is -75/6. The iPhone X build (B21 iOS half, uncompiled Swift) is Tony's MacBook
-step, `.claude/skills/iphone-build`. Bench part 2 is at the top of [`bench-plan.md`](bench-plan.md).
+## State of main (2026-10-03)
+**App 0.4.15 is the last published build** (`app-v0.4.15`; `app/package.json` on main reads 0.4.15). 0.4.16 (the
+2026-10-02 standard bench) and 0.4.17 were built on release branches and not published. **0.4.18 is cut from main
+overnight**, after brx3 lands the station RESTORE (F448) and the hill alerts (F444, F442); the morning re-bench runs
+it: [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md). On main since 0.4.15: F416's weapon-state spawn
+check, F436's reconcile re-equip, F437-F439, F440 fair presence (a 3 dB exit band), F441, F443, F446, F447, the hill
+kept across END and NEXT MATCH, and NIGHT OPS from a LOBBY edit. The Stick firmware on the bench predates F434 and
+F440: reflash it from main before any Stick sheet. The iPhone X build (B21 iOS half, uncompiled Swift) is Tony's
+MacBook step, `.claude/skills/iphone-build`.
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: brx1, orchestration
-**State:** 0.4.15 is BUILT and verified but NOT published: local commits in the main checkout (bump `efd1961c`, merge
-`1a2e9927` which the APK is stamped with, notes `1400bc49`). It carries F419 and the red (tid 0) kill-confirm fix.
-Everything else is on main: F411/F413/F415, the land lane (CLAUDE.md rule, Tony-approved), the test speed-ups and
-memory headroom (F429/F430 closed), the app-screens sleep-wait fix (F432 closed), the doc cleanup. Handoff:
-`~/.claude/handoffs/battlecompany-brx1-0415-pending.md`.
-**Next:** at the bench, Tony turns the phones on: install 0.4.15, merge main (never rebase), commit the sidecar, one
-push, publish `app-v0.4.15`, restart MC from main; then bench part 2.
-**Blocked:** the publish waits on the phones; B21 on the MacBook.
+**State:** overnight 2026-10-03: brx3, brx4 and brx5 polish code; brx2 does the docs; brx1 cuts 0.4.18 from main
+once F448 and F444 land, and installs nothing until the phones are back.
+**Next:** the morning re-bench on 0.4.18 ([`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md)), then the
+Stick and Mac sheets.
+**Blocked:** the phones (off overnight); B21 on the MacBook.
 ## Lane: brx2, bench, audio, utility and docs
-**State:** the standard sheet ran 2026-10-02 on 0.4.16 (brx1 drove, brx2 recorded): `experiment-log/2026-10.md`.
-Closed: F297, F418, F381, F348, F394, F400, F419, F420, F421, F424; F413/F415 bench-confirmed. F436's cause is
-proven (after `$SPAWN` the gun ignores a slot change until the first pull: 0/6 against 13/13). Open with fixes in
-flight: F416's partial burst (brx4), F440 hill fairness (brx3), F437-F439 (brx5), F441-F444 (brx3). New, no
-owner: F445 (USP reload after a swap), F446 (poison tick loop).
-**Next:** the re-bench list in [`bench-plan.md`](bench-plan.md) on brx1's next APK; the Stick and Mac sheets.
-R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** the re-bench on the new APK; F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
+**State:** 2026-10-03 desk: FOLLOWUPS re-verified row by row against main (closes, post-MVP moves, a real MVP DESK
+queue, F448 claimed), the re-bench sheet written, and the review's D1, D3, D6 and D7 fixed (a backticked-path guard
+in `test_docs_hygiene.py`). The 2026-10-02 standard bench is in `experiment-log/2026-10.md`.
+**Next:** record the re-bench; then the Stick and Mac sheets. R4/T5 read-only research is authorised; flashing stays
+decision first.
+**Blocked:** the re-bench on 0.4.18; F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
 MC GAMES is PLAY + BUILD (F411) with FAVOURITES, LAST MATCH, teams (F413; a colour-only change recolours by index,
 a count change re-splits) and the KOTH hold target (F415). `scripts/land.mjs` (the land lane) is how commits reach main.
-APK 0.4.15 (built from `efd1961c`) carries the phone tid-0 kill-confirm fix and publishes at the bench.
 - **F297 / F434 (2026-09-28):** a fast GATT 133 retries after 200 ms (`dec8065a`); the pass rule is now "linked
   within 3 s". The Stick powerup default is -45 dBm; reflash the Stick from main before bench 4.11. F435 closed:
   camping is fine.
-- **F437 (2026-10-02):** the go-live klaxon (interrupt slot) cut the character taunt; it now goes before the line.
-  Bench: `bench-standard-2026-09-29.md` step 10.
+- **F437 (2026-10-02):** the go-live klaxon (interrupt slot) cut the character taunt; the klaxon and the line now
+  go as one two-slot frame (`$PLAY,U16,4,6,<line>,,,,*`).
+  Bench: the re-bench sheet, step 8.
 - **F438 (2026-10-02):** our own `$HIR` is a self-hit: the pools are given back, and a lethal one revives at once. Bench
-  step 11 (and the FF A/B, a possible firmware finding).
+  step 2 (and the FF A/B, a possible firmware finding).
 - **F439 (2026-10-02):** the native death scream interrupts, so the phone sends no stop at death; body cues behind it
-  are stopped after it ends. Bench step 12.
+  are stopped after it ends. Bench step 3 (11.8 in full).
 - **F446 (2026-10-02):** poison plays H12 "Bubble Acid" at the hit and H31/H32 bubbles per tick (Tony's pick). Bench
-  step 12b.
-- **Next:** Tony's GAMES check at the bench. F429/F430 (browser-closed flakes): close after 3 clean lander runs once
-  brx1's test-all headroom fix lands.
+  step 9.
+- **Next:** land `feat/station-departure-restore` (F448) and `hud-capture-begins-alert` (F444, F442) before the
+  0.4.18 cut; both are pushed and need their gates.
 - **Tools:** Codex returns 401 until `codex login`; Sonnet and Opus lanes in worktrees did the builds.
 ## Lane: brx4, the engine and the StickS3
 **State:** engine polish since 0.4.15 landed (4fc70211): F416 holds through a relink reconcile, re-sends whole over a
@@ -64,8 +60,8 @@ H12, and a self-kill keeps the magazine (log 2026-10-03).
 
 ## Start here
 
-1. **Next sitting:** [`bench-plan.md`](bench-plan.md) part 2, the 3 h cut first; record evidence and promote or close
-   each row from the result.
+1. **Next sitting:** [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md) on 0.4.18; record evidence and
+   promote or close each row from the result. Then the Stick and Mac sheets in [`bench-plan.md`](bench-plan.md).
 2. **Desk:** B21's iOS compile on the MacBook (`.claude/skills/iphone-build`).
 3. **Decisions for Tony:** the FOLLOWUPS MVP DECISION group.
 4. **Only after MVP:** [`post-mvp.md`](post-mvp.md) is the roadmap; nothing there is scheduled.

@@ -33,10 +33,10 @@ else is on air): the pain grunts (`pain_short`, `pain_long`, `pain_melee`; a gru
 after its hit, `PAIN_STALE_MS`, is dropped: behind the shield-break line of the same hit it would play 2.6 s late; when the `$PLAY` gap blocks the write, the grunt is dropped), `hit_taken`, `died`, the low-health
 loop (`hurt`), `shield_down` and its heartbeat (`shield_loop`), `stunned`, `stun_over`, `poisoned`, `poison_tick`,
 `smoked`, `reload_nag`, the spawn line (`spawn`, `respawned`), `countdown`, `klaxon`, `runway_30/20/10`, the whistle's
-`game_over` and `survivors_win` (written at match end, after the queue is cleared), and the gun's sight flash `$SFLASH`. The hill possession tick (`hill_tick`, 0.11 s) and the shield heartbeat (`shield_loop`)
-are not items either, but they never start while the gun still holds a clip or while any item waits, and a heartbeat
-beat that would still sound when the refill starts is not begun. The possession tick also waits while the item on air
-still has audio due (`audioBusy`): the tick is a token-1 clip, the gun's interrupt slot, so in the 120 ms flash-to-line
+`game_over` and `survivors_win` (written at match end, after the queue is cleared), and the gun's sight flash `$SFLASH`. The hill possession tick (`hill_tick`, 0.11 s), the poison tick (`poison_tick`, H31/H32, 0.6 s) and the shield
+heartbeat (`shield_loop`) are not items either, but they never start while the gun still holds a clip or while any item
+waits, and a heartbeat beat that would still sound when the refill starts is not begun. The possession tick and the
+poison tick also wait while the item on air still has audio due (`audioBusy`). The possession tick is a token-1 clip, the gun's interrupt slot, so in the 120 ms flash-to-line
 gap of a kill or the gap between two medal lines it would cut the next line. Exempt means "not queued": every one of them is still
 a clip in the gun's audio model below, so a must-hear line stops it.
 

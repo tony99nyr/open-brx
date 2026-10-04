@@ -40,7 +40,7 @@ dispersed** match, tracks a live board and produces a recap. Each player carries
 |---|---|---|---|
 | 0 | **Armory** (one-time) | Per gun over USB: read headset PIN, bind BLE, write `$NAME` = sticker. | contracts §1.1 |
 | 1 | **Muster** | Nodes connect to guns and report preflight; MC scans for unclaimed guns; red/amber/green board. Nothing starts on a red. | contracts §4 Readiness |
-| 2 | **Games** | Host picks a saved game or a stock mode; venue (indoor/outdoor, night); time limit required. | modes.md, loadout.md §5 |
+| 2 | **Play** | Host picks one piece per kind on PLAY (BUILD makes the pieces) or loads a FAVOURITE; outdoors only for MVP (F410), NIGHT OPS on or off; time limit required. | design/games-presets.md, modes.md |
 | 3 | **Kit** | `player_num` (1–63), display name, team, loadout (primary / secondary / perk), voice; a private **try-out** arms the weapon so the player feels it. Phones may self-serve within the policy. | loadout.md, modes.md §4 |
 | 4 | **Lobby** | Players ready up; on all-ready MC pushes `config` + the per-player `FrameBundle`; nodes write the head (gun unspawned) and ack with the gun's echo. | contracts §5 |
 | 5 | **Dispersed start** | MC issues `match_id` + a go-live wall-clock time; each node counts down locally and spawns its gun at T. No signal at T-0. | start-sequence.md |

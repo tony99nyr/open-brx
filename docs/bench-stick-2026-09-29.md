@@ -1,13 +1,13 @@
 # Bench sheet: the Stick, 2026-09-29 (everything that needs the M5StickS3 station)
 
-Updated: 2026-09-29. One of three independent sheets for today; the index is [`bench-plan.md`](bench-plan.md) →
+Updated: 2026-10-03. One of three independent sheets for today; the index is [`bench-plan.md`](bench-plan.md) →
 *Part 3*. The other two are [`bench-standard-2026-09-29.md`](bench-standard-2026-09-29.md) and
 [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md). How a bench run works with Tony: the
 [`bench-session` skill](../.claude/skills/bench-session/SKILL.md); the Stick's own rules (COM port, download mode,
 serial reads): the [`m5stick-bench` skill](../.claude/skills/m5stick-bench/SKILL.md). Each step names its
 FOLLOWUPS row.
 
-**Time:** about 3 h: setup 25 min, steps 1-5 (the core) 85 min, steps 6-9 about 55 min.
+**Time:** about 3 h 20 min: setup 25 min, steps 1-5 (the core) 85 min, steps 6-12 about 90 min.
 
 ## Kit
 
@@ -31,8 +31,8 @@ FOLLOWUPS row.
 
 ## Setup (about 25 min)
 
-1. `adb connect` the grey and green Pixels (and the black one for step 4). Install the unpublished 0.4.16 APK:
-   `adb -s <ip:port> install -r /home/tony/apk-0.4.16/brx-companion-0.4.16-android-release.apk`, then log
+1. `adb connect` the grey and green Pixels (and the black one for step 4). Install the 0.4.18 APK:
+   `adb -s <ip:port> install -r /home/tony/apk-0.4.18/brx-companion-0.4.18-android-release.apk`, then log
    `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`.
 2. Start MC from the latest `main`, detached:
    `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --bench-volume > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
@@ -76,9 +76,13 @@ F417.
 
 STOP POINT: the core is done.
 
-**6. KOTH, the Stick hill (15 min).** Follow [`bench-plan.md`](bench-plan.md) → *Group 2*, game 2 and item 3
+**6. KOTH, the Stick hill and its ladder (30 min).** Follow [`bench-plan.md`](bench-plan.md) → *Group 2*, game 2 and item 3
 (F415's HOLD 3 MIN target). First confirm the Stick reads `threshold=-75` as a hill (setup step 8 of Part 2's
-*Step 0* has the reset). Rows: F386, F353, F424.
+*Step 0* has the reset). Then the hill ladder: each player phone, body between it and the Stick, stands at 5, 7.5, 9
+and 12 m, 3 times each, for 10 s at each mark. **Pass:** IN at 5 and 7.5 m every time, OUT at 12 m every time, 9 m
+recorded as the edge. Near the Stick, read each phone's gaps over CDP:
+`window.brx.presence.stations().map(s => ({id: s.id, kind: s.kind, gaps: s.gaps}))`. Log any gap over 1 s.
+Rows: F386, F353, F424, F383.
 
 **7. F399 and F380 on an Overshield Stick, plus F425 (12 min).** Follow *Group 4*, item 4, with RESPAWN 0:30
 instead of the 60 s default, so nine claims fit in about 5 min. Rows: F399, F380, F425.
@@ -86,6 +90,16 @@ instead of the 60 s default, so nine claims fit in about 5 min. Rows: F399, F380
 **8. F386's MATCH OVER checks (15 min).** Follow *Group 3*, checks (a) to (d). Row: F386.
 
 **9. F374, the HELD Stick carried out of Wi-Fi (10 min).** Follow *Group 4*, item 5. Row: F374.
+
+**10. F388, RANGE refused under the lock (10 min).** Lock the Stick at LOAD, then try a RANGE hold on the Stick.
+Repeat with the lock set mid-match. Control: with the Stick unlocked, the same hold opens RANGE. **Pass:** both
+locked holds are refused, and the threshold does not change. Row: F388.
+
+**11. F397, the typed MC address survives a restart (5 min).** Restart MC, then restart the Stick. **Pass:** the
+Stick rejoins MC with no re-type. Row: F397.
+
+**12. F391, the lock across an offline restart (5 min; only after Tony's call on F391).** With a match loaded and
+the Stick locked, take the Stick off Wi-Fi and restart it. **Pass:** the lock behaves as Tony decided. Row: F391.
 
 ## Close
 

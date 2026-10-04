@@ -644,7 +644,7 @@ guard that reads `HEAD` while the tree is dirty (2026-09-17).
 handoff tests both scored this repo down for the same thing, and it was never a wrong fact — it was a
 *right* fact that only landed in one or two places. When `$GLED` was solved on 2026-08-30 the answer went
 into the protocol doc and the manual, while the **spec of record** (`docs/spec/modes.md`) still published
-the disproven `mid,effect,optionA,optionB` field map, `unknowns.md` still listed it as unknown, two bench
+the disproven `mid,effect,optionA,optionB` field map, `unknowns.md` (retired) still listed it as unknown, two bench
 plans still queued the closed test, and `gameconfig.py` still **shipped a frame built on the retracted
 reading** — night mode was sending colour index 0, which is *red*, believing it meant "off". A stale
 retraction is worse than an open question: an open question warns you, a stale answer recruits you.
@@ -670,7 +670,7 @@ on sensor 4 (F23). A dataset without tok1 and range cannot answer that question 
 **Over CDP, push the config before the start.** Injecting `start` into a `kitted` engine spawns the state model
 but does not re-arm a gun that lost its head (fresh app process, power cycle): the gun cannot shoot or reload
 and it looks like a corrupt `$CLEAR`. Send `onMcMessage({kind:'config'})`, wait ~2.5 s for the paced head
-write, then `start` (2026-09-04, `docs/wsl-cdp-phone-engine` memory + experiment-log 2026-09-04 S7.1).
+write, then `start` (2026-09-04, the wsl-cdp-phone-engine memory note + experiment-log 2026-09-04 S7.1).
 
 ---
 ---

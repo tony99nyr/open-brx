@@ -12,7 +12,7 @@ The simulator is `app/tools/gun-audio-sim.mjs`. Run `node app/tools/audio-scenar
 | Zero-gap burst loss | MEASURED 2026-09-25 | A four-clip burst dropped one clip. |
 | Dropped clip position | ASSUMPTION | The model drops clip two, VA6E in the measured burst. |
 | Phone PLAY gap | UNPROVEN | `PLAY_GAP_MS = 150`. A 100 ms send_batch gap dropped no clip in the earlier bench run. |
-| Native death scream | ASSUMPTION | The scream joins the same FIFO when the phone hears lethal HP. |
+| Native death scream | ASSUMPTION (F439, bench 2026-10-02) | The scream interrupts the clip playing, like a token-1 clip. The sim still queues it (pre-F439; `death-stops-spaced`). |
 | Token-1 interrupt | MEASURED 2026-09-11 | A token-1 clip interrupts the current clip. |
 | Frame spacing inside one write | ESTIMATE | The model uses 10 ms, except the literal zero-gap test. |
 

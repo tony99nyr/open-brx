@@ -110,8 +110,8 @@ SOUND_ROLES = ("kill", "spawn", "intro", "gas_death", "death_scream", "hurt_loop
 #                          grant of a recharge. It replaces `A34` played twice through the refill (2026-09-17).
 #                          Catalogued "rising / charge-up, 2.1 s" -- the shape the pick needs.
 #   shield_full      VA6Y  "Shields Online" (2.0 s), Tony 2026-09-17 against a real 3.6 s refill: "that last
-#                          one was the best one yet". NOT ruled on again since `shield_charging` moved, so it
-#                          stands until he says otherwise.
+#                          one was the best one yet". Tony 2026-09-24/25: not played in game (F349); the
+#                          node sends `shield_online` to the LEDs only. Kept for the try-out.
 #   shield_loop      N74   The heartbeat, looped by the node while the shield is down (2026-09-17). Also NOT
 #                          re-ruled. ⚠ `presentation.EVENTS["low_health"]` plays the SAME id at HP < 15, so a
 #                          shieldless player on low health hears one sound meaning two things -- flagged, not

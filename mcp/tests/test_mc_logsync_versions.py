@@ -785,6 +785,21 @@ def test_a_node_that_only_said_hello_still_has_arm_state_and_synced():
     assert isinstance(nv.get("last_seen_ms"), int)
 
 
+# ---------------------------------------------------------------- API.md's State block
+def test_api_md_state_block_names_every_state_field():
+    """D3 (2026-10-03): the hand-written `State {` block in API.md lost five fields. Every key of
+    `types.State` must open a line in that block, so a new field cannot ship undocumented."""
+    import re
+    from brx_mcp.mc.types import State
+    text = (Path(__file__).parents[1] / "brx_mcp" / "mc" / "API.md").read_text()
+    block = text.split("\nState {\n", 1)[1].split("\n}\n", 1)[0]
+    # A top-level line holds one key, or a comma list of them (`players: Player[], teams: Team[]`).
+    keys = {k for line in block.splitlines() if line.startswith("  ") and line[2:3] != " "
+            for k in re.findall(r"(?:^  |, )(\w+)\??(?=[,:])", line)}
+    missing = sorted(set(State.__annotations__) - keys)
+    assert not missing, f"API.md State block lacks: {missing}"
+
+
 # ---------------------------------------------------------------- A30-shaped: the phase a match is in
 def test_set_phase_refuses_to_leave_a_running_match():
     """`{phase:"kit"}` during LIVE used to succeed. `tick()` returns early unless the phase is

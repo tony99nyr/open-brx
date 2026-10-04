@@ -125,7 +125,7 @@ class EnvelopeError(ValueError):
 
 @dataclass
 class MalformedCounter:
-    """Counts malformed frames per socket; `too_many()` answers the net.md §8 quarantine rule
+    """Counts malformed frames per socket; `too_many()` answers the quarantine rule (`docs/spec/contracts.md` §5: more than about 20 malformed frames per second closes the socket)
     (> ~20 malformed frames per second → close the socket)."""
 
     limit_per_s: int = 20

@@ -319,7 +319,7 @@ State.kit += { browsing: { [player_id]: t_ms } }             // MC roster shows 
 
 ### 4.6 Phone: setting-up → BRIEFING → kit editor (Tony, 2026-08-27)
 ```jsonc
-assign.game { name, desc,                       // saved-game name/desc when the live config matches one, else the stock mode
+assign.game { name, desc,                       // the mode's name and brief (F411 removed saved games)
               mode, mode_name, abbr, teams_text, win_text, respawn_text,
               time_limit_s, respawn, health, environment, night,
               loadout_line,                     // one human sentence: "You pick your primary (16 to choose from), slot 2: a second weapon, a perk of your choice (5)."
