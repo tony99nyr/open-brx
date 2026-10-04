@@ -34,7 +34,8 @@ function harness({ health = { max_hp: 45, max_armor: 70 } } = {}) {
     teams: [team, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
-  const eng = new Engine({ writer: (fr, why) => { groups.push([...fr]); const n = writes.push(...fr); return String(why).startsWith('gun liveness probe') ? false : n; },
+  const failing = new Set();   // `why` prefixes whose write the fake link refuses
+  const eng = new Engine({ writer: (fr, why) => { groups.push([...fr]); const n = writes.push(...fr); return String(why).startsWith('gun liveness probe') || [...failing].some(p => String(why).startsWith(p)) ? false : n; },
     emit: f => facts.push(f), report: () => {}, now: () => clock, synced: () => true, storage: mkStorage(),
     log: (m, cls) => logs.push({ m: String(m), cls }), delay: (ms, fn) => fn() });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -44,7 +45,7 @@ function harness({ health = { max_hp: 45, max_armor: 70 } } = {}) {
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   clock += 10; eng.tick();
   const h = {
-    eng, writes, facts, logs, groups,
+    eng, writes, facts, logs, groups, failing,
     adv(ms) { clock += ms; eng.tick(); return h; },
     frame(f) { eng.feedFrame(f); return h; },
     mark() { return writes.length; },
@@ -104,6 +105,29 @@ test('F438 (b): a lethal self-hit revives at once, books no death, and drains ba
   h.frame(ENEMY).frame('$HP,0,0,0,*');
   const d = h.kinds('death');
   assert.equal(d.length, 1); assert.equal(d[0].shooter_num, 19); assert.equal(h.eng.deaths, 1);
+});
+
+// polish 2026-10-03: a self-kill costs nothing, so it must not refill the magazine either (the revive's `$SPAWN` does)
+test('polish 2026-10-03: a lethal self-hit keeps the magazine and reserve the player had', () => {
+  const h = harness();
+  h.frame('$ALCD,29,100,0,192,0,*');
+  assert.deepEqual(h.eng._liveAmmo()[0], [29, 192], 'setup: three rounds fired');
+  h.adv(1500);
+  const n = h.mark();
+  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,1,1,1,*');
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  const out = h.writes.slice(n), spawnAt = out.indexOf('$SPAWN,,*'), keep = out.lastIndexOf('$AMMO,0,29,192,1,*');
+  assert.ok(spawnAt >= 0 && keep > spawnAt, `the live count goes out after the revive: ${out.join(' ')}`);
+  assert.ok(!out.includes('$AMMO,0,32,192,1,*'), 'and no full magazine goes out at all');
+  assert.deepEqual(h.eng._liveAmmo()[0], [29, 192], 'the account still holds the pre-hit count');
+});
+
+test('polish 2026-10-03: a restore write the link refuses is logged as an error, not passed over', async () => {
+  const h = harness();
+  h.failing.add('F438 self-hit restore');
+  h.frame(SELF).frame('$HP,45,61,0,*');
+  await new Promise(r => setImmediate(r));
+  assert.ok(h.logs.some(l => l.cls === 'le' && /self-hit: the restore write failed/.test(l.m)), h.logs.map(l => l.m).join(' | '));
 });
 
 test('F438 (c): the same frames from ANOTHER player still hurt and kill (the control)', () => {
