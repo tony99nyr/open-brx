@@ -24,6 +24,7 @@ export function headOf(root) { return git(root, ['rev-parse', 'HEAD']); }
 // They do not select test inputs or change test assertions. Keep result-affecting settings out.
 const BENIGN_ENV = new Set([
   'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TERM', 'PWD', 'OLDPWD', 'SHLVL',
+  'INIT_CWD', 'PNPM_SCRIPT_SRC_DIR',
   'COLORTERM', 'DISPLAY', 'WAYLAND_DISPLAY', 'TMPDIR', 'XDG_RUNTIME_DIR',
   'WSL_DISTRO_NAME', 'WSL_INTEROP', 'WSLENV', 'WSL2_GUI_APPS_ENABLED',
   'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'MC_PY', 'BRX_MCP_HOME',
@@ -39,11 +40,12 @@ const BENIGN_ENV = new Set([
   'NVM_BIN', 'NVM_CD_FLAGS', 'NVM_DIR', 'NVM_INC', 'PNPM_HOME', 'PULSE_SERVER',
   'YSU_VERSION', 'ZSH', '_',
 ]);
-const BENIGN_PREFIXES = ['WSL_', 'XDG_', 'SSH_'];
+const BENIGN_PREFIXES = ['WSL_', 'XDG_', 'SSH_', 'npm_'];
 
 export function cacheBypassReason(env) {
+  const nonBenignNpmConfig = ['npm_config_node_options', 'npm_config_script_shell'];
   const set = Object.keys(env).sort().find(name => !BENIGN_ENV.has(name)
-    && !BENIGN_PREFIXES.some(prefix => name.startsWith(prefix)));
+    && (!BENIGN_PREFIXES.some(prefix => name.startsWith(prefix)) || nonBenignNpmConfig.includes(name)));
   return set ? `environment variable affects test results: ${set}` : null;
 }
 
