@@ -6,6 +6,8 @@
 //      SCREENS_SHARDS=<n> splits the steps across n child processes (default: half the cores, at most 16, capped by free memory; 1 = serial)
 import { chromium } from 'playwright';
 import { monotonicDate } from './monotonic-date.mjs';
+import { claimStep, finishStep, summariseClaims, namesHash } from './lib/claims.mjs';
+import { createHash } from 'node:crypto';
 import http from 'http'; import fs from 'fs'; import path from 'path'; import os from 'os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -30,45 +32,102 @@ if (EXPECT_STEPS !== null && (!Number.isInteger(EXPECT_STEPS) || EXPECT_STEPS < 
   console.error(`--expect-steps / SCREENS_EXPECT_STEPS must be a positive integer, got ${EXPECT_RAW}`);
   process.exit(2);
 }
-// Sharding (2026-09-16). Serial, this suite took ~22 min: ~330 steps, each opening its own page and waiting out the
-// stage timeline (1.6-4.2 s). Every step already runs in its own browser context (`b.newPage()` = a fresh context,
-// so no localStorage or cookie crosses steps), so the steps are independent and a shard is just "every n-th step".
-// The coordinator (no SCREENS_SHARD) checks the bundle, clears OUT once, and runs n children of this file; each child
-// launches its own browser on its own ephemeral port and runs only its share. The wait per step is unchanged.
+// Each step uses a fresh browser context. Children walk the same list and claim work as they reach it.
+// The coordinator clears OUT once, then starts children with separate browsers and ephemeral ports.
 const SHARD = process.env.SCREENS_SHARD ? process.env.SCREENS_SHARD.split('/').map(Number) : null;   // [index, count]
-// Default shard count: half the cores, at most 16, and never more than a quarter of the free memory (a shard is its own
-// browser, ~240 MB: 16 shards are ~3.8 GB). SCREENS_SHARDS overrides.
+// Default shard count: half the cores, at most 16, and never more than a quarter of free memory.
+// A shard uses about 240 MB. An explicit SCREENS_SHARDS overrides the memory estimate, but not the 16-shard cap.
 const availableMb = () => { try { return Number(/MemAvailable:\s+(\d+)/.exec(fs.readFileSync('/proc/meminfo', 'utf8'))[1]) / 1024; } catch { return os.totalmem() / 1048576 / 2; } };
-const SHARDS = SHARD ? SHARD[1] : Math.max(1, Number(cliValue('--shards') ?? process.env.SCREENS_SHARDS ?? Math.min(16, Math.floor(os.cpus().length / 2), Math.floor(availableMb() * 0.25 / 240))));
+const freeCap = Math.max(1, Math.min(16, Math.floor(os.cpus().length / 2), Math.floor(availableMb() * 0.25 / 240)));
+const SHARDS = SHARD ? SHARD[1] : Math.max(1, Math.min(16, Number(cliValue('--shards') ?? process.env.SCREENS_SHARDS ?? freeCap)));
+const CLAIM_DIR = process.env.SCREENS_CLAIM_DIR;
+const SOURCE_HASH = createHash('sha256').update(fs.readFileSync(fileURLToPath(import.meta.url))).digest('hex');
+if (SHARD && SOURCE_HASH !== process.env.SCREENS_SOURCE_HASH) {
+  console.error(`screens shard refused: source hash ${SOURCE_HASH} does not match coordinator ${process.env.SCREENS_SOURCE_HASH || '(missing)'}`);
+  process.exit(2);
+}
 if (!SHARD) {
   const srcNewest = fs.readdirSync(path.join(ROOT, 'src'), { recursive: true }).map(f => path.join(ROOT, 'src', f)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }).reduce((a, f) => Math.max(a, fs.statSync(f).mtimeMs), 0);
   if (srcNewest > fs.statSync(path.join(WWW, 'app.js')).mtimeMs) { console.error('STALE BUNDLE: run `npm run build` first.'); process.exit(2); }
   fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
 }
-if (!SHARD && SHARDS > 1) {
+if (!SHARD && (SHARDS > 1 || process.env.SCREENS_DYNAMIC === '1')) {
   const t0 = Date.now();
+  const claimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-screens-claims-'));
+  const wantFile = process.env.SCREENS_WANT_FILE || path.join(claimDir, 'want');
+  fs.writeFileSync(wantFile, String(SHARDS));
+  const requestedCap = Number(process.env.SCREENS_MAX_SHARDS ?? freeCap);
   // Selection belongs to every child, but the expected count belongs to the aggregate. Passing the latter through
   // would make each shard demand all selected steps; dropping the former would make a focused run execute everything.
   const { SCREENS_EXPECT_STEPS: _aggregateOnly, ...childEnv } = process.env;
-  const runs = Array.from({ length: SHARDS }, (_, i) => new Promise(resolve => {
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...childEnv, ONLY: ONLY ?? '', SCREENS_SHARD: `${i}/${SHARDS}`, SCREENS_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = ''; child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
-    child.on('close', code => resolve({ i, code, out }));
-  }));
-  let pass = 0, fail = 0; const errs = [];
-  for (const { i, code, out } of await Promise.all(runs)) {
-    console.log(`\n#### shard ${i + 1}/${SHARDS} (exit ${code})`); console.log(out.trimEnd());
-    const m = out.match(/^(\d+) passed, (\d+) failed(?:: (.*))?$/m);
-    // a shard that crashed before its summary line is a failure, never a silent zero
-    if (!m) { fail++; errs.push(`shard ${i + 1} crashed (exit ${code})`); continue; }
-    pass += +m[1]; fail += +m[2]; if (m[3]) errs.push(m[3]);
-    if (code !== 0 && +m[2] === 0) { fail++; errs.push(`shard ${i + 1} exited ${code}`); }
+  const cleanupClaims = () => { try { fs.rmSync(claimDir, { recursive: true, force: true }); } catch {} };
+  process.once('SIGTERM', () => { cleanupClaims(); process.exit(143); });
+  process.once('SIGINT', () => { cleanupClaims(); process.exit(130); });
+  const writeAck = count => { if (process.env.SCREENS_ACK_FILE) fs.writeFileSync(process.env.SCREENS_ACK_FILE, String(count)); };
+  writeAck(SHARDS);
+  let sawSuccess = false;
+  const runs = await new Promise(resolve => {
+    const finished = [];
+    let launched = 0, active = 0;
+    const startWanted = () => {
+      if (sawSuccess && launched >= SHARDS) return;
+      let wanted = SHARDS;
+      try { wanted = Number(fs.readFileSync(wantFile, 'utf8')); } catch { /* Keep the current target. */ }
+      if (!Number.isInteger(wanted)) wanted = launched;
+      const maxShards = Math.max(SHARDS, Math.floor(Math.min(16, Math.floor(os.cpus().length / 2),
+        Number.isFinite(requestedCap) ? requestedCap : 16)));
+      wanted = Math.max(SHARDS, Math.min(maxShards, wanted));
+      while (launched < wanted) {
+        const i = launched++;
+        active++;
+        const child = spawn(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...childEnv, ONLY: ONLY ?? '', SCREENS_SHARD: `${i}/${SHARDS}`, SCREENS_CLAIM_DIR: claimDir, SCREENS_SOURCE_HASH: SOURCE_HASH, SCREENS_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+        let out = '';
+        let settled = false;
+        child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
+        const settle = code => {
+          if (settled) return;
+          settled = true;
+          finished.push({ i, code, out }); active--;
+          if (code === 0) sawSuccess = true;
+          if (!sawSuccess && active > 0) startWanted();
+          if (active === 0) { clearInterval(watch); resolve(finished); }
+        };
+        child.on('error', e => { out += `\nspawn failed: ${e.message}\n`; settle(1); });
+        child.on('close', code => {
+          settle(code ?? 1);
+        });
+      }
+      writeAck(launched);
+    };
+    const watch = setInterval(startWanted, 500);
+    startWanted();
+  });
+  let pass = 0, fail = 0;
+  const errs = [];
+  try {
+    const walks = [];
+    for (const { i } of runs) {
+      try { walks.push({ i, ...JSON.parse(fs.readFileSync(path.join(claimDir, `walk-${i}.json`), 'utf8')) }); }
+      catch { errs.push(`shard ${i + 1} did not write its step walk summary`); }
+    }
+    const reference = walks[0];
+    if (reference && walks.some(w => w.stepCount !== reference.stepCount || w.namesHash !== reference.namesHash)) errs.push('children walked different steps (control-flow drift)');
+    const expected = EXPECT_STEPS ?? reference?.stepCount ?? 0;
+    const summary = summariseClaims(claimDir);
+    pass += summary.pass; fail += summary.fail; errs.push(...summary.errs);
+    const claimed = summary.pass + summary.fail;
+    const neverClaimed = Math.max(0, expected - claimed);
+    if (neverClaimed) { fail += neverClaimed; errs.push(`${neverClaimed} step(s) were never claimed`); }
+    if (EXPECT_STEPS !== null && reference && reference.stepCount !== EXPECT_STEPS) {
+      errs.push(`selected ${reference.stepCount} steps, expected ${EXPECT_STEPS}`); fail++;
+    }
+  } finally { cleanupClaims(); }
+  for (const { i, code, out } of runs.sort((a, b) => a.i - b.i)) {
+    console.log(`\n#### shard ${i + 1}/${runs.length} (exit ${code})`); console.log(out.trimEnd());
+    if (code !== 0) errs.push(`shard ${i + 1} exited ${code}`);
   }
-  if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
-    errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
-  }
-  console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}  (${SHARDS} shards, ${Math.round((Date.now() - t0) / 1000)}s)`);
-  process.exit(fail ? 1 : 0);
+  console.log(`\n${pass} passed, ${fail} failed${errs.length ? ': ' + errs.join(', ') : ''}  (${runs.length} shards, ${Math.round((Date.now() - t0) / 1000)}s)`);
+  process.exit(fail || runs.some(r => r.code !== 0) || errs.length ? 1 : 0);
 }
 const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
   try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : rel.endsWith('.html') ? 'text/html' : 'application/octet-stream'); res.end(fs.readFileSync(path.join(WWW, rel))); } catch { res.statusCode = 404; res.end(); } });
@@ -77,15 +136,72 @@ const PORT = srv.address().port;
 let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = monotonicDate(await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] }));   // scrollbars ON: what a desktop reviewer sees
+let browserDisconnected = false, intentionalBrowserClose = false, consecutiveFailures = 0;
+b.on('disconnected', () => {
+  if (intentionalBrowserClose) return;
+  browserDisconnected = true;
+  if (SHARD) { fail++; errs.push('browser disconnected'); }
+});
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live-switch-shot', 'live-spawn-lost', 'live-switch-kill', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
-  'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-scores-koth', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap', 'down-full', 'down-partial', 'down-unclear', 'down-zero-dealt', 'down-pickup', 'down-ffa', 'down-hill', 'down-stale', 'down-old-mc']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
-let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
-const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
-const open = async (view, stage, extra = '', ms) => {
+const STAGE_FLOOR_MS = {
+  // Down screens need death (~2350) + the 300 ms redflood fade + 2000 ms dealt grace + 250 ms tick = 4900 ms.
+  // A26: PICK_DEBOUNCE_MS (400), the demo MC's 300 ms ack, its 250 ms tutorial reply,
+  // and the gun's 200 ms $ALCD all follow the last pick step. The old 4200 ms wait covered the full arm.
+  'loadout-picked': 4200,
+  // The perk also waits for PICK_DEBOUNCE_MS (400) and the demo MC's 300 ms ack.
+  'kitted-perk': 2400,
+  // F147: the try-out reply follows the pick by 300 + 250 ms; the gun's $ALCD follows by 200 ms.
+  tryout: 2400,
+  // F424: the beacon arrives at 300 + 2200 ms; the possession clock needs a full second for mm:ss.
+  'live-scores-koth': 4200,
+  // F123: the shotgun's per-shell reload enters overrun after its nominal reload time, then keeps pulsing.
+  'live-reload-overrun': 4200,
+  // F34: the scanner hint follows death after its 3 s delay. These checks read the delayed hint.
+  'down-find': 6200, 'down-find-presence': 6200,
+  // The weapon delay and entry animations must finish before the contrast check samples redeploy.
+  redeploy: 4200,
+};
+let stepIdx = 0;   // Each child counts the same selected steps in the same order.
+const walkedNames = [];
+const step = async (name, fn) => {
+  if (ONLY && !name.includes(ONLY)) return;
+  const ordinal = stepIdx++;
+  walkedNames.push(name);
+  if (SHARD && (browserDisconnected || consecutiveFailures >= 5 || !claimStep(CLAIM_DIR, ordinal, name))) return;
+  try {
+    await fn();
+    if (SHARD && browserDisconnected) throw new Error('browser disconnected during step');
+    if (SHARD) finishStep(CLAIM_DIR, ordinal, name, 'pass');
+    console.log(`  ok   ${name}`); pass++; consecutiveFailures = 0;
+  } catch (e) {
+    if (SHARD) finishStep(CLAIM_DIR, ordinal, name, 'fail');
+    console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); consecutiveFailures++;
+  }
+};
+const open = async (view, stage, extra = '', ms, initScript) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=${stage}${extra}`); await pg.waitForTimeout(ms || (LONG.has(stage) ? 4200 : 1600));
+  if (initScript) await pg.addInitScript(initScript);
+  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=${stage}${extra}`);
+  // An explicit `ms` is the caller's choice of WHEN to sample (some steps must catch a state before a later step
+  // ends it, e.g. down-hill-capture's capture while down), so the down* family floor never overrides it. A named
+  // STAGE_FLOOR_MS entry is a hard minimum and still wins.
+  const floor = Math.max(ms ?? 0, STAGE_FLOOR_MS[stage] ?? (ms == null && stage.startsWith('down') ? 4900 : 0));
+  const floorWait = floor ? pg.waitForTimeout(floor) : Promise.resolve();
+  // An explicit wait samples a transition or attaches an observer before later scheduled steps run.
+  // Waiting for stage settlement here can skip the state that the assertion needs to see.
+  if (ms != null) await floorWait;
+  else {
+    let rejectOnPageError;
+    const pageError = new Promise((_, reject) => { rejectOnPageError = reject; });
+    const onPageError = error => rejectOnPageError(new Error(`stage ${stage} page error: ${error.message}`));
+    if (perr.length) throw new Error(`stage ${stage} page error: ${perr[0]}`);
+    pg.on('pageerror', onPageError);
+    try { await Promise.all([floorWait, Promise.race([pg.waitForFunction(() => {
+      const demo = window.brxDemo;
+      return demo && demo.settled && performance.now() >= Math.max(demo.lastScheduledAt, demo.settledAt) + 400;
+    }, null, { timeout: 10000 }), pageError])]); }
+    finally { pg.off('pageerror', onPageError); }
+  }
   must(perr.length === 0, 'page errors: ' + perr.join(' | '));
   const reached = await pg.evaluate(s => ({ stage: window.brxDemo && window.brxDemo.stage, failed: (window.brx.log || []).filter(l => /stage step failed|unknown/.test(l)) }), stage);
   must(reached.stage === stage && reached.failed.length === 0, `stage not reached: ${JSON.stringify(reached)}`);   // a throwing stage step must not pass as "whatever is on screen"
@@ -5335,12 +5451,22 @@ await step('F368 layering clash: the ⓘ WARNINGS section lists every warning in
 });
 // review r2 M1: nothing crosses a life. Kill, die, a takeover while down, respawn, a new kill: the card shows x1, only the new victim
 await step('F368 layering clash: a kill from the old life never draws after REDEPLOYED and never joins a new-life kill', async () => {
-  const pg = await open(VIEWS[1], 'clash-kc-lives', '', 2200);
+  const pg = await open(VIEWS[1], 'clash-kc-lives', '', 2200, () => {
+    window.__screenTransitions = [];
+    const seen = new Set();
+    const sample = () => {
+      const alive = window.brx && window.brx.engine && window.brx.engine.state().alive;
+      if (typeof alive === 'boolean' && !seen.has(`alive:${alive}`)) { seen.add(`alive:${alive}`); window.__screenTransitions.push(`alive:${alive}`); }
+    };
+    setInterval(sample, 10); sample();
+  });
   await pg.waitForFunction(() => !window.brx.engine.state().alive, null, { timeout: 4000 });
   await pg.waitForFunction(() => window.brx.engine.state().alive, null, { timeout: 8000 });
   const seen = await pg.evaluate(async () => { const out = []; for (let i = 0; i < 120; i++) { const v = document.querySelector('#lanes .lh .vt'); if (v) out.push(v.textContent.trim()); if (/GHOST/.test(out[out.length - 1] || '')) break; await new Promise(r => setTimeout(r, 50)); } return [...new Set(out)]; });
+  const lifeTransitions = await pg.evaluate(() => window.__screenTransitions || []);
   const r = await lnWait(pg, x => x.hero, 1000), L = await pg.evaluate(() => { const h = window.brx.engine.state().lanes.hero; return h && h.kills.map(k => k.victim); }); await pg.close();
   must(!seen.includes('VIPER'), `the old life's kill drew after the respawn: ${JSON.stringify(seen)}`);
+  must(lifeTransitions.includes('alive:false') && lifeTransitions.includes('alive:true'), `life transitions: ${JSON.stringify(lifeTransitions)}`);
   must(r.hero && r.hero.n === 1 && r.hero.name === 'GHOST' && JSON.stringify(L) === '["GHOST"]', `the new life's card: ${JSON.stringify({ hero: r.hero && { n: r.hero.n, name: r.hero.name }, kills: L })}`);
 });
 // review r2 M2: a tall rail (two or three warnings, no kill card) with the powerup hint: the hint and the rail stay clear of
@@ -5369,10 +5495,19 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [what, a
 });
 // review H2: a takeover longer than LANE_HERO_MS (GUN STOPPED, 4 s, stage clash-kc-long-two) with two kills: the second JOINS the waiting card
 await step('F368 layering clash: a second kill during a long takeover joins the waiting card (x2, the first kept)', async () => {
-  const pg = await open(VIEWS[1], 'clash-kc-long-two', '', 2200);
+  const pg = await open(VIEWS[1], 'clash-kc-long-two', '', 2200, () => {
+    window.__screenTransitions = [];
+    let last;
+    setInterval(() => {
+      const takeover = document.getElementById('frame')?.dataset.takeover || '';
+      if (takeover !== last) { last = takeover; window.__screenTransitions.push(takeover); }
+    }, 10);
+  });
   await pg.waitForFunction(() => document.getElementById('frame').dataset.takeover === 'gun_locked', null, { timeout: 5000 });
   await pg.waitForFunction(() => !document.getElementById('frame').dataset.takeover, null, { timeout: 8000 });
-  const r = await lnWait(pg, x => x.hero, 500); const L = await pg.evaluate(() => window.brx.engine.state().lanes.hero); await pg.close();
+  const r = await lnWait(pg, x => x.hero, 500); const L = await pg.evaluate(() => window.brx.engine.state().lanes.hero);
+  const takeoverTransitions = await pg.evaluate(() => window.__screenTransitions || []); await pg.close();
+  must(takeoverTransitions.includes('gun_locked') && takeoverTransitions.includes(''), `takeover transitions: ${JSON.stringify(takeoverTransitions)}`);
   must(r.hero && r.hero.n === 2 && r.hero.count === '×2' && L.kills.map(k => k.victim).join(',') === 'VIPER,GHOST', `the card after GUN STOPPED: ${JSON.stringify({ hero: r.hero && { n: r.hero.n, count: r.hero.count, name: r.hero.name }, kills: L && L.kills.map(k => k.victim) })}`);
 });
 // review M1: the lanes' own timer ends a feed row on time, with no other render to help it
@@ -5868,7 +6003,12 @@ const svRead = pg => pg.evaluate(() => {
   const frame = document.getElementById('frame'), fr = frame.getBoundingClientRect(), k = fr.width / 844;
   const m = document.getElementById('svm'), bar = m && m.querySelector('.svbar'), w = sel => { const e = m && m.querySelector(sel); return e ? e.getBoundingClientRect().width / k : 0; };
   const tint = document.querySelector('.alive .svtint'), st = window.brx.engine.state();
-  return { m: !!m && !!vis(m), s: m && m.dataset.s, wait: !!(m && m.hasAttribute('data-wait')), os: !!(m && m.hasAttribute('data-os')), text: m ? m.textContent.trim() : null,
+  // F455: is the refill held, so a still fill is right? Held at its cap (the gun's pool plus one grant, shieldmeter.js
+  // fillPct) by a late grant, or already drawn full while the engine waits for the last grant's echo to end the charge.
+  const sr = st.shieldRegen, nowE = window.brx.engine.now(), poolNow = Math.max(0, (st.shield || 0) - ((st.powerup && st.powerup.overshield && st.powerup.overshield.left) || 0));
+  const held = !!(sr && sr.charging && sr.fullAt != null && (sr.from || 0) + ((st.maxShield || 0) - (sr.from || 0)) * Math.min(1, Math.max(0, (nowE - sr.startedAt) / Math.max(1, sr.fullAt - sr.startedAt))) > poolNow + (sr.step || 0));
+  const flE = m && m.querySelector('.svfl'), drawnFull = !!flE && flE.style.getPropertyValue('--w') === '100%';
+  return { now: nowE, held: held || drawnFull, m: !!m && !!vis(m), s: m && m.dataset.s, wait: !!(m && m.hasAttribute('data-wait')), os: !!(m && m.hasAttribute('data-os')), text: m ? m.textContent.trim() : null,
     barH: bar ? bar.getBoundingClientRect().height / k : 0, anim: bar ? getComputedStyle(bar).animationName : '', fl: w('.svfl'), osw: w('.svos'), dly: w('.svdly'),
     sweep: m ? getComputedStyle(m.querySelector('.svfl'), '::after').animationName : '',
     tint: !!document.querySelector('.alive.sv-down') && !!tint && +getComputedStyle(tint).opacity > 0.9,
@@ -5949,25 +6089,52 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(last && last.s === 'ok' && last.shield >= 105, `full again: ${JSON.stringify({ s: last && last.s, shield: last && last.shield })}`);
     must(!toast, 'no teal "+N SHIELD" toast over the meter during a recharge');
   });
-  await step(`${tag}: the refill grows smoothly: sampled every 100 ms, the fill never stands still while it charges and never jumps a grant (F349)`, async () => {
-    const pg = await open(view, 'live-shields-broken', N, 3300);
+  // F455 (flaked twice under full load, 2026-10-04): the failure was a FULL bar still marked charging while the last
+  // grant's echo was late (5 samples at 514, the whole track). A held sample (full, or at the gun's cap) is not a stand-
+  // still. The sampler's 100 ms is wall time, so each sample also reads after a drawn frame and carries the ENGINE's clock,
+  // and stillness and jumps are judged in engine time.
+  const refillSamples = async (pg, slowLink = false) => {
+    // a slow link: every grant write reaches the gun 700 ms late, so the bar holds at its cap and, drawn full, waits for
+    // the last grant's echo (the flake's shape: 514 514 514 514 514 at the end of the charge)
+    if (slowLink) await pg.evaluate(() => { const e = window.brx.engine, w = e._write.bind(e);
+      e._write = (frames, ...rest) => [].concat(frames).some(f => /^\$LIFE,0,0,/.test(f)) ? void setTimeout(() => w(frames, ...rest), 700) : w(frames, ...rest); });
     const ws = []; let chargeSeen = false;
-    for (let t = 0; t < 14000; t += 100) {
-      const r = await svRead(pg);
-      if (r.s === 'charge') { chargeSeen = true; ws.push(r.fl); }
+    for (let t = 0, n = 0; t < 14000; t += 100, n++) {
+      const r = await pg.evaluate(() => new Promise(res => requestAnimationFrame(() => res(null)))).then(() => svRead(pg));
+      if (r.s === 'charge') { chargeSeen = true; ws.push({ fl: r.fl, at: r.now, held: r.held }); }
       else if (chargeSeen) break;
       await pg.waitForTimeout(100);
     }
-    await pg.close();
+    return ws;
+  };
+  const refillVerdict = (ws, night) => {
     let still = 0, longest = 0, jump = 0;
     for (let i = 1; i < ws.length; i++) {
-      still = Math.abs(ws[i] - ws[i - 1]) < 0.5 ? still + 1 : 0; longest = Math.max(longest, still);
-      jump = Math.max(jump, ws[i] - ws[i - 1]);
+      const dt = ws[i].at - ws[i - 1].at, dw = ws[i].fl - ws[i - 1].fl;
+      // held at the cap by a late grant is F349's design ("a slow link holds the bar back"): neither the hold nor the
+      // one-grant catch-up when the grant lands is a grant-by-grant step
+      const heldPair = ws[i].held || ws[i - 1].held;
+      still = Math.abs(dw) < 0.5 && !heldPair ? still + dt : 0; longest = Math.max(longest, still);
+      if (!ws[i - 1].held) jump = Math.max(jump, dw * 100 / Math.max(dt, 100));   // px per 100 ms of engine time
     }
-    must(ws.length >= 10, `setup: the refill was sampled (${ws.length} samples)`);
-    must(ws.every((w, i) => i === 0 || w >= ws[i - 1] - 0.5), `the fill only rises: ${ws.map(Math.round).join(' ')}`);
-    must(longest <= (night ? 3 : 2), `the fill stood still for ${longest} samples in a row (a grant-by-grant step): ${ws.map(Math.round).join(' ')}`);
-    must(jump < 0.2 * 844, `the largest move between two samples is ${Math.round(jump)} px, a grant-sized jump: ${ws.map(Math.round).join(' ')}`);
+    const trace = ws.map(w => `${Math.round(w.fl)}@${Math.round(w.at - ws[0].at)}${w.held ? 'h' : ''}`).join(' ');
+    const out = [];
+    if (ws.length < 10) out.push(`setup: the refill was sampled (${ws.length} samples)`);
+    if (!ws.every((w, i) => i === 0 || w.fl >= ws[i - 1].fl - 0.5)) out.push(`the fill only rises: ${trace}`);
+    if (longest > (night ? 450 : 350)) out.push(`the fill stood still for ${Math.round(longest)} ms of engine time (a grant-by-grant step): ${trace}`);
+    if (jump >= 0.2 * 844) out.push(`the largest move is ${Math.round(jump)} px per 100 ms of engine time, a grant-sized jump: ${trace}`);
+    return out;
+  };
+  await step(`${tag}: the refill grows smoothly: sampled every 100 ms, the fill never stands still while it charges and never jumps a grant (F349)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const ws = await refillSamples(pg); await pg.close();
+    const bad = refillVerdict(ws, night); must(!bad.length, bad.join(' ; '));
+  });
+  if (view === VIEWS[0] && !night) await step(`${tag}: a slow link holds the refill at its cap, and that hold is not read as a grant-by-grant step (F455)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const ws = await refillSamples(pg, true); await pg.close();
+    must(ws.some(w => w.held), `setup: the 700 ms late grants held the bar at its cap: ${ws.map(w => Math.round(w.fl)).join(' ')}`);
+    const bad = refillVerdict(ws, night); must(!bad.length, bad.join(' ; '));
   });
   await step(`${tag}: the overshield is a layer over the shield, drained first by hits, and only hits remove it`, async () => {
     const pg = await open(view, 'live-shields-os', N, 3200);
@@ -6489,9 +6656,11 @@ for (const view of VIEWS) for (const stage of ['live', 'live-pool-wrong']) await
   must(r.n === 0, `night: ${r.n} green pixels, e.g. ${r.first.join(' ; ')}`);
 });
 
+if (SHARD) fs.writeFileSync(path.join(CLAIM_DIR, `walk-${SHARD[0]}.json`), JSON.stringify({ stepCount: stepIdx, namesHash: namesHash(walkedNames) }));
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }
+intentionalBrowserClose = true;
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

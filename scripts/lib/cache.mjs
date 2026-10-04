@@ -40,11 +40,27 @@ const BENIGN_ENV = new Set([
   'NVM_BIN', 'NVM_CD_FLAGS', 'NVM_DIR', 'NVM_INC', 'PNPM_HOME', 'PULSE_SERVER',
   'YSU_VERSION', 'ZSH', '_',
 ]);
+// Present in an ordinary WSL / Windows Terminal shell and read by no test: credentials (GH_TOKEN never reaches a
+// key), terminal colours, the editor git would open, and host details. Checked against every job's readers
+// (git grep in mcp, app/tools, app/test, webapp/mc/test, site, scripts) on 2026-10-04.
+for (const n of ['GH_TOKEN', 'GIT_EDITOR', 'HOSTTYPE', 'JAVA_HOME', 'LSCOLORS', 'LS_COLORS', 'WT_PROFILE_ID', 'WT_SESSION',
+  'NoDefaultCurrentDirectoryInExePath',
+  // What `pnpm run` / `pnpm exec` add for every script (captured from a real run on 2026-10-04): NODE is the node
+  // binary's path (its version is already in the tool fingerprint); the rest describe the invocation.
+  'NODE', 'INIT_CWD', 'PNPM_SCRIPT_SRC_DIR', 'PNPM_PACKAGE_NAME', 'pnpm_config_verify_deps_before_run']) BENIGN_ENV.add(n);
 const BENIGN_PREFIXES = ['WSL_', 'XDG_', 'SSH_', 'npm_'];
+// Locale and time zone CAN change a result (sorting, number and date formats), but every shell sets LANG, so a
+// bypass would switch the cache off for everyone. They go into the key by value instead (keyedEnv below).
+const KEYED_ENV = new Set(['LANG', 'LANGUAGE', 'TZ']);
+const isKeyed = name => KEYED_ENV.has(name) || name.startsWith('LC_');
+/** The locale and time-zone values a cache key must carry (see KEYED_ENV). */
+export function keyedEnv(env) {
+  return Object.fromEntries(Object.keys(env).filter(isKeyed).sort().map(n => [n, env[n]]));
+}
 
 export function cacheBypassReason(env) {
   const nonBenignNpmConfig = ['npm_config_node_options', 'npm_config_script_shell'];
-  const set = Object.keys(env).sort().find(name => !BENIGN_ENV.has(name)
+  const set = Object.keys(env).sort().find(name => !BENIGN_ENV.has(name) && !isKeyed(name)
     && (!BENIGN_PREFIXES.some(prefix => name.startsWith(prefix)) || nonBenignNpmConfig.includes(name)));
   return set ? `environment variable affects test results: ${set}` : null;
 }

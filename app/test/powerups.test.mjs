@@ -359,7 +359,7 @@ test('trigger grant: save the trigger slot and its counts, re-send the pickup sl
 test('F381: a zero-magazine loadout is saved at its real count for the switch-back', () => {
   const h = armed(); h.fire(0, 0, 48);
   h.take(4);
-  assert.deepEqual(h.eng._puHeld.back, { slot: 0, mag: 0, res: 48 });
+  assert.deepEqual(h.eng.pu.held.back, { slot: 0, mag: 0, res: 48 });
 });
 
 test('F379: after ALT to the secondary and a rocket switch-back, the next ALT follows the gun pointer', () => {
@@ -369,7 +369,7 @@ test('F379: after ALT to the secondary and a rocket switch-back, the next ALT fo
   assert.equal(h.eng.activeSlot, 0, 'setup: the phone waits for an assumed swap');
   assert.equal(h.eng._altPtr, 1, 'the accepted ALT press moves the gun pointer');
   assert.equal(h.eng.state().switchTo, 1, 'SWITCHING shows the pointer target');
-  h.take(4); h.away(); h.eng._puHeld.left = 1; h.fire(2, 0);
+  h.take(4); h.away(); h.eng.pu.held.left = 1; h.fire(2, 0);
   h.adv(h.eng.switchWindowMs());
   assert.equal(h.eng.activeSlot, 0, 'the empty rocket switched the trigger back to the primary');
   h.frame('$BUT,1,1,*');
@@ -378,9 +378,9 @@ test('F379: after ALT to the secondary and a rocket switch-back, the next ALT fo
 
 test('F381: a repeat pickup of the same weapon adds charges without a replacement card', () => {
   assert.equal(E.PU_STACK_CAP_X, 2);
-  const h = armed(); h.take(4); h.eng._puHeld.left = 1;
+  const h = armed(); h.take(4); h.eng.pu.held.left = 1;
   const n = h.mark();
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
   assert.equal(h.eng.state().powerup.held.left, 3);
   assert.equal(h.eng.state().powerupGrant.replaced, undefined);
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,3,0,1,*']);
@@ -413,12 +413,12 @@ test('S-powerup-overrides: a station item with amount:100 grants 100 shield, not
 });
 
 test('F381: a same-weapon stack is capped at twice the item charges (Tony: Rockets at most 4)', () => {
-  const h = armed(); h.take(4); h.eng._puHeld.left = 3;
+  const h = armed(); h.take(4); h.eng.pu.held.left = 3;
   const n = h.mark();
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
   assert.equal(h.eng.state().powerup.held.left, 4, '3 + 2 caps at 4');
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,4,0,1,*']);
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
   assert.equal(h.eng.state().powerup.held.left, 4, 'a full stack stays at 4');
   assert.equal(h.eng.state().powerup.held.charges, 4, 'the HUD denominator is the stacked count');
 });
@@ -488,7 +488,8 @@ test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile 
   h.frame('$ALCD,30,190,0,0,0,*');
   assert.equal(h.eng._altPtr, 1);
   assert.notEqual(h.eng._altEvidencePending, null);
-  h.eng._endReconcile();
+  h.eng.reconciling = { since: h.eng.now(), ammo: h.eng._liveAmmo() };   // a relink's window, then its end
+  h.eng.rc.end();
   assert.equal(h.eng._altPtr, 1);
 });
 
@@ -505,10 +506,10 @@ test('head rewrite resets ALT pointer and pending evidence', () => {
 });
 
 test('a weapon grant clears a pending switch-back retry', () => {
-  const h = armed(); h.take(4); h.away(); h.eng._puEnd('empty');
-  assert.ok(h.eng._puBackPending);
-  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now());
-  assert.equal(h.eng._puBackPending, null);
+  const h = armed(); h.take(4); h.away(); h.eng.pu.end('empty');
+  assert.ok(h.eng.pu.backPending);
+  h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now());
+  assert.equal(h.eng.pu.backPending, null);
 });
 
 test('F379: a switch-back resend reads the current magazine and reserve', () => {
@@ -576,14 +577,14 @@ test('F418: death during the empty swap window still re-equips slot 0 on revive'
   const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0);
   const n = h.mark(); h.die(); h.adv(10_000);
   assert.ok(h.since(n).includes(WEAP0), 'revive puts the loadout weapon on the trigger');
-  assert.equal(h.eng._puBackPending, null, 'death retires the delayed write');
+  assert.equal(h.eng.pu.backPending, null, 'death retires the delayed write');
 });
 
 test('F418: operator respawn during the empty swap window re-equips slot 0', () => {
   const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0);
   const n = h.mark(); h.eng._revive(false, null, true);
   assert.ok(h.since(n).includes(WEAP0), 'the revive burst is followed by a slot-0 equip');
-  assert.equal(h.eng._puBackPending, null);
+  assert.equal(h.eng.pu.backPending, null);
 });
 
 test('a second heavy swaps: zero the old slot, the new slot\'s $WEAP and $AMMO; the switch-back target stays the loadout weapon', () => {
@@ -647,8 +648,8 @@ test('F400 r1: a pickup card closing never moves the gun\'s ALT pointer', () => 
   assert.equal(h.eng._altPtr, 1, 'a phone equip moves the trigger, not ALT');
 });
 test('F400: a same-weapon stack re-equip shows the card too, from and to the same slot', () => {
-  const h = armed(); h.take(4); h.eng._puHeld.left = 1;
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  const h = armed(); h.take(4); h.eng.pu.held.left = 1;
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
   assert.equal(h.eng.switching.from, 2); assert.equal(h.eng.switching.to, 2);
 });
 
@@ -921,7 +922,7 @@ test('M3: a lost switch-back write is re-sent until back-slot evidence or a play
   n = h.mark(); h.adv(100); h.select();
   assert.deepEqual(puw(h.since(n)), [], 'SELECT cancels the stale retry without another write');
   h.adv(2000);
-  assert.equal(h.eng._puBackPending, null, 'the player choice cleared the retry');
+  assert.equal(h.eng.pu.backPending, null, 'the player choice cleared the retry');
   h.frame('$ALCD,30,100,0,190,0,*');
   n = h.mark(); h.adv(5000); h.select();
   assert.deepEqual(puw(h.since(n)), [], 'the gun answered for slot 0: nothing pending');
@@ -949,7 +950,7 @@ test('X10: an operator respawn whose overshield restore is lost retries it for t
 
 test('low: a new match clears the $PSET the overshield copies, and the T-0 spawn sets it again', () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
-  assert.equal(h.eng._psetNow, golden.pset_pool[0], 'the T-0 spawn\'s pool take, set after the match reset');
+  assert.equal(h.eng.pu.psetNow, golden.pset_pool[0], 'the T-0 spawn\'s pool take, set after the match reset');
 });
 
 test('low: the raised max is the new shield, never below the preset max (a half-empty Shields preset gets 105, not 145)', () => {
@@ -974,7 +975,7 @@ test('low: the stun restore writes the held heavy\'s count as it is at the resto
   const h = armed({ stun: { duration_s: 3 } }); h.take(4); h.away(); h.adv(800);
   h.frame('$HIR,4,8,19,2,8,0,0,*');
   assert.ok(h.eng.stunned, 'setup: stunned');
-  h.eng._puHeld.left = 1;   // the node's count moved after the snapshot
+  h.eng.pu.held.left = 1;   // the node's count moved after the snapshot
   const n = h.mark(); h.adv(3500);
   assert.ok(h.since(n).includes('$AMMO,2,1,0,1,*'), JSON.stringify(h.since(n).filter(f => f.startsWith('$AMMO,'))));
 });
@@ -984,12 +985,12 @@ test('r2 M1: a reconcile keeps a pending switch-back (the disarm echo is not its
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
   h.failNext(f => f === WEAP0);
   h.fire(2, 0);   // the switch-back write is lost
-  assert.ok(h.eng._puBackPending, 'setup: a switch-back pending');
+  assert.ok(h.eng.pu.backPending, 'setup: a switch-back pending');
   const b0 = h.batches.length;
   h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.adv(6000);
   const bs = h.batches.slice(b0), ri = bs.findIndex(b => b.includes('$AMMO,1,6,24,1,*'));   // the re-arm (F164: slot 0 at its live 30/190)
   assert.ok(ri >= 0 && bs.slice(ri).some(b => b.includes(WEAP0) && b.includes('$AMMO,0,30,190,1,*')), `re-sent after the re-arm: ${JSON.stringify(bs)}`);
-  assert.equal(h.eng._puBackPending, null, 'answered by the real echo afterwards');
+  assert.equal(h.eng.pu.backPending, null, 'answered by the real echo afterwards');
 });
 
 test('r2 M2: ALT off the heavy then a reload $ALCD (no shot) moves the trigger: the HUD and SELECT stop naming the heavy', () => {
@@ -1024,7 +1025,7 @@ function pendingBack() {
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(300); h.fire(0, 31, 192);
   h.at(121); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
   const n = h.mark(); h.fire(2, 0);
-  assert.ok(h.eng._puBackPending, 'setup: a switch-back pending');
+  assert.ok(h.eng.pu.backPending, 'setup: a switch-back pending');
   h.adv(h.eng.switchWindowMs());
   return { h, n, backs: () => h.since(n).filter(f => f === WEAP0).length };
 }
@@ -1050,7 +1051,7 @@ test('r3 low: a round from slot 1 clears a pending switch-back', () => {
   const { h, backs } = pendingBack();
   h.fire(1, 4, 24); h.adv(5000);
   assert.equal(backs(), 1);
-  assert.equal(h.eng._puBackPending, null);
+  assert.equal(h.eng.pu.backPending, null);
 });
 
 test('F379 r2 M: an ALT target of slot 0 is settled by the gun (0 is a real slot, not "nothing pending")', () => {
@@ -1129,8 +1130,8 @@ test('F418: a late disarm echo after an app restart and reconcile does not end a
   h.adv(1000);                                   // its echo window lapses
   const n = h.mark();
   h.frame('$ALCD,0,100,2,0,0,*');                // the ORIGINAL disarm's echo, late (or a re-arm that never landed)
-  assert.ok(h.eng._puHeld, 'no trigger pull, so no round left: the Rockets are still held');
-  assert.equal(h.eng._puHeld.left, 2);
+  assert.ok(h.eng.pu.held, 'no trigger pull, so no round left: the Rockets are still held');
+  assert.equal(h.eng.pu.held.left, 2);
   assert.ok(h.since(n).includes('$AMMO,2,2,0,1,*'), `the node re-sent the held counts: ${JSON.stringify(puw(h.since(n)))}`);
 });
 
@@ -1138,14 +1139,14 @@ test('F417: a grant whose $AMMO never landed (slot 2 reads 0, no pull) is re-sen
   const h = armed(); h.take(4); h.away();
   const n = h.mark();
   h.frame('$ALCD,0,100,2,0,0,*');                // the `$WEAP` reset landed, the `$AMMO` did not
-  assert.ok(h.eng._puHeld, 'still held');
+  assert.ok(h.eng.pu.held, 'still held');
   assert.ok(puw(h.since(n)).some(f => f === '$AMMO,2,2,0,1,*'), 'the grant counts went again');
 });
 
 test('F417: a real last round (a trigger pull) still ends the heavy as empty', () => {
   const h = armed(); h.take(4); h.away(); h.adv(800);
   h.fire(2, 1); h.adv(300); h.fire(2, 0);
-  assert.equal(h.eng._puHeld, null);
+  assert.equal(h.eng.pu.held, null);
 });
 
 test('F417: repairs are bounded: a gun that keeps reading 0 with no pull ends the item after PU_COUNT_REPAIRS', () => {
@@ -1153,11 +1154,11 @@ test('F417: repairs are bounded: a gun that keeps reading 0 with no pull ends th
   for (let i = 1; i <= E.PU_COUNT_REPAIRS; i++) {
     h.adv(E.ACC_ECHO_MS + 100); h.frame('$ALCD,2,100,2,0,0,*');
     const n = h.mark(); h.frame('$ALCD,0,100,2,0,0,*');
-    assert.ok(h.eng._puHeld, `read ${i}: still held`);
+    assert.ok(h.eng.pu.held, `read ${i}: still held`);
     assert.ok(h.since(n).includes('$AMMO,2,2,0,1,*'), `read ${i}: the counts went again`);
   }
   h.adv(E.ACC_ECHO_MS + 100); h.frame('$ALCD,2,100,2,0,0,*'); h.frame('$ALCD,0,100,2,0,0,*');
-  assert.equal(h.eng._puHeld, null, 'past the bound it ends, as today');
+  assert.equal(h.eng.pu.held, null, 'past the bound it ends, as today');
 });
 
 test('F417 r1: a trigger pull on the PRIMARY does not stop the repair of a lost grant', () => {
@@ -1165,7 +1166,7 @@ test('F417 r1: a trigger pull on the PRIMARY does not stop the repair of a lost 
   h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame('$BUT,0,0,*');   // a pull, but the heavy's own switch has not happened on the gun
   h.eng._pull = { at: h.eng.now(), slot: 0 };
   h.frame('$ALCD,0,100,2,0,0,*');
-  assert.ok(h.eng._puHeld, 'a pull on slot 0 is not a rocket leaving slot 2');
+  assert.ok(h.eng.pu.held, 'a pull on slot 0 is not a rocket leaving slot 2');
 });
 
 test('F417: a lost equip write is re-sent once when nothing moved since', async () => {
@@ -1196,11 +1197,11 @@ test('F418: two zero read-backs after a resume use both repairs before a held pi
   h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   h.eng.resume(); h.adv(3000); h.adv(E.ACC_ECHO_MS + 100);
   const n = h.mark(); h.frame('$ALCD,0,100,2,0,0,*');
-  assert.equal(h.eng._puHeld?.left, 2, 'the first missing count does not spend a charge');
+  assert.equal(h.eng.pu.held?.left, 2, 'the first missing count does not spend a charge');
   h.adv(E.ACC_ECHO_MS + 100);
   h.frame('$BUT,0,1,*').frame('$BUT,0,0,*'); // the gun was still on slot 0, despite the phone assumption
   h.frame('$ALCD,0,100,2,0,0,*');
-  assert.equal(h.eng._puHeld?.left, 2, 'a pull on an unconfirmed heavy is not proof that it fired');
+  assert.equal(h.eng.pu.held?.left, 2, 'a pull on an unconfirmed heavy is not proof that it fired');
   assert.equal(h.since(n).filter(f => f === '$AMMO,2,2,0,1,*').length, 2, 'both bounded count repairs were sent');
 });
 
@@ -1208,15 +1209,15 @@ test('F381: a stack keeps four charges when the gun reports its old two after th
   const h = armed(); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
   h.frame('$ALCD,2,100,2,0,0,*'); // a positive read-back confirms the first grant
   h.fire(0, 29, 190); // the first equip was lost; the gun was still on the primary
-  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now());
+  h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now());
   const n = h.mark(); h.adv(E.ACC_ECHO_MS + 100);
   h.frame('$ALCD,2,100,2,0,0,*'); // stack $AMMO was lost: the gun still holds two
-  assert.equal(h.eng._puHeld?.left, 4);
+  assert.equal(h.eng.pu.held?.left, 4);
   assert.ok(h.since(n).includes('$AMMO,2,4,0,1,*'), 'the four charges are re-sent');
-  assert.deepEqual(h.eng._puHeld.back, { slot: 0, mag: 29, res: 190 }, 'the primary shot remains spent');
+  assert.deepEqual(h.eng.pu.held.back, { slot: 0, mag: 29, res: 190 }, 'the primary shot remains spent');
   h.frame('$ALCD,4,100,2,0,0,*'); // the gun confirms all four charges
   for (const left of [3, 2, 1, 0]) { h.adv(3000); h.fire(2, left); }
-  assert.equal(h.eng._puHeld, null, 'four rockets fire before the switch-back');
+  assert.equal(h.eng.pu.held, null, 'four rockets fire before the switch-back');
 });
 
 test('F381: a slot 0 shot after the first grant exposes and repairs an unconfirmed equip', () => {
@@ -1227,7 +1228,7 @@ test('F381: a slot 0 shot after the first grant exposes and repairs an unconfirm
   const n = h.mark(); h.fire(0, 31, 192); // the first primary shot: the gun never switched to slot 2
   assert.ok(logs.some(m => /powerup:.*slot 0.*slot 2/.test(m)), 'the mismatch is visible in the log');
   assert.ok(h.since(n).includes(WEAP[2]), 'the phone retries the first equip');
-  assert.equal(h.eng._puHeld?.left, 2, 'the gun has not fired a rocket');
+  assert.equal(h.eng.pu.held?.left, 2, 'the gun has not fired a rocket');
 });
 
 test('F381 control: an armour readout after the grant leaves slot 2 on the trigger', () => {
@@ -1247,7 +1248,7 @@ test('F381: an intentional ALT shot from slot 0 does not retry the held weapon e
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(h.eng.switchWindowMs() + 50);
   const n = h.mark(); h.fire(0, 29, 190);
   assert.deepEqual(puw(h.since(n)), [], 'the player chose the primary');
-  assert.equal(h.eng._puHeld?.trig, 0);
+  assert.equal(h.eng.pu.held?.trig, 0);
 });
 
 test('F381 polish: the equip repair stays bounded when each re-sent $AMMO echoes the held count back', () => {
@@ -1268,37 +1269,37 @@ test('F381 polish: the empty switch-back hint names the saved secondary, not the
   h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
   h.fire(2, 1); h.adv(300); h.fire(2, 0);
   const ws = h.eng.player.loadout.weapons, row = h.eng.weaponRow(ws[1].weapon_id);
-  assert.equal(h.eng._puHeld, null, 'the rockets are over');
-  assert.equal(h.eng._puBack?.to, (row?.name || String(ws[1].weapon_id).replace(/_/g, ' ')).toUpperCase());
+  assert.equal(h.eng.pu.held, null, 'the rockets are over');
+  assert.equal(h.eng.pu.back?.to, (row?.name || String(ws[1].weapon_id).replace(/_/g, ' ')).toUpperCase());
 });
 
 test('F381 polish r2: a stack above the clip raises the $WEAP clip, so a gun that clamps $AMMO holds all four', () => {
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
-  const n = h.mark(); h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
   const weap = h.since(n).filter(f => f.startsWith('$WEAP,2,'));
   assert.equal(weap.length, 1, `one equip for the stack, no repair loop: ${weap.length}`);
   const t = weap[0].split(',');
   assert.equal(+t[17], 4, 't16 maxClip carries the stacked count');
   assert.equal(+t[40], 4, 't39 clipStartingAmmo carries the stacked count');
   assert.ok(+t[18] >= 4, 't17 maxAmmo is never below the raised clip');
-  assert.equal(h.eng._puHeld?.left, 4);
-  assert.equal(h.eng._puHeld?.repairs || 0, 0, 'the stack spent none of the repair budget');
+  assert.equal(h.eng.pu.held?.left, 4);
+  assert.equal(h.eng.pu.held?.repairs || 0, 0, 'the stack spent none of the repair budget');
 });
 
 test('F381 per-station charges: a smaller pickup never shrinks a held stack, and the cap is the larger item\'s', () => {
   const h = armed({ echo: true });
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 4 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
-  assert.equal(h.eng._puHeld?.left, 4);
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
-  assert.equal(h.eng._puHeld?.left, 5, 'a CHARGES-1 pickup adds one under the CHARGES-4 cap (8), never min(2, 5)');
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 4 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  assert.equal(h.eng.pu.held?.left, 4);
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  assert.equal(h.eng.pu.held?.left, 5, 'a CHARGES-1 pickup adds one under the CHARGES-4 cap (8), never min(2, 5)');
   h.fire(2, 4); h.adv(3000); h.fire(2, 3); h.adv(3000); h.fire(2, 2); h.adv(3000);
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now());
-  assert.equal(h.eng._puHeld?.left, 3, '2 held + 1 = 3');
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now());
+  assert.equal(h.eng.pu.held?.left, 3, '2 held + 1 = 3');
 });
 
 test('F436 reconcile: a heavy on the trigger is re-equipped in the re-arm write, so the first pull after a resume is a rocket', () => {
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
-  assert.equal(h.eng._puHeld?.trig, 2, 'setup: Rockets on the trigger');
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
   const b0 = h.batches.length, logs = []; h.eng.log = m => logs.push(String(m));
   h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.adv(6000);
   const rearm = h.batches.slice(b0).find(b => b.includes('$AMMO,0,32,192,1,*') || b.some(f => /^\$AMMO,0,[1-9]/.test(f)));
@@ -1308,14 +1309,14 @@ test('F436 reconcile: a heavy on the trigger is re-equipped in the re-arm write,
   assert.ok(rearm.findIndex(f => f.startsWith('$AMMO,0,')) < wi, 'the loadout rows go first, the heavy equip last');
   assert.equal(h.eng.activeSlot, 2);
   h.fire(2, 1);
-  assert.equal(h.eng._puHeld?.left, 1, 'the first pull after the resume is a rocket');
+  assert.equal(h.eng.pu.held?.left, 1, 'the first pull after the resume is a rocket');
   assert.ok(!logs.some(m => /gun fired slot 0 while/.test(m)), 'the slot-0 backstop never ran');
 });
 
 test('F436 reconcile control: a heavy held OFF the trigger is not re-equipped by the re-arm', () => {
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
   h.select(); h.adv(h.eng.switchWindowMs() + 300);
-  assert.equal(h.eng._puHeld?.trig, 0, 'setup: SELECT put the loadout weapon back');
+  assert.equal(h.eng.pu.held?.trig, 0, 'setup: SELECT put the loadout weapon back');
   const b0 = h.batches.length;
   h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.adv(6000);
   const after = h.batches.slice(b0).flat();
@@ -1366,28 +1367,28 @@ test('bench 2026-10-02 CONTROL: the cue stays off a pickup slot the player does 
 test('F436: an equip before the first trigger pull of the life is logged as unconfirmed; one after a pull is not', () => {
   const h = harness(ROCKET_GAME); h.at(121); const logs = []; h.eng.log = m => logs.push(String(m));
   h.take(4);
-  assert.equal(h.eng._puHeld?.unconfirmed, true, 'no pull since the spawn: the gun may ignore the slot change');
+  assert.equal(h.eng.pu.held?.unconfirmed, true, 'no pull since the spawn: the gun may ignore the slot change');
   assert.ok(logs.some(m => /before the first trigger pull of this life: unconfirmed \(F436\)/.test(m)));
   const g = armed(); const glogs = []; g.eng.log = m => glogs.push(String(m));   // armed() fires two rounds this life
   g.take(4);
-  assert.ok(!g.eng._puHeld?.unconfirmed, 'a pull this life: the equip takes (bench 4/4 + 9/9)');
+  assert.ok(!g.eng.pu.held?.unconfirmed, 'a pull this life: the equip takes (bench 4/4 + 9/9)');
   assert.ok(!glogs.some(m => /unconfirmed \(F436\)/.test(m)));
 });
 
 test('pickup at the stack cap: the player does not claim, so the station keeps the item (bench 2026-10-02, ROBP1)', () => {
   const h = armed({ echo: true });
-  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
-  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
-  assert.equal(h.eng._puHeld?.left, 4, 'setup: Rockets at the cap (2 x 2)');
-  const item = h.eng._puItems()[4];
+  h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  assert.equal(h.eng.pu.held?.left, 4, 'setup: Rockets at the cap (2 x 2)');
+  const item = h.eng.pu.items()[4];
   assert.ok(item && item.weapon_id === 'rocket_launcher', 'setup: station 4 holds Rockets');
-  assert.equal(h.eng._puClaimable(4, item, h.eng.now()), false, 'at the cap: no claim, no claim_ready');
+  assert.equal(h.eng.pu.claimable(4, item, h.eng.now()), false, 'at the cap: no claim, no claim_ready');
   h.fire(2, 3); h.adv(3000);
-  assert.equal(h.eng._puClaimable(4, item, h.eng.now()), h.eng._puClaimable(4, { ...item, weapon_id: 'nope' }, h.eng.now()), 'one rocket fired: the cap no longer blocks the claim');
+  assert.equal(h.eng.pu.claimable(4, item, h.eng.now()), h.eng.pu.claimable(4, { ...item, weapon_id: 'nope' }, h.eng.now()), 'one rocket fired: the cap no longer blocks the claim');
 });
 
 // Tony, 2026-10-02: "any hud alerts a down player doesnt get tho". The "<ITEM> AVAILABLE" feed row that lands while I
-// am DOWN is dropped, during and after the respawn (engine.js `_laneWrite`).
+// am DOWN is dropped, during and after the respawn (engine.js `show`).
 test('down: <ITEM> AVAILABLE while I am down is never drawn, during or after the respawn', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: OVERSHIELD }] });
   h.at(58); h.die(); h.adv(300);
@@ -1409,13 +1410,13 @@ const openCheck = e => { const now = e.now(); e._spawnCheck = { life: e._lifeSeq
 
 test('F416 r4: a queried $LCD on the switch-back slot while a heavy is held is a match, never a whole re-send', () => {
   const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away();
-  assert.equal(h.eng._puHeld?.slot, 2, 'setup: Rockets held'); assert.equal(h.eng.activeSlot, 2, 'setup: on the trigger');
+  assert.equal(h.eng.pu.held?.slot, 2, 'setup: Rockets held'); assert.equal(h.eng.activeSlot, 2, 'setup: on the trigger');
   openCheck(h.eng); const n = h.mark();
   h.frame('$LCD,45,70,0,0,32,192,*');   // the gun still on slot 0 (F436: the equip waits for the first pull)
   const after = h.since(n);
   assert.ok(!after.some(f => f.startsWith('$SPAWN')), `no $SPAWN over a held heavy: ${JSON.stringify(after)}`);
   assert.ok(!after.includes('$AMMO,2,0,0,1,*'), 'the heavy is not emptied');
-  assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives');
+  assert.equal(h.eng.pu.held?.left, 2, 'the heavy survives');
   assert.equal(h.eng._spawnCheck, null, 'the check closes on the held or switch-back slot');
 });
 
@@ -1428,12 +1429,12 @@ test('F416 r2: a real mismatch while a heavy is held re-sends the whole burst wi
   assert.ok(!after.includes('$AMMO,2,0,0,1,*'), `the burst carries the charges, never the zero: ${JSON.stringify(after)}`);
   const wi = after.indexOf(WEAP[2]);
   assert.ok(wi > sp && after.indexOf('$AMMO,2,2,0,1,*', wi) > wi, `the heavy is re-equipped behind the burst: ${JSON.stringify(after)}`);
-  assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives');
+  assert.equal(h.eng.pu.held?.left, 2, 'the heavy survives');
 });
 
 test('F416 r2: a lost self-hit revive with Rockets on the trigger is re-sent whole, and the player keeps the heavy', async () => {
   const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away(); h.adv(800);
-  assert.equal(h.eng._puHeld?.trig, 2, 'setup: Rockets on the trigger');
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
   const n = h.mark(), spawns = () => h.since(n).filter(f => f.startsWith('$SPAWN')).length;
   h.gunHp = () => spawns() >= 2 ? '$HP,45,70,0,*' : '$HP,0,0,0,*';   // dead until a re-send lands (the pre-hit pools were full)
   h.failNext(fr => fr.some(f => f.startsWith('$SPAWN')));
@@ -1443,7 +1444,7 @@ test('F416 r2: a lost self-hit revive with Rockets on the trigger is re-sent who
   const after = h.since(n);
   assert.ok(spawns() >= 2, `the lost revive is re-sent whole: ${spawns()} $SPAWN`);
   assert.equal(h.eng.alive, true, 'no self-inflicted death');
-  assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives');
+  assert.equal(h.eng.pu.held?.left, 2, 'the heavy survives');
   assert.ok(!after.includes('$AMMO,2,0,0,1,*'), 'no burst empties the heavy');
   const second = after.indexOf('$SPAWN,,*', after.indexOf('$SPAWN,,*') + 1);
   assert.ok(after.indexOf(WEAP[2], second) > second, `the heavy is re-equipped behind the re-send: ${JSON.stringify(after.slice(second))}`);
@@ -1455,13 +1456,13 @@ const SELF_HIT = '$HIR,4,0,7,1,45,0,3,*';   // shooter id 7 = this player
 
 test('F438 r4: a lethal self-hit keeps the held heavy and puts it back on the trigger behind the revive', () => {
   const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away(); h.adv(800);
-  assert.equal(h.eng._puHeld?.trig, 2, 'setup: Rockets on the trigger');
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
   const n = h.mark();
   h.frame(SELF_HIT).frame('$HP,0,0,0,*');
   const after = h.since(n), sp = after.findIndex(f => f.startsWith('$SPAWN'));
   assert.ok(sp >= 0, `setup: the self-hit revive went out: ${JSON.stringify(after)}`);
   assert.equal(h.eng.alive, true);
-  assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives with its charges');
+  assert.equal(h.eng.pu.held?.left, 2, 'the heavy survives with its charges');
   assert.ok(!after.includes('$AMMO,2,0,0,1,*'), `the revive never empties the heavy: ${JSON.stringify(after)}`);
   const wi = after.indexOf(WEAP[2]);
   assert.ok(wi > sp && after.indexOf('$AMMO,2,2,0,1,*', wi) > wi, `the heavy is re-equipped behind the burst: ${JSON.stringify(after)}`);
@@ -1473,22 +1474,22 @@ test('F438 r4 + F436: the heavy re-equipped after a self-hit revive is unconfirm
   h.at(121); h.take(4); h.away(); h.adv(800);
   h.pull();   // a pull in the old life: the self-hit revive's new life still owes its own first pull
   h.frame(SELF_HIT).frame('$HP,0,0,0,*');
-  assert.equal(h.eng._puHeld?.unconfirmed, true, 'the gun may ignore the slot change until the first pull after $SPAWN (F436)');
+  assert.equal(h.eng.pu.held?.unconfirmed, true, 'the gun may ignore the slot change until the first pull after $SPAWN (F436)');
   h.adv(E.ACC_ECHO_MS + 100);
   const n = h.mark(); h.fire(0, 31, 192);   // the gun stayed on slot 0 after the revive
   assert.ok(h.since(n).includes(WEAP[2]), `the slot-0 shot re-sends the heavy's equip: ${JSON.stringify(h.since(n))}`);
-  assert.equal(h.eng._puHeld?.left, 2, 'no rocket was fired');
+  assert.equal(h.eng.pu.held?.left, 2, 'no rocket was fired');
 });
 
 test('F438 r4: a lethal self-hit keeps the overshield and re-raises its $PSET shield max behind the revive', () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
   h.at(61); h.take(6); h.frame('$HP,45,70,75,*'); h.away(); h.adv(3000);
-  assert.ok(h.eng._overshield, 'setup: the overshield is up');
+  assert.ok(h.eng.pu.overshield, 'setup: the overshield is up');
   const n = h.mark();
   h.frame(SELF_HIT).frame('$HP,0,0,0,*');
   const after = h.since(n), sp = after.findIndex(f => f.startsWith('$SPAWN'));
   assert.ok(sp >= 0, 'setup: the self-hit revive went out');
-  assert.ok(h.eng._overshield, 'the overshield survives');
+  assert.ok(h.eng.pu.overshield, 'the overshield survives');
   const raised = after.findIndex((f, i) => i > sp && f.startsWith('$PSET,') && f.split(',')[5] === '75');
   assert.ok(raised > sp, `the raised $PSET follows the burst: ${JSON.stringify(after)}`);
   assert.ok(after.indexOf('$LIFE,45,70,75,2,*', raised) > raised, `then the pools as they were, overshield included: ${JSON.stringify(after)}`);
@@ -1497,7 +1498,7 @@ test('F438 r4: a lethal self-hit keeps the overshield and re-raises its $PSET sh
 
 test('F416 r2: the bench P0 shape on the held slot (slot 2, a magazine that is not the held count) is re-sent, not landed', () => {
   const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away();
-  assert.equal(h.eng._puHeld?.left, 2, 'setup: 2 rockets held');
+  assert.equal(h.eng.pu.held?.left, 2, 'setup: 2 rockets held');
   openCheck(h.eng); const n = h.mark();
   h.frame('$LCD,45,70,0,2,1,1,*');   // slot 2 at 1/1: an unspawned gun on the head's last `$WEAP`
   const after = h.since(n);
@@ -1515,14 +1516,14 @@ test('F416 r2 control: the held slot at the held count is a match', () => {
 
 test('F416 r3: each whole re-send is built from the original burst, so a swapped heavy leaves only the held slot loaded', async () => {
   const h = harness(TWO_HEAVIES); h.at(121); h.take(4); h.away();
-  assert.equal(h.eng._puHeld?.slot, 2, 'setup: Rockets in slot 2');
+  assert.equal(h.eng.pu.held?.slot, 2, 'setup: Rockets in slot 2');
   openCheck(h.eng); const c = h.eng._spawnCheck;
   const bursts = () => h.batches.filter(b => b.some(f => f.startsWith('$SPAWN')));
   const b0 = bursts().length;
   h.frame('$LCD,45,70,0,1,3,24,*');   // mismatch: the first whole re-send
   await tick();
   h.take(5); h.away();                // Rail replaces Rockets
-  assert.equal(h.eng._puHeld?.slot, 3, 'setup: Rail in slot 3');
+  assert.equal(h.eng.pu.held?.slot, 3, 'setup: Rail in slot 3');
   assert.equal(h.eng._spawnCheck, c, 'setup: the same check is still open');
   c.queryAt = h.eng.now(); c.heardAt = 0;
   h.frame('$LCD,45,70,0,1,3,24,*');   // mismatch again: the second whole re-send
@@ -1537,13 +1538,13 @@ test('F416 r3: each whole re-send is built from the original burst, so a swapped
 test('polish 2026-10-03: a self-kill while holding a heavy keeps the heavy on the gun AND in the node, never one without the other', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], echo: true });
   h.at(125); h.take(4); h.adv(500); h.flush();
-  assert.equal(h.eng._puHeld && h.eng._puHeld.slot, 2, 'setup: ROCKETS held in slot 2');
+  assert.equal(h.eng.pu.held && h.eng.pu.held.slot, 2, 'setup: ROCKETS held in slot 2');
   h.adv(1500);
   const n = h.mark();
   h.eng.feedFrame('$HIR,4,0,7,1,9,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*');
   assert.equal(h.eng.alive, true, 'setup: a self-kill revives');
   const ammo2 = h.since(n).filter(f => f.startsWith('$AMMO,2,'));
-  const held = h.eng._puHeld;
+  const held = h.eng.pu.held;
   assert.ok(held && held.slot === 2 && held.left > 0, `the node still holds the heavy: ${JSON.stringify(held)}`);
   assert.ok(ammo2.length && ammo2.every(f => f === `$AMMO,2,${held.left},0,1,*`), `the gun gets the held charges, never the zero: ${ammo2.join(' ')}`);
 });

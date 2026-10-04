@@ -84,6 +84,39 @@ def _wait_file(file: Path, timeout: float = 3):
     raise AssertionError(f"expected file {file}")
 
 
+@_temporary_path
+def test_late_lease_is_nonblocking_and_respects_waiting_jobs(tmp_path):
+    needs(NODE, "node")
+    script = f"""
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const dir = {json.dumps(str(tmp_path / 'pool'))};
+      let available = 100000;
+      const pool = createPool({{ dir, poolMb: 1000, reserveMb: 0, poolCores: 4,
+        readAvailableMb: () => available }});
+      const first = await pool.acquire({{ runId: 'one', job: 'screens', mb: 700, cores: 1 }});
+      const request = {{ runId: 'one', job: 'screens-extra', mb: 240, cores: 1 }};
+      available = 900;
+      if (pool.tryAcquire(request) !== null) throw new Error('pool ignored available memory');
+      available = 100000;
+      const extra = pool.tryAcquire(request);
+      if (!extra || extra.mb !== 240) throw new Error('extra shard was not admitted');
+      if (pool.tryAcquire(request) !== null) throw new Error('pool admitted beyond capacity');
+      extra.release();
+      const ticket = path.join(dir, '000000000000001-waiter.ticket');
+      fs.writeFileSync(ticket, JSON.stringify({{ pid: process.pid, heartbeat: Date.now() }}));
+      if (pool.tryAcquire(request) !== null) throw new Error('late shard bypassed a waiting job');
+      fs.rmSync(ticket);
+      if (!pool.tryAcquire(request)) throw new Error('late shard did not retry after capacity returned');
+      first.release();
+      pool.close();
+    """
+    result = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=REPO,
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+
+
 def _age(file: Path, seconds: int = 11):
     old = time.time() - seconds
     os.utime(file, (old, old))

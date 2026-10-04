@@ -13,7 +13,7 @@ import subprocess
 REPO = pathlib.Path(__file__).resolve().parents[2]
 NODE = "node"
 TOPS = ("app", "webapp", "mcp", "site", "docs", "protocol", "hardware", "scripts", ".github", ".claude")
-LITERAL_PATH = re.compile(r"['\"`](?:\.\./)*((?:" + "|".join(re.escape(x) for x in TOPS) + r")/[A-Za-z0-9_./@+-]+)")
+LITERAL_PATH = re.compile(r"['\"`]((?:\.\./)*)((?:" + "|".join(re.escape(x) for x in TOPS) + r")/[A-Za-z0-9_./@+-]+)")
 ROOT_JOIN = re.compile(r"(?:path\.)?(?:join|resolve)\(\s*(?:ROOT|root|REPO|repo)\s*,\s*['\"`]((?:" + "|".join(re.escape(x) for x in TOPS) + r"))['\"`]")
 IMPORT = re.compile(r"(?:from\s*|import\s*\(|require\s*\()['\"]([^'\"]+)['\"]\)?")
 
@@ -76,6 +76,53 @@ def _files(start):
     return seen
 
 
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+_LINE_COMMENT = re.compile(r"(?<![:'\"`\\])//[^\n]*")
+
+
+def _code_only(file: pathlib.Path, text: str) -> str:
+    """The text with comments and docstrings removed: a path named in prose is not a read."""
+    if file.suffix == ".py":
+        import ast
+        import io
+        import tokenize
+        drop = set()
+        try:
+            for node in ast.walk(ast.parse(text)):
+                body = getattr(node, "body", None)
+                if isinstance(body, list) and body and isinstance(body[0], ast.Expr) \
+                        and isinstance(getattr(body[0], "value", None), ast.Constant) and isinstance(body[0].value.value, str):
+                    drop.update(range(body[0].lineno, body[0].end_lineno + 1))
+            out = []
+            for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+                if tok.type == tokenize.COMMENT or tok.start[0] in drop:
+                    continue
+                out.append(tok.string)
+            return " ".join(out)
+        except (SyntaxError, tokenize.TokenError):
+            return text
+    if file.suffix in {".js", ".mjs", ".cjs", ".ts", ".tsx"}:
+        return _LINE_COMMENT.sub("", _BLOCK_COMMENT.sub("", text))
+    return text
+
+
+PACKAGES = ("webapp/mc", "app", "site", "mcp")
+
+
+def _candidates(file: pathlib.Path, up: str, rest: str) -> list[str]:
+    """Every repo path a literal could mean: repo-relative, relative to the citing file, and relative to the file's
+    package root (a test's cwd, or a ROOT joined onto a bare 'scripts/x'). A static approximation: a literal is a
+    finding only when NO candidate is declared."""
+    rel = file.relative_to(REPO).as_posix()
+    bases = [REPO, file.parent] + [REPO / p for p in PACKAGES if rel.startswith(p + "/")]
+    out = [] if up else [rest]
+    for base in bases:
+        target = (base / (up + rest)).resolve()
+        if target.is_relative_to(REPO):
+            out.append(target.relative_to(REPO).as_posix())
+    return out
+
+
 def _covers(declarations, path):
     return any(d == "." or path == d or (d.endswith("/") and path.startswith(d)) for d in declarations)
 
@@ -95,11 +142,14 @@ def test_obvious_repo_paths_in_entry_files_are_declared():
                 text = file.read_text(encoding="utf-8")
             except (OSError, UnicodeError):
                 continue
-            obvious = LITERAL_PATH.findall(text) + [top + "/" for top in ROOT_JOIN.findall(text)]
-            for path in obvious:
-                # A known top directory followed by a slash denotes a repo-relative path.
-                if not _covers(declarations, path):
-                    findings.append(f"{job}: {file.relative_to(REPO)} refers to {path}")
+            text = _code_only(file, text)
+            for up, rest in LITERAL_PATH.findall(text):
+                options = _candidates(file, up, rest)
+                if options and not any(_covers(declarations, o) for o in options):
+                    findings.append(f"{job}: {file.relative_to(REPO)} refers to {options[0]}")
+            for top in ROOT_JOIN.findall(text):
+                if not _covers(declarations, top + "/"):
+                    findings.append(f"{job}: {file.relative_to(REPO)} joins {top}/")
     assert not findings, "static approximation found paths outside declared inputs:\n  " + "\n  ".join(findings)
 
 
@@ -124,3 +174,17 @@ def test_missing_cross_tree_inputs_are_explicit_regressions():
         for path in paths:
             assert _covers(inputs[job], path), f"{job} omits {path}"
             assert not _covers([d for d in inputs[job] if not _covers([d], path)], path)
+
+
+def test_comments_and_docstrings_are_not_reads():
+    js = _code_only(pathlib.Path("x.mjs"), "/* see 'docs/a.md' */\n// 'app/src/b.js'\nconst u = 'http://x';\nread('mcp/c.json');")
+    assert [r for _, r in LITERAL_PATH.findall(js)] == ["mcp/c.json"], js
+    py = _code_only(pathlib.Path("x.py"), '"""Reads `docs/a.md`."""\n# \'app/b.js\'\nopen("mcp/c.json")\n')
+    assert [r for _, r in LITERAL_PATH.findall(py)] == ["mcp/c.json"], py
+
+
+def test_a_literal_is_read_against_every_plausible_base():
+    assert "app/scripts/build.mjs" in _candidates(REPO / "app/test/x.test.mjs", "../", "scripts/build.mjs")
+    assert "app/scripts/build.mjs" in _candidates(REPO / "app/test/x.test.mjs", "", "scripts/build.mjs")
+    assert "mcp/brx_mcp/mc/api.py" in _candidates(REPO / "webapp/mc/test/c.test.ts", "../../", "mcp/brx_mcp/mc/api.py")
+    assert _candidates(REPO / "app/tools/e2e.mjs", "", "app/www/app.js")[0] == "app/www/app.js"

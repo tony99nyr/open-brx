@@ -60,13 +60,13 @@ export const FIELDS = {
   poison: (e, s) => (s.poison ? { ticks: s.poison.ticks, perTick: s.poison.perTick } : null),
   // the held heavy: the HUD view plus the engine's own record (`trig`: the trigger slot it believes; `suspect`/`unconfirmed`:
   // F436's doubts about the gun having taken the equip; `base`: the charges one item gives)
-  held: (e, s) => { const h = s.powerup && s.powerup.held, r = e._puHeld;
+  held: (e, s) => { const h = s.powerup && s.powerup.held, r = e.pu.held;
     return h ? { weapon_id: h.weapon_id, slot: h.slot, left: h.left, charges: h.charges, active: h.active, back: h.back,
       base: r ? r.base : null, trig: r ? r.trig : null, suspect: !!(r && r.suspect), unconfirmed: !!(r && r.unconfirmed) } : null; },
   // every other powerup surface: the HUD cards, the hint, the overshield, the item a death took and the switch-back
   powerup: (e, s) => { const v = s.powerup;
     return { hint: v ? v.hint : null, overshield: v ? v.overshield : null, grant: s.powerupGrant, swap: s.powerupSwap, spawn: s.powerupSpawn,
-      lost: s.puLost, back: e._puBack || null, backPending: e._puBackPending ? { tries: e._puBackPending.tries, equipped: e._puBackPending.equipped } : null }; },
+      lost: s.puLost, back: e.pu.back || null, backPending: e.pu.backPending ? { tries: e.pu.backPending.tries, equipped: e.pu.backPending.equipped } : null }; },
   claim: (e, s) => (s.powerupClaim ? { station: s.powerupClaim.station, ready: s.powerupClaim.ready } : null),
   hill: (e, s) => (s.hill ? { owner: s.hill.owner, contested: !!s.hill.contested, progress: s.hill.progress != null ? s.hill.progress : null } : null),
 };

@@ -5,6 +5,7 @@ import { clearNotice, useNotice } from '../notice';
 import { F, T } from '../tokens';
 import { HazardButton, GhostButton, InfoIcon } from '../ui';
 import { ReportPanel } from '../ui/ReportPanel';
+import { ServerFailures } from '../ui/ServerFailures';
 import { panicReceipt, splitWarning } from './frameText';
 import { MC_OFFLINE, MC_OLDER, MC_RESTART_CMD, OPERATOR_TOKEN, alertWords, colourOf, glyphed, operatorTokenLine } from '../alerts';
 
@@ -91,6 +92,8 @@ export function CommandBar() {
           <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>SAVED GAMES, PERKS AND LOADOUT RULES ARE UNAVAILABLE UNTIL THEN</span>
         </div>
       )}
+      {/* O7/O8: MC cannot save, its match clock is failing, or its join QR has no address: stands on every screen. */}
+      <ServerFailures />
       {/* A28: a tunnel that dies mid-match is invisible past the ARMORY screen unless it rides in the
           shared frame — every screen reads this, not just the one with the TURN ON/OFF control. The
           ▲ glyph carries the same meaning as the colour, so this still reads on a colour-blind or

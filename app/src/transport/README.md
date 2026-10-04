@@ -24,6 +24,11 @@ probe set), the HUD, BLE plumbing, the §3.10 resync protocol, `match_id`/`arm_s
 `status()`, and running `report('ready', …)`. Storage: `localStorage` (falls back to memory); keys
 `brx.node_id`, `brx.outbox`, `brx.clock`. Tests: `cd app && node --test test/*.test.mjs` (the `MODULE_TYPELESS` warning goes away if `"type": "module"` is added to app/package.json — not done here).
 
+`mclink.js` owns MC address dials, mDNS parsing, and LAN sweep entry points for both phone roles.
+`HUD_POLICY` remembers a user URL at dial time and a discovered URL after bind. It uses proof dials and offers sweep hits.
+`STATION_POLICY` remembers an operator URL at dial time and an auto-discovered URL after welcome.
+It auto-dials sweep hits, subject to the in-play host lock. Each screen supplies its own Transport setup and UI callbacks.
+
 `contract.gen.js` in this folder is **generated, never hand-edit**: `mcp/tools/gen_contract.py` renders
 it from `mcp/brx_mcp/mc/types.py` + `envelope.py` (the wire's constants, kind sets and required-field
 tables), and `mcp/tests/test_contract_generated.py` fails CI when it drifts from the source. Regenerate

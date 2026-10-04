@@ -1740,6 +1740,47 @@ _METHOD = _re.compile(r"^  (?:static\s+)?(?:async\s+)?(?:(?:get|set)\s+)?(?:\*\s
 
 _CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Engine\s*\{", _re.M)
 
+# Engine split (a), 2026-10-04: the relink reconcile moved out of the Engine class into `Reconcile`. The scan reads it too,
+# with an `rc.` prefix so a name the two classes share (`tick`, `clear`) cannot hide behind an Engine or stage method.
+_RECONCILE_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "reconcile.js"
+_RECONCILE_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Reconcile\s*\{", _re.M)
+
+
+def _reconcile_methods() -> set[str]:
+    """`rc.<name>` for every `Reconcile` method and accessor in reconcile.js."""
+    text = _RECONCILE_JS.read_text(encoding="utf-8")
+    decl = _RECONCILE_CLASS_DECL.search(text)
+    assert decl, f"no `class Reconcile {{` declaration found in {_RECONCILE_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[0].end()]
+    names = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS - {"constructor"}
+    assert len(names) >= 5, f"only {len(names)} reconcile.js names parsed: the slice is wrong, not the file"
+    return {f"rc.{n}" for n in names}
+
+
+# Refactor #1 (2026-10-04) moved the powerup code out of the Engine class into `PlayerPowerups`. The scan reads
+# it too, with a `pu.` prefix so a name the two classes share (`tick`, `reset`, `view`) cannot hide behind the other.
+_POWERUP_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "powerup-player.js"
+_POWERUP_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+PlayerPowerups\s*\{", _re.M)
+_POWERUP_FN = _re.compile(r"^export\s+(?:async\s+)?function\s+(\w+)\s*\(", _re.M)
+
+
+def _powerup_methods() -> set[str]:
+    """`pu.<name>` for every `PlayerPowerups` method and every exported function in powerup-player.js."""
+    text = _POWERUP_JS.read_text(encoding="utf-8")
+    decl = _POWERUP_CLASS_DECL.search(text)
+    assert decl, f"no `class PlayerPowerups {{` declaration found in {_POWERUP_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[0].end()]
+    names = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS - {"constructor"}
+    names |= {m.group(1) for m in _POWERUP_FN.finditer(text)}
+    assert len(names) > 30, f"only {len(names)} powerup-player.js names parsed: the slice is wrong, not the file"
+    return {f"pu.{n}" for n in names}
+
 
 def _engine_methods() -> set[str]:
     """Names declared at one indent level inside the Engine class body -- and ONLY the class body.
@@ -1766,7 +1807,7 @@ def _engine_methods() -> set[str]:
         body = body[:closes[0].end()]      # the FIRST column-0 `}` closes THIS class; a later one is the next declaration
     methods = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
     assert methods, f"no methods found inside the Engine class body in {_ENGINE_JS} -- the slice is wrong, not the file"
-    return methods
+    return methods | _reconcile_methods() | _powerup_methods()
 
 
 def _stage_methods() -> set[str]:
@@ -1849,15 +1890,17 @@ KNOWN_UNMIRRORED = {
     # 2026-09-24 (docs/announcer.md): an MC alert or the node's clock warning as one announcer-queue item. The stage has
     # no MC and no HUD; its only announcer lines are the hill callouts, whose queue behaviour alone (the later hill word
     # preempts, the tick waits out the clip) is what `_hill_busy_until` already mirrors.
-    "_announceAlert", "_announceStatus", "_card",
+    "_announceAlert", "_announceStatus",
     # 2026-09-24 (docs/announcer.md, "The three lanes"): the HUD's alert lanes, written as each event arrives. Presentation
     # only: they write no gun frame, say no line and move no score, and the stage has no HUD to draw them on.
     "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
     # 2026-09-26 (F400 final): the switch card pauses the lanes' clocks. Presentation only, as above.
     "_cardTick", "_switchCardUp", "_lanePaused", "_laneAge", "_lanesShown",
-    # 2026-10-02 (Tony: "any hud alerts a down player doesnt get tho"): the ONE gate every lane write goes through, and its
-    # predicate. Presentation only: it drops a HUD item while down, never a voice line, a gun frame or a score.
-    "_alertsMissed", "_laneWrite",
+    # 2026-10-02 (Tony: "any hud alerts a down player doesnt get tho"), #5 presentation gate (2026-10-04): the ONE gate every
+    # visual channel goes through (the lanes, the announcer's card, the S57 callout, the hill card, the powerup hint, ITEM
+    # LOST), its predicates, and `state().presented`, what the HUD draws. Presentation only: it drops a HUD item while down,
+    # never a voice line, a gun frame or a score, and the stage has no HUD to draw it on.
+    "_alertsMissed", "show", "_presentable", "_presented",
     # 2026-10-02 (Tony): HILL CAPTURE STARTED, the hill badge when any team's capture begins, and the drainer it infers.
     # It writes only that lane badge and a log line: no gun frame, no voice line, no score. Presentation only, as above.
     "_hillBegins", "_hillRival",
@@ -1876,7 +1919,14 @@ KNOWN_UNMIRRORED = {
     # just after a `_spawn`/`_revive` write) against a shooter `latch` the stage has no equivalent of --
     # the bench drives spawn/revive and pool frames deterministically by hand and never races a real echo.
     "_deathPending",
-    "_beginReconcile", "_endReconcile", "_reportPossession", "feedback", "alert", "control", "_cue",
+    "_reportPossession", "feedback", "alert", "control", "_cue",
+    # Engine split (a), 2026-10-04: every `rc.` name is app/src/reconcile.js (`Reconcile`), the relink reconcile (it was
+    # `_beginReconcile`/`_endReconcile` here): its window, begin, end and clock, the F416 spawn-check hold, and the
+    # questions the engine asks it. ONE reason for the group: GunStage has no reconcile at all (its BLE drop only
+    # marks the link down until the next write reconnects; stage.py "no reconcile-on-drop re-arm"), so it has no window
+    # to ask. `reconciling` is the Engine's own view of the same window (a test stages one through its setter).
+    "reconciling", "rc.window", "rc.clear", "rc.active", "rc.ownsRearm", "rc.infersNothing", "rc.disarmed", "rc.outOfBand",
+    "rc.begin", "rc.end", "rc.tick", "rc.holdSpawnCheck",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
@@ -1903,31 +1953,30 @@ KNOWN_UNMIRRORED = {
     "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
-    # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off). PRESENTATION only:
-    # the spawn announcer and the HUD's view (`_puTick`, `powerupView`). GAME STATE, but not portable
-    # yet: the claim, the grant, the end of an item and the overshield all hang off a powerup station's advert (its
-    # median RSSI and its `taker` byte, like `setStations` above) and the MATCH CLOCK's spawn schedule (like `goLiveT`
-    # below), and the stage models neither. The gun-facing writes (`_puGrantWeapon`/`_puGrantShield`/`_puEnd`) are the
-    # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
-    # F425 (2026-09-26): `_puNextInMs` is GONE (the near-station TAKEN/countdown hint it fed is removed from the
-    # HUD), so it is dropped from this list too, not merely unmirrored.
-    "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puMedian", "_puThreshold",
-    "_puStation", "_puObserve", "_puClaimTick",
-    "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puZeroUnpulled", "_puEnd", "_puShieldFrame", "_puDeath",
-    # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
-    # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it
-    # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.
-    "_puHeadWeap", "_puWeapFor", "_puItemCharges", "_puAtCap", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puRearmRows", "_puBackResend", "_puBackTick",
-    # F438 r4: a lethal self-hit keeps the held heavy and re-equips it behind the revive; it hangs off a held item too.
-    "_puSelfHitKeep",
-    # F400 (docs/spec/powerups.md "The switch card"): the pickup-driven weapon-switch card, reusing `switching`'s own
-    # timing and takeover (a `pu` card: no echo confirm, no SELECT or re-send gate, no ALT pointer move). It hangs off
-    # the unmirrored pickup mechanic (`_puEquip`, `_puSelectPressed`, `_puEnd`, above), so it has nothing to mirror onto.
-    "_puSwitchCard",
-    # Tony 2026-09-24, the overshield: the grant burst (spawn protection, the raised `$PSET`, the `$LIFE`), its protection
-    # end, and the `$PSET` restore. They hang off a granted overshield, which only the station grant above creates.
-    "_osPset", "_osProtectFrames", "_osTick", "_osRestore",
-    "powerupView",
+    # A56 (S58, docs/spec/powerups.md), ON by default since F372 (`--no-powerups` turns it off): NO pins here any more.
+    # Refactor #1 (2026-10-04) moved every powerup method (the claim, the grant, the held heavy, the overshield, the
+    # spawn announcer and the HUD's view) out of the Engine class into `PlayerPowerups` (app/src/powerup-player.js),
+    # which this scan does not read. They are no more mirrored than before: the stage still models neither a powerup
+    # station's advert (its median RSSI and `taker` byte) nor the match clock's spawn schedule, and the gun-facing writes
+    # are still the part to port, as a hand-driven stage button, once Sitting A has proved the spare slot. The engine's
+    # side is now only calls into `this.pu` from methods already pinned or mirrored here (`tick`, `_revive`, `_death`,
+    # `rc.end`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
+    # Every `pu.` name below is app/src/powerup-player.js (`PlayerPowerups` + its exported functions). ONE reason for the
+    # whole group: the bench stage has no powerup stations. It models neither a station's advert (median RSSI, `taker`
+    # byte) nor the match clock's spawn schedule. Port them, as a hand-driven stage button, once Sitting A has proved the
+    # spare slot. The engine's own side is only calls into `this.pu` from methods already pinned or mirrored here.
+    "pu._advertOf", "pu._atCap", "pu._backResend", "pu._backTick", "pu._claimTick", "pu._counts", "pu._elapsed",
+    "pu._equip", "pu._headWeap", "pu._itemCharges", "pu._loadoutSlot", "pu._median", "pu._onHeavy",
+    "pu._osProtectFrames", "pu._osRestore", "pu._osTick", "pu._station", "pu._switchCard", "pu._takerCheck",
+    "pu._threshold", "pu._weapFor", "pu.afterRearm", "pu.back", "pu.backPending", "pu.claimView",
+    "pu.claimable", "pu.disarmRows", "pu.end", "pu.grant", "pu.grantShield", "pu.grantWeapon",
+    "pu.heavyMatches", "pu.heavyOnTrigger", "pu.held", "pu.isHeldSlot", "pu.items", "pu.keepHeld",
+    "pu.lostEquip", "pu.onAltPressed", "pu.onAmmo", "pu.onAssumedSwap", "pu.onConfirmedSwap", "pu.onDeath",
+    "pu.onHp", "pu.onRevive", "pu.onReviveStart", "pu.onSelect", "pu.onShieldFrame", "pu.onStations",
+    "pu.overshield", "pu.overshieldPset", "pu.protectUntil", "pu.psetNow", "pu.psetWithShieldMax",
+    "pu.reconcileRearm", "pu.reequipInRearm", "pu.repairLostEquip", "pu.repairUnpulled", "pu.reset",
+    "pu.restore", "pu.restoreRows", "pu.setPset", "pu.snapshot", "pu.spawnCard", "pu.swapCard", "pu.tick",
+    "pu.tickAnnounce", "pu.view", "pu.puSpawnIndex", "pu.puSpawnAt", "pu.burstWithHeld",
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
     # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a
@@ -2063,7 +2112,7 @@ def test_stage_ports_every_engine_method_it_claims():
     unmirrored = _unmirrored()
     new = sorted(unmirrored - KNOWN_UNMIRRORED)
     assert not new, (
-        "new engine.js method(s) with no GunStage counterpart — port them to the stage, or pin them in "
+        "new engine.js or powerup-player.js (`pu.`) method(s) with no GunStage counterpart — port them to the stage, or pin them in "
         "KNOWN_UNMIRRORED with a reason: " + ", ".join(new))
     # A pinned name that no longer turns up unmirrored is EITHER ported to the stage OR gone from
     # engine.js (removed, renamed, or moved out of the class body). Those need opposite follow-ups, and
@@ -2076,7 +2125,7 @@ def test_stage_ports_every_engine_method_it_claims():
     assert not stale, "; ".join(filter(None, [
         ("now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps shrinking: "
          + ", ".join(ported)) if ported else "",
-        ("no longer declared in app/src/engine.js at all (REMOVED or RENAMED, not mirrored) — find the new "
+        ("no longer declared in app/src/engine.js or powerup-player.js at all (REMOVED or RENAMED, not mirrored) — find the new "
          "name and re-pin it, or drop the entry: " + ", ".join(vanished)) if vanished else "",
     ]))
 

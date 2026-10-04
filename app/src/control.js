@@ -40,21 +40,22 @@
 // never in between, which is condition 2 expressed on the wire.
 
 import { TEAM_ANY, PLAYER_STATE } from './beacon.js';
+import { HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
 
 /** Advert byte 10 for kind 5. */
 export const CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 };
 /** Advert byte 9 when nobody owns the point and nobody is advancing on it. */
 export const NEUTRAL = TEAM_ANY;
 /** F82: the tid a NEUTRAL hill broadcasts, so it can never mean a real owner. */
-export const REFUSED_TID = 2;
+export const REFUSED_TID = HILL_REFUSED_TID;
 /** Seconds ONE net player needs for ONE phase (spec §5d.1: `rate = net * 100 / capture_s`). At 10 s a lone
  *  player takes a neutral point in 10 s and steals a held one in 20; two of them halve both. Operator-tunable. */
-export const DEFAULT_CAPTURE_S = 10;
+export const DEFAULT_CAPTURE_S = HILL_CAPTURE_S;
 /** §5d.1: `net` is clamped here so a six-player rush is fast and not instant. Proposed, not measured. */
-export const DEFAULT_NET_CAP = 3;
+export const DEFAULT_NET_CAP = HILL_NET_CAP;
 /** A tick longer than this is a backgrounded phone or a paused debugger, not elapsed play: clamp it so a
  *  station that was asleep does not hand somebody the point on its first tick back. */
-const MAX_STEP_MS = 1000;
+const MAX_STEP_MS = HILL_MAX_STEP_MS;
 
 /** Can this tid own a point at all? 0..3 are the four $TID teams; 4-7 are colours, not teams; 255 is
  *  "any"; and 2 is refused by F82. */
@@ -202,6 +203,9 @@ export class ControlPoint {
       if (this.lead === holder) {                           // BUILD, up to 100
         const step = Math.min(work, 100 - this.progress);
         this.progress += step; work -= step;
+        // F456: inside the capture tolerance IS 100. Otherwise a step that lands a hair under 100 captured the point and
+        // still read `dir` rising (it asks progress < 100) for a tick: the screen showed held + rising, the advert the bit.
+        if (this.progress >= 100 - 1e-9) this.progress = 100;
         if (this.progress >= 100 - 1e-9 && this.owner === NEUTRAL) {
           this.owner = holder; this.capturing = null;
           events.push({ type: 'captured', team: this.owner, from: this.lastOwner });
@@ -212,6 +216,7 @@ export class ControlPoint {
       }
       const step = Math.min(work, this.progress);           // DRAIN, down to 0
       this.progress -= step; work -= step;
+      if (this.progress <= 1e-9) this.progress = 0;           // F456: the same at the bottom (`dir` asks progress > 0)
       if (this.progress > 1e-9) break;
       if (this.owner !== NEUTRAL) {
         // Phase one is over: whoever held it has LOST it, and the point is nobody's.

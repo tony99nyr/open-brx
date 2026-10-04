@@ -834,9 +834,23 @@ export function startDemo({ engine, log }) {
       'live-pu-easy-reload': [[0, () => { ev.powerups(); player.loadout = { ...player.loadout, overrides: { easy_reload: true } }; }], ...live, [2300, () => ev.puAt(4)]],
     };
     const steps = STAGES[stageName];
+    // The shared kit, lobby and live steps are already in each stage's list. Their config and start
+    // runway events count towards the end, even when the stage adds no later step of its own.
+    const scheduledAt = performance.now();
+    const stageApi = { ...ev, stages: Object.keys(STAGES), stage: stageName, fire, hit, reload, lcd,
+      lastScheduledAt: scheduledAt + (steps ? 300 + Math.max(...steps.map(([ms]) => ms)) : 0),
+      settled: !steps, settledAt: steps ? null : scheduledAt };
     if (!steps) log(`stage "${stageName}" unknown — one of: ${Object.keys(STAGES).join(' ')}`, 'le');
-    else { for (const [ms, st] of steps) setTimeout(() => { try { (typeof st === 'string' ? ev[st] : st)(); } catch (e) { log(`stage step failed: ${e && e.message || e}`, 'le'); } }, 300 + ms); log(`stage "${stageName}" — ${steps.length} step(s)`, 'lk'); }
-    return { ...ev, stages: Object.keys(STAGES), stage: stageName, fire, hit, reload, lcd };
+    else {
+      let pending = steps.length;
+      for (const [ms, st] of steps) setTimeout(() => {
+        try { (typeof st === 'string' ? ev[st] : st)(); }
+        catch (e) { log(`stage step failed: ${e && e.message || e}`, 'le'); }
+        finally { if (--pending === 0) { stageApi.settled = true; stageApi.settledAt = performance.now(); } }
+      }, 300 + ms);
+      log(`stage "${stageName}" — ${steps.length} step(s)`, 'lk');
+    }
+    return stageApi;
   }
 
   const t0 = Date.now();

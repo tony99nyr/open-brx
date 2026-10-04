@@ -6,6 +6,7 @@ import type {
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
+import { HOLD_TARGET_MAX_S, STATION_TEAM_ANY, TEAM_KEYS } from '../api/contract.gen';
 import { healthPresetOf, withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
 import { batteryLow } from '../alerts';
@@ -110,8 +111,8 @@ const MOCK_SOURCE_DESC: Record<StationSourceId, string> = {
   phone: 'a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)',
 };
 const MOCK_STATION_SOURCES = STATION_SOURCE_IDS.map(value => ({ value, desc: MOCK_SOURCE_DESC[value] }));
-// Respawn profiles (2026-09-19, mirrors `compile.TIMED_PROTECT_S_OPTIONS` / `WEAPON_DELAY_MS_OPTIONS` /
-// `STATION_PROTECT_S_OPTIONS`: `TimedProtectS`/`WeaponDelayMs`/`StationProtectS`'s `get_args()` on the
+// Respawn profiles (2026-09-19, mirrors `configcheck.respawn_profile_options`:
+// `TimedProtectS`/`WeaponDelayMs`/`StationProtectS`'s `get_args()` on the
 // server; those are TYPE aliases here, so the option lists are hand-kept in step with them).
 const TIMED_PROTECT_S_OPTIONS = [0, 1, 2] as const;
 const WEAPON_DELAY_MS_OPTIONS = [500, 1000, 3000] as const;
@@ -218,6 +219,7 @@ export class MockBackend implements Api {
       if (a && fresh && rep.armed === false) attention.push(`PHONE SAYS NOT ARMED: ${STATION_REARM}`);
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
       if (batteryLow(rep.battery)) attention.push('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
+      if (this.demoObs.has('claims')) attention.push('3 CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP\'S PICKUPS FOR STATION #4');   // O10: state.py station_claims_dropped_line
       attention.push(...(st.attention ?? []));   // A58 demo/test seed: STATION #N ... lines
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
         last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo,
@@ -337,6 +339,12 @@ export class MockBackend implements Api {
     if (Object.entries(this.stations).some(([n, s]) => n !== d.node_id && s.assigned?.id === d.id)) return false;
     return !Object.entries(this.stationIdOf).some(([n, i]) => n !== d.node_id && i === d.id);
   }
+  /** O2: `POST /api/armory/corrupt/dismiss`. */
+  async dismissArmoryCorrupt(): Promise<{ ok: boolean; dismissed: boolean }> {
+    const dismissed = this.demoArmoryCorrupt;
+    this.demoArmoryCorrupt = false; this.emit();
+    return { ok: true, dismissed };
+  }
   /** polish r1 M2(b): `DELETE /api/stations/{node_id}/departure`. */
   async dismissDeparture(node_id: string): Promise<{ ok: boolean }> {
     if (!this.departures[node_id]) throw Object.assign(new Error('NO DEPARTED STATION BY THAT ID: REFRESH ITEMS'), { status: 404 });
@@ -426,11 +434,11 @@ export class MockBackend implements Api {
     }
     let team: number;
     if (typeof a.team === 'string') {
-      if (a.team === 'any' || a.team === 'ffa') team = 255;
+      if (a.team === 'any' || a.team === 'ffa') team = STATION_TEAM_ANY;
       else { const t = TEAMS.find(t => t.team_id === a.team); if (!t) throw new Error(`team '${a.team}' is not a team_id in this game (or 'any')`); team = t.tid; }
     } else team = a.team;
-    if (!([0, 1, 2, 3].includes(team) || team === 255)) throw new Error("team must be a $TID 0-3, a team_id, or 'any' (255)");
-    if (a.kind === 'control' && team !== 255) throw new Error("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'");
+    if (!([0, 1, 2, 3].includes(team) || team === STATION_TEAM_ANY)) throw new Error("team must be a $TID 0-3, a team_id, or 'any' (255)");
+    if (a.kind === 'control' && team !== STATION_TEAM_ANY) throw new Error("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'");
     const id = a.id ?? this.autoStationId(node_id);
     if (!Number.isInteger(id) || id < 1 || id > 65535) throw new Error('id must be an integer 1..65535 (the station id in the advert), or absent for MC to assign one');
     const clash = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned?.id === id);
@@ -542,9 +550,14 @@ export class MockBackend implements Api {
    *  advertised address is already correct, so the CommandBar's reachability banner must be visible
    *  without a real WSL host to boot MC on. Wording mirrors `netinfo.WSL_UNREACHABLE_WARNING` server-side
    *  (kept in sync by hand -- there is no shared string across the Python/TS boundary). */
+  private demoArmoryCorrupt = typeof location !== 'undefined' && new URLSearchParams(location.search).get('armorycorrupt') === '1';
   private demoLanWarning = typeof location !== 'undefined' && new URLSearchParams(location.search).get('lanwarn') === '1';
   /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
    *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
+  /** `?mock&obs=store,archive,snapshot,tick,join,outbox,claims` (O6/O7/O8/O10): each names one failure MC reports on the
+   *  snapshot, mirroring state.py `snapshot()` (per match: `outbox_lost`/`claims_dropped` are "lost THIS match") (`not_saving`, `ticker_failing`, `join_error`, `NodeView.outbox_lost`,
+   *  and the station line `station_claims_dropped_line`). Absent = a healthy MC, the default demo. */
+  private demoObs = new Set((typeof location !== 'undefined' ? new URLSearchParams(location.search).get('obs') ?? '' : '').split(',').filter(Boolean));
   private demoRestored = typeof location !== 'undefined' && new URLSearchParams(location.search).get('restored') === '1';
   // The delay before the mock re-acks a re-pushed config (see `putConfig`). A test can make it longer,
   // so that a slow machine still reads the transitional "re-pushing" state before the acks return.
@@ -781,6 +794,7 @@ export class MockBackend implements Api {
       // battery, so the extra advisory perturbs no other card's status); every other linked phone has
       // held its link past the 10 s a headless gun cannot survive. After the push the echo takes over.
       const flapping = !red && this.demoFlap && sticker === 'GUN-C';
+      if (!red && this.demoObs.has('outbox') && sticker === 'GUN-A') ambers.push("12 FACTS LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER'S RECAP BY HAND");   // O6: state.py outbox_lost_line
       if (flapping) ambers.push(GUN_FLAPPING_LINE);   // one steady amber, as `state.py readiness()` writes it
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET CONFIRMING (LINK 4 S)');
@@ -902,6 +916,7 @@ export class MockBackend implements Api {
         app_ver: b.app_ver, platform: b.platform,      // A29
         log: this.logFor(`node_${b.tail}`),            // A25
         reach, last_reach: this.lastReach[b.tail], transport,
+        ...(this.demoObs.has('outbox') && b.sticker === 'GUN-A' ? { outbox_lost: 12 } : {}),   // O6
       };
     });
     // F155 pass 1 (2026-09-12): the earlier version of this demo bolted a SECOND, disconnected NodeView
@@ -924,6 +939,8 @@ export class MockBackend implements Api {
         warning: this.demoLanWarning ? WSL_UNREACHABLE_WARNING : null,
       },
       ...(this.restoredFrom ? { restored_from: this.restoredFrom } : {}),
+      // `?mock&armorycorrupt=1` demos the O2 warning.
+      ...(this.demoArmoryCorrupt ? { armory_corrupt: { kept: '/home/op/.brx-mcp/armory.json.bad-20261004T010203', error: 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)' } } : {}),
       coverage: this.coverage(nodes),
       // The demo keeps one off-grid node in the confidence sample so the same MC-gating view is
       // available in ?mock as in the advanced presentation panel.
@@ -987,6 +1004,14 @@ export class MockBackend implements Api {
       recap: this.recap_ ? { ...clone(this.recap_), ...(this.endedAt !== undefined ? { since_end_ms: Math.max(0, now() - this.endedAt) } : {}) } : undefined,
       end_delivery: this.endDelivery(),      // A42
       orphan_match: this.orphanView(),
+      // O7/O8: absent = healthy, as the server omits them
+      ...(this.demoObs.has('store') || this.demoObs.has('archive') || this.demoObs.has('snapshot') ? { not_saving: {
+        ...(this.demoObs.has('store') ? { store: { since: now() - 90_000, count: 41, error: 'OSError: [Errno 28] No space left on device' } } : {}),
+        ...(this.demoObs.has('archive') ? { archive: { since: now() - 60_000, count: 1, error: 'LookupError: store.match_ended: no row for match' } } : {}),
+        ...(this.demoObs.has('snapshot') ? { snapshot: { since: now() - 30_000, count: 15, error: 'OSError: [Errno 28] No space left on device' } } : {}),
+      } } : {}),
+      ...(this.demoObs.has('tick') ? { ticker_failing: { since: now() - 20_000, count: 40, error: 'KeyError: go_live_t' } } : {}),
+      ...(this.demoObs.has('join') ? { join_error: { error: 'RuntimeError: no network interface', ws_url: '' } } : {}),
     };
   }
   /** A42 — did the END reach every player's HUD? Plain `?mock` shows the ordinary answer (all of them
@@ -1464,7 +1489,7 @@ export class MockBackend implements Api {
    *  not this method -- "ok:false changes nothing" (`pick()`'s own rollback) covers them the same way
    *  it already covers `time_limit_s`/`station_source`. */
   private checkTeamsShape(teams: unknown): TeamColour[] {
-    const ALL: TeamColour[] = ['red', 'blue', 'yellow', 'purple'];
+    const ALL: TeamColour[] = [...TEAM_KEYS];
     const validShape = Array.isArray(teams) && teams.length >= 2 && teams.length <= 4
       && teams.every(c => typeof c === 'string' && ALL.includes(c as TeamColour))
       && new Set(teams).size === teams.length;
@@ -1824,7 +1849,7 @@ export class MockBackend implements Api {
     { const hts = this.config.scoring.hold_target_s;
       if (hts != null) {
         if (this.config.mode !== 'koth') errors.push('A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL');
-        else if (!(hts > 0 && hts <= 7200)) errors.push('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET');
+        else if (!(hts > 0 && hts <= HOLD_TARGET_MAX_S)) errors.push('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET');
       } }
     if (this.config.mode === 'ffa') { const t = this.config.teams[0]; if (t) for (const p of this.players) p.team_id = t.team_id; }
     // B3 (2026-09-12, coordinated with the real server's fix): editing a game that had already been

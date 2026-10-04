@@ -51,7 +51,7 @@ export const E2E_SPECS = [
   ['game-edit', 86, 850], ['operator-menu', 24], ['report', 4],
   ['frame', 6, 1050], ['lobby-updating', 3, 1050], ['recap-next', 20, 1050], ['feed-reload', 9, 1050],
   ['mc-restart', 13, 1050], ['live-board', 18, 1050],
-  ['vqa2', 26, 1050], ['play', 45, 1100], ['build', 16, 1050], ['lobby-outcome', 6, 1050],
+  ['vqa2', 26, 1050], ['play', 45, 1100], ['build', 16, 1050], ['lobby-outcome', 6, 1050], ['observability', 25, 1050],
 ];
 const E2E_DEFAULT_MB = 850;
 

@@ -85,6 +85,74 @@ def save_device(address: str, alias: str | None = None,
     REGISTRY_PATH.write_text(json.dumps(registry, indent=2), encoding="utf-8")
 
 
+def atomic_write_text(path: Path, text: str, mode: int | None = None) -> None:
+    """Write `text` to `path` so a crash leaves either the old file or the new one, never a partial one:
+    a uniquely named temp file in the same folder, fsynced, then renamed over the target."""
+    import contextlib, os, tempfile
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        if mode is not None:
+            with contextlib.suppress(OSError):
+                os.chmod(tmp, mode)
+        _replace_with_retry(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+_REPLACE_BUDGET_S = 1.0
+
+
+def _replace_with_retry(src, dst, budget_s: float | None = None) -> None:
+    """os.replace, retried for PermissionError only. On Windows a reader that has `dst` open makes the
+    rename fail with a sharing violation for a moment. Bounded: re-raises once `budget_s` is spent."""
+    import os, time
+    deadline, delay = time.monotonic() + (_REPLACE_BUDGET_S if budget_s is None else budget_s), 0.01
+    while True:
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 0.1)
+
+
+def move_aside_exclusive(path: Path, label: str = "bad", budget_s: float | None = None) -> Path | None:
+    """Move `path` to `<name>.<label>-<UTC stamp with ms>[-N]` without ever overwriting an existing file:
+    the name is reserved with an exclusive create first, then the file is renamed over the placeholder (a
+    rename keeps the file's mode). Returns the new path, or None when the move failed (the original is
+    left where it was)."""
+    import contextlib, os, time
+    ns = time.time_ns()
+    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime(ns // 10**9)) + f"{ns // 10**6 % 1000:03d}"
+    n = 0
+    while True:
+        kept = path.with_name(f"{path.name}.{label}-{stamp}" + (f"-{n}" if n else ""))
+        try:
+            with open(kept, "xb"):
+                pass
+            break
+        except FileExistsError:
+            n += 1
+        except OSError:
+            return None
+    try:
+        _replace_with_retry(path, kept, budget_s)     # same bounded PermissionError retry as atomic_write_text
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(kept)
+        return None
+    return kept
+
+
 def capture_path(label: str) -> Path:
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in label)
     return CAPTURES_DIR / f"{safe}.jsonl"

@@ -168,6 +168,35 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
     try { fs.rmSync(file, { force: true }); } catch { /* already gone */ }
   }
 
+  // Late work must not queue behind a job that already holds memory while waiting for more.
+  // Give existing tickets priority and make the capacity check and lease write atomic.
+  function tryAcquire({ runId, job, mb, cores = 1, size } = {}) {
+    if (closed) return null;
+    return withMutex(() => {
+      if (entries('ticket').length) return null;
+      const leases = entries('lease');
+      const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
+      const usedCores = leases.reduce((sum, item) => sum + item.data.cores, 0);
+      const freeMb = Math.max(0, poolMb - usedMb);
+      const freeCores = Math.max(0, poolCores - usedCores);
+      const unused = leases.reduce((sum, item) => sum + Math.max(0, item.data.mb - (item.data.pss || 0)), 0);
+      const availableMb = Math.max(0, readAvailableMb() - reserveMb - unused);
+      const request = size ? size({ freeMb: Math.min(freeMb, availableMb), freeCores, usedMb, usedCores }) : { mb, cores };
+      if (!request || !Number.isFinite(request.mb) || !Number.isFinite(request.cores) ||
+          request.mb <= 0 || request.cores <= 0) throw new Error(`invalid pool request for ${job}`);
+      if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores) return null;
+      const id = `extra-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
+      const file = path.join(dir, `${id}.lease`);
+      const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
+        pss: 0, pgid: null, heartbeat: Date.now() };
+      writeJson(file, record);
+      ownLeases.set(file, record);
+      const update = values => { Object.assign(record, values); record.heartbeat = Date.now(); writeJson(file, record); };
+      return { ...record, file, setPgid: pgid => update({ pgid }), setPss: pss => update({ pss }),
+        release: () => releaseFile(file) };
+    });
+  }
+
   async function acquire({ runId, job, mb, cores, size, onTicket } = {}) {
     if (closed) throw new Error('test pool is closed');
     let id, ticket, ticketRecord;
@@ -249,5 +278,5 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
     clearInterval(heartbeat);
     for (const file of [...ownTickets.keys(), ...ownLeases.keys()]) releaseFile(file);
   }
-  return { acquire, close };
+  return { acquire, tryAcquire, close };
 }
