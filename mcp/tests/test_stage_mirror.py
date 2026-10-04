@@ -1740,6 +1740,26 @@ _METHOD = _re.compile(r"^  (?:static\s+)?(?:async\s+)?(?:(?:get|set)\s+)?(?:\*\s
 
 _CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Engine\s*\{", _re.M)
 
+# Engine split (a), 2026-10-04: the relink reconcile moved out of the Engine class into `Reconcile`. The scan reads it too,
+# with an `rc.` prefix so a name the two classes share (`tick`, `clear`) cannot hide behind an Engine or stage method.
+_RECONCILE_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "reconcile.js"
+_RECONCILE_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Reconcile\s*\{", _re.M)
+
+
+def _reconcile_methods() -> set[str]:
+    """`rc.<name>` for every `Reconcile` method and accessor in reconcile.js."""
+    text = _RECONCILE_JS.read_text(encoding="utf-8")
+    decl = _RECONCILE_CLASS_DECL.search(text)
+    assert decl, f"no `class Reconcile {{` declaration found in {_RECONCILE_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[0].end()]
+    names = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS - {"constructor"}
+    assert len(names) >= 5, f"only {len(names)} reconcile.js names parsed: the slice is wrong, not the file"
+    return {f"rc.{n}" for n in names}
+
+
 # Refactor #1 (2026-10-04) moved the powerup code out of the Engine class into `PlayerPowerups`. The scan reads
 # it too, with a `pu.` prefix so a name the two classes share (`tick`, `reset`, `view`) cannot hide behind the other.
 _POWERUP_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "powerup-player.js"
@@ -1787,7 +1807,7 @@ def _engine_methods() -> set[str]:
         body = body[:closes[0].end()]      # the FIRST column-0 `}` closes THIS class; a later one is the next declaration
     methods = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
     assert methods, f"no methods found inside the Engine class body in {_ENGINE_JS} -- the slice is wrong, not the file"
-    return methods | _powerup_methods()
+    return methods | _reconcile_methods() | _powerup_methods()
 
 
 def _stage_methods() -> set[str]:
@@ -1899,7 +1919,14 @@ KNOWN_UNMIRRORED = {
     # just after a `_spawn`/`_revive` write) against a shooter `latch` the stage has no equivalent of --
     # the bench drives spawn/revive and pool frames deterministically by hand and never races a real echo.
     "_deathPending",
-    "_beginReconcile", "_endReconcile", "_reportPossession", "feedback", "alert", "control", "_cue",
+    "_reportPossession", "feedback", "alert", "control", "_cue",
+    # Engine split (a), 2026-10-04: every `rc.` name is app/src/reconcile.js (`Reconcile`), the relink reconcile (it was
+    # `_beginReconcile`/`_endReconcile` here): its window, begin, end and clock, the F416 spawn-check hold, and the
+    # questions the engine asks it. ONE reason for the group: GunStage has no reconcile at all (its BLE drop only
+    # marks the link down until the next write reconnects; stage.py "no reconcile-on-drop re-arm"), so it has no window
+    # to ask. `reconciling` is the Engine's own view of the same window (a test stages one through its setter).
+    "reconciling", "rc.window", "rc.clear", "rc.active", "rc.ownsRearm", "rc.infersNothing", "rc.disarmed", "rc.outOfBand",
+    "rc.begin", "rc.end", "rc.tick", "rc.holdSpawnCheck",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
@@ -1933,7 +1960,7 @@ KNOWN_UNMIRRORED = {
     # station's advert (its median RSSI and `taker` byte) nor the match clock's spawn schedule, and the gun-facing writes
     # are still the part to port, as a hand-driven stage button, once Sitting A has proved the spare slot. The engine's
     # side is now only calls into `this.pu` from methods already pinned or mirrored here (`tick`, `_revive`, `_death`,
-    # `_endReconcile`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
+    # `rc.end`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
     # Every `pu.` name below is app/src/powerup-player.js (`PlayerPowerups` + its exported functions). ONE reason for the
     # whole group: the bench stage has no powerup stations. It models neither a station's advert (median RSSI, `taker`
     # byte) nor the match clock's spawn schedule. Port them, as a hand-driven stage button, once Sitting A has proved the

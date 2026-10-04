@@ -372,7 +372,7 @@ test('S29: the heartbeat follows the POOL, not the break -- a shield part way ba
 
 test('S29: a relink does not announce a break that happened while the node was away', () => {
   const h = shielded();
-  h.eng.reconciling = { at: h.eng.now() };      // §3.10: the node infers nothing in this window
+  h.eng.reconciling = { since: h.eng.now(), ammo: {} };   // §3.10: the node infers nothing in this window
   h.f('$HP,30,0,0,*');                          // the gun's first word back, reporting a shield long gone
   assert.equal(h.count(DOWN), 0, 'a reconcile frame is the gun catching us up, not a break happening now');
 });
