@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CONFIG_ERRORS_ALERT_ID } from '../api/derive';
+import { HOLD_TARGET_MAX_S, TIME_LIMIT_MAX_S } from '../api/contract.gen';
 import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind, TeamColour } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
@@ -44,7 +45,7 @@ const PICKER_ORDER: Exclude<PieceKind, 'gameplay'>[] = ['mode', 'life', 'spawn',
 
 const TIME_QUICK_MIN = [5, 10, 15, 20, 30];
 // VQA QA-08: the server's own cap on a match's time limit (2 hours) — the stepper never sends past it.
-const TIME_MAX_MIN = 120;
+const TIME_MAX_MIN = TIME_LIMIT_MAX_S / 60;
 const KILLS_QUICK = [0, 10, 15, 25, 50, 100];   // 0 = NO KILL LIMIT
 const COUNTDOWN_QUICK = [10, 30, 60];
 
@@ -792,7 +793,7 @@ function ColourChooser({ slot, value, offered, teams, onChange }:
  *  up from NO TARGET starts a fresh target at 1 MIN. */
 // Low (b), review e8811fea: the server's own ceiling is 1s..2:00:00 (checkHoldTargetShape's own sibling
 // check in mock/backend.ts) -- the stepper must not invite a value it would only send back refused.
-const HOLD_MAX_S = 7200;
+const HOLD_MAX_S = HOLD_TARGET_MAX_S;
 
 function HoldControl({ seconds, onChange }: { seconds: number | null; onChange: (s: number | null) => void }) {
   const step = (dir: 1 | -1) => { const next = (seconds ?? 0) + dir * 60; onChange(next <= 0 ? null : Math.min(next, HOLD_MAX_S)); };

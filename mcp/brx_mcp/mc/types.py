@@ -574,17 +574,68 @@ STATION_KINDS = get_args(StationKind)
 
 def is_station_kind(value: object) -> TypeGuard[StationKind]:
     return value in STATION_KINDS
-# F345: a phone station's own threshold defaults (app/src/beacon.js RESPAWN_RSSI_DBM.phone, STATION_THRESHOLD_DBM),
-# sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP (which clamps 0 to -30 dBm).
-PHONE_RESPAWN_THRESHOLD_DBM = -70
-PHONE_STATION_THRESHOLD_DBM = -74
-PHONE_POWERUP_THRESHOLD_DBM = -55   # S58: a powerup station's ~1 ft claim range (placeholder until bench 4.11)
-# F383: the hill's own default, -75 dBm, with the exit band EXIT_BAND_DB (app/src/beacon.js), on every path, until the outdoor walk measures a real
-# one (Tony, 2026-09-27). app/src/beacon.js CONTROL_RSSI_DBM.phone; the Stick's copy is
-# hardware/m5sticks3/station_range.h STICK_HILL_DEFAULT_THRESHOLD_DBM.
-PHONE_CONTROL_THRESHOLD_DBM = -75
+# A6 (architecture review #4, 2026-10-04): the ONE table of station presence defaults, per platform and kind. A station
+# whose `station_config.threshold` is 0 measures (and advertises in byte 14) its platform's value here. Generated into
+# contract.gen.ts/.js and hardware/m5sticks3/contract.gen.h, so the phone (beacon.js), the console (Items.tsx), the
+# Stick (station_range.h) and MC (`_wire_threshold`) all read this one copy.
+#   phone respawn -70: Tony 2026-09-24, walked at 3-5 m. phone powerup -55: S58, about 30 cm, a placeholder until
+#   bench 4.11. phone control -75: F383, Tony 2026-09-27, until the outdoor walk. Any other phone kind -74.
+#   sticks3 respawn -57: Tony 2026-09-24 ("the stick actually works better"). sticks3 powerup -45: F434, Tony
+#   2026-09-28, about 30 cm. sticks3 control -75: UNPROVEN, Sitting B 2026-09-25, a 5-7 m target. Any other Stick
+#   kind takes the Stick respawn value.
+STATION_DEFAULT_THRESHOLD_DBM = {
+    "phone": {"respawn": -70, "powerup": -55, "extraction": -74, "bomb": -74, "control": -75},
+    "sticks3": {"respawn": -57, "powerup": -45, "extraction": -57, "bomb": -57, "control": -75},
+}
+# A defaulted Stick HILL advertises -57 in byte 14 (the value the Stick advertised before the hill had its own default:
+# Tony's Stick respawn walk, 2026-09-24), while the Stick itself measures players at
+# STATION_DEFAULT_THRESHOLD_DBM["sticks3"]["control"]. Its own constant, so retuning the Stick respawn does not move it.
+STICK_HILL_ADVERT_THRESHOLD_DBM = -57
+# F345: a phone station's defaults, sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP
+# (which clamps 0 to -30 dBm). Read from the table above.
+PHONE_RESPAWN_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["respawn"]
+PHONE_STATION_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["extraction"]
+PHONE_POWERUP_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["powerup"]
+PHONE_CONTROL_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM["phone"]["control"]
 PHONE_THRESHOLD_ZERO_APP = (0, 4, 12)
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
+
+# A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,
+# control.js) and the Stick (hardware/m5sticks3/presence.h) must share. spec/utility.md §5d has the rules.
+PRESENCE_DWELL_MS = 800              # the entry dwell a utility station applies (utility.js DEFAULTS.dwell)
+PRESENCE_EXIT_BAND_DB = 3            # F440: Tony 2026-10-02, the exit level is this far below the threshold
+PRESENCE_EXIT_GRACE_MS = 4000        # F440: leaving needs this long below the exit level (body shadowing, 2-5 s)
+PRESENCE_EXPIRY_MS = 4000            # a player not heard for this long is gone
+PRESENCE_SIGHT_MS = 4000             # a credible sighting counts for this long (= the silence expiry)
+PRESENCE_SIGHT_WINDOW_MS = 2000      # a sighting is the median of the adverts heard in this window
+PRESENCE_SIGHT_RECENT_MAX = 64       # P-L1: the most adverts the sighting window keeps
+PRESENCE_ALPHA = 0.35                # the RSSI EMA weight
+PRESENCE_MEDIAN_SAMPLES = 3          # the raw-sample median before the EMA
+REVIVE_MARGIN_DB = 10                # F344
+STATION_TICK_MS = 250                # a station's presence tick
+HILL_CAPTURE_S = 10                  # control.js DEFAULT_CAPTURE_S
+HILL_NET_CAP = 3                     # control.js DEFAULT_NET_CAP: the most a net difference counts for
+HILL_MAX_STEP_MS = 1000              # control.js: the longest step one tick may advance the hill
+HILL_REFUSED_TID = 2                 # F82: control.js REFUSED_TID
+
+# A11 (architecture review #4): the config bounds MC enforces (`Session._merge_config`) and the console steppers stop at.
+TIME_LIMIT_MAX_S = 7200              # time_limit_s 1..this
+RESPAWN_DELAY_MAX_S = 600            # respawn.delay_s 0..this
+HOLD_TARGET_MAX_S = 7200             # mode_params.hold_target_s 1..this
+# S-powerup-overrides (2026-09-28, Tony): ARMORY's per-station powerup override ranges (powerups.py checks them).
+# Tony's own picks, not a protocol limit. 240, not 300: the StickS3 carries spawn_every_s in one byte.
+POWERUP_CHARGES_MIN = 1
+POWERUP_CHARGES_MAX = 4
+POWERUP_AMOUNT_MIN = 25
+POWERUP_AMOUNT_MAX = 150
+POWERUP_AMOUNT_STEP = 25
+POWERUP_SPAWN_EVERY_MIN = 30
+POWERUP_SPAWN_EVERY_MAX = 240
+POWERUP_SPAWN_EVERY_STEP = 30
+
+# A9 (architecture review #4): the $SIR function classes compile.py builds by and the phone's engine reads.
+SIR_NO_POOL_FNS = frozenset({8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})   # registers a $HIR, moves no pool
+SIR_GRANT_FNS = frozenset(range(9, 23))   # heals/armour/shields: a "damage" weapon here HELPS the target
 
 # A67 (F365): a station's advert strength and where its range value came from. "station" = the operator's long-hold
 # edit on the station itself; "mc" = the value MC sent in `station_config`.
@@ -949,6 +1000,19 @@ class GamePiece(TypedDict):
 
 
 TeamColour = Literal["red", "blue", "yellow", "purple"]   # F413: the four native $TID teams (0-3)
+# A1/A12 (architecture review #4): the team vocabulary by $TID (index 0-3), generated for the phone, the console and
+# the Stick. F423: tid 3 is GREEN on the wire (`$TID,3`) but PAINTS and is NAMED purple everywhere a person sees it.
+# The hex values are the --team-* CSS tokens (app/www/index.html, utility.html) and the Stick's screen; the inks are the
+# dark text on them. MC's own console and roster (state.py TEAM_DEFS, webapp/mc/src/tokens.ts TEAM) keep their own
+# palette: red is #ff5252 there, not #f43f5e; blue, yellow and purple match. A change to one is not a change to the other.
+TEAM_KEYS = get_args(TeamColour)
+TEAM_NAMES = ("RED", "BLUE", "YELLOW", "PURPLE")
+TEAM_ABBRS = ("RED", "BLU", "YEL", "PUR")
+TEAM_COLOUR_HEX = ("#f43f5e", "#3a86ff", "#ffd23f", "#bf4ce6")
+TEAM_INK_HEX = ("#1a0404", "#04121e", "#1a1400", "#140a1c")
+# A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag).
+ROLE_LABELS = {"assault": "ASSAULT", "cqb": "CLOSE RANGE", "marksman": "SNIPER", "support": "SUPPORT",
+               "power": "HEAVY", "melee": "MELEE", "sidearm": "SIDEARM"}
 MatchItemKey = Literal["time", "kills", "countdown", "daynight", "silenced", "teams", "hold"]
 
 
@@ -1035,6 +1099,15 @@ class NodeView(TypedDict):
     ammo: NotRequired[int | None]
     alive: NotRequired[bool | None]
     pending: NotRequired[int | None]
+    # O6: facts the phone's outbox dropped from the match in play now (the phone's own per-match count,
+    # `status.outbox_lost.n`, shown only while its `match_id` is the current / resumed / adopted match).
+    # Absent = nothing lost from this match, or an older node.
+    outbox_lost: NotRequired[int]
+    # O10: CLAIM reports a Stick's queue evicted when full since it was armed for THIS game (`status.actions_dropped`,
+    # shown only while `status.actions_dropped_game` is the current game byte). MC never heard who took the item, so the
+    # station's attention line says where to look (the recap's PICKUPS). A Stick has no node card, so the console draws
+    # it on the station card. Absent = none.
+    claims_dropped: NotRequired[int]
     app_ver: NotRequired[str | None]
     platform: NotRequired[str | None]
     log: NotRequired[LogView | None]
@@ -1053,6 +1126,12 @@ class NodeView(TypedDict):
     # F272: the node positively proved that the linked gun stopped answering. Optional and true-only:
     # absence is an older/healthy node, never evidence of a lock-up.
     gun_locked: NotRequired[bool]
+
+
+class OutboxLostReport(TypedDict):
+    """O6: `status.outbox_lost`: how many of match `match_id`'s facts the phone's outbox dropped."""
+    match_id: str
+    n: int
 
 
 class Event(TypedDict, total=False):
@@ -1127,6 +1206,13 @@ class Event(TypedDict, total=False):
     game_byte: int
     synced: bool
     dropped: int
+    # O6: the phone's drop count for the match it is playing now, scoped at the source (a bounded per-match map in its
+    # storage): {match_id, n}. Sent whenever the phone knows its match, 0 included.
+    outbox_lost: OutboxLostReport
+    # O10: a Stick's CLAIM reports evicted from a full queue since it was armed for the game `actions_dropped_game`
+    # (it resets on a new game byte or station; 0 included; `_game` absent while the Stick is not armed).
+    actions_dropped: int
+    actions_dropped_game: int
     preflight: Preflight
     # A37/R2-3: WHERE `hp`/`armor` above came from THIS LIFE. `engine.js` fills them from
     # `config.health` at spawn/revive -- the phone's MODEL of the pool -- and overwrites them with the
@@ -1909,6 +1995,29 @@ class SnapshotFeedRow(TypedDict):
     kind: Literal["kill", "sync", "info", "alert"]
 
 
+class FailureView(TypedDict):
+    """O7/O8: a repeating failure MC counts instead of logging per occurrence. Absent from the snapshot = healthy."""
+    since: int     # MC clock ms of the first failure of this streak
+    count: int     # failures in this streak
+    error: str     # the last error's type and text, cut at 200 characters
+
+
+class NotSavingView(TypedDict, total=False):
+    """O7: which part of MC's persistence is failing. `store` = facts and log rows (a game result can be lost: RED);
+    `archive` = the match start / end rows (RED: the game result; cleared only by a later archive write, and an END that
+    updates 0 rows counts as a failure); `snapshot` = the roster / match file a restart restores (AMBER, RED while a match is in play)."""
+    store: FailureView
+    archive: FailureView
+    snapshot: FailureView
+
+
+class JoinErrorView(TypedDict):
+    """O8: the last `join_info()` call raised. `ws_url` is the node URL the QR still holds: "" when none was ever read,
+    otherwise an EARLIER address that may be out of date. Cleared by the next successful call."""
+    error: str
+    ws_url: str
+
+
 class State(TypedDict):
     """One complete Mission Control snapshot (`GET /api/state` and `/ui-ws`)."""
     session_id: str
@@ -1943,6 +2052,9 @@ class State(TypedDict):
     sync: NotRequired[SyncView]
     options: NotRequired[SessionOptions]
     versions: NotRequired[VersionsView]
+    not_saving: NotRequired[NotSavingView]        # O7: absent = everything MC writes is being kept
+    ticker_failing: NotRequired[FailureView]      # O8: absent = the match tick runs; armed->live / the timed end do not while present
+    join_error: NotRequired[JoinErrorView]        # O8: absent = join_info() worked
     start: NotRequired[StartView | None]
     live: NotRequired[LiveView | None]
     recap: NotRequired[RecapView | None]

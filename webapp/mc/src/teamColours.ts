@@ -1,9 +1,10 @@
 // The team colour rules PLAY needs on the client, mirroring mcp/brx_mcp/mc/gamepick.py
 // (`legal_colours`, `carry_teams`). One module so the mock backend and the TEAMS chooser agree.
 import type { TeamColour } from './api/types';
+import { TEAM_KEYS } from './api/contract.gen';
 
 /** The strip's own order: the order a swapped-in colour is chosen in. */
-export const ALL_TEAM_COLOURS: TeamColour[] = ['red', 'blue', 'yellow', 'purple'];
+export const ALL_TEAM_COLOURS: TeamColour[] = [...TEAM_KEYS];
 
 /** A hill mode never uses yellow: tid 2 is the team a NEUTRAL hill broadcasts (F82). */
 const OBJECTIVE_MODES = new Set(['domination', 'koth']);

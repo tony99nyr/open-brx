@@ -9,7 +9,7 @@ import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isObjectiveScored, objectiveWord } from './objective';
 import { columnEdges, type Column } from './columns';
-import { AWARDS, MEDALS } from '../api/contract.gen';
+import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
 import { Alert, alertStyle } from '../ui/Alert';
 import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed, serverLine, sevOf } from '../alerts';
@@ -67,7 +67,7 @@ function MedalLegend({ keys }: { keys: string[] }) {
   );
 }
 const STATION_KIND_LABEL: Record<string, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
-const STATION_TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE', 255: 'ANY' };   // F423: tid 3 paints purple, not green
+const STATION_TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY' };   // F423: tid 3 paints purple, not green
 
 export function Recap() {
   const { state, run, api, setView } = useStore();
@@ -674,7 +674,7 @@ function Stations({ rows }: { rows: RecapStationRow[] }) {
             )}
             {r.kind === 'control' && (
               <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.owner == null ? colourOf('recap-station-never-heard') : T.ok }}>
-                {r.owner == null ? glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.') : `HELD BY ${r.owner === 255 ? 'NOBODY' : (STATION_TID_NAME[r.owner] ?? r.owner)}`}
+                {r.owner == null ? glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.') : `HELD BY ${r.owner === STATION_TEAM_ANY ? 'NOBODY' : (STATION_TID_NAME[r.owner] ?? r.owner)}`}
                 {r.hold_ms && Object.keys(r.hold_ms).length > 0 && ' · ' + Object.entries(r.hold_ms).map(([tid, ms]) => `${STATION_TID_NAME[Number(tid)] ?? tid} ${Math.round(ms / 1000)}s`).join(' · ')}
               </span>
             )}

@@ -14,6 +14,8 @@ from _skip import needs
 
 REPO = Path(__file__).resolve().parents[2]
 BUDGET = REPO / "scripts" / "lib" / "budget.mjs"
+RUNNER = REPO / "scripts" / "test-all.mjs"
+PSS = REPO / "scripts" / "lib" / "pss.mjs"
 NODE = shutil.which("node")
 
 
@@ -134,3 +136,67 @@ def test_full_ui_plan_stays_within_headroom():
     # ceiling, so a regression that removed the cap would show up as `peak` jumping toward `budgetMb`, not `peak`
     # trivially sitting at 0.
     assert result["peak"] > result["ceiling"] * 0.5, result
+
+
+def test_pss_sampler_counts_detached_descendant_processes():
+    import os
+    import signal
+    import time
+
+    if not Path("/proc/self/smaps_rollup").exists():
+        import pytest
+        pytest.skip("Linux /proc PSS is required")
+    needs(NODE, "node")
+    launcher = subprocess.Popen(
+        [NODE, "--input-type=module", "-e", """
+          import { spawn } from 'node:child_process';
+          const child = spawn(process.execPath, ['-e', 'const b=Buffer.alloc(50*1024*1024); for(let i=0;i<b.length;i+=4096)b[i]=1; setInterval(()=>{},1000)'], { detached: true, stdio: 'ignore' });
+          console.log(child.pid);
+          setInterval(()=>{},1000);
+        """], stdout=subprocess.PIPE, text=True,
+    )
+    grandchild = None
+    try:
+        assert launcher.stdout is not None
+        grandchild = int(launcher.stdout.readline().strip())
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            result = subprocess.run(
+                [NODE, "--input-type=module", "-e",
+                 f"import({json.dumps(PSS.as_uri())}).then(m=>console.log(m.sumTreePssKb([{launcher.pid}])))"],
+                capture_output=True, text=True, timeout=5,
+            )
+            assert result.returncode == 0, result.stderr
+            if int(result.stdout.strip()) >= 35 * 1024:
+                break
+            time.sleep(0.1)
+        assert int(result.stdout.strip()) >= 35 * 1024, "detached 50 MB descendant was not counted"
+    finally:
+        for pid in (grandchild, launcher.pid):
+            if pid:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        launcher.wait(timeout=5)
+
+
+def test_runner_samples_pss_and_isolates_each_job_home():
+    source = RUNNER.read_text()
+    assert "sumTreePssKb" in source
+    assert "setInterval(samplePss, 1000)" in source
+    assert "realPeak" in source and "not measured" in source
+    assert "${name}-brx-mcp-home" in source
+    assert "BRX_MCP_HOME: jobHome" in source
+
+
+def test_build_and_e2e_jobs_have_distinct_log_names():
+    source = RUNNER.read_text()
+    assert "run('mc-dist-build'" in source
+    assert "run('mc-build'" not in source
+
+
+def test_measured_worker_jobs_do_not_use_worker_count_memory_formula():
+    source = RUNNER.read_text()
+    assert "name: 'mc-vitest'" in source and "mb: 300 + 300 * vitestW" in source
+    assert "name: 'site'" in source and "mb: 300 + 300 * siteW" in source
