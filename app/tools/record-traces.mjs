@@ -1,7 +1,9 @@
 // Record golden traces (architecture item #6): replay each trace in test/fixtures/traces/ through the real
 // `src/engine.js` and store what came out as the trace's `expect`. Re-recording is a deliberate act: run it only
 // when the engine's behaviour is MEANT to change, and read the diff before committing (README.md in that folder).
-//   node tools/record-traces.mjs <name>...           record these; a NEW trace (empty expect) is written at once
+//   node tools/record-traces.mjs <name>...           record these
+//   ... --new                                        also record a trace whose expect is EMPTY (a new trace); without it an
+//                                                    empty expect is refused, so a cleared or renamed trace never records silently
 //   node tools/record-traces.mjs --all               every trace
 //   ... --accept                                     also overwrite an expect that would CHANGE (after reading the diff)
 // Without --accept, a trace whose recorded expect would change is NOT written: the diff is printed and the exit code is 1.
@@ -29,10 +31,10 @@ function format(trace) {
 }
 
 const args = process.argv.slice(2), flags = new Set(args.filter(a => a.startsWith('--')));
-const unknown = [...flags].filter(f => f !== '--all' && f !== '--accept');
+const unknown = [...flags].filter(f => f !== '--all' && f !== '--accept' && f !== '--new');
 let names = args.filter(a => !a.startsWith('--'));
 if (unknown.length || (!names.length && !flags.has('--all')) || (names.length && flags.has('--all'))) {
-  console.error('usage: node tools/record-traces.mjs <name>... | --all   [--accept]\n'
+  console.error('usage: node tools/record-traces.mjs <name>... | --all   [--accept] [--new]\n'
     + '  Name the traces to record, or pass --all. A trace whose recorded expect would change is refused unless --accept.');
   process.exit(2);
 }
@@ -43,6 +45,11 @@ for (const name of names) {
   if (trace.name !== name) throw new Error(`${name}.json: "name" is ${JSON.stringify(trace.name)}, expected ${JSON.stringify(name)}`);
   const run = await runEngine(trace);
   const had = Array.isArray(trace.expect) && trace.expect.length > 0;
+  if (!had && !flags.has('--new')) {
+    refused++;
+    console.error(`REFUSED ${name}: its expect is empty. A new trace is recorded only with --new (a cleared or renamed trace must not record silently).`);
+    continue;
+  }
   const diffs = had ? allDiffs(trace, run) : [];
   if (diffs.length && !flags.has('--accept')) {
     refused++;

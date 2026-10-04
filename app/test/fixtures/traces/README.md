@@ -63,7 +63,7 @@ A frame a step feeds that carries pools (`$HP`, `$LCD`) also sets the fake gun's
 
 1. Find the unit test whose sequence you want to pin. Port its sequence. Do not invent new behaviour.
 2. Write `<name>.json` with `name`, `why`, `source`, `runners`, `setup` and `steps`, and set `"expect": []`.
-3. Record it: `cd app && node tools/record-traces.mjs <name>`. A trace with an empty `expect` is written at once.
+3. Record it: `cd app && node tools/record-traces.mjs <name> --new`. Without `--new` the recorder refuses a trace whose `expect` is empty, so a cleared or renamed trace never records silently.
 4. Read the recorded `expect`. Check that it shows what the source test asserts. The recorder writes what the engine
    does, right or wrong.
 5. If the trace lists `stage`, run `cd mcp && python3 run_tests.py test_golden_traces`. For each difference, fix the
