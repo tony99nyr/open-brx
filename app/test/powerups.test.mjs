@@ -1464,3 +1464,21 @@ test('F416 r2 control: the held slot at the held count is a match', () => {
   assert.ok(!h.since(n).some(f => f.startsWith('$SPAWN')));
   assert.equal(h.eng._spawnCheck, null);
 });
+
+test('F416 r3: each whole re-send is built from the original burst, so a swapped heavy leaves only the held slot loaded', async () => {
+  const h = harness(TWO_HEAVIES); h.at(121); h.take(4); h.away();
+  assert.equal(h.eng._puHeld?.slot, 2, 'setup: Rockets in slot 2');
+  openCheck(h.eng); const c = h.eng._spawnCheck;
+  const bursts = () => h.batches.filter(b => b.some(f => f.startsWith('$SPAWN')));
+  const b0 = bursts().length;
+  h.frame('$LCD,45,70,0,1,3,24,*');   // mismatch: the first whole re-send
+  await tick();
+  h.take(5); h.away();                // Rail replaces Rockets
+  assert.equal(h.eng._puHeld?.slot, 3, 'setup: Rail in slot 3');
+  assert.equal(h.eng._spawnCheck, c, 'setup: the same check is still open');
+  c.queryAt = h.eng.now(); c.heardAt = 0;
+  h.frame('$LCD,45,70,0,1,3,24,*');   // mismatch again: the second whole re-send
+  const [first, second] = bursts().slice(b0).map(b => b.filter(f => /^\$AMMO,[23],/.test(f)));
+  assert.deepEqual(first, ['$AMMO,2,2,0,1,*', '$AMMO,3,0,0,1,*'], 'the first re-send loads Rockets only');
+  assert.deepEqual(second, ['$AMMO,2,0,0,1,*', '$AMMO,3,2,0,1,*'], 'the second loads Rail only, Rockets back at zero');
+});
