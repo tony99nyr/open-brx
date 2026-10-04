@@ -39,7 +39,7 @@ export function viewLabel(v: View): string {
 export function CommandBar() {
   const notice = useNotice();   // survives the screen that raised it (see notice.ts)
   const [menu, setMenu] = useState(false);
-  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, serverOld } = useStore();
+  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, serverOld, catalogueDown } = useStore();
   const [panic, setPanic] = useState(false);
   const [panicked, setPanicked] = useState<string | null>(null);
   const [report, setReport] = useState(false);
@@ -83,6 +83,12 @@ export function CommandBar() {
           <span style={{ width: 8, height: 8, background: colourOf('frame-mc-offline'), animation: 'linkBlink 1.2s infinite' }} />
           {glyphed('red', MC_OFFLINE.what)}
           <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state ? MC_OFFLINE.act.toUpperCase() : 'NO SNAPSHOT YET: IS THE SERVER RUNNING?'}</span>
+        </div>
+      )}
+      {catalogueDown && (
+        <div role="alert" data-alert="frame-catalogue-unavailable" data-sev="amber"
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', font: F.chk(700, 12), letterSpacing: '.14em', color: colourOf('frame-catalogue-unavailable') }}>
+          {glyphed('amber', alertWords('weapon or mode list not loaded', 'retrying, restart MC if this stays'))}
         </div>
       )}
       {serverOld && (
