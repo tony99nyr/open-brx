@@ -292,9 +292,11 @@ class FakeNet:
             info["app_ver"] = av       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
             cb(info)
         return node
-    def simulate_utility_hello(self, node_id: str, app_ver: str = "utility") -> dict | None:
+    def simulate_utility_hello(self, node_id: str, app_ver: str = "utility", platform: str | None = None) -> dict | None:
         """A13.5: a station phone's hello -- `node_type: "utility"`, no gun (utility.js `connectMc`)."""
         hello = {"node_id": node_id, "node_type": "utility", "app_ver": app_ver, "seq_next": 1}
+        if platform:
+            hello["platform"] = platform        # A29: `_hydrate` notes it; the ITEMS card names the device by it
         self._seen.add(node_id)                 # a station holds a socket like any other node
         node = self._hydrate(hello) if self._hydrate else None
         for cb in self._cb["node"]:
