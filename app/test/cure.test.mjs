@@ -567,3 +567,14 @@ test('CONTROL: a probe answered with a zero and no `$HIR` behind it is still a d
   assert.equal(deaths.length, 1);
   assert.equal(deaths[0].desync, true);
 });
+
+test('polish r1 (M1): a hit already paired by its `$HP` does not hide a later out-of-band zero: still a desync', () => {
+  const h = harness();
+  h.f('$HIR,4,0,19,2,9,0,3,*').f('$HP,45,61,0,*');   // a non-lethal hit, paired at once
+  h.adv(250);
+  h.eng._askGun('test probe');
+  h.f('$HP,0,0,0,*');   // a separate gun fault, inside 1 s of that hit
+  const deaths = h.facts.filter(f => f.type === 'death');
+  assert.equal(deaths.length, 1);
+  assert.equal(deaths[0].desync, true);
+});

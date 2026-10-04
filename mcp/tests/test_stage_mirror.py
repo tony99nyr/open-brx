@@ -2853,6 +2853,57 @@ def test_a_hit_off_a_filled_shield_whose_fill_echo_was_lost_is_a_hit_like_the_ph
     asyncio.run(go())
 
 
+def test_the_fill_check_counts_only_an_unpaired_damaging_word_like_the_phone():
+    """Polish r1 (engine.js `_hpFillCheck`, `_unpairedWord`). With the fill write lost (gun shield 0, fill pending):
+    R2, a hit of 9 then a recharge grant's echo inside 1 s, and R3, a hit of 40 then a heal of 40, are no phantom hits;
+    a shield GRANT word is no damage. L6: a shield rise with no word answers the fill as reported; health falling with
+    no word (our poison tick) is measured from the full shield; a non-damaging word alone (`_hir_word`) counts for
+    nothing. Mirrors app/test/shield-spawn.test.mjs."""
+    async def pending():
+        st, mgr, clock = mk_shields()
+        await live(st)
+        st._shield_fill_at = clock(); st.shield = 0
+        clock.advance(1.0)
+        return st, clock
+
+    async def go():
+        # R2
+        st, clock = await pending()
+        st._on_rx("$HIR,4,0,19,2,9,0,3,*"); st._on_rx("$HP,36,0,0,*"); await settle(st)
+        hit_at = st._last_dmg_hit_at
+        clock.advance(0.3)
+        st._on_rx("$HP,36,0,27,*"); await settle(st)
+        assert st._last_dmg_hit_at == hit_at and st.shield == 27 and st._shield_fill_at == 0.0, "R2: the grant echo is no hit"
+        # R3
+        st, clock = await pending()
+        st._on_rx("$HIR,4,0,19,2,40,0,3,*"); st._on_rx("$HP,5,0,0,*"); await settle(st)
+        hit_at = st._last_dmg_hit_at
+        clock.advance(0.3)
+        st._on_rx("$HP,45,0,0,*"); await settle(st)
+        assert st._last_dmg_hit_at == hit_at and st.hp == 45 and st._shield_fill_at != 0.0, "R3: the heal is no hit"
+        # a shield GRANT word (fn 11)
+        st, clock = await pending()
+        st.bundle["head"] = [*st.bundle["head"], "$SIR,7,0,,11,0,0,1,,*"]; st._sir_fns_for = None
+        st._on_rx("$HIR,4,7,19,2,20,0,0,*"); st._on_rx("$HP,45,0,20,*"); await settle(st)
+        assert st._last_dmg_hit_at is None and st.shield == 20, "a grant word is no damage"
+        # L6: a rise with no word is the fill's own answer, taken as reported
+        st, clock = await pending()
+        st._on_rx("$HP,45,0,105,*"); await settle(st)
+        assert st.shield == 105 and st._shield_fill_at == 0.0 and st._last_dmg_hit_at is None
+        # L6: health fell with no word: measured from the full shield (5 damage, not a +100 gain)
+        st, clock = await pending()
+        k = len(st.log)
+        st._on_rx("$HP,40,0,105,*"); await settle(st)
+        logs = [l["text"] for l in list(st.log)[k:]]
+        assert any("measured from the full shield" in t for t in logs) and not any("pool rise" in t for t in logs), logs
+        # L6: a non-damaging word alone counts for nothing (no `_hir_word` fallback)
+        st, clock = await pending()
+        st._hir_word = {"num": 19, "team": 2, "at": clock(), "seq": 99, "no_pool": True}
+        st._on_rx("$HP,45,0,90,*"); await settle(st)
+        assert st._last_dmg_hit_at is None and st.shield == 90, "the rise is the fill answer, not a hit"
+    asyncio.run(go())
+
+
 def test_f344_the_spawn_fill_switch_matches_the_phone():
     js = _ENGINE_JS.read_text(encoding="utf-8")
     assert f"export const SPAWN_SHIELD_FULL = {'true' if S.SPAWN_SHIELD_FULL else 'false'};" in js

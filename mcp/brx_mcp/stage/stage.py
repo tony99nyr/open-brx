@@ -670,6 +670,7 @@ class GunStage:
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
         self._dmg_hir: tuple[int, float, int, int] | None = None   # F354 (engine.js `_dmgLatch`): (proto, at, shooter id, `$HIR` seq) of the last word whose cell can do damage
         self._dmg_hir_mag: int | None = None   # that word's magnitude (`$HIR` t5, engine.js `_dmgLatch.mag`), read by `_hp_fill_check`
+        self._hp_paired_seq: int | None = None   # polish r1 (engine.js `_hpPaired`): the `$HIR` seq of the damaging word the last `$HP` saw
         self._hir_seq = 0   # F438 polish r3: counts latched `$HIR` words; the stage's twin of engine.js latch-object identity
         self._foreign_dmg_at: float | None = None   # F438 polish r1 (engine.js `_foreignDmgAt`): another player's last damaging word
         # A65 (engine.js `latch` / `_lastHitFact.noPool`): the last registered word {num, team, at, no_pool}, and the word
@@ -1938,8 +1939,13 @@ class GunStage:
         """engine.js `_probeZero` (F264 x review 2026-10-04): a zero that took a probe's token is a desync death, unless
         a damaging word landed inside 1.0 s. `_solicited` pairs by time, so a live lethal hit inside a probe's reply
         window takes the token; its fresh `$HIR` says the zero came from a live hit sequence. PURE."""
+        return bool(solicited) and not self._unpaired_word(self._hp_paired_seq)
+
+    def _unpaired_word(self, paired: int | None) -> bool:
+        """engine.js `_unpairedWord` (polish r1): a damaging word (`_dmg_hir`, never a grant or no-pool cell) inside 1.0 s
+        that no `$HP` has paired yet. Identity (the `$HIR` seq), not time. PURE."""
         d = self._dmg_hir
-        return bool(solicited) and not (d is not None and self.now() - d[1] <= 1.0)
+        return d is not None and d[3] != paired and self.now() - d[1] <= 1.0
 
     def _solicited(self, kind: str) -> bool:
         """engine.js `_solicited`: is this pool frame the answer to a probe we sent? True at most ONCE per
@@ -3119,21 +3125,17 @@ class GunStage:
         (`_hp_fill_check`). PURE. `now` is unused: the fill has no time limit (review 2026-10-04)."""
         return bool(self._shield_fill_at)
 
-    def _hp_fill_check(self, hp: int, armor: int, shield: int) -> bool:
+    def _hp_fill_check(self, hp: int, armor: int, shield: int, paired: int | None) -> bool:
         """engine.js `_hpFillCheck` (F348, review 2026-10-04): True when this `$HP` answers the spawn fill, and it ends
         the fill. The fill's own echo (the shield rose, nothing says a hit landed) is taken as reported. A hit off the
         filled shield, whose fill echo was lost, is measured from the full shield: the shield rose with a word inside
-        1.0 s or health or armour fell, or the shield reads no higher and the word's magnitude fits the full shield
-        better than the held one. A frame that shows neither keeps the fill pending."""
+        1.0 s or health or armour fell, or no pool rose and the word's magnitude fits the full shield better than the
+        held one. Polish r1: "a word" is a damaging word no `$HP` has paired yet (`_unpaired_word`). A frame that shows
+        neither keeps the fill pending."""
         if not self._shield_fill_at:
             return False
-        now, d, w = self.now(), self._dmg_hir, self._hir_word
-        mag: int | None = None
-        word = False
-        if d is not None and now - d[1] <= 1.0:
-            word, mag = True, self._dmg_hir_mag
-        elif w is not None and now - w["at"] <= 1.0:
-            word, mag = True, w.get("mag")
+        word = self._unpaired_word(paired)
+        mag = self._dmg_hir_mag if word else None
         full = max(self.shield, self.max_shield)
         total = hp + armor + shield
         held = max(0, self.hp + self.armor + self.shield - total)
@@ -3142,7 +3144,8 @@ class GunStage:
         if rose:
             filled = off > 0 and (word or hp < self.hp or armor < self.armor)
         else:
-            filled = off > 0 and word and mag is not None and abs(off - mag) < abs(held - mag)
+            filled = (off > 0 and hp <= self.hp and armor <= self.armor and word and mag is not None
+                      and abs(off - mag) < abs(held - mag))
         if not filled and not rose:
             return False
         self._shield_fill_at = 0.0
@@ -3274,7 +3277,7 @@ class GunStage:
                         self._foreign_dmg_at = now
                 if _tok_int(t, 4) is not None:
                     self._hir_seq += 1
-                    self._hir_word = {"num": _tok_int(t, 3) or 0, "team": _tok_int(t, 4), "at": now, "seq": self._hir_seq, "mag": _tok_int(t, 5),
+                    self._hir_word = {"num": _tok_int(t, 3) or 0, "team": _tok_int(t, 4), "at": now, "seq": self._hir_seq,
                                       "no_pool": self._non_damaging(proto, _tok_int(t, 7))}
                 if _tok_int(t, 4) is not None:
                     self._shield_reassert()      # 2026-09-19 (engine.js: a registered hit, shooter team parsed)
@@ -3885,7 +3888,10 @@ class GunStage:
         if not (self.auto_react and self.spawned):
             self.hp, self.armor, self.shield = hp, armor, shield
             return
-        fill_answer = not lcd and self._hp_fill_check(hp, armor, shield)   # engine.js `_hpFillCheck`: before anything measures the pools
+        paired = self._hp_paired_seq
+        if not lcd:   # polish r1 (engine.js `_hpPaired`): this `$HP` pairs the damaging word, if it has not been
+            self._hp_paired_seq = self._dmg_hir[3] if self._dmg_hir is not None else None
+        fill_answer = not lcd and self._hp_fill_check(hp, armor, shield, paired)   # engine.js `_hpFillCheck`: before anything measures the pools
         if not lcd and self._self_hit_hp(hp, armor, shield):   # F438 (engine.js: an `$LCD` never reaches `_onHp`): our own shot, or the gun's echo of us giving it back
             return
         before = self.hp + self.armor + self.shield

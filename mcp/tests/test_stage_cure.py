@@ -871,3 +871,17 @@ def test_a_real_kill_inside_a_probes_reply_window_is_not_a_desync_like_the_phone
         await _reply_life(st, 0, 0, 0)
         assert "desync" in _deaths(st)[0]["text"], "CONTROL: an out-of-band zero is still a desync"
     asyncio.run(run())
+
+
+def test_a_hit_already_paired_does_not_hide_a_later_out_of_band_zero_like_the_phone():
+    """Polish r1 (engine.js `_probeZero`, M1): a non-lethal hit paired with its own `$HP` says nothing about a later
+    zero from a separate gun fault, so that zero, answering our probe inside 1 s, is still a desync."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        st._inject_rx("$HIR,4,0,19,2,9,0,3,*"); st._inject_rx("$HP,45,61,0,*"); await settle(st)
+        clock.advance(0.25)
+        await st._ask_gun("test probe")
+        await _reply_life(st, 0, 0, 0)
+        assert "desync" in _deaths(st)[0]["text"]
+    asyncio.run(run())

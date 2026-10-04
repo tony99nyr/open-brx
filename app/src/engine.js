@@ -698,7 +698,8 @@ function powerupHost(e) {
     get frames() { return e.frames; }, get lifeSeq() { return e._lifeSeq; }, get armPending() { return e._armPending; },
     get hp() { return e.hp; }, get armor() { return e.armor; }, get shield() { return e.shield; }, get maxShield() { return e.maxShield; },
     // the engine state the module changes, each through one named door
-    setShield: v => { e.shield = v; e._prevShield = v; e._shieldRegen = null; },   // the overshield grant's pools
+    setShield: v => { e.shield = v; e._prevShield = v; e._shieldRegen = null; e._shieldFillAt = 0; },   // the overshield grant's pools (an absolute write: it ends a pending spawn fill)
+    get shieldBase() { return e._shieldFillPending() ? Math.max(e.shield, e.maxShield) : e.shield; },   // polish r1 (L7): a pending fill counts as full
     setWriteLost: life => { e._writeLost = life; },   // a lost protection-off: MC offers RESYNC GUN
     acctWrote: (slot, mag, res, weap) => e.am.acctWrote(slot, mag, res, weap),   // F259: an echo of this write is bookkeeping, never a shot
     setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now, mag and reserve
@@ -820,6 +821,7 @@ export class Engine {
     this._selfGunPools = null;      // F438 polish r2: the pools the gun reported on a self-hit whose restore has not landed
     this._selfHitUsed = null;       // F438 polish r2: the last word given back (one word, one give-back)
     this._selfEcho = null;          // F438: {at, health, armor, shield} -- the pools a self-hit restore or revive put back, while its echo is due
+    this._hpPaired = null;          // polish r1: the damaging word (`_dmgLatch`) the last `$HP` saw, so a word pairs with one frame
     this._dmgLatch = null;          // F354: the last latch whose `$SIR` cell can move a pool (`_nonDamaging`); the `$HP` that follows is ITS damage
     this._sirFnsFor = undefined; this._sirFnsMap = null;   // F354: `_sirFns()`'s cache, keyed on the bundle object
     this._hitGroupSeq = 0;
@@ -5792,11 +5794,19 @@ export class Engine {
     return true;
   }
   /** F264 x review 2026-10-04: is a zero that took a probe's token (`solicited`) learned out of band, a desync death?
-   *  Not when a damaging word landed inside 1000 ms: `_solicited` pairs by TIME, not content, so a live lethal hit inside
-   *  a probe's reply window takes the token, and its fresh `$HIR` says the zero came from a live hit sequence. PURE. */
-  _probeZero(solicited) {
+   *  Not when a damaging word that no earlier `$HP` paired landed inside 1000 ms: `_solicited` pairs by TIME, not
+   *  content, so a live lethal hit inside a probe's reply window takes the token, and its fresh `$HIR` says the zero
+   *  came from a live hit sequence. Polish r1: a hit already paired with its own `$HP` says nothing about a later zero,
+   *  so that zero stays a desync. `paired` is the damaging word the previous `$HP` saw. PURE. */
+  _probeZero(solicited, paired = this._hpPaired) {
+    return !!solicited && !this._unpairedWord(paired);
+  }
+  /** Polish r1: the damaging word (`_dmgLatch`) inside 1000 ms that no `$HP` has paired yet (`paired` is the one the last
+   *  `$HP` saw), else null. A grant or no-pool word is never `_dmgLatch`. Identity, not time (polish r3's rule for F438):
+   *  frames in the same millisecond must not pair by accident. PURE. */
+  _unpairedWord(paired) {
     const dl = this._dmgLatch;
-    return !!solicited && !(dl && this.now() - dl.at <= 1000);
+    return dl && dl !== paired && this.now() - dl.at <= 1000 ? dl : null;
   }
   /** F264: does a `$QUERY` reply's `$LCD` fit the token map we have? The map is confirmed by SHAPE only, on an
    *  unconfigured gun (transport-hardening.md §6, levers claim 19), so a reply that does not fit is treated as NO
@@ -6362,21 +6372,23 @@ export class Engine {
    *   - A hit off the filled shield, after the fill echo was lost: the gun took the fill, then the hit. The node takes the
    *     full shield as the pool held before this frame, so the steps after this one measure the hit from it. This is the
    *     case when the full shield shows damage and either the shield rose with a word inside 1000 ms or health or armour
-   *     fell (a hit, or our poison tick), or the shield reads no higher and the word's magnitude fits the full shield
-   *     better than the held one (a hit that broke the whole shield).
+   *     fell (a hit, or our poison tick), or no pool rose and the word's magnitude fits the full shield better than the
+   *     held one (a hit that broke the whole shield).
+   *  Polish r1: "a word" is a DAMAGING word (`_dmgLatch`: never a grant or no-pool cell) that no `$HP` has paired yet
+   *  (`paired`, the damaging word the last `$HP` saw). An old word already paired with its own `$HP` said nothing about
+   *  this frame: a recharge grant's echo or a heal after it read as a phantom hit of 78 or 65.
    *  A frame that shows neither keeps the fill pending: a hit that landed before the gun took the fill, or a fill that
    *  never reached the pool. The recharge then fills the pool, and its first grant's `$HP` ends the fill.
    *  ⚠ Known gap: a hit that drains the filled shield and reaches health, with its `$HIR` lost, is measured from the held
    *  shield (the smaller damage). Nothing in the `$HP` alone can tell it from a hit on a gun that never took the fill. */
-  _hpFillCheck(hp, armor, shield) {
+  _hpFillCheck(hp, armor, shield, paired) {
     if (!this._shieldFillAt) return false;
-    const now = this.now(), dl = this._dmgLatch, L = this.latch;
-    const word = dl && now - dl.at <= 1000 ? dl : L && now - L.at <= 1000 ? L : null;
+    const word = this._unpairedWord(paired);
     const full = Math.max(this.shield, this.maxShield), total = hp + armor + shield;
     const held = Math.max(0, this.hp + this.armor + this.shield - total), off = Math.max(0, this.hp + this.armor + full - total);
     const rose = shield > this.shield;
     const filled = off > 0 && (rose ? !!word || hp < this.hp || armor < this.armor
-      : !!word && Number.isFinite(word.mag) && Math.abs(off - word.mag) < Math.abs(held - word.mag));
+      : hp <= this.hp && armor <= this.armor && !!word && Number.isFinite(word.mag) && Math.abs(off - word.mag) < Math.abs(held - word.mag));
     if (!filled && !rose) return false;   // still pending
     this._shieldFillAt = 0;
     if (!filled) return true;              // the fill's own answer: `_hpGainMoment` takes it
@@ -6750,11 +6762,13 @@ export class Engine {
     // drains shield -> armor -> HP (bench 2026-08-27); omitting shield from the total made every shield-absorbed hit
     // compute dmg === 0, which the hit guard (`_hpHitTaken`) then dropped entirely. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
-    const fillAnswer = this._hpFillCheck(hp, armor, shield);   // F348: the spawn fill's answer, before anything measures the pools
+    const paired = this._hpPaired; this._hpPaired = this._dmgLatch;   // polish r1: this frame pairs the damaging word, if it has not been
+    const fillAnswer = this._hpFillCheck(hp, armor, shield, paired);   // F348: the spawn fill's answer, before anything measures the pools
     if (this._selfHitHp(hp, armor, shield)) return;   // F438: our own shot, or the gun's echo of us giving it back
     // Order dependencies left: `_hpLowHealth` sets `h.hurtNow` (read by the re-assert and the hit), `_hpDamageWord` sets
     // `h.hl` and `_hpHitTaken` sets `h.hitWeapon` (both read by `_hpMoment`); `_hpDotEcho` sets `h.dotEcho` for all after it.
     const h = this._hpTakePools(hp, armor, shield, solicited, fillAnswer);
+    h.paired = paired;
     this._hpPoolEffects(h);
     this._hpDotEcho(h);
     this._hpShield(h);
@@ -6783,7 +6797,7 @@ export class Engine {
     if (this.resync) this._resyncEvidence('hp');
     // F264: `solicited` means this `$HP` answers our own `$LIFE,0,0,0,*` probe, so the node learned the zero out
     // of band rather than from a live hit sequence -- a desync death by §3.3's definition, same as a reconcile's.
-    if (h.hp === 0 && this.alive && this.phase === 'live' && !this._deathPending()) this._death(wasResync || this._probeZero(h.solicited));   // a death learned during resync/reconcile is a desync death
+    if (h.hp === 0 && this.alive && this.phase === 'live' && !this._deathPending()) this._death(wasResync || this._probeZero(h.solicited, h.paired));   // a death learned during resync/reconcile is a desync death
   }
 
   /** B5 (phantom death on spawn race): a zero-HP frame the instant after a `_spawn`/`_revive` write can be a

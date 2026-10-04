@@ -292,6 +292,15 @@ test('overshield taken over a half-empty preset shield: below the max but still 
   assert.deepEqual(h.since(n).filter(f => /^\$LIFE,0,0,[1-9]\d*,\*$/.test(f)), [], 'a refill here would top the overshield back up');
 });
 
+test('polish r1 (L7): an overshield taken while the spawn fill is unanswered builds on the full shield, never lowers it', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], maxShield: 70 });
+  h.frame('$HP,45,0,0,*');   // the gun's pools before the fill's echo (which never comes)
+  assert.ok(h.eng._shieldFillAt > 0, 'setup: the fill went out and no `$HP` has shown the shield');
+  h.at(61); const n = h.mark(); h.take(6);
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), ['$LIFE,45,0,145,2,*'], 'the gun that took the fill holds 70, not 0');
+  assert.equal(h.eng._shieldFillAt, 0, 'the grant wrote the whole pool, so the fill is no longer pending');
+});
+
 test('overshield is gone at death', () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
   h.at(61); h.take(6); h.frame('$HP,45,70,75,*');

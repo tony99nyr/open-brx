@@ -31,10 +31,10 @@ function atPools(bundle, h) {
   return { ...bundle, head: bundle.head.map(fix), pset_pool: (bundle.pset_pool || []).map(fix) };
 }
 
-function harness({ health = SHIELDS, respawn = 'auto', fill = 'echo' } = {}) {
+function harness({ health = SHIELDS, respawn = 'auto', fill = 'echo', head = [] } = {}) {
   const writes = [], writeGroups = [], facts = []; let scheduledGap = null; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
-  const bundle = atPools(golden, health);
+  const bundle0 = atPools(golden, health), bundle = { ...bundle0, head: [...bundle0.head, ...head] };
   const config = { config_id: bundle.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: respawn, delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
@@ -329,4 +329,38 @@ test('fill echo lost: our own shot off the filled shield is given back, never a 
   assert.equal(h.hits().length, 0, 'a self-hit never reaches MC');
   assert.deepEqual(h.grants(n), ['$LIFE,0,0,15,*'], `the 15 it took is given back: ${JSON.stringify(h.since(n))}`);
   assert.equal(h.gun.shield, 105, 'the gun is full again');
+});
+
+// ---------- polish r1 (H1): only a damaging word that no `$HP` has paired yet says a hit landed off the filled shield ----------
+const GRANT_ROW = '$SIR,7,0,,11,0,0,1,,*';   // a shield-grant cell (fn 11 is in SIR_GRANT_FNS)
+
+test('R2: fill write lost, a hit of 9, then the first recharge grant\'s echo within 1 s: no phantom hit, and the recharge runs on', () => {
+  const h = harness({ fill: 'lost' });
+  h.adv(1000);
+  h.hit(9);
+  assert.deepEqual(h.hits().map(f => f.dmg), [9], 'setup: the hit');
+  const m = h.eng.moment;
+  h.gun.shield = 27; h.frame(`$HP,${h.gun.hp},0,27,*`);   // the grant's echo, 300 ms later on a real gun
+  assert.deepEqual(h.hits().map(f => f.dmg), [9], 'the grant echo is no hit: its word was already paired');
+  assert.equal(h.eng.moment, m, 'no new hit moment');
+  assert.equal(h.eng.shield, 27);
+});
+
+test('R3: fill write lost, a hit of 40, then a heal of 40 within 1 s: no phantom hit', () => {
+  const h = harness({ fill: 'lost' });
+  h.adv(1000);
+  h.hit(40);
+  h.gun.hp += 40; h.frame(`$HP,${h.gun.hp},0,0,*`);
+  assert.deepEqual(h.hits().map(f => f.dmg), [40]);
+  assert.equal(h.eng.hp, 45);
+  assert.ok(h.eng._shieldFillAt > 0, 'the fill is still pending');
+});
+
+test('fill write lost: a shield GRANT word is no damage, so its 20 is not read as an 85-point hit', () => {
+  const h = harness({ fill: 'lost', head: [GRANT_ROW] });
+  h.adv(1000);
+  h.frame('$HIR,4,7,19,2,20,0,0,*'); h.gun.shield = 20; h.frame('$HP,45,0,20,*');
+  assert.deepEqual(h.hits(), [], 'no hit_taken');
+  assert.notEqual(h.eng.moment && h.eng.moment.kind, 'hit');
+  assert.equal(h.eng.shield, 20);
 });

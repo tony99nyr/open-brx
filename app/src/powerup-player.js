@@ -33,7 +33,7 @@
 //               prevReserve(slot) · recentPull(slot, now)
 //   read-only   phase · alive · bleUp · ended · stunned · reconciling · resync · tutorial · gunLocked · frames · config ·
 //               player · matchId · stations · goLiveT · lifeSeq · pulledLife · armPending · actSeq · activeSlot ·
-//               switching · weaponName · hp · armor · shield · maxShield · latch · lastHitAt
+//               switching · weaponName · hp · armor · shield · shieldBase · maxShield · latch · lastHitAt
 //   writes      acctWrote(slot, mag, res, weap) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
 //               recoilArm(why) · setShield(v) · setWriteLost(life)
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
@@ -747,11 +747,14 @@ export class PlayerPowerups {
   grantShield(id, item, now) {
     const h = this.host;
     const amount = Number.isFinite(+item.amount) && +item.amount > 0 ? +item.amount : OVERSHIELD_AMOUNT;
-    const base = this._overshield ? this._overshield.base : h.shield;
-    const to = h.shield + amount, max = Math.max(h.maxShield, to);
+    // Polish r1 (L7): `shieldBase`, not `shield`. The grant writes an ABSOLUTE pool, and while the spawn fill is unanswered the
+    // node holds 0 for a gun that may hold the full shield: building on 0 would LOWER it.
+    const cur = h.shieldBase;
+    const base = this._overshield ? this._overshield.base : cur;
+    const to = cur + amount, max = Math.max(h.maxShield, to);
     const pset = this.psetWithShieldMax(max), pf = h.armPending ? null : this._osProtectFrames();   // a life still protected keeps its own
     h.write([...(pf ? [pf.on] : []), ...(pset ? [pset] : []), `$LIFE,${h.hp},${h.armor},${to},2,*`],
-      `powerup: ${item.name} +${amount} (shield ${h.shield} -> ${to}, max ${h.maxShield} -> ${max}${pf ? ', protected' : ''})`);
+      `powerup: ${item.name} +${amount} (shield ${cur} -> ${to}, max ${h.maxShield} -> ${max}${pf ? ', protected' : ''})`);
     if (pf) { this._osProtectUntil = now + OVERSHIELD_GRANT_MS; this._osOffTries = 0; }
     h.setShield(to);   // S29: and no refill may be in flight under it
     const name = String(item.name || 'OVERSHIELD').toUpperCase();
