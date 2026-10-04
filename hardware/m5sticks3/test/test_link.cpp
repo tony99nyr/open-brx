@@ -398,8 +398,8 @@ static void test_powerup_schedule_taken_counts_down_locally_from_the_last_update
   CHECK_EQ(v0.value, (uint8_t)10);
   PowerupAdvertView v1 = s.view(104001);  // 4.001 s later: 6 s left (ceiling)
   CHECK_EQ(v1.value, (uint8_t)6);
-  PowerupAdvertView v2 = s.view(130000);  // long past due: never negative
-  CHECK_EQ(v2.value, (uint8_t)0);
+  PowerupAdvertView v2 = s.view(130000);  // long past due: never negative, and never 0 while taken (the phone's floor)
+  CHECK_EQ(v2.value, (uint8_t)1);
 }
 
 static void test_powerup_schedule_caps_value_at_255() {
@@ -1277,13 +1277,13 @@ static void test_an_available_true_too_soon_after_the_awarded_instant_is_refused
   u.available = false;
   u.next_spawn_in_ms = 1000;
   s.apply_update(u, 0);
-  s.mark_taken(5, 1000);  // awarded instant = 1000; spawn_every_s defaults to 60 (half interval 30000 ms)
+  s.mark_taken(5, 1000);  // the next spawn is now 61000; spawn_every_s defaults to 60 (half interval 30000 ms)
   StationUpdateMsg tooSoon;
   tooSoon.present = true;
   tooSoon.available = true;
-  tooSoon.next_spawn_in_ms = 5000;  // implies the next spawn is at 1100 + 5000 = 6100 (5100 ms past 1000)
+  tooSoon.next_spawn_in_ms = 5000;  // implies the next spawn is at 1100 + 5000 = 6100, before 61000
   s.apply_update(tooSoon, 1100);
-  CHECK(!s.available());  // 5100 ms < half of 60 s: still refused
+  CHECK(!s.available());  // not half an interval past the next spawn: still refused
   CHECK_EQ(s.taker(), (uint8_t)5);
 }
 
@@ -1294,11 +1294,11 @@ static void test_an_available_true_far_enough_past_the_awarded_instant_is_accept
   u.available = false;
   u.next_spawn_in_ms = 1000;
   s.apply_update(u, 0);
-  s.mark_taken(5, 1000);  // awarded instant = 1000; half interval = 30000 ms
+  s.mark_taken(5, 1000);  // the next spawn is now 61000; half interval = 30000 ms
   StationUpdateMsg later;
   later.present = true;
   later.available = true;
-  later.next_spawn_in_ms = 30000;  // implies the next spawn is at 1000 + 30000 = 31000 (30000 ms past)
+  later.next_spawn_in_ms = 90000;  // implies the next spawn is at 1000 + 90000 = 91000 (30000 ms past 61000)
   s.apply_update(later, 1000);
   CHECK(s.available());  // at the half-interval boundary: accepted
   CHECK_EQ(s.taker(), (uint8_t)0);

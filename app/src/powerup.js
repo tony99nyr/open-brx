@@ -10,6 +10,7 @@
 import { PLAYER_STATE } from './beacon.js';
 
 export const CLAIM_FRESH_MS = 1500;      // a player advert older than this says nothing about who is standing here now
+export const DEFAULT_EVERY_S = 60;       // the interval of a station that was never told one (the Stick's default too)
 export const VALUE_MAX_S = 255;          // the advert's one-byte countdown
 
 /** The advert triple for a powerup station's state. `available` null = the station does not know yet (no
@@ -34,7 +35,9 @@ export class PowerupStation {
     this.awardedNext = null; // polish M1: the next-spawn instant when the item was awarded (that spawn is given away)
     this.unsent = [];        // polish M1: `station_action` taken reports MC has not had yet, sent on (re-)bind
   }
-  get everyMs() { const s = Number(this.item && this.item.spawn_every_s); return s > 0 ? s * 1000 : 0; }
+  /** The effective interval. MC always sends `spawn_every_s`; a station that has none repeats at DEFAULT_EVERY_S,
+   *  as the Stick firmware does (A2: both read app/test/fixtures/powerup-station-cases.json). */
+  get everyMs() { const s = Number(this.item && this.item.spawn_every_s); return (s > 0 ? s : DEFAULT_EVERY_S) * 1000; }
   /** MC's `station_update {available, next_spawn_in_ms, reset?}`: the time REMAINING, re-anchored on arrival. */
   update(body, now) {
     if (!body || typeof body !== 'object') return;
@@ -44,7 +47,8 @@ export class PowerupStation {
     // reconnect re-send, a restarted MC). A LATER spawn instant (about one interval on) is a new item and is accepted.
     // An operator reset carries `reset: true` (A56) and is always accepted: the item is there now.
     if (body.available === true && body.reset !== true && this.available === false && this.taker && this.awardedNext != null) {
-      const half = this.everyMs > 0 ? this.everyMs / 2 : 1000;
+      // Half of the effective interval: a new cycle is a whole interval on, an echo is none (same value on the Stick).
+      const half = this.everyMs / 2;
       if (next == null || next < this.awardedNext + half) return;
     }
     if (typeof body.available === 'boolean') {
@@ -67,7 +71,7 @@ export class PowerupStation {
     if (this.nextAt != null && now >= this.nextAt) {
       if (this.available !== true) { this.available = true; this.taker = 0; this.awardedNext = null; events.push({ type: 'spawned' }); changed = true; }
       const every = this.everyMs;
-      if (every > 0) { while (this.nextAt <= now) this.nextAt += every; } else this.nextAt = null;
+      while (this.nextAt <= now) this.nextAt += every;
     }
     const mine = (players || []).filter(p => p && p.role === 'player' && p.value === (this.id & 0xff)
       && !(Number.isFinite(p.ageMs) && p.ageMs > CLAIM_FRESH_MS)

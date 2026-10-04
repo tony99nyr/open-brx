@@ -185,9 +185,8 @@ struct StationUpdateMsg {
   int id = 0;
   bool available = false;
   long next_spawn_in_ms = -1;  // relative (no synced clock); -1 = absent
-  // A56 polish round 2 (brx5): MC sets this only on an operator RESET. `app/src/powerup.js` does
-  // not exist in this checkout to mirror; this shape and the accept/refuse rule below are built from
-  // the brief alone (docs/spec/powerups.md, and the coordinator's message, are the only sources).
+  // A56 polish round 2 (brx5): MC sets this only on an operator RESET. The accept/refuse rule below
+  // mirrors `PowerupStation.update` in app/src/powerup.js (docs/spec/powerups.md).
   bool reset = false;
 };
 
@@ -795,15 +794,19 @@ class PowerupSchedule {
   // always honoured -- "a reset keeps the fixed next spawn", so it still goes through the normal
   // re-anchor below, just never refused); or the incoming update's own implied next-spawn instant is
   // at least half a `spawn_every_s` interval past the awarded one, which can only mean a genuinely
-  // later spawn cycle, not an echo of the one just claimed. `app/src/powerup.js` does not exist in
-  // this checkout to mirror; this rule is built from the brief alone.
+  // later spawn cycle, not an echo of the one just claimed. The rule mirrors `PowerupStation.update`
+  // in app/src/powerup.js; the shared cases in app/test/fixtures/powerup-station-cases.json hold the
+  // two together. The reference is the NEXT spawn (the anchor after `mark_taken` folds it), so a
+  // re-sent `available:true` that points at that same next spawn is refused too. The window is half
+  // of the effective interval (`spawn_every_s`, 60 s when none is known) on both sides: a genuine
+  // new cycle is a whole interval on, an echo is none, so half is the safe middle.
   bool should_accept_available(bool reset, long incoming_next_spawn_in_ms, uint32_t received_at_ms) const {
     if (!has_awarded_instant_) return true;
     if (reset) return true;
     if (incoming_next_spawn_in_ms < 0) return false;  // nothing to prove this is a later cycle
     uint32_t incoming_next_ms = received_at_ms + (uint32_t)incoming_next_spawn_in_ms;
     long half_interval_ms = (long)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000L / 2;
-    long advance_ms = (long)(incoming_next_ms - awarded_instant_ms_);
+    long advance_ms = (long)(int32_t)(incoming_next_ms - awarded_instant_ms_);  // signed: an earlier spawn is negative  // vs the next spawn after the claim
     return advance_ms >= half_interval_ms;
   }
 
@@ -845,15 +848,15 @@ class PowerupSchedule {
     uint32_t awarded = has_anchor_ ? anchor_ms_ : now_ms;
     available_ = false;
     taker_ = player_num;
-    has_awarded_instant_ = true;
-    awarded_instant_ms_ = awarded;
+    has_awarded_instant_ = false;
     uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000u;
-    if (!has_anchor_) {
-      anchor_ms_ = now_ms + period_ms;
-      has_anchor_ = true;
-      return awarded;
-    }
+    // No anchor yet: the station does not know when the next spawn is, as the phone does not. It
+    // advertises value 0 until MC's next `station_update` anchors it, and it protects nothing.
+    if (!has_anchor_) return awarded;
     while ((int32_t)(now_ms - anchor_ms_) >= 0) anchor_ms_ += period_ms;
+    // The refusal above compares against this NEXT spawn (the phone's `awardedNext`), not the one claimed.
+    has_awarded_instant_ = true;
+    awarded_instant_ms_ = anchor_ms_;
     return awarded;
   }
 
@@ -866,7 +869,8 @@ class PowerupSchedule {
     v.taker = taker_;
     int32_t remaining_ms = (int32_t)(anchor_ms_ - now_ms);
     if (remaining_ms < 0) remaining_ms = 0;
-    long secs = ((long)remaining_ms + 999) / 1000;  // ceiling: never reads 0 while still taken
+    long secs = ((long)remaining_ms + 999) / 1000;  // ceiling
+    if (secs < 1) secs = 1;                         // never reads 0 while still taken (the phone's floor)
     if (secs > 255) secs = 255;
     v.value = (uint8_t)secs;
     return v;
