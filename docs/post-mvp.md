@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-09-27 (see experiment-log/2026-09.md for the day's changes).
+Updated: 2026-10-03 (see experiment-log/2026-09.md for the day's changes).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -191,7 +191,7 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   unknown** — how low t14 can go before the firmware clamps or the IR stops keying — and a faster cadence
   interacts with the t21/t22 recoil model (F46), so a boost may cost accuracy as a side effect. **Blocked on
   `docs/bench-grenade.md` rung Z** (sweep t14 for the floor; prove the push/revert preserves ammo exactly; fire it
-  off a real beacon). Design: `docs/utility-roadmap.md` "Rewarding the holder". **→ 2026-09-18, a second lever:**
+  off a real beacon). Design: `docs/archive/utility-roadmap.md` "Rewarding the holder". **→ 2026-09-18, a second lever:**
   V4_30 reads `$TMP` t5 as a fire-interval percentage with a 65 ms floor and no magazine reset, and the stock hill
   buff writes it; `bench-firmware-levers-2026-09-19.md` §21 traces it. `build` + `bench`.
 
@@ -201,7 +201,7 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 
 - **F408 🟡 THE EXTRACTION AND BOMB-SITE STATION KINDS.** Tony, 2026-09-25: "so mvp for utility is respawn station, pickup, hill". F405 hid `extraction` and `bomb` from every place a host assigns a station kind; the types, the code and the recap labels stay, so an old assignment still renders. They return with their modes (Extraction, S3; a bomb mode), each with a station built and benched. `build` + `bench`.
 
-  **The station work each one still needs**, merged from `utility-roadmap.md`'s ordered kind list (K1 the
+  **The station work each one still needs**, merged from the archived `archive/utility-roadmap.md`'s ordered kind list (K1 the
   control point is built, F94; K3 the powerup is built, S58, `spec/powerups.md`) before that file was archived
   2026-09-27; the wire rule for each is `spec/utility.md` §5, this is only the build task:
   - **K2 · Extraction zone.** A player carrying loot who is present at the zone channels for `channel_s`;
@@ -433,6 +433,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 
 - **F373 🟡 LIVE RANGE CALIBRATION ON A UTILITY PHONE.** Tony 2026-09-25, post-MVP. A calibration screen on the utility phone lists every player phone it hears in range, each with its live RSSI. A slider sets the range threshold. While the host moves the slider, each player's HUD shows IN RANGE or OUT OF RANGE live, so players walk and feel the edge. A save button stores the threshold as the utility's default and syncs it to MC (A67's range-edit sync, F365, already carries it). Design notes: the UTILITY measures the player's advert, not the reverse, because the utility applies the threshold and devices transmit at different powers. Phone models transmit at different strengths, so a range tuned with one phone differs slightly for another (the fixed -70 has the same issue today). Tony rejected the earlier version (a player sets the range from the HUD debug menu) in favour of this one. `build`.
 
+- **F431 🟢 `station_action`'S PROVISIONAL SHAPE.** Moved 2026-09-27 (doc-rot pass) out of `hardware/m5sticks3/README.md`'s old *Open questions* section. The `station_action` wire (RESET, CLAIM's "taken" report) is proposed to brx5, not a signed-off contract (`build_station_action_body` in `station_ui.h`, `mcBuildStationActionTaken` in `mc_link_glue.h`), though MC has accepted it since A56 (`f3fe3cf6`) with no trouble; A56 is still PROPOSED in `spec/contracts.md`. **→ 2026-10-03, moved from FOLLOWUPS.md:** part 1 (the operator screen's legibility) closed: `paintOperator()` no longer exists, and Tony walked every Stick screen (F333). This part does not block MVP. Fold it into an A56 sign-off. `build`.
+
 ## 3. Weapons, perks and balance
 
 - **F412 🟡 A MELEE PRESET: SWITCH MELEE OFF, OR CHANGE ITS DAMAGE.** Tony 2026-09-26: "We could have a toggle which disables melee or adjusts damage but thats postmvp. Could create preset and select it in play." For MVP, melee is always on in every game: a gyro swing only (slot 4, `$BMAP` button 8), never on the trigger, never a weapon pick (`compile.py` always resolves the hidden `melee` row into slot 4). Post-launch: a BUILD preset piece that turns melee off or sets its damage, picked in PLAY like any other preset. `build`.
@@ -489,6 +491,56 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   .5 a stock `pistols` template in START FROM. `build`.
 
 - **S48 🟡 PER-VENUE / PER-GAME-TYPE IR POWER FROM THE HUD ("SUPER INDOOR").** Tony 2026-09-17, watching the t2 ladder: "my preference is we control all of this. we leave the guns native outdoor mode and then we control these values from the hud per game type. we should be able to configure a super indoor mode with this too." Mechanism exists today: `$WEAP` t2 is per-weapon, per-slot and writable mid-life (S42 proved a bare `$WEAP` is safe), so MC can compile a venue/mode power level into every head. **Shape: a master level, not a per-weapon identity** — 2026-09-17 could not find a t2 that fences one weapon to a chosen distance (F231), and above ~31 every value behaves alike at playable distances. So ship it as `GameConfig` venue power (e.g. indoor_tight / indoor / outdoor) applied to all weapons, and keep per-weapon range out of the catalogue until F231's shaded re-run says otherwise. Depends on F231 and F232. Note the `$WEAP` write resets mag/reserve/accuracy, so every power change needs the `$AMMO` restore (S42). ⚠️ **2026-09-18: re-read this row before building it.** `$WEAP` t2 is a CARRIER FREQUENCY, not a power (V4_31 disassembly, `protocol/brx-protocol.md`), so "venue power from the HUD" cannot be built on t2: a low value detunes the word out of the receiver's band-pass, it does not turn the gun down. The one real emitted-power lever the trace names is the gun's own indoor/outdoor level (PWM duty about 20% against 38%), which we do not drive over BLE. Decide what "super indoor" now means before any build: a detune that costs range at every distance, or a physical fix. The carrier reading is benched at `bench-firmware-levers-2026-09-19.md` §20. `decision` + `build`. **→ Tony 2026-09-23, what "super indoor" means:** a suburban HOUSE with light eggshell paint, which reflects IR strongly; not an indoor facility or an empty factory. Today a shot at the ceiling or a wall bounces and still hits. Goal: aimed shots hit and bounced shots do not. **Acceptance:** at least 95% of aimed shots across a room hit, and at most 5% of deliberate bounce shots (ceiling or wall, well off target) hit. **Method:** a sweep in Tony's house over `$WEAP` t2 carrier detune (a few values, 1 to 31) × `$GSET` t2 receiver sensitivity (0/1, F198), 20 aimed + 20 bounce shots per cell; ship the winning pair as a `house` venue beside indoor/outdoor. Bench sheet: the next-sitting runbook. `bench` + `build`.
+
+- **F198 🟡 Needs Tony at the bench** the reflection theory behind `$GSET` t2 is untested and may INVERT the
+  current fix. Reading: low sensitivity (t2=1) may be deliberate for INDOOR play, rejecting bounced/reflected
+  shots off walls and ceilings, in which case the right end state is `indoor -> t2=1, outdoor -> t2=0` — the
+  opposite of what shipped. Test: play indoors at t2=0 (today's pinned value) and look for phantom hits (no line
+  of sight, or hits on players nobody aimed at). If they appear, invert the mapping; if not, leave t2 pinned at 0
+  everywhere. (filed 2026-09-13 from archive/HANDOFF-gset-t2-2026-09-13.md §3) Next step (2026-09-18): the one-sided
+  `$GSET` t2 test, `bench-firmware-levers-2026-09-19.md` §19 step 4. `bench`. **→ 2026-10-03, moved from FOLLOWUPS.md:** indoor only, so post-MVP: MVP is outdoors only (F410, 2026-09-26). t2 stays pinned at 0 at every venue (`GSET_T2_SAFE`). Its partner is S48's house sweep.
+
+- **Q15 🟡 THE RANGE LEVER IS REAL, BUT IT IS `$WEAP` t2 `gunRangeOutdoor`, NOT t41 (garden, 2026-09-17).**
+  ⚠️ **Corrects the first write-up of this same session**, which recorded the finding against t41: the two commits on
+  2026-09-17 16:01/16:04 describe our t41 A/B setup but report the t2 result. What was actually measured, mag-counted:
+  **t41 is a NULL** — two slots differing only in t41 (5 vs 75, damage 1 vs 21 so the `$HIR` magnitude names the slot)
+  scored **27 of 27 for the low slot against 55 of 57 for stock, at 3 m, 10 m, 20 m, 40 m and ~200 ft**. There is no
+  10 m drop-off at t41=5 and no distance at which the two slots differ. **The control is t2** (F231): t2=5 lands
+  nothing at any distance including muzzle-on-dome, t2=100 (the shipped value on every gun; melee 90) reaches 200 ft,
+  and between them sit a floor, a transition around **13-26**, and a flat shelf from ~31 up where every value behaves
+  alike at any distance we can pace out. **Still unresolved and gating everything below: whether t2 can fence a weapon
+  to a chosen distance at all** — above ~31 the cone at 30 m was barely different from the t2=100 control and
+  37/41/42/45 all land at 40 m on careful aim. Two confounds make the whole ladder provisional: the receiving dome sat
+  in **direct sun** for the hour with the light moving (misses came in streaks of 5-6), and **the first two trigger
+  pulls of any group are weaker** (F232), which handicapped the first two shots of every group fired.
+  **The design intent below stands and is unaffected by the token correction.** Range is per VENUE, not one number
+  (Tony 2026-09-17: "10 m for any gun outside is really short ... when are you going to be that close in a park"), so
+  it scales with the venue like play volume does, and the compiler's range hook lives there — **✅ moved from t41 to
+  t2 2026-09-17** (F234 closed). Target reaches, ratios first, Tony's shotgun number set at
+  15-18 m outdoors: Shotgun 8-10 m indoor / 15-18 m outdoor; SMG 12 / 25-30; AR and Burst 18-20 / 40-45; Suppressor
+  and LMG 15 / 30; Marksman and Sniper full reach / 60 m or the hardware limit (the field has seen hits at ~200 ft).
+  **Shipped 2026-09-17 (outdoor only, `docs/weapon-design.md` §4.2):** Sniper 100; AMR/Charge Rifle 85; AR/Burst 70;
+  Suppressor/Energy Rifle 55; SMG 30; Shotgun/Rocket Launcher/Rail Gun 22 (heavies corrected to the close band, one-shot
+  power is meant to be earned close, not out-ranged). Only the SMG/Shotgun/Rocket/Rail values are real guesses.
+  (2026-09-18: the Shotgun went back to t2 100, because 22 made it miss about half its shots at 10 m, see F275;
+  `weapons.json` ships it at 100.)
+  Calibration method for the next sitting, **re-pointed at t2 and shaded**: at taped marks, binary-search the LOWEST
+  t2 that still registers, **full 32-round mags with the first two shots discarded** (F232 makes 5-shot steps
+  worthless), or use the ESP32 receiver on a tripod for a graded detect/decode margin instead of a hit count; one
+  ladder indoors and one outdoors, dome out of direct sun. Note `$HIR` token 1 names the sensor at playing distance
+  (F228 is a close-range caveat only). See S48 for the HUD-driven venue control. **→ 2026-09-18 capture (cap30), how Callsign does a short
+  Shotgun:** it does not shorten the shot. Its Shotgun ships `t2` = 100 like every Callsign gun; only the t12 = 70
+  headset word has its own reach, `t13` 80 outdoor / `t42` 30 indoor (35.2 / 28.2 kHz under the headset's carrier formula,
+  `protocol/brx-protocol.md` §6, the `2, 41` row), so a far target takes 45 and a near one can take 115 (F71). And with the app's venue on
+  OUTDOOR it still sent `$GSET` t2 = 0, so the app's venue switch is not t2. Which of t13/t42 fires is presumably
+  the gun's own ALT-hold level; unmeasured. Original row: sub-indoor IR power
+  (Tony: indoor bounces register hits from everywhere). Lever 1 = `$WEAP` t41
+  `gunRangeIndoor` (75 on all guns, 20 on melee) — **one prior positive, see `weapon-design.md` §5 U2**; lever 2 =
+  `$GSET` t3 `gunLaserRegion`. `$IRTX`/`$HFIRE` emit nothing on v4.32. **Run sheet:
+  [`archive/bench-super-indoor-2026-09-07.md`](archive/bench-super-indoor-2026-09-07.md)** (MacBook — the rig has never run on
+  macOS; find the margin before sweeping). A null is an answer. If it works, an `indoor_tight` venue preset.
+  **→ 2026-09-18:** t41 in INDOOR mode is `bench-firmware-levers-2026-09-19.md` §19 step 5 (V4_30 reads the indoor
+  fields only when `$GSET` t2 is not 0). `space` (bench 2.1). **→ 2026-10-03, moved from FOLLOWUPS.md:** the outdoor ladder folds into F231 (one shaded t2 ladder). What stays here is the indoor half: t41 sub-indoor power, `$GSET` t3, and an `indoor_tight` preset, post-MVP by F410 (MVP is outdoors only), beside S48. Note: the Shotgun ships at t2 30 since `ef55b7db`, not 100.
   **→ 2026-09-23 code read:** v4.32 and v2.08b emitters use the same carrier slope and select two fixed output settings from the indoor flag. Scope carrier and duty in each physical mode, then test whether the documented `$GSET` t2 / `$IRLVL` path changes that flag without using a low `$WEAP` t2 as a power setting. See R4 plan.
   **→ Broader version read:** tagger 2.01U uses 300 Hz per range point, 2.02c uses 75, and 2.02e onward uses 125. Calibrate an older gun separately before giving it the same venue range preset.
 
@@ -680,6 +732,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 - **F13 🟡** a respawn within ~2 s of death wedges the headset in the green out-blink (threshold 2.0–2.5 s; use ≥ 3 s).
   (1) ✅ floored everywhere 2026-09-11 (F34 closed: PUT refuses 1–2 s, the node floors at 3 s, the CLI already did); (2) headset-side frame pacing of
   the arming burst is unverified (echo proves the gun got it, not that the headset executed it) `eyes`.
+
+S10's post-MVP parts (the MVP half, the L10 hold, stays in [`FOLLOWUPS.md`](FOLLOWUPS.md)), moved 2026-10-03: **(a)** a metered A/B of the down re-arm loop against a native out-blink (the "might be brighter" call was one operator, one session, no meter; main now ships `$HLOOP,1,2500`, `0d58d92f`); **(b)** that rate's usable range (750 and 2000 both work, the ends are unknown); **(d)** L11 purple `$TID,4` (`$TID,4,*` + `$HLED,4,0,,,10,,*` on a head, `$GLED,4,4,4,0,10,,*` on the body; pass is purple on both; tid 4 is not an MVP team); and the `beacon`/`extracted` role signals, which have the contract (A19) but no MC-side signal, and wait on S3 extraction (MVP modes are TDM, FFA and KOTH). The ladder is `archive/bench-flash-control-2026-09-05.md` §6.
 
 ## 6. Phone HUD and Mission Control
 

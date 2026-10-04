@@ -1,5 +1,9 @@
 # Bench sheet: standard, 2026-09-29 (the WSL/Windows box, the Pixels, two guns, no Stick)
 
+**RAN 2026-10-02 on 0.4.16** ([`experiment-log/2026-10.md`](experiment-log/2026-10.md)): steps 1-9, 8b, 13 and
+14-17. Steps 10-12b, 13b and 13c did not run. Do not run from this sheet: the unrun steps, and the repeats of 8b
+and 16 (11.8), are in [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md).
+
 Updated: 2026-09-29. One of three independent sheets for today; the index is [`bench-plan.md`](bench-plan.md) →
 *Part 3*. The other two are [`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) and
 [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md). How a bench run works with Tony: the

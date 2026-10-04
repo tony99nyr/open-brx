@@ -1,5 +1,5 @@
 # Running a match
-Last verified: 2026-09-18
+Last verified: 2026-10-03
 
 How to get from a bag of taggers to a finished game with a scoreboard. There are two ways to run
 one, and the simpler way needs nothing but a laptop.
@@ -127,7 +127,7 @@ the phones. This is optional, and a match never depends on it.
    **TURN ON** under INTERNET. The row reads STARTING, then UP with a hostname. If it reads ERROR, the text
    beside it is the reason; the usual one is no internet at the laptop. When every phone on the board is
    green, the Armory also shows **ENABLE BACKHAUL** beside **HARDWARE READY**. It does the same thing as
-   TURN ON, and you can go on to Games while the link starts.
+   TURN ON, and you can go on to PLAY while the link starts.
 3. The join QR now carries both addresses. New phones scan it as always. Phones that already joined over
    Wi-Fi pick the internet address up by themselves; nobody rescans.
 4. In the **Lobby**, each row shows LAN or BACKHAUL, and the header says how many phones are on backhaul. A

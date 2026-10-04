@@ -2,7 +2,7 @@
 
 **Status:** reference, current as of 2026-09-22. Each row states the current reading only. The dated
 bench write-ups that produced it, with every retraction, are in
-[`session-findings-2026-08.md`](../docs/archive/session-findings-2026-08.md) (archived) and `docs/experiment-log/`
+[the archived session-findings-2026-08](../docs/archive/session-findings-2026-08.md) (archived) and `docs/experiment-log/`
 (the live notebook). The published developer reference built from this file is
 `docs/manual/dev.md`. **This file owns the command rows.** The manual's command tables are a reader summary,
 and `mcp/tests/test_docs_hygiene.py` fails when they name a command this file lacks, quote a frame it does not
@@ -482,7 +482,7 @@ Nothing we ship uses that path.
 reconnect anyway: two 2026-08-26 readings of a bare `$SPAWN,,*` after a drop contradict each other and were never
 reconciled. In the first, `$SPAWN,,*` alone revived the gun with its config intact. In the second, a dead gun did not
 revive on `$SPAWN` alone. The archived August notebook records both (§7r, its addendum and the retractions table):
-[`session-findings-2026-08.md`](../docs/archive/session-findings-2026-08.md)); a power-cycle wipes everything except `$NAME`; switching the headset off makes
+[the archived session-findings-2026-08](../docs/archive/session-findings-2026-08.md)); a power-cycle wipes everything except `$NAME`; switching the headset off makes
 the gun send `$DISCONNECT,*` and drop the link; a power-cycled gun needs its headset re-linked before BLE holds.
 **Bench-confirmed 2026-09-18: only `$CLEAR` wipes the `$SIR` function table; `$SPAWN` and death do not**, so a
 row sent once at arm still registers hits after a `$SPAWN,,*` with no re-send. `$SPAWN` DOES zero every `$TMP`

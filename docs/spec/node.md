@@ -193,6 +193,11 @@ whose cell in this bundle's `$SIR` table has a no-pool function (`_SIR_NO_POOL`:
 **never computes its own kills** — a kill you score is invisible in your own stream; only the *victim* reports
 it (§3.6). The `roster` turns a number into a name for the HUD; an unknown number is still reported verbatim.
 
+**Own shot (F438, bench 2026-10-02).** A `$HIR` whose shooter id is this player's own `player_num` is a self-hit
+(a round that bounced off a wall into the shooter's own headset). One `$LIFE` gives back what the paired `$HP`
+took. A lethal self-hit revives at once, with a drain that leaves the pools the hit left. A self-hit books no
+`hit_taken`, death, score, cue or recap entry.
+
 **The per-life damage ledger (S56 "what hit me", contracts A52).** HUD information only: no game rule reads it.
 - **Weapon naming.** The latch also holds `$HIR` token 5. The node matches it against the shooter's roster
   `weapons[].hir` first, then against the catalogue as a pickup (the shooter's own ids left out). Two or more
@@ -523,9 +528,9 @@ may write its own gun freely mid-match. Built 2026-09-19 in `engine.js` (`_poiso
 | rule | what the node does |
 |---|---|
 | the table | MC ships `FrameBundle.dot` (contracts §3): `{"<ir_proto>": {weapon_id, per_tick, tick_ms, duration_ms}}` for every weapon in the GAME that declares `dot`, built off the match plan (`Compiler.dot_table`). The victim needs the shooter's numbers, not its own. A plan where another weapon shares a poison protocol does not compile. Today: the Toxin Rifle, protocol 11, 4 every 1000 ms for 5000 ms |
-| recognise | EVERY `$HIR` whose token 2 is a key in the table starts the stack (there is no proc chance) and plays `poisoned`. Only LIVE, spawned and alive |
+| recognise | EVERY `$HIR` whose token 2 is a key in the table starts the stack (there is no proc chance); the onset plays `poisoned`, a refresh does not. Only LIVE, spawned and alive |
 | refresh, never stack | a later hit, from the same shooter or another, resets the stack to full duration and becomes the applier. Two shooters never run two clocks. The tick cadence is kept, so sustained fire cannot push the next tick out |
-| tick | one `$LIFE` per interval on the OUTERMOST non-empty pool (shield, then armour, then health), mode 0 only (a mode 1/2 write revives a dead gun). A negative has no spill and floors at 0, so a tick that empties a pool loses its remainder. Each non-lethal tick plays `poison_tick`. A tick due while the link is down or a reconcile or resync runs is skipped, and a stalled clock drops the ticks it missed, including a late tick once the stack has run out |
+| tick | one `$LIFE` per interval on the OUTERMOST non-empty pool (shield, then armour, then health), mode 0 only (a mode 1/2 write revives a dead gun). A negative has no spill and floors at 0, so a tick that empties a pool loses its remainder. Each non-lethal tick plays `poison_tick` when the gun holds no clip and no announcer item waits or sounds. A tick due while the link is down or a reconcile or resync runs is skipped, and a stalled clock drops the ticks it missed, including a late tick once the stack has run out |
 | not a hit | the `$HP` that answers a tick books no `hit_taken`, no pain line and no hit flash. The node matches the echo on what moved, not on timing alone: inside 1000 ms of the write, the tick's pool is the only pool that moved, by exactly `min(per_tick, what that pool held)`. A `$HIR` can land between a tick write and its `$HP` under sustained fire, so a newer `$HIR` does not disqualify an echo. An `$LCD` never takes the echo (review 2026-09-19) |
 | end | expiry after the last tick, death, spawn, respawn (operator respawn too) and match end. A stack never survives a life |
 | death | a lethal tick emits `$LCD` and no `$HP` (F64), and the `$LCD` path books it. A death inside 1500 ms of a HEALTH tick, with no newer `$HIR` latched, is the tick's (a shield or armour tick claims no death): the `death` fact names the MOST RECENT applier in `shooter_num`/`shooter_team` and carries `dot: true`, and the scorer credits that player like any kill (friendly rule included). No tick cue on a lethal tick: the death scream owns the speaker. The DOWN screen reads POISONED BY |

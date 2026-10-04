@@ -83,7 +83,7 @@ the hill. Settles whether the `proto=0 mag=8` damage word is continuous or condi
 comparison this session made across two different windows and therefore could not make at all.
 
 **D. The contest, and Tony's shield design (20 min, TWO guns).** ⚠ **Also restored — `HANDOFF.md` and
-`utility-roadmap.md` both still depend on this rung.** Both guns armed by us, both carrying a protocol-15 row,
+`docs/archive/utility-roadmap.md` both still depend on this rung.** Both guns armed by us, both carrying a protocol-15 row,
 on opposing teams, alternately capturing; watch each gun's view of the same beacon. Then the design test:
 `<15,0>` on a **grant** function (fn 11 add shield, or 18) with friendly fire OFF, so ally polarity should
 shield the HOLDER while `<0,0>` on fn 1 damages the challenger. ⚠ Arm from `$CLEAR` — an in-place `$SIR` row
@@ -96,12 +96,12 @@ instrumented this way. See `docs/experiment-log/2026-09.md` 2026-09-10 (evening,
 still needs the grant-function design test above. ⚠ **And the grant-function design test cannot serve a
 rate-of-fire boost even if it works**, because an ally grant on `<15,0>` at t1 = 0 makes the gun deaf to
 enemy-held hills — one cell cannot both read every owner and grant only to the owner
-(`docs/utility-roadmap.md` "Why the firmware cannot grant it"). The hosted, node-side boost is **rung Z**.
+(`docs/archive/utility-roadmap.md` "Why the firmware cannot grant it"). The hosted, node-side boost is **rung Z**.
 
 **Z. The hosted rate-of-fire boost, end to end (25 min, one gun; step 1 needs no grenade).** Rung D's
 motivating belief was "holding the hill makes you shoot faster." The hosted null (above) says the grenade will
 not do it, so the mode has to do it from the node: reduce `$WEAP` **t14** while your team owns the point, put it
-back when you lose it (design: `docs/utility-roadmap.md` "Rewarding the holder"; implementation **F87**). Three
+back when you lose it (design: `docs/archive/utility-roadmap.md` "Rewarding the holder"; implementation **F87**). Three
 steps, each answering one thing, and step 1 is the one with value beyond KotH.
 
 **Z1. Sweep t14 and find the floor (10 min, NO grenade, one gun on BLE).** t14 is calibrated at ~1 ms/round but

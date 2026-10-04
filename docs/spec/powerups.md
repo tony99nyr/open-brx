@@ -5,7 +5,7 @@ lets enable them").** `--no-powerups` is the opt-out. Sitting A's slot and butto
 (bench 3.3, below); steps 3.4, 3.5 and 4.11 remain as verification, not as a condition for the default.
 Tony's model: a station (a utility phone or an M5Stick) is assigned a kind and its data by Mission Control
 (MC) per game. A powerup station grants an item, for example a pickup-only heavy (rockets). Contract row: A56.
-Roadmap entry it replaces: K3 in `docs/utility-roadmap.md`; the station half of S46.
+Roadmap entry it replaces: K3 in the archived utility-roadmap; the station half of S46.
 
 ## The mechanism: armed at start, straight onto the trigger
 
@@ -19,8 +19,10 @@ A mid-match config re-push to a live gun clears `spawned` and silences it for th
    the first powerup weapon, slot 3 for a second. Every spawn and revive writes `$AMMO,<slot>,0,0,1` for it, so the
    slot is empty. The ALT `$BMAP` row is not touched: a heavy is never in the ALT cycle.
 2. **The grant.** The phone saves the slot the trigger is on and its magazine and reserve (from its `$ALCD`
-   account). Then it re-sends the pickup slot's head `$WEAP` verbatim, which equips it on the trigger (bench
-   2026-09-24), then `$AMMO,<slot>,<charges>,0,1,*`. The grant writes no `$BMAP`, so an Easy Reload player is granted
+   account). Then it re-sends the pickup slot's head `$WEAP`, which equips it on the trigger (bench
+   2026-09-24), then `$AMMO,<slot>,<charges>,0,1,*`. The `$WEAP` is verbatim unless the charges exceed its clip. An
+   `$AMMO` set clamps to the clip, so then t16 (maxClip) and t39 rise to the charges, and t17 (maxAmmo) rises to at
+   least the charges (F381, `engine.js _puWeapFor`). The grant writes no `$BMAP`, so an Easy Reload player is granted
    like anyone.
 3. **A second heavy swaps.** The phone zeroes the old slot's `$AMMO`, then writes the new slot's `$WEAP` and `$AMMO`.
    The switch-back target stays the loadout weapon. The HUD says RAIL GUN, REPLACES ROCKETS.
@@ -40,7 +42,10 @@ A mid-match config re-push to a live gun clears `spawned` and silences it for th
 8. **A reconcile** (a BLE relink) disarms the held heavy's slot with slots 0 and 1, and the re-arm carries the heavy's
    charges in place of its spawn zero row, in the same write (a separate write let the gun's echo of 0 end the item).
    A switch-back the gun does not answer with an `$ALCD` for that slot is re-sent every 1.5 s (3 times at most), and
-   SELECT re-sends it at once.
+   SELECT re-sends it at once. A heavy ON the trigger is re-equipped in the re-arm itself: the loadout rows, then the
+   heavy's `$WEAP` and `$AMMO`, in one write (F436: an `$AMMO` row never moves the trigger). An ALT swap in flight
+   keeps the trigger. After `$SPAWN` the gun ignores a slot change until the first trigger pull of the life, so the
+   phone logs an earlier equip as unconfirmed, and a slot-0 shot triggers the re-send.
 9. **Persisted:** the held item, its saved switch-back slot and counts, the trigger's slot, and a pending slot-0
    re-equip. An app restart mid-item still switches back correctly.
 
@@ -51,7 +56,7 @@ powerups flag. The overshield is unchanged by this section.
 **F403 (2026-09-25):** the BRIEFING screen (`app/src/hud/hud.js _briefing`) adds one PICKUPS line, naming each
 distinct item the game's powerup stations carry (the same station config `engine.js _puItems()` reads), in station
 order and each in its own colour by day, collapsing to the one night accent at night; a game with no items shows
-no line. Storyboard: `C:\Users\Tony\brx-brief-pickups`, awaiting Tony's look.
+no line.
 
 **Decided by the lead, 2026-09-24, then overridden the same day:** a first draft blocked ALT (`$BMAP,1,98`) while the
 heavy was on the trigger. Tony's SELECT decision dropped the block: ALT keeps its normal job.
@@ -186,7 +191,7 @@ stations with the same weapon share its slot.
 swap and you would only have 1."
 
 - **Weapon pickups** (Rockets, Rail Gun, later the other heavies) share ONE pickup-weapon holding. Taking the same
-  weapon adds its charges to the charges left and puts it back on the trigger, with no replacement card. The stack caps at twice the item's own charges (`PU_STACK_CAP_X`; Tony, 2026-09-25: "double the drop is max"), so Rockets (2) hold at most 4.
+  weapon adds its charges to the charges left and puts it back on the trigger, with no replacement card. The stack caps at twice the item's own charges (`PU_STACK_CAP_X`; Tony, 2026-09-25: "double the drop is max"), so Rockets (2) hold at most 4. With per-station CHARGES the cap is twice the larger of the held and the offered item's charges, and a stack never lowers the held count. A player at the cap does not claim the same weapon: the phone never sets `claiming`, so the station keeps the item for someone else (F447, `engine.js _puAtCap`).
   Taking a different weapon SWAPS: the new one replaces the old, which is gone (not dropped for someone else; that is an idea for
   later). On the gun: zero the old slot's `$AMMO`, then the new slot's head `$WEAP` and its `$AMMO` with the charges
   (the mechanism above). The HUD says it on the callout card: RAIL GUN replaces ROCKETS. **Bench 2026-09-24, measured: the
@@ -327,7 +332,7 @@ Decided:
   refills up to its own max, so it never tops the overshield back up.
 
 Defaults still to confirm (named constants, easy to change):
-- **Charges:** `item.charges` is the rounds granted to the player who takes it (the magazine, no reserve), never a count of pickups left: a station holds at most one item. MC decides it per game, in the item it sends. The default is the weapon's own magazine (Rockets: 2) until a balance decision (Tony, 2026-09-24: "2 rockets, or 4 shots"); an operator control to change it is later. The Stick shows no charges count.
+- **Charges:** `item.charges` is the rounds granted to the player who takes it (the magazine, no reserve), never a count of pickups left: a station holds at most one item. MC decides it per game, in the item it sends. The default is the weapon's own magazine (Rockets: 2) until a balance decision (Tony, 2026-09-24: "2 rockets, or 4 shots"); ARMORY's per-station CHARGES (1-4) overrides it (above). The Stick shows no charges count.
 - **Lost at death:** a weapon item's unused charges do not carry into the next life.
 - *(decided, see above: the same weapon adds charges; a different weapon SWAPS.)*
 

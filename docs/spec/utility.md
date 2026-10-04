@@ -80,16 +80,16 @@ carries the TX-power field so a scanner can do path-loss later; 21–24 bytes, i
 NEAREST PLAYER**; the threshold becomes that phone's smoothed reading minus 3 dB and goes out in the advert.
 The HUD shows the live reading against the threshold on the DOWN screen (§4.3), so the edge is visible.
 
-**Presence** (`beacon.js Presence`, both roles): EMA of RSSI (α 0.35); **present** after `dwellMs` continuously at/above the threshold; **gone** when the EMA drops `hysteresisDb` (6) below it, or after
-`expiryMs` (4 s) with no advert. Pinned by tests: dwell, hysteresis band, expiry, a dip restarting the dwell,
+**Presence** (`beacon.js Presence`, both roles): EMA of RSSI (α 0.35); **present** after `dwellMs` continuously at/above the threshold; **gone** when the EMA drops `hysteresisDb` (`EXIT_BAND_DB`, 3 dB) below it, or after
+`expiryMs` (4 s) with no advert. F440 sharpens the exit. Leaving is debounced: a present player must stay below the exit level for `EXIT_GRACE_MS` (2.5 s). On each advert the phone takes the median of the adverts heard in the last `SIGHT_WINDOW_MS` (2 s). A median at or above the threshold is a credible sighting. A sighting sets `inCircle` (which the point counts), not `present`, and keeps it set for `SIGHT_MS` (4 s). `inCircle` is `present` OR a sighting within `SIGHT_MS`; `present` still needs the dwell. The values live in `app/src/beacon.js`; the Stick mirrors them in `hardware/m5sticks3/presence.h`. Pinned by tests: dwell, hysteresis band, expiry, a dip restarting the dwell,
 the advertised threshold overriding the default, neutral admitting every team, other games ignored.
 
 **Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
 -63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
 better"): a phone station **-70 dBm**, a StickS3 **-57 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
-`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`: a Stick respawn resolves 0 to -57 and advertises -57; a Stick powerup uses -45, F434). Extraction and bomb stations on a phone keep the
+`hardware/m5sticks3/station_range.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`: a Stick respawn resolves 0 to -57 and advertises -57; a Stick powerup uses -45, F434). Extraction and bomb stations on a phone keep the
 2026-09-04 bench value, -74 dBm at high TX (about 10 ft); a `control` station's own default is **-75 dBm** on both
-platforms (`beacon.js CONTROL_RSSI_DBM`; Tony, 2026-09-27, hysteresis 6, until the outdoor walk, F383). MC's `StationAssignment.threshold` still overrides; **0**
+platforms (`beacon.js CONTROL_RSSI_DBM`; Tony, 2026-09-27, exit band `EXIT_BAND_DB`, until the outdoor walk, F383). MC's `StationAssignment.threshold` still overrides; **0**
 (or absent) means the station's own default, which it resolves and advertises in byte 14. A phone app older than
 0.4.12 clamped 0 to -30, so MC sends such a phone the explicit value (`state.py _wire_threshold`). A player phone falls
 back to its own `Presence` default (-74, `app.js`) only for an advert whose byte 14 is 0; an MC-armed station never
@@ -175,7 +175,7 @@ gate from config (commit 0ac162b).
 
 ## 5. Other kinds (designed, not built)
 
-**Build order and ownership: `docs/utility-roadmap.md`** (cross-cutting first — MC arming, radio hardening,
+**Build order and ownership: `docs/post-mvp.md` §2** (history: the archived utility-roadmap) (cross-cutting first — MC arming, radio hardening,
 match scoping — then kinds by value: K1 control point, K2 extraction, K3 powerup, K4 bomb, K5 flag). This
 spec stays the spec of record; if a roadmap row disagrees, the spec wins.
 
@@ -258,7 +258,7 @@ MC-armed station and every player ignored each other.
 Mission Control drives all of the §5 kinds from the ITEMS panel (§5b); stations are self-authoritative and
 report at recap (MC is not live mid-match). (A duplicate of the §5 table that sat here as §5d was removed
 2026-09-06; the roadmap's older "§5d" references mean §5. **§5d below is the control-point spec**, added
-and the roaming-hill variant is `utility-roadmap.md` §8 5e.)
+and the roaming-hill variant is the archived utility-roadmap §8 5e.)
 
 ### 5c.1 `control{cmd:"release_utility"}` (M-NET, MC → utility phone) — the release message (A41)
 
@@ -283,10 +283,10 @@ deployed station in the meantime.
 
 ## 5d. kind 5 `control` — the phone control point (K1 base)
 
-**Status: designed, not built.** Tony's design call, dictated 2026-09-10. This section is the spec of record for
+Tony's design call, dictated 2026-09-10. This section is the spec of record for
 `kind 5`; the §5 table row ("owner by team over time · present counts for your team") is the one-line summary and
-this is the rule. Build row: `docs/utility-roadmap.md` K1. **Everything in §5d works with no LAN at all** — the
-Wi-Fi-coupled extensions are `utility-roadmap.md` §8 5e and are a separate, opt-in mode.
+this is the rule. Build row: K1 in `docs/post-mvp.md` §2 (built, F94). **Everything in §5d works with no LAN at all** — the
+Wi-Fi-coupled extensions are the archived utility-roadmap §8 5e and are a separate, opt-in mode.
 
 ### 5d.0 The circle (Tony, 2026-10-02)
 
@@ -297,8 +297,9 @@ matter if you are closer within that circle." So:
 - Capture speed and contest weight count players in the circle. RSSI never weighs a player, and no closer or
   stronger-radio phone gets an advantage ("a newer phone with stronger bluetooth shouldn't get an advantage").
 - **In the circle** means PRESENT (the entry dwell passed; leaving is debounced, `EXIT_GRACE_MS` 2.5 s below the exit
-  level) or a **credible sighting**: any advert inside the tolerance band (at or above the exit level) in the last
-  `SIGHT_MS` (4 s). The sighting makes an arriving opponent contest at once, before the dwell, so a quieter phone
+  level) or a **credible sighting** within the last `SIGHT_MS` (4 s). A credible sighting is an advert after which
+  the median of the adverts heard in the last `SIGHT_WINDOW_MS` (2 s) is at or above the threshold (not the exit
+  level). A window median gives a sparse and a dense advertiser the same edge. The sighting makes an arriving opponent contest at once, before the dwell, so a quieter phone
   never lets the other team take the hill silently (`beacon.js` Presence, `control.js`; F440).
 - There is **no per-phone calibration** (Tony, 2026-10-02: "isn't practical"). Fairness comes from tolerance built
   into the system: uniform advertising (the same tx power and mode on every phone, re-asserted after a scan reopen),
@@ -367,7 +368,7 @@ scale so it fits advert byte 11:
 
 So a full enemy-to-own conversion costs `2 * capture_s` at net +1, and two phases give the defender a real chance
 to arrive in the middle of it. **Only the team named in byte 9 scores** (possession seconds, or a Domination point
-per second); progress itself scores nothing. **Neutral pays nobody** (`utility-roadmap.md` §8 5f.6).
+per second); progress itself scores nothing. **Neutral pays nobody** (the archived utility-roadmap §8 5f.6).
 
 ⚠ **Team 2 (F82).** A hill mode must not put anyone on tid 2 — that constraint comes from the grenade's polarity
 gate, not from this advert, but a park will run both objectives, so MC's team assignment (0, 1, 3) is the same
@@ -388,7 +389,7 @@ toward prose that was never shipped.
 |---|---|
 | 8 `kind` | **5** |
 | 9 `team` | the **owner** when `held` is set, the **claimant** when it is clear, **255 = nobody** (§5d.2) |
-| 10 `state` | flags, OR-ed: **`held` 1** (byte 9 is an owner, not a claimant) · **`contested` 2** (living present players of two or more teams) · **`rising` 4** (`value` climbing) · **`falling` 8** (`value` dropping). Bits 4-7 spare — **`hot` (roaming hills, `utility-roadmap.md` §8 5e) takes 16** when that variant is built |
+| 10 `state` | flags, OR-ed: **`held` 1** (byte 9 is an owner, not a claimant) · **`contested` 2** (living present players of two or more teams) · **`rising` 4** (`value` climbing) · **`falling` 8** (`value` dropping). Bits 4-7 spare — **`hot` (roaming hills, the archived utility-roadmap §8 5e) takes 16** when that variant is built |
 | 11 `value` | **progress 0-100**, read per the §5d.2 table |
 | 12 `seq` | bumps on every change of `team`, the flags or `value` — a phone one-shots its callouts off this |
 | 15 `reserved` → `rate` | **specified, not yet emitted.** `advert()` returns `{team, state, value}` today. The intent is the clamped `net` (0..`net_cap`) so a screen can show speed without re-deriving it; it needs no sign, since `net` is never negative (§5d.1). A station's own screen has something better locally — `control.js timeToChange()`, the seconds until the point actually flips, which is the number a defender reads — so this byte is only worth emitting once a *player* HUD wants it |
@@ -417,8 +418,8 @@ F93's note about byte 15 being the cheap spare for relaying grenade-hill ownersh
 | fact | where it lives |
 |---|---|
 | **who** is contributing (ids, teams, alive) | the station's own screen only (§5d.4). The station knows it from player adverts; it cannot fan a per-player list out in 16 bytes, and no player phone needs it |
-| **hold time / possession seconds** | each node's own clock, exactly as the grenade hill does it (`utility-roadmap.md` "presence is a heartbeat, and timing is node-side"); the station and every player phone pause the tally while contested (F382, Tony 2026-09-25). The old K1 sketch put "seconds held" in `value`; `value` is progress now, permanently, and hold time never rides in the advert |
-| **a running score** across several points, and **points-to-win** | nowhere offline. This is the whole reason the roaming-hill variant exists (`utility-roadmap.md` §8 5e) |
+| **hold time / possession seconds** | each node's own clock, exactly as the grenade hill does it (the archived utility-roadmap "presence is a heartbeat, and timing is node-side"); the station and every player phone pause the tally while contested (F382, Tony 2026-09-25). The old K1 sketch put "seconds held" in `value`; `value` is progress now, permanently, and hold time never rides in the advert |
+| **a running score** across several points, and **points-to-win** | nowhere offline. This is the whole reason the roaming-hill variant exists (the archived utility-roadmap §8 5e) |
 
 ### 5d.4 The station screen ANIMATES the contest and the transition
 
@@ -526,7 +527,7 @@ The gun cannot speak on a beacon. `$SIR` is keyed on `<irProtocol, subtype>` alo
 the same key `<15,0>`, and the shipped function (fn 28) **ignores the row's `<soundID>` outright** (measured
 2026-09-10). One cell cannot hold four sounds, so the four team-aware callouts — `VB0N` Hill Captured, `VB0P`
 Hill Lost, `VB0O` Hill Contested and the `U100` possession tick — are played by the player's own phone.
-`engine.js:_hillCallout` implements what follows; the evidence is `utility-roadmap.md` §7.
+`engine.js:_hillCallout` implements what follows; the evidence is the archived utility-roadmap §7.
 
 - **A beacon updates state, it never plays.** Every `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` sets two fields,
   **`hill_owner`** and **`last_beacon_at`**. Nothing sounds here.

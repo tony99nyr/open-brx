@@ -574,7 +574,7 @@ def is_station_kind(value: object) -> TypeGuard[StationKind]:
 PHONE_RESPAWN_THRESHOLD_DBM = -70
 PHONE_STATION_THRESHOLD_DBM = -74
 PHONE_POWERUP_THRESHOLD_DBM = -55   # S58: a powerup station's ~1 ft claim range (placeholder until bench 4.11)
-# F383: the hill's own default, -75 dBm with 6 dB hysteresis on every path, until the outdoor walk measures a real
+# F383: the hill's own default, -75 dBm, with the exit band EXIT_BAND_DB (app/src/beacon.js), on every path, until the outdoor walk measures a real
 # one (Tony, 2026-09-27). app/src/beacon.js CONTROL_RSSI_DBM.phone; the Stick's copy is
 # hardware/m5sticks3/station_range.h STICK_HILL_DEFAULT_THRESHOLD_DBM.
 PHONE_CONTROL_THRESHOLD_DBM = -75
@@ -1928,17 +1928,16 @@ MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "con
             "time_res", "pull_log", "ack", "apply", "score", "loadout_ack",             # A10: loadout_ack
             "alert",    # A11.4 -- omitted here until 2026-09-07, so every alert MC sent was rejected
                         # by envelope.validate() at the node and silently dropped (contracts.md §MC->node).
-            "result",   # A24 (2026-09-11): the match result to EVERY node, losers included. The phone's
-                        # `MC_KINDS` (app/src/transport/envelope.js) must list it too or every result is
-                        # dropped as malformed -- `test_mc_envelope_kinds.py` pins the two lists equal.
+            "result",   # A24 (2026-09-11): the match result to EVERY node, losers included. Since A33 the
+                        # phone reads this set from the generated contract.gen.js (gen_contract.py).
             "join",     # A28.2 (2026-09-12): the tunnel came up or went down -- pub + secret, the same body
                         # `welcome.join` carries. Broadcast, not pushed, so `test_mc_envelope_kinds.py`'s AST
                         # scan (which reads `self.net.push(...)` sites only) does NOT cover it.
             "station_config",   # (A13.5 note below)
             "station_update"}   # A56 (S58): MC -> a powerup station: available / taken + the time to the next spawn.
-                                # A13.5 (F104, 2026-09-11): MC -> a utility node. The same trap as `alert`:
-                                # the phone's `MC_KINDS` (app/src/transport/envelope.js) must list it too, or
-                                # the arming message is dropped as malformed before `onMessage` ever sees it.
+                                # A13.5 (F104, 2026-09-11): MC -> a utility node. An unlisted kind is dropped
+                                # as malformed before `onMessage` ever sees it (the `alert` trap); the phone
+                                # reads this set from the generated contract.gen.js (A33).
 CONTROL_CMDS = {"end", "panic", "abort_start", "recall",
                 "resync", "respawn", "relink",   # A47 (bench 2026-09-17): the LIVE board's operator menu for ONE
                                                  # player phone. Each names `player_id` and `match_id`; the phone

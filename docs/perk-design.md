@@ -108,7 +108,7 @@ These are designed, not deferred for lack of interest. Each names the one thing 
 
 | perk | what it does | waiting on |
 |---|---|---|
-| **Stim Pack** | hold a button to patch yourself up over a few seconds, on a 3-minute match-clock cooldown | a bench pass on the unused button ids (3, 4 and 5 reach the node with no handler), and the write-during-reload question in `bench-perks-2026-09-18.md` §5 |
+| **Stim Pack** | hold a button to patch yourself up over a few seconds, on a 3-minute match-clock cooldown | a bench pass on the unused button ids (3, 4 and 5 reach the node with no handler), and the write-during-reload question in the archived bench-perks-2026-09-18 §5 |
 | **Overclock** | hold a button to fire faster for a few seconds, then revert | the same button bench, plus S42's write discipline (a `$WEAP` write resets the magazine, so the revert has to restore it) |
 | **Medic Beam** | your primary heals a teammate and hurts an enemy, from one `$SIR` row | per-player `$SIR` keys, and a decision about whether a support weapon belongs in the perk slot or the weapon slot |
 | **Bubble Shield** | a short personal shield you trigger yourself | the same button bench (the Shields preset ships, so `$LIFE,0,0,<n>` grants land) |

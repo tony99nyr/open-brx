@@ -44,12 +44,13 @@ PATH, so no personal machine path is hardcoded.
 | `victim_count.py` | Arms a victim properly and counts `$HIR` registrations over a timed window. One-off bench experiment, kept for reference. |
 | `weapon_range.py` | Cycles every catalogue weapon onto one bench gun for a fixed dwell each, for a full-arsenal firing pass. |
 | `webview_eval.py` | Runs a JavaScript expression inside the BRX app's WebView over `adb` port-forward, for driving/inspecting the live app engine. Windows-side (adb port-forward needs Windows localhost). |
-| `coldconn.sh` | F297's phone cold-connect loop: force-stop the app, launch it, and time process start to GATT service discovery from `logcat`, N runs per phone (`coldconn.sh <adb-serial> <label> <runs> <hold_s> [out_dir]`). Used by `docs/bench-standard-2026-09-29.md`. |
+| `coldconn.sh` | F297's phone cold-connect loop: force-stop the app, launch it, and time process start to GATT service discovery from `logcat`, N runs per phone (`coldconn.sh <adb-serial> <label> <runs> <hold_s> [out_dir]`). Used by `docs/bench-standard-2026-09-29.md`. It reads `ADB`, not `BRX_ADB`, for the adb binary. |
 
 ## Offline analysis and conversion (no gun, no BLE)
 
 | Tool | Purpose |
 |---|---|
+| `mc_flaky_ws.py` | A fake, broken Mission Control (WebSocket modes silent, close, reset, cycle). It reproduces the Capacitor `notifyListeners` crash loop on a spare phone. WSL-side, no gun. |
 | `fw_commands.py` | Lists bounded `$` command names from one caller-supplied private firmware image. Prints names only; never copies or searches for images. |
 | `fw_audio_compare.py` | Streams a caller-supplied private audio-update ZIP and an off-repo bank, then prints sorted same/changed/new IDs, counts, the public archive hash and one aggregate bank-manifest hash. Never extracts audio or prints private paths or per-file hashes. |
 | `ltp_convert.py` | Converts any audio file into a `.LTP` on-gun sound (headerless raw PCM, s16le, mono, 44.1 kHz). |

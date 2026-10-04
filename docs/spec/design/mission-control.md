@@ -85,7 +85,7 @@ picker row per preset kind, a picker with one preset hidden, the MATCH SETTINGS 
 and `LOAD ▸`, then `CONTINUE TO KIT ▸`) and **BUILD** (a header link, not a step: create, rename and delete
 presets per kind). PLAY never edits a preset. MVP is outdoors only (F410), so there is no venue strip. The
 wire and the console behaviour are [`games-presets.md`](games-presets.md); the product brief is
-[`games-redesign.md`](../../archive/spec-design-games-redesign.md).
+[games-redesign](../../archive/spec-design-games-redesign.md).
 
 **LOAD ANNOUNCES THE GAME; IT DOES NOT WRITE A GUN** (`POST /api/games/load` → `state.py load_game()`).
 Tony, 2026-09-13: *"weapons have to go with the arm."* It pushes an `assign` — mode, teams, win, health,
@@ -110,9 +110,8 @@ CHECK** (`state.py sync_summary()` → `ui/PreArmSummary`): four facts per roste
 sent, gun acked, gun echo — with every count stated against the rostered total. `start()` refuses a gun
 that has never taken this config at all, naming a bound-but-silent gun differently from a player with no
 phone bound, because the two have different fixes. A zero-of-zero is never green. Mode boards render uncropped at native aspect
-(they carry baked-in text). `State.active_preset_id` marks which saved game is PLAYING — never content
-identity (a copy is identical to its source). Verbs: CUSTOMIZE (stock) · EDIT (yours) · COPY / MAKE MY OWN
-(opens a draft; nothing written until SAVE). Playing another card while the draft is TUNED — NOT SAVED asks once.
+(they carry baked-in text). Saved games are gone (F411): the host picks on PLAY or loads a FAVOURITE
+(`games-presets.md` §6).
 
 **GAME DESIGNER** (a page, not a phase — opened by CREATE / EDIT / CUSTOMIZE): one scrolling page — 1 BASE MODE
 → 2 RULES (teams, time, score, respawn type + delay + gate, health) → 3 LOADOUT (three columns PRIMARY /
@@ -152,7 +151,7 @@ audible at arm's length. A small **non-modal** "TRYING: <weapon>" state on the r
 END TRY-OUT; never a dialog. Try-outs close once the lobby is pushed (with a human reason).
 
 ### A5 · LOBBY
-**Team assignment:** drag players between team columns (Blue/Yellow/Red/Purple), balance hint, lock teams.
+**Team assignment:** drag a row between team columns, or tap its MOVE: one neutral button opens the other teams inline, each in its own colour, and a pick moves the player at once (F441; tablets have no HTML5 drag). Balance tag above the columns.
 **Ready-up:** each node reports ready (only when synced) → a filling checklist ("5/8 ready"); the host can
 override-ready (logged). The action rail is three numbered steps **ALL READY → PUSH CONFIG → ARM COUNTDOWN**
 (completed step = green), disabled until the gate is green; **push and arm are separate clicks** (round 4 #5).
@@ -190,7 +189,7 @@ ROSTER (shown after a restore) still drops the roster there. **Provisional state
 scored players; MVP / MOST KILLS require kills > 0; SURVIVOR reads "FEWEST DEATHS · N". **Full stats table**
 (all players, all columns, MEDALS) + **EXPORT CSV**; a history picker over this session's finished matches.
 
-### Items panel (utility phones — `../utility.md` §5b, `../../utility-roadmap.md` A2)
+### Items panel (utility phones — `../utility.md` §5b, the archived utility-roadmap A2)
 On ARMORY/KIT: one row per utility phone from its heartbeat (kind, team, station id, threshold, live, revives,
 armed, battery, last seen, app version), assign + ARM buttons, attention flags ("bring back to re-arm",
 "battery low", "not seen since last match", "app behind"). Station status copy on the phone: "NOT ARMED BY

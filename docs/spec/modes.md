@@ -38,7 +38,7 @@ hidden state, no side-channel, nothing the JSON doesn't capture. Author → JSON
 Two GameConfig representations, one meaning: the **wire form** (contracts §3 JSON, crossing the LAN in
 `config` and `welcome` together with the compiled `FrameBundle`) and the **compiler form** (the
 `gameconfig.py` dataclass, a superset carrying the CLI/sim knobs). ⚠ They have drifted: the dataclass still has
-regen/crit/alt-reload knobs the wire cannot carry (FOLLOWUPS E2–E3, `docs/utility-roadmap.md` §9). The mode-
+regen/crit/alt-reload knobs the wire cannot carry (FOLLOWUPS E2–E3, the archived utility-roadmap §9). The mode-
 specific knobs are no longer among them: `mode_params` (§2.1, A18) carries them, and each engine reads either
 form through `modes/params.resolve`.
 
