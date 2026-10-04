@@ -218,7 +218,7 @@ export class Transport {
     this.priorUtilityConsumed = false;
     this._priorUtilityOffered = false;
     /** @type {TransportBody} */ this.context = {}; // last welcome.node / assign / config / start
-    this.ring = new Ring({ storage, key: `${keyPrefix}.outbox`, now });
+    this.ring = new Ring({ storage, key: `${keyPrefix}.outbox`, now, log: l => console.warn('[outbox]', l) });
     this.clock = new Clock({ storage, key: `${keyPrefix}.clock`, now });
     // Review pass 1 (security): a url the USER never provided -- one the LAN sweep found by opening a
     // socket to it -- is an UNTRUSTED peer until it proves it is Mission Control by welcoming us. Any
@@ -349,6 +349,8 @@ export class Transport {
                    ...(this._claimedTransport() ? { transport: this._claimedTransport() } : {}),   // F309: restated every beat
                    preflight: { ...this.preflight, ...(body.preflight || {}) } };
     const dropped = this.ring.takeDropped(); if (dropped) full.dropped = (full.dropped || 0) + dropped;
+    // O6: `dropped` is the per-beat delta (MC overwrote it with the latest one, so a lost beat lost the count). `dropped_total` is cumulative and persisted: MC keeps the maximum.
+    if (this.ring.droppedTotal) full.dropped_total = this.ring.droppedTotal;
     return this._sendKind('status', full);
   }
   /** F309: the phone's own connection (Capacitor Network `connectionType`). MC counts a phone as covered

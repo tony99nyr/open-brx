@@ -4,7 +4,7 @@
 /** @typedef {{getItem(key:string): string|null, setItem(key:string, value:string): void, removeItem(key:string): void}} RingStorage */
 /** @typedef {Record<string, unknown> & {t?: number, match_id?: string|null, node_id?: string, player_id?: string|null}} RingEvent */
 /** @typedef {{seq:number, ev:RingEvent, at:number}} RingItem */
-/** @typedef {{storage?: RingStorage, key?: string, maxCount?: number, maxAgeMs?: number, now?: () => number}} RingOptions */
+/** @typedef {{storage?: RingStorage, key?: string, maxCount?: number, maxAgeMs?: number, now?: () => number, log?: (line: string) => void}} RingOptions */
 
 /** @returns {RingStorage} */
 export function memoryStorage() {
@@ -19,7 +19,8 @@ export function defaultStorage() {
 
 export class Ring {
   /** @param {RingOptions} [options] */
-  constructor({ storage = defaultStorage(), key = 'brx.outbox', maxCount = 500, maxAgeMs = 2 * 60 * 60 * 1000, now = () => Date.now() } = {}) {
+  constructor({ storage = defaultStorage(), key = 'brx.outbox', maxCount = 500, maxAgeMs = 2 * 60 * 60 * 1000, now = () => Date.now(), log = (/** @type {string} */ l) => console.warn('[outbox]', l) } = {}) {
+    this.log = log; this._saveFailing = false;
     this.storage = storage; this.key = key; this.maxCount = maxCount; this.maxAgeMs = maxAgeMs; this.now = now;
     this.seqNext = 1;
     /** @type {RingItem[]} */
@@ -35,10 +36,18 @@ export class Ring {
       if (Number.isInteger(d.seq_next)) this.seqNext = d.seq_next;
       if (Array.isArray(d.items)) this.items = d.items.filter((/** @type {RingItem} */ i) => Number.isInteger(i.seq) && i.ev && typeof i.ev === 'object');
       if (Number.isInteger(d.dropped)) this.dropped = d.dropped;
-    } catch (_) { /* corrupt store: start clean, keep seq monotonic via welcome.seq_hi */ }
+    } catch (e) {   // corrupt store: start clean, keep seq monotonic via welcome.seq_hi
+      this.log(`outbox store unreadable (corrupt): starting clean, any facts it held are lost (${e instanceof Error ? e.message : e})`);
+    }
   }
   _save() {
-    try { this.storage.setItem(this.key, JSON.stringify({ seq_next: this.seqNext, items: this.items, dropped: this.dropped })); } catch (_) { /* quota */ }
+    try {
+      this.storage.setItem(this.key, JSON.stringify({ seq_next: this.seqNext, items: this.items, dropped: this.dropped }));
+      this._saveFailing = false;
+    } catch (e) {   // quota: the facts stay in RAM and still go out, but a restart now loses them. Say so once per streak.
+      if (!this._saveFailing) this.log(`outbox not saved (quota): ${this.items.length} facts are in memory only (${e instanceof Error ? e.message : e})`);
+      this._saveFailing = true;
+    }
   }
   get size() { return this.items.length; }
   /** Assign the next seq to a fact and persist it. Returns the seq. */
@@ -52,10 +61,14 @@ export class Ring {
   }
   _bound() {
     const cutoff = this.now() - this.maxAgeMs;
-    let d = 0;
-    while (this.items.length && this.items[0].at < cutoff) { this.items.shift(); d++; }
-    while (this.items.length > this.maxCount) { this.items.shift(); d++; }
-    if (d) { this.dropped += d; this.droppedSinceStatus += d; }
+    let age = 0, count = 0;
+    while (this.items.length && this.items[0].at < cutoff) { this.items.shift(); age++; }
+    while (this.items.length > this.maxCount) { this.items.shift(); count++; }
+    const d = age + count;
+    if (d) {
+      this.dropped += d; this.droppedSinceStatus += d;
+      this.log(`outbox dropped ${d} facts (${[age ? `age ${age}` : '', count ? `count ${count}` : ''].filter(Boolean).join(', ')}); ${this.dropped} lost in total`);
+    }
   }
   /** Oldest-first copies of un-acked facts, each with its seq folded in (the event_batch item shape). */
   pending() { return this.items.map(i => ({ ...i.ev, seq: i.seq })); }
@@ -72,6 +85,8 @@ export class Ring {
     if (Number.isInteger(seqHi) && seqHi + 1 > this.seqNext) { this.seqNext = seqHi + 1; this._save(); }
   }
   /** Drop count since the last status heartbeat (reported as status.dropped), then reset. */
+  /** Cumulative drops, persisted across restarts: the heartbeat's `dropped_total`, which MC keeps the maximum of. */
+  get droppedTotal() { return this.dropped; }
   takeDropped() { const d = this.droppedSinceStatus; this.droppedSinceStatus = 0; return d; }
   clear() { this.items = []; this._save(); }
 }
