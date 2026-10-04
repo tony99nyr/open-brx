@@ -113,8 +113,9 @@ export const GAP_SAMPLES = 16;
  *   tick(now)                  advance dwell / expiry; call it a few times a second
  *   stations() / players()     current entries; each carries { present, rssi (EMA), raw, seenAt, ... }
  *
- * present flips ON after `dwellMs` continuously at/above the threshold and OFF when the EMA has stayed
- * `hysteresisDb` below it for `exitGraceMs` (F440), or when no advert has arrived for `expiryMs`. The threshold is the
+ * present flips ON after `dwellMs` with the EMA continuously at/above the threshold and OFF when the exit level (the
+ * median of the last SIGHT_WINDOW_MS of raw samples, else the last raw sample) has stayed `hysteresisDb` below it for
+ * `exitGraceMs` (F440, round 2 2026-10-04), or when no advert has arrived for `expiryMs`. The threshold is the
  * station's own advertised one when set, else `defaultThreshold`.
  */
 export class Presence {
@@ -176,8 +177,13 @@ export class Presence {
       if (now - e.seenAt > this.expiryMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; e.inCircle = false; if (now - e.seenAt > 2 * this.expiryMs) this.entries.delete(key); continue; }
       const thr = this.thresholdFor(e);
       if (e.present) {
-        // F440: leave only after the EMA has stayed below the exit level for `exitGraceMs` (a dip is not a step out)
-        if (e.rssi < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
+        // F440: leave only after the exit level has stayed below the band for `exitGraceMs` (a dip is not a step out).
+        // Round 2 (review 2026-10-04): the level is the MEDIAN of the last SIGHT_WINDOW_MS of raw samples, not the EMA,
+        // whose alpha is applied per advert and so lags further on a sparse phone: exit time must not depend on advert
+        // rate. An empty window (a silence) falls back to the EMA. The EMA still drives the entry dwell.
+        const win = (e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS);
+        e.exitLevel = win.length ? medianOf(win.map(x => x.rssi)) : e.raw;
+        if (e.exitLevel < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
         else e.belowSince = null;
       } else if (e.rssi >= thr) { if (e.sinceAbove == null) e.sinceAbove = now; if (now - e.sinceAbove >= this.dwellMs) e.present = true; }
       else e.sinceAbove = null;

@@ -531,14 +531,22 @@ test('F440: a sparse, noisy advertiser alone never stalls: it captures 10 s afte
   // Measured from the first moment it COUNTS on the point (its first advert at the threshold): before that it is
   // rightly outside the circle (seed 5's first two adverts read -75.2 and -75.1). After it, no dip or silence may
   // stall the 10 s conversion.
+  // Round 2 (review 2026-10-04): the exit reads the 2 s window median, so a sparse phone's lone sample counts as much as a
+  // dense phone's run (exit time no longer depends on advert rate). The price: a sparse phone whose two adverts in a row
+  // read past the exit level for longer than the grace steps out briefly. Measured over 40 seeds of this +/-10 dB model:
+  // 2 seeds stall, by 0.5 s and 1.5 s (seeds 4 and 5 here). Every other seed captures 10 s after it first counts.
+  let stalled = 0;
   for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
     const tr = sim({ seed, players: [sparse(1, 0)] });
     const counted = tr.find(s => s.counts[0])?.t;
     const at = tr.find(s => s.owner === 0)?.t;
     assert.ok(counted != null && at != null, `seed ${seed}: counted at ${counted}, captured at ${at}`);
-    assert.ok(at - counted <= 10500, `seed ${seed}: captured ${at - counted} ms after it first counted (want <= 10500: the 10 s design, no stall)`);
-    assert.ok(tr.filter(s => s.t >= counted && s.t < at).every(s => s.counts[0] === 1), `seed ${seed}: counted on every tick from entry to capture`);
+    const gapTicks = tr.filter(s => s.t >= counted && s.t < at && s.counts[0] !== 1).length;
+    if (gapTicks) stalled++;
+    assert.ok(gapTicks * 250 <= 2000, `seed ${seed}: out of the circle ${gapTicks * 250} ms between entry and capture (want <= 2 s)`);
+    assert.ok(at - counted <= 10500 + gapTicks * 250, `seed ${seed}: captured ${at - counted} ms after it first counted (want 10 s plus any stall)`);
   }
+  assert.ok(stalled <= 2, `${stalled} of 8 seeds stalled (measured: 2, seeds 4 and 5)`);
 });
 
 test('F440: a dense opponent arriving at a sparse owner\'s hill contests at once', () => {
@@ -583,9 +591,11 @@ test('F440: the exit grace is what keeps a dipping player present (fails without
     const p = new Presence({ defaultThreshold: -75, dwellMs: 800, alpha: 1, exitGraceMs: graceMs, sightMs: 0 });
     const adv = encodeUuid({ role: 'player', id: 1, team: 0, state: PLAYER_STATE.alive, game: 0 });
     let t = 0; for (; t <= 1000; t += 250) { p.observe([adv], -65, t); p.tick(t); }
-    p.observe([adv], -85, t); p.tick(t);              // one deep dip
-    t += 600; p.observe([adv], -66, t); p.tick(t);    // back
-    return p.players()[0].present;
+    // a 1.5 s deep dip (round 2, 2026-10-04: the exit reads the 2 s window median, so a dip must fill half of it)
+    let stayed = p.players()[0].present;
+    for (t += 250; t <= 2500; t += 250) { p.observe([adv], -85, t); p.tick(t); stayed &&= p.players()[0].present; }
+    for (t += 350; t <= 4500; t += 250) { p.observe([adv], -66, t); p.tick(t); stayed &&= p.players()[0].present; }   // back
+    return stayed;
   };
   assert.equal(pres(0), false, 'control: with no grace, one dip drops the player');
   assert.equal(pres(2500), true, 'with the grace, a dip is not a step out');

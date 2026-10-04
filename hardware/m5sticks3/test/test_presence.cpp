@@ -146,11 +146,14 @@ static void test_presence_exit_band_and_grace() {
   pr.tick(4100);                        // 2.5 s: still inside the 4 s grace (P-M2: body shadowing)
   CHECK(pr.get(7)->present);
   pr.observe(player(7, 0), -79, 5600);
-  pr.tick(5600);                        // 4 s below the exit level: off
+  pr.tick(5600);                        // round 2: the exit reads the 2 s window median, below the band only since 3 s
+  CHECK(pr.get(7)->present);
+  pr.observe(player(7, 0), -79, 7000);
+  pr.tick(7000);                        // 4 s with the window median below the exit level: off
   CHECK(!pr.get(7)->present);
-  pr.observe(player(7, 0), -75, 5700);  // back inside the band but below the threshold: stays off
-  pr.tick(5700);
-  pr.tick(7500);
+  pr.observe(player(7, 0), -75, 7100);  // back inside the band but below the threshold: stays off
+  pr.tick(7100);
+  pr.tick(9000);
   CHECK(!pr.get(7)->present);
 }
 
@@ -208,6 +211,24 @@ static void test_presence_sighting_window_holds_64() {
   CHECK_EQ(SIGHT_RECENT_MAX, (size_t)64);
   CHECK(sighted_after(40, 40));   // the last 64 hold 40 above
   CHECK(!sighted_after(50, 30));  // the last 64 hold 30 above (a window of 24 would hold 24 above)
+}
+
+// Round 2 (beacon.js parity, review 2026-10-04): the EXIT reads the median of the last 2 s of raw samples (the last
+// raw sample when the window is empty), not the EMA, whose per-advert alpha lags further on a sparse phone. A dense
+// phone at -60 turns sparse at -84: the lone low samples step it out 4 s after the window median falls, where the EMA
+// needed three low adverts (7.5 s) to cross the exit level. beacon.test.mjs runs the same numbers.
+static void test_presence_exit_reads_the_window_median_not_the_ema() {
+  PlayerPresence pr;  // threshold -74, exit level -77, alpha 0.35, 4 s grace
+  bool at_7500 = false, at_8000 = true;
+  for (uint32_t t = 0; t <= 9000; t += 250) {
+    if (t <= 2000) pr.observe(player(4, 0), -60, t);
+    else if (t % 2500 == 0) pr.observe(player(4, 0), -84, t);
+    pr.tick(t);
+    if (t == 7500) at_7500 = pr.get(4)->present;
+    if (t == 8000) at_8000 = pr.get(4)->present;
+  }
+  CHECK(at_7500);   // inside the grace, which starts at 3.75 s, once the dense -60 run no longer holds the 2 s window median
+  CHECK(!at_8000);  // out once the grace has run (the EMA would hold it until about 11.5 s)
 }
 
 static void test_hill_counts_the_circle_not_only_present() {
@@ -658,6 +679,7 @@ int main() {
   test_presence_exit_band_and_grace();
   test_presence_body_shadowing_does_not_drop_a_standing_player();
   test_presence_sighting_window_holds_64();
+  test_presence_exit_reads_the_window_median_not_the_ema();
   test_presence_f438_circle();
   test_hill_counts_the_circle_not_only_present();
   test_presence_four_second_expiry();

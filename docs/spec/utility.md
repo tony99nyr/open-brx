@@ -297,7 +297,8 @@ matter if you are closer within that circle." So:
 - Capture speed and contest weight count players in the circle. RSSI never weighs a player, and no closer or
   stronger-radio phone gets an advantage ("a newer phone with stronger bluetooth shouldn't get an advantage").
 - **In the circle** means PRESENT (the entry dwell passed; leaving is debounced, `EXIT_GRACE_MS` 4 s below the exit
-  level) or a **credible sighting**: any advert inside the tolerance band (at or above the exit level) in the last
+  level, read from the median of the last 2 s of raw samples so exit time does not depend on advert rate) or a
+  **credible sighting**: any advert inside the tolerance band (at or above the exit level) in the last
   `SIGHT_MS` (4 s). The sighting makes an arriving opponent contest at once, before the dwell, so a quieter phone
   never lets the other team take the hill silently (`beacon.js` Presence, `control.js`; F440).
 - There is **no per-phone calibration** (Tony, 2026-10-02: "isn't practical"). Fairness comes from tolerance built

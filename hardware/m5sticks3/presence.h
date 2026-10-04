@@ -213,6 +213,18 @@ class PlayerPresence {
     return e.n_samples ? a[(e.n_samples - 1) / 2] : e.raw;
   }
 
+  // beacon.js tick() `exitLevel`: the lower-middle median of the raw samples heard in the last PRESENCE_SIGHT_WINDOW_MS,
+  // else the last raw sample.
+  static int exit_level(const PlayerEntry& e, uint32_t now) {
+    int a[SIGHT_RECENT_MAX];
+    size_t n = 0;
+    for (size_t i = 0; i < e.n_recent; i++)
+      if (now - e.recent_t[i] < PRESENCE_SIGHT_WINDOW_MS) a[n++] = e.recent_rssi[i];
+    if (!n) return e.raw;
+    std::sort(a, a + n);
+    return a[(n - 1) / 2];
+  }
+
   // beacon.js thresholdFor(): `e.threshold || this.defaultThreshold`.
   int threshold_for(const PlayerEntry& e) const { return e.threshold ? e.threshold : default_threshold; }
 
@@ -232,9 +244,11 @@ class PlayerPresence {
       }
       const int thr = threshold_for(e);
       if (e.present) {
-        // Hysteresis: off only once the EMA is `hysteresis_db` BELOW the threshold (strictly), and (F440) has
-        // stayed there `exit_grace_ms`: a dip is not a step out of the circle.
-        if (e.rssi < thr - hysteresis_db) {
+        // Hysteresis: off only once the exit level is `hysteresis_db` BELOW the threshold (strictly), and (F440) has
+        // stayed there `exit_grace_ms`: a dip is not a step out of the circle. Round 2 (review 2026-10-04): the exit
+        // level is the median of the last PRESENCE_SIGHT_WINDOW_MS of raw samples (the last raw sample when the window
+        // is empty), not the EMA, whose per-advert alpha lags on a sparse phone. beacon.js `exitLevel`.
+        if (exit_level(e, now) < thr - hysteresis_db) {
           if (!e.below) { e.below = true; e.below_since = now; }
           if (now - e.below_since >= exit_grace_ms) { e.present = false; e.above = false; e.below = false; }
         } else {

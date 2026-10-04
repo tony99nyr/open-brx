@@ -55,6 +55,9 @@ test('presence: dwell before present, hysteresis before gone, expiry when silent
   t += 500; p.observe(station(), -70, t); p.tick(t);
   // F440: leaving is debounced: 8 dB under is a dip until it has lasted EXIT_GRACE_MS
   assert.equal(p.stations()[0].present, true, '8 dB under for a moment: still present (a dip is not a step out)');
+  // Round 2 (2026-10-04): the exit reads the median of the last 2 s, so the grace runs from when THAT falls below the band
+  t += 500; p.observe(station(), -70, t); p.tick(t);
+  assert.equal(p.stations()[0].present, true, 'the window median is now under the band: the grace starts');
   t += 4100; p.observe(station(), -70, t); p.tick(t);
   assert.equal(p.stations()[0].present, false, '8 dB under for longer than the exit grace: gone');
   t += 500; p.observe(station(), -50, t); p.tick(t); t += 2100; p.observe(station(), -50, t); p.tick(t);
@@ -210,4 +213,50 @@ test('presence: the sighting median reads the last 64 adverts in the window, as 
   assert.equal(sighted(40, 40), true, 'the last 64 hold 40 above: sighted (an unbounded window holds 40 of 80, a tie at the lower middle)');
   assert.equal(sighted(50, 30), false, 'the last 64 hold only 30 above: not sighted (a window of 24 would hold 24 above)');
   assert.equal(SIGHT_RECENT_MAX, 64);
+});
+
+// Round 2 MEDIUM (review 2026-10-04): the EMA's alpha is applied per ADVERT, so a sparse phone's EMA lags further and the
+// 4 s grace adds on top: a 1/s phone left a sprint-out 1.5 s later than a 4/s phone, a walk-out 3 s later (max 11 s).
+// The exit decision reads the median of the last SIGHT_WINDOW_MS of raw samples, so every rate leaves at about the same
+// time. Seeded fading (AR(1), sigma 5 dB, tau 2 s) plus 3 dB per-advert noise, as the reviewer's sim (r2sim.mjs). The exit
+// is the FIRST step out after the mean crosses the exit level (a later fade spike may sight the player again).
+function exitSim({ rate, slopeMsPerDb, seed, presence = {} }) {
+  let s = seed; const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  const gauss = () => { let u = 0; while (!u) u = rnd(); const v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const THR = -75, p = new Presence({ defaultThreshold: THR, dwellMs: 800, alpha: 0.35, ...presence });
+  const adv = encodeUuid({ role: 'player', id: 1, team: 0, state: PLAYER_STATE.alive, game: 0 });
+  const mean = t => (t < 60000 ? -67 : Math.max(-95, -67 - (t - 60000) / slopeMsPerDb));
+  let fade = 0, nextAdv = 0, crossAt = null, leftAt = null, was = false;
+  for (let t = 0; t < 100000; t += 50) {
+    const a = Math.exp(-50 / 2000); fade = a * fade + Math.sqrt(1 - a * a) * 5 * gauss();
+    if (crossAt == null && mean(t) < THR - 3) crossAt = t;
+    while (nextAdv <= t) { p.observe([adv], Math.round(mean(t) + fade + 3 * gauss()), t); nextAdv += (1000 / rate) * (0.8 + 0.4 * rnd()); }
+    if (t % 250 === 0) { p.tick(t); const e = p.players()[0]; const c = !!(e && (e.present || e.inCircle)); if (was && !c && crossAt != null && leftAt == null) leftAt = t; was = c; }
+  }
+  return leftAt != null && crossAt != null && leftAt > crossAt ? leftAt - crossAt : null;
+}
+function medianExit(rate, slopeMsPerDb, presence) {
+  const xs = []; for (let seed = 1; seed <= 20; seed++) { const x = exitSim({ rate, slopeMsPerDb, seed, presence }); if (x != null) xs.push(x); }
+  xs.sort((a, b) => a - b); return xs[xs.length >> 1];
+}
+test('presence: walking or sprinting out of the circle takes about the same time at every advert rate', () => {
+  for (const [name, slope] of [['walk 400 ms/dB', 400], ['sprint 80 ms/dB', 80]]) {
+    const m = [0.4, 1, 4].map(rate => medianExit(rate, slope));
+    const spread = Math.max(...m) - Math.min(...m);
+    assert.ok(spread <= 1500, `${name}: median exits ${m.map(x => (x / 1000).toFixed(1)).join(' / ')} s at 0.4 / 1 / 4 per s (spread ${(spread / 1000).toFixed(1)} s, want <= 1.5 s)`);
+  }
+});
+
+test('presence: the exit reads the window median, not the EMA (the Stick runs the same numbers, test_presence.cpp)', () => {
+  const p = new Presence({ defaultThreshold: -74, dwellMs: 800, alpha: 0.35 });
+  const adv = encodeUuid({ role: 'player', id: 4, team: 0, state: PLAYER_STATE.alive, game: 0 });
+  let at7500 = false, at8000 = true;
+  for (let t = 0; t <= 9000; t += 250) {
+    if (t <= 2000) p.observe([adv], -60, t); else if (t % 2500 === 0) p.observe([adv], -84, t);
+    p.tick(t);
+    if (t === 7500) at7500 = p.players()[0].present;
+    if (t === 8000) at8000 = p.players()[0].present;
+  }
+  assert.equal(at7500, true, 'inside the grace, which starts at 3.75 s, once the dense -60 run no longer holds the 2 s window median');
+  assert.equal(at8000, false, 'out once the grace has run (the EMA would hold it until about 11.5 s)');
 });
