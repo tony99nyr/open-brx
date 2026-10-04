@@ -1,0 +1,142 @@
+{
+  "name": "ammo-spawn-check-press",
+  "why": "F416 round 2: the spawn check defers only for a press whose round can still come back. A press older than TRIGGER_NO_FIRE_MS is no motion, so a queried `$LCD` at the live count proves the burst landed.",
+  "source": "app/src/engine.js ammo, reload and ALT (engine split (b) coverage)",
+  "runners": ["engine"],
+  "setup": {
+    "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4}],"perks":[]},
+    "fields": ["switching","reloading","mag","shots","reload","swap","heat","shotCooldown","moment","spawnLost"],
+    "delay": "timers",
+    "tick_ms": 50,
+    "countdown_s": 4
+  },
+  "steps": [
+    {"fail_next_write":"$SPAWN","lands":true},
+    {"gun":{"answer":false}},
+    {"advance_ms":3500},
+    {"check":"armed","preamble":true},
+    {"advance_ms":550},
+    {"check":"t0"},
+    {"advance_ms":50},
+    {"frames":["$BUT,0,1,*","$BUT,0,0,*"]},
+    {"advance_ms":1700},
+    {"check":"press_expired"},
+    {"gun":{"answer":true}},
+    {"frame":"$HP,45,70,0,*"},
+    {"advance_ms":50},
+    {"check":"queried"},
+    {"advance_ms":2000},
+    {"check":"settled"}
+  ],
+  "stage_ignores": [
+    {"what":"trace","why":"Engine-only: it records the `state()` fields mag, shots, reload, swap, heat and shotCooldown, which the stage runner does not read (test_golden_traces.py FIELDS). The stage's own ammo, reload and ALT rules are pinned in test_stage_mirror.py."}
+  ],
+  "expect": [
+    {
+      "at": "armed",
+      "state": {"phase":"armed","alive":false,"spawned":false,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":0,"reserve":0,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":0,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"kit_locked_by_host","data":null},"spawnLost":false},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,U16,4,6,,,,,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$QUERY,*"
+      ]
+    },
+    {
+      "at": "t0",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":0,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"go","data":null},"spawnLost":false},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$LIFE,0,0,0,*",
+        "$TMP,,,,,,,,0,,,,*"
+      ]
+    },
+    {
+      "at": "press_expired",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":0,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"go","data":null},"spawnLost":false},
+      "facts": [],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*"
+      ]
+    },
+    {
+      "at": "queried",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":0,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"go","data":null},"spawnLost":false},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$QUERY,*"
+      ]
+    },
+    {
+      "at": "settled",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":0,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"go","data":null},"spawnLost":false},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$LIFE,0,0,0,*"
+      ]
+    }
+  ]
+}
