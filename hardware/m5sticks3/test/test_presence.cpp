@@ -351,6 +351,24 @@ static void test_a_zero_crossing_carries_the_remaining_work_into_the_build() {
   CHECK_EQ(cp.advert().state, (uint8_t)CONTROL_RISING);
 }
 
+// F456: control.js, step for step. A capture that lands within the capture tolerance of 100 is held at exactly 100 and
+// still: it used to read `dir` rising for one tick, and the advert carried the rising bit beside the held bit.
+static void test_a_capture_inside_the_tolerance_is_held_and_still() {
+  Field f;
+  f.add(1, 1);
+  f.settle();
+  BleControlPoint cp;
+  cp.update(f.pr, f.t);
+  cp.capturing = 1;
+  cp.progress = 100 - 2.5 - 5e-10;  // one tick (250 ms at 10 %/s) short of landing a hair under 100
+  HillUpdate u = run(cp, f, 250);
+  CHECK(u.captured);
+  CHECK_EQ(cp.owner, 1);
+  CHECK_EQ(cp.progress, 100.0);
+  CHECK_EQ(cp.dir, 0);
+  CHECK_EQ(cp.advert().state, (uint8_t)CONTROL_HELD);
+}
+
 static void test_a_part_built_bar_with_nobody_on_it_stalls() {
   Field f;
   f.add(1, 0);
@@ -620,6 +638,7 @@ int main() {
   test_sighting_ring_is_fifo_drops_the_newest_when_full_and_clears();
   test_which_kinds_scan_for_players();
   test_hill_words_match_control_point_h();
+  test_a_capture_inside_the_tolerance_is_held_and_still();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;

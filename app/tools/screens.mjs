@@ -5868,7 +5868,12 @@ const svRead = pg => pg.evaluate(() => {
   const frame = document.getElementById('frame'), fr = frame.getBoundingClientRect(), k = fr.width / 844;
   const m = document.getElementById('svm'), bar = m && m.querySelector('.svbar'), w = sel => { const e = m && m.querySelector(sel); return e ? e.getBoundingClientRect().width / k : 0; };
   const tint = document.querySelector('.alive .svtint'), st = window.brx.engine.state();
-  return { m: !!m && !!vis(m), s: m && m.dataset.s, wait: !!(m && m.hasAttribute('data-wait')), os: !!(m && m.hasAttribute('data-os')), text: m ? m.textContent.trim() : null,
+  // F455: is the refill held, so a still fill is right? Held at its cap (the gun's pool plus one grant, shieldmeter.js
+  // fillPct) by a late grant, or already drawn full while the engine waits for the last grant's echo to end the charge.
+  const sr = st.shieldRegen, nowE = window.brx.engine.now(), poolNow = Math.max(0, (st.shield || 0) - ((st.powerup && st.powerup.overshield && st.powerup.overshield.left) || 0));
+  const held = !!(sr && sr.charging && sr.fullAt != null && (sr.from || 0) + ((st.maxShield || 0) - (sr.from || 0)) * Math.min(1, Math.max(0, (nowE - sr.startedAt) / Math.max(1, sr.fullAt - sr.startedAt))) > poolNow + (sr.step || 0));
+  const flE = m && m.querySelector('.svfl'), drawnFull = !!flE && flE.style.getPropertyValue('--w') === '100%';
+  return { now: nowE, held: held || drawnFull, m: !!m && !!vis(m), s: m && m.dataset.s, wait: !!(m && m.hasAttribute('data-wait')), os: !!(m && m.hasAttribute('data-os')), text: m ? m.textContent.trim() : null,
     barH: bar ? bar.getBoundingClientRect().height / k : 0, anim: bar ? getComputedStyle(bar).animationName : '', fl: w('.svfl'), osw: w('.svos'), dly: w('.svdly'),
     sweep: m ? getComputedStyle(m.querySelector('.svfl'), '::after').animationName : '',
     tint: !!document.querySelector('.alive.sv-down') && !!tint && +getComputedStyle(tint).opacity > 0.9,
@@ -5949,25 +5954,52 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(last && last.s === 'ok' && last.shield >= 105, `full again: ${JSON.stringify({ s: last && last.s, shield: last && last.shield })}`);
     must(!toast, 'no teal "+N SHIELD" toast over the meter during a recharge');
   });
-  await step(`${tag}: the refill grows smoothly: sampled every 100 ms, the fill never stands still while it charges and never jumps a grant (F349)`, async () => {
-    const pg = await open(view, 'live-shields-broken', N, 3300);
+  // F455 (flaked twice under full load, 2026-10-04): the failure was a FULL bar still marked charging while the last
+  // grant's echo was late (5 samples at 514, the whole track). A held sample (full, or at the gun's cap) is not a stand-
+  // still. The sampler's 100 ms is wall time, so each sample also reads after a drawn frame and carries the ENGINE's clock,
+  // and stillness and jumps are judged in engine time.
+  const refillSamples = async (pg, slowLink = false) => {
+    // a slow link: every grant write reaches the gun 700 ms late, so the bar holds at its cap and, drawn full, waits for
+    // the last grant's echo (the flake's shape: 514 514 514 514 514 at the end of the charge)
+    if (slowLink) await pg.evaluate(() => { const e = window.brx.engine, w = e._write.bind(e);
+      e._write = (frames, ...rest) => [].concat(frames).some(f => /^\$LIFE,0,0,/.test(f)) ? void setTimeout(() => w(frames, ...rest), 700) : w(frames, ...rest); });
     const ws = []; let chargeSeen = false;
-    for (let t = 0; t < 14000; t += 100) {
-      const r = await svRead(pg);
-      if (r.s === 'charge') { chargeSeen = true; ws.push(r.fl); }
+    for (let t = 0, n = 0; t < 14000; t += 100, n++) {
+      const r = await pg.evaluate(() => new Promise(res => requestAnimationFrame(() => res(null)))).then(() => svRead(pg));
+      if (r.s === 'charge') { chargeSeen = true; ws.push({ fl: r.fl, at: r.now, held: r.held }); }
       else if (chargeSeen) break;
       await pg.waitForTimeout(100);
     }
-    await pg.close();
+    return ws;
+  };
+  const refillVerdict = (ws, night) => {
     let still = 0, longest = 0, jump = 0;
     for (let i = 1; i < ws.length; i++) {
-      still = Math.abs(ws[i] - ws[i - 1]) < 0.5 ? still + 1 : 0; longest = Math.max(longest, still);
-      jump = Math.max(jump, ws[i] - ws[i - 1]);
+      const dt = ws[i].at - ws[i - 1].at, dw = ws[i].fl - ws[i - 1].fl;
+      // held at the cap by a late grant is F349's design ("a slow link holds the bar back"): neither the hold nor the
+      // one-grant catch-up when the grant lands is a grant-by-grant step
+      const heldPair = ws[i].held || ws[i - 1].held;
+      still = Math.abs(dw) < 0.5 && !heldPair ? still + dt : 0; longest = Math.max(longest, still);
+      if (!ws[i - 1].held) jump = Math.max(jump, dw * 100 / Math.max(dt, 100));   // px per 100 ms of engine time
     }
-    must(ws.length >= 10, `setup: the refill was sampled (${ws.length} samples)`);
-    must(ws.every((w, i) => i === 0 || w >= ws[i - 1] - 0.5), `the fill only rises: ${ws.map(Math.round).join(' ')}`);
-    must(longest <= (night ? 3 : 2), `the fill stood still for ${longest} samples in a row (a grant-by-grant step): ${ws.map(Math.round).join(' ')}`);
-    must(jump < 0.2 * 844, `the largest move between two samples is ${Math.round(jump)} px, a grant-sized jump: ${ws.map(Math.round).join(' ')}`);
+    const trace = ws.map(w => `${Math.round(w.fl)}@${Math.round(w.at - ws[0].at)}${w.held ? 'h' : ''}`).join(' ');
+    const out = [];
+    if (ws.length < 10) out.push(`setup: the refill was sampled (${ws.length} samples)`);
+    if (!ws.every((w, i) => i === 0 || w.fl >= ws[i - 1].fl - 0.5)) out.push(`the fill only rises: ${trace}`);
+    if (longest > (night ? 450 : 350)) out.push(`the fill stood still for ${Math.round(longest)} ms of engine time (a grant-by-grant step): ${trace}`);
+    if (jump >= 0.2 * 844) out.push(`the largest move is ${Math.round(jump)} px per 100 ms of engine time, a grant-sized jump: ${trace}`);
+    return out;
+  };
+  await step(`${tag}: the refill grows smoothly: sampled every 100 ms, the fill never stands still while it charges and never jumps a grant (F349)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const ws = await refillSamples(pg); await pg.close();
+    const bad = refillVerdict(ws, night); must(!bad.length, bad.join(' ; '));
+  });
+  if (view === VIEWS[0] && !night) await step(`${tag}: a slow link holds the refill at its cap, and that hold is not read as a grant-by-grant step (F455)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const ws = await refillSamples(pg, true); await pg.close();
+    must(ws.some(w => w.held), `setup: the 700 ms late grants held the bar at its cap: ${ws.map(w => Math.round(w.fl)).join(' ')}`);
+    const bad = refillVerdict(ws, night); must(!bad.length, bad.join(' ; '));
   });
   await step(`${tag}: the overshield is a layer over the shield, drained first by hits, and only hits remove it`, async () => {
     const pg = await open(view, 'live-shields-os', N, 3200);

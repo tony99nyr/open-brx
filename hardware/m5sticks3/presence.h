@@ -511,6 +511,7 @@ class BleControlPoint {
         const double step = std::min(work, 100 - progress);
         progress += step;
         work -= step;
+        if (progress >= 100 - 1e-9) progress = 100;  // F456: control.js, so a capture is never left reading rising
         if (progress >= 100 - 1e-9 && owner == HILL_NEUTRAL) {
           owner = holder;
           capturing = -1;
@@ -524,6 +525,7 @@ class BleControlPoint {
       const double step = std::min(work, progress);  // DRAIN, down to 0
       progress -= step;
       work -= step;
+      if (progress <= 1e-9) progress = 0;  // F456: the same at the bottom
       if (progress > 1e-9) break;
       if (owner != HILL_NEUTRAL) {
         last_owner = owner;

@@ -111,8 +111,8 @@ const MOCK_SOURCE_DESC: Record<StationSourceId, string> = {
   phone: 'a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)',
 };
 const MOCK_STATION_SOURCES = STATION_SOURCE_IDS.map(value => ({ value, desc: MOCK_SOURCE_DESC[value] }));
-// Respawn profiles (2026-09-19, mirrors `compile.TIMED_PROTECT_S_OPTIONS` / `WEAPON_DELAY_MS_OPTIONS` /
-// `STATION_PROTECT_S_OPTIONS`: `TimedProtectS`/`WeaponDelayMs`/`StationProtectS`'s `get_args()` on the
+// Respawn profiles (2026-09-19, mirrors `configcheck.respawn_profile_options`:
+// `TimedProtectS`/`WeaponDelayMs`/`StationProtectS`'s `get_args()` on the
 // server; those are TYPE aliases here, so the option lists are hand-kept in step with them).
 const TIMED_PROTECT_S_OPTIONS = [0, 1, 2] as const;
 const WEAPON_DELAY_MS_OPTIONS = [500, 1000, 3000] as const;
@@ -219,6 +219,7 @@ export class MockBackend implements Api {
       if (a && fresh && rep.armed === false) attention.push(`PHONE SAYS NOT ARMED: ${STATION_REARM}`);
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
       if (batteryLow(rep.battery)) attention.push('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
+      if (this.demoObs.has('claims')) attention.push('3 CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP\'S PICKUPS FOR STATION #4');   // O10: state.py station_claims_dropped_line
       attention.push(...(st.attention ?? []));   // A58 demo/test seed: STATION #N ... lines
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
         last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo,
@@ -546,6 +547,10 @@ export class MockBackend implements Api {
   private demoLanWarning = typeof location !== 'undefined' && new URLSearchParams(location.search).get('lanwarn') === '1';
   /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
    *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
+  /** `?mock&obs=store,archive,snapshot,tick,join,outbox,claims` (O6/O7/O8/O10): each names one failure MC reports on the
+   *  snapshot, mirroring state.py `snapshot()` (per match: `outbox_lost`/`claims_dropped` are "lost THIS match") (`not_saving`, `ticker_failing`, `join_error`, `NodeView.outbox_lost`,
+   *  and the station line `station_claims_dropped_line`). Absent = a healthy MC, the default demo. */
+  private demoObs = new Set((typeof location !== 'undefined' ? new URLSearchParams(location.search).get('obs') ?? '' : '').split(',').filter(Boolean));
   private demoRestored = typeof location !== 'undefined' && new URLSearchParams(location.search).get('restored') === '1';
   // The delay before the mock re-acks a re-pushed config (see `putConfig`). A test can make it longer,
   // so that a slow machine still reads the transitional "re-pushing" state before the acks return.
@@ -782,6 +787,7 @@ export class MockBackend implements Api {
       // battery, so the extra advisory perturbs no other card's status); every other linked phone has
       // held its link past the 10 s a headless gun cannot survive. After the push the echo takes over.
       const flapping = !red && this.demoFlap && sticker === 'GUN-C';
+      if (!red && this.demoObs.has('outbox') && sticker === 'GUN-A') ambers.push("12 FACTS LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER'S RECAP BY HAND");   // O6: state.py outbox_lost_line
       if (flapping) ambers.push(GUN_FLAPPING_LINE);   // one steady amber, as `state.py readiness()` writes it
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET CONFIRMING (LINK 4 S)');
@@ -903,6 +909,7 @@ export class MockBackend implements Api {
         app_ver: b.app_ver, platform: b.platform,      // A29
         log: this.logFor(`node_${b.tail}`),            // A25
         reach, last_reach: this.lastReach[b.tail], transport,
+        ...(this.demoObs.has('outbox') && b.sticker === 'GUN-A' ? { outbox_lost: 12 } : {}),   // O6
       };
     });
     // F155 pass 1 (2026-09-12): the earlier version of this demo bolted a SECOND, disconnected NodeView
@@ -988,6 +995,14 @@ export class MockBackend implements Api {
       recap: this.recap_ ? { ...clone(this.recap_), ...(this.endedAt !== undefined ? { since_end_ms: Math.max(0, now() - this.endedAt) } : {}) } : undefined,
       end_delivery: this.endDelivery(),      // A42
       orphan_match: this.orphanView(),
+      // O7/O8: absent = healthy, as the server omits them
+      ...(this.demoObs.has('store') || this.demoObs.has('archive') || this.demoObs.has('snapshot') ? { not_saving: {
+        ...(this.demoObs.has('store') ? { store: { since: now() - 90_000, count: 41, error: 'OSError: [Errno 28] No space left on device' } } : {}),
+        ...(this.demoObs.has('archive') ? { archive: { since: now() - 60_000, count: 1, error: 'LookupError: store.match_ended: no row for match' } } : {}),
+        ...(this.demoObs.has('snapshot') ? { snapshot: { since: now() - 30_000, count: 15, error: 'OSError: [Errno 28] No space left on device' } } : {}),
+      } } : {}),
+      ...(this.demoObs.has('tick') ? { ticker_failing: { since: now() - 20_000, count: 40, error: 'KeyError: go_live_t' } } : {}),
+      ...(this.demoObs.has('join') ? { join_error: { error: 'RuntimeError: no network interface', ws_url: '' } } : {}),
     };
   }
   /** A42 — did the END reach every player's HUD? Plain `?mock` shows the ordinary answer (all of them

@@ -557,7 +557,7 @@ Event =
  | { type:"possession", t, match_id, node_id, player_id, site?, hold_ms:{"<tid>":ms}, observed_ms?, source?:"beacon"|"station" } // F70: the objective tally, cumulative, merged by max; rule in mc/API.md
  | { type:"pickup", t, match_id, station_id, item_kind:"weapon"|"overshield", weapon_id? } // A56: this player took a station's item (the grant is on the gun). Never scored; MC dedupes it against the station's `station_action taken`
  | { type:"status",      t, match_id?, node_id, player_id?, hp, armor, ammo, alive, shots, deadline_s?, battery?, fw?,
-                         arm_state, t_minus_ms?, synced, dropped?, preflight?, protected?, transport?, game_byte? }
+                         arm_state, t_minus_ms?, synced, dropped?, outbox_lost?, actions_dropped?, actions_dropped_game?, preflight?, protected?, transport?, game_byte? }
  |   // protected? [F289]: true only while the phone owes the write that ends spawn protection; absence clears it.
  |   // transport? [F309]: the phone's own connection claim, "wifi"|"cellular"|"none"|"unknown" (§5d has the bind rule).
  |   // game_byte? [X2]: the advert game byte (1..255) the phone holds from `config.game_byte`. MC takes it when it adopts
@@ -578,7 +578,7 @@ Event =
   `headset_ok`/`screen_on`/`foreground` are **amber before the config push, never red at muster** [A5.4]. `fw` =
   `$VERSION` result from the pre-config probe set (§3). `arm_state ∈ idle|connected|kitted|lobby|armed|live`
   [A1, A3]; `t_minus_ms` only while ARMED; `synced` = clock-sync fresh (§7); `dropped` = events shed by ring
-  overflow since last status [A3].
+  overflow since last status [A3]. `outbox_lost?: {match_id, n}` [O6] = how many of match `match_id`'s facts the phone's outbox dropped, counted at the source (a bounded per-match map in its storage, the last 4 matches) and sent whenever the phone knows its match, 0 included. MC shows `n` as `NodeView.outbox_lost` only while `match_id` is the match in play, resumed or adopted (or in RECAP); another match's count is history. There is no baseline on MC, so a hot-joiner's old losses never show and a resume keeps the outage's losses. `actions_dropped?` + `actions_dropped_game?` [O10] = a Stick's CLAIM reports evicted from its full queue since it was armed for game byte `actions_dropped_game` (it resets when MC arms it for a new game byte or station; the Stick does not know MC's match id); MC shows it as `NodeView.claims_dropped` and a station attention line only while that game is the current one. A Stick pops a queued `station_action` after a successful `sendTXT` (the wire has no acknowledgement for it: `ack{seq_hi}` covers only seq'd facts, so a claim can still be lost if the socket dies before MC reads it; filed).
 - Every type in `envelope.PERSISTED_EVENT_TYPES` (generated into `contract.gen.ts`/`contract.gen.js`; today
   `hit_taken`, `death`, `respawn`, `team_change`, `possession`, `operator_result`, `pickup`) is a **persisted fact**,
   idempotent by `(node_id, seq)` (§5 envelope). MC stores `operator_result` [A47] and `pickup` [A56] and writes the
