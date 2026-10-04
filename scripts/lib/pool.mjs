@@ -6,6 +6,15 @@ import { pidAlive } from './lock.mjs';
 
 export const poolDirName = (uid = os.userInfo().uid) => path.join('/tmp', `brx-test-pool-${uid}`);
 
+export function extraLeaseCores(admitted, freeCores) {
+  return Math.max(0, Math.min(Math.floor(admitted), Math.floor(freeCores)));
+}
+
+export function extraLeasePss(groupPss, baseMb, count) {
+  const total = Math.max(0, groupPss - baseMb);
+  return Array.from({ length: count }, (_, i) => total / count);
+}
+
 export function memAvailableMb() {
   try {
     const match = /^MemAvailable:\s+(\d+)/m.exec(fs.readFileSync('/proc/meminfo', 'utf8'));

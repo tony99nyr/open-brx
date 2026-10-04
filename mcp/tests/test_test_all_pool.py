@@ -117,6 +117,23 @@ def test_late_lease_is_nonblocking_and_respects_waiting_jobs(tmp_path):
     assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
 
 
+def test_extra_lease_accounting_helpers():
+    needs(NODE, "node")
+    script = f"""
+      import {{ extraLeaseCores, extraLeasePss }} from {json.dumps(POOL_MOD.as_uri())};
+      if (extraLeaseCores(3, 2) !== 2 || extraLeaseCores(2, 4) !== 2)
+        throw new Error('extra lease core sizing does not match admitted shards');
+      const pss = extraLeasePss(900, 700, 2);
+      if (pss.length !== 2 || pss.reduce((a, b) => a + b, 0) !== 200)
+        throw new Error('extra leases do not account for group PSS above the base lease');
+      if (extraLeasePss(600, 700, 2).some(value => value !== 0))
+        throw new Error('extra lease PSS must be zero below the base lease estimate');
+    """
+    result = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=REPO,
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+
+
 def _age(file: Path, seconds: int = 11):
     old = time.time() - seconds
     os.utime(file, (old, old))
