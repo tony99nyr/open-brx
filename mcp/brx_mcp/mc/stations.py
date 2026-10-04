@@ -12,7 +12,7 @@ from .types import (ADOPT_SLACK_MS, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DB
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
     STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S, STATION_LOCK_MAX_S,
-    STATION_REBOOT_SLACK_MS, STATION_TEAM_ANY, STATUS_HEARTBEAT_MS, TX_POWERS,
+    STATION_REBOOT_SLACK_MS, STATION_TEAM_ANY, station_fw_too_old, STATUS_HEARTBEAT_MS, TX_POWERS,
     GameConfig, Phase, Player, PowerupSlot, RangeEdit, RecapStationRow, StationAssignment, StationControl,
     StationDeparture, StationItem, StationRange, StationRef, StationReport, StationRestore,
     StationView, Team, is_station_kind, parse_app_ver)
@@ -67,6 +67,20 @@ class StationHost(Protocol):
     def game_no_started(self) -> bool: ...
     def ensure_utility_node(self, nid: str) -> None: ...
     def clear_claims_report(self, nid: str) -> None: ...
+
+STATION_FW_TOO_OLD = "STICK FIRMWARE TOO OLD: REFLASH IT"
+
+
+def is_stick(node: dict) -> bool:
+    """O13: a StickS3 station, by its hello (`platform` esp32) or, before that arrives, its minted id (`stick-<mac>`).
+    The one test for "is this a Stick, not a phone" (a phone has its own app version and threshold rules)."""
+    return node.get("platform") == "esp32" or str(node.get("node_id") or "").startswith("stick-")
+
+
+def station_nvs_line(n: int) -> str:
+    """O12: the Stick's flash refused `n` writes since it booted (`status.nvs_fail`), so a restart would lose what it failed to save."""
+    return f"STICK COULD NOT SAVE TO FLASH [{n} FAILED WRITE{'' if n == 1 else 'S'}]: RESTART WOULD LOSE ITS SETTINGS, REFLASH OR REPLACE IT"
+
 
 def station_claims_dropped_line(n: int, station_id: object = None) -> str:
     """O10: a Stick's full queue evicted CLAIM reports this match (`status.actions_dropped`, counted since the Stick was armed for this game);
@@ -163,7 +177,7 @@ class StationRegistry:
     def on_heartbeat(self, nid: str, body: dict, t_recv: int) -> None:
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
         st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
-                                                 "armed", "control", "battery", "uptime_s", "boot_count", "assoc",
+                                                 "armed", "control", "battery", "uptime_s", "boot_count", "nvs_fail", "assoc",
                                                  "threshold_src", "tx_power", "tx_power_src") if k in body}
         self._note_range(nid, st, body, t_recv)
         self._note_boot(st, body, t_recv)
@@ -501,7 +515,7 @@ class StationRegistry:
         pid = None if d.get("returned") else self._host.node_player.get(d.get("successor") or "")
         if pid and (pl := self._host.players.get(pid)) and pl.get("node_id") == d.get("successor"):
             return f"NOW {str(pl.get('display') or pid).upper()}'S HUD"
-        device = "STICKS3" if d.get("platform") == "esp32" else "PHONE"
+        device = "STICKS3" if is_stick(d) else "PHONE"
         return f"{device} {d['node_id'][:12]}"
 
     def record_departure(self, nid: str, reason: str, successor: str | None = None) -> None:
@@ -560,7 +574,7 @@ class StationRegistry:
 
     def _departure_line(self, d: dict) -> str:
         """The one sentence for a departure, in the station voice. The LOAD refusal and ITEMS use it as it is."""
-        stick = d.get("platform") == "esp32"
+        stick = is_stick(d)
         what = ("WENT BACK TO HUD" if d["reason"] == "back_to_hud"
                 else "WAS RELEASED" if stick else "WAS RELEASED TO ITS HUD")
         at = time.strftime("%H:%M", time.localtime(d["at_ms"] / 1000))
@@ -680,7 +694,7 @@ class StationRegistry:
         respawn station, F383's -75 for a control (hill) station, the old -74 for any other kind. A StickS3
         (platform `esp32`) has always read 0 correctly."""
         thr = a["threshold"]
-        if thr != 0 or st.get("platform") == "esp32" or nid.startswith("stick-"):
+        if thr != 0 or is_stick({**st, "node_id": nid}):
             return thr
         v = parse_app_ver(st.get("app_ver"))
         if v is not None and v >= PHONE_THRESHOLD_ZERO_APP:
@@ -1082,11 +1096,15 @@ class StationRegistry:
             attention.append(STATION_BATTERY_LOW)
         if (dropped := self._host._node_loss(self._host.nodes.get(nid) or {}, "claims")) > 0:
             attention.append(station_claims_dropped_line(dropped, a["id"] if a else rep.get("station_id")))   # O10
+        if (nvs_fail := rep.get("nvs_fail")) and isinstance(nvs_fail, int) and not isinstance(nvs_fail, bool) and nvs_fail > 0:
+            attention.append(station_nvs_line(nvs_fail))   # O12
+        if is_stick(st) and station_fw_too_old(st.get("app_ver")):
+            attention.append(STATION_FW_TOO_OLD)            # O13
         report: StationReport = {}
         kind = rep.get("kind")
         if is_station_kind(kind):
             report["kind"] = kind
-        for key in ("team", "station_id", "threshold", "revives", "uptime_s", "boot_count"):
+        for key in ("team", "station_id", "threshold", "revives", "uptime_s", "boot_count", "nvs_fail"):
             value = rep.get(key)
             if isinstance(value, int) and not isinstance(value, bool):
                 report[key] = value

@@ -68,7 +68,21 @@ TypedMcFallback typedMcFallback;
 uint32_t lockLastSavedMs = 0;
 uint32_t lockLastSavedSeconds = 0;
 uint8_t lockLastSavedGame = 255;
-String stationAppVer = "h8-0.1";  // bumped by hand; no build-time git sha injection in this sketch yet
+// O13: "<sketch version>+<short sha>". The sketch version is bumped by hand when behaviour MC cares about
+// changes (MC's STATION_MIN_FW is the oldest it accepts); tools/stick.py passes the sha as -DBRX_FW_SHA.
+// The sha is a bare token (an arduino-cli property cannot carry quotes safely across WSL to Windows).
+#ifndef BRX_FW_SHA
+#define BRX_FW_SHA unknown
+#endif
+#define BRX_STR_(x) #x
+#define BRX_STR(x) BRX_STR_(x)
+String stationAppVer = station_version("h8-0.2", BRX_STR(BRX_FW_SHA)).c_str();
+NvsFailures nvsFails;  // O12: failed Preferences writes since boot; rides on the status as `nvs_fail`
+// Print the serial line for a failed write; passes the result through.
+static bool nvsOk(bool ok) {
+  if (!ok) Serial.println(nvsFails.last_line);
+  return ok;
+}
 bool actionsEnabled = false;      // mirrors link.actions_enabled(); persisted so ACTIONS survives a reboot
 uint32_t bootCount = 0;           // A58: incremented once per boot in mcSetup(); rides on every status
 
@@ -77,7 +91,7 @@ uint32_t bootCount = 0;           // A58: incremented once per boot in mcSetup()
 static void mcCountBoot() {
   mcPrefs.begin("brxmc", false);
   bootCount = mcPrefs.getUInt("boots", 0) + 1;
-  mcPrefs.putUInt("boots", bootCount);
+  nvsOk(nvs_put_u32(mcPrefs, nvsFails, "boots", bootCount));
   mcPrefs.end();
 }
 
@@ -100,7 +114,7 @@ static void mcLoadPrefs(StationLink& link) {
     snprintf(buf, sizeof buf, "stick-%012llx", (unsigned long long)ESP.getEfuseMac());
     nodeId = buf;
     mcPrefs.begin("brxmc", false);
-    mcPrefs.putString("node_id", nodeId);
+    nvsOk(nvs_put_str(mcPrefs, nvsFails, "node_id", nodeId.c_str()));
     mcPrefs.end();
   }
   StationIdentity id;
@@ -114,18 +128,24 @@ static void mcLoadPrefs(StationLink& link) {
   if (wifiSsid.length()) link.wifi_configured();
 }
 
-static void mcSaveWifi(const String& ssid, const String& pass) {
-  mcPrefs.begin("brxmc", false);
-  mcPrefs.putString("ssid", ssid);
-  mcPrefs.putString("pass", pass);
-  // A new network means a new event: a station config saved at the last one must not come back.
-  mcPrefs.remove("station_cfg");
-  mcPrefs.remove("station_sid");
+// The hill's save is the one key "hill_v1"; the five older keys are read at boot and removed on any rewrite.
+static void mcRemoveHillKeys() {
+  mcPrefs.remove("hill_v1");
   mcPrefs.remove("hill_owner");
   mcPrefs.remove("hill_game");
   mcPrefs.remove("hill_id");
   mcPrefs.remove("hill_sid");
   mcPrefs.remove("hill_hold");
+}
+
+static void mcSaveWifi(const String& ssid, const String& pass) {
+  mcPrefs.begin("brxmc", false);
+  nvsOk(nvs_put_str(mcPrefs, nvsFails, "ssid", ssid.c_str()));
+  nvsOk(nvs_put_str(mcPrefs, nvsFails, "pass", pass.c_str()));
+  // A new network means a new event: a station config saved at the last one must not come back.
+  mcPrefs.remove("station_cfg");
+  mcPrefs.remove("station_sid");
+  mcRemoveHillKeys();
   mcPrefs.end();
   wifiSsid = ssid;
   wifiPass = pass;
@@ -133,10 +153,14 @@ static void mcSaveWifi(const String& ssid, const String& pass) {
 
 static void mcSaveTypedMcUrl(const String& url) {
   std::string clean = normalise_saved_mc_url(url.c_str());
-  if (!saved_mc_url_usable(clean)) return;
+  if (const char* why = saved_mc_url_refusal(clean.empty() ? std::string(url.c_str()) : clean)) {
+    Serial.printf("ERR MC url refused: %s (saved url unchanged)\n", why);  // O12: say why, keep the old url
+    return;
+  }
   mcPrefs.begin("brxmc", false);
-  mcPrefs.putString("mc_url", clean.c_str());
+  const bool saved = nvsOk(nvs_put_str(mcPrefs, nvsFails, "mc_url", clean.c_str()));
   mcPrefs.end();
+  if (!saved) return;  // the old url is still the saved one
   savedMcUrl = clean.c_str();
   typedMcFallback.new_url();
 }
@@ -144,19 +168,19 @@ static void mcSaveTypedMcUrl(const String& url) {
 
 static void mcSaveNodeKey(const String& key) {
   mcPrefs.begin("brxmc", false);
-  mcPrefs.putString("node_key", key);
+  nvsOk(nvs_put_str(mcPrefs, nvsFails, "node_key", key.c_str()));
   mcPrefs.end();
 }
 
 static void mcSaveAssoc(AssocMode m) {
   mcPrefs.begin("brxmc", false);
-  mcPrefs.putUChar("assoc", (uint8_t)m);
+  nvsOk(nvs_put_u8(mcPrefs, nvsFails, "assoc", (uint8_t)m));
   mcPrefs.end();
 }
 
 static void mcSaveActionsEnabled(bool on) {
   mcPrefs.begin("brxmc", false);
-  mcPrefs.putBool("actions", on);
+  nvsOk(nvs_put_bool(mcPrefs, nvsFails, "actions", on));
   mcPrefs.end();
 }
 
@@ -167,10 +191,10 @@ SavedStationConfig savedConfig;
 
 static void mcWriteSavedConfig() {
   mcPrefs.begin("brxmc", false);
-  mcPrefs.putString("station_cfg", savedConfig.stored().c_str());
-  mcPrefs.putString("station_sid", savedConfig.session_id().c_str());  // the WELCOME session it came in
+  const bool ok = nvsOk(nvs_put_str(mcPrefs, nvsFails, "station_cfg", savedConfig.stored().c_str())) &
+                  nvsOk(nvs_put_str(mcPrefs, nvsFails, "station_sid", savedConfig.session_id().c_str()));  // the WELCOME session it came in
   mcPrefs.end();
-  Serial.println("# station_config saved (restart survival)");
+  if (ok) Serial.println("# station_config saved (restart survival)");
 }
 
 static void mcEraseSavedConfig() {
@@ -187,6 +211,15 @@ SavedHill savedHill;
 
 static void mcLoadSavedHill() {
   mcPrefs.begin("brxmc", true);
+  // O12: the one value first; a Stick last saved by older firmware still has the five separate keys.
+  int bOwner = TEAM_ANY, bGame = 0, bId = 0;
+  uint32_t bHold[4] = {0, 0, 0, 0};
+  std::string bSid;
+  if (decode_saved_hill(mcPrefs.getString("hill_v1", "").c_str(), bOwner, bGame, bId, bHold, bSid)) {
+    mcPrefs.end();
+    savedHill.loaded(true, bOwner, bGame, bId, bSid, bHold);
+    return;
+  }
   bool has = mcPrefs.isKey("hill_owner");
   int owner = mcPrefs.getUChar("hill_owner", TEAM_ANY);
   int game = mcPrefs.getUChar("hill_game", 0);
@@ -216,10 +249,10 @@ static void mcLoadSavedClock() {
 
 static void mcWriteSavedClock() {
   mcPrefs.begin("brxmc", false);
-  mcPrefs.putUChar("hclk_game", (uint8_t)savedClock.game());
-  mcPrefs.putUShort("hclk_id", (uint16_t)savedClock.id());
-  mcPrefs.putString("hclk_sid", savedClock.session_id().c_str());
-  mcPrefs.putInt("hclk_rem", savedClock.remaining_ms());
+  nvsOk(nvs_put_u8(mcPrefs, nvsFails, "hclk_game", (uint8_t)savedClock.game()));
+  nvsOk(nvs_put_u16(mcPrefs, nvsFails, "hclk_id", (uint16_t)savedClock.id()));
+  nvsOk(nvs_put_str(mcPrefs, nvsFails, "hclk_sid", savedClock.session_id().c_str()));
+  nvsOk(nvs_put_i32(mcPrefs, nvsFails, "hclk_rem", savedClock.remaining_ms()));
   mcPrefs.end();
 }
 
@@ -235,13 +268,18 @@ static void mcEraseSavedClock() {
 
 static void mcWriteSavedHill() {
   mcPrefs.begin("brxmc", false);
-  mcPrefs.putUChar("hill_owner", (uint8_t)savedHill.owner());
-  mcPrefs.putUChar("hill_game", (uint8_t)savedHill.game());
-  mcPrefs.putUShort("hill_id", (uint16_t)savedHill.id());
-  mcPrefs.putString("hill_sid", savedHill.session_id().c_str());
-  mcPrefs.putBytes("hill_hold", savedHill.hold_ms(), 4 * sizeof(uint32_t));
+  const std::string blob = encode_saved_hill(savedHill.owner(), savedHill.game(), savedHill.id(), savedHill.hold_ms(),
+                                             savedHill.session_id());
+  const bool ok = nvsOk(nvs_put_str(mcPrefs, nvsFails, "hill_v1", blob.c_str()));
+  if (ok) {  // the one value landed: the older five keys must not outrank it at the next boot
+    mcPrefs.remove("hill_owner");
+    mcPrefs.remove("hill_game");
+    mcPrefs.remove("hill_id");
+    mcPrefs.remove("hill_sid");
+    mcPrefs.remove("hill_hold");
+  }
   mcPrefs.end();
-  Serial.printf("# hill owner saved: %d (game %d, id %d)\n", savedHill.owner(), savedHill.game(), savedHill.id());
+  if (ok) Serial.printf("# hill owner saved: %d (game %d, id %d)\n", savedHill.owner(), savedHill.game(), savedHill.id());
 }
 
 // ---- F365 / A67: the on-station range edit in NVS ("brxmc"/"range") -----------------------------------
@@ -278,7 +316,7 @@ static void mcSaveRangeIfChanged(StationLink& link) {
   std::string body = link.range_storage_body();
   if (lastRangeSaved == body.c_str()) return;
   mcPrefs.begin("brxmc", false);
-  mcPrefs.putString("range", body.c_str());
+  nvsOk(nvs_put_str(mcPrefs, nvsFails, "range", body.c_str()));
   mcPrefs.end();
   lastRangeSaved = body.c_str();
 }
@@ -303,11 +341,7 @@ static bool mcClearRangeEdit(StationLink& link) {
 
 static void mcEraseSavedHill() {
   mcPrefs.begin("brxmc", false);
-  mcPrefs.remove("hill_owner");
-  mcPrefs.remove("hill_game");
-  mcPrefs.remove("hill_id");
-  mcPrefs.remove("hill_sid");
-  mcPrefs.remove("hill_hold");
+  mcRemoveHillKeys();
   mcPrefs.end();
   Serial.println("# saved hill owner erased");
 }
@@ -507,8 +541,8 @@ bool lockSavePending = false;
 
 static bool lockSnapshotWritten(uint32_t seconds, uint8_t game) {
   if (!mcPrefs.begin("brxmc", false)) return false;
-  bool ok = mcPrefs.putUInt("lock_s", seconds) == sizeof(uint32_t) &&
-            mcPrefs.putUChar("lock_game", game) == sizeof(uint8_t);
+  bool ok = nvsOk(nvs_put_u32(mcPrefs, nvsFails, "lock_s", seconds)) &&
+            nvsOk(nvs_put_u8(mcPrefs, nvsFails, "lock_game", game));
   mcPrefs.end();
   if (!ok) Serial.println("ERR NVS lock snapshot write failed; retrying");
   return ok;
@@ -1096,6 +1130,7 @@ static void mcLoop(uint32_t now) {
     f.has_health = true;  // A58
     f.uptime_s = now / 1000;
     f.boot_count = bootCount;
+    f.nvs_fail = nvsFails.count;   // O12
     f.assoc = link.mode() == AssocMode::HELD ? "held" : "muster";
     f.lock_s = (long)link.lock().remaining_s(now);
     f.actions_dropped = link.pending_actions_dropped();   // O10: CLAIM reports the full queue evicted, since this arm
