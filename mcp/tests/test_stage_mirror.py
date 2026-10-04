@@ -2407,7 +2407,7 @@ def test_f344_every_shields_life_starts_at_full_shield_like_the_phone():
 
 def test_x3_the_spawn_line_and_the_klaxon_go_before_the_fill_like_the_phone():
     """X3 (integration review 2026-09-24): engine.js writes the fill LAST in the spawn and revive bursts, after the spawn
-    line and the klaxon, and `PLAY_GAP_MS` keeps their writes apart. The stage writes the same order."""
+    line and the klaxon, and `PLAY_GAP_S` keeps their writes apart. The stage writes the same order."""
     async def go():
         st, mgr, clock = mk_shields()
         fill = f"$LIFE,0,0,{st.max_shield},*"
@@ -2762,7 +2762,7 @@ def test_no_heartbeat_is_written_in_the_same_tick_the_recharge_starts():
         await shielded(st2, mgr2, clock2)
         clock2.advance(1.0)
         gun_says(st2, "$HP,30,0,0,*"); await settle(st2)
-        clock2.advance(S.PLAY_GAP_MS / 1000 + 0.001)  # let the break cue's play gap end
+        clock2.advance(S.PLAY_GAP_S + 0.001)  # let the break cue's play gap end
         now2 = st2.now()
         st2._shield_loop_at = now2 - SHIELD_LOOP_S_TEST
         n2 = mark(mgr2)
