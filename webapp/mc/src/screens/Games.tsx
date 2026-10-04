@@ -725,9 +725,8 @@ function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, currentT
 
 /** F413 (games-presets.md §7): 2 to 4 unique team colours, one chooser per rostered team, each shown
  *  in its own colour (`tokens.ts`'s TEAM swatch map — the same colours the roster/HUD use elsewhere).
- *  KOTH fixes the count at 2 and never offers yellow (a neutral hill broadcasts tid 2, F82). A count or
- *  colour change that would move rostered players between teams is the caller's job (`pickTeams`) --
- *  this component only ever proposes the next `TeamColour[]`, never sends anything itself. */
+ *  KOTH fixes the count at 2 and never offers yellow (a neutral hill broadcasts tid 2, F82). This
+ *  component only ever proposes the next `TeamColour[]`, never sends anything itself. */
 
 function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: string; onChange: (teams: TeamColour[]) => void }) {
   const isKoth = mode === 'koth';
@@ -766,8 +765,7 @@ function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: st
 
 /** One team slot's colour, as a dropdown (bench 2026-09-28, Tony: it replaced a row of swatch buttons).
  *  The select fills with the chosen colour; each option shows in its own colour. A colour another slot
- *  already uses stays listed, disabled, with that slot's name, so the set never looks shorter than it is.
- *  Controlled: while the F413 reshape confirm is up the value snaps back, and a second pick commits. */
+ *  already uses stays listed, disabled, with that slot's name, so the set never looks shorter than it is. */
 function ColourChooser({ slot, value, offered, teams, onChange }:
   { slot: number; value: TeamColour; offered: TeamColour[]; teams: TeamColour[]; onChange: (c: TeamColour) => void }) {
   return (

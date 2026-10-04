@@ -3424,7 +3424,9 @@ class Session:
         kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
         if "control" not in kinds:
             # Bench 2026-10-02: a hill that left (BACK TO HUD, RELEASE) is named, so the refusal says WHY.
-            gone = [self._departure_line(d) for d in self._station_departures.values() if d["kind"] == "control"]
+            # overnight review L5: oldest first, the order ITEMS (`_station_departures_view`) and the mock list them in
+            gone = [self._departure_line(d) for d in sorted(self._station_departures.values(), key=lambda d: d["at_ms"])
+                    if d["kind"] == "control"]
             return "KING OF THE HILL NEEDS A HILL: " + "; ".join(gone) if gone else self._KOTH_HILL_FAULT_NONE
         return None
 
@@ -3471,6 +3473,7 @@ class Session:
         the same voice as `set_config`, stored, and pushed as `station_config` at once (utility.md §5b.1)."""
         if not isinstance(a, dict):
             raise ValueError("assignment must be an object")
+        a = self._keep_stored_overrides(nid, a)
         if (view := self._set_station_range_only(nid, a)) is not None:
             return view                        # A67: a RANGE/STRENGTH-only edit, allowed in any phase
         self._refuse_station_change_in_play()
@@ -3579,8 +3582,9 @@ class Session:
     def _departure_label(self, d: dict) -> str:
         """Polish r1 M3: what the operator can SEE. Once the phone's HUD identity is bound, the player holding it
         ("NOW REAPER'S HUD"); else the device word and the id head the ITEMS card shows (`Items.tsx deviceOf`,
-        `node_id.slice(0, 12)`). The phone never shows its own id, and MC knows no name or colour for it."""
-        pid = self.node_player.get(d.get("successor") or "")
+        `node_id.slice(0, 12)`). The phone never shows its own id, and MC knows no name or colour for it.
+        Overnight review L8: once the same utility node is back (`returned`), it is not that player's HUD any more."""
+        pid = None if d.get("returned") else self.node_player.get(d.get("successor") or "")
         if pid and (pl := self.players.get(pid)) and pl.get("node_id") == d.get("successor"):
             return f"NOW {str(pl.get('display') or pid).upper()}'S HUD"
         device = "STICKS3" if d.get("platform") == "esp32" else "PHONE"
@@ -3848,6 +3852,29 @@ class Session:
                 out[f + "_set_at"], out[f + "_src"] = now, "mc"
         out.pop("threshold", None)             # the caller already holds the validated threshold
         return out
+
+    def _keep_stored_overrides(self, nid: str, a: dict) -> dict:
+        """Overnight review L4: a console from before S-powerup-overrides sends `item_preset` ALONE. When that is the
+        preset the stored item came from, the request carries no override key at all, so it cannot mean "back to the
+        defaults" (a current console always names RESPAWN beside the preset): keep the stored CHARGES/AMOUNT/RESPAWN.
+        Any override key, or a different preset, is the full-replace contract as before."""
+        preset = a.get("item_preset")
+        if not isinstance(preset, str) or any(k in a for k in _pu.OVERRIDE_KEYS):
+            return a
+        prev = ((self.stations.get(nid) or {}).get("assigned") or {}).get("item")
+        if not prev or _pu.preset_of(prev) != preset:
+            return a
+        kept: dict = {"spawn_every_s": prev.get("spawn_every_s")}
+        if prev.get("kind") == "weapon":
+            kept["charges"] = prev.get("charges")
+        if prev.get("kind") == "overshield":
+            kept["amount"] = prev.get("amount")
+        try:
+            default = _pu.expand(preset, getattr(self.compiler, "catalog", None))
+        except (ValueError, KeyError, TypeError):
+            return a                           # the main path refuses an unknown preset in its own words
+        # only what differs from the preset's default: an unchanged field needs no override (nor its range check)
+        return {**a, **{k: v for k, v in kept.items() if v is not None and v != default.get(k)}}
 
     def _set_station_range_only(self, nid: str, a: dict) -> StationView | None:
         """A67 (F365): a PUT that changes only RANGE (threshold) and/or STRENGTH (tx_power) of an assigned station.

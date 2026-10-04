@@ -327,7 +327,8 @@ export class MockBackend implements Api {
   }
   /** polish r1 M3, as state.py `_departure_label`: the player whose HUD the phone became, else what the card shows. */
   private departureLabel(d: Omit<StationDeparture, 'line' | 'label' | 'id_free'>): string {
-    const p = d.successor ? this.players.find(x => x.node_id === d.successor) : undefined;
+    // overnight review L8: once the same utility node is back (`returned`), it is not that player's HUD any more
+    const p = d.successor && !d.returned ? this.players.find(x => x.node_id === d.successor) : undefined;
     if (p) return `NOW ${p.display.toUpperCase()}'S HUD`;
     return `${d.platform === 'esp32' ? 'STICKS3' : 'PHONE'} ${d.node_id.slice(0, 12)}`;
   }
@@ -354,11 +355,25 @@ export class MockBackend implements Api {
     const name: Record<StationKind, string> = { control: 'HILL', respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB' };
     return `${name[d.kind] ?? d.kind.toUpperCase()} ${d.id} (${this.departureLabel(d)}) ${what} AT ${at}: ${act}`;
   }
+  /** Overnight review L4, as state.py `_keep_stored_overrides`: the same preset sent with NO override key (a console
+   *  from before S-powerup-overrides) keeps the stored CHARGES/AMOUNT/RESPAWN, only where they differ from the default. */
+  private keepStoredOverrides<A extends { item_preset?: string; charges?: number; amount?: number; spawn_every_s?: number }>(node_id: string, a: A): A {
+    if (typeof a.item_preset !== 'string' || ('charges' in a) || ('amount' in a) || ('spawn_every_s' in a)) return a;
+    const prev = this.stations[node_id]?.assigned?.item;
+    const p = POWERUP_PRESETS.find(x => x.preset === a.item_preset);
+    if (!prev || !p || p.item.kind !== prev.kind || (p.item.weapon_id ?? null) !== (prev.weapon_id ?? null)) return a;
+    const kept: { charges?: number; amount?: number; spawn_every_s?: number } = {};
+    if (prev.spawn_every_s != null && prev.spawn_every_s !== p.item.spawn_every_s) kept.spawn_every_s = prev.spawn_every_s;
+    if (prev.kind === 'weapon' && prev.charges != null && prev.charges !== p.item.charges) kept.charges = prev.charges;
+    if (prev.kind === 'overshield' && prev.amount != null && prev.amount !== p.item.amount) kept.amount = prev.amount;
+    return { ...a, ...kept };
+  }
   private departureViews(): StationDeparture[] {
     return Object.values(this.departures).sort((x, y) => x.at_ms - y.at_ms).map(d => ({ ...clone(d), label: this.departureLabel(d), id_free: this.departureIdFree(d), line: this.departureLine(d) }));
   }
   async putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number; item_preset?: string; tx_power?: TxPower;
     charges?: number; amount?: number; spawn_every_s?: number }): Promise<StationView> {
+    a = this.keepStoredOverrides(node_id, a);
     // A67, as `state.py _set_station_range_only`: a RANGE/STRENGTH-only change of an assigned station, any phase.
     // S-powerup-overrides (2026-09-28): the requested ITEM (preset + overrides) must also match the one already
     // assigned, or this is not range-only -- it falls through to the normal path below, which refuses an item
