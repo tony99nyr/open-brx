@@ -448,6 +448,7 @@ def test_the_tables_render_in_every_client_shape():
     assert "export const SIR_GRANT_FNS = new Set([9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);" in js
     assert "export const PANIC_SEQUENCE = Object.freeze(['$CLEAR,*', '$SP,99,*']);" in js
     assert "constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3[] = {-57, -45, -57, -57, -75};" in h
+    assert "constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL = -75;" in h
     assert "ROLE_LABELS = { assault: 'ASSAULT'" in ts
 
 

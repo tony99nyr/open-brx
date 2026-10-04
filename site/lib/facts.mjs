@@ -1,6 +1,6 @@
 // Facts the landing pages render from REPO SOURCE, never from typed prose.
 //   modes   = mcp/brx_mcp/mc/state.py MODES (the list Mission Control offers)
-//   roles   = mcp/brx_mcp/mc/weapons.json role counts, labelled and coloured by webapp/mc/src/tokens.ts
+//   roles   = mcp/brx_mcp/mc/weapons.json role counts, contract-labelled and coloured by tokens.ts
 //   release = webapp/download/build.json (the published APK sidecar; tests pin its freshness)
 //   counts  = modes.length, weapons.length, sounds.length
 // F40 rule: a pattern that stops matching is a HARD FAILURE, never a silent empty list. A landing
@@ -34,10 +34,20 @@ export function modes(repo) {
 // Both roles() and arsenal() label a weapon the way Mission Control does, off the one ROLE const.
 const roleLabels = repo => {
   const tok = read(repo, 'webapp/mc/src/tokens.ts');
-  const block = tok.match(/export const ROLE[\s\S]*?=\s*\{([\s\S]*?)\n\};/);
-  if (!block) throw new Error('facts: could not find ROLE in webapp/mc/src/tokens.ts (renamed?)');
+  const contract = read(repo, 'webapp/mc/src/api/contract.gen.ts');
+  const block = contract.match(/export const ROLE_LABELS = \{([^}]+)\} as const;/);
+  if (!block) throw new Error('facts: could not find ROLE_LABELS in contract.gen.ts (renamed?)');
+  const labels = {};
+  for (const m of block[1].matchAll(/(\w+): '([^']+)'/g)) labels[m[1]] = m[2];
   const label = {};
-  for (const m of block[1].matchAll(/(\w+):\s*\{\s*label:\s*'([^']+)',\s*color:\s*'(#[0-9a-fA-F]{6})'/g)) label[m[1]] = { label: m[2], color: m[3] };
+  const colours = tok.match(/export const ROLE_COLOUR[\s\S]*?=\s*\{([\s\S]*?)\n\};/);
+  if (!colours) throw new Error('facts: could not find ROLE_COLOUR in webapp/mc/src/tokens.ts (renamed?)');
+  const palette = {};
+  for (const m of colours[1].matchAll(/(\w+): '(#[0-9a-fA-F]{6})'/g)) palette[m[1]] = m[2];
+  for (const [role, text] of Object.entries(labels)) {
+    if (!palette[role]) throw new Error(`facts: role "${role}" has no colour in tokens.ts ROLE_COLOUR`);
+    label[role] = { label: text, color: palette[role] };
+  }
   return label;
 };
 
@@ -55,10 +65,10 @@ export function roles(repo) {
   const counts = {};
   for (const w of cat) counts[w.role] = (counts[w.role] || 0) + 1;
   const out = Object.entries(counts).map(([role, n]) => {
-    if (!label[role]) throw new Error(`facts: weapons.json role "${role}" has no label in tokens.ts ROLE`);
+    if (!label[role]) throw new Error(`facts: weapons.json role "${role}" has no generated role label`);
     return { role, n, ...label[role] };
   });
-  // the order Mission Control shows them: as declared in tokens.ts
+  // the order Mission Control shows them: as declared in contract.gen.ts
   const order = Object.keys(label);
   out.sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role));
   return { roles: out, total: cat.length };
@@ -85,7 +95,7 @@ export function arsenal(repo) {
   const label = roleLabels(repo);
   const order = Object.keys(label);
   const out = cat.map(w => {
-    if (!label[w.role]) throw new Error(`facts: weapons.json role "${w.role}" has no label in tokens.ts ROLE`);
+    if (!label[w.role]) throw new Error(`facts: weapons.json role "${w.role}" has no generated role label`);
     for (const k of ['name', 'desc', 'htk', 'mag']) {
       if (w[k] === undefined || w[k] === null) throw new Error(`facts: ${w.weapon_id} has no ${k}`);
     }

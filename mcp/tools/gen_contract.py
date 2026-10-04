@@ -736,6 +736,9 @@ def _render_h(model: "_Model") -> str:
                 out.append(f"constexpr size_t {name}_COUNT = {len(keys)};")
                 for outer, row in value.items():
                     out.append(f"constexpr int32_t {name}_{outer.upper()}[] = {{{', '.join(str(v) for v in row.values())}}};")
+                for outer, row in value.items():   # one named cell each, so firmware never indexes by position
+                    for inner, v in row.items():
+                        out.append(f"constexpr int32_t {name}_{outer.upper()}_{inner.upper()} = {v};")
         elif isinstance(value, str):
             out.append(f"constexpr const char* {name} = {_cpp_str(value)};")
         elif isinstance(value, float):

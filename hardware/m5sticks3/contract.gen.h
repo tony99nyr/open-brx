@@ -114,6 +114,16 @@ constexpr const char* STATION_DEFAULT_THRESHOLD_DBM_KEYS[] = {"respawn", "poweru
 constexpr size_t STATION_DEFAULT_THRESHOLD_DBM_COUNT = 5;
 constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_PHONE[] = {-70, -55, -74, -74, -75};
 constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3[] = {-57, -45, -57, -57, -75};
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_PHONE_RESPAWN = -70;
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_PHONE_POWERUP = -55;
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION = -74;
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_PHONE_BOMB = -74;
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_PHONE_CONTROL = -75;
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN = -57;
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_POWERUP = -45;
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_EXTRACTION = -57;
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_BOMB = -57;
+constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL = -75;
 // A defaulted Stick HILL advertises -57 in byte 14 (the phones' own presence edge), while the Stick itself measures
 // players at STATION_DEFAULT_THRESHOLD_DBM["sticks3"]["control"]. Deliberate, not a copy of the respawn value.
 constexpr int32_t STICK_HILL_ADVERT_THRESHOLD_DBM = -57;
