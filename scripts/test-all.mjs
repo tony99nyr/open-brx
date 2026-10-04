@@ -37,10 +37,10 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sumTreePssKb } from './lib/pss.mjs';
+import { sumTreePssKb, sumTreeTasks } from './lib/pss.mjs';
 import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, admissionShare, deriveTimeoutS, jobTaskAllowance, planPeakMb, screensBudget, taskScreensShards, workerCount } from './lib/budget.mjs';
 import { acquireCheckoutLock } from './lib/lock.mjs';
-import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss } from './lib/pool.mjs';
+import { createPool, memAvailableMb, extraLeaseCores, extraLeasePss, splitLeaseTasks } from './lib/pool.mjs';
 import { taskHeadroom } from './lib/tasks.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash, installedNpmState,
@@ -427,11 +427,14 @@ function sampleTasks() {
   if (sample) measuredPeakTasks = Math.max(measuredPeakTasks ?? 0, sample.current);
 }
 const canSamplePss = fs.existsSync('/proc/self/smaps_rollup');
+const canSampleTreeTasks = fs.existsSync('/proc/self/task');
 function samplePss() {
   if (canSamplePss) {
     const kb = sumTreePssKb([...groups]);
     if (kb !== null) measuredPeakMb = Math.max(measuredPeakMb || 0, kb / 1024);
-    for (const [pgid, lease] of groupLeases) {
+  }
+  for (const [pgid, lease] of groupLeases) {
+    if (canSamplePss) {
       const jobKb = sumTreePssKb([pgid]);
       if (jobKb !== null) {
         const groupMb = jobKb / 1024;
@@ -441,10 +444,18 @@ function samplePss() {
         }
       }
     }
+    if (canSampleTreeTasks) {
+      const groupTasks = sumTreeTasks([pgid]);
+      if (groupTasks !== null) {
+        const leases = pgid === screensPgid ? [lease, ...screensExtraLeases] : [lease];
+        const observed = splitLeaseTasks(groupTasks, leases.map(item => item.tasks));
+        leases.forEach((item, index) => item.setTasks(observed[index]));
+      }
+    }
   }
   sampleTasks();
 }
-const sampleTimer = canSamplePss || taskStart ? setInterval(() => {
+const sampleTimer = canSamplePss || canSampleTreeTasks || taskStart ? setInterval(() => {
   try { samplePss(); }
   catch (error) { console.error(`test-all: memory sample failed: ${error.message}`); stopGroups(error); }
 }, 1000) : null;

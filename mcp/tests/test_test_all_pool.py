@@ -33,6 +33,7 @@ def _child(pool_dir: Path, job: str, mb: int, cores: int = 1, hold_ms: int = 0,
       import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
       const pool = createPool({{
         dir: {json.dumps(str(pool_dir))}, poolMb: {pool_mb}, reserveMb: 100,
+        oldLockDir: {json.dumps(str(pool_dir.parent / 'old-lock'))},
         poolCores: 4, pollMs: 15, heartbeatMs: 100, staleMs: 5000,
         readAvailableMb: () => {source}, {extra}
       }});
@@ -99,6 +100,7 @@ def test_task_headroom_blocks_pool_admission_until_room_returns(tmp_path):
       const dir = {json.dumps(str(tmp_path / 'pool'))};
       let free = 149;
       const pool = createPool({{ dir, poolMb: 1000, reserveMb: 0, poolCores: 4,
+        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))},
         readAvailableMb: () => 10000, taskHeadroom: () => ({{ max: 500, free }}),
         taskReserve: 100, pollMs: 10 }});
       const waiting = pool.acquire({{ runId: 'one', job: 'solo', mb: 100, cores: 1, tasks: 50 }});
@@ -112,25 +114,66 @@ def test_task_headroom_blocks_pool_admission_until_room_returns(tmp_path):
 
 
 @_temporary_path
-def test_recent_lease_allowance_blocks_cross_run_admission(tmp_path):
+def test_observed_tasks_reduce_pending_across_runs_without_time_limit(tmp_path):
     script = f"""
       import fs from 'node:fs';
       import path from 'node:path';
       import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
       const dir = {json.dumps(str(tmp_path / 'pool'))};
+      let free = 600;
       const pool = createPool({{ dir, poolMb: 1000, reserveMb: 0, poolCores: 4,
-        readAvailableMb: () => 10000, taskHeadroom: () => ({{ max: 500, free: 250 }}),
+        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))},
+        readAvailableMb: () => 10000, taskHeadroom: () => ({{ max: 1000, free }}),
         taskReserve: 0, pollMs: 10 }});
-      const first = await pool.acquire({{ runId: 'checkout-a', job: 'first', mb: 100, cores: 1, tasks: 200 }});
-      const second = pool.acquire({{ runId: 'checkout-b', job: 'second', mb: 100, cores: 1, tasks: 100 }});
-      if (fs.readdirSync(dir).filter(name => name.endsWith('.lease')).length !== 1)
-        throw new Error('recent lease allowance was ignored');
+      const first = await pool.acquire({{ runId: 'checkout-a', job: 'first', mb: 100, cores: 1, tasks: 500 }});
+      first.setTasks(100);
+      free = 450;
+      const small = pool.tryAcquire({{ runId: 'checkout-b', job: 'small', mb: 100, cores: 1, tasks: 50 }});
+      if (!small) throw new Error('500 allowance minus 100 observed did not leave 50 tasks');
+      small.release();
       const record = JSON.parse(fs.readFileSync(first.file, 'utf8'));
       record.admittedAt = Date.now() - 20001;
       fs.writeFileSync(first.file, JSON.stringify(record));
+      if (pool.tryAcquire({{ runId: 'checkout-b', job: 'second', mb: 100, cores: 1, tasks: 100 }}) !== null)
+        throw new Error('old lease lost its pending allowance');
+      const second = pool.acquire({{ runId: 'checkout-b', job: 'second', mb: 100, cores: 1, tasks: 100 }});
+      if (fs.readdirSync(dir).filter(name => name.endsWith('.lease')).length !== 1)
+        throw new Error('measured lease allowance was ignored');
+      first.setTasks(600);
       const admitted = await second;
-      if (admitted.tasks !== 100) throw new Error('second allowance missing');
+      if (admitted.tasks !== 100) throw new Error('observed use above allowance did not count as zero pending');
       admitted.release(); first.release(); pool.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_old_machine_lock_blocks_leases_until_live_entry_exits(tmp_path):
+    script = f"""
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const dir = {json.dumps(str(tmp_path / 'pool'))};
+      const oldLockDir = {json.dumps(str(tmp_path / 'old-lock'))};
+      fs.mkdirSync(oldLockDir);
+      const entry = path.join(oldLockDir, `000000000000001-${{process.pid}}-live`);
+      fs.writeFileSync(entry, 'live');
+      const notices = [];
+      const pool = createPool({{ dir, oldLockDir, poolMb: 1000, reserveMb: 0,
+        poolCores: 4, readAvailableMb: () => 10000, pollMs: 10,
+        log: message => notices.push(message) }});
+      const request = {{ runId: 'new', job: 'job', mb: 100, cores: 1 }};
+      if (pool.tryAcquire(request) !== null) throw new Error('late lease bypassed the old lock');
+      const waiting = pool.acquire(request);
+      if (fs.readdirSync(dir).some(name => name.endsWith('.lease')))
+        throw new Error('queued lease bypassed the old lock');
+      if (notices.length !== 1 || notices[0] !==
+          `waiting for a run on the old machine lock (pid ${{process.pid}})`)
+        throw new Error('old-lock wait notice missing or repeated');
+      fs.writeFileSync(path.join(oldLockDir, '000000000000002-99999999-dead'), 'dead');
+      fs.rmSync(entry);
+      const lease = await waiting;
+      lease.release(); pool.close();
     """
     _run_pool_script(script)
 
@@ -140,6 +183,7 @@ def test_late_raise_checks_live_tasks_and_recent_allowance(tmp_path):
     script = f"""
       import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
       const pool = createPool({{ dir: {json.dumps(str(tmp_path / 'pool'))}, poolMb: 1000,
+        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))},
         reserveMb: 0, poolCores: 4, readAvailableMb: () => 10000,
         taskHeadroom: () => ({{ max: 500, free }}), taskReserve: 100 }});
       let free = 250;
@@ -164,6 +208,7 @@ def test_late_lease_is_nonblocking_and_respects_waiting_jobs(tmp_path):
       const dir = {json.dumps(str(tmp_path / 'pool'))};
       let available = 100000;
       const pool = createPool({{ dir, poolMb: 1000, reserveMb: 0, poolCores: 4,
+        oldLockDir: {json.dumps(str(tmp_path / 'old-lock'))},
         readAvailableMb: () => available }});
       const first = await pool.acquire({{ runId: 'one', job: 'screens', mb: 700, cores: 1 }});
       const request = {{ runId: 'one', job: 'screens-extra', mb: 240, cores: 1 }};
@@ -190,7 +235,7 @@ def test_late_lease_is_nonblocking_and_respects_waiting_jobs(tmp_path):
 def test_extra_lease_accounting_helpers():
     needs(NODE, "node")
     script = f"""
-      import {{ extraLeaseCores, extraLeasePss }} from {json.dumps(POOL_MOD.as_uri())};
+      import {{ extraLeaseCores, extraLeasePss, splitLeaseTasks }} from {json.dumps(POOL_MOD.as_uri())};
       if (extraLeaseCores(3, 2) !== 2 || extraLeaseCores(2, 4) !== 2)
         throw new Error('extra lease core sizing does not match admitted shards');
       const pss = extraLeasePss(900, 700, 2);
@@ -198,6 +243,9 @@ def test_extra_lease_accounting_helpers():
         throw new Error('extra leases do not account for group PSS above the base lease');
       if (extraLeasePss(600, 700, 2).some(value => value !== 0))
         throw new Error('extra lease PSS must be zero below the base lease estimate');
+      if (JSON.stringify(splitLeaseTasks(150, [100, 110])) !== JSON.stringify([100, 50]) ||
+          JSON.stringify(splitLeaseTasks(50, [100, 110])) !== JSON.stringify([50, 0]))
+        throw new Error('screen tasks were counted twice across leases');
     """
     result = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=REPO,
                             capture_output=True, text=True, timeout=5)

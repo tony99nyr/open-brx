@@ -25,7 +25,7 @@ export function admissionShare(ownMb, freeMb, ownCores, freeCores) {
 // (12% low), app-logsync 438 MB against 300 (46% low) -- a real, not hypothetical, undercount across the board.
 export const HEADROOM = 0.85;
 export const TASK_RESERVE = Number(process.env.BRX_TEST_TASK_RESERVE || 1500);
-export const TASK_ALLOWANCES = { screensShard: 60, ui: 250, other: 80 };
+export const TASK_ALLOWANCES = { site: 800, appTest: 250, screensShard: 110, ui: 250, other: 80 };
 
 /** Pure task admission check for the scheduler. */
 export function taskAdmission(free, reserve, pending, allowance) {
@@ -39,6 +39,8 @@ export function taskScreensShards(cap, free, reserve, pending = 0) {
 
 export function jobTaskAllowance(job) {
   if (job.tasks != null) return job.tasks;
+  if (job.name === 'site') return TASK_ALLOWANCES.site;
+  if (job.name === 'app-test') return TASK_ALLOWANCES.appTest;
   if (job.name === 'app-screens') return TASK_ALLOWANCES.screensShard * (job.screensShards || 1);
   return job.ui ? TASK_ALLOWANCES.ui : TASK_ALLOWANCES.other;
 }

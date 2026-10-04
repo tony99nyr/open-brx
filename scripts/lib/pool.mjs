@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pidAlive } from './lock.mjs';
+import { oldMachineLockDir, oldMachineLockPid, pidAlive } from './lock.mjs';
 import { taskHeadroom as systemTaskHeadroom } from './tasks.mjs';
 import { TASK_RESERVE } from './budget.mjs';
 
@@ -15,6 +15,15 @@ export function extraLeaseCores(admitted, freeCores) {
 export function extraLeasePss(groupPss, baseMb, count) {
   const total = Math.max(0, groupPss - baseMb);
   return Array.from({ length: count }, (_, i) => total / count);
+}
+
+export function splitLeaseTasks(groupTasks, allowances) {
+  let remaining = Math.max(0, groupTasks);
+  return allowances.map(allowance => {
+    const observed = Math.min(remaining, allowance);
+    remaining -= observed;
+    return observed;
+  });
 }
 
 export function memAvailableMb() {
@@ -44,14 +53,16 @@ const nonnegative = (value, fallback) => value !== undefined && Number.isFinite(
 export function createPool({ dir = poolDirName(), poolMb = positive(process.env.BRX_TEST_POOL_MB, 10000),
   reserveMb = nonnegative(process.env.BRX_TEST_POOL_RESERVE_MB, 3000),
   poolCores = positive(process.env.BRX_TEST_POOL_CORES, 24), readAvailableMb = memAvailableMb,
-  taskHeadroom = systemTaskHeadroom, taskReserve = TASK_RESERVE, taskPendingMs = 20_000,
+  taskHeadroom = systemTaskHeadroom, taskReserve = TASK_RESERVE,
+  oldLockDir = oldMachineLockDir(),
   pollMs = 200, heartbeatMs = 2_000, staleMs = 300_000, bypassMs = 60_000,
-  log = message => console.error(`test pool: ${message}`) } = {}) {
+  log = message => console.error(`test-all: ${message}`) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const mutex = path.join(dir, '.mutex');
   const ownTickets = new Map();
   const ownLeases = new Map();
   let closed = false;
+  let lastOldNotice = -Infinity;
 
   function withMutex(fn) {
     const deadline = Date.now() + 60_000;
@@ -183,9 +194,8 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   function taskCapacity(leases) {
     const headroom = taskHeadroom();
     if (!headroom) return null;
-    const now = Date.now();
     const pending = leases.reduce((sum, item) => sum +
-      (now - item.data.admittedAt < taskPendingMs ? (item.data.tasks || 0) : 0), 0);
+      Math.max(0, (item.data.tasks || 0) - (item.data.observedTasks || 0)), 0);
     return { free: headroom.free, available: headroom.free - taskReserve - pending,
       max: headroom.max, pending };
   }
@@ -201,6 +211,7 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
   function tryAcquire({ runId, job, mb, cores = 1, tasks = 0, size } = {}) {
     if (closed) return null;
     return withMutex(() => {
+      if (oldMachineLockPid(oldLockDir) !== null) return null;
       if (entries('ticket').length) return null;
       const leases = entries('lease');
       const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
@@ -218,11 +229,13 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       const id = `extra-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
       const file = path.join(dir, `${id}.lease`);
       const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
-        tasks: request.tasks, admittedAt: Date.now(), pss: 0, pgid: null, heartbeat: Date.now() };
+        tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0,
+        pgid: null, heartbeat: Date.now() };
       writeJson(file, record);
       ownLeases.set(file, record);
       const update = values => { Object.assign(record, values); record.heartbeat = Date.now(); writeJson(file, record); };
       return { ...record, file, setPgid: pgid => update({ pgid }), setPss: pss => update({ pss }),
+        setTasks: observedTasks => update({ observedTasks }),
         release: () => releaseFile(file) };
     });
   }
@@ -256,6 +269,8 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
       while (!closed) {
         const admitted = withMutex(() => {
           if (!fs.existsSync(ticket)) writeJson(ticket, ticketRecord);
+          const oldPid = oldMachineLockPid(oldLockDir);
+          if (oldPid !== null) return { oldPid };
           const tickets = entries('ticket');
           const leases = entries('lease');
           const usedMb = leases.reduce((sum, item) => sum + item.data.mb, 0);
@@ -282,12 +297,23 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
             (item.data.mb > fitMb || item.data.cores > freeCores ||
               (taskCap && item.data.tasks > taskCap.available)));
           const taskBlocked = taskCap && request.tasks > taskCap.available;
+          const head = preceding[0];
+          const blockedFor = item => [
+            item.mb > fitMb ? 'memory' : null,
+            item.cores > freeCores ? 'cores' : null,
+            taskCap && item.tasks > taskCap.available ? 'tasks' : null,
+          ].filter(Boolean).join(', ');
+          const blocker = head ? { ticket: Number(head.name.slice(0, 15)),
+            job: head.data.job, pid: head.data.pid } : null;
+          const reason = blockedFor(head?.data || request) || blockedFor(request) || 'queue order';
           if (request.mb > freeMb || request.mb > availableMb || request.cores > freeCores ||
               taskBlocked || (preceding.length && !bypass)) return { lease: null, usedMb, availableMb,
-                requestMb: request.mb, taskCap, requestTasks: request.tasks, taskBlocked };
+                requestMb: request.mb, taskCap, requestTasks: request.tasks, taskBlocked,
+                blocker, reason };
           const leaseFile = path.join(dir, `${id}.lease`);
           const record = { pid: process.pid, runId, job, mb: request.mb, cores: request.cores,
-            tasks: request.tasks, admittedAt: Date.now(), pss: 0, pgid: null, heartbeat: Date.now() };
+            tasks: request.tasks, observedTasks: 0, admittedAt: Date.now(), pss: 0,
+            pgid: null, heartbeat: Date.now() };
           writeJson(leaseFile, record);
           fs.rmSync(ticket, { force: true });
           ownTickets.delete(ticket);
@@ -295,8 +321,17 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
           const update = values => { Object.assign(record, values); record.heartbeat = Date.now(); writeJson(leaseFile, record); };
           return { lease: { ...record, file: leaseFile, ticket: Number(id.slice(0, 15)),
             setPgid: pgid => update({ pgid }), setPss: pss => update({ pss }),
+            setTasks: observedTasks => update({ observedTasks }),
             release: () => releaseFile(leaseFile) } };
         });
+        if (admitted.oldPid !== undefined) {
+          if (Date.now() - lastOldNotice >= 30_000) {
+            log(`waiting for a run on the old machine lock (pid ${admitted.oldPid})`);
+            lastOldNotice = Date.now();
+          }
+          await delay(pollMs);
+          continue;
+        }
         if (admitted.lease) return admitted.lease;
         if (admitted.taskBlocked) {
           taskWaitAt ??= Date.now();
@@ -304,8 +339,8 @@ export function createPool({ dir = poolDirName(), poolMb = positive(process.env.
             throw new Error(`task cap ${admitted.taskCap.max} did not leave room for ${admitted.requestTasks} tasks after reserve ${taskReserve}`);
         } else taskWaitAt = null;
         if (Date.now() - lastNotice >= 30_000) {
-          if (admitted.taskBlocked) log(`waiting for task headroom (free ${admitted.taskCap.free}, need ${taskReserve + admitted.taskCap.pending + admitted.requestTasks})`);
-          else log(`waiting for ${Math.ceil(admitted.requestMb)} MB (pool ${Math.ceil(admitted.usedMb)}/${poolMb}, available ${Math.floor(admitted.availableMb)})`);
+          const behind = admitted.blocker ? ` behind ticket ${admitted.blocker.ticket} (job ${admitted.blocker.job}, pid ${admitted.blocker.pid})` : '';
+          log(`waiting${behind}: ${admitted.reason}`);
           lastNotice = Date.now();
         }
         await delay(pollMs);

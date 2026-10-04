@@ -133,7 +133,8 @@ def test_checkout_lock_serialises_same_checkout_but_admits_another(tmp_path):
 def _lock_child(root: Path, hold_ms: int) -> subprocess.Popen:
     script = f"""
       import {{ acquireCheckoutLock }} from {json.dumps(LOCK_MOD.as_uri())};
-      const release = await acquireCheckoutLock({json.dumps(str(root))}, {{ pollMs: 20 }});
+      const release = await acquireCheckoutLock({json.dumps(str(root))}, {{ pollMs: 20,
+        oldLockDir: {json.dumps(str(root.parent / 'old-lock'))} }});
       console.log('acquired');
       await new Promise(r => setTimeout(r, {hold_ms}));
       await release();

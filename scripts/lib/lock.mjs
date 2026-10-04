@@ -18,6 +18,21 @@ export function pidAlive(pid) {
   catch (e) { return e.code === 'EPERM'; }
 }
 
+export const oldMachineLockDir = (uid = os.userInfo().uid) =>
+  path.join('/tmp', `brx-test-all-${uid}.lock`);
+
+/** This transition check can go once every checkout runs step 6 and uses the pool. */
+export function oldMachineLockPid(dir = oldMachineLockDir()) {
+  let names;
+  try { names = fs.readdirSync(dir).sort(); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  for (const name of names) {
+    const pid = entryPid(name);
+    if (pid !== null && pidAlive(pid)) return pid;
+  }
+  return null;
+}
+
 /** changedAt and now use the same monotonic clock (performance.now()). A suspended machine pauses that clock,
  *  so waking does not make a live holder stale. Wait 10 s after a dead PID's last heartbeat: PID namespaces
  *  and reuse make an immediate dead read unsafe. A live PID needs the full stale interval without a heartbeat. */
@@ -58,11 +73,12 @@ function liveRunLease(poolDir, runId) {
 /** One run per checkout. Surviving pool leases delay the next run after a crash. */
 export async function acquireCheckoutLock(root, { dir = checkoutLockDir(root), pollMs = 250,
   heartbeatMs = 2_000, staleMs = 300_000, signal, runId = `${process.pid}-${crypto.randomBytes(8).toString('hex')}`,
-  poolDir } = {}) {
+  poolDir, oldLockDir = oldMachineLockDir() } = {}) {
   const { createPool, poolDirName } = await import('./pool.mjs');
   poolDir ??= poolDirName();
   const lock = createPool({ dir, poolMb: 1, reserveMb: 0, poolCores: 1,
-    readAvailableMb: () => Number.POSITIVE_INFINITY, pollMs, heartbeatMs, staleMs });
+    readAvailableMb: () => Number.POSITIVE_INFINITY, pollMs, heartbeatMs, staleMs,
+    oldLockDir });
   const stop = () => lock.close();
   signal?.addEventListener('abort', stop, { once: true });
   try {

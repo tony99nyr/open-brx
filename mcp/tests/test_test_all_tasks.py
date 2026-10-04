@@ -9,6 +9,7 @@ from _skip import needs
 
 REPO = Path(__file__).resolve().parents[2]
 TASKS = REPO / "scripts" / "lib" / "tasks.mjs"
+PSS = REPO / "scripts" / "lib" / "pss.mjs"
 BUDGET = REPO / "scripts" / "lib" / "budget.mjs"
 NODE = shutil.which("node")
 
@@ -60,6 +61,19 @@ def test_task_headroom_returns_null_when_cgroup_files_are_unreadable():
         assert got is None
 
 
+def test_process_tree_task_count_includes_threads_and_descendants():
+    with tempfile.TemporaryDirectory() as d:
+        proc = Path(d)
+        for pid, parent, group, threads in [(10, 1, 10, 2), (11, 10, 11, 3), (12, 1, 12, 4)]:
+            directory = proc / str(pid)
+            (directory / "task").mkdir(parents=True)
+            (directory / "stat").write_text(f"{pid} (job) S {parent} {group} 0\n")
+            for thread in range(threads):
+                (directory / "task" / str(thread)).touch()
+        got = _node(f"const m=await import({json.dumps(PSS.as_uri())}); return m.sumTreeTasks([10],{json.dumps(str(proc))});")
+        assert got == 5
+
+
 def test_task_admission_includes_reserve_and_recent_pending():
     got = _node(f"const m=await import({json.dumps(BUDGET.as_uri())}); return [m.taskAdmission(2000,1500,400,100),m.taskAdmission(2000,1500,401,100)];")
     assert got == ["start", "wait"]
@@ -67,4 +81,4 @@ def test_task_admission_includes_reserve_and_recent_pending():
 
 def test_task_screen_shards_obey_headroom_and_keep_one():
     got = _node(f"const m=await import({json.dumps(BUDGET.as_uri())}); return [m.taskScreensShards(16,2220,1500,0),m.taskScreensShards(16,2220,1500,300),m.taskScreensShards(16,1500,1500,0)];")
-    assert got == [12, 7, 1]
+    assert got == [6, 3, 1]
