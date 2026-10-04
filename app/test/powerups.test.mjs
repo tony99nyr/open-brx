@@ -380,7 +380,7 @@ test('F381: a repeat pickup of the same weapon adds charges without a replacemen
   assert.equal(E.PU_STACK_CAP_X, 2);
   const h = armed(); h.take(4); h.eng.pu.held.left = 1;
   const n = h.mark();
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
   assert.equal(h.eng.state().powerup.held.left, 3);
   assert.equal(h.eng.state().powerupGrant.replaced, undefined);
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,3,0,1,*']);
@@ -415,10 +415,10 @@ test('S-powerup-overrides: a station item with amount:100 grants 100 shield, not
 test('F381: a same-weapon stack is capped at twice the item charges (Tony: Rockets at most 4)', () => {
   const h = armed(); h.take(4); h.eng.pu.held.left = 3;
   const n = h.mark();
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
   assert.equal(h.eng.state().powerup.held.left, 4, '3 + 2 caps at 4');
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,4,0,1,*']);
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
   assert.equal(h.eng.state().powerup.held.left, 4, 'a full stack stays at 4');
   assert.equal(h.eng.state().powerup.held.charges, 4, 'the HUD denominator is the stacked count');
 });
@@ -505,9 +505,9 @@ test('head rewrite resets ALT pointer and pending evidence', () => {
 });
 
 test('a weapon grant clears a pending switch-back retry', () => {
-  const h = armed(); h.take(4); h.away(); h.eng._puEnd('empty');
+  const h = armed(); h.take(4); h.away(); h.eng.pu.end('empty');
   assert.ok(h.eng.pu.backPending);
-  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now());
+  h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now());
   assert.equal(h.eng.pu.backPending, null);
 });
 
@@ -648,7 +648,7 @@ test('F400 r1: a pickup card closing never moves the gun\'s ALT pointer', () => 
 });
 test('F400: a same-weapon stack re-equip shows the card too, from and to the same slot', () => {
   const h = armed(); h.take(4); h.eng.pu.held.left = 1;
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
   assert.equal(h.eng.switching.from, 2); assert.equal(h.eng.switching.to, 2);
 });
 
@@ -1208,7 +1208,7 @@ test('F381: a stack keeps four charges when the gun reports its old two after th
   const h = armed(); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
   h.frame('$ALCD,2,100,2,0,0,*'); // a positive read-back confirms the first grant
   h.fire(0, 29, 190); // the first equip was lost; the gun was still on the primary
-  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now());
+  h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now());
   const n = h.mark(); h.adv(E.ACC_ECHO_MS + 100);
   h.frame('$ALCD,2,100,2,0,0,*'); // stack $AMMO was lost: the gun still holds two
   assert.equal(h.eng.pu.held?.left, 4);
@@ -1274,7 +1274,7 @@ test('F381 polish: the empty switch-back hint names the saved secondary, not the
 
 test('F381 polish r2: a stack above the clip raises the $WEAP clip, so a gun that clamps $AMMO holds all four', () => {
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(E.ACC_ECHO_MS + 100);
-  const n = h.mark(); h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  const n = h.mark(); h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
   const weap = h.since(n).filter(f => f.startsWith('$WEAP,2,'));
   assert.equal(weap.length, 1, `one equip for the stack, no repair loop: ${weap.length}`);
   const t = weap[0].split(',');
@@ -1287,12 +1287,12 @@ test('F381 polish r2: a stack above the clip raises the $WEAP clip, so a gun tha
 
 test('F381 per-station charges: a smaller pickup never shrinks a held stack, and the cap is the larger item\'s', () => {
   const h = armed({ echo: true });
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 4 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 4 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
   assert.equal(h.eng.pu.held?.left, 4);
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
   assert.equal(h.eng.pu.held?.left, 5, 'a CHARGES-1 pickup adds one under the CHARGES-4 cap (8), never min(2, 5)');
   h.fire(2, 4); h.adv(3000); h.fire(2, 3); h.adv(3000); h.fire(2, 2); h.adv(3000);
-  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now());
+  h.eng.pu.grantWeapon(4, { ...ROCKETS, charges: 1 }, h.eng.now());
   assert.equal(h.eng.pu.held?.left, 3, '2 held + 1 = 3');
 });
 
@@ -1376,8 +1376,8 @@ test('F436: an equip before the first trigger pull of the life is logged as unco
 
 test('pickup at the stack cap: the player does not claim, so the station keeps the item (bench 2026-10-02, ROBP1)', () => {
   const h = armed({ echo: true });
-  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
-  h.eng._puGrantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
+  h.eng.pu.grantWeapon(4, ROCKETS, h.eng.now()); h.adv(E.ACC_ECHO_MS + 100);
   assert.equal(h.eng.pu.held?.left, 4, 'setup: Rockets at the cap (2 x 2)');
   const item = h.eng._puItems()[4];
   assert.ok(item && item.weapon_id === 'rocket_launcher', 'setup: station 4 holds Rockets');
