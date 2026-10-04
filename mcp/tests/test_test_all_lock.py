@@ -2,6 +2,7 @@
 import json
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -10,6 +11,13 @@ from _skip import needs
 REPO = Path(__file__).resolve().parents[2]
 LOCK_MOD = REPO / "scripts" / "lib" / "lock.mjs"
 NODE = shutil.which("node")
+
+
+def _temporary_path(test):
+    def run():
+        with tempfile.TemporaryDirectory() as directory:
+            return test(Path(directory))
+    return run
 
 
 def _call(fn: str, *args) -> str:
@@ -70,12 +78,14 @@ def test_is_stale_waits_out_the_full_heartbeat_for_a_live_but_wedged_process():
     assert _call("isStale", name, now - 70_000, now) is True
 
 
+@_temporary_path
 def test_checkout_lock_dir_is_keyed_by_uid(tmp_path):
     a, b = _call("checkoutLockDir", str(tmp_path), 501), _call("checkoutLockDir", str(tmp_path), 1000)
     assert a != b
     assert "501" in a and "1000" in b
 
 
+@_temporary_path
 def test_checkout_lock_dir_uses_realpath_and_separates_checkouts(tmp_path):
     checkout_lock_dir = tmp_path / "checkout"
     checkout_lock_dir.mkdir()
@@ -91,6 +101,7 @@ def test_checkout_lock_dir_uses_realpath_and_separates_checkouts(tmp_path):
     assert "1000" in a
 
 
+@_temporary_path
 def test_checkout_lock_serialises_same_checkout_but_admits_another(tmp_path):
     needs(NODE, "node")
     root_a = tmp_path / "checkout-a"

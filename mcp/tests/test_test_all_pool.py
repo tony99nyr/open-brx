@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -11,6 +12,13 @@ from _skip import needs
 REPO = Path(__file__).resolve().parents[2]
 POOL_MOD = REPO / "scripts" / "lib" / "pool.mjs"
 NODE = shutil.which("node")
+
+
+def _temporary_path(test):
+    def run():
+        with tempfile.TemporaryDirectory() as directory:
+            return test(Path(directory))
+    return run
 
 
 def _child(pool_dir: Path, job: str, mb: int, cores: int = 1, hold_ms: int = 0,
@@ -81,6 +89,7 @@ def _age(file: Path, seconds: int = 11):
     os.utime(file, (old, old))
 
 
+@_temporary_path
 def test_jobs_that_exceed_pool_capacity_serialise(tmp_path):
     directory = tmp_path / "pool"
     first_acquired, first_release = tmp_path / "first.acquired", tmp_path / "first.release"
@@ -105,6 +114,7 @@ def test_jobs_that_exceed_pool_capacity_serialise(tmp_path):
         _stop(first, *(p for p in [second] if p))
 
 
+@_temporary_path
 def test_jobs_that_fit_pool_capacity_run_together(tmp_path):
     directory = tmp_path / "pool"
     first_acquired, first_release = tmp_path / "first.acquired", tmp_path / "first.release"
@@ -125,6 +135,7 @@ def test_jobs_that_fit_pool_capacity_run_together(tmp_path):
         _stop(first, *(p for p in [second] if p))
 
 
+@_temporary_path
 def test_core_cap_blocks_even_when_memory_fits(tmp_path):
     directory = tmp_path / "pool"
     first_acquired, first_release = tmp_path / "first.acquired", tmp_path / "first.release"
@@ -148,6 +159,7 @@ def test_core_cap_blocks_even_when_memory_fits(tmp_path):
         _stop(first, *(p for p in [second] if p))
 
 
+@_temporary_path
 def test_fifo_acquisition_follows_ticket_order(tmp_path):
     directory = tmp_path / "pool"
     holder_acquired, holder_release = tmp_path / "holder.acquired", tmp_path / "holder.release"
@@ -180,6 +192,7 @@ def test_fifo_acquisition_follows_ticket_order(tmp_path):
         _stop(*(p for p in [holder, earlier, later] if p))
 
 
+@_temporary_path
 def test_reserve_blocks_until_memavailable_rises(tmp_path):
     directory = tmp_path / "pool"
     mem_file = tmp_path / "available"
@@ -196,6 +209,7 @@ def test_reserve_blocks_until_memavailable_rises(tmp_path):
         _stop(proc)
 
 
+@_temporary_path
 def test_pending_declared_memory_blocks_over_admission(tmp_path):
     directory = tmp_path / "pool"
     first_acquired, first_release = tmp_path / "first.acquired", tmp_path / "first.release"
@@ -219,6 +233,7 @@ def test_pending_declared_memory_blocks_over_admission(tmp_path):
         _stop(first, *(p for p in [second] if p))
 
 
+@_temporary_path
 def test_dead_owner_lease_is_reclaimed(tmp_path):
     directory = tmp_path / "pool"
     abandoned = _child(directory, "abandoned", 900, cores=4, hold_ms=60000)
@@ -237,6 +252,7 @@ def test_dead_owner_lease_is_reclaimed(tmp_path):
         _stop(*(p for p in [abandoned, successor] if p))
 
 
+@_temporary_path
 def test_two_waiters_reclaim_one_dead_mutex(tmp_path):
     directory = tmp_path / "pool"
     mutex = directory / ".mutex"
@@ -254,6 +270,7 @@ def test_two_waiters_reclaim_one_dead_mutex(tmp_path):
         _stop(first, second)
 
 
+@_temporary_path
 def test_live_process_group_keeps_dead_owner_lease(tmp_path):
     directory = tmp_path / "pool"
     directory.mkdir()
@@ -277,6 +294,7 @@ def test_live_process_group_keeps_dead_owner_lease(tmp_path):
             group.wait(timeout=5)
 
 
+@_temporary_path
 def test_corrupt_counter_uses_highest_ticket_and_lost_ticket_returns(tmp_path):
     directory = tmp_path / "pool"
     first = _child(directory, "first", 900, cores=4, hold_ms=350)
@@ -296,6 +314,7 @@ def test_corrupt_counter_uses_highest_ticket_and_lost_ticket_returns(tmp_path):
         _stop(first, *(p for p in [second] if p))
 
 
+@_temporary_path
 def test_live_owner_is_not_reclaimed_by_old_heartbeat(tmp_path):
     directory = tmp_path / "pool"
     directory.mkdir()
@@ -313,6 +332,7 @@ def test_live_owner_is_not_reclaimed_by_old_heartbeat(tmp_path):
         _stop(waiter)
 
 
+@_temporary_path
 def test_waiting_head_stops_bypass_after_window(tmp_path):
     directory = tmp_path / "pool"
     holder_acquired, holder_release = tmp_path / "holder.acquired", tmp_path / "holder.release"
@@ -345,6 +365,7 @@ def test_waiting_head_stops_bypass_after_window(tmp_path):
         _stop(*(p for p in [holder, head, later] if p))
 
 
+@_temporary_path
 def test_waiting_head_allows_bypass_within_window(tmp_path):
     directory = tmp_path / "pool"
     holder_acquired, holder_release = tmp_path / "holder.acquired", tmp_path / "holder.release"
@@ -375,6 +396,7 @@ def test_waiting_head_allows_bypass_within_window(tmp_path):
         _stop(*(p for p in [holder, head, later] if p))
 
 
+@_temporary_path
 def test_ownerless_mutex_is_reclaimed_after_grace(tmp_path):
     directory = tmp_path / "pool"
     mutex = directory / ".mutex"
@@ -387,6 +409,7 @@ def test_ownerless_mutex_is_reclaimed_after_grace(tmp_path):
         _stop(child)
 
 
+@_temporary_path
 def test_empty_owner_file_is_reclaimed_after_grace(tmp_path):
     directory = tmp_path / "pool"
     mutex = directory / ".mutex"
@@ -401,6 +424,7 @@ def test_empty_owner_file_is_reclaimed_after_grace(tmp_path):
         _stop(child)
 
 
+@_temporary_path
 def test_stale_reclaim_marker_is_removed(tmp_path):
     directory = tmp_path / "pool"
     mutex = directory / ".mutex"
@@ -418,6 +442,7 @@ def test_stale_reclaim_marker_is_removed(tmp_path):
         _stop(child)
 
 
+@_temporary_path
 def test_empty_reclaim_marker_is_removed(tmp_path):
     directory = tmp_path / "pool"
     mutex = directory / ".mutex"
@@ -435,6 +460,7 @@ def test_empty_reclaim_marker_is_removed(tmp_path):
         _stop(child)
 
 
+@_temporary_path
 def test_dead_pid_ticket_and_lease_need_old_heartbeat(tmp_path):
     directory = tmp_path / "pool"
     directory.mkdir()
