@@ -60,3 +60,6 @@ proofshot-artifacts/
 *.LTP
 *.ltp
 mcp/balance_results_summary.txt
+
+# Vite optimiser cache, per checkout (webapp/mc/vite.config.ts cacheDir)
+webapp/mc/.vite-cache/
