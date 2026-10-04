@@ -5926,19 +5926,24 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: the recharge, over time through the real engine: broken, the delay fill creeps, then the refill sweeps, then full; no SHIELD toast`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3300);
-    const seen = []; let brokeAt = null, chargeAt = null, dly = [], sweep = '', toast = false, last = null;
+    const seen = []; let brokeAt = null, chargeAt = null, engineGap = null, dly = [], sweep = '', toast = false, last = null;
     for (let t = 0; t < 13000; t += 150) {
       const r = await svRead(pg); last = r; toast = toast || r.toast;
       if (r.s === 'down' && brokeAt == null) brokeAt = Date.now();
       if (r.s === 'down' && r.wait) dly.push(r.dly);
-      if (r.s === 'charge' && chargeAt == null) { chargeAt = Date.now(); sweep = r.sweep; }
+      if (r.s === 'charge' && chargeAt == null) {
+        chargeAt = Date.now(); sweep = r.sweep;
+        // measured on the ENGINE's clock from its own last-damage stamp, not from when this loop first SAW the break: under
+        // load the page opens late, the first look comes after the break, and a wall-clock gap measured from it shrinks
+        engineGap = await pg.evaluate(() => { const e = window.brx.engine, q = e.state().shieldRegen; return q && q.quietAt ? e.now() - q.quietAt : null; });
+      }
       if (!seen.length || seen[seen.length - 1] !== r.s) seen.push(r.s);
       if (chargeAt && r.s === 'ok' && r.shield >= 105) break;
       await pg.waitForTimeout(150);
     }
     await pg.close();
     must(seen.join('>').includes('down>charge>ok'), `the states in order: ${seen.join('>')}`);
-    must(brokeAt && chargeAt && chargeAt - brokeAt >= 5800, `the refill waits for the engine's 6.5 s: ${chargeAt && brokeAt ? chargeAt - brokeAt : 'never'} ms`);
+    must(chargeAt && engineGap != null && engineGap >= 6500, `the refill waits for the engine's 6.5 s since the last damage (engine clock): ${engineGap == null ? 'never' : engineGap} ms`);
     must(dly.length > 5 && dly[dly.length - 1] > dly[0] + 100, `the delay fill creeps along the track: ${dly.slice(0, 3)} ... ${dly.slice(-3)}`);
     must(night ? sweep === 'none' || sweep === '' : sweep === 'svsweep', `the refill ${night ? 'has no sweep at night' : 'sweeps'}: "${sweep}"`);
     must(last && last.s === 'ok' && last.shield >= 105, `full again: ${JSON.stringify({ s: last && last.s, shield: last && last.shield })}`);
