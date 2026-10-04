@@ -257,10 +257,10 @@ test('presence: the exit reads the window median, not the EMA (the Stick runs th
   for (let t = 0; t <= 9000; t += 250) {
     if (t <= 2000) p.observe([adv], -60, t); else if (t % 2500 === 0) p.observe([adv], -84, t);
     p.tick(t);
-    if (t === 7000) at7500 = p.players()[0].present;
-    if (t === 7250) at8000 = p.players()[0].present;
+    if (t === 8250) at7500 = p.players()[0].present;
+    if (t === 8500) at8000 = p.players()[0].present;
   }
-  assert.equal(at7500, true, 'inside the grace, which starts at 3.25 s, when the held -84 covers half the 2 s window (time-weighted, F452(b))');
+  assert.equal(at7500, true, 'inside the grace, which starts at 4.5 s: the last advert level (-60) holds until that advert leaves the 2 s window, then the last raw sample (-84) is the level (F452(b) round 3)');
   assert.equal(at8000, false, 'out once the grace has run (the EMA would hold it until about 11.5 s)');
 });
 

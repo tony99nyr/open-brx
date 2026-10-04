@@ -217,7 +217,11 @@ export class Presence {
     // with its debounced exit). Binary: never weighted by how far above.
     e.recent = [...(e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS), { t: now, rssi }];
     e.recent = thinWindow(e.recent);
-    if (timeWeightedMedian(e.recent, now) >= this.thresholdFor(e)) e.sightedAt = now;
+    // F452(b) round 3: the level is computed HERE, at the advert's own time, and `tick` reads it. Read at tick time the newest
+    // advert would cover up to `now` while the oldest starts at its own time, so a two-advert window would read as the newest
+    // advert alone, and the exit time would depend on advert rate.
+    e.level = timeWeightedMedian(e.recent, now);
+    if (e.level >= this.thresholdFor(e)) e.sightedAt = now;
     return e;
   }
   thresholdFor(e) { return e.threshold || this.defaultThreshold; }
@@ -235,11 +239,12 @@ export class Presence {
       const thr = this.thresholdFor(e);
       if (e.present) {
         // F440: leave only after the exit level has stayed below the band for `exitGraceMs` (a dip is not a step out).
-        // Round 2 (review 2026-10-04): the level is the time-weighted MEDIAN (F452(b)) of the last SIGHT_WINDOW_MS of raw samples, not the EMA,
+        // Round 2 (review 2026-10-04): the level is the time-weighted MEDIAN (F452(b)) of the last SIGHT_WINDOW_MS of raw samples as of the last advert, not the EMA,
         // whose alpha is applied per advert and so lags further on a sparse phone: exit time must not depend on advert
         // rate. An empty window (a silence) falls back to the last raw sample. The EMA still drives the entry dwell.
-        const win = (e.recent || []).filter(x => now - x.t < SIGHT_WINDOW_MS);
-        e.exitLevel = win.length ? timeWeightedMedian(win, now) : e.raw;
+        // F452(b) round 3: the stored level of the last advert (`observe`) while that advert is inside the window, else the last raw sample.
+        const fresh = (e.recent || []).length > 0 && now - e.recent[e.recent.length - 1].t < SIGHT_WINDOW_MS;
+        e.exitLevel = fresh ? e.level : e.raw;
         if (e.exitLevel < thr - this.hysteresisDb) { if (e.belowSince == null) e.belowSince = now; if (now - e.belowSince >= this.exitGraceMs) { e.present = false; e.sinceAbove = null; e.belowSince = null; } }
         else e.belowSince = null;
       } else if (e.rssi >= thr) { if (e.sinceAbove == null) e.sinceAbove = now; if (now - e.sinceAbove >= this.dwellMs) e.present = true; }

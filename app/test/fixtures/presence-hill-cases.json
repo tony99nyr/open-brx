@@ -229,14 +229,14 @@
     },
     {
       "name": "the exit reads the 2 s window median, not the lagging average",
-      "why": "Round 2: a dense player at -60 turns sparse at -84 (one advert per 2.5 s). The exit must not wait for the per-advert average to cross: present drops once the debounced window median has stayed under the band for the grace, about 4 s after the sparse -84 has covered half the window (the time-weighted median holds the last advert's level until the next one, F452(b)).",
+      "why": "Round 2: a dense player at -60 turns sparse at -84 (one advert per 2.5 s). The exit must not wait for the per-advert average to cross: present drops once the debounced exit level has stayed under the band for the grace. The level is the time-weighted median as of the last advert (F452(b) round 3); once that advert is older than the 2 s window it is the last raw sample, -84 from 4500 ms, so the player leaves 4 s later, at 8500 ms. The average would hold it to about 11.5 s.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 2500, "to_ms": 12000, "every_ms": 2500, "rssi": [-84]}],
       "expect": [
-        {"t": 7000, "present": {"1": true}},
-        {"t": 7250, "present": {"1": false}}
+        {"t": 8250, "present": {"1": true}},
+        {"t": 8500, "present": {"1": false}}
       ]
     },
     {
@@ -321,6 +321,18 @@
         {"t": 5000, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}},
         {"t": 10000, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}},
         {"t": 20000, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}}
+      ]
+    },
+    {
+      "name": "noise peaks after a strong stand leave within 2 s of each other at 100 ms and at 1 s",
+      "why": "F452(b) round 3: both phones stand at -65 for 6 s, then one advert in three is a -74 peak (1 dB over the -75 threshold) and the rest are -88. The exit level is the time-weighted median as of each advert, so the exit time does not depend on the advert rate. Measured (periodic peaks): 5.5 s after the change at 100 ms, 4.0 s at 1 s. The tolerance is 2 s: both are in the circle at 9750 ms, before the earlier leaver, and both are out at 11750 ms, after the later one. Read at the tick, the newest advert alone was the level at 1 s and that phone never left.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 14000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 5900, "every_ms": 100, "rssi": [-65]}, {"id": 1, "from_ms": 6000, "to_ms": 14000, "every_ms": 100, "rssi": [-88, -88, -74]}, {"id": 2, "from_ms": 0, "to_ms": 5000, "every_ms": 1000, "rssi": [-65]}, {"id": 2, "from_ms": 6000, "to_ms": 14000, "every_ms": 1000, "rssi": [-88, -88, -74]}],
+      "expect": [
+        {"t": 9750, "in": {"1": true, "2": true}},
+        {"t": 11750, "in": {"1": false, "2": false}}
       ]
     },
     {

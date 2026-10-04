@@ -188,6 +188,7 @@ struct PlayerEntry {
   uint32_t since_above = 0;
   bool below = false;  // F440: beacon.js `belowSince != null`
   uint32_t below_since = 0;
+  int level = 0;         // F452(b) round 3: beacon.js `e.level`, the time-weighted median as of the last advert
   bool sighted = false;  // F440: beacon.js `sightedAt != null`
   uint32_t sighted_at = 0;
   uint32_t recent_t[SIGHT_RECENT_MAX] = {};  // F440: beacon.js `e.recent`, oldest first
@@ -261,7 +262,10 @@ class PlayerPresence {
     e.recent_t[e.n_recent] = now;
     e.recent_rssi[e.n_recent] = rssi;
     e.n_recent++;
-    const int med = time_weighted_median(e.recent_t, e.recent_rssi, e.n_recent, now, PRESENCE_SIGHT_WINDOW_MS);  // F452(b)
+    // F452(b) round 3: the level is computed here, at the advert's own time, and exit_level reads it (read at tick time the
+    // newest advert would cover up to now while the oldest starts at its own time, so the exit time would depend on advert rate).
+    e.level = time_weighted_median(e.recent_t, e.recent_rssi, e.n_recent, now, PRESENCE_SIGHT_WINDOW_MS);
+    const int med = e.level;
     if (med >= threshold_for(e)) { e.sighted = true; e.sighted_at = now; }
   }
 
@@ -278,16 +282,11 @@ class PlayerPresence {
     return e.n_samples ? a[(e.n_samples - 1) / 2] : e.raw;
   }
 
-  // beacon.js tick() `exitLevel`: the time-weighted median (F452(b)) of the raw samples heard in the last
-  // PRESENCE_SIGHT_WINDOW_MS, as of `now`, else the last raw sample.
+  // beacon.js tick() `exitLevel`: the stored time-weighted level of the last advert (F452(b) round 3, set in stamp_sighting)
+  // while that advert is inside the last PRESENCE_SIGHT_WINDOW_MS, else the last raw sample.
   static int exit_level(const PlayerEntry& e, uint32_t now) {
-    uint32_t t[SIGHT_RECENT_MAX];
-    int r[SIGHT_RECENT_MAX];
-    size_t n = 0;
-    for (size_t i = 0; i < e.n_recent; i++)
-      if (now - e.recent_t[i] < PRESENCE_SIGHT_WINDOW_MS) { t[n] = e.recent_t[i]; r[n] = e.recent_rssi[i]; n++; }
-    if (!n) return e.raw;
-    return time_weighted_median(t, r, n, now, PRESENCE_SIGHT_WINDOW_MS);
+    if (e.n_recent > 0 && now - e.recent_t[e.n_recent - 1] < PRESENCE_SIGHT_WINDOW_MS) return e.level;
+    return e.raw;
   }
 
   // beacon.js thresholdFor(): `e.threshold || this.defaultThreshold`.
