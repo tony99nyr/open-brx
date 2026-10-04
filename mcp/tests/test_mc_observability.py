@@ -233,3 +233,31 @@ def test_o6_a_player_card_with_lost_facts_reads_amber_not_ready():
     assert "2 FACTS LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER'S RECAP BY HAND" in row()["ambers"]
     assert row()["status"] in ("amber", "red")        # never green READY while facts are missing
     assert not any("OUTBOX" in b for b in row()["blockers"])   # and it never blocks START
+
+
+def test_o7_an_end_with_no_row_recreates_it_and_clears_the_chip():
+    s, net, clock, ps = mk()
+    class Store:
+        def __init__(self): self.rows = set(); self.start_fails = True; self.recreate_fails = False
+        def log(self, *a, **k): pass
+        def match_started(self, mid, *a, **k):
+            if self.start_fails: raise OSError("database is locked")
+            self.rows.add(mid)
+        def match_ended(self, mid, *a, **k): return 1 if mid in self.rows else 0
+        def has_match(self, mid): return mid in self.rows
+    st = s.store = Store()
+    s._archive("match_started", "m", {}, 1)                 # fails once, never retried by MC
+    assert "archive" in s.snapshot()["not_saving"]
+    st.start_fails = False
+    s._archive("match_ended", "m", {})                      # END updates 0 rows -> re-create the row, write again
+    assert "not_saving" not in s.snapshot() and "m" in st.rows
+    # if the re-create also fails the chip stands
+    st.start_fails = True
+    s._archive("match_ended", "n", {})
+    assert "archive" in s.snapshot()["not_saving"]
+    # new_session keeps a failure whose row is still missing, and prunes one whose row exists
+    s.new_session()
+    assert "archive" in s.snapshot()["not_saving"]
+    st.rows.add("n")
+    s.new_session()
+    assert "not_saving" not in s.snapshot()

@@ -1296,7 +1296,13 @@ class Session:
         before = self._archive_view()
         try:
             rows = getattr(self.store, method)(*args)
-            if rows == 0:                      # `match_ended` on a match with no row: nothing was stored
+            if rows == 0 and method == "match_ended":
+                # The row is missing (its `match_started` failed and is never retried): END is an UPDATE, so it would return 0
+                # for ever. Re-create the row, then write the result again; if THAT fails, the failure stands.
+                go = (self.start_info or {}).get("go_live_t", 0) if (self.start_info or {}).get("match_id") == mid else 0
+                self.store.match_started(mid, {**self.config, "_recreated": True}, go)
+                rows = self.store.match_ended(*args)
+            if rows == 0:                      # still no row: nothing was stored
                 raise LookupError(f"store.{method}: no row for match {mid!r}, so the result was not kept")
         except Exception as e:
             track = self._archive_failures.setdefault(mid, FailureTrack(f"match archive {mid}", self.now_ms))
@@ -4129,9 +4135,9 @@ class Session:
         return cast(StationRange, rng), edits, lines
 
     def _arm_station(self, nid: str, relock: bool = False) -> bool:
-        (self.nodes.get(nid) or {}).pop("claims_report", None)   # O10: the Stick restarts its count at this arm
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
         `arm_pending` (roadmap A4 "bring back to re-arm") and armed on its next hello, never retried on a timer."""
+        (self.nodes.get(nid) or {}).pop("claims_report", None)   # O10: the Stick restarts its count at this arm
         st = self.stations.get(nid)
         if st is None:
             return False
@@ -8478,6 +8484,13 @@ class Session:
         self._changed()
 
     def new_session(self, keep_roster: bool = True) -> None:
+        # O7: a failure for a row that is STILL missing is real and stays; one whose row exists now is pruned.
+        for mid in list(self._archive_failures):
+            try:
+                if self.store and self.store.has_match(mid):
+                    self._archive_failures.pop(mid, None)
+            except Exception:
+                pass
         if self.start_info and self.in_play():
             self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34
         # 2026-09-16: leaving a finished match with the roster kept is the NEXT MATCH, and the finished

@@ -211,6 +211,12 @@ class Store:
         self.db.commit()
         return cur.rowcount
 
+    def has_match(self, match_id: str) -> bool:
+        """Does the archive hold a row for this match? (O7: `new_session` prunes archive failures whose row exists.)"""
+        if self._closed:
+            return True
+        return self.db.execute("SELECT 1 FROM matches WHERE match_id=?", (match_id,)).fetchone() is not None
+
     def matches(self) -> list[dict[str, Any]]:
         """Every finished match in this session, newest first — the history behind MC's RECAP screen.
 
