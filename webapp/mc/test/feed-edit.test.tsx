@@ -80,7 +80,7 @@ class StaleThenSnapshot {
     const send = (m: unknown) => this.onmessage?.({ data: JSON.stringify(m) });
     setTimeout(() => {
       this.onopen?.();
-      send({ kind: 'snapshot', state: LIVE });
+      send({ kind: 'snapshot', state: { ...LIVE, feed: [] } });
       send({ kind: 'feed', entry: ROW });
       setTimeout(() => send({ kind: 'snapshot', state: { ...LIVE, t: 2, feed: [FIXED] } }), 5);
     }, 0);

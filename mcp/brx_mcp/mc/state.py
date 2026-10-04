@@ -478,6 +478,12 @@ def _check_tag(raw: str) -> str:
 _PU_HIST = 4   # F454: how many ended spawns keep their taker record for a late station report
 
 
+def _pu_old_hist(old: dict) -> list:
+    """The taker history of a stored row: `hist`, or the single `prev` an earlier F454 build kept."""
+    hist = old.get("hist")
+    return hist if isinstance(hist, list) else [old.get("prev")]
+
+
 def _pu_valid_taker(num: object) -> bool:
     """A powerup taker is player_num 1..63 (powerups.md item 6; 0 = none)."""
     return isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
@@ -3255,8 +3261,7 @@ class Session:
                                  "taken": bool(old.get("taken", (not old.get("available")) and (old["next_k"] >= 1 or old.get("taken_by") is not None))),
                                  "by_station": bool(old.get("by_station", False)), "line": old.get("line"),
                                  "fid": old.get("fid") if isinstance(old.get("fid"), int) else None,
-                                 "hist": [h for h in (old.get("hist") if isinstance(old.get("hist"), list) else
-                                                      [old.get("prev")]) if isinstance(h, dict)][-_PU_HIST:]}
+                                 "hist": [h for h in _pu_old_hist(old) if isinstance(h, dict)][-_PU_HIST:]}
                     continue
                 k = _pu.last_spawn_index(item, go, now)
                 # `since`: when the item in the station now became available (a spawn or an operator reset);
