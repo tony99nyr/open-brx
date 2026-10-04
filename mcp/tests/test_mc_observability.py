@@ -102,8 +102,10 @@ def test_o6_a_loss_shows_only_against_the_current_match():
     assert "outbox_lost" not in _row(s)
     _beat(net, clock, ps, lost=("m-now", 7))
     assert _row(s)["outbox_lost"] == 7
-    _beat(net, clock, ps, lost=("m-now", 3))            # a phone whose storage was reset: its NEW losses show, no high-water mark
-    assert _row(s)["outbox_lost"] == 3
+    _beat(net, clock, ps, lost=("m-now", 3))            # a phone whose storage was reset restarts at 0: the 7 already lost stay
+    assert _row(s)["outbox_lost"] == 7
+    _beat(net, clock, ps, lost=("m-now", 9))
+    assert _row(s)["outbox_lost"] == 9
     s.start_info = {"match_id": "m-next", "go_live_t": clock["t"], "seq": 2, "countdown_s": 0}   # the next match: the old match's count is history
     assert "outbox_lost" not in _row(s)
 
@@ -140,10 +142,23 @@ def test_o10_dropped_claims_are_scoped_to_the_game_and_say_where_to_look():
     assert not any("CLAIM REPORT" in a for a in stick()["attention"])
     net.simulate_status("stick-1", {**base, "actions_dropped": 3, "actions_dropped_game": game}, clock["t"])
     assert "3 CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP'S PICKUPS FOR STATION #4" in stick()["attention"]
+    net.simulate_status("stick-1", {**base, "actions_dropped": 0, "actions_dropped_game": game}, clock["t"])   # rebooted in the SAME game
+    assert any(a.startswith("3 CLAIM REPORTS DROPPED") for a in stick()["attention"]), "a reboot does not erase the loss"
+    net.simulate_status("stick-1", {**base, "actions_dropped": 5, "actions_dropped_game": game}, clock["t"])
+    assert any(a.startswith("5 CLAIM REPORTS DROPPED") for a in stick()["attention"])
     net.simulate_status("stick-1", {**base, "actions_dropped": 3, "actions_dropped_game": game + 1}, clock["t"])   # armed for another game
     assert not any("CLAIM REPORT" in a for a in stick()["attention"]), "a count from another game is history"
-    net.simulate_status("stick-1", {**base, "actions_dropped": 1, "actions_dropped_game": game}, clock["t"])   # rebooted, then re-armed
-    assert any(a.startswith("1 CLAIM REPORT DROPPED") for a in stick()["attention"])
+
+
+def test_o10_a_match_start_clears_stored_stick_counts_so_a_wrapped_game_byte_never_shows_a_stale_one():
+    s, net, clock, ps = mk()
+    base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4}
+    game = s._game_byte()
+    net.simulate_status("stick-1", {**base, "actions_dropped": 3, "actions_dropped_game": game}, clock["t"])
+    stick = lambda: next(v for v in s.stations_view() if v["node_id"] == "stick-1")
+    assert any("CLAIM REPORT" in a for a in stick()["attention"])
+    s._clear_claims()                                     # what every match start / resume / adopt / arm does
+    assert not any("CLAIM REPORT" in a for a in stick()["attention"])
 
 
 def test_o7_the_archive_has_its_own_red_kind_that_only_an_archive_write_clears():
@@ -165,8 +180,24 @@ def test_o7_the_archive_has_its_own_red_kind_that_only_an_archive_write_clears()
     s._archive("match_ended", "m", {})                    # END updates 0 rows
     ns = s.snapshot()["not_saving"]
     assert "archive" in ns and "no row" in ns["archive"]["error"]
-    s.store.match_ended = lambda *a, **k: 1               # a later successful archive write clears it
+    s.store.match_ended = lambda *a, **k: 1               # a later successful write of THAT match's row clears it
     s._archive("match_ended", "m", {})
+    assert "not_saving" not in s.snapshot()
+
+
+def test_o7_another_matchs_archive_write_does_not_clear_a_missing_row():
+    s, net, clock, ps = mk()
+    class Store:
+        def log(self, *a, **k): pass
+        def match_started(self, *a, **k): pass
+        def match_ended(self, mid, *a, **k): return 0 if mid == "A" else 1
+    s.store = Store()
+    s._archive("match_ended", "A", {})                    # match A ended with 0 rows
+    s._archive("match_started", "B", {}, 1)               # match B started and archived fine
+    s._archive("match_ended", "B", {})
+    assert "archive" in s.snapshot()["not_saving"], "A's missing result still stands"
+    s.store.match_ended = lambda *a, **k: 1
+    s._archive("match_ended", "A", {})
     assert "not_saving" not in s.snapshot()
 
 

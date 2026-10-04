@@ -189,12 +189,13 @@ const steps = {
     // match's report arrived (a positive wait: no timing guess), and 30 must not show in its place.
     await nodes.cmd('lost GUN-A 30 some-other-match');
     await c.until(async () => (await gunA())?.outbox_lost === undefined, 8000, 'the other match\'s report replacing the 7 (nothing shows)');
-    await nodes.cmd('lost GUN-A 3');                          // back on this match after a storage reset: no high-water mark hides it
-    await c.until(async () => (await gunA())?.outbox_lost === 3, 8000, 'a reset phone shows its new losses (3, not the old 7)');
+    await nodes.cmd('lost GUN-A 3');                          // back on this match after a storage reset (count restarts at 0): the 7 already lost stay
+    await nodes.cmd('lost GUN-A 9');
+    await c.until(async () => (await gunA())?.outbox_lost === 9, 8000, 'losses beyond the old 7 show (9)');
     await pg.goto(`${vite.base}/#muster`);
     if (process.env.DBG) console.log(JSON.stringify((await state()).readiness.board.filter(r => r.node === 'linked')));
     await c.until(() => present(pg, OUTBOX), 8000, 'the outbox-lost line on the player card');
-    await checkChip(pg, OUTBOX, 'amber', '3 FACTS LOST FROM THE PHONE OUTBOX');
+    await checkChip(pg, OUTBOX, 'amber', '9 FACTS LOST FROM THE PHONE OUTBOX');
     c.expect((await state()).readiness.board.some(r => r.status === 'amber' && r.ambers.some(a => /OUTBOX/.test(a))), 'MC marks that board row amber');
     await chip(pg, OUTBOX).first().scrollIntoViewIfNeeded();
     await sh(pg, 'real-outbox');

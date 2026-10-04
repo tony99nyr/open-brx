@@ -559,7 +559,7 @@ class Session:
         # O7/O8: failures that repeat and used to be log-only. Each is counted, logged once per minute, and
         # shown on the console (`snapshot()`: `not_saving`, `ticker_failing`) until the next success.
         self._store_failures = FailureTrack("store.log", self.now_ms)       # a fact or log row that did not reach the store
-        self._archive_failures = FailureTrack("match archive", self.now_ms)       # `match_started` / `match_ended` rows: the game result
+        self._archive_failures: dict[str, FailureTrack] = {}       # per match_id: `match_started` / `match_ended` rows (the game result)
         self._snapshot_failures = FailureTrack("session snapshot", self.now_ms)   # the roster / match file that a restart restores
         self._tick_failures = FailureTrack("match tick", self.now_ms)       # armed->live and the timed end stop while this fails
         self._join_error: str | None = None                                 # O8: join_info() raised; the QR has no URL
@@ -1272,22 +1272,39 @@ class Session:
         r = nv.get("claims_report")
         return r["n"] if r and r["game"] == self._game_byte() else 0
 
+    def _clear_claims(self) -> None:
+        """O10: drop every stored Stick dropped-claim count. A report counts only if it arrives after the match start / arm
+        for the CURRENT game byte; a stale one from before (the byte wraps 255 -> 1) never shows."""
+        for nv in self.nodes.values():
+            nv.pop("claims_report", None)
+
+    def _archive_view(self) -> dict | None:
+        """One FailureView over every match whose archive row is missing (earliest since, summed count, latest error)."""
+        views = [v for t in self._archive_failures.values() if (v := t.view())]
+        if not views:
+            return None
+        return {"since": min(v["since"] for v in views), "count": sum(v["count"] for v in views), "error": views[-1]["error"]}
+
     def _archive(self, method: str, *args: Any) -> None:
         """O7: the archive rows (`Store.match_started`, `Store.match_ended`) have their OWN failure kind (`not_saving.archive`,
-        red): a whistle write that fails, or an END that updates 0 rows (the match has no row), loses the game result. It is
-        cleared ONLY by a later successful archive write, never by a `store.log` success. Never raises (play continues)."""
+        red), tracked PER match_id (`args[0]`): a whistle write that fails, or an END that updates 0 rows (the match has no row),
+        loses that game's result. The chip stands while ANY match's row is missing and clears only when THAT match's row is
+        written, never by another match's write or a `store.log` success. Never raises (play continues)."""
         if not self.store:
             return
+        mid = str(args[0])
+        before = self._archive_view()
         try:
             rows = getattr(self.store, method)(*args)
             if rows == 0:                      # `match_ended` on a match with no row: nothing was stored
-                raise LookupError(f"store.{method}: no row for match {args[0]!r}, so the result was not kept")
+                raise LookupError(f"store.{method}: no row for match {mid!r}, so the result was not kept")
         except Exception as e:
-            if self._archive_failures.fail(e, f"store.{method}: the match archive row"):
-                self._notify_listeners()
+            track = self._archive_failures.setdefault(mid, FailureTrack(f"match archive {mid}", self.now_ms))
+            track.fail(e, f"store.{method}: the match archive row")
         else:
-            if self._archive_failures.ok():
-                self._notify_listeners()
+            self._archive_failures.pop(mid, None)
+        if self._archive_view() != before:
+            self._notify_listeners()
 
     def _gun_index(self):
         self.guns: dict[str, dict] = {}
@@ -4112,6 +4129,7 @@ class Session:
         return cast(StationRange, rng), edits, lines
 
     def _arm_station(self, nid: str, relock: bool = False) -> bool:
+        (self.nodes.get(nid) or {}).pop("claims_report", None)   # O10: the Stick restarts its count at this arm
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
         `arm_pending` (roadmap A4 "bring back to re-arm") and armed on its next hello, never retried on a timer."""
         st = self.stations.get(nid)
@@ -5019,10 +5037,16 @@ class Session:
         # (`outbox_lost {match_id, n}`), the Stick the game byte it was armed with (`actions_dropped_game`).
         # MC stores the latest report as sent; the snapshot shows it only against the current match / game.
         ol = body.get("outbox_lost")
+        # The MAXIMUM per (node, match) / (node, game, arm) is kept: a phone whose storage was reset, or a Stick that
+        # rebooted in the same game, restarts its own count at 0 and must not erase what it already lost.
         if isinstance(ol, dict) and isinstance(ol.get("match_id"), str) and _is_count(ol.get("n")):
-            nv["outbox_report"] = {"match_id": ol["match_id"], "n": ol["n"]}
+            prev = nv.get("outbox_report")
+            n_out = max(ol["n"], prev["n"]) if prev is not None and prev["match_id"] == ol["match_id"] else ol["n"]
+            nv["outbox_report"] = {"match_id": ol["match_id"], "n": n_out}
         if _is_count(body.get("actions_dropped")) and _is_count(body.get("actions_dropped_game")):
-            nv["claims_report"] = {"game": body["actions_dropped_game"], "n": body["actions_dropped"]}
+            prev = nv.get("claims_report")
+            n_claims = max(body["actions_dropped"], prev["n"]) if prev is not None and prev["game"] == body["actions_dropped_game"] else body["actions_dropped"]
+            nv["claims_report"] = {"game": body["actions_dropped_game"], "n": n_claims}
         # F208: the pool-staleness claim is re-stated on EVERY heartbeat, so absent means "not stale" and
         # must clear the last one. Only a known reason is kept, and only a whole non-negative age.
         reason, stale_ms = body.get("pool_stale"), body.get("pool_stale_ms")
@@ -5571,6 +5595,7 @@ class Session:
         self.scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
                                          derive_cap=not m.get("adopted"),
                                          alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
+        self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
                 snap = dict(self.config)
@@ -5728,6 +5753,7 @@ class Session:
         self._result_pushed = {}
         self.feed = []
         self.scorer = self._build_scorer(match_id, go, {})
+        self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
                 self._archive("match_started", match_id, {**self.config, "_adopted": True}, go)
@@ -7734,6 +7760,7 @@ class Session:
         self._app_blocked_alerted.clear()
         self._plan_blocked_alerted.clear()
         self.last_recap = None
+        self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
                 # The config AND the compiled head we actually pushed. Tony, 2026-09-01: "as we debug,
@@ -8689,8 +8716,10 @@ class Session:
             # all), and none of them agreed with the one MC already computes.
             row["stale"] = bool(nv.get("stale"))
             nodes.append(row)
-        failing = {part: v for part, track in (("store", self._store_failures), ("archive", self._archive_failures), ("snapshot", self._snapshot_failures))
+        failing = {part: v for part, track in (("store", self._store_failures), ("snapshot", self._snapshot_failures))
                    if (v := track.view())}
+        if (av := self._archive_view()) is not None:
+            failing["archive"] = av
         state: State = {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events

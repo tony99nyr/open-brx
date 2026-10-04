@@ -255,7 +255,7 @@ struct StatusFields {
   int64_t tx_power_edit_age_ms = -1;
   std::string range_edits_json;
   // O10 (additive; sent whenever the health fields are, 0 included, so a Stick reboot shows as a LOWER count): CLAIM reports the
-  // queue evicted when full, cumulative since boot. MC keeps the maximum per node and shows it.
+  // queue evicted when full, since this arm (it resets on a new game byte or station). MC keeps the maximum per (node, game, arm), so a Stick reboot in the same game does not erase the loss, and shows it only for the current game.
   uint32_t actions_dropped = 0;
   int actions_dropped_game = -1;   // the game byte `actions_dropped` was counted under; -1 = not armed (left out)
 };
