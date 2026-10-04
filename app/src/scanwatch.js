@@ -87,8 +87,15 @@ export const SCAN_MODES = [2, 1, 0];
  * count who stands on it, so it drops only to balanced, never to low power, and it restarts no more
  * often than its own S6 refresh already does: the lower mode takes effect by forcing that refresh now.
  * Returns the mode index for the next start and whether to restart now.
+ *
+ * P-M1 (review 2026-10-03): a CONTROL point (`control`) never steps down. A balanced scan listens about
+ * 1024 ms in each 4096 ms, so only the first advert of a burst lands in the 2 s sighting window and a dense
+ * phone reads like a sparse one: a player 6 dB outside then contested a 1v0 capture 14-18 % of the time,
+ * against 0-4 % at low latency. A station phone holds no gun link, so the flood costs it only CPU; `flooded`
+ * tells the caller to log the trip once and keep reading.
  */
-export function stationScanStep({ over, idx, since, now }) {
+export function stationScanStep({ over, idx, since, now, control = false }) {
+  if (control) return { idx: 0, since: idx > 0 ? now : since, restart: idx > 0, tripped: false, flooded: !!over };
   if (over && idx < 1) return { idx: 1, since: now, restart: true, tripped: true };
   if (!over && idx > 0 && now - since >= GUARD_HOLD_MS) return { idx: 0, since: now, restart: true, tripped: false };
   return { idx, since, restart: false, tripped: false };

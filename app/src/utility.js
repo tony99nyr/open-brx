@@ -135,7 +135,7 @@ const _quietLogged = new Set();   // F440: players already logged as quiet in th
 const QUIET_MS = 1500;
 const _playerWas = new Map();   // player id -> present, for the edge lines above (playerEdges)
 let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false, _twin = 0;
-const scanGuard = new ScanGuard(); let _scanModeIdx = 0, _scanModeSince = 0;   // a crowded field drops the player watch to balanced (scanwatch.js)
+const scanGuard = new ScanGuard(); let _scanModeIdx = 0, _scanModeSince = 0, _floodLoggedAt = -Infinity;   // a crowded field drops the player watch to balanced (scanwatch.js)
 const SCAN_RESTART_MS = 8000;        // S6: a long scan STALLS on Android, worse while we also advertise — restart it on this cadence (8s > the ~6s floor Android's ~5-starts/30s throttle imposes)
 
 /** The advert triple this kind publishes. A control point's is LIVE state (owner / progress / contested),
@@ -446,8 +446,10 @@ function tick() {
     if (!scanning) { startScan().catch(() => {}); }
     else {
       const { rate, over } = scanGuard.check(now);
-      const step = stationScanStep({ over, idx: _scanModeIdx, since: _scanModeSince, now });
+      const step = stationScanStep({ over, idx: _scanModeIdx, since: _scanModeSince, now, control: settings.kind === 'control' });
       if (step.tripped) log(`ble scan flood: ${rate} results/s (budget ${scanGuard.budget}); player watch drops to scanMode ${SCAN_MODES[step.idx]}`, 'le');
+      // P-M1: a control point keeps low latency (a balanced scan turns dense phones into sparse ones); say so at most once a minute.
+      if (step.flooded && now - _floodLoggedAt >= 60000) { _floodLoggedAt = now; log(`ble scan flood: ${rate} results/s (budget ${scanGuard.budget}); a control point keeps scanMode ${SCAN_MODES[0]}`, 'le'); }
       _scanModeIdx = step.idx; _scanModeSince = step.since;
       if (step.restart || now - _lastScanRestart >= SCAN_RESTART_MS) refreshScan().catch(() => {});
     }
