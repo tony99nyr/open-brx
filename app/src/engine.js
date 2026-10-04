@@ -6342,6 +6342,45 @@ export class Engine {
     if (h.dmg > 0) this._actSeq++;   // pl4: nor past a hit
   }
 
+  /** `_onHp` step: S16, the poison tick's own echo. Sets `h.dotEcho`; when it is the echo, the echo is spent and the
+   *  tick's damage is booked to the poisoner. Nothing else happens on a frame that is not the echo.
+   *
+   *  S16: the `$HP` that answers our own poison tick is the TICK, not a hit -- no `hit_taken` fact (MC would score a
+   *  hit nobody fired), no pain grunt, no hit flash. It is the tick's echo when it lands inside DOT_ECHO_MS of the
+   *  write AND the tick's pool is the only pool that moved, by exactly the tick. A negative floors at 0, so the tick
+   *  moves the pool by `min(n, what the pool held before this frame)`. A real hit moves a different amount or a
+   *  different pool, so it reads as a hit whichever order its `$HIR` and `$HP` take around the tick. */
+  _hpDotEcho(h) {
+    h.dotEcho = !!(h.dmg > 0 && this._dotEcho && this.now() - this._dotEcho.at <= DOT_ECHO_MS
+      && dotEchoMatches(this._dotEcho, h.pools0, { health: h.hp, armor: h.armor, shield: h.shield }));
+    if (!h.dotEcho) return;
+    this._dotEcho = null;
+    // S56: a poison tick is not a `hit_taken` fact (see `_hpHitTaken`), but it is still damage the ledger
+    // owes the poisoner -- `this.poison.by` is still the applier here, ahead of any `_death`/`_poisonClear`.
+    if (this.poison && this.poison.by) { this._lifeBookDot(this.poison.by.num, this.poison.by.team, h.dmg); if (this._dotKill) this._dotKill.booked = true; }
+  }
+
+  /** `_onHp` step: S29, the shield. Damage restarts the recharge clock; the shield's `>0 -> 0` edge is the break cue.
+   *  The cue is skipped (an early return) in a stand-down or when this frame is not that edge. */
+  _hpShield(h) {
+    // S29: damage RESTARTS the recharge clock and abandons a refill already running -- Callsign does the same
+    // (`DetectRecoverShieldCommand._lastHitTime`), and it is the whole mechanic: the shield comes back only
+    // when you break contact. Stamped on the pools moving, not on the `$HIR`, so a hit whose `$HIR` was lost
+    // or merged (protocol §2) still counts -- the pool falling is the damage, the latch is only who did it.
+    if (h.dmg > 0) { this._shieldQuietAt = this.now(); this._shieldRegen = null; this._shieldGaveUp = false; }
+    // S29 (Tony, by ear 2026-09-18): the shield BREAKING is its own cue. The edge is `>0 -> 0`, so a spawn
+    // (which starts at 0 and never crosses) cannot fire it, and neither can a second `$HP` repeating the 0.
+    // ⚠ `reconciling`/`resync`/`ble` are in the stand-down too (polish review 2026-09-18): the node infers
+    // nothing in those windows (§3.10), and the gun's first word back after a relink is it catching us up on
+    // a break that happened while we were away. Announcing it then names a hit the player took minutes ago.
+    if (this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'])
+        || !(this.maxShield > 0 && this._prevShield > 0 && h.shield === 0)) return;
+    this._shieldDown = true;
+    this._shieldLoopAt = this.now();   // the heartbeat starts one period LATER, so it does not land under the break cue
+    this.log(`shield depleted (${this.maxShield} gone) -- health is all that is left`, 'lk');
+    this._event('shield_down');
+  }
+
   _onHp(hp, armor, shield, solicited = false) {
     this.pu.onHp();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
@@ -6354,34 +6393,9 @@ export class Engine {
     const h = this._hpTakePools(hp, armor, shield, solicited);
     this._hpPoolEffects(h);
     const { before, pools0, movedPool, dmg } = h;
-    // S16: the `$HP` that answers our own poison tick is the TICK, not a hit -- no `hit_taken` fact (MC would score a
-    // hit nobody fired), no pain grunt, no hit flash. It is the tick's echo when it lands inside DOT_ECHO_MS of the
-    // write AND the tick's pool is the only pool that moved, by exactly the tick. A negative floors at 0, so the tick
-    // moves the pool by `min(n, what the pool held before this frame)`. A real hit moves a different amount or a
-    // different pool, so it reads as a hit whichever order its `$HIR` and `$HP` take around the tick.
-    const dotEcho = !!(dmg > 0 && this._dotEcho && this.now() - this._dotEcho.at <= DOT_ECHO_MS
-      && dotEchoMatches(this._dotEcho, pools0, { health: hp, armor, shield }));
-    if (dotEcho) this._dotEcho = null;
-    // S56: a poison tick is not a `hit_taken` fact (see the guard below), but it is still damage the ledger
-    // owes the poisoner -- `this.poison.by` is still the applier here, ahead of any `_death`/`_poisonClear`.
-    if (dotEcho && this.poison && this.poison.by) { this._lifeBookDot(this.poison.by.num, this.poison.by.team, dmg); if (this._dotKill) this._dotKill.booked = true; }
-    // S29: damage RESTARTS the recharge clock and abandons a refill already running -- Callsign does the same
-    // (`DetectRecoverShieldCommand._lastHitTime`), and it is the whole mechanic: the shield comes back only
-    // when you break contact. Stamped on the pools moving, not on the `$HIR`, so a hit whose `$HIR` was lost
-    // or merged (protocol §2) still counts -- the pool falling is the damage, the latch is only who did it.
-    if (dmg > 0) { this._shieldQuietAt = this.now(); this._shieldRegen = null; this._shieldGaveUp = false; }
-    // S29 (Tony, by ear 2026-09-18): the shield BREAKING is its own cue. The edge is `>0 -> 0`, so a spawn
-    // (which starts at 0 and never crosses) cannot fire it, and neither can a second `$HP` repeating the 0.
-    // ⚠ `reconciling`/`resync`/`ble` are in the stand-down too (polish review 2026-09-18): the node infers
-    // nothing in those windows (§3.10), and the gun's first word back after a relink is it catching us up on
-    // a break that happened while we were away. Announcing it then names a hit the player took minutes ago.
-    if (!this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'])
-        && this.maxShield > 0 && this._prevShield > 0 && shield === 0) {
-      this._shieldDown = true;
-      this._shieldLoopAt = this.now();   // the heartbeat starts one period LATER, so it does not land under the break cue
-      this.log(`shield depleted (${this.maxShield} gone) -- health is all that is left`, 'lk');
-      this._event('shield_down');
-    }
+    this._hpDotEcho(h);
+    const dotEcho = h.dotEcho;
+    this._hpShield(h);
     // Victim-side low-health alert, once per life. Callsign sends $PLAY,VA8B + $HLED,7,4,90,90,10,15
     // shortly after ARMOUR reaches 0 and HP starts dropping (capture 2026-08-23-two-tagger-combat:
     // 2 deaths, 2 alerts, both at $HP,34,0,0). We sent neither, which is why our headsets stayed dark.
