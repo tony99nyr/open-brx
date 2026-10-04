@@ -4250,14 +4250,14 @@ export class Engine {
       if (this.switching && now - this.switching.at > this.switchWindowMs()) {
         const to = this.switching.to != null ? this.switching.to : this._nextAltSlot();
         const pu = !!this.switching.pu; this.switching = null;
-        if (!pu) this.activeSlot = to;   // F400 r2: `_puEquip` already moved a pickup card's trigger; a shot since may have moved it again
+        if (!pu) this.activeSlot = to;   // F400 r2: the powerup equip already moved a pickup card's trigger; a shot since may have moved it again
         if (!pu) this._altPtr = to;   // F400 r1: a pickup card is a phone equip, which moves the trigger and never the gun's ALT pointer
         if (!pu) this.pu.onAssumedSwap(to);   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
-        if (!pu) this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile (`_puEquip` already armed a pickup card's)
+        if (!pu) this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile (the powerup equip already armed a pickup card's)
         if (!pu) this._showSlotAmmo(to);   // F394: the gun sends no `$ALCD` on ALT, so the new slot's counts come from the node
         // `pu` rides along so the HUD can tell a pickup's ACTIVE bubble from ALT's own (docs/spec/powerups.md
         // "The switch card"): a pickup switch is never "assumed" the way an unconfirmed ALT swap is -- it is
-        // display-only for `_onAmmo`'s confirm-by-shot code (`_puSwitchCard`), so it always closes here, on its
+        // display-only for `_onAmmo`'s confirm-by-shot code (powerup-player.js `_switchCard`), so it always closes here, on its
         // own timer, with the equip already a settled fact.
         this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true, pu } };
         this.log(pu ? `pickup switch card to slot ${to} closed after ${this.switchWindowMs()}ms` : `swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
@@ -4297,12 +4297,12 @@ export class Engine {
     const kind = rp && stationId != null && !flipped ? 'station' : 'timed';
     const revive0 = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     // Polish 2026-10-03: a self-kill costs nothing, so it gives nothing either. The burst's own `$AMMO` rows carry the
-    // live counts, in the same write (`_puRearmRows`' reason: a separate restore lets the full magazine echo first).
+    // live counts, in the same write (`pu.reconcileRearm`'s reason: a separate restore lets the full magazine echo first).
     // Pickup slots are left to the held heavy below: a slot the node holds nothing in keeps compile's empty row.
     const puSlots = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
     const keepAmmo = selfHit ? Object.fromEntries(Object.entries(this._liveAmmo()).filter(([sl]) => !puSlots.has(+sl))) : null;
     const revive = keepAmmo ? revive0.map(f => { const t = f.startsWith('$AMMO,') ? f.split(',') : null; const k = t && keepAmmo[+t[1]]; return k ? `$AMMO,${t[1]},${k[0]},${k[1]},${t.slice(4).join(',')}` : f; }) : revive0;
-    // F438 r4: a self-hit revive keeps a held heavy (the node still tracks it), its charges in its own `$AMMO` row (as `_puRearmRows`), never the zero.
+    // F438 r4: a self-hit revive keeps a held heavy (the node still tracks it), its charges in its own `$AMMO` row (`burstWithHeld`, as the reconcile re-arm), never the zero.
     const keep = selfHit ? this.pu.held : null;
     const burst = keep ? burstWithHeld(revive, keep) : revive;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
@@ -7440,7 +7440,7 @@ export class Engine {
     if (this.alive) {
       // F164: re-arm each slot to the LIVE count snapshotted when the reconcile began (`_liveAmmo`: the node's
       // magazine account, else that slot's spawn row). The spawn row alone was a free full magazine plus the
-      // spawn reserve on every relink. A pickup slot keeps its spawn row here; `_puRearmRows` owns a held heavy.
+      // spawn reserve on every relink. A pickup slot keeps its spawn row here; `pu.reconcileRearm` owns a held heavy.
       const pu = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
       const rows = ((this.frames && this.frames.spawn) || []).filter(f => f.startsWith('$AMMO,')).map(f => {
         const slot = +f.split(',')[1], l = live[slot];

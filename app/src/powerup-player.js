@@ -1,6 +1,43 @@
-// powerup-player.js -- the PLAYER's side of the powerups (docs/spec/powerups.md, contracts A56): the constants, and the
-// pure helpers the node engine (engine.js) builds its pickup writes from. A powerup STATION's own decision is the
-// other side, in powerup.js; this file is never loaded by a station phone.
+// powerup-player.js -- the PLAYER's side of the powerups (docs/spec/powerups.md, contracts A56). A powerup STATION's own
+// decision is the other side, in powerup.js; this file is never loaded by a station phone.
+//
+// Why a module: the rule "a held heavy keeps its charges and goes back on the trigger" was written three times in
+// engine.js (the F416 burst re-send, the reconcile re-arm, the self-hit revive), and the copies drifted (F418, F381,
+// F436). It is now ONE pure function, `burstWithHeld`, and every powerup field lives in ONE class, `PlayerPowerups`.
+// The engine holds one instance (`engine.pu`), calls its entry points and reads its accessors; nothing outside this
+// file reads or writes a `_` field of it.
+//
+// PUBLIC SURFACE
+//   burstWithHeld(frames, held, zero?)  PURE: a burst with the held heavy's `$AMMO` row at its charges
+//   puSpawnIndex, puSpawnAt             PURE: the spawn schedule on the match clock
+//   PlayerPowerups(host)
+//     state       reset() · snapshot() · restore(p) · setPset(frame)
+//     clock       tickAnnounce(now) · tick(now)
+//     stations    onStations(now) · items() · claimable(id, item, now) · claimView(now) · view(now)
+//     grants      grantWeapon(id, item, now) · grantShield(id, item, now) · end(why)
+//     the gun     onAmmo(slot, mag, prev) · repairUnpulled(slot, mag, prev) · lostEquip(slot, mag, prev, expectedBefore,
+//                 altPending) · repairLostEquip(held, slot, mag) · onSelect() · onAltPressed() · onAssumedSwap(to) ·
+//                 onConfirmedSwap(slot) · onHp() · onShieldFrame(shield)
+//     life        onDeath(inRevive?) · onReviveStart() · onRevive(burst) · keepHeld(held)
+//     reconcile   disarmRows() · reconcileRearm(rows) · reequipInRearm(ammo) · afterRearm() · restoreRows(rows, pu)
+//     queries     isHeldSlot(slot) · heavyOnTrigger() · heavyMatches(slot, mag) · overshieldPset() · psetWithShieldMax(max)
+//     accessors   held (rw) · overshield (rw) · grant (rw) · back · backPending · protectUntil · psetNow · spawnCard ·
+//                 swapCard (the setters exist for tests that stage a state without a grant)
+//
+// HOST INTERFACE (engine.js `powerupHost`; every member looks the engine up at call time)
+//   services    now() · log(line, cls) · save() · changed() · write(frames, why) · quietWrite(frames, why) ·
+//               writeMust(frames, why, still, actExempt) · emitFact(fact)
+//   presentation show(channel, item) · presentable(channel) · laneAge(at, now) · laneFeed(item) · announce(item) ·
+//               announceStatus(kind)
+//   lookups     weaponRow(id) · slotCount() · switchWindowMs() · stationAllowed(entry) · liveAmmo() · acctLive(slot) ·
+//               prevReserve(slot) · recentPull(slot, now)
+//   read-only   phase · alive · bleUp · ended · stunned · reconciling · resync · tutorial · gunLocked · frames · config ·
+//               player · matchId · stations · goLiveT · lifeSeq · pulledLife · armPending · actSeq · activeSlot ·
+//               switching · weaponName · hp · armor · shield · maxShield · latch · lastHitAt
+//   writes      acctWrote(slot, mag, res) · setPrev(slot, mag, res?) · equipped(slot, mag, res) · setSwitching(card) ·
+//               recoilArm(why) · setShield(v) · setWriteLost(life)
+//   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
+//   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
 
 // ---------- A56 (S58): powerups (docs/spec/powerups.md) ----------
 // Everything below is INERT unless the pushed config carries a powerup station with an `item` (MC sends one
