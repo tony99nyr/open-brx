@@ -66,3 +66,60 @@ export function burstWithHeld(frames, held, zero = null) {
     return zero && zero.has(s) ? `$AMMO,${s},0,0,1,*` : f;
   });
 }
+
+/** The player's powerup state: one instance per Engine (`engine.pu`). It owns every powerup field; the engine reaches it
+ *  only through the methods and accessors below, and it reaches the engine only through `host` (see the file header). */
+export class PlayerPowerups {
+  constructor(host) {
+    this.host = host;
+    this.reset();
+  }
+  /** Every powerup state field back to empty: a new match, a new config, a reset. */
+  reset() {
+    this.host.show('puLost', null);   // HUD QA R2-17: {name, color, at} the weapon item a death took; cleared by the next life
+    this._held = null;          // the weapon item: {station, weapon_id, slot, charges, left, name, color, at, back: {slot, mag, res}, trig}
+    this._overshield = null;    // {station, base, amount, name, color, at}: the shield at the grant is `base`
+    this._claim = null;         // {station, since, readyAt}: standing in range of a station whose item is there
+    this._readyFor = null;      // {station, at}: the last station this phone was claim_ready for (the grant needs it)
+    this._osProtectUntil = 0;   // now() at which the overshield grant's spawn protection ends (0 = none owed)
+    this._advert = {};          // station id -> {state, value, taker, at}: the station's own last advert
+    this._seen = {};            // station id -> the last spawn index the announcer has dealt with
+    this._back = null;          // {name, to, at}: a weapon item ran dry and the saved weapon is returning
+    this._reequip = false;      // a heavy was held at the death: re-equip slot 0 behind the revive burst
+    this._selectAt = 0;         // now() of the last SELECT that acted (the debounce)
+    this._backPending = null;   // {slot, mag, res, at, readyAt, equipped, tries}: an empty switch-back waiting for its swap window or a gun answer
+    this._going = null;         // F400: {slot, name, color, weapon_id, charges, until} -- a slot losing its identity THIS call
+                                // (the empty switch-back's heavy), kept for the HUD's SWITCHING card past the moment `_held` moves on
+    this._hpAt = 0;             // now() of the last `$HP` (polish M1: a `$HIR` after it holds the overshield grant)
+    this._psetNow = null;       // the `$PSET` the gun holds (the life's pool take); the next spawn sets it
+    this._spawnCard = null;     // {name, color, at, station}: the "<ITEM> AVAILABLE" card (presentation only)
+    this._grant = null;         // {name, color, kind, at, replaced?}: the grant, for the HUD's READY hint (state, at once)
+    this._swapCard = null;      // {name, color, replaced, at}: the "<NEW> REPLACES <OLD>" card, set when the announcer reaches it
+  }
+  /** The `pu` block of the engine's persisted context (an app restart mid-match must still end a held item, re-equip
+   *  slot 0 after a death with a heavy held, and keep the overshield out of the S29 refill's way), or null. */
+  snapshot() {
+    return this._held || this._overshield || this._reequip || this._backPending ? { held: this._held, overshield: this._overshield, seen: this._seen, reequip: !!this._reequip, osProtectUntil: this._osProtectUntil || 0, psetNow: this._psetNow || null, backPending: this._backPending || null } : null;
+  }
+  /** `_load`: the `pu` block `snapshot` wrote. */
+  restore(p) { this._held = p.held || null; this._overshield = p.overshield || null; this._seen = p.seen || {}; this._reequip = !!p.reequip; this._osProtectUntil = +p.osProtectUntil || 0; this._psetNow = p.psetNow || null; this._backPending = p.backPending || null; }
+  /** A spawn or revive wrote this life's `pset_pool` take: the overshield raises THIS frame's shield max, and restores it. */
+  setPset(frame) { this._psetNow = frame; }
+
+  // ---- read accessors (the engine, the golden-trace runner and tests read these; nothing writes the fields directly) ----
+  /** The held weapon item, or null. A setter exists for tests that stage a held item without a grant. */
+  get held() { return this._held; }
+  set held(v) { this._held = v; }
+  /** The overshield record, or null. A setter exists for tests. */
+  get overshield() { return this._overshield; }
+  set overshield(v) { this._overshield = v; }
+  /** The grant card ({name, color, kind, at, replaced?}), or null. A setter exists for tests. */
+  get grant() { return this._grant; }
+  set grant(v) { this._grant = v; }
+  get back() { return this._back; }
+  get backPending() { return this._backPending; }
+  get protectUntil() { return this._osProtectUntil; }
+  get psetNow() { return this._psetNow; }
+  get spawnCard() { return this._spawnCard; }
+  get swapCard() { return this._swapCard; }
+}

@@ -466,7 +466,7 @@ const up = (h, ch) => {
 const everUp = (h, ch, ms) => { let seen = false; for (let t = 0; t < ms && !h.eng.state().alive; t += 50) { h.adv(50); if (up(h, ch)) seen = true; } return seen; };
 const OS = { kind: 'overshield', name: 'Overshield', color: '#33ddff' };
 const puGame = h => { h.eng.config.stations = [{ id: 4, kind: 'powerup', item: OS }]; return h; };
-const grant = h => { h.eng.powerupGrant = { kind: 'overshield', name: 'OVERSHIELD', color: OS.color, at: h.now() }; };
+const grant = h => { h.eng.pu.grant = { kind: 'overshield', name: 'OVERSHIELD', color: OS.color, at: h.now() }; };
 
 test('presented: the engine publishes one entry per visual channel, and nothing else', () => {
   const h = harness().live();
@@ -570,7 +570,7 @@ test('down CONTROL: alive, the card, the callout, the hill card, the hint and th
 
 test('down EXCEPTION: puLost (the DOWN screen`s ITEM LOST line) is drawn only while I am down', () => {
   const h = harness().live(); puGame(h);
-  h.eng._puHeld = { name: 'ROCKETS', color: '#ff5533', weapon_id: 'rocket_launcher', slot: 2, charges: 2, left: 2 };
+  h.eng.pu.held = { name: 'ROCKETS', color: '#ff5533', weapon_id: 'rocket_launcher', slot: 2, charges: 2, left: 2 };
   assert.equal(up(h, 'puLost'), false, 'alive: nothing lost');
   downNow(h);
   assert.equal(shown(h, 'puLost') && shown(h, 'puLost').name, 'ROCKETS', 'the DOWN screen says which item the death took');

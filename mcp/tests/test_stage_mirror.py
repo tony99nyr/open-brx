@@ -1913,7 +1913,7 @@ KNOWN_UNMIRRORED = {
     # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
     # F425 (2026-09-26): `_puNextInMs` is GONE (the near-station TAKEN/countdown hint it fed is removed from the
     # HUD), so it is dropped from this list too, not merely unmirrored.
-    "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puMedian", "_puThreshold",
+    "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puMedian", "_puThreshold",
     "_puStation", "_puObserve", "_puClaimTick",
     "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puZeroUnpulled", "_puEnd", "_puShieldFrame", "_puDeath",
     # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
