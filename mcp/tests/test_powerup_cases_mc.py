@@ -51,12 +51,18 @@ def _session(sid: int, spawn_every_s: int | None, preset: str = "overshield", cl
     return s, clock
 
 
-def _restart(s, clock, sid, roster):
+def _restart(s, clock, sid, roster, old_shape=False):
     """MC stops and starts: the same snapshot, a new Session (A56 M1)."""
     import tempfile
     s._persist_path = Path(tempfile.mkdtemp()) / "session.json"
     s._persist_last = 0.0
     s._persist()
+    if old_shape:     # a snapshot written before F454 had none of these fields
+        doc = json.loads(s._persist_path.read_text(encoding="utf-8"))
+        for row in doc["powerups"]["st"].values():
+            for k in ("taken", "by_station", "line", "prev"):
+                row.pop(k, None)
+        s._persist_path.write_text(json.dumps(doc), encoding="utf-8")
     s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock, voice_rng=random.Random(7))
     s2.powerups_enabled = True
     s2._persist_path = s._persist_path
@@ -124,7 +130,7 @@ def _run(case: dict) -> None:
         elif what == "next_match":
             s.next_match()
         elif what == "restart":
-            s, roster = _restart(s, clock, sid, roster)
+            s, roster = _restart(s, clock, sid, roster, step.get("old_shape", False))
         elif what == "reset_api":
             refused = None
             try:

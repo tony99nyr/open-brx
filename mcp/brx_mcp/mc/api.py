@@ -46,6 +46,7 @@ class Broadcaster:
             self.loop.call_soon_threadsafe(self._dirty.set)
 
     def _feed(self, entry: dict):
+        entry = dict(entry)     # F454: a later in-place edit of the shared row must not change what is serialised on the loop
         if self.loop:
             self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._send_all({"kind": "feed", "entry": entry})))
 

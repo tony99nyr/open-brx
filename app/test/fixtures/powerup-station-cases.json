@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report. A case's `mc` block (read only by mcp/tests/test_powerup_cases_mc.py) holds Mission Control's side: the item preset is the overshield with `item_spawn_every_s` (null = the preset's 60 s), the arm uses a 3 s runway, and each step's `t` is ms after go-live. Steps: tick (MC's clock tick), taken (a station_action; `player` is a roster index, `age_ms`, `station_id` optional), pickup (a player's pickup fact; `fact_t` its own t as ms after go-live), reset (a station reset action) hello (the station reconnects), end (the match ends), next_match, restart (MC stops and starts on its snapshot) and reset_api (the console's reset route; expect.refused is a substring of the refusal). A taken step may carry `player_num` (a raw number) and a pickup step `match_id`. An expect may also hold `feed_has` and `feed_lacks` (substrings of the feed). `item_preset` (default overshield) picks the item. An expect holds `available`, `taken_by` (roster index or null), `feed_took` (TOOK lines in the feed so far) and `updates` (the exact station_update bodies MC pushed in that step). `only: [\"mc\"]` makes the phone and Stick runners skip a case.",
+  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report. A case's `mc` block (read only by mcp/tests/test_powerup_cases_mc.py) holds Mission Control's side: the item preset is the overshield with `item_spawn_every_s` (null = the preset's 60 s), the arm uses a 3 s runway, and each step's `t` is ms after go-live. Steps: tick (MC's clock tick), taken (a station_action; `player` is a roster index, `age_ms`, `station_id` optional), pickup (a player's pickup fact; `fact_t` its own t as ms after go-live), reset (a station reset action) hello (the station reconnects), end (the match ends), next_match, restart (MC stops and starts on its snapshot; `old_shape` strips the F454 fields first) and reset_api (the console's reset route; expect.refused is a substring of the refusal). A taken step may carry `player_num` (a raw number) and a pickup step `match_id`. An expect may also hold `feed_has` and `feed_lacks` (substrings of the feed). `item_preset` (default overshield) picks the item. An expect holds `available`, `taken_by` (roster index or null), `feed_took` (TOOK lines in the feed so far) and `updates` (the exact station_update bodies MC pushed in that step). `only: [\"mc\"]` makes the phone and Stick runners skip a case.",
   "cases": [
     {
       "name": "spawns on its own clock, then repeats every interval; a claim folds the next spawn forward",
@@ -377,6 +377,55 @@
         {"t": 120000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 120000}]}},
         {"t": 120100, "do": "pickup", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "feed_has": ["TOOK ROCKETS \u00b7 STATION #4"], "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 119900}]}},
         {"t": 120200, "do": "taken", "player": 1, "expect": {"taken_by": 1, "feed_took": 1, "feed_has": ["P1 TOOK ROCKETS"], "updates": []}}
+      ] }
+    },
+    {
+      "name": "a station's aged report for the PREVIOUS spawn corrects that spawn's taker and never takes the current one",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "pickup", "player": 0, "expect": {"taken_by": 0, "feed_took": 1, "feed_has": ["P0 TOOK OVERSHIELD"]}},
+        {"t": 120000, "do": "tick", "expect": {"available": true, "taken_by": null}},
+        {"t": 120500, "do": "taken", "player": 1, "age_ms": 20000, "expect": {"available": true, "taken_by": null, "feed_took": 1, "feed_has": ["P1 TOOK OVERSHIELD"], "feed_lacks": ["P0 TOOK"], "updates": []}},
+        {"t": 120600, "do": "taken", "player": 0, "age_ms": 20000, "expect": {"feed_took": 1, "feed_has": ["P1 TOOK OVERSHIELD"], "feed_lacks": ["P0 TOOK"]}},
+        {"t": 120700, "do": "taken", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 2}}
+      ] }
+    },
+    {
+      "name": "a restart between the phone's fact and the station's report: the station still corrects",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "pickup", "player": 0, "expect": {"taken_by": 0}},
+        {"t": 60150, "do": "restart"},
+        {"t": 60200, "do": "taken", "player": 1, "expect": {"available": false, "taken_by": 1, "feed_took": 1, "feed_has": ["P1 TOOK OVERSHIELD"], "feed_lacks": ["P0 TOOK"]}}
+      ] }
+    },
+    {
+      "name": "a snapshot from before F454 (no taken, by_station or line) still lets a station report correct a phone's credit",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "pickup", "player": 0, "expect": {"taken_by": 0}},
+        {"t": 60150, "do": "restart", "old_shape": true},
+        {"t": 60200, "do": "taken", "player": 1, "expect": {"available": false, "taken_by": 1, "feed_took": 1, "feed_has": ["P1 TOOK OVERSHIELD"], "feed_lacks": ["P0 TOOK"]}}
+      ] }
+    },
+    {
+      "name": "a station report with an invalid taker neither credits nor blocks a later valid one",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "steps": [
+        {"t": 60000, "do": "tick", "expect": {"available": true}},
+        {"t": 60100, "do": "pickup", "player": 0, "expect": {"taken_by": 0, "feed_took": 1}},
+        {"t": 60200, "do": "taken", "player_num": 64, "expect": {"taken_by": 0, "feed_took": 1, "feed_has": ["P0 TOOK OVERSHIELD"]}},
+        {"t": 60300, "do": "taken", "player": 1, "expect": {"taken_by": 1, "feed_took": 1, "feed_has": ["P1 TOOK OVERSHIELD"], "feed_lacks": ["P0 TOOK"]}},
+        {"t": 120000, "do": "tick", "expect": {"available": true}},
+        {"t": 120100, "do": "taken", "player_num": 0, "expect": {"available": false, "taken_by": null, "feed_took": 2, "feed_has": ["A PLAYER TOOK OVERSHIELD"]}},
+        {"t": 120200, "do": "taken", "player": 0, "expect": {"taken_by": 0, "feed_took": 2, "feed_lacks": ["A PLAYER TOOK"]}}
       ] }
     }
   ]

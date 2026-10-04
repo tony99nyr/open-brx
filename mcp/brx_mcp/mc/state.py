@@ -475,6 +475,11 @@ def _check_tag(raw: str) -> str:
     return d
 
 
+def _pu_valid_taker(num: object) -> bool:
+    """A powerup taker is player_num 1..63 (powerups.md item 6; 0 = none)."""
+    return isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
+
+
 class Session:
     def __init__(self, compiler: CompilerPort, net, armory, store=None, now_ms: Callable[[], int] | None = None,
                  lan: dict | None = None, voice_rng: random.Random | None = None):
@@ -3238,13 +3243,18 @@ class Session:
                     # that passed while MC was down fires on the catch-up tick below.
                     rows[nid] = {"item": item, "available": bool(old.get("available")), "next_k": old["next_k"],
                                  "since": old["since"], "taken_by": old.get("taken_by"),
-                                 **({"by_station": old["by_station"]} if isinstance(old.get("by_station"), bool) else {})}
+                                 # a snapshot from before F454 has no `taken`/`by_station`: a spent item reads as
+                                 # taken by a phone fact (a station report may still correct it)
+                                 "taken": bool(old.get("taken", (not old.get("available")) and (old["next_k"] >= 1 or old.get("taken_by") is not None))),
+                                 "by_station": bool(old.get("by_station", False)), "line": old.get("line"),
+                                 "prev": old.get("prev") if isinstance(old.get("prev"), dict) else None}
                     continue
                 k = _pu.last_spawn_index(item, go, now)
                 # `since`: when the item in the station now became available (a spawn or an operator reset);
                 # a fact older than that is about an earlier item. `taken_by`: this spawn's taker, if any.
                 rows[nid] = {"item": item, "available": k >= 0, "next_k": k + 1,
-                             "since": _pu.spawn_at(item, go, k) if k >= 0 else go, "taken_by": None}
+                             "since": _pu.spawn_at(item, go, k) if k >= 0 else go, "taken_by": None,
+                             "taken": False, "by_station": False, "line": None, "prev": None}
             self._pu_sched = {"match_id": mid, "go": go, "st": rows}
             self._pu_catch_up(now, go, push=False)
             for nid in rows:
@@ -3264,8 +3274,10 @@ class Session:
                 row["next_k"] += 1
                 fired = True
             if fired:
+                new_since = _pu.spawn_at(row["item"], go, row["next_k"] - 1)
+                self._pu_archive(row, new_since)
                 row["available"], row["taken_by"] = True, None
-                row["since"] = _pu.spawn_at(row["item"], go, row["next_k"] - 1)
+                row["since"] = new_since
                 if push:
                     self._push_station_update(nid)  # at each spawn time, even one that finds the item still there
                 changed = True
@@ -3298,40 +3310,63 @@ class Session:
         # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
         self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
         row = self._pu_sched["st"][nid]
-        if t < row["since"]:
-            return False
         a = self.stations[nid]["assigned"]
         num = player.get("player_num") if player else player_num
+        if t < row["since"]:
+            # A station's aged report about the PREVIOUS spawn (it arrived after the next spawn began) corrects
+            # that spawn's taker and never takes the current one.
+            prev = row.get("prev")
+            if from_station and prev and prev["since"] <= t < prev["until"] and prev.get("by_station") is False:
+                self._pu_correct_taker(row, prev, a, player, num)
+            return False
         if not row["available"]:
-            if from_station and row.get("by_station") is False:   # taken (by a phone fact), not yet by a station
-                self._pu_correct_taker(nid, row, a, player, num)
+            # Taken. An item from a snapshot older than F454 has no `by_station`: that reads "not by the station".
+            if from_station and row.get("taken") and not row.get("by_station"):
+                self._pu_correct_taker(row, row, a, player, num)
             return False
         # A taker is player_num 1..63 (0 = none, powerups.md item 6): the item is taken either way, but a number
         # outside that range is never credited.
-        valid = isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
-        row["available"] = False
+        valid = _pu_valid_taker(num)
+        row["available"], row["taken"] = False, True
         row["taken_by"] = num if valid else None
-        row["by_station"] = from_station      # F454: only a station's own report is final
+        row["by_station"] = from_station and valid      # F454: only a station's own VALID report is final
         who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
+        row["line"] = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
         self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info",
-                       "text": f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"})
+                       "text": row["line"]})
         self._push_station_update(nid)
         self._changed()
         return True
 
-    def _pu_correct_taker(self, nid: str, row: dict, a: dict, player: Player | None, num: object) -> None:
-        """F454: the station's first report for this spawn names the taker; replace a phone's earlier credit."""
-        row["by_station"] = True
-        if not (isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63) or num == row.get("taken_by"):
+    @staticmethod
+    def _pu_archive(row: dict, until: int) -> None:
+        """Keep the spawn that is ending (its window, taker and feed line) so a station's aged report for it can
+        still correct it. Only a take by a phone fact needs the record; a station's own is final."""
+        row["prev"] = ({"since": row["since"], "until": until, "taken_by": row.get("taken_by"),
+                        "by_station": row.get("by_station", False), "line": row.get("line")}
+                       if row.get("taken") and not row["available"] else None)
+        row["taken"], row["by_station"], row["line"] = False, False, None
+
+    def _pu_correct_taker(self, row: dict, rec: dict, a: dict, player: Player | None, num: object) -> None:
+        """F454: a station's report names the taker of the spawn `rec` records (the row itself, or its `prev`);
+        replace a phone's earlier credit in place. An invalid number does nothing: it neither credits nor blocks a
+        later valid report. The recap carries no taker, so the feed row and `taken_by` are all that move."""
+        if not _pu_valid_taker(num):
+            return
+        rec["by_station"] = True
+        if num == rec.get("taken_by"):
             self._changed()
             return
-        row["taken_by"] = num
+        rec["taken_by"] = num
         who = (player or {}).get("display") or f"PLAYER {num}"
-        suffix = f" · STATION #{a['id']}"
-        for e in self.feed:     # newest first: the TOOK line of this spawn's take
-            if e.get("tag") == "POWERUP" and " TOOK " in e.get("text", "") and e["text"].endswith(suffix):
-                e["text"] = f"{str(who).upper()} TOOK {row['item']['name']}{suffix}"
+        new = f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"
+        old = rec.get("line")
+        for e in self.feed:     # newest first
+            if e.get("tag") == "POWERUP" and (e.get("text") == old if old else
+                                              " TOOK " in e.get("text", "") and e["text"].endswith(f" · STATION #{a['id']}")):
+                e["text"] = new
                 break
+        rec["line"] = new
         self._persist_dirty = True
         self._changed()
 
@@ -3339,6 +3374,7 @@ class Session:
         """The operator reset: the item is available NOW. The fixed spawn times do not move (no restart, and
         the next spawn does not stack a second item)."""
         row = self._pu_sched["st"][nid]
+        self._pu_archive(row, self.now_ms())
         row["available"], row["taken_by"], row["since"] = True, None, self.now_ms()
         self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "OPERATOR", "kind": "info",
                        "text": f"OPERATOR RESET · STATION #{self.stations[nid]['assigned']['id']}"})
