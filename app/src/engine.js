@@ -1176,27 +1176,47 @@ export class Engine {
         ammo: this._savedAmmo(), altPtr: this._altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
         pu: this.pu.snapshot(),
       }));
-    } catch (_) { /* ignore */ }
+    } catch (e) {
+      // O9: say so once per failure streak (a full or blocked store fails on every save), and again after a good one.
+      if (!this._saveFailing) this.log(`persist failed: ${e && e.message || e}`, 'le');
+      this._saveFailing = true; return;
+    }
+    this._saveFailing = false;
   }
   _load() {
     if (!this.storage) return;
+    let undo = null;
     try {
       const raw = this.storage.getItem(KEY); if (!raw) return;
       const s = JSON.parse(raw);
+      if (!s || typeof s !== 'object') throw new Error('persisted context is not an object');
       if (s.savedAt && this.now() - s.savedAt > C.CONFIG_TTL_MS) { this.log('persisted context expired', 'li'); return; }
-      Object.assign(this, { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
+      const next = { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
         spawned: !!s.spawned, ended: !!s.ended, endedAt: s.endedAt || 0, result: s.result || null, resultAt: s.resultAt || 0,
         endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null, downReason: s.downReason || null,
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby, _altPtr: Number.isInteger(s.altPtr) ? s.altPtr : 0, activeSlot: Number.isInteger(s.slot) ? s.slot : 0,
-        gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null });
+        gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null };
+      // O9: apply as one step. Remember what every touched field held, so a throw below puts the fresh engine back.
+      const touched = [...Object.keys(next), '_prevAmmo', '_prevReserve', '_shotAcct', '_pendingPhase'];
+      const before = {}; for (const k of touched) before[k] = this[k];
+      const puBefore = this.pu.snapshot();
+      undo = () => { Object.assign(this, before); if (puBefore) this.pu.restore(puBefore); else this.pu.reset(); };
+      Object.assign(this, next);
+      this._prevAmmo = { ...this._prevAmmo }; this._prevReserve = { ...this._prevReserve }; this._shotAcct = { ...this._shotAcct };   // the restore below writes copies, so `before` stays untouched
       if (s.phase === 'live' && s.ammo && typeof s.ammo === 'object') this._restoreAmmo(s.ammo);   // F164
       if (s.pu && typeof s.pu === 'object') this.pu.restore(s.pu);   // A56
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
       this._pendingPhase = s.phase;
-    } catch (_) { /* ignore */ }
+    } catch (e) {
+      if (undo) { try { undo(); } catch (_) { /* nothing left to undo */ } }
+      // _load runs inside the constructor, and the host's log callback may read the engine it is still building (app.js):
+      // emit after construction, never during it.
+      const msg = `persisted context unreadable, starting fresh: ${e && e.message || e}`;
+      queueMicrotask(() => this.log(msg, 'le'));
+    }
   }
   /** F164: {slot: [mag, reserve]} for each slot the gun has reported this life (mag from the account, so a round in
    *  flight is not handed back), or null when none has. A null half is a count not seen yet. PURE. */
