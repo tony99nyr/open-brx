@@ -718,11 +718,12 @@ def test_o1_the_kept_name_is_reserved_exclusively_and_a_taken_name_is_never_over
     assert pathlib.Path(kept).read_text() == "{not json" and taken.read_text() == "someone else's file"
 
 
-def test_r5_session_snapshot_is_written_0600(tmp_path):
+def test_r5_session_snapshot_is_written_0600():
     """Review round 5: session.json holds the join secret, so it is written owner-only (POSIX)."""
-    import os, sys, pytest
+    import os, sys
     if sys.platform == "win32":
-        pytest.skip("POSIX file modes")
+        return                                   # POSIX file modes only
+    tmp_path = pathlib.Path(tempfile.mkdtemp())
     from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
     from brx_mcp.mc.state import Session
     s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
