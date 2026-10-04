@@ -104,14 +104,15 @@ def test_the_install_stamp_changes_when_constraints_change():
         shutil.rmtree(root, ignore_errors=True)
 
 
-def test_constraints_pin_every_runtime_dependency_exactly():
+def test_constraints_pin_every_runtime_dependency():
     pins = {}
     for line in (REPO / "mcp" / "constraints.txt").read_text(encoding="utf-8").splitlines():
         if line.strip() and not line.startswith("#"):
-            assert re.fullmatch(r"[A-Za-z0-9_.-]+==[0-9][A-Za-z0-9.]*", line.strip()), line
-            pins[line.split("==")[0].lower()] = line
-    for dep in ("bleak", "mcp", "websockets", "starlette", "uvicorn", "zeroconf"):
-        assert dep in pins, f"{dep} is not pinned"
+            assert re.fullmatch(r"[A-Za-z0-9_.-]+(==[0-9][A-Za-z0-9.]*|>=[0-9.]+,<[0-9.]+)", line.strip()), line
+            pins[re.split(r"[=<>]", line.strip())[0].lower()] = line.strip()
+    assert pins["bleak"] == "bleak>=0.22,<3", "bleak 3.x drops Windows 10 (see the comment in constraints.txt)"
+    for dep in ("mcp", "websockets", "starlette", "uvicorn", "zeroconf", "pydantic", "pydantic-core", "anyio", "h11"):
+        assert "==" in pins.get(dep, ""), f"{dep} is not pinned exactly"
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -168,6 +169,51 @@ def test_the_update_prompt_warns_before_the_question_when_the_app_version_change
     assert "PHONES MUST UPDATE TOO" in out, out
     assert out.index("PHONES MUST UPDATE TOO") < out.index("Update now?")
     assert "Update now? [y/N] no (default)" in out
+
+
+def _offline_run(imports_ok: bool) -> subprocess.CompletedProcess:
+    """Run start.mjs --no-update in a throwaway folder whose fake venv python reports 3.12, imports fine or
+    not, and fails every pip call (offline). Only node is on PATH, so the run ends at the console step
+    ("npm is missing") and never installs anything."""
+    base = Path(tempfile.mkdtemp(prefix="brx-offline-test-"))
+    try:
+        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs"):
+            (base / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(REPO / rel, base / rel)
+        (base / "mcp").mkdir()
+        (base / "mcp" / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        (base / "mcp" / "constraints.txt").write_text("bleak<3\n", encoding="utf-8")
+        py = base / ".venv" / "bin" / "python"
+        py.parent.mkdir(parents=True)
+        py.write_text("#!/bin/sh\ncase \"$*\" in\n  *'import sys'*) echo '3 12';;\n  *'-m pip'*) exit 1;;\n"
+                      f"  *) exit {0 if imports_ok else 1};;\nesac\n", encoding="utf-8")
+        py.chmod(0o755)
+        bin_dir = base / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "node").symlink_to(shutil.which("node"))
+        env = {"PATH": str(bin_dir), "HOME": str(base), "BRX_MCP_HOME": str(base / "home"), "NO_COLOR": "1"}
+        return subprocess.run([str(bin_dir / "node"), str(base / "scripts" / "start.mjs"), "--no-update"], cwd=base,
+                              env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+def test_an_offline_reinstall_failure_still_starts_with_the_installed_packages():
+    needs(NODE and os.name != "nt", "node on a POSIX shell")
+    res = _offline_run(imports_ok=True)
+    out = res.stdout + res.stderr
+    assert "could not update Python packages, starting with the installed ones" in out, out
+    assert "run start.sh online before the next match" in out
+    assert "Setup stopped: pip" not in out
+    assert "[3/5]" in out, "the launch must go on to the next step"
+
+
+def test_an_offline_failure_with_a_broken_venv_stays_fatal():
+    needs(NODE and os.name != "nt", "node on a POSIX shell")
+    res = _offline_run(imports_ok=False)
+    out = res.stdout + res.stderr
+    assert "Setup stopped: pip could not install" in out, out
+    assert "[3/5]" not in out
 
 
 def _venv_ready() -> bool:

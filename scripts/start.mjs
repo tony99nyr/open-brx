@@ -222,11 +222,18 @@ async function python() {
   const stampPath = join(root, '.venv', '.open-brx-stamp');
   const stamp = installStamp();
   const current = existsSync(stampPath) && readFileSync(stampPath, 'utf8').trim() === stamp;
-  const imports = current && spawnSync(venv, ['-c', 'import brx_mcp.mc, bleak, websockets, starlette, uvicorn, zeroconf'], { cwd: join(root, 'mcp'), stdio: 'ignore' }).status === 0;
+  const venvImports = () => spawnSync(venv, ['-c', 'import brx_mcp.mc, bleak, websockets, starlette, uvicorn, zeroconf'], { cwd: join(root, 'mcp'), stdio: 'ignore' }).status === 0;
+  const imports = current && venvImports();
   if (imports) return ok('Mission Control package is installed');
   console.log('  ..  installing the Mission Control package (the first time takes a minute)');
   const pip = run(venv, ['-m', 'pip', 'install', '--disable-pip-version-check', '--quiet', '-c', './mcp/constraints.txt', '-e', './mcp[mc]']);
-  if (pip.status !== 0) stop('pip could not install the Mission Control package (see the messages above).', 'Check the internet connection.');
+  if (pip.status !== 0) {
+    // Offline on match day: a venv that already imports Mission Control still starts. Only a missing or
+    // broken venv is fatal. The stamp is left alone, so the next online run retries the install.
+    if (!venvImports()) stop('pip could not install the Mission Control package (see the messages above).', 'Check the internet connection.');
+    console.log(paint('1;31', '!!! could not update Python packages, starting with the installed ones: run start.sh online before the next match !!!'));
+    return note('using the Python packages already installed');
+  }
   writeFileSync(stampPath, stamp + '\n');
   ok('Mission Control package is installed');
 }
