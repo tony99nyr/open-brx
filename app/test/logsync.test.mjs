@@ -308,3 +308,12 @@ test('logsync: an ABORTED upload reports nothing — the ring must not release a
   await ls._inflight;
   assert.deepEqual(seen, [], 'nothing completed, so nothing is safely at MC');
 });
+
+test('O9: a throwing snapshot aborts the upload with a log line, never an empty offer', async () => {
+  const timers = fakeTimers(), t = new FakeTransport(), logs = [];
+  const ls = new LogSync({ transport: () => t, snapshot: () => { throw new Error('ring gone'); }, phase: () => 'lobby', timers, sleep: async () => {}, log: m => logs.push(m) });
+  ls.request('recap'); await ls._inflight;
+  assert.deepEqual(t.kinds(), [], 'nothing went to MC, not even an empty log');
+  assert.ok(logs.some(m => m.includes('log snapshot failed: ring gone')), logs.join('|'));
+  assert.equal(timers.size(), 1, 'the upload is retried later');
+});

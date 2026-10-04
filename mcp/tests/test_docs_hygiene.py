@@ -530,9 +530,11 @@ def _cited_path(token: str) -> str | None:
     if re.search(r"[\s*<>~{}|$]|\.\.\.", token) or "://" in token:
         return None
     token = re.sub(r"(?:#.*|§.*|::.*|:\d[\d,:-]*)$", "", token).rstrip("/")
-    if "node_modules" in token or "NNNN" in token:
+    if "node_modules" in token or "NNNN" in token or ".venv/" in token:
         return None   # installed per checkout, or a template name
     if token.startswith(_PATH_ROOTS) or re.fullmatch(r"[\w.-]+\.md", token):
+        return token
+    if re.match(r"\.\.?/", token):   # relative to the citing file; the caller resolves it from f.parent
         return token
     return None
 
@@ -567,6 +569,8 @@ def test_the_path_citation_check_can_actually_fail():
     assert _cited_path("docs/utility-roadmap.md:12") == "docs/utility-roadmap.md"
     assert _cited_path("docs/spec/*.md") is None and _cited_path("docs/<name>.md") is None
     assert _cited_path("beacon.js") is None and _cited_path("post-mvp.md §2") is None
+    # D6 polish (2026-10-04): a path relative to the citing file (`../x.md`, `./x.md`) is a citation too
+    assert _cited_path("../utility-roadmap.md") == "../utility-roadmap.md" and _cited_path("./a.md") == "./a.md"
     assert not (REPO / "docs" / "no-such-page.md").exists()
 
 

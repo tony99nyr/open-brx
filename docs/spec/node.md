@@ -51,8 +51,15 @@ Two layers, one process:
 
 - **Engine** (`engine.js`) is a state machine over contracts §6. It knows nothing about the DOM or the socket
   directly — it **emits Events**, **accepts commands**, and **writes the frames it was given**. This is what
-  ports to the Companion.
+  ports to the Companion. Two rule sets live in their own modules, each driven through a host object the engine
+  builds (the module header lists the host's members). `app/src/reconcile.js` owns the relink window (§3.10).
+  `app/src/powerup-player.js` owns the player's side of the powerups (`powerups.md`). The engine holds one
+  instance of each, `engine.rc` and `engine.pu`, and nothing else reads their `_` fields.
+  The golden traces in `app/test/fixtures/traces/` pin the engine's gun writes and state, so a refactor that must
+  change nothing keeps every trace green (`docs/gun-stage.md`).
 - **HUD** (`hud/`) is a pure function of engine state (§4.4). It never writes frames.
+- **The MC link** (`app/src/transport/mclink.js`, `McLink`) is the phone's one controller for reaching MC: dial,
+  remember, mDNS (`MC_MDNS_SERVICE`, `_openbrx._tcp.`), the sweep and the auto-join lock (§3.19).
 - **Transport** is injected. With no Transport, the node still runs from its persisted bundle — it just can't
   report or receive MC feedback.
 
@@ -315,13 +322,13 @@ probe the gun to reconstruct them. This closes a real cheat: before persistence 
 respawn on demand (force-close at low HP → reopen → full HP). Found on hardware, Tony 2026-09-04.
 
 **A LIVE reconnect RECONCILES (a disarmed window); it never re-arms blind and never infers death.** On a BLE
-reconnect while `live` the node opens a `reconciling` window of `RECONCILE_MS = 3000` (`_beginReconcile`):
+reconnect while `live` the node opens a `reconciling` window of `RECONCILE_MS = 3000` (`rc.begin()`):
 - **Disarm** at once — `$AMMO,0,0,0,1` on both slots — so the gun cannot fire while state settles. The
   deliberate 3 s hold is itself an anti-cheat: restarting to escape or heal is slow and pointless, while a
   genuine app crash costs 3 s (Tony's call, 2026-09-04).
 - **Keep the restored pools** — nothing that changes hp/armor is written.
-- When the window elapses, `_endReconcile` **re-arms only if alive**, to the live counts snapshotted at
-  `_beginReconcile` (the spawn `$AMMO` row only for a slot never counted this life; F164), and
+- When the window elapses, `rc.end()` **re-arms only if alive**, to the live counts snapshotted at
+  `rc.begin()` (the spawn `$AMMO` row only for a slot never counted this life; F164), and
   **never writes `$SPAWN` or `$PSET`** — so a rejoin can never heal. Down → stay disarmed and down, awaiting a
   real respawn on its true `deadAt` timer.
 - **No death is inferred.** A missed death is booked only from POSITIVE evidence: a real `$HP,0` / `$LCD` line
@@ -333,6 +340,13 @@ stamp, scanner-revive, and reload takeover are all gated off while `reconciling`
 the HUD's RECONCILING takeover (§4.5), and no trigger pull is asked of the player. **Validated on hardware
 2026-09-04:** shot to HP 29, force-close, reopen → held at 29, takeover shown, gun re-armed, no heal
 (experiment-log). Every reconcile action is logged.
+
+**The module.** `app/src/reconcile.js` owns the window: `RECONCILE_MS` and the `Reconcile` class, which the engine
+holds as `engine.rc`. Its entry points are `begin()`, `end()`, `tick(now)`, `clear()` and the F416
+`holdSpawnCheck(c, askAfterMs)`. Engine code does not read the window raw. It asks a named question: `active`,
+`ownsRearm`, `infersNothing`, `disarmed` or `outOfBand` (the header says what each one guards). `window` is the
+`{since, ammo}` record or null; its setter refuses a window with no numeric `since`. `engine.reconciling` is a
+get/set view of `rc.window`.
 
 **LOBBY / ARMED reconnect (and resume) just re-write the head.** There is no live state to reconcile, so the
 node re-applies `frames.head` (`_beginResync` for those phases) and the scheduled T-0 spawn runs as normal.
@@ -389,9 +403,9 @@ plain damage**, so the node's rule is gated on the config too — a plain charge
 | disarm | one write: `$AMMO,<slot>,0,0,1,*` per slot the bundle's spawn frames load (0, and 1 when a secondary exists). `moment {kind: stunned, data: {ms}}`, presentation hook `stunned` |
 | the restore counts | snapshotted AT the stun: the last `$ALCD` mag + reserve per slot, else the frame's spawn values for a slot that never fired. **Never the frame's for a slot that fired** — a re-push refills (F87) and a stun is not a reload |
 | extend | a second EMP inside the window pushes `until` out to a full window from now and writes nothing — no second disarm, never a double restore |
-| expiry | `tick()`: `$AMMO,<slot>,<mag>,<reserve>,1,*` per slot from the snapshot, once; `moment stun_over`, hook `stun_over`. A link that is down at expiry gets no write (the relink reconcile re-arms, §3.10) |
+| expiry | `tick()`: `$AMMO,<slot>,<mag>,<reserve>,1,*` per slot from the snapshot, once; `moment stun_over`, hook `stun_over`. A link that is down at expiry gets no write (the relink reconcile re-arms, §3.10). A stun that expires inside a reconcile window writes nothing then: the window's end re-arms once. A relink never ends a stun early, and a window that ends inside a stun arms nothing (a heavy on the trigger is re-equipped at zero charges; the expiry restore writes its charges) |
 | death | cancels with **no write** — `frames.revive` carries its own `$AMMO`, and `_revive` resets the per-slot counters as always |
-| rejoin | `_beginReconcile` cancels the stun: the reconcile owns the disarm/re-arm from there (it re-arms to the live counts snapshotted at `_beginReconcile`, the spawn row only for a slot never counted this life; F164) |
+| rejoin | the stun deadline survives a relink: `begin()` does not end it. The stun ends at its expiry, or at the window's `end()` if it has already expired by then. A window that ends inside a running stun arms nothing (a heavy on the trigger goes back on it at zero charges, and a lost write of that equip is not retried once the stun has ended). The re-arm uses the live counts snapshotted at `begin()`, the spawn row only for a slot never counted this life (F164) |
 | `$ALCD` while stunned | ignored — a gun that cannot fire has no shot to count, and if the gun echoes our `$AMMO,0` (hardware-UNVERIFIED) that echo must not become the count we restore |
 | state | `state().stunned = {until, leftMs}` (null when not stunned) for a STUNNED takeover; not persisted (a reload during a stun loses the timer; the relink reconcile re-arms the gun) |
 | wire | nothing: a status row moves no pool, so no `hit_taken`; MC does not learn of stuns today (open) |
@@ -558,7 +572,11 @@ remain unbuilt until their mechanics are specified. The writer/native arbitratio
 ### 3.19 Joining Mission Control: with no tap, or with one (contracts A60)
 
 A phone joins with no tap when it can tell the MC is the one the player already trusted. It asks for one
-tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/autojoin.js`.
+tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/autojoin.js`. The dial lifecycle
+around it is `app/src/transport/mclink.js` (`McLink`), shared by the HUD and the station phone. Each node passes a
+remember policy. `HUD_POLICY` remembers an address at dial when the dial asks for it (`remember`), and any address that binds.
+`STATION_POLICY` remembers a trusted address at dial, and a discovered one only once it binds. A transport that binds
+after a redial replaced it is stale: it is never remembered and it resets no auto-join state.
 
 - **No tap.** The remembered address (a QR, a typed address, a tapped JOIN, or an address that bound us)
   is redialled with the normal backoff for as long as the app runs. A missed first welcome clears
@@ -616,6 +634,14 @@ The HUD is the player's whole world during a match. Design target: **readable at
 length on a mounted phone, in direct outdoor sun, while moving** — and **fully dark at night**. It is a pure
 render of engine state; it holds no game logic. **The pixels are `design/phone-hud.md`** (landscape, 844×390,
 rail-mounted) and the shipping `app/src/hud/`; this section is the requirements the pixels must honour.
+
+**The presentation gate (architecture review #5).** The engine decides whether a visual item may draw; the HUD
+does not. `PRESENT` in `app/src/engine.js` gives each visual channel its rule: `hero`, `objective`, `feed`,
+`card`, `callout`, `hillCallout` and `hint` draw only while live and alive, and `puLost` (ITEM LOST) only while
+down. `Engine.show(channel, item)` is the only write path for a channel, and it drops an `alive` item that arrives
+while the player is down. `state().presented` (`lanes`, `card`, `callout`, `hillCallout`, `hint`, `puLost`) is
+what the HUD draws: `hud.js` and `hud/deathscreen.js` read it. The voice is outside the gate (`docs/announcer.md`
+"My death wins", rules 3 and 8).
 
 - **Glare:** maximum contrast, minimum chrome; colour = state, not decoration (green alive, red down/danger,
   amber warning, team colour only on identity); big tabular numerals; no thin strokes, gradients or shadows

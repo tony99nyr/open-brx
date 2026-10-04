@@ -19,7 +19,7 @@
 //                 altPending) · repairLostEquip(held, slot, mag) · onSelect() · onAltPressed() · onAssumedSwap(to) ·
 //                 onConfirmedSwap(slot) · onHp() · onShieldFrame(shield)
 //     life        onDeath(inRevive?) · onReviveStart() · onRevive(burst) · keepHeld(held)
-//     reconcile   disarmRows() · reconcileRearm(rows) · reequipInRearm(ammo) · afterRearm() · restoreRows(rows, pu)
+//     reconcile   disarmRows() · reconcileRearm(rows) · stunRearm(rows) · reequipInRearm(ammo, zero?) · afterRearm() · restoreRows(rows, pu)
 //     queries     isHeldSlot(slot) · heavyOnTrigger() · heavyMatches(slot, mag) · overshieldPset() · psetWithShieldMax(max)
 //     accessors   held (rw) · overshield (rw) · grant (rw) · back · backPending · protectUntil · psetNow · spawnCard ·
 //                 swapCard (the setters exist for tests that stage a state without a grant)
@@ -388,11 +388,12 @@ export class PlayerPowerups {
     if (!weap) { h.log(`powerup: the head carries no $WEAP for slot ${slot}; nothing equipped (${why})`, 'le'); return false; }
     h.acctWrote(slot, mag, res, true);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
     h.setPrev(slot, mag, res);     // what the slot holds now, should the echo never come back
-    const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held;
+    const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held, life = h.lifeSeq, stun = h.stunned;   // `stun`: the premise of this write (r2 C1: a zero equip is authorised by a stun that is still running)
     Promise.resolve(h.quietWrite(frames, why)).then(ok => {   // F416 part 2: a grant is a must-land write too
       if (ok !== false) return;
       // F417 (bench 2026-09-26): a lost equip left the gun on the old weapon ("ON TRIGGER" but the sniper fired) or
       // without its counts. It is safe to repeat while nothing moved: no round, no hit, the same item on the same slot.
+      if (h.lifeSeq !== life || h.stunned !== stun) { h.log(`write ${why} failed -- the life or the stun it was written under has ended, not re-sent`, 'li'); return; }   // r2 C1: a retry must not re-send zero counts over the stun's own restore
       if (h.actSeq !== act || this._held !== held || h.activeSlot !== slot || (h.switching && !h.switching.pu) || !h.bleUp || h.phase !== 'live') { h.log(`write ${why} failed -- the game moved on, not re-sent`, 'li'); return; }
       h.log(`*** write ${why} failed -- re-sending once (F417) ***`, 'le');
       // Bug 3 r2 H1: a write the link called failed can still have reached the gun (a chunk error after the frames went
@@ -670,7 +671,19 @@ export class PlayerPowerups {
     return { reequip, ammo: burstWithHeld(rows, held) };
   }
   /** The re-arm write when `reconcileRearm` said `reequip`: the loadout rows, then the heavy's `$WEAP` + `$AMMO`, in one write. */
-  reequipInRearm(ammo) { const held = this._held; this._equip(held.slot, held.left, PU_RESERVE, `reconcile: re-arm + ${held.name} back on the trigger`, ammo); }
+  reequipInRearm(ammo, zero = false) {
+    const held = this._held;
+    this._equip(held.slot, zero ? 0 : held.left, zero ? 0 : PU_RESERVE, `reconcile: re-arm + ${held.name} back on the trigger${zero ? ' (stunned: zero charges)' : ''}`, ammo);
+  }
+  /** The reconcile re-arm while a stun still holds the gun (r1 S1): nothing is armed. A heavy on the trigger is re-equipped
+   *  at zero charges, with the loadout rows at zero, so the trigger position is right when the stun's restore writes the
+   *  counts. Same `reequip` condition as `reconcileRearm`. */
+  stunRearm(rows) {
+    const h = this.host, held = this._held, sw = h.switching;
+    const reequip = !!(held && held.trig === held.slot && this._headWeap(held.slot) && !(sw && !sw.pu));
+    if (!reequip) return { reequip: false, ammo: [] };
+    return { reequip, ammo: rows.filter(f => !f.startsWith(`$AMMO,${held.slot},`)).map(f => f.replace(/^(\$AMMO,\d+),[^,]*,[^,]*,/, '$1,0,0,')) };
+  }
   /** After the re-arm (A56 r2 M1): the re-arm is not the switch-back, so a pending one is sent again with a fresh budget. */
   afterRearm() { const bp = this._backPending; if (bp) { bp.tries = 0; this._backResend(this.host.now(), 'after the reconcile'); } }
   /** F416 r4: does the gun's `$QUERY` weapon state match a held heavy? Before the first pull (F436) it may read the

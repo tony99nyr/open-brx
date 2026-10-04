@@ -1582,6 +1582,45 @@ test('Reconcile bug 2: a window that ends with the link down writes nothing; the
   assert.ok(h.writes.slice(mid).some(f => f.startsWith('$AMMO,0,32,192,')), 'the next relink re-arms the live counts');
 });
 
+test('Reconcile bugs 1+2 r1 S2: the stun deadline survives a relink; a second window cannot re-arm the gun before it', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.config.stun = { duration_s: 8 };
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  h.adv(500); h.frame('$HIR,4,8,19,2,15,0,0,*');
+  const until = h.eng.stunned.until;
+  h.adv(2600); h.eng.tick();                                   // window 1 ends, the stun has about 5 s to run
+  assert.equal(h.eng.state().reconciling, false, 'setup: the first window ended');
+  h.eng.onBleDropped(); h.eng.onBleConnected();                // relink before the stun ends
+  assert.ok(h.eng.state().reconciling, 'setup: a second window');
+  assert.equal(h.eng.stunned?.until, until, 'the relink does not end the stun early');
+  const before = h.writes.length;
+  h.adv(3000); h.eng.tick();                                   // window 2 ends, still inside the stun
+  assert.equal(h.eng.state().reconciling, false);
+  assert.ok(h.eng.stunned, 'CONTROL: still stunned');
+  assert.deepEqual(h.writes.slice(before).filter(f => /^\$AMMO,\d+,[1-9]/.test(f)), [], 'the second window arms nothing before the deadline');
+  h.adv(3000); h.eng.tick();
+  assert.equal(h.eng.stunned, null);
+  assert.ok(h.writes.slice(before).some(f => f.startsWith('$AMMO,0,32,192,')), 'the expiry restore arms the gun with the live counts');
+});
+
+test('Reconcile bugs 1+2 r1 S3: a stun that expires inside the window defers its restore; the window end writes the counts once', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.config.stun = { duration_s: 1 };
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  h.adv(500); h.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.ok(h.eng.stunned, 'setup: a 1 s EMP inside the window');
+  const before = h.writes.length;
+  h.adv(1100); h.eng.tick();                                   // the stun expired, the window is still open
+  assert.equal(h.eng.stunned, null, 'the stun ended');
+  assert.ok(h.eng.state().reconciling, 'CONTROL: the window is still open');
+  assert.deepEqual(h.writes.slice(before).filter(f => /^\$AMMO,\d+,[1-9]/.test(f)), [], 'no re-arm inside the disarm window');
+  h.adv(1500); h.eng.tick();                                   // the window ends
+  const rows = h.writes.slice(before).filter(f => f.startsWith('$AMMO,0,32,'));
+  assert.equal(rows.length, 1, `the live counts are written once: ${JSON.stringify(rows)}`);
+});
+
 test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a slot never counted this life falls back to spawn', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$ALCD,32,100,0,192,0,*');                          // the life's first slot-0 report seeds the account
@@ -6249,7 +6288,7 @@ test('F15 CONTROLS: without config.stun a proto-8 word is an ordinary hit (the s
   assert.equal(ammoWrites(l).length, 0);
 });
 
-test('F15: config.stun.duration_s sizes the window; an absent duration is the 10 s default; a rejoin reconcile takes the stun over', () => {
+test('F15: config.stun.duration_s sizes the window; an absent duration is the 10 s default; a rejoin reconcile leaves the stun deadline alone (r1 S2)', () => {
   const h = harness(); h.config.stun = { duration_s: 3 }; goLive(h);
   h.frame('$HIR,4,8,19,2,15,0,0,*');
   assert.equal(h.eng.state().stunned.leftMs, 3000);
@@ -6258,10 +6297,10 @@ test('F15: config.stun.duration_s sizes the window; an absent duration is the 10
   const d = harness(); d.config.stun = {}; goLive(d);
   d.frame('$HIR,4,8,19,2,15,0,0,*');
   assert.equal(d.eng.state().stunned.leftMs, 10000, 'default 10 s');
-  // a BLE drop + relink while stunned: the reconcile owns the disarm/re-arm from here
+  // a BLE drop + relink while stunned: the window holds the gun disarmed, and the stun deadline survives it (r1 S2)
   d.writes.length = 0;
   d.eng.onBleDropped(); d.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
-  assert.equal(d.eng.stunned, null, 'the reconcile cancels the stun timer');
+  assert.ok(d.eng.stunned, 'the reconcile does not cancel the stun timer');
   assert.ok(d.eng.reconciling, 'and holds the gun disarmed itself');
 });
 
@@ -7478,4 +7517,49 @@ test('ALT r4: a loadout $ALCD that moves the trigger with no swap open heals the
   assert.equal(h.eng.am.altPtr, 1, 'the pointer follows the slot the gun fired');
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.switching && h.eng.switching.to, 0, 'the next ALT goes back to the rifle');
+});
+
+test('O9: a failing save logs once per streak, and again after a good save', () => {
+  let broken = true; const logs = [];
+  const storage = { getItem: () => null, removeItem: () => {}, setItem: () => { if (broken) throw new Error('quota'); } };
+  const eng = new Engine({ writer: () => {}, storage, now: () => 1, log: (m, k) => logs.push([m, k]) });
+  eng._save(); eng._save(); eng._save();
+  assert.equal(logs.filter(([m]) => m.startsWith('persist failed: quota')).length, 1, 'one line for the streak');
+  assert.equal(logs.find(([m]) => m.startsWith('persist failed'))[1], 'le');
+  broken = false; eng._save(); broken = true; eng._save();
+  assert.equal(logs.filter(([m]) => m.startsWith('persist failed')).length, 2, 'a new streak logs again');
+});
+
+for (const [name, breakIt] of [['am.restore', e => { e.am.restore = () => { throw new Error('bad ammo'); }; }], ['pu.restore', e => { const r = e.pu.restore.bind(e.pu); e.pu.restore = p => { r(p); throw new Error('bad pu'); }; }]]) {
+  test(`O9: a stored blob that makes ${name} throw leaves a fresh engine and one log line`, async () => {
+    const storage = mkStorage();
+    const src = new Engine({ writer: () => {}, storage, now: () => 1_000, log: () => {} });
+    src.gun = { name: 'ALPHA-FE30', tail: 'FE30' }; src.player = { player_id: 'p1', display: 'REAPER' }; src.matchId = 'm1'; src.hp = 40; src.alive = true;
+    src.pu.restore({ held: { id: 'x' }, overshield: null, seen: {}, osProtectUntil: 5 });
+    src._save();
+    const blob = JSON.parse(storage.getItem('brx.engine')); blob.phase = 'live'; blob.ammo = { 1: [3, 9] };
+    storage.setItem('brx.engine', JSON.stringify(blob));
+    const logs = [];
+    const fresh = new Engine({ writer: () => {}, storage: mkStorage(), now: () => 1_000, log: () => {} });
+    const eng = new Engine({ writer: () => {}, storage: { getItem: () => null, setItem() {}, removeItem() {} }, now: () => 1_000, log: m => logs.push(m) });
+    breakIt(eng); eng.storage = storage;
+    assert.doesNotThrow(() => eng._load());
+    await Promise.resolve();   // the line is emitted after the call, not during it
+    for (const k of ['gun', 'player', 'matchId', 'hp', 'alive', '_pendingPhase']) assert.deepEqual(eng[k], fresh[k], `${k} is as in a fresh engine`);
+    for (const k of ['acct', 'prevReserve', 'prevAmmo', 'altPtr']) assert.deepEqual(eng.am[k], fresh.am[k], `am.${k} is as in a fresh engine`);   // engine split (b): the account lives on `am`
+    assert.deepEqual(eng.pu.snapshot(), fresh.pu.snapshot(), 'power-up state is fresh');
+    assert.equal(logs.filter(m => m.startsWith('persisted context unreadable, starting fresh')).length, 1, logs.join('|'));
+  });
+}
+
+test('O9: a corrupt stored context logs after construction, so a log callback that reads the engine const does not hit its TDZ', async () => {
+  const storage = mkStorage(); storage.setItem('brx.engine', '{not json');
+  const lines = [];
+  const log = m => { lines.push([m, engine.matchId]); };   // app.js shape: reads `engine`, assigned only after `new Engine()` returns
+  let engine;
+  assert.doesNotThrow(() => { engine = new Engine({ writer: () => {}, storage, now: () => 1, log }); });
+  assert.deepEqual(lines, [], 'nothing during construction');
+  await Promise.resolve();
+  assert.equal(lines.length, 1);
+  assert.match(lines[0][0], /^persisted context unreadable, starting fresh/);
 });

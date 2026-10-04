@@ -22,7 +22,7 @@ import time
 import uuid
 from typing import Any, Callable
 
-from ..storage import home_dir
+from ..storage import atomic_write_text, home_dir
 from .types import Favourite, GamePick, MatchSettings, PIECE_KINDS, FAVOURITES_STORE_V
 
 log = logging.getLogger("brx.mc.favourites")
@@ -171,10 +171,7 @@ class FavouriteStore:
     def _save(self) -> None:
         if not self.path:
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"v": FAVOURITES_STORE_V, "favourites": self._rows}, indent=1))
-        tmp.replace(self.path)                                # atomic on POSIX + NTFS
+        atomic_write_text(self.path, json.dumps({"v": FAVOURITES_STORE_V, "favourites": self._rows}, indent=1))
 
     def _find_name(self, name: str, exclude_id: str | None = None) -> Favourite | None:
         return next((r for r in self._rows if r["name"].lower() == name.lower() and r["favourite_id"] != exclude_id), None)

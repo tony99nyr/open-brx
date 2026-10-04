@@ -2235,7 +2235,7 @@ KNOWN_UNMIRRORED = {
     "pu.lostEquip", "pu.onAltPressed", "pu.onAmmo", "pu.onAssumedSwap", "pu.onConfirmedSwap", "pu.onDeath",
     "pu.onHp", "pu.onRevive", "pu.onReviveStart", "pu.onSelect", "pu.onShieldFrame", "pu.onStations",
     "pu.overshield", "pu.overshieldPset", "pu.protectUntil", "pu.psetNow", "pu.psetWithShieldMax",
-    "pu.reconcileRearm", "pu.reequipInRearm", "pu.repairLostEquip", "pu.repairUnpulled", "pu.reset",
+    "pu.reconcileRearm", "pu.stunRearm", "pu.reequipInRearm", "pu.repairLostEquip", "pu.repairUnpulled", "pu.reset",
     "pu.restore", "pu.restoreRows", "pu.setPset", "pu.snapshot", "pu.spawnCard", "pu.swapCard", "pu.tick",
     "pu.tickAnnounce", "pu.view", "pu.puSpawnIndex", "pu.puSpawnAt", "pu.burstWithHeld",
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
