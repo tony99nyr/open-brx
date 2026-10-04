@@ -6459,7 +6459,7 @@ export class Engine {
   _puRearmRows(rows) {
     const h = this._puHeld; if (!h) return rows;
     this._acctWrote(h.slot, h.left, PU_RESERVE); this._prevAmmo[h.slot] = h.left;
-    return rows.map(f => f.startsWith(`$AMMO,${h.slot},`) ? `$AMMO,${h.slot},${h.left},${PU_RESERVE},1,*` : f);
+    return burstWithHeld(rows, h);
   }
 
   /** `$HP`: the overshield is gone once the shield is back to where it started (a stale pre-grant frame excepted). */
