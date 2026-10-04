@@ -6473,6 +6473,81 @@ export class Engine {
     else if (hs.rest && hs.in_play === 'team') this._write([hs.rest], 'team led');                     // no flash configured: just restore
   }
 
+  /** `_onHp` step: F354, the word this frame's damage belongs to. Sets `h.dl` (the last damaging word) and `h.hl` (the
+   *  word the damage is booked to). Reads only.
+   *
+   *  F354: the damage belongs to the last word that CAN do damage (`_dmgLatch`), not to a smoke or EMP word that
+   *  landed between that word and this `$HP` -- those move no pool, so this drop is never theirs. With no fresh
+   *  damaging word inside DEATH_LATCH_MS (its `$HIR` was lost) the raw latch still names the shooter, as before. The
+   *  gate is unchanged: a word of any kind within 1000 ms makes this drop a hit (stage.py `_last_hir_at` gate), so no
+   *  `hit_taken`, damage row or assist is lost when a no-pool word lands after a damaging word 1-2 s old. */
+  _hpDamageWord(h) {
+    const dl = this._dmgLatch;
+    h.dl = dl;
+    h.hl = dl && this.now() - dl.at <= C.DEATH_LATCH_MS ? dl : this.latch;
+  }
+
+  /** `_onHp` step: the hit. Returns early unless this frame is a hit: live and spawned, a word of any kind within
+   *  1000 ms, damage, no tutorial and not a poison echo. A hit emits the `hit_taken` fact, books the per-life ledger,
+   *  and (when it did not kill) says `hit_taken` and the pain grunt. Sets `h.hitWeapon` for the HUD moment.
+   *
+   *  `sensor` is $HIR tok1: 0-3 are ALL HEADSET sensors (it has four; 0 = front and 1 = back are bench-mapped, 2 and 3
+   *  are not), 4 = gun body. It was parsed and dropped, so MC could not see WHICH sensor caught a hit — answering that
+   *  took the phone's raw frame ring (field 2026-09-01). One field, and the question becomes readable live. */
+  _hpHitTaken(h) {
+    const { hl, dl, dmg, hp, hurtNow } = h;
+    if (!(this.phase === 'live' && this.spawned && hl && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial && !h.dotEcho)) return;
+    const prior = this._lastHitFact, now = this.now();
+    const shot_group = this._hpShotGroup(hl, dmg, prior, now);
+    const resolved = this._hpResolveWeapon(hl, hp, h.pools0);
+    h.hitWeapon = resolved && resolved.weapon_id != null ? { id: resolved.weapon_id, name: resolved.name, source: resolved.source }
+      : resolved && resolved.ambiguous ? { ambiguous: true, names: resolved.candidates.map(id => { const row = this.weaponRow(id); return (row && row.name) || id; }) }
+      : null;
+    this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: hl.shooter_num,
+      shooter_team: hl.shooter_team, dmg, ir_proto: hl.ir_proto, ir_subtype: hl.ir_subtype,
+      sensor: hl.sensor, shot_group, ...(resolved && !resolved.ambiguous && resolved.weapon_id != null ? { weapon_id: resolved.weapon_id } : {}) });
+    this._lastHitFact = { at: now, shooter_num: hl.shooter_num, shooter_team: hl.shooter_team, ir_proto: hl.ir_proto,
+      ir_subtype: hl.ir_subtype, crit: hl.crit, dmg, shot_group, ...(hl !== dl && this._nonDamaging(hl) ? { noPool: true } : {}) };   // A65: booked to a no-pool word (its damaging word was lost)
+    this.lastHitAt = this.now();
+    this._lifeBookHit(hl.shooter_num, hl.shooter_team, dmg, shot_group, resolved, { sensor: hl.sensor, crit: hl.crit });   // S56: the per-life "what hit me" ledger
+    // F57 (bench 2026-09-09, "the critical sounds are a bit bugged when it was at 1 red"): the hit that CROSSES the
+    // low-health threshold used to fire `low_health` AND the pain grunt in the same millisecond, and the gun plays
+    // one clip at a time, so they cut each other off -- exactly once per life, at the moment the warning is the
+    // whole point. The warning IS the reaction to that hit, so the grunt is suppressed on it (the A17 "never on
+    // the lethal hit" precedent: two cues, one speaker, the rarer one wins). The pain gate is stamped too, so a
+    // follow-up hit inside PAIN_GAP_MS cannot cut the warning short either; past the gap the grunt is back.
+    if (this.alive && hp > 0) { this._event('hit_taken'); if (hurtNow) this._lastPainAt = this.now(); else this._pain(dmg, hl.ir_proto, h.movedPool); }   // A11: a death is its own event; A15.3: our pain grunt by damage; A17: only when it reached HEALTH; F57: not on the low-health crossing
+  }
+
+  /** The hit's shot_group: the previous hit's group when this word is the second word of the same dual-emitter shot
+   *  (same shooter, protocol, subtype and crit, inside 150 ms, and the bundle's dual row's body then headset values),
+   *  else a new group. A new group consumes `_hitGroupSeq`. */
+  _hpShotGroup(hl, dmg, prior, now) {
+    const candidates = this._dualEmitters.filter(s => Number(s.proto) === hl.ir_proto && Number(s.subtype) === hl.ir_subtype);
+    const valuesMatch = !!candidates.find(s => Number(s.body) === prior?.dmg && Number(s.headset) === dmg);
+    const equalDual = candidates.find(s => Number(s.body) === Number(s.headset) && Number(s.body) === dmg
+      && prior && prior.dmg === dmg && now - prior.at <= 150 && Number(s.cycle_ms) > 150);
+    const paired = prior && now - prior.at <= 150 && prior.shooter_num === hl.shooter_num
+      && prior.ir_proto === hl.ir_proto && prior.ir_subtype === hl.ir_subtype
+      && prior.crit === hl.crit && (valuesMatch || !!equalDual);
+    return paired ? prior.shot_group : `${this._hitGroupEpoch}:${++this._hitGroupSeq}`;
+  }
+
+  /** S56 "what hit me": the weapon a hit's word names, or null. Resolved off THIS word's own `mag` -- a dual-emitter
+   *  pair's second word carries a different magnitude from the first (e.g. body vs headset), and the roster's `hir`
+   *  list covers both, so resolving per word rather than once per shot_group still converges on the one weapon. NEVER
+   *  guessed: an ambiguous resolution never reaches the fact (MC would rather show nothing than the wrong gun), only
+   *  the HUD's own "could be either of" line.
+   *  Integration pass 2026-09-23: on the killing blow the gun can report the victim's REMAINING pool in token 5
+   *  instead of the weapon's own value (the overkill clamp, protocol/brx-protocol.md `$HIR` token 5), and that
+   *  number can match some other catalogue weapon ("AMR · PICKUP"). The clamp is recognisable: token 5 equals the
+   *  whole pool held before the hit. Only then does the word keep just an exact loadout match; otherwise it takes
+   *  the weapon this shooter was already resolved to this life, else it names nothing. */
+  _hpResolveWeapon(hl, hp, pools0) {
+    const clamped = hp <= 0 && hl.mag === pools0.health + pools0.armor + pools0.shield;
+    return clamped ? this._lethalWeapon(hl.shooter_num, this._resolveHitWeapon(hl)) : this._resolveHitWeapon(hl);
+  }
+
   _onHp(hp, armor, shield, solicited = false) {
     this.pu.onHp();   // A56 polish M1: the pools a `$HIR` moved have been reported
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
@@ -6489,60 +6564,12 @@ export class Engine {
     const dotEcho = h.dotEcho;
     this._hpShield(h);
     this._hpLowHealth(h);
-    const hurtNow = h.hurtNow;
     let hitWeapon = null;   // S56 "what hit me": set inside the hit_taken block below, read by the HUD 'hit' moment further down
     this._hpHeadsetReassert(h);
-    // F354: the damage belongs to the last word that CAN do damage (`_dmgLatch`), not to a smoke or EMP word that
-    // landed between that word and this `$HP` -- those move no pool, so this drop is never theirs. With no fresh
-    // damaging word inside DEATH_LATCH_MS (its `$HIR` was lost) the raw latch still names the shooter, as before. The
-    // gate is unchanged: a word of any kind within 1000 ms makes this drop a hit (stage.py `_last_hir_at` gate), so no
-    // `hit_taken`, damage row or assist is lost when a no-pool word lands after a damaging word 1-2 s old.
-    const dl = this._dmgLatch;
-    const hl = dl && this.now() - dl.at <= C.DEATH_LATCH_MS ? dl : this.latch;
-    if (this.phase === 'live' && this.spawned && hl && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial && !dotEcho) {
-      // `sensor` is $HIR tok1: 0-3 are ALL HEADSET sensors (it has four; 0 = front and 1 = back are
-      // bench-mapped, 2 and 3 are not), 4 = gun body. It was parsed
-      // and dropped, so MC could not see WHICH sensor caught a hit — answering that took the phone's
-      // raw frame ring (field 2026-09-01). One field, and the question becomes readable live.
-      const prior = this._lastHitFact, now = this.now();
-      const candidates = this._dualEmitters.filter(s => Number(s.proto) === hl.ir_proto && Number(s.subtype) === hl.ir_subtype);
-      const valuesMatch = !!candidates.find(s => Number(s.body) === prior?.dmg && Number(s.headset) === dmg);
-      const equalDual = candidates.find(s => Number(s.body) === Number(s.headset) && Number(s.body) === dmg
-        && prior && prior.dmg === dmg && now - prior.at <= 150 && Number(s.cycle_ms) > 150);
-      const paired = prior && now - prior.at <= 150 && prior.shooter_num === hl.shooter_num
-        && prior.ir_proto === hl.ir_proto && prior.ir_subtype === hl.ir_subtype
-        && prior.crit === hl.crit && (valuesMatch || !!equalDual);
-      const shot_group = paired ? prior.shot_group : `${this._hitGroupEpoch}:${++this._hitGroupSeq}`;
-      // S56 "what hit me": resolved off THIS word's own `mag` -- a dual-emitter pair's second word carries a
-      // different magnitude from the first (e.g. body vs headset), and the roster's `hir` list covers both, so
-      // resolving per word rather than once per shot_group still converges on the one weapon. NEVER guessed:
-      // an ambiguous resolution never reaches the fact (MC would rather show nothing than the wrong gun), only
-      // the HUD's own "could be either of" line below.
-      // Integration pass 2026-09-23: on the killing blow the gun can report the victim's REMAINING pool in token 5
-      // instead of the weapon's own value (the overkill clamp, protocol/brx-protocol.md `$HIR` token 5), and that
-      // number can match some other catalogue weapon ("AMR · PICKUP"). The clamp is recognisable: token 5 equals the
-      // whole pool held before the hit. Only then does the word keep just an exact loadout match; otherwise it takes
-      // the weapon this shooter was already resolved to this life, else it names nothing.
-      const clamped = hp <= 0 && hl.mag === pools0.health + pools0.armor + pools0.shield;
-      const resolved = clamped ? this._lethalWeapon(hl.shooter_num, this._resolveHitWeapon(hl)) : this._resolveHitWeapon(hl);
-      hitWeapon = resolved && resolved.weapon_id != null ? { id: resolved.weapon_id, name: resolved.name, source: resolved.source }
-        : resolved && resolved.ambiguous ? { ambiguous: true, names: resolved.candidates.map(id => { const row = this.weaponRow(id); return (row && row.name) || id; }) }
-        : null;
-      this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: hl.shooter_num,
-        shooter_team: hl.shooter_team, dmg, ir_proto: hl.ir_proto, ir_subtype: hl.ir_subtype,
-        sensor: hl.sensor, shot_group, ...(resolved && !resolved.ambiguous && resolved.weapon_id != null ? { weapon_id: resolved.weapon_id } : {}) });
-      this._lastHitFact = { at: now, shooter_num: hl.shooter_num, shooter_team: hl.shooter_team, ir_proto: hl.ir_proto,
-        ir_subtype: hl.ir_subtype, crit: hl.crit, dmg, shot_group, ...(hl !== dl && this._nonDamaging(hl) ? { noPool: true } : {}) };   // A65: booked to a no-pool word (its damaging word was lost)
-      this.lastHitAt = this.now();
-      this._lifeBookHit(hl.shooter_num, hl.shooter_team, dmg, shot_group, resolved, { sensor: hl.sensor, crit: hl.crit });   // S56: the per-life "what hit me" ledger
-      // F57 (bench 2026-09-09, "the critical sounds are a bit bugged when it was at 1 red"): the hit that CROSSES the
-      // low-health threshold used to fire `low_health` AND the pain grunt in the same millisecond, and the gun plays
-      // one clip at a time, so they cut each other off -- exactly once per life, at the moment the warning is the
-      // whole point. The warning IS the reaction to that hit, so the grunt is suppressed on it (the A17 "never on
-      // the lethal hit" precedent: two cues, one speaker, the rarer one wins). The pain gate is stamped too, so a
-      // follow-up hit inside PAIN_GAP_MS cannot cut the warning short either; past the gap the grunt is back.
-      if (this.alive && hp > 0) { this._event('hit_taken'); if (hurtNow) this._lastPainAt = this.now(); else this._pain(dmg, hl.ir_proto, movedPool); }   // A11: a death is its own event; A15.3: our pain grunt by damage; A17: only when it reached HEALTH; F57: not on the low-health crossing
-    }
+    this._hpDamageWord(h);
+    this._hpHitTaken(h);
+    const { hl } = h;
+    hitWeapon = h.hitWeapon;
     // HUD moments. The gun's own LED strip cannot hold a steady colour in game (the firmware
     // animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries
     // the detailed feedback — it is the one surface we fully control. See experiment-log 2026-09-02.
