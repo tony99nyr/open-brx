@@ -9,14 +9,14 @@ Updated: 2026-10-04. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 74.** Desk 0 · bench 72 · decision 2.
+**MVP open: 75.** Desk 0 · bench 73 · decision 2.
 
 **MVP DESK (0),** a keyboard is enough:
 
-**MVP BENCH (72),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (73),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
 - 🟠 **F459** · **F453** · **F452** · **F349** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F437** · **F443** · **F444** · **F365** · **S57** · **F379** · **F457** · **F399** · **B21** · **F269** · **F272** · **F277** · **F226** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F237** · **F152** · **F340** · **F345** · **F311** · **F275** · **F231**
-- 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **S10**
+- 🟡 **F308** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F445** · **F446** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F292** · **F296** · **F294** · **F461** · **S10**
 - 🟢 **F339**
 
 **MVP DECISION (2),** awaiting Tony:
@@ -262,6 +262,8 @@ sheets follow, in the order `bench-plan.md` gives.
 - **F296 🟡 THE DOWN PATTERN STILL READS AS A HIT, EVEN SLOWED.** Tony misread the down animation as hit feedback during the office test: three single flashes (the native death blink), then our down-rearm loop giving four double flashes, which look like hit flashes. `0d58d92f` slowed the rearm cadence from `$HLOOP,2,750` to `$HLOOP,1,2500`, but that is a cadence change, not the LED-language redesign this needs: a down pattern that CANNOT be mistaken for a hit (slow, steady, dim; no flash bursts), per `led-language.md`. Bench-confirm whether the slower cadence alone reads as "down" now, or whether the LED language still needs the steady/dim treatment. `eyes` + `build`.
 
 - **F294 🟡 THE PHONE'S LAN SWEEP MISSED 192.168.0.55:8766 ON WSL.** The gun-connect network sweep (paused mid-connect by 0.4.4, F272's neighbour) scans `192.168.0.0/24` and did not find Mission Control at `192.168.0.55` while running on WSL. Check whether this is a WSL portproxy artefact (the address is reachable but the portproxy does not forward the probe) or a real sweep bug, and compare the same sweep run from the MacBook. `build` + `bench`. **→ 2026-10-03:** the sweep runs on the phone (`app/src/transport/discover.js`), not on MC. `6d734f05` says it reaches a WSL MC through the portproxy, and on 2026-10-02 a released phone rejoined with no typed address (F421). Desk: read the 2026-10-02 grey phone log for the sweep hit, and close the row if it is there. Otherwise add a sweep-only control to `bench-mac-2026-09-29.md` step 2. Owner brx3. `build` + `bench`.
+
+- **F461 🟡 BENCH: DOES THE GUN EVER DROP THE SPAWN FILL'S `$HP`?** The node now waits for the fill's answer with no time limit; a hit with the shield up and an unpaired damaging word inside 1 s is measured from the full shield. On a Shields spawn, log how often the fill's `$HP` is missing, and whether a hit can arrive before the gun applies the fill. `bench`.
 
 ### Later: outdoors and in the house
 
