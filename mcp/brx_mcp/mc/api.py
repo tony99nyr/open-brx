@@ -13,7 +13,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
-from starlette.routing import Mount, Route, WebSocketRoute
+from starlette.routing import BaseRoute, Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -203,7 +203,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return JSONResponse(rows)
 
     async def armory_list(_):
-        return JSONResponse(s.armory.list())
+        import asyncio
+        return JSONResponse(await asyncio.to_thread(s.armory.list))   # file lock + disk read: off the event loop
 
     async def voices(_):
         """The selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack and
@@ -622,6 +623,20 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         if not s.dismiss_departure(req.path_params["nid"]):
             return _err("NO DEPARTED STATION BY THAT ID: REFRESH ITEMS", 404)
         return JSONResponse({"ok": True})
+
+    async def dismiss_armory_corrupt(req):
+        """O2: DISMISS on the corrupt-armory banner. The flag is sticky until this is called (operator-token
+        gated like every non-GET). For a corrupt file it also moves the file aside (starting a fresh armory); a
+        failed move keeps the warning and returns 500. `dismissed` says whether there was a warning to clear."""
+        try:
+            # the file move may wait up to the inventory lock's timeout: keep it off the event loop
+            dismissed = await asyncio.to_thread(s.dismiss_armory_corrupt_io)
+        except Exception as e:
+            return _err(f"COULD NOT MOVE THE CORRUPT ARMORY ASIDE: {type(e).__name__}: {e}", 500)
+        if dismissed:
+            guns = await asyncio.to_thread(s._read_guns)     # the re-read may wait on the lock: off the loop
+            s.finish_armory_dismiss(guns if guns is not None else {})
+        return JSONResponse({"ok": True, "dismissed": dismissed})
 
     async def evict_node(req):
         nid = req.path_params["nid"]
@@ -1071,7 +1086,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                 return FileResponse(str(cand), media_type="application/vnd.android.package-archive", filename="openbrx.apk")
         return JSONResponse({"error": "no apk staged"}, status_code=404)
 
-    routes = [
+    routes: list[BaseRoute] = [
         Route("/api/state", state),
         Route("/api/presentation", presentation),
         Route("/openbrx.apk", apk),
@@ -1114,6 +1129,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/stations/{nid}/release", release_station, methods=["POST"]),
         Route("/api/stations/{nid}/departure", dismiss_departure, methods=["DELETE"]),
+        Route("/api/armory/corrupt/dismiss", dismiss_armory_corrupt, methods=["POST"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
         Route("/api/players/{pid}/operator", operator_action, methods=["POST"]),
         Route("/api/lobby/ready_all", ready_all, methods=["POST"]),

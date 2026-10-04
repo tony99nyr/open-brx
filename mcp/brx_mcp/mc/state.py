@@ -42,7 +42,7 @@ from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PH
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
                     SnapshotFeedRow, SlotRule, State, FailureView, NotSavingView, StationAssignment, StationDeparture, StationRestore, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
-                    StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
+                    StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView, RestoreFailedView,
                     StartNodeView, StartView, Stun, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
 
@@ -588,6 +588,7 @@ class Session:
         # looking at, and the Lobby then listed four players with two ghosts. `{at, players}` rides on
         # the state so the board can say "restored from <date>" beside a FRESH SESSION control.
         self.restored_from: RestoredFromView | None = None
+        self.restore_failed: RestoreFailedView | None = None   # O1: a session.json that could not be restored
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
@@ -889,9 +890,9 @@ class Session:
                     # A56 (M1): the powerup schedule of the match in play, so a restart keeps taken items taken.
                     **({"powerups": self._pu_sched} if self._pu_sched and self.in_play()
                        and self._pu_sched.get("match_id") == self.current_match_id() else {})}
-            tmp = self._persist_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(snap))
-            tmp.replace(self._persist_path)
+            # 0600: the snapshot holds the join secret. Atomic: a crash leaves the old file or the new one.
+            from ..storage import atomic_write_text
+            atomic_write_text(self._persist_path, json.dumps(snap), mode=0o600)
             if self._snapshot_failures.ok():
                 self._notify_listeners()
         except Exception as e:
@@ -1039,6 +1040,27 @@ class Session:
                 out["owner"] = owner
         return out
 
+    _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match", "stations",
+                      "nodes", "_station_id_of", "game_no", "_game_no_started", "_range_epoch",
+                      "_stations_unlocked", "join_secret", "_ended", "_resume_pending", "_pu_restored",
+                      "_match_end_t", "_sync_pending", "restored_from", "_station_departures")
+
+    def _keep_bad_snapshot(self) -> Path | None:
+        """O1: move an unrestorable session.json aside (never delete it, never leave it where the next
+        persist overwrites it). Returns the kept path, or None when even the rename failed."""
+        path = self._persist_path
+        if path is None:
+            return None
+        from ..storage import move_aside_exclusive
+        kept = move_aside_exclusive(path, "bad")
+        if kept is None:
+            import logging; logging.getLogger("brx.mc").error("could not move the bad session snapshot aside")
+        else:
+            import contextlib, os
+            with contextlib.suppress(OSError):
+                os.chmod(kept, 0o600)     # it holds the join secret; a file from an older build may be 0644
+        return kept
+
     def restore_snapshot(self) -> int:
         """Load a prior session.json (if any). Returns the number of players restored.
 
@@ -1050,6 +1072,8 @@ class Session:
         """
         if not self._persist_path or not self._persist_path.exists():
             return 0
+        # O1: everything the restore may assign, copied first, so a failure part-way leaves NOTHING partial.
+        before = {a: copy.deepcopy(getattr(self, a)) for a in self._RESTORE_ATTRS}
         try:
             snap = json.loads(self._persist_path.read_text())
             was_demo = bool(snap.get("demo", False))
@@ -1212,13 +1236,23 @@ class Session:
             if self._sync_pending:
                 self._validate()     # F401: LOAD's sync warning shows at once after a restart, not on the next edit
             return len(self.players)
-        except Exception:
+        except Exception as exc:
             import logging; logging.getLogger("brx.mc").exception("session snapshot restore failed — starting clean")
-            # Polish review: a failure AFTER `self._resume_pending` was set above (e.g. `_repair_player_nums`
-            # or `_gun_index` raising on a half-written file) left it holding a half-restored match dict, so
-            # the NEXT `resume_match()` call -- the store attaches moments later -- would try to resume a
-            # match this restore never actually finished loading. "Starting clean" must mean clean.
-            self._resume_pending = None
+            for attr, value in before.items():     # nothing half-restored: every assigned field goes back
+                setattr(self, attr, value)
+            try:
+                self._render_join()
+                self._validate()
+            except Exception:
+                logging.getLogger("brx.mc").exception("rebuilding derived state after a failed restore also failed")
+            kept = self._keep_bad_snapshot()
+            if kept is None:
+                # the bad file is still at the live path: saving now would overwrite the only copy
+                logging.getLogger("brx.mc").error("session saving is OFF for this run: %s could not be moved aside",
+                                                  self._persist_path)
+                self._persist_path = None
+            self.restore_failed = {"reason": f"{type(exc).__name__}: {exc}"[:200],
+                                   "kept": str(kept) if kept else None}
             return 0
     def _repair_player_nums(self) -> None:
         """Every restored player gets a UNIQUE 1..63 `player_num`, whatever the file said.
@@ -1331,13 +1365,21 @@ class Session:
         if self._archive_view() != before:
             self._notify_listeners()
 
-    def _gun_index(self):
-        self.guns: dict[str, dict] = {}
+    def _read_guns(self) -> dict[str, dict] | None:
+        """The gun index from the armory, or None when the read failed or hit a corrupt file: the caller
+        keeps the index it has (a failed read is not an empty armory)."""
         try:
-            for r in self.armory.list():
-                self.guns[r["gun_id"]] = r
+            rows = self.armory.list()
         except Exception:
-            self.guns = {}
+            return None
+        if not getattr(self.armory, "last_read_ok", True):
+            return None
+        return {r["gun_id"]: r for r in rows}
+
+    def _gun_index(self):
+        got = self._read_guns()
+        if got is not None or not hasattr(self, "guns"):
+            self.guns: dict[str, dict] = got or {}
 
     def _attach_net(self):
         n = self.net
@@ -3881,6 +3923,31 @@ class Session:
         self._validate()
         self._changed()
         return True
+
+    def dismiss_armory_corrupt(self) -> bool:
+        """O2: the operator's DISMISS on the corrupt-armory banner. False when there was nothing to dismiss
+        (or the armory has no such flag: fakes). For a corrupt file this moves it aside (the only place that
+        happens) and re-reads the now-fresh armory; a failed move raises and the warning stays."""
+        if not self.dismiss_armory_corrupt_io():
+            return False
+        self.finish_armory_dismiss()
+        return True
+
+    def dismiss_armory_corrupt_io(self) -> bool:
+        """The file half of DISMISS (it may wait on the inventory lock): safe to run in a worker thread. It touches
+        only the armory, never Session state."""
+        dismiss = getattr(self.armory, "dismiss_corrupt", None)
+        return bool(dismiss and dismiss())
+
+    def finish_armory_dismiss(self, guns: dict[str, dict] | None = None) -> None:
+        """The state half of DISMISS: run on the event loop, after `dismiss_armory_corrupt_io` returned True.
+        `guns` is the fresh armory read in the worker thread (so the loop never waits on the inventory lock);
+        without it (the sync path) this reads it here."""
+        if guns is None:
+            self._gun_index()
+        else:
+            self.guns = guns
+        self._changed()
 
     def _auto_station_id(self, nid: str) -> int:
         """F364: the id MC gives a station assigned with no `id`. A station keeps the id it already holds, then the
@@ -7167,8 +7234,11 @@ class Session:
                 "go": all(r["status"] not in ("red", "waiting") for r in board) and bool(board) and not roster_faults}
 
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:
+        import asyncio
         self.scan_rows = await self.armory.scan(duration_s)
-        self._gun_index()
+        got = await asyncio.to_thread(self._read_guns)     # the inventory read takes a file lock: never on the loop
+        if got is not None:                                # a failed or corrupt read never replaces the index
+            self.guns = got
         self._changed()
         return self.scan_rows
 
@@ -8661,6 +8731,10 @@ class Session:
             for nv in self.nodes.values():
                 nv.pop("player_id", None)
             self.restored_from = None      # F142: FRESH SESSION is the answer to the restore notice
+            # O1: ...and to the failed-restore notice, unless saving is still OFF (the bad file could not be
+            # moved aside): that fact must stay on the board for the rest of the run.
+            if self.restore_failed and self.restore_failed.get("kept") is not None:
+                self.restore_failed = None
             # F364: a fresh session hands ids out from 1 again; a station still assigned keeps its own.
             self._station_id_of = {n: a["id"] for n, st in self.stations.items() if (a := st.get("assigned"))}
             self._station_departures = {}          # bench 2026-10-02: NEXT MATCH keeps them; a FRESH SESSION does not
@@ -8864,6 +8938,11 @@ class Session:
             state["last_match"] = self.last_match
         if self.restored_from is not None:
             state["restored_from"] = self.restored_from
+        if self.restore_failed is not None:
+            state["restore_failed"] = self.restore_failed
+        armory_corrupt = getattr(self.armory, "corrupt", None)   # O2: LocalArmory only; fakes have none
+        if armory_corrupt:
+            state["armory_corrupt"] = armory_corrupt
         bench_volume = getattr(self.compiler, "bench_volume", None)   # `--bench-volume`: the compiler owns it
         if bench_volume is not None:
             state["bench_volume"] = bench_volume

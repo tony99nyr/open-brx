@@ -1,7 +1,7 @@
 // beacon.js — the utility-item UUID codec and the presence tracker (docs/spec/utility.md).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeUuid, decodeUuid, decodeAdvert, Presence, TEAM_ANY, PLAYER_STATE, EXIT_GRACE_MS, SIGHT_RECENT_MAX } from '../src/beacon.js';
+import { encodeUuid, decodeUuid, decodeAdvert, Presence, TEAM_ANY, PLAYER_STATE, EXIT_GRACE_MS, SIGHT_RECENT_MAX, SIGHT_WINDOW_MS, thinWindow, timeWeightedMedian, medianOf } from '../src/beacon.js';
 
 test('station uuid round-trips every field, and is a well-formed 128-bit uuid', () => {
   const u = encodeUuid({ role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58 });
@@ -199,19 +199,22 @@ test('presence: body shadowing of up to 3.5 s never drops a player standing insi
   }
 });
 
-// P-L1 (review 2026-10-03): the sighting window holds the last 64 adverts on the phone and on the Stick
-// (presence.h SIGHT_RECENT_MAX), so a flood reads the same circle edge on both.
-test('presence: the sighting median reads the last 64 adverts in the window, as the Stick does', () => {
-  const sighted = (below, above) => {
+// P-L1 (review 2026-10-03) + F452(b): the sighting window holds at most 64 adverts on the phone and on the Stick
+// (presence.h SIGHT_RECENT_MAX), thinned evenly across time when it is full, so it always represents the whole 2 s and
+// a dense phone reads what the same signal at half the rate reads.
+test('presence: a full sighting window is thinned across the 2 s, so a dense phone and its half-rate twin agree', () => {
+  const sighted = (below, above, step) => {
     const p = new Presence({ defaultThreshold: -74, dwellMs: 800 });
     const adv = encodeUuid({ role: 'player', id: 5, team: 0, state: PLAYER_STATE.alive, game: 0 });
     let t = 0;
-    for (let i = 0; i < below; i++, t += 20) p.observe([adv], -90, t);
-    for (let i = 0; i < above; i++, t += 20) p.observe([adv], -50, t);   // 80 adverts in 1.6 s: all inside the 2 s window
+    for (let i = 0; i < below; i++, t += step) p.observe([adv], -90, t);
+    for (let i = 0; i < above; i++, t += step) p.observe([adv], -50, t);   // all inside the 2 s window
     return p.players()[0].sightedAt != null;
   };
-  assert.equal(sighted(40, 40), true, 'the last 64 hold 40 above: sighted (an unbounded window holds 40 of 80, a tie at the lower middle)');
-  assert.equal(sighted(50, 30), false, 'the last 64 hold only 30 above: not sighted (a window of 24 would hold 24 above)');
+  assert.equal(sighted(44, 36, 20), false, '36 of 80 are strong: out (the old drop-the-oldest rule read 36 of the last 64: in)');
+  assert.equal(sighted(22, 18, 40), false, 'the half-rate twin of the same signal: out');
+  assert.equal(sighted(36, 44, 20), true, '44 of 80 are strong: in');
+  assert.equal(sighted(18, 22, 40), true, 'the half-rate twin: in');
   assert.equal(SIGHT_RECENT_MAX, 64);
 });
 
@@ -254,9 +257,87 @@ test('presence: the exit reads the window median, not the EMA (the Stick runs th
   for (let t = 0; t <= 9000; t += 250) {
     if (t <= 2000) p.observe([adv], -60, t); else if (t % 2500 === 0) p.observe([adv], -84, t);
     p.tick(t);
-    if (t === 7500) at7500 = p.players()[0].present;
-    if (t === 8000) at8000 = p.players()[0].present;
+    if (t === 8250) at7500 = p.players()[0].present;
+    if (t === 8500) at8000 = p.players()[0].present;
   }
-  assert.equal(at7500, true, 'inside the grace, which starts at 3.75 s, once the dense -60 run no longer holds the 2 s window median');
+  assert.equal(at7500, true, 'inside the grace, which starts at 4.5 s: the last advert level (-60) holds until that advert leaves the 2 s window, then the last raw sample (-84) is the level (F452(b) round 3)');
   assert.equal(at8000, false, 'out once the grace has run (the EMA would hold it until about 11.5 s)');
+});
+
+// F452(b): a full sighting window is thinned evenly across time, never trimmed from the old end. The same vectors are
+// asserted by hardware/m5sticks3/test/test_presence.cpp (`sight_thin_index`), so the two stay one rule.
+test('thinWindow: a uniform stream thinned to 64 keeps the whole 2 s at near-uniform spacing', () => {
+  let a = [];
+  for (let k = 0; k < 100; k++) {
+    const before = a.length ? a[a.length - 1].t : null;
+    a = thinWindow([...a, { t: k * 20, rssi: -60 }]);
+    assert.equal(a[a.length - 1].t, k * 20, 'the newest sample is never dropped');
+    assert.equal(a[0].t, 0, 'the oldest sample is never dropped');
+    assert.ok(before === null || a.length <= SIGHT_RECENT_MAX);
+  }
+  assert.equal(a.length, 64);
+  assert.equal(a.reduce((m, x) => m + x.t, 0), 63720);   // the exact kept set, shared with the C++ test
+  const gaps = a.slice(1).map((x, i) => x.t - a[i].t);
+  assert.ok(Math.max(...gaps) <= 2 * 20 && Math.min(...gaps) >= 20, `gaps ${Math.min(...gaps)}..${Math.max(...gaps)} ms`);
+  assert.ok(a[63].t - a[0].t >= SIGHT_WINDOW_MS - 40);
+});
+
+test('thinWindow: a burst plus a sparse tail keeps the tail', () => {
+  const burst = Array.from({ length: 100 }, (_, k) => ({ t: k * 5, rssi: -60 }));
+  const tail = Array.from({ length: 6 }, (_, k) => ({ t: 500 + k * 250, rssi: -60 }));
+  const a = thinWindow([...burst, ...tail]);
+  assert.equal(a.length, 64);
+  assert.equal(a.filter(x => x.t >= 500).length, 6, 'every tail sample survives: dropping one would open the biggest hole');
+  assert.equal(a[0].t, 0);
+  assert.equal(a[a.length - 1].t, 1750);
+  assert.equal(a.reduce((m, x) => m + x.t, 0), 20370);
+});
+
+test('thinWindow: under the bound it changes nothing, and it never mutates its input', () => {
+  const s = Array.from({ length: 10 }, (_, k) => ({ t: k * 100, rssi: -70 }));
+  const copy = s.map(x => ({ ...x }));
+  assert.deepEqual(thinWindow(s), copy);
+  assert.deepEqual(thinWindow(Array.from({ length: 80 }, (_, k) => ({ t: k * 20, rssi: -70 })), 64).length, 64);
+  assert.deepEqual(s, copy);
+});
+
+// F452(b): the sighting window is read as a TIME-WEIGHTED median. hardware/m5sticks3/test/test_presence.cpp asserts the
+// same vectors against `time_weighted_median`.
+test('timeWeightedMedian: a weak burst with a longer strong stretch reads strong, whatever the advert count', () => {
+  const burst = Array.from({ length: 100 }, (_, k) => ({ t: k * 5, rssi: -90 }));
+  const tail = Array.from({ length: 6 }, (_, k) => ({ t: 500 + k * 250, rssi: -50 }));
+  assert.equal(timeWeightedMedian([...burst, ...tail], 1750), -50, '100 weak votes cover 0.5 s, 6 strong cover 1.25 s');
+  assert.equal(timeWeightedMedian(thinWindow([...burst, ...tail]), 1750), -50, 'and the 64 kept samples say the same');
+  const sparse = [...Array.from({ length: 5 }, (_, k) => ({ t: k * 100, rssi: -90 })), ...tail];
+  assert.equal(timeWeightedMedian(sparse, 1750), -50);
+  // the plain median of the 106 votes is weak: the number of adverts is not what the window says
+  assert.equal(medianOf([...burst, ...tail].map(x => x.rssi)), -90);
+});
+
+test('timeWeightedMedian: the end adverts cover half a gap at an observe, the middle ones a full gap', () => {
+  const three = [{ t: 0, rssi: -50 }, { t: 100, rssi: -90 }, { t: 200, rssi: -60 }];
+  assert.equal(timeWeightedMedian(three, 200), -90, 'covers 50 / 100 / 50 ms: the middle one reaches half the total first');
+  assert.equal(timeWeightedMedian(three, 250), -60, 'last heard 50 ms ago: covers 50 / 100 / 100 ms');
+  // equal spacing and equal covers (a flat run) is the plain median of a flat run
+  const flat = Array.from({ length: 9 }, (_, k) => ({ t: k * 100, rssi: -70 }));
+  assert.equal(timeWeightedMedian(flat, 800), -70);
+});
+
+test('timeWeightedMedian: every cover is clipped to the window, so the newest gets only the time up to now', () => {
+  // Codex, F452(b) round 2: a weak advert at 0 and a strong one 1.5 s later: each covers 750 ms, the tie falls to the
+  // lower one: weak. (A newest cover that ran past now gave strong.)
+  assert.equal(timeWeightedMedian([{ t: 0, rssi: -90 }, { t: 1500, rssi: -50 }], 1500), -90);
+  // Opus: at a 1.4 s interval the two adverts each cover 700 ms and the tie falls to the lower one.
+  assert.equal(timeWeightedMedian([{ t: 0, rssi: -88 }, { t: 1400, rssi: -72 }], 1400), -88);
+  assert.equal(timeWeightedMedian([{ t: 0, rssi: -88 }, { t: 1300, rssi: -72 }], 1300), -88);
+});
+
+test('timeWeightedMedian: one sample is itself, the newest holds its level until now, one instant falls back to the plain median', () => {
+  assert.equal(timeWeightedMedian([{ t: 500, rssi: -61 }], 1900), -61);
+  assert.equal(timeWeightedMedian([], 1000), null);
+  const three = [{ t: 0, rssi: -50 }, { t: 500, rssi: -50 }, { t: 1000, rssi: -90 }];
+  assert.equal(timeWeightedMedian(three, 1100), -50, 'just heard: the two strong ones cover more of the window');
+  assert.equal(timeWeightedMedian(three, 1900), -90, 'the weak sample has held for 1.15 s of the 2 s window by now');
+  const instant = [{ t: 50, rssi: -90 }, { t: 50, rssi: -50 }, { t: 50, rssi: -60 }];
+  assert.equal(timeWeightedMedian(instant, 50), -60);
 });

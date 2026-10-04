@@ -151,6 +151,8 @@ export function Armory() {
 
   return (
     <div className="screen" style={{ maxWidth: 1380, margin: '0 auto' }}>
+      <RestoreFailedBanner />
+      <ArmoryCorruptBanner />
       <RestoredBanner />
       <ScreenHeader kicker="[ A1 // GEAR CHECK ]" title="Readiness Board" right={
         <>
@@ -334,6 +336,45 @@ function useBackhaul(): { control: ReactNode; errLine: ReactNode } {
     );
   }
   return { control, errLine };
+}
+
+/** O1 (operator review 2026-10-03): a session.json that could not be restored used to leave one terminal
+ *  line and a half roster. MC now restores nothing partial and moves the file aside; this says so. */
+function RestoreFailedBanner() {
+  const { state } = useStore();
+  const f = state?.restore_failed;
+  if (!f) return null;
+  const detail = `${f.reason} · ${f.kept ? `KEPT AT ${f.kept}` : 'THE FILE COULD NOT BE MOVED ASIDE'}`;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <Alert id="armory-restore-failed-banner" testid="restore-failed-banner" size={12}
+        what={f.kept ? 'SESSION FILE COULD NOT BE RESTORED, THE ROSTER STARTED EMPTY' : 'SESSION FILE COULD NOT BE RESTORED OR MOVED ASIDE, THE ROSTER STARTED EMPTY'}
+        act="REBUILD THE ROSTER" />
+      <div data-testid="restore-failed-detail" style={{ font: F.mono(500, 11), color: T.dim, marginTop: 4, overflowWrap: 'anywhere' }}>{detail}</div>
+    </div>
+  );
+}
+
+/** O2: armory.json is corrupt. MC leaves it in place (backup copy beside it) and shows whatever guns it can still find, which is
+ *  NOT the operator's armory: say so, with where the file went. Absent on a healthy armory and on an older server. */
+function ArmoryCorruptBanner() {
+  const { state, run, api } = useStore();
+  const c = state?.armory_corrupt;
+  if (!c) return null;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {/* children, not what/act: the helper upper-cases words and the path must stay copyable as it is */}
+      <Alert id="armory-corrupt-banner" testid="armory-corrupt-banner" size={12}>
+        {c.unreadable ? 'ARMORY FILE COULD NOT BE READ: GUNS BELOW MAY NOT BE YOUR FULL ARMORY' : null}
+        {c.unreadable ? null : <>ARMORY FILE IS CORRUPT: {c.kept ? <>BACKUP AT <span style={{ textTransform: 'none' }}>{c.kept}</span></> : 'NO BACKUP COULD BE MADE'}: GUNS BELOW ARE NOT YOUR FULL ARMORY AND NO GUN CAN BE SAVED UNTIL YOU DISMISS. DISMISS MOVES THE CORRUPT FILE ASIDE AND STARTS A FRESH ARMORY</>}
+      </Alert>
+      <div data-testid="armory-corrupt-detail" style={{ font: F.mono(500, 11), color: T.dim, marginTop: 4, overflowWrap: 'anywhere' }}>{c.error}</div>
+      <span data-testid="armory-corrupt-dismiss">
+        <GhostButton size={11} pad="6px 12px" onClick={async () => { await run(() => api.dismissArmoryCorrupt()); }}
+          title="moves the corrupt file aside and starts a fresh armory; the warning stays until you dismiss it">DISMISS</GhostButton>
+      </span>
+    </div>
+  );
 }
 
 /** F142 (field 2026-09-12, ISSUE 11/11b) — a `--demo` session persisted into `~/.brx-mcp/` and was

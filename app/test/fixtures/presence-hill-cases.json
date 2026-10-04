@@ -73,11 +73,11 @@
     },
     {
       "name": "dense noise that only touches the threshold never enters",
-      "why": "Review round 2: at 4 adverts a second the window holds several adverts, so its median is the low reading and a peak at the threshold does not enter. Every other advert reads -88, and the peak is -74, a dB above the threshold. This is NOT a rate-independent guarantee: a phone sending one advert per 2.5 s enters on the same peaks (the F452 cases at the end of the file).",
+      "why": "Review round 2: at 4 adverts a second the window holds several adverts, so its time-weighted median is the low reading and a peak at the threshold does not enter. Two adverts in three read -88 and the third is -74, a dB above the threshold. This is NOT a rate-independent guarantee: a phone sending one advert per 2.5 s enters on the same peaks (the F452(a) case). (Time-weighting makes a signal that is above the threshold half the time a coin toss that depends on phase, as the plain median did at odd counts, so the case uses a peak one third of the time.)",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 10000,
-      "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-88, -74]}],
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-88, -88, -74]}],
       "expect": [
         {"t": 2000, "present": {"1": false}, "in": {"1": false}, "hill": {"team": 255, "state": [], "value": 0}},
         {"t": 6000, "present": {"1": false}, "in": {"1": false}},
@@ -229,14 +229,110 @@
     },
     {
       "name": "the exit reads the 2 s window median, not the lagging average",
-      "why": "Round 2: a dense player at -60 turns sparse at -84 (one advert per 2.5 s). The exit must not wait for the per-advert average to cross: present drops once the debounced window median has stayed under the band for the grace, about 4 s after the dense run stops holding the window.",
+      "why": "Round 2: a dense player at -60 turns sparse at -84 (one advert per 2.5 s). The exit must not wait for the per-advert average to cross: present drops once the debounced exit level has stayed under the band for the grace. The level is the time-weighted median as of the last advert (F452(b) round 3); once that advert is older than the 2 s window it is the last raw sample, -84 from 4500 ms, so the player leaves 4 s later, at 8500 ms. The average would hold it to about 11.5 s.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 2500, "to_ms": 12000, "every_ms": 2500, "rssi": [-84]}],
       "expect": [
-        {"t": 7500, "present": {"1": true}},
-        {"t": 8000, "present": {"1": false}}
+        {"t": 8250, "present": {"1": true}},
+        {"t": 8500, "present": {"1": false}}
+      ]
+    },
+    {
+      "name": "the same signal at a third rate (twice as dense) gives the same answer too",
+      "why": "F452(b): the 64-advert bound used to drop the oldest, so the denser the advertiser the shorter its window. Players 1, 2 and 3 send the same signal at one advert per 20, 40 and 10 ms (80, 40 and 160 adverts in 1.6 s: 55% at -90, then -50). All three must read the same answer, out, before the dwell.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
+      "until_ms": 2000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 860, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 880, "to_ms": 1580, "every_ms": 20, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 840, "every_ms": 40, "rssi": [-90]}, {"id": 2, "from_ms": 880, "to_ms": 1560, "every_ms": 40, "rssi": [-50]}, {"id": 3, "from_ms": 0, "to_ms": 870, "every_ms": 10, "rssi": [-90]}, {"id": 3, "from_ms": 880, "to_ms": 1590, "every_ms": 10, "rssi": [-50]}],
+      "expect": [
+        {"t": 1750, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}}
+      ]
+    },
+    {
+      "name": "a full window never drops the newest advert, so a late run of strong adverts still enters",
+      "why": "F452(b): the thinning removes an old sample, never the one just heard. 76 adverts at -90 fill the window (every 20 ms to 1500), then strong adverts keep coming. The dwell is 60 s, so only the sighting window can put the player in the circle. Out while the window is all low; in once strong adverts are most of it. A window that dropped the newest sample when full could never turn.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 4000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 1500, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 1520, "to_ms": 3500, "every_ms": 20, "rssi": [-50]}],
+      "expect": [
+        {"t": 1500, "in": {"1": false}},
+        {"t": 3500, "in": {"1": true}}
+      ]
+    },
+    {
+      "name": "a dense weak burst then a strong tail enters like its sparse twin",
+      "why": "F452(b): each advert used to be one vote, so a burst outvoted a longer stretch of signal. Player 1 (dense) sends 100 weak adverts in 0-495 ms (one every 5 ms) then 6 strong ones at 500-1750 ms. Player 2 (sparse) sends 5 weak ones (every 100 ms to 400) then the same 6 strong ones. Weak covers about 0.5 s and strong about 1.25 s of the 2 s window for both, so the time-weighted median is strong and both are in. One vote each said out for the dense phone (58 weak to 6 strong after thinning) and in for the sparse one. The dwell is 60 s, so only the sighting window can put either in the circle.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 2000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 495, "every_ms": 5, "rssi": [-90]}, {"id": 1, "from_ms": 500, "to_ms": 1750, "every_ms": 250, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 400, "every_ms": 100, "rssi": [-90]}, {"id": 2, "from_ms": 500, "to_ms": 1750, "every_ms": 250, "rssi": [-50]}],
+      "expect": [
+        {"t": 1750, "same_in": ["1", "2"], "in": {"1": true, "2": true}}
+      ]
+    },
+    {
+      "name": "the exit time does not depend on advert rate: a dense and a sparse phone leave together",
+      "why": "F452(b): both phones stand at -60 (present), then the signal falls to -90 at 10000 ms. Player 1 sends every 10 ms and player 2 every 250 ms. The exit level is a time-weighted median, so each reads weak once weak covers half the 2 s window and both leave after the same 4 s grace. The sparse phone's last strong advert is 240 ms older, so it leaves one tick (250 ms) before the dense one: that is the pinned skew, 14750 ms, and no more than one tick.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 9990, "every_ms": 10, "rssi": [-60]}, {"id": 1, "from_ms": 10000, "to_ms": 20000, "every_ms": 10, "rssi": [-90]}, {"id": 2, "from_ms": 0, "to_ms": 9750, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 20000, "every_ms": 250, "rssi": [-90]}],
+      "expect": [
+        {"t": 14500, "present": {"1": true, "2": true}},
+        {"t": 14750, "present": {"1": true, "2": false}},
+        {"t": 15000, "present": {"1": false, "2": false}}
+      ]
+    },
+    {
+      "name": "the exit time does not depend on the shape of the last stretch: a strong burst then weak tail leaves like its sparse twin",
+      "why": "F452(b): the mirror of the entry case. Both phones stand at -60 until 10000 ms. Then player 1 (dense) sends 100 strong adverts in 10000-10495 (every 5 ms) and player 2 (sparse) 5 (every 100 ms), and both send the same weak adverts every 250 ms from 10500 on. A burst of strong votes used to hold the dense phone in longer. By time both have the same strong stretch and the same weak stretch, so present drops on the same tick.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 9750, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 10000, "to_ms": 10495, "every_ms": 5, "rssi": [-60]}, {"id": 1, "from_ms": 10500, "to_ms": 20000, "every_ms": 250, "rssi": [-90]}, {"id": 2, "from_ms": 0, "to_ms": 9750, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 10400, "every_ms": 100, "rssi": [-60]}, {"id": 2, "from_ms": 10500, "to_ms": 20000, "every_ms": 250, "rssi": [-90]}],
+      "expect": [
+        {"t": 15250, "present": {"1": true, "2": true}},
+        {"t": 15500, "present": {"1": false, "2": false}}
+      ]
+    },
+    {
+      "name": "one weak advert then a strong one 1.5 s later is not a sighting",
+      "why": "F452(b) round 2: every cover lies inside the 2 s window: the oldest starts at its own time and the newest ends at `now`. At the strong advert (t=1500) the weak one at 0 and the strong one each cover 750 ms, and the tie falls to the lower reading: no sighting. A newest cover that ran past `now` gave the strong advert 1500 ms and a sighting. The dwell is 60 s, so only the sighting window can put the player in the circle.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 3000,
+      "sightings": [{"t": 0, "id": 1, "rssi": -90}, {"t": 1500, "id": 1, "rssi": -50}],
+      "expect": [
+        {"t": 1500, "in": {"1": false}},
+        {"t": 3000, "in": {"1": false}}
+      ]
+    },
+    {
+      "name": "a noise peak 3 dB over the threshold stays out at 100 ms, 1.3 s and 1.4 s intervals alike",
+      "why": "F452(b) round 2: one advert in three is a -72 peak against a -75 threshold, the rest -88. At 1.4 s the window holds two adverts (a peak and a weak one, either way round), each covering 700 ms, and the tie falls to the weak one, as at 100 ms and at 1.3 s. A cover that ran past `now` (or began before its own time) gave the peak 1400 ms and a sighting at 1.4 s only.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 100, "rssi": [-88, -88, -72]}, {"id": 2, "from_ms": 0, "to_ms": 20000, "every_ms": 1300, "rssi": [-88, -88, -72]}, {"id": 3, "from_ms": 0, "to_ms": 20000, "every_ms": 1400, "rssi": [-88, -88, -72]}],
+      "expect": [
+        {"t": 5000, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}},
+        {"t": 10000, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}},
+        {"t": 20000, "same_in": ["1", "2", "3"], "in": {"1": false, "2": false, "3": false}}
+      ]
+    },
+    {
+      "name": "noise peaks after a strong stand leave within 2 s of each other at 100 ms and at 1 s",
+      "why": "F452(b) round 3: both phones stand at -65 for 6 s, then one advert in three is a -74 peak (1 dB over the -75 threshold) and the rest are -88. The exit level is the time-weighted median as of each advert, so the exit time does not depend on the advert rate. Measured (periodic peaks): 5.5 s after the change at 100 ms, 4.0 s at 1 s. The tolerance is 2 s: both are in the circle at 9750 ms, before the earlier leaver, and both are out at 11750 ms, after the later one. Read at the tick, the newest advert alone was the level at 1 s and that phone never left.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 14000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 5900, "every_ms": 100, "rssi": [-65]}, {"id": 1, "from_ms": 6000, "to_ms": 14000, "every_ms": 100, "rssi": [-88, -88, -74]}, {"id": 2, "from_ms": 0, "to_ms": 5000, "every_ms": 1000, "rssi": [-65]}, {"id": 2, "from_ms": 6000, "to_ms": 14000, "every_ms": 1000, "rssi": [-88, -88, -74]}],
+      "expect": [
+        {"t": 9750, "in": {"1": true, "2": true}},
+        {"t": 11750, "in": {"1": false, "2": false}}
       ]
     },
     {
@@ -275,12 +371,12 @@
       ]
     },
     {
-      "name": "the same alternation at 250 ms and at 1.25 s stays out",
-      "why": "F452 control: a -88/-74 alternation (peak 1 dB over the -75 threshold) at 4 adverts a second and at 0.8 a second never enters, because each window holds more than the peak. The next case is the same signal at one advert per 2.5 s.",
+      "name": "the same noise peaks (one advert in three) at 250 ms and at 1.25 s stay out",
+      "why": "F452 control: one advert in three is a -74 peak (1 dB over the -75 threshold), the rest -88, at 4 adverts a second and at 0.8 a second. It never enters, because the peak covers under half the window. The next case is the same signal at one advert per 2.5 s.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 20000,
-      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 250, "rssi": [-88, -74]}, {"id": 2, "from_ms": 0, "to_ms": 20000, "every_ms": 1250, "rssi": [-88, -74]}],
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 250, "rssi": [-88, -88, -74]}, {"id": 2, "from_ms": 0, "to_ms": 20000, "every_ms": 1250, "rssi": [-88, -88, -74]}],
       "expect": [
         {"t": 5000, "in": {"1": false, "2": false}},
         {"t": 10000, "in": {"1": false, "2": false}},
@@ -289,28 +385,29 @@
     },
     {
       "name": "RULE: the same alternation at one advert per 2.5 s must stay out too [F452]",
-      "why": "The circle edge must not depend on advert rate (F440). A -88/-74 alternation stays out at 250 ms and 1.25 s. At 2.5 s each window holds one advert, the -74 one is a sighting, and the phone is in the circle on every peak. Expected to FAIL today.",
+      "why": "The circle edge must not depend on advert rate (F440). One advert in three is a -74 peak (1 dB over the -75 threshold) and the rest read -88. That stays out at 250 ms and 1.25 s (the control case before this one). At 2.5 s each window holds one advert, so a peak is a sighting and the phone is in the circle for 4 s after each peak. Expected to FAIL today.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 20000,
-      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 2500, "rssi": [-88, -74]}],
-      "known_fail": {"why": "F452: a sparse phone enters on a single peak the dense phone's window median rejects; remove known_fail when the edge is rate-independent", "at": [2500, 5000, 7500, 10000, 20000]},
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 2500, "rssi": [-88, -88, -74]}],
+      "known_fail": {"why": "F452(a): kept by Tony's decision 2026-10-02 (commit 2504d9b0): the sparse-phone edge noise stays until bench 10c's ladder measures real fading", "at": [5000, 7500, 12500, 15000, 20000]},
       "expect": [
         {"t": 2500, "in": {"1": false}},
         {"t": 5000, "in": {"1": false}},
         {"t": 7500, "in": {"1": false}},
         {"t": 10000, "in": {"1": false}},
+        {"t": 12500, "in": {"1": false}},
+        {"t": 15000, "in": {"1": false}},
         {"t": 20000, "in": {"1": false}}
       ]
     },
     {
-      "name": "RULE: the same signal at half the advert rate gives the same answer, so a 64-advert cap cannot decide entry [F452]",
-      "why": "Player 1 sends 44 adverts at -90 then 36 at -50 inside 1.6 s (one every 20 ms). Player 2 sends the same signal at half the rate (22 low, 18 high, one every 40 ms). The rule is one answer for both: out. Neither full window is a tie (44 of 80 and 22 of 40 are low, so both middle readings are low), so the answer does not hang on the median's tie rule. Only the 64-advert bound differs: it drops 16 of the dense phone's lows, leaves 28 low and 36 high, and lets it in at t=1750. (Both are in a little later through the dwell, a real 0.8 s above the threshold, so the checkpoint is before that.) Expected to FAIL today at t=1750.",
+      "name": "the same signal at half the advert rate gives the same answer, so the 64-advert cap cannot decide entry",
+      "why": "Player 1 sends 44 adverts at -90 then 36 at -50 inside 1.6 s (one every 20 ms). Player 2 sends the same signal at half the rate (22 low, 18 high, one every 40 ms). The rule is one answer for both: out. Neither full window is a tie (44 of 80 and 22 of 40 are low, so both middle readings are low), so the answer does not hang on the median's tie rule. F452(b): when the window is full it is thinned evenly across time, so the dense phone's window still spans the whole 2 s and reads the same median. (Both are in a little later through the dwell, a real 0.8 s above the threshold, so the checkpoint is before that.)",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 2000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 860, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 880, "to_ms": 1580, "every_ms": 20, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 840, "every_ms": 40, "rssi": [-90]}, {"id": 2, "from_ms": 880, "to_ms": 1560, "every_ms": 40, "rssi": [-50]}],
-      "known_fail": {"why": "F452: the SIGHT_RECENT_MAX bound gives a dense phone a different edge from the same signal at half the rate; remove known_fail when both read alike", "at": [1750]},
       "expect": [
         {"t": 1750, "same_in": ["1", "2"], "in": {"1": false, "2": false}}
       ]

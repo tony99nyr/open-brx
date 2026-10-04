@@ -10,7 +10,7 @@
 
 // ---- generated wire shapes (contract.gen.ts) ----
 export type {
-  ArmoryRecord, BleId, ConfigView, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
+  ArmoryCorruptView, ArmoryRecord, BleId, ConfigView, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
   LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkEffectsResolved, PerkView, Player, Preflight, ReadinessRow,
   ReadinessSnapshot, Respawn, RosterEntry, RosterWeapon, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
   Stun, Recoil, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,
@@ -22,7 +22,7 @@ export type {
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
-  NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
+  NoticesView, RestoredFromView, RestoreFailedView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
   TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell,
   RangeEdit, StationRange, StationDeparture, StationRestore,
   FailureView, NotSavingView, JoinErrorView, OutboxLostReport,
@@ -181,6 +181,8 @@ export interface Api {
   releaseStation(node_id: string): Promise<{ ok: boolean }>;
   /** Polish r1 M2(b): DISMISS on an ITEMS away line, `DELETE /api/stations/{node_id}/departure`. 404 for an unknown one. */
   dismissDeparture(node_id: string): Promise<{ ok: boolean }>;
+  /** O2: DISMISS on the corrupt-armory banner, `POST /api/armory/corrupt/dismiss`. The warning is sticky until this. */
+  dismissArmoryCorrupt(): Promise<{ ok: boolean; dismissed: boolean }>;
   tryout(id: string, weapon_id: string): Promise<void>;
   rangeVerdicts(): Promise<Record<string, { weapon_id: string; verdict: 'pass' | 'issue'; note: string; t: number }>>;
   rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;

@@ -1,6 +1,7 @@
 """Session snapshot: an MC restart must not dump the roster (Tony, 2026-08-26 — three restarts
 mid-setup each left phones on WAITING FOR KIT-OUT with every gun ghosted NOT SEEN)."""
 import json, pathlib, sys, tempfile
+from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from test_mc_state import T0, mk
 
@@ -594,3 +595,140 @@ def test_restart_from_an_armed_or_live_match_resumes_it_and_never_sends_a_config
             assert "config" not in node and "frames" not in node
             assert (node["start"]["match_id"], node["start"]["seq"]) == (info["match_id"], info["seq"])
         assert not [k for (_n, k, _b) in net2.pushed if k in ("config", "start")]
+
+
+def _fresh(path):
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    s._persist_path = path
+    return s
+
+
+def _written_snapshot(tmp_dir):
+    path = tmp_dir / "session.json"
+    s = _fresh(path)
+    s.add_player("ALPHA", team_id="blue")
+    s._persist_last = 0.0
+    s._persist()
+    return path
+
+
+def test_o1_a_restore_that_raises_midway_keeps_the_file_and_restores_nothing_partial():
+    """Operator review O1 (2026-10-03): players and feed were assigned before a later step raised, the half
+    roster stayed, and the next change persisted over the only copy. The bad file is moved aside, nothing
+    partial survives, and the board says so."""
+    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+    path = _written_snapshot(tmp_dir)
+    snap = json.loads(path.read_text())
+    snap["config"] = ["not", "a", "config"]            # raises AFTER players and feed were assigned
+    path.write_text(json.dumps(snap))
+    original = path.read_text()
+
+    s = _fresh(path)
+    before_players = dict(s.players)
+    assert s.restore_snapshot() == 0
+    assert s.players == before_players, "a half-restored roster survived a failed restore"
+    assert s.feed == [] and s.standby == {}
+    kept = list(tmp_dir.glob("session.json.bad-*"))
+    assert len(kept) == 1 and kept[0].read_text() == original, "the bad snapshot was not kept aside intact"
+    assert not path.exists(), "the live path must be free so the next persist cannot overwrite the kept copy"
+    failed = s.snapshot()["restore_failed"]
+    assert failed["kept"] == str(kept[0]) and failed["reason"]
+
+    s.add_player("BRAVO", team_id="red")
+    s._persist_last = 0.0
+    s._persist()
+    assert kept[0].read_text() == original, "a later persist touched the kept copy"
+
+
+def test_o1_an_unparseable_file_is_kept_aside_too():
+    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+    path = tmp_dir / "session.json"
+    path.write_text("{not json")
+    s = _fresh(path)
+    assert s.restore_snapshot() == 0
+    kept = list(tmp_dir.glob("session.json.bad-*"))
+    assert len(kept) == 1 and kept[0].read_text() == "{not json"
+    assert s.snapshot()["restore_failed"]["kept"] == str(kept[0])
+
+
+def test_o1_a_clean_restore_reports_no_failure_and_fresh_session_clears_the_notice():
+    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+    path = _written_snapshot(tmp_dir)
+    s = _fresh(path)
+    assert s.restore_snapshot() == 3 and "restore_failed" not in s.snapshot()
+    path.write_text("{not json")
+    s2 = _fresh(path)
+    s2.restore_snapshot()
+    assert "restore_failed" in s2.snapshot()
+    s2.new_session(keep_roster=False)
+    assert "restore_failed" not in s2.snapshot()
+
+
+def test_o1_when_the_bad_file_cannot_be_moved_aside_saving_is_switched_off():
+    """Otherwise the next persist overwrites the only copy of the night's roster."""
+    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+    path = tmp_dir / "session.json"
+    path.write_text("{not json")
+    s = _fresh(path)
+    with mock.patch.object(type(s), "_keep_bad_snapshot", lambda self: None):
+        assert s.restore_snapshot() == 0
+    assert s._persist_path is None
+    assert s.snapshot()["restore_failed"]["kept"] is None
+    s.add_player("BRAVO", team_id="red")
+    s._persist_last = 0.0
+    s._persist()
+    assert path.read_text() == "{not json", "a persist overwrote the only copy"
+
+
+def test_o1_fresh_session_keeps_the_notice_while_saving_is_still_off():
+    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+    path = tmp_dir / "session.json"
+    path.write_text("{not json")
+    s = _fresh(path)
+    with mock.patch.object(type(s), "_keep_bad_snapshot", lambda self: None):
+        s.restore_snapshot()
+    s.new_session(keep_roster=False)
+    assert s.snapshot()["restore_failed"]["kept"] is None
+
+
+def test_o1_rollback_list_covers_every_field_restore_assigns():
+    """O1: a failed restore rolls back every field `restore_snapshot` assigns. A field added to the restore later
+    (brx3's `_station_departures`, 2026-10-04, was the first to slip through) must join `_RESTORE_ATTRS`, or a
+    failure leaves it half-restored. `_persist_path` and `restore_failed` are set BY the failure path on purpose."""
+    import inspect, re
+    from brx_mcp.mc import state as st
+    src = inspect.getsource(st.Session.restore_snapshot)
+    assigned = set(re.findall(r"self\.([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^\]]*\])?\s*(?:=|\.update\(|\.clear\(|\.append\(|\.setdefault\()", src))
+    missing = assigned - set(st.Session._RESTORE_ATTRS) - {"_persist_path", "restore_failed"}
+    assert not missing, f"restore_snapshot assigns {sorted(missing)} but a failed restore would not roll them back"
+
+
+def test_o1_the_kept_name_is_reserved_exclusively_and_a_taken_name_is_never_overwritten():
+    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+    path = tmp_dir / "session.json"
+    path.write_text("{not json")
+    s = _fresh(path)
+    stamp_ns = 1_700_000_000_123_000_000
+    taken = tmp_dir / "session.json.bad-20231114T221320123"      # the name that stamp resolves to
+    taken.write_text("someone else's file")
+    with mock.patch("time.time_ns", return_value=stamp_ns):
+        assert s.restore_snapshot() == 0
+    kept = s.snapshot()["restore_failed"]["kept"]
+    assert kept and kept != str(taken)
+    assert pathlib.Path(kept).read_text() == "{not json" and taken.read_text() == "someone else's file"
+
+
+def test_r5_session_snapshot_is_written_0600():
+    """Review round 5: session.json holds the join secret, so it is written owner-only (POSIX)."""
+    import os, sys
+    if sys.platform == "win32":
+        return                                   # POSIX file modes only
+    tmp_path = pathlib.Path(tempfile.mkdtemp())
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    s._persist_path = tmp_path / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    assert (tmp_path / "session.json").exists()
+    assert (os.stat(tmp_path / "session.json").st_mode & 0o777) == 0o600
