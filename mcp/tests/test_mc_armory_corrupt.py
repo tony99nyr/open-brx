@@ -35,7 +35,7 @@ def test_armory_corrupt_is_in_state_after_a_corrupt_read_and_cleared_by_a_good_o
     with mock.patch.object(_uc, "load_inventory", side_effect=_uc.InventoryCorrupt(pathlib.Path("/h/armory.json"), kept, "ValueError: bad")):
         assert s.armory.list() == []
     assert s.snapshot()["armory_corrupt"] == {"kept": str(kept), "error": "ValueError: bad"}
-    # the file is gone now, so the next read is a plain empty armory: still not the real one
+    # a later empty read (e.g. the file was removed by hand) is still not the real armory
     with mock.patch.object(_uc, "load_inventory", return_value={}):
         s.armory.list()
     assert "armory_corrupt" in s.snapshot()
@@ -92,30 +92,8 @@ def test_a_held_inventory_lock_does_not_block_the_event_loop_during_a_scan():
     assert rows and rows[0]["name"] == "G1-AABB"
 
 
-@_iso
-def test_a_corrupt_file_hit_by_correlate_during_a_scan_is_still_reported():
-    """Review r2 HIGH: correlate() moves the file aside, so load_inventory then sees none; the flag must be set from correlate."""
-    import asyncio, tempfile, types
-    from brx_mcp import storage as _st
-
-    class _Mgr:
-        async def scan(self, _d):
-            return [{"name": "G1-AABB", "address": "AA:BB", "has_uart_service": True}]
-    base = pathlib.Path(tempfile.mkdtemp())
-    (base / "armory.json").write_text("{corrupt", encoding="utf-8")
-    a = LocalArmory()
-    with mock.patch.object(_st, "BASE_DIR", base), mock.patch.dict(sys.modules, {"brx_mcp.ble": types.SimpleNamespace(ConnectionManager=_Mgr)}):
-        asyncio.run(a.scan(1))
-    assert a.corrupt and a.corrupt["kept"] and "armory.json.bad-" in a.corrupt["kept"]
 
 
-@_iso
-def test_an_armory_that_kept_changing_is_reported_as_unreadable_not_empty():
-    s = _session()
-    with mock.patch.object(_uc, "load_inventory", side_effect=_uc.InventoryUnstable("armory.json kept changing while it was read")):
-        assert s.armory.list() == []
-    c = s.snapshot()["armory_corrupt"]
-    assert c["unreadable"] is True and c["kept"] is None
 
 
 @_iso
@@ -126,7 +104,7 @@ def test_the_dismiss_route_clears_the_flag_and_is_token_gated():
         return
     from brx_mcp.mc.api import create_app
     s = _session()
-    s.armory.corrupt = {"kept": None, "error": "x"}
+    s.armory.corrupt = {"kept": None, "error": "x", "unreadable": True}
     c = TestClient(create_app(s, token="tok"))
     assert c.post("/api/armory/corrupt/dismiss").status_code == 401
     assert "armory_corrupt" in c.get("/api/state").json()
@@ -203,3 +181,121 @@ def test_a_quarantine_warning_survives_a_restart_until_dismissed():
     assert b.dismiss_corrupt() is True
     assert not (base / "armory.json.corrupt-notice").exists()
     assert LocalArmory().corrupt is None
+
+
+def _bad_file(base, data=b"{corrupt"):
+    (base / "armory.json").write_bytes(data)
+    return base / "armory.json"
+
+
+@_iso
+def test_a_corrupt_read_keeps_serving_the_last_good_inventory_with_the_sticky_warning():
+    from brx_mcp import storage as _st
+    base = _st.BASE_DIR
+    _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "G1"})
+    s = _session()
+    assert [r["gun_id"] for r in s.armory.list()] == ["S1"]
+    p = _bad_file(base)
+    assert [r["gun_id"] for r in s.armory.list()] == ["S1"]          # last good, not empty
+    assert p.read_bytes() == b"{corrupt"                               # the read never moved it
+    c = s.snapshot()["armory_corrupt"]
+    assert c["kept"] and "armory.json.bad-" in c["kept"] and "unreadable" not in c
+    assert s.armory.last_read_ok is False
+
+
+@_iso
+def test_a_corrupt_armory_never_empties_the_session_gun_index_on_scan():
+    import asyncio, types
+    from brx_mcp import storage as _st
+
+    class _Mgr:
+        async def scan(self, _d):
+            return []
+    base = _st.BASE_DIR
+    _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "G1"})
+    s = _session()
+    s.guns = s._read_guns()
+    assert "S1" in s.guns
+    s.armory._last_good = None                     # worst case: a fresh MC with nothing cached
+    _bad_file(base)
+    with mock.patch.dict(sys.modules, {"brx_mcp.ble": types.SimpleNamespace(ConnectionManager=_Mgr)}):
+        asyncio.run(s.scan(1))
+    assert "S1" in s.guns and s.snapshot()["armory_corrupt"]["kept"]
+
+
+@_iso
+def test_a_corrupt_file_hit_by_correlate_during_a_scan_is_reported_and_left_alone():
+    import asyncio, types
+    from brx_mcp import storage as _st
+
+    class _Mgr:
+        async def scan(self, _d):
+            return [{"name": "G1-AABB", "address": "AA:BB", "has_uart_service": True}]
+    p = _bad_file(_st.BASE_DIR)
+    a = LocalArmory()
+    with mock.patch.dict(sys.modules, {"brx_mcp.ble": types.SimpleNamespace(ConnectionManager=_Mgr)}):
+        rows = asyncio.run(a.scan(1))
+    assert a.corrupt and "armory.json.bad-" in a.corrupt["kept"]
+    assert p.read_bytes() == b"{corrupt" and rows[0]["identity"] == "unknown"
+
+
+@_iso
+def test_a_good_armory_writes_no_notice():
+    from brx_mcp import storage as _st
+    _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "G1"})
+    a = LocalArmory()
+    a.list()
+    assert a.corrupt is None and not _uc.corrupt_notice_path().exists()
+
+
+@_iso
+def test_dismiss_moves_the_corrupt_file_aside_and_the_guns_page_is_fresh():
+    from brx_mcp import storage as _st
+    base = _st.BASE_DIR
+    s = _session()
+    p = _bad_file(base)
+    s.armory.list()
+    assert s.snapshot()["armory_corrupt"]
+    assert s.dismiss_armory_corrupt() is True
+    assert not p.exists() and len(list(base.glob("armory.json.dismissed-*"))) == 1
+    assert "armory_corrupt" not in s.snapshot() and not _uc.corrupt_notice_path().exists()
+    _uc.add_to_inventory({"serial_head_pin": "S9", "gun_name": "G9"})      # writes work again
+    assert [r["gun_id"] for r in s.armory.list()] == ["S9"]
+
+
+@_iso
+def test_dismiss_of_a_file_that_became_valid_clears_the_warning_and_keeps_the_file():
+    from brx_mcp import storage as _st
+    base = _st.BASE_DIR
+    s = _session()
+    p = _bad_file(base)
+    s.armory.list()
+    p.write_text('{"S1": {"gun_name": "G1"}}', encoding="utf-8")
+    assert s.dismiss_armory_corrupt() is True
+    assert p.exists() and not list(base.glob("armory.json.dismissed-*"))
+    assert "armory_corrupt" not in s.snapshot()
+
+
+@_iso
+def test_a_failed_dismiss_keeps_the_warning_and_the_route_reports_the_error():
+    try:
+        from starlette.testclient import TestClient
+    except Exception:
+        return
+    from brx_mcp import storage as _st
+    from brx_mcp.mc.api import create_app
+    base = _st.BASE_DIR
+    s = _session()
+    p = _bad_file(base)
+    s.armory.list()
+    c = TestClient(create_app(s, token="tok"))
+
+    def deny(src, dst):
+        raise PermissionError("locked")
+    with mock.patch("os.replace", deny), mock.patch.object(_st, "_REPLACE_BUDGET_S", 0.05):
+        r = c.post("/api/armory/corrupt/dismiss", headers={"Authorization": "Bearer tok"})
+    assert r.status_code == 500 and "COULD NOT MOVE" in r.json()["error"]
+    assert p.read_bytes() == b"{corrupt" and "armory_corrupt" in s.snapshot()
+    assert _uc.corrupt_notice_path().exists()
+    r = c.post("/api/armory/corrupt/dismiss", headers={"Authorization": "Bearer tok"})
+    assert r.status_code == 200 and not p.exists()

@@ -1969,7 +1969,7 @@ export interface RestoreFailedView {
 export interface ArmoryCorruptView {
   kept: string | null;
   error: string;
-  /** true: armory.json kept changing under the re-read, nothing was moved aside */
+  /** true: armory.json could not be read at all (transient; the next good read clears it) */
   unreadable?: boolean;
 }
 
@@ -2017,7 +2017,7 @@ export interface State {
   store_errors?: number;
   /** O1: session.json could not be restored; kept aside */
   restore_failed?: RestoreFailedView;
-  /** O2: armory.json was corrupt, moved aside; the armory shown is NOT the full one. STICKY: ABSENT only until the operator dismisses it (POST /api/armory/corrupt/dismiss) */
+  /** O2: armory.json is corrupt (left in place, backup copy at `kept`); the armory shown is NOT the full one. STICKY: ABSENT only until the operator dismisses it (POST /api/armory/corrupt/dismiss) */
   armory_corrupt?: ArmoryCorruptView;
   game?: GameAnnouncementView;
   sync?: SyncView;

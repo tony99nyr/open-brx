@@ -13,7 +13,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
-from starlette.routing import Mount, Route, WebSocketRoute
+from starlette.routing import BaseRoute, Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -616,8 +616,16 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def dismiss_armory_corrupt(req):
         """O2: DISMISS on the corrupt-armory banner. The flag is sticky until this is called (operator-token
-        gated like every non-GET). Idempotent: `dismissed` says whether there was a warning to clear."""
-        return JSONResponse({"ok": True, "dismissed": s.dismiss_armory_corrupt()})
+        gated like every non-GET). For a corrupt file it also moves the file aside (starting a fresh armory); a
+        failed move keeps the warning and returns 500. `dismissed` says whether there was a warning to clear."""
+        try:
+            # the file move may wait up to the inventory lock's timeout: keep it off the event loop
+            dismissed = await asyncio.to_thread(s.dismiss_armory_corrupt_io)
+        except Exception as e:
+            return _err(f"COULD NOT MOVE THE CORRUPT ARMORY ASIDE: {type(e).__name__}: {e}", 500)
+        if dismissed:
+            s.finish_armory_dismiss()
+        return JSONResponse({"ok": True, "dismissed": dismissed})
 
     async def evict_node(req):
         nid = req.path_params["nid"]
@@ -1067,7 +1075,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                 return FileResponse(str(cand), media_type="application/vnd.android.package-archive", filename="openbrx.apk")
         return JSONResponse({"error": "no apk staged"}, status_code=404)
 
-    routes = [
+    routes: list[BaseRoute] = [
         Route("/api/state", state),
         Route("/api/presentation", presentation),
         Route("/openbrx.apk", apk),

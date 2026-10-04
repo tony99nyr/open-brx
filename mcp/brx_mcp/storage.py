@@ -125,24 +125,11 @@ def _replace_with_retry(src, dst, budget_s: float | None = None) -> None:
             delay = min(delay * 2, 0.1)
 
 
-class MoveAsideRaced(Exception):
-    """`move_aside_exclusive(expect=...)` found different bytes in the live file than the caller validated.
-    Nothing was quarantined: the live file is back in place (or was replaced by a newer one); re-read it."""
-
-
-def move_aside_exclusive(path: Path, label: str = "bad", budget_s: float | None = None,
-                         expect: bytes | None = None) -> Path | None:
+def move_aside_exclusive(path: Path, label: str = "bad", budget_s: float | None = None) -> Path | None:
     """Move `path` to `<name>.<label>-<UTC stamp with ms>[-N]` without ever overwriting an existing file:
-    the name is reserved with an exclusive create first. Returns the new path, or None when the move failed
-    (the original is left where it was).
-
-    Without `expect` the file is renamed over the placeholder. With `expect` (the exact bytes the caller
-    validated and rejected) those bytes are written into the reserved name FIRST, so a diagnosis always has
-    the bad bytes. The live file is then set aside only if a final re-read still equals `expect`; otherwise
-    it is left alone and MoveAsideRaced is raised (the reserved copy is removed). The set-aside itself is a
-    rename to a scratch name that is verified against `expect` before it is dropped, and put back if it
-    differs. Residual: a non-locking external editor that replaces the file in the instant between that
-    rename and the put-back can still lose its write to the scratch name (kept as `.raced`, not deleted)."""
+    the name is reserved with an exclusive create first, then the file is renamed over the placeholder (a
+    rename keeps the file's mode). Returns the new path, or None when the move failed (the original is
+    left where it was)."""
     import contextlib, os, time
     ns = time.time_ns()
     stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime(ns // 10**9)) + f"{ns // 10**6 % 1000:03d}"
@@ -150,47 +137,20 @@ def move_aside_exclusive(path: Path, label: str = "bad", budget_s: float | None 
     while True:
         kept = path.with_name(f"{path.name}.{label}-{stamp}" + (f"-{n}" if n else ""))
         try:
-            with open(kept, "xb") as fh:
-                if expect is not None:
-                    fh.write(expect)
+            with open(kept, "xb"):
+                pass
             break
         except FileExistsError:
             n += 1
         except OSError:
             return None
-    if expect is None:
-        try:
-            _replace_with_retry(path, kept, budget_s)     # same bounded PermissionError retry as atomic_write_text
-        except OSError:
-            with contextlib.suppress(OSError):
-                os.unlink(kept)
-            return None
-        return kept
-    scratch = kept.with_name(kept.name + ".moving")
     try:
-        try:
-            if path.read_bytes() != expect:
-                raise MoveAsideRaced(str(path))
-        except FileNotFoundError:
-            raise MoveAsideRaced(str(path)) from None
-        _replace_with_retry(path, scratch, budget_s)
-        if scratch.read_bytes() == expect:
-            os.unlink(scratch)
-            return kept
-        # a replacement slipped in after the compare: put it back, never drop it
-        if not path.exists():
-            os.replace(scratch, path)
-        else:
-            os.replace(scratch, kept.with_name(kept.name + ".raced"))
-        raise MoveAsideRaced(str(path))
-    except MoveAsideRaced:
-        with contextlib.suppress(OSError):
-            os.unlink(kept)
-        raise
+        _replace_with_retry(path, kept, budget_s)     # same bounded PermissionError retry as atomic_write_text
     except OSError:
         with contextlib.suppress(OSError):
             os.unlink(kept)
         return None
+    return kept
 
 
 def capture_path(label: str) -> Path:

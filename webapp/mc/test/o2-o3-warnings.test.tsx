@@ -43,8 +43,8 @@ describe('O2 · armory_corrupt banner', () => {
     const b = m.find('[data-testid="armory-corrupt-banner"]');
     expect(b.length).toBe(1);
     expect(b[0].getAttribute('data-sev')).toBe('red');
-    expect(m.text()).toContain('ARMORY FILE WAS CORRUPT');
-    expect(m.text()).toContain('MOVED TO /h/armory.json.bad-20261004T010203');
+    expect(m.text()).toContain('ARMORY FILE IS CORRUPT');
+    expect(m.text()).toContain('BACKUP AT /h/armory.json.bad-20261004T010203');
     expect(m.text()).toContain('GUNS BELOW ARE NOT YOUR FULL ARMORY');
     expect(m.text()).toContain('JSONDecodeError: bad');
     m.unmount();

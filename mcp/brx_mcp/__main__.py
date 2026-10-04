@@ -1345,7 +1345,11 @@ def _armory() -> None:
     except Exception as e:  # noqa: BLE001 — no BLE here is fine; just skip correlation
         print(f"# (skipped BLE correlate: {type(e).__name__})", file=sys.stderr)
 
-    inv = load_inventory()
+    try:
+        inv = load_inventory()
+    except InventoryCorrupt as e:
+        print(f"# {e}", file=sys.stderr)
+        return
     if not inv:
         print("armory inventory empty — cable a tagger and re-run `armory`.")
         return

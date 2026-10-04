@@ -1258,14 +1258,21 @@ class Session:
         except Exception:   # a store error must never lose a fact the node has already pruned
             import logging; logging.getLogger("brx.mc").exception("store.log failed (fact still scored in memory)")
 
-    def _read_guns(self) -> dict[str, dict]:
+    def _read_guns(self) -> dict[str, dict] | None:
+        """The gun index from the armory, or None when the read failed or hit a corrupt file: the caller
+        keeps the index it has (a failed read is not an empty armory)."""
         try:
-            return {r["gun_id"]: r for r in self.armory.list()}
+            rows = self.armory.list()
         except Exception:
-            return {}
+            return None
+        if not getattr(self.armory, "last_read_ok", True):
+            return None
+        return {r["gun_id"]: r for r in rows}
 
     def _gun_index(self):
-        self.guns: dict[str, dict] = self._read_guns()
+        got = self._read_guns()
+        if got is not None or not hasattr(self, "guns"):
+            self.guns: dict[str, dict] = got or {}
 
     def _attach_net(self):
         n = self.net
@@ -3727,12 +3734,23 @@ class Session:
 
     def dismiss_armory_corrupt(self) -> bool:
         """O2: the operator's DISMISS on the corrupt-armory banner. False when there was nothing to dismiss
-        (or the armory has no such flag: fakes). Never touches the moved-aside file."""
-        dismiss = getattr(self.armory, "dismiss_corrupt", None)
-        if not dismiss or not dismiss():
+        (or the armory has no such flag: fakes). For a corrupt file this moves it aside (the only place that
+        happens) and re-reads the now-fresh armory; a failed move raises and the warning stays."""
+        if not self.dismiss_armory_corrupt_io():
             return False
-        self._changed()
+        self.finish_armory_dismiss()
         return True
+
+    def dismiss_armory_corrupt_io(self) -> bool:
+        """The file half of DISMISS (it may wait on the inventory lock): safe to run in a worker thread. It touches
+        only the armory, never Session state."""
+        dismiss = getattr(self.armory, "dismiss_corrupt", None)
+        return bool(dismiss and dismiss())
+
+    def finish_armory_dismiss(self) -> None:
+        """The state half of DISMISS: run on the event loop, after `dismiss_armory_corrupt_io` returned True."""
+        self._gun_index()
+        self._changed()
 
     def _auto_station_id(self, nid: str) -> int:
         """F364: the id MC gives a station assigned with no `id`. A station keeps the id it already holds, then the
@@ -6994,7 +7012,9 @@ class Session:
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:
         import asyncio
         self.scan_rows = await self.armory.scan(duration_s)
-        self.guns = await asyncio.to_thread(self._read_guns)     # the inventory read takes a file lock: never on the loop
+        got = await asyncio.to_thread(self._read_guns)     # the inventory read takes a file lock: never on the loop
+        if got is not None:                                # a failed or corrupt read never replaces the index
+            self.guns = got
         self._changed()
         return self.scan_rows
 

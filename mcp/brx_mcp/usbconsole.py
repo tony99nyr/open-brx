@@ -164,21 +164,53 @@ def inventory_path() -> Path:
 
 
 class InventoryCorrupt(Exception):
-    """armory.json could not be read as a JSON object. The file was moved to `kept` (never deleted, never
-    left where the next write would replace it), so no merge can turn the whole armory into one gun."""
+    """armory.json could not be read as a JSON object of objects. The live file is LEFT IN PLACE (a read never
+    moves it); `kept` is an exact 0600 copy of the bad bytes (None when the copy could not be made). Every
+    read-merge-write refuses while the live file is corrupt, so no merge can turn the armory into one gun.
+    Only the operator's DISMISS (`dismiss_corrupt_inventory`) moves the file aside."""
 
     def __init__(self, path: Path, kept: Optional[Path], error: str):
         self.path, self.kept, self.error = path, kept, error
-        where = f"kept at {kept}" if kept else "could not be moved aside"
-        super().__init__(f"armory inventory {path} is corrupt ({error}); the file was {where}. "
-                         f"Restore it by hand or re-run `brx-mcp usb-query` for each gun.")
+        where = f"a copy is kept at {kept}" if kept else "no backup copy could be made"
+        super().__init__(f"armory inventory {path} is corrupt ({error}); {where}. Writes are refused until the "
+                         f"file is fixed or dismissed in the console (DISMISS moves it aside and starts a fresh armory).")
 
 
-def _keep_corrupt_inventory(p: Path, raw: bytes) -> Optional[Path]:
-    """Quarantine `p`, saving exactly `raw` (the bytes that failed validation) under the reserved name.
-    Raises storage.MoveAsideRaced when the live file no longer holds `raw`."""
-    from .storage import move_aside_exclusive
-    return move_aside_exclusive(p, "bad", expect=raw)
+def _backup_corrupt_inventory(p: Path, raw: bytes) -> Optional[Path]:
+    """Save an exact copy of `raw` (the bytes that failed validation) beside `p`, mode 0600 (it holds headset
+    PINs). The live file is never touched. One backup per distinct content: the name carries a digest of the
+    bytes, and an existing backup with identical bytes is reused, so repeated reads do not pile up copies.
+    The name is reserved with an exclusive create (never overwrites). None when the copy could not be made."""
+    import hashlib
+    import os
+    digest = hashlib.sha256(raw).hexdigest()[:12]
+    try:
+        for old in sorted(p.parent.glob(f"{p.name}.bad-*-{digest}*")):
+            with contextlib.suppress(OSError):
+                if old.read_bytes() == raw:
+                    return old
+        ns = time.time_ns()
+        stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime(ns // 10**9)) + f"{ns // 10**6 % 1000:03d}"
+        n = 0
+        while True:
+            kept = p.with_name(f"{p.name}.bad-{stamp}-{digest}" + (f"-{n}" if n else ""))
+            try:
+                fd = os.open(kept, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                n += 1
+                continue
+            try:
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(raw)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    kept.unlink()
+                raise
+            with contextlib.suppress(OSError):
+                os.chmod(kept, 0o600)       # best effort (Windows ignores most mode bits)
+            return kept
+    except OSError:
+        return None
 
 
 def corrupt_notice_path() -> Path:
@@ -186,7 +218,8 @@ def corrupt_notice_path() -> Path:
 
 
 def _write_corrupt_notice(kept: Optional[Path], error: str) -> None:
-    """Persist the quarantine warning so it survives an MC restart (cleared only by clear_corrupt_notice)."""
+    """Persist the corrupt-armory warning so it survives an MC restart (cleared only by DISMISS or a
+    dismiss that finds the file valid again). Written ONLY when a corrupt read happened."""
     from .storage import atomic_write_text
     try:
         atomic_write_text(corrupt_notice_path(), json.dumps(
@@ -219,54 +252,30 @@ def _validate_inventory(inv) -> dict:
     return inv
 
 
-class InventoryUnstable(OSError):
-    """armory.json kept changing (or vanishing) under every bounded re-read. Nothing was moved aside; the
-    armory could not be read, which is not the same as empty."""
-
-
 def _read_inventory_locked() -> dict:
     """The read itself. The caller MUST hold `_inventory_lock` (it is not re-entrant, so the locked write
-    ops call this, never `load_inventory`). A file that fails to parse is moved aside only if, read AGAIN
-    immediately before the move, its bytes are identical to the ones that failed and still fail validation
-    (a stat check can miss a same-size rewrite on a coarse-timestamp filesystem). Otherwise read again.
-
-    Quarantine writes the EXACT failing bytes into the reserved `.bad-*` name before anything is removed,
-    and sets the live file aside only if a final re-read still matches them (storage.move_aside_exclusive
-    with `expect`); a replacement that appears first is left alone and read again. Residual: every brx-mcp
-    writer holds `_inventory_lock`, so only an external editor that ignores the lock can race, and one that
-    lands in the instant between the final compare and the rename is put back or kept as `.raced`.
-    A quarantine also writes `armory.json.corrupt-notice` so MC can still warn after a restart."""
+    ops call this, never `load_inventory`). It NEVER moves, renames or deletes the live file. A missing file
+    is {}. A file that is not a JSON object of objects raises InventoryCorrupt after saving an exact backup
+    copy and the sticky `armory.json.corrupt-notice` (so MC can still warn after a restart). Any other
+    read failure (permissions, a sharing violation) propagates as the OSError it is."""
     p = inventory_path()
-    for _ in range(5):
-        try:
-            raw = p.read_bytes()
-        except FileNotFoundError:
-            return {}
-        try:
-            return _validate_inventory(json.loads(raw.decode("utf-8")))
-        except ValueError as exc:      # JSONDecodeError and UnicodeDecodeError are ValueErrors; an OSError
-            # (permissions, a sharing violation) is NOT corruption and must not move a valid armory aside
-            try:
-                again = p.read_bytes()
-            except FileNotFoundError:
-                continue
-            if again != raw:
-                continue               # a writer replaced it: the loop reads and validates the new bytes
-            from .storage import MoveAsideRaced
-            try:
-                kept = _keep_corrupt_inventory(p, raw)
-            except MoveAsideRaced:
-                continue               # replaced before the move: leave it alone, read it again
-            err = f"{type(exc).__name__}: {exc}"
-            _write_corrupt_notice(kept, err)
-            raise InventoryCorrupt(p, kept, err) from exc
-    raise InventoryUnstable(f"{p} kept changing while it was read")
+    try:
+        raw = p.read_bytes()
+    except FileNotFoundError:
+        return {}
+    try:
+        return _validate_inventory(json.loads(raw.decode("utf-8")))
+    except ValueError as exc:      # JSONDecodeError and UnicodeDecodeError are ValueErrors
+        kept = _backup_corrupt_inventory(p, raw)
+        err = f"{type(exc).__name__}: {exc}"
+        _write_corrupt_notice(kept, err)
+        raise InventoryCorrupt(p, kept, err) from exc
 
 
 def load_inventory() -> dict:
     """The armory, or {} when no file exists yet. A file that exists but is not a JSON object of objects
-    raises InventoryCorrupt after moving it aside: an unreadable armory is never the same as an empty one.
-    Takes the inventory lock, so it never quarantines a file that a writer is replacing."""
+    raises InventoryCorrupt (the file stays where it is): an unreadable armory is never the same as an empty
+    one. Takes the inventory lock, so it never reads a file a writer is replacing."""
     with _inventory_lock():
         return _read_inventory_locked()
 
@@ -433,6 +442,31 @@ def mark_rename(new_name: str, serial: Optional[str] = None,
     inv[key]["name_confirmed"] = False
     _save_inventory(inv)
     return key
+
+
+def dismiss_corrupt_inventory() -> bool:
+    """The operator's DISMISS: the ONLY place the live armory.json is moved aside. Under the inventory lock,
+    and only if the file is STILL corrupt (re-validated now): it is renamed to an exclusively reserved
+    `.dismissed-*` name (a rename keeps its 0600 mode) and the notice is deleted, so writes work again on a
+    fresh armory. A file that is missing or has become valid just clears the notice. Raises OSError when the
+    move fails (the notice stays). Returns True when a file was moved aside."""
+    from .storage import move_aside_exclusive
+    with _inventory_lock():
+        p = inventory_path()
+        try:
+            _validate_inventory(json.loads(p.read_bytes().decode("utf-8")))
+            corrupt = False
+        except FileNotFoundError:
+            corrupt = False
+        except ValueError:
+            corrupt = True
+        moved = False
+        if corrupt:
+            if move_aside_exclusive(p, "dismissed") is None:
+                raise OSError(f"could not move the corrupt armory {p} aside")
+            moved = True
+        clear_corrupt_notice()
+        return moved
 
 
 def backup_dir() -> Path:

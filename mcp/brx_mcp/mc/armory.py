@@ -27,13 +27,16 @@ def _to_record(serial: str, r: dict) -> ArmoryRecord:
 
 
 class LocalArmory:
-    # O2: set when an inventory read hit a corrupt armory.json (moved aside) or could not read it at all.
-    # The QUARANTINED variant is STICKY: the next read finds no file and returns {}, and re-enrolling one gun
-    # makes a non-empty armory that is still not the lost one, so only the OPERATOR clears it
-    # (`dismiss_corrupt`, the console's DISMISS). It is also persisted (armory.json.corrupt-notice) so it
-    # survives an MC restart. The `unreadable` variant (any other read failure) is transient: the next
-    # successful read clears it. Session.snapshot() surfaces it as `armory_corrupt`.
+    # O2: set when an inventory read hit a corrupt armory.json, or could not read it at all. A corrupt read
+    # NEVER moves the live file: it leaves it in place with an exact 0600 backup copy beside it, and every
+    # write to the armory refuses until the operator's DISMISS moves the file aside (`dismiss_corrupt`, the
+    # console's DISMISS). The corrupt variant is STICKY (a later read, even a good one, does not clear it) and
+    # persisted (armory.json.corrupt-notice) so it survives an MC restart. The `unreadable` variant (any other
+    # read failure) is transient: the next successful read clears it. While either is set the last good
+    # inventory is served (else empty) and `last_read_ok` is False, so the session never replaces its gun
+    # index from a failed read. Session.snapshot() surfaces the warning as `armory_corrupt`.
     corrupt: dict | None = None
+    last_read_ok: bool = True
 
     def __init__(self) -> None:
         self._last_good: dict | None = None      # last successful inventory read, served while reads fail
@@ -50,27 +53,33 @@ class LocalArmory:
             InventoryCorrupt = ()      # type: ignore[assignment]
         if exc is None:
             return
+        self.last_read_ok = False
         if InventoryCorrupt and isinstance(exc, InventoryCorrupt):
             self.corrupt = {"kept": str(exc.kept) if exc.kept else None, "error": exc.error}
         elif not (self.corrupt and not self.corrupt.get("unreadable")):
-            # nothing was moved aside (unstable, PermissionError, any OSError): the armory could not be read,
-            # which is not the same as empty. Never downgrade a sticky quarantine warning to this one.
+            # the armory could not be read (PermissionError, any OSError), which is not the same as empty.
+            # Never downgrade a sticky corrupt warning to this one.
             self.corrupt = {"kept": None, "error": f"{type(exc).__name__}: {exc}", "unreadable": True}
 
     def _read_ok(self, inv: dict) -> None:
+        self.last_read_ok = True
         self._last_good = dict(inv)
         if self.corrupt and self.corrupt.get("unreadable"):
             self.corrupt = None
 
     def dismiss_corrupt(self) -> bool:
-        """The operator acknowledged the warning. True when there was one."""
-        had, self.corrupt = self.corrupt is not None, None
-        try:
-            from brx_mcp.usbconsole import clear_corrupt_notice
-            clear_corrupt_notice()
-        except Exception:
-            pass
-        return had
+        """The operator acknowledged the warning. True when there was one. For a corrupt file this is the ONLY
+        place it is moved aside (under the inventory lock, only if still corrupt), so a fresh armory can be
+        written again. If the move fails the exception propagates and the warning stays."""
+        c = self.corrupt
+        if c is None:
+            return False
+        if not c.get("unreadable"):
+            from brx_mcp.usbconsole import dismiss_corrupt_inventory
+            dismiss_corrupt_inventory()
+            self._last_good = None
+        self.corrupt = None
+        return True
 
     def _load(self) -> dict:
         """The inventory, or the last known good one when this read fails (never an empty one made by a failure)."""
@@ -103,7 +112,7 @@ class LocalArmory:
         try:     # blocking (file lock, up to a 10 s wait): off the event loop
             await asyncio.to_thread(correlate, [{"name": d["name"], "address": d["address"]} for d in taggers])
         except Exception as e:
-            self._note_read(e)      # correlate moves a corrupt file aside: the next read sees none, so record it HERE
+            self._note_read(e)      # a corrupt file makes correlate refuse: record it
             log.warning("correlate failed: %s", e)
         try:
             inv = await asyncio.to_thread(load_inventory)

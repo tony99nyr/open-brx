@@ -1904,7 +1904,7 @@ class RestoreFailedView(TypedDict):
 class ArmoryCorruptView(TypedDict):
     kept: str | None
     error: str
-    unreadable: NotRequired[bool]   # true: armory.json kept changing under the re-read, nothing was moved aside
+    unreadable: NotRequired[bool]   # true: armory.json could not be read at all (transient; the next good read clears it)
 
 
 class SnapshotFeedRow(TypedDict):
@@ -1946,7 +1946,7 @@ class State(TypedDict):
     restored_from: NotRequired[RestoredFromView]
     store_errors: NotRequired[int]   # O3: match rows MC could not write to its store this run; ABSENT when 0
     restore_failed: NotRequired[RestoreFailedView]   # O1: session.json could not be restored; kept aside
-    armory_corrupt: NotRequired[ArmoryCorruptView]   # O2: armory.json was corrupt, moved aside; the armory shown is NOT the full one. STICKY: ABSENT only until the operator dismisses it (POST /api/armory/corrupt/dismiss)
+    armory_corrupt: NotRequired[ArmoryCorruptView]   # O2: armory.json is corrupt (left in place, backup copy at `kept`); the armory shown is NOT the full one. STICKY: ABSENT only until the operator dismisses it (POST /api/armory/corrupt/dismiss)
     game: NotRequired[GameAnnouncementView]
     sync: NotRequired[SyncView]
     options: NotRequired[SessionOptions]

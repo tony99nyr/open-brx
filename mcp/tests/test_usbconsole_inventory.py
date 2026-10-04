@@ -28,30 +28,13 @@ def _rec(serial, name="G"):
     return {"serial_head_pin": serial, "gun_name": name}
 
 
-def test_a_corrupt_armory_raises_and_is_kept_aside_never_read_as_empty():
-    def run(base):
-        (base / "armory.json").write_text('{"S1": {"gun_name": "A"', encoding="utf-8")    # half-written
-        e = _raises(_uc.InventoryCorrupt, _uc.load_inventory)
-        kept = list(base.glob("armory.json.bad-*"))
-        assert len(kept) == 1 and kept[0].read_text(encoding="utf-8") == '{"S1": {"gun_name": "A"'
-        assert str(kept[0]) in str(e) and "armory.json" in str(e)
-    _on_base(run)
-
-
-def test_a_merge_into_a_corrupt_armory_never_rewrites_it_as_one_gun():
-    def run(base):
-        original = "{not json"
-        (base / "armory.json").write_text(original, encoding="utf-8")
-        _raises(_uc.InventoryCorrupt, _uc.add_to_inventory, _rec("S2"))
-        kept = list(base.glob("armory.json.bad-*"))
-        assert len(kept) == 1 and kept[0].read_text(encoding="utf-8") == original
-        assert not (base / "armory.json").exists(), "a one-gun armory replaced the corrupt one"
-    _on_base(run)
 
 
 def test_a_json_value_that_is_not_an_object_is_corrupt_too():
     def run(base):
         (base / "armory.json").write_text("[1, 2]", encoding="utf-8")
+        _raises(_uc.InventoryCorrupt, _uc.load_inventory)
+        (base / "armory.json").write_text('{"S1": 7}', encoding="utf-8")      # a non-dict record
         _raises(_uc.InventoryCorrupt, _uc.load_inventory)
     _on_base(run)
 
@@ -122,25 +105,6 @@ def test_an_unreadable_but_valid_armory_is_not_moved_aside():
     _on_base(run)
 
 
-def test_a_reader_never_moves_aside_a_valid_file_that_replaced_the_corrupt_one_mid_read():
-    """Review HIGH: an unlocked reader parsed the corrupt bytes, a writer atomically swapped in a valid
-    armory, and the reader then quarantined the NEW file. It must read again instead."""
-    def run(base):
-        p = base / "armory.json"
-        p.write_text("{corrupt", encoding="utf-8")
-        real_loads, swapped = _uc.json.loads, []
-
-        def loads_then_swap(text, *a, **k):
-            if not swapped:
-                swapped.append(1)
-                _storage.atomic_write_text(p, '{"S1": {"gun_name": "NEW"}}')
-            return real_loads(text, *a, **k)
-        with mock.patch.object(_uc.json, "loads", loads_then_swap):
-            inv = _uc.load_inventory()
-        assert inv == {"S1": {"gun_name": "NEW"}}
-        assert p.exists() and not list(base.glob("armory.json.bad-*"))
-    _on_base(run)
-
 
 def test_the_public_read_waits_for_the_inventory_lock():
     def run(base):
@@ -161,14 +125,6 @@ def test_the_public_read_waits_for_the_inventory_lock():
         t.join(); r.join()
     _on_base(run)
 
-
-def test_a_record_that_is_not_an_object_makes_the_file_corrupt():
-    def run(base):
-        (base / "armory.json").write_text('{"S1": 7}', encoding="utf-8")
-        _raises(_uc.InventoryCorrupt, _uc.load_inventory)
-        assert len(list(base.glob("armory.json.bad-*"))) == 1
-        assert _uc.load_inventory() == {}
-    _on_base(run)
 
 
 def test_atomic_write_retries_a_sharing_violation_then_succeeds():
@@ -209,43 +165,6 @@ def test_move_aside_never_overwrites_a_name_another_process_took():
     assert not (d / "armory.json").exists()
 
 
-def test_a_same_size_rewrite_with_the_same_mtime_is_not_quarantined():
-    """Review r2 MEDIUM: ino/size/mtime can all match after a same-size rewrite on a coarse-timestamp
-    filesystem. The bytes are what decide."""
-    def run(base):
-        p = base / "armory.json"
-        good = '{"S1": {"gun_name": "NEW"}}'
-        p.write_text("{" + "x" * (len(good) - 1), encoding="utf-8")
-        st = p.stat()
-        real_loads, done = _uc.json.loads, []
-
-        def loads_then_rewrite(text, *a, **k):
-            if not done:
-                done.append(1)
-                with open(p, "r+b") as f:       # in place: same inode, same size
-                    f.write(good.encode())
-                os.utime(p, ns=(st.st_atime_ns, st.st_mtime_ns))
-            return real_loads(text, *a, **k)
-        with mock.patch.object(_uc.json, "loads", loads_then_rewrite):
-            inv = _uc.load_inventory()
-        assert inv == {"S1": {"gun_name": "NEW"}} and not list(base.glob("armory.json.bad-*"))
-    _on_base(run)
-
-
-def test_a_file_that_keeps_changing_raises_unstable_and_is_never_moved():
-    def run(base):
-        p = base / "armory.json"
-        p.write_text("{c0", encoding="utf-8")
-        real_loads, n = _uc.json.loads, []
-
-        def loads_then_change(text, *a, **k):
-            n.append(1)
-            p.write_text("{c%d" % len(n), encoding="utf-8")
-            return real_loads(text, *a, **k)
-        with mock.patch.object(_uc.json, "loads", loads_then_change):
-            _raises(_uc.InventoryUnstable, _uc.load_inventory)
-        assert p.exists() and not list(base.glob("armory.json.bad-*"))
-    _on_base(run)
 
 
 def test_move_aside_retries_a_sharing_violation_then_succeeds():
@@ -274,49 +193,132 @@ def test_a_failed_move_aside_leaves_the_file_and_no_placeholder():
     assert sorted(p.name for p in d.iterdir()) == ["armory.json"]
 
 
-def test_the_exact_bad_bytes_are_saved_before_the_file_is_set_aside():
+# ---- redesign: a read never moves the live file; only DISMISS does ----
+_BAD = b'{"S1": {"gun_name": "A"\xff'          # half-written, and not even UTF-8
+
+
+def _bad_backups(base):
+    return sorted(base.glob("armory.json.bad-*"))
+
+
+def test_a_corrupt_read_leaves_the_live_file_in_place_and_raises():
     def run(base):
         p = base / "armory.json"
-        p.write_bytes(b"{corrupt\xff")
+        p.write_bytes(_BAD)
+        before = p.stat()
         e = _raises(_uc.InventoryCorrupt, _uc.load_inventory)
-        assert e.kept.read_bytes() == b"{corrupt\xff" and not p.exists()
+        assert p.read_bytes() == _BAD and p.stat().st_ino == before.st_ino, "the read touched the live file"
+        assert e.kept in _bad_backups(base) and str(e.kept) in str(e)
+        assert not list(base.glob("*.moving")) and not list(base.glob("*.raced"))
+        _raises(_uc.InventoryCorrupt, _uc.load_inventory)       # and again: still in place
+        assert p.read_bytes() == _BAD
     _on_base(run)
 
 
-def test_a_replacement_that_appears_just_before_the_move_is_not_quarantined():
-    """Review r3 MEDIUM: the final byte-compare and the rename were not atomic with an external writer."""
+def test_the_backup_is_an_exact_copy_with_mode_0600():
     def run(base):
-        p = base / "armory.json"
-        p.write_text("{corrupt", encoding="utf-8")
-        real_read, calls = pathlib.Path.read_bytes, []
-
-        def read_bytes(self):
-            data = real_read(self)
-            if self == p:
-                calls.append(1)
-                if len(calls) == 2:       # the validator's re-read: still bad. Then a writer replaces it.
-                    _storage.atomic_write_text(p, '{"S1": {"gun_name": "NEW"}}')
-            return data
-        with mock.patch.object(pathlib.Path, "read_bytes", read_bytes):
-            inv = _uc.load_inventory()
-        assert inv == {"S1": {"gun_name": "NEW"}}
-        assert p.exists() and not list(base.glob("armory.json.bad-*")) and not _uc.read_corrupt_notice()
+        (base / "armory.json").write_bytes(_BAD)
+        old = os.umask(0o022)
+        try:
+            e = _raises(_uc.InventoryCorrupt, _uc.load_inventory)
+        finally:
+            os.umask(old)
+        assert e.kept.read_bytes() == _BAD
+        if sys.platform != "win32":
+            assert (e.kept.stat().st_mode & 0o777) == 0o600
+            assert (_uc.corrupt_notice_path().stat().st_mode & 0o777) == 0o600
+        n = _uc.read_corrupt_notice()
+        assert n["kept"] == str(e.kept) and "Error" in n["error"]
     _on_base(run)
 
 
-def test_a_replacement_between_the_rename_and_the_verify_is_put_back():
+def test_repeated_corrupt_reads_make_one_backup_and_a_changed_file_makes_another():
     def run(base):
         p = base / "armory.json"
-        p.write_bytes(b"{bad")
-        real_replace, n = _storage._replace_with_retry, []
+        p.write_bytes(_BAD)
+        for _ in range(4):
+            _raises(_uc.InventoryCorrupt, _uc.load_inventory)
+        assert len(_bad_backups(base)) == 1
+        p.write_bytes(b"{other")
+        _raises(_uc.InventoryCorrupt, _uc.load_inventory)
+        assert len(_bad_backups(base)) == 2
+    _on_base(run)
 
-        def replace(src, dst, budget_s=None):
-            real_replace(src, dst, budget_s)
-            if not n:                     # a late writer's bytes are what the rename actually moved
-                n.append(1)
-                pathlib.Path(dst).write_bytes(b'{"S1": {"gun_name": "LATE"}}')
-        with mock.patch.object(_storage, "_replace_with_retry", replace):
-            inv = _uc.load_inventory()
-        assert inv == {"S1": {"gun_name": "LATE"}}
-        assert not list(base.glob("armory.json.bad-*"))
+
+def test_every_write_op_refuses_while_the_file_is_corrupt_and_changes_nothing():
+    def run(base):
+        p = base / "armory.json"
+        p.write_bytes(_BAD)
+        ops = [lambda: _uc.add_to_inventory(_rec("S2")),
+               lambda: _uc.correlate([{"name": "G-AABB", "address": "AA:BB"}]),
+               lambda: _uc.bind_address("S1", "AA:BB"),
+               lambda: _uc.mark_rename("New", serial="S1")]
+        for op in ops:
+            _raises(_uc.InventoryCorrupt, op)
+            assert p.read_bytes() == _BAD, "a write op changed the corrupt armory"
+        assert not list(base.glob("*.tmp"))
+    _on_base(run)
+
+
+def test_a_missing_file_is_empty_and_writes_no_notice_or_backup():
+    def run(base):
+        assert _uc.load_inventory() == {} and _uc.read_corrupt_notice() is None and not _bad_backups(base)
+        _uc.add_to_inventory(_rec("S1"))
+        _uc.load_inventory()
+        assert _uc.read_corrupt_notice() is None and not _bad_backups(base)    # no stale notice from a good read
+    _on_base(run)
+
+
+def test_dismiss_moves_a_still_corrupt_file_aside_and_writes_work_again():
+    def run(base):
+        p = base / "armory.json"
+        p.write_bytes(_BAD)
+        _raises(_uc.InventoryCorrupt, _uc.load_inventory)
+        assert _uc.dismiss_corrupt_inventory() is True
+        assert not p.exists() and _uc.read_corrupt_notice() is None
+        moved = list(base.glob("armory.json.dismissed-*"))
+        assert len(moved) == 1 and moved[0].read_bytes() == _BAD
+        _uc.add_to_inventory(_rec("S2"))
+        assert set(_uc.load_inventory()) == {"S2"}
+    _on_base(run)
+
+
+def test_dismiss_keeps_the_permissions_of_the_file_it_moves():
+    if sys.platform == "win32":
+        return
+    def run(base):
+        p = base / "armory.json"
+        p.write_bytes(_BAD)
+        os.chmod(p, 0o600)
+        _uc.dismiss_corrupt_inventory()
+        (moved,) = base.glob("armory.json.dismissed-*")
+        assert (moved.stat().st_mode & 0o777) == 0o600
+    _on_base(run)
+
+
+def test_dismiss_does_not_move_a_file_that_became_valid_and_clears_the_notice():
+    def run(base):
+        p = base / "armory.json"
+        p.write_bytes(_BAD)
+        _raises(_uc.InventoryCorrupt, _uc.load_inventory)
+        assert _uc.read_corrupt_notice()
+        _storage.atomic_write_text(p, '{"S1": {"gun_name": "FIXED"}}')       # restored by hand
+        assert _uc.dismiss_corrupt_inventory() is False
+        assert p.read_text(encoding="utf-8") == '{"S1": {"gun_name": "FIXED"}}'
+        assert not list(base.glob("armory.json.dismissed-*")) and _uc.read_corrupt_notice() is None
+    _on_base(run)
+
+
+def test_a_failed_dismiss_move_raises_and_keeps_the_file_and_the_notice():
+    def run(base):
+        p = base / "armory.json"
+        p.write_bytes(_BAD)
+        _raises(_uc.InventoryCorrupt, _uc.load_inventory)
+
+        def deny(src, dst):
+            raise PermissionError("locked")
+        with mock.patch("os.replace", deny), mock.patch.object(_storage, "_REPLACE_BUDGET_S", 0.05):
+            _raises(OSError, _uc.dismiss_corrupt_inventory)
+        assert p.read_bytes() == _BAD and _uc.read_corrupt_notice()
+        assert not list(base.glob("armory.json.dismissed-*"))
     _on_base(run)
