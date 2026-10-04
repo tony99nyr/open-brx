@@ -198,10 +198,10 @@ test('F139 guard: app.js sweeps over ws:// from discover.js, never an http fetch
   const link = readFileSync(new URL('../src/transport/mclink.js', import.meta.url), 'utf8');
   assert.doesNotMatch(link, /fetch\(/, 'an http fetch from the https origin is blocked as Mixed Content on Android');
   assert.doesNotMatch(link, /8765/, 'the operator HTTP port is not reachable from the app at all');
-  assert.match(body, /joinUrl: currentJoinUrl/, 'the subnet comes from THIS run\'s join');
+  assert.match(body, /joinUrl: \(\) => currentJoinUrl/, 'the subnet comes from THIS run\'s join, read when the plan is built');
   assert.doesNotMatch(body, /settings\.mcUrl\s*\|\||joinUrl:\s*settings\.mcUrl/, 'a remembered address must never pick the subnet');
   assert.doesNotMatch(link, /mcUrl/, 'the controller never reads a remembered address to plan the sweep');
-  assert.match(link, /sweepPlan\(\{ localIp, joinUrl \}\)/);
+  assert.match(link, /sweepPlan\(\{ localIp, joinUrl: joinUrl\(\) \}\)/);
   assert.match(link, /await sweep\(\{ \.\.\.plan, wsFactory, shouldStop, isPaused,/);
   assert.match(src, /const wsFactory = makeWsFactory\(\)/, 'the factory selects the native socket on Android');
   // security (review pass 1): a websocket upgrade is all a squatter on the node port has to answer, and
@@ -265,7 +265,7 @@ test('security guard: a SUGGESTED address persists only once it binds us; a USER
   const connect = src.indexOf('function connectMc(');
   const head = src.slice(connect, src.indexOf('dial.promise', connect));
   assert.match(head, /mcLink\.dial\(url, \{ remember,/);
-  assert.match(link, /rememberAtDial: .*remember.*remember === true/);
+  assert.match(link, /rememberAtDial: .*\{ remember \}\) => !!remember,/);
   assert.match(link, /if \(this\.policy\.rememberAtDial\(options\)\) this\.remember\(url, false\)/);
 
   // 2. ...and the suggestion path passes remember:false, so nothing is written until it binds

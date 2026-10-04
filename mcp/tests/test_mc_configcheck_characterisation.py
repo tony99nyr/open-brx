@@ -63,6 +63,18 @@ CASES = [
     ("presentation_object", "presentation", [], "tdm", {}),
     ("presentation_bad", "presentation", {"preset": "unknown"}, "tdm", {}),
     ("presentation_vip", "presentation", {"preset": "vip"}, "tdm", {}),
+    # polish round 1 (review #8): the bounds and branches the first 53 cases left open
+    ("scoring_hold_zero", "scoring", {"hold_target_s": 0}, "koth", {}),
+    ("respawn_delay_one", "respawn", {"delay_s": 1}, "tdm", {}),
+    ("respawn_delay_three", "respawn", {"delay_s": 3}, "tdm", {}),
+    ("respawn_weapon_delay", "respawn", {"weapon_delay_ms": 999}, "tdm", {}),
+    ("respawn_station_protect", "respawn", {"station_protect_s": 9}, "tdm", {}),
+    ("scoring_frag_covered", "scoring", {"frag_limit": 10}, "tdm", {"venue_coverage": "full"}),
+    ("scoring_frag_uncovered", "scoring", {"frag_limit": 10}, "tdm", {}),
+    ("teams_ffa_two", "teams", [{"team_id": "a", "tid": 0}, {"team_id": "b", "tid": 1}], "ffa", {}),
+    ("teams_objective_four", "teams", [{"team_id": "a", "tid": 0}, {"team_id": "b", "tid": 1},
+                                       {"team_id": "c", "tid": 2}, {"team_id": "d", "tid": 3}], "koth", {}),
+    ("teams_duplicate_team_id", "teams", [{"team_id": "a", "tid": 0}, {"team_id": "a", "tid": 1}], "tdm", {}),
 ]
 
 

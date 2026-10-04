@@ -66,7 +66,7 @@ test('HUD sweep suggests its hit and stops when the remembered URL changes', asy
   const found = [];
   const plans = [];
   const options = { isBound: () => false, isOnline: () => true,
-    getNetworkStatus: async () => ({ ipAddress: '10.0.0.20' }), joinUrl: null,
+    getNetworkStatus: async () => ({ ipAddress: '10.0.0.20' }), joinUrl: () => null,
     remembered: () => remembered, wsFactory: () => null, isPaused: () => false,
     log() {}, onFound: (url, source) => found.push([url, source]),
     sweep: async plan => { plans.push(plan); return 'ws://10.0.0.5:8766/ws'; } };
@@ -78,4 +78,32 @@ test('HUD sweep suggests its hit and stops when the remembered URL changes', asy
     return 'ws://10.0.0.6:8766/ws';
   } });
   assert.equal(found.length, 1, 'a user dial during the sweep wins');
+});
+
+test('a transport that binds after a redial replaced it is stale: nothing is remembered (review #8 named change)', () => {
+  for (const policy of [HUD_POLICY, STATION_POLICY]) {
+    const r = rig(policy);
+    const old = r.link.dial('ws://10.0.0.5:8766/ws', { remember: false, trusted: false, connect: { url: 'ws://10.0.0.5:8766/ws' } }, () => {});
+    r.link.dial('ws://10.0.0.9:8766/ws', { remember: false, trusted: false, connect: { url: 'ws://10.0.0.9:8766/ws' } }, () => {});
+    r.link.bound(old.transport, 'ws://10.0.0.5:8766/ws', { trusted: false });
+    assert.deepEqual(r.saved, [], 'a stale bind remembers nothing');
+  }
+});
+
+test('the HUD sweep reads the join URL after the network wait, so a join noted meanwhile picks the subnet', async () => {
+  const link = rig(HUD_POLICY).link;
+  let joinUrl = null;
+  const plans = [];
+  await link.runSweep({ isBound: () => false, isOnline: () => true,
+    getNetworkStatus: async () => { joinUrl = 'ws://192.168.7.3:8766/ws'; return {}; }, joinUrl: () => joinUrl,
+    remembered: () => '', wsFactory: () => null, isPaused: () => false, log() {}, onFound() {},
+    sweep: async plan => { plans.push(plan); return null; } });
+  assert.equal(plans[0].subnets[0], '192.168.7');
+});
+
+test('the remember predicates keep the old truthiness for odd values', () => {
+  assert.equal(STATION_POLICY.rememberAtDial({ trusted: 1 }), true);
+  assert.equal(STATION_POLICY.rememberAtBound({ trusted: null }), true);
+  assert.equal(STATION_POLICY.rememberAtDial({ trusted: null }), false);
+  assert.equal(HUD_POLICY.rememberAtDial({ remember: 1 }), true);
 });

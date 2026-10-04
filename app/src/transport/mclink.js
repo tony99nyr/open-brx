@@ -14,14 +14,14 @@ export const AUTOJOIN_LOCK_MS = 10 * 60 * 1000;
  *   autoJoin:string, sweep:string}} LinkPolicy */
 
 export const HUD_POLICY = Object.freeze({
-  rememberAtDial: (/** @type {DialOptions} */ { remember }) => remember === true,
+  rememberAtDial: (/** @type {DialOptions} */ { remember }) => !!remember,   // the old `if (remember)`, exactly
   rememberAtBound: () => true,
   autoJoin: 'proof',
   sweep: 'suggest',
 });
 export const STATION_POLICY = Object.freeze({
-  rememberAtDial: (/** @type {DialOptions} */ { trusted }) => trusted !== false,
-  rememberAtBound: (/** @type {DialOptions} */ { trusted }) => trusted === false,
+  rememberAtDial: (/** @type {DialOptions} */ { trusted }) => !!trusted,         // the old `if (trusted)` / `!trusted`, exactly
+  rememberAtBound: (/** @type {DialOptions} */ { trusted }) => !trusted,
   autoJoin: 'untrusted',
   sweep: 'dial',
 });
@@ -75,6 +75,8 @@ export class McLink {
 
   /** @param {Transport} transport @param {string|null} url @param {DialOptions} options */
   bound(transport, url, options) {
+    // Review #8 (a named change): a transport that binds after a redial replaced it is stale. The old code still
+    // remembered the CURRENT dial's URL then (an unproven proof dial on the HUD); nothing is remembered now.
     if (this.current() !== transport) return;
     if (this.policy.rememberAtBound(options) && url) this.remember(url, true);
     if (this.policy.autoJoin === 'proof') this.autoJoin.onBound();
@@ -126,7 +128,7 @@ export class McLink {
   }
 
   /** @param {{isBound:()=>boolean, isOnline:()=>boolean, getNetworkStatus:()=>Promise<any>,
-   *  joinUrl:string|null, remembered:()=>string, wsFactory:(url:string)=>any, isPaused:()=>boolean,
+   *  joinUrl:()=>string|null, remembered:()=>string, wsFactory:(url:string)=>any, isPaused:()=>boolean,
    *  log:(message:string, cls?:string)=>void, onFound:(url:string, source:string)=>void,
    *  sweep?:(options:import('./discover.js').SweepOptions)=>Promise<string|null>}} options */
   async sweepHud({ isBound, isOnline, getNetworkStatus, joinUrl, remembered, wsFactory, isPaused,
@@ -137,7 +139,7 @@ export class McLink {
       if (isBound() || !isOnline()) return;
       let localIp = null;
       try { localIp = localIpFrom(await getNetworkStatus()); } catch (_) { /* ignore */ }
-      const plan = sweepPlan({ localIp, joinUrl });
+      const plan = sweepPlan({ localIp, joinUrl: joinUrl() });   // read after the network wait, as before
       const urlAtStart = remembered();
       const shouldStop = () => isBound() || remembered() !== urlAtStart;
       log(`sweeping for Mission Control on ${plan.subnets.map(sn => sn + '.x').join(', ')} :${plan.ports.join('/')}…`, 'li');

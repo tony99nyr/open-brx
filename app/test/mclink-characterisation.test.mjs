@@ -27,7 +27,7 @@ test('HUD first contact waits for one distinct MC and never uses a trusted dial'
   assert.deepEqual(join.onFound(found, 'mdns', context), { do: 'join' });
 });
 
-test('station discovery dials an untrusted sweep hit; the caller remembers only after welcome', async () => {
+test('station discovery dials an untrusted sweep hit (the remember-after-welcome rule: mclink.test.mjs)', async () => {
   const calls = [];
   const timers = { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id) };
   const sweep = startUtilitySweep({ isBound: () => false, operatorUrl: () => false,
