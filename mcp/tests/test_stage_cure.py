@@ -837,3 +837,37 @@ def test_end_to_end_the_superseded_silent_reading_cannot_detect_a_dead_chatty_gu
         assert st.cure["verdict"] == "no_answer"
         assert st.alive is True, "the node still believes it -- correctly refusing to guess"
     asyncio.run(run())
+
+
+def test_a_real_kill_inside_a_probes_reply_window_is_not_a_desync_like_the_phone():
+    """Review 2026-10-04 (engine.js `_probeZero`, `_askMagazine`): `_solicited` pairs by TIME, so a live lethal hit inside
+    a probe's reply window took the probe's token and was booked as a desync. A fresh damaging `$HIR` says the zero came
+    from a live hit sequence. `$QUERY` answers `$LCD`, never `$HP`, so it no longer opens the `$HP` token.
+    CONTROL: a probe answered with a zero and no `$HIR` behind it is still a desync. Mirrors app/test/cure.test.mjs."""
+    async def run():
+        for ask in ("life", "query", "query-lcd"):
+            st, mgr, clock = _mk()
+            await _live(st, clock)
+            if ask == "life":
+                await st._ask_gun("test probe, never answered")
+            else:
+                await st._ask_magazine("test magazine read")
+            await settle(st)
+            clock.advance(0.2)
+            st._inject_rx("$HIR,4,0,19,2,200,0,3,*")
+            st._inject_rx("$LCD,0,0,0,0,29,90,*" if ask == "query-lcd" else "$HP,0,0,0,*")
+            await settle(st)
+            deaths = _deaths(st)
+            assert len(deaths) == 1, (ask, deaths)
+            assert "desync" not in deaths[0]["text"], (ask, deaths[0]["text"])
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await st._ask_magazine("test magazine read")
+        assert st._solicited("HP") is False and st._solicited("LCD") is True
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await _adv(st, clock, 2.0)
+        await st._ask_gun("test probe")
+        await _reply_life(st, 0, 0, 0)
+        assert "desync" in _deaths(st)[0]["text"], "CONTROL: an out-of-band zero is still a desync"
+    asyncio.run(run())

@@ -1931,8 +1931,15 @@ class GunStage:
         might be dead. See `_on_rx`'s `QUERY` frame handler for why: a dead gun's status-array body
         arrives ~2 s late and unterminated, the `$DPLAY`-shaped failure this avoids asking into."""
         self._query_at = self.now()
-        self._probe_seen = {}
+        self._probe_seen = {"HP": True}   # review 2026-10-04 (engine.js): `$QUERY` answers `$LCD`, never `$HP`
         await self.write([QUERY], why, gap_ms=0)
+
+    def _probe_zero(self, solicited: bool) -> bool:
+        """engine.js `_probeZero` (F264 x review 2026-10-04): a zero that took a probe's token is a desync death, unless
+        a damaging word landed inside 1.0 s. `_solicited` pairs by time, so a live lethal hit inside a probe's reply
+        window takes the token; its fresh `$HIR` says the zero came from a live hit sequence. PURE."""
+        d = self._dmg_hir
+        return bool(solicited) and not (d is not None and self.now() - d[1] <= 1.0)
 
     def _solicited(self, kind: str) -> bool:
         """engine.js `_solicited`: is this pool frame the answer to a probe we sent? True at most ONCE per
@@ -3304,10 +3311,10 @@ class GunStage:
                     # engine.js LCD case: t5/t6 are the active slot's magazine and reserve, taken through `am.onAmmo`
                     # (golden traces #6 polish r1: the stage used to drop them, so a respawn kept the last life's count)
                     mag = int(t[5] or 0) if len(t) > 5 else None
-                    self._on_lcd(hp, armor, desync=solicited, ammo=(mag, _tok_int(t, 6), _tok_int(t, 4) or 0) if mag is not None else None)
+                    self._on_lcd(hp, armor, desync=self._probe_zero(solicited), ammo=(mag, _tok_int(t, 6), _tok_int(t, 4) or 0) if mag is not None else None)
                     self._pool_verify(self.hp, self.armor, self.shield, False)   # F341: a `$SPAWN`'s own `$LCD`
                 else:
-                    self._on_pools(hp, armor, shield, desync=solicited)
+                    self._on_pools(hp, armor, shield, desync=self._probe_zero(solicited))
                     self._pool_verify(self.hp, self.armor, self.shield, solicited)   # F341 (engine.js HP case)
                 if solicited or self._operator_resync_pending is not None:
                     self._operator_resync_answer(cmd, t, solicited=solicited)

@@ -5544,7 +5544,7 @@ export class Engine {
         // band, from its own question, rather than from a live hit sequence. There is ONE death path and this is
         // it: the cure books nothing itself. (§3.3's wording names the reconcile and the resync; the poll is the
         // third way in and wants folding into the spec.)
-        if (this.phase === 'live' && this.hp === 0 && this.alive && !this._deathPending()) this._death(wasResync || solicited);
+        if (this.phase === 'live' && this.hp === 0 && this.alive && !this._deathPending()) this._death(wasResync || this._probeZero(solicited));
         if (solicited) this._cureAnswer('LCD', t);
         this._poolVerify(this.hp, this.armor, this.shield, false);   // F341: a `$SPAWN`'s own `$LCD` carries the pools it armed
         break;
@@ -5772,7 +5772,9 @@ export class Engine {
    *  a DEAD gun holds its print loop about 2 s on a `$QUERY`, so this must never reach a gun that might be dead,
    *  and it must never go on a timer. */
   _askMagazine(why) {
-    this._queryAt = this.now(); this._probeSeen = {};
+    // Review 2026-10-04: `$QUERY` answers with `$LCD`, never `$HP`, so it opens only the `$LCD` token. An `$HP` inside
+    // its window is the gun talking on its own (a hit), never our answer.
+    this._queryAt = this.now(); this._probeSeen = { HP: true };
     return this._write([QUERY], why);
   }
   /** F264: is this pool frame the answer to a probe we sent? True at most ONCE per probe PER FRAME KIND, inside
@@ -5788,6 +5790,13 @@ export class Engine {
     if (this._probeSeen[kind] || !this._queryAt || this.now() - this._queryAt > QUERY_REPLY_MS) return false;
     this._probeSeen[kind] = true;
     return true;
+  }
+  /** F264 x review 2026-10-04: is a zero that took a probe's token (`solicited`) learned out of band, a desync death?
+   *  Not when a damaging word landed inside 1000 ms: `_solicited` pairs by TIME, not content, so a live lethal hit inside
+   *  a probe's reply window takes the token, and its fresh `$HIR` says the zero came from a live hit sequence. PURE. */
+  _probeZero(solicited) {
+    const dl = this._dmgLatch;
+    return !!solicited && !(dl && this.now() - dl.at <= 1000);
   }
   /** F264: does a `$QUERY` reply's `$LCD` fit the token map we have? The map is confirmed by SHAPE only, on an
    *  unconfigured gun (transport-hardening.md §6, levers claim 19), so a reply that does not fit is treated as NO
@@ -6772,7 +6781,7 @@ export class Engine {
     if (this.resync) this._resyncEvidence('hp');
     // F264: `solicited` means this `$HP` answers our own `$LIFE,0,0,0,*` probe, so the node learned the zero out
     // of band rather than from a live hit sequence -- a desync death by §3.3's definition, same as a reconcile's.
-    if (h.hp === 0 && this.alive && this.phase === 'live' && !this._deathPending()) this._death(wasResync || h.solicited);   // a death learned during resync/reconcile is a desync death
+    if (h.hp === 0 && this.alive && this.phase === 'live' && !this._deathPending()) this._death(wasResync || this._probeZero(h.solicited));   // a death learned during resync/reconcile is a desync death
   }
 
   /** B5 (phantom death on spawn race): a zero-HP frame the instant after a `_spawn`/`_revive` write can be a
