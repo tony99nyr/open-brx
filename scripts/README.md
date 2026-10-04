@@ -7,7 +7,7 @@
 | `mc-collect.mjs` (`pnpm mc:collect`) | Create the diagnostic index of a Mission Control run |
 | `test-all.mjs` (`pnpm run test:all`) | Every test suite at once, inside a memory budget (`CONTRIBUTING.md` → *Running things*) |
 | `land.mjs` | The land lane: the queue that puts branches onto `main` (below) |
-| `lib/` | Shared logic for the scripts above (the test-all lock, budget and `--changed` logic is unit tested from `mcp/tests/test_test_all_*.py`) |
+| `lib/` | Shared logic for the scripts above. `test-all` takes a per-checkout lock, then uses the machine-wide resource pool to limit memory and CPU across checkouts. Budget, lock, pool and `--changed` logic is tested from `mcp/tests/test_test_all_*.py`. |
 
 ## The land lane (`land.mjs`)
 
@@ -47,8 +47,10 @@ flake summary. Like `wait`, it runs the lander when none runs and the queue is n
 
 ### What the lander does
 
-1. It takes the lander lock (`/tmp/brx-land-<uid>.lock`). The lock uses the stale rules of test-all's lock
-   (`scripts/lib/lock.mjs`), so the lander takes over the entry of a crashed lander.
+1. It takes the lander lock (`/tmp/brx-land-<uid>.lock`). A dead pid is reclaimed after 10 s. A live pid with no
+   heartbeat is reclaimed after 60 s. These defaults come from `scripts/lib/lock.mjs` and let the lander take over
+   a crashed or wedged run safely. `test-all` uses a separate checkout lock and the machine-wide pool's ticket and
+   lease records; pool users must pass the intended `poolMb`, `reserveMb` and `poolCores` limits to `createPool`.
 2. It fetches `origin` and takes the first N branches of the queue (`land/*`, sorted by name, so by submit time).
    A `land/` ref that `submit` did not write (a hand push such as `land/0-Tony-x`) is reported and never landed.
    Delete it by hand.

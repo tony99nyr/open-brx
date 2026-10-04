@@ -38,8 +38,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb } from './lib/pss.mjs';
-import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, deriveTimeoutS, planPeakMb, screensBudget, workerCount } from './lib/budget.mjs';
-import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
+import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, admissionShare, deriveTimeoutS, planPeakMb, screensBudget, workerCount } from './lib/budget.mjs';
+import { acquireCheckoutLock } from './lib/lock.mjs';
+import { createPool, memAvailableMb } from './lib/pool.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
 import { cacheBypassReason, cacheKey, canExitAllCached, headOf, inputTreeHash, installedNpmState,
   jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
@@ -89,10 +90,7 @@ const CPUS = os.availableParallelism ? os.availableParallelism() : os.cpus().len
 // (MEM_BUDGET_MB overrides). The longest jobs start first, so a queued job is always a short one. Measured on the
 // 32-core box: a 12 GB budget took 97 s, 8 GB took 126 s, 4 GB took 279 s, all green. 8 GB leaves room for a second
 // agent's run beside this one.
-const availableMb = () => {
-  try { return Number(/MemAvailable:\s+(\d+)/.exec(fs.readFileSync('/proc/meminfo', 'utf8'))[1]) / 1024; }
-  catch { return os.totalmem() / 1048576 / 2; }   // macOS counts cache as used, so os.freemem() is far too low
-};
+const availableMb = memAvailableMb;
 // A job that runs longer than this is killed and fails: a hung test must not hold the run (and an agent) forever.
 const JOB_TIMEOUT_S = Number(process.env.JOB_TIMEOUT_S || 600);
 
@@ -118,18 +116,18 @@ const e2e = (script, secs, mb) => ({
 });
 // The full job list (every job, regardless of --ui/filters), from a FRESH read of available memory. Called
 // once up front (to check the --changed selection for a UI job, and for --list/the filter-match check, before
-// any lock wait) and again right after this run takes the machine-wide lock: a run that queued behind another
+// any lock wait) and again right after this run takes the checkout lock: a run that queued behind another
 // one must not schedule itself using the memory snapshot from while it was still waiting, or it under-shards
 // for no reason once the machine is actually free again.
-function rawJobs(budgetMb) {
+function rawJobs(budgetMb, cpus = CPUS) {
   // Worker counts: a quarter of the cores, and no runner may take more than a quarter of the budget for its workers.
-  const pyJ = workerCount(70, 16, CPUS, budgetMb), vitestW = workerCount(300, 8, CPUS, budgetMb), siteW = workerCount(300, 8, CPUS, budgetMb);
+  const pyJ = workerCount(70, 16, cpus, budgetMb), vitestW = workerCount(300, 8, cpus, budgetMb), siteW = workerCount(300, 8, cpus, budgetMb);
   // app-screens is sized against what's left after the OTHER ui:true jobs THIS INVOCATION will actually run (not
   // the whole budget): a full --ui run selects all of OTHER_UI_JOBS, so screensBudget clamps the reservation at
   // its historical fair half; a filtered/--changed run that drops most of them leaves app-screens the rest.
   const otherUiMb = OTHER_UI_JOBS.filter(j => UI && (!filters.length || filters.some(f => j.name.includes(f))))
     .reduce((s, j) => s + j.mb, 0);
-  const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb, otherUiMb);   // the long pole
+  const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(cpus, budgetMb, otherUiMb);   // the long pole
   return [
     { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 33 },
     // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
@@ -149,7 +147,9 @@ function rawJobs(budgetMb) {
     // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
     { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, ...findOtherUi('app-e2e') },
     ...E2E_SPECS.map(([s, t]) => e2e(s, t, findOtherUi(`mc-${s}`).mb)),
-  ];
+  ].map(j => ({ ...j, cores: j.name === 'mcp' || j.name === 'chaos' ? pyJ
+    : j.name === 'mc-vitest' ? vitestW : j.name === 'site' ? siteW
+      : j.name === 'app-screens' ? screensS : 1 }));
 }
 const selectFiltered = (all, ui, filterList) => all.filter(j => (ui || !j.ui) && (!filterList.length || filterList.some(f => j.name.includes(f))));
 function buildJobs() {
@@ -271,8 +271,10 @@ if (CACHE && !JOBS.some(j => j.www || j.dist)) {
 
 // A job that dies leaves its children behind unless the group goes with it; so does a Ctrl-C of this script.
 const groups = new Set();
+const groupLeases = new Map();
 const kills = [];   // every kill in progress; awaited before this script exits, so the SIGKILL fallback really fires
 let stopping = false;
+let fatalError = null;
 const groupAlive = pid => { try { process.kill(-pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 /** SIGTERM first, SIGKILL 2 s later if anything in the group is still there. The TERM matters: mcp/run_tests.py puts
  *  each test file in its own session, out of reach of a signal to the job's group, and only its SIGTERM handler can
@@ -286,96 +288,83 @@ const killGroup = pid => {
   kills.push(p);
   return p;
 };
-const exitAfterKills = async code => { await Promise.all(kills); process.exit(code); };
+let pool = null;
+let releaseCheckout = null;
+const lockAbort = new AbortController();
+const cleanup = () => { pool?.close(); releaseCheckout?.(); };
+const exitAfterKills = async code => { await Promise.all(kills); cleanup(); process.exit(code); };
+const stopGroups = error => {
+  if (fatalError) return;
+  fatalError ??= error;
+  stopping = true;
+  pool?.close();
+  for (const g of groups) killGroup(g);
+};
+process.on('exit', cleanup);
 // SIGTERM and SIGHUP too: an agent's command timeout or a closed terminal must not leave browsers holding gigabytes.
 for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
   process.on(sig, () => {
     if (stopping) return;
     stopping = true;   // the scheduler starts nothing more
+    lockAbort.abort();
     for (const g of groups) killGroup(g);
     exitAfterKills(code);
   });
 }
-function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
+function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S, lease = null) {
   const log = path.join(LOGS, `${name}.log`);
   const jobHome = path.join(LOGS, `${name}-brx-mcp-home`);
   fs.rmSync(jobHome, { recursive: true, force: true });
   fs.mkdirSync(jobHome, { recursive: true });
   const out = fs.openSync(log, 'w');
   const t0 = Date.now();
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     // detached: the job leads its own process group, so a timeout kills its browsers and servers too
     const child = spawn(cmd[0], cmd.slice(1), { cwd: path.join(ROOT, cwd), env: { ...process.env, MC_PY: PY, ...env, BRX_MCP_HOME: jobHome }, stdio: ['ignore', out, out], detached: true });
-    groups.add(child.pid);
+    if (child.pid) {
+      groups.add(child.pid);
+      if (lease) { lease.setPgid(child.pid); groupLeases.set(child.pid, lease); }
+    }
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      fs.writeSync(out, `\ntest-all: killed after ${timeoutS}s (JOB_TIMEOUT_S, or three times the job's typical time)\n`);
+      try { fs.writeSync(out, `\ntest-all: killed after ${timeoutS}s (JOB_TIMEOUT_S, or three times the job's typical time)\n`); }
+      catch (error) { reject(error); }
       killGroup(child.pid);
     }, timeoutS * 1000);
-    child.on('error', e => { fs.writeSync(out, `\nspawn failed: ${e.message}\n`); });
-    child.on('close', code => {
-      clearTimeout(timer); groups.delete(child.pid); fs.closeSync(out);
-      resolve({ name, code: timedOut ? 'TIMEOUT' : code, secs: (Date.now() - t0) / 1000, log });
+    child.on('error', e => {
+      try { fs.writeSync(out, `\nspawn failed: ${e.message}\n`); }
+      catch { /* preserve the spawn error */ }
+      reject(e);
+    });
+    child.on('close', async code => {
+      try {
+        clearTimeout(timer);
+        if (child.pid && groupAlive(child.pid)) await killGroup(child.pid);
+        groups.delete(child.pid);
+        groupLeases.delete(child.pid);
+        fs.closeSync(out);
+        resolve({ name, code: timedOut ? 'TIMEOUT' : code, secs: (Date.now() - t0) / 1000, log });
+      } catch (error) { reject(error); }
     });
   });
 }
 
-// One run per MACHINE, per user (2026-09-27: was one run per checkout, so two worktrees on the same box ran
-// at once and starved each other's memory/CPU budget until jobs blew their kill timeout under the load). Each
-// run adds its own entry to a FIXED lock directory under /tmp, keyed by uid (not $XDG_RUNTIME_DIR/$TMPDIR,
-// which can differ between session types for the same account and would then give each its own lock), named
-// <start ms>-<pid>-<random>, and touches it every 5 s. The run whose entry sorts first among the LIVE entries
-// holds the machine. No run ever renames or deletes another run's live entry, so two runs cannot both take it over.
-//   - Live: the holder's pid still exists (checked directly, with a ~10 s grace past a missed heartbeat before
-//     trusting a "gone" read -- pids are namespaced/reused, so a crashed or SIGKILLed run is reclaimed almost
-//     at once, not after a full timeout, without trusting a coincidental match the instant the heartbeat lapses),
-//     AND, for one that is alive but wedged, its mtime changed within the last 60 s of THIS waiter's own
-//     monotonic clock. A suspended laptop pauses that clock too, so a wake does not make a live holder look dead.
-//   - An entry dead by either rule is deleted; its name can never be reused.
-//   - Two runs that start together: each waits until it has been first for 1 s, twice in a row, so an entry that
-//     was named earlier but written later is seen before anyone starts.
-const LOCK = path.join('/tmp', lockDirName(os.userInfo().uid));
-fs.mkdirSync(LOCK, { recursive: true });
-const MINE = `${String(Date.now()).padStart(15, '0')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-const mineAt = path.join(LOCK, MINE);
-fs.writeFileSync(mineAt, '');
-const beat = setInterval(() => { try { const t = new Date(); fs.utimesSync(mineAt, t, t); } catch { /* gone */ } }, 5000);
-beat.unref();
-process.on('exit', () => { clearInterval(beat); try { fs.rmSync(mineAt, { force: true }); } catch { /* gone */ } });
-const seen = new Map();   // entry -> { mtime, changedAt: performance.now() when this run last saw it change }
-const firstLive = () => {
-  const now = performance.now();
-  const live = [];
-  const names = fs.readdirSync(LOCK);
-  if (!names.includes(MINE)) { fs.writeFileSync(mineAt, ''); names.push(MINE); }   // removed by hand, or the dir was: put it back
-  for (const name of names.sort()) {
-    if (name === MINE) { live.push(name); continue; }
-    let mtime;
-    try { mtime = fs.statSync(path.join(LOCK, name)).mtimeMs; } catch { seen.delete(name); continue; }
-    const s = seen.get(name);
-    if (!s || s.mtime !== mtime) seen.set(name, { mtime, changedAt: now });
-    if (isStale(name, seen.get(name).changedAt, now)) { fs.rmSync(path.join(LOCK, name), { force: true }); seen.delete(name); continue; }
-    live.push(name);
-  }
-  return live;
-};
-for (let firstInARow = 0, toldPid = null; firstInARow < 2;) {
-  const live = firstLive();
-  if (live[0] === MINE) firstInARow++;
-  else {
-    firstInARow = 0;
-    const pid = entryPid(live[0]);
-    if (pid !== toldPid) { console.log(`test-all: waiting on pid ${pid} (another run, anywhere on this machine) to finish`); toldPid = pid; }
-  }
-  if (firstInARow < 2) await new Promise(r => setTimeout(r, 1000));
+// Each checkout serialises its own runs because they share app/www and webapp/mc/dist.
+// The machine pool admits individual builds and jobs across different checkouts.
+const RUN_ID = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+try { releaseCheckout = await acquireCheckoutLock(ROOT, { signal: lockAbort.signal, runId: RUN_ID }); }
+catch (error) {
+  if (stopping || lockAbort.signal.aborted) await exitAfterKills(130);
+  throw error;
 }
-// This run just acquired the machine: a queued run's earlier budget snapshot may be stale (computed while the
-// box was still busy), so rebuild JOBS from a fresh read of available memory before scheduling anything.
+if (stopping) await exitAfterKills(130);
+pool = createPool();
+try {
 ({ budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs());
 JOBS = selectFiltered(ALL_JOBS, UI, filters);
 const selectedJobs = JOBS;
-// A queued run may have waited through a dependency install. Refresh the fingerprint under the lock.
+// A queued run may have waited through a dependency install. Refresh the fingerprint under the checkout lock.
 if (CACHE) {
   try { fingerprint = toolFingerprint(ROOT, PY); }
   catch (e) { console.error(`test-all: cache unavailable after lock (${e.message}); running jobs`); CACHE = false; }
@@ -400,12 +389,38 @@ function samplePss() {
   if (!canSamplePss) return;
   const kb = sumTreePssKb([...groups]);
   if (kb !== null) measuredPeakMb = Math.max(measuredPeakMb || 0, kb / 1024);
+  for (const [pgid, lease] of groupLeases) {
+    const jobKb = sumTreePssKb([pgid]);
+    if (jobKb !== null) lease.setPss(jobKb / 1024);
+  }
 }
-const sampleTimer = canSamplePss ? setInterval(samplePss, 1000) : null;
+const sampleTimer = canSamplePss ? setInterval(() => {
+  try { samplePss(); }
+  catch (error) { console.error(`test-all: memory sample failed: ${error.message}`); stopGroups(error); }
+}, 1000) : null;
+async function withBuildLease(name, cwd, cmd, mb) {
+  const lease = await pool.acquire({ runId: RUN_ID, job: name, mb, cores: 2,
+    size: ({ freeCores }) => ({ mb, cores: Math.max(1, Math.min(2, freeCores)) }) });
+  try {
+    if (stopping) throw new Error('test run is stopping');
+    return await run(name, cwd, cmd, {}, JOB_TIMEOUT_S, lease);
+  }
+  finally { lease.release(); }
+}
+async function acquireJobLease(j) {
+  let sized = j;
+  const lease = await pool.acquire({ runId: RUN_ID, job: j.name, mb: j.mb, cores: j.cores,
+    size: ({ freeMb, freeCores }) => {
+      const share = admissionShare(BUDGET_MB, freeMb, CPUS, freeCores);
+      sized = rawJobs(share.budgetMb, share.cpus).find(candidate => candidate.name === j.name);
+      return { mb: sized.mb, cores: sized.cores };
+    } });
+  return { lease, sized };
+}
 // The one shared build output. Built once here, before any reader starts (see the rules at the top).
 const builds = [];
-if (selectedJobs.some(j => j.www)) builds.push(run('app-build', 'app', ['npm', 'run', 'build']));
-if (selectedJobs.some(j => j.dist)) builds.push(run('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build']));
+if (selectedJobs.some(j => j.www)) builds.push(withBuildLease('app-build', 'app', ['npm', 'run', 'build'], 800));
+if (selectedJobs.some(j => j.dist)) builds.push(withBuildLease('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build'], 550));
 for (const b of await Promise.all(builds)) {
   if (b.code !== 0) { console.error(`${b.name} failed, see ${b.log}`); for (const g of groups) killGroup(g); await exitAfterKills(1); }
 }
@@ -445,7 +460,7 @@ const results = [];
 let usedMb = 0, running = 0, peakMb = 0;
 await new Promise(done => {
   const pump = () => {
-    if (stopping) return;
+    if (stopping) { if (!running) done(); return; }
     for (let i = 0; i < queue.length;) {
       const j = queue[i];
       if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
@@ -454,17 +469,32 @@ await new Promise(done => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
         // its estimate, capped (scripts/lib/budget.mjs: deriveTimeoutS) so a starved box's inflated `secs` cannot
         // hold a hung job -- and an agent -- for hours. JOB_TIMEOUT_S itself is still an explicit floor, never capped.
-        const timeoutS = deriveTimeoutS(JOB_TIMEOUT_S, j.secs);
         let r;
         const cacheBefore = plan.before.get(j.name) || null;
         const cacheKeyForRun = plan.keys.get(j.name) || null;
         let cacheHead = null;
+        let lease = null;
         try {
           if (CACHE && cacheBefore) cacheHead = headOf(ROOT);
-          const env = typeof j.env === 'function' ? await j.env() : j.env;
-          r = await run(j.name, j.cwd, j.cmd, env, timeoutS);
+          const admission = await acquireJobLease(j);
+          lease = admission.lease;
+          const runJob = admission.sized;
+          const env = typeof runJob.env === 'function' ? await runJob.env() : runJob.env;
+          if (stopping) throw new Error('test run is stopping');
+          r = await run(runJob.name, runJob.cwd, runJob.cmd, env, deriveTimeoutS(JOB_TIMEOUT_S, runJob.secs), lease);
+          if (JSON.stringify(runJob.cmd) !== JSON.stringify(j.cmd)) cacheHead = null;
         }
-        catch (e) { r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' }; }
+        catch (e) {
+          stopGroups(e);
+          r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' };
+        }
+        finally {
+          try { lease?.release(); }
+          catch (e) {
+            stopGroups(e);
+            r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(lease release failed)' };
+          }
+        }
         if (CACHE && cacheBefore && cacheKeyForRun && r.code === 0 && !stopping) {
           try {
             const after = inputTreeHash(ROOT, inputsForJob(j.name));
@@ -475,7 +505,7 @@ await new Promise(done => {
           } catch (e) { console.error(`test-all: cache store for ${j.name} failed (${e.message})`); }
         }
         results.push(r); usedMb -= j.mb; running--;
-        if (!queue.length && !running) done(); else pump();
+        if (!running && (stopping || !queue.length)) done(); else pump();
       })();
     }
   };
@@ -492,7 +522,12 @@ for (const r of failed) {
   console.log(`\n---- ${r.name} (exit ${r.code}), last 30 lines of ${r.log}`);
   console.log(lines.slice(-30).join('\n'));
 }
-if (sampleTimer) { samplePss(); clearInterval(sampleTimer); }
+if (sampleTimer) { clearInterval(sampleTimer); if (!fatalError) samplePss(); }
 const realPeak = canSamplePss && measuredPeakMb !== null ? `${measuredPeakMb.toFixed(0)} MB` : 'not measured';
 console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
-await exitAfterKills(failed.length ? 1 : 0);
+await exitAfterKills(failed.length || fatalError ? 1 : 0);
+} catch (error) {
+  stopGroups(error);
+  console.error(`test-all: ${error.stack || error}`);
+  await exitAfterKills(1);
+}

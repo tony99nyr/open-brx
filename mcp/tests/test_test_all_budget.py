@@ -79,6 +79,25 @@ def test_worker_count_respects_the_cap_and_the_memory_share():
     assert _call("workerCount", 300, 8, 1, 1) == 1
 
 
+def test_admission_share_caps_workers_and_shards_to_pool_capacity():
+    result = _call_expr(
+        "(() => {"
+        "  const share = m.admissionShare(8000, 1200, 32, 4);"
+        "  return { share, workers: m.workerCount(70, 16, share.cpus, share.budgetMb),"
+        "    screens: m.screensBudget(share.cpus, share.budgetMb) };"
+        "})()"
+    )
+    assert result["share"] == {"budgetMb": 1200, "cpus": 4}
+    assert result["workers"] <= 1
+    assert result["screens"]["shards"] <= 2
+    assert result["screens"]["mb"] <= 100 + 240 * 2
+
+
+def test_admission_share_keeps_one_worker_on_a_tiny_free_pool():
+    share = _call("admissionShare", 500, 100, 8, 2)
+    assert share == {"budgetMb": 100, "cpus": 2}
+
+
 def test_derive_timeout_s_uses_3x_typical_in_the_ordinary_case():
     assert _call("deriveTimeoutS", 600, 65) == 600      # 3*65=195 < the 600s floor
     assert _call("deriveTimeoutS", 600, 300) == 900      # 3*300=900 > the floor, under the cap
@@ -184,7 +203,8 @@ def test_pss_sampler_counts_detached_descendant_processes():
 def test_runner_samples_pss_and_isolates_each_job_home():
     source = RUNNER.read_text()
     assert "sumTreePssKb" in source
-    assert "setInterval(samplePss, 1000)" in source
+    assert "const sampleTimer = canSamplePss ? setInterval(" in source
+    assert "try { samplePss(); }" in source
     assert "realPeak" in source and "not measured" in source
     assert "${name}-brx-mcp-home" in source
     assert "BRX_MCP_HOME: jobHome" in source
@@ -192,7 +212,7 @@ def test_runner_samples_pss_and_isolates_each_job_home():
 
 def test_build_and_e2e_jobs_have_distinct_log_names():
     source = RUNNER.read_text()
-    assert "run('mc-dist-build'" in source
+    assert "withBuildLease('mc-dist-build'" in source
     assert "run('mc-build'" not in source
 
 

@@ -9,6 +9,7 @@ build/
 
 # site generator
 node_modules/
+.tsbuild/
 site/test-results/
 site/test/out-stale/
 site/test/tmp-*/

@@ -12,6 +12,11 @@ export function workerCount(perMb, cap, cpus, budgetMb) {
   return Math.max(1, Math.min(cap, Math.floor(cpus / 4), Math.floor(budgetMb / 4 / perMb)));
 }
 
+/** Size a job using this run's share and the capacity available when the pool admits it. */
+export function admissionShare(ownMb, freeMb, ownCores, freeCores) {
+  return { budgetMb: Math.max(1, Math.min(ownMb, freeMb)), cpus: Math.max(1, Math.min(ownCores, freeCores)) };
+}
+
 // F429/F430 (2026-09-27): two e2e jobs died mid-run ("Target page, context or browser has been closed") while
 // test-all.mjs's own printed total sat at 7990 of an 8000 MB budget -- the PLAN left no headroom at all for a
 // job's `mb` running low, or for anything else on the box. HEADROOM is the fraction of the budget a run may ever

@@ -156,7 +156,7 @@ function flakeSummary() {
 
 // ---- the lander lock ---------------------------------------------------------------------------------------------
 // Entries are named like test-all's (`<start ms>-<pid>-<rand>`) and share scripts/lib/lock.mjs's stale rules: a dead
-// pid is reclaimed after a short grace, a live but silent one after 60 s without a heartbeat. The first LIVE entry by
+// pid is reclaimed after 10 s, a live but silent one after 60 s without a heartbeat. The first LIVE entry by
 // name holds the lock. Unlike test-all, a lander never queues: if another lander holds the lock, the queue is already
 // being served. One difference: this compares an entry's mtime with the wall clock, because a one-shot check (from
 // `wait` or `status`) has no earlier sighting to measure a monotonic idle time from.
