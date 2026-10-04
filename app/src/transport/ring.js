@@ -20,7 +20,7 @@ export function defaultStorage() {
 export class Ring {
   /** @param {RingOptions} [options] */
   constructor({ storage = defaultStorage(), key = 'brx.outbox', maxCount = 500, maxAgeMs = 2 * 60 * 60 * 1000, now = () => Date.now(), log = (/** @type {string} */ l) => console.warn('[outbox]', l) } = {}) {
-    this.log = log; this._saveFailing = false;
+    this.log = log; this._saveFailing = false; this._dropLogged = false;
     this.storage = storage; this.key = key; this.maxCount = maxCount; this.maxAgeMs = maxAgeMs; this.now = now;
     this.seqNext = 1;
     /** @type {RingItem[]} */
@@ -67,7 +67,9 @@ export class Ring {
     const d = age + count;
     if (d) {
       this.dropped += d; this.droppedSinceStatus += d;
-      this.log(`outbox dropped ${d} facts (${[age ? `age ${age}` : '', count ? `count ${count}` : ''].filter(Boolean).join(', ')}); ${this.dropped} lost in total`);
+      // one line per streak: at the cap EVERY push drops one, and a line per fact would flood the log. `prune` (an ack) ends the streak.
+      if (!this._dropLogged) this.log(`outbox dropped ${d} facts (${[age ? `age ${age}` : '', count ? `count ${count}` : ''].filter(Boolean).join(', ')}); ${this.dropped} lost in total; further drops in this streak are counted, not logged`);
+      this._dropLogged = true;
     }
   }
   /** Oldest-first copies of un-acked facts, each with its seq folded in (the event_batch item shape). */
@@ -76,6 +78,7 @@ export class Ring {
   /** @param {number} seqHi */
   prune(seqHi) {
     const before = this.items.length;
+    this._dropLogged = false;
     this.items = this.items.filter(i => i.seq > seqHi);
     if (this.items.length !== before) this._save();
   }

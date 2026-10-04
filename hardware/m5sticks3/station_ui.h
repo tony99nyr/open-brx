@@ -92,8 +92,12 @@ inline std::string maybe_build_taken_action(const StationLink& link, const Pendi
 // leaves the queue only after `send` returned true; the first failure stops the pass and keeps the
 // report (and every one behind it) queued for the next one. A report that `maybe_build_taken_action`
 // builds as empty (ACTIONS off) is discarded: deliberately nothing to send. `station_action` has no
-// acknowledgement on the wire, so a true `send` is the strongest signal the link has. Returns the
-// number of reports sent.
+// acknowledgement on the wire, so a true `send` is the strongest signal the link has. KNOWN GAP (review
+// 2026-10-04): a true `sendTXT` only means the frame was handed to the socket; if the socket dies before MC
+// reads it, the claim is lost with no count. The only acknowledgement in the wire today is `ack{seq_hi}`, and it
+// covers persisted facts (`event` / `event_batch`, per-node `seq`) only: `station_action` is live-only and carries
+// no `seq`, and MC never replies to it. Closing the gap needs a wire change (a seq'd fact or an action ack), so
+// it is filed, not invented here. Returns the number of reports sent.
 template <typename SendFn>
 inline size_t flush_pending_actions(StationLink& link, uint32_t now_ms, int64_t epoch_offset_ms, SendFn send) {
   size_t sent = 0;

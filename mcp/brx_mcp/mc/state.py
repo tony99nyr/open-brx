@@ -358,9 +358,20 @@ STATION_NOT_ARMED = f"PHONE SAYS NOT ARMED: {STATION_REARM}"
 STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE"
 
 
-def station_claims_dropped_line(n: int) -> str:
-    """O10: a Stick's full queue evicted CLAIM reports MC will never hear of (`status.actions_dropped`, the maximum kept)."""
-    return f"{n} CLAIM REPORT{'' if n == 1 else 'S'} DROPPED BY THE STICK: CHECK WHO TOOK THE ITEM"
+def outbox_lost_line(n: int) -> str:
+    """O6: facts the phone's outbox dropped THIS match; the console's words for it are the same (`armory-nodecard-outbox-lost`)."""
+    return f"{n} {'FACT' if n == 1 else 'FACTS'} LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER'S RECAP BY HAND"
+
+
+# (status wire field, node key for the latest cumulative count, node key for the baseline at match start)
+_LOSS_COUNTERS = (("dropped_total", "outbox_total", "outbox_base"), ("actions_dropped", "claims_total", "claims_base"))
+
+
+def station_claims_dropped_line(n: int, station_id: object = None) -> str:
+    """O10: a Stick's full queue evicted CLAIM reports this match (`status.actions_dropped` since the match baseline);
+    MC never heard who took the item, so the recap's PICKUPS list (the phone's own `pickup` fact) is where to look."""
+    where = f"STATION #{station_id}" if isinstance(station_id, int) and not isinstance(station_id, bool) else "THIS STATION"
+    return f"{n} CLAIM REPORT{'' if n == 1 else 'S'} DROPPED BY THE STICK: CHECK THE RECAP'S PICKUPS FOR {where}"
 # F221 battery rule: under 30 % is AMBER for the gun, the phone and the station alike.
 BATTERY_LOW_PCT = 30
 
@@ -1245,6 +1256,32 @@ class Session:
             if self._store_failures.fail(e, "the fact is still scored in memory"):
                 self._notify_listeners()
 
+    def _loss_baseline(self) -> None:
+        """O6/O10: the loss chips mean "lost THIS match". At each match start, resume, NEXT MATCH and new session, every
+        node's cumulative count so far becomes its baseline, and the console shows only what grew after it."""
+        for nv in self.nodes.values():
+            for _wire, tot, base in _LOSS_COUNTERS:
+                if tot in nv:
+                    nv[base] = nv[tot]
+
+    def _node_loss(self, nv: dict, which: str) -> int:
+        """`which` is "outbox" or "claims": the count lost since the baseline (never negative)."""
+        return max(0, nv.get(f"{which}_total", 0) - nv.get(f"{which}_base", 0))
+
+    def _archive(self, method: str, *args: Any) -> None:
+        """O7: the archive rows (`Store.match_started`, `Store.match_ended`) feed the same NOT SAVING chip as `store.log`: a
+        whistle write that fails loses the game result. Never raises (play continues)."""
+        if not self.store:
+            return
+        try:
+            getattr(self.store, method)(*args)
+        except Exception as e:
+            if self._store_failures.fail(e, f"store.{method}: the match archive row"):
+                self._notify_listeners()
+        else:
+            if self._store_failures.ok():
+                self._notify_listeners()
+
     def _gun_index(self):
         self.guns: dict[str, dict] = {}
         try:
@@ -1268,17 +1305,26 @@ class Session:
         n.on_return(lambda nid: self._touch(nid, stale=False))
         if hasattr(n, "on_disconnect"):
             n.on_disconnect(self._on_disconnect)
+        self.refresh_join_info(n)
+
+    def refresh_join_info(self, net=None, fallback_url: str = "") -> bool:
+        """O8: the ONE place `join_info()` is read (start-up attach, and `__main__` after the bind). A failure is logged with
+        the node URL the QR keeps, and exposed as `join_error` on the snapshot; a later success clears it."""
+        n = net or self.net
         try:
             ji = n.join_info()
-            self.set_ws_url(ji.get("url", ""))
-            self._join_error = None
+            self.set_ws_url(ji.get("url") or fallback_url)
         except Exception as e:
-            # O8: this used to pass in silence and leave the join QR blank. The URL it fell back on is the
-            # last one `set_ws_url` kept (the construction default is ""), so name it.
             import logging
             self._join_error = f"{type(e).__name__}: {e}"[:200]
             logging.getLogger("brx.mc").error("join_info failed (%s); the join QR keeps node URL %r",
                                               self._join_error, self.lan.get("ws_url", ""), exc_info=True)
+            self._notify_listeners()
+            return False
+        if self._join_error is not None:
+            self._join_error = None
+            self._notify_listeners()
+        return True
 
     # ---------- A28 backhaul: the join QR, the tunnel, derived coverage ----------
     def set_ws_url(self, url: str) -> None:
@@ -4255,8 +4301,8 @@ class Session:
             attention.append(f"PHONE ADVERTISES ID {rep.get('station_id')}, ASSIGNED {a['id']}: {STATION_REARM}")
         if isinstance(rep.get("battery"), (int, float)) and rep["battery"] < BATTERY_LOW_PCT:
             attention.append(STATION_BATTERY_LOW)
-        if (dropped := (self.nodes.get(nid) or {}).get("claims_dropped")):
-            attention.append(station_claims_dropped_line(dropped))   # O10
+        if (dropped := self._node_loss(self.nodes.get(nid) or {}, "claims")) > 0:
+            attention.append(station_claims_dropped_line(dropped, a["id"] if a else rep.get("station_id")))   # O10
         report: StationReport = {}
         kind = rep.get("kind")
         if is_station_kind(kind):
@@ -4965,10 +5011,16 @@ class Session:
         # O6/O10: a node's CUMULATIVE loss counters. `dropped` (the old per-beat delta) was overwritten by the
         # latest beat, so a lost beat lost the count; these keep the MAXIMUM ever reported (a restarted
         # phone with cleared storage restarts its own count at 0, and must not erase what was already lost).
-        for wire, key in (("dropped_total", "outbox_lost"), ("actions_dropped", "claims_dropped")):
+        for wire, tot, base in _LOSS_COUNTERS:
             v = body.get(wire)
-            if isinstance(v, int) and not isinstance(v, bool) and v > 0 and v > nv.get(key, 0):
-                nv[key] = v
+            if isinstance(v, int) and not isinstance(v, bool) and v >= 0:
+                prev = nv.get(tot)
+                if prev is None:
+                    # first sight: what the node lost BEFORE a match is not this match's loss
+                    nv[base] = 0 if self.in_play() else v
+                elif v < prev:
+                    nv[base] = 0         # a phone storage reset or a Stick reboot: its count restarted, so later losses show
+                nv[tot] = v
         # F208: the pool-staleness claim is re-stated on EVERY heartbeat, so absent means "not stale" and
         # must clear the last one. Only a known reason is kept, and only a whole non-negative age.
         reason, stale_ms = body.get("pool_stale"), body.get("pool_stale_ms")
@@ -5517,11 +5569,12 @@ class Session:
         self.scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
                                          derive_cap=not m.get("adopted"),
                                          alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
+        self._loss_baseline()      # O6/O10: the loss chips mean "lost THIS match"
         if self.store:
             try:
                 snap = dict(self.config)
                 snap["_heads"] = {pid: (b or {}).get("head", []) for pid, b in self.bundles.items()}
-                self.store.match_started(mid, snap, go)
+                self._archive("match_started", mid, snap, go)
             except Exception:
                 pass
         now = self.now_ms()
@@ -5674,9 +5727,10 @@ class Session:
         self._result_pushed = {}
         self.feed = []
         self.scorer = self._build_scorer(match_id, go, {})
+        self._loss_baseline()      # O6/O10: the loss chips mean "lost THIS match"
         if self.store:
             try:
-                self.store.match_started(match_id, {**self.config, "_adopted": True}, go)
+                self._archive("match_started", match_id, {**self.config, "_adopted": True}, go)
             except Exception:
                 pass
         self._promote_phase(go, now)
@@ -6145,7 +6199,7 @@ class Session:
         try:
             self.last_recap = self._scorer_recap(self.scorer, self._match_stations)
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
-                self.store.match_ended(self.scorer.match_id, self.last_recap)
+                self._archive("match_ended", self.scorer.match_id, self.last_recap)
             self._push_result()          # A24: the field is re-told whenever the recap moves
         except Exception:
             import logging
@@ -6880,6 +6934,8 @@ class Session:
                     ambers.append(PHONE_BATTERY_LOW)
                 if pf.get("screen_on") is False or pf.get("foreground") is False:
                     ambers.append(SCREEN_OFF)
+                if (lost := self._node_loss(nv, "outbox")) > 0:
+                    ambers.append(outbox_lost_line(lost))     # O6: the card reads CHECK and counts in the AMBER tile
                 # Bench 2026-09-17 (Tony): firmware is often unreadable over BLE and says nothing about health, so an
                 # unread version is not an amber. The card still shows the version when the phone reports one.
                 vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
@@ -7678,6 +7734,7 @@ class Session:
         self._app_blocked_alerted.clear()
         self._plan_blocked_alerted.clear()
         self.last_recap = None
+        self._loss_baseline()      # O6/O10: the loss chips mean "lost THIS match"
         if self.store:
             try:
                 # The config AND the compiled head we actually pushed. Tony, 2026-09-01: "as we debug,
@@ -7688,7 +7745,7 @@ class Session:
                 # setting that maps to it.
                 snap = dict(self.config)
                 snap["_heads"] = {pid: (b or {}).get("head", []) for pid, b in self.bundles.items()}
-                self.store.match_started(self.start_info["match_id"], snap, self.start_info["go_live_t"])
+                self._archive("match_started", self.start_info["match_id"], snap, self.start_info["go_live_t"])
             except Exception:
                 pass
         # A40 (T2 review S2): ADDRESSED, not broadcast. `net.broadcast()` reaches every live socket, and
@@ -8211,10 +8268,7 @@ class Session:
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if self.store and self.start_info and self.last_recap:
-            try:
-                self.store.match_ended(self.start_info["match_id"], self.last_recap)
-            except Exception:
-                pass
+            self._archive("match_ended", self.start_info["match_id"], self.last_recap)
         self.start_info = None            # no re-hydrating a finished match's `start`
         self.phase = "recap"
         # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
@@ -8354,6 +8408,7 @@ class Session:
         if self.in_play():
             raise ConflictError(f"the match is {self.phase.upper()} — END it before starting the next one")
         self._roll_forward_from_recap()
+        self._loss_baseline()
         return self.load_game()
 
     def _retire_scorer(self) -> None:
@@ -8391,13 +8446,14 @@ class Session:
             if mid in self._ended:
                 self._ended[mid]["recap"] = recap
             if self.store:
-                self.store.match_ended(mid, recap)
+                self._archive("match_ended", mid, recap)
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("late-fact re-store for a retired match failed (play continues)")
         self._changed()
 
     def new_session(self, keep_roster: bool = True) -> None:
+        self._loss_baseline()
         if self.start_info and self.in_play():
             self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34
         # 2026-09-16: leaving a finished match with the roster kept is the NEXT MATCH, and the finished
@@ -8619,8 +8675,12 @@ class Session:
                     "node_id", "node_type", "arm_state", "synced", "gun_name", "gun_tail", "player_id",
                     "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "pending", "app_ver",
                     "platform", "transport", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure",
-                    "gun_locked", "outbox_lost", "claims_dropped") if key in nv
+                    "gun_locked") if key in nv
             })
+            if (lost := self._node_loss(nv, "outbox")) > 0:
+                row["outbox_lost"] = lost
+            if (lost := self._node_loss(nv, "claims")) > 0:
+                row["claims_dropped"] = lost
             row.setdefault("node_id", "")
             row.setdefault("node_type", "phone")
             row.setdefault("arm_state", "idle")

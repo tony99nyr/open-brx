@@ -119,7 +119,9 @@ static void test_a_failed_send_keeps_the_claim_queued_and_an_overflow_is_counted
   for (int i = 0; i < (int)PendingActionQueue::CAPACITY + 3; i++) q.push(9, i + 1, (uint32_t)(1000 * i), 1000 + i);
   CHECK_EQ(q.dropped(), (uint32_t)3);
   StatusFields f;
-  CHECK(build_status_body(f).find("actions_dropped") == std::string::npos);   // 0 is left out: the older shape
+  CHECK(build_status_body(f).find("actions_dropped") == std::string::npos);   // no health fields, 0: the older shape
+  f.has_health = true;
+  CHECK(build_status_body(f).find("\"actions_dropped\":0") != std::string::npos);   // a real Stick always reports it, 0 included
   f.actions_dropped = q.dropped();
   CHECK(build_status_body(f).find("\"actions_dropped\":3") != std::string::npos);
 }

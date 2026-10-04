@@ -1051,10 +1051,13 @@ export interface NodeView {
   ammo?: number | null;
   alive?: boolean | null;
   pending?: number | null;
-  /** O6: facts the phone's outbox dropped (count/age cap), the MAXIMUM of its cumulative `status.dropped_total`.
-   *  O10: CLAIM reports a Stick's queue evicted when full, the maximum of `status.actions_dropped`.
-   *  Both absent = nothing reported lost (or an older node). */
+  /** O6: facts the phone's outbox dropped DURING THIS MATCH: its cumulative `status.dropped_total` minus the
+   *  baseline MC took at the match start / resume / NEXT MATCH / new session. A report lower than the last one
+   *  (a phone storage reset) restarts the baseline at 0. Absent = nothing lost this match, or an older node. */
   outbox_lost?: number;
+  /** O10: CLAIM reports a Stick's queue evicted when full THIS MATCH (`status.actions_dropped`, same baseline
+   *  rule). MC never heard who took the item, so the station's attention line says where to look (the recap's
+   *  PICKUPS). A Stick has no node card, so the console draws it on the station card. Absent = none. */
   claims_dropped?: number;
   app_ver?: string | null;
   platform?: string | null;
@@ -1150,9 +1153,9 @@ export interface Event {
   game_byte?: number;
   synced?: boolean;
   dropped?: number;
-  /** O6: cumulative facts dropped from the phone's outbox since its storage began; MC keeps the maximum. */
+  /** O6: cumulative facts dropped from the phone's outbox since its storage began (0 included); MC subtracts a per-match baseline. */
   dropped_total?: number;
-  /** O10: a Stick's CLAIM reports evicted from a full queue, cumulative since boot (left out while 0). */
+  /** O10: a Stick's CLAIM reports evicted from a full queue, cumulative since boot (0 included). */
   actions_dropped?: number;
   preflight?: Preflight;
   /** A37/R2-3: WHERE `hp`/`armor` above came from THIS LIFE. `engine.js` fills them from
@@ -1994,7 +1997,8 @@ export interface NotSavingView {
   snapshot?: FailureView;
 }
 
-/** O8: `join_info()` raised, so the join QR has no URL. `ws_url` is the node URL the QR still holds. */
+/** O8: the last `join_info()` call raised. `ws_url` is the node URL the QR still holds: "" when none was ever read,
+ *  otherwise an EARLIER address that may be out of date. Cleared by the next successful call. */
 export interface JoinErrorView {
   error: string;
   ws_url: string;

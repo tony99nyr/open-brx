@@ -77,8 +77,9 @@ const kb = (n?: number) => (n == null ? '' : n >= 1024 ? `${Math.round(n / 1024)
 
 /** One node's log line. Always rendered — a row that vanishes when a phone has said nothing reads as
  *  "fine", and "the phone has not said" is exactly what the operator needs to know before a match. */
-/** O6: the phone's outbox dropped facts (count or age cap): the recap may be short of what the player did.
- *  `n` is MC's `NodeView.outbox_lost` (the maximum of the phone's cumulative count). Absent or 0 draws nothing. */
+/** O6: the phone's outbox dropped facts THIS match (count or age cap): the recap may be short of what the player did.
+ *  `n` is MC's `NodeView.outbox_lost`. A rostered player's card gets the same line from MC in `ambers` (so the card reads
+ *  CHECK and counts in the AMBER tile); this is for the unclaimed phone's node card. Absent or 0 draws nothing. */
 function OutboxLost({ n }: { n?: number | null }) {
   if (!n || n <= 0) return null;
   return <Alert id="armory-nodecard-outbox-lost" testid="outbox-lost" what={`${n} ${n === 1 ? 'FACT' : 'FACTS'} LOST FROM THE PHONE OUTBOX`} act="CHECK THIS PLAYER'S RECAP BY HAND" />;
@@ -516,7 +517,6 @@ function GunCard({ g }: { g: ReadinessRow }) {
           this exact phone (a linked, rostered player). `PullLogButton` is never gated by LOG SYNC — see
           its own docstring — so it belongs wherever the operator is actually looking. */}
       {g.node === 'linked' && nodeId && <PullLogButton node_id={nodeId} />}
-      {g.node === 'linked' && nodeId && <OutboxLost n={(state?.nodes ?? []).find(x => x.node_id === nodeId)?.outbox_lost} />}
       {(() => {
         // The HEADSET OFF amber already sits in the GUN row above: once is enough on the card.
         const raw = [...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).filter(b => b !== GUN_FLAPPING_LINE).map(b => [b, false] as const)];

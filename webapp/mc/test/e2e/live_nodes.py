@@ -7,7 +7,7 @@ server suite uses) against a real `python -m brx_mcp.mc` on its real node socket
 on stdin, one per line:
 
     possession <gun> <tid>=<ms>[,<tid>=<ms>...] [observed_ms]
-    status <gun> <key>=<int>[,<key>=<int>...]   # extra heartbeat fields (O6 dropped_total, O10 actions_dropped)
+    status <gun> <key>=<int|text>[,...]   # extra heartbeat fields (O6 dropped_total, O10 actions_dropped)
     drop <gun>        # walk out of range: the socket closes and the node stays quiet
     up <gun>          # walk back: it reconnects and heartbeats again
     die <gun> <shooter_num> <shooter_tid>   # this gun's player is killed by that shooter
@@ -63,7 +63,7 @@ async def main(url: str, guns: list[str]) -> None:
                         raise RuntimeError("the node has no match yet")
                     node.emit(ev)
                 elif cmd == "status":
-                    node.extra_status.update({k: int(v) for k, v in (kv.split("=") for kv in args[1].split(","))})
+                    node.extra_status.update({k: (int(v) if v.lstrip("-").isdigit() else v) for k, v in (kv.split("=") for kv in args[1].split(","))})
                 elif cmd == "drop":
                     await node.disconnect()
                 elif cmd == "die":

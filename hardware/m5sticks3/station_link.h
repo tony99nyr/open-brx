@@ -254,7 +254,7 @@ struct StatusFields {
   std::string tx_power_src;
   int64_t tx_power_edit_age_ms = -1;
   std::string range_edits_json;
-  // O10 (additive; 0 = left out, so the body is byte-identical to the older shape): CLAIM reports the
+  // O10 (additive; sent whenever the health fields are, 0 included, so a Stick reboot shows as a LOWER count): CLAIM reports the
   // queue evicted when full, cumulative since boot. MC keeps the maximum per node and shows it.
   uint32_t actions_dropped = 0;
 };
@@ -310,7 +310,7 @@ inline std::string build_status_body(const StatusFields& f) {
       j += ",\"tx_power_edit_age_ms\":" + std::to_string(f.tx_power_edit_age_ms);
   }
   if (!f.range_edits_json.empty() && f.range_edits_json != "[]") j += ",\"range_edits\":" + f.range_edits_json;
-  if (f.actions_dropped > 0) j += ",\"actions_dropped\":" + std::to_string(f.actions_dropped);
+  if (f.has_health || f.actions_dropped > 0) j += ",\"actions_dropped\":" + std::to_string(f.actions_dropped);
   j += "}";
   return j;
 }

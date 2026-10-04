@@ -350,7 +350,7 @@ export class Transport {
                    preflight: { ...this.preflight, ...(body.preflight || {}) } };
     const dropped = this.ring.takeDropped(); if (dropped) full.dropped = (full.dropped || 0) + dropped;
     // O6: `dropped` is the per-beat delta (MC overwrote it with the latest one, so a lost beat lost the count). `dropped_total` is cumulative and persisted: MC keeps the maximum.
-    if (this.ring.droppedTotal) full.dropped_total = this.ring.droppedTotal;
+    full.dropped_total = this.ring.droppedTotal;   // always sent (0 included): a LOWER value than before tells MC the phone's storage was reset
     return this._sendKind('status', full);
   }
   /** F309: the phone's own connection (Capacitor Network `connectionType`). MC counts a phone as covered

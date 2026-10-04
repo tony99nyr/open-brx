@@ -218,7 +218,7 @@ export class MockBackend implements Api {
       if (a && fresh && rep.armed === false) attention.push(`PHONE SAYS NOT ARMED: ${STATION_REARM}`);
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
       if (batteryLow(rep.battery)) attention.push('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
-      if (this.demoObs.has('claims')) attention.push('3 CLAIM REPORTS DROPPED BY THE STICK: CHECK WHO TOOK THE ITEM');   // O10: state.py station_claims_dropped_line
+      if (this.demoObs.has('claims')) attention.push('3 CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP\'S PICKUPS FOR STATION #4');   // O10: state.py station_claims_dropped_line
       attention.push(...(st.attention ?? []));   // A58 demo/test seed: STATION #N ... lines
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
         last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo,
@@ -547,7 +547,7 @@ export class MockBackend implements Api {
   /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
    *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
   /** `?mock&obs=store,snapshot,tick,join,outbox,claims` (O6/O7/O8/O10): each names one failure MC reports on the
-   *  snapshot, mirroring state.py `snapshot()` (`not_saving`, `ticker_failing`, `join_error`, `NodeView.outbox_lost`,
+   *  snapshot, mirroring state.py `snapshot()` (per match: `outbox_lost`/`claims_dropped` are "lost THIS match") (`not_saving`, `ticker_failing`, `join_error`, `NodeView.outbox_lost`,
    *  and the station line `station_claims_dropped_line`). Absent = a healthy MC, the default demo. */
   private demoObs = new Set((typeof location !== 'undefined' ? new URLSearchParams(location.search).get('obs') ?? '' : '').split(',').filter(Boolean));
   private demoRestored = typeof location !== 'undefined' && new URLSearchParams(location.search).get('restored') === '1';
@@ -786,6 +786,7 @@ export class MockBackend implements Api {
       // battery, so the extra advisory perturbs no other card's status); every other linked phone has
       // held its link past the 10 s a headless gun cannot survive. After the push the echo takes over.
       const flapping = !red && this.demoFlap && sticker === 'GUN-C';
+      if (!red && this.demoObs.has('outbox') && sticker === 'GUN-A') ambers.push("12 FACTS LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER'S RECAP BY HAND");   // O6: state.py outbox_lost_line
       if (flapping) ambers.push(GUN_FLAPPING_LINE);   // one steady amber, as `state.py readiness()` writes it
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET CONFIRMING (LINK 4 S)');
@@ -907,7 +908,7 @@ export class MockBackend implements Api {
         app_ver: b.app_ver, platform: b.platform,      // A29
         log: this.logFor(`node_${b.tail}`),            // A25
         reach, last_reach: this.lastReach[b.tail], transport,
-        ...(this.demoObs.has('outbox') && i === 0 ? { outbox_lost: 12 } : {}),   // O6
+        ...(this.demoObs.has('outbox') && b.sticker === 'GUN-A' ? { outbox_lost: 12 } : {}),   // O6
       };
     });
     // F155 pass 1 (2026-09-12): the earlier version of this demo bolted a SECOND, disconnected NodeView

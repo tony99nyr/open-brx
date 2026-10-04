@@ -21,9 +21,6 @@ export const ARMORY_ALERTS: Record<string, AlertDef> = {
   'armory-nodecard-claim-error': { sev: 'amber', text: '{error}' },
   'armory-nodecard-link-offline': { sev: 'neutral', text: '{age} AGO: OFFLINE',
     why: 'the same stale-node fact as the neutral OFFLINE tag right above it on the same card: one fact, one colour.' },
-  // O6: the phone's outbox dropped facts (`NodeView.outbox_lost`, the maximum of its cumulative count). Drawn on the
-  // node card AND on the rostered player's gun card, which hides that phone's node card.
-  'armory-nodecard-outbox-lost': { sev: 'amber', text: '{N} FACTS LOST FROM THE PHONE OUTBOX: CHECK THIS PLAYER\'S RECAP BY HAND' },
   'armory-nodecard-not-heard': { sev: 'neutral', text: 'NOT HEARD FROM RECENTLY: WAITING TO RECONNECT' },
   'armory-nodecard-offline-tag': { sev: 'neutral', text: 'OFFLINE' },
   'armory-nodecard-waiting-for-gun': { sev: 'neutral', text: 'WAITING FOR ITS GUN: SET IT ON THE PHONE',

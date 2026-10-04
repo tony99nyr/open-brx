@@ -49,7 +49,12 @@ async function startNodes(wsUrl, specs) {
   return { cmd, stop: async () => { try { proc.stdin.write('quit\n'); } catch { /* gone */ } await H.killGroup(proc); } };
 }
 
-const chip = (pg, testid) => pg.locator(`[data-testid="${testid}"]`);
+const chip = (pg, testid) => pg.locator(testid.startsWith('[') ? testid : `[data-testid="${testid}"]`);
+/** The number on the AMBER tile of the ARMORY board. */
+const amberTile = pg => pg.evaluate(() => {
+  const l = [...document.querySelectorAll('span')].find(e => e.children.length === 0 && e.textContent === 'AMBER');
+  return l ? Number(l.previousElementSibling?.textContent) : null;
+});
 const present = async (pg, testid) => (await chip(pg, testid).count()) > 0;
 /** The chip's catalogue severity and its words must read `WHAT IS WRONG: WHAT TO DO` with one colon. */
 async function checkChip(pg, testid, sev, headWords) {
@@ -90,17 +95,25 @@ const steps = {
       await sh(pg, `mock-${obs}`);
       await pg.context().close();
     }
+    pg = await open(`${MOCK}#muster`);
+    const amberBefore = await amberTile(pg);
+    await pg.context().close();
     pg = await open(`${MOCK}&obs=outbox#muster`);
-    await c.until(() => present(pg, 'outbox-lost'), 6000, 'the outbox-lost chip on a gun card');
-    await checkChip(pg, 'outbox-lost', 'amber', '12 FACTS LOST FROM THE PHONE OUTBOX');
-    await chip(pg, 'outbox-lost').first().scrollIntoViewIfNeeded();
+    const OUTBOX = '[data-alert="armory-nodecard-outbox-lost"]';
+    await c.until(() => present(pg, OUTBOX), 6000, 'the outbox-lost line on a gun card');
+    await checkChip(pg, OUTBOX, 'amber', '12 FACTS LOST FROM THE PHONE OUTBOX');
+    const amberAfter = await amberTile(pg);
+    c.expect(amberBefore != null && amberAfter === amberBefore + 1, `the card with lost facts counts in the AMBER tile (${amberBefore} -> ${amberAfter})`);
+    const card = pg.locator('[data-alert="armory-nodecard-outbox-lost"]').first().locator('xpath=ancestor::div[contains(., "GUN-A")][1]');
+    c.expect(!/READY/.test(await card.innerText()) && /CHECK/.test(await card.innerText()), 'that card reads CHECK, not READY');
+    await chip(pg, OUTBOX).first().scrollIntoViewIfNeeded();
     await sh(pg, 'mock-outbox');
     await pg.context().close();
     pg = await open(`${MOCK}&obs=claims#muster`);
     const claims = pg.locator('[data-alert="station-attention-claims-dropped"]');
     await c.until(async () => (await claims.count()) > 0, 6000, 'the dropped-claims line on a Stick card');
     c.expect(await claims.first().getAttribute('data-sev') === 'amber', 'the dropped-claims line is amber');
-    c.expect(/3 CLAIM REPORTS DROPPED BY THE STICK: CHECK WHO TOOK THE ITEM/.test((await claims.first().innerText()).toUpperCase()), 'it reads WHAT IS WRONG: WHAT TO DO');
+    c.expect(/3 CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP'S PICKUPS FOR STATION #4/.test((await claims.first().innerText()).toUpperCase()), 'it reads WHAT IS WRONG: WHAT TO DO');
     await claims.first().scrollIntoViewIfNeeded();
     await sh(pg, 'mock-claims');
     await pg.context().close();
@@ -120,7 +133,7 @@ const steps = {
     mc = await H.startMC({ port: P.mc, wsPort: P.ws, home: path.join(OUT, 'home'), sessionFile: path.join(sessionDir, 'session.json'), fakeNet: false });
     vite = await H.startVite({ port: P.vite, mcPort: P.mc });
     nodes = await startNodes(mc.wsUrl, ['GUN-A:3D4F', 'STICK-1:AAAA:utility']);
-    await nodes.cmd('status STICK-1 station_id=4');
+    await nodes.cmd('status STICK-1 station_id=4,platform=esp32,actions_dropped=0');   // platform esp32: the card says STICKS3, as a real Stick's does
     const srv = H.api(mc.base);
     const state = () => srv.get('/api/state');
     // a harmless roster edit marks the session dirty, so the 2 s-debounced snapshot write runs again
@@ -163,16 +176,23 @@ const steps = {
     await c.until(async () => { await touch(); return !(await state()).not_saving; }, 12000, 'not_saving clears after a good snapshot');
     await c.until(async () => !(await present(pg, 'not-saving-snapshot')), 6000, 'the snapshot chip clears');
 
-    // O6: the phone's cumulative drop count, as a gun card chip (the demo seeds GUN-A on a rostered player)
+    // O6: the phone's cumulative drop count, as a line on the rostered player's card (the demo seeds GUN-A on a player)
+    // wait for a heartbeat to CARRY the 0 first (a condition: the node's last-seen age wraps when a beat lands), so MC's first sight is 0
+    const gunA = async () => (await state()).nodes.find(n => n.gun_name?.startsWith('GUN-A'));
+    const nextBeat = async what => { let prev = (await gunA())?.last_seen_ms ?? 0; await c.until(async () => { const a = (await gunA())?.last_seen_ms ?? 0; const hit = a < prev; prev = a; return hit; }, 6000, what); };
+    await nodes.cmd('status GUN-A dropped_total=0');
+    await nextBeat('a heartbeat carrying dropped_total=0');
     await nodes.cmd('status GUN-A dropped_total=7');
     await c.until(async () => (await state()).nodes.some(n => n.outbox_lost === 7), 8000, 'outbox_lost=7 on the node');
-    await nodes.cmd('status GUN-A dropped_total=3');          // a restarted phone restarts its count: the maximum stays
-    await H.sleep(2500);
-    c.expect((await state()).nodes.some(n => n.outbox_lost === 7), 'MC keeps the maximum (a lower later count does not erase it)');
+    await nodes.cmd('status GUN-A dropped_total=3');          // the phone's storage was reset: its count restarted, and these 3 are new losses
+    await c.until(async () => (await state()).nodes.some(n => n.outbox_lost === 3), 8000, 'a LOWER report restarts the count (3 new losses, not hidden behind the old 7)');
     await pg.goto(`${vite.base}/#muster`);
-    await c.until(() => present(pg, 'outbox-lost'), 8000, 'the outbox-lost chip on the player card');
-    await checkChip(pg, 'outbox-lost', 'amber', '7 FACTS LOST FROM THE PHONE OUTBOX');
-    await chip(pg, 'outbox-lost').first().scrollIntoViewIfNeeded();
+    const OUTBOX = '[data-alert="armory-nodecard-outbox-lost"]';
+    if (process.env.DBG) console.log(JSON.stringify((await state()).readiness.board.filter(r => r.node === 'linked')));
+    await c.until(() => present(pg, OUTBOX), 8000, 'the outbox-lost line on the player card');
+    await checkChip(pg, OUTBOX, 'amber', '3 FACTS LOST FROM THE PHONE OUTBOX');
+    c.expect((await state()).readiness.board.some(r => r.status === 'amber' && r.ambers.some(a => /OUTBOX/.test(a))), 'MC marks that board row amber');
+    await chip(pg, OUTBOX).first().scrollIntoViewIfNeeded();
     await sh(pg, 'real-outbox');
 
     // O10: a Stick's dropped CLAIM count, as a station attention line
@@ -190,18 +210,19 @@ const steps = {
     const flags = path.join(OUT, 'flags-join'); fs.mkdirSync(flags, { recursive: true });
     Object.assign(process.env, { PYTHONPATH: path.join(H.E2E_DIR, 'fixtures', 'obs_patch'), OBS_FLAG_DIR: flags, OBS_MCP_DIR: path.join(H.REPO, 'mcp'), OBS_JOIN_FAIL: '1' });
     const p2 = { mc: await H.freePort(), ws: await H.freePort(), vite: await H.freePort() };
-    const mc2 = await H.startMC({ port: p2.mc, wsPort: p2.ws, home: path.join(OUT, 'home-join') });
-    const vite2 = await H.startVite({ port: p2.vite, mcPort: p2.mc });
+    let mc2 = null, vite2 = null;
     try {
+      mc2 = await H.startMC({ port: p2.mc, wsPort: p2.ws, home: path.join(OUT, 'home-join') });
+      vite2 = await H.startVite({ port: p2.vite, mcPort: p2.mc });
       const s = await H.api(mc2.base).get('/api/state');
       c.expect(!!s.join_error && /no network interface/.test(s.join_error.error), `join_error is on the snapshot (${JSON.stringify(s.join_error)})`);
       c.expect(/join_info failed/.test(mc2.log), 'MC logged the join_info failure, naming the URL it kept');
       const pg = await open(`${vite2.base}/#muster`);
       await c.until(() => present(pg, 'join-info-failed'), 8000, 'the JOIN QR chip');
-      await checkChip(pg, 'join-info-failed', 'amber', 'JOIN QR HAS NO ADDRESS');
+      await checkChip(pg, 'join-info-failed', 'amber', 'JOIN ADDRESS NOT REFRESHED');   // the QR still holds the address read at construction
       await sh(pg, 'real-join');
       await pg.context().close();
-    } finally { await vite2.stop(); await mc2.stop(); }
+    } finally { if (vite2) await vite2.stop(); if (mc2) await mc2.stop(); }
   },
 };
 
