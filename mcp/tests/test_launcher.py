@@ -17,7 +17,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from _skip import needs
+from _skip import Skipped, needs
 from test_mc_report import assert_clean, make_evidence, members
 
 REPO = Path(__file__).resolve().parents[2]
@@ -104,15 +104,51 @@ def test_the_install_stamp_changes_when_constraints_change():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def _norm(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 def test_constraints_pin_every_runtime_dependency():
+    from importlib import metadata
+
     pins = {}
     for line in (REPO / "mcp" / "constraints.txt").read_text(encoding="utf-8").splitlines():
         if line.strip() and not line.startswith("#"):
-            assert re.fullmatch(r"[A-Za-z0-9_.-]+(==[0-9][A-Za-z0-9.]*|>=[0-9.]+,<[0-9.]+)", line.strip()), line
-            pins[re.split(r"[=<>]", line.strip())[0].lower()] = line.strip()
+            assert re.fullmatch(r"[A-Za-z0-9_.-]+==[0-9][A-Za-z0-9.]*", line.strip()), line
+            pins[_norm(line.split("==")[0])] = line.strip()
     assert pins["bleak"] == "bleak==3.0.2", "bleak stays on the tested 3.0.2 (Windows 11 only; see the comment in constraints.txt)"
-    for dep in ("mcp", "websockets", "starlette", "uvicorn", "zeroconf", "pydantic", "pydantic-core", "anyio", "h11"):
-        assert "==" in pins.get(dep, ""), f"{dep} is not pinned exactly"
+    try:
+        from packaging.requirements import Requirement
+    except ImportError:
+        raise Skipped("packaging")
+    roots = ("bleak", "mcp", "websockets", "starlette", "uvicorn", "zeroconf")
+    for r in roots:
+        try:
+            metadata.distribution(r)
+        except metadata.PackageNotFoundError:
+            raise Skipped(f"{r} is not installed here")
+    backends = re.compile(r"^(pyobjc-.*|winrt-.*|dbus-fast)$")  # platform BLE backends, bounded by bleak itself
+    seen, missing = set(), set()
+    todo = [(r, frozenset()) for r in roots]
+    while todo:
+        raw, extras = todo.pop()
+        name = _norm(raw)
+        if (name, extras) in seen:
+            continue
+        seen.add((name, extras))
+        if not backends.match(name) and name not in pins:
+            missing.add(name)
+        try:
+            reqs = metadata.requires(name) or []
+        except metadata.PackageNotFoundError:
+            continue  # an optional or other-platform package that is not installed here
+        for text in reqs:
+            req = Requirement(text)
+            # A requirement behind `extra == "x"` counts only when something asked for that extra
+            # (mcp needs `pyjwt[crypto]`, which is where cryptography and cffi come from).
+            if req.marker is None or any(req.marker.evaluate({"extra": e}) for e in (extras or {""})):
+                todo.append((req.name, frozenset(_norm(e) for e in req.extras)))
+    assert not missing, f"runtime dependencies with no pin in constraints.txt: {sorted(missing)}"
 
 
 def _git(cwd: Path, *args: str) -> None:
