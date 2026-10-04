@@ -388,11 +388,12 @@ export class PlayerPowerups {
     if (!weap) { h.log(`powerup: the head carries no $WEAP for slot ${slot}; nothing equipped (${why})`, 'le'); return false; }
     h.acctWrote(slot, mag, res, true);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
     h.setPrev(slot, mag, res);     // what the slot holds now, should the echo never come back
-    const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held;
+    const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held, life = h.lifeSeq, stun = h.stunned;   // `stun`: the premise of this write (r2 C1: a zero equip is authorised by a stun that is still running)
     Promise.resolve(h.quietWrite(frames, why)).then(ok => {   // F416 part 2: a grant is a must-land write too
       if (ok !== false) return;
       // F417 (bench 2026-09-26): a lost equip left the gun on the old weapon ("ON TRIGGER" but the sniper fired) or
       // without its counts. It is safe to repeat while nothing moved: no round, no hit, the same item on the same slot.
+      if (h.lifeSeq !== life || h.stunned !== stun) { h.log(`write ${why} failed -- the life or the stun it was written under has ended, not re-sent`, 'li'); return; }   // r2 C1: a retry must not re-send zero counts over the stun's own restore
       if (h.actSeq !== act || this._held !== held || h.activeSlot !== slot || (h.switching && !h.switching.pu) || !h.bleUp || h.phase !== 'live') { h.log(`write ${why} failed -- the game moved on, not re-sent`, 'li'); return; }
       h.log(`*** write ${why} failed -- re-sending once (F417) ***`, 'le');
       // Bug 3 r2 H1: a write the link called failed can still have reached the gun (a chunk error after the frames went

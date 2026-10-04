@@ -33,12 +33,13 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons, ...(overrides ? { overrides } : {}) }, voice: 'male' };
   // The fake gun answers the node's liveness probe the way the bench gun does (`$LIFE,0,0,0,*` -> `$HP` at once), so a
   // long quiet stretch on the match clock is not read as a locked-up gun (F272).
-  const answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null, failLeft = 0;
+  const answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null, failLeft = 0, lateNext = null, lateResolve = null;
   // `echo`: the fake gun answers every `$WEAP` and `$AMMO` write with the `$ALCD` a real gun sends (F259: the `$WEAP`
   // reset at the compiled clip, then the `$AMMO` count). `failNext`: the next write carrying a matching frame resolves false.
   const writer = fr => {
     writes.push(...fr); batches.push([...fr]);
     for (const f of fr) if (f === E.PROBE_LIFE) answers.push(f);
+    if (lateNext && fr.some(lateNext)) { lateNext = null; return new Promise(r => { lateResolve = r; }); }   // a write that resolves only when the test says
     if (failNext && fr.some(failNext)) { if (--failLeft <= 0) failNext = null; return false; }
     if (echo) for (const f of fr) { const t = f.split(',');
       if (t[0] === '$WEAP') echoQ.push(`$ALCD,${t[17] || 0},100,${t[1]},${t[18] || 0},0,*`);
@@ -73,6 +74,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
     eng, writes, facts, batches,
     flush() { while (echoQ.length) eng.feedFrame(echoQ.shift()); return h; },
     failNext(pred, n = 1) { failNext = pred; failLeft = n; return h; },
+    lateNext(pred) { lateNext = pred; return h; }, resolveLate(ok) { const r = lateResolve; lateResolve = null; r(ok); return new Promise(res => setImmediate(res)); },
     adv(ms) { const step = 250; for (let t = 0; t < ms; t += step) { h.flush(); clock += Math.min(step, ms - t); eng.tick(); h.flush(); while (answers.length) { answers.shift(); eng.feedFrame(h.gunHp ? h.gunHp() : `$HP,${eng.hp},${eng.armor},${eng.shield},*`); } } return h; },   // `gunHp`: a test's own probe answer
     at(s) { return h.adv(Math.max(0, 1_000_000 + s * 1000 - clock)); },
     mark() { return writes.length; },
@@ -1332,6 +1334,22 @@ test('Reconcile bugs 1+2 r1 S1: an EMP inside the window with a heavy on the tri
   assert.equal(h.eng.stunned, null, 'the stun expired');
   const restore = h.batches.slice(b1).flat();
   assert.ok(restore.some(f => /^\$AMMO,2,2,\d+,1,\*$/.test(f)), `the expiry restore puts the heavy's charges on slot 2: ${JSON.stringify(restore)}`);
+});
+
+test('Reconcile bugs 1+2 r2 C1: the F417 retry of the stunned heavy\'s ZERO equip is dropped once the stun has ended', async () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
+  h.eng.config.stun = { duration_s: 8 };
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.adv(1000); h.frame('$HIR,4,8,19,2,15,0,0,*');
+  h.lateNext(b => b === '$AMMO,2,0,0,1,*');                  // the zero equip's write stays in flight
+  h.adv(2000); h.eng.tick();
+  assert.ok(h.eng.stunned, 'setup: the window ended inside the stun');
+  h.adv(6000); h.eng.tick();
+  assert.equal(h.eng.stunned, null, 'setup: the stun expired and the restore ran');
+  const b1 = h.batches.length;
+  await h.resolveLate(false);                                 // ...and only now reports that it failed
+  const resent = h.batches.slice(b1).flat();
+  assert.deepEqual(resent.filter(f => f.startsWith('$AMMO') || f.startsWith('$WEAP')), [], `no zero retry after the stun: ${JSON.stringify(resent)}`);
 });
 
 test('F436 reconcile control: a heavy held OFF the trigger is not re-equipped by the re-arm', () => {
