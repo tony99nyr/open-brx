@@ -9,6 +9,7 @@
 // sighting ring and the IR words. Each expectation is still what app/src/beacon.js or app/src/control.js does.
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "brx_advert.h"
 #include "control_point.h"
@@ -140,6 +141,74 @@ static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
     }
     CHECK_EQ(drops, 0);
   }
+}
+
+// F452(b): a full sighting window is thinned evenly across time. app/test/beacon.test.mjs asserts the same vectors
+// (the kept sets are pinned by their sums), so beacon.js `thinWindow` and `sight_thin_index` stay one rule.
+static void test_sight_window_is_thinned_evenly_across_time() {
+  PlayerPresence pr;
+  for (uint32_t k = 0; k < 100; k++) {
+    pr.observe(player(5, 0), -60, k * 20);
+    const PlayerEntry* e = pr.get(5);
+    CHECK_EQ(e->recent_t[e->n_recent - 1], k * 20);  // the newest is never dropped
+    CHECK_EQ(e->recent_t[0], 0u);                    // nor the oldest
+  }
+  const PlayerEntry* e = pr.get(5);
+  CHECK_EQ(e->n_recent, SIGHT_RECENT_MAX);
+  uint32_t sum = 0, max_gap = 0, min_gap = 1000000;
+  for (size_t i = 0; i < e->n_recent; i++) {
+    sum += e->recent_t[i];
+    if (i) { const uint32_t g = e->recent_t[i] - e->recent_t[i - 1]; if (g > max_gap) max_gap = g; if (g < min_gap) min_gap = g; }
+  }
+  CHECK_EQ(sum, 63720u);
+  CHECK(max_gap <= 40 && min_gap >= 20);
+  // A burst plus a sparse tail keeps every tail sample.
+  uint32_t t[106];
+  size_t n = 0;
+  for (uint32_t k = 0; k < 100; k++) t[n++] = k * 5;
+  for (uint32_t k = 0; k < 6; k++) t[n++] = 500 + k * 250;
+  while (n > SIGHT_RECENT_MAX) {
+    const size_t at = sight_thin_index(t, n);
+    CHECK(at >= 1 && at + 1 < n);
+    for (size_t i = at + 1; i < n; i++) t[i - 1] = t[i];
+    n--;
+  }
+  uint32_t tail = 0, total = 0;
+  for (size_t i = 0; i < n; i++) { total += t[i]; if (t[i] >= 500) tail++; }
+  CHECK_EQ(tail, 6u);
+  CHECK_EQ(total, 20370u);
+  CHECK_EQ(t[0], 0u);
+  CHECK_EQ(t[n - 1], 1750u);
+}
+
+// F452(b): the TIME-WEIGHTED median. app/test/beacon.test.mjs asserts the same vectors against `timeWeightedMedian`.
+static int twm(std::vector<uint32_t> t, std::vector<int> r, uint32_t now) {
+  return time_weighted_median(t.data(), r.data(), t.size(), now, PRESENCE_SIGHT_WINDOW_MS);
+}
+static void test_time_weighted_median() {
+  std::vector<uint32_t> t;
+  std::vector<int> r;
+  for (uint32_t k = 0; k < 100; k++) { t.push_back(k * 5); r.push_back(-90); }
+  for (uint32_t k = 0; k < 6; k++) { t.push_back(500 + k * 250); r.push_back(-50); }
+  while (t.size() > SIGHT_RECENT_MAX) {  // the window holds at most 64: thin it as stamp_sighting does
+    const size_t at = sight_thin_index(t.data(), t.size());
+    t.erase(t.begin() + (long)at);
+    r.erase(r.begin() + (long)at);
+  }
+  CHECK_EQ(twm(t, r, 1750), -50);  // the kept weak ones cover 0.5 s, the 6 strong cover 1.25 s
+  CHECK_EQ(twm({0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000}, {-90, -90, -90, -90, -90, -50, -50, -50, -50, -50, -50}, 1000), -50);
+  // The end adverts cover half a gap at an observe, the middle ones a full gap.
+  CHECK_EQ(twm({0, 100, 200}, {-50, -90, -60}, 200), -90);
+  CHECK_EQ(twm({0, 100, 200}, {-50, -90, -60}, 250), -60);
+  CHECK_EQ(twm({0, 100, 200, 300, 400, 500, 600, 700, 800}, {-70, -70, -70, -70, -70, -70, -70, -70, -70}, 800), -70);
+  // Every cover is clipped to the window: the newest gets only the time up to now (Codex and Opus, F452(b) round 2).
+  CHECK_EQ(twm({0, 1500}, {-90, -50}, 1500), -90);
+  CHECK_EQ(twm({0, 1400}, {-88, -72}, 1400), -88);
+  CHECK_EQ(twm({0, 1300}, {-88, -72}, 1300), -88);
+  CHECK_EQ(twm({500}, {-61}, 1900), -61);
+  CHECK_EQ(twm({0, 500, 1000}, {-50, -50, -90}, 1100), -50);  // just heard: the two strong ones cover more
+  CHECK_EQ(twm({0, 500, 1000}, {-50, -50, -90}, 1900), -90);  // the weak one has held for 1.15 s of the window
+  CHECK_EQ(twm({50, 50, 50}, {-90, -50, -60}, 50), -60);      // one instant: the plain lower middle
 }
 
 static void test_presence_four_second_expiry() {
@@ -549,6 +618,8 @@ int main() {
   test_presence_dwell_restarts_when_the_ema_dips();
   test_presence_ema_is_beacon_js();
   test_presence_body_shadowing_does_not_drop_a_standing_player();
+  test_sight_window_is_thinned_evenly_across_time();
+  test_time_weighted_median();
   test_presence_four_second_expiry();
   test_presence_game_byte_and_roles();
   test_presence_drops_a_65th_player_and_counts_it();

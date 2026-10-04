@@ -2066,6 +2066,18 @@ export interface RestoredFromView {
   players: number;
 }
 
+export interface RestoreFailedView {
+  reason: string;
+  kept: string | null;
+}
+
+export interface ArmoryCorruptView {
+  kept: string | null;
+  error: string;
+  /** true: armory.json could not be read at all (transient; the next good read clears it) */
+  unreadable?: boolean;
+}
+
 export interface SnapshotFeedRow {
   t_match_s: number;
   text: string;
@@ -2132,6 +2144,10 @@ export interface State {
   /** F411: absent until a match has been played */
   last_match?: LastMatch;
   restored_from?: RestoredFromView;
+  /** O1: session.json could not be restored; kept aside */
+  restore_failed?: RestoreFailedView;
+  /** O2: armory.json is corrupt (left in place, backup copy at `kept`); the armory shown is NOT the full one. STICKY: ABSENT only until the operator dismisses it (POST /api/armory/corrupt/dismiss) */
+  armory_corrupt?: ArmoryCorruptView;
   game?: GameAnnouncementView;
   sync?: SyncView;
   options?: SessionOptions;

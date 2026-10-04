@@ -14,7 +14,11 @@ Credit: the QUERY/SETUP command set is from LaserTagMods' "Pairing Headset and T
 """
 from __future__ import annotations
 
+import contextlib
+import json
 import re
+import sys
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -159,24 +163,193 @@ def inventory_path() -> Path:
     return BASE_DIR / "armory.json"
 
 
-def load_inventory() -> dict:
-    import json
+class InventoryCorrupt(Exception):
+    """armory.json could not be read as a JSON object of objects. The live file is LEFT IN PLACE (a read never
+    moves it); `kept` is an exact 0600 copy of the bad bytes (None when the copy could not be made). Every
+    read-merge-write refuses while the live file is corrupt, so no merge can turn the armory into one gun.
+    Only the operator's DISMISS (`dismiss_corrupt_inventory`) moves the file aside."""
+
+    def __init__(self, path: Path, kept: Optional[Path], error: str):
+        self.path, self.kept, self.error = path, kept, error
+        where = f"a copy is kept at {kept}" if kept else "no backup copy could be made"
+        super().__init__(f"armory inventory {path} is corrupt ({error}); {where}. Writes are refused until the "
+                         f"file is fixed or dismissed in the console (DISMISS moves it aside and starts a fresh armory).")
+
+
+def _backup_corrupt_inventory(p: Path, raw: bytes) -> Optional[Path]:
+    """Save an exact copy of `raw` (the bytes that failed validation) beside `p`, mode 0600 (it holds headset
+    PINs). The live file is never touched. One backup per distinct content: the name carries a digest of the
+    bytes, and an existing backup with identical bytes is reused, so repeated reads do not pile up copies.
+    The name is reserved with an exclusive create (never overwrites). None when the copy could not be made."""
+    import hashlib
+    import os
+    digest = hashlib.sha256(raw).hexdigest()[:12]
+    try:
+        for old in sorted(p.parent.glob(f"{p.name}.bad-*-{digest}*")):
+            with contextlib.suppress(OSError):
+                if old.read_bytes() == raw:
+                    return old
+        ns = time.time_ns()
+        stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime(ns // 10**9)) + f"{ns // 10**6 % 1000:03d}"
+        n = 0
+        while True:
+            kept = p.with_name(f"{p.name}.bad-{stamp}-{digest}" + (f"-{n}" if n else ""))
+            try:
+                fd = os.open(kept, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                n += 1
+                continue
+            try:
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(raw)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    kept.unlink()
+                raise
+            with contextlib.suppress(OSError):
+                os.chmod(kept, 0o600)       # best effort (Windows ignores most mode bits)
+            return kept
+    except OSError:
+        return None
+
+
+def corrupt_notice_path() -> Path:
+    return inventory_path().with_name("armory.json.corrupt-notice")
+
+
+def _write_corrupt_notice(kept: Optional[Path], error: str) -> None:
+    """Persist the corrupt-armory warning so it survives an MC restart (cleared only by DISMISS or a
+    dismiss that finds the file valid again). Written ONLY when a corrupt read happened."""
+    from .storage import atomic_write_text
+    try:
+        atomic_write_text(corrupt_notice_path(), json.dumps(
+            {"kept": str(kept) if kept else None, "error": error, "at": int(time.time() * 1000)}), mode=0o600)
+    except OSError:
+        pass     # the in-memory warning still stands
+
+
+def read_corrupt_notice() -> Optional[dict]:
+    try:
+        d = json.loads(corrupt_notice_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    return {"kept": d["kept"] if isinstance(d.get("kept"), str) else None, "error": str(d.get("error") or "unknown")}
+
+
+def clear_corrupt_notice() -> None:
+    with contextlib.suppress(OSError):
+        corrupt_notice_path().unlink()
+
+
+def _validate_inventory(inv) -> dict:
+    if not isinstance(inv, dict):
+        raise ValueError(f"expected a JSON object, found {type(inv).__name__}")
+    for k, v in inv.items():
+        if not isinstance(k, str) or not isinstance(v, dict):
+            # never name the key: armory keys are headset PINs, and this text reaches /api/state
+            raise ValueError(f"a record is a {type(v).__name__}, expected an object")
+    return inv
+
+
+def _read_inventory_locked() -> dict:
+    """The read itself. The caller MUST hold `_inventory_lock` (it is not re-entrant, so the locked write
+    ops call this, never `load_inventory`). It NEVER moves, renames or deletes the live file. A missing file
+    is {}. A file that is not a JSON object of objects raises InventoryCorrupt after saving an exact backup
+    copy and the sticky `armory.json.corrupt-notice` (so MC can still warn after a restart). Any other
+    read failure (permissions, a sharing violation) propagates as the OSError it is."""
     p = inventory_path()
-    if p.exists():
-        try:
-            return json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-    return {}
+    try:
+        raw = p.read_bytes()
+    except FileNotFoundError:
+        return {}
+    try:
+        return _validate_inventory(json.loads(raw.decode("utf-8")))
+    except ValueError as exc:      # JSONDecodeError and UnicodeDecodeError are ValueErrors
+        kept = _backup_corrupt_inventory(p, raw)
+        err = f"{type(exc).__name__}: {exc}"
+        _write_corrupt_notice(kept, err)
+        raise InventoryCorrupt(p, kept, err) from exc
+
+
+def load_inventory() -> dict:
+    """The armory, or {} when no file exists yet. A file that exists but is not a JSON object of objects
+    raises InventoryCorrupt (the file stays where it is): an unreadable armory is never the same as an empty
+    one. Takes the inventory lock, so it never reads a file a writer is replacing."""
+    with _inventory_lock():
+        return _read_inventory_locked()
 
 
 def _save_inventory(inv: dict) -> None:
-    import json
+    from .storage import atomic_write_text
+    atomic_write_text(inventory_path(), json.dumps(inv, indent=2), mode=0o600)   # it holds headset PINs
+
+
+_inventory_thread_lock = threading.RLock()
+
+
+if sys.platform == "win32":
+    import msvcrt
+
+    def _lock_file(fh) -> None:
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+
+    def _unlock_file(fh) -> None:
+        fh.seek(0)
+        with contextlib.suppress(OSError):
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _lock_file(fh) -> None:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock_file(fh) -> None:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+@contextlib.contextmanager
+def _inventory_lock(timeout_s: float = 10.0):
+    """Serialise every read-merge-write of armory.json across threads and across processes (MC scans and the
+    bench tools write it from different processes). Take it ONCE per operation: it is not re-entrant
+    across file handles."""
     p = inventory_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(inv, indent=2), encoding="utf-8")
+    with _inventory_thread_lock:
+        fh = open(p.with_name(p.name + ".lock"), "a+b")
+        try:
+            deadline = time.monotonic() + timeout_s
+            while True:
+                try:
+                    _lock_file(fh)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"armory inventory lock {fh.name} still held after {timeout_s:g} s: "
+                                           f"another brx-mcp process is writing it")
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                _unlock_file(fh)
+        finally:
+            fh.close()
 
 
+def _under_inventory_lock(fn):
+    """Run a read-merge-write of armory.json under `_inventory_lock`."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _inventory_lock():
+            return fn(*args, **kwargs)
+    return wrapper
+
+
+@_under_inventory_lock
 def add_to_inventory(record: dict) -> dict:
     """Merge one QUERY record into the armory inventory (keyed by Serial/Head PIN).
     Only non-None fields overwrite, so a USB re-query preserves the BLE binding
@@ -184,8 +357,8 @@ def add_to_inventory(record: dict) -> dict:
     never the repo. Returns the full inventory."""
     key = record.get("serial_head_pin")
     if not key:
-        return load_inventory()
-    inv = load_inventory()
+        return _read_inventory_locked()
+    inv = _read_inventory_locked()
     entry = inv.get(key, {})
     old_name = entry.get("gun_name")
     for f in INVENTORY_FIELDS:
@@ -209,6 +382,7 @@ def advert_basename(advert: str) -> str:
     return re.sub(r"-[0-9A-Fa-f]{4}$", "", advert or "").strip() or (advert or "")
 
 
+@_under_inventory_lock
 def correlate(scan_entries: list) -> list:
     """Bind `ble_address` + set `name_confirmed` for inventory records whose gun_name
     matches exactly one BLE advert basename — and only when that name is UNIQUE in the
@@ -216,7 +390,7 @@ def correlate(scan_entries: list) -> list:
     and the post-rename reconfirm. `scan_entries`: [{'name','address'}, ...].
     Returns [(serial, address), ...] newly confirmed."""
     from collections import Counter
-    inv = load_inventory()
+    inv = _read_inventory_locked()
     name_counts = Counter((r.get("gun_name") or "").strip().lower() for r in inv.values())
     adv: dict[str, list] = {}
     for e in scan_entries:
@@ -237,11 +411,12 @@ def correlate(scan_entries: list) -> list:
     return bound
 
 
+@_under_inventory_lock
 def bind_address(serial: str, address: str, name: Optional[str] = None) -> bool:
     """Bind a BLE MAC to an inventory record with certainty (isolation enroll: the
     gun was the only one powered, so this address IS this serial). Optionally set the
     name too. Marks name_confirmed=True (we know both facts). Returns True if bound."""
-    inv = load_inventory()
+    inv = _read_inventory_locked()
     if serial not in inv:
         return False
     inv[serial]["ble_address"] = address
@@ -252,12 +427,13 @@ def bind_address(serial: str, address: str, name: Optional[str] = None) -> bool:
     return True
 
 
+@_under_inventory_lock
 def mark_rename(new_name: str, serial: Optional[str] = None,
                 address: Optional[str] = None) -> Optional[str]:
     """Record a just-sent rename: set the target record's gun_name to `new_name` and
     clear `name_confirmed` (the advert won't match until the gun reboots). Target by
     serial, else by bound ble_address. Returns the serial updated, or None."""
-    inv = load_inventory()
+    inv = _read_inventory_locked()
     key = serial
     if key is None and address is not None:
         key = next((s for s, r in inv.items() if r.get("ble_address") == address), None)
@@ -267,6 +443,31 @@ def mark_rename(new_name: str, serial: Optional[str] = None,
     inv[key]["name_confirmed"] = False
     _save_inventory(inv)
     return key
+
+
+def dismiss_corrupt_inventory() -> bool:
+    """The operator's DISMISS: the ONLY place the live armory.json is moved aside. Under the inventory lock,
+    and only if the file is STILL corrupt (re-validated now): it is renamed to an exclusively reserved
+    `.dismissed-*` name (a rename keeps its 0600 mode) and the notice is deleted, so writes work again on a
+    fresh armory. A file that is missing or has become valid just clears the notice. Raises OSError when the
+    move fails (the notice stays). Returns True when a file was moved aside."""
+    from .storage import move_aside_exclusive
+    with _inventory_lock():
+        p = inventory_path()
+        try:
+            _validate_inventory(json.loads(p.read_bytes().decode("utf-8")))
+            corrupt = False
+        except FileNotFoundError:
+            corrupt = False
+        except ValueError:
+            corrupt = True
+        moved = False
+        if corrupt:
+            if move_aside_exclusive(p, "dismissed") is None:
+                raise OSError(f"could not move the corrupt armory {p} aside")
+            moved = True
+        clear_corrupt_notice()
+        return moved
 
 
 def backup_dir() -> Path:
