@@ -116,7 +116,7 @@ test('a reload starts the count over', () => {
   for (let i = 0; i < 5; i++) h.pull();
   assert.equal(h.count(NAG), 1, 'setup: one nag so far');
   h.f('$ALCD,30,70,0,162,0,*');                 // the magazine came back
-  assert.equal(h.eng._dryPulls, 0, 'the dry spell ended with the reload');
+  assert.equal(h.eng.am.dryPulls, 0, 'the dry spell ended with the reload');
   h.f('$ALCD,0,70,0,162,0,*');                  // and ran out again
   for (let i = 1; i <= 4; i++) { h.pull(); assert.equal(h.count(NAG), 1, `pull ${i} of the new spell is silent`); }
   h.pull(); assert.equal(h.count(NAG), 2, 'the 5th pull of the new spell speaks');
@@ -154,7 +154,7 @@ test('a stunned gun is silent, and the stun does not carry a count into the next
   assert.ok(h.eng.stunned, 'setup: stunned');
   for (let i = 0; i < 9; i++) h.pull();
   assert.equal(h.count(NAG), 0, 'a disarmed gun says nothing');
-  assert.equal(h.eng._dryPulls, 0, 'and nothing was counted');
+  assert.equal(h.eng.am.dryPulls, 0, 'and nothing was counted');
 });
 
 // ---------- shields online ----------

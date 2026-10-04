@@ -106,12 +106,6 @@ const HURT_DEBOUNCE_MS = 400;
 // F375: the low-health line waits for a pause in the hits and a quiet gun, but not for ever: "health critical" said
 // seconds after the news is noise. Past this long after the crossing, the line is dropped (the HUD still shows it).
 const HURT_MAX_WAIT_MS = 3000;
-// THE RELOAD NAG (Tony, bench 2026-09-18). The magazine is empty, the reserve is not, and the
-// player keeps pulling the trigger: say RELOAD on the 5th pull of that dry spell and on every 3rd after it
-// (5, 8, 11 …). Tony's numbers, verbatim, and they are a taste decision, not a measurement: the first four
-// pulls are the player finding out, and one word per three pulls after that is a reminder rather than a
-// scold. A reload resets the spell (`_onAmmo`), so the count is never carried between magazines.
-const RELOAD_NAG_FIRST = 5, RELOAD_NAG_EVERY = 3;
 // S29(a) THE SHIELD RECHARGE. Until this existed the shield pool only ever moved when something sent a
 // `$LIFE` grant and nothing did, so shields never came back and none of the cues below could be benched at
 // all (Tony, 2026-09-18: "shields also never recharged").
@@ -755,6 +749,8 @@ function ammoHost(e) {
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
     slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     setActiveSlot: slot => { e.activeSlot = slot; }, setMoment: m => { e.moment = m; }, clearPull: () => { e._pull = null; },
+    event: kind => e._event(kind), tryoutAmmo: (slot, mag) => e._tryoutAmmo(slot, mag),
+    roundsLeft: (slot, prev, mag) => e._roundsLeft(slot, prev, mag), resyncAmmo: (prev, mag) => e._resyncAmmo(prev, mag),
     setAmmo: (ammo, mag) => { e.ammo = ammo; e.mag = mag; }, setReserve: reserve => { e.reserve = reserve; },
   };
 }
@@ -977,7 +973,6 @@ export class Engine {
     // F208: the pool watchdog. `lastPoolAt` is the last `$HP`/`$LCD`/`$ALCD`; `_shotDueAt` is a trigger press still
     // waiting for its `$ALCD`; `_noFirePulls` counts presses that never got one. See `poolStale()`.
     this.lastPoolAt = 0; this._shotDueAt = null; this._noFirePulls = 0;
-    this._dryPulls = 0;             // the RELOAD nag: trigger pulls into an empty magazine this dry spell (the RELOAD nag's counter)
     // F264: the cure. `_queryAt` is when the last probe went out and `_probeSeen` says which reply kinds it has
     // already taken, so a SOLICITED reply can be told from the gun answering a trigger. `_cure` is
     // {askedAt, asks} while a probe is outstanding; `_cureLife` and `_cureAt` are the two bounds, one per life
@@ -1019,9 +1014,6 @@ export class Engine {
     this.lastButton = null;         // the last $BUT edge either way: {id, state, at, heldMs}
     this.am = new Ammo(ammoHost(this));   // F259/F164: the magazine account and the counts per weapon slot (ammo.js)
     this.activeSlot = 0;
-    // Bench 2026-09-17: the last round that left a weapon slot, {slot, at, ms}, where `ms` is that slot's
-    // `$WEAP` token 14 from the head (null when the head carries no full frame). Display only: the HUD cue.
-    this.lastShot = null;
     this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
@@ -2126,7 +2118,7 @@ export class Engine {
     // this call is the ONE place that writes a fresh `$WEAP` table to the gun for a try-out — MC's
     // `loadout_ack` (the rack's ✓) is only the NETWORK round-trip and never waited on this. `$WEAP` has no
     // echo of its own (protocol.md), so — same family as F123 — the observable proxy is the gun's OWN next
-    // ammo report on the new weapon's full clip (`_onAmmo`, mirroring how the live SWITCHING takeover
+    // ammo report on the new weapon's full clip (ammo.js `onAmmo`, mirroring how the live SWITCHING takeover
     // confirms on the next $ALCD rather than trusting the write). No clip on the row (an older/stub
     // catalog entry) arms nothing to wait for, so the ⓘ / rack read EQUIPPED at once, as before.
     // Polish-loop pass 3 (HIGH): `gunSlot` is NOT `pk.slot` — a try-out is written to gun slot 0 ALWAYS,
@@ -3000,7 +2992,7 @@ export class Engine {
     this._shieldAt = now;
     this._write([rp.shield_on], 'protection light after hit');
   }
-  /** F209: end spawn protection. Called on the gun's first shot (`_onAmmo`) or at SPAWN_PROTECT_MAX_MS (`tick`), and
+  /** F209: end spawn protection. Called on the gun's first shot (ammo.js `onAmmo`, via `_roundsLeft`) or at SPAWN_PROTECT_MAX_MS (`tick`), and
    *  by the reconcile end and the operator resync. Never arms a gun that died, ended or is no longer live.
    *  'tmp' bundle: one write of [a `sir_pool` take, if the gun's table is not the live one or class sounds are on]
    *  then `spawn_protect_off`. The take goes FIRST so its rows land while t8 still holds hits at 0 damage.
@@ -3167,7 +3159,7 @@ export class Engine {
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;
     this._pendingHurtWrite = false;
-    this.am.forgetCounts(); this.activeSlot = 0; this.am.forgetShown(); this.am.forgetHeat(); this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
+    this.am.forgetCounts(); this.activeSlot = 0; this.am.forgetShown(); this.am.forgetHeat();   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._holdAccuracyWrites('spawn');   // the spawn write owns `$AMMO` until the gun has answered it
     this._lastTeamRepaintAt = this.now();   // F68: the spawn flash IS this life's first paint; the backstop clock runs from it
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // `$SPAWN` clears every `$TMP`
@@ -3182,7 +3174,7 @@ export class Engine {
     this.poolSrc = 'model';        // R2-3: those two numbers are config.health, not the gun's answer
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._gunLifeAt = this._spawnAt; this._armedThisLife = false;   // B5/F272: settle and silence clocks start with this life
-    this._shotDueAt = null; this._noFirePulls = 0; this._dryPulls = 0;   // F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
+    this._shotDueAt = null; this._noFirePulls = 0; this.am.endDrySpell();   // F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
     // S29: a fresh life starts at shield 0 without the shield having BROKEN, so no heartbeat and no
     // refill in flight; the recharge delay runs from here, which is why a life's first fill lands
     // SHIELD_REGEN_DELAY_MS in and never inside the spawn write.
@@ -4237,7 +4229,7 @@ export class Engine {
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._gunLifeAt = this._spawnAt; this._armedThisLife = false;   // B5/F272: settle and silence clocks start with this life
-    this._shotDueAt = null; this._noFirePulls = 0; this._dryPulls = 0;   // F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
+    this._shotDueAt = null; this._noFirePulls = 0; this.am.endDrySpell();   // F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
     // S29: a fresh life starts at shield 0 without the shield having BROKEN, so no heartbeat and no
     // refill in flight; the recharge delay runs from here, which is why a life's first fill lands
     // SHIELD_REGEN_DELAY_MS in and never inside the spawn write.
@@ -4622,7 +4614,7 @@ export class Engine {
   /** The HUD's shot-ready cue for the ACTIVE slot: {at, ms, leftMs} after a shot from a weapon with at least
    *  SHOT_CUE_MIN_MS between rounds, else null (automatic weapon, unknown interval, dead, another slot). PURE. */
   shotCooldown(now = this.now()) {
-    const s = this.lastShot;
+    const s = this.am.lastShot;
     if (!s || s.ms == null || s.ms < SHOT_CUE_MIN_MS || !this.alive || this.phase !== 'live' || s.slot !== this.activeSlot) return null;
     return { at: s.at, ms: s.ms, leftMs: Math.max(0, s.at + s.ms - now) };
   }
@@ -4631,7 +4623,7 @@ export class Engine {
   // F230 (bench 2026-09-17): only one of three guns decayed live accuracy under sustained fire, so the
   // native t21->t22 walk is not a lever a game can be balanced on. Every weapon ships t21==t22==100
   // (native walk off) and this module drives absolute `$TMP` t4 from the shot stream the node already
-  // watches (`_onAmmo`'s mag decrement). A t4 write changes real hit rate, survives `$WEAP`, and changes
+  // watches (ammo.js `onAmmo`'s mag decrement). A t4 write changes real hit rate, survives `$WEAP`, and changes
   // neither magazine nor reserve; `$SPAWN` and `$CLEAR` reset it (bench 2026-09-18).
   //
   // F259 (Tony, at the bench 2026-09-18): recoil is a SHORT LADDER OF STATES, not a per-shot walk.
@@ -4931,7 +4923,7 @@ export class Engine {
     const n = Number(p[ACC_CEILING_IDX]);
     return Number.isFinite(n) ? n : null;
   }
-  /** A shot just left the active slot's magazine (`_onAmmo`'s mag decrement, `n` rounds this frame --
+  /** A shot just left the active slot's magazine (ammo.js `onAmmo`'s account drop, `n` rounds this frame --
    *  almost always 1, but a lost `$ALCD` can report more than one gone at once). Counts it against the
    *  burst; the `afterShots`-th round degrades the weapon and the `heavyAfter`-th round degrades it again,
    *  and every other round costs nothing -- the state is already where the burst puts it, so nothing is
@@ -5495,7 +5487,11 @@ export class Engine {
         // read 0 in every observed frame -- so writing it can only ZERO a live shield, never set one,
         // which silently recreates the Q12 bug this file just fixed. Re-add only once t3 is
         // bench-confirmed as the shield.
-        if (t[5] !== undefined && !(this._spawnCheck && this._spawnCheck.queryAt && !this._spawnCheck.done)) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);   // a spawn query's slot may differ from activeSlot
+        // KNOWN BUG (bug 3): `$LCD` carries the gun's slot token (t[4]), but its magazine and reserve are booked on
+        // `activeSlot`, and `activeSlot` is whatever `$ALCD` spoke last. The gun's `$ALCD` echo of the node's own spawn or
+        // re-arm `$AMMO` rows moves `activeSlot` with no button pressed (ammo.js `onAmmo`, the same KNOWN BUG note), so this
+        // books slot 0's counts on another slot. Pinned as it is by the golden trace `ammo-spawn-echo-slot`.
+        if (t[5] !== undefined && !(this._spawnCheck && this._spawnCheck.queryAt && !this._spawnCheck.done)) this.am.onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);   // a spawn query's slot may differ from activeSlot
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         const wasResync = !!this.resync;
         this._spawnCheckSeen(this.hp, this.armor, 0, t);   // F416: only a queried `$LCD` proves the weapon state
@@ -5529,11 +5525,11 @@ export class Engine {
         // S42: token 2 is the live per-shot accuracy `$ALCD` reports (docs/weapon-design.md §4.4,
         // bench 2026-09-17) — the ONLY answer the accuracy writer's verify step ever gets.
         // F229 (bench 2026-09-17): token 5 is HEAT. Firing stops at 99, the gun does not cool on its
-        // own, and only the reload lever vents it (about 35 a pull). `_onAmmo` below records it per slot,
+        // own, and only the reload lever vents it (about 35 a pull). `am.onAmmo` below records it per slot,
         // and ammo.js `heatBlocksFire()` is the one reading of it (the accuracy writer's guard included).
         this._smokeObserve(t[2] !== undefined && t[2] !== '' ? +t[2] : NaN, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);   // S53: before the recoil reader, which ignores why accuracy moved
         this._recoilObserve(t[2] !== undefined && t[2] !== '' ? +t[2] : NaN, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);
-        this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0, t[5] !== undefined && t[5] !== '' ? +t[5] : null);
+        this.am.onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0, t[5] !== undefined && t[5] !== '' ? +t[5] : null);
         break;
       }
       case 'HIR': {
@@ -5702,34 +5698,10 @@ export class Engine {
     // answer.
     const seen = this.am.acctLive(this.activeSlot);
     const mag = seen != null ? seen : this.am.ammoBySlot()[this.activeSlot];
-    if (!(mag > 0)) { this._dryPull(); return; }
-    this._dryPulls = 0;   // the RELOAD nag: a loaded pull ends the dry spell even if the gun never answers it
+    if (!(mag > 0)) { this.am.dryPull(); return; }
+    this.am.endDrySpell();   // the RELOAD nag: a loaded pull ends the dry spell even if the gun never answers it
     this.am.acctPress();   // F259: the earliest evidence a round is leaving -- the gun has not fired yet
     if (this._shotDueAt == null) this._shotDueAt = this.now();
-  }
-  /** THE RELOAD NAG (Tony, bench 2026-09-18). Reached from `_awaitShot` ONLY, one line below its stand-down table, so every other
-   *  reason a pull produced no round -- overheat, a swap, a reload already running, a stun, being down, not
-   *  live, the link gone -- has already returned and the empty magazine is the only thing left that can have
-   *  stopped it. That is the whole point of hanging it here rather than counting `$BUT` edges: a nag on an
-   *  overheated gun would name the wrong fix.
-   *
-   *  A dry reserve stays SILENT. "Reload" said to a player with nothing to reload to is a lie, and they can
-   *  hear the difference the moment they try. The reserve is the slot's OWN last `$ALCD` figure and nothing
-   *  else: an unknown reserve counts as no reserve, the same way ammo.js `reloadPulled` refuses a reload it cannot
-   *  prove is possible.
-   *
-   *  ⚠ It used to fall back to `this.reserve`, the last figure reported on ANY slot, which the doc comment
-   *  described and then contradicted (polish review 2026-09-18). Melee is the live case: it is slot 4, it
-   *  arrives on its own `$ALCD`, and `_onAmmo` makes whatever spoke last the active slot -- so after a swing
-   *  every pull was nagged to RELOAD against the primary's reserve. */
-  _dryPull() {
-    const slot = this.activeSlot;
-    const reserve = this.am.prevReserve[slot];
-    if (!(reserve > 0)) return;
-    this._dryPulls = (this._dryPulls || 0) + 1;
-    if (this._dryPulls < RELOAD_NAG_FIRST || (this._dryPulls - RELOAD_NAG_FIRST) % RELOAD_NAG_EVERY !== 0) return;
-    this.log(`dry pull ${this._dryPulls} on an empty magazine with ${reserve} in reserve: RELOAD`, 'li');
-    this._event('reload_nag');
   }
   /** F208: called from tick(). A press with no pool report TRIGGER_NO_FIRE_MS later counts as unanswered. */
   _noFireTick(now) {
@@ -6136,7 +6108,7 @@ export class Engine {
     this.lastButton = { id, state: 0, at: now, heldMs };
     // A release is OBSERVATIONAL only. It must not cancel a reload: on a magazine weapon the handle is
     // let go instantly and the reload still completes ~1.4 s later. Whether a reload actually happened is
-    // decided by the gun's ammo (`_onAmmo` / ammo.js `reloadDeadline`), never by a button edge or a timer.
+    // decided by the gun's ammo (ammo.js `onAmmo` / `reloadDeadline`), never by a button edge or a timer.
     if (id === BTN_RELOAD) this.am.reloadReleased(now);
     // S54 (2026-09-23), BENCH-PROVISIONAL: the gun streams `$BUT,0,0` on every trigger release in app
     // mode (docs/manual/dev.md), so a released trigger is direct evidence the burst has stopped -- while
@@ -6177,53 +6149,9 @@ export class Engine {
   switchWindowMs() { return this.am.switchWindowMs(); }
 
 
-  /** $ALCD,<mag>,100,<slot>,<reserve>,<heat> — counts are per weapon SLOT; a weapon swap is never a shot.
-   *  `heat` is null on a frame with no heat token ($LCD's ammo echo) -- leaves the slot's last-known heat alone. */
-  _onAmmo(mag, reserve, slot = 0, heat = null) {
-    slot = Number.isFinite(slot) ? slot : 0;
-    // Review 2026-09-17: heat is recorded BEFORE the stunned return below. A stun window can land while a
-    // heat weapon is mid-cooldown, and skipping the token here (as the ammo/reserve fields correctly do)
-    // would only add to how long a stale-but-locked reading can sit unrefreshed -- see HEAT_STALE_MS.
-    this.am.noteHeat(slot, heat);
-    this.am.heatLockFrame(slot, heat, this.stunned || this.rc.disarmed ? null : this.am.prevAmmo[slot], mag);   // F164: a disarm echo's drop is not "it fired", so it must not end a lockout
-    // F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0` (whether
-    // it does is hardware-UNVERIFIED; this guard makes it safe either way). Counting it would book a magazine of
-    // phantom shots, and recording it would make the restore re-send 0 -- a gun disarmed for the rest of the life.
-    if (this.stunned) return;
-    // F164 follow-up: the same guard for a reconcile. `rc.begin` disarms with `$AMMO,<slot>,0,0`, and the
-    // gun's echo reads as a whole magazine leaving: it booked `shots`, the life's rounds, a shot cue and a recoil
-    // burst. Nothing in the window is fire (the gun is disarmed), and `rc.end` re-arms from the counts it
-    // snapshotted before the disarm, so the frame is dropped whole. `_prevAmmo` and the account stay where they
-    // were; the re-arm re-seats both.
-    if (this.rc.disarmed) return;
-    // F259 (bench 2026-09-18): the same shape as the stun guard above, and for the same reason. Inside the
-    // ECHO WINDOW this frame is the gun reading back the node's OWN `$WEAP` reset -- it is not evidence of
-    // anything. Not a shot (it booked 26 phantom rounds into `this.shots` per write), not a try-out
-    // confirmation (the reset magazine IS the clip a try-out looks for), not a reload, not resync proof,
-    // and not a magazine worth showing: Tony watched the HUD jump to 32 every time he fired. The node
-    // already knows the count, because it wrote it -- so book NOTHING, leave `_prevAmmo` where it was so
-    // the next real frame measures from before the write, and put the ACCOUNT on the screen.
-    // F394: the restore landing for a slot that is NOT on the trigger (a switch-back resend, a stun restore of the
-    // other slot) is the gun reading back our own write, not the trigger moving. Measured before `_acctAmmo` closes it.
-    // A report on the slot ALT is switching TO is the player's confirming shot, never an echo (polish round 2).
-    const offSlotEcho = slot !== this.activeSlot && !(this.am.switching && slot === this.am.switching.to)
-      && this.am.acctEchoing(slot) && mag <= this.am.acct[slot].echoExpect;
-    const expectedBefore = slot < 2 && this.pu.isHeldSlot(this.activeSlot)
-      ? this.am.liveAmmo()[slot]?.[0] : null;   // a first $ALCD can still prove a shot against the spawn count
-    let prev = this.am.acctAmmo(slot, mag, this.am.prevAmmo[slot]);
-    if (prev === null) {
-      const a = this.am.acct[slot];
-      // F394: only the slot on the trigger owns the ammo block. A switch-back resend for slot 0 while the player
-      // is on the secondary put the primary's number over the secondary's pips (sitting B, 2026-09-25).
-      if (slot === this.activeSlot) this.am.publish(slot, this.am.acctLive(slot), a ? a.res : null);
-      return;
-    }
-    if (offSlotEcho) {
-      this.am.prevAmmo[slot] = mag;
-      if (reserve != null && !Number.isNaN(reserve)) this.am.prevReserve[slot] = reserve;
-      return;
-    }
-    if (this.pu.repairUnpulled(slot, mag, prev)) return;   // a stale pickup count is not a round
+
+  /** F147: one ammo report (ammo.js `onAmmo`) while a try-out weapon write waits for the gun's own confirmation. */
+  _tryoutAmmo(slot, mag) {
     // F147 (tightened, polish-loop passes 1+2): the gun's own confirmation that a try-out weapon write
     // actually took — a fresh magazine at the new weapon's full clip, on the SLOT that weapon is landing
     // in. Pass 2 bug: `$LCD` reports whichever slot is ACTIVE, so a routine report for the gun's CURRENT
@@ -6240,78 +6168,18 @@ export class Engine {
       if (!this.tryoutArming.seen && mag === this.tryoutArming.clip && mag !== this.tryoutArming.baseline) { this.tryoutArming = null; this.tryoutUnconfirmed = null; }
       else this.tryoutArming.seen = true;
     }
-    // F209: a round leaving slot 0 or 1 is the gun's own proof it can fire, so hit reception arms now.
-    // F209/S7.1: a reconcile disarms with its own `$AMMO` write (`rc.begin`), and the gun's echo
-    // of that looks exactly like "a round left the mag". The `if (this.rc.disarmed) return` near the top of this
-    // function drops that echo before it gets here, so it cannot arm hit reception early; `rc.end`
-    // re-arms explicitly once it is done.
+  }
+  /** The engine's side of an ammo report (ammo.js `onAmmo`): F209's first shot ends spawn protection, a round moves the
+   *  `_writeMust` act counter (pl4), and the rounds the gun reports count into the match's and the life's `shots`. */
+  _roundsLeft(slot, prev, mag) {
     if (this._armPending && this._armPending.shotEnds !== false && (slot === 0 || slot === 1 || this.pu.isHeldSlot(slot)) && prev != null && mag < prev) this._armLife('first shot');   // A56: a heavy's round proves it too   // 2026-09-19: a profile life never ends on a shot
     if (prev != null && mag < prev) this._actSeq++;   // pl4: `_writeMust` never repeats counts past a shot
     if (prev != null && mag < prev && this.phase === 'live') { this.shots += (prev - mag); if (this._life && this.alive) this._life.shots += (prev - mag); }   // death screen: this life's rounds too
-    // Bench 2026-09-17: the shot-ready cue times from THIS frame, the gun's own report of the round, so the
-    // cue can only be late, never early. Slots 0/1 and a held heavy's pickup slot (bench 2026-10-02: the Rockets never
-    // shone); slot 4 is melee and has no gauge.
-    if (prev != null && mag < prev && this.phase === 'live' && (slot === 0 || slot === 1 || this.pu.isHeldSlot(slot))) this.lastShot = { slot, at: this.now(), ms: this._fireIntervalMs(slot) };
+  }
+  /** §3.10: a magazine that moved is resync evidence (ammo.js `onAmmo`). */
+  _resyncAmmo(prev, mag) {
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
     if (this.resync && prev != null && mag > prev) this._resyncEvidence('alcd-inc');
-    // F123: the takeover is reconciled against the REAL magazine, one $ALCD at a time. A rise feeds it
-    // (and pushes the deadline out, which is what lets a shell-by-shell chain run to the end instead of
-    // clearing on shell #1); reaching the spawn cap finishes it; a round leaving the mag ends it, because
-    // the player has started shooting again. It is no longer cleared by "the mag went up" alone.
-    if (this.am.reloading && prev != null && slot === this.am.reloading.slot) {
-      if (mag > prev) {
-        this.am.reloading.mag = mag; this.am.reloading.lastGainAt = this.now();
-        if (this.am.reloading.cap != null && mag >= this.am.reloading.cap) this.am.endReload('filled');
-      } else if (mag < prev) {
-        // Book the outcome from the PRE-SHOT magazine. Overwriting `r.mag` with the post-shot count first
-        // made a shotgun chain that loaded two shells and then fired read as `gained:0, ok:false` — the exact
-        // false verdict F123 exists to prevent. The shot is not part of what the reload achieved.
-        this.am.endReload('fired');
-      }
-    }
-    // the RELOAD nag: the magazine came back, so the dry spell is over and the RELOAD nag counts from one again. Keyed on
-    // the gun's own rising count rather than on `endReload`, because that is what "the player reloaded" means
-    // on the wire -- a shell-by-shell shotgun chain, a swap onto a loaded slot and a spawn refill all land here.
-    if (prev != null && mag > prev) this._dryPulls = 0;
-    // A loadout shot without ALT or SELECT proves that a recent phone equip did not put the held weapon on the trigger.
-    // A read-back with no count drop could be an old echo, so only a shot warrants another equip.
-    const lostPuEquip = this.pu.lostEquip(slot, mag, prev, expectedBefore, this.am.altEvidencePending);
-    const puBack = this.pu.onAmmo(slot, mag, prev);   // A56: the held item's magazine; empty ends the item and switches back
-    if (this.am.switching && !this.am.switching.pu && slot !== this.am.switching.from && (slot < 2 || this.pu.isHeldSlot(slot))) {
-      // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
-      // NB this interval is ALT-press -> next SHOT, so it includes the player's reaction time. It is a
-      // lower bound on "the swap had finished by", NOT a measurement of the swap itself (FOLLOWUPS F4).
-      this.am.lastSwitchMs = this.now() - this.am.switching.at;
-      this.log(`slot ${this.am.switching.from}->${slot} confirmed ${this.am.lastSwitchMs}ms after ALT (incl. reaction)`, 'li');
-      this.am.switching = null;
-      this.moment = { kind: 'switched', at: this.now(), data: { slot } };   // the HUD flips SWITCHING → ACTIVE
-      // ⚠ The slot moves BEFORE the re-arm (polish review 2026-09-18). `_recoilArm` reads `this.activeSlot`
-      // for both the weapon it looks up (`_activeWeaponId`) and the slot it records, and the assignment used
-      // to sit below this block -- so a confirmed swap armed the OLD weapon's profile and filed it under the
-      // OLD slot, which is the opposite of what the line below says it does. The assignment after the block
-      // is now a no-op on this path and still does the work on every other.
-      this.activeSlot = slot;
-      this.pu.onConfirmedSwap(slot);   // A56 r2 M2: ALT took the trigger off the heavy, as the assumed-swap path says; r3: it supersedes a pending switch-back
-      this._recoilArm('swap (confirmed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
-    }
-    this.am.prevAmmo[slot] = mag;
-    if (slot < 2 && this.am.altEvidencePending != null && ((prev != null && mag < prev) || slot === this.am.altEvidencePending)) {
-      this.am.altPtr = slot; this.am.altEvidencePending = null;
-    }
-    if (slot < 2 && slot !== this.activeSlot && this.activeSlot < 2 && !this.am.switching && this.am.altEvidencePending == null) this.am.altPtr = slot;   // ALT r4: a swap the node missed; the pointer follows the gun
-    if (puBack != null) {   // A56: the heavy ran dry; keep its empty count until the delayed switch-back
-      if (reserve != null && !Number.isNaN(reserve)) this.am.prevReserve[slot] = reserve;
-      this.am.publish(puBack, this.am.prevAmmo[puBack], this.am.prevReserve[puBack]);
-      return;
-    }
-    this.activeSlot = slot;
-    // S42/F259: recoil is stepped by `_acctSpent`, off the ACCOUNT above, never off this raw decrement.
-    // The node's own `$WEAP` reset and `$AMMO` restore arrive here as a 26-round drop that no player fired
-    // (bench 2026-09-18), and reading the frame delta booked it as a burst -- see the echo-window note.
-    if (reserve != null && !Number.isNaN(reserve)) this.am.prevReserve[slot] = reserve;
-    this.am.publish(slot, mag, reserve);
-    this.pu.repairLostEquip(lostPuEquip, slot, mag);   // F436: the equip re-sent, while the same item is held
-    // heat itself is recorded at the top of this function, before the stunned return.
   }
 
   /** F438: a word whose shooter id (`$HIR` token 3, the shooter's `$PSET` id) is our own `player_num`. Wire id 0 is

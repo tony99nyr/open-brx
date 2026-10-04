@@ -1782,6 +1782,8 @@ _AMMO_PAIRS = {
     # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
     "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
     "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s",
+    # one ammo report, and the RELOAD nag
+    "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull",
 }
 
 
@@ -1919,6 +1921,11 @@ KNOWN_UNMIRRORED = {
     # clear, both inline on the stage; `am.setSwitching` and `am.equipped` are the powerup module's doors, and the stage
     # models no powerup (see the A56 note below).
     "switching", "am.switchingMs", "am.swapOpen", "am.cancelSwap", "am.setSwitching", "am.equipped",
+    # Engine split (b): the engine's side of one ammo report (ammo.js `onAmmo` calls each one). The stage does
+    # `_roundsLeft`'s work (the first-shot arm, the shot count) inline in `_on_ammo`; `_tryoutAmmo` is the try-out
+    # panel's confirmation (`_tutorial`, pinned below); `_resyncAmmo` is the §3.10 resync, pinned with `_resyncEvidence`.
+    # `am.endDrySpell` is the RELOAD nag's reset, inline on the stage.
+    "_roundsLeft", "_tryoutAmmo", "_resyncAmmo", "am.endDrySpell",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # F202: local picker/storage operation; GunStage has no phone-owned gun binding to clear.
@@ -2007,7 +2014,7 @@ KNOWN_UNMIRRORED = {
     # station's advert (its median RSSI and `taker` byte) nor the match clock's spawn schedule, and the gun-facing writes
     # are still the part to port, as a hand-driven stage button, once Sitting A has proved the spare slot. The engine's
     # side is now only calls into `this.pu` from methods already pinned or mirrored here (`tick`, `_revive`, `_death`,
-    # `rc.end`, `_stunRestore`, `_onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
+    # `rc.end`, `_stunRestore`, `am.onAmmo`, `setStations`, `state`). F425: `_puNextInMs` is gone too.
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
     # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a
@@ -2301,7 +2308,7 @@ def _pull(st, clock):
 
 def test_the_reload_nag_cadence_matches_the_phone():
     """The stage predicts the phone, so the two must agree on the numbers, not only on the shape."""
-    js = _ENGINE_JS.read_text(encoding="utf-8")
+    js = _AMMO_JS.read_text(encoding="utf-8")   # engine split (b): the RELOAD nag lives in ammo.js
     assert f"const RELOAD_NAG_FIRST = {S.RELOAD_NAG_FIRST}, RELOAD_NAG_EVERY = {S.RELOAD_NAG_EVERY};" in js
 
 

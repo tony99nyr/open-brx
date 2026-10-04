@@ -1602,14 +1602,14 @@ test('F164 follow-up: the gun echoing the reconcile disarm books no shots, no li
   h.frame('$ALCD,32,100,0,192,0,*');
   for (let m = 31; m >= 20; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,192,0,*`); }
   h.adv(5000); h.eng.tick();                                  // the burst settles and the shot cue is long over
-  const shots = h.eng.shots, life = h.eng._life && h.eng._life.shots, cue = h.eng.lastShot, burst = h.eng._recoil && h.eng._recoil.burst;
+  const shots = h.eng.shots, life = h.eng._life && h.eng._life.shots, cue = h.eng.am.lastShot, burst = h.eng._recoil && h.eng._recoil.burst;
   h.eng.onBleDropped(); h.eng.onBleConnected();
   assert.ok(h.eng.state().reconciling, 'setup: the relink reconciles');
   h.frame('$ALCD,0,100,0,0,0,*');                             // the gun echoes `$AMMO,0,0,0,1`: 20 rounds "left", none fired
   h.frame('$ALCD,0,100,1,0,0,*');                             // ...and the secondary's zero
   assert.equal(h.eng.shots, shots, 'the disarm echo is not fire');
   assert.equal(h.eng._life && h.eng._life.shots, life, 'nor this life\'s rounds on the death screen');
-  assert.equal(h.eng.lastShot, cue, 'nor a shot-ready cue');
+  assert.equal(h.eng.am.lastShot, cue, 'nor a shot-ready cue');
   assert.equal(h.eng._recoil && h.eng._recoil.burst, burst, 'nor a recoil burst');
   h.adv(3000); h.eng.tick();                                  // the re-arm, and its echo
   h.frame('$ALCD,20,100,0,192,0,*');
@@ -7240,7 +7240,7 @@ test('shot cue CONTROL: an automatic weapon (golden slot 0 AR, t14 100) gets no 
   // is far under SHOT_CUE_MIN_MS, so the rule this test pins is unchanged -- only the head's value moved.
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.frame('$ALCD,32,100,0,384,0,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*');
-  assert.equal(h.eng.lastShot.ms, 100, 'the interval is read from the head');
+  assert.equal(h.eng.am.lastShot.ms, 100, 'the interval is read from the head');
   assert.equal(h.eng.state().shotCooldown, null);
 });
 

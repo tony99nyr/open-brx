@@ -75,7 +75,7 @@ export class Reconcile {
   begin() {
     const h = this.host;
     if (this._win) return;
-    // F164: snapshot the counts before the disarm. They are the last counts seen before the drop: `_onAmmo`
+    // F164: snapshot the counts before the disarm. They are the last counts seen before the drop: ammo.js `onAmmo`
     // ignores every ammo frame while reconciling (the disarm's echo is not fire). Rounds fired while the link was
     // down were never reported, so the re-arm gives them back: a bounded refund, not a free magazine.
     this._win = { since: h.now(), ammo: h.liveAmmo() };
