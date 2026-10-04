@@ -1621,9 +1621,7 @@ export class Engine {
       // F416 r3: each re-send is built from the original burst, never a mutated one: every pickup slot is zeroed, then
       // only the heavy held NOW gets its charges (a swap since the last re-send must not leave two slots loaded).
       const base = c.frames0 || (c.frames0 = c.frames), pu = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
-      if (h) pu.add(h.slot);
-      const frames = base.map(f => { if (typeof f !== 'string' || !f.startsWith('$AMMO,')) return f; const s = +f.split(',')[1];
-        return !pu.has(s) ? f : h && s === h.slot ? `$AMMO,${s},${h.left},${PU_RESERVE},1,*` : `$AMMO,${s},0,0,1,*`; });
+      const frames = burstWithHeld(base, h, pu);
       this._writeLife(frames, `${c.why} (re-sent ${c.resends})`, c.life, c);
       if (h) this._puSelfHitKeep(h);
       return;
