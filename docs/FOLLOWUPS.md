@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-02. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-10-03. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,14 +9,14 @@ Updated: 2026-10-02. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 77.** Desk 1 · bench 76 · decision 0.
+**MVP open: 78.** Desk 1 · bench 77 · decision 0.
 
 **MVP DESK (1),** a keyboard is enough:
 - 🟠 **B21**
 
-**MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (77),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F438** · **F439** · **F417** · **F434** · **F436** · **F440** · **F416** · **B26** · **F232** · **F293** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
-- 🟠 **F437** · **F349** · **F308** · **F374** · **S58** · **F425** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F383** · **F388** · **F389** · **F391** · **F393** · **F399** · **F443** · **F444**
+- 🟠 **F450** · **F437** · **F349** · **F308** · **F374** · **S58** · **F425** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F383** · **F388** · **F389** · **F391** · **F393** · **F399** · **F443** · **F444**
 - 🟡 **Q13** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398** · **F282** · **F441** · **F442** · **F445** · **F446** · **F447**
 - 🟢 **F339** · **F431**
 
@@ -28,7 +28,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F448 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F451 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -138,6 +138,7 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 - **F441 🟡 THE ROSTER'S MOVE BUTTON NAMES A TEAM (`▸ RED` ON A BLUE ROW) INSTEAD OF OPENING A PICKER.** Bench 2026-10-02 (standard sheet, 0.4.16): Tony found `▸ RED` on a blue player's row confusing and wants a neutral MOVE that opens a team picker. Owner: brx3. **Built, on main at `4d09fa5d`.** Bench: MOVE on any row opens the picker, and a pick moves only that player. `bench`.
 - **F442 🟡 THE PICKUP'S ACTIVE PIP ANIMATION DOES NOT PLAY FOR ROCKETS.** Bench 2026-10-02 (standard sheet, 0.4.16), F400's check: the switch card was right on every path, but the small green ACTIVE animation never played for a Rockets grant (Tony). Owner: brx3, in progress. `build` + `bench`.
 - **F443 🟠 A LOCKED PHONE STATION'S MC LINK CAN BE CHANGED WITH NO HOLD.** Bench 2026-10-02 (standard sheet, 0.4.16), 11.4: on the MC-locked (A58) grey station, RANGE opened only after the 5 s locked hold, as designed, but the station's MC LINK changed with no hold at all (a tamper hole). Owner: brx3, fixed on main at `9c3f61d8`. Bench: with the station locked, MC LINK needs the same 5 s hold as RANGE. `bench`.
+- **F450 🟠 RE-CHECK THE STICK POWERUP STATION AFTER THE A2 ALIGNMENT.** Desk 2026-10-03: the Stick now compares a re-sent `available:true` with the NEXT spawn, floors its taken countdown at 1 and advertises value 0 when it has no anchor, as the phone does (shared cases: `app/test/fixtures/powerup-station-cases.json`). Bench after a reflash: claim, then have MC re-send `available:true` for that spawn (expect it stays taken), and read the taken countdown in the advert.
 - **F444 🟠 THE HUD GIVES NO ALERT WHEN A HILL CAPTURE BEGINS.** Bench 2026-10-02 (standard sheet, 0.4.16), KOTH phone hill: Tony wants an objective alert on the HUD the moment capturing begins (today a player learns only from the capture or the contest). Owner: brx3, storyboard first (`ui-storyboard`), then Tony's pick. `decision` + `build`.
 - **F445 🟡 A USP RELOAD RIGHT AFTER AN ALT SWAP CAN TIME OUT, AND THE HUD STICKS.** Bench 2026-10-02 (standard sheet, 0.4.16), Tactix-9498: three `reload did NOT take (timeout) — mag still 9` (16:16:29, :45, :52 UTC), each just after an ALT swap, with the HUD stuck at 9 pips. A captured retry took (`$BUT,2,1` → `$ALCD,12,100,1,68`). Not reproduced. Lead: the gun ignores a reload inside or just after the swap window, and the engine reports a timeout. Capture the wire on the next sheet. No owner. `bench`. **→ 2026-10-02, desk read (branch `fix/pu-no-claim-at-cap`), no fix yet:** a reload settles only from an `$ALCD` on the slot the node held at the pull (`engine.js` `_onAmmo`, `slot === this.reloading.slot`), so this exact log is what a node and gun that disagree on the trigger slot produce: the gun reloads one slot, the node waits on another and times out. Two candidates, both after ALT: (a) ALT pressed while the gun was still reloading; 0.4.16 booked a swap the gun ignored (fixed on main at 67807025, not in the bench build), which leaves the node on the wrong slot for the next pulls; this fits three timeouts in a row. (b) A reload pulled inside the 850 ms ALT window, before the swap is booked: the node records the old slot while the gun reloads the new one. Bench A/B on a build with 67807025, USP-S as the secondary, 5 trials each, reading `$ALCD` slot and magazine: A, reload the primary, press ALT mid-reload, then reload again 2 s later; B, press ALT, then pull reload within 300 ms. Expect A to pass now; if B times out, the cure is to settle the reload on the swap's target slot.
 - **F446 🟡 THE POISON TICK CUE REPEATS LIKE A BROKEN LOOP.** Bench 2026-10-02 (standard sheet, 0.4.16), F348's Toxin hit: Tony heard "multiple almost looping sounds, sounded broken": the `poison_tick` cue (`$PLAY,,4,6,V4G`) every 1 s for 4 to 5 ticks, on top of the hit sound and the shield-blink readouts. **→ 2026-10-02, Tony's pick** (heard on Tactix-9498 at `$VOL,80`; voice ticks, A61, A70 and Z06 rejected): the onset is H12 "Bubble Acid" (1.9 s) in place of H23, and each tick plays H31 or H32 ("squishy bubbles", 0.6 s) at random, on the queue slot. Timing unchanged. **→ brx3, desk:** built (`presentation.py`, the `poison_tick` cue pool in `compile.py`); 4 of 5 ticks are audible, because the first tick yields to H12 still playing. **Bench next:** `bench-standard-2026-09-29.md` step 12b. `bench`.
