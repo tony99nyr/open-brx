@@ -1,6 +1,6 @@
 {
   "name": "hp-shield-fill-late",
-  "why": "F348: the spawn fill's echo is recognised up to exactly SHIELD_FILL_ECHO_MS after the burst that carried the fill.",
+  "why": "F348: the spawn fill's echo is recognised at the edge of what was a fixed 5 s window (since review 2026-10-04 the fill stays pending until a `$HP` shows the shield).",
   "source": "app/test/shield-spawn.test.mjs; app/src/engine.js `_onHp` `fillAnswer`",
   "runners": ["engine"],
   "setup": {

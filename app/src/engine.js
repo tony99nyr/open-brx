@@ -129,9 +129,9 @@ export const SHIELD_REGEN_WRITE_BUDGET = SHIELD_REGEN_GRANTS + 2;   // one recha
 // F348 (Tony, live match 2026-09-24: "you can die from a couple hits right after spawn"): a Shields life starts at
 // FULL shield, Halo's rule. `$SPAWN` leaves the shield POOL at 0 on hardware ($PSET t5 is a ceiling), so every
 // spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*` that the gun clamps at t5. The gun answers it
-// with `$HP`; that rise is the spawn fill, not a recharge, so it says nothing (SHIELD_FILL_ECHO_MS).
+// with `$HP`; that rise is the spawn fill, not a recharge, so it says nothing. The fill stays pending until a `$HP`
+// shows the shield, with no time limit (`_hpFillCheck`, review 2026-10-04).
 export const SPAWN_SHIELD_FULL = true;
-const SHIELD_FILL_ECHO_MS = 5000;     // a shield rise this soon after a spawn fill is the fill's own echo (under SHIELD_REGEN_DELAY_MS, so a recharge never reads as one)
 // F438 (bench 2026-10-02): every `$HP` this soon after a self-hit's restore (or its revive) is the gun answering OUR write,
 // unless a newer `$HIR` landed since. The revive burst is ~17 frames at 30-90 ms each (SPAWN_PROBE_MS), so ~1.5 s to land.
 const SELF_HIT_ECHO_MS = 2000;
@@ -1419,9 +1419,9 @@ export class Engine {
     this._nextPlayAt = this._lastPlayAt == null ? this.now() : this._lastPlayAt + PLAY_GAP_MS;
     return mustHear;
   }
-  /** F348: a spawn fill went out less than SHIELD_FILL_ECHO_MS ago and the gun has not answered it yet. PURE. */
-  _shieldFillPending(now = this.now()) {
-    return !!this._shieldFillAt && now - this._shieldFillAt <= SHIELD_FILL_ECHO_MS;
+  /** F348: a spawn fill went out and no `$HP` has shown the shield since (`_hpFillCheck`). PURE. */
+  _shieldFillPending() {
+    return !!this._shieldFillAt;
   }
   /** A hit the gun registered (`$HIR`): the gun plays the `$SIR` row's sound for it, into the same FIFO. */
   _audioHit(proto, subtype, now) {
@@ -6038,7 +6038,7 @@ export class Engine {
     rp.attempts++;
     // X5: a no-armour game (ceiling 0) keeps the armour the gun reports, as `_poolsOver` does; X6: a spawn fill still in
     // flight counts as a full shield, so a repair that starts before its echo does not take the life's shield away.
-    const shieldNow = this._shieldFillPending(now) ? Math.max(this.shield, this.maxShield) : this.shield;
+    const shieldNow = this._shieldFillPending() ? Math.max(this.shield, this.maxShield) : this.shield;
     const t = { hp: Math.min(this.hp, c.hp), armor: c.armor > 0 ? Math.min(this.armor, c.armor) : this.armor, shield: Math.min(shieldNow, c.shield) };
     const pset = this.pu.psetWithShieldMax(c.shield);
     this._write([PARSER_RESET, ...(pset ? [pset] : []), `$LIFE,${t.hp},${t.armor},${t.shield},1,*`],
@@ -6343,17 +6343,51 @@ export class Engine {
     return true;
   }
 
+  /** `_onHp` step, before the self-hit check and the pool bookkeeping: F348, the spawn fill still unanswered
+   *  (`_shieldFillAt`). Returns true when this frame answers the fill, and ends the fill. The fill stays pending until a
+   *  `$HP` shows the shield, with no time limit. Review 2026-10-04: with a fixed 5 s window, a lost fill echo made the
+   *  life's first hit a "+90 SHIELD" gain (measured from the 0 the node still held), so MC never heard the hit and the
+   *  shooter lost its damage.
+   *  Two answers:
+   *   - The fill's own echo, or a grant's: the shield rose and nothing says a hit landed. The pools are taken as reported.
+   *   - A hit off the filled shield, after the fill echo was lost: the gun took the fill, then the hit. The node takes the
+   *     full shield as the pool held before this frame, so the steps after this one measure the hit from it. This is the
+   *     case when the full shield shows damage and either the shield rose with a word inside 1000 ms or health or armour
+   *     fell (a hit, or our poison tick), or the shield reads no higher and the word's magnitude fits the full shield
+   *     better than the held one (a hit that broke the whole shield).
+   *  A frame that shows neither keeps the fill pending: a hit that landed before the gun took the fill, or a fill that
+   *  never reached the pool. The recharge then fills the pool, and its first grant's `$HP` ends the fill.
+   *  ⚠ Known gap: a hit that drains the filled shield and reaches health, with its `$HIR` lost, is measured from the held
+   *  shield (the smaller damage). Nothing in the `$HP` alone can tell it from a hit on a gun that never took the fill. */
+  _hpFillCheck(hp, armor, shield) {
+    if (!this._shieldFillAt) return false;
+    const now = this.now(), dl = this._dmgLatch, L = this.latch;
+    const word = dl && now - dl.at <= 1000 ? dl : L && now - L.at <= 1000 ? L : null;
+    const full = Math.max(this.shield, this.maxShield), total = hp + armor + shield;
+    const held = Math.max(0, this.hp + this.armor + this.shield - total), off = Math.max(0, this.hp + this.armor + full - total);
+    const rose = shield > this.shield;
+    const filled = off > 0 && (rose ? !!word || hp < this.hp || armor < this.armor
+      : !!word && Number.isFinite(word.mag) && Math.abs(off - word.mag) < Math.abs(held - word.mag));
+    if (!filled && !rose) return false;   // still pending
+    this._shieldFillAt = 0;
+    if (!filled) return true;              // the fill's own answer: `_hpGainMoment` takes it
+    this.log(`spawn shield fill: its \`$HP\` was lost, so this frame is measured from the full shield (${full}), not ${this.shield}`, 'lk');
+    this.shield = full; this._prevShield = full;
+    return true;
+  }
+
   /** `_onHp` step: the pool bookkeeping. Reads the pools held before this frame, works out which pool moved and by how
    *  much, and writes the reported pools. Pure apart from those writes (and the first-frame seed of `_prevHp`). Returns
    *  the frame's context, the one object every later step reads and fills in:
    *    hp, armor, shield, solicited   the frame as reported
+   *    fillAnswer                     this frame answered the spawn fill (`_hpFillCheck`)
    *    before, pools0                 the total and the pools held before this frame
    *    prev                           {hp, armor, shield}: the last frame's pools (`_prevHp` etc), captured before `_hpSettle` moves them on
    *    movedPool                      'health', 'armor', 'shield' or null (read by the paint)
    *    dmg                            the pool total lost, never negative
    *    dotEcho, hurtNow               filled in by `_hpDotEcho` and `_hpLowHealth`
    *    dl, hl, hitWeapon              filled in by `_hpDamageWord` and `_hpHitTaken` */
-  _hpTakePools(hp, armor, shield, solicited) {
+  _hpTakePools(hp, armor, shield, solicited, fillAnswer = false) {
     const before = this.hp + this.armor + this.shield;
     const pools0 = { health: this.hp, armor: this.armor, shield: this.shield };   // S16: what `dmg` measures from, read by the echo match
     if (this._prevHp === undefined) { this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; }
@@ -6364,7 +6398,7 @@ export class Engine {
     const movedPool = hp !== prev.hp ? 'health' : armor !== prev.armor ? 'armor' : shield !== prev.shield ? 'shield' : null;
     this.hp = hp; this.armor = armor; this.shield = shield;
     const dmg = Math.max(0, before - (hp + armor + shield));
-    return { hp, armor, shield, solicited, before, pools0, prev, movedPool, dmg, dotEcho: false, hurtNow: false, dl: null, hl: null, hitWeapon: null };
+    return { hp, armor, shield, solicited, fillAnswer, before, pools0, prev, movedPool, dmg, dotEcho: false, hurtNow: false, dl: null, hl: null, hitWeapon: null };
   }
 
   /** `_onHp` step: what the new pools set off at once, in this order: the deferred poison cue, the overshield's end, and
@@ -6600,11 +6634,9 @@ export class Engine {
     // banner was up would never be told they were hit, and being hit is the one thing they cannot
     // afford to miss.
     const RARE_GUARD_MS = 250;
-    // F348 / polish r2: a shield rise inside the fill window is the gun's answer to the spawn fill. It ends the window
-    // HERE, before the moment gates below, because a revive's `redeploy` moment would otherwise swallow the echo and
-    // keep the spawn-fill accounting until the gun answers the pool update.
-    const fillAnswer = !!this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS && h.shield > h.prev.shield;
-    if (fillAnswer) this._shieldFillAt = 0;
+    // F348 / polish r2: `_hpFillCheck` ended the fill before any step ran, so a revive's `redeploy` moment (the gate
+    // below) cannot keep the spawn-fill accounting alive after the gun has answered.
+    const fillAnswer = h.fillAnswer;
     const m = this.moment;
     const busy = m && ['kill', 'redeploy', 'down', 'match_over'].includes(m.kind)
       && (this.now() - m.at) < RARE_GUARD_MS;
@@ -6686,6 +6718,7 @@ export class Engine {
    *  sequence of steps, each a method with one job, in the order their side effects must run. The frame's context
    *  (`_hpTakePools`) carries the values the steps share; no step stores them on the engine.
    *    1. the gun's word on the pools: the powerup timing, the pool source, the B5 life evidence
+   *    1b. `_hpFillCheck`       F348: the spawn fill's answer, and a hit off a filled shield whose echo was lost
    *    2. `_selfHitHp`          F438: our own shot, or the gun's echo of us giving it back (ends the frame)
    *    3. `_hpTakePools`        the pool bookkeeping, and the frame's context
    *    4. `_hpPoolEffects`      the poison cue, the overshield frame, the action count
@@ -6706,10 +6739,11 @@ export class Engine {
     // drains shield -> armor -> HP (bench 2026-08-27); omitting shield from the total made every shield-absorbed hit
     // compute dmg === 0, which the hit guard (`_hpHitTaken`) then dropped entirely. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
+    const fillAnswer = this._hpFillCheck(hp, armor, shield);   // F348: the spawn fill's answer, before anything measures the pools
     if (this._selfHitHp(hp, armor, shield)) return;   // F438: our own shot, or the gun's echo of us giving it back
     // Order dependencies left: `_hpLowHealth` sets `h.hurtNow` (read by the re-assert and the hit), `_hpDamageWord` sets
     // `h.hl` and `_hpHitTaken` sets `h.hitWeapon` (both read by `_hpMoment`); `_hpDotEcho` sets `h.dotEcho` for all after it.
-    const h = this._hpTakePools(hp, armor, shield, solicited);
+    const h = this._hpTakePools(hp, armor, shield, solicited, fillAnswer);
     this._hpPoolEffects(h);
     this._hpDotEcho(h);
     this._hpShield(h);

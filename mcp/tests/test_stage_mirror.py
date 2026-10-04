@@ -2824,10 +2824,39 @@ def test_x5_x6_x7_the_pool_repair_keeps_armour_the_fill_and_a_no_shield_grant_li
     asyncio.run(go())
 
 
+def test_a_hit_off_a_filled_shield_whose_fill_echo_was_lost_is_a_hit_like_the_phone():
+    """Review 2026-10-04 (engine.js `_hpFillCheck`): the gun takes the spawn fill but its `$HP` is lost, so the model
+    still holds shield 0. The first hit reports the shield above that. It is a hit measured from the full shield, never a
+    "+90" gain, however long after the fill it lands. A 105 hit that breaks the whole filled shield is a hit with the
+    break cue. CONTROL: a gun that never took the fill books the hit at what it took and keeps the fill pending.
+    Mirrors app/test/shield-spawn.test.mjs."""
+    async def go():
+        for wait, frame, dmg, broke in ((1.0, "$HP,45,0,90,*", 15, False), (5.5, "$HP,45,0,90,*", 15, False),
+                                        (1.0, "$HP,45,0,0,*", 105, True)):
+            st, mgr, clock = mk_shields()
+            await live(st)
+            st._shield_fill_at = clock(); st.shield = 0       # the fill went out; its echo never arrived
+            clock.advance(wait)
+            k = len(st.log)
+            st._on_rx(f"$HIR,4,0,19,2,{dmg},0,3,*"); st._on_rx(frame); await settle(st)
+            logs = [l["text"] for l in list(st.log)[k:]]
+            assert st._last_dmg_hit_at == clock(), (wait, frame, logs)
+            assert not any("pool rise" in t for t in logs), logs
+            assert st._shield_fill_at == 0.0 and st._shield_down is broke, (wait, frame)
+        st, mgr, clock = mk_shields()
+        await live(st)
+        st._shield_fill_at = clock(); st.shield = 0
+        clock.advance(1.0)
+        st._on_rx("$HIR,4,0,19,2,15,0,3,*"); st._on_rx("$HP,30,0,0,*"); await settle(st)
+        assert st.hp == 30 and st._last_dmg_hit_at == clock(), "the hit is booked from the pools the stage held"
+        assert st._shield_fill_at != 0.0, "the fill is still pending"
+    asyncio.run(go())
+
+
 def test_f344_the_spawn_fill_switch_matches_the_phone():
     js = _ENGINE_JS.read_text(encoding="utf-8")
     assert f"export const SPAWN_SHIELD_FULL = {'true' if S.SPAWN_SHIELD_FULL else 'false'};" in js
-    assert f"const SHIELD_FILL_ECHO_MS = {int(S.SHIELD_FILL_ECHO_S * 1000)};" in js
+    assert "SHIELD_FILL_ECHO_MS" not in js and not hasattr(S, "SHIELD_FILL_ECHO_S"), "review 2026-10-04: the fill has no time limit"
 
 
 def test_f345_a_recharge_writes_a_few_large_grants_and_no_readout_like_the_phone():

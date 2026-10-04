@@ -254,11 +254,11 @@ SHIELD_REGEN_DELAY_S = 6.5          # engine.js SHIELD_REGEN_DELAY_MS -- Callsig
 SHIELD_REGEN_GRANTS = 4             # engine.js SHIELD_REGEN_GRANTS (F349) -- a full pool in this many `$LIFE,0,0,<step>,*`
 SHIELD_REGEN_STEP_S = 1.0           # engine.js SHIELD_REGEN_STEP_MS -- one grant a second: 0 -> full in about 3 s
 SHIELD_REGEN_MAX_GRANTS_SLACK = 3   # engine.js SHIELD_REGEN_MAX_GRANTS_SLACK
-# F348 (engine.js SPAWN_SHIELD_FULL / SHIELD_FILL_ECHO_MS): a shields life starts at FULL shield. `$SPAWN` leaves the
-# pool at 0 on hardware, so every spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*`; the gun's `$HP`
-# answer inside SHIELD_FILL_ECHO_S is that fill, not a recharge, and says nothing.
+# F348 (engine.js SPAWN_SHIELD_FULL): a shields life starts at FULL shield. `$SPAWN` leaves the pool at 0 on hardware, so
+# every spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*`; the gun's `$HP` answer is that fill, not a
+# recharge, and says nothing. The fill stays pending until a `$HP` shows the shield, with no time limit
+# (`_hp_fill_check`, engine.js `_hpFillCheck`, review 2026-10-04).
 SPAWN_SHIELD_FULL = True
-SHIELD_FILL_ECHO_S = 5.0
 SELF_HIT_ECHO_S = 2.0      # F438 (engine.js SELF_HIT_ECHO_MS): a pool frame this soon after a self-hit restore/revive is its echo
 SHIELD_LOOP_S = 1.94                # engine.js SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
@@ -669,6 +669,7 @@ class GunStage:
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
         self._dmg_hir: tuple[int, float, int, int] | None = None   # F354 (engine.js `_dmgLatch`): (proto, at, shooter id, `$HIR` seq) of the last word whose cell can do damage
+        self._dmg_hir_mag: int | None = None   # that word's magnitude (`$HIR` t5, engine.js `_dmgLatch.mag`), read by `_hp_fill_check`
         self._hir_seq = 0   # F438 polish r3: counts latched `$HIR` words; the stage's twin of engine.js latch-object identity
         self._foreign_dmg_at: float | None = None   # F438 polish r1 (engine.js `_foreignDmgAt`): another player's last damaging word
         # A65 (engine.js `latch` / `_lastHitFact.noPool`): the last registered word {num, team, at, no_pool}, and the word
@@ -3107,9 +3108,41 @@ class GunStage:
         return [f"$LIFE,0,0,{self.max_shield},*"]
 
     def _shield_fill_pending(self, now: float) -> bool:
-        """engine.js `_shieldFillPending` (X3/X6): a spawn fill went out less than SHIELD_FILL_ECHO_S ago and the gun has
-        not answered it yet. PURE."""
-        return bool(self._shield_fill_at) and now - self._shield_fill_at <= SHIELD_FILL_ECHO_S
+        """engine.js `_shieldFillPending` (X3/X6): a spawn fill went out and no `$HP` has shown the shield since
+        (`_hp_fill_check`). PURE. `now` is unused: the fill has no time limit (review 2026-10-04)."""
+        return bool(self._shield_fill_at)
+
+    def _hp_fill_check(self, hp: int, armor: int, shield: int) -> bool:
+        """engine.js `_hpFillCheck` (F348, review 2026-10-04): True when this `$HP` answers the spawn fill, and it ends
+        the fill. The fill's own echo (the shield rose, nothing says a hit landed) is taken as reported. A hit off the
+        filled shield, whose fill echo was lost, is measured from the full shield: the shield rose with a word inside
+        1.0 s or health or armour fell, or the shield reads no higher and the word's magnitude fits the full shield
+        better than the held one. A frame that shows neither keeps the fill pending."""
+        if not self._shield_fill_at:
+            return False
+        now, d, w = self.now(), self._dmg_hir, self._hir_word
+        mag: int | None = None
+        word = False
+        if d is not None and now - d[1] <= 1.0:
+            word, mag = True, self._dmg_hir_mag
+        elif w is not None and now - w["at"] <= 1.0:
+            word, mag = True, w.get("mag")
+        full = max(self.shield, self.max_shield)
+        total = hp + armor + shield
+        held = max(0, self.hp + self.armor + self.shield - total)
+        off = max(0, self.hp + self.armor + full - total)
+        rose = shield > self.shield
+        if rose:
+            filled = off > 0 and (word or hp < self.hp or armor < self.armor)
+        else:
+            filled = off > 0 and word and mag is not None and abs(off - mag) < abs(held - mag)
+        if not filled and not rose:
+            return False
+        self._shield_fill_at = 0.0
+        if filled:
+            self._log(f"spawn shield fill: its `$HP` was lost, so this frame is measured from the full shield ({full}), not {self.shield}", "info")
+            self.shield = full
+        return True
 
     def _shield_fill_start(self, fill: list[str]) -> None:
         """F348: before the burst goes out (engine.js sets these synchronously after queueing it): the pool is 0
@@ -3229,11 +3262,12 @@ class GunStage:
                 # EMP, a med kit) is not the damage behind the next `$HP`; only a word that CAN do damage is kept here.
                 if proto is not None and _tok_int(t, 4) is not None and not self._non_damaging(proto, _tok_int(t, 7)):
                     self._dmg_hir = (proto, now, _tok_int(t, 3) or 0, self._hir_seq + 1)
+                    self._dmg_hir_mag = _tok_int(t, 5)
                     if not self._own_shot({"num": _tok_int(t, 3) or 0}):
                         self._foreign_dmg_at = now
                 if _tok_int(t, 4) is not None:
                     self._hir_seq += 1
-                    self._hir_word = {"num": _tok_int(t, 3) or 0, "team": _tok_int(t, 4), "at": now, "seq": self._hir_seq,
+                    self._hir_word = {"num": _tok_int(t, 3) or 0, "team": _tok_int(t, 4), "at": now, "seq": self._hir_seq, "mag": _tok_int(t, 5),
                                       "no_pool": self._non_damaging(proto, _tok_int(t, 7))}
                 if _tok_int(t, 4) is not None:
                     self._shield_reassert()      # 2026-09-19 (engine.js: a registered hit, shooter team parsed)
@@ -3844,6 +3878,7 @@ class GunStage:
         if not (self.auto_react and self.spawned):
             self.hp, self.armor, self.shield = hp, armor, shield
             return
+        fill_answer = not lcd and self._hp_fill_check(hp, armor, shield)   # engine.js `_hpFillCheck`: before anything measures the pools
         if not lcd and self._self_hit_hp(hp, armor, shield):   # F438 (engine.js: an `$LCD` never reaches `_onHp`): our own shot, or the gun's echo of us giving it back
             return
         before = self.hp + self.armor + self.shield
@@ -3987,11 +4022,8 @@ class GunStage:
         # biggest rise names the event: healed (health) / armour_up / shield_up.
         if self.alive and self.spawned:
             now = self.now()
-            # engine.js polish r2: a shield rise inside the fill window is the fill's answer; it ends the window before
-            # the moment gates, so a revive's redeploy moment cannot swallow it
-            fill_answer = self._shield_fill_pending(now) and shield > prev_shield
-            if fill_answer:
-                self._shield_fill_at = 0.0
+            # engine.js polish r2: `_hp_fill_check` ended the fill before any step ran, so a revive's redeploy moment
+            # cannot keep it alive after the gun has answered
             moment = self._moment
             gains = sorted([(p, d) for p, d in (("health", hp - prev_hp), ("armor", armor - prev_armor),
                                                 ("shield", shield - prev_shield)) if d > 0], key=lambda g: -g[1])

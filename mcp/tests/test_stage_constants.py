@@ -45,7 +45,6 @@ TABLE = [
     ("SHIELD_REGEN_STEP_S", "engine.js", "SHIELD_REGEN_STEP_MS", 1000),
     ("SHIELD_REGEN_MAX_GRANTS_SLACK", "engine.js", "SHIELD_REGEN_MAX_GRANTS_SLACK", 1),
     ("SPAWN_SHIELD_FULL", "engine.js", "SPAWN_SHIELD_FULL", 1),
-    ("SHIELD_FILL_ECHO_S", "engine.js", "SHIELD_FILL_ECHO_MS", 1000),
     ("SELF_HIT_ECHO_S", "engine.js", "SELF_HIT_ECHO_MS", 1000),
     ("SHIELD_LOOP_S", "engine.js", "SHIELD_LOOP_MS", 1000),
     ("MEDAL_GAP_S", "engine.js", "MEDAL_GAP_MS", 1000),
