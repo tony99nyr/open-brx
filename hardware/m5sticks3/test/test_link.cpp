@@ -2597,7 +2597,7 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   json::Value v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":0})", &ok);
   StationAssignment a = parse_station_config(v);
   CHECK(a.threshold_defaulted);
-  CHECK_EQ(a.threshold, STICK_DEFAULT_THRESHOLD_DBM);  // the advertised byte keeps the Stick's own
+  CHECK_EQ(a.threshold, -75);  // D5: stored as the per-kind default it applies (byte 14 keeps -57 elsewhere)
   CHECK_EQ(presence_threshold_dbm(a), -75);            // hill radius default
   v = json::parse(R"({"kind":"control","team":255,"id":9})", &ok);
   CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -75);

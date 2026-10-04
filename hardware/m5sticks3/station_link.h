@@ -84,7 +84,7 @@ struct StationAssignment {
   std::string kind;  // "respawn" | "powerup" | "extraction" | "bomb" | "control"
   int team = 255;     // TEAM_ANY
   int id = 0;
-  int threshold = -57;  // dBm; parse_station_config resolves 0/absent to STICK_DEFAULT_THRESHOLD_DBM
+  int threshold = STICK_DEFAULT_THRESHOLD_DBM;  // dBm; parse_station_config resolves 0/absent to stick_default_threshold_dbm(kind)
   bool threshold_defaulted = false;  // MC sent 0/absent: `threshold` is the Stick's default, not MC's
   int game = 0;         // per-match byte; 0 = "any" (v1, unscoped)
   std::vector<int> valid_ids;
@@ -369,10 +369,10 @@ inline StationItem parse_item(const json::Value& v) {
 // answers 0 for both -- means "use the Stick's own default", not "an RSSI floor of literally 0
 // dBm" (which would always be true and defeat the point of a threshold). An MC value other than 0
 // overrides it. This is a placeholder pending a bench measurement (README).
-// -57 dBm, the StickS3's platform default (Tony, 2026-09-24, walked at 3-5 m: "the stick actually works better";
-// a phone station defaults to -70). It is
-// also what the Stick advertises in byte 14, and a player's phone measures a respawn station against byte 14
-// (beacon.js Presence), so the Stick must advertise the same value it measures by.
+// -57 dBm, the StickS3's platform default for a respawn (Tony, 2026-09-24, walked at 3-5 m: "the stick actually
+// works better"; a phone station defaults to -70). The hill (-75) and the powerup (-45) have their own per-kind
+// defaults, resolved once in parse_station_config (D5), so the stored, reported and applied values agree.
+// Byte 14 is the exception: a defaulted hill advertises -57 (threshold_advertised_dbm).
 // STICK_DEFAULT_THRESHOLD_DBM (-57, Tony 2026-09-24) lives in station_range.h, beside the range edit.
 
 // Required per contracts.md §5 (`REQUIRED["station_config"]`): kind, team, id. `threshold`/`game`/
@@ -385,7 +385,7 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   a.team = (int)body.get("team").as_int(255);
   a.id = (int)body.get("id").as_int();
   int t = (int)body.get("threshold").as_int(0);
-  a.threshold = (t == 0) ? (a.kind == "powerup" ? STICK_POWERUP_DEFAULT_THRESHOLD_DBM : STICK_DEFAULT_THRESHOLD_DBM) : t;
+  a.threshold = (t == 0) ? stick_default_threshold_dbm(a.kind) : t;  // D5: the per-kind default, resolved once here
   // The saved copy (station_config_storage_body) writes the resolved value plus this marker, so a
   // restored config still knows MC asked for "the default". MC itself never sends the key.
   a.threshold_defaulted = (t == 0) || body.get("threshold_default").as_bool(false);
