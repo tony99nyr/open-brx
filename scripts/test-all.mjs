@@ -38,7 +38,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sumTreePssKb } from './lib/pss.mjs';
-import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, deriveTimeoutS, planPeakMb, screensBudget, workerCount } from './lib/budget.mjs';
+import { taskHeadroom } from './lib/tasks.mjs';
+import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, TASK_ALLOWANCES, TASK_RESERVE, deriveTimeoutS, jobTaskAllowance, planPeakMb, screensBudget, taskAdmission, taskScreensShards, workerCount } from './lib/budget.mjs';
 import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
 import { cacheBypassReason, cacheKey, keyedEnv, canExitAllCached, headOf, inputTreeHash, installedNpmState,
@@ -129,8 +130,13 @@ function rawJobs(budgetMb) {
   // its historical fair half; a filtered/--changed run that drops most of them leaves app-screens the rest.
   const otherUiMb = OTHER_UI_JOBS.filter(j => UI && (!filters.length || filters.some(f => j.name.includes(f))))
     .reduce((s, j) => s + j.mb, 0);
-  const { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb, otherUiMb);   // the long pole
+  let { shards: screensS, mb: screensMb, secs: screensSecs } = screensBudget(CPUS, budgetMb, otherUiMb);   // the long pole
   const screensCap = screensBudget(CPUS, budgetMb).shards;
+  const tasks = taskHeadroom();
+  if (tasks) {
+    screensS = taskScreensShards(screensS, tasks.free, TASK_RESERVE);
+    screensMb = 100 + 240 * screensS; screensSecs = 6300 / screensS;
+  }
   return [
     { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(pyJ), '--exclude', 'chaos'], mb: 150 + 70 * pyJ, secs: 33 },
     // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
@@ -403,14 +409,23 @@ const PLAN_BUDGET_MB = Math.floor(BUDGET_MB * HEADROOM);
 const plannedPeakMb = planPeakMb(JOBS.map(j => ({ mb: j.mb, secs: j.secs })), PLAN_BUDGET_MB);
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
 console.log(`test-all: planned peak ${plannedPeakMb} MB against a ${PLAN_BUDGET_MB} MB ceiling (${Math.round(HEADROOM * 100)}% of the ${BUDGET_MB} MB budget), ${BUDGET_MB - plannedPeakMb} MB headroom`);
+const taskStart = taskHeadroom();
+if (taskStart) console.log(`test-all: tasks ${taskStart.free} free of ${taskStart.max} (reserve ${TASK_RESERVE})`);
 let measuredPeakMb = null;
+let measuredPeakTasks = taskStart?.current ?? null;
+function sampleTasks() {
+  const sample = taskHeadroom();
+  if (sample) measuredPeakTasks = Math.max(measuredPeakTasks ?? 0, sample.current);
+}
 const canSamplePss = fs.existsSync('/proc/self/smaps_rollup');
 function samplePss() {
-  if (!canSamplePss) return;
-  const kb = sumTreePssKb([...groups]);
-  if (kb !== null) measuredPeakMb = Math.max(measuredPeakMb || 0, kb / 1024);
+  if (canSamplePss) {
+    const kb = sumTreePssKb([...groups]);
+    if (kb !== null) measuredPeakMb = Math.max(measuredPeakMb || 0, kb / 1024);
+  }
+  sampleTasks();
 }
-const sampleTimer = canSamplePss ? setInterval(samplePss, 1000) : null;
+const sampleTimer = canSamplePss || taskStart ? setInterval(samplePss, 1000) : null;
 // The one shared build output. Built once here, before any reader starts (see the rules at the top).
 const builds = [];
 if (selectedJobs.some(j => j.www)) builds.push(run('app-build', 'app', ['npm', 'run', 'build']));
@@ -452,6 +467,8 @@ if (!JOBS.length) { printAllCached(selectedJobs); process.exit(0); }
 const queue = [...JOBS].sort((a, b) => b.secs - a.secs);
 const results = [];
 let usedMb = 0, running = 0, peakMb = 0;
+const recentStarts = [];
+let firstTaskWaitAt = null, lastTaskWaitLog = 0, taskWaitTimer = null;
 let screensRunning = false, screensShards = 0, screensExtraMb = 0;
 const screensJob = JOBS.find(j => j.name === 'app-screens');
 const screensWant = screensJob && screensJob.env.SCREENS_WANT_FILE;
@@ -475,7 +492,10 @@ const raiseScreens = () => {
     }
   }
   if (queue.length || !fs.existsSync(screensWant)) return;
-  const more = Math.min(screensJob.screensCap - screensShards, Math.floor((PLAN_BUDGET_MB - usedMb) / 240));
+  const liveTasks = taskHeadroom();
+  const pending = recentStarts.filter(s => Date.now() - s.at < 20000).reduce((sum, s) => sum + s.tasks, 0);
+  const taskMore = liveTasks ? Math.max(0, Math.floor((liveTasks.free - TASK_RESERVE - pending) / TASK_ALLOWANCES.screensShard)) : screensJob.screensCap;
+  const more = Math.min(screensJob.screensCap - screensShards, Math.floor((PLAN_BUDGET_MB - usedMb) / 240), taskMore);
   if (more <= 0) return;
   const next = screensShards + more;
   if (next <= (lastScreensRequest ?? 0)) return;
@@ -493,7 +513,28 @@ await new Promise(done => {
     for (let i = 0; i < queue.length;) {
       const j = queue[i];
       if (running > 0 && usedMb + j.mb > PLAN_BUDGET_MB) { i++; continue; }
+      const liveTasks = taskHeadroom();
+      const pending = recentStarts.filter(s => Date.now() - s.at < 20000).reduce((sum, s) => sum + s.tasks, 0);
+      const allowance = jobTaskAllowance(j);
+      if (liveTasks && taskAdmission(liveTasks.free, TASK_RESERVE, pending, allowance) !== 'start') {
+        if (running > 0) { i++; continue; }
+        firstTaskWaitAt ??= Date.now();
+        if (Date.now() - firstTaskWaitAt > 10 * 60 * 1000) {
+          results.push({ name: j.name, code: `ERROR task cap ${liveTasks.max} did not leave room for ${allowance} tasks after reserve ${TASK_RESERVE}`, secs: 0, log: '(task headroom timeout)' });
+          queue.length = 0;
+          done();
+          break;
+        }
+        if (Date.now() - lastTaskWaitLog >= 30000) {
+          console.log(`test-all: waiting for task headroom (free ${liveTasks.free}, need ${TASK_RESERVE + pending + allowance})`);
+          lastTaskWaitLog = Date.now();
+        }
+        if (!taskWaitTimer) taskWaitTimer = setTimeout(() => { taskWaitTimer = null; pump(); }, 1000);
+        return;
+      }
       queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
+      firstTaskWaitAt = null;
+      recentStarts.push({ at: Date.now(), tasks: allowance });
       if (j.name === 'app-screens') { screensRunning = true; screensShards = j.screensShards; }
       (async () => {
         // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x
@@ -536,6 +577,7 @@ await new Promise(done => {
   pump();
 });
 if (raiseTimer) clearInterval(raiseTimer);
+if (taskWaitTimer) clearTimeout(taskWaitTimer);
 
 results.push(...cachedResults.values());
 console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
@@ -549,5 +591,6 @@ for (const r of failed) {
 }
 if (sampleTimer) { samplePss(); clearInterval(sampleTimer); }
 const realPeak = canSamplePss && measuredPeakMb !== null ? `${measuredPeakMb.toFixed(0)} MB` : 'not measured';
-console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
+const taskPeak = measuredPeakTasks === null ? 'not measured' : `${measuredPeakTasks} tasks`;
+console.log(`\n${results.length - failed.length}/${results.length} job(s) passed in ${((Date.now() - t0) / 1000).toFixed(0)}s (real peak ${realPeak} against a ${PLAN_BUDGET_MB} MB ceiling, peak ${taskPeak}, planned peak ${peakMb} MB, ${BUDGET_MB} MB budget)`);
 await exitAfterKills(failed.length ? 1 : 0);
