@@ -488,7 +488,8 @@ test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile 
   h.frame('$ALCD,30,190,0,0,0,*');
   assert.equal(h.eng._altPtr, 1);
   assert.notEqual(h.eng._altEvidencePending, null);
-  h.eng._endReconcile();
+  h.eng.reconciling = { since: h.eng.now(), ammo: h.eng._liveAmmo() };   // a relink's window, then its end
+  h.eng.rc.end();
   assert.equal(h.eng._altPtr, 1);
 });
 
