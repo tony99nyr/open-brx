@@ -8,6 +8,8 @@
 // listed there as not a gate). Measure its peak memory and its time, and put them in `mb` and `secs`.
 //   pnpm run test:all -- mcp app      # only the jobs whose name contains one of these words
 //   pnpm run test:all -- --list       # print the job names and stop
+//   pnpm run test:all -- --cache      # reuse matching passing jobs; off by default
+//   pnpm run test:all -- --no-cache   # force a fresh run
 //   pnpm run test:all -- --changed [base] --list   # dry run: which jobs would --changed pick, and why
 //     (the base, if given, is the token RIGHT AFTER --changed, e.g. `--changed abc123`, not `abc123 --changed`;
 //     see scripts/lib/changed.mjs's defaultBase() for what "no base" means)
@@ -29,7 +31,7 @@
 //   - no job writes a shared file: every e2e script has its own shots folder, and app/www is built once, up front, so
 //     app/test/transport.test.mjs never rebuilds it while site/ reads it;
 //   - mcp/run_tests.py gives every test file its own process and its own BRX_MCP_HOME.
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -39,11 +41,15 @@ import { sumTreePssKb } from './lib/pss.mjs';
 import { E2E_SPECS, HEADROOM, OTHER_UI_JOBS, deriveTimeoutS, planPeakMb, screensBudget, workerCount } from './lib/budget.mjs';
 import { entryPid, isStale, lockDirName } from './lib/lock.mjs';
 import { changedPaths, defaultBase, selectionIncludesUiJob, selectJobs, unionFilters } from './lib/changed.mjs';
+import { cacheBypassReason, cacheKey, canExitAllCached, headOf, inputTreeHash, installedNpmState,
+  jobContext, outputsFresh, pruneCache, readCache, storePass, toolFingerprint } from './lib/cache.mjs';
+import { inputsForJob } from './lib/inputs.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 let UI = argv.includes('--ui');   // --changed may force this on below (a UI job in the selection: see MEDIUM(a))
 const LIST = argv.includes('--list');
+let CACHE = argv.includes('--cache') && !argv.includes('--no-cache');
 // --changed [base]: the base, if given, is the token RIGHT AFTER --changed on the command line (`--changed
 // abc123`, not `abc123 --changed`), and must not itself look like a flag (so `--changed --list` still means
 // "default base"). With no base, defaultBase() picks one (scripts/lib/changed.mjs).
@@ -60,7 +66,9 @@ function findPython() {
   if (process.env.MC_PY) return process.env.MC_PY;
   const candidates = [path.join(ROOT, '.venv/bin/python')];
   try {
-    const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim();
+    const git = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' });
+    if (git.status !== 0) throw new Error(git.stderr || git.error?.message);
+    const common = git.stdout.trim();
     candidates.push(path.join(path.dirname(common), '.venv/bin/python'));
   } catch { /* not a git checkout */ }
   const found = candidates.find(p => fs.existsSync(p));
@@ -196,6 +204,71 @@ let JOBS = selectFiltered(ALL_JOBS, UI, filters);
 if (LIST) { for (const j of JOBS) console.log(j.name); process.exit(0); }
 if (!JOBS.length) { console.error(`no job matches ${filters.join(' ')} (try --list, and --ui for the browser gates)`); process.exit(2); }
 
+const bypass = cacheBypassReason(process.env);
+if (CACHE && bypass) { console.log(`test-all: cache bypassed (${bypass})`); CACHE = false; }
+let fingerprint = null;
+if (CACHE) {
+  try { pruneCache(ROOT); fingerprint = toolFingerprint(ROOT, PY); }
+  catch (e) { console.error(`test-all: cache unavailable (${e.message}); running jobs`); CACHE = false; }
+}
+const staticEnv = j => ({ MC_PY: PY, ...Object.fromEntries(
+  Object.entries(typeof j.env === 'object' && j.env ? j.env : {}).filter(([name]) => name !== 'SCREENS_OUT')
+) });
+const cacheIdentity = (j, before, context) => cacheKey({
+  job: j.name, cmd: [j.cwd, ...j.cmd], env: staticEnv(j), fingerprint, inputHash: before,
+  context,
+});
+const packageFor = j => [...new Set([
+  ...(j.cwd === 'app' || j.www ? ['app'] : []),
+  ...(j.cwd === 'site' ? ['site'] : []),
+  ...(j.cwd === 'webapp/mc' || j.dist ? ['webapp/mc'] : []),
+])];
+function cachePlan(jobs) {
+  const hits = new Map();
+  const before = new Map();
+  const keys = new Map();
+  const contexts = new Map();
+  const hashes = new Map();
+  const installed = new Map();
+  for (const j of jobs) {
+    try {
+      const missing = packageFor(j).filter(pkg => {
+        if (!installed.has(pkg)) installed.set(pkg, installedNpmState(ROOT, pkg));
+        return installed.get(pkg) === null;
+      });
+      if (missing.length) {
+        console.log(`test-all: cache bypassed for ${j.name} (missing installed npm marker: ${missing.join(', ')})`);
+        continue;
+      }
+      const inputs = inputsForJob(j.name);
+      const spec = JSON.stringify(inputs);
+      let hash = hashes.get(spec);
+      if (!hash) { hash = inputTreeHash(ROOT, inputs); hashes.set(spec, hash); }
+      const context = jobContext(ROOT, j.name);
+      const key = cacheIdentity(j, hash, context);
+      before.set(j.name, hash);
+      contexts.set(j.name, context);
+      keys.set(j.name, key);
+      const hit = readCache(ROOT, key);
+      if (hit && hit.job === j.name) hits.set(j.name, { name: j.name, code: 0, secs: 0, cached: true });
+    } catch (e) {
+      console.error(`test-all: cache lookup for ${j.name} failed (${e.message}); running it`);
+    }
+  }
+  return { hits, before, keys, contexts };
+}
+const pad = (s, n) => String(s).padEnd(n);
+function printAllCached(jobs) {
+  console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
+  for (const j of jobs) console.log(`${pad(j.name, 18)}${pad('ok', 8)}0`);
+  console.log(`cached: ${jobs.map(j => j.name).join(', ')}`);
+  console.log(`\n${jobs.length}/${jobs.length} job(s) passed in 0s (all cached)`);
+}
+if (CACHE && !JOBS.some(j => j.www || j.dist)) {
+  const initial = cachePlan(JOBS);
+  if (canExitAllCached(JOBS, initial.hits)) { printAllCached(JOBS); process.exit(0); }
+}
+
 // A job that dies leaves its children behind unless the group goes with it; so does a Ctrl-C of this script.
 const groups = new Set();
 const kills = [];   // every kill in progress; awaited before this script exits, so the SIGKILL fallback really fires
@@ -301,6 +374,17 @@ for (let firstInARow = 0, toldPid = null; firstInARow < 2;) {
 // box was still busy), so rebuild JOBS from a fresh read of available memory before scheduling anything.
 ({ budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs());
 JOBS = selectFiltered(ALL_JOBS, UI, filters);
+const selectedJobs = JOBS;
+// A queued run may have waited through a dependency install. Refresh the fingerprint under the lock.
+if (CACHE) {
+  try { fingerprint = toolFingerprint(ROOT, PY); }
+  catch (e) { console.error(`test-all: cache unavailable after lock (${e.message}); running jobs`); CACHE = false; }
+}
+const installedAtPlan = new Map();
+if (CACHE) for (const j of selectedJobs) for (const pkg of packageFor(j))
+  if (!installedAtPlan.has(pkg)) installedAtPlan.set(pkg, installedNpmState(ROOT, pkg));
+const plan = CACHE ? cachePlan(selectedJobs) : { hits: new Map(), before: new Map(), keys: new Map(), contexts: new Map() };
+const cachedResults = plan.hits;
 
 const t0 = Date.now();
 // The scheduler's real ceiling: HEADROOM's slice of the detected budget, never the whole thing (F429/F430,
@@ -320,11 +404,40 @@ function samplePss() {
 const sampleTimer = canSamplePss ? setInterval(samplePss, 1000) : null;
 // The one shared build output. Built once here, before any reader starts (see the rules at the top).
 const builds = [];
-if (JOBS.some(j => j.www)) builds.push(run('app-build', 'app', ['npm', 'run', 'build']));
-if (JOBS.some(j => j.dist)) builds.push(run('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build']));
+if (selectedJobs.some(j => j.www)) builds.push(run('app-build', 'app', ['npm', 'run', 'build']));
+if (selectedJobs.some(j => j.dist)) builds.push(run('mc-dist-build', 'webapp/mc', ['npx', 'vite', 'build']));
 for (const b of await Promise.all(builds)) {
   if (b.code !== 0) { console.error(`${b.name} failed, see ${b.log}`); for (const g of groups) killGroup(g); await exitAfterKills(1); }
 }
+const installedAfterBuild = [...installedAtPlan].filter(([pkg, state]) => installedNpmState(ROOT, pkg) !== state);
+if (CACHE && installedAfterBuild.length) {
+  console.log(`test-all: cache bypassed (installed npm dependencies changed during build: ${installedAfterBuild.map(([pkg]) => pkg).join(', ')})`);
+  CACHE = false;
+  cachedResults.clear();
+}
+if (CACHE && selectedJobs.some(j => !outputsFresh(ROOT, j))) {
+  console.log('test-all: cache bypassed (shared build output missing or stale)');
+  CACHE = false;
+  cachedResults.clear();
+}
+// A build may rewrite a declared input. Reject hits whose prebuild tree changed.
+if (CACHE && builds.length) {
+  const afterBuild = new Map();
+  for (const j of selectedJobs) {
+    if (!cachedResults.has(j.name)) continue;
+    try {
+      const inputs = inputsForJob(j.name);
+      const spec = JSON.stringify(inputs);
+      if (!afterBuild.has(spec)) afterBuild.set(spec, inputTreeHash(ROOT, inputs));
+      if (afterBuild.get(spec) !== plan.before.get(j.name)) cachedResults.delete(j.name);
+    } catch (e) {
+      console.error(`test-all: cache post-build check for ${j.name} failed (${e.message}); running it`);
+      cachedResults.delete(j.name);
+    }
+  }
+}
+JOBS = selectedJobs.filter(j => !cachedResults.has(j.name));
+if (!JOBS.length) { printAllCached(selectedJobs); process.exit(0); }
 // The scheduler: longest first; start a job when its cost fits beside the running ones (or when nothing runs, so a
 // job bigger than the whole budget still runs, alone).
 const queue = [...JOBS].sort((a, b) => b.secs - a.secs);
@@ -343,11 +456,24 @@ await new Promise(done => {
         // hold a hung job -- and an agent -- for hours. JOB_TIMEOUT_S itself is still an explicit floor, never capped.
         const timeoutS = deriveTimeoutS(JOB_TIMEOUT_S, j.secs);
         let r;
+        const cacheBefore = plan.before.get(j.name) || null;
+        const cacheKeyForRun = plan.keys.get(j.name) || null;
+        let cacheHead = null;
         try {
+          if (CACHE && cacheBefore) cacheHead = headOf(ROOT);
           const env = typeof j.env === 'function' ? await j.env() : j.env;
           r = await run(j.name, j.cwd, j.cmd, env, timeoutS);
         }
         catch (e) { r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' }; }
+        if (CACHE && cacheBefore && cacheKeyForRun && r.code === 0 && !stopping) {
+          try {
+            const after = inputTreeHash(ROOT, inputsForJob(j.name));
+            const sameContext = JSON.stringify(plan.contexts.get(j.name)) === JSON.stringify(jobContext(ROOT, j.name));
+            const samePackages = packageFor(j).every(pkg => installedNpmState(ROOT, pkg) === installedAtPlan.get(pkg));
+            storePass(ROOT, { job: j.name, key: cacheKeyForRun, exit: 0, secs: r.secs,
+              head: cacheHead, before: cacheBefore, after, stopping: stopping || !sameContext || !samePackages });
+          } catch (e) { console.error(`test-all: cache store for ${j.name} failed (${e.message})`); }
+        }
         results.push(r); usedMb -= j.mb; running--;
         if (!queue.length && !running) done(); else pump();
       })();
@@ -356,9 +482,10 @@ await new Promise(done => {
   pump();
 });
 
-const pad = (s, n) => String(s).padEnd(n);
+results.push(...cachedResults.values());
 console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
 for (const r of results.sort((a, b) => b.secs - a.secs)) console.log(`${pad(r.name, 18)}${pad(r.code === 0 ? 'ok' : r.code === 'TIMEOUT' ? 'TIMEOUT' : 'FAIL', 8)}${r.secs.toFixed(0)}`);
+if (cachedResults.size) console.log(`cached: ${[...cachedResults.keys()].join(', ')}`);
 const failed = results.filter(r => r.code !== 0);
 for (const r of failed) {
   const lines = fs.existsSync(r.log) ? fs.readFileSync(r.log, 'utf8').trimEnd().split('\n') : [String(r.code)];
