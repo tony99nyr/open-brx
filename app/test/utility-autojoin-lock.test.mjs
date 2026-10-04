@@ -54,32 +54,62 @@ async function until(fn, what, ms = 3000) {
   }
 }
 
-test('armed: a sweep hit on a different address is not dialled; the same MC is', async () => {
+// Round 2 HIGH (review 2026-10-04): `mcArmed` and `live` persist across sessions, so "armed" alone stranded a station
+// whose MC came back on a new IP next session (a new hotspot lease). The guard is for a station repointed MID-MATCH:
+// in play AND bound to its MC within AUTOJOIN_LOCK_MS. After a longer drop any MC may be joined again.
+const MIN = 60 * 1000;
+async function sweepOnce(found) {
+  let calls = 0;
+  api.startLanSweep({ firstDelayMs: 0, sweep: async () => { calls++; return found; } });
+  await until(() => calls >= 1 && api.log.some(l => l.includes('FOUND BY SWEEP') && l.includes(found)), 'the sweep to find ' + found);
+  await new Promise(r => realSetTimeout(r, 20));
+  api.sweeper.stop();
+}
+function reset() { if (api.transport) api.transport.close(); }
+
+test('mid-match: live, the link down for seconds, a different host is refused', async () => {
   const mine = 'ws://10.0.0.9:8766/ws';
-  api.settings.mc = mine; api.settings.mc_auto = true; api.settings.mcArmed = { game: 7 };
+  api.settings.mc = mine; api.settings.mc_auto = true; api.settings.mcArmed = { game: 7 }; api.settings.live = true;
+  api.settings.mcLastBoundAt = Date.now() - 5000;
   assert.equal(api.transport, null, 'control: nothing dialled at load');
   const other = 'ws://10.0.0.66:8766/ws';
-  let calls = 0;
-  api.startLanSweep({ firstDelayMs: 0, sweep: async () => { calls++; return other; } });
-  await until(() => calls === 1 && api.log.some(l => l.includes('FOUND BY SWEEP') && l.includes(other)), 'the sweep to find the other MC');
-  await new Promise(r => realSetTimeout(r, 20));
-  assert.ok(!dialled.includes(other), 'another MC is never dialled while the station is armed');
+  await sweepOnce(other);
+  assert.ok(!dialled.includes(other), 'another MC is never dialled mid-match');
   assert.ok(api.log.some(l => /not joining/i.test(l) && l.includes(other)), 'and the log says why');
-  api.sweeper.stop();
-  const moved = 'ws://10.0.0.9:9000/ws';   // the same host on another port is the same MC
-  calls = 0;
-  api.startLanSweep({ firstDelayMs: 0, sweep: async () => { calls++; return moved; } });
-  await until(() => api.transport && api.transport.url === moved, 'the same MC to be dialled');
-  api.sweeper.stop();
+});
+
+test('the same host is always dialled (mid-match, or long after)', async () => {
+  for (const ago of [5000, 3 * 60 * MIN]) {
+    reset();
+    api.settings.mcLastBoundAt = Date.now() - ago;
+    const same = `ws://10.0.0.9:${9000 + ago % 997}/ws`;   // the same host on another port is the same MC
+    await sweepOnce(same);
+    assert.ok(dialled.includes(same), `the same host is dialled (bound ${ago} ms ago)`);
+  }
+});
+
+test('next session: armed earlier, the link down long ago, a new MC on another host IS dialled', async () => {
+  reset();
+  api.settings.mcArmed = { game: 7 }; api.settings.live = true;
+  api.settings.mcLastBoundAt = Date.now() - 11 * MIN;   // past AUTOJOIN_LOCK_MS: not this match any more
+  const fresh = 'ws://10.0.0.123:8766/ws';
+  await sweepOnce(fresh);
+  assert.ok(dialled.includes(fresh), 'a station armed once is not stranded when its MC comes back on a new IP');
 });
 
 test('setting up (not armed): auto-discovery joins any MC, as before', async () => {
-  api.transport.close();
-  api.settings.mcArmed = null; api.settings.mc = ''; api.settings.live = false;
+  reset();
+  api.settings.mcArmed = null; api.settings.mc = ''; api.settings.live = false; api.settings.mcLastBoundAt = Date.now();
   const any = 'ws://10.0.0.88:8766/ws';
   api.startLanSweep({ firstDelayMs: 0, sweep: async () => any });
   await until(() => dialled.includes(any), 'an unarmed station to dial what it found');
   api.sweeper.stop();
+});
+
+test('utility.js stamps mcLastBoundAt whenever the link enters or leaves bound', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/utility.js', import.meta.url), 'utf8');
+  assert.match(src, /if \(s === 'bound' \|\| was === 'bound'\) \{ settings\.mcLastBoundAt = Date\.now\(\); save\(\); \}/, 'without the stamp the guard cannot tell this match from a later session');
 });
 
 test('the mDNS path takes the same in-play rule as the sweep', async () => {

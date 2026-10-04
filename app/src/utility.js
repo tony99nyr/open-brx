@@ -47,7 +47,7 @@ function log(msg, cls = 'li') {
 // a control (hill) station -75, hysteresis 6, until the outdoor walk, F383; every other kind -74); anything
 // else is the operator's or MC's override. 0.8 s dwell = get in range, brief pause, green (bench-tuned 2026-09-04). captureS/netCap belong to kind 5 (§5d.1): seconds ONE net
 // player needs for ONE phase, and the clamp on how much a rush can stack.
-const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false,
+const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false, mcLastBoundAt: 0,
   captureS: DEFAULT_CAPTURE_S, netCap: DEFAULT_NET_CAP };
 const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
 // F345: settings saved before thrV 2 hold the old -74 default as if chosen; migrateThreshold reads it as 0 once.
@@ -269,7 +269,8 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
-  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true; if (s === 'bound' && flushTaken()) savePowerup();
+  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true;
+    if (s === 'bound' || was === 'bound') { settings.mcLastBoundAt = Date.now(); save(); }   // round 2: the auto-join guard's clock if (s === 'bound' && flushTaken()) savePowerup();
     // a discovered MC that drops (a restart on a new IP) is searched for again, not left to mDNS alone
     if (was === 'bound' && s !== 'bound' && settings.mc_auto && isNative()) setTimeout(startUtilityLanSweep, 0); log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url, trusted, pub, secret }).then(() => {
@@ -285,11 +286,20 @@ let _sweeper = null;
 /** U-M2 (review 2026-10-03): F443 locks the MC link in play, and discovery must not get round it. Armed or live and
  *  not editing, an auto-join goes only to the SAME Mission Control: the host of `settings.mc`, or of the LAN url
  *  the held tunnel pub belongs to (`brxu.pub_url`). Another MC's welcome would become `settings.mc` and its
- *  station_config would re-arm the station. Refused, it says why (once a minute per address). */
+ *  station_config would re-arm the station. Refused, it says why (once a minute per address).
+ *
+ *  Round 2 (review 2026-10-04): `mcArmed` and `live` persist across sessions, so "in play" alone stranded a station
+ *  whose MC came back on a new IP the next day. The guard is for a station repointed MID-MATCH, so it holds only while
+ *  the station was bound to its MC within AUTOJOIN_LOCK_MS (`settings.mcLastBoundAt`, stamped whenever the link
+ *  enters or leaves bound, and saved so a phone restart mid-match keeps it). A mid-match drop is seconds to minutes;
+ *  a match is about 10 minutes; a later session is hours away. A station never bound has no MC to protect. */
+const AUTOJOIN_LOCK_MS = 10 * 60 * 1000;
 const _autoJoinRefusedAt = new Map();
 function hostOf(u) { try { return new URL(String(u).replace(/^ws/, 'http')).hostname.toLowerCase(); } catch (_) { return ''; } }
 function autoJoinAllowed(url) {
   if (!rangeLocked()) return true;
+  const boundAt = Number(settings.mcLastBoundAt) || 0;
+  if (!boundAt || Date.now() - boundAt >= AUTOJOIN_LOCK_MS) return true;   // not this match any more: any MC
   let held = [settings.mc];
   try { held.push(localStorage.getItem('brxu.pub_url')); } catch (_) { /* ignore */ }
   held = held.map(hostOf).filter(Boolean);
