@@ -657,7 +657,7 @@ const CALLOUT_WINDOW_MS = 3000;  // kill-confirm first-to-arrive (Tony), and how
 // `hint` is computed on each `state()` (`powerupView`), not written, so only the read side applies to it.
 // The VOICE is deliberately not a channel here: docs/announcer.md "My death wins" rule 3 (while dead, every line queues
 // and is said after the scream) and rule 8 (a hill change while dead is said; its badge is not drawn).
-const PRESENT = Object.freeze({
+export const PRESENT = Object.freeze({
   hero: 'alive', objective: 'alive', feed: 'alive',   // the three lanes (docs/announcer.md "The three lanes")
   // C2 (Tony's match 2026-09-24): the announcer's own card, {kind: 'kill'|'alert', at, data}, apart from `moment` so a
   // later hit or stun in the same render cannot overwrite it; `show` sets `moment` to it too, for the older readers
@@ -5088,8 +5088,10 @@ export class Engine {
    *  longer works out from `alive` whether a channel may draw. PURE. */
   _presented(lanes, powerup) {
     const on = ch => this._presentable(ch);
+    // polish r1 L3: each lane by its own rule; null when none of the three may draw (the HUD clears the lanes on null)
+    const hero = on('hero'), obj = on('objective'), feed = on('feed');
     return {
-      lanes: on('hero') ? lanes : null,   // the three lanes share one rule
+      lanes: lanes && (hero || obj || feed) ? { ...lanes, hero: hero ? lanes.hero : null, obj: obj ? lanes.obj : {}, feed: feed ? lanes.feed : [] } : null,
       card: on('card') ? this.card || null : null,
       callout: on('callout') ? this.callout || null : null,
       hillCallout: on('hillCallout') ? this.hillCallout || null : null,
@@ -7762,6 +7764,9 @@ export class Engine {
     // The standing lead badge stays: it says who leads until the next lead change replaces it, and was not an alert that
     // arrived while I was down. A lead change that arrives while I am down is dropped like any other alert.
     if (this._lanes) this._lanes = { ...this._lanes, hero: null, obj: this._lanes.obj && this._lanes.obj.lead ? { lead: this._lanes.obj.lead } : {}, feed: [] };
+    // #5 polish r1 M1: the other 'alive' channels go with the life too. Their own 3-4 s clocks are longer than a fast
+    // (operator) respawn, so a card from this life would otherwise still be drawn in the next one.
+    this.card = null; this.callout = null; this.hillCallout = null;
     // S16: a death straight after our own poison tick, with no newer `$HIR` behind it, is the TICK's kill, and the
     // kill goes to the player who last applied the poison (Tony, 2026-09-18). A newer latch means a real hit landed
     // after the tick, and that hit is the kill.

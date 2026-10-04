@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, IR_CALLOUT } from '../src/engine.js';
+import { Engine, IR_CALLOUT, PRESENT } from '../src/engine.js';
 import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, LANE_FEED_MS } from '../src/lanes.js';
 import { PU_ACTIVE_CARD_MS } from '../src/engine.js';
 
@@ -453,9 +453,10 @@ test('down: the voice lines still queue while I am down ("My death wins" rules 3
 // The exceptions, kept as they were: `puLost` is drawn ONLY while I am down (it is the DOWN screen's own content, like
 // the respawn countdown); the standing lead badge survives the death in the engine (it is not drawn while I am down,
 // and is drawn again after the respawn); and the voice lines are never gated (docs/announcer.md, "My death wins" rules
-// 3 and 8). `shown` falls back to the raw field only so that this block also runs against an engine without the gate.
+// 3 and 8). Every per-channel test reads `presented` only, never the raw field.
 const CHANNELS = ['lanes', 'card', 'callout', 'hillCallout', 'hint', 'puLost'];
-const shown = (h, ch) => { const s = h.eng.state(); return s.presented ? s.presented[ch] : ch === 'hint' ? s.powerup && s.powerup.hint : s[ch]; };
+const LANES = ['hero', 'objective', 'feed'];
+const shown = (h, ch) => h.eng.state().presented[ch];
 /** Is there something on the channel the HUD would draw: a lane item, or any value? */
 const up = (h, ch) => {
   const v = shown(h, ch); if (ch !== 'lanes') return v != null;
@@ -472,6 +473,35 @@ test('presented: the engine publishes one entry per visual channel, and nothing 
   const p = h.eng.state().presented;
   assert.ok(p && typeof p === 'object', 'state().presented exists');
   assert.deepEqual(Object.keys(p).sort(), [...CHANNELS].sort());
+  // polish r1 L2: `PRESENT` (the rules) and `presented` (what is published) are one list: the lanes fold into `lanes`
+  const ruled = [...new Set(Object.keys(PRESENT).map(k => (LANES.includes(k) ? 'lanes' : k)))].sort();
+  assert.deepEqual(ruled, Object.keys(p).sort(), 'every channel with a rule is published, and nothing without one');
+  assert.ok(LANES.every(k => k in PRESENT), 'each lane has its own rule');
+});
+
+// polish r1 M1: what is up at my death goes with the life on EVERY channel, not only the lanes. The card, the callout and
+// the hill card have their own 3-4 s clocks, so an operator respawn inside that time must not bring them back.
+const fastBack = h => {
+  die(h);
+  h.eng.control({ cmd: 'respawn', match_id: 'm1', player_id: 'p1' }); h.adv(100);
+  assert.equal(h.eng.state().alive, true, 'setup: the operator respawn brought me back at once');
+};
+test('down: the card and the callout up at my death are gone after a FAST respawn', () => {
+  const h = koth();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(300);                   // KILL CONFIRMED: the callout is up (3 s)
+  h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD');                  // the lead card, after the kill card's hold
+  for (let t = 0; t < 2500 && !(h.eng.state().card && h.eng.state().card.kind === 'alert'); t += 50) h.adv(50);
+  for (const ch of ['card', 'callout']) assert.equal(up(h, ch), true, `setup: ${ch} is up`);
+  fastBack(h);
+  for (const ch of ['card', 'callout']) assert.equal(up(h, ch), false, `${ch} from the last life is not drawn in this one`);
+});
+test('down: the hill card up at my death is gone after a FAST respawn', () => {
+  const h = koth();
+  hold(h, 1000, { team: BLUE, state: CS.held, value: 100 });
+  let n = 0; while (!up(h, 'hillCallout') && n++ < 20) hold(h, 250, { team: RED, state: CS.rising, value: 3 });   // HILL LOST
+  assert.equal(up(h, 'hillCallout'), true, 'setup: the hill card is up');
+  fastBack(h);
+  assert.equal(up(h, 'hillCallout'), false, 'the hill card from the last life is not drawn in this one');
 });
 
 test('down: card: an MC lead alert said after the scream is never drawn, during or after the respawn', () => {
