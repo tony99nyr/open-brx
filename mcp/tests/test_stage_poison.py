@@ -161,6 +161,25 @@ def test_a_toxin_hit_starts_the_stack_plays_poisoned_once_and_ticks_off_the_armo
     asyncio.run(go())
 
 
+def test_6_polish_r2_the_onset_hold_is_the_played_cues_length_and_honours_cue_ms():
+    """engine.js `_poisonStrike` sounds a tick only once the gun has no clip outstanding, and the gun model times each
+    written cue by `_clipLen`: the bundle's `cue_ms[kind]` for the kind that ships that frame, else its catalogue
+    length. So the stage's hold after `poisoned` must be the PLAYED cue's length under the same rule. CONTROL: with no
+    override the H12 onset (1.9 s) holds the first tick silent; with `cue_ms.poisoned = 0` the first tick sounds."""
+    async def run(override):
+        b = await Bench().start()
+        if override is not None:
+            b.st.bundle["cue_ms"] = {**(b.st.bundle.get("cue_ms") or {}), "poisoned": override}
+        await b.toxin(3, 2, 8)
+        assert b.events.count("poisoned") == 1, "setup: the onset played"
+        await b.adv(1.0)
+        assert b.ticks() == ["$LIFE,0,-4,0,*"], "setup: the first tick went out"
+        return b.events.count("poison_tick")
+    assert asyncio.run(run(None)) == 0, "CONTROL: the H12 onset is still on air at the first tick"
+    assert asyncio.run(run(0)) == 1, "a zero cue_ms override means the onset holds nothing back, as on the engine"
+    assert asyncio.run(run(500)) == 1, "a short override has ended by the first tick"
+
+
 def test_polish_2026_10_03_a_lethal_first_toxin_hit_plays_no_poisoned_cue():
     """engine.js `_poisonCue` (app/test/poison.test.mjs, polish 2026-10-03): the `$HIR` comes before a lethal pool frame,
     and H12 on the interrupt slot would cut the native scream, so `poisoned` waits for a pool frame that says we live."""
