@@ -77,3 +77,46 @@ def test_o5_demo_mc_still_serves_the_fake_catalogue():
     needs(have, "starlette + httpx")
     r = _api_client(True).get("/api/weapons")
     assert r.status_code == 200 and len(r.json()) > 0
+
+
+def test_o11_pull_log_names_why_it_did_not_ask():
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_mc_logsync_versions import mk, online
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    net.simulate_utility_hello("util-1")
+    assert s.pull_log_refusal("node0", "manual") is None
+    assert s.pull_log_refusal("util-1", "manual") == "utility_node"
+    assert s.pull_log_refusal("nobody", "manual") == "no_node"
+    s.options["log_sync"] = "manual"
+    assert s.pull_log_refusal("node0", "recap") == "auto_sync_off"
+    s._log_bytes["node0"] = 1_000_000
+    assert s.pull_log_refusal("node0", "manual") == "budget_spent"
+    s._log_bytes["node0"] = 0
+
+    def boom(*a, **k):
+        raise OSError("gone")
+    net.push = boom
+    assert s.pull_log_refusal("node0", "manual") == "push_failed"
+    assert s.pull_log("node0", "manual") is False
+
+
+def test_o11_route_returns_the_reason():
+    from _skip import needs
+    try:
+        import httpx  # noqa: F401
+        from starlette.testclient import TestClient
+        have = True
+    except Exception:
+        have = False
+    needs(have, "starlette + httpx")
+    from brx_mcp.mc.api import create_app
+    from test_mc_logsync_versions import mk, online
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    net.simulate_utility_hello("util-1")
+    c = TestClient(create_app(s))
+    ok = c.post("/api/nodes/node0/pull_log").json()
+    assert ok["ok"] is True and ok["reason"] is None
+    bad = c.post("/api/nodes/util-1/pull_log").json()
+    assert bad["ok"] is False and bad["reason"] == "utility_node", bad

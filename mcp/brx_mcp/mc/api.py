@@ -999,8 +999,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         nid = req.path_params["nid"]
         if nid not in s.nodes:
             return _err("no such node", 404)
-        asked = s.pull_log(nid, "manual")
-        return JSONResponse({"ok": asked, "node_id": nid, "log": s.nodes[nid].get("log")})
+        why = s.pull_log_refusal(nid, "manual")
+        return JSONResponse({"ok": why is None, "reason": why, "node_id": nid, "log": s.nodes[nid].get("log")})
 
     async def wrong_port_ws(ws: WebSocket):
         node = s.lan.get("ws_url") or "the node port (default 8766)"

@@ -2007,7 +2007,7 @@ export class MockBackend implements Api {
       this.logs[node_id] = { state: 'pulling', lines: cur.lines, bytes: cur.bytes, last_t: now() };
       this.emit();
     }
-    return { ok: true, node_id, log: this.logFor(node_id) };
+    return { ok: true, reason: null, node_id, log: this.logFor(node_id) };
   }
   /** A28.1: `POST /api/tunnel {on}` — mirrors the real MC: `on:true` answers `starting` at once and
    *  flips to `up` with a fresh fake hostname after a beat; `on:false` is immediate. 409s the same

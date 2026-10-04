@@ -149,7 +149,7 @@ export interface Api {
   /** A25: the operator's LOGS button — `POST /api/nodes/{id}/pull_log`, always `reason: "manual"` and
    *  so never gated by `log_sync`. `ok` is whether the ASK went out, not whether a log arrived: the
    *  node answers when it is safe to and MC never waits on it. */
-  pullLog(node_id: string): Promise<{ ok: boolean; node_id: string; log?: LogView | null }>;
+  pullLog(node_id: string): Promise<{ ok: boolean; /** O11: why the ask did not go out; null when it did */ reason?: string | null; node_id: string; log?: LogView | null }>;
   /** A28.1: `POST /api/tunnel {on}` → `lan.public`. 409 (available:false / provider:"manual") — the
    *  server's `error` text is the whole point of the rejection, never swallow it. */
   setTunnel(on: boolean): Promise<LanPublic>;
