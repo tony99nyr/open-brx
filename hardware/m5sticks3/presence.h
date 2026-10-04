@@ -13,8 +13,9 @@
 //                    going 0 -> 1 as a revive that happened here.
 //
 // The numbers come from the phone station, not from control.js's own class defaults where the two
-// differ: utility.js builds its Presence with a 0.8 s dwell and a -74 dBm threshold (DEFAULTS), not
-// beacon.js's 2 s / -62. A JS rule that is subtle is copied, not improved, and its JS line is named.
+// differ: utility.js builds its Presence with a 0.8 s dwell (DEFAULTS.dwell) and a -74 dBm threshold
+// (beacon.js STATION_THRESHOLD_DBM), not beacon.js's 2 s / -62. mcp/tests/test_advert_constants_parity.py fails
+// when a number here drifts from its JS twin. A JS rule that is subtle is copied, not improved, and its JS line is named.
 // Pure C++17, header-only; the clock is passed in so the host tests (test/test_presence.cpp) drive it.
 #pragma once
 #include <algorithm>
@@ -59,8 +60,10 @@ constexpr uint32_t PRESENCE_SIGHT_MS = 4000;
 constexpr uint32_t PRESENCE_SIGHT_WINDOW_MS = 2000;
 constexpr size_t SIGHT_RECENT_MAX = 64;  // P-L1: beacon.js SIGHT_RECENT_MAX (about 32 KB across 64 players)
 constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
-constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // utility.js DEFAULTS.threshold (the port's own default;
-                                                     // a Stick station passes STICK_DEFAULT_THRESHOLD_DBM, -57)
+constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // beacon.js STATION_THRESHOLD_DBM (the phone station's default for a kind
+                                                     // with no value of its own; utility.js DEFAULTS.threshold is 0 = that default)
+                                                     // A Stick station passes STICK_DEFAULT_THRESHOLD_DBM (-57),
+                                                     // and a Stick hill STICK_HILL_DEFAULT_THRESHOLD_DBM (-75)
 constexpr size_t MEDIAN_SAMPLES = 3;                 // beacon.js MEDIAN_SAMPLES
 constexpr int REVIVE_MARGIN_DB = 10;                 // beacon.js REVIVE_MARGIN_DB (F344)
 constexpr uint32_t STATION_TICK_MS = 250;            // utility.js `setInterval(tick, 250)`
