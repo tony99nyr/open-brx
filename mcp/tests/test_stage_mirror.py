@@ -1926,6 +1926,10 @@ KNOWN_UNMIRRORED = {
     # panel's confirmation (`_tutorial`, pinned below); `_resyncAmmo` is the §3.10 resync, pinned with `_resyncEvidence`.
     # `am.endDrySpell` is the RELOAD nag's reset, inline on the stage.
     "_roundsLeft", "_tryoutAmmo", "_resyncAmmo", "am.endDrySpell",
+    # Engine split (b): named reads in place of raw field reads. `am.lastMag` is the try-out baseline (`_tutorial`, pinned
+    # below); `am.altSwap` is the F416 check's question (no F416 on the stage); `am.swapFrom` and `am.swapTo` are the HUD's
+    # SWITCHING from and to (`state()`), display only.
+    "am.lastMag", "am.altSwap", "am.swapFrom", "am.swapTo",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # F202: local picker/storage operation; GunStage has no phone-owned gun binding to clear.

@@ -12,7 +12,7 @@
 //   Ammo(host)
 //     account     acctLive(slot, now) · acctOutstanding(slot, now) · acctEchoing(slot, now) · pressedRounds(slot) ·
 //                 acctWrote(slot, mag, res) · acctPress() · acctAmmo(slot, mag, prev)
-//     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · setPrev(slot, mag, res) · saved() · restore(saved) ·
+//     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
 //     heat        noteHeat(slot, heat) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
@@ -21,7 +21,7 @@
 //                 reloadingMs() · reloadOpen · dropReload()
 //     a report    onAmmo(mag, reserve, slot, heat) · dryPull() · endDrySpell()
 //     ALT         altPressed() · switchTick(now) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
-//                 swapOpen · setSwitching(card) · cancelSwap() · equipped(slot, mag, res)
+//                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · equipped(slot, mag, res)
 //     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · reloading ·
 //                 reloadOutcome · switching · altPtr · altEvidencePending · lastSwitchMs · dryPulls · lastShot (read them;
 //                 change them through the methods above)
@@ -186,6 +186,8 @@ export class Ammo {
   /** What a slot holds now, after a write the node made (the reconcile re-arm, a powerup equip, a self-hit revive). A
    *  `res` left undefined keeps the slot's last reserve. */
   setPrev(slot, mag, res) { this.prevAmmo[slot] = mag; if (res !== undefined) this.prevReserve[slot] = res; }
+  /** The slot's last magazine seen, or null before one (F147: a try-out's baseline). PURE. */
+  lastMag(slot) { return this.prevAmmo[slot] != null ? this.prevAmmo[slot] : null; }
   /** F416 round 2: the rounds the trigger has asked for on `slot` that may still come back (0 once the press expires). */
   pressedRounds(slot) { const a = this.acct[slot]; return this.acctOutstanding(slot) && a ? a.fired : 0; }
   /** A new life, a death or the match end: no takeover follows the player, and no verdict from the last one. */
@@ -498,6 +500,11 @@ export class Ammo {
   }
 
   // ---------- the ALT swap (field 2026-08-30, ALT r4, F379, F394, F400) ----------
+  /** The ALT swap in flight, or null: a pickup's switch card (`pu`) is not one (F416 round 2's motion check). PURE. */
+  altSwap() { return this.switching && !this.switching.pu ? this.switching : null; }
+  /** The HUD's SWITCHING from and to: the open swap's own, else the next slot in the ALT cycle; null with no swap. PURE. */
+  get swapFrom() { return this.switching ? this.switching.from : null; }
+  get swapTo() { return this.switching ? (this.switching.to != null ? this.switching.to : this.nextAltSlot()) : null; }
   /** Is an ALT swap (or a pickup's switch card) open, whatever its window says? The stand-down table asks. */
   get swapOpen() { return !!this.switching; }
   /** F400: a pickup's switch card is this same `switching`, opened by the powerup module. */

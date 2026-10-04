@@ -1534,7 +1534,7 @@ export class Engine {
     // window (the gun on its from or to slot), or a stun holding the gun at 0. Anything else, such as the P0's slot 2
     // at 2/1 while the player pulls a dead trigger, is decided now, or it would defer to a silent close.
     const pressed = this.am.pressedRounds(slot);
-    const sw = this.am.switching && !this.am.switching.pu ? this.am.switching : null;
+    const sw = this.am.altSwap();
     const motion = (pressed && gs === slot && expected != null && gm >= expected && gm <= expected + pressed)
       || (sw && (gs === sw.from || gs === sw.to)) || this.stunned;
     if (motion) {
@@ -2136,7 +2136,7 @@ export class Engine {
     // primary rack (the only tab an old-style host push could mean).
     const tab = (this.tryoutArming && this.tryoutArming.tab) || 'primary';
     const kind = (this.tryoutArming && this.tryoutArming.kind) || 'weapon';
-    this.tryoutArming = clip != null ? { at: this.now(), clip, gunSlot, baseline: this.am.prevAmmo[gunSlot] != null ? this.am.prevAmmo[gunSlot] : null, tab, kind } : null;
+    this.tryoutArming = clip != null ? { at: this.now(), clip, gunSlot, baseline: this.am.lastMag(gunSlot), tab, kind } : null;
     this.tryoutUnconfirmed = null;
     this._write(frames, 'tutorial');
     this._changed();
@@ -7075,7 +7075,7 @@ export class Engine {
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
       ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.am.switchingMs()),
       switchWindowMs: this.switchWindowMs(), lastSwitchMs: this.am.lastSwitchMs, activeSlot: this.activeSlot,
-      switchFrom: this.am.switching ? this.am.switching.from : null, switchTo: this.am.switching ? (this.am.switching.to != null ? this.am.switching.to : this.am.nextAltSlot()) : null,
+      switchFrom: this.am.swapFrom, switchTo: this.am.swapTo,
       // F123: `reloading` is no longer a timer's opinion — it runs until the GUN's ammo says the reload is
       // done (or stopped). `reloadOverrun` is true once the nominal time has passed and the magazine still
       // has not come back (normal on hardware: F27 measures handle-to-refill at ~1.25x the catalog figure).
