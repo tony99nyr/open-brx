@@ -70,7 +70,7 @@ export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FI
   | 'CONFIG' | 'END' | 'POWERUP' | 'RESCORED'
   /** A kill's medals, upper-case, joined by " + " (`scoring.py`): `KILLING SPREE`, `FIRST BLOOD + DOUBLE KILL`. */
   | (string & {});
-export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
+export interface FeedEntry { id?: number; t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
  *  vocabulary of CODES, not sentences: `policy.py`'s copy of these is the HUD's (`_R_*`, shown
@@ -86,7 +86,7 @@ export type LoadoutPoolReasons = NonNullable<LoadoutPool['reasons']>;   // gener
 /** The surface both the real client and the in-browser mock implement. */
 export interface Api {
   getState(): Promise<State>;
-  subscribe(onSnapshot: (s: State) => void, onFeed: (e: FeedEntry) => void, onLink?: (connected: boolean) => void): () => void;
+  subscribe(onSnapshot: (s: State) => void, onFeed: (e: FeedEntry, edit?: boolean) => void, onLink?: (connected: boolean) => void): () => void;
   scan(duration_s?: number): Promise<ScanRow[]>;
   armory(): Promise<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>;
   /** A27: `POST /api/phase {phase:"lobby", force?}` from `kit` is REFUSED 409 while a rostered player
