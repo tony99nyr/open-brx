@@ -15,10 +15,10 @@ them there.
 | `lead_taken`, `lead_lost` | MC `alert` (`_announceAlert`) | `VA6D`, `VA6E` | OBJECTIVE (lead badge) |
 | `medal` | MC `feedback{kind:"kill"}` with medals, when the kill's IR word already said its kill line | the medal lines | HERO |
 | `hill_captured`, `hill_lost` | the engine's hill transition (`_hillSay`) | `VB0N`, `VB0P` | OBJECTIVE (hill badge) |
-| `powerup_swap` | a second weapon pickup (`_puGrantWeapon`) | none | FEED ("NEW", "REPLACES OLD") |
+| `powerup_swap` | a second weapon pickup (`PlayerPowerups.grantWeapon`, `app/src/powerup-player.js`) | none | FEED ("NEW", "REPLACES OLD") |
 | `alert` | every other MC alert, the clock warnings, `victory` feedback, "Hill Contested" (the holding team only, once each time a contest stops its scoring, at most once per 3 s) | the bundle's cue | FEED (if any) |
 | `teammate_down`, `enemy_down` | an S57 word (`_onIrCallout`) | none, `VB8` | FEED |
-| `powerup_spawn` | the spawn schedule (`_puTick`) | none | FEED ("ITEM AVAILABLE") |
+| `powerup_spawn` | the spawn schedule (`PlayerPowerups.tickAnnounce`) | none | FEED ("ITEM AVAILABLE") |
 | `status` | a pool rising (`_onHp`), the shield recharge starting (`_shieldTick`) | `shield_up`, `shield_charging` (only for a refill longer than 1 s, `SHIELD_CHARGING_MIN_MS`), `healed`, `armour_up` | none |
 
 `shield_online` has no voice line (**Tony**, 2026-09-24): the shield coming back full keeps its LEDs and says nothing.
