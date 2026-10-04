@@ -1584,6 +1584,11 @@ export class Engine {
     c.heardAt = this.now(); c.lost = false;
     if (hp <= 0) return;
     if (!this._spawnCheckLive(c)) { this._spawnCheck = null; this._changed(); return; }   // out of time: a positive pool closes it, as before
+    if (this.reconciling) {   // F416 r4: the reconcile disarm is not a lost spawn; ask again once its re-arm is out
+      c.gen = (c.gen || 0) + 1; c.heardAt = 0; c.asks = 0; c.queryAt = 0;
+      this.delay(Math.max(0, RECONCILE_MS - (this.now() - this.reconciling.since)) + SPAWN_CHECK_MS, () => this._spawnAsk(c));
+      return;
+    }
     if (!lcd || !c.queryAt) { this._spawnQuery(c); return; }
     if (!this._probeShapeOk(lcd) || ![lcd[4], lcd[5]].every(v => v !== '' && Number.isFinite(+v))) return;
     c.queryAt = 0;

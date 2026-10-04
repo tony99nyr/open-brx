@@ -24,6 +24,7 @@ function harness({ fail = () => false, profile = true } = {}) {
   const writer = fr => {
     writes.push(...fr.map(f => ({ f, t: clock })));
     if (fail(fr)) return false;
+    if (gun.ammo) for (const f of fr) { const t = f.split(','); if (t[0] === '$AMMO' && +t[1] === gun.slot) Object.assign(gun, { mag: +t[2], reserve: +t[3] }); }   // opt-in: the gun takes `$AMMO` rows on its own slot
     if (fr.some(f => f.startsWith('$SPAWN'))) { Object.assign(gun, { spawned: true, slot: 0, mag: 32, reserve: 192, hp: 45, armor: 70 }); replies.push('$LCD,45,70,0,0,32,192,*'); }
     if (fr.includes(PROBE_LIFE) && gun.answer) replies.push(`$HP,${gun.hp || (gun.spawned ? 45 : 0)},${gun.armor || (gun.spawned ? 70 : 0)},${gun.shield},*`);
     if (fr.includes('$QUERY,*') && gun.answer) replies.push(`$LCD,${gun.hp || (gun.spawned ? 45 : 0)},${gun.armor || (gun.spawned ? 70 : 0)},${gun.shield},${gun.slot},${gun.mag},${gun.reserve},*`);
@@ -316,4 +317,35 @@ test('F416 weapon review r3: pulling a dead trigger on an unspawned gun does not
   assert.equal(h.eng.state().spawnLost, true, 'the budget ends on a visible HOST: FORCE RESPAWN, never a silent close');
   const queries = h.writes.filter(w => w.t >= t0 && w.f === '$QUERY,*').length;
   assert.ok(queries <= 10, `one probe chain, no fan-out: ${queries} queries`);
+});
+
+const relink = h => h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+
+test('F416 r4: a landed spawn whose write failed, then a BLE drop and relink, is not re-sent over the reconcile disarm', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 0, mag: 32, reserve: 192 }), true) }).live();
+  h.gun.ammo = true;
+  await h.adv(4000 + 100);
+  h.eng.onBleDropped();
+  await h.adv(800);
+  relink(h);
+  await h.adv(6000);
+  assert.equal(h.spawns(), 1, `the reconcile disarm is not a lost spawn: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+  assert.equal(h.eng._spawnCheck, null, 'the check still closes after the reconcile');
+  assert.ok(h.logs.some(l => /weapon state matches/.test(l)), JSON.stringify(h.logs.filter(l => l.includes('F416'))));
+});
+
+test('F416 r4: a genuinely lost spawn across a BLE drop and relink is still re-sent once the reconcile ends', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { hp: 45, armor: 70, shield: 105, slot: 2, mag: 2, reserve: 1 }), true) }).live();
+  h.gun.ammo = true;
+  await h.adv(4000 + 100);
+  h.eng.onBleDropped();
+  await h.adv(800);
+  relink(h);
+  await h.adv(6000);
+  assert.equal(h.spawns(), 2, `the unspawned gun gets the burst after the reconcile: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
+  const second = h.writes.filter(w => w.f.startsWith('$SPAWN'))[1].t;
+  assert.ok(!h.eng.reconciling, 'setup: the reconcile is over');
+  assert.ok(h.writes.some(w => w.f.startsWith('$AMMO,0,') && w.t < second), 'setup: the reconcile re-arm went first');
 });
