@@ -296,7 +296,7 @@ matter if you are closer within that circle." So:
 
 - Capture speed and contest weight count players in the circle. RSSI never weighs a player, and no closer or
   stronger-radio phone gets an advantage ("a newer phone with stronger bluetooth shouldn't get an advantage").
-- **In the circle** means PRESENT (the entry dwell passed; leaving is debounced, `EXIT_GRACE_MS` 2.5 s below the exit
+- **In the circle** means PRESENT (the entry dwell passed; leaving is debounced, `EXIT_GRACE_MS` 4 s below the exit
   level) or a **credible sighting**: any advert inside the tolerance band (at or above the exit level) in the last
   `SIGHT_MS` (4 s). The sighting makes an arriving opponent contest at once, before the dwell, so a quieter phone
   never lets the other team take the hill silently (`beacon.js` Presence, `control.js`; F440).
@@ -305,7 +305,8 @@ matter if you are closer within that circle." So:
   the debounced exit and the sighting window. The threshold is set ONCE per station type from the bench ladder
   (in at 7.5 m, out by about 9-10 m), never per phone or per player.
 - The exit band is **3 dB** (`EXIT_BAND_DB`, Tony 2026-10-02): the circle is nearly the same size in and out, and the
-  2.5 s grace absorbs the dips. A sparse phone's edge noise is kept as is until the ladder measures real fading.
+  4 s grace absorbs the dips and body shadowing (about 12 dB for 2-5 s). A sparse phone's edge noise is kept as
+  is until the ladder measures real fading.
 - The platform default threshold stays -75 dBm until that ladder measures the 7.5 m number.
 
 ### 5d.1 The rule: capture rate is the NET DIFFERENCE of living present players

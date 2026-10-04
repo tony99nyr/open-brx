@@ -143,11 +143,14 @@ static void test_presence_exit_band_and_grace() {
   pr.tick(3000);
   CHECK(pr.get(7)->present);            // ... 1.4 s: still inside the grace
   pr.observe(player(7, 0), -79, 4100);
-  pr.tick(4100);                        // 2.5 s below the exit level: off
+  pr.tick(4100);                        // 2.5 s: still inside the 4 s grace (P-M2: body shadowing)
+  CHECK(pr.get(7)->present);
+  pr.observe(player(7, 0), -79, 5600);
+  pr.tick(5600);                        // 4 s below the exit level: off
   CHECK(!pr.get(7)->present);
-  pr.observe(player(7, 0), -75, 4200);  // back inside the band but below the threshold: stays off
-  pr.tick(4200);
-  pr.tick(6000);
+  pr.observe(player(7, 0), -75, 5700);  // back inside the band but below the threshold: stays off
+  pr.tick(5700);
+  pr.tick(7500);
   CHECK(!pr.get(7)->present);
 }
 
@@ -167,6 +170,29 @@ static void test_presence_f438_circle() {
     out.tick(t);
     CHECK(!out.get(8)->in_circle);
     CHECK(!out.get(8)->present);
+  }
+}
+
+// P-M2 (beacon.js parity, review 2026-10-03): body shadowing (about 12 dB for 2-5 s) must not drop a player who stands
+// 3-6 dB inside the circle. A 3.5 s shadow is not a step out with the 4 s exit grace; 2.5 s dropped it.
+static void test_presence_body_shadowing_does_not_drop_a_standing_player() {
+  const int thr = PRESENCE_DEFAULT_THRESHOLD_DBM;
+  const uint32_t shadows[] = {2000, 2500, 3000, 3500};
+  const int ripple[] = {0, 1, -1, 0};
+  for (int inside : {3, 4, 6}) {
+    PlayerPresence pr;
+    int drops = 0;
+    bool was = false;
+    for (uint32_t t = 0; t <= 600000; t += 250) {
+      const uint32_t k = t / 20000, ph = t % 20000;
+      const bool shadow = ph >= 10000 && ph < 10000 + shadows[k % 4];
+      pr.observe(player(9, 0), thr + inside + ripple[(t / 250) % 4] - (shadow ? 12 : 0), t);
+      pr.tick(t);
+      const bool now = pr.get(9)->present;
+      if (was && !now) drops++;
+      was = now;
+    }
+    CHECK_EQ(drops, 0);
   }
 }
 
@@ -616,6 +642,7 @@ int main() {
   test_presence_dwell_restarts_when_the_ema_dips();
   test_presence_ema_is_beacon_js();
   test_presence_exit_band_and_grace();
+  test_presence_body_shadowing_does_not_drop_a_standing_player();
   test_presence_f438_circle();
   test_hill_counts_the_circle_not_only_present();
   test_presence_four_second_expiry();

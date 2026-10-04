@@ -84,8 +84,11 @@ export function configGameByte(config) {
 }
 
 /** F440: how long a PRESENT entry may sit below the exit level before it leaves (a dip or a sparse advertiser's
- *  silence is not a step out of the circle; a player who walks away still leaves within about this). */
-export const EXIT_GRACE_MS = 2500;
+ *  silence is not a step out of the circle; a player who walks away still leaves within about this).
+ *  P-M2 (review 2026-10-03): 4 s, was 2.5 s. A player's own body takes about 12 dB off its advert for 2-5 s at a
+ *  time, and at 2.5 s a player standing 3-6 dB inside the circle dropped 9-19 times in 10 minutes. Walking out
+ *  costs about 0.5 s more. The Stick keeps the same number (presence.h PRESENCE_EXIT_GRACE_MS). */
+export const EXIT_GRACE_MS = 4000;
 /** F440 (Tony, 2026-10-02): the exit band, how far under the threshold a PRESENT player may read before leaving.
  *  3 dB, not 6: the circle is nearly the same size in and out ("a minimum threshold and you are in the circle"),
  *  and EXIT_GRACE_MS absorbs the dips. Was 6 dB, which kept a player already in out to about twice the radius. */

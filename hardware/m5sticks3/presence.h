@@ -49,7 +49,8 @@ constexpr int PRESENCE_HYSTERESIS_DB = 3;
 constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expiryMs
 // F440 (Tony 2026-10-02, "a minimum threshold and you are in the circle"): leaving is debounced. A PRESENT player
 // leaves only after the EMA has stayed below the exit level this long, so a dip is not a step out. beacon.js EXIT_GRACE_MS.
-constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 2500;
+// P-M2 (review 2026-10-03): 4 s, was 2.5 s, so body shadowing (about 12 dB for 2-5 s) does not drop a standing player.
+constexpr uint32_t PRESENCE_EXIT_GRACE_MS = 4000;
 // F440: a credible sighting (the window median below, at or above the threshold) keeps a player "in the circle"
 // this long. Staying in otherwise comes from `present`. beacon.js SIGHT_MS.
 constexpr uint32_t PRESENCE_SIGHT_MS = 4000;

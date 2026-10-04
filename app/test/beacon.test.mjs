@@ -1,7 +1,7 @@
 // beacon.js — the utility-item UUID codec and the presence tracker (docs/spec/utility.md).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeUuid, decodeUuid, decodeAdvert, Presence, TEAM_ANY, PLAYER_STATE } from '../src/beacon.js';
+import { encodeUuid, decodeUuid, decodeAdvert, Presence, TEAM_ANY, PLAYER_STATE, EXIT_GRACE_MS } from '../src/beacon.js';
 
 test('station uuid round-trips every field, and is a well-formed 128-bit uuid', () => {
   const u = encodeUuid({ role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58 });
@@ -55,7 +55,7 @@ test('presence: dwell before present, hysteresis before gone, expiry when silent
   t += 500; p.observe(station(), -70, t); p.tick(t);
   // F440: leaving is debounced: 8 dB under is a dip until it has lasted EXIT_GRACE_MS
   assert.equal(p.stations()[0].present, true, '8 dB under for a moment: still present (a dip is not a step out)');
-  t += 2600; p.observe(station(), -70, t); p.tick(t);
+  t += 4100; p.observe(station(), -70, t); p.tick(t);
   assert.equal(p.stations()[0].present, false, '8 dB under for longer than the exit grace: gone');
   t += 500; p.observe(station(), -50, t); p.tick(t); t += 2100; p.observe(station(), -50, t); p.tick(t);
   assert.equal(p.stations()[0].present, true, 'back above for the dwell: present again');
@@ -172,4 +172,26 @@ test('AdvertGate.refresh: the same advert is due to start again, then settles', 
   assert.equal(g.due(u, 1300), null, 'and settles once restarted');
   const idle = new AdvertGate(); idle.refresh();
   assert.equal(idle.due(null, 0), null, 'refresh on a stopped gate does not invent a stop');
+});
+
+// P-M2 (review 2026-10-03): body shadowing. A standing player's own body takes 12 dB off its advert for 2-5 s at a
+// time. With a 2.5 s exit grace a player standing 3-6 dB inside the circle dropped 9-19 times in 10 minutes. The
+// grace is 4 s, so a shadow of up to about 3.5 s is not a step out. Fails with EXIT_GRACE_MS = 2500.
+test('presence: body shadowing of up to 3.5 s never drops a player standing inside the circle', () => {
+  const thr = -74;
+  for (const inside of [3, 4, 6]) {
+    const p = new Presence({ defaultThreshold: thr, dwellMs: 800, alpha: 0.35 });
+    const adv = encodeUuid({ role: 'player', id: 9, team: 0, state: PLAYER_STATE.alive, game: 0 });
+    const shadows = [2000, 2500, 3000, 3500];   // one every 20 s, cycling through the lengths
+    let drops = 0, was = false;
+    for (let t = 0; t <= 600000; t += 250) {
+      const k = Math.floor(t / 20000), inShadow = t % 20000 >= 10000 && t % 20000 < 10000 + shadows[k % shadows.length];
+      const ripple = [0, 1, -1, 0.5][(t / 250) % 4];   // a small steady ripple, no randomness
+      p.observe([adv], thr + inside + ripple - (inShadow ? 12 : 0), t); p.tick(t);
+      const now = p.players()[0].present;
+      if (was && !now) drops++;
+      was = now;
+    }
+    assert.equal(drops, 0, `${inside} dB inside the circle: ${drops} drops in 10 minutes`);
+  }
 });
