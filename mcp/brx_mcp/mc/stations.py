@@ -33,9 +33,9 @@ class StationNet(Protocol):
 class StationHost(Protocol):
     """The match interface required by the station registry."""
     compiler: CompilerPort
+    nodes: dict[str, dict]
     @property
     def config(self) -> GameConfig: ...
-    nodes: dict[str, dict]
     now_ms: Callable[[], int]
     powerups_enabled: bool
     net: StationNet
@@ -64,6 +64,8 @@ class StationHost(Protocol):
     def note_departed_station(self, nid: str, row: RecapStationRow) -> None: ...
     def station_sync_state(self) -> tuple[int | None, dict[str, str]]: ...
     def game_no_started(self) -> bool: ...
+    def ensure_utility_node(self, nid: str) -> None: ...
+    def clear_claims_report(self, nid: str) -> None: ...
 
 def station_claims_dropped_line(n: int, station_id: object = None) -> str:
     """O10: a Stick's full queue evicted CLAIM reports this match (`status.actions_dropped`, counted since the Stick was armed for this game);
@@ -152,9 +154,9 @@ class StationRegistry:
         st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
                                                  "armed", "control", "battery", "uptime_s", "boot_count", "assoc",
                                                  "threshold_src", "tx_power", "tx_power_src") if k in body}
-        self.note_range(nid, st, body, t_recv)
-        self.note_boot(st, body, t_recv)
-        self.keep_tally(st, t_recv)
+        self._note_range(nid, st, body, t_recv)
+        self._note_boot(st, body, t_recv)
+        self._keep_tally(st, t_recv)
         st["last_seen_ms"] = t_recv
         if body.get("app_ver"):
             st["app_ver"] = body["app_ver"]
@@ -165,9 +167,6 @@ class StationRegistry:
         # F364: only a removed node releases its reserved id. CLEAR keeps the reservation.
         self._station_id_of.pop(nid, None)
         return self.stations.pop(nid, None)
-
-    def prune(self, nid: str) -> None:
-        self.forget(nid)
 
     def back_to_hud(self, nid: str, successor: str | None = None) -> None:
         self.record_departure(nid, "back_to_hud", successor=successor)
@@ -417,7 +416,7 @@ class StationRegistry:
             # departures can coexist, so they wait for DISMISS, RESTORE, their own node, or a FRESH SESSION.
             for gone_nid in [n for n, d in self._station_departures.items() if d["kind"] == "control"]:
                 self._station_departures.pop(gone_nid, None)
-        self._host.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
+        self._host.ensure_utility_node(nid)
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
         self._host._after_station_change(slots_before, pickups_before)
         self._host._validate()
@@ -714,7 +713,7 @@ class StationRegistry:
         self._host._changed()
         return self.station_view(nid)
 
-    def note_range(self, nid: str, st: dict, body: dict, t_recv: int) -> None:
+    def _note_range(self, nid: str, st: dict, body: dict, t_recv: int) -> None:
         """A67 (F365): last edit wins, per field. A station that reports `<field>_src: "station"` with an edit age
         dates that edit on MC's clock (t_recv - age). When it is newer than MC's own `<field>_set_at`, MC ADOPTS
         the station's value into the assignment (no re-arm: the station already has it). A Stick that rebooted
@@ -816,7 +815,7 @@ class StationRegistry:
     def arm_station(self, nid: str, relock: bool = False) -> bool:
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
         `arm_pending` (roadmap A4 "bring back to re-arm") and armed on its next hello, never retried on a timer."""
-        (self._host.nodes.get(nid) or {}).pop("claims_report", None)   # O10: the Stick restarts its count at this arm
+        self._host.clear_claims_report(nid)   # O10: the Stick restarts its count at this arm
         st = self.stations.get(nid)
         if st is None:
             return False
@@ -861,7 +860,7 @@ class StationRegistry:
             return False
         st["arm_pending"] = False
         st["armed"] = {"game": body["game"], "at": self._host.now_ms(), "kind": a["kind"], "team": a["team"], "id": a["id"]}
-        self.note_station_lock(st, body["game"], lock)
+        self._note_station_lock(st, body["game"], lock)
         return True
 
     def _station_lock_s(self) -> int:
@@ -887,7 +886,7 @@ class StationRegistry:
             return min(STATION_LOCK_MAX_S, tl + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S) if tl else STATION_LOCK_MAX_S
         return 0
 
-    def note_station_lock(self, st: dict, game: int, lock: int) -> None:
+    def _note_station_lock(self, st: dict, game: int, lock: int) -> None:
         """A58: remember what this station was told, and the lock window a restart is judged against. The
         window opens at the game's first nonzero lock and closes at the first unlock after it."""
         now = self._host.now_ms()
@@ -899,7 +898,7 @@ class StationRegistry:
         elif st.get("locked_since") is not None and st.get("unlocked_at") is None:
             st["unlocked_at"] = now
 
-    def note_boot(self, st: dict, body: dict, t_recv: int) -> None:
+    def _note_boot(self, st: dict, body: dict, t_recv: int) -> None:
         """A58: a station dates its own boot by `uptime_s`, so a restart shows even in the first heartbeat after
         it rejoins (a muster station is out of Wi-Fi for the whole match). A new boot is a `boot_count` rise, or
         a boot instant that moved; it counts when the boot falls inside this game's lock window."""
@@ -922,7 +921,7 @@ class StationRegistry:
         if new and since is not None and when >= since and (until is None or when <= until):
             st["restarts"] = st.get("restarts", 0) + new
 
-    def keep_tally(self, st: dict, t_recv: int) -> None:
+    def _keep_tally(self, st: dict, t_recv: int) -> None:
         """A58 (brx4): a restarted Stick resumes its tally from the one saved at its last capture, so a report can
         DROP mid-match. A station's count within one game only grows, so MC keeps the per-team maximum of
         `control.hold_ms` and the largest `revives` for the game the station is armed with, and writes them back

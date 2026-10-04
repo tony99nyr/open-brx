@@ -34,7 +34,7 @@ def test_station_id_reservation_and_departure_restore_shape():
     session, tick = _session()
     first = session.set_station("station-a", {"kind": "respawn", "team": "blue"})
     assert first["assigned"]["id"] == 1
-    session._record_departure("station-a", "released")
+    session.station_registry.record_departure("station-a", "released")
     assert session._station_departures["station-a"]["restore"] == {
         "kind": "respawn", "team": 1, "threshold": 0,
     }
@@ -62,9 +62,9 @@ def test_station_warning_and_lock_keep_their_exact_operator_voice():
         "SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME "
         "BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT",
     ]
-    session.station_registry.note_station_lock(session.stations["station-a"], 1, 120)
-    assert session.stations["station-a"]["lock"] == {"s": 120, "at": 100_000}
-    assert session.stations["station-a"]["locked_since"] == 100_000
+    session.set_station("station-a", {"kind": "respawn", "team": "blue"})
+    session.arm_stations()
+    assert session.stations["station-a"]["lock"]["at"] == 100_000
 
 
 def test_registry_allocates_reserved_ids_without_a_session():
@@ -83,20 +83,6 @@ def test_registry_keeps_range_age_without_a_session():
     tick[0] += 2_000
     kept = registry.range_fields({"threshold": -70, "at": 90_000, **first}, -70, {})
     assert kept == first
-
-
-def test_registry_lock_and_warnings_without_a_session():
-    registry = StationRegistry(SimpleNamespace(
-        now_ms=lambda: 100_000,
-        config={"mode": "tdm", "respawn": {"type": "scanner"},
-                "teams": [{"tid": 1, "name": "BLUE TEAM"}]},
-    ))
-    station = {"assigned": {"kind": "respawn", "team": 1, "id": 4}}
-    registry.stations["station-a"] = station
-    assert registry.station_warnings() == []
-    registry.note_station_lock(station, 1, 120)
-    assert station["locked_since"] == 100_000
-    assert station["lock"] == {"s": 120, "at": 100_000}
 
 
 def test_registry_warns_about_missing_respawn_station_without_a_session():

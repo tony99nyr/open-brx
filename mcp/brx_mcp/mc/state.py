@@ -41,7 +41,7 @@ from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_P
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
-                    SnapshotFeedRow, State, FailureView, NotSavingView, StationAssignment, StationDeparture,
+                    SnapshotFeedRow, State, FailureView, NotSavingView, StationDeparture,
                     StationItem, PowerupSlot, PowerupsView, StationRef, StationReport, StationView,
                     SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
                     StartNodeView, StartView, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
@@ -1258,6 +1258,12 @@ class Session:
             return r["n"] if r and r["match_id"] == self._loss_match_id() else 0
         r = nv.get("claims_report")
         return r["n"] if r and r["game"] == self._game_byte() else 0
+
+    def ensure_utility_node(self, nid: str) -> None:
+        self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
+
+    def clear_claims_report(self, nid: str) -> None:
+        (self.nodes.get(nid) or {}).pop("claims_report", None)
 
     def _clear_claims(self) -> None:
         """O10: drop every stored Stick dropped-claim count. A report counts only if it arrives after the match start / arm
@@ -3079,6 +3085,7 @@ class Session:
         if parked or not self.in_play() or not self._pu_sched or ev.get("match_id") != self._pu_sched.get("match_id"):
             return   # integration review (Low): a pickup flushed in RECAP or LOBBY changes nothing
         sid = ev.get("station_id")
+        # A null id must not match a released powerup station that is no longer assigned.
         nid = next((n for n, a in self.station_registry.assignments()
                     if a.get("id") == sid and n in self._pu_sched["st"]), None)
         if nid is None:
@@ -3203,9 +3210,6 @@ class Session:
     def set_station(self, nid: str, a: dict) -> StationView:
         return self.station_registry.set_station(nid, a)
 
-    def _record_departure(self, nid: str, reason: str, successor: str | None = None) -> None:
-        return self.station_registry.record_departure(nid, reason, successor)
-
     @staticmethod
     def _departure_ok(d: object) -> bool:
         return StationRegistry._departure_ok(d)
@@ -3274,17 +3278,8 @@ class Session:
             if nid and pid in self.bundles:
                 self.net.push(nid, "config", {"config": cfg, "frames": self.bundles[pid], "roster": roster})
 
-    def _note_station_range(self, nid: str, st: dict, body: dict, t_recv: int) -> None:
-        return self.station_registry.note_range(nid, st, body, t_recv)
-
     def _arm_station(self, nid: str, relock: bool = False) -> bool:
         return self.station_registry.arm_station(nid, relock)
-
-    def _note_station_boot(self, st: dict, body: dict, t_recv: int) -> None:
-        return self.station_registry.note_boot(st, body, t_recv)
-
-    def _keep_station_tally(self, st: dict, t_recv: int) -> None:
-        return self.station_registry.keep_tally(st, t_recv)
 
     def unlock_stations(self) -> dict:
         return self.station_registry.unlock_stations()
@@ -3679,11 +3674,11 @@ class Session:
         for hours (15 of them on the bench, 2026-08-26)."""
         now = self.now_ms()
         for nid in [n for n, _ in self.nodes.items() if n not in self.node_player]:
-            if (self.stations.get(nid) or {}).get("assigned"):
+            if self.station_registry.assignment(nid):
                 continue                       # A13.5: an assigned station is placed, not phantom
             if now - self.nodes[nid].get("last_seen_ms", 0) > 600_000:
                 self.nodes.pop(nid, None)
-                self.station_registry.prune(nid)
+                self.station_registry.forget(nid)
                 self._app_blocked_alerted.pop(nid, None)   # F121: a re-hello after this can say WITHHELD again
                 self._plan_blocked_alerted.pop(nid, None)
 
