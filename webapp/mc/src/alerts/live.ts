@@ -33,6 +33,7 @@ export const LIVE_ALERTS: Record<string, AlertDef> = {
   'frame-report-error': { sev: 'red', text: '{error}' },
   'frame-report-idle': { sev: 'neutral', text: 'THIS MAKES A REPORT FROM THIS SESSION' },
   'frame-report-too-large': { sev: 'amber', text: "REPORT LARGER THAN 25 MB, GITHUB'S ATTACHMENT LIMIT: MAKE THE ISSUE ANYWAY AND SAY SO" },
+  'frame-catalogue-unavailable': { sev: 'amber', text: 'WEAPON OR MODE LIST NOT LOADED: RETRYING, RESTART MC IF THIS STAYS' },
   'frame-server-old': { sev: 'amber', text: 'MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC' },
   // The one fact four files stated four different ways (App's boot screen, CommandBar's header
   // button, Debug's form, ReportPanel's auth screen). One row, one wording, via `OPERATOR_TOKEN`.

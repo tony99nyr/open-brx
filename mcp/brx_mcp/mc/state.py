@@ -4785,8 +4785,9 @@ class Session:
             key = {k: v for k, v in body.items() if k != "t"}
             if self._result_pushed.get(p["player_id"]) == key:
                 continue
+            if self.net.push(p["node_id"], "result", body) is False:   # no socket or would not encode: stay unrecorded, so the next call retries
+                continue
             self._result_pushed[p["player_id"]] = key
-            self.net.push(p["node_id"], "result", body)
             sent += 1
         return sent
 
@@ -5122,8 +5123,10 @@ class Session:
     def _log_sync_auto(self) -> bool:
         return self.options.get("log_sync", "auto") == "auto"
 
-    def pull_log(self, nid: str, reason: str = "manual") -> bool:
-        """Ask ONE node for its log (contracts A25 `pull_log {reason}`). Returns whether the ask went out.
+    def pull_log_refusal(self, nid: str, reason: str = "manual") -> str | None:
+        """Ask ONE node for its log (contracts A25 `pull_log {reason}`). Returns None when the ask went out,
+        else a refusal code (O11): `no_node`, `utility_node`, `auto_sync_off`, `already_asked`,
+        `budget_spent` (the ~1 MB per-MATCH cap) or `push_failed` (the node is off the net).
 
         Refused for a utility phone (F106(d): a station never binds a match, so its log holds nothing
         about one), for a node past the ~1 MB budget, and -- for every reason but `manual` -- when
@@ -5131,21 +5134,31 @@ class Session:
         if reason not in PULL_REASONS:
             raise ValueError(f"pull_log reason must be one of {'|'.join(PULL_REASONS)}")
         nv = self.nodes.get(nid)
-        if nv is None or nv.get("node_type") == "utility":
-            return False
+        if nv is None:
+            return "no_node"
+        if nv.get("node_type") == "utility":
+            return "utility_node"
         if reason != "manual" and not self._log_sync_auto():
-            return False
+            return "auto_sync_off"
         if reason != "manual" and nid in self._log_asked:
-            return False                                  # one outstanding automatic ask per node
+            return "already_asked"                        # one outstanding automatic ask per node
         if self._log_bytes.get(nid, 0) >= 1_000_000:      # the existing per-MATCH cap
-            return False
+            return "budget_spent"
         try:
-            self.net.push(nid, "pull_log", {"reason": reason})
+            sent = self.net.push(nid, "pull_log", {"reason": reason})
         except Exception:
-            return False
+            import logging
+            logging.getLogger("brx.mc").warning("pull_log to %s failed", nid, exc_info=True)
+            return "push_failed"
+        if sent is False:                                 # NetServer: no live socket, or the frame would not encode; a fake returns None
+            return "push_failed"
         if reason != "manual":
             self._log_asked.add(nid)
-        return True
+        return None
+
+    def pull_log(self, nid: str, reason: str = "manual") -> bool:
+        """`pull_log_refusal` as a bool: whether the ask went out."""
+        return self.pull_log_refusal(nid, reason) is None
 
     def _set_log(self, nid: str, state: str, *, reason: str | None = None,
                  lines: int | None = None, nbytes: int | None = None) -> None:

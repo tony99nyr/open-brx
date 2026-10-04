@@ -214,14 +214,30 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def modes(_):
         return JSONResponse(s.modes())
 
+    weapons_logged = [False]
+
     async def weapons(_):
+        """O5: the demo catalogue is for a demo MC only. A real MC with a broken catalogue says so (503 plus one
+        traceback in the log) instead of serving plausible but wrong stats."""
         from .fakes import weapon_views as fake_weapon_views
         from .views import weapon_views
+        demo = bool(getattr(s, "demo_session", False))
         try:
             views = weapon_views(s.compiler.weapon_catalog(), s.health_pool())   # htk/ttk at THIS game's health
-            return JSONResponse(views if views else fake_weapon_views())
-        except Exception:
+            if views:
+                return JSONResponse(views)
+            reason = "the weapon catalogue is empty"
+        except Exception as e:
+            reason = f"the weapon catalogue failed to load ({type(e).__name__})"
+            if not weapons_logged[0]:
+                weapons_logged[0] = True
+                logging.getLogger("brx.mc").exception("weapon catalogue unavailable")
+        if demo:
             return JSONResponse(fake_weapon_views())
+        if not weapons_logged[0]:
+            weapons_logged[0] = True
+            logging.getLogger("brx.mc").error("weapon catalogue unavailable: %s", reason)
+        return _err(f"WEAPONS UNAVAILABLE: {reason}. Restart MC or check the weapon data.", 503)
 
     # ---- F411: BUILD's pieces + PLAY's pick (docs/spec/design/games-presets.md) ----
     from . import gamepick as _gamepick
@@ -983,8 +999,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         nid = req.path_params["nid"]
         if nid not in s.nodes:
             return _err("no such node", 404)
-        asked = s.pull_log(nid, "manual")
-        return JSONResponse({"ok": asked, "node_id": nid, "log": s.nodes[nid].get("log")})
+        why = s.pull_log_refusal(nid, "manual")
+        return JSONResponse({"ok": why is None, "reason": why, "node_id": nid, "log": s.nodes[nid].get("log")})
 
     async def wrong_port_ws(ws: WebSocket):
         node = s.lan.get("ws_url") or "the node port (default 8766)"

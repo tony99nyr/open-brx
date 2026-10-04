@@ -474,9 +474,14 @@ def bind_http_or_exit(host: str, port: int) -> socket.socket:
     return sock
 
 
+# O4: a timestamp with milliseconds, so mc.log lines up with the SQLite t_recv column and a phone log.
+LOG_FORMAT = "%(asctime)s.%(msecs)03d %(levelname)s %(name)s: %(message)s"
+LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
 
     http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
     session, net, extra = build(args)
