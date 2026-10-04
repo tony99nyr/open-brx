@@ -1,440 +1,171 @@
 {
- "name": "hill-control-point",
- "why": "K1/F382: a phone control point's advert drives the hill. The first advert is adopted silently, a handover to our team says Hill Captured once, the possession tick runs every 3 s, Hill Contested is announced on the edge, no tick lands while contested, and the tick resumes when the contest clears.",
- "source": "app/test/engine.test.mjs 'control point: the FIRST advert adopts the owner silently', 'Hill Contested IS announced', 'F382: the possession tick stops while contested'",
- "runners": [
-  "engine",
-  "stage"
- ],
- "setup": {
-  "config": {
-   "mode": "koth"
+  "name": "hill-control-point",
+  "why": "K1/F382: a phone control point's advert drives the hill. The first advert is adopted silently, a handover to our team says Hill Captured once, the possession tick runs every 3 s, Hill Contested is announced on the edge, no tick lands while contested, and the tick resumes when the contest clears.",
+  "source": "app/test/engine.test.mjs 'control point: the FIRST advert adopts the owner silently', 'Hill Contested IS announced', 'F382: the possession tick stops while contested'",
+  "runners": ["engine","stage"],
+  "setup": {
+    "config": {"mode":"koth"},
+    "fields": ["hill"]
   },
-  "fields": [
-   "hill"
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"check":"live","preamble":true},
+    {"stations":[{"id":11,"kind":"control","team":0,"state":1,"value":100,"threshold":-74,"present":true}]},
+    {"check":"red_point_adopted_silently"},
+    {"stations":[{"id":11,"kind":"control","team":255,"state":0,"value":0,"threshold":-74,"present":true}]},
+    {"check":"drained_to_neutral"},
+    {"stations":[{"id":11,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"present":true}]},
+    {"check":"blue_captured"},
+    {"advance_ms":9000},
+    {"check":"possession_ticks"},
+    {"stations":[{"id":11,"kind":"control","team":1,"state":3,"value":95,"threshold":-74,"present":true}]},
+    {"check":"contested"},
+    {"advance_ms":6000},
+    {"check":"no_tick_while_contested"},
+    {"stations":[{"id":11,"kind":"control","team":1,"state":1,"value":95,"threshold":-74,"present":true}]},
+    {"advance_ms":9000},
+    {"check":"tick_resumes"}
+  ],
+  "stage_ignores": [
+    {"what":"state.phase","why":"The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."},
+    {"what":"state.deaths","why":"The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."},
+    {"what":"write:$LIFE,0,0,0,*","why":"Deliberate, not a divergence: the F272 gun liveness probe (engine.js `_sendGunProbe`) is on test_stage_mirror.py's KNOWN_UNMIRRORED list, so the stage has only the divergence poll and asks the gun with `$LIFE,0,0,0,*` less often."}
+  ],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":null},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,192,1,*",
+        "$AMMO,1,6,24,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*",
+        "$LIFE,0,0,0,*",
+        "$QUERY,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "red_point_adopted_silently",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":0,"contested":false,"progress":100}},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "drained_to_neutral",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":2,"contested":false,"progress":0}},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "blue_captured",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$PLAY,,4,6,VB0N,,,,*"
+      ]
+    },
+    {
+      "at": "possession_ticks",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100}},
+      "facts": [{"type":"possession","match_id":"m1","site":"11","hold_ms":{"1":250},"observed_ms":250,"source":"station"}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "writes": [
+        "$PLAY,U100,4,6,,,,,*",
+        "$PLAY,U100,4,6,,,,,*",
+        "$LIFE,0,0,0,*",
+        "$PLAY,U100,4,6,,,,,*"
+      ]
+    },
+    {
+      "at": "contested",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":true,"progress":95}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$PLAY,,4,6,VB0O,,,,*"
+      ]
+    },
+    {
+      "at": "no_tick_while_contested",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":true,"progress":95}},
+      "facts": [{"type":"possession","match_id":"m1","site":"11","hold_ms":{"1":8750},"observed_ms":10250,"source":"station"}],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "tick_resumes",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":95}},
+      "facts": [{"type":"possession","match_id":"m1","site":"11","hold_ms":{"1":14250},"observed_ms":20250,"source":"station"}],
+      "reports": [],
+      "writes": [
+        "$LIFE,0,0,0,*",
+        "$PLAY,U100,4,6,,,,,*",
+        "$LIFE,0,0,0,*",
+        "$PLAY,U100,4,6,,,,,*",
+        "$PLAY,U100,4,6,,,,,*"
+      ]
+    }
   ]
- },
- "steps": [
-  {
-   "advance_ms": 10
-  },
-  {
-   "advance_ms": 3000
-  },
-  {
-   "check": "live",
-   "preamble": true
-  },
-  {
-   "stations": [
-    {
-     "id": 11,
-     "kind": "control",
-     "team": 0,
-     "state": 1,
-     "value": 100,
-     "threshold": -74,
-     "present": true
-    }
-   ]
-  },
-  {
-   "check": "red_point_adopted_silently"
-  },
-  {
-   "stations": [
-    {
-     "id": 11,
-     "kind": "control",
-     "team": 255,
-     "state": 0,
-     "value": 0,
-     "threshold": -74,
-     "present": true
-    }
-   ]
-  },
-  {
-   "check": "drained_to_neutral"
-  },
-  {
-   "stations": [
-    {
-     "id": 11,
-     "kind": "control",
-     "team": 1,
-     "state": 1,
-     "value": 100,
-     "threshold": -74,
-     "present": true
-    }
-   ]
-  },
-  {
-   "check": "blue_captured"
-  },
-  {
-   "advance_ms": 9000
-  },
-  {
-   "check": "possession_ticks"
-  },
-  {
-   "stations": [
-    {
-     "id": 11,
-     "kind": "control",
-     "team": 1,
-     "state": 3,
-     "value": 95,
-     "threshold": -74,
-     "present": true
-    }
-   ]
-  },
-  {
-   "check": "contested"
-  },
-  {
-   "advance_ms": 6000
-  },
-  {
-   "check": "no_tick_while_contested"
-  },
-  {
-   "stations": [
-    {
-     "id": 11,
-     "kind": "control",
-     "team": 1,
-     "state": 1,
-     "value": 95,
-     "threshold": -74,
-     "present": true
-    }
-   ]
-  },
-  {
-   "advance_ms": 9000
-  },
-  {
-   "check": "tick_resumes"
-  }
- ],
- "stage_ignores": [
-  {
-   "what": "state.phase",
-   "why": "The stage has no MC link, so it has no match phase; it is armed and spawned by its own buttons."
-  },
-  {
-   "what": "state.deaths",
-   "why": "The stage keeps no death count (MC and the HUD read the engine's); `alive` is compared instead."
-  },
-  {
-   "what": "write:$LIFE,0,0,0,*",
-   "why": "Deliberate, not a divergence: the F272 gun liveness probe (engine.js `_sendGunProbe`) is on test_stage_mirror.py's KNOWN_UNMIRRORED list, so the stage has only the divergence poll and asks the gun with `$LIFE,0,0,0,*` less often."
-  }
- ],
- "expect": [
-  {
-   "at": "live",
-   "state": {
-    "phase": "live",
-    "alive": true,
-    "spawned": true,
-    "hp": 45,
-    "armor": 70,
-    "shield": 0,
-    "activeSlot": 0,
-    "ammo": 32,
-    "reserve": 192,
-    "deaths": 0,
-    "hill": null
-   },
-   "facts": [],
-   "reports": [],
-   "writes": [
-    "$STOP,*",
-    "$PHONE,*",
-    "$VERSION,*",
-    "$VOL,80,0,*",
-    "$CLEAR,*",
-    "$START,*",
-    "$GSET,0,0,1,0,1,0,0,1,*",
-    "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
-    "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
-    "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
-    "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
-    "$SIR,0,0,,28,0,0,1,,*",
-    "$SIR,0,1,,28,0,0,1,,*",
-    "$SIR,0,3,,28,0,0,1,,*",
-    "$SIR,8,0,,28,0,0,1,,*",
-    "$SIR,9,3,,28,0,0,1,,*",
-    "$SIR,10,0,,28,0,0,1,,*",
-    "$SIR,6,0,,28,0,0,1,,*",
-    "$SIR,13,1,,28,0,0,1,,*",
-    "$SIR,13,0,,28,0,0,1,,*",
-    "$SIR,13,3,,28,0,0,1,,*",
-    "$SIR,4,0,,28,0,0,1,,*",
-    "$SIR,15,0,,28,0,0,1,,*",
-    "$BMAP,0,98,,,,,*",
-    "$BMAP,1,100,0,1,99,99,*",
-    "$BMAP,2,97,,,,,*",
-    "$BMAP,3,98,,,,,*",
-    "$BMAP,4,98,,,,,*",
-    "$BMAP,5,98,,,,,*",
-    "$BMAP,8,4,,,,,*",
-    "$HLED,1,0,,,10,,*",
-    "$GLED,1,1,1,0,10,,*",
-    "$TID,1,*",
-    "$PLAY,VA81,4,6,,,,,*",
-    "$SIR,0,0,,1,0,0,1,,*",
-    "$SIR,0,1,,36,0,0,1,,*",
-    "$SIR,0,3,,37,0,0,1,,*",
-    "$SIR,8,0,,1,0,0,1,,*",
-    "$SIR,9,3,,1,0,0,1,,*",
-    "$SIR,10,0,X13,1,0,100,2,60,*",
-    "$SIR,6,0,H02,1,0,90,1,40,*",
-    "$SIR,13,1,H57,1,0,0,1,,*",
-    "$SIR,13,0,H50,1,0,0,1,,*",
-    "$SIR,13,3,H49,1,0,100,0,60,*",
-    "$SIR,4,0,,2,0,0,1,,*",
-    "$SIR,15,0,,28,0,0,1,,*",
-    "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
-    "$PLAYX,0,*",
-    "$SPAWN,,*",
-    "$TID,1,*",
-    "$AMMO,0,32,192,1,*",
-    "$AMMO,1,6,24,1,*",
-    "$BMAP,0,0,,,,,*",
-    "$SFLASH,*",
-    "$PLAY,U16,4,6,VAI,,,,*",
-    "$GLED,,,,5,,,*",
-    "$GLED,1,1,1,0,1,,*",
-    "$HLED,6,2,120,120,10,2,*",
-    "$HLED,9,0,,,10,,*",
-    "$LIFE,0,0,0,*",
-    "$QUERY,*",
-    "$LIFE,0,0,0,*"
-   ]
-  },
-  {
-   "at": "red_point_adopted_silently",
-   "state": {
-    "phase": "live",
-    "alive": true,
-    "spawned": true,
-    "hp": 45,
-    "armor": 70,
-    "shield": 0,
-    "activeSlot": 0,
-    "ammo": 32,
-    "reserve": 192,
-    "deaths": 0,
-    "hill": {
-     "owner": 0,
-     "contested": false,
-     "progress": 100
-    }
-   },
-   "facts": [],
-   "reports": [],
-   "writes": []
-  },
-  {
-   "at": "drained_to_neutral",
-   "state": {
-    "phase": "live",
-    "alive": true,
-    "spawned": true,
-    "hp": 45,
-    "armor": 70,
-    "shield": 0,
-    "activeSlot": 0,
-    "ammo": 32,
-    "reserve": 192,
-    "deaths": 0,
-    "hill": {
-     "owner": 2,
-     "contested": false,
-     "progress": 0
-    }
-   },
-   "facts": [],
-   "reports": [],
-   "writes": []
-  },
-  {
-   "at": "blue_captured",
-   "state": {
-    "phase": "live",
-    "alive": true,
-    "spawned": true,
-    "hp": 45,
-    "armor": 70,
-    "shield": 0,
-    "activeSlot": 0,
-    "ammo": 32,
-    "reserve": 192,
-    "deaths": 0,
-    "hill": {
-     "owner": 1,
-     "contested": false,
-     "progress": 100
-    }
-   },
-   "facts": [],
-   "reports": [],
-   "writes": [
-    "$PLAY,,4,6,VB0N,,,,*"
-   ]
-  },
-  {
-   "at": "possession_ticks",
-   "state": {
-    "phase": "live",
-    "alive": true,
-    "spawned": true,
-    "hp": 45,
-    "armor": 70,
-    "shield": 0,
-    "activeSlot": 0,
-    "ammo": 32,
-    "reserve": 192,
-    "deaths": 0,
-    "hill": {
-     "owner": 1,
-     "contested": false,
-     "progress": 100
-    }
-   },
-   "facts": [
-    {
-     "type": "possession",
-     "match_id": "m1",
-     "site": "11",
-     "hold_ms": {
-      "1": 250
-     },
-     "observed_ms": 250,
-     "source": "station"
-    }
-   ],
-   "reports": [
-    {
-     "kind": "ack_config",
-     "body": {
-      "config_id": "golden-tdm",
-      "ok": true,
-      "gun_echo": "$LCD,0,0,0,0,0,0,*"
-     }
-    }
-   ],
-   "writes": [
-    "$PLAY,U100,4,6,,,,,*",
-    "$PLAY,U100,4,6,,,,,*",
-    "$LIFE,0,0,0,*",
-    "$PLAY,U100,4,6,,,,,*"
-   ]
-  },
-  {
-   "at": "contested",
-   "state": {
-    "phase": "live",
-    "alive": true,
-    "spawned": true,
-    "hp": 45,
-    "armor": 70,
-    "shield": 0,
-    "activeSlot": 0,
-    "ammo": 32,
-    "reserve": 192,
-    "deaths": 0,
-    "hill": {
-     "owner": 1,
-     "contested": true,
-     "progress": 95
-    }
-   },
-   "facts": [],
-   "reports": [],
-   "writes": [
-    "$PLAY,,4,6,VB0O,,,,*"
-   ]
-  },
-  {
-   "at": "no_tick_while_contested",
-   "state": {
-    "phase": "live",
-    "alive": true,
-    "spawned": true,
-    "hp": 45,
-    "armor": 70,
-    "shield": 0,
-    "activeSlot": 0,
-    "ammo": 32,
-    "reserve": 192,
-    "deaths": 0,
-    "hill": {
-     "owner": 1,
-     "contested": true,
-     "progress": 95
-    }
-   },
-   "facts": [
-    {
-     "type": "possession",
-     "match_id": "m1",
-     "site": "11",
-     "hold_ms": {
-      "1": 8750
-     },
-     "observed_ms": 10250,
-     "source": "station"
-    }
-   ],
-   "reports": [],
-   "writes": []
-  },
-  {
-   "at": "tick_resumes",
-   "state": {
-    "phase": "live",
-    "alive": true,
-    "spawned": true,
-    "hp": 45,
-    "armor": 70,
-    "shield": 0,
-    "activeSlot": 0,
-    "ammo": 32,
-    "reserve": 192,
-    "deaths": 0,
-    "hill": {
-     "owner": 1,
-     "contested": false,
-     "progress": 95
-    }
-   },
-   "facts": [
-    {
-     "type": "possession",
-     "match_id": "m1",
-     "site": "11",
-     "hold_ms": {
-      "1": 14250
-     },
-     "observed_ms": 20250,
-     "source": "station"
-    }
-   ],
-   "reports": [],
-   "writes": [
-    "$LIFE,0,0,0,*",
-    "$PLAY,U100,4,6,,,,,*",
-    "$LIFE,0,0,0,*",
-    "$PLAY,U100,4,6,,,,,*",
-    "$PLAY,U100,4,6,,,,,*"
-   ]
-  }
- ]
 }
