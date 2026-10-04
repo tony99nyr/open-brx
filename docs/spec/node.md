@@ -532,8 +532,10 @@ may write its own gun freely mid-match. Built 2026-09-19 in `engine.js` (`_poiso
 | show it | `state().poison = {leftMs, durMs, perTick, tickMs, ticks, by}`; the HUD draws a POISONED pill above the health with a countdown, a drain bar and the applier's name, dim red at night with no pulse |
 
 Out of Mission Control coverage this behaves identically: everything after the first hit is local to one phone.
-The cue ids (`poisoned` H23, `poison_tick` V4G) were picked by descriptor from the sound catalogue and still need an
-ear check at the bench.
+The cue ids are ear-confirmed on a real gun at $VOL 80 (Tony, 2026-10-02, F446): `poisoned` plays H12 ("Bubble
+Acid", 1.9 s) on the onset only, never on a refresh. `poison_tick` drops its old voice line and is a POOL of two
+"squishy bubbles" takes, H31 and H32 (0.6 s each), picked at random per tick on the queue slot (so a tick never
+cuts another clip); no voice.
 
 ### 3.18 The smoke tell: why a player cannot hit anything (S53)
 

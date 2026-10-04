@@ -35,7 +35,7 @@ Shape (lives in `GameConfig.presentation`, validated by `merge`, expanded by `re
                                             # readout = {pools, hold_s, reload_glance_s}, [] = off)
       "sight_flash":  bool,   # $SFLASH on a credited kill
       "events": { <event>: { "sound": <id>|"voice:<role>"|null, "gun_led": 0-8|null, "headset": 0-8|null, "flash": "green"|null,
-                             "slot": "queue"|"interrupt"|null } }
+                             "slot": "queue"|"interrupt"|null, "pool": (<id>, ...)|None } }
                  # flash = the small headset LED (A11.8); "voice:<role>" (A15) = the PLAYER's own voice line for that
                  # role (kill, spawn, boast, taunt, intro, gas_death, death_scream, hurt_loop, healed, kill_confirm, defeat_taunt,
                  # pain, pain_short / pain_long / pain_melee (A15.3), name -- voices.SOUND_ROLES), resolved per player at compile time.
@@ -43,6 +43,11 @@ Shape (lives in `GameConfig.presentation`, validated by `merge`, expanded by `re
                  # behind whatever is already playing) or "interrupt" (token 1, cuts it); null keeps the pattern
                  # rule in `play_frame()` (V-family -> queue, else interrupt). `voice:<role>` sounds always queue
                  # regardless of this field.
+                 # pool (F446, 2026-10-02): a FIXED, non-voice take list -- the same ids for every player, unlike
+                 # the voice pools above. `sound` stays the deterministic first take; `compile.py` ships the whole
+                 # tuple in `cue_pools[<event>]` (as `play_frame()` frames) whenever `cues[<event>]` is not muted.
+                 # Not client-patchable today (`merge()` has no field for it): it is a fixed design choice, not a
+                 # per-game tuning knob. Currently just `poison_tick`.
     }
 
 Every sound id must be ON THE GUN (`sounds.on_gun_ids()`, from the catalog read off the hardware);
@@ -113,11 +118,14 @@ EVENTS: dict[str, dict] = {
     "shield_loop":     dict(source="hud", group="player",  desc="replayed on its own length while the shield is down, until the recharge starts", sound="voice:shield_loop", gun_led=None, headset=None),  # ear-picked 2026-09-17 (N74). Set `sound: null` to turn the loop off -- Tony has not ruled on whether it survives `shield_down`
     "reload_nag":      dict(source="hud", group="player",  desc="empty magazine, reserve left, trigger pulled anyway: the 5th dry pull and every 3rd after it", sound="voice:reload_nag", gun_led=None, headset=None),  # VX73, ear-confirmed on a gun 2026-09-18
     # -- S16: the poison tick clock the NODE runs (spec/node.md §3.17). The gun plays nothing for a `$LIFE` write, so
-    #    both are the node's. Picked by descriptor from docs/reference/sound-catalog.md, NOT yet by ear: H23 is the
-    #    community's "poison blaster hit... infected" (1.4 s impact, falling), V4G is a Whisper-read "Cough!" (0.5 s,
-    #    short enough to sit inside a 1 s tick). Neither plays on a lethal tick: the firmware's death scream owns it.
-    "poisoned":      dict(source="hud", group="player",    desc="a poison hit started the tick clock (not on a refresh)", sound="H23", gun_led=None, headset=None),
-    "poison_tick":   dict(source="hud", group="player",    desc="one poison tick: the node took the tick from the outermost pool", sound="V4G", gun_led=None, headset=None),
+    #    both are the node's. Ear-confirmed on a real gun at $VOL 80 (Tony, 2026-10-02, F446): H12 "Bubble Acid"
+    #    (1.9 s impact) REPLACES the descriptor-picked H23 for the onset. The tick drops the V4G "Cough!" voice line
+    #    entirely and becomes a POOL of two "squishy bubbles" takes, H31 and H32 (0.6 s each), picked at random per
+    #    tick (`pool`, below) -- `compile.py` ships both in `cue_pools.poison_tick`; `sound` here is just the
+    #    deterministic first take. Neither cue plays on a lethal tick: the firmware's death scream owns it.
+    "poisoned":      dict(source="hud", group="player",    desc="a poison hit started the tick clock (not on a refresh)", sound="H12", gun_led=None, headset=None),
+    "poison_tick":   dict(source="hud", group="player",    desc="one poison tick: the node took the tick from the outermost pool", sound="H31", gun_led=None, headset=None,
+                          slot="queue", pool=("H31", "H32")),   # queue slot (F446): H31/H32 are not V-family, so without this override play_frame() would default them to the INTERRUPT slot and a tick could cut another clip
     "low_health":    dict(source="hud", group="player",    desc="HP below 15: a heartbeat loop, once per life (A17.2 -- was 'armour gone', which fired at full health)", sound="VA86", gun_led=None, headset=pg.PINK),  # was N74 until 2026-09-18, the SAME id `voices.ROLE_FIXED["shield_loop"]` plays every 1.94 s while the shield is down -- a once-a-life critical warning that is also the sound already looping is no warning at all. VA86 is "Health Critical." in the catalogue (status_health group), which names this exact moment; VA87 "health low." was the other candidate but says the weaker thing. N75/N25 (the other heartbeat takes) and VA8B ("Shields depleted.") were rejected: N75/N25 keep the same shield-vs-health mix-up as N74, and VA8B is already reserved by `compile.py`/`cues()` as Callsign's own hurt line -- and its own catalogue text is about shields, not health. Not yet ear-confirmed on a gun.
     # -- the shooter's kill feedback (MC `feedback` push; ONE of these per kill, most specific wins) --
     "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None, flash="green"),
@@ -701,7 +709,8 @@ def resolve(config: GameConfig) -> dict:
     events = {}
     for ev, d in EVENTS.items():
         spec = {"sound": d["sound"], "gun_led": d["gun_led"], "headset": d["headset"], "group": d["group"],
-                "source": d.get("source", "mc"), "desc": d["desc"], "flash": d.get("flash"), "slot": d.get("slot")}
+                "source": d.get("source", "mc"), "desc": d["desc"], "flash": d.get("flash"), "slot": d.get("slot"),
+                "pool": d.get("pool")}   # F446: the fixed take list, not client-patchable (merge()'s whitelist below has no field for it)
         spec.update({k: v for k, v in (prof.get("events") or {}).get(ev, {}).items() if k in ("sound", "gun_led", "headset", "flash", "slot")})
         events[ev] = spec
     prof["events"] = events
