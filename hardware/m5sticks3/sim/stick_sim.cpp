@@ -755,6 +755,12 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < canvas.logical.size(); i++) line += (i ? "," : "") + jstr(canvas.logical[i]);
     line += "],\"cuts\":[";
     for (size_t i = 0; i < canvas.cuts.size(); i++) line += (i ? "," : "") + jstr(canvas.cuts[i]);
+    line += "],\"shapes\":[";
+    for (size_t i = 0; i < canvas.shapes.size(); i++) {
+      const SimShapeRecord& sh = canvas.shapes[i];
+      line += std::string(i ? "," : "") + "{\"kind\":" + jstr(sh.kind) + ",\"box\":[" + std::to_string(sh.x0) + "," +
+              std::to_string(sh.y0) + "," + std::to_string(sh.x1) + "," + std::to_string(sh.y1) + "]}";
+    }
     line += "]";
     // FNV-1a over the raw pixels: two scenarios that look identical have the same hash.
     const uint8_t* px = (const uint8_t*)canvas.getBuffer();

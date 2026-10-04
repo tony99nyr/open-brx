@@ -161,6 +161,28 @@ def test_a_toxin_hit_starts_the_stack_plays_poisoned_once_and_ticks_off_the_armo
     asyncio.run(go())
 
 
+def test_polish_2026_10_03_a_lethal_first_toxin_hit_plays_no_poisoned_cue():
+    """engine.js `_poisonCue` (app/test/poison.test.mjs, polish 2026-10-03): the `$HIR` comes before a lethal pool frame,
+    and H12 on the interrupt slot would cut the native scream, so `poisoned` waits for a pool frame that says we live."""
+    async def go():
+        b = await Bench().start()
+        await b.set_pools(4, 0, 0)
+        await b.toxin(3, 2, 8)
+        assert not b.st.alive, "setup: the hit killed"
+        assert b.events.count("poisoned") == 0
+    asyncio.run(go())
+
+
+def test_polish_2026_10_03_a_toxin_hit_that_moves_no_pool_still_plays_poisoned_by_the_first_tick():
+    async def go():
+        b = await Bench().start()
+        await b.rx("$HIR,0,11,3,2,0,0,0,*")   # moved no pool, so no `$HP` follows
+        assert b.events.count("poisoned") == 0, "no pool frame yet"
+        await b.adv(1.0)
+        assert b.events.count("poisoned") == 1
+    asyncio.run(go())
+
+
 def test_a_hit_on_another_protocol_or_a_bundle_with_no_dot_table_never_poisons():
     async def go():
         b = await Bench().start()
