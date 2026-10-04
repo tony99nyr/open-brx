@@ -7428,3 +7428,34 @@ test('ALT r4: a loadout $ALCD that moves the trigger with no swap open heals the
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.switching && h.eng.switching.to, 0, 'the next ALT goes back to the rifle');
 });
+
+test('O9: a failing save logs once per streak, and again after a good save', () => {
+  let broken = true; const logs = [];
+  const storage = { getItem: () => null, removeItem: () => {}, setItem: () => { if (broken) throw new Error('quota'); } };
+  const eng = new Engine({ writer: () => {}, storage, now: () => 1, log: (m, k) => logs.push([m, k]) });
+  eng._save(); eng._save(); eng._save();
+  assert.equal(logs.filter(([m]) => m.startsWith('persist failed: quota')).length, 1, 'one line for the streak');
+  assert.equal(logs.find(([m]) => m.startsWith('persist failed'))[1], 'le');
+  broken = false; eng._save(); broken = true; eng._save();
+  assert.equal(logs.filter(([m]) => m.startsWith('persist failed')).length, 2, 'a new streak logs again');
+});
+
+for (const [name, breakIt] of [['_restoreAmmo', e => { e._restoreAmmo = () => { throw new Error('bad ammo'); }; }], ['pu.restore', e => { const r = e.pu.restore.bind(e.pu); e.pu.restore = p => { r(p); throw new Error('bad pu'); }; }]]) {
+  test(`O9: a stored blob that makes ${name} throw leaves a fresh engine and one log line`, () => {
+    const storage = mkStorage();
+    const src = new Engine({ writer: () => {}, storage, now: () => 1_000, log: () => {} });
+    src.gun = { name: 'ALPHA-FE30', tail: 'FE30' }; src.player = { player_id: 'p1', display: 'REAPER' }; src.matchId = 'm1'; src.hp = 40; src.alive = true;
+    src.pu.restore({ held: { id: 'x' }, overshield: null, seen: {}, osProtectUntil: 5 });
+    src._save();
+    const blob = JSON.parse(storage.getItem('brx.engine')); blob.phase = 'live'; blob.ammo = { 1: [3, 9] };
+    storage.setItem('brx.engine', JSON.stringify(blob));
+    const logs = [];
+    const fresh = new Engine({ writer: () => {}, storage: mkStorage(), now: () => 1_000, log: () => {} });
+    const eng = new Engine({ writer: () => {}, storage: { getItem: () => null, setItem() {}, removeItem() {} }, now: () => 1_000, log: m => logs.push(m) });
+    breakIt(eng); eng.storage = storage;
+    assert.doesNotThrow(() => eng._load());
+    for (const k of ['gun', 'player', 'matchId', 'hp', 'alive', '_pendingPhase', '_shotAcct', '_prevReserve', '_prevAmmo']) assert.deepEqual(eng[k], fresh[k], `${k} is as in a fresh engine`);
+    assert.deepEqual(eng.pu.snapshot(), fresh.pu.snapshot(), 'power-up state is fresh');
+    assert.equal(logs.filter(m => m.startsWith('persisted context unreadable, starting fresh')).length, 1, logs.join('|'));
+  });
+}

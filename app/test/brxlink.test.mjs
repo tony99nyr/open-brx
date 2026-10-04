@@ -955,3 +955,10 @@ test('F297: a non-133 failure between 133s resets the run, and a later setup fai
   await settle(2000);
   assert.ok(s2[1] - s2[0] >= 400, 'a setup failure that is not the native connect keeps the backoff');
 });
+
+test('O9: isEnabled logs a throwing plugin and assumes on (an unknown state must not fake "Bluetooth off")', async () => {
+  const logs = [];
+  const link = new BrxLink({ ble: { isEnabled: async () => { throw new Error('plugin down'); } }, log: m => logs.push(m) });
+  assert.equal(await link.isEnabled(), true);
+  assert.ok(logs.some(m => m.includes('bluetooth state query failed') && m.includes('plugin down')), logs.join('|'));
+});
