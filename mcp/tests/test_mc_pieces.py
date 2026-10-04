@@ -340,6 +340,22 @@ def test_corrupt_file_is_moved_aside_not_fatal():
     assert path.exists()
 
 
+def test_a_store_from_another_version_is_moved_aside_not_loaded():
+    """D15: the file carries `v`; a loader that does not know it never guesses, it starts with the builtins."""
+    import json
+    from brx_mcp.mc.types import PIECES_STORE_V
+    st, path = _store()
+    st.create("life", "Fresh", "", _valid_value("life"))
+    raw = json.loads(path.read_text())
+    assert raw["v"] == PIECES_STORE_V
+    raw["v"] = PIECES_STORE_V + 1
+    path.write_text(json.dumps(raw))
+    assert [r["name"] for r in PieceStore(path).list() if not r["builtin"]] == []
+    kept = [f for f in path.parent.iterdir() if f.name.startswith(f"pieces.json.v{raw['v']}-")]
+    assert len(kept) == 1 and json.loads(kept[0].read_text())["v"] == raw["v"]   # kept whole, under its version
+    assert not path.exists()
+
+
 # ---------------------------------------------------------------- compose() -- a pure function
 def _mode_row(mode):
     return next(m for m in MODES if m["mode"] == mode)
