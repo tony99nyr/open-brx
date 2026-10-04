@@ -1631,11 +1631,16 @@ export class Engine {
     }
     c.resends++; c.resentAt = this.now();
     // Only a round or a hit is play. A pull is NOT: a dead trigger on an unspawned gun is exactly what makes players pull.
-    const unplayed = !(this.lastHitAt > c.firstAt) && this.shots === c.shotsAt;
-    const whole = unplayed && !this._puHeld;   // F416 r4: a whole burst empties the held heavy's slot; repair controls only
-    if (unplayed && !whole) this.log(`F416: ${this._puHeld.name} held; no whole re-send (it would empty slot ${this._puHeld.slot})`, 'le');
+    const whole = !(this.lastHitAt > c.firstAt) && this.shots === c.shotsAt;
     this.log(`F416: ${evidence}; re-sending ${whole ? 'whole burst' : 'weapon controls'} (${c.resends}/${SPAWN_RESENDS})`, 'le');
-    if (whole) { this._writeLife(c.frames, `${c.why} (re-sent ${c.resends})`, c.life, c); return; }
+    if (whole) {
+      // F416 r2: a held heavy keeps its charges in the burst's own row, and goes back on the trigger behind it.
+      const h = this._puHeld;
+      if (h) c.frames = c.frames.map(f => typeof f === 'string' && f.startsWith(`$AMMO,${h.slot},`) ? `$AMMO,${h.slot},${h.left},${PU_RESERVE},1,*` : f);
+      this._writeLife(c.frames, `${c.why} (re-sent ${c.resends})`, c.life, c);
+      if (h) this._puSelfHitKeep(h);
+      return;
+    }
     const rp = this._respawnProfile();
     const map = this._triggerPending ? c.frames.find(f => f.startsWith('$BMAP,0,')) : (rp && rp.trigger_live) || c.frames.find(f => f.startsWith('$BMAP,0,'));
     const live = this._liveAmmo();   // live counts, never the spawn rows: a repair after play must not refill the magazine
@@ -6319,7 +6324,7 @@ export class Engine {
     if (t) this._puEquip(0, +t[2] || 0, +t[3] || 0, 'powerup: slot 0 re-equipped after the revive');
     this._save();
   }
-  /** F438 r4: after a self-hit revive the held heavy keeps its charges (the burst's own row carried them). A heavy that was
+  /** F438 r4 (and F416 r2, after a re-sent burst): the held heavy keeps its charges (the burst's own row carried them). A heavy that was
    *  on the trigger goes back on it, as the reconcile re-arm does (F436). The `$SPAWN` refills the loadout weapons and puts
    *  the gun on slot 0: accepted for loadout weapons, since a self-kill costs nothing and the refill is the gun's own. */
   _puSelfHitKeep(h) {

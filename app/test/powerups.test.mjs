@@ -73,7 +73,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
     eng, writes, facts, batches,
     flush() { while (echoQ.length) eng.feedFrame(echoQ.shift()); return h; },
     failNext(pred, n = 1) { failNext = pred; failLeft = n; return h; },
-    adv(ms) { const step = 250; for (let t = 0; t < ms; t += step) { h.flush(); clock += Math.min(step, ms - t); eng.tick(); h.flush(); while (answers.length) { answers.shift(); eng.feedFrame(`$HP,${eng.hp},${eng.armor},${eng.shield},*`); } } return h; },
+    adv(ms) { const step = 250; for (let t = 0; t < ms; t += step) { h.flush(); clock += Math.min(step, ms - t); eng.tick(); h.flush(); while (answers.length) { answers.shift(); eng.feedFrame(h.gunHp ? h.gunHp() : `$HP,${eng.hp},${eng.armor},${eng.shield},*`); } } return h; },   // `gunHp`: a test's own probe answer
     at(s) { return h.adv(Math.max(0, 1_000_000 + s * 1000 - clock)); },
     mark() { return writes.length; },
     since(n) { return writes.slice(n); },
@@ -1383,14 +1383,34 @@ test('F416 r4: a queried $LCD on the switch-back slot while a heavy is held is a
   assert.equal(h.eng._spawnCheck, null, 'the check closes on the held or switch-back slot');
 });
 
-test('F416 r4: a real mismatch while a heavy is held repairs weapon controls only, never the whole burst', () => {
+test('F416 r2: a real mismatch while a heavy is held re-sends the whole burst with the charges, then the heavy back on the trigger', () => {
   const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away();
   openCheck(h.eng); const n = h.mark();
   h.frame('$LCD,45,70,0,1,3,24,*');   // slot 1: neither the heavy nor its switch-back slot
-  const after = h.since(n);
-  assert.ok(!after.some(f => f.startsWith('$SPAWN')), `no $SPAWN while a heavy is held: ${JSON.stringify(after)}`);
-  assert.ok(!after.includes('$AMMO,2,0,0,1,*'), 'the heavy is not emptied');
+  const after = h.since(n), sp = after.findIndex(f => f.startsWith('$SPAWN'));
+  assert.ok(sp >= 0, `an unspawned gun gets $SPAWN, heavy or not: ${JSON.stringify(after)}`);
+  assert.ok(!after.includes('$AMMO,2,0,0,1,*'), `the burst carries the charges, never the zero: ${JSON.stringify(after)}`);
+  const wi = after.indexOf(WEAP[2]);
+  assert.ok(wi > sp && after.indexOf('$AMMO,2,2,0,1,*', wi) > wi, `the heavy is re-equipped behind the burst: ${JSON.stringify(after)}`);
   assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives');
+});
+
+test('F416 r2: a lost self-hit revive with Rockets on the trigger is re-sent whole, and the player keeps the heavy', async () => {
+  const h = harness(ROCKET_GAME); h.at(121); h.take(4); h.away(); h.adv(800);
+  assert.equal(h.eng._puHeld?.trig, 2, 'setup: Rockets on the trigger');
+  const n = h.mark(), spawns = () => h.since(n).filter(f => f.startsWith('$SPAWN')).length;
+  h.gunHp = () => spawns() >= 2 ? '$HP,45,70,0,*' : '$HP,0,0,0,*';   // dead until a re-send lands (the pre-hit pools were full)
+  h.failNext(fr => fr.some(f => f.startsWith('$SPAWN')));
+  h.frame(SELF_HIT).frame('$HP,0,0,0,*');
+  await tick();
+  for (let i = 0; i < 40; i++) { h.adv(250); await tick(); }
+  const after = h.since(n);
+  assert.ok(spawns() >= 2, `the lost revive is re-sent whole: ${spawns()} $SPAWN`);
+  assert.equal(h.eng.alive, true, 'no self-inflicted death');
+  assert.equal(h.eng._puHeld?.left, 2, 'the heavy survives');
+  assert.ok(!after.includes('$AMMO,2,0,0,1,*'), 'no burst empties the heavy');
+  const second = after.indexOf('$SPAWN,,*', after.indexOf('$SPAWN,,*') + 1);
+  assert.ok(after.indexOf(WEAP[2], second) > second, `the heavy is re-equipped behind the re-send: ${JSON.stringify(after.slice(second))}`);
 });
 
 // ---- F438 r4: a lethal self-hit never happened, so it keeps the held heavy and the overshield. The revive's `$SPAWN`
