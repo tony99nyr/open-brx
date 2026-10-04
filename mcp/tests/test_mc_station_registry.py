@@ -1,5 +1,7 @@
 """Characterise station records before and after the registry extraction."""
 
+from types import SimpleNamespace
+
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
@@ -52,7 +54,7 @@ def test_station_warning_and_lock_keep_their_exact_operator_voice():
 
 
 def test_registry_allocates_reserved_ids_without_a_session():
-    registry = StationRegistry(readers={}, actions={})
+    registry = StationRegistry(SimpleNamespace())
     registry.stations["station-a"] = {"assigned": {"id": 1}}
     registry._station_id_of["station-b"] = 2
     assert registry._auto_station_id("station-c") == 3
@@ -62,7 +64,7 @@ def test_registry_allocates_reserved_ids_without_a_session():
 
 def test_registry_keeps_range_age_without_a_session():
     tick = [100_000]
-    registry = StationRegistry(readers={"now_ms": lambda: lambda: tick[0]}, actions={})
+    registry = StationRegistry(SimpleNamespace(now_ms=lambda: tick[0]))
     first = registry._range_fields(None, -70, {"tx_power": "low"})
     tick[0] += 2_000
     kept = registry._range_fields({"threshold": -70, "at": 90_000, **first}, -70, {})
@@ -70,12 +72,11 @@ def test_registry_keeps_range_age_without_a_session():
 
 
 def test_registry_lock_and_warnings_without_a_session():
-    registry = StationRegistry(
-        readers={"now_ms": lambda: lambda: 100_000,
-                 "config": lambda: {"mode": "tdm", "respawn": {"type": "scanner"},
-                                    "teams": [{"tid": 1, "name": "BLUE TEAM"}]}},
-        actions={},
-    )
+    registry = StationRegistry(SimpleNamespace(
+        now_ms=lambda: 100_000,
+        config={"mode": "tdm", "respawn": {"type": "scanner"},
+                "teams": [{"tid": 1, "name": "BLUE TEAM"}]},
+    ))
     station = {"assigned": {"kind": "respawn", "team": 1, "id": 4}}
     registry.stations["station-a"] = station
     assert registry._station_warnings() == []
@@ -85,11 +86,10 @@ def test_registry_lock_and_warnings_without_a_session():
 
 
 def test_registry_view_and_recap_row_without_a_session():
-    registry = StationRegistry(
-        readers={"now_ms": lambda: lambda: 100_000, "nodes": lambda: {"station-a": {"stale": False}},
-                 "phase": lambda: "muster", "config": lambda: {}},
-        actions={"_game_byte": lambda: 1, "_node_loss": lambda _node, _kind: 0},
-    )
+    registry = StationRegistry(SimpleNamespace(
+        now_ms=lambda: 100_000, nodes={"station-a": {"stale": False}},
+        phase="muster", config={}, _game_byte=lambda: 1, _node_loss=lambda _node, _kind: 0,
+    ))
     registry.stations["station-a"] = {
         "assigned": {"kind": "respawn", "team": 1, "id": 4, "threshold": 0, "at": 90_000},
         "report": {"revives": 0}, "last_seen_ms": 99_000,

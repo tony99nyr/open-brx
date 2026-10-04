@@ -26,7 +26,7 @@ from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose 
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
-from .stations import (StationRegistry, STATION_REARM, STATION_BRING_BACK, STATION_ARMED_OLDER,
+from .stations import (StationHost, StationRegistry, STATION_REARM, STATION_BRING_BACK, STATION_ARMED_OLDER,
                        STATION_NOT_ARMED, STATION_BATTERY_LOW, _STATION_LOCK_KEYS, _range_edit_ok,
                        station_claims_dropped_line)
 from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM     # F82: the tid a NEUTRAL hill broadcasts
@@ -453,16 +453,7 @@ def _check_tag(raw: str) -> str:
 
 class Session:
     def _make_station_registry(self) -> StationRegistry:
-        readers = {name: (lambda name=name: getattr(self, name)) for name in (
-            "compiler", "config", "nodes", "now_ms", "powerups_enabled", "net", "phase", "players",
-            "node_player", "scorer", "teams", "_departed_match_stations", "_game_no_started",
-            "lobby_pushed", "start_info", "_sync_pending", "_match_end_t", "_pu_sched")}
-        actions = {name: (lambda *args, name=name, **kwargs: getattr(self, name)(*args, **kwargs))
-                   for name in ("_after_station_change", "_brief_pickups", "_changed", "_validate",
-                                "_refuse_station_change_in_play", "_game_byte", "_node_loss", "_pu_update_body",
-                                "_log", "_on_feed", "_operator_t_match", "in_play", "is_adopted",
-                                "_resend_brief_pickups", "_fresh_head_repush", "_repush_stations_to_players")}
-        return StationRegistry(readers=readers, actions=actions)
+        return StationRegistry(self)
 
     @property
     def stations(self) -> dict[str, dict]:
