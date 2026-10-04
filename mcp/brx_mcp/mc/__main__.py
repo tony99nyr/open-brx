@@ -260,13 +260,10 @@ def build(args):
             # join info FIRST — it fills lan.ws_url with the REAL bound port. The mDNS advert below is
             # best-effort and once HUNG in a sandboxed netns, leaving ws_url at port 0: every phone that
             # trusted the JOIN strip then dialed ws://…:0/ws (e2e, 2026-08-26).
-            try:
-                ji = real_net.join_info()
-                # A28.2: `qr` is DERIVED (secret, and the public URL when the tunnel is up) -- set the
-                # bare URL and let the session render it, or the join strip loses the join secret.
-                session.set_ws_url(ji.get("url") or ws_url)
-            except Exception as e:  # pragma: no cover
-                log.warning("join_info: %s", e)
+            # A28.2: `qr` is DERIVED (secret, and the public URL when the tunnel is up) -- set the
+            # bare URL and let the session render it, or the join strip loses the join secret.
+            # O8: a failure is logged and shown on the console by the session; a later success clears it.
+            session.refresh_join_info(real_net, ws_url)
             try:
                 # sync zeroconf blocks if called from inside the running loop (EventLoopBlocked) — thread it,
                 # and cap it: a wedged multicast stack must never stall startup.
@@ -296,10 +293,7 @@ def build(args):
         # initial join_info() still contains the pre-bind host/port (notably 0.0.0.0:0 on FakeNet).
         # Refresh the bare URL now that the transport owns its real advertised endpoint; set_ws_url
         # also re-derives the QR and keeps the join secret in sync.
-        try:
-            session.set_ws_url(net.join_info().get("url") or ws_url)
-        except Exception as e:  # pragma: no cover - defensive for third-party net implementations
-            log.warning("join_info after sync net start: %s", e)
+        session.refresh_join_info(net, ws_url)   # O8: logged and shown on the console on failure, cleared on success
         if getattr(args, "tunnel", False):
             # --fake-net has no socket to expose, so --tunnel has nothing to do. SAY so: a flag that is
             # silently ignored is the shape of half the bugs in this repo's history.

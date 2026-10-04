@@ -1488,7 +1488,7 @@ static void test_status_body_carries_health_fields_only_when_set() {
            std::string("{\"node_id\":\"s\",\"arm_state\":\"connected\",\"synced\":false,"
                        "\"role\":\"utility\",\"kind\":\"respawn\",\"team\":255,\"station_id\":0,"
                        "\"threshold\":-57,\"live\":false,\"armed\":false,\"app_ver\":\"v\","
-                       "\"platform\":\"esp32\",\"uptime_s\":1234,\"boot_count\":7,\"assoc\":\"held\",\"lock_s\":42}"));
+                       "\"platform\":\"esp32\",\"uptime_s\":1234,\"boot_count\":7,\"assoc\":\"held\",\"lock_s\":42,\"actions_dropped\":0}"));
   StatusFields plain;
   plain.node_id = "s";
   plain.app_ver = "v";

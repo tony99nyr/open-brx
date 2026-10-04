@@ -457,7 +457,7 @@ test('transport: every MC kind the engine handles is DELIVERED to onMessage (F10
   // alone left the exact F105 shape open: a future MC kind handled only by utility.js would go
   // undelivered with this guard green. Union both handler sets.
   const util = readFileSync(path.resolve(HERE, '../src/utility.js'), 'utf8');
-  const handler = callArgs(util, 'transport.onMessage(');
+  const handler = callArgs(util, 'candidate.onMessage(');
   const utilKinds = [...handler.matchAll(/\.kind === '([a-z_]+)'/g), ...handler.matchAll(/case '([a-z_]+)'/g)].map(m => m[1]);
   assert.ok(utilKinds.includes('station_config'), 'the utility.js parse saw ' + (utilKinds.join(',') || 'nothing') + ' — it must at least see station_config, or it is proving nothing');
 

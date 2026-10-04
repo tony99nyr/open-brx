@@ -71,12 +71,20 @@ class Broadcaster:
                 log.exception("snapshot broadcast failed — continuing")
             await asyncio.sleep(0.25)
 
+    def tick_once(self) -> None:
+        """One match tick. A bad tick must not stop the loop, but a repeating one must not log a traceback every
+        0.5 s either (O8): `tick_failed` logs the first, then one count line a minute, and puts `ticker_failing`
+        on the snapshot until a tick succeeds. While it fails, armed->live and the timed end do not happen."""
+        try:
+            self.s.tick()
+        except Exception as e:
+            self.s.tick_failed(e)
+        else:
+            self.s.tick_ok()
+
     async def ticker(self):
         while True:
-            try:
-                self.s.tick()
-            except Exception:
-                log.exception("tick failed — continuing")   # a bad tick must not stop armed→live / timed-end
+            self.tick_once()
             await asyncio.sleep(0.5)
 
 

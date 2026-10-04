@@ -85,6 +85,8 @@ test('utility QR connection keeps the complete MC join contract', () => {
   const src = readFileSync(new URL('../src/utility.js', import.meta.url), 'utf8');
   assert.match(src, /connectMc\(join\.url, \{ trusted: true, pub: join\.pub, secret: join\.secret \}\)/,
     'a utility QR must retain the public fallback and join secret, not reduce the code to its LAN URL');
-  assert.match(src, /transport\.connect\(\{ url, trusted, pub, secret \}\)/,
+  assert.match(src, /mcLink\.dial\(url, \{ trusted, wsFactory, connect: \{ url, trusted, pub, secret \} \}/,
     'the utility connector must pass the complete join contract to Transport');
+  const link = readFileSync(new URL('../src/transport/mclink.js', import.meta.url), 'utf8');
+  assert.match(link, /transport\.connect\(options\.connect\)/, 'the shared controller hands that contract on unchanged');
 });
