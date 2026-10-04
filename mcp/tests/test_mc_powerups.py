@@ -642,9 +642,10 @@ def test_taken_records_the_winner_and_dedupes_against_the_pickup_fact():
     m = len(_pushed(s, "station_update", "u1"))
     p1 = s.players[s.node_player["phone-1"]]
     _action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
-    assert s._station_view("u1")["taken_by"] == p0["player_num"], "the second report never overwrites the first"
+    # F454: the station's word wins over a phone's earlier fact, with one TOOK line and no new update
+    assert s._station_view("u1")["taken_by"] == p1["player_num"], "the station's report corrects the phone's fact"
     assert len(_pushed(s, "station_update", "u1")) == m
-    assert not any("P1 TOOK" in t for t in _feed(s))
+    assert _feed(s).count(line) == 1 and f"{p1['display']} TOOK ROCKETS · STATION #5" in _feed(s)
 
 
 # --------------------------------------------------------------------------- polish round 1

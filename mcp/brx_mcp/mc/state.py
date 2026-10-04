@@ -3237,7 +3237,8 @@ class Session:
                     # M1: the SAME match's schedule from before the restart, taken items and all; any spawn
                     # that passed while MC was down fires on the catch-up tick below.
                     rows[nid] = {"item": item, "available": bool(old.get("available")), "next_k": old["next_k"],
-                                 "since": old["since"], "taken_by": old.get("taken_by")}
+                                 "since": old["since"], "taken_by": old.get("taken_by"),
+                                 **({"by_station": old["by_station"]} if isinstance(old.get("by_station"), bool) else {})}
                     continue
                 k = _pu.last_spawn_index(item, go, now)
                 # `since`: when the item in the station now became available (a spawn or an operator reset);
@@ -3286,28 +3287,53 @@ class Session:
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
         self._take_item(nid, t, self.players.get(ev.get("player_id") or ""))
 
-    def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None) -> bool:
+    def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None,
+                   from_station: bool = False) -> bool:
         """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
-        already taken is a no-op, and so is a report from before the item became available (`since`)."""
+        already taken is a no-op, and so is a report from before the item became available (`since`).
+        F454 (Tony, 2026-10-04): the STATION decides who took it. A station's `taken` report that names a
+        different player than a phone's earlier `pickup` fact corrects the taker in place (no second TOOK
+        line); a later phone fact never overrides it, and a second station report changes nothing."""
         # A Stick spawns on its own clock and may report a take before MC's next tick: fire every spawn that is
         # already due first, so the take is judged against the item that was there (powerups.md, "Schedule").
         self._pu_catch_up(self.now_ms(), self._pu_sched["go"], push=True)
         row = self._pu_sched["st"][nid]
-        if not row["available"] or t < row["since"]:
+        if t < row["since"]:
             return False
         a = self.stations[nid]["assigned"]
         num = player.get("player_num") if player else player_num
+        if not row["available"]:
+            if from_station and row.get("by_station") is False:   # taken (by a phone fact), not yet by a station
+                self._pu_correct_taker(nid, row, a, player, num)
+            return False
         # A taker is player_num 1..63 (0 = none, powerups.md item 6): the item is taken either way, but a number
         # outside that range is never credited.
         valid = isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63
         row["available"] = False
         row["taken_by"] = num if valid else None
+        row["by_station"] = from_station      # F454: only a station's own report is final
         who = (player or {}).get("display") or (f"PLAYER {num}" if valid else "A PLAYER")
         self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info",
                        "text": f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"})
         self._push_station_update(nid)
         self._changed()
         return True
+
+    def _pu_correct_taker(self, nid: str, row: dict, a: dict, player: Player | None, num: object) -> None:
+        """F454: the station's first report for this spawn names the taker; replace a phone's earlier credit."""
+        row["by_station"] = True
+        if not (isinstance(num, int) and not isinstance(num, bool) and 1 <= num <= 63) or num == row.get("taken_by"):
+            self._changed()
+            return
+        row["taken_by"] = num
+        who = (player or {}).get("display") or f"PLAYER {num}"
+        suffix = f" · STATION #{a['id']}"
+        for e in self.feed:     # newest first: the TOOK line of this spawn's take
+            if e.get("tag") == "POWERUP" and " TOOK " in e.get("text", "") and e["text"].endswith(suffix):
+                e["text"] = f"{str(who).upper()} TOOK {row['item']['name']}{suffix}"
+                break
+        self._persist_dirty = True
+        self._changed()
 
     def _reset_item(self, nid: str) -> None:
         """The operator reset: the item is available NOW. The fixed spawn times do not move (no restart, and
@@ -3351,7 +3377,7 @@ class Session:
             # synced clock, and a report queued while the link was down must not take a LATER spawn.
             age = body.get("age_ms")
             t = t_recv - age if isinstance(age, int) and not isinstance(age, bool) and 0 <= age <= t_recv else t_recv
-            self._take_item(nid, t, player, num if isinstance(num, int) else None)
+            self._take_item(nid, t, player, num if isinstance(num, int) else None, from_station=True)
 
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC

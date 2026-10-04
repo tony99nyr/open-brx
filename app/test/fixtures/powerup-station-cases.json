@@ -35,7 +35,7 @@
       ]
     },
     {
-      "name": "claiming alone takes nothing; the first claim_ready wins and a later one does not steal",
+      "name": "claiming alone takes nothing; the first claim_ready wins and a later one does not steal (MC: the first station report wins, a later report or phone fact never steals)",
       "setup": {"id": 4, "spawn_every_s": 120},
       "mc": { "item_spawn_every_s": 120, "steps": [
         {"t": 120000, "do": "tick", "expect": {"available": true}},
@@ -204,16 +204,20 @@
       ] }
     },
     {
-      "name": "the pickup fact and the station's taken report credit one take per spawn, in either order",
+      "name": "a phone's pickup fact and the station's taken report name different players: the station wins in either order, with one TOOK line",
       "only": ["mc"],
       "setup": {"id": 4, "spawn_every_s": 60},
       "mc": { "item_spawn_every_s": 60, "steps": [
         {"t": 60000, "do": "tick", "expect": {"available": true}},
-        {"t": 60100, "do": "pickup", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 59900}]}},
-        {"t": 60200, "do": "taken", "player": 1, "expect": {"taken_by": 0, "feed_took": 1, "updates": []}},
+        {"t": 60100, "do": "pickup", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "feed_has": ["P0 TOOK OVERSHIELD"], "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 59900}]}},
+        {"t": 60200, "do": "taken", "player": 1, "expect": {"available": false, "taken_by": 1, "feed_took": 1, "feed_has": ["P1 TOOK OVERSHIELD"], "feed_lacks": ["P0 TOOK"], "updates": []}},
+        {"t": 60300, "do": "pickup", "player": 0, "expect": {"taken_by": 1, "feed_took": 1, "updates": []}},
         {"t": 120000, "do": "tick", "expect": {"available": true, "taken_by": null}},
         {"t": 120100, "do": "taken", "player": 1, "expect": {"taken_by": 1, "feed_took": 2}},
-        {"t": 120200, "do": "pickup", "player": 0, "expect": {"taken_by": 1, "feed_took": 2, "updates": []}}
+        {"t": 120200, "do": "pickup", "player": 0, "expect": {"taken_by": 1, "feed_took": 2, "feed_lacks": ["P0 TOOK"], "updates": []}},
+        {"t": 180000, "do": "tick", "expect": {"available": true}},
+        {"t": 180100, "do": "taken", "player": 0, "expect": {"taken_by": 0, "feed_took": 3}},
+        {"t": 180200, "do": "taken", "player": 1, "expect": {"taken_by": 0, "feed_took": 3, "updates": []}}
       ] }
     },
     {
@@ -372,7 +376,7 @@
         {"t": 119999, "do": "tick", "expect": {"available": false}},
         {"t": 120000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 120000}]}},
         {"t": 120100, "do": "pickup", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "feed_has": ["TOOK ROCKETS \u00b7 STATION #4"], "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 119900}]}},
-        {"t": 120200, "do": "taken", "player": 1, "expect": {"taken_by": 0, "feed_took": 1, "updates": []}}
+        {"t": 120200, "do": "taken", "player": 1, "expect": {"taken_by": 1, "feed_took": 1, "feed_has": ["P1 TOOK ROCKETS"], "updates": []}}
       ] }
     }
   ]
