@@ -6,7 +6,7 @@
 // green. The screen tests all run against the MockBackend, which cannot catch a wrong URL.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createHttpApi } from '../src/api/client';
 
 const API = createHttpApi();
@@ -209,5 +209,30 @@ describe('a 400 carrying only `errors` (no `error`) surfaces the server\'s own w
   });
   it('neither field present: falls back to the status line, as before', async () => {
     expect(await call400('{}')).toBe('Bad Request');
+  });
+});
+
+// O15 (maintainability review 2026-10-03): the REST helper had no timeout, so a stalled MC left a control busy for ever.
+describe('a request to a stalled MC gives up with a clear error', () => {
+  it('passes an abort signal and words the timeout as WHAT: WHAT TO DO', async () => {
+    const real = globalThis.fetch;
+    let signal: AbortSignal | undefined;
+    globalThis.fetch = ((_u: string, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise((_res, rej) => {
+        signal?.addEventListener('abort', () => rej(signal!.reason));
+      });
+    }) as typeof fetch;
+    const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(ms => {
+      const c = new AbortController();
+      setTimeout(() => c.abort(new DOMException('timed out', 'TimeoutError')), 5);
+      (c.signal as AbortSignal & { ms?: number }).ms = ms;
+      return c.signal;
+    });
+    try {
+      await expect(createHttpApi().setPhase('lobby')).rejects.toThrow(/^MC DID NOT ANSWER IN 15 S: /);
+      expect(spy).toHaveBeenCalledWith(15000);
+      expect(signal).toBeTruthy();
+    } finally { globalThis.fetch = real; spy.mockRestore(); }
   });
 });

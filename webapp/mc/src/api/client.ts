@@ -35,11 +35,20 @@ const notifyAuth = (required: boolean) => authListeners.forEach(cb => cb(require
 // skips the RED error toast for this message, see `frame-error-toast`'s render site).
 export class AuthError extends Error { constructor() { super(operatorTokenLine()); } }
 
-async function j<T>(path: string, init?: RequestInit): Promise<T> {
+/** O15: a stalled MC (a blocking scan, a hung executor) must not leave a control busy for ever. */
+export const REQUEST_TIMEOUT_MS = 15000;
+
+async function j<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (method !== 'GET') { const t = getToken(); if (t) headers.authorization = `Bearer ${t}`; }
-  const r = await fetch(path, { ...init, headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
+  let r: Response;
+  try {
+    r = await fetch(path, { ...init, signal: AbortSignal.timeout(timeoutMs), headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
+  } catch (e) {
+    if ((e as Error)?.name === 'TimeoutError') throw new Error(`MC DID NOT ANSWER IN ${Math.round(timeoutMs / 1000)} S: CHECK MC IS RUNNING, THEN TRY AGAIN`);
+    throw e;
+  }
   if (r.status === 401) { notifyAuth(true); throw new AuthError(); }
   if (!r.ok) {
     let msg = r.statusText, body: unknown;
@@ -149,7 +158,7 @@ export function createHttpApi(): Api {
       open();
       return () => { closed = true; ws?.close(); };
     },
-    scan: (duration_s = 6) => post('/api/armory/scan', { duration_s }),
+    scan: (duration_s = 6) => j('/api/armory/scan', { method: 'POST', body: JSON.stringify({ duration_s }) }, REQUEST_TIMEOUT_MS + duration_s * 1000),   // the scan itself holds the request open
     armory: () => j('/api/armory'),
     setPhase: (phase: string, force?: boolean) => post('/api/phase', force ? { phase, force: true } : { phase }),
     getModes: () => j('/api/modes'),
