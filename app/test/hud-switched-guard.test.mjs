@@ -1,6 +1,6 @@
 // F400 desk fix (docs/spec/powerups.md "The switch card" decision 7): a pickup switch's ACTIVE bubble must read
 // CONFIRMED, never READY (that is ALT's own "we guessed, the window ran out" word) nor CONFIRMED BY YOUR GUN
-// (that mechanism -- the gun's echo -- never runs for a pickup: `_puSwitchCard` sets `switching.pu` precisely so
+// (that mechanism -- the gun's echo -- never runs for a pickup: powerup-player.js `_switchCard` sets `switching.pu` precisely so
 // `_onAmmo`'s confirm-by-shot code skips it). Same lightweight call-the-prototype-directly pattern as
 // hud-gain-guard.test.mjs: no DOM, a fake `document.createElement` and a `_swap` that just records the node.
 import { test } from 'node:test';

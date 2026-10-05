@@ -279,7 +279,7 @@ test('death screen: shots, kills and time alive are counted per life', () => {
   h.adv(5000);
   h.hir(4, 0, 9, 0, 3); h.frame('$HP,0,0,0,*');
   const last = h.eng.state().lastLife;
-  assert.equal(last.shots, 3);
+  assert.equal(last.shots, 5, 'bug 3a: the spawn wrote 32, so 32 -> 27 is five rounds');
   assert.equal(last.kills, 1);
   assert.ok(last.aliveMs >= 5000 && last.aliveMs < 6000, 'time alive: ' + last.aliveMs);
   h.adv(8000);   // respawn
