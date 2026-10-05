@@ -118,6 +118,8 @@ static void run_case(const Value& c) {
   BleControlPoint cp;
   cp.capture_s = (int)s.get("capture_s").as_int();
   cp.net_cap = (int)s.get("net_cap").as_int();
+  cp.decay_s = (int)s.get("decay_s").as_int();
+  cp.decay_delay_ms = (uint32_t)s.get("decay_delay_ms").as_int();
   const long tick = s.get("tick_ms").as_int();
   if (!validate(c)) return;
   const std::vector<Heard> sightings = expand(c);

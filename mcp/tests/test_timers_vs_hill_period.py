@@ -105,9 +105,9 @@ JUDGED = {
     # Review #4 (2026-10-04): values types.py now owns for the generated contract. None is a timer MC runs.
     "HILL_CAPTURE_S": "the phone/Stick hill's capture time (control.js DEFAULT_CAPTURE_S), not an MC fuse: the hill "
                       "itself is what a beacon reports",
-    "HILL_DECAY_S": "F464: how fast a part-built neutral capture drains (control.js DEFAULT_DECAY_S), a rate on the phone/Stick\n"
-                    "hill, not an MC fuse. It runs only while nobody is counted, after HILL_DECAY_DELAY_MS (0.5 s, under the\n"
-                    "period); a beacon the hill reports cannot hold it back",
+    "HILL_DECAY_S": "F464: a drain RATE (control.js DEFAULT_DECAY_S) on the phone and the Stick hill, which MC never runs.\n"
+                    "It is not a fuse: only a counted BLE player advert resets `absentMs`, and no IR frame reaches control.js,\n"
+                    "so a hill beacon cannot hold it back. Its start delay HILL_DECAY_DELAY_MS (0.5 s) is under the period",
     "TIME_LIMIT_MAX_S": "a config bound (time_limit_s 1..this), not a timer",
     "RESPAWN_DELAY_MAX_S": "a config bound (respawn.delay_s 0..this), not a timer",
     "HOLD_TARGET_MAX_S": "a config bound (mode_params.hold_target_s 1..this), not a timer",

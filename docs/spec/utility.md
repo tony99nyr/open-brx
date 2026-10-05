@@ -349,6 +349,7 @@ matter if you are closer within that circle." So:
   still counts as a sighting (F452(a)). The advert's direction bits stay 0 while the bar decays. Both constants are
   generated contract constants; `control.js` `ControlPoint` and `presence.h` `BleControlPoint` carry the rule identically.
   Presence exit is unchanged: any reading inside the 3 dB band resets the 4 s grace.
+- **Fairness to a phone truly inside** (measured). It loses almost nothing: under +0.1 s to capture at 0% advert loss, at any rate. With 20% advert loss it loses +0.15 / +0.27 / +1.07 s on average at 1.4 / 1.8 / 2.5 s gaps, and a phone that adverts every 250 ms loses nothing.
 - **Measured, captures from 5 dB outside** (mean -80 against -75, 200 seeds, 120 s): uniform +/-6 dB noise / Gaussian sigma
   4, at 1.4, 1.8 and 2.5 s. main 2 / 45, 170 / 193, 152 / 185. With the decay and its 0.5 s delay 3 / 33, 29 / 138,
   12 / 115 (the delay costs almost nothing against decay with no delay: 3 / 31, 26 / 138, 12 / 110). That is about 0 to

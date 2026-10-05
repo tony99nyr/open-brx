@@ -5,7 +5,7 @@
     {
       "name": "lone red player enters at the threshold at once, and is present after the dwell",
       "why": "F440: a binary circle. A credible sighting (median of the last 2 s at or above the threshold) is in the circle before the dwell; present follows after the dwell.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 3000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-75]}],
@@ -19,7 +19,7 @@
     {
       "name": "one dB under the threshold never enters",
       "why": "The edge is the threshold itself, never weighted by how far above or below.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 6000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 6000, "every_ms": 250, "rssi": [-76]}],
@@ -32,7 +32,7 @@
     {
       "name": "exit band: a level exactly 3 dB under the threshold stays present",
       "why": "Leaving needs the window median strictly under threshold - band (-78). -78 does not leave, however long.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-70]}, {"id": 1, "from_ms": 2250, "to_ms": 12000, "every_ms": 250, "rssi": [-78]}],
@@ -45,7 +45,7 @@
     {
       "name": "exit grace: below the band for 4 s before present drops",
       "why": "A PRESENT player leaves only after the exit level has stayed under the band for exit_grace_ms.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-70]}, {"id": 1, "from_ms": 2250, "to_ms": 12000, "every_ms": 250, "rssi": [-79]}],
@@ -60,7 +60,7 @@
     {
       "name": "a dip shorter than the grace is not a step out",
       "why": "A 3 s dip to -85 inside a 4 s grace never drops present, and the grace restarts from the next dip.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 14000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-70]}, {"id": 1, "from_ms": 2250, "to_ms": 5000, "every_ms": 250, "rssi": [-85]}, {"id": 1, "from_ms": 5250, "to_ms": 14000, "every_ms": 250, "rssi": [-70]}],
@@ -74,7 +74,7 @@
     {
       "name": "dense noise that only touches the threshold never enters",
       "why": "Review round 2: at 4 adverts a second the window holds several adverts, so its time-weighted median is the low reading and a peak at the threshold does not enter. Two adverts in three read -88 and the third is -74, a dB above the threshold. This is NOT a rate-independent guarantee: a phone sending one advert per 2.5 s enters on the same peaks (the F452(a) case). (Time-weighting makes a signal that is above the threshold half the time a coin toss that depends on phase, as the plain median did at odd counts, so the case uses a peak one third of the time.)",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 10000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-88, -88, -74]}],
@@ -87,7 +87,7 @@
     {
       "name": "a sparse advertiser at the threshold enters on its one advert",
       "why": "The same edge as a dense one: a sparse phone's window holds its single advert, whose median is that advert.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 8000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 8000, "every_ms": 2500, "rssi": [-75]}],
@@ -100,7 +100,7 @@
     {
       "name": "the circle edge is the same at a dense and a sparse advert rate",
       "why": "Two players stand at -76 (just out), one dense, one sparse. Neither is ever in the circle.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 8000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 8000, "every_ms": 100, "rssi": [-76]}, {"id": 2, "from_ms": 0, "to_ms": 8000, "every_ms": 2500, "rssi": [-76]}],
@@ -113,7 +113,7 @@
     {
       "name": "a window median ignores one loud outlier",
       "why": "Three adverts inside the 2 s window: -90, -90, -60. The median is -90, so the loud one alone does not enter. With two loud ones it does. The dwell is 60 s so only the sighting window decides (F452(c): with the time-based EMA a loud advert 500 ms after a weak one moves the average past the threshold, which would put player 1 in through the dwell).",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 3000,
       "sightings": [{"t": 0, "id": 1, "rssi": -90}, {"t": 500, "id": 1, "rssi": -90}, {"t": 1000, "id": 1, "rssi": -60}, {"t": 0, "id": 2, "rssi": -90}, {"t": 500, "id": 2, "rssi": -60}, {"t": 1000, "id": 2, "rssi": -60}],
@@ -126,7 +126,7 @@
     {
       "name": "silence for more than 4 s ends present and the circle",
       "why": "No advert for expiry_ms: present and the circle drop at once (strictly more than 4 s).",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 8000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-60]}],
@@ -139,7 +139,7 @@
     {
       "name": "a lone red player takes a neutral hill in ten seconds",
       "why": "capture_s 10: one net player builds 10 points a second, rising for red (not held) until 100, then held with no direction.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
@@ -152,7 +152,7 @@
     {
       "name": "an arriving opponent contests at once, before the dwell",
       "why": "F440: contest is immediate. Blue arrives with one advert at -60 while red holds the point: the contested bit sets on the first tick, and blue is not yet present.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 16000,
       "sightings": [{"t": 12000, "id": 2, "rssi": -60}],
@@ -166,7 +166,7 @@
     {
       "name": "tid 2 is refused, a dead player and a colour tid count for nothing",
       "why": "F82: tid 2 can never own a point. A down player and a colour tid contribute nothing either, so the hill stays neutral.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 2, "state": ["alive"]}, "2": {"team": 1, "state": []}, "3": {"team": 5, "state": ["alive"]}},
       "until_ms": 5000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 5000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 5000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 0, "to_ms": 5000, "every_ms": 250, "rssi": [-60]}],
@@ -178,7 +178,7 @@
     {
       "name": "an even fight stalls and is contested",
       "why": "One red and one blue at once: net 0, contested, no direction, no progress.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 5000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 5000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 5000, "every_ms": 250, "rssi": [-60]}],
@@ -190,7 +190,7 @@
     {
       "name": "two against one converts at the one-player rate",
       "why": "Net is the leader minus the largest other team, not the sum. Two red against one blue is net 1: the same 10 points a second as one red alone, and contested.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 0, "state": ["alive"]}, "3": {"team": 1, "state": ["alive"]}},
       "until_ms": 6000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 6000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 6000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 0, "to_ms": 6000, "every_ms": 250, "rssi": [-60]}],
@@ -202,7 +202,7 @@
     {
       "name": "an enemy-held point drains to neutral before it builds",
       "why": "Red takes the point, then only blue stands on it: it falls to 0 (red loses it), then rises for blue. Stealing is twice the work.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 40000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 16000, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}],
@@ -217,7 +217,7 @@
     {
       "name": "a long silence expires a player and the half-built hill drains",
       "why": "Presence expiry takes a player off the point: red builds, falls silent, and the part-built bar then DECAYS at the build rate (F464, Tony 2026-10-05; it used to stall where it stood). The drain starts only after 0.5 s with nobody counted (HILL_DECAY_DELAY_MS), so the bar still reads 70 at 7250 ms.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 10000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-60]}],
@@ -230,7 +230,7 @@
     {
       "name": "the exit reads the 2 s window median, not the lagging average",
       "why": "Round 2: a dense player at -60 turns sparse at -84 (one advert per 2.5 s). The exit must not wait for the per-advert average to cross: present drops once the debounced exit level has stayed under the band for the grace. The level is the time-weighted median as of the last advert (F452(b) round 3); once that advert is older than the 2 s window it is the last raw sample, -84 from 4500 ms, so the player leaves 4 s later, at 8500 ms. The average would hold it to about 11.5 s.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 2500, "to_ms": 12000, "every_ms": 2500, "rssi": [-84]}],
@@ -242,7 +242,7 @@
     {
       "name": "the same signal at a third rate (twice as dense) gives the same answer too",
       "why": "F452(b): the 64-advert bound used to drop the oldest, so the denser the advertiser the shorter its window. Players 1, 2 and 3 send the same signal at one advert per 20, 40 and 10 ms (80, 40 and 160 adverts in 1.6 s: 55% at -90, then -50). All three must read the same answer, out, before the dwell.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
       "until_ms": 2000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 860, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 880, "to_ms": 1580, "every_ms": 20, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 840, "every_ms": 40, "rssi": [-90]}, {"id": 2, "from_ms": 880, "to_ms": 1560, "every_ms": 40, "rssi": [-50]}, {"id": 3, "from_ms": 0, "to_ms": 870, "every_ms": 10, "rssi": [-90]}, {"id": 3, "from_ms": 880, "to_ms": 1590, "every_ms": 10, "rssi": [-50]}],
@@ -253,7 +253,7 @@
     {
       "name": "a full window never drops the newest advert, so a late run of strong adverts still enters",
       "why": "F452(b): the thinning removes an old sample, never the one just heard. 76 adverts at -90 fill the window (every 20 ms to 1500), then strong adverts keep coming. The dwell is 60 s, so only the sighting window can put the player in the circle. Out while the window is all low; in once strong adverts are most of it. A window that dropped the newest sample when full could never turn.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 4000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 1500, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 1520, "to_ms": 3500, "every_ms": 20, "rssi": [-50]}],
@@ -265,7 +265,7 @@
     {
       "name": "a dense weak burst then a strong tail enters like its sparse twin",
       "why": "F452(b): each advert used to be one vote, so a burst outvoted a longer stretch of signal. Player 1 (dense) sends 100 weak adverts in 0-495 ms (one every 5 ms) then 6 strong ones at 500-1750 ms. Player 2 (sparse) sends 5 weak ones (every 100 ms to 400) then the same 6 strong ones. Weak covers about 0.5 s and strong about 1.25 s of the 2 s window for both, so the time-weighted median is strong and both are in. One vote each said out for the dense phone (58 weak to 6 strong after thinning) and in for the sparse one. The dwell is 60 s, so only the sighting window can put either in the circle.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 2000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 495, "every_ms": 5, "rssi": [-90]}, {"id": 1, "from_ms": 500, "to_ms": 1750, "every_ms": 250, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 400, "every_ms": 100, "rssi": [-90]}, {"id": 2, "from_ms": 500, "to_ms": 1750, "every_ms": 250, "rssi": [-50]}],
@@ -276,7 +276,7 @@
     {
       "name": "the exit time does not depend on advert rate: a dense and a sparse phone leave together",
       "why": "F452(b): both phones stand at -60 (present), then the signal falls to -90 at 10000 ms. Player 1 sends every 10 ms and player 2 every 250 ms. The exit level is a time-weighted median, so each reads weak once weak covers half the 2 s window and both leave after the same 4 s grace. The sparse phone's last strong advert is 240 ms older, so it leaves one tick (250 ms) before the dense one: that is the pinned skew, 14750 ms, and no more than one tick.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 20000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 9990, "every_ms": 10, "rssi": [-60]}, {"id": 1, "from_ms": 10000, "to_ms": 20000, "every_ms": 10, "rssi": [-90]}, {"id": 2, "from_ms": 0, "to_ms": 9750, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 20000, "every_ms": 250, "rssi": [-90]}],
@@ -289,7 +289,7 @@
     {
       "name": "the exit time does not depend on the shape of the last stretch: a strong burst then weak tail leaves like its sparse twin",
       "why": "F452(b): the mirror of the entry case. Both phones stand at -60 until 10000 ms. Then player 1 (dense) sends 100 strong adverts in 10000-10495 (every 5 ms) and player 2 (sparse) 5 (every 100 ms), and both send the same weak adverts every 250 ms from 10500 on. A burst of strong votes used to hold the dense phone in longer. By time both have the same strong stretch and the same weak stretch, so present drops on the same tick.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 20000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 9750, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 10000, "to_ms": 10495, "every_ms": 5, "rssi": [-60]}, {"id": 1, "from_ms": 10500, "to_ms": 20000, "every_ms": 250, "rssi": [-90]}, {"id": 2, "from_ms": 0, "to_ms": 9750, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 10400, "every_ms": 100, "rssi": [-60]}, {"id": 2, "from_ms": 10500, "to_ms": 20000, "every_ms": 250, "rssi": [-90]}],
@@ -301,7 +301,7 @@
     {
       "name": "one weak advert then a strong one 1.5 s later is not a sighting",
       "why": "F452(b) round 2: every cover lies inside the 2 s window: the oldest starts at its own time and the newest ends at `now`. At the strong advert (t=1500) the weak one at 0 and the strong one each cover 750 ms, and the tie falls to the lower reading: no sighting. A newest cover that ran past `now` gave the strong advert 1500 ms and a sighting. The dwell is 60 s, so only the sighting window can put the player in the circle.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 3000,
       "sightings": [{"t": 0, "id": 1, "rssi": -90}, {"t": 1500, "id": 1, "rssi": -50}],
@@ -313,7 +313,7 @@
     {
       "name": "a noise peak 3 dB over the threshold stays out at 100 ms, 1.3 s and 1.4 s intervals alike",
       "why": "F452(b) round 2: one advert in three is a -72 peak against a -75 threshold, the rest -88. At 1.4 s the window holds two adverts (a peak and a weak one, either way round), each covering 700 ms, and the tie falls to the weak one, as at 100 ms and at 1.3 s. A cover that ran past `now` (or began before its own time) gave the peak 1400 ms and a sighting at 1.4 s only.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 60000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
       "until_ms": 20000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 100, "rssi": [-88, -88, -72]}, {"id": 2, "from_ms": 0, "to_ms": 20000, "every_ms": 1300, "rssi": [-88, -88, -72]}, {"id": 3, "from_ms": 0, "to_ms": 20000, "every_ms": 1400, "rssi": [-88, -88, -72]}],
@@ -326,7 +326,7 @@
     {
       "name": "noise peaks after a strong stand leave within 2 s of each other at 100 ms and at 1 s",
       "why": "F452(b) round 3: both phones stand at -65 for 6 s, then one advert in three is a -74 peak (1 dB over the -75 threshold) and the rest are -88. The exit level is the time-weighted median as of each advert, so the exit time does not depend on the advert rate. Measured (periodic peaks): 5.5 s after the change at 100 ms, 4.0 s at 1 s. The tolerance is 2 s: both are in the circle at 9750 ms, before the earlier leaver, and both are out at 11750 ms, after the later one. Read at the tick, the newest advert alone was the level at 1 s and that phone never left.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 14000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 5900, "every_ms": 100, "rssi": [-65]}, {"id": 1, "from_ms": 6000, "to_ms": 14000, "every_ms": 100, "rssi": [-88, -88, -74]}, {"id": 2, "from_ms": 0, "to_ms": 5000, "every_ms": 1000, "rssi": [-65]}, {"id": 2, "from_ms": 6000, "to_ms": 14000, "every_ms": 1000, "rssi": [-88, -88, -74]}],
@@ -338,7 +338,7 @@
     {
       "name": "a step to a signal 3 dB inside enters at the same time at 100, 250 and 500 ms advert periods",
       "why": "F452(c), Tony's decision 2026-10-04 (option C): the entry EMA is time-based, weight 1 - 0.65^(min(dt, 500 ms) / 250 ms) for the time dt since the last advert. Three phones hear the same player at -95 until 6000 ms, then at a steady -72 (3 dB inside the -75 threshold); the first inside advert is at 6000 ms. Players 1 to 3 advertise every 100, 250 and 500 ms. With a per-advert EMA weight a dense phone entered at 7500 ms and a 500 ms phone at 9000 ms. Now all three enter within one 250 ms tick of each other: none before 7750 ms, players 2 and 3 at 8000 ms, all by 8250 ms. Measured from the step, whose first inside advert is on the step: a sparse phone's first inside advert otherwise comes up to one gap later and adds a rate-dependent offset. The stage has no presence model (its runner only echoes adverts), so it is not in this sweep.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 5900, "every_ms": 100, "rssi": [-95]}, {"id": 1, "from_ms": 6000, "to_ms": 14000, "every_ms": 100, "rssi": [-72]}, {"id": 2, "from_ms": 0, "to_ms": 5750, "every_ms": 250, "rssi": [-95]}, {"id": 2, "from_ms": 6000, "to_ms": 14000, "every_ms": 250, "rssi": [-72]}, {"id": 3, "from_ms": 0, "to_ms": 5500, "every_ms": 500, "rssi": [-95]}, {"id": 3, "from_ms": 6000, "to_ms": 14000, "every_ms": 500, "rssi": [-72]}],
@@ -351,7 +351,7 @@
     {
       "name": "a step to a signal 3 dB inside enters no slower than 3.75, 4.75 and 5.75 s at 1, 1.4 and 1.8 s advert periods",
       "why": "F452(c), option C: the EMA credits at most 500 ms per gap, so a sparse phone is smoothed instead of replaced by one advert (which would admit its noise: docs/spec/utility.md 5d.0). The price is that full equality at 1 s or slower is not possible. Players 1 to 3 advertise every 1000, 1400 and 1800 ms from the same step as the case above (the first inside advert is at 6000 ms). Measured entry 3.0, 4.0 and 4.75 s after the step (per-advert EMA weight: 5.0, 6.75 and 8.25 s). The pins are the measured phase medians 3.5, 4.5 and 5.5 s plus one 250 ms tick, so entry may get faster, never slower. At 100 to 500 ms entry is 2.0 to 2.25 s.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}, "3": {"team": 3, "state": ["alive"]}},
       "until_ms": 14000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 5000, "every_ms": 1000, "rssi": [-95]}, {"id": 1, "from_ms": 6000, "to_ms": 14000, "every_ms": 1000, "rssi": [-72]}, {"id": 2, "from_ms": 400, "to_ms": 4600, "every_ms": 1400, "rssi": [-95]}, {"id": 2, "from_ms": 6000, "to_ms": 14000, "every_ms": 1400, "rssi": [-72]}, {"id": 3, "from_ms": 600, "to_ms": 4200, "every_ms": 1800, "rssi": [-95]}, {"id": 3, "from_ms": 6000, "to_ms": 14000, "every_ms": 1800, "rssi": [-72]}],
@@ -364,7 +364,7 @@
     {
       "name": "one loud outlier at a dense advert rate (250 and 500 ms) does not make a player present",
       "why": "F452(c) review: the 'window median ignores one loud outlier' case has a 60 s dwell, so it cannot catch a false entry through the dwell. Here the dwell is the real 800 ms. A weak player (-88) sends one -50 advert at 3000 ms, at 250 ms (player 1) and 500 ms (player 2) periods. The time-based EMA jumps above the -75 threshold for that one advert (to -74.7 at 250 ms, -66 at 500 ms), but the next advert pulls it back within 500 ms, before the 0.8 s dwell completes: nobody becomes present. It does not exercise the 500 ms gap cap (no gap here exceeds it); the cap is guarded by the EMA-weight unit test, the F440 circle-edge test and the golden traces.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 9000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2750, "every_ms": 250, "rssi": [-88]}, {"id": 1, "from_ms": 3000, "to_ms": 3000, "every_ms": 250, "rssi": [-50]}, {"id": 1, "from_ms": 3250, "to_ms": 10000, "every_ms": 250, "rssi": [-88]}, {"id": 2, "from_ms": 0, "to_ms": 2500, "every_ms": 500, "rssi": [-88]}, {"id": 2, "from_ms": 3000, "to_ms": 3000, "every_ms": 500, "rssi": [-50]}, {"id": 2, "from_ms": 3500, "to_ms": 10000, "every_ms": 500, "rssi": [-88]}],
@@ -378,7 +378,7 @@
       "name": "one loud outlier at a sparse advert rate (1.4 s and 1.8 s) CAN make a player present: an accepted trade-off",
       "accepted": "F452(c) option C, Tony 2026-10-04",
       "why": "F452(c) option C, accepted by Tony 2026-10-04: a phone that advertises every 1.4 s or slower gives fewer readings per second, so it can enter as fast OR reject noise as well, not both. A weak player (-88) sends one -50 advert at 3600 ms (player 3, every 1800 ms) or 2800 ms (player 4, every 1400 ms). The EMA, credited at most 500 ms of gap, jumps above the -75 threshold and stays there until the next advert, longer than the 0.8 s dwell: the player becomes present (at 4000 ms and 4750 ms). At 1 s the next advert comes just before the dwell completes on the 250 ms tick grid (750 ms above), so a 1 s phone is not caught by one outlier. This case pins that on purpose; it is not a known failure, so a change that fixes it (and so makes sparse entry slower) fails here and must be a deliberate decision.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"3": {"team": 3, "state": ["alive"]}, "4": {"team": 0, "state": ["alive"]}},
       "until_ms": 9000,
       "series": [{"id": 3, "from_ms": 0, "to_ms": 1800, "every_ms": 1800, "rssi": [-88]}, {"id": 3, "from_ms": 3600, "to_ms": 3600, "every_ms": 1800, "rssi": [-50]}, {"id": 3, "from_ms": 5400, "to_ms": 10000, "every_ms": 1800, "rssi": [-88]}, {"id": 4, "from_ms": 0, "to_ms": 1400, "every_ms": 1400, "rssi": [-88]}, {"id": 4, "from_ms": 2800, "to_ms": 2800, "every_ms": 1400, "rssi": [-50]}, {"id": 4, "from_ms": 4200, "to_ms": 10000, "every_ms": 1400, "rssi": [-88]}],
@@ -391,7 +391,7 @@
     {
       "name": "a lone red phone inside the circle captures a neutral hill on time at a 100 ms advert period",
       "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 11000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 100, "rssi": [-60]}],
@@ -403,7 +403,7 @@
     {
       "name": "a lone red phone inside the circle captures a neutral hill on time at a 250 ms advert period",
       "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 11000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 250, "rssi": [-60]}],
@@ -415,7 +415,7 @@
     {
       "name": "a lone red phone inside the circle captures a neutral hill on time at a 500 ms advert period",
       "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 11000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 500, "rssi": [-60]}],
@@ -427,7 +427,7 @@
     {
       "name": "a lone red phone inside the circle captures a neutral hill on time at a 1000 ms advert period",
       "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 11000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 1000, "rssi": [-60]}],
@@ -439,7 +439,7 @@
     {
       "name": "a lone red phone inside the circle captures a neutral hill on time at a 1400 ms advert period",
       "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 11000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 1400, "rssi": [-60]}],
@@ -451,7 +451,7 @@
     {
       "name": "a lone red phone inside the circle captures a neutral hill on time at a 1800 ms advert period",
       "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 11000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 1800, "rssi": [-60]}],
@@ -461,9 +461,36 @@
       ]
     },
     {
+      "name": "a lone red phone inside the circle captures a neutral hill on time at a 2500 ms advert period",
+      "why": "F464: decay must not slow a team that is truly inside. A steady -60 phone is in the circle at once and stays there at every advert rate, so the 10 s capture is not delayed: not held at 9500 ms, held at 10250 ms (the 10 s of work, the first update counts no time).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 11000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 11000, "every_ms": 2500, "rssi": [-60]}],
+      "expect": [
+        {"t": 9500, "hill": {"team": 0, "state": ["rising"], "value": 95}},
+        {"t": 10250, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
+    },
+    {
+      "name": "a non-default decay rate and delay (decay_s 5, decay_delay_ms 1000) are read from the setup",
+      "why": "F464 option 1 parity: every runner reads decay_s and decay_delay_ms from the setup, so a value other than the contract default is proven on the phone and the Stick. Red builds to 50 by 5000 ms and leaves; nothing drains for 1 s, then 20 points a second (100 / 5).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 5, "decay_delay_ms": 1000, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 1000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "hill": {"team": 0, "state": ["rising"], "value": 50}},
+        {"t": 6000, "hill": {"team": 0, "state": [], "value": 50}},
+        {"t": 7000, "hill": {"team": 0, "state": [], "value": 30}},
+        {"t": 8000, "hill": {"team": 0, "state": [], "value": 10}},
+        {"t": 9000, "hill": {"team": 255, "state": [], "value": 0}}
+      ]
+    },
+    {
       "name": "an abandoned half-built capture drains to 0 at the build rate",
       "why": "F464, Tony 2026-10-05: capture progress DECAYS whenever the capturing team is not present (standard KOTH). Red advertises until 1000 ms and then stops; it counts until its sighting and expiry lapse, then the bar falls 10 points a second (100 / HILL_DECAY_S) to 0. The drain starts after 0.5 s with nobody counted (HILL_DECAY_DELAY_MS 500). Measured: 50 at 5000 ms (the half-built peak), still 50 at 5500 ms, 45 at 6000 ms, 0 at 10500 ms (0.5 s plus 10 s times the fraction built, here 0.5).",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 16000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 1000, "every_ms": 250, "rssi": [-60]}],
@@ -479,7 +506,7 @@
     {
       "name": "a stray single sighting adds progress that then drains away",
       "why": "F464: one advert counts (F452(a)), so a stray peak from a phone outside puts it in the circle for a few seconds and builds some progress. Before F464 that progress stayed forever and strays added up to a capture. Now it drains at the build rate once the phone has not been counted for 0.5 s: 40 at 4500 ms, 25 at 6000 ms, 0 at 8500 ms.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 16000,
       "sightings": [{"t": 0, "id": 1, "rssi": -72}],
@@ -494,7 +521,7 @@
     {
       "name": "a contested hill neither builds nor decays",
       "why": "F464 keeps the contest rule: red builds alone to about half, then blue stands beside it at the same strength. The bar freezes while both are in the circle (net 0, contested) and does not decay.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 14000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 5000, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}],
@@ -507,7 +534,7 @@
     {
       "name": "a player who steps off the point for 250 ms and back keeps the bar exactly",
       "why": "F464 option 1: the drain starts only after 500 ms with nobody counted (HILL_DECAY_DELAY_MS). Short expiry and sight windows (500 ms) let a 250 ms advert gap take red out of the circle for one tick. The bar stands at 35 through that tick and carries on building.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 9000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 4000, "to_ms": 8000, "every_ms": 250, "rssi": [-60]}],
@@ -520,7 +547,7 @@
     {
       "name": "a player who steps off the point for 500 ms and back keeps the bar exactly",
       "why": "F464 option 1: two ticks (500 ms) with nobody counted is exactly the delay, so nothing drains. The bar stands at 35 through the gap and carries on building when red is counted again.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 9000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 4250, "to_ms": 8000, "every_ms": 250, "rssi": [-60]}],
@@ -533,7 +560,7 @@
     {
       "name": "a player who steps off the point for 750 ms loses only the time past the 500 ms delay",
       "why": "F464 option 1: three ticks (750 ms) with nobody counted. The first 500 ms drain nothing and the last 250 ms drain 2.5 points (10 a second), so the bar reads 33 (32.5) before it builds again.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 9000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 4500, "to_ms": 8000, "every_ms": 250, "rssi": [-60]}],
@@ -546,7 +573,7 @@
     {
       "name": "a lone stray sighting leaves its small bar alone for 500 ms and then drains it",
       "why": "F464 option 1: one advert at t=0 counts for two ticks and builds 5 points. With nobody counted after that, the bar stands for 500 ms (two ticks), then drains at 10 a second and is neutral again 1.5 s after the last counted tick.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 500, "sight_ms": 500, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 3000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 0, "every_ms": 250, "rssi": [-60]}],
@@ -560,7 +587,7 @@
     {
       "name": "net is capped at three, so five red build at three times the rate",
       "why": "\u00a75d.1: net is clamped to net_cap. Five red on an empty point: 30 points a second.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 0, "state": ["alive"]}, "3": {"team": 0, "state": ["alive"]}, "4": {"team": 0, "state": ["alive"]}, "5": {"team": 0, "state": ["alive"]}},
       "until_ms": 1250,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 4, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 5, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}],
@@ -571,7 +598,7 @@
     {
       "name": "two red against one blue and one yellow convert slowly rather than stall",
       "why": "\u00a75d.1: net is the leader minus the largest SINGLE other team, never the sum: 2 - 1 = 1, the one-player rate, with contested set.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 0, "state": ["alive"]}, "3": {"team": 1, "state": ["alive"]}, "4": {"team": 3, "state": ["alive"]}},
       "until_ms": 1250,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 4, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}],
@@ -582,7 +609,7 @@
     {
       "name": "after leaving, a level inside the band but under the threshold stays out",
       "why": "Entering needs the threshold itself, not the exit level: -76 is inside the 3 dB band but under -75, so a player who left does not come back at it.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-70]}, {"id": 1, "from_ms": 2250, "to_ms": 7500, "every_ms": 250, "rssi": [-79]}, {"id": 1, "from_ms": 7750, "to_ms": 12000, "every_ms": 250, "rssi": [-76]}],
@@ -595,7 +622,7 @@
     {
       "name": "the same noise peaks (one advert in three) at 250 ms and at 1.25 s stay out",
       "why": "F452 control: one advert in three is a -74 peak (1 dB over the -75 threshold), the rest -88, at 4 adverts a second and at 0.8 a second. It never enters, because the peak covers under half the window. The next case is the same signal at one advert per 2.5 s.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 20000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 250, "rssi": [-88, -88, -74]}, {"id": 2, "from_ms": 0, "to_ms": 20000, "every_ms": 1250, "rssi": [-88, -88, -74]}],
@@ -608,7 +635,7 @@
     {
       "name": "RULE: the same alternation at one advert per 2.5 s must stay out too [F452]",
       "why": "The circle edge must not depend on advert rate (F440). One advert in three is a -74 peak (1 dB over the -75 threshold) and the rest read -88. That stays out at 250 ms and 1.25 s (the control case before this one). At 2.5 s each window holds one advert, so a peak is a sighting and the phone is in the circle for 4 s after each peak. Expected to FAIL today.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 20000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 20000, "every_ms": 2500, "rssi": [-88, -88, -74]}],
@@ -626,7 +653,7 @@
     {
       "name": "the same signal at half the advert rate gives the same answer, so the 64-advert cap cannot decide entry",
       "why": "Player 1 sends 44 adverts at -90 then 36 at -50 inside 1.6 s (one every 20 ms). Player 2 sends the same signal at half the rate (22 low, 18 high, one every 40 ms). The rule is one answer for both: out. Neither full window is a tie (44 of 80 and 22 of 40 are low, so both middle readings are low), so the answer does not hang on the median's tie rule. F452(b): when the window is full it is thinned evenly across time, so the dense phone's window still spans the whole 2 s and reads the same median. (Both are in a little later through the dwell, a real 0.8 s above the threshold, so the checkpoint is before that.)",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 2000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 860, "every_ms": 20, "rssi": [-90]}, {"id": 1, "from_ms": 880, "to_ms": 1580, "every_ms": 20, "rssi": [-50]}, {"id": 2, "from_ms": 0, "to_ms": 840, "every_ms": 40, "rssi": [-90]}, {"id": 2, "from_ms": 880, "to_ms": 1560, "every_ms": 40, "rssi": [-50]}],
@@ -637,7 +664,7 @@
     {
       "name": "after recovering from a dip, a second low period restarts the exit grace",
       "why": "The first dip ends before the grace runs out and the second one starts later. The 4 s grace counts from when the SECOND low period began, not from the first, so the player is still present well after 4 s from the first dip and leaves only after the second grace.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 20000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-70]}, {"id": 1, "from_ms": 2250, "to_ms": 5000, "every_ms": 250, "rssi": [-85]}, {"id": 1, "from_ms": 5250, "to_ms": 8000, "every_ms": 250, "rssi": [-70]}, {"id": 1, "from_ms": 8250, "to_ms": 20000, "every_ms": 250, "rssi": [-85]}],
@@ -651,7 +678,7 @@
     {
       "name": "setup: exit_grace_ms 2000 drops present sooner than the 4 s base",
       "why": "Mapping check: a non-default exit grace.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 2000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 2000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 12000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-70]}, {"id": 1, "from_ms": 2250, "to_ms": 12000, "every_ms": 250, "rssi": [-79]}],
@@ -664,7 +691,7 @@
     {
       "name": "setup: sight_ms 1000 ends the circle 1 s after one sighting",
       "why": "Mapping check: a non-default sight_ms. The dwell is 8 s so only the sighting can put the player in the circle.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 8000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 1000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 8000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 1000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 4000,
       "sightings": [{"t": 0, "id": 1, "rssi": -60}],
@@ -676,7 +703,7 @@
     {
       "name": "setup: expiry_ms 2000 expires a silent player after 2 s",
       "why": "Mapping check: a non-default expiry_ms.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 2000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 2000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 8000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 1000, "every_ms": 250, "rssi": [-60]}],
@@ -689,7 +716,7 @@
     {
       "name": "setup: alpha 1 makes the average follow the last advert",
       "why": "Mapping check: a non-default alpha. The average is -90, then jumps to -70 at 1250; at alpha 1 it clears the threshold at once, at 0.35 it needs several adverts.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 1.0, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 1.0, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 4000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 1000, "every_ms": 250, "rssi": [-90]}, {"id": 1, "from_ms": 1250, "to_ms": 4000, "every_ms": 250, "rssi": [-70]}],
@@ -701,7 +728,7 @@
     {
       "name": "setup: exit_band_db 6 keeps a player present at 5 dB under the threshold",
       "why": "Mapping check: a non-default exit band. -80 is 5 dB under -75: out with the 3 dB base band, still present with 6.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 6, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 6, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 14000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-70]}, {"id": 1, "from_ms": 2250, "to_ms": 14000, "every_ms": 250, "rssi": [-80]}],
@@ -712,7 +739,7 @@
     {
       "name": "setup: capture_s 5 takes a neutral point in five seconds",
       "why": "Mapping check: a non-default capture_s.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 5, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 5, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 6000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 6000, "every_ms": 250, "rssi": [-60]}],
@@ -724,7 +751,7 @@
     {
       "name": "setup: net_cap 1 holds five red to the one-player rate",
       "why": "Mapping check: a non-default net_cap.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 1, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 1, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 0, "state": ["alive"]}, "3": {"team": 0, "state": ["alive"]}, "4": {"team": 0, "state": ["alive"]}, "5": {"team": 0, "state": ["alive"]}},
       "until_ms": 1250,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 4, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}, {"id": 5, "from_ms": 0, "to_ms": 1250, "every_ms": 250, "rssi": [-60]}],
@@ -735,7 +762,7 @@
     {
       "name": "setup: dwell_ms 2000 delays present to 2 s",
       "why": "Mapping check: a non-default dwell. The circle is entered at once; present follows after the dwell.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 2000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 2000, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 3000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-60]}],
@@ -748,7 +775,7 @@
     {
       "name": "setup: threshold_dbm -60 moves the circle edge",
       "why": "Mapping check: a non-default threshold. -62 is out and -58 is in at a -60 threshold.",
-      "setup": {"threshold_dbm": -60, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 250},
+      "setup": {"threshold_dbm": -60, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
       "until_ms": 3000,
       "series": [{"id": 1, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-62]}, {"id": 2, "from_ms": 0, "to_ms": 3000, "every_ms": 250, "rssi": [-58]}],
@@ -760,7 +787,7 @@
     {
       "name": "setup: tick_ms 500 steps the hill in half-second updates",
       "why": "Mapping check: a non-default tick_ms. The player is first heard at t=300, between ticks. A hill that ticks every 500 ms counts the whole step to t=500 (5 points); one that ticks every 250 ms counts only the 250 ms after its first tick with the player (3 points at 500, 8 at 1000), so a runner that drops tick_ms gets different values.",
-      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "tick_ms": 500},
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 500},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 2000,
       "series": [{"id": 1, "from_ms": 300, "to_ms": 2300, "every_ms": 250, "rssi": [-60]}],

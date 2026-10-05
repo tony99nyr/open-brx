@@ -612,8 +612,8 @@ test('F440: the exit grace is what keeps a dipping player present (fails without
 //   decay + 0.5 s delay, unif 0       3     29     12
 //   decay + 0.5 s delay, gauss 1     33    138    115
 // (decay with no delay measured 0 / 3 / 26 / 12 and 1 / 31 / 138 / 110: the delay costs almost nothing here.) The bounds sit
-// between the last rows and main, so this fails on main. The Gaussian 1.4 s row cannot tell main from the fix (45 against 33),
-// so its bound is loose. The 100 ms column is HYPOTHETICAL for iPhones and for Android until phones advertise lowLatency (held
+// between the last rows and main, so this fails on main. The uniform 1.4 s and 100 ms rows are measurements, not regression checks: main
+// is already at 2 and 0 there, so their bounds pass the old code too. The Gaussian 1.4 s bound (40) sits between the fix (33) and main (45). The 100 ms column is HYPOTHETICAL for iPhones and for Android until phones advertise lowLatency (held
 // for a bench). The Gaussian 1.8 s and 2.5 s rows are still about 70% and 57%: a phone that sends one advert per 1.8 s or
 // slower stays in the circle for the 4 s sighting (F452(a), kept by Tony 2026-10-02) and presence exit is main's behaviour
 // (any reading inside the 3 dB band resets the grace), so noise peaks keep it counted. That residual is not closed.
@@ -635,7 +635,7 @@ function strayCaptures({ gap, model, n = 200, untilMs = 120000 }) {
   return captures;
 }
 test('F464 (review round 2 High, now a seed sweep): a phone 5 dB outside the circle almost never captures, at any advert rate', () => {
-  const bound = { uniform: { 100: 4, 1400: 10, 1800: 50, 2500: 30 }, gauss: { 100: 5, 1400: 60, 1800: 160, 2500: 140 } };   // of 200
+  const bound = { uniform: { 100: 4, 1400: 10, 1800: 50, 2500: 30 }, gauss: { 100: 5, 1400: 40, 1800: 160, 2500: 140 } };   // of 200
   for (const model of ['uniform', 'gauss']) {
     for (const gap of [100, 1400, 1800, 2500]) {
       const c = strayCaptures({ gap, model });
