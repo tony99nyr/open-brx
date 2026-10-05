@@ -28,7 +28,8 @@ const USAGE = `Usage: ./start.sh [options] [-- Mission Control options]     (Win
                        prefilled GitHub issue in your browser
   --help           show this help
 
-Anything after -- goes to Mission Control unchanged (for example: -- --port 9000).`;
+Anything after -- goes to Mission Control unchanged (for example: -- --port 9000;
+-- --keep-all keeps every old session folder instead of pruning).`;
 
 const args = process.argv.slice(2);
 const dash = args.indexOf('--');

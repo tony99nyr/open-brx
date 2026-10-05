@@ -19,6 +19,7 @@ const WORKERS = Math.max(1, Math.min(8, Math.floor(os.availableParallelism() / 2
 // widgets, a real MC, two phone HUDs) stays in `app/tools/e2e.mjs`; this is the gate that runs
 // before it is worth starting.
 export default defineConfig({
+  cacheDir: '.vite-cache',   // per checkout, not under the shared node_modules (see vite.config.ts)
   plugins: [react()],
   test: {
     environment: 'jsdom',
