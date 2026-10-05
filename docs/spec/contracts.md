@@ -330,7 +330,8 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
           // with a clip; A61: every medal has one, 2 to 8 voiced), match state (lead_taken, lead_lost,
           // next_kill_wins, last_survivor, infected, survivors_win, victory, game_over), objectives
           // (objective_taken, objective_scored, flag_returned, point_captured, hill_captured, bomb_planted,
-          // bomb_defused, bomb_detonated, vip_hit, vip_down), the player's own (hit_taken, died, respawned,
+          // bomb_defused, bomb_detonated, vip_hit, vip_down), the King of the Hill sounds the NODE plays (hill_lost,
+          // hill_contested, hill_moved, hill_tick: no presentation switch mutes them), the player's own (hit_taken, died, respawned,
           // healed, armour_up, shield_up, low_health), the S29 shield recharge the NODE drives (shield_down,
           // shield_charging, shield_online, and shield_loop, which the node REPLAYS on its own length while the
           // shield is gone), reload_nag, the clock (time_60, time_30, time_10) and the extraction

@@ -5,15 +5,9 @@
 // untrusted; and a sweep hit never replaces a connect already in flight.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { makeEl } from './_helpers.mjs';
 
 const elements = new Map();
-function makeEl(id) {
-  return {
-    id, hidden: false, textContent: '', innerHTML: '', className: '', value: '',
-    style: { setProperty() {} }, classList: { toggle() {}, add() {}, remove() {} }, dataset: {},
-    addEventListener() {}, removeEventListener() {}, setAttribute() {}, getAttribute() { return null; },
-  };
-}
 function elFor(id) { if (!elements.has(id)) elements.set(id, makeEl(id)); return elements.get(id); }
 
 global.document = { getElementById: elFor, querySelectorAll: () => [], documentElement: { dataset: {} }, activeElement: null };

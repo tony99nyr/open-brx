@@ -15,11 +15,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, PROBE_LIFE, POOL_REPAIR_TRIES, POOL_REPAIR_READ_MS } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const PSET = golden.head.find(f => f.startsWith('$PSET,'));
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** The gun: a token-append parser feeding a pool model. `ignoreRepairs` (read by the harness writer) drops every
  *  repair frame: a gun that never takes one. */

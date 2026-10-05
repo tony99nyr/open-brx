@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BrxLink, flapDelay, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133 } from '../src/brxlink.js';
+import { useClock } from './_helpers.mjs';
 
 function rig() {
   const attempts = { A: 0, B: 0 }, subs = [], cb = {}, ups = [], drops = [], disconnects = [];
@@ -16,15 +17,6 @@ function rig() {
   const link = new BrxLink({ ble, log: () => {}, onUp: a => ups.push(a && a.basename), onDrop: () => drops.push(Date.now()) });
   return { link, attempts, subs, cb, ups, up, drops, disconnects };
 }
-/** The backoff runs on the mocked clock of node:test, so a loaded machine cannot stretch or shrink it
- *  against the assertions. `settle(ms)` steps 1 ms at a time and lets the retry loop's promise callbacks
- *  run after each step. `setImmediate` is not mocked. */
-function useClock(ctx) {
-  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
-  return async (ms = 1300) => {
-    for (let i = 0; i < ms; i++) { ctx.mock.timers.tick(1); await new Promise(r => setImmediate(r)); }
-  };
-}
 /** A rig whose link is released when the test ends, pass or fail: a forever-loop left running keeps
  *  retrying on the mocked clock after the test, and on a real clock it would hold the process open. */
 function cleanRig(ctx) {
@@ -34,7 +26,7 @@ function cleanRig(ctx) {
 }
 
 test('picking a second gun does not strand it without auto-reconnect', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   r.up.A = false; r.cb.A();                       // gun A dies → forever-loop starts
@@ -49,7 +41,7 @@ test('picking a second gun does not strand it without auto-reconnect', async ctx
 });
 
 test('an abandoned gun is never re-adopted when it powers back on', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   r.up.A = false; r.cb.A();
@@ -63,7 +55,7 @@ test('an abandoned gun is never re-adopted when it powers back on', async ctx =>
 });
 
 test('TAP TO RECONNECT cuts the backoff short instead of waiting it out', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   r.up.A = false; r.cb.A();
@@ -76,7 +68,7 @@ test('TAP TO RECONNECT cuts the backoff short instead of waiting it out', async 
 });
 
 test('disconnect() stops the forever-loop', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   r.up.A = false; r.cb.A();
@@ -91,7 +83,7 @@ test('disconnect() stops the forever-loop', async ctx => {
 // gone quiet for too long while the native BLE stack still reports "connected" — a bad-but-not-dead
 // link the disconnect callback this whole file otherwise depends on may never fire for.
 test('B4: noteStale() forces the OS to release the stale GATT link and runs the exact drop path', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   assert.equal(r.link.connected, true);
@@ -157,7 +149,7 @@ test('scan: onRaw counts every result the bridge carried; the picker call is unc
 });
 
 test('RELINK GUN on a link that reads connected really cycles it and runs onUp again', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = rig();
   await r.link.connect('A', 'GUN-A-1111');
   assert.equal(r.ups.length, 1);
@@ -218,7 +210,7 @@ async function msUntilAttempt(r, settle, cap = 3000, step = 1) {
 }
 
 test('F210: a single quick drop right after connecting still retries at once', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
   await flapOnce(r, settle);
@@ -227,7 +219,7 @@ test('F210: a single quick drop right after connecting still retries at once', a
 });
 
 test('game day: drops 5-8 s after each connect (the p4 log) are flaps, and the 3rd starts the quiet period', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = flapRig(); ctx.after(() => r.link.disconnect());   // the real constants
   const step = async ms => { for (let i = 0; i < ms; i += 50) { ctx.mock.timers.tick(50); await new Promise(res => setImmediate(res)); } };
   await r.link.connect('A', 'GUN-A-1111');
@@ -252,7 +244,7 @@ test('game day: drops 5-8 s after each connect (the p4 log) are flaps, and the 3
 });
 
 test('quiet period: a failed connect in the retry loop does not reconnect inside the quiet period', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
   await flapOnce(r, settle);
@@ -267,7 +259,7 @@ test('quiet period: a failed connect in the retry loop does not reconnect inside
 });
 
 test('flap back-off: a drop during a wait does not start a second retry loop', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
   await flapOnce(r, settle);
@@ -280,7 +272,7 @@ test('flap back-off: a drop during a wait does not start a second retry loop', a
 });
 
 test('flap back-off: a link held FLAP_HOLD_MS clears the count; a drop between window and hold keeps it', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
   await flapOnce(r, settle); r.cb.A();                         // 2 quick drops: flapping
@@ -301,7 +293,7 @@ test('flap back-off: a link held FLAP_HOLD_MS clears the count; a drop between w
 });
 
 test('a failed connect runs no drop path: one "gun disconnected", one onDrop', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
   r.fail = true;
@@ -318,7 +310,7 @@ test('a failed connect runs no drop path: one "gun disconnected", one onDrop', a
 });
 
 test('a connect whose link drops before the notifications start is retried, not claimed as up', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
   let once = true;
@@ -336,7 +328,7 @@ for (const [name, act] of [
   ['picking a gun', l => l.connect('A', 'GUN-A-1111')],
 ]) {
   test(`quiet period: ${name} cancels it and connects at once`, async ctx => {
-    const settle = useClock(ctx);
+    const settle = useClock(ctx, 1300);
     const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
     await r.link.connect('A', 'GUN-A-1111');
     await flapOnce(r, settle);
@@ -380,7 +372,7 @@ function timedRig(opts = {}) {
 async function settleUntil(settle, cond, cap) { for (let ms = 0; ms < cap; ms += 10) { if (cond()) return ms; await settle(10); } return -1; }
 
 test('RELINK reconnects at once: bounded plugin connects, no growing backoff, no flap wait', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = timedRig();
   ctx.after(() => r.link.disconnect());
   const up = r.link.connect('A', 'GUN-A-1111'); await settle(60); await up;
@@ -398,7 +390,7 @@ test('RELINK reconnects at once: bounded plugin connects, no growing backoff, no
 });
 
 test('RELINK: a second press while one is running is ignored, and relinking reads true until the link is up', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = timedRig();
   ctx.after(() => r.link.disconnect());
   const up = r.link.connect('A', 'GUN-A-1111'); await settle(60); await up;
@@ -419,7 +411,7 @@ test('RELINK: a second press while one is running is ignored, and relinking read
 });
 
 test('RELINK: a disconnect that never confirms does not hold the reconnect back', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = timedRig();
   ctx.after(() => { r.hangDisconnect = false; return r.link.disconnect(); });
   const up = r.link.connect('A', 'GUN-A-1111'); await settle(60); await up;
@@ -432,7 +424,7 @@ test('RELINK: a disconnect that never confirms does not hold the reconnect back'
 });
 
 test('RELINK: a gun that never answers ends the relink visibly, and the normal reconnect loop takes over', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = timedRig({ relinkConnectMs: 400, relinkAttempts: 3 });
   ctx.after(() => r.link.disconnect());
   const up = r.link.connect('A', 'GUN-A-1111'); await settle(60); await up;
@@ -475,7 +467,7 @@ const SPAWN = ['$SIR,6,0,,28,0,0,1,,*', '$SIR,13,1,,28,0,0,1,,*', '$SIR,13,0,,28
 const hexOf = t => [...t].map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
 
 test('a spawn write reaches the gun in about a second when the plugin answers 10 s late', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = slowBridgeRig();
   await r.link.connect('A', 'GUN-A-1111');
   const t0 = Date.now();
@@ -492,7 +484,7 @@ test('a spawn write reaches the gun in about a second when the plugin answers 10
 });
 
 test('a gun write does not wait behind a scan stop whose answer is slow, and two writes keep their order', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = slowBridgeRig();
   await r.link.connect('A', 'GUN-A-1111');
   r.link.stopScan();                               // the beacon watch's 90 s restart, just before T-0
@@ -507,7 +499,7 @@ test('a gun write does not wait behind a scan stop whose answer is slow, and two
 });
 
 test('a healthy answer still holds the next chunk until it arrives', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = slowBridgeRig({ answerMs: 30 });      // under the cap: the GATT permit protection is unchanged
   await r.link.connect('A', 'GUN-A-1111');
   const done = r.link.write('$SIR,13,1,,28,0,0,1,,*');
@@ -521,7 +513,7 @@ test('a healthy answer still holds the next chunk until it arrives', async ctx =
 });
 
 test('a write error inside the answer cap still stops the batch; a late one is logged', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const fast = slowBridgeRig({ answerMs: 5, failAt: 0 });
   await fast.link.connect('A', 'GUN-A-1111');
   const p = fast.link.write(['$PLAYX,0,*', '$SPAWN,,*']);
@@ -549,7 +541,7 @@ const framesSent = writes => {
 test('pl3 2026-09-17: a late error from batch N never cuts batch N+1 -- every frame of N+1 goes, once, and it reports true', async ctx => {
   // Before: `_poisoned` was link-wide and cleared at each write() start. Batch N (one chunk) resolved true, its
   // late rejection landed while batch N+1 was sending, and N+1 stopped partway: `$SPAWN`/`$AMMO`/`$BMAP` never left.
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = slowBridgeRig({ answerMs: 200, failAt: 0 });
   await r.link.connect('A', 'GUN-A-1111');
   const first = r.link.write('$PLAYX,0,*');     // one chunk; its real answer is a rejection 200 ms later
@@ -573,7 +565,7 @@ test('pl3 2026-09-17: a late error from batch N never cuts batch N+1 -- every fr
 });
 
 test('pl4 2026-09-17: a late error on the last frame, after its batch resolved, is logged at le with the batch label and frame', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = slowBridgeRig({ answerMs: 200, failAt: chunksOf(SPAWN).length - 1 });   // the $BMAP chunk is lost, and we learn it after the batch resolved
   await r.link.connect('A', 'GUN-A-1111');
   const done = r.link.write(SPAWN, 'revive');
@@ -588,7 +580,7 @@ test('pl4 2026-09-17: a late error on the last frame, after its batch resolved, 
 });
 
 test('pl3 2026-09-17: a late error inside its own batch sends again from the start of the failed frame, whole and in order', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = slowBridgeRig({ answerMs: 200, failAt: 0 });   // chunk 0 (frame 0) is lost, and we learn it ~4 frames later
   await r.link.connect('A', 'GUN-A-1111');
   const done = r.link.write(SPAWN);
@@ -607,7 +599,7 @@ test('pl3 2026-09-17: a late error inside its own batch sends again from the sta
 });
 
 test('pl3 2026-09-17: a batch whose re-sends keep failing still sends every frame, then resolves false', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = slowBridgeRig({ answerMs: 200, fails: () => true });   // every chunk's late answer is a rejection
   await r.link.connect('A', 'GUN-A-1111');
   const done = r.link.write(SPAWN);
@@ -659,7 +651,7 @@ test('the gun parser model reproduces 4545/7070 from a partial $PSET followed by
 
 for (const delivered of [false, true]) {
   test(`F341: after an uncertain chunk (${delivered ? 'it did reach the gun' : 'status 201, it never went'}) the re-send goes only after $*, and the gun reads 45/70`, async ctx => {
-    const settle = useClock(ctx);
+    const settle = useClock(ctx, 1300);
     const last = chunksOf([PSET]).length - 1;             // the chunk with the `*`
     // 60 ms: past the 50 ms cap, so the loop has moved on, but inside the frame gap: the loss is known at the
     // boundary right after the `$PSET`, which is exactly when the old loop re-sent it onto the partial frame.
@@ -685,7 +677,7 @@ for (const delivered of [false, true]) {
 }
 
 test('F341: a chunk error that lands after its batch resolved makes the NEXT write start with $*', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = slowBridgeRig({ answerMs: 200, failAt: 0 });
   await r.link.connect('A', 'GUN-A-1111');
   const first = r.link.write('$PLAYX,0,*');
@@ -705,7 +697,7 @@ test('F341: a chunk error that lands after its batch resolved makes the NEXT wri
 });
 
 test('F341: a chunk error inside the cap stops the batch, and the next write starts with $*', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = slowBridgeRig({ answerMs: 5, failAt: 1 });  // the second chunk of the $PSET fails at once
   await r.link.connect('A', 'GUN-A-1111');
   assert.equal(await Promise.race([r.link.write([PSET]), settle(300).then(() => 'hung')]), false);
@@ -760,7 +752,7 @@ function responseRig(ctx, opts = {}) {
 }
 
 test('F270: responseForMultiPacket off (default) -- every chunk, single- or multi-packet, uses the without-response writer', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const { link, calls } = responseRig(ctx);
   await link.connect('A', 'GUN-A-1111');
   const done = link.write(SPAWN);
@@ -771,7 +763,7 @@ test('F270: responseForMultiPacket off (default) -- every chunk, single- or mult
 });
 
 test('F270: responseForMultiPacket on -- a multi-packet frame\'s chunks use the response writer, a single-packet frame\'s does not', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const { link, calls } = responseRig(ctx, { responseForMultiPacket: true });
   await link.connect('A', 'GUN-A-1111');
   const done = link.write(SPAWN);
@@ -785,7 +777,7 @@ test('F270: responseForMultiPacket on -- a multi-packet frame\'s chunks use the 
 test('F270: with the lever on, a response chunk that answers after the cap holds the next chunk back', async ctx => {
   // The plugin keeps one write callback per device, so a second write issued before the first answers
   // fails as busy (Android) or overwrites the pending callback (iOS). A response chunk must wait, cap or not.
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const events = [];
   let open = 0;
   const plugin = {
@@ -811,7 +803,7 @@ test('F270: with the lever on, a response chunk that answers after the cap holds
 });
 
 test('F270: with the lever on, a response chunk that fails after the cap still fails the write', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const plugin = {
     writeWithoutResponse: () => Promise.resolve(),
     write: () => new Promise((_, rej) => setTimeout(() => rej(new Error('GATT 133')), 80)),
@@ -828,7 +820,7 @@ test('F270: with the lever on, a response chunk that fails after the cap still f
 });
 
 test('write pacing: with a block size set, a pause lands after every N frames and never after the last', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const writes = [];
   const ble = {
     initialize: async () => {}, disconnect: async () => {}, connect: async () => {}, startNotifications: async () => {},
@@ -851,7 +843,7 @@ test('write pacing: with a block size set, a pause lands after every N frames an
 // showed "No guns found" with no scan ever having run. app.js's `openPicker` now ends that loop first
 // (`link.disconnect()`, the smallest safe option) before it scans; this pins the BrxLink half of that fix.
 test('ending a background reconnect frees the radio, so the picker can scan instead of "No guns found"', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   // Models a gun that is off: the native connect() hangs (a real GATT connect can sit for many seconds)
   // until a disconnect() call on the same id aborts it -- the assumption behind the fix.
   let pendingReject = null;
@@ -888,7 +880,7 @@ function gattRig(failures, { failMs = 300, message = 'Connection failed with sta
 }
 
 test('F297: three fast GATT 133 failures retry after GATT133_GAP_MS, and the gun links in under 2 s', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = gattRig(3); ctx.after(() => r.link.disconnect());
   const t0 = Date.now();
   let up = false; r.link.connect('A', 'GUN-A-1111').then(() => { up = true; });
@@ -901,7 +893,7 @@ test('F297: three fast GATT 133 failures retry after GATT133_GAP_MS, and the gun
 });
 
 test('F297: past GATT133_QUICK_RETRIES in a row, a 133 takes the normal backoff', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const r = gattRig(GATT133_QUICK_RETRIES + 1); ctx.after(() => r.link.disconnect());
   r.link.connect('A', 'GUN-A-1111').catch(() => {});
   await settle(8000);   // four 0.3 s failures, three 200 ms gaps, then up to 4.8 s of backoff
@@ -911,7 +903,7 @@ test('F297: past GATT133_QUICK_RETRIES in a row, a 133 takes the normal backoff'
 
 test('F297: a slow failure (a 10 s timeout) and a non-133 error keep the normal backoff', async ctx => {
   for (const opts of [{ failMs: 2000 }, { failMs: 300, message: 'Connection timeout.' }]) {
-    const settle = useClock(ctx);
+    const settle = useClock(ctx, 1300);
     const r = gattRig(1, opts);
     r.link.connect('A', 'GUN-A-1111').catch(() => {});
     await settle(opts.failMs * 2 + 1000);
@@ -928,7 +920,7 @@ test('F297: isGatt133 reads the plugin reject and the field log shape, and nothi
 });
 
 test('F297: a non-133 failure between 133s resets the run, and a later setup failure that reads 133 is not a fast 133', async ctx => {
-  const settle = useClock(ctx);
+  const settle = useClock(ctx, 1300);
   const msgs = ['Connection failed with status 133 (GATT_ERROR).', 'Connection timeout.', 'Connection failed with status 133 (GATT_ERROR).'];
   const starts = [];
   const ble = {

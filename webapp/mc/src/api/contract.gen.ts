@@ -95,6 +95,11 @@ export const PIECES_STORE_V = 1;
 export const FAVOURITES_STORE_V = 1;
 /** the session snapshot (`state.Session` persist) */
 export const SESSION_STORE_V = 1;
+/** O13: the oldest StickS3 firmware MC accepts, in the Stick's own scheme `h<hardware gen>-<major>.<minor>` (its
+ *  `app_ver` is `<that>+<short git sha>`, `mc_link_glue.h`). Bump it with `stationAppVer` there when a Stick
+ *  change is one MC needs. "h8-0.2" is the first build that reports the git sha and `nvs_fail`: a Stick that
+ *  reports plain "h8-0.1" cannot say what it runs, so it must be reflashed. */
+export const STATION_MIN_FW = 'h8-0.2';
 /** Exported through `gen_contract` so the console (`api/derive.ts`) and its `?mock` backend read the SAME words instead
  *  of keeping a hand copy that can drift. Every line reads `WHAT IS WRONG: WHAT TO DO` (F221; `test_mc_alert_wording.py`).
  *  The four proof prefixes whose cure is the push itself (A36/A37): a re-push replaces them (`state.cured_by_push`). */
@@ -1569,6 +1574,8 @@ export interface StationReport {
   uptime_s?: number;
   /** A58: boots since the station was flashed (persisted) */
   boot_count?: number;
+  /** O12: NVS writes that failed since boot (absent = none) */
+  nvs_fail?: number;
   /** A58: the Wi-Fi association mode (utility.md §5g.4) */
   assoc?: 'muster' | 'held';
 }

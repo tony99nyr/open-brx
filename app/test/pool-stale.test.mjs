@@ -8,13 +8,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const { Engine } = E;
 const QUIET = E.GUN_QUIET_STALE_MS ?? 185000;   // `??` so this file loads (and fails) against an engine without F208
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const VOLTS = '$VOLTS,8428,4164,100,100,*';
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 function harness() {
   let clock = 1_000_000;

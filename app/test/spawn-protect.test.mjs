@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { mkStorage, sirRows, tmps } from './_helpers.mjs';
 
 const { Engine } = E;
 const CAP = E.SPAWN_PROTECT_MAX_MS ?? 2100;   // `??` so this file still loads (and fails) against a pre-F209 engine
@@ -22,11 +23,8 @@ const TAKE = golden.sir_pool[0];
 const ON = '$TMP,,,,,,,,-100,,,,*';
 const OFF = '$TMP,,,,,,,,0,,,,*';
 
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 const fnOf = f => f.split(',')[4];
 const realRows = w => w.filter(f => f.startsWith('$SIR,') && fnOf(f) !== '28');
-const sirRows = w => w.filter(f => f.startsWith('$SIR,'));
-const tmps = w => w.filter(f => f.startsWith('$TMP'));
 /** The protection frames of a write, in wire order: the take's rows and the off frame. */
 const release = w => w.filter(f => f.startsWith('$SIR,') || f.startsWith('$TMP'));
 

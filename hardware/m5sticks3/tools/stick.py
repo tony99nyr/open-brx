@@ -96,14 +96,29 @@ def ports_argv(win_python: str = WIN_PYTHON) -> list[str]:
     return [win_python, "-c", _PORT_PROBE_SRC]
 
 
-# The post-MVP revive feedback switch (presence.h BRX_REVIVE_FEEDBACK), as an arduino-cli build property:
-# the esp32 platform puts compiler.cpp.extra_flags on every C++ compile line.
-REVIVE_ON_PROPERTY = "compiler.cpp.extra_flags=-DBRX_REVIVE_FEEDBACK=1"
+# Build properties: the esp32 platform puts compiler.cpp.extra_flags on every C++ compile line. It carries the
+# post-MVP revive feedback switch (presence.h BRX_REVIVE_FEEDBACK) and the build's git sha (BRX_FW_SHA).
+
+def firmware_sha(repo_dir: Path = SKETCH_DIR) -> str | None:
+    """O13: the short git sha the build reports as `<version>+<sha>`, with `_dirty` when the sketch folder
+    has uncommitted changes. None when git is missing or this is not a checkout: the firmware then reports
+    `+unknown`. A bare token, because an arduino-cli property cannot carry quotes across WSL to Windows."""
+    try:
+        sha = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--short=10", "HEAD"],
+                             capture_output=True, text=True, timeout=10)
+        if sha.returncode != 0 or not re.fullmatch(r"[0-9a-f]{4,40}", sha.stdout.strip()):
+            return None
+        dirty = subprocess.run(["git", "-C", str(repo_dir), "status", "--porcelain", "--", str(repo_dir)],
+                               capture_output=True, text=True, timeout=10)
+        return sha.stdout.strip() + ("_dirty" if dirty.returncode == 0 and dirty.stdout.strip() else "")
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def compile_argv(cli_exe: str = CLI_EXE, fqbn: str = FQBN, board_url: str = BOARD_URL,
-                  win_path: str = STAGE_DIR_WIN, revive_on: bool = False) -> list[str]:
-    extra = ["--build-property", REVIVE_ON_PROPERTY] if revive_on else []
+                  win_path: str = STAGE_DIR_WIN, revive_on: bool = False, fw_sha: str | None = None) -> list[str]:
+    flags = (["-DBRX_REVIVE_FEEDBACK=1"] if revive_on else []) + ([f"-DBRX_FW_SHA={fw_sha}"] if fw_sha else [])
+    extra = ["--build-property", "compiler.cpp.extra_flags=" + " ".join(flags)] if flags else []
     return [cli_exe, "compile", "--fqbn", fqbn, "--additional-urls", board_url, *extra, win_path]
 
 
@@ -215,7 +230,7 @@ def do_compile(args) -> None:
     revive_on = bool(getattr(args, "revive_on", False))
     if revive_on:
         print("building with revive feedback ON (BRX_REVIVE_FEEDBACK=1): a compile check, not for flashing")
-    proc = _run(compile_argv(revive_on=revive_on), timeout=600, cwd=STAGE_CWD)
+    proc = _run(compile_argv(revive_on=revive_on, fw_sha=firmware_sha()), timeout=600, cwd=STAGE_CWD)
     if proc.returncode != 0:
         print(proc.stdout)
         print(proc.stderr, file=sys.stderr)
@@ -229,7 +244,7 @@ def do_flash(args) -> None:
     port = select_stick_port(_list_ports(), explicit=args.port)
     copied = stage(SKETCH_DIR, STAGE_DIR_WSL)
     print(f"staged {len(copied)} files to {STAGE_DIR_WSL}")
-    cproc = _run(compile_argv(), timeout=300, cwd=STAGE_CWD)
+    cproc = _run(compile_argv(fw_sha=firmware_sha()), timeout=300, cwd=STAGE_CWD)
     if cproc.returncode != 0:
         print(cproc.stdout)
         print(cproc.stderr, file=sys.stderr)

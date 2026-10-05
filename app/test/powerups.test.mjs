@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const { Engine } = E;
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
@@ -20,8 +21,6 @@ const OVERSHIELD = { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at
 const WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*',
   3: '$WEAP,3,0,100,6,0,149,0,,,,,,,,1200,850,2,2,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,2,1,75,*' };
 const WEAP0 = golden.head.find(f => f.startsWith("$WEAP,0,"));
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live TDM with `stations` on the config (and `powerups` slots for the weapon items), past T-0. */
 function harness({ stations = [], powerups = undefined, maxShield = 0, weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], overrides = undefined, stun = undefined, psetPool = true, echo = false, profile = true } = {}) {
