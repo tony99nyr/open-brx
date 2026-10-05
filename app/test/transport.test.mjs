@@ -530,3 +530,29 @@ test('transport: a `result` envelope actually reaches an onMessage subscriber', 
   assert.equal(seen[0].kind, 'result');
   assert.equal(seen[0].body.outcome, 'lose');
 });
+
+test('transport: a rejected reply in the reconnect burst is replaced, so the F477 snap still lands within the burst', async ctx => {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F', fw: 'v4.32' }, node: { app_ver: 't' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  for (let i = 0; i < 8; i++) t.clock.sample(1000, 1000 + 10 + 100, 1020);   // synced, true offset 100, rtt 20
+  const p = t.connect({ url: 'ws://x/ws' });
+  const ws = sockets[0]; ws.open();
+  ws.recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0 }));
+  await p;
+  const reqs = () => ws.sent.filter(e => e.kind === 'time_req');
+  const reply = (r, rtt) => ws.recv(E.makeEnvelope('time_res', { t_node: r.body.t_node, server_t: r.body.t_node + rtt / 2 + 60_100 }));
+  assert.equal(reqs().length, 5);
+  await advance(20);
+  for (const r of reqs().slice(0, 3)) reply(r, 20);
+  await advance(80);                                   // the last two replies take 100 ms: over 3x the median
+  for (const r of reqs().slice(3, 5)) reply(r, 100);
+  assert.equal(reqs().length, 7, 'two replacements for two rejections');
+  await advance(20);
+  for (const r of reqs().slice(5)) reply(r, 20);
+  assert.equal(Math.round(t.clock.offset), 60_100);
+  for (let i = 0; i < 20; i++) { await advance(100); }
+  assert.ok(reqs().length <= 10, 'bounded: at most 10 sent for one burst');
+});
