@@ -9,10 +9,10 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 95.** Desk 16 · bench 76 · decision 3.
+**MVP open: 94.** Desk 15 · bench 76 · decision 3.
 
-**MVP DESK (16),** a keyboard is enough:
-- 🟡 **F484** · **F488** · **F489** · **F490**
+**MVP DESK (15),** a keyboard is enough:
+- 🟡 **F484** · **F489** · **F490**
 - 🟢 **F475** · **F476** · **F477** · **F478** · **F479** · **F480** · **F481** · **F482** · **F485** · **F486** · **F487** · **F492**
 
 **MVP BENCH (76),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -54,7 +54,6 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 A keyboard is enough. Highest value first.
 
 - **F484 🟡 A PHONE PICKUP AFTER AN OPERATOR RESET BEFORE THE FIRST SPAWN IS REFUSED.** Found by the chaos harness on 2026-10-05, once its fake phone sends `next_spawn_in_s` as the real one does (F473): a preset's first spawn is one full interval after go-live (`first_at_s = spawn_every_s`), so an item the operator restores before it advertises a countdown to spawn index 0, and `_take_item` refuses any named index below 1 ("names no spawn (next spawn index 0 ...): refused"). The real take is lost. Fix: accept index 0 for an item made available by a reset before the first spawn. Proven: letting index 0 through turns all four strict xfails (`stations-mixed`, `stations-powerup-paths`, `pickup-clock-lead`, `pickup-clock-skew`) into XPASS. Owner brx5. `build`.
-- **F488 🟡 APP-SCREENS "F258 IDLE-NOISY: A REPAINT KEEPS EVERY ROW NODE" FLAKES UNDER LOAD.** The land lane's 7-day flake list had app-screens x4 (2026-10-05): two were this step ("a row node was destroyed and rebuilt: [null, ...]", logs `/tmp/brx-test-all-3128396`, `-3378546`), one the shield meter refill sampled every 100 ms (`-125395`). Find the cause (a wall-clock sample against the demo's own timers, or a real rebuild in the idle list), not a longer wait. Owner brx2. `build`.
 - **F489 🟡 MC-VQA2 TIMES OUT WAITING FOR MC TO SCORE THE KILL.** The land lane's 7-day flake list had mc-vqa2 x5 (2026-10-05): three were "timed out after 10000 ms (once 30000 ms) waiting for MC to score the kill" (logs `/tmp/brx-test-all-3892305`, `-3073928`, `-3399139`), one "vite did not start", one a console error. Find why the kill is not scored under load (the fake node's fact, its clock sync, or MC's scorer), not a longer wait. Owner brx3. `build`.
 - **F490 🟡 A PHONE THAT HELLOS AS A UTILITY, THEN RETURNS AS A HUD WITH AN UNOWNED GUN, GETS ITS OLD PLAYER BACK.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): `NetServer` remembers the node's `player_id` and forwards it to `_on_node` (`state.py`), which binds it. Fix: clear `NetServer`'s `player_id` on a utility hello. Owner brx3 (after F489). `build`.
 - **F475 🟢 AFTER A CLOCK-STEP RESCORE, THE SCORER FEED ROWS KEEP THE STEPPED TIMES.** Found in brx5's F474 fix (2026-10-05): MC rescores the facts after it detects a node clock step, but feed rows carry no id, so the rows already written keep their old times. Owner: unassigned. `build`.
