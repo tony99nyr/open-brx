@@ -137,12 +137,16 @@ export class PlayerPowerups {
     this._swapCard = null;      // {name, color, replaced, at}: the "<NEW> REPLACES <OLD>" card, set when the announcer reaches it
   }
   /** The `pu` block of the engine's persisted context (an app restart mid-match must still end a held item, re-equip
-   *  slot 0 after a death with a heavy held, and keep the overshield out of the S29 refill's way), or null. */
+   *  slot 0 after a death with a heavy held, keep the overshield out of the S29 refill's way, and not announce a spawn
+   *  twice), or null. */
   snapshot() {
-    return this._held || this._overshield || this._reequip || this._backPending ? { held: this._held, overshield: this._overshield, seen: this._seen, reequip: !!this._reequip, osProtectUntil: this._osProtectUntil || 0, psetNow: this._psetNow || null, backPending: this._backPending || null } : null;
+    // Cross-lane review 2026-10-04 #14: the announcer's `_seen` keeps the block alive too, or a reload just after a
+    // spawn announces it again (`tickAnnounce`). A copy, so a later announcement cannot change a snapshot already taken.
+    const seen = Object.keys(this._seen).length > 0;
+    return this._held || this._overshield || this._reequip || this._backPending || seen ? { held: this._held, overshield: this._overshield, seen: { ...this._seen }, reequip: !!this._reequip, osProtectUntil: this._osProtectUntil || 0, psetNow: this._psetNow || null, backPending: this._backPending || null } : null;
   }
   /** `_load`: the `pu` block `snapshot` wrote. */
-  restore(p) { this._held = p.held || null; this._overshield = p.overshield || null; this._seen = p.seen || {}; this._reequip = !!p.reequip; this._osProtectUntil = +p.osProtectUntil || 0; this._psetNow = p.psetNow || null; this._backPending = p.backPending || null; }
+  restore(p) { this._held = p.held || null; this._overshield = p.overshield || null; this._seen = p.seen && typeof p.seen === 'object' ? { ...p.seen } : {}; this._reequip = !!p.reequip; this._osProtectUntil = +p.osProtectUntil || 0; this._psetNow = p.psetNow || null; this._backPending = p.backPending || null; }
   /** A spawn or revive wrote this life's `pset_pool` take: the overshield raises THIS frame's shield max, and restores it. */
   setPset(frame) { this._psetNow = frame; }
 

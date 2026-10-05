@@ -146,6 +146,21 @@ test('announcement: <ITEM> AVAILABLE at each spawn time, skipped when the statio
   assert.ok(h.eng.state().powerupSpawn.at > a.at, 'announced again once the station said it was taken');
 });
 
+// Cross-lane review 2026-10-04 #14: the snapshot dropped `_seen` when no item or effect was active, so a reload inside
+// PU_ANNOUNCE_LATE_MS of a spawn announced it a second time.
+test('cross-lane #14: an app restart just after a spawn announcement does not repeat it', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: OVERSHIELD }] });
+  const said = () => h.logs.filter(l => /powerup: OVERSHIELD AVAILABLE/.test(l)).length;
+  h.at(60.5);
+  assert.equal(said(), 1, 'setup: the first spawn announces');
+  h.at(61);
+  h.restart(); h.adv(2000);
+  assert.equal(h.eng.phase, 'live', 'setup: the restarted engine is back in the match');
+  assert.equal(said(), 1, 'the reload does not announce the same spawn again');
+  h.at(120.5);
+  assert.equal(said(), 2, 'CONTROL: the next spawn still announces');
+});
+
 test('the claim: in range is the median at or above the threshold (0 = the default -55), out is 3 dB below it', () => {
   assert.equal(E.POWERUP_THRESHOLD_DEFAULT, -55); assert.equal(E.POWERUP_EXIT_DB, 3); assert.equal(E.POWERUP_DWELL_MS, 1000);
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
