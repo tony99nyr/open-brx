@@ -704,7 +704,7 @@ function powerupHost(e) {
     setShield: v => { e.shield = v; e._prevShield = v; e._shieldRegen = null; e._shieldFillAt = 0; },   // the overshield grant's pools (an absolute write: it ends a pending spawn fill)
     get shieldBase() { return e._shieldFillPending() ? Math.max(e.shield, e.maxShield) : e.shield; },   // polish r1 (L7): a pending fill counts as full
     setWriteLost: life => { e._writeLost = life; },   // a lost protection-off: MC offers RESYNC GUN
-    acctWrote: (slot, mag, res, weap) => e.am.acctWrote(slot, mag, res, weap),   // F259: an echo of this write is bookkeeping, never a shot
+    acctWrote: (slot, mag, res, weap, resetMag) => e.am.acctWrote(slot, mag, res, weap, resetMag),   // F259: an echo of this write is bookkeeping, never a shot
     setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now, mag and reserve
     setMag: (slot, mag) => e.am.setMag(slot, mag),   // the reconcile re-arm: the magazine only, the reserve is left alone on purpose
     setSwitching: card => e.am.setSwitching(card),   // F400: a pickup switch card is the engine's own `switching`
@@ -733,7 +733,7 @@ function reconcileHost(e) {
     // the engine state the module changes, each through one named door
     clearResync: () => { e.resync = null; },   // a rejoin never runs the infer-death machine
     stunRestore: why => e._stunRestore(why),
-    acctWrote: (slot, mag, res, weap) => e.am.acctWrote(slot, mag, res, weap),   // F259: an echo of this write is bookkeeping, never a shot
+    acctWrote: (slot, mag, res, weap, resetMag) => e.am.acctWrote(slot, mag, res, weap, resetMag),   // F259: an echo of this write is bookkeeping, never a shot
     setPrev: (slot, mag, res) => e.am.setPrev(slot, mag, res),   // what the slot holds now
     holdAccuracyWrites: why => e._holdAccuracyWrites(why), recoilArm: why => e._recoilArm(why),
     armRepair: why => { e._sirLive = false; e._armPending = e._repairArm(); e._armLife(why); },   // F11: the live table, then protection off
@@ -759,6 +759,11 @@ function ammoHost(e) {
     roundsLeft: (slot, prev, mag) => e._roundsLeft(slot, prev, mag), resyncAmmo: (prev, mag) => e._resyncAmmo(prev, mag),
     setAmmo: (ammo, mag) => { e.ammo = ammo; e.mag = mag; }, setReserve: reserve => { e.reserve = reserve; },
   };
+}
+
+/** Cross-lane #5: every `$AMMO` row of a burst at 0/0 (a revive inside a stun keeps the gun disarmed). PURE. */
+export function zeroAmmoRows(frames) {
+  return frames.map(f => typeof f === 'string' && f.startsWith('$AMMO,') ? f.replace(/^(\$AMMO,\d+),[^,]*,[^,]*,/, '$1,0,0,') : f);
 }
 
 export class Engine {
@@ -1271,6 +1276,8 @@ export class Engine {
         return Promise.all(writes).then(results => results.every(ok => ok !== false));
       }
     }
+    // Cross-lane r2 C1: a write may settle its rows when it is SENT (a burst the play queue held back), not when it was built.
+    if (options && typeof options.atSend === 'function') frames = options.atSend(frames);
     // F121 rebuild: a `$SIR` row or a `$CLEAR` leaves the gun's table something other than a `sir_pool` take, so the
     // next protection release must write one. Marked at CALL time, like the write order itself. stage.py `write` mirrors it.
     if (frames.some(f => typeof f === 'string' && (f.startsWith('$SIR,') || f.startsWith('$CLEAR')))) { this._sirGen++; this._sirLive = false; }
@@ -1463,9 +1470,9 @@ export class Engine {
   /** F416: a failed spawn or revive write gets a pool probe, then a weapon query if health is positive.
    *  Only a matching slot and magazine prove the burst landed. Re-send the burst before any play, else repair
    *  only team, ammo and trigger controls. The check remains open until a query verifies the result. */
-  _writeLife(frames, why, life, check = null) {
+  _writeLife(frames, why, life, check = null, frames0 = null, atSend = null) {
     const at = this.now();
-    const r = this._quietWrite(frames, why);   // F416 part 2: no station scan while this write is on the radio
+    const r = this._quietWrite(frames, why, atSend ? { atSend } : undefined);   // F416 part 2: no station scan while this write is on the radio
     Promise.resolve(r).then(ok => {
       if (ok !== false) {
         if (check) {   // a completed write still needs a weapon read-back
@@ -1482,7 +1489,9 @@ export class Engine {
       this._writeLost = life;
       // F416: ask the gun before a repeat. A pool answer alone cannot prove the weapon state.
       this.log(`*** write ${why} failed -- asking the gun before any re-send (F416) ***`, 'le');
-      const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: at, shotsAt: this.shots };
+      // Cross-lane r1 C1: `frames0`, when given, is the burst as it would be ARMED (a stunned self-hit revive wrote it zeroed);
+      // a re-send is built from it, and zeroed again only if the stun still holds then (`_spawnRetry`).
+      const c = check && this._spawnCheck === check ? check : { life, frames, why, resends: 0, firstAt: at, shotsAt: this.shots, ...(frames0 ? { frames0 } : {}) };
       // Review 2026-09-26: `resentAt` clears. A lost re-send is off the radio, so its in-flight guard must not swallow
       // the probe's `$HP,0` answer (`_spawnIntercept`). `resends` still counts it, so the SPAWN_RESENDS bound holds.
       Object.assign(c, { writeAt: at, asks: 0, lost: false, heardAt: 0, queryAt: 0, resentAt: 0 });
@@ -1497,12 +1506,12 @@ export class Engine {
   /** F416 part 2: a write the player cannot play without (a spawn or revive burst, a pickup equip) opens the radio-quiet
    *  window, so the station scan (scanwatch.js) is shut while it is on the radio and for RADIO_QUIET_AFTER_MS after it
    *  settles. Bench part 1 (brx2): both lost writes that day (the go-live spawn, a Rockets grant) followed a scan flood. */
-  _quietWrite(frames, why) {
+  _quietWrite(frames, why, options = undefined) {
     // Review r2: COUNTED, not one timer. Two overlapping writes (a revive beside a grant) must hold the radio until the
     // LAST settles; one shared timer let the first settle reopen the scan while the second was still on the radio.
     this._quietFrom = this.now(); this._quietOpen = (this._quietOpen || 0) + 1;
     const done = () => { this._quietOpen = Math.max(0, this._quietOpen - 1); this._quietUntil = this.now() + RADIO_QUIET_AFTER_MS; };
-    const r = this._write(frames, why);
+    const r = this._write(frames, why, options);
     Promise.resolve(r).then(done, done);
     return r;
   }
@@ -1588,6 +1597,26 @@ export class Engine {
     }
     this._spawnRetry(c, `slot ${lcd[4]}, magazine ${lcd[5]} (expected slot ${slot}, magazine ${expected})`);
   }
+  /** Cross-lane r2 C1: the `atSend` of a burst zeroed for a stun (#5, C1). A burst carrying a `$PLAY` can wait in the play
+   *  queue past the stun's expiry, while the restore (no `$PLAY`) goes straight out; its zeros would then disarm the gun
+   *  for the life. So when it is SENT and the stun is over, each zeroed `$AMMO` row takes the `armed` row for its slot
+   *  (the live counts and the held heavy's charges: nothing fires while stunned, so they still hold), and is booked. */
+  _stunArmAtSend(armed) {
+    const bySlot = {};
+    for (const f of armed) if (typeof f === 'string' && f.startsWith('$AMMO,')) bySlot[f.split(',')[1]] = f;
+    return frames => {
+      if (this.stunned) return frames;
+      const swapped = [];
+      const out = frames.map(f => {
+        if (typeof f !== 'string' || !/^\$AMMO,\d+,0,0,/.test(f)) return f;
+        const a = bySlot[f.split(',')[1]];
+        if (!a || a === f) return f;
+        swapped.push(a); return a;
+      });
+      if (swapped.length) { this.am.acctWroteRows(swapped); this.log(`stun over before the burst was sent: ${swapped.length} row(s) armed`, 'li'); }
+      return out;
+    };
+  }
   /** F416: repeat the burst only before any observed play; otherwise restore its weapon controls. */
   _spawnRetry(c, evidence) {
     if (this._spawnCheckOver()) { if (this._spawnCheck === c) this._spawnCheck = null; return false; }   // F416 r3: never a burst after the whistle
@@ -1606,10 +1635,14 @@ export class Engine {
       // F416 r3: each re-send is built from the original burst, never a mutated one: every pickup slot is zeroed, then
       // only the heavy held NOW gets its charges (a swap since the last re-send must not leave two slots loaded).
       const base = c.frames0 || (c.frames0 = c.frames), pu = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
-      const frames = burstWithHeld(base, h, pu);
-      this.am.acctWroteRows(frames, h ? sl => sl === h.slot : null);   // bug 3a: the re-sent rows echo too; `keepHeld` books the heavy's
-      this._writeLife(frames, `${c.why} (re-sent ${c.resends})`, c.life, c);
-      if (h) this.pu.keepHeld(h);
+      // Cross-lane r1 C1: a stunned self-hit revive's check holds the ARMED burst. While the stun still holds, every `$AMMO`
+      // row goes out at 0/0 and the account keeps the live counts for the expiry restore (as `_revive`); once it has
+      // ended, the re-send arms the gun, or the restore's counts would be overwritten with zeros for the rest of the life.
+      const stun = !!this.stunned;
+      const frames = stun ? zeroAmmoRows(burstWithHeld(base, null, pu)) : burstWithHeld(base, h, pu);
+      if (!stun) this.am.acctWroteRows(frames, h ? sl => sl === h.slot : null);   // bug 3a: the re-sent rows echo too; `keepHeld` books the heavy's
+      this._writeLife(frames, `${c.why} (re-sent ${c.resends})`, c.life, c, null, stun ? this._stunArmAtSend(burstWithHeld(base, h, pu)) : null);
+      if (h) this.pu.keepHeld(h, stun);
       return;
     }
     const rp = this._respawnProfile();
@@ -3156,8 +3189,8 @@ export class Engine {
     return [`$LIFE,0,0,${this.maxShield},*`];
   }
   /** X3: a spawn or revive burst, with the fill LAST after the klaxon and spawn line. */
-  _writeSpawnBurst(frames, fill, why, life, tail = []) {
-    this._writeLife([...frames, ...fill, ...tail], why, life);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
+  _writeSpawnBurst(frames, fill, why, life, tail = [], armed = null) {
+    this._writeLife([...frames, ...fill, ...tail], why, life, null, armed ? [...armed, ...fill, ...tail] : null, armed ? this._stunArmAtSend(armed) : null);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
     this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
   }
   _spawn(withCountdown) {
@@ -4230,7 +4263,14 @@ export class Engine {
     const revive = keepAmmo ? revive0.map(f => { const t = f.startsWith('$AMMO,') ? f.split(',') : null; const k = t && keepAmmo[+t[1]]; return k ? `$AMMO,${t[1]},${k[0]},${k[1]},${t.slice(4).join(',')}` : f; }) : revive0;
     // F438 r4: a self-hit revive keeps a held heavy (the node still tracks it), its charges in its own `$AMMO` row (`burstWithHeld`, as the reconcile re-arm), never the zero.
     const keep = selfHit ? this.pu.held : null;
-    const burst = keep ? burstWithHeld(revive, keep) : revive;
+    const armed = keep ? burstWithHeld(revive, keep) : revive;
+    // Cross-lane review 2026-10-04 #5: a lethal self-hit inside a stun. F438 says the self-kill never happened, so the stun
+    // it interrupted goes on: the revive does NOT end it. The revive's `$SPAWN` re-arms the gun, so every `$AMMO` row of
+    // its burst goes out at 0/0 (the stun's own disarm, in the same write) and the gun stays disarmed until the stun's
+    // expiry restore, which writes `stunned.ammo` (and the held heavy's count as it is then). Ending the stun here instead
+    // would hand a stunned player a working gun early, purely for having shot themselves.
+    const stunHolds = !!(selfHit && this.stunned);
+    const burst = stunHolds ? zeroAmmoRows(armed) : armed;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
     // F438: the revive leaves full health and armour and the fill's shield; the drain takes back the difference, per pool
@@ -4244,7 +4284,8 @@ export class Engine {
     // docs/announcer.md: the dead queue ends here. Only my kill confirm and the lead change survive it, and they wait for
     // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
     if (!selfHit || revive.includes(PLAYX)) this._ann.respawn(this.now(), revive.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
-    this._writeSpawnBurst([...(ps.frame ? [ps.frame] : []), ...sir, ...burst, ...(sp.frame ? [sp.frame] : [])], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain);   // X3: the line before the fill
+    const pre = [...(ps.frame ? [ps.frame] : []), ...sir], post = sp.frame ? [sp.frame] : [];
+    this._writeSpawnBurst([...pre, ...burst, ...post], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain, stunHolds ? [...pre, ...armed, ...post] : null);   // X3: the line before the fill; r1 C1: the armed burst for an F416 re-send
     this.hurtFired = false; this._hurtSent = false;
     this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
@@ -4255,9 +4296,12 @@ export class Engine {
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
     this.am.forgetCounts(); this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
-    this.am.acctWroteRows(burst, keep ? sl => sl === keep.slot : null);   // bug 3a: every `$AMMO` row of the burst echoes (brx1, 2026-10-02); `keepHeld` books the heavy's
+    // #5: under a stun the account keeps the LIVE counts with no echo window, as `_stun`'s own disarm leaves it: the gun's
+    // echo of the zeros is dropped while stunned (ammo.js `onAmmo`), and `liveAmmo()` must still read the real counts.
+    if (stunHolds) this.am.restore(keepAmmo);
+    else this.am.acctWroteRows(burst, keep ? sl => sl === keep.slot : null);   // bug 3a: every `$AMMO` row of the burst echoes (brx1, 2026-10-02); `keepHeld` books the heavy's
     if (keepAmmo) for (const [sl, [mag, res]] of Object.entries(keepAmmo)) this.am.setPrev(sl, mag, res);   // polish 2026-10-03: the counts the burst carried
-    if (keep) this.pu.keepHeld(keep); else this.pu.onRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst (F438 r4: a self-kill keeps it)
+    if (keep) this.pu.keepHeld(keep, stunHolds); else this.pu.onRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst (F438 r4: a self-kill keeps it)
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     // F438 polish r1: a self-hit revive is the same life, so an enemy's poison keeps ticking and a smoke keeps its clock.
     // ⚠ Unbenched: the revive's `$SPAWN` clears every `$TMP`, so the gun may have dropped the smoke's accuracy hold already.

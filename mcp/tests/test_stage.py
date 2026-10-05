@@ -369,6 +369,32 @@ def test_polish_2026_10_03_stage_a_lethal_self_hit_keeps_the_magazine():
     asyncio.run(run())
 
 
+def test_cross_lane_5_stage_a_lethal_self_hit_inside_a_stun_keeps_the_gun_disarmed_until_the_expiry():
+    """Cross-lane review 2026-10-04 #5 (app/test/self-hit.test.mjs): the self-kill never happened, so the stun goes on;
+    the revive burst's `$AMMO` rows go out at 0/0, and the expiry restore writes the live counts."""
+    async def run():
+        st, mgr, hit = await _f438_stage()
+        full = st._spawn_ammo()[0]
+        mag, res = full[0] - 2, full[1]
+        hit(f"$ALCD,{mag},100,0,{res},0,*"); await settle(st)
+        st.config["stun"] = {"duration_s": 5}
+        st._stun(); await settle(st)
+        assert st.stunned, "setup: stunned"
+        st._foreign_dmg_at = None
+        n = len(tx(mgr))
+        hit("$HIR,4,0,7,1,9,0,3,*", "$HP,0,0,0,*", "$LCD,0,0,0,1,1,1,*"); await settle(st)
+        new = tx(mgr)[n:]
+        assert st.alive and "$SPAWN,,*" in new, new
+        assert st.stunned, "the stun goes on"
+        ammo = [f for f in new if f.startswith("$AMMO,")]
+        assert ammo and all(re.match(r"^\$AMMO,\d+,0,0,", f) for f in ammo), ammo
+        assert st._live_ammo()[0] == [mag, res], "the account keeps the live count"
+        n = len(tx(mgr))
+        st._stun_restore("expired"); await settle(st)
+        assert f"$AMMO,0,{mag},{res},1,*" in tx(mgr)[n:], tx(mgr)[n:]
+    asyncio.run(run())
+
+
 def test_f438_polish_stage_pairs_on_the_damaging_word_and_never_swallows_an_enemy_drop():
     """F438 polish r1 (engine.js `_selfHitHp`): HIGH 3, the drop belongs to the fresh DAMAGING word (F354), so our own
     damaging round followed by an enemy's no-pool word is still ours; HIGH 2, an enemy's damaging word inside the same

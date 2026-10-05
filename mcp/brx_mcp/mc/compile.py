@@ -1855,6 +1855,63 @@ DISTINCT_CELL_CANDIDATES: tuple[tuple[str, str], ...] = tuple(
     c for c in _ha.FREE_CELLS if c[0] == "0" and c not in _ha.RESERVED_CELLS)
 
 
+@dataclasses.dataclass(frozen=True)
+class _Build:
+    config: GameConfig
+    player: Player
+    teams: list[Team]
+    plan: _ha.Plan
+    prof: dict
+    night: bool
+    ffa: bool
+    gc: _GC
+    pnum: int
+    tid: int
+    w0: str
+    w1: str | None
+    mods: dict[str, float | int | bool]
+    swap_mods: dict[str, float | int | bool]
+    armor_piercing: bool
+    voice: str | None
+    picks: dict[str, str]
+    rolled: dict[str, str]
+    voice_slots: dict[str, str] | None
+    hits_rng: _random.Random
+    pickups: list[PowerupSlot]
+    cs: bool
+
+
+@dataclasses.dataclass
+class _CompileContext:
+    build: _Build
+    head: list[str] | None = None
+    play_hled: list[str] | None = None
+    sir_live: list[str] | None = None
+    ammo: list[str] | None = None
+    spawn: list[str] | None = None
+    revive: list[str] | None = None
+    bundle: FrameBundle | None = None
+    voice_map: dict[str, list[str]] | None = None
+    frames: dict[str, str] | None = None
+    voice_switch: str | None = None
+
+
+@dataclasses.dataclass
+class _ValidationContext:
+    config: GameConfig
+    roster: list[Player]
+    opts: dict
+    errors: list[str]
+    warnings: list[str]
+    mode: str
+    covered: bool
+    asserted: bool
+
+
+def _revive_frames(team: int, ammo: list[str], play_hled: list[str]) -> list[str]:
+    return ["$SPAWN,,*", SPAWN_PROTECT_ON, f"$TID,{team},*"] + ammo + [TRIGGER_LIVE] + play_hled
+
+
 class Compiler:
     """Implements interfaces.Compiler."""
 
@@ -2308,11 +2365,12 @@ class Compiler:
         except (IndexError, ValueError, KeyError):
             return None
 
-    def _validate_stun(self, config, roster, errors: list[str], warnings: list[str]) -> None:
+    def _check_stun(self, ctx: _ValidationContext) -> None:
         """F15 / A20 `config.stun`: `{duration_s?}`, 1..60 s, default 10. Says which rostered weapons become the EMP
         source (they stop dealing damage), and says so if NOTHING in the game can stun. Refused together with
         `hit_audio_rekey`: a re-key would move the charge rifle off `<8,0>` with its fn-38 damage intact and leave
         the stun row keying nothing."""
+        config, roster, errors, warnings = ctx.config, ctx.roster, ctx.errors, ctx.warnings
         st = config.get("stun")
         if st is None:
             return
@@ -2414,6 +2472,20 @@ class Compiler:
         ROLLED from their pools (voices.roll_pset) -- since A15.3 that is the death scream only, and the node
         re-rolls it per spawn from `pset_pool` anyway. None = the family defaults, deterministic (tests, the
         golden bundle)."""
+        ctx = _CompileContext(self._resolve_build(config, player, teams, roll, plan))
+        self._build_head(ctx)
+        self._build_life_frames(ctx)
+        self._build_bundle_base(ctx)
+        self._build_voice_and_hit_audio(ctx)
+        self._build_presentation(ctx)
+        self._build_infection(ctx)
+        self._build_respawn_profile(ctx)
+        self._finish_bundle(ctx)
+        assert ctx.bundle is not None
+        return ctx.bundle
+
+    def _resolve_build(self, config: GameConfig, player: Player, teams: list[Team],
+                       roll: _random.Random | None, plan: _ha.Plan | None) -> _Build:
         prof = _pres.resolve(config)
         night = bool(config.get("night", False))
         ffa = config["mode"] == "ffa"          # Q19: FFA paints WHITE on both surfaces, no team identity to protect
@@ -2469,7 +2541,7 @@ class Compiler:
 
         # A15.1: roll the un-picked $PSET voice fields for THIS push; explicit picks always win
         voice, picks = player.get("voice", "male"), (player.get("voice_slots") or {})
-        rolled: dict[str, str] = {}
+        rolled = {}
         if roll is not None:
             full = _voices.roll_pset(voice, picks, roll)
             fixed = _voices.check_slots(picks)
@@ -2485,28 +2557,37 @@ class Compiler:
         pickups = self._pickup_slots(config)
         if plan is None:
             plan = self.hit_plan([player, *self._pickup_carrier(pickups)], rekey=False)
+
+        return _Build(config=config, player=player, teams=teams, plan=plan, prof=prof,
+                      night=night, ffa=ffa, gc=gc, pnum=pnum, tid=tid, w0=w0, w1=w1,
+                      mods=mods, swap_mods=swap_mods, armor_piercing=armor_piercing,
+                      voice=voice, picks=picks, rolled=rolled, voice_slots=voice_slots,
+                      hits_rng=hits_rng, pickups=pickups, cs=bool(config.get("hit_audio_class", False)))
+
+    def _build_head(self, ctx: _CompileContext) -> None:
+        build = ctx.build
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
-        env = config.get("environment")
-        _gset = gc._gset()
-        head = [f"$VOL,{self.head_volume(config)},0,*", "$CLEAR,*", "$START,*",
+        env = build.config.get("environment")
+        _gset = build.gc._gset()
+        ctx.head = [f"$VOL,{self.head_volume(build.config)},0,*", "$CLEAR,*", "$START,*",
                 _gset,
                 # F162: EMPTY today (`DRIVE_IO_MODE` is "off") -- the staged venue-mode candidates,
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.
                 *venue_mode_frames(_gset, env),
-                gc._pset(pnum, player.get("voice"), voice_slots, team=tid),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls. F206: t2 = the $TID team
-                self._rekey(self._rekey(self.catalog.resolve(w0, 0, mods, environment=env), plan.cell_for(w0)),
-                            _AP_CELL if armor_piercing else None)]
-        if w1:
-            head.append(self._rekey(self.catalog.resolve(w1, 1, swap_mods, environment=env), plan.cell_for(w1)))   # slot 1 only when a secondary exists (A10)
-        head.append(self._rekey(self.catalog.resolve("melee", 4, swap_mods, environment=env), plan.cell_for("melee")))
+                build.gc._pset(build.pnum, build.player.get("voice"), build.voice_slots, team=build.tid),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls. F206: t2 = the $TID team
+                self._rekey(self._rekey(self.catalog.resolve(build.w0, 0, build.mods, environment=env), build.plan.cell_for(build.w0)),
+                            _AP_CELL if build.armor_piercing else None)]
+        if build.w1:
+            ctx.head.append(self._rekey(self.catalog.resolve(build.w1, 1, build.swap_mods, environment=env), build.plan.cell_for(build.w1)))   # slot 1 only when a secondary exists (A10)
+        ctx.head.append(self._rekey(self.catalog.resolve("melee", 4, build.swap_mods, environment=env), build.plan.cell_for("melee")))
         # A56: each pickup weapon in its spare slot with its normal `$WEAP` tokens. It is LOCKED by the empty
         # magazine below and by the ALT `$BMAP` cycle, which stays 0/1 only (`gc._bmap()` is not touched): the
         # player's own phone unlocks it at the station with a mid-life `$AMMO` + `$BMAP` (powerups.md).
-        for pu in pickups:
-            head.append(self._rekey(self.catalog.resolve(pu["weapon_id"], pu["slot"], swap_mods, environment=env),
-                                    plan.cell_for(pu["weapon_id"])))
-        bmap = list(gc._bmap())
-        if not w1 and not gc.alt_reload:
+        for pu in build.pickups:
+            ctx.head.append(self._rekey(self.catalog.resolve(pu["weapon_id"], pu["slot"], build.swap_mods, environment=env),
+                                    build.plan.cell_for(pu["weapon_id"])))
+        bmap = list(build.gc._bmap())
+        if not build.w1 and not build.gc.alt_reload:
             # Empty slot 2 (A10 §2): with one $WEAP slot loaded, weapon-cycle (fn 100) has nothing to cycle to and
             # falls back to RELOADING (protocol §BMAP; bench 2026-09-17, Tony: "the alt button is reloading the charge
             # rifle"). So ALT gets fn 98, the inert function select/left/right use: alt-fire does nothing.
@@ -2530,15 +2611,15 @@ class Compiler:
         # Keeping the behaviour deliberately: it is the only way to test it, and it cannot be worse
         # than the dark headsets we shipped. But it is UNVERIFIED — see FOLLOWUPS F10, which is an
         # eyeball test, and do not cite this frame as confirmed until that is done.
-        hs = prof.get("headset") or _pres.HEADSET_DEFAULT
+        hs = build.prof.get("headset") or _pres.HEADSET_DEFAULT
         # A11.6: the lobby team colour is the headset block's `pregame`; the in-play repaint after
         # spawn / revive / hit exists only when `in_play` is "team" (default: dark, native-like).
-        hled = _headset_colour(tid, gc.leds, ffa, night) if hs.get("pregame", "team") == "team" else []
-        play_hled = _headset_colour(tid, gc.leds, ffa, night) if hs.get("in_play") == "team" else []
+        hled = _headset_colour(build.tid, build.gc.leds, build.ffa, build.night) if hs.get("pregame", "team") == "team" else []
+        ctx.play_hled = _headset_colour(build.tid, build.gc.leds, build.ffa, build.night) if hs.get("in_play") == "team" else []
         # A11.7 pregame: the armed gun body in the team colour (a paint holds before $SPAWN), like the headset.
-        gun_pre = _pres.gun_pregame(prof, tid, night, gc.leds, ffa)
-        _cs = bool(config.get("hit_audio_class", False))     # A17 class sounds -> a per-life `sir_pool` take
-        sir_live = self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config))
+        gun_pre = _pres.gun_pregame(build.prof, build.tid, build.night, build.gc.leds, build.ffa)
+        # A17 class sounds -> a per-life `sir_pool` take
+        ctx.sir_live = self.sir_table(build.plan, build.hits_rng, build.cs, stun=stun_enabled(build.config))
         # S57 (2026-09-23, docs/ir-callouts.md): the silent proto-15 beacon row now ships in EVERY
         # mode's live table, not only `_OBJECTIVE_MODES` -- the IR callout bus needs a gun in ANY mode
         # to REPORT a dead player's own `$IRTX` word, and fn 28 is the one function proven to register
@@ -2547,25 +2628,29 @@ class Compiler:
         # no weapon or class group is ever allocated, so no table should already key it -- but if one
         # ever does, that real row wins and this never doubles up on the same cell (under
         # `--bench-capture-row` the F312 guard refuses such a bundle instead: the banner would lie).
-        sir_live = self._with_capture_row(sir_live)   # F70/F79/S57: the proto-15 beacon row (F312: its fn)
+        ctx.sir_live = self._with_capture_row(ctx.sir_live)   # F70/F79/S57: the proto-15 beacon row (F312: its fn)
         # F121/A23: the HEAD carries the same cells DISARMED -- hits register, nothing moves, no sound. The
         # real table is a `sir_pool` take the node writes behind the first spawn's protection (F121 rebuild).
-        sir_pregame = sir_spawn_protected(sir_live)
-        head += sir_pregame + hold_trigger(bmap) + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
-        assert_sir_covers_weapons(head)      # A17: no armed weapon may key a cell this head has no row for
-        assert_sir_covers_objective(head, config["mode"])   # F79: no objective mode may ship with no way to hear its own beacon
-        assert_spawn_protected(head)         # F121: and none of those rows may move a pool before go-live
-        if armor_piercing:
-            assert_armor_piercing_armed(head)   # S50: refuse to arm a weapon nobody's gun can register
+        sir_pregame = sir_spawn_protected(ctx.sir_live)
+        ctx.head += sir_pregame + hold_trigger(bmap) + build.gc._led_frames() + hled + gun_pre + [f"$TID,{build.tid},*"]   # §1.1: head ends with $TID
+        assert_sir_covers_weapons(ctx.head)      # A17: no armed weapon may key a cell this head has no row for
+        assert_sir_covers_objective(ctx.head, build.config["mode"])   # F79: no objective mode may ship with no way to hear its own beacon
+        assert_spawn_protected(ctx.head)         # F121: and none of those rows may move a pool before go-live
+        if build.armor_piercing:
+            assert_armor_piercing_armed(ctx.head)   # S50: refuse to arm a weapon nobody's gun can register
 
-        pmag, pres = self.catalog.spawn_ammo(w0, mods)
-        ammo = [f"$AMMO,0,{pmag},{pres},1,*"]
-        if w1:
-            smag, sres = self.catalog.spawn_ammo(w1)
-            ammo.append(f"$AMMO,1,{smag},{sres},1,*")
+    def _build_life_frames(self, ctx: _CompileContext) -> None:
+        build = ctx.build
+        assert ctx.play_hled is not None and ctx.head is not None
+
+        pmag, pres = self.catalog.spawn_ammo(build.w0, build.mods)
+        ctx.ammo = [f"$AMMO,0,{pmag},{pres},1,*"]
+        if build.w1:
+            smag, sres = self.catalog.spawn_ammo(build.w1)
+            ctx.ammo.append(f"$AMMO,1,{smag},{sres},1,*")
         # A56: a pickup slot's magazine and reserve are 0 at every spawn and revive, so an item never carries
         # into the next life (`powerups.LOST_AT_DEATH`) even if the gun would restore it after `$SPAWN`.
-        ammo += [f"$AMMO,{pu['slot']},0,0,1,*" for pu in pickups]
+        ctx.ammo += [f"$AMMO,{pu['slot']},0,0,1,*" for pu in build.pickups]
 
         # spawn = $PLAYX,0 -> $SPAWN -> $AMMOs -> $BMAP,0,0 (the T-0 tail; M-START wraps VA81 + $SFLASH)
         # ... + the headset team colour LAST. Bench 2026-09-03 (hled_spawned.py): `$SPAWN` CLEARS
@@ -2588,39 +2673,44 @@ class Compiler:
         # frame is the belt to its braces, and it is what LaserTagMods' own hosted-game path does (a
         # second `$TID` after the gun's start). A live `$TID` write changes hit resolution at once and
         # repaints nothing (bench 2026-09-07), so it is safe after `$SPAWN`.
-        spawn = ["$PLAYX,0,*", "$SPAWN,,*", SPAWN_PROTECT_ON, f"$TID,{tid},*"] + ammo + [TRIGGER_LIVE] + play_hled
+        ctx.spawn = ["$PLAYX,0,*", "$SPAWN,,*", SPAWN_PROTECT_ON, f"$TID,{build.tid},*"] + ctx.ammo + [TRIGGER_LIVE] + ctx.play_hled
 
         # revive = $SPAWN + t8 + $TID + loadout $AMMOs + the trigger row (NO $HLOOP; §1.1 replaces
         # RESPAWN_SEQUENCE). Bench 2026-09-16: the head holds the trigger, and a live resync re-writes the
         # head before it revives, so the revive maps the trigger again too.
-        def _revive_for(team: int) -> list[str]:
-            # One revive burst per TEAM: the plain `revive` is the arming team's; an infection flip
-            # (below) needs the same burst ending on the team the gun has just joined, because the
-            # `pset_pool` `$PSET` the node writes before it still carries the ARMING team.
-            return ["$SPAWN,,*", SPAWN_PROTECT_ON, f"$TID,{team},*"] + ammo + [TRIGGER_LIVE] + play_hled
+        ctx.revive = _revive_frames(build.tid, ctx.ammo, ctx.play_hled)
+        assert_trigger_held_until_spawn(ctx.head, ctx.spawn, ctx.revive)
 
-        revive = _revive_for(tid)
-        assert_trigger_held_until_spawn(head, spawn, revive)
+    def _build_bundle_base(self, ctx: _CompileContext) -> None:
+        build = ctx.build
+        assert (ctx.head is not None and ctx.spawn is not None and ctx.revive is not None
+                and ctx.play_hled is not None)
 
-        bundle: FrameBundle = {
-            "config_id": config["config_id"],
-            "player_id": player["player_id"],
-            "head": head,
-            "spawn": spawn,
-            "revive": revive,
+        ctx.bundle = {
+            "config_id": build.config["config_id"],
+            "player_id": build.player["player_id"],
+            "head": ctx.head,
+            "spawn": ctx.spawn,
+            "revive": ctx.revive,
             "spawn_protect_off": SPAWN_PROTECT_OFF,   # F121 rebuild: the node writes it when protection ends
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
-            "cues": base_cues(night),   # D4: every event cue (kill, game_over, ...) comes from presentation.EVENTS below
+            "cues": base_cues(build.night),   # D4: every event cue (kill, game_over, ...) comes from presentation.EVENTS below
             # the swap delay the gun will actually enforce between slots 0 and 1: the larger tok15 of the two
             # (bench 2026-09-04). The HUD's SWITCHING takeover runs for exactly this long.
-            "swap_ms": max([int(f.split(",")[16]) for f in head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
-            "callout_team": self._callout_team(teams),   # S57: the IR callout bus's own team id, or None
+            "swap_ms": max([int(f.split(",")[16]) for f in ctx.head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
+            "callout_team": self._callout_team(build.teams),   # S57: the IR callout bus's own team id, or None
         }
         # Every registered hit wipes the headset (native flash, then dark; bench 2026-09-03). The
         # node re-sends this after each hit so the team colour is back for the rest of the life.
         # Empty when LEDs are off or the tid has no known headset colour -- the node writes nothing.
-        bundle["cues"]["team_led"] = play_hled[0] if play_hled else ""
+        ctx.bundle["cues"]["team_led"] = ctx.play_hled[0] if ctx.play_hled else ""
+
+    def _build_voice_and_hit_audio(self, ctx: _CompileContext) -> None:
+        build = ctx.build
+        # polish round 2: no `voice` here -- a player with voice None takes the voice fallback, as before the split
+        assert (ctx.bundle is not None and ctx.head is not None and ctx.spawn is not None
+                and ctx.revive is not None and ctx.sir_live is not None)
 
         # A11: the PRESENTATION profile -- per-event sounds + lights, preset or custom (presentation.py).
         # Cues it names override the fixed table above; `announcer: false` mutes the voice groups but
@@ -2628,20 +2718,20 @@ class Compiler:
         # team-colour repaint frames added above.
         # A15: every `voice:<role>` sound resolves per PLAYER to that role's line (voices.role_id: the family's
         # slot, or the player's own pick in `voice_slots`) -- the kill line, a boast on respawn, a taunt, …
-        voice_map = self._voice_map(voice, voice_slots)
-        bundle["voice"] = {"id": voice, "family": _voices.family(voice),
-                           "pset": _voices.pset_ids(voice, voice_slots), "kill": (voice_map.get("kill") or [None])[0],
-                           "rolled": rolled,                                                   # A15.1: this push's draws
-                           "pools": {r: _voices.roll_pool(voice, r) for r in _voices.PSET_ROLES},
-                           "spawn": list(voice_map.get("spawn") or []),                       # A15.2: what the node may say at spawn
+        ctx.voice_map = self._voice_map(build.voice, build.voice_slots)
+        ctx.bundle["voice"] = {"id": build.voice, "family": _voices.family(build.voice),
+                           "pset": _voices.pset_ids(build.voice, build.voice_slots), "kill": (ctx.voice_map.get("kill") or [None])[0],
+                           "rolled": build.rolled,                                                   # A15.1: this push's draws
+                           "pools": {r: _voices.roll_pool(build.voice, r) for r in _voices.PSET_ROLES},
+                           "spawn": list(ctx.voice_map.get("spawn") or []),                       # A15.2: what the node may say at spawn
                            # A15.3: the death scream stays the firmware's but is re-rolled per SPAWN: the node writes
                            # one of `pset_pool` before every $SPAWN. `pset_pool` here = the scream id per frame.
-                           "pset_pool": _voices.roll_pool(voice, "death_scream") if "death_scream" not in _voices.check_slots(picks)
-                                        else [_voices.check_slots(picks)["death_scream"]],
+                           "pset_pool": _voices.roll_pool(build.voice, "death_scream") if "death_scream" not in _voices.check_slots(build.picks)
+                                        else [_voices.check_slots(build.picks)["death_scream"]],
                            # A15.3: the node picks the pain pool by `$HIR` damage -- at or above this = long pain
                            "pain_long_min": _voices.PAIN_LONG_MIN_DAMAGE}
-        frames = _pres.cue_frames(prof, voice_map)
-        bundle["cue_pools"] = _pres.cue_pool_frames(prof, voice_map)   # A15.1: the node rolls one per event
+        ctx.frames = _pres.cue_frames(build.prof, ctx.voice_map)
+        ctx.bundle["cue_pools"] = _pres.cue_pool_frames(build.prof, ctx.voice_map)   # A15.1: the node rolls one per event
         # S12 (Tony, 2026-09-11: "let the config drive it. silenced snipers no grunts could be legit"):
         # `presentation.voice` gates the player's OWN voice lines -- "on" (default) plays both the pain
         # cues and the spawn line; "hits_only" keeps the pain cues but drops the spawn line; "off" drops
@@ -2652,50 +2742,50 @@ class Compiler:
         # engine.js plays `cues.spawn` on the first life and `cues.respawned` on every REVIVE after that
         # (`_spawn`/`_revive`), so it must be dropped alongside `spawn` or every respawn past the first
         # would still speak under "hits_only"/"off".
-        voice_switch = prof.get("voice", "on")
-        if voice_switch != "on":
-            frames.pop("respawned", None)
-            bundle["cue_pools"].pop("respawned", None)
+        ctx.voice_switch = build.prof.get("voice", "on")
+        if ctx.voice_switch != "on":
+            ctx.frames.pop("respawned", None)
+            ctx.bundle["cue_pools"].pop("respawned", None)
         # A15.3: one full $PSET per death-scream take (only the deathScream token differs); the node writes ONE at
         # random immediately before every $SPAWN (spawn and revive) so the firmware's scream changes per life.
         # A17: each take also carries its own draw from the MATERIAL pools (hitHp / hitArrmor /
         # hitShield / hitCrit), so the one write that re-rolls the death scream re-rolls what a hit on
         # each pool sounds like. Variety lands BETWEEN hits; nothing is played over BLE during one.
-        bundle["pset_pool"] = gc.pset_frames(pnum, player.get("voice"), picks or None, rng=hits_rng, team=tid)   # F206: t2 = the $TID team
+        ctx.bundle["pset_pool"] = build.gc.pset_frames(build.pnum, build.player.get("voice"), build.picks or None, rng=build.hits_rng, team=build.tid)   # F206: t2 = the $TID team
         # F206 GUARD: every $PSET this bundle can write carries the team its $TID frames carry. The node
         # writes one of `pset_pool` in the same burst as every $SPAWN, so a stray 0 here is the whole bug.
-        assert_team_byte_consistent(head + spawn + revive + bundle["pset_pool"])
+        assert_team_byte_consistent(ctx.head + ctx.spawn + ctx.revive + ctx.bundle["pset_pool"])
         # A17: the class layer, rolled the same way -- one full $SIR table per take, so the same weapon does
         # not land the same clip all match. Re-sending $SIR rows is the F11 REPAIR path, so this write is
         # bench-safe by construction. `sir_pool` is the ONLY carrier of the real table, so it is never empty:
         # one take of the fixed table (the objective row included) when class sounds are off. The node writes a
         # take when protection ends, but only if the gun's table is not the live one or class sounds are on.
-        bundle["sir_pool"] = ([self._with_capture_row(self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config)))
-                               for _ in range(_SIR_TAKES)] if _cs else [list(sir_live)])
+        ctx.bundle["sir_pool"] = ([self._with_capture_row(self.sir_table(build.plan, build.hits_rng, build.cs, stun=stun_enabled(build.config)))
+                               for _ in range(_SIR_TAKES)] if build.cs else [list(ctx.sir_live)])
         # F312 GUARD: every take keys <15,0>; and under `--bench-capture-row` it is the row the banner names,
         # since a bench result read against the wrong function is worse than no result.
         _cap = self.capture_row()
-        for sir_take in bundle["sir_pool"]:
+        for sir_take in ctx.bundle["sir_pool"]:
             if ("15", "0") not in _sir_index(sir_take):
                 raise ValueError("F312 GUARD: a sir_pool take has no <15,0> row, so the gun cannot report a capture")
             if self.capture_row_fn is not None and _cap not in sir_take:
                 raise ValueError(f"F312 GUARD: --bench-capture-row asked for {_cap}, but a take ships another <15,0> row")
-        bundle["hit_audio"] = {"rekey": bool(config.get("hit_audio_rekey", False)),
-                               "cells": {w: f"{c[0]},{c[1]}" for w, c in plan.cells.items()},
-                               "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in plan.groups.items()},
-                               "shared": list(plan.shared),
+        ctx.bundle["hit_audio"] = {"rekey": bool(build.config.get("hit_audio_rekey", False)),
+                               "cells": {w: f"{c[0]},{c[1]}" for w, c in build.plan.cells.items()},
+                               "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in build.plan.groups.items()},
+                               "shared": list(build.plan.shared),
                                "material": list(_ha.MATERIAL_ROLES)}
         # The victim node needs the match's dual-emitter shapes to collapse the two words of
         # one trigger for accuracy. Keep the wire cell and magnitudes together; a shared cell
         # is still safe because the magnitude pair distinguishes the dual weapon.
         dual_emitters = []
-        for wid in plan.cells:
+        for wid in build.plan.cells:
             row = self.catalog._row(wid)
             headset = (row.get("wire") or {}).get("headset_dmg")
             if headset is None:
                 continue
             frame = self.catalog.resolve(wid, 0).split(",")
-            cell = plan.cell_for(wid) or self._weapon_cell(wid)
+            cell = build.plan.cell_for(wid) or self._weapon_cell(wid)
             if cell is None:
                 continue
             dual_emitters.append({"proto": int(cell[0] or 0), "subtype": int(cell[1] or 0),
@@ -2703,127 +2793,144 @@ class Compiler:
                                   "headset": int(frame[self.catalog._T["headset_dmg"] + 1] or 0),
                                   "cycle_ms": int(self.catalog.cycle_ms(wid) or 0)})
         if dual_emitters:
-            bundle["dual_emitters"] = dual_emitters
+            ctx.bundle["dual_emitters"] = dual_emitters
+
+    def _build_presentation(self, ctx: _CompileContext) -> None:
+        build = ctx.build
+        assert (ctx.bundle is not None and ctx.frames is not None and ctx.voice_map is not None
+                and ctx.voice_switch is not None and "cue_pools" in ctx.bundle)
         # A15.3: the pains are OURS -- the three $PSET pain fields ship empty and the node plays one of these on each
         # $HIR, the pool chosen by damage (proto 13 -> pain_melee; >= pain_long_min -> pain_long; else pain_short).
-        if voice_switch != "off":
+        if ctx.voice_switch != "off":
             for role in ("pain_short", "pain_long", "pain_melee"):
-                ids = voice_map.get(role) or []
+                ids = ctx.voice_map.get(role) or []
                 if ids:
                     # `ids` truthy means `voice_map[role]` resolves, so play_frame's own lookup always
                     # hits -- but its return type is honest about the general case (an unmatched role
                     # -> None), so guard rather than write a None into a wire field typed str.
-                    fr = _pres.play_frame(f"voice:{role}", voice_map)
+                    fr = _pres.play_frame(f"voice:{role}", ctx.voice_map)
                     if fr is not None:
-                        bundle["cues"][role] = fr
+                        ctx.bundle["cues"][role] = fr
                     if len(ids) > 1:
-                        bundle["cue_pools"][role] = [f"$PLAY,,4,6,{i},,,,*" for i in ids]
+                        ctx.bundle["cue_pools"][role] = [f"$PLAY,,4,6,{i},,,,*" for i in ids]
         # A15.2: the SPAWN LINE is ours. The head's $PSET carries an EMPTY battleRespawnCry (the firmware then says
         # nothing on $SPAWN -- bench 2026-09-06) and the node writes ONE of these right after the spawn / revive
         # frames, a fresh draw per spawn. `cues.spawn` = the first take; `cue_pools.spawn` = the pool when 2+.
-        if voice_switch == "on":
-            spawn_ids = voice_map.get("spawn") or []
+        if ctx.voice_switch == "on":
+            spawn_ids = ctx.voice_map.get("spawn") or []
             if spawn_ids:
-                fr = _pres.play_frame("voice:spawn", voice_map)
+                fr = _pres.play_frame("voice:spawn", ctx.voice_map)
                 if fr is not None:
-                    bundle["cues"]["spawn"] = fr
+                    ctx.bundle["cues"]["spawn"] = fr
                 if len(spawn_ids) > 1:
-                    bundle["cue_pools"]["spawn"] = [f"$PLAY,,4,6,{i},,,,*" for i in spawn_ids]
+                    ctx.bundle["cue_pools"]["spawn"] = [f"$PLAY,,4,6,{i},,,,*" for i in spawn_ids]
         # F446 (Tony's bench, 2026-10-02, $VOL 80): `poison_tick`'s pool is FIXED -- H31/H32, the same two takes for
         # every player -- unlike the pains/spawn pools above, which resolve through this player's own `voice_map`.
         # `presentation.EVENTS["poison_tick"]["pool"]` is the one source of truth; ships only when the cue itself is
         # live (`frames["poison_tick"]`, already "" when `hud_events` is off -- `cue_frames()`'s own mute check).
         # Review 2026-10-02: a host override of the tick's `sound` wins. The phone prefers a pool over `cues`, so a pool
         # shipped beside an overridden sound would silently play the default bubbles instead.
-        poison_tick_pool = prof["events"]["poison_tick"].get("pool")
-        if poison_tick_pool and prof["events"]["poison_tick"].get("sound") != poison_tick_pool[0]:
+        poison_tick_pool = build.prof["events"]["poison_tick"].get("pool")
+        if poison_tick_pool and build.prof["events"]["poison_tick"].get("sound") != poison_tick_pool[0]:
             poison_tick_pool = None
-        if poison_tick_pool and frames.get("poison_tick"):
-            poison_tick_slot = prof["events"]["poison_tick"].get("slot")
-            bundle["cue_pools"]["poison_tick"] = [fr for i in poison_tick_pool
-                                                   if (fr := _pres.play_frame(i, voice_map, poison_tick_slot)) is not None]
-        low = frames.pop("low_health", None)
-        bundle["cues"].update(frames)
+        if poison_tick_pool and ctx.frames.get("poison_tick"):
+            poison_tick_slot = build.prof["events"]["poison_tick"].get("slot")
+            ctx.bundle["cue_pools"]["poison_tick"] = [fr for i in poison_tick_pool
+                                                   if (fr := _pres.play_frame(i, ctx.voice_map, poison_tick_slot)) is not None]
+        low = ctx.frames.pop("low_health", None)
+        ctx.bundle["cues"].update(ctx.frames)
         # low_health is the node's existing `hurt` cue. The default profile now plays the player's OWN
         # hurt loop once at critical health (Tony, 2026-09-06 bench: "good for when the player is at
         # critical health"); Callsign's byte-identical frame ($PLAY,VA8B,3,6) stays only if the profile
         # was explicitly reverted to that sound.
-        if low is not None and prof["events"]["low_health"].get("sound") != "VA8B":
-            bundle["cues"]["hurt"] = low
-        bundle["leds"] = _pres.led_table(prof, tid, night, gc.leds, ffa)
-        if not prof.get("headset_team", True):
-            bundle["cues"]["team_led"] = ""
-            bundle["spawn"] = [f for f in bundle["spawn"] if not f.startswith("$HLED,")]
-            bundle["revive"] = [f for f in bundle["revive"] if not f.startswith("$HLED,")]
+        if low is not None and build.prof["events"]["low_health"].get("sound") != "VA8B":
+            ctx.bundle["cues"]["hurt"] = low
+        ctx.bundle["leds"] = _pres.led_table(build.prof, build.tid, build.night, build.gc.leds, build.ffa)
+        if not build.prof.get("headset_team", True):
+            ctx.bundle["cues"]["team_led"] = ""
+            ctx.bundle["spawn"] = [f for f in ctx.bundle["spawn"] if not f.startswith("$HLED,")]
+            ctx.bundle["revive"] = [f for f in ctx.bundle["revive"] if not f.startswith("$HLED,")]
         # A11.6: the headset table the node drives (pregame / start / in_play rest / hit / death / respawn /
         # role states, §3.3). Team colours for the `infected` role: tid -> the colour PAINTED for that
         # team (`pg.display_colour`, F35/finding #11 -- not the raw tid; green stays green on the wire
         # but paints purple). Filtered to valid team tids (F35: 0-3, `pg.TEAM_TIDS`) -- an out-of-range
         # tid is already rejected earlier (state.py / `validate()`), this is belt-and-braces.
-        team_cols = {int(t["tid"]): pg.display_colour(int(t["tid"])) for t in teams if int(t.get("tid", 99)) in pg.TEAM_TIDS}
-        bundle["headset"] = _pres.headset_frames(prof, tid, gc.leds, team_cols, ffa, night)
-        gun_tbl = _pres.gun_frames(prof, tid, night, gc.leds, ffa, gc.hp, gc.armor, gc.shield)
+        team_cols = {int(t["tid"]): pg.display_colour(int(t["tid"])) for t in build.teams if int(t.get("tid", 99)) in pg.TEAM_TIDS}
+        ctx.bundle["headset"] = _pres.headset_frames(build.prof, build.tid, build.gc.leds, team_cols, build.ffa, build.night)
+        gun_tbl = _pres.gun_frames(build.prof, build.tid, build.night, build.gc.leds, build.ffa, build.gc.hp, build.gc.armor, build.gc.shield)
         if gun_tbl:
-            bundle["gun"] = gun_tbl            # A11.7: absent for native (older nodes see nothing new)
-        bundle["presentation"] = _pres.summary(config.get("presentation") or _pres.default_for(config.get("mode")))
-        if config["mode"] == "infection":
+            ctx.bundle["gun"] = gun_tbl            # A11.7: absent for native (older nodes see nothing new)
+        ctx.bundle["presentation"] = _pres.summary(build.config.get("presentation") or _pres.default_for(build.config.get("mode")))
+
+    def _build_infection(self, ctx: _CompileContext) -> None:
+        build = ctx.build
+        assert ctx.ammo is not None and ctx.play_hled is not None and ctx.bundle is not None
+        if build.config["mode"] == "infection":
             # move THIS gun to each other team's $TID on death, then re-arm (node emits team_change)
             flip: dict[str, list[str]] = {}
             take: dict[str, list[str]] = {}
-            for t in teams:
-                if int(t["tid"]) != tid:
-                    # F206: the burst ends on the NEW team's `$TID` (see `_revive_for`), and the node
+            for t in build.teams:
+                if int(t["tid"]) != build.tid:
+                    # F206: the burst ends on the NEW team's `$TID` (see `_revive_frames`), and the node
                     # uses this same list for every later revive of a turned player (`engine._revive`).
-                    flip[str(t["tid"])] = [f"$TID,{t['tid']},*"] + _revive_for(int(t["tid"]))
+                    flip[str(t["tid"])] = [f"$TID,{t['tid']},*"] + _revive_frames(int(t["tid"]), ctx.ammo, ctx.play_hled)
                     # F86: `gun.take` (blank + rest) is compiled for the ARMING team, so after a flip the
                     # node's next take -- 2.5 s after the flip's own $SPAWN, and after every later revive --
                     # painted the OLD team's colour back onto a gun the firmware had just moved. The node
                     # picks the take for the team it is on now; this is that table. (The headset is the
                     # `infected` ROLE's job, A16 §3.3, and needs nothing here.)
-                    other = _pres.gun_frames(prof, int(t["tid"]), night, gc.leds, ffa, gc.hp, gc.armor, gc.shield)
+                    other = _pres.gun_frames(build.prof, int(t["tid"]), build.night, build.gc.leds, build.ffa, build.gc.hp, build.gc.armor, build.gc.shield)
                     if other:
                         take[str(t["tid"])] = other["take"]
-            bundle["team_flip"] = flip
+            ctx.bundle["team_flip"] = flip
             if take:
-                bundle["team_flip_take"] = take
+                ctx.bundle["team_flip_take"] = take
+
+    def _build_respawn_profile(self, ctx: _CompileContext) -> None:
+        build = ctx.build
+        assert ctx.play_hled is not None and ctx.ammo is not None and ctx.bundle is not None
         # 2026-09-19: the respawn profiles. Built from the same ammo and team repaint as the legacy lists above.
-        hled_tail = play_hled if prof.get("headset_team", True) else []
-        protect_ms, trigger_ms, station_ms = respawn_settings(config.get("respawn"))
-        shield_on = shield_frame(station_ms, night) if station_ms and gc.leds else ""
+        hled_tail = ctx.play_hled if build.prof.get("headset_team", True) else []
+        protect_ms, trigger_ms, station_ms = respawn_settings(build.config.get("respawn"))
+        shield_on = shield_frame(station_ms, build.night) if station_ms and build.gc.leds else ""
         rp: RespawnProfile = {
             "protect_ms": protect_ms, "trigger_ms": trigger_ms, "station_protect_ms": station_ms,
             # the T-0 spawn is neither profile: everyone goes live AND hittable at go-live, trigger mapped, no t8
             # (Tony, field 2026-09-19). The node writes the live table at T-3, while every trigger is still held.
-            "spawn": life_frames(tid, ammo, hled_tail, False, True, lead=["$PLAYX,0,*"]),
-            "revive": life_frames(tid, ammo, hled_tail, protect_ms > 0, False, trigger_lead=True),
-            "revive_station": life_frames(tid, ammo, hled_tail, station_ms > 0, True, shield_on),
+            "spawn": life_frames(build.tid, ctx.ammo, hled_tail, False, True, lead=["$PLAYX,0,*"]),
+            "revive": life_frames(build.tid, ctx.ammo, hled_tail, protect_ms > 0, False, trigger_lead=True),
+            "revive_station": life_frames(build.tid, ctx.ammo, hled_tail, station_ms > 0, True, shield_on),
             "trigger_live": TRIGGER_LIVE,
             "shield_on": shield_on,
             # the headset's in-play rest: the team repaint when the game paints one, else dark by colour
             "shield_off": (hled_tail[0] if hled_tail else _pres.HEADSET_DARK) if shield_on else "",
         }
-        if config["mode"] == "infection":
-            rp["team_flip"] = {str(t["tid"]): [f"$TID,{t['tid']},*"] + life_frames(int(t["tid"]), ammo, hled_tail, protect_ms > 0, False, trigger_lead=True)
-                               for t in teams if int(t["tid"]) != tid}
+        if build.config["mode"] == "infection":
+            rp["team_flip"] = {str(t["tid"]): [f"$TID,{t['tid']},*"] + life_frames(int(t["tid"]), ctx.ammo, hled_tail, protect_ms > 0, False, trigger_lead=True)
+                               for t in build.teams if int(t["tid"]) != build.tid}
         assert_respawn_profile(rp)
         assert_team_byte_consistent(rp["spawn"] + rp["revive"] + rp["revive_station"])
-        bundle["respawn_profile"] = rp
-        assert_rearms_every_life(bundle)   # F121: whichever carrier is active, every life gets the real table back
+        ctx.bundle["respawn_profile"] = rp
+        assert_rearms_every_life(ctx.bundle)   # F121: whichever carrier is active, every life gets the real table back
+
+    def _finish_bundle(self, ctx: _CompileContext) -> None:
+        build = ctx.build
+        assert ctx.bundle is not None
         # S50 build 4: {perk_id, mag/reserve/reload_ms/swap_ms/max_armor/max_shield: {base,resolved}},
         # absent when this player carries no perk — persisted on the bundle (not a one-shot message)
         # so a phone/console icon survives an app restart. `perk_effects_resolved()` is also what
         # `State.snapshot()` reads for the console, so the two can never disagree.
-        pe = self.perk_effects_resolved(config, player)
+        pe = self.perk_effects_resolved(build.config, build.player)
         if pe:
-            bundle["perk_effects"] = pe
+            ctx.bundle["perk_effects"] = pe
         # S16: the poison tick numbers for every damage-over-time weapon in THIS game, keyed by IR protocol. It is
         # game-wide (the victim's node needs the SHOOTER's numbers), so it comes off the match plan, not this
         # player's loadout. Absent when the game carries no such weapon, so an older bundle reads the same.
-        dot = self.dot_table(plan)
+        dot = self.dot_table(build.plan)
         if dot:
-            bundle["dot"] = dot
-        assert_no_denied_frames(bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses
-        return bundle
+            ctx.bundle["dot"] = dot
+        assert_no_denied_frames(ctx.bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses
+
 
     def tutorial_frames(self, weapon: Weapon, environment: str, silent: bool = False) -> list[str]:
         """§4 private try-out: one weapon, identity 0 (uncredited), audible (VOL_TRYOUT). Needs $START + a $TID to
@@ -2919,36 +3026,58 @@ class Compiler:
         and a phone that loses data mid-match must still hold an end it can reach alone. One opt could
         not express that, so the derived value got the new name and the old one kept its meaning.
         """
-        opts = opts or {}
-        errors: list[str] = []
-        warnings: list[str] = []
-        mode = config.get("mode", "tdm")
-        try:
-            parse_win_by((config.get("scoring") or {}).get("win_by"), "kills")
-        except ValueError as exc:
-            errors.append(str(exc))
-        covered = full_coverage(config, opts)      # A31: one coverage model, `opts` over the venue setting
-        asserted = (opts or {}).get("venue_coverage") == "full"   # A28: the explicit venue assertion (the time-limit rule keys on it alone)
+        resolved_opts = opts or {}
+        ctx = _ValidationContext(config, roster, resolved_opts, [], [],
+                                 config.get("mode", "tdm"), full_coverage(config, resolved_opts),
+                                 resolved_opts.get("venue_coverage") == "full")
+        self._check_scoring(ctx)
+        self._check_time_limit(ctx)
+        self._check_roster_numbers(ctx)
+        self._check_team_ids(ctx)
+        self._check_objective_teams(ctx)
+        self._check_mode_params(ctx)
+        self._check_vip(ctx)
+        self._check_mode_teams(ctx)
+        self._check_respawn(ctx)
+        self._check_station_source(ctx)
+        self._check_loadout_ids(ctx)
+        self._check_magazine_capacity(ctx)
+        self._check_sir_effects(ctx)
+        self._check_frag_coverage(ctx)
+        self._check_stun(ctx)   # F15/A20: the stun's shape and source
+        self._check_shields(ctx)
+        return {"ok": not ctx.errors, "errors": ctx.errors, "warnings": ctx.warnings}
 
+    def _check_scoring(self, ctx: _ValidationContext) -> None:
+        try:
+            parse_win_by((ctx.config.get("scoring") or {}).get("win_by"), "kills")
+        except ValueError as exc:
+            ctx.errors.append(str(exc))
+
+    def _check_time_limit(self, ctx: _ValidationContext) -> None:
         # time limit: required (>0) on the phone path unless a fully-covered venue is asserted
-        tl = config.get("time_limit_s")
-        if _check.config_needs_time_limit(tl, asserted):
-            errors.append("time_limit_s is required (>0) unless opts.venue_coverage=='full' (A4.8; "
+        tl = ctx.config.get("time_limit_s")
+        if _check.config_needs_time_limit(tl, ctx.asserted):
+            ctx.errors.append("time_limit_s is required (>0) unless opts.venue_coverage=='full' (A4.8; "
                           "observed backhaul coverage does NOT lift it — A28.4)")
 
+    def _check_roster_numbers(self, ctx: _ValidationContext) -> None:
+
         # player_num: unique + 1..63 across the roster
-        nums = [p.get("player_num") for p in roster]
+        nums = [p.get("player_num") for p in ctx.roster]
         for n in nums:
             if n is None or not (1 <= int(n) <= MAX_PLAYERS):
-                errors.append(f"player_num {n} out of range 1..{MAX_PLAYERS} (0 reserved, A5.1)")
+                ctx.errors.append(f"player_num {n} out of range 1..{MAX_PLAYERS} (0 reserved, A5.1)")
         dupes = {n for n in nums if nums.count(n) > 1}
         if dupes:
-            errors.append(f"duplicate player_num across roster: {sorted(dupes)}")
+            ctx.errors.append(f"duplicate player_num across roster: {sorted(dupes)}")
+
+    def _check_team_ids(self, ctx: _ValidationContext) -> None:
 
         # team tids unique
-        tids = _check.team_tids(config.get("teams", []))
+        tids = _check.team_tids(ctx.config.get("teams", []))
         if len(tids) != len(set(tids)):
-            errors.append("duplicate team tid")
+            ctx.errors.append("duplicate team tid")
 
         # F35 (bench 2026-09-07): the IR word's team field is 2 bits, so a gun on $TID 4-7 transmits
         # tid&3 while the victim compares its own FULL tid -- teammates on 0-3 vs 4-7 damage each
@@ -2957,10 +3086,11 @@ class Compiler:
         # that reaches the compiler another way (a hand-built preset, a test, opts.station_source flows).
         bad_tids = _check.invalid_team_tids(tids)
         if bad_tids:
-            errors.append(f"team tid(s) {sorted(set(bad_tids))} outside 0-3 (F35): the IR word's team "
+            ctx.errors.append(f"team tid(s) {sorted(set(bad_tids))} outside 0-3 (F35): the IR word's team "
                           f"field is 2 bits -- a $TID of 4 or higher makes teammates damage each other "
                           f"and can let a gun read its own shots as friendly")
 
+    def _check_objective_teams(self, ctx: _ValidationContext) -> None:
         # 🔴 F82: in a hill mode team 2 is NOT a team, it is the value a NEUTRAL grenade
         # broadcasts. A player rostered there reads every uncaptured point as their own: under an
         # enemy-only $SIR row they go deaf to it, and the hill's proto=0 damage word cannot land on
@@ -2968,13 +3098,13 @@ class Compiler:
         # Both inputs are bench-measured (2026-09-10); only the consequence is predicted, and it
         # costs nothing to make impossible — teams 0, 1 and 3 are all free. `DominationEngine`
         # refuses it too; this is the half that says so before the match starts.
-        if mode in _OBJECTIVE_MODES:
-            tid_of = {t.get("team_id"): t.get("tid") for t in config.get("teams", [])}
-            on_neutral = sorted({str(p.get("player_id")) for p in roster
+        if ctx.mode in _OBJECTIVE_MODES:
+            tid_of = {t.get("team_id"): t.get("tid") for t in ctx.config.get("teams", [])}
+            on_neutral = sorted({str(p.get("player_id")) for p in ctx.roster
                                  if tid_of.get(p.get("team_id") or "") == _NEUTRAL_TEAM})
             if on_neutral:
-                errors.append(
-                    f"F82: mode {mode!r} cannot roster players on $TID {_NEUTRAL_TEAM} "
+                ctx.errors.append(
+                    f"F82: mode {ctx.mode!r} cannot roster players on $TID {_NEUTRAL_TEAM} "
                     f"({', '.join(on_neutral)}), the team a NEUTRAL grenade hill "
                     "broadcasts, so they read every uncaptured point as their own and take no "
                     "hill damage. Use tid 0, 1 or 3.")
@@ -2983,10 +3113,10 @@ class Compiler:
             # target and one drag re-pushes `$TID,2`. `state.py` refuses such a config at PUT time;
             # this catches one that arrives another way (a stored preset from before the refusal, the
             # CLI, a fixture) and names the team rather than waiting for a body to be dropped on it.
-            neutral_teams = _check.neutral_team_ids(config.get("teams", []), _NEUTRAL_TEAM)
+            neutral_teams = _check.neutral_team_ids(ctx.config.get("teams", []), _NEUTRAL_TEAM)
             if neutral_teams:
-                errors.append(
-                    f"F82: mode {mode!r} cannot have a team on $TID {_NEUTRAL_TEAM} at all "
+                ctx.errors.append(
+                    f"F82: mode {ctx.mode!r} cannot have a team on $TID {_NEUTRAL_TEAM} at all "
                     f"({', '.join(neutral_teams)}), the value a NEUTRAL hill broadcasts, and "
                     "anyone moved onto it later reads every uncaptured point as their own. Use tid 0, 1 or 3.")
 
@@ -2994,62 +3124,70 @@ class Compiler:
         # broadcasts 2 (F82), so 0 / 1 / 3 are all there is -- a "free-for-all" King of the Hill caps at
         # three players and a fourth must share a team. Refused by count rather than left to the F82
         # message, whose advice ("use tid 0, 1 or 3") is impossible for a fourth single-member team.
-        if mode in _OBJECTIVE_MODES:
-            distinct = {t.get("tid") for t in config.get("teams", [])}
+        if ctx.mode in _OBJECTIVE_MODES:
+            distinct = {t.get("tid") for t in ctx.config.get("teams", [])}
             if len(distinct) > len(_HILL_TIDS):
-                errors.append(
-                    f"F97: mode {mode!r} supports at most {len(_HILL_TIDS)} teams (tids "
+                ctx.errors.append(
+                    f"F97: mode {ctx.mode!r} supports at most {len(_HILL_TIDS)} teams (tids "
                     f"{sorted(_HILL_TIDS)}); this config has {len(distinct)}. A neutral hill broadcasts "
                     f"team {_NEUTRAL_TEAM} and the IR team field is 2 bits, so a fourth player has to "
                     "share a team -- an FFA hill caps at three players")
+
+    def _check_mode_params(self, ctx: _ValidationContext) -> None:
 
         # A18 (E1): the mode's own rules. `state._merge_config` refuses these at PUT; this is the belt-and-braces
         # for a config that reaches the compiler another way (a fixture, the CLI, a stored preset from before the
         # engine tightened a bound). Unknown keys are an ERROR, not dropped: a knob the engine ignores is a
         # control that does nothing, which is the whole failure mode E1 exists to remove.
-        mp = config.get("mode_params")
+        mp = ctx.config.get("mode_params")
         if mp is not None:
             if not isinstance(mp, dict):
-                errors.append("mode_params must be an object (the mode's own parameters, GET /api/modes .params)")
+                ctx.errors.append("mode_params must be an object (the mode's own parameters, GET /api/modes .params)")
             else:
-                errors.extend(_validate_mode_params(mode, mp)[1])
+                ctx.errors.extend(_validate_mode_params(ctx.mode, mp)[1])
 
+    def _check_vip(self, ctx: _ValidationContext) -> None:
         # A19 (S10): the VIP must be somebody who is actually playing. A saved game never carries this (a preset
         # names no person), so a stale id here means the player was removed after being named.
-        vip = config.get("vip_player_id")
+        vip = ctx.config.get("vip_player_id")
         if vip is not None:
-            if not _check.vip_on_roster(vip, roster):
-                errors.append(f"vip_player_id {vip!r} is not on the roster: pick the VIP from the players in this session")
-        elif _check.vip_presentation(config.get("presentation") or {}):
-            warnings.append("VIP profile with no VIP named — set config.vip_player_id or nobody's headset holds the "
+            if not _check.vip_on_roster(vip, ctx.roster):
+                ctx.errors.append(f"vip_player_id {vip!r} is not on the roster: pick the VIP from the players in this session")
+        elif _check.vip_presentation(ctx.config.get("presentation") or {}):
+            ctx.warnings.append("VIP profile with no VIP named — set config.vip_player_id or nobody's headset holds the "
                             "white VIP state and vip_hit / vip_down have no subject")
 
-        # ffa ⇒ exactly one team (one $TID); friendly fire is forced on in compile (§2/A5.2)
-        if mode == "ffa" and len(set(_check.team_tids(config.get("teams", [])))) > 1:
-            errors.append("ffa requires a single $TID (one team); identity is $PSET, not $TID (A4.1)")
+    def _check_mode_teams(self, ctx: _ValidationContext) -> None:
 
+        # ffa ⇒ exactly one team (one $TID); friendly fire is forced on in compile (§2/A5.2)
+        if ctx.mode == "ffa" and len(set(_check.team_tids(ctx.config.get("teams", [])))) > 1:
+            ctx.errors.append("ffa requires a single $TID (one team); identity is $PSET, not $TID (A4.1)")
+
+    def _check_respawn(self, ctx: _ValidationContext) -> None:
         # lms ⇔ no auto-respawn (none / finite lives)
-        if _check.auto_respawn_in_lms(mode, config.get("respawn", {})):
-            errors.append("lms cannot use respawn.type=='auto'")
+        if _check.auto_respawn_in_lms(ctx.mode, ctx.config.get("respawn", {})):
+            ctx.errors.append("lms cannot use respawn.type=='auto'")
         try:
-            respawn_settings(config.get("respawn"))   # 2026-09-19: the protection and weapon-delay options
+            respawn_settings(ctx.config.get("respawn"))   # 2026-09-19: the protection and weapon-delay options
         except ValueError as e:
-            errors.append(str(e))
+            ctx.errors.append(str(e))
+
+    def _check_station_source(self, ctx: _ValidationContext) -> None:
 
         # station-gated objective modes need a Tier-1 station/objective source (modes §7).
         # `extraction` is deliberately NOT gated: its objective logic runs MC-side on gun events
         # (modes §2 — coverage-zone gameplay), no IR station required.
-        src = station_source_of(config, opts)
+        src = station_source_of(ctx.config, ctx.opts)
         vocab = ", ".join(f"{k!r} ({v})" for k, v in sorted(STATION_SOURCES.items()))
-        if mode in _STATION_GATED_MODES:
+        if ctx.mode in _STATION_GATED_MODES:
             if not src:
-                errors.append(f"mode {mode!r} needs a station/objective source (Tier 1): set "
+                ctx.errors.append(f"mode {ctx.mode!r} needs a station/objective source (Tier 1): set "
                               f"config.station_source to one of: {vocab}")
             elif src not in STATION_SOURCES:
                 # This used to be a bare truthiness gate, so any string at all passed -- including a
                 # typo, which then shipped a match with nothing on the field emitting its objective.
-                errors.append(f"unknown station_source {src!r} for mode {mode!r}: use one of {vocab}")
-            elif mode in _OBJECTIVE_MODES:
+                ctx.errors.append(f"unknown station_source {src!r} for mode {ctx.mode!r}: use one of {vocab}")
+            elif ctx.mode in _OBJECTIVE_MODES:
                 # F88: a beacon carries NO station id, so one grenade is indistinguishable from
                 # another and the bridge can only ever speak for ONE point. KotH is exactly that;
                 # a multi-point Domination on grenades cannot be built at all.
@@ -3060,9 +3198,9 @@ class Compiler:
                 # sim, a hand-written fixture. Do not "fix" it by wiring the key: multi-point domination
                 # is not buildable on grenades at all, and the key would be a control for a mode we
                 # cannot ship (operator review 2026-09-10).
-                points = config.get("control_points")
+                points = ctx.config.get("control_points")
                 if src == "grenade" and isinstance(points, int) and not isinstance(points, bool) and points > 1:
-                    errors.append(
+                    ctx.errors.append(
                         f"F88: {points} control points on a grenade source is not buildable, because a hill "
                         "beacon carries no station id, so two grenades in range are indistinguishable "
                         "on the wire and would fight over the same point. Run ONE point (koth), or "
@@ -3075,7 +3213,7 @@ class Compiler:
                 # it used to say nothing at all, and a game saved on `ir_station` pushed clean and
                 # silent (operator review 2026-09-10).
                 if src == "grenade":
-                    warnings.append(
+                    ctx.warnings.append(
                         "SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND "
                         "PLACE IT (A HILL THAT STARTS ALREADY OWNED SKEWS THE WHOLE MATCH, AND ONLY A POWER "
                         "CYCLE GUARANTEES NEUTRAL). ONE POINT ONLY (F88)")
@@ -3083,25 +3221,29 @@ class Compiler:
                     # A phone point is NOT power-cycled: arming is what resets it (utility.js
                     # `applyStationConfig` calls `resetPoint()` when the game id changes), so the
                     # checklist is about the app being in the right role and staying awake on the point.
-                    warnings.append(
+                    ctx.warnings.append(
                         "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION (KIND CONTROL; ARMING RESETS THE "
                         "POINT, SO DO NOT POWER-CYCLE IT): CONFIRM IT SHOWS MC-ARMED FOR THIS GAME, KEEP IT "
                         "AWAKE ON THE POINT, AND CHECK ITS BATTERY")
                 else:
-                    warnings.append(
+                    ctx.warnings.append(
                         "SETUP: THE IR STATION IS UNPROVEN (WE HAVE NEVER HAD ONE ON THE BENCH, SO NOTHING "
                         "CONFIRMS IT SPEAKS THE PROTOCOL OUR NODES READ): PLACE AND POWER IT, AND CHECK IT READS NEUTRAL BEFORE THE "
                         "WHISTLE, OR USE OBJECTIVE SOURCE PHONE")
 
+    def _check_loadout_ids(self, ctx: _ValidationContext) -> None:
+
         # unknown weapon / perk ids; a perk rides BESIDE a secondary weapon (A14) -- the ALT-button pairing is refused by policy.py before it gets here
-        for p in roster:
+        for p in ctx.roster:
             lo = p.get("loadout", {}) or {}
             for w in lo.get("weapons", []):
                 if w["weapon_id"] not in self.catalog._by_id:
-                    errors.append(f"unknown weapon_id {w['weapon_id']!r}")
+                    ctx.errors.append(f"unknown weapon_id {w['weapon_id']!r}")
             perk = lo.get("perk")
             if perk and not self.perks.has(perk):
-                errors.append(f"unknown perk_id {perk!r}")
+                ctx.errors.append(f"unknown perk_id {perk!r}")
+
+    def _check_magazine_capacity(self, ctx: _ValidationContext) -> None:
 
         # A PRIMARY weapon must be able to kill on one magazine: mag >= ceil(pool / dmg).
         # `docs/weapon-design.md` §2.1 — the rail gun and energy launcher shipped at mag 1 needing 2 hits,
@@ -3133,9 +3275,9 @@ class Compiler:
         #    the gun they fight with, not a backup, which is what `kind` says out loud. A reload still
         #    kills, so nothing here blocks; what is genuinely UNKILLABLE is the `$SIR`/zero-damage gate
         #    below, which passes K and FIELD-4 promoted to the errors this guard was standing in for.
-        health = config.get("health") or {}
+        health = ctx.config.get("health") or {}
         seen: set[tuple[str, int, int, str]] = set()
-        for p in roster:
+        for p in ctx.roster:
             ov = ((p.get("loadout") or {}).get("overrides")) or {}
             hp, armor = ov.get("max_hp", health.get("max_hp")), ov.get("max_armor", health.get("max_armor"))
             if hp is None or armor is None:
@@ -3182,13 +3324,15 @@ class Compiler:
                     what = ("is your only weapon" if kind == "only"
                             else "is your backup" if kind == "backup"
                             else "is the gun you fight with (a sidearm in the PRIMARY slot)")
-                    warnings.append(f"{wid} {what} and cannot kill on one magazine at this pool - "
+                    ctx.warnings.append(f"{wid} {what} and cannot kill on one magazine at this pool - "
                                     f"it will need a reload (mag {mag} < {rtk} rounds for {htk} hits at "
                                     f"{self.catalog.damage_per_pull(wid)} dmg vs {pool} pool)")
                 else:
-                    warnings.append(f"PRIMARY {wid.upper().replace('_', ' ')} CANNOT KILL ON ONE MAGAZINE: "
+                    ctx.warnings.append(f"PRIMARY {wid.upper().replace('_', ' ')} CANNOT KILL ON ONE MAGAZINE: "
                                     f"mag {mag} < {rtk} rounds for {htk} hits at {self.catalog.damage_per_pull(wid)} dmg "
                                     f"vs a {pool} pool — a reload mid-kill (docs/weapon-design.md §2.1)")
+
+    def _check_sir_effects(self, ctx: _ValidationContext) -> None:
 
         # Does each loadout weapon's <t3,t4> key a $SIR row that actually DEALS DAMAGE?
         # The mag>=htk invariant above computes on raw t5 and cannot see this: it passed an Energy
@@ -3222,17 +3366,17 @@ class Compiler:
         # If the plan cannot be built (F53: a weapon on a cell with no row AND no `sir_fn`), fall back
         # to the base table, so that weapon gets the NO ROW error below instead of a crash here.
         try:
-            plan = self.hit_plan(roster, rekey=bool(config.get("hit_audio_rekey", False)))
+            plan = self.hit_plan(ctx.roster, rekey=bool(ctx.config.get("hit_audio_rekey", False)))
             sir = _sir_index(self.sir_table(plan, None))
         except ValueError:
             plan, sir = _ha.Plan(), _sir_index(_SIR_TABLE)
-        self._validate_distinct_cells(config, roster, plan, warnings)   # F315 (own hunk: the flag's moves and its budget)
+        self._validate_distinct_cells(ctx.config, ctx.roster, plan, ctx.warnings)   # F315 (own hunk: the flag's moves and its budget)
         T = self.catalog._T
         # KeyError here is a CODE bug, not bad data — raise loudly rather than letting every
         # weapon `continue` and silently turn the whole guard into a no-op.
         _pi, _si = T["proto"] + 1, T["subtype"] + 1
         flagged: set[str] = set()
-        for p in roster:
+        for p in ctx.roster:
             for slot, w in enumerate((p.get("loadout", {}) or {}).get("weapons", [])):
                 wid = w.get("weapon_id")
                 if wid not in self.catalog._by_id or wid in flagged:
@@ -3245,7 +3389,7 @@ class Compiler:
                 if self.catalog._by_id[wid].get("lethal") is False:
                     if slot == 0:
                         flagged.add(wid)
-                        errors.append(
+                        ctx.errors.append(
                             f"{wid} cannot kill (lethal: false) and is in the PRIMARY slot. A support "
                             f"weapon belongs in slot 2, where carrying it costs the player their backup "
                             f"gun (weapon-design.md §7.4)")
@@ -3258,11 +3402,11 @@ class Compiler:
                 fn = sir.get(key)
                 if fn is None:
                     flagged.add(wid)
-                    errors.append(f"{wid} keys $SIR {key[0]},{key[1]} with NO ROW in the pushed table, so "
+                    ctx.errors.append(f"{wid} keys $SIR {key[0]},{key[1]} with NO ROW in the pushed table, so "
                                   f"every hit is silently dropped (ir-effects-design.md §6.2)")
                 elif fn in _SIR_NO_POOL:
                     flagged.add(wid)
-                    errors.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which registers a "
+                    ctx.errors.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which registers a "
                                   f"hit but moves no pool: the weapon DEALS NO DAMAGE (ir-effects-design.md §6.2)")
                 elif fn not in _SIR_GRANT and not self.catalog.damage(wid):
                     # 🔴 Round-3 FIELD-4 (2026-09-13) — the third door into the same unkillable class.
@@ -3273,26 +3417,26 @@ class Compiler:
                     # such a weapon entirely. GRANT rows (and the no-pool rows caught above) are
                     # exempt: a heal/armour/shield weapon is not MEANT to deal damage.
                     flagged.add(wid)
-                    errors.append(f"{wid} deals 0 DAMAGE on $SIR {key[0]},{key[1]} → function {fn}, a "
+                    ctx.errors.append(f"{wid} deals 0 DAMAGE on $SIR {key[0]},{key[1]} → function {fn}, a "
                                   f"damage row: every hit registers and takes nothing off the pool, so "
                                   f"the weapon cannot kill (ir-effects-design.md §6.2)")
                 elif fn in _SIR_GRANT:
                     flagged.add(wid)
                     dual = " (16/17/20/21 are DUAL-POLARITY: they still damage enemies, 17/21 armor-piercing)" \
                            if fn in (16, 17, 20, 21) else ""
-                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a GRANT "
+                    ctx.warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a GRANT "
                                     f"(heal/armor/shield): it HEALS an ally it hits{dual} "
                                     f"(ir-effects-design.md §6.2)")
                 elif fn in (36, 37):
                     flagged.add(wid)
-                    cm = self._to_gc(config, p).crit_modifier
+                    cm = self._to_gc(ctx.config, p).crit_modifier
                     mult = headset_multiplier(fn, cm)
                     # 2026-09-17: the default crit_modifier is now 0, so mult is 1.0 for most games —
                     # a headset hit and a gun-body hit are equal, and the old "needs fewer hits than
                     # published" framing would be a wrong claim at that default. Only make it when the
                     # compiled crit_modifier actually scales the headset (mult != 1.0).
                     if mult != 1.0:
-                        warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a CONFIRMED "
+                        ctx.warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a CONFIRMED "
                                         f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
                                         f"({cm}) a headset hit lands floor({mult}x its $WEAP t5); a gun-body "
                                         f"hit lands the raw t5 (x1) (bench 2026-09-11). The published "
@@ -3300,28 +3444,30 @@ class Compiler:
                                         f"all-headset kill needs fewer hits than published "
                                         f"(ir-effects-design.md §6.2)")
                     else:
-                        warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a "
+                        ctx.warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a "
                                         f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
                                         f"({cm}) the multiplier is 1.0x, so a headset hit lands the same as "
                                         f"a gun-body hit (bench 2026-09-11, ir-effects-design.md §6.2)")
                 elif fn in _SIR_ARMOR_PIERCING:
                     flagged.add(wid)
-                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, ARMOR-PIERCING: it "
+                    ctx.warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, ARMOR-PIERCING: it "
                                     f"bypasses armor and shields, so htk is ceil(hp/dmg), not ceil(pool/dmg) "
                                     f"(ir-effects-design.md §6.2)")
                 elif fn not in _SIR_PLAIN_DAMAGE:
                     flagged.add(wid)
-                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which is NOT in the "
+                    ctx.warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which is NOT in the "
                                     f"bench-confirmed plain-damage set {sorted(_SIR_PLAIN_DAMAGE)}: its effect "
                                     f"on the victim is uncharacterised (ir-effects-design.md §6.2)")
 
+    def _check_frag_coverage(self, ctx: _ValidationContext) -> None:
+
         # frag-limit on a non-covered venue is a coverage-zone early end, not a guaranteed win (C1/M7)
-        scoring = config.get("scoring", {})
-        if _check.frag_limit_needs_coverage(scoring, covered):
-            warnings.append("frag_limit on a non-full-coverage venue is an in-coverage early end only; "
+        scoring = ctx.config.get("scoring", {})
+        if _check.frag_limit_needs_coverage(scoring, ctx.covered):
+            ctx.warnings.append("frag_limit on a non-full-coverage venue is an in-coverage early end only; "
                             "the guaranteed end is time_limit_s (A4.8) — winner is provisional until recap")
 
-        self._validate_stun(config, roster, errors, warnings)   # F15/A20 (own hunk: the stun's shape + its source)
+    def _check_shields(self, ctx: _ValidationContext) -> None:
         # §7.3 (bench 2026-09-18): armour piercing ignores the SHIELD as well as the armour -- a victim
         # died with a full 120 shield and full 70 armour standing. So in a shield-only game the shield
         # buys NOTHING against it and the whole fight is the health underneath. At the 30 health the
@@ -3329,16 +3475,16 @@ class Compiler:
         # counter rather than a trade. The preset now carries 45, but a host sets the health freely
         # (`is_shields_preset` only reads "base armour is zero"), so say it rather than silently
         # shipping a game where one perk beats the entire defensive choice.
-        if is_shields_preset(config) and any(
-                (p.get("loadout") or {}).get("perk") == "armor_piercing" for p in roster):
-            hp = int((config.get("health") or {}).get("max_hp") or 0)
+        if is_shields_preset(ctx.config) and any(
+                (p.get("loadout") or {}).get("perk") == "armor_piercing" for p in ctx.roster):
+            hp = int((ctx.config.get("health") or {}).get("max_hp") or 0)
             if hp and hp < _SHIELDS_MIN_HP:
-                warnings.append(
+                ctx.warnings.append(
                     f"this is a shield-only game ({hp} HP, no armour) and someone carries Armour "
                     f"Piercing, which IGNORES the shield entirely (bench 2026-09-18): the whole fight is "
                     f"the {hp} HP underneath, and the shield buys nothing against it. The Shields preset "
                     f"carries {_SHIELDS_MIN_HP} HP for exactly this reason (weapon-design.md §7.3)")
-        return {"ok": not errors, "errors": errors, "warnings": warnings}
+
 
     def weapon_catalog(self) -> list[Weapon]:
         return self.catalog.all()
