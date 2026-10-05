@@ -231,7 +231,7 @@ test('F264 THE COMPANION: a CORRECT belief of an empty magazine never counts a p
 test('F264: the re-assert reads the REPLY, not the node belief -- the belief is the thing under suspicion', () => {
   // End to end the two AGREE, because the `$LCD` has already corrected the ammo account by the time the
   // re-assert runs. That makes the end-to-end test above unable to tell them apart, so pin the mechanism
-  // directly here: the frame carries the numbers it was HANDED. Build it from `_acctLive` instead and this
+  // directly here: the frame carries the numbers it was HANDED. Build it from `am.acctLive` instead and this
   // fails. It matters because the node's belief is exactly what is under suspicion in this fault, and an
   // `$AMMO` built from a stale one would hand out a free magazine.
   const h = harness();

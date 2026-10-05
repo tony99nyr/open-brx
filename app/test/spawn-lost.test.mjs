@@ -251,7 +251,7 @@ test('F416 weapon: a hit before a mismatch repairs only team, live ammo and trig
   const queryAt = h.writes.findIndex(w => w.f === '$QUERY,*' && w.t > spawnedAt);
   const repair = h.writes.slice(queryAt + 1).map(w => w.f);
   assert.ok(repair.some(f => f.startsWith('$TID,')));
-  assert.ok(repair.some(f => f.startsWith('$AMMO,0,')), `the live slot-0 count (_liveAmmo): ${JSON.stringify(repair)}`);
+  assert.ok(repair.some(f => f.startsWith('$AMMO,0,')), `the live slot-0 count (am.liveAmmo): ${JSON.stringify(repair)}`);
   assert.ok(repair.some(f => f.startsWith('$BMAP,0,')));
   assert.ok(!repair.some(f => f.startsWith('$SPAWN') || f.startsWith('$PSET')), JSON.stringify(repair));
 });
