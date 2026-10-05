@@ -7,12 +7,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, SMOKE_MS, SIR_NO_POOL_FNS, SIR_GRANT_FNS, isPoolProbe } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const DOT = { 11: { weapon_id: 'toxin_rifle', per_tick: 4, tick_ms: 1000, duration_ms: 5000 } };
 const DELAY = 5000;
-
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live match with a fake gun that answers our `$LIFE` ticks the way the bench measured: per pool, no spill, floor
  *  at 0, `$HP` for a non-lethal write and `$LCD` (never `$HP`) for a lethal one. With `gun.hold` set, the gun's

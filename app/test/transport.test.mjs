@@ -9,21 +9,13 @@ import { Ring, memoryStorage } from '../src/transport/ring.js';
 import { Clock } from '../src/transport/clock.js';
 import { Transport, DELIVERED, clearConsumedPriorUtilityHandoff, priorUtilityReconnectUrl, debounceBound, BOUND_DEBOUNCE_POLLS, PRIOR_UTILITY_HANDOFF_MAX_AGE_MS } from '../src/transport/transport.js';
 import { APP_VER } from '../src/build.js';
+import { flush, useClock } from './_helpers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PY = path.resolve(HERE, '../../.venv/bin/python');
 const BUNDLE = path.resolve(HERE, '../www/app.js');
 const BUILDER = path.resolve(HERE, '../scripts/build.mjs');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-/** Let the promise callbacks that fired timers queued run. `setImmediate` is not mocked. */
-const flush = () => new Promise(r => setImmediate(r));
-/** The unit tests below use the mocked clock of node:test, so a loaded machine cannot fire a Transport
- *  timer early or late against the assertions. `advance` steps 1 ms at a time: one large `tick(ms)`
- *  gives a timer that a callback arms during the tick a start time at the END of the tick. */
-function useClock(ctx) {
-  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
-  return async ms => { for (let i = 0; i < ms; i++) { ctx.mock.timers.tick(1); await flush(); } };
-}
 /** Real time, for the integration test only: poll `pred` until it is true or `ms` elapses. A fixed sleep
  *  there raced the server under CPU load; a condition waits exactly as long as the server needs. */
 async function waitFor(pred, what, ms = 8000) {

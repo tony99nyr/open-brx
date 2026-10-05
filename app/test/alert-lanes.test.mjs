@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { Engine, IR_CALLOUT, PRESENT } from '../src/engine.js';
 import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, LANE_FEED_MS } from '../src/lanes.js';
 import { PU_ACTIVE_CARD_MS } from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
 // the harness of announcer.test.mjs: me p1 (7, BLUE), VIPER p2 (19, YELLOW)
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 // Me: p1, player_num 7, BLUE (tid 1). VIPER: 19, YELLOW (tid 2).
 function harness({ num = 7, mode = 'tdm', shieldMax = null, weapons = [{ weapon_id: 'assault_rifle' }] } = {}) {

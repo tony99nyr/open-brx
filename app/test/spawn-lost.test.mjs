@@ -5,10 +5,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as E from '../src/engine.js';
+import { mkStorage } from './_helpers.mjs';
 
 const { Engine, PROBE_LIFE } = E;
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
-function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live TDM that reaches T-0 with `fail(frames)` deciding which writes resolve false. `gun` is the fake gun's own
  *  state: `spawned` flips on a `$SPAWN` write that did not fail, and a probe is answered from it. */
