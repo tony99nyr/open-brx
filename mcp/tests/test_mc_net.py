@@ -663,3 +663,33 @@ def test_a_restarted_server_can_advertise_again():
         assert n._mdns_abort.is_set(), "stop() re-arms it for any worker still in flight"
 
     _run(go())
+
+
+def test_f490_a_utility_hello_forgets_the_player_the_node_held():
+    """F490: NetServer kept a node's player_id through a utility hello and fired it back on the node's next HUD hello, so
+    a phone that became a station and then came back with a gun nobody owns got its old player bound again."""
+    if not HAVE_WS:
+        return _skip("utility forgets player")
+
+    async def go():
+        async with _Harness() as h:
+            h.context = {"player": {"player_id": "p1", "player_num": 6}, "team": {"team_id": "blue", "tid": 1},
+                         "roster": [], "config": {"config_id": "c1", "time_limit_s": 600,
+                                                  "health": {"max_hp": 45, "max_armor": 70}}}
+            hud = MockNode(h.url, node_id="n1", gun_name="GUN-A", gun_tail="3D4F")
+            await hud.start(); await hud.wait_connected()
+            assert await _until(lambda: h.net.nodes["n1"].player_id == "p1"), "control: the phone bound p1"
+            await hud.close()
+            h.context = None                                  # a station, then a gun nobody owns: hydrate binds no one
+            util = MockNode(h.url, node_id="n1", node_type="utility", gun_name="", gun_tail="")
+            util.node_key = hud.node_key                      # the same phone: it re-claims its id with its key
+            await util.start(); await util.wait_connected()
+            assert h.net.nodes["n1"].player_id is None, "the station still speaks for p1"
+            await util.close()
+            back = MockNode(h.url, node_id="n1", gun_name="GUN-X", gun_tail="0000")
+            back.node_key = util.node_key
+            await back.start(); await back.wait_connected()
+            assert await _until(lambda: h.nodes and h.nodes[-1]["node_id"] == "n1" and h.nodes[-1]["node_type"] == "phone")
+            assert "player_id" not in h.nodes[-1], ("the HUD comeback carried the old player", h.nodes[-1])
+            await back.close()
+    _run(go())

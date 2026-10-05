@@ -728,6 +728,10 @@ class NetServer:
         rec.ws = ws
         rec.hello_ok = True
         rec.node_type = str(body.get("node_type", "phone"))
+        if rec.node_type == "utility":
+            # F490: a station speaks for no player. Keeping the id the node held as a phone fired it back to `_on_node`
+            # on the node's next HUD hello, which bound the old player again with a gun nobody owns.
+            rec.player_id = None
         rec.app_ver = str(body.get("app_ver", ""))
         # A28.3: `reach` is MC's own observation of the socket in front of it, NOT the node's claim.
         # `hello.via` is a client-supplied string, and it feeds `coverage()` (which gates a mode) and the
