@@ -1367,6 +1367,27 @@ test('F436 reconcile: a heavy on the trigger is re-equipped in the re-arm write,
   assert.ok(!logs.some(m => /gun fired slot 0 while/.test(m)), 'the slot-0 backstop never ran');
 });
 
+test('cross-lane #5: a lethal self-hit inside a stun puts a heavy on the trigger back at ZERO; the stun expiry gives its charges back', () => {
+  const h = armed({ echo: true, stun: { duration_s: 6 } }); h.take(4); h.away(); h.adv(800);
+  assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
+  h.frame('$HIR,4,8,19,2,15,0,0,*'); h.adv(1500);   // past the 1000 ms gate: the EMP word is not paired with the self-hit
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  const b0 = h.batches.length;
+  h.frame('$HIR,4,0,7,1,9,0,3,*').frame('$HP,0,0,0,*'); h.adv(500);
+  assert.equal(h.eng.alive, true, 'setup: the self-hit revived');
+  assert.ok(h.eng.stunned, 'the stun goes on');
+  const after = h.batches.slice(b0).flat();
+  assert.ok(!after.some(f => /^\$AMMO,\d+,[1-9]/.test(f)), `nothing is armed while stunned: ${JSON.stringify(after.filter(f => f.startsWith('$AMMO')))}`);
+  assert.ok(after.includes(WEAP[2]) && after.includes('$AMMO,2,0,0,1,*'), 'the heavy goes back on the trigger at zero charges');
+  assert.equal(h.eng.pu.held?.left, 2, 'the item keeps its charges');
+  const b1 = h.batches.length;
+  h.adv(5000);
+  assert.equal(h.eng.stunned, null, 'the stun expired');
+  const restore = h.batches.slice(b1).flat();
+  assert.ok(restore.some(f => /^\$AMMO,2,2,\d+,1,\*$/.test(f)), `the expiry restore puts the heavy's charges on slot 2: ${JSON.stringify(restore)}`);
+  assert.equal(h.eng.pu.held?.name, 'ROCKETS', 'and the item is still held');
+});
+
 test('Reconcile bugs 1+2 r1 S1: an EMP inside the window with a heavy on the trigger re-equips it at ZERO charges; the stun expiry puts the charges back', () => {
   const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800);
   assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');

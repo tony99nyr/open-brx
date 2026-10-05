@@ -4230,7 +4230,14 @@ export class Engine {
     const revive = keepAmmo ? revive0.map(f => { const t = f.startsWith('$AMMO,') ? f.split(',') : null; const k = t && keepAmmo[+t[1]]; return k ? `$AMMO,${t[1]},${k[0]},${k[1]},${t.slice(4).join(',')}` : f; }) : revive0;
     // F438 r4: a self-hit revive keeps a held heavy (the node still tracks it), its charges in its own `$AMMO` row (`burstWithHeld`, as the reconcile re-arm), never the zero.
     const keep = selfHit ? this.pu.held : null;
-    const burst = keep ? burstWithHeld(revive, keep) : revive;
+    const armed = keep ? burstWithHeld(revive, keep) : revive;
+    // Cross-lane review 2026-10-04 #5: a lethal self-hit inside a stun. F438 says the self-kill never happened, so the stun
+    // it interrupted goes on: the revive does NOT end it. The revive's `$SPAWN` re-arms the gun, so every `$AMMO` row of
+    // its burst goes out at 0/0 (the stun's own disarm, in the same write) and the gun stays disarmed until the stun's
+    // expiry restore, which writes `stunned.ammo` (and the held heavy's count as it is then). Ending the stun here instead
+    // would hand a stunned player a working gun early, purely for having shot themselves.
+    const stunHolds = !!(selfHit && this.stunned);
+    const burst = stunHolds ? armed.map(f => f.startsWith('$AMMO,') ? f.replace(/^(\$AMMO,\d+),[^,]*,[^,]*,/, '$1,0,0,') : f) : armed;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
     // F438: the revive leaves full health and armour and the fill's shield; the drain takes back the difference, per pool
@@ -4255,9 +4262,12 @@ export class Engine {
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
     this.am.forgetCounts(); this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
-    this.am.acctWroteRows(burst, keep ? sl => sl === keep.slot : null);   // bug 3a: every `$AMMO` row of the burst echoes (brx1, 2026-10-02); `keepHeld` books the heavy's
+    // #5: under a stun the account keeps the LIVE counts with no echo window, as `_stun`'s own disarm leaves it: the gun's
+    // echo of the zeros is dropped while stunned (ammo.js `onAmmo`), and `liveAmmo()` must still read the real counts.
+    if (stunHolds) this.am.restore(keepAmmo);
+    else this.am.acctWroteRows(burst, keep ? sl => sl === keep.slot : null);   // bug 3a: every `$AMMO` row of the burst echoes (brx1, 2026-10-02); `keepHeld` books the heavy's
     if (keepAmmo) for (const [sl, [mag, res]] of Object.entries(keepAmmo)) this.am.setPrev(sl, mag, res);   // polish 2026-10-03: the counts the burst carried
-    if (keep) this.pu.keepHeld(keep); else this.pu.onRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst (F438 r4: a self-kill keeps it)
+    if (keep) this.pu.keepHeld(keep, stunHolds); else this.pu.onRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst (F438 r4: a self-kill keeps it)
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     // F438 polish r1: a self-hit revive is the same life, so an enemy's poison keeps ticking and a smoke keeps its clock.
     // ⚠ Unbenched: the revive's `$SPAWN` clears every `$TMP`, so the gun may have dropped the smoke's accuracy hold already.

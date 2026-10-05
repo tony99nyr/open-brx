@@ -18,7 +18,7 @@
 //     the gun     onAmmo(slot, mag, prev) · repairUnpulled(slot, mag, prev) · lostEquip(slot, mag, prev, expectedBefore,
 //                 altPending) · repairLostEquip(held, slot, mag) · onSelect() · onAltPressed() · onAssumedSwap(to) ·
 //                 onConfirmedSwap(slot) · onHp() · onShieldFrame(shield)
-//     life        onDeath(inRevive?) · onReviveStart() · onRevive(burst) · keepHeld(held)
+//     life        onDeath(inRevive?) · onReviveStart() · onRevive(burst) · keepHeld(held, stunned?)
 //     reconcile   disarmRows() · reconcileRearm(rows) · stunRearm(rows) · reequipInRearm(ammo, zero?) · afterRearm() · restoreRows(rows, pu)
 //     queries     isHeldSlot(slot) · heavyOnTrigger() · heavyMatches(slot, mag) · overshieldPset() · psetWithShieldMax(max)
 //     accessors   held (rw) · overshield (rw) · grant (rw) · back · backPending · protectUntil · psetNow · spawnCard ·
@@ -649,10 +649,13 @@ export class PlayerPowerups {
    *  `burstWithHeld`). A heavy that was on the trigger goes back on it, as the reconcile re-arm does (F436). The `$SPAWN`
    *  refills the loadout weapons and puts the gun on slot 0: accepted for loadout weapons, since a self-kill costs nothing
    *  and the refill is the gun's own. `held` is the item the caller built the burst from. */
-  keepHeld(held) {
+  keepHeld(held, stunned = false) {
     const h = this.host;
-    h.acctWrote(held.slot, held.left, PU_RESERVE); h.setPrev(held.slot, held.left, PU_RESERVE);
-    if (held.trig === held.slot && this._headWeap(held.slot)) this._equip(held.slot, held.left, PU_RESERVE, `F438 r4: ${held.name} back on the trigger after the self-hit revive`);
+    // Cross-lane #5: inside a stun the heavy goes back on the trigger at ZERO charges, as the stunned reconcile re-arm does;
+    // the stun's expiry restore (`restoreRows`) writes its charges back.
+    const n = stunned ? 0 : held.left, r = stunned ? 0 : PU_RESERVE;
+    h.acctWrote(held.slot, n, r); h.setPrev(held.slot, n, r);
+    if (held.trig === held.slot && this._headWeap(held.slot)) this._equip(held.slot, n, r, `F438 r4: ${held.name} back on the trigger after the self-hit revive${stunned ? ' (stunned: zero charges)' : ''}`);
     else held.trig = 0;
     h.save();
   }

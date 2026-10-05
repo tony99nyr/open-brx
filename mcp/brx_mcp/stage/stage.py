@@ -2559,6 +2559,11 @@ class GunStage:
                 k = keep.get(int(t[1])) if t and t[1].isdigit() else None
                 return f"$AMMO,{t[1]},{k[0]},{k[1]},{','.join(t[4:])}" if t and k else f
             revive = [_keep(f) for f in revive]
+        # Cross-lane review 2026-10-04 #5 (engine.js `_revive` `stunHolds`): a lethal self-hit inside a stun never
+        # happened, so the stun goes on and the burst's `$AMMO` rows go out at 0/0; the expiry restore re-arms.
+        stun_holds = bool(self_hit and self.stunned)
+        if stun_holds:
+            revive = [re.sub(r"^(\$AMMO,\d+),[^,]*,[^,]*,", r"\1,0,0,", f) if f.startswith("$AMMO,") else f for f in revive]
         self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
         self._arm_after_spawn(kind)                              # await, same reasoning as `spawn()` above (F209)
         # engine.js `_revive`: a legacy bundle (no respawn_profile) always computes `kind == "timed"`, station
@@ -2573,7 +2578,18 @@ class GunStage:
         drain = [f"$LIFE,{sd[0]},{sd[1]},{sd[2]},*"] if sd and any(d < 0 for d in sd) else []
         self._shield_fill_start(fill)
         self._forget_counts(); self.active_slot = 0; self._recoil_slot = 0   # bug 3 r1 M2: before the await, as the head
-        self._acct_wrote_rows(revive)   # bug 3a: every row echoes (polish 2026-10-03: a self-hit's rows carry the live counts)
+        if stun_holds and keep:
+            # #5 (engine.js `am.restore(keepAmmo)`): the account keeps the live counts with no echo window, as `_stun`'s
+            # own disarm leaves it; the zeros' echo is dropped while stunned.
+            for sl, (mag, res) in keep.items():
+                if mag is not None:
+                    self._shot_acct[sl] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0,
+                                           "echo_expect": None, "echo_pending": 0, "echo_weap": False}
+                    self._prev_ammo[sl] = mag
+                if res is not None:
+                    self._prev_reserve[sl] = res
+        else:
+            self._acct_wrote_rows(revive)   # bug 3a: every row echoes (polish 2026-10-03: a self-hit's rows carry the live counts)
         await self._write_ammo(([ps] if ps else []) + list(revive) + ([fr] if fr else []) + fill + drain,   # engine.js X3: the line before the fill
                           "revive" + ps_why + self._line_tag(fr, tag) + (f" + shield pool {self.max_shield}" if fill else "")
                           + (" + F438 self-hit drain" if drain else ""))

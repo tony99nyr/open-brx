@@ -24,14 +24,14 @@ function atPools(bundle, h) {
     ? f.split(',').map((tok, i) => (i === 3 ? String(h.max_hp) : i === 4 ? String(h.max_armor) : i === 5 ? String(h.max_shield) : tok)).join(',') : f);
   return { ...bundle, head: bundle.head.map(fix), pset_pool: (bundle.pset_pool || []).map(fix) };
 }
-function harness({ health = { max_hp: 45, max_armor: 70 } } = {}) {
+function harness({ health = { max_hp: 45, max_armor: 70 }, config: extra = {} } = {}) {
   const writes = [], facts = [], logs = [], groups = [];
   const bundle = health.max_shield ? atPools(golden, health) : golden;
   let clock = 1_000_000;
   const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health,
-    teams: [team, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+    teams: [team, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }], ...extra };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
   const failing = new Set();   // `why` prefixes whose write the fake link refuses
@@ -293,4 +293,26 @@ test('F438 polish r3: two self-hits in the SAME ms each get their own `$LIFE`', 
   h.frame(SELF).frame('$HP,45,61,0,*');
   h.frame(SELF).frame('$HP,45,52,0,*');
   assert.deepEqual(h.grants(n), ['$LIFE,0,9,0,*', '$LIFE,0,9,0,*']);
+});
+
+// ---- cross-lane review 2026-10-04 #5: a lethal self-hit inside a stun ----
+
+test('cross-lane #5: a lethal self-hit revive inside a stun keeps the stun, and the gun stays disarmed until its expiry', () => {
+  const h = harness({ config: { stun: { duration_s: 5 } } });
+  h.frame('$ALCD,30,100,0,192,0,*');   // two rounds fired: the account holds 30
+  h.frame('$HIR,4,8,19,2,15,0,0,*');   // the enemy EMP
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  h.adv(1500);
+  const n = h.mark();
+  h.frame(SELF).frame('$HP,0,0,0,*').frame('$LCD,0,0,0,0,30,192,*');
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  assert.ok(h.eng.stunned, 'F438: the self-kill never happened, so the stun it interrupted goes on');
+  const out = h.writes.slice(n), ammo = out.filter(f => f.startsWith('$AMMO,'));
+  assert.ok(out.includes('$SPAWN,,*'), 'setup: the revive burst went out');
+  assert.ok(ammo.length > 0 && ammo.every(f => /^\$AMMO,\d+,0,0,/.test(f)), `the revive burst re-arms nothing while stunned: ${ammo.join(' ')}`);
+  assert.deepEqual(h.eng.am.liveAmmo()[0], [30, 192], 'the account still holds the live count for the restore');
+  const m = h.mark();
+  h.adv(4000);
+  assert.equal(h.eng.stunned, null, 'the stun ends on its own clock');
+  assert.ok(h.writes.slice(m).includes('$AMMO,0,30,192,1,*'), `the expiry restore gives back the live count: ${h.writes.slice(m).join(' ')}`);
 });
