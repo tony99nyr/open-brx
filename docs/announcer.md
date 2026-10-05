@@ -28,6 +28,8 @@ The infection flip's own `infected` line goes through `_announceAlert` too, with
 A kill confirm plays only for MC `feedback{kind:"kill"}` or an S57 `DOWN_BY` naming this player. An MC alert
 named `kill` is refused.
 
+**The hill sounds are game information, not announcer flavour** (Tony, 2026-10-05, F463). All five, `hill_captured`, `hill_lost`, `hill_contested`, `hill_moved` and `hill_tick`, keep playing when the announcer, `hud_events` or `mc_events` is off (`ungated` rows in `presentation.py`). A host still mutes one with its own `sound: null`, which MC ships as `""`.
+
 **Exempt, by design** (they answer the player's own body or trigger at once, or play before go-live when nothing
 else is on air): the pain grunts (`pain_short`, `pain_long`, `pain_melee`; a grunt that would start more than 500 ms
 after its hit, `PAIN_STALE_MS`, is dropped: behind the shield-break line of the same hit it would play 2.6 s late; when the `$PLAY` gap blocks the write, the grunt is dropped), `hit_taken`, `died`, the low-health
