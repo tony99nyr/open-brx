@@ -33,7 +33,7 @@
     {"stations":[]}
   ],
   "stage_ignores": [
-    {"what":"trace","why":"Pins every branch of engine.js `_onHp` for the no-behaviour-change split (c), 2026-10-04. The stage models the same rules in one `_on_pools` body; this coverage trace is not part of the stage comparison."}
+    {"what":"trace","why":"The stage has no powerup model: GunStage decodes control-point (kind 5) adverts only and has no claim, grant or overshield, so the runner cannot replay the `powerup` station step."}
   ],
   "expect": [
     {
