@@ -581,3 +581,36 @@ def test_r3_a_pool_line_cut_by_the_scream_is_not_said_again_as_on_the_phone():
         return asyncio.run(run())
     assert plays(True) == 1, "the scream cut the pool line and it is not requeued"
     assert plays(False) == 1, "CONTROL: said once"
+
+
+def test_r3_a_revive_burst_that_waited_past_play_queue_stale_still_goes():
+    """F493 r1 H1 (engine.js `job.life`, app/test/revive-burst-queued.test.mjs): a spawn/revive burst is never dropped
+    by PLAY_QUEUE_STALE_MS. Dropped, the gun never gets its `$SPAWN`. The gun is busy 1 ms past the limit. CONTROL: an
+    ordinary queue-slot cue behind the same backlog is dropped, and one at exactly the limit goes, so the backlog sits
+    on the boundary."""
+    def sent(revive, over_ms=1):
+        async def run():
+            st, mgr, clock, sched = _mk_audio()
+            await _live_quiet(st, clock, sched)
+            st._inject_rx("$HIR,4,0,19,2,106,0,3,*"); _says(st, "$HP,0,0,0,*")
+            await sched.advance(st, 0.1)
+            assert not st.alive
+            g = st._gun_audio; g.clear()
+            g.add(S.PLAY_QUEUE_STALE_MS + over_ms, "a backlog the model holds", st._now_ms(), "X")
+            n = len(tx(mgr))
+            cue = "$PLAY,,4,6,VA7H,,,,*"
+            task = asyncio.ensure_future(st.revive() if revive else st.write([cue], "a queued cue", gap_ms=0))
+            await _yield()   # the write is called, and its wait starts, on the backlog's own millisecond
+            await sched.advance(st, S.PLAY_QUEUE_STALE_MS / 1000 - 0.1)
+            await sched.advance(st, 0.2, step=0.001)   # whole ms across the boundary: the wait ends `over_ms` past the limit
+            for _ in range(40):   # the revive's own holds after the burst run on the test clock too: bounded
+                if task.done():
+                    break
+                await sched.advance(st, 0.5)
+            assert task.done(), "setup: the write finished"
+            await task   # not `settle`: the stage's own clock-driven tasks (the body stops) wait on the test clock
+            return ("$SPAWN,,*" in tx(mgr)[n:] and st.alive) if revive else cue in tx(mgr)[n:]
+        return asyncio.run(run())
+    assert sent(True), "the revive burst goes out after the backlog, never stale-dropped"
+    assert not sent(False), "CONTROL: an ordinary cue behind the same backlog is stale-dropped"
+    assert sent(False, over_ms=0), "CONTROL: at exactly PLAY_QUEUE_STALE_MS the ordinary cue still goes (the limit is inclusive)"
