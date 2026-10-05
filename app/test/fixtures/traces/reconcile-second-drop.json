@@ -43,7 +43,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":32,"reserve":192,"deaths":0,"reconciling":false,"switching":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"reconciling":false,"switching":false},
       "facts": [],
       "reports": [],
       "writes": [
@@ -141,7 +141,7 @@
       "reports": [],
       "writes": [
         "$AMMO,0,31,192,1,*",
-        "$AMMO,1,31,192,1,*",
+        "$AMMO,1,6,24,1,*",
         "$SIR,0,0,,1,0,0,1,,*",
         "$SIR,0,1,,36,0,0,1,,*",
         "$SIR,0,3,,37,0,0,1,,*",
@@ -169,23 +169,7 @@
         "$PHONE,*",
         "$AMMO,0,0,0,1,*",
         "$AMMO,1,0,0,1,*",
-        "$LIFE,0,0,0,*",
-        "$AMMO,0,31,192,1,*",
-        "$AMMO,1,31,192,1,*",
-        "$SIR,0,0,,1,0,0,1,,*",
-        "$SIR,0,1,,36,0,0,1,,*",
-        "$SIR,0,3,,37,0,0,1,,*",
-        "$SIR,8,0,,1,0,0,1,,*",
-        "$SIR,9,3,,1,0,0,1,,*",
-        "$SIR,10,0,X13,1,0,100,2,60,*",
-        "$SIR,6,0,H02,1,0,90,1,40,*",
-        "$SIR,13,1,H57,1,0,0,1,,*",
-        "$SIR,13,0,H50,1,0,0,1,,*",
-        "$SIR,13,3,H49,1,0,100,0,60,*",
-        "$SIR,4,0,,2,0,0,1,,*",
-        "$SIR,15,0,,28,0,0,1,,*",
-        "$TMP,,,,,,,,0,,,,*",
-        "$BMAP,0,0,,,,,*"
+        "$LIFE,0,0,0,*"
       ]
     },
     {
@@ -207,7 +191,7 @@
       "reports": [],
       "writes": [
         "$AMMO,0,31,192,1,*",
-        "$AMMO,1,31,192,1,*",
+        "$AMMO,1,6,24,1,*",
         "$SIR,0,0,,1,0,0,1,,*",
         "$SIR,0,1,,36,0,0,1,,*",
         "$SIR,0,3,,37,0,0,1,,*",
