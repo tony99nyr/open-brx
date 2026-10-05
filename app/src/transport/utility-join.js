@@ -12,7 +12,7 @@
 //    (`http://<host>:8765/`) was saved as settings.mc and redialled on every start.
 
 import { parseMcJoin } from '../mcurl.js';
-import { sweepPlan, sweepForMc, MC_WS_PORT } from './discover.js';
+import { sweepPlan, sweepForMc, MC_WS_PORT, sweepLogger } from './discover.js';
 
 /** @typedef {import('./discover.js').DiscoverWebSocket} DiscoverWebSocket */
 /** @typedef {import('./discover.js').DiscoverTimers} DiscoverTimers */
@@ -80,7 +80,7 @@ export function startUtilitySweep({ isBound, operatorUrl, connect, log = () => {
     /** @type {string|null} */ let found = null;
     try {
       found = await sweep({ ...plan, ...sweepOptions, wsFactory, timers, shouldStop: done,
-        onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li') });
+        onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li'), onEvent: sweepLogger(log) });   // F294: why it missed
     } catch (e) { log('MC sweep: ' + (e instanceof Error ? e.message : String(e)), 'le'); }
     if (done()) { stop(); return; }
     if (found) {

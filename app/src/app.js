@@ -955,7 +955,7 @@ async function sweepForMc() {
   await mcLink.runSweep({ isBound: () => !!(transport && transport.state === 'bound'),
     isOnline: () => !(typeof navigator !== 'undefined' && navigator.onLine === false),
     getNetworkStatus: () => plugins.network ? plugins.network.getStatus() : Promise.resolve(null),
-    joinUrl: () => currentJoinUrl, remembered: () => settings.mcUrl, wsFactory, isPaused: () => picking,
+    joinUrl: () => currentJoinUrl, remembered: () => settings.mcUrl, wsFactory, isPaused: () => picking && 'gun connect',
     log, onFound: suggestMc });
 }
 
