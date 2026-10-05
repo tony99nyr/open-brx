@@ -13,85 +13,15 @@ against the code as it was that night:
 * **B5 / F119** ACC swung wildly because hits arrive per event and shots on a ~2 s heartbeat.
 """
 from brx_mcp.mc import presentation as _pres
-from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc import scoring as S
 from brx_mcp.mc.scoring import Scorer
-from brx_mcp.mc.state import Session
 from brx_mcp.mc.types import ACC_MIN_SHOTS
-
-T0 = 5_000_000
+from _session import DeafNet, go_live, kill, mk_kit_session, T0
 
 
 # --------------------------------------------------------------------------------------------------
 # Session harness: a real Session on fakes, driven to LIVE with N players on the field.
 # --------------------------------------------------------------------------------------------------
-class DeafNet(FakeNet):
-    """A FakeNet where named nodes are out of coverage: `push` returns False, as the real net does."""
-
-    def __init__(self, deaf=()):
-        super().__init__()
-        self.deaf = set(deaf)
-
-    def push(self, node_id, kind, body):
-        super().push(node_id, kind, body)
-        return False if node_id in self.deaf else None
-
-
-def mk(n_players=2, mode="tdm", cfg=None, net=None):
-    clock = {"t": T0}
-    net = net or FakeNet()
-    s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
-    s.set_config({"mode": mode, "time_limit_s": 600, **(cfg or {})})
-    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n_players)]
-    # Adding a player never moves the phase (2026-09-17): reach KIT the way the operator does, with an
-    # explicit CONTINUE TO KIT, BEFORE `online()` reports `synced` -- `_on_status`/`_bind` only latch
-    # `synced_at_lobby` while the phase is kit/lobby/armed (A5.7), same as a real bench where the phone
-    # keeps heartbeating after the host's tap.
-    s.set_phase("kit")
-    return s, net, clock, ps
-
-
-def online(s, net, clock, p, i):
-    tail = demo_armory()[i]["ble"]["tail"]
-    net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
-    net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36, "alive": True,
-                                     "shots": 0, "battery": 80, "fw": "v4.32", "arm_state": "kitted", "synced": True,
-                                     "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90,
-                                                   "screen_on": True, "foreground": True, "gun_linked": True}}, clock["t"])
-
-
-def go_live(n_players=2, mode="tdm", cfg=None, net=None):
-    s, net, clock, ps = mk(n_players, mode, cfg, net)
-    for i, p in enumerate(ps):
-        online(s, net, clock, p, i)
-    s.push_config()
-    for i in range(n_players):
-        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
-                                                             "gun_echo": "$LCD"}, clock["t"])
-    info = s.start(runway_s=10)
-    clock["t"] = info["go_live_t"] + 1
-    s.tick()
-    assert s.phase == "live"
-    heartbeat(s, net, clock, ps)
-    return s, net, clock, ps, info
-
-
-def heartbeat(s, net, clock, ps, shots=0):
-    """A11.5: MC withholds a global-state alert while any node is stale, so a live-feed test has to
-    keep the board fresh or it measures the WITHHELD path instead of the one it means to."""
-    for i, p in enumerate(ps):
-        net.simulate_status(f"node{i}", {"player_id": p["player_id"], "shots": shots, "alive": True,
-                                         "synced": True, "pending": 0}, clock["t"])
-    assert s.mc_confidence()["confident"], s.mc_confidence()
-
-
-def kill(s, net, clock, ps, killer_i, victim_i, info, seq, dt=1000):
-    """`killer` shoots `victim`, one second later than the last fact."""
-    clock["t"] += dt
-    net.simulate_event(f"node{victim_i}", {"type": "death", "t": clock["t"], "match_id": info["match_id"],
-                                           "player_id": ps[victim_i]["player_id"],
-                                           "shooter_num": ps[killer_i]["player_num"], "shooter_team": 1},
-                       clock["t"], seq=seq)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -395,7 +325,7 @@ def test_an_unresolvable_subject_is_named_rather_than_dropped():
     """The id is still printed, but NEVER under the HUD's second-person line: falling back to
     `presentation.TEXT` put "YOUR TEAM TAKES THE LEAD" back on the host console, which is F118 itself
     (polish 2026-09-12). An unknown subject gets a neutral third-person line and the raw id after it."""
-    s, _net, _clock, _ps = mk(1)
+    s, _net, _clock, _ps = mk_kit_session(1)
     line = s._alert_feed_text("lead_taken", "ghost-id")
     assert line == "THE LEAD CHANGED (ghost-id)", line
     assert "YOUR" not in line.upper(), "the player's own copy never reaches the operator"

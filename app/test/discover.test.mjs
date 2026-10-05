@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { subnetOf, parseWsTarget, localIpFrom, sweepPlan, probeWsOpen, sweepForMc,
+import { subnetOf, parseWsTarget, localIpFrom, sweepPlan, probeWsOpen, sweepForMc, sweepLogger,
          DEFAULT_SUBNETS, MC_WS_PORT, PROBE_POOL, PROBE_PACING_MS } from '../src/transport/discover.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -208,7 +208,8 @@ test('F139 guard: app.js sweeps over ws:// from discover.js, never an http fetch
   // the hello that follows carries this node's takeover key. A hit is a suggestion the player taps.
   assert.doesNotMatch(body, /connectMc\(/, 'the sweep must NEVER dial its own hit');
   assert.match(body, /onFound: suggestMc/, 'it hands the hit to suggestMc (a JOIN row, or an A60 proof dial)');
-  assert.match(link, /import \{ sweepPlan, localIpFrom, sweepForMc \} from '\.\/discover\.js'/);
+  assert.match(link, /import \{ sweepPlan, localIpFrom, sweepForMc, sweepLogger \} from '\.\/discover\.js'/);
+  assert.match(link, /onEvent: sweepLogger\(log\)/, 'F294: the HUD sweep logs why it missed');
 });
 
 test('office test 2026-09-19 guard: the sweep is paused for the whole gun connect (onPick\'s `picking`)', () => {
@@ -389,4 +390,69 @@ test('A60 guard: the verify path processes nothing before the proof check', () =
   const c = t.indexOf('    if (this.verify) {\n      // A60: nothing held');
   const vconnect = t.slice(c, t.indexOf('\n    }\n', c));
   assert.doesNotMatch(vconnect, /_setPub|_setSecret|_pubUrlKey/);
+});
+
+
+// F294 (2026-10-05): a sweep that missed MC on a WSL bench left no trace of WHY. Its log must tell a pause during a gun
+// connect apart from probes that never got an answer, so the 0.4.19 bench step 27 is decisive in one try.
+test('F294: a pause is reported with its reason, and the resume with how long it held the sweep', async () => {
+  const mc = 'ws://192.168.0.9:8766/ws';
+  const { wsFactory } = lan([mc]);
+  /** @type {any[]} */ const events = [];
+  let paused = /** @type {string|false} */ ('gun connect');
+  const plan = sweepPlan({ localIp: '192.168.0.149' });
+  const p = sweepForMc({ ...plan, wsFactory, timeoutMs: 10, pool: 4, hosts: 20, pacingMs: 1,
+    isPaused: () => paused, onEvent: e => events.push(e) });
+  await new Promise(r => setTimeout(r, 30));
+  paused = false;
+  assert.equal(await p, mc);
+  const pause = events.find(e => e.type === 'pause'), resume = events.find(e => e.type === 'resume');
+  assert.ok(pause && pause.reason === 'gun connect' && pause.subnet === '192.168.0', JSON.stringify(events));
+  assert.ok(resume && resume.pausedMs >= 20, JSON.stringify(resume));
+  assert.equal(events.filter(e => e.type === 'pause').length, 1, 'one pause line per pause, not one per poll');
+});
+
+test('F294: each subnet ends with a probe summary that tells timeouts from closes from a factory that threw', async () => {
+  /** @type {any[]} */ const events = [];
+  const wsFactory = url => {
+    if (url.includes('.0.5:')) throw new Error('webview refused');
+    const w = new FakeWS(url);
+    if (url.includes('.0.3:')) setTimeout(() => w.onclose && w.onclose({ code: 1006 }), 0);   // refused / reset
+    if (url.includes('.0.9:')) setTimeout(() => w.onopen && w.onopen(), 0);
+    return w;
+  };
+  const found = await sweepForMc({ subnets: ['192.168.0'], ports: [8766], wsFactory, timeoutMs: 15, pool: 4, hosts: 12,
+    pacingMs: 1, onEvent: e => events.push(e) });
+  assert.equal(found, 'ws://192.168.0.9:8766/ws');
+  const sum = events.find(e => e.type === 'subnet');
+  assert.ok(sum, JSON.stringify(events));
+  assert.equal(sum.subnet, '192.168.0');
+  assert.equal(sum.open, 1);
+  assert.equal(sum.closed, 1, 'the refused host');
+  assert.equal(sum.threw, 1, 'the factory that threw');
+  assert.equal(sum.timeout, sum.probed - 3, 'every silent host timed out');
+  assert.ok(sum.probed >= 9 && sum.probed <= 12, `probed up to the hit's batch (${sum.probed})`);
+});
+
+test('F294: a sweep stopped from outside says so, and the logger never calls it a miss', async () => {
+  /** @type {string[]} */ const lines = [];
+  const { wsFactory } = lan([]);
+  let stop = false;
+  const p = sweepForMc({ subnets: ['10.0.0'], wsFactory, timeoutMs: 5, pool: 4, hosts: 254, pacingMs: 1,
+    shouldStop: () => stop, onEvent: sweepLogger(m => lines.push(m)) });
+  await new Promise(r => setTimeout(r, 20));
+  stop = true;
+  assert.equal(await p, null);
+  assert.ok(lines.some(l => /sweep stopped/.test(l)), lines.join('\n'));
+});
+
+test('F294: the logger writes one readable line per pause, resume and subnet', () => {
+  /** @type {string[]} */ const lines = [];
+  const log = sweepLogger(m => lines.push(m));
+  log({ type: 'pause', reason: 'gun connect', subnet: '192.168.0', host: 41 });
+  log({ type: 'resume', pausedMs: 2300 });
+  log({ type: 'subnet', subnet: '192.168.0', probed: 254, open: 0, closed: 2, timeout: 251, threw: 1, ms: 24100 });
+  assert.match(lines[0], /sweep paused \(gun connect\) at 192\.168\.0\.41/);
+  assert.match(lines[1], /sweep resumed after 2\.3 s/);
+  assert.match(lines[2], /sweep 192\.168\.0\.0\/24: 254 probed, 0 open, 2 closed, 251 timed out, 1 threw \(24\.1 s\)/);
 });

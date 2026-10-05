@@ -16,14 +16,13 @@ from __future__ import annotations
 
 import asyncio
 
-from test_stage import settle, tx
-from test_stage_spawn_protect import GUN, _live, _mk
+from _stage import GUN, live_stage, mk_spawn_stage, settle, tx
 
 
 def test_resync_waits_for_live_hp_then_writes_tid_live_ammo_bmap_and_take():
     async def run():
-        st, mgr, clock = _mk()
-        await _live(st, clock)
+        st, mgr, clock = mk_spawn_stage()
+        await live_stage(st, clock)
         clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1); st.poll(); await settle(st); st.poll(); await settle(st)   # release + drain its probe reply
         st._inject_rx("$ALCD,20,100,0,150,0,*"); await settle(st)
         st._inject_rx("$HP,30,10,0,*"); await settle(st)
@@ -42,8 +41,8 @@ def test_resync_waits_for_live_hp_then_writes_tid_live_ammo_bmap_and_take():
 
 def test_resync_dead_hp_answer_books_death_and_never_writes_the_burst():
     async def run():
-        st, mgr, clock = _mk()
-        await _live(st, clock)
+        st, mgr, clock = mk_spawn_stage()
+        await live_stage(st, clock)
         clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1); st.poll(); await settle(st); st.poll(); await settle(st)
         n = len(tx(mgr))
         await st.resync(); await settle(st)
@@ -55,8 +54,8 @@ def test_resync_dead_hp_answer_books_death_and_never_writes_the_burst():
 
 def test_resync_unanswered_probe_times_out_without_writing_the_burst():
     async def run():
-        st, mgr, clock = _mk()
-        await _live(st, clock)
+        st, mgr, clock = mk_spawn_stage()
+        await live_stage(st, clock)
         clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1); st.poll(); await settle(st); st.poll(); await settle(st)
         tagger = mgr.taggers[GUN]
         tagger.go_dead_chatty(); tagger.dead_gun_answers_life = False   # node still believes alive; probe is silent
@@ -76,8 +75,8 @@ def test_resync_unanswered_probe_times_out_without_writing_the_burst():
 
 def test_resync_does_not_release_a_timed_respawns_weapon_delay():
     async def run():
-        st, mgr, clock = _mk()
-        await _live(st, clock)
+        st, mgr, clock = mk_spawn_stage()
+        await live_stage(st, clock)
         clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1); st.poll(); await settle(st); st.poll(); await settle(st)
         st._trigger_pending = {"at": clock(), "due": clock() + 5.0}
         n = len(tx(mgr))
@@ -90,8 +89,8 @@ def test_resync_does_not_release_a_timed_respawns_weapon_delay():
 
 def test_a_background_probe_queued_before_resync_cannot_steal_its_reply():
     async def run():
-        st, mgr, clock = _mk()
-        await _live(st, clock)
+        st, mgr, clock = mk_spawn_stage()
+        await live_stage(st, clock)
         clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1); st.poll(); await settle(st); st.poll(); await settle(st)
         n = len(tx(mgr))
         st._poll_at = 0.0
@@ -106,8 +105,8 @@ def test_a_background_probe_queued_before_resync_cannot_steal_its_reply():
 
 def test_hp_before_the_operator_probe_coroutine_starts_is_not_its_proof():
     async def run():
-        st, mgr, clock = _mk()
-        await _live(st, clock)
+        st, mgr, clock = mk_spawn_stage()
+        await live_stage(st, clock)
         clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1); st.poll(); await settle(st); st.poll(); await settle(st)
         n = len(tx(mgr))
         pending = asyncio.create_task(st.resync())
@@ -120,8 +119,8 @@ def test_hp_before_the_operator_probe_coroutine_starts_is_not_its_proof():
 
 def test_hp_while_operator_probe_waits_for_transport_admission_is_not_its_proof():
     async def run():
-        st, mgr, clock = _mk()
-        await _live(st, clock)
+        st, mgr, clock = mk_spawn_stage()
+        await live_stage(st, clock)
         clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1); st.poll(); await settle(st); st.poll(); await settle(st)
         n = len(tx(mgr)); gate = asyncio.Event(); original_send = st._send
 
@@ -143,8 +142,8 @@ def test_hp_while_operator_probe_waits_for_transport_admission_is_not_its_proof(
 
 def test_resync_of_a_down_gun_writes_nothing():
     async def run():
-        st, mgr, clock = _mk()
-        await _live(st, clock)
+        st, mgr, clock = mk_spawn_stage()
+        await live_stage(st, clock)
         st.poll(); await settle(st)   # F480, B5: the gun's own answer to the spawn/revive confirms the life, so a pool-only zero is a death
         st._inject_rx("$HP,0,0,0,*"); await settle(st)
         assert not st.alive
@@ -158,7 +157,7 @@ def test_resync_refuses_like_the_phone_when_unlinked_or_before_the_spawn():
     """pl3 (2026-09-17): engine.js refuses an operator resync on a down link and before T-0. The stage must too,
     or a bench run shows a resync the phone would never have written."""
     async def run():
-        st, mgr, clock = _mk()
+        st, mgr, clock = mk_spawn_stage()
         await st.connect(GUN)
         await st.arm(); await settle(st)
         n = len(st.log)

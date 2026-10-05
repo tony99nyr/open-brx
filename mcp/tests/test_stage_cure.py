@@ -33,9 +33,8 @@ import asyncio
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage, PROBE_LIFE
-from test_stage import _Clock, _nosleep, settle, tx
+from _stage import _nosleep, GUN, settle, StageClock, tx
 
-GUN = "FA:KE:00:00:00:01"
 QUERY = "$QUERY,*"
 
 
@@ -48,7 +47,7 @@ def _mk():
     # The end-to-end tests turn `listening` back on themselves.
     tagger.listening = False
     mgr = FakeConnectionManager([tagger])
-    clock = _Clock()
+    clock = StageClock()
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
 

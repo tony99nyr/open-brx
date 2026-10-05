@@ -24,13 +24,12 @@ from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.mc.types import DEATH_LATCH_MS
 from brx_mcp.stage import stage as S
 from brx_mcp.stage.stage import GunStage
-from test_stage import _Clock, _nosleep, settle, tx
+from _stage import _nosleep, GUN, settle, StageClock, tx
 
-GUN = "FA:KE:00:00:00:01"
 
 
 def _mk():
-    clock = _Clock()
+    clock = StageClock()
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
@@ -134,7 +133,7 @@ async def _yield(n: int = 40) -> None:
 
 
 def _mk_audio():
-    clock = _Clock()
+    clock = StageClock()
     sched = _Sched(clock)
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=sched.sleep, now=clock, voice_verdict_sink=lambda _r: None,

@@ -12,14 +12,12 @@ import asyncio
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage
-from test_stage import _Clock, _nosleep, settle
-
-GUN = "FA:KE:00:00:00:01"
+from _stage import _nosleep, GUN, settle, StageClock
 
 
 def _mk():
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
-    clock = _Clock()
+    clock = StageClock()
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
 

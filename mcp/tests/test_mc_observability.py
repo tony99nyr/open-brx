@@ -2,7 +2,7 @@
 import logging, pathlib, sys, tempfile
 from contextlib import contextmanager
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from test_mc_state import T0, mk, online
+from _session import mk_session, online, T0
 
 
 class _BrokenStore:
@@ -50,7 +50,7 @@ def _errors(h):
 
 @logged
 def test_o7_a_store_that_raises_sets_not_saving_and_logs_once_not_per_envelope(caplog):
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     s.store = _BrokenStore()
     assert "not_saving" not in s.snapshot()
     if True:
@@ -73,7 +73,7 @@ def test_o7_a_store_that_raises_sets_not_saving_and_logs_once_not_per_envelope(c
 def test_o7_a_snapshot_that_cannot_be_written_is_the_snapshot_part_only(caplog):
     tmp_dir = tempfile.TemporaryDirectory()
     tmp_path = pathlib.Path(tmp_dir.name)
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     blocker = tmp_path / "blocker"                  # a FILE where the snapshot's folder should be: the write cannot
     blocker.write_text("x")                         # succeed (atomic_write_text creates a missing folder, but not this)
     s._persist_path = blocker / "session.json"
@@ -93,7 +93,7 @@ def test_o8_a_tick_that_raises_three_times_sets_ticker_failing_and_writes_one_er
         from brx_mcp.mc.api import Broadcaster      # needs starlette: skips cleanly under the bare system python
     except ImportError:
         return
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     b = Broadcaster(s)
     def boom(): raise RuntimeError("bad tick")
     s.tick = boom
@@ -109,7 +109,7 @@ def test_o8_a_tick_that_raises_three_times_sets_ticker_failing_and_writes_one_er
 
 @logged
 def test_o8_a_join_info_that_raises_is_logged_with_the_url_and_exposed(caplog):
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     def bad(): raise RuntimeError("no interface")
     net.join_info = bad
     if True:
@@ -137,7 +137,7 @@ def _arm(s, net, clock, ps, mid="m-now"):
 
 
 def test_o6_a_loss_shows_only_against_the_current_match():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     online(s, net, clock, ps[0], 0)
     _arm(s, net, clock, ps)
     _beat(net, clock, ps, lost=("m-old", 30))           # a hot-joiner: 30 drops from ANOTHER match
@@ -155,20 +155,21 @@ def test_o6_a_loss_shows_only_against_the_current_match():
 
 
 def test_o6_a_resume_shows_losses_reported_after_the_restart():
-    from test_mc_resume import _fresh_mc_with_phones_in, _status
-    s, net, clock, ps, _ = _fresh_mc_with_phones_in(2, [None, None])
-    _status(net, clock, 0, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 12})    # lost during the outage
-    _status(net, clock, 1, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 0})
+    from _session import fresh_mc_with_phones_in
+    from _session import resume_status
+    s, net, clock, ps, _ = fresh_mc_with_phones_in(2, [None, None])
+    resume_status(net, clock, 0, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 12})    # lost during the outage
+    resume_status(net, clock, 1, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 0})
     s.adopt_orphan("m-old")
     assert s.phase == "live"
     row = next(n for n in s.snapshot()["nodes"] if n["node_id"] == "node0")
     assert row["outbox_lost"] == 12                     # the adopted match's outage losses are not hidden
-    _status(net, clock, 0, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 15})
+    resume_status(net, clock, 0, "live", "m-old", outbox_lost={"match_id": "m-old", "n": 15})
     assert next(n for n in s.snapshot()["nodes"] if n["node_id"] == "node0")["outbox_lost"] == 15
 
 
 def test_o6_a_malformed_loss_report_is_ignored():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     online(s, net, clock, ps[0], 0)
     _arm(s, net, clock, ps)
     _beat(net, clock, ps, lost=("m-now", 4))
@@ -178,7 +179,7 @@ def test_o6_a_malformed_loss_report_is_ignored():
 
 
 def test_o10_dropped_claims_are_scoped_to_the_game_and_say_where_to_look():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4}
     game = s._game_byte()
     net.simulate_status("stick-1", {**base, "actions_dropped": 0, "actions_dropped_game": game}, clock["t"])
@@ -195,7 +196,7 @@ def test_o10_dropped_claims_are_scoped_to_the_game_and_say_where_to_look():
 
 
 def test_o10_a_match_start_clears_stored_stick_counts_so_a_wrapped_game_byte_never_shows_a_stale_one():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4}
     game = s._game_byte()
     net.simulate_status("stick-1", {**base, "actions_dropped": 3, "actions_dropped_game": game}, clock["t"])
@@ -211,7 +212,7 @@ def test_o13_a_stick_below_the_firmware_floor_gets_a_reflash_line_with_its_versi
     assert parse_station_fw("0.4.1") is None and parse_station_fw(None) is None
     assert not station_fw_too_old("h8-0.2+a1b2c3d") and not station_fw_too_old("h8-0.10+unknown")
     assert station_fw_too_old("h8-0.1") and station_fw_too_old("garbage") and not station_fw_too_old(None)
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "platform": "esp32"}
     stick = lambda: next(v for v in s.stations_view() if v["node_id"] == "stick-1")
     net.simulate_status("stick-1", {**base, "app_ver": "h8-0.1"}, clock["t"])
@@ -233,7 +234,7 @@ def test_o13_a_stick_below_the_firmware_floor_gets_a_reflash_line_with_its_versi
 
 
 def test_o13_a_released_stick_with_no_platform_on_record_still_counts_as_returned():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     net.simulate_status("stick-1", {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4}, clock["t"])
     assert "platform" not in (s.stations.get("stick-1") or {}) or not s.stations["stick-1"].get("platform")
     s.set_station("stick-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": -70})
@@ -243,7 +244,7 @@ def test_o13_a_released_stick_with_no_platform_on_record_still_counts_as_returne
 
 
 def test_o12_a_stick_that_failed_flash_writes_says_so_and_a_clean_one_does_not():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "app_ver": "h8-0.2+a1b2c3d"}
     stick = lambda: next(v for v in s.stations_view() if v["node_id"] == "stick-1")
     net.simulate_status("stick-1", {**base, "platform": "esp32"}, clock["t"])
@@ -254,7 +255,7 @@ def test_o12_a_stick_that_failed_flash_writes_says_so_and_a_clean_one_does_not()
 
 
 def test_o7_the_archive_has_its_own_red_kind_that_only_an_archive_write_clears():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     class Store:
         started_fails = True
         def log(self, *a, **k): pass
@@ -278,7 +279,7 @@ def test_o7_the_archive_has_its_own_red_kind_that_only_an_archive_write_clears()
 
 
 def test_o7_another_matchs_archive_write_does_not_clear_a_missing_row():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     class Store:
         def log(self, *a, **k): pass
         def match_started(self, *a, **k): pass
@@ -306,7 +307,7 @@ def test_o7_match_ended_reports_rows_updated():
 
 
 def test_o8_a_later_join_info_success_clears_the_chip():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     real = net.join_info
     def bad(): raise RuntimeError("no interface")
     net.join_info = bad
@@ -316,7 +317,7 @@ def test_o8_a_later_join_info_success_clears_the_chip():
 
 
 def test_o6_a_player_card_with_lost_facts_reads_amber_not_ready():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     online(s, net, clock, ps[0], 0)
     _arm(s, net, clock, ps)
     pf = {"gun_linked": True, "screen_on": True, "foreground": True, "phone_batt": 90}
@@ -331,7 +332,7 @@ def test_o6_a_player_card_with_lost_facts_reads_amber_not_ready():
 
 
 def test_o7_an_end_with_no_row_recreates_it_and_clears_the_chip():
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     class Store:
         def __init__(self): self.rows = set(); self.start_fails = True; self.recreate_fails = False
         def log(self, *a, **k): pass
@@ -361,7 +362,7 @@ def test_o7_an_end_with_no_row_recreates_it_and_clears_the_chip():
 def test_f471_a_late_recreate_uses_the_retired_matchs_own_config_not_the_next_games():
     """Cross-lane review #13 (F471): `_archive`'s recreate took `{**self.config}`, so a late fact for a retired match
     (after the operator rolled forward) recreated its row with the NEXT game's mode and settings."""
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     s.set_config({"mode": "tdm", "time_limit_s": 600})
     s._record_ended("m1", None, None)                      # the match retires with its own config
     s.set_config({"mode": "ffa", "time_limit_s": 300})     # the operator rolls forward to the next game
@@ -383,13 +384,13 @@ def test_f471_a_late_recreate_uses_the_retired_matchs_own_config_not_the_next_ga
 def test_f471_the_retired_matchs_config_survives_a_restart():
     import pathlib as _pl
     import tempfile as _tf
-    s, net, clock, ps = mk()
+    s, net, clock, ps = mk_session()
     s._persist_path = _pl.Path(_tf.mkdtemp()) / "session.json"
     s.set_config({"mode": "tdm", "time_limit_s": 600})
     s._record_ended("m1", None, None)
     s._persist_last = 0.0
     s._persist()
-    s2, _n, _c, _p = mk()
+    s2, _n, _c, _p = mk_session()
     s2._persist_path = s._persist_path
     s2.restore_snapshot()
     assert (s2._ended.get("m1") or {}).get("config", {}).get("mode") == "tdm"

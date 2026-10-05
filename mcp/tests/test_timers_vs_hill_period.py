@@ -27,6 +27,7 @@ JUDGED = {
     "TEAM_REPAINT_S": "F68: the periodic headset repaint. `_last_team_repaint_at` is stamped only by the repaint itself, by a\n"
                       "spawn or revive, and by every deliberate headset paint (`_headset`), never by an incoming frame, so a beacon cannot keep it from firing",
     "GATE_TIMEOUT_MS": "F474 (2026-10-05): how long after a hello MC waits for the connect burst before it samples clock drift anyway; it is read off MC's own clock on phone heartbeats, and no IR frame or beacon reaches it",
+    "MC_STEP_QUIET_MS": "F485 (2026-10-05): how long after MC's OWN wall clock stepped the future-dated fact rule rests. It is read off MC's clock on a phone fact; no IR frame or beacon reaches it",
     "CLOCK_RESYNC_MIN_GAP_MS": "F474 (2026-10-05): the least time between two `clock_resync` pushes to one phone. It is read off\n"
                                "MC's own clock when MC pushes; no IR frame or beacon reaches it",
     "PU_NAMED_SPAWN_TOL_MS": "F473 (2026-10-05): how far a pickup fact's named spawn time may sit from a spawn MC recorded. It\n"
@@ -117,6 +118,9 @@ JUDGED = {
     # Review #4 (2026-10-04): values types.py now owns for the generated contract. None is a timer MC runs.
     "HILL_CAPTURE_S": "the phone/Stick hill's capture time (control.js DEFAULT_CAPTURE_S), not an MC fuse: the hill "
                       "itself is what a beacon reports",
+    "HILL_DECAY_S": "F464: a drain RATE (control.js DEFAULT_DECAY_S) on the phone and the Stick hill, which MC never runs.\n"
+                    "It is not a fuse: only a counted BLE player advert resets `absentMs`, and no IR frame reaches control.js,\n"
+                    "so a hill beacon cannot hold it back. Its start delay HILL_DECAY_DELAY_MS (0.5 s) is under the period",
     "TIME_LIMIT_MAX_S": "a config bound (time_limit_s 1..this), not a timer",
     "RESPAWN_DELAY_MAX_S": "a config bound (respawn.delay_s 0..this), not a timer",
     "HOLD_TARGET_MAX_S": "a config bound (mode_params.hold_target_s 1..this), not a timer",

@@ -14,9 +14,8 @@ import re
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage, PROBE_LIFE
-from test_stage import _Clock, _nosleep, settle, tx
+from _stage import _nosleep, GUN, settle, StageClock, tx
 
-GUN = "FA:KE:00:00:00:01"
 # The bundle's game-wide `dot` table (`FrameBundle.dot`, S16): IR protocol 11 (the Toxin Rifle) ticks 4
 # damage a second for 5 s -- the same numbers app/test/poison.test.mjs uses, so the two suites agree.
 DOT = {"11": {"weapon_id": "toxin_rifle", "per_tick": 4, "tick_ms": 1000, "duration_ms": 5000}}
@@ -38,7 +37,7 @@ class Bench:
     def __init__(self, dot: dict | None = DOT):
         self.tagger = FakeTagger(GUN, "FAKE-STAGE", team=1)
         self.mgr = FakeConnectionManager([self.tagger])
-        self.clock = _Clock()
+        self.clock = StageClock()
         self.st = GunStage(self.mgr, None, sleep=_nosleep, now=self.clock, voice_verdict_sink=lambda _r: None)
         self._dot = dot                          # applied after `arm()`'s recompile, which would otherwise wipe it
         self.events: list[str] = []

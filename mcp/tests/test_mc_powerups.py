@@ -17,36 +17,7 @@ from brx_mcp.mc import powerups as PU
 from brx_mcp.mc.compile import Compiler, WeaponCatalog
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
-
-
-class _Clock:
-    def __init__(self, t: int = 1_800_000_000_000):
-        self.t = t
-
-    def __call__(self) -> int:
-        return self.t
-
-
-def _sess(powerups: bool = True, n: int = 2):
-    clock = _Clock()
-    s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock, voice_rng=random.Random(7))
-    s.powerups_enabled = powerups
-    s.set_config({"mode": "tdm"})
-    guns = [g["gun_id"] for g in s.armory.list()][:n]
-    teams = [t["team_id"] for t in s.config["teams"]]
-    for i, g in enumerate(guns):
-        s.add_player(f"P{i}", teams[i % len(teams)], g, "male")
-    for i, p in enumerate(s.players.values()):
-        s.net.simulate_hello(f"phone-{i}", p["gun_id"])
-    return s, clock
-
-
-def _station(s, nid: str, sid: int, preset: str | None = None, kind: str = "powerup"):
-    s.net.simulate_utility_hello(nid)
-    body: dict = {"kind": kind, "team": "any", "id": sid}
-    if preset is not None:
-        body["item_preset"] = preset
-    return s.set_station(nid, body)
+from _powerups import PowerupClock, powerup_action, powerup_feed, powerup_live, powerup_pickup, powerup_session, powerup_station
 
 
 def _pushed(s, kind, nid=None):
@@ -132,7 +103,7 @@ def test_build_carries_no_powerups_to_the_session_and_ignores_the_old_flag():
 
 # --------------------------------------------------------------------------- the PUT
 def test_item_preset_is_refused_with_the_flag_off():
-    s, _ = _sess(powerups=False)
+    s, _ = powerup_session(powerups=False)
     s.net.simulate_utility_hello("u1")
     _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets"}),
              "--no-powerups")
@@ -142,7 +113,7 @@ def test_item_preset_is_refused_with_the_flag_off():
 
 
 def test_item_preset_validation():
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.net.simulate_utility_hello("u1")
     _refused(lambda: s.set_station("u1", {"kind": "respawn", "team": "any", "id": 5, "item_preset": "rockets"}),
              "powerup")
@@ -158,8 +129,8 @@ def test_item_preset_validation():
 
 
 def test_item_preset_is_refused_in_play():
-    s, _ = _sess()
-    _station(s, "u1", 5, "overshield")
+    s, _ = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
     s.push_config(force=True)
     s.start(runway_s=3, force=True)
     _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets"}),
@@ -174,7 +145,7 @@ def test_get_api_powerups():
     except Exception:
         return
     from brx_mcp.mc.api import create_app
-    s, _ = _sess(powerups=False)
+    s, _ = powerup_session(powerups=False)
     c = TestClient(create_app(s))
     r = c.get("/api/powerups")
     assert r.status_code == 200 and r.json()["enabled"] is False
@@ -191,15 +162,15 @@ def test_get_api_powerups():
 # --------------------------------------------------------------------------- per-station overrides (S-powerup-overrides, 2026-09-28)
 def test_overrides_omitted_gives_exactly_todays_item():
     """The whole point of "optional": a PUT with no charges/amount/spawn_every_s is untouched."""
-    s, _ = _sess()
-    v = _station(s, "u1", 5, "rockets")
+    s, _ = powerup_session()
+    v = powerup_station(s, "u1", 5, "rockets")
     assert v["assigned"]["item"] == PU.expand("rockets", WeaponCatalog())
-    v2 = _station(s, "u2", 6, "overshield")
+    v2 = powerup_station(s, "u2", 6, "overshield")
     assert v2["assigned"]["item"] == PU.expand("overshield", WeaponCatalog())
 
 
 def test_charges_override_applies_and_is_range_checked():
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.net.simulate_utility_hello("u1")
     v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3})
     assert v["assigned"]["item"]["charges"] == 3
@@ -211,7 +182,7 @@ def test_charges_override_applies_and_is_range_checked():
 
 
 def test_amount_override_applies_and_is_range_checked():
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.net.simulate_utility_hello("u1")
     v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "overshield", "amount": 100})
     assert v["assigned"]["item"]["amount"] == 100
@@ -221,7 +192,7 @@ def test_amount_override_applies_and_is_range_checked():
 
 
 def test_spawn_every_s_override_applies_and_first_at_s_follows_it():
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.net.simulate_utility_hello("u1")
     s.net.simulate_utility_hello("u2")
     v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "spawn_every_s": 90})
@@ -235,7 +206,7 @@ def test_spawn_every_s_override_applies_and_first_at_s_follows_it():
 
 def test_a_field_that_does_not_apply_to_the_item_is_refused():
     """charges on the overshield, amount on a weapon: neighbouring-field refusals, e.g. amount on Rockets."""
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.net.simulate_utility_hello("u1")
     s.net.simulate_utility_hello("u2")
     _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "amount": 100}),
@@ -246,7 +217,7 @@ def test_a_field_that_does_not_apply_to_the_item_is_refused():
 
 
 def test_an_override_with_no_item_preset_is_refused():
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.net.simulate_utility_hello("u1")
     _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "charges": 3}), "CHARGES", "item_preset")
     _refused(lambda: s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "spawn_every_s": 90}), "SPAWN_EVERY_S", "item_preset")
@@ -258,7 +229,7 @@ def test_changing_only_item_preset_does_not_carry_overrides_forward():
     exactly like it already is for kind/team/threshold/item_preset itself. An override not resent in THIS
     request falls back to the NEW preset's own default, never to what the old assignment held -- the console
     is the one that resends a kept value (Items.tsx `apply()`)."""
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.net.simulate_utility_hello("u1")
     s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3, "spawn_every_s": 90})
     v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "overshield"})
@@ -266,8 +237,8 @@ def test_changing_only_item_preset_does_not_carry_overrides_forward():
 
 
 def test_overrides_flow_into_station_config_and_config_stations():
-    s, _ = _sess()
-    _station(s, "u1", 5)
+    s, _ = powerup_session()
+    powerup_station(s, "u1", 5)
     v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3, "spawn_every_s": 90})
     assert v["assigned"]["item"]["charges"] == 3
     s.push_config(force=True)
@@ -283,7 +254,7 @@ def test_overrides_survive_an_mc_restart():
     `assigned.item` the un-overridden preset already did before this change."""
     import pathlib
     import tempfile
-    s, clock = _sess()
+    s, clock = powerup_session()
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s.net.simulate_utility_hello("u1")
     s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3})
@@ -300,7 +271,7 @@ def test_an_override_cannot_bypass_the_hidden_weapon_or_two_weapon_rules():
     """The hidden-weapon and two-different-weapon rules are enforced on `weapon_id`, which no override field
     ever names (`apply_overrides` only reads charges/amount/spawn_every_s) -- an unknown `weapon_id` in the
     body is silently dropped, same as every other unknown key `set_station` does not read."""
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.net.simulate_utility_hello("u1")
     s.net.simulate_utility_hello("u2")
     v = s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets",
@@ -316,7 +287,7 @@ def test_range_only_edit_in_play_keeps_a_stored_override_untouched():
     """A67 `_set_station_range_only`: a threshold-only PUT that also resends the SAME item (preset + overrides)
     is allowed even ARMED/LIVE; one that also changes an override is not range-only and is refused in play,
     exactly like a kind/item_preset change already was."""
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.net.simulate_utility_hello("u1")
     s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5, "item_preset": "rockets", "charges": 3})
     s.push_config(force=True)
@@ -337,9 +308,9 @@ def _frames(s):
 
 def test_flag_off_compiles_nothing_new_even_with_a_stored_item():
     """A restored snapshot can carry an item into a run started WITH --no-powerups: it must be inert."""
-    base, _ = _sess(powerups=False)
+    base, _ = powerup_session(powerups=False)
     base.push_config(force=True)
-    s, _ = _sess(powerups=False)
+    s, _ = powerup_session(powerups=False)
     s.net.simulate_utility_hello("u1")
     s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5})
     s.stations["u1"]["assigned"]["item"] = PU.expand("rockets", WeaponCatalog())   # as a restored snapshot would
@@ -355,13 +326,13 @@ def test_flag_off_compiles_nothing_new_even_with_a_stored_item():
 
 
 def test_flag_on_arms_the_pickup_weapons_empty_in_slots_2_then_3():
-    off, _ = _sess(powerups=True)
+    off, _ = powerup_session(powerups=True)
     off.push_config(force=True)                         # CONTROL: flag on, no item station
-    s, _ = _sess(powerups=True)
-    _station(s, "u1", 5, "rockets")
-    _station(s, "u2", 6, "rail_gun")
-    _station(s, "u3", 7, "overshield")
-    _station(s, "u4", 8, "rockets")                      # the same weapon shares its slot
+    s, _ = powerup_session(powerups=True)
+    powerup_station(s, "u1", 5, "rockets")
+    powerup_station(s, "u2", 6, "rail_gun")
+    powerup_station(s, "u3", 7, "overshield")
+    powerup_station(s, "u4", 8, "rockets")                      # the same weapon shares its slot
     s.push_config(force=True)
     wire = s._wire_config()
     assert wire["powerups"] == [{"weapon_id": "rocket_launcher", "slot": 2}, {"weapon_id": "rail_gun", "slot": 3}]
@@ -389,8 +360,8 @@ def test_flag_on_arms_the_pickup_weapons_empty_in_slots_2_then_3():
 
 
 def test_an_overshield_alone_needs_no_slot():
-    s, _ = _sess()
-    _station(s, "u1", 5, "overshield")
+    s, _ = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
     s.push_config(force=True)
     assert "powerups" not in s._wire_config()
     assert not any(f.startswith("$WEAP,2,") for b in s.bundles.values() for f in b["head"])
@@ -398,7 +369,7 @@ def test_an_overshield_alone_needs_no_slot():
 
 def test_compile_reads_config_powerups():
     c = Compiler()
-    s, _ = _sess(powerups=False)
+    s, _ = powerup_session(powerups=False)
     p = next(iter(s.players.values()))
     plain = c.compile(s.config, p, s.teams)
     armed = c.compile({**s.config, "powerups": [{"weapon_id": "rail_gun", "slot": 2}]}, p, s.teams,
@@ -414,11 +385,11 @@ def test_compile_reads_config_powerups():
 
 
 def test_adding_an_item_after_the_lobby_push_recompiles_every_gun():
-    s, _ = _sess()
+    s, _ = powerup_session()
     s.push_config(force=True)
     assert not any(f.startswith("$WEAP,2,") for b in s.bundles.values() for f in b["head"])
     s.net.pushed.clear()
-    _station(s, "u1", 5, "rockets")
+    powerup_station(s, "u1", 5, "rockets")
     assert all(any(f.startswith("$WEAP,2,") for f in b["head"]) for b in s.bundles.values())
     cfgs = _pushed(s, "config")
     assert cfgs and all(c["config"].get("powerups") for c in cfgs)
@@ -437,25 +408,11 @@ def test_the_pickup_fact_is_a_valid_persisted_event():
         assert e.reason == "bad_event"
 
 
-def _live(s, clock, runway_s=3):
-    s.push_config(force=True)
-    s.start(runway_s=runway_s, force=True)
-    s.tick()
-    return s.start_info["go_live_t"]
-
-
-def _pickup(s, clock, sid, kind="overshield", nid="phone-0", seq=1, **extra):
-    p = s.players[s.node_player[nid]]
-    ev = {"type": "pickup", "t": clock.t, "match_id": s.start_info["match_id"], "node_id": nid,
-          "player_id": p["player_id"], "station_id": sid, "item_kind": kind, "seq": seq, **extra}
-    s.net.simulate_event(nid, ev, clock.t)
-
-
 def test_the_halo_schedule_on_the_match_clock():
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
     s.net.pushed.clear()
-    go = _live(s, clock, runway_s=3)
+    go = powerup_live(s, clock, runway_s=3)
     # at arm time the station hears: nothing there, first spawn 60 s after go-live
     up = _pushed(s, "station_update", "u1")
     assert up == [{"id": 5, "available": False, "next_spawn_in_ms": 3000 + 60_000}]
@@ -473,28 +430,28 @@ def test_the_halo_schedule_on_the_match_clock():
     assert s._station_view("u1")["item_available"] is True
     # a pickup at 2:10 empties it until the next spawn time on the schedule (3:00), not 2:10 + 60
     clock.t = go + 130_000
-    _pickup(s, clock, 5)
+    powerup_pickup(s, clock, 5)
     assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": False, "next_spawn_in_ms": 50_000}
     view = s._station_view("u1")
     assert view["item_available"] is False and view["next_spawn_at_ms"] == go + 180_000
     # a second player's pickup of the SAME (already taken) item changes nothing and is not re-sent
     n = len(_pushed(s, "station_update", "u1"))
-    _pickup(s, clock, 5, nid="phone-1", seq=1)
+    powerup_pickup(s, clock, 5, nid="phone-1", seq=1)
     assert len(_pushed(s, "station_update", "u1")) == n
     clock.t = go + 180_000; s.tick()
     assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 60_000}
 
 
 def test_a_reconnecting_station_is_told_its_current_state():
-    s, clock = _sess()
-    _station(s, "u1", 5, "rockets")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "rockets")
+    go = powerup_live(s, clock)
     clock.t = go + 125_000; s.tick()
     s.net.pushed.clear()
     s.net.simulate_utility_hello("u1")               # the phone rebooted
     assert _pushed(s, "station_config", "u1"), "re-armed as before"
     assert _pushed(s, "station_update", "u1") == [{"id": 5, "available": True, "next_spawn_in_ms": 115_000}]
-    _pickup(s, clock, 5, kind="weapon", weapon_id="rocket_launcher")
+    powerup_pickup(s, clock, 5, kind="weapon", weapon_id="rocket_launcher")
     s.net.pushed.clear()
     clock.t = go + 200_000
     s.net.simulate_utility_hello("u1")
@@ -502,30 +459,30 @@ def test_a_reconnecting_station_is_told_its_current_state():
 
 
 def test_no_schedule_and_no_update_with_the_flag_off():
-    s, clock = _sess(powerups=False)
+    s, clock = powerup_session(powerups=False)
     s.net.simulate_utility_hello("u1")
     s.set_station("u1", {"kind": "powerup", "team": "any", "id": 5})
     s.stations["u1"]["assigned"]["item"] = PU.expand("overshield", WeaponCatalog())
-    go = _live(s, clock)
+    go = powerup_live(s, clock)
     clock.t = go + 60_000; s.tick()
     assert _pushed(s, "station_update") == []
     assert "item_available" not in s._station_view("u1")
 
 
 def test_pickup_is_stored_and_never_scored():
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
     logged = []
     real_log = s._log
     s._log = lambda nid, kind, body, t, seq=None, parked=False: (logged.append((kind, body)),
                                                                  real_log(nid, kind, body, t, seq, parked))
-    go = _live(s, clock)
+    go = powerup_live(s, clock)
     clock.t = go + 61_000; s.tick()
     def stats():
         return {pid: {k: getattr(st, k, None) for k in type(st).__slots__} for pid, st in s.scorer.stats.items()}
     before = stats()
     feed = len(s.scorer.hits_log)
-    _pickup(s, clock, 5)
+    powerup_pickup(s, clock, 5)
     assert [k for k, _ in logged] == ["pickup"], logged
     assert stats() == before, "a pickup moved a score"
     assert len(s.scorer.hits_log) == feed
@@ -541,14 +498,6 @@ def test_pickup_is_stored_and_never_scored():
 
 
 # --------------------------------------------------------------------------- station_action (the station's uplink)
-def _action(s, clock, nid, sid, action, **extra):
-    s.net.simulate_node_message(nid, "station_action", {"id": sid, "action": action, "t": clock.t, **extra}, clock.t)
-
-
-def _feed(s):
-    return [r["text"] for r in s.feed]
-
-
 def test_station_action_is_a_node_kind_with_required_fields():
     from brx_mcp.mc.types import NODE_KINDS, StationAction  # noqa: F401
     assert "station_action" in NODE_KINDS
@@ -562,18 +511,18 @@ def test_station_action_is_a_node_kind_with_required_fields():
 
 
 def test_operator_reset_from_the_station_makes_the_item_available_now_on_the_fixed_schedule():
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 70_000; s.tick()
-    _pickup(s, clock, 5)
+    powerup_pickup(s, clock, 5)
     assert s._station_view("u1")["item_available"] is False
     clock.t = go + 80_000
-    _action(s, clock, "u1", 5, "reset")
+    powerup_action(s, clock, "u1", 5, "reset")
     # `reset: true` tells the station this is an operator reset, not a re-send of a spawn it already awarded
     assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 40_000, "reset": True}
     assert s._station_view("u1")["item_available"] is True
-    assert "OPERATOR RESET · STATION #5" in _feed(s)
+    assert "OPERATOR RESET · STATION #5" in powerup_feed(s)
     # the pickup the player made BEFORE the reset, replayed late from its outbox, does not take the new item
     p = s.players[s.node_player["phone-0"]]
     s.net.simulate_event("phone-0", {"type": "pickup", "t": go + 70_000, "match_id": s.start_info["match_id"],
@@ -584,8 +533,8 @@ def test_operator_reset_from_the_station_makes_the_item_available_now_on_the_fix
     clock.t = go + 120_000; s.tick()
     assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 60_000}
     # CONTROL: a reset naming another station's id changes nothing here
-    _pickup(s, clock, 5, seq=10)
-    _action(s, clock, "u1", 99, "reset")
+    powerup_pickup(s, clock, 5, seq=10)
+    powerup_action(s, clock, "u1", 99, "reset")
     assert s._station_view("u1")["item_available"] is False
 
 
@@ -593,48 +542,48 @@ def test_f484_a_pickup_of_an_item_restored_before_the_first_spawn_is_taken():
     """F484: a preset's first spawn is one interval after go-live. An item the operator restores BEFORE that has the
     first spawn (index 0) as its next spawn, so the phone's countdown names index 0. MC used to refuse any index
     below 1, and the real take was lost."""
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 10_000
-    _action(s, clock, "u1", 5, "reset")
+    powerup_action(s, clock, "u1", 5, "reset")
     assert s._station_view("u1")["item_available"] is True, "control: the restore put the item on the shelf"
     clock.t = go + 15_000
-    _pickup(s, clock, 5, seq=2, next_spawn_in_s=45)       # first spawn at go + 60 s
+    powerup_pickup(s, clock, 5, seq=2, next_spawn_in_s=45)       # first spawn at go + 60 s
     assert s._station_view("u1")["item_available"] is False, "the take names spawn 0 and counts"
-    assert len([x for x in _feed(s) if "TOOK" in x]) == 1
+    assert len([x for x in powerup_feed(s) if "TOOK" in x]) == 1
 
 
 def test_f484_a_late_fact_about_the_pre_first_spawn_item_never_takes_a_later_spawn():
     """F484 control: after the first spawn, a late fact naming spawn 0 (the restored item before it) books nothing
     and leaves the current item on the shelf (F454: a late phone fact never steals)."""
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 10_000
-    _action(s, clock, "u1", 5, "reset")
+    powerup_action(s, clock, "u1", 5, "reset")
     clock.t = go + 61_000; s.tick()                       # spawn 0 is on the shelf
     p = s.players[s.node_player["phone-0"]]
     s.net.simulate_event("phone-0", {"type": "pickup", "t": go + 15_000, "match_id": s.start_info["match_id"],
                                      "node_id": "phone-0", "player_id": p["player_id"], "station_id": 5,
                                      "item_kind": "overshield", "seq": 3, "next_spawn_in_s": 45}, clock.t)
     assert s._station_view("u1")["item_available"] is True, "a late fact about the restored item does not take spawn 0"
-    assert [x for x in _feed(s) if "TOOK" in x] == [], "and writes no TOOK line"
+    assert [x for x in powerup_feed(s) if "TOOK" in x] == [], "and writes no TOOK line"
 
 
 def test_console_reset_route_and_its_refusals():
-    s, clock = _sess()
-    _station(s, "u1", 5, "rockets")
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "rockets")
     _refused(lambda: s.reset_station("u1"), "armed or live")
-    go = _live(s, clock)
+    go = powerup_live(s, clock)
     clock.t = go + 1_000
     s.reset_station("u1")
     assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 119_000, "reset": True}
-    assert "OPERATOR RESET · STATION #5" in _feed(s)
-    off, clock2 = _sess(powerups=False)
+    assert "OPERATOR RESET · STATION #5" in powerup_feed(s)
+    off, clock2 = powerup_session(powerups=False)
     off.net.simulate_utility_hello("u1")
     off.set_station("u1", {"kind": "powerup", "team": "any", "id": 5})
-    _live(off, clock2)
+    powerup_live(off, clock2)
     _refused(lambda: off.reset_station("u1"), "--no-powerups")
     try:
         import httpx  # noqa: F401
@@ -651,34 +600,34 @@ def test_console_reset_route_and_its_refusals():
 
 
 def test_taken_records_the_winner_and_dedupes_against_the_pickup_fact():
-    s, clock = _sess()
-    _station(s, "u1", 5, "rockets")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "rockets")
+    go = powerup_live(s, clock)
     clock.t = go + 121_000; s.tick()
     p0 = s.players[s.node_player["phone-0"]]
     n = len(_pushed(s, "station_update", "u1"))
-    _action(s, clock, "u1", 5, "taken", player_num=p0["player_num"])
+    powerup_action(s, clock, "u1", 5, "taken", player_num=p0["player_num"])
     v = s._station_view("u1")
     assert v["item_available"] is False and v["taken_by"] == p0["player_num"]
     line = f"{p0['display']} TOOK ROCKETS · STATION #5"
-    assert _feed(s).count(line) == 1
+    assert powerup_feed(s).count(line) == 1
     assert len(_pushed(s, "station_update", "u1")) == n + 1
     # the player's own pickup fact for the same spawn is a no-op: no second line, no second update
-    _pickup(s, clock, 5, kind="weapon", weapon_id="rocket_launcher")
-    assert _feed(s).count(line) == 1 and len(_pushed(s, "station_update", "u1")) == n + 1
+    powerup_pickup(s, clock, 5, kind="weapon", weapon_id="rocket_launcher")
+    assert powerup_feed(s).count(line) == 1 and len(_pushed(s, "station_update", "u1")) == n + 1
     # cleared at the next spawn
     clock.t = go + 240_000; s.tick()
     assert "taken_by" not in s._station_view("u1") and s._station_view("u1")["item_available"] is True
     # the other order: the pickup first writes the same line, then `taken` is the no-op
-    _pickup(s, clock, 5, kind="weapon", weapon_id="rocket_launcher", seq=2)
-    assert _feed(s).count(line) == 2 and s._station_view("u1")["taken_by"] == p0["player_num"]
+    powerup_pickup(s, clock, 5, kind="weapon", weapon_id="rocket_launcher", seq=2)
+    assert powerup_feed(s).count(line) == 2 and s._station_view("u1")["taken_by"] == p0["player_num"]
     m = len(_pushed(s, "station_update", "u1"))
     p1 = s.players[s.node_player["phone-1"]]
-    _action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
+    powerup_action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
     # F454: the station's word wins over a phone's earlier fact, with one TOOK line and no new update
     assert s._station_view("u1")["taken_by"] == p1["player_num"], "the station's report corrects the phone's fact"
     assert len(_pushed(s, "station_update", "u1")) == m
-    assert _feed(s).count(line) == 1 and f"{p1['display']} TOOK ROCKETS · STATION #5" in _feed(s)
+    assert powerup_feed(s).count(line) == 1 and f"{p1['display']} TOOK ROCKETS · STATION #5" in powerup_feed(s)
 
 
 # --------------------------------------------------------------------------- polish round 1
@@ -686,12 +635,12 @@ def test_a_restart_mid_match_keeps_a_taken_item_taken():
     """M1: `_pu_sched` rides in the snapshot and is restored for the SAME match only."""
     import pathlib
     import tempfile
-    s, clock = _sess()
+    s, clock = powerup_session()
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 61_000; s.tick()
-    _pickup(s, clock, 5)
+    powerup_pickup(s, clock, 5)
     assert s._station_view("u1")["item_available"] is False
     clock.t = go + 70_000
     s._persist_last = 0.0
@@ -715,9 +664,9 @@ def test_a_restart_mid_match_keeps_a_taken_item_taken():
 
 def test_a_station_reconnecting_after_the_match_gets_no_update():
     """M2: RECAP / LOBBY is not the match; the old schedule must not reach the station."""
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 61_000; s.tick()
     s.net.pushed.clear()
     s.net.simulate_utility_hello("u1")
@@ -733,16 +682,16 @@ def test_a_station_reconnecting_after_the_match_gets_no_update():
     s.net.simulate_utility_hello("u1")
     assert _pushed(s, "station_update", "u1") == []
     # and a station action out of play does nothing
-    _action(s, clock, "u1", 5, "reset")
-    assert _pushed(s, "station_update", "u1") == [] and "OPERATOR RESET · STATION #5" not in _feed(s)
+    powerup_action(s, clock, "u1", 5, "reset")
+    assert _pushed(s, "station_update", "u1") == [] and "OPERATOR RESET · STATION #5" not in powerup_feed(s)
 
 
 def test_review_a_pickup_fact_flushed_after_the_match_changes_nothing():
     """Integration review 2026-09-25 (Low): `_on_pickup` had no in-play guard, so a pickup a phone flushed in
     RECAP emptied the station and wrote a TOOK line for a match that was over."""
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 61_000; s.tick()
     mid = s.start_info["match_id"]
     s.control("end")
@@ -751,13 +700,13 @@ def test_review_a_pickup_fact_flushed_after_the_match_changes_nothing():
     s.net.simulate_event("phone-0", {"type": "pickup", "t": clock.t - 1000, "match_id": mid, "node_id": "phone-0",
                                      "player_id": p["player_id"], "station_id": 5, "item_kind": "overshield",
                                      "seq": 9}, clock.t)
-    assert _pushed(s, "station_update", "u1") == [] and not any("TOOK" in t for t in _feed(s))
+    assert _pushed(s, "station_update", "u1") == [] and not any("TOOK" in t for t in powerup_feed(s))
 
 
 def test_null_station_pickup_after_live_powerup_release_is_ignored():
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 61_000; s.tick()
     assert s.release_station("u1")
     before = s._station_view("u1")
@@ -768,23 +717,23 @@ def test_null_station_pickup_after_live_powerup_release_is_ignored():
     s.net.simulate_event("phone-0", ev, clock.t)
     assert s._station_view("u1") == before
     assert _pushed(s, "station_update", "u1") == []
-    assert not any("TOOK" in line for line in _feed(s))
+    assert not any("TOOK" in line for line in powerup_feed(s))
 
 
 def test_a_station_action_naming_another_stations_id_is_refused():
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    _station(s, "u2", 6, "rockets")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    powerup_station(s, "u2", 6, "rockets")
+    go = powerup_live(s, clock)
     clock.t = go + 125_000; s.tick()
     n = len(_pushed(s, "station_update"))
     p0 = s.players[s.node_player["phone-0"]]
-    _action(s, clock, "u1", 6, "taken", player_num=p0["player_num"])     # u1 claims u2's item
+    powerup_action(s, clock, "u1", 6, "taken", player_num=p0["player_num"])     # u1 claims u2's item
     assert s._station_view("u2")["item_available"] is True and "taken_by" not in s._station_view("u2")
     assert s._station_view("u1")["item_available"] is True
-    assert len(_pushed(s, "station_update")) == n and not any("TOOK" in t for t in _feed(s))
+    assert len(_pushed(s, "station_update")) == n and not any("TOOK" in t for t in powerup_feed(s))
     # CONTROL: the same report from the station that holds id 6 is taken
-    _action(s, clock, "u2", 6, "taken", player_num=p0["player_num"])
+    powerup_action(s, clock, "u2", 6, "taken", player_num=p0["player_num"])
     assert s._station_view("u2")["item_available"] is False
 
 
@@ -793,18 +742,18 @@ def test_a_late_taken_report_dates_by_age_ms_and_never_takes_the_next_spawn():
     """A station that awarded spawn k while its link was down flushes the report after MC opened spawn k+1. A Stick
     has no synced clock, so it says how long AGO it awarded (`age_ms`); MC dates it `t_recv - age_ms`, and a report
     older than the current spawn is ignored."""
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     p0 = s.players[s.node_player["phone-0"]]
     clock.t = go + 70_000; s.tick()          # spawn 1 at 60 s is there
     clock.t = go + 125_000; s.tick()         # spawn 2 at 120 s: still available (MC never heard the take at 70 s)
     assert s._station_view("u1")["item_available"] is True
-    _action(s, clock, "u1", 5, "taken", player_num=p0["player_num"], age_ms=55_000)   # awarded at 70 s
+    powerup_action(s, clock, "u1", 5, "taken", player_num=p0["player_num"], age_ms=55_000)   # awarded at 70 s
     assert s._station_view("u1")["item_available"] is True, "a report of the PREVIOUS spawn must not take this one"
     assert "taken_by" not in s._station_view("u1")
     # CONTROL: a fresh report (age 0) of THIS spawn is taken
-    _action(s, clock, "u1", 5, "taken", player_num=p0["player_num"], age_ms=0)
+    powerup_action(s, clock, "u1", 5, "taken", player_num=p0["player_num"], age_ms=0)
     assert s._station_view("u1")["item_available"] is False
 
 
@@ -813,9 +762,9 @@ def test_an_invalid_restored_item_is_dropped_with_a_log_line_not_ticked():
     before the first spawn, hung the catch-up loop) and a missing key raised on every tick; both are dropped."""
     import logging
     for bad in ({"spawn_every_s": 0}, {"first_at_s": None}, {"drop": "spawn_every_s"}, {"name": 7}):
-        s, clock = _sess()
-        _station(s, "u1", 5, "overshield")
-        _station(s, "u2", 6, "rockets")                      # CONTROL: a valid item beside it keeps working
+        s, clock = powerup_session()
+        powerup_station(s, "u1", 5, "overshield")
+        powerup_station(s, "u2", 6, "rockets")                      # CONTROL: a valid item beside it keeps working
         a = s.stations["u1"]["assigned"]
         if "drop" in bad:
             del a["item"][bad["drop"]]
@@ -825,7 +774,7 @@ def test_an_invalid_restored_item_is_dropped_with_a_log_line_not_ticked():
         h = logging.Handler(); h.emit = records.append   # type: ignore[method-assign]
         logging.getLogger("brx.mc").addHandler(h)
         try:
-            go = _live(s, clock)
+            go = powerup_live(s, clock)
             clock.t = go + 200_000
             s.tick(); s.tick()
         finally:
@@ -840,8 +789,8 @@ def test_an_invalid_restored_item_is_dropped_with_a_log_line_not_ticked():
 def test_the_hit_plan_carrier_is_the_compilers_own():
     """Polish leftover: `_hit_plan` built the pickup carrier inline, a copy of `Compiler._pickup_carrier`.
     It now calls the compiler's method, so the two cannot drift."""
-    s, _clock = _sess()
-    _station(s, "u1", 5, "rockets")
+    s, _clock = powerup_session()
+    powerup_station(s, "u1", 5, "rockets")
     seen = []
     orig = Compiler._pickup_carrier
     Compiler._pickup_carrier = staticmethod(lambda pickups: seen.append(list(pickups)) or orig(pickups))  # type: ignore[method-assign]
@@ -854,23 +803,23 @@ def test_the_hit_plan_carrier_is_the_compilers_own():
 
 
 def test_f403_the_game_brief_names_each_pickup_once_in_station_order():
-    s, _ = _sess(powerups=True)
+    s, _ = powerup_session(powerups=True)
     assert "pickups" not in s.game_brief(), "no item station: no PICKUPS line"
-    _station(s, "u1", 5, "rockets")
-    _station(s, "u2", 6, "overshield")
-    _station(s, "u3", 7, "rockets")                      # the same item names once
+    powerup_station(s, "u1", 5, "rockets")
+    powerup_station(s, "u2", 6, "overshield")
+    powerup_station(s, "u3", 7, "rockets")                      # the same item names once
     pk = s.game_brief()["pickups"]
     assert [p["name"] for p in pk] == ["ROCKETS", "OVERSHIELD"], pk
     assert all(isinstance(p.get("color"), str) and p["color"] for p in pk), pk
-    off, _ = _sess(powerups=False)
-    _station(off, "u1", 5)
+    off, _ = powerup_session(powerups=False)
+    powerup_station(off, "u1", 5)
     assert "pickups" not in off.game_brief(), "the flag off: items are inert, so no line"
 
 
 def test_f403_an_item_change_before_the_match_resends_the_brief_to_bound_phones():
-    s, _ = _sess(powerups=True)
+    s, _ = powerup_session(powerups=True)
     before = len(_pushed(s, "assign"))
-    _station(s, "u1", 5, "rail_gun")
+    powerup_station(s, "u1", 5, "rail_gun")
     sent = _pushed(s, "assign")[before:]
     assert sent, "the bound phones got a fresh assign"
     assert all(m["game"].get("pickups") == [{"name": "RAIL GUN", "color": "#22d3ee"}] for m in sent), sent
@@ -889,13 +838,13 @@ def test_f403_the_phone_demo_paints_each_item_in_mc_s_own_colour():
 
 
 def test_f403_a_station_edit_that_leaves_the_pickups_alone_sends_no_assign():
-    s, _ = _sess(powerups=True)
-    _station(s, "u1", 5, "rockets")
+    s, _ = powerup_session(powerups=True)
+    powerup_station(s, "u1", 5, "rockets")
     before = len(_pushed(s, "assign"))
-    _station(s, "u2", 6, kind="respawn")                  # no item: the PICKUPS line is unchanged
-    _station(s, "u3", 7, "rockets")                       # the same item again: still ROCKETS once
+    powerup_station(s, "u2", 6, kind="respawn")                  # no item: the PICKUPS line is unchanged
+    powerup_station(s, "u3", 7, "rockets")                       # the same item again: still ROCKETS once
     assert len(_pushed(s, "assign")) == before, "no brief change, no assign"
-    _station(s, "u4", 8, "overshield")                    # an overshield alone moves no weapon slot, but it IS a new line
+    powerup_station(s, "u4", 8, "overshield")                    # an overshield alone moves no weapon slot, but it IS a new line
     assert len(_pushed(s, "assign")) > before
 
 
@@ -910,19 +859,19 @@ def test_a_stored_item_is_checked_against_the_advert_byte_not_the_override_range
 def test_f454_a_corrected_taker_pushes_feed_edit_and_ids_survive_a_restore():
     """The console replaces its TOOK row by id: the correction pushes `feed_edit` with the corrected entry, a
     row without an id (an old snapshot) is edited in place without a push, and a restored feed's ids never repeat."""
-    s, clock = _sess()
-    _station(s, "u1", 5, "overshield")
-    go = _live(s, clock)
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
     clock.t = go + 61_000; s.tick()
     edits, news = [], []
     s.on_feed_edit(lambda e: edits.append(dict(e)))
     s.on_feed(lambda e: news.append(dict(e)))
     p1 = s.players[s.node_player["phone-1"]]
-    _pickup(s, clock, 5)
+    powerup_pickup(s, clock, 5)
     took = next(r for r in s.feed if " TOOK " in r["text"])
     assert isinstance(took["id"], int) and [n["id"] for n in news if " TOOK " in n["text"]] == [took["id"]]
     assert edits == [], "CONTROL: a phone's own fact pushes no edit"
-    _action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
+    powerup_action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
     assert len(edits) == 1 and edits[0]["id"] == took["id"] and edits[0]["text"].startswith(f"{p1['display'].upper()} TOOK")
     assert sum(" TOOK " in r["text"] for r in s.feed) == 1
     # ids never repeat after a REAL persist and restore: the counter resumes from the restored feed's maximum
@@ -947,23 +896,23 @@ def test_a_powerup_station_id_must_fit_the_claim_adverts_one_byte():
     a respawn station keeps the full 1..65535."""
     from brx_mcp.mc.types import POWERUP_STATION_ID_MAX
     assert POWERUP_STATION_ID_MAX == 255
-    s, clock = _sess()
-    assert _station(s, "u1", 255, "overshield"), "control: 255 fits"
+    s, clock = powerup_session()
+    assert powerup_station(s, "u1", 255, "overshield"), "control: 255 fits"
     try:
-        _station(s, "u2", 300, "overshield")
+        powerup_station(s, "u2", 300, "overshield")
     except ValueError as e:
         assert "255" in str(e) and "POWERUP" in str(e).upper(), str(e)
     else:
         raise AssertionError("a powerup station id of 300 was accepted")
-    assert _station(s, "u3", 300, kind="respawn"), "a respawn station keeps the full id range"
+    assert powerup_station(s, "u3", 300, kind="respawn"), "a respawn station keeps the full id range"
 
 
 def test_a_station_turned_into_a_powerup_takes_a_one_byte_id_by_itself():
     """Cross-lane #7 review: a respawn station holding id 300, changed to a powerup with no id (the console sends none),
     gets a free id within 1..255 instead of an error the operator cannot act on."""
     from brx_mcp.mc.types import POWERUP_STATION_ID_MAX
-    s, clock = _sess()
-    assert _station(s, "u1", 300, kind="respawn")
+    s, clock = powerup_session()
+    assert powerup_station(s, "u1", 300, kind="respawn")
     s.net.simulate_utility_hello("u1")
     v = s.set_station("u1", {"kind": "powerup", "team": "any", "item_preset": "overshield"})
     sid = (s.station_registry.assignment("u1") or {}).get("id")
@@ -973,8 +922,24 @@ def test_a_station_turned_into_a_powerup_takes_a_one_byte_id_by_itself():
 def test_a_restored_powerup_station_above_the_one_byte_limit_is_renumbered():
     """Cross-lane #7 review (High): a snapshot from before the limit restored a powerup id of 300 and armed it."""
     from brx_mcp.mc.types import POWERUP_STATION_ID_MAX
-    s, clock = _sess()
+    s, clock = powerup_session()
     reg = s.station_registry
     reg.restore({"stations": {"u7": {"kind": "powerup", "team": 255, "id": 300, "threshold": 0, "at": 0}}})
     sid = reg.assignment("u7")["id"]
     assert 1 <= sid <= POWERUP_STATION_ID_MAX, sid
+
+
+def test_an_evicted_phone_never_takes_a_powerup():
+    """0.4.19 polish r3: an evicted node (a stranger, say) still uploads; its pickup must not empty the station."""
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
+    clock.t = go + 61_000; s.tick()
+    assert s._station_view("u1")["item_available"] is True, "control: the item is up"
+    ev = {"type": "pickup", "t": clock.t, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+          "player_id": s.node_player["phone-0"], "station_id": 5, "item_kind": "overshield", "seq": 1}
+    assert s.evict_node("phone-0")
+    s.net.simulate_event("phone-0", ev, clock.t)
+    assert s._station_view("u1")["item_available"] is True, "the evicted phone's pickup changes nothing"
+    s.ingest_batch("phone-0", [dict(ev, seq=2)], clock.t)
+    assert s._station_view("u1")["item_available"] is True, "nor a pickup in a flushed batch"

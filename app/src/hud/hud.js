@@ -236,7 +236,9 @@ export class Hud {
       // by `_patchScan` now, so nothing about the scan is structure any more.
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, st.bleUp, st.ended, this.bluetoothOn, this.locationOn,
       this.discovered && this.discovered.url, this.discovered && this.discovered.text,   // A60: the reason can change on the same url   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
-      st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
+      // F488: normalised, so the first 1 s sync poll (app.js: `hud.sync` goes from unset to {bound:false, pending:0})
+      // is not a screen change. Every reader treats the two the same, and the raw values rebuilt the picker's rows ~1 s after boot.
+      st.rejoin, !!st.pendingTeardown, !!(this.sync && this.sync.bound), (this.sync && this.sync.pending) || 0,
       // F137 (field 2026-09-12, found verifying the fix below): the pre-kit CONNECTED screen swaps a whole
       // block (the type-address box vs "MC LINKED") on `wsState`, not just text — `_patch` only ever touched
       // `#mcstatus`'s TEXT, so with wsState excluded from the signature that swap needed some UNRELATED field
