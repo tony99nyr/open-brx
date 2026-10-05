@@ -9,12 +9,12 @@ Updated: 2026-10-05. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 83.** Desk 7 · bench 74 · decision 2.
+**MVP open: 84.** Desk 8 · bench 74 · decision 2.
 
-**MVP DESK (7),** a keyboard is enough:
+**MVP DESK (8),** a keyboard is enough:
 - 🔴 **F468**
 - 🟠 **F469** · **F470** · **F473** · **F467**
-- 🟡 **F471** · **F472**
+- 🟡 **F471** · **F472** · **F474**
 
 **MVP BENCH (74),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F416** · **F438** · **F439** · **F434** · **F440** · **B26** · **F232** · **F264**
@@ -32,7 +32,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F474 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F475 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -58,6 +58,7 @@ A keyboard is enough. Highest value first.
 - **F470 🟠 A CLEARED HOLD TARGET (AND MODE_PARAMS) STAYS IN THE CONFIG ON A PLAY PICK OR A FAVOURITE LOAD.** Cross-lane review #3 (reproduced): `gamepick.compose` omits a cleared `hold_target_s` and `config_merge` merges, so the old target survives while the PLAY strip shows none; the same merge keeps a KIT `mode_params` edit after picking STANDARD. Fix: write the key explicitly (None clears it) and replace `mode_params` on a pick. Owner brx3. Chaos regression seed in F467. `build`.
 - **F471 🟡 A LATE FACT FOR A RETIRED MATCH RECREATES ITS ARCHIVE ROW WITH THE NEXT GAME'S CONFIG.** Cross-lane review MC finding 5 (low, code read): `state.py` `_archive` recreate takes `{**self.config}`, which is the next game's config by then. Fix: recreate from the retired scorer's own config. Owner brx3 (review #13). Chaos regression seed in F467. `build`.
 - **F472 🟡 APP-SCREENS "#40 SWITCHING" FLAKES WITH A SWEEP WIDTH OF 0 UNDER LOAD.** The step reads the switch sweep width after a fixed 3.1 s wait (`app/tools/screens.mjs`, the #40 SWITCHING takeover), so a loaded run can sample before or after the sweep (the wall-clock flake family). Fix: wait for the sweep state itself. Owner brx3. `build`.
+- **F474 🟡 A PHONE CLOCK THAT JUMPS BY A WHOLE SPAWN INTERVAL AFTER SYNC MAKES MC BOOK A SECOND TAKE.** Codex review round 3 on F473 (2026-10-05): if a phone's synced clock steps by about one powerup spawn interval (about 60 s) after its sync, MC attributes a pickup to the previous spawn and records a second take. The same family as the WSL time-sync steps (F451). MC should detect a large clock step in a node's sync and re-sync or flag it, rather than trust the stale offset. Owner: unassigned (after F473). `build`.
 - **F473 🟠 MC LOSES A REAL PICKUP WHEN THE PHONE'S SYNCED CLOCK TRAILS MC.** Found by the F467 chaos extension, 2026-10-05: MC compares a pickup's `t` (the phone's clock) with the item's `since` (MC's clock) with no tolerance, so a phone whose synced clock trails MC by more than the advert delay has a real take booked against the previous spawn, and it is lost. Fix: a small skew tolerance, or judge by MC's receive time. A chaos seed with clock skew (about 50-500 ms, both signs) flips when it is fixed. Owner brx5. `build`.
 - **F467 🟠 CHAOS TESTING NEVER REACHES THE SEAMS WHERE TONIGHT'S BUGS LIVED.** The 2026-10-04 cross-lane review ran 240 chaos seeds with 0 failures, while scratch reproductions found a lost kill after a restart with a corrupt armory, a KOTH hold target lost on restart, and a cleared hold target that stays in the config: the chaos actions never assign, release or RESTORE stations, claim powerups, make PLAY picks or favourite loads, or use a real armory (its `FakeArmory` binds by name). Extend the action set and invariants (kills credited after a resume, the hold target survives, no archive row with the wrong config), with the review's repros as regression seeds. Owner brx2. `build`.
 
