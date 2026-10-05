@@ -294,11 +294,14 @@ def test_jobs_that_fit_pool_capacity_run_together(tmp_path):
         _wait_file(first_acquired)
         second = _child(directory, "second", 400, acquired_file=second_acquired,
                         release_file=second_release)
-        _wait_file(second_acquired)
+        # The overlap is a condition, not a timestamp compare: the second lease is granted while the first is still
+        # held (its release file does not exist yet, and its process is still waiting on it). Comparing Date.now()
+        # across two processes flaked under load (equal milliseconds, WSL clock steps).
+        _wait_file(second_acquired, timeout=10)
+        assert first.poll() is None and not first_release.exists(), "the first lease ended before the second began"
         first_release.touch()
         second_release.touch()
-        a, b = _finish(first), _finish(second)
-        assert max(a["acquired"], b["acquired"]) < min(a["released"], b["released"])
+        _finish(first), _finish(second)
     finally:
         _stop(first, *(p for p in [second] if p))
 
