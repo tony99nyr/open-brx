@@ -827,6 +827,7 @@ class NetServer:
         info: dict[str, Any] = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
         if prior_utility_node_id:
             info["prior_utility_node_id"] = prior_utility_node_id
+        info["seq_hi"] = rec.seq_hi
         if rec.seq_reset:
             info["seq_reset"] = True       # F474: a seq below the clock watch's anchor proves nothing now
             rec.seq_reset = False

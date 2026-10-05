@@ -752,3 +752,143 @@ def test_a_hello_that_resets_the_seq_counter_reaches_the_clock_watch_once():
     net._fire_node(rec)
     net._fire_node(rec)
     assert seen[0].get("seq_reset") is True and not seen[1].get("seq_reset"), seen
+
+
+# --------------------------------------------------------------------------- follow-up polish round 2
+class _Capture:
+    def __enter__(self):
+        import logging
+        self.lines = []
+        outer = self
+
+        class H(logging.Handler):
+            def emit(self, record):
+                outer.lines.append(record.getMessage())
+        self.h, self.log = H(level=logging.DEBUG), logging.getLogger("brx.mc")
+        self.old = self.log.level
+        self.log.setLevel(logging.DEBUG)
+        self.log.addHandler(self.h)
+        return self
+
+    def __exit__(self, *a):
+        self.log.removeHandler(self.h)
+        self.log.setLevel(self.old)
+
+
+def test_the_watch_tells_an_ambiguous_late_flush_from_a_clean_stepped_fact():
+    w, since, until = _short_back_step_watch(seq_at_first_shifted=9)
+    assert w.verdict("n", since + 5_000, since + 5_000) == "stepped", "it arrived while the node was suspect"
+    assert w.verdict("n", since + 5_000 - 60_000, until + 5_000, seq=10) == "ambiguous", "a late flush made after the anchor"
+    assert w.verdict("n", since - 45_000, until + 5_000, seq=8) is None
+    assert w.stepped("n", since + 5_000 - 60_000, until + 5_000, seq=10) is True
+
+
+def _pu_stepped_window(s, clock, go):
+    """phone-0 steps back 60 s for a short window, then is right again. MC had received seq 9 before the first shifted sample."""
+    from types import SimpleNamespace
+    s.net.nodes = {"phone-0": SimpleNamespace(seq_hi=9)}
+    _pu_burst(s, clock)
+    _pu_phone_samples(s, clock, 0, n=5)
+    _pu_phone_samples(s, clock, -60_000, n=4)
+    assert s.clock_watch.suspect("phone-0")
+    _pu_phone_samples(s, clock, 0, n=3)
+    assert not s.clock_watch.suspect("phone-0")
+
+
+def test_an_ambiguous_offline_pickup_takes_nothing_and_the_station_report_still_records_the_take():
+    from test_mc_powerups import _action, _feed, _live, _sess, _station
+    s, clock = _sess()
+    _wire_mono(s, clock)
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 70_000
+    s.tick()
+    _pu_stepped_window(s, clock, go)
+    clock.t = go + 121_000
+    s.tick()                                              # spawn 2 is on the shelf
+    p = s.players[s.node_player["phone-0"]]
+    ev = {"type": "pickup", "t": clock.t - 90_000, "match_id": s.start_info["match_id"], "node_id": "phone-0",
+          "player_id": p["player_id"], "station_id": 5, "item_kind": "overshield", "seq": 11, "next_spawn_in_s": 59}
+    with _Capture() as cap:
+        s.ingest_batch("phone-0", [ev], clock.t)           # queued offline through the step, flushed late
+    assert [x for x in _feed(s) if "TOOK" in x] == [], "an ambiguous fact books no take"
+    assert s._station_view("u1")["item_available"] is True
+    assert len([x for x in cap.lines if "ambiguous" in x]) == 1, cap.lines
+    _action(s, clock, "u1", 5, "taken", player_num=p["player_num"])
+    assert len([x for x in _feed(s) if "TOOK" in x]) == 1 and s._station_view("u1")["item_available"] is False
+
+
+def test_an_ambiguous_kill_is_still_scored_at_arrival_and_logged_once():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    from types import SimpleNamespace
+    net.nodes = {NODE: SimpleNamespace(seq_hi=9)}
+    _baseline(s, net, clock)
+    for _ in range(4):
+        _sample(s, net, clock, -60_000)
+    for _ in range(3):
+        _sample(s, net, clock, 0)
+    assert not s.clock_watch.suspect(NODE)
+    w = s.clock_watch.windows[NODE][-1]
+    clock["t"] += 500
+    t = w["since"] + 5_000 - 60_000
+    with _Capture() as cap:
+        net.simulate_event(NODE, {"type": "death", "t": t, "match_id": info["match_id"], "player_id": ps[0]["player_id"],
+                                  "shooter_num": ps[1]["player_num"], "shooter_team": 1, "seq": 11}, clock["t"])
+    assert _kill_times(s)[-1] == clock["t"]
+    assert len([x for x in cap.lines if "ambiguous" in x]) == 1, cap.lines
+
+
+def test_a_fresh_process_hello_drops_a_restored_anchor():
+    from brx_mcp.mc.net import NetServer, NodeRecord
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, demo_armory
+    from brx_mcp.mc.state import Session
+    w, since, until = _short_back_step_watch()
+    net = NetServer()
+    s = Session(Compiler(), net, FakeArmory(demo_armory()))
+    s.clock_watch.restore(w.to_snapshot())
+    assert s.clock_watch.windows["n"][-1]["seq"] == 9
+    seen = []
+    net.on_node(lambda info: seen.append(info))
+    rec = NodeRecord(node_id="n", node_type="phone", app_ver="x")      # this process has never heard of it: seq_hi is 0
+    net._fire_node(rec)
+    assert s.clock_watch.windows["n"][-1]["seq"] is None and s.clock_watch.windows["n"][-1].get("reset") is True
+    # CONTROL: a node this process has already heard facts from keeps its anchor
+    s.clock_watch.restore(w.to_snapshot())
+    heard = NodeRecord(node_id="n", node_type="phone", app_ver="x")
+    heard.seq_hi = 12
+    net._fire_node(heard)
+    assert s.clock_watch.windows["n"][-1]["seq"] == 9
+
+
+def test_a_hello_with_a_seq_next_below_seq_hi_drops_the_anchor_end_to_end():
+    from _skip import Skipped
+    try:
+        import websockets  # noqa: F401
+    except ImportError:
+        raise Skipped("websockets")
+    import asyncio
+    from test_mc_net import _Harness, _run, _until
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, demo_armory
+    from brx_mcp.mc.mock_node import MockNode
+    from brx_mcp.mc.state import Session
+
+    async def go():
+        async with _Harness() as h:
+            s = Session(Compiler(), h.net, FakeArmory(demo_armory()))
+            w, since, until = _short_back_step_watch()
+            s.clock_watch.restore({"n1": w.to_snapshot()["n"]})
+            node = MockNode(h.url, node_id="n1", gun_name="GUN-A", gun_tail="3D4F", heartbeat_ms=100)
+            await node.start()
+            await node.wait_connected()
+            for _ in range(3):
+                node.emit({"type": "respawn", "match_id": "m"})
+            assert await _until(lambda: h.net.nodes["n1"].seq_hi >= 3)
+            s.clock_watch.restore({"n1": w.to_snapshot()["n"]})            # the anchor is back after the first hello
+            await node.disconnect()
+            node.seq_next = 1                                              # storage reset: the counter starts over
+            node.reconnect()
+            assert await _until(lambda: (s.clock_watch.windows["n1"][-1].get("reset") is True))
+            await node.close()
+    _run(go())

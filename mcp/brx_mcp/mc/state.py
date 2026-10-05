@@ -840,7 +840,12 @@ class Session:
             if kind in self._FACT_KINDS and isinstance(body, dict) and isinstance(body.get("t"), int):
                 # F474: the clock verdict is stored WITH the fact, so a replay reads what the live scorer decided.
                 # Re-deriving it later from windows that have since moved (an MC clock step) can disagree.
-                body = {**body, "_stepped": self.clock_watch.stepped(node_id, body["t"], t_recv, seq)}
+                verdict = self.clock_watch.verdict(node_id, body["t"], t_recv, seq)
+                if verdict == "ambiguous":
+                    logging.getLogger("brx.mc").info(
+                        "node %s: a %s made across its clock step is ambiguous (queued before or after it); scored at arrival",
+                        node_id, kind)
+                body = {**body, "_stepped": verdict is not None}
             self.store.log(node_id, kind, seq, body.get("t") if isinstance(body, dict) else None, t_recv, mid, parked, body)
             if self._store_failures.ok():
                 self._notify_listeners()
@@ -2718,7 +2723,14 @@ class Session:
         nid = found
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
-        if src and (self.clock_watch.stepped(src, t, t_recv, ev.get("seq")) or self.clock_watch.pending(src)):
+        verdict = self.clock_watch.verdict(src, t, t_recv, ev.get("seq")) if src else None
+        if verdict == "ambiguous":
+            # Queued across the node's clock step: it may be about the spawn before or the one after, and a take cannot be
+            # undone. The station's own report settles it (F454).
+            logging.getLogger("brx.mc").info("node %s: a pickup made across its clock step is ambiguous; it takes nothing "
+                                             "(the station's report decides)", src)
+            return
+        if src and (verdict is not None or self.clock_watch.pending(src)):
             t = t_recv     # F474: the phone's wall clock stepped, so its own time names the wrong spawn
         n = ev.get("next_spawn_in_s")
         # The fact's EVENT time (the phone's synced grant time, never after t_recv), not its arrival: a fact flushed
@@ -3486,7 +3498,9 @@ class Session:
         # stops being outstanding here -- before the `reconnect` trigger below decides to make a new one.
         self._log_asked.discard(nid)
         self._log_inflight.discard(nid)   # B7: the old socket's stream is dead too; no more chunks are coming on it
-        if n.get("seq_reset"):
+        if n.get("seq_reset") or (n.get("seq_hi") == 0 and not n.get("bind")):
+            # The phone reset its seq counter, or this process has never heard a fact from it (an MC restart): the seq
+            # anchor of a restored window proves nothing now.
             self.clock_watch.drop_seq(nid)
         if not n.get("bind"):
             self.clock_watch.connect(nid)     # F474: no drift is a baseline until the phone's connect burst is over

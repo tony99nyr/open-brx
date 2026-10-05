@@ -182,15 +182,25 @@ class ClockWatch:
         return True
 
     def stepped(self, nid: str, t: int, t_recv: int, seq: int | None = None) -> bool:
-        """True when a fact (own time `t`, received at `t_recv`) must be scored at `t_recv`: it arrived while the node
-        was suspect, or it arrived AFTER the window closed with its own `t` in the stepped copy of that window (a fact
-        queued offline through the step and flushed later). A fact that arrived outside the window and is dated before
-        it is genuine pre-step time: the band applies only to a late flush. A fact dated before `since` is read as
-        genuine too: after a backward step the stepped copy of a window longer than the step overlaps the time before
-        it, and trusting the older fact there is the safer reading."""
+        """True when a fact must be scored at `t_recv` (see `verdict`)."""
+        return self.verdict(nid, t, t_recv, seq) is not None
+
+    def verdict(self, nid: str, t: int, t_recv: int, seq: int | None = None) -> str | None:
+        """What to make of a fact's own time `t` (received at `t_recv`, node seq `seq`):
+
+        * `"stepped"`: it arrived while the node was suspect, so its `t` is the stepped clock's. Score it at `t_recv`.
+        * `"ambiguous"`: it arrived AFTER a window closed with its `t` in the stepped copy of that window, and nothing
+          proves it was made before the step (a late flush; the node's seq is above the anchor, or was reset). It may
+          have been queued before the step or after it, so neither `t` nor `t_recv` is safe. A scoring fact is scored
+          at `t_recv`; a pickup takes nothing, because the station's own report settles the spawn (F454).
+        * `None`: trust `t`.
+
+        A fact that arrived outside the window and is dated before it is genuine pre-step time. A fact dated before
+        `since` is read as genuine too when the node has no seq anchor: after a backward step the stepped copy of a
+        window longer than the step overlaps the time before it."""
         for w in self.windows.get(nid, ()):
             if t_recv >= w["since"] and (w["until"] is None or t_recv <= w["until"]):
-                return True
+                return "stepped"
             if w["until"] is None or t_recv <= w["until"]:
                 continue
             # A late flush: its `t` is in the stepped copy of the window. `since + ref` is the phone's own time at `since`
@@ -200,20 +210,20 @@ class ClockWatch:
                 continue
             wseq = w.get("seq")
             if w.get("reset"):
-                return True
+                return "ambiguous"
             if seq is not None and wseq is not None:
                 # The node's seq is monotonic in stamp order: a fact sent before the window opened has a seq the node
                 # had already delivered at `since`. That settles a window shorter than a backward step, where the
                 # stepped copy overlaps genuine earlier time.
                 if seq > wseq:
-                    return True
+                    return "ambiguous"
             elif t >= w["since"]:
-                return True
-        return False
+                return "ambiguous"
+        return None
 
     def drop_seq(self, nid: str) -> None:
-        """The phone reset its storage, so its seq counter started again from 1: a seq no longer orders its facts against
-        the window's. Every window of the node falls back to the safe reading: a late flush in the stepped band is
+        """The phone reset its storage (it restarts its counter at `welcome.seq_hi + 1`, which MC no longer remembers), or
+        MC restarted and lost what it had received: a seq no longer orders its facts against the window's. Every window of the node falls back to the safe reading: a late flush in the stepped band is
         stepped."""
         for w in self.windows.get(nid, ()):
             w["seq"], w["reset"] = None, True
