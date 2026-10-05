@@ -1,4 +1,4 @@
-# Handoff: Open BRX, state on the eve of the 0.4.19 re-bench
+# Handoff: Open BRX, state on the eve of the 0.4.20 re-bench
 **State as of 2026-10-05.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 Open MVP work is [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench, decision); ideas and the roadmap are [`post-mvp.md`](post-mvp.md);
 what is done is [`archive/followups-closed.md`](archive/followups-closed.md). The bench order is [`bench-plan.md`](bench-plan.md).
@@ -6,10 +6,11 @@ What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is 
 Update only the lane you worked.
 ## State of main (2026-10-05)
 **App 0.4.15 is the last published build** (`app-v0.4.15`; `app/package.json` on main reads 0.4.15). 0.4.16-0.4.18 were
-built on release branches and not published; the 0.4.18 re-bench never ran. **0.4.19 is built, not published**, from
-`release/app-0.4.19` (`bf66f8e3` = main `c7f08cf0` plus the bump and notes; APK `/home/tony/apk-0.4.19`, release key,
-sha256 `9523d2e1…3d9b85`). The bench is [`bench-rebench-0419.md`](bench-rebench-0419.md). On main after the cut, so NOT
-in 0.4.19: F495, F478-F480 (stage only) and `58c4d829` (late-start quirks, F496/F497). The MVP desk list holds only F498.
+built on release branches and not published; the 0.4.18 re-bench never ran. **The bench build is 0.4.20, built, not published**,
+from `release/app-0.4.20` (`cea5a9d7` = main `9ab8b345` plus the bump and notes; APK `/home/tony/apk-0.4.20`, release
+key, sha256 `d1a5e308…6324e03c22c56dd4d7932b516c26406fc1fb84`). It carries F495, F478-F480 and `58c4d829` (late-start
+quirks, F496/F497); 0.4.19 (`c7f08cf0`) is superseded. The bench is [`bench-rebench-0419.md`](bench-rebench-0419.md)
+(now the 0.4.20 sheet). The MVP desk list holds only F498.
 The Stick firmware on the bench predates `a317bb37`: reflash it from main. The iPhone X build (B21 iOS half) is Tony's
 MacBook step, `.claude/skills/iphone-build`.
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
@@ -28,7 +29,7 @@ exit; old `/tmp` run logs are pruned. `land.mjs withdraw` works while a lander r
 mid-batch. F488 was a real HUD bug (the idle screen rebuilt the gun picker 1 s after boot). The 0.4.19 re-bench sheet
 is on main: the APK is built from `c7f08cf0` (not published) and every fix it tests is in it. CI is green through
 `0d3e010d`; I watch each land. Next free id: F499.
-**Next:** the 0.4.19 bench, `bench-rebench-0419.md`. Setup: re-pair adb, install `/home/tony/apk-0.4.19`, run
+**Next:** the 0.4.20 bench, `bench-rebench-0419.md`. Setup: re-pair adb, install `/home/tony/apk-0.4.20`, run
 `./start.sh --setup-only` online once, reflash the Sticks from main, start MC from main with `--bench-volume 80`. R4/T5 read-only research is authorised; flashing stays
 decision first.
 **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.

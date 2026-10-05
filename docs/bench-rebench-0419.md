@@ -1,13 +1,14 @@
-# Bench sheet: the re-bench on APK 0.4.19
+# Bench sheet: the re-bench on APK 0.4.20
 
-Updated: 2026-10-05. This sheet supersedes [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md): 0.4.19
-was built on 2026-10-05 from main `c7f08cf0` (not published; setup step 2). The 0.4.18 sheet never ran, so every one of its steps is carried here, marked "carried from 0.4.18", next to
+Updated: 2026-10-05. This sheet supersedes [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md). It runs on
+APK 0.4.20, built on 2026-10-05 from main `9ab8b345` (not published; setup step 2). 0.4.19 was built earlier and is
+not used; the file keeps its 0419 name so the links to it hold. The 0.4.18 sheet never ran, so every one of its steps is carried here, marked "carried from 0.4.18", next to
 every bench-gated fix that landed after 0.4.18 (`1b0f6dca`). It stands alone: kit, setup, steps in priority order,
 each with a control, a pass rule and its FOLLOWUPS row. The row holds the history and the fix; this sheet holds the
 procedure. How a bench run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 The index is [`bench-plan.md`](bench-plan.md).
 
-**Time:** about 5 h 35 min for the core (setup, with 4a, and steps 1-16), plus about 2 h 5 min below the STOP POINT.
+**Time:** about 5 h 40 min for the core (setup, with 4a, and steps 1-16), plus about 2 h 5 min below the STOP POINT.
 
 ## Kit
 
@@ -41,30 +42,32 @@ The index is [`bench-plan.md`](bench-plan.md).
    options → Wireless debugging → *Pair device with pairing code*. Tony reads out the pairing `ip:port` and code;
    run `adb pair <ip>:<pairing port> <code>`. Then Tony reads the connect `ip:port` from the Wireless debugging
    screen; run `adb connect <ip:port>`. Check with `adb devices`: three phones, each `device`.
-2. **Install 0.4.19 on all three:**
-   `adb -s <ip:port> install -r /home/tony/apk-0.4.19/brx-companion-0.4.19-android-release.apk`. The same
-   release key installs over 0.4.18 with no uninstall. **The APK** (built 2026-10-05, not published): sha256
-   `9523d2e11556dce1b21e164f9b3676c2c7c8cdd31aa28a01a45b0fc05b3d9b85`, versionCode 419, from `release/app-0.4.19`
-   at `bf66f8e3` (main `c7f08cf0` plus the version bump and notes; `dirty: false`). Check the file first:
-   `sha256sum /home/tony/apk-0.4.19/brx-companion-0.4.19-android-release.apk` must print that sha256. **F395, a
-   glance:** on each phone's first cold launch of 0.4.19, the splash is the plain background with no stretched logo;
+2. **Install 0.4.20 on all three:**
+   `adb -s <ip:port> install -r /home/tony/apk-0.4.20/brx-companion-0.4.20-android-release.apk`. The same
+   release key installs over 0.4.18 or 0.4.19 with no uninstall. **The APK** (built 2026-10-05, not published): sha256
+   `d1a5e308ec53fdb099e218514d6324e03c22c56dd4d7932b516c26406fc1fb84`, versionCode 420, from `release/app-0.4.20`
+   at `cea5a9d7` (main `9ab8b345` plus the version bump and notes; `dirty: false`). Check the file first:
+   `sha256sum /home/tony/apk-0.4.20/brx-companion-0.4.20-android-release.apk` must print that sha256. **F395, a
+   glance:** on each phone's first cold launch of 0.4.20, the splash is the plain background with no stretched logo;
    close F395 if it is clean on all three. Log each phone's version:
-   `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`.
-   **Build check, done at the desk against `c7f08cf0` (every fix this sheet tests is in the APK):**
-   - Step 1a (F493, the revive trigger): `c7f08cf0` itself. Yes.
+   `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName` (it reads 0.4.20).
+   **Build check, done at the desk against `9ab8b345` (every fix this sheet tests is in the APK):**
+   - Step 1a (F493, the revive trigger, `c7f08cf0`; F496/F497, the REDEPLOYED card, `58c4d829`): both ancestors. Yes.
+   - Step 1b (the late-start phantom "armour up", `58c4d829`, late-start quirk (b)): an ancestor. Yes.
    - Step 6 (F464, the hill decay): `HILL_DECAY_S` in `app/src/transport/contract.gen.js`. Yes.
    - Step 10 (F473, the pickup names its spawn): `next_spawn_in_s` in `app/src/powerup-player.js`. Yes.
    - Step 27 (F294, the sweep logging, `5609ac30`): an ancestor. Yes. On a phone, any sweep logs
      `sweep <subnet>.0/24: N probed, … open, … closed, … timed out, … threw (… s)`, and a pause during a gun pick
      logs `sweep paused (gun connect) at …`; step 27 reads those lines to tell a pause from silent probes.
-   - Setup step 4 (the Stick id guard, `a317bb37`): an ancestor, so a reflash from main at or after `c7f08cf0` has it.
-   - Step 16 (F463, Tony's hill-sound ruling, MC side): `"hill_captured"` is `ungated=True` at `c7f08cf0`. MC runs
+   - Setup step 4 (the Stick id guard, `a317bb37`): an ancestor, so a reflash from main has it.
+   - Step 16 (F463, Tony's hill-sound ruling, MC side): `"hill_captured"` is `ungated=True` at `9ab8b345`. MC runs
      from the main checkout, so also check there: `git grep -n '"hill_captured".*ungated=True' HEAD --
      mcp/brx_mcp/mc/presentation.py`.
+   - Also in: F495 (`a4fdc910`) and F478-F480 (`1d410014`, the bench stage only).
 
-   **NOT in this APK:** anything that lands after `c7f08cf0`. That includes the fixes for the open desk rows F495 and
-   F478-F480 (none had landed at the cut). Do not expect them on the phones; MC runs from the latest main, so an MC
-   fix that lands later is in MC but not in the phone build.
+   **NOT in this APK:** anything that lands after `9ab8b345`. F498 is still open: REDEPLOYED's countdown can step up
+   once when other play jobs are queued ahead of the life burst (the card still ends at or after weapons hot). MC
+   runs from the latest main, so an MC fix that lands later is in MC but not in the phone build.
 3. **Run `./start.sh --setup-only` ONLINE once**, from the main checkout, before MC starts. O19 (`45375f94`,
    `4fe5b122`, `c9343eb2`, `71bd2f24`) pins every Python dependency in `mcp/constraints.txt` (bleak 3.0.2 and the
    rest) and installs with `pip install -c mcp/constraints.txt`. The install stamp hashes that file, so the first
@@ -117,7 +120,7 @@ count.
   with a dead trigger, or an undying player (a 0 pool must still book a death).
 Row: F416.
 
-**1a. F493, an operator respawn about 100 ms after a death (P0; gates the 0.4.19 cut; 15 min).** Only on a build
+**1a. F493, an operator respawn about 100 ms after a death (P0; 15 min).** Only on a build
 with `c7f08cf0` (setup step 2's build check). On an older build the dead trigger is expected: record
 it and move on. One gun with a phone in a live match, a timed respawn with the normal 0.5 s weapon delay.
 1. **Control (A).** Kill the player and wait out the respawn timer. Pass: after the weapon delay, the trigger fires.
@@ -125,13 +128,20 @@ it and move on. One gun with a phone in a live match, a timed respawn with the n
    fast as possible, while the death scream still plays. **Pass:** after the respawn line and the 0.5 s weapon
    delay, a trigger pull FIRES, 5 of 5. The phone log shows the trigger-live `$BMAP,0,0` written AFTER the revive
    burst's `$SPAWN`. A dead trigger on any try is a FAIL (the bug): log it and recover with RESYNC GUN.
-   **Known in this APK (F496/F497, not fixed in 0.4.19):** the REDEPLOYED card is timed from the draw, not from the
-   send, so on a quick respawn it can read WEAPONS HOT while the trigger is still dead, or disappear before it reads
-   WEAPONS HOT. Judge the step by the trigger and the phone log, not by the card; log what the card showed.
+   **The REDEPLOYED card (F496/F497, in this APK):** on every quick respawn the card reads ACTIVATING WEAPON SYSTEMS
+   until the trigger is live, then WEAPONS HOT; it must not clear, or read WEAPONS HOT, before the trigger fires.
+   Its countdown may step up once (F498, open); log it if it does.
 3. **Control again (A).** One more timed respawn; the trigger fires.
 4. **Station profile, if there is time.** After a station revive, the protection ends about 2 s in, and the player
    can be hit after that.
 Row: F493 (owner brx4).
+
+**1b. A late start has no phantom "armour up" (5 min; `58c4d829`, late-start quirk (b)).** A late start: the match
+goes live while one player's phone is not linked (close the app), then the phone links and its gun spawns late.
+Before the fix, the spawn read-back about 2.5 s in read as a gain: an "armour up" voice line (`$PLAY,,4,6,VA1G` in
+the phone log), a +70 float on the HUD, and the next grunt dropped. **Control:** an on-time start. **Pass:** in the
+first 5 s after the late spawn, no `VA1G` write, no armour float, and the HUD reads full health and armour. Row:
+none (it was found and fixed at the desk with F496/F497).
 
 **2. F438, your own shot never hurts you, and the team-damage check (15 min; carried from 0.4.18).** Indoors, a TDM
 match, standard health. The victim stands 1-2 m from a wall and fires the sniper at it, 5 shots. **Control first:**
@@ -353,8 +363,8 @@ the full shield" line, and the HUD shield after the early hit matches `$LIFE`. L
    `{"presentation": {"preset": "silenced"}}`. Play Hill Captured, Hill Lost, Hill Contested and the possession
    tick (Hill Moved has no caller yet). **Control:** the same four on the `standard` preset. **Pass:** Tony ruled on
    2026-10-05 that the hill sounds are game information, so all of them play with the announcer off, Hill Captured
-   too. The ruling landed on main as `eb37db15` (Hill Captured is now `source="hud"`, `ungated=True`), so a 0.4.19
-   cut after it plays them with the announcer off; setup step 2's third check confirms the build has it. Expect four:
+   too. The ruling landed on main as `eb37db15` (Hill Captured is now `source="hud"`, `ungated=True`), so a 0.4.20
+   cut after it plays them with the announcer off; setup step 2's F463 check confirms MC has it. Expect four:
    Hill Captured, Hill Lost, Hill Contested and the possession tick. The fifth, Hill Moved, is ungated too, but no
    mode plays it yet (rotating hills, F83), so it cannot be checked here. If
    the check does not match, the APK predates the ruling: only Hill Lost, Hill Contested and the tick play. That is
@@ -403,8 +413,8 @@ no shot, takes Rockets at the station, empties them, then presses ALT once. **Co
 life lands on the slot the phone expects. **Pass:** the gun's next `$ALCD` slot matches the phone's assumed target,
 and no stale switch-back re-send follows. Row: F379.
 
-**24. F342, the scan-flood baseline on main's advert rate (20 min).** The 0.4.19 APK is built from main, so it does
-NOT carry `fix/koth-dense-adverts` (every player phone at lowLatency, about 10 adverts a second). This step measures
+**24. F342, the scan-flood baseline on main's advert rate (20 min).** The 0.4.20 APK is built from main `9ab8b345`, so it
+does NOT carry `fix/koth-dense-adverts` (every player phone at lowLatency, about 10 adverts a second). This step measures
 the scan-flood risk (`scanwatch.js` `SCAN_BUDGET_PER_S` = 25, F342) at main's balanced rate, as the baseline. A KOTH
 match with the hill station and one gun, and every player phone on the hill (the kit has three Pixels and the iPhone;
 the target is 4-8, so log the count as a limit of the result). For 5 minutes, record per phone: adverts heard per
