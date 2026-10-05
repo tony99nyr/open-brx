@@ -60,12 +60,12 @@ change" with the golden traces plus an old/new differential; never `--accept` to
 **Next:** bench F459 (stun x reconcile), F460 (own-write echo), F461 (shield fill echo), F463 (clip timing + Tony's
 ruling on hill sounds with the announcer off).
 **Blocked:** none.
-## Lane: brx5, powerups, the HUD and gun audio
-**State:** overnight 2026-10-03 polish of F437-F439, F446, F434: a lethal toxin hit no longer cuts the scream with
-H12, and a self-kill keeps the magazine (log 2026-10-03).
-**Next:** D4/A8 for brx1, one cue table (`presentation.EVENTS`); then the bench steps on the F437-F439 rows.
+## Lane: brx5, powerups, clock trust and the stage
+**State:** 2026-10-05 landed F473 and F474 (+ follow-up), F475, F476 (deferred check), F477, F484, F485, F495, F464 (Tony's option 1),
+A19 (shared mcp test helpers), the stage hp-mirror, the 0.4.19 release notes and a docs accuracy pass (log 2026-10-05).
+**Next:** none queued. `fix/koth-dense-adverts` (`wt-dense`) is held: run it as an A/B with its own labelled APK only after the
+0.4.19 sheet's scan-flood baseline (step 24, F342) is recorded.
 **Blocked:** none.
-
 ## Start here
 
 1. **Next sitting:** [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md) on 0.4.18; record evidence and
