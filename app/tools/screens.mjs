@@ -1382,9 +1382,12 @@ for (const view of VIEWS) {
     const y = await untilC(pg, r => /TEAM 2 CAN NEVER HOLD A POINT/.test(r.warn) && r.claims === 0, 12000, 'the F82 warning, with blue gone');
     must(y.claims === 0 && y.team !== 'YELLOW' && !/yellow/.test(y.hold), 'and tid 2 gets nothing: ' + JSON.stringify(y));
     must(y.wire.team !== 2, 'nor can the advert ever name team 2: ' + JSON.stringify(y.wire));
-    const frozen = y.painted;
+    const before = y.painted;
     await pg.waitForTimeout(3000);
-    must((await cread(pg)).painted === frozen, 'a tid-2 body on the point moves the bar not at all');
+    // F464 (Tony, option 1): with nobody counted a half-built neutral bar drains, and a refused tid-2 body is nobody, so
+    // the bar may only go DOWN: tid 2 never builds it.
+    const after = (await cread(pg)).painted;
+    must(after <= before, `a tid-2 body on the point never builds the bar (${before} -> ${after})`);
     // ...and the ROSTER has to agree with the bar. A refused body read exactly like a contributing one --
     // highlighted row, green "ON POINT" -- while two lines above it the net line said NOBODY ON THE POINT.
     // A down body is struck through; a refused one had no mark at all, so the same screen said both things.
