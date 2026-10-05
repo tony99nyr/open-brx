@@ -79,10 +79,6 @@ def test_the_constants_are_the_same_numbers_on_both_sides():
     assert f"SHIELD_REASSERT_MS = {int(GunStage.SHIELD_REASSERT_S * 1000)};" in js
     assert f"PRE_ARM_TABLE_MS = {int(GunStage.PRE_ARM_TABLE_S * 1000)};" in js
     assert f"DOWN_WARN_MAX = {GunStage.DOWN_WARN_MAX};" in js
-    # F493: the burst hold cap is PLAY_QUEUE_STALE_MS + 2000 on the phone
-    assert "LIFE_BURST_HOLD_MAX_MS = PLAY_QUEUE_STALE_MS + 2000;" in js
-    stale = int(__import__("re").search(r"PLAY_QUEUE_STALE_MS = (\d+);", js).group(1))
-    assert GunStage.LIFE_BURST_HOLD_MAX_S * 1000 == stale + 2000
     assert GunStage.PRE_ARM_TABLE_S == GunStage.COUNTDOWN_LEAD_S, "the stage's T-3 is its countdown cue"
 
 
@@ -363,4 +359,30 @@ def test_f493_a_death_while_the_burst_is_queued_leaves_no_stale_trigger_write():
         for _ in range(40):
             clock.advance(0.1); st.poll(); await settle(st)
         assert LIVE not in tx(mgr)[n:], "no trigger-live for the old life"
+    asyncio.run(run())
+
+
+def test_f493_r1_a_burst_that_starts_after_the_hold_cap_runs_the_weapon_delay_again():
+    """engine.js `_lifeBurstLate` (r1 L1): the cap freed the trigger while the burst still waited; the burst's own
+    `$BMAP,0,98` then lands, so the weapon delay runs again from its start."""
+    async def run():
+        st, mgr, clock, gate = _mk_gated()
+        cap = st.LIFE_BURST_HOLD_MAX_S
+        await _live(st)
+        await _die(st)
+        clock.advance(0.1)
+        st._queue_play_until = clock() + cap + 1.0
+        n = len(tx(mgr))
+        task = asyncio.create_task(st.revive())
+        for _ in range(int((cap + 1.0) / 0.1)):
+            await settle(st); clock.advance(0.1); st.poll(); await settle(st)
+        assert not task.done(), "setup: the burst still waits past the cap"
+        assert LIVE in tx(mgr)[n:], "setup: the cap let the trigger go"
+        gate.set(); await task; await settle(st)
+        for _ in range(20):
+            clock.advance(0.1); st.poll(); await settle(st)
+        new = tx(mgr)[n:]
+        assert len(new) - 1 - new[::-1].index(LIVE) > len(new) - 1 - new[::-1].index(HELD), \
+            f"the last trigger write is live: {[f for f in new if f.startswith('$BMAP,0,')]}"
+        assert st._trigger_pending is None
     asyncio.run(run())

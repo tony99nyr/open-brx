@@ -1353,6 +1353,8 @@ class GunStage:
                     if play_generation != self._play_generation:
                         self._play_lock.release()
                         return
+            # F493 r1: when this wait gains engine.js's PLAY_QUEUE_STALE_MS drop (the F478 port), a spawn/revive burst
+            # (`_write_life`) must be exempt, as engine.js's `job.life`: dropped, the gun never gets its `$SPAWN`.
             # F419 (engine.js `_drainPlayWrites`): a queue-slot cue waits until the last one has played. The gun's queue
             # slot dropped and reordered cues 300 ms apart on the bench (heard 1, 4, 3); the interrupt slot does not wait.
             # A write that carries its own `$PLAYX` (the hill callout's preempt) stops the clip itself: it never waits.
@@ -1782,16 +1784,27 @@ class GunStage:
         `poll` holds both while it waits and they move on by the wait once its frames START to go out (`on_start`, as
         engine.js's play job `onSent`; the BLE write time after that is not a wait). False: a death while it waited
         cancelled it (`_death` marks it)."""
-        b = self._life_burst = {"at": self.now(), "sent": False, "cancelled": False}
+        # `sent`: the hold is over; `reached`: the frames really started (r1 L1: that can come after the cap let go).
+        # r1 H1/H2 (engine.js): a life burst is never stale-dropped, and one that never reached the gun in a live life is
+        # a lost write for F416. The stage has neither path today: no stale rule (F478 brings one, see `write`), and no
+        # F416 check (KNOWN_UNMIRRORED in test_stage_mirror.py).
+        b = self._life_burst = {"at": self.now(), "sent": False, "reached": False, "cancelled": False}
         await self._write_ammo(frames, why, on_start=lambda: self._life_burst_sent(b, "sent"), **kw)
         if b["cancelled"]:
             return False
-        if not b["sent"]:
+        if not b["reached"]:
             self._life_burst_sent(b, "never sent")   # link down or a teardown: the timers are released, as engine.js on settle
         return True
 
     def _life_burst_sent(self, b: dict, how: str) -> None:
         """engine.js `_lifeBurstSent`: move each timer stamped by the burst's queue time on by the time it waited."""
+        if how == "sent":
+            if b["reached"]:
+                return
+            b["reached"] = True
+            if b["sent"]:   # r1 L1: the cap let go first
+                self._life_burst_late(b)
+                return
         if b["sent"]:
             return
         b["sent"] = True
@@ -1803,12 +1816,30 @@ class GunStage:
         if waited <= 0:
             return
         tp, ap = self._trigger_pending, self._arm_pending
+        if how != "sent":   # r1 L1: what the timers were, so a burst that still goes out later can run them again
+            b["trig_s"] = tp["due"] - tp["at"] if tp is not None and tp["at"] <= b["at"] else None
+            b["arm"] = dict(ap) if ap is not None and ap["at"] <= b["at"] else None
         if tp is not None and tp["at"] <= b["at"]:
             tp["at"] += waited; tp["due"] += waited
         if ap is not None and ap["at"] <= b["at"]:
             ap["at"] += waited
         if tp is not None or ap is not None:
             self._log(f"F493: the life burst {how} after {round(waited * 1000)} ms in the play queue: weapon delay and protection run from now", "info")
+
+    def _life_burst_late(self, b: dict) -> None:
+        """engine.js `_lifeBurstLate` (F493 r1 L1): the burst started after the hold cap let go, so its `$BMAP,0,98` (or
+        its protection) may follow the timers. Run them again from now."""
+        if not self.alive:
+            return
+        now = self.now()
+        if b.get("trig_s") is not None:
+            self._trigger_pending = {"at": now, "due": now + b["trig_s"]}
+        arm: ArmPending | None = b.get("arm")
+        if arm is not None:
+            self._arm_pending = {"at": now, "until": arm["until"], "shot_ends": arm["shot_ends"], "off": arm["off"],
+                                 "shield": arm["shield"]}
+        if b.get("trig_s") is not None or b.get("arm") is not None:
+            self._log("F493: the life burst reached the gun after the hold cap: weapon delay and protection run again from now", "warn")
 
     def _life_burst_waiting(self, now: float) -> bool:
         """engine.js `_lifeBurstWaiting`: a queued burst holds both timers, up to LIFE_BURST_HOLD_MAX_S."""
