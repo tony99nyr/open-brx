@@ -720,6 +720,7 @@ class Session:
         # nodes this match deliberately unbound (an evict, in play or in RECAP; a utility hello): the node-map fallback in
         # `_hydrate` never rebinds one; only a bind by its gun does (F487 review)
         self._match_unbound: set[str] = set()
+        self._retired_evicted: set[str] = set()   # `_match_evicted` of the match `_retired_scorer` holds (F482)
         self._whistle_base: dict[str, dict[str, str]] = {}   # match_id -> the bindings its whistle froze (`_whistle_map`)
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
@@ -7260,6 +7261,7 @@ class Session:
         sc.on_limit = lambda t: None
         self._retired_scorer = sc
         self._retired_stations = self._match_stations   # F206: this match's frozen rows, not the next one's
+        self._retired_evicted = set(self._match_evicted)   # F482: the next start clears the match's own record
 
     def _ingest_retired(self, nid: str, events: list[Event], t_recv: int) -> None:
         """A late fact for the match the operator rolled past goes to THAT match's recap (2026-09-16).
@@ -7274,6 +7276,8 @@ class Session:
         mid = sc.match_id
         moved = False
         for ev in events:
+            if isinstance(ev, dict) and ev.get("type") == "possession" and nid in self._retired_evicted:
+                continue                                 # F482: an evicted phone's tally scores nowhere
             if isinstance(ev, dict) and ev.get("match_id") == mid:
                 moved = sc.ingest(nid, cast(Event, dict(ev)), t_recv, seq=ev.get("seq")) not in ("dup", "ignored", "parked") or moved
         if not moved:

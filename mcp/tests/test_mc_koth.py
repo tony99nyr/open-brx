@@ -749,3 +749,31 @@ def test_f482_an_evicted_phones_possession_report_scores_for_nobody():
         else:
             net.simulate_event("node0", ev, clock["t"], seq=1)
         assert s.phase == "live", ("the evicted phone's tally ended the match", batch)
+
+
+def test_f482_after_the_roll_an_evicted_phones_late_tally_never_reaches_the_finished_match():
+    """F482 review (Codex): the retired scorer took a late possession tally from a node evicted in LIVE, after the roll."""
+    from test_mc_state import mk, online
+    s, net, clock, ps = mk(2)
+    s.set_config({"mode": "koth", "time_limit_s": 600})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control"})
+    s.push_config(force=True)
+    info = s.start(runway_s=1, force=True)
+    clock["t"] = info["go_live_t"] + 5_000
+    s.tick()
+    red = s.config["teams"][0]
+    assert s.evict_node("node0")
+    clock["t"] += 1_000
+    s.control("end")
+    s.next_match()
+    assert s._retired_scorer is not None, "control: rolled past RECAP"
+    seen = []
+    real = s._retired_scorer.ingest
+    s._retired_scorer.ingest = lambda nid, ev, *a, **k: (seen.append((nid, ev.get("type"))), real(nid, ev, *a, **k))[1]
+    net.simulate_event("node0", {"type": "possession", "match_id": info["match_id"], "node_id": "node0",
+                                 "player_id": ps[0]["player_id"], "t": clock["t"], "site": "A",
+                                 "hold_ms": {str(red["tid"]): 60_000}, "observed_ms": 60_000}, clock["t"], seq=9)
+    assert ("node0", "possession") not in seen, seen
