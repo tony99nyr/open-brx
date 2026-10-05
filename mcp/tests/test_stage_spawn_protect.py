@@ -99,6 +99,7 @@ def test_death_end_and_panic_inside_the_window_cancel_the_arm():
             n = len(tx(mgr))
             if how == "death":
                 # an IR kill cannot land here: the fake gun honours the fn-28 twin. A pool-only death can.
+                st.poll(); await settle(st)   # F480, B5: the gun's own answer to the spawn/revive confirms the life, so a pool-only zero is a death
                 st._inject_rx("$HP,0,0,0,*"); await settle(st)
                 assert not st.alive
             elif how == "end":
@@ -134,8 +135,8 @@ def test_arm_pending_is_stamped_before_the_write_not_after_it_resolves():
         st, mgr, clock = mk_spawn_stage()
         await st.connect(GUN); await st.arm()
         orig_write = st.write
-        async def slow_write(frames, why, gap_ms=60, exact=False, take=False, on_start=None):
-            r = await orig_write(frames, why, gap_ms=gap_ms, exact=exact, take=take, on_start=on_start)
+        async def slow_write(frames, why, gap_ms=60, exact=False, take=False, on_start=None, **kw):
+            r = await orig_write(frames, why, gap_ms=gap_ms, exact=exact, take=take, on_start=on_start, **kw)
             if why.startswith(("spawn", "revive")):
                 clock.advance(0.5)               # simulate 0.5s of real BLE write time, after the frames started (F493:
                                                  # only a wait BEFORE they start moves the timers, as engine.js `onSent`)
@@ -144,6 +145,7 @@ def test_arm_pending_is_stamped_before_the_write_not_after_it_resolves():
         t0 = clock()
         await st.spawn()
         assert st._arm_pending["at"] == t0, "spawn: the pending-arm time must be stamped BEFORE the write"
+        st.poll(); await settle(st)   # F480, B5: the gun's own answer to the spawn/revive confirms the life, so a pool-only zero is a death
         st._inject_rx("$HP,0,0,0,*"); await settle(st)   # a pool-only death: the fn-28 twin still protects IR
         assert not st.alive
         t1 = clock()
@@ -165,11 +167,14 @@ def test_a_write_slower_than_the_cap_still_ends_with_the_life_armed():
         clock.advance(3); st.poll(); await settle(st)
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive
+        # F478: revive after the death scream has played (MIN_RESPAWN_S is 3 s), so the burst's spawn line does not wait
+        # for the gun audio model and the order below is the write's own, not the scream's
+        clock.advance(3.0); st.poll(); await settle(st)
         n = len(tx(mgr))
         orig_write = st.write
 
-        async def slow_write(frames, why, gap_ms=60, exact=False, take=False, on_start=None):
-            r = await orig_write(frames, why, gap_ms=gap_ms, exact=exact, take=take, on_start=on_start)
+        async def slow_write(frames, why, gap_ms=60, exact=False, take=False, on_start=None, **kw):
+            r = await orig_write(frames, why, gap_ms=gap_ms, exact=exact, take=take, on_start=on_start, **kw)
             if why.startswith("revive"):
                 # F493: after the frames started (a wait before that is the play queue's, and holds the cap)
                 clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1)   # the write itself outlasts the cap

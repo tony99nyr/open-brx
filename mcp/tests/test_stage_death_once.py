@@ -40,6 +40,7 @@ def test_a_burst_of_lethal_frames_is_one_death_and_the_next_life_can_die():
         assert _deaths(st) == 1, "a lethal frame while down is not a second death"
         await st.revive(); await settle(st)
         assert st.alive
+        st.poll(); await settle(st)   # F480, B5: the gun's own answer to the spawn/revive confirms the life, so a pool-only zero is a death
         st._inject_rx("$HP,0,0,0,*"); st._inject_rx("$HP,0,0,0,*"); await settle(st)
         assert _deaths(st) == 2, "the next life dies once"
     asyncio.run(run())

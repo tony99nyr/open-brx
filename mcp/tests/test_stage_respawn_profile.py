@@ -56,6 +56,7 @@ async def _live(st):
 
 
 async def _die(st):
+    st.poll(); await settle(st)   # F480, B5: the gun's own answer to the spawn/revive confirms the life, so a pool-only zero is a death
     st._inject_rx("$HP,0,0,0,*"); await settle(st)
     assert not st.alive
 
@@ -119,7 +120,9 @@ def test_a_late_start_carries_the_table_in_front_of_the_spawn():
         first_sir = new.index(_sir(new)[0])
         assert first_sir < new.index("$SPAWN,,*") and first_sir > new.index(st.bundle["cues"]["countdown"]), new
         assert new.index(_sir(new)[-1]) < new.index(next(f for f in new if f.startswith("$PSET"))), "IN FRONT of the $PSET and $SPAWN"
-        assert st._sir_live, "the spawn write claims the table"
+        # F479 (engine.js order): `_spawn` claims the table when it queues the burst, but the burst waits out the countdown
+        # cue's PLAY gap and its send marks the table as no take, so the first revive re-arms it (test_stage_hp_mirror.py)
+        assert not st._sir_live, "the burst went after the claim, so its send undid it"
     asyncio.run(run())
 
 
@@ -277,25 +280,33 @@ def test_death_end_panic_and_a_head_clear_both_pendings():
 # ======================================================================================================
 # F493 (engine.js `_lifeBurst`, app/test/revive-burst-queued.test.mjs): a revive burst that waits in the play queue
 # behind a clip on the gun. The weapon delay and the protection release run from when the burst REACHES the gun, so
-# `$BMAP,0,0` and `$TMP` t8 0 always follow it. The stage on this base does not model the native death scream (F478),
-# so the clip is placed on the gun by hand (`_queue_play_until`), as a queue-slot cue the stage sent would leave it.
+# `$BMAP,0,0` and `$TMP` t8 0 always follow it. The clip is placed in the stage's gun audio model by hand
+# (`_hold_gun`), as a queue-slot cue the stage sent would leave it (F478: the queue-slot wait reads `_gun_audio`).
 # ======================================================================================================
 
 def _mk_gated(respawn: dict | None = None):
-    """A stage whose F419 queue-slot wait (the sleep that ends at `_queue_play_until`) blocks until the test opens
-    the gate. Every other sleep returns at once, as `_nosleep`."""
+    """A stage whose F419 queue-slot wait (the sleep that ends when the gun audio model goes silent, set by `_hold_gun`)
+    blocks until the test opens the gate. Every other sleep returns at once, as `_nosleep`."""
     gate = asyncio.Event()
+    until: list[float] = []
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
     clock = StageClock()
-    holder: list[GunStage] = []
 
     async def sleep(s):
-        if holder and s > 0 and abs(clock() + s - holder[0]._queue_play_until) < 1e-6:
+        if until and s > 0 and abs(clock() + s - until[0]) < 1e-6:
             await gate.wait()
     st = GunStage(mgr, None, compiler=_RespawnCompiler(respawn) if respawn else None,
                   sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
-    holder.append(st)
+    gate.until = until   # type: ignore[attr-defined]  # `_hold_gun` sets the time the gated wait ends
     return st, mgr, clock, gate
+
+
+def _hold_gun(st, gate, s: float) -> None:
+    """A clip on the gun for `s` more seconds, in the stage's gun audio model; the queue-slot wait it causes is gated."""
+    now_ms = st._now_ms()
+    st._gun_audio.clear()
+    st._gun_audio.add(round(s * 1000), "a clip on the gun (test)", now_ms)
+    gate.until[:] = [st._gun_audio.free_at(now_ms) / 1000]
 
 
 async def _queued_revive(st, clock, gate, station=None, wait_s=1.3):
@@ -303,7 +314,7 @@ async def _queued_revive(st, clock, gate, station=None, wait_s=1.3):
     await _live(st)
     await _die(st)
     clock.advance(0.1)
-    st._queue_play_until = clock() + wait_s
+    _hold_gun(st, gate, wait_s)
     n = len(tx(st.mgr))
     task = asyncio.create_task(st.revive(station=station))
     for _ in range(int(wait_s / 0.1)):
@@ -347,7 +358,7 @@ def test_f493_a_death_while_the_burst_is_queued_leaves_no_stale_trigger_write():
         await _live(st)
         await _die(st)
         clock.advance(0.1)
-        st._queue_play_until = clock() + 1.3
+        _hold_gun(st, gate, 1.3)
         n = len(tx(mgr))
         task = asyncio.create_task(st.revive())
         await settle(st); clock.advance(0.3); st.poll(); await settle(st)
@@ -370,7 +381,7 @@ def test_f493_r1_a_burst_that_starts_after_the_hold_cap_runs_the_weapon_delay_ag
         await _live(st)
         await _die(st)
         clock.advance(0.1)
-        st._queue_play_until = clock() + cap + 1.0
+        _hold_gun(st, gate, cap + 1.0)
         n = len(tx(mgr))
         task = asyncio.create_task(st.revive())
         for _ in range(int((cap + 1.0) / 0.1)):
@@ -395,7 +406,7 @@ def test_f493_r2_the_spawn_read_back_waits_for_a_queued_burst():
         await _live(st)
         await _die(st)
         clock.advance(0.1)
-        st._queue_play_until = clock() + 4.0
+        _hold_gun(st, gate, 4.0)
         n = len(tx(mgr))
         task = asyncio.create_task(st.revive())
         for _ in range(40):
@@ -421,7 +432,7 @@ def test_f493_r3_a_zero_pool_while_the_burst_waits_is_held_not_booked():
         await _live(st)
         await _die(st)
         clock.advance(0.1)
-        st._queue_play_until = clock() + 3.0
+        _hold_gun(st, gate, 3.0)
         n = len(tx(mgr))
         task = asyncio.create_task(st.revive())
         for _ in range(20):
@@ -443,7 +454,7 @@ def test_f493_r4_the_last_lifes_hit_does_not_book_a_zero_while_the_burst_waits()
         st._inject_rx("$HIR,4,0,19,2,106,0,3,*"); st._inject_rx("$HP,0,0,0,*"); await settle(st)
         assert not st.alive
         clock.advance(0.1)
-        st._queue_play_until = clock() + 3.0
+        _hold_gun(st, gate, 3.0)
         n = len(tx(mgr))
         task = asyncio.create_task(st.revive())
         for _ in range(3):

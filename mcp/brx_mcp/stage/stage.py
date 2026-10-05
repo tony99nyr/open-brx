@@ -108,7 +108,6 @@ class PoisonState(TypedDict):
     by: dict[str, int]
     ticks: int
     cue_pending: NotRequired[bool]   # polish 2026-10-03 (engine.js `cuePending`): `poisoned` waits for a pool frame that says we live
-    onset_until: NotRequired[float]  # #6 polish r1: no tick sound until the `poisoned` onset clip has played (engine.js: an idle announcer)
 
 
 class DotEchoState(TypedDict):
@@ -534,6 +533,203 @@ for _d in HILL_CUES.values():
     _d["s"] = _clip_ms_s(_d["frame"])   # engine.js `hillCue`: the fallback's length is its clip's
 
 
+# ---- F478: the phone's model of the gun's audio (announcer.js `GunAudio`, docs/announcer.md) ----------------------------
+# Every constant below is engine.js's or announcer.js's own, in the same unit (ms): the model compares clip ends with the
+# clock, and whole milliseconds keep those comparisons exact, as on the phone.
+PAIN_STALE_MS = 500                 # engine.js PAIN_STALE_MS: a grunt that would start later than this after its hit is dropped
+ANNOUNCE_GAP_MS = 150               # announcer.js ANNOUNCE_GAP_MS: silence between two lines
+STATUS_TTL_MS = 1500                # announcer.js ANNOUNCE_TTL_MS.status: a pool line said late describes a pool that moved again
+ANNOUNCE_AUDIO_LATE_DEFAULT_MS = 2000       # announcer.js ANNOUNCE_AUDIO_LATE_DEFAULT_MS: a line that would start later is not said
+DEAD_QUEUE_TTL_MS = 10000           # announcer.js DEAD_QUEUE_TTL_MS: what waits while I am dead lives (and keeps its line) this long
+DEATH_LATE_WRITE_MS = 300           # engine.js DEATH_LATE_WRITE_MS (F439 r3): a body clip this fresh reached the gun after the scream
+SHIELD_CHARGING_MIN_MS = 1000       # engine.js SHIELD_CHARGING_MIN_MS (C4): a shorter refill is not announced
+PLAY_QUEUE_STALE_MS = 6000          # engine.js PLAY_QUEUE_STALE_MS (F419 review): a queue-slot cue that waited longer is dropped
+FILLER_IDS = ("VAG", "VAE", "N74", "U100")   # engine.js `_write` `fillerIds`: sounds dropped, not delayed, by a busy PLAY queue
+MUST_HEAR_MAX_STOPS = 4             # engine.js MUST_HEAR_MAX_STOPS: the body stops after a death are capped too
+DEATH_BODY_STOP_MARGIN_MS = 300     # engine.js DEATH_BODY_STOP_MARGIN_MS: a body stop goes this long after the clip ahead ends
+DEATH_BODY_STOP_MIN_LEFT_MS = 250   # engine.js DEATH_BODY_STOP_MIN_LEFT_MS: no stop for a clip with less than this left
+BODY_CUES = ("hurt", "pain_short", "pain_long", "pain_melee", "shield_up", "shield_down", "shield_charging", "shield_online",
+             "shield_loop")         # engine.js BODY_CUES
+
+
+def play_slot_frames(frame: str) -> list[str]:
+    """engine.js `playSlotFrames` (F437): the clips one `$PLAY` puts on the gun, in play order. A two-slot frame (the
+    interrupt id in token 1 and the queue id in token 4) is two clips, each as its own one-slot frame."""
+    if not isinstance(frame, str) or not frame.startswith("$PLAY,"):
+        return []
+    t = frame.split(",")
+    if not (t[1] if len(t) > 1 else "").strip() or not (t[4] if len(t) > 4 else "").strip():
+        return [frame]
+    a, b = list(t), list(t)
+    a[4] = ""
+    b[1] = ""
+    return [",".join(a), ",".join(b)]
+
+
+class GunAudio:
+    """announcer.js `GunAudio`, rule for rule (F478): the phone's ONE model of the gun's audio FIFO. The gun queues clips
+    first in, first out; `$PLAYX,0,*` stops only the clip playing. Every sound-bearing write and every sound the gun makes
+    on its own that the node can see (a hit's `$SIR` row sound, the native death scream) goes in with its length. Times
+    and lengths are whole milliseconds on the stage's clock."""
+
+    def __init__(self) -> None:
+        self.clips: list[dict] = []
+
+    def clear(self) -> None:
+        self.clips = []
+
+    def add(self, ms: int, why: str, now: int, cid: str | None = None) -> dict | None:
+        """One clip entered the FIFO at `now`."""
+        if not ms > 0:
+            return None
+        self._prune(now)
+        tail = self.clips[-1]["end"] if self.clips else now
+        start = max(now, tail)
+        c = {"ms": ms, "why": why, "start": start, "end": start + ms, "id": cid, "at": now}
+        self.clips.append(c)
+        return c
+
+    def playing_until(self, now: int) -> int:
+        """When the last clip the gun can play ends."""
+        self._prune(now)
+        return max([now] + [c["end"] for c in self.clips])
+
+    def outstanding(self, now: int) -> int:
+        """Clips playing or waiting on the gun."""
+        self._prune(now)
+        return len(self.clips)
+
+    def free_at(self, now: int) -> int:
+        """When the gun would next be silent."""
+        self._prune(now)
+        return self.clips[-1]["end"] if self.clips else now
+
+    def interrupt(self, ms: int, why: str, now: int, cid: str | None = None, late=lambda _c: False) -> dict | None:
+        """F439: a clip that starts AT ONCE and cuts the clip playing (the native death scream). The clips queued behind
+        wait behind it. `late(clip)` true = that clip reached the gun after the scream began: it is not cut, it waits."""
+        self._prune(now)
+        playing = self.clips[0] if self.clips and self.clips[0]["start"] <= now and not late(self.clips[0]) else None
+        if playing is not None:
+            self.clips.pop(0)
+        c = {"ms": ms, "why": why, "start": now, "end": now + ms, "id": cid, "at": now}
+        tail = c["end"]
+        for q in self.clips:
+            q["start"] = tail
+            q["end"] = tail + q["ms"]
+            tail = q["end"]
+        self.clips.insert(0, c)
+        return playing
+
+    def _prune(self, now: int) -> None:
+        self.clips = [c for c in self.clips if c["end"] > now]
+
+
+class StatusAnnouncer:
+    """announcer.js `Announcer`, for the one kind the stage speaks through it: `status`, the pool voice lines (healed,
+    armour up, shield up, shields charging; engine.js `_announceStatus`). Every rule a status item meets is ported: one
+    key (`status`) that a newer pool line pre-empts on a silent gun, a duplicate that is dropped, the 1.5 s TTL, the
+    P1 wait for a silent gun with its 2 s audio-late mute, and the dead queue (`death`/`respawn`). The phone's other
+    kinds (kill confirms, MC alerts, hill lines, S57 callouts) never reach the stage's announcer: it has no MC, and its
+    hill callouts keep their own `_hill_busy_until` window. So the rank and surface rules that only order two kinds
+    against each other have nothing to order here."""
+
+    def __init__(self, gun: GunAudio, dead) -> None:
+        self.gun = gun
+        self.dead = dead            # engine.js `_ann.dead`: down while spawned, or the native scream still sounding
+        self.current: dict | None = None
+        self.queue: list[dict] = []
+        self.seq = 0
+
+    def clear(self) -> None:
+        self.current = None
+        self.queue = []
+
+    def audio_busy(self, now: int) -> bool:
+        """True while the item on air is still sounding."""
+        return self.current is not None and now < self.current["audio_until"]
+
+    def push(self, item: dict, now: int) -> dict | None:
+        it = {**item, "at": now, "n": self.seq + 1, "audio_ms": max(0, item.get("audio_ms") or 0)}
+        self.seq += 1
+        if self.dead(now):
+            it["dead_queued"] = True
+        it["slot_ms"] = it["audio_ms"] + ANNOUNCE_GAP_MS if it["audio_ms"] else 0   # ANNOUNCE_BANNER_MS.status = 0
+        cur = self.current
+        if cur is not None and cur["key"] == it["key"] and now < cur["until"]:
+            # The pool lines' preempt (`preemptKey`): the newest pool state takes over the line on air, but only on a
+            # silent gun (P1: it does not stop the line it replaces, so it may not start while a clip is outstanding).
+            if self.gun.outstanding(now) == 0:
+                self.queue = [q for q in self.queue if q["key"] != it["key"]]
+                self._start(it, now)
+                return it
+        if any(q["key"] == it["key"] for q in self.queue):
+            return None             # the same kind (`status`) already queued: the duplicate is dropped
+        self.queue.append(it)
+        self.tick(now)
+        return it
+
+    def tick(self, now: int) -> dict | None:
+        """Start the next item when the slot is free."""
+        cur = self.current
+        if cur is not None:
+            dead_next = self.dead(now) and cur["audio_ms"] > 0 and now >= cur["audio_until"]
+            if now < cur["until"] and not dead_next:
+                return None
+            self.current = None
+        nxt = self._peek(now)
+        if nxt is None:
+            return None
+        if nxt["audio_ms"] > 0 and (
+                (self.dead(now) and self.gun.outstanding(now) > 0)
+                or (nxt.get("wait_quiet") and self.gun.playing_until(now) > now)):
+            return None
+        if nxt["audio_ms"] > 0 and self.gun.outstanding(now) > 0:
+            late = max(ANNOUNCE_AUDIO_LATE_DEFAULT_MS, DEAD_QUEUE_TTL_MS) if nxt.get("dead_queued") else ANNOUNCE_AUDIO_LATE_DEFAULT_MS
+            if now - nxt["at"] <= late:
+                return None         # P1: a line that is not must-hear never goes to a gun that still holds a clip
+            nxt["force_mute"] = True
+        self.queue.remove(nxt)
+        self._start(nxt, now)
+        return nxt
+
+    def death(self, now: int) -> None:
+        """I just died: everything waiting gets the dead-queue TTL. A status line on air is never cut by the scream's
+        model (its clip carries no announcer item), so nothing goes back in the queue."""
+        for q in self.queue:
+            q["dead_queued"] = True
+
+    def respawn(self, now: int) -> None:
+        """My respawn: the dead queue ends. Only my kill confirm and the lead change survive it (`KEEP_AT_RESPAWN`), so
+        every status line left is dropped. A status line still sounding plays on (no stop is written for it)."""
+        c = self.current
+        if c is not None and c["audio_ms"] > 0 and now < c["audio_until"]:
+            self.current = None     # `_cutOnAir(force)`: a line already started counts as said
+        self.queue = [q for q in self.queue if not q.get("dead_queued")]
+
+    def _peek(self, now: int) -> dict | None:
+        while self.queue:
+            best = min(self.queue, key=lambda q: q["n"])
+            ttl = max(STATUS_TTL_MS, DEAD_QUEUE_TTL_MS) if best.get("dead_queued") else STATUS_TTL_MS
+            if now - best["at"] > ttl:
+                self.queue.remove(best)
+                continue
+            return best
+        return None
+
+    def _start(self, it: dict, now: int) -> None:
+        waited = now - it["at"]
+        late = max(ANNOUNCE_AUDIO_LATE_DEFAULT_MS, DEAD_QUEUE_TTL_MS) if it.get("dead_queued") else ANNOUNCE_AUDIO_LATE_DEFAULT_MS
+        muted = it["audio_ms"] > 0 and (waited > late or bool(it.get("force_mute")))
+        if muted:
+            it["audio_ms"] = 0
+            it["slot_ms"] = 0
+        it["started_at"] = now
+        it["audio_until"] = now + it["audio_ms"]
+        it["until"] = now + it["slot_ms"]
+        self.current = it
+        it["play"](muted)
+
+
 def _ro_pools(bundle: FrameBundle) -> list:
     """The compiled `gun.readout.pools`, or [] -- used by `state()` to publish the real level table."""
     return ((bundle.get("gun") or {}).get("readout") or {}).get("pools") or []
@@ -638,7 +834,15 @@ class GunStage:
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
         self._last_play_at: float | None = None
         self._last_play_sent_at: float | None = None
-        self._queue_play_until: float = 0.0   # F419: when the last queue-slot `$PLAY` the stage sent has played
+        # F478 (engine.js `_gun`, `_ann`): the phone's model of the gun's audio FIFO and its announcer queue for the pool
+        # lines. The F419 queue-slot wait, the pain grunt's PAIN_STALE_MS drop, the low-health line's quiet-gun wait, the
+        # heartbeat and the poison tick sound all read it, as on the phone.
+        self._gun_audio = GunAudio()
+        self._ann = StatusAnnouncer(self._gun_audio, lambda now_ms: (self.spawned and not self.alive) or now_ms < self._scream_until_ms)
+        self._sir_sound: dict[str, str] = {}      # engine.js `_sirSound`: the sound each `$SIR` cell plays on a hit
+        self._pset_sounds: list[str] | None = None   # engine.js `_psetSounds`: the last `$PSET` written (t10 = the death scream)
+        self._scream_until_ms = 0                 # engine.js `_screamUntil`: the native scream's end, in the model
+        self._light_gen = 0                       # engine.js `_lightGen`: bumped by a teardown (end, panic, BLE drop, head)
         self._play_generation = 0
         self._play_lock = asyncio.Lock()
         self._play_cancel_event = asyncio.Event()
@@ -682,6 +886,8 @@ class GunStage:
         self._last_team_repaint_at: float | None = None   # engine.js `_lastTeamRepaintAt` (F68): the last headset paint, reset at spawn/revive and by every `_headset()`
         self._last_headset_flash_at: float | None = None   # engine.js `_lastHeadsetFlashAt`: the one-second gate on hit flashes
         self._spawn_at: float | None = None   # F264 (engine.js `_spawnAt`): now() of the last spawn/revive, for `_spawn_probe_tick`
+        self._held_zero_life: int | None = None   # F493 r4 (engine.js `_heldZeroLife`): the life whose pre-spawn 0 pool was held
+        self._armed_this_life = False         # F480, B5 (engine.js `_armedThisLife`): the gun has reported hp>0 since that write
         # F341 (engine.js `_poolCheck`/`_poolRepair`/`poolWrong`/`_psetNow`): the spawn read-back's answer is
         # COMPARED with the armed pools, a mismatch is repaired and read back, and POOL_REPAIR_TRIES repairs that
         # do not hold become `pool_stale` 'pool_wrong'. `_pset_now` is the `$PSET` this life wrote (its scream take).
@@ -726,7 +932,7 @@ class GunStage:
         self._hill_busy_until = 0.0                # a hill callout owns the announcer until here: the tick waits, it never overlaps
         self._last_event_cue: str | None = None    # the last `_event_now` cue frame written (the poison onset times it)
         self._hill_scream_until = 0.0               # the native death scream owns the gun until this time
-        self._hill_scream_pending: dict | None = None  # no announcer queue here: defer a hill line until the scream ends
+        self._hill_scream_pending: dict | None = None  # the hill lines have no announcer queue here: defer one until the scream ends
         self._hill_tick_at = 0.0                   # when the possession tick last played (0 = not ticking)
         self._hill_team2_warned = False            # F82 is logged once per game, not once per beacon
         # K1 / F102: the phone CONTROL POINT half (engine.js `_onControlAdvert` / `_controlStation`), field for field.
@@ -1173,8 +1379,17 @@ class GunStage:
         if not (cues.get(kind) or cue_pools.get(kind)):
             return                          # pre-A15.3 bundle: the firmware's own pains play instead
         now = self.now()
-        if self._last_pain_at is not None and now - self._last_pain_at < PAIN_GAP_S:
+        # F478: in whole ms, as engine.js `now - _lastPainAt < PAIN_GAP_MS`: a float clock read a hit exactly 600 ms on as inside
+        if self._last_pain_at is not None and round((now - self._last_pain_at) * 1000) < round(PAIN_GAP_S * 1000):
             self._log(f"pain {kind[5:]}: dropped (another inside {int(PAIN_GAP_S * 1000)} ms)", "info")
+            return
+        # F478 (engine.js `_pain`, docs/announcer.md): a grunt is stale PAIN_STALE_MS after its hit. One that would wait
+        # longer than that in the gun's FIFO (behind the hit's own row sound, or a line already playing) is dropped.
+        now_ms = self._now_ms()
+        self._audio_sync(now_ms)
+        busy = self._gun_audio.free_at(now_ms) - now_ms
+        if busy > PAIN_STALE_MS:
+            self._log(f"pain {kind[5:]}: dropped -- the gun is busy for {busy} ms (PAIN_STALE_MS)", "info")
             return
         self._last_pain_at = now
         fr, tag = self._pick_cue(kind)
@@ -1266,8 +1481,13 @@ class GunStage:
         return tid
 
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
-                    on_start: Callable[[], None] | None = None) -> bool | None:
+                    on_start: Callable[[], None] | None = None, _chunk: bool = False, _queued_at: float | None = None,
+                    _model: bool = True, life: bool = False) -> bool | None:
+        """`_chunk`/`_queued_at`: a re-entry for one chunk of a multi-`$PLAY` write, with the outer call's time.
+        `_model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
+        `life`: a spawn/revive burst (`_write_life`, engine.js `job.life`), never dropped as stale (F493)."""
         frames = [f for f in frames if f]
+        queued_at = self.now() if _queued_at is None else _queued_at   # engine.js `job.queuedAt`: the CALL time
         # DENY FIRST, THEN THE TEAM. Do not swap these two for tidiness -- the order is the behaviour, and
         # engine.js `_write` does it in exactly this order (`test_stage_mirror` fails if either source moves).
         # Insert the `$TID` first and a denied `$PSET` dropped afterwards leaves that `$TID` behind as an
@@ -1293,6 +1513,10 @@ class GunStage:
         # `raw` bench hatch only) writes the operator's frames untouched, so a rung can still send a lone
         # `$PSET` on purpose; every game write restores the team (F206).
         frames = frames if exact else self._tid_after_pset(frames)
+        if not _chunk:
+            frames = self._drop_queued_fillers(frames, why)
+            if not frames:
+                return
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
         play_lock_held = False
         if len(play_indexes) > 1:
@@ -1313,6 +1537,9 @@ class GunStage:
                     "gap_ms": gap_ms,
                     "exact": True,
                     "take": take_pending and chunk_changes_sir,
+                    "_chunk": True,
+                    "_queued_at": queued_at,
+                    "life": life,
                 }
                 take_pending = take_pending and not chunk_changes_sir
                 if index == 0 and on_start is not None:
@@ -1320,6 +1547,7 @@ class GunStage:
                 if await self.write(chunk, why, **options) is False:   # bug 3 r2 M1: report an undelivered chunk
                     delivered = False
             return delivered
+        deferred = False   # F479: the write waited in the play queue (engine.js: `_drainPlayWrites` sends it from a timer)
         if play_indexes:
             play_generation = self._play_generation
             await self._play_lock.acquire()
@@ -1333,12 +1561,9 @@ class GunStage:
             previous_sent_at = self._last_play_sent_at
             if previous_at is not None:
                 elapsed_s = now - (previous_sent_at if previous_sent_at is not None else previous_at)
-                if elapsed_s < PLAY_GAP_S:
-                    if self._is_exempt_filler(play_frame):
-                        self._log(f"dropped filler inside {round(PLAY_GAP_S * 1000)} ms play gap", "info", why)
-                        self._play_lock.release()
-                        return
+                if round(elapsed_s * 1000) < round(PLAY_GAP_S * 1000):   # whole ms, as engine.js compares them
                     planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_S
+                    deferred = True
                     cancel_event = self._play_cancel_event
                     sleep_task = asyncio.ensure_future(self.sleep(max(0, planned_at - self.now())))
                     cancel_task = asyncio.create_task(cancel_event.wait())
@@ -1353,15 +1578,17 @@ class GunStage:
                     if play_generation != self._play_generation:
                         self._play_lock.release()
                         return
-            # F493 r1: when this wait gains engine.js's PLAY_QUEUE_STALE_MS drop (the F478 port), a spawn/revive burst
-            # (`_write_life`) must be exempt, as engine.js's `job.life`: dropped, the gun never gets its `$SPAWN`.
             # F419 (engine.js `_drainPlayWrites`): a queue-slot cue waits until the last one has played. The gun's queue
             # slot dropped and reordered cues 300 ms apart on the bench (heard 1, 4, 3); the interrupt slot does not wait.
             # A write that carries its own `$PLAYX` (the hill callout's preempt) stops the clip itself: it never waits.
-            if is_queue_slot_play(play_frame) and PLAYX not in frames and self._queue_play_until > self.now():
+            # F478: "the last one" is the gun audio model's tail (engine.js `_gun.freeAt`): hit sounds and the scream count.
+            now_ms = self._now_ms()
+            free_ms = self._gun_audio.free_at(now_ms) - now_ms   # whole ms, as the model keeps them
+            if is_queue_slot_play(play_frame) and PLAYX not in frames and free_ms > 0:
+                deferred = True
                 # Cancellable exactly like the gap wait above: a death or a teardown must not wait out a 3 s clip.
                 cancel_event = self._play_cancel_event
-                sleep_task = asyncio.ensure_future(self.sleep(self._queue_play_until - self.now()))
+                sleep_task = asyncio.ensure_future(self.sleep(free_ms / 1000))
                 cancel_task = asyncio.create_task(cancel_event.wait())
                 wait_tasks = (sleep_task, cancel_task)
                 try:
@@ -1374,26 +1601,37 @@ class GunStage:
                 if play_generation != self._play_generation:
                     self._play_lock.release()
                     return
+            # F478 r1 (engine.js `_drainPlayWrites`, F419 review): a queue-slot cue that waited longer than
+            # PLAY_QUEUE_STALE_MS since its call is dropped, never sent late. F493 r1: a spawn/revive burst (`life`) is
+            # exempt, as engine.js's `job.life`: dropped, the gun never gets its `$SPAWN`.
+            waited_ms = round((self.now() - queued_at) * 1000)
+            if is_queue_slot_play(play_frame) and PLAYX not in frames and not life and waited_ms > PLAY_QUEUE_STALE_MS:
+                self._log(f"audio: dropped, it waited {waited_ms} ms for the gun (stale past {PLAY_QUEUE_STALE_MS} ms)", "info", why)
+                self._play_lock.release()
+                return
             self._last_play_at = now
         # F121 rebuild (engine.js `_write`): a `$SIR` row or a `$CLEAR` leaves the gun's table something other
         # than a `sir_pool` take, so the next protection release must write one. Marked at call time. `take`:
         # this write IS a `sir_pool` take (`_arm_life`), which claims the table, as engine.js `_armLife` does.
+        # F479: engine.js marks the table in `_write` when the write is SENT and claims a take right after it QUEUES
+        # it (`_spawn`'s late table: `if (late.length) this._sirLive = true`). A write the play queue holds back (the
+        # late T-0 burst waits out the countdown cue's PLAY gap) is sent after that claim, so the send undoes it, and
+        # the first revive then re-arms the table in its own write ("arm hit reception"). The same order here.
         if any(f.startswith("$SIR,") or f.startswith("$CLEAR") for f in frames):
             self._sir_gen += 1
-            self._sir_live = take
+            self._sir_live = take and not deferred
         for f in frames:
             self._log(f, "tx", why)
         if not self.connected:
             if play_lock_held:
                 self._play_lock.release()
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
+        if _model:
+            self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
         try:
             await self._send(frames, gap_ms, on_start=on_start)
             if play_indexes:
                 self._last_play_sent_at = self.now()
-                sent_play = frames[play_indexes[0]]
-                if is_queue_slot_play(sent_play):
-                    self._queue_play_until = self.now() + clip_s(_cue_id(sent_play))
                 self._last_play_at = self._last_play_sent_at
                 self._play_lock.release()
         except Exception as e:
@@ -1411,13 +1649,24 @@ class GunStage:
                 if play_lock_held and self._play_lock.locked():
                     self._play_lock.release()
 
-    def _is_exempt_filler(self, frame: str) -> bool:
-        """Return whether a filler sound must drop instead of waiting for the play gap."""
-        cue = _cue_id(frame)
-        if cue == "U100":
-            return True
-        cues = self.bundle.get("cues") or {}
-        return any(cues.get(key) == frame for key in ("pain_short", "pain_long", "pain_melee", "shield_loop"))
+    def _drop_queued_fillers(self, frames: list[str], why: str) -> list[str]:
+        """engine.js `_write` (F347): a write splits into groups at each `$PLAY` after the first. A group whose sound is
+        a filler (VAG, VAE, N74, U100) is DELAYED when it is not the first group, when a play write is already busy or
+        queued, or inside the PLAY gap since the last sound, all judged at CALL time; a delayed filler `$PLAY` frame is
+        dropped and every other frame of the write still goes."""
+        idx = [i for i, f in enumerate(frames) if f.startswith("$PLAY,")]
+        if not idx:
+            return frames
+        last = self._last_play_sent_at if self._last_play_sent_at is not None else self._last_play_at
+        busy = self._play_lock.locked() or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000))
+        bounds = [0, *idx[1:], len(frames)]
+        drop: set[int] = set()
+        for g in range(len(bounds) - 1):
+            sound = next((i for i in range(bounds[g], bounds[g + 1]) if frames[i].startswith("$PLAY,")), None)
+            if sound is not None and (g > 0 or busy) and _cue_id(frames[sound]) in FILLER_IDS:
+                drop.add(sound)
+                self._log(f"audio: filler dropped inside the {round(PLAY_GAP_S * 1000)} ms PLAY gap", "info", why)
+        return [f for i, f in enumerate(frames) if i not in drop]
 
     def _cancel_pending_play_writes(self) -> None:
         """Cancel play writes that still wait for the reserved gap when death arrives."""
@@ -1785,11 +2034,10 @@ class GunStage:
         engine.js's play job `onSent`; the BLE write time after that is not a wait). False: a death while it waited
         cancelled it (`_death` marks it)."""
         # `sent`: the hold is over; `reached`: the frames really started (r1 L1: that can come after the cap let go).
-        # r1 H1/H2 (engine.js): a life burst is never stale-dropped, and one that never reached the gun in a live life is
-        # a lost write for F416. The stage has neither path today: no stale rule (F478 brings one, see `write`), and no
-        # F416 check (KNOWN_UNMIRRORED in test_stage_mirror.py).
+        # r1 H1/H2 (engine.js): a life burst is never stale-dropped (`write`'s `life`), and one that never reached the gun
+        # in a live life is a lost write for F416. The stage has no F416 check (KNOWN_UNMIRRORED in test_stage_mirror.py).
         b = self._life_burst = {"at": self.now(), "sent": False, "reached": False, "cancelled": False}
-        await self._write_ammo(frames, why, on_start=lambda: self._life_burst_sent(b, "sent"), **kw)
+        await self._write_ammo(frames, why, on_start=lambda: self._life_burst_sent(b, "sent"), life=True, **kw)
         if b["cancelled"]:
             return False
         if not b["reached"]:
@@ -2611,6 +2859,8 @@ class GunStage:
         self._down_warn = 1; self._timed_life_at = None          # 2026-09-19: the spawn-kill escalation starts again each match
         self._pre_armed = False                                  # 2026-09-19: engine.js `_preArmed`, once per match
         self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
+        self._ann.clear(); self._gun_audio.clear(); self._scream_until_ms = 0   # engine.js `newMatch`: the old audio model goes
+        self._light_gen += 1
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
         self._cure = None; self._query_at = 0.0; self._cure_life = None; self._cure_at = 0.0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
         self._probed_life = None; self.cure = None
@@ -2641,11 +2891,14 @@ class GunStage:
     # cut off"). The bench must hear what a player hears, so wait the same T-3 -> T-0 the field does.
     COUNTDOWN_LEAD_S = 3.0
 
-    async def spawn(self) -> dict:
+    async def spawn(self, pre_arm: bool = True) -> dict:
+        """The T-0 spawn. `pre_arm` False is a LATE start (F479): go-live came before PRE_ARM_TABLE_S, so engine.js
+        never ran `_preArmTable` and the live table rides in front of `$SPAWN` instead (a countdown of 0)."""
         cues = self.bundle.get("cues", {})
         countdown = cues.get("countdown", "")
         await self.write([countdown], "countdown cue")
-        await self._pre_arm_table()   # 2026-09-19: T-3, the same tick engine.js fires the countdown in (PRE_ARM_TABLE_MS)
+        if pre_arm:
+            await self._pre_arm_table()   # 2026-09-19: T-3, the same tick engine.js fires the countdown in (PRE_ARM_TABLE_MS)
         if countdown:
             await self.sleep(self.COUNTDOWN_LEAD_S)   # self.sleep, not asyncio.sleep -- tests inject a no-op here
         # A15.2 (Tony 2026-09-06, bench-verified on the bench gun): the $PSET cry field is EMPTY, so the firmware says nothing at
@@ -2664,6 +2917,9 @@ class GunStage:
         # with nothing left to re-arm it -- the gun stayed on fn 28 (no live $SIR table) for the rest of the
         # life. `_after_spawn` still runs its other resets once the write returns.
         self.spawned = True; self.alive = True
+        self._spawn_at = self.now(); self._armed_this_life = False   # F480, B5 (engine.js `_spawn`): the settle window opens with the write
+        self.hp = self.max_hp; self.armor = self.max_armor   # engine.js `_spawn`: the life's pools are set when the write is queued, so
+        # B5's re-examine (`poll`) never reads the last life's zero while this write is still in flight
         self._last_team_repaint_at = self.now()   # F68 (engine.js `_spawn`): stamped when the write is QUEUED, so a slow write does not delay the backstop
         # 2026-09-19: with a respawn profile the T-0 spawn is neither profile: no t8, the trigger live, and the
         # live table already on the gun (`_pre_arm_table` at T-3). A late start that missed T-3 carries the
@@ -2729,7 +2985,12 @@ class GunStage:
         stun_holds = bool(self_hit and self.stunned)
         if stun_holds:
             revive = [re.sub(r"^(\$AMMO,\d+),[^,]*,[^,]*,", r"\1,0,0,", f) if f.startswith("$AMMO,") else f for f in revive]
+        if not self_hit or PLAYX in revive:
+            self._ann.respawn(self._now_ms())   # F478 (engine.js `_revive`): the dead queue ends; no status line survives it
         self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
+        self._spawn_at = self.now(); self._armed_this_life = False   # F480, B5 (engine.js `_revive`): the settle window opens with the write
+        self.hp = self_hit["health"] if self_hit else self.max_hp   # engine.js `_revive`: the pools are set when the write is queued,
+        self.armor = self_hit["armor"] if self_hit else self.max_armor   # so B5's re-examine never reads the last life's zero mid-write
         self._last_team_repaint_at = self.now()                  # F68 (engine.js `_revive`): stamped at queue time, as in `spawn()`
         self._arm_after_spawn(kind)                              # await, same reasoning as `spawn()` above (F209)
         # engine.js `_revive`: a legacy bundle (no respawn_profile) always computes `kind == "timed"`, station
@@ -2970,6 +3231,8 @@ class GunStage:
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # F15/S16: the end frames own the gun now
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_endLocal`: the whole takeover goes with the match
         self._moment = ("match_over", self.now())  # engine.js `_endLocal`
+        self._ann.clear(); self._gun_audio.clear()   # engine.js `_endLocal`: no queued pool line, nor the old audio model
+        self._light_gen += 1
         self._level_gen += 1                       # Node rules: cancel everything on end
         self._pending_hurt_write = False            # review 2026-09-19: a queued low-health alert must not survive match end
         return self.state()
@@ -2981,6 +3244,8 @@ class GunStage:
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # S16: no life left to tick
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
         self._level_gen += 1                       # Node rules: cancel everything on panic
+        self._ann.clear(); self._gun_audio.clear()   # engine.js `control` panic
+        self._light_gen += 1
         self._pending_hurt_write = False            # review 2026-09-19: a queued low-health alert must not survive panic teardown
         self._log("⚠ the gun now has NO $SIR table: re-ARM before it can be hit (F11)", "warn")
         return self.state()
@@ -3002,14 +3267,15 @@ class GunStage:
         self._event_now(kind, sound)
         return self.state()
 
-    def _event_now(self, kind: str, sound: bool = True) -> None:
-        """`event()` without the state build — the path every in-game reaction uses (see the warning there)."""
+    def _event_now(self, kind: str, sound: bool = True, pick: tuple | None = None) -> None:
+        """`event()` without the state build: the path every in-game reaction uses (see the warning there). `pick`:
+        the take an announcer item chose when it was queued (engine.js `_event(kind, pick)`)."""
         cues = self.bundle.get("cues", {})
-        cue, tag = self._pick_cue(kind) if sound else (None, "")
+        cue, tag = pick if pick is not None else (self._pick_cue(kind) if sound else (None, ""))
         self._last_event_cue = cue   # the take actually played, for a caller that times it (`_poison_cue`)
         if cue:
             self._spawn_task(self.write([cue], f"event cue {kind}{tag}", gap_ms=0))
-        elif kind in cues and sound:
+        elif kind in cues and sound and pick is None:
             self._log(f"event {kind}: sound muted (\"\")", "info")
         seq = (self.bundle.get("leds") or {}).get(kind) or []
         if not seq:
@@ -3220,6 +3486,8 @@ class GunStage:
             self.connected = False
             self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
             self._pending_hurt_write = False       # ...the held low-health line too (engine.js `_lightGen` on a drop)
+            self._ann.clear(); self._gun_audio.clear()   # engine.js `onBleDropped`: no announcer line, no audio model
+            self._light_gen += 1
             self._end_reload("dropped")            # engine.js `onBleDropped`: no link, no ammo echo -- the takeover would be fiction
             self.switching = None; self.held = {}   # `_on_button` keeps the FIRST edge, so a press whose release never arrived would read as held forever
             self._hill_reset()                     # …and the hill with it: this path RETURNS, so no expiry would run
@@ -3280,11 +3548,18 @@ class GunStage:
         self._poll_tick(now)                     # F264: ...and ask it every QUERY_POLL_S anyway, so nobody has to pull a dead trigger first
         self._spawn_probe_tick(now)              # F264: ...and once a life, read back the biggest write of that life
         self._pool_repair_tick(now)              # F341: ...and when the pools it read back are wrong, repair them and read again
+        # F480, B5 re-examine (engine.js `tick()`): a zero the settle window held is still on the wire once the window is
+        # over, so it is a death now. Without this a real lethal hit with no latch (a grenade, a lost `$HIR`) inside the
+        # window would leave a player at 0 HP and alive for the rest of the life.
+        if self.auto_react and self.spawned and self.hp == 0 and self.alive and not self._death_pending(reexamine=True):
+            self._death(False)
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
         self._poison_tick(now)                   # S16: the poison tick clock (engine.js tick())
         self._team_repaint_tick(now)             # F68 (engine.js tick()): a periodic repaint that survives a miss the wire never reports
         self._shield_tick(now)                   # S29 (engine.js tick()): shield recharge
+        self._audio_sync()
+        self._ann.tick(self._now_ms())           # F478 (engine.js tick()): the next queued pool line, once the gun is free
         self._stations_tick(now)                 # K1: the scanner's callback (an advertising station is heard again)
         self._hill_tick(now)
         return seen
@@ -3325,7 +3600,11 @@ class GunStage:
             # on the pool, and the gun went on saying the shield was gone. The heartbeat follows the POOL.
             # And a refill that GAVE UP is one nothing can fix, so replaying N74 for the rest of the life
             # is noise (polish review 2026-09-18).
-            if self._shield_down and self.shield == 0 and not self._shield_gave_up and not self._shield_regen:
+            # F478 (engine.js `_shieldTick`, docs/announcer.md): a beat that would still be sounding when the refill
+            # starts is not begun, so "Shields charging" finds the gun free.
+            period = self._shield_loop_period()
+            if (self._shield_down and self.shield == 0 and not self._shield_gave_up and not self._shield_regen
+                    and not (period > 0 and now + period > self._shield_quiet_at + SHIELD_REGEN_DELAY_S)):
                 self._shield_loop_tick(now)
             return
         if not self._shield_regen:
@@ -3333,7 +3612,12 @@ class GunStage:
             self._shield_regen = {"started_at": now, "next_at": now, "grants": 0, "from": self.shield, "step": step}
             self._log(f"shield recharge: {self.shield}/{self.max_shield} after "
                       f"{now - self._shield_quiet_at:.1f}s without damage", "info")
-            self._event_now("shield_charging")
+            # C4 (engine.js `_shieldTick`): say it only when the refill takes longer than SHIELD_CHARGING_MIN_MS
+            refill_ms = math.ceil(max(0, self.max_shield - self.shield) / step) * round(SHIELD_REGEN_STEP_S * 1000)
+            if refill_ms > SHIELD_CHARGING_MIN_MS:
+                self._announce_status("shield_charging")   # F478: through the announcer, as a pool line
+            else:
+                self._log(f"shield recharge: {refill_ms} ms to refill, too short to announce", "info")
         r = self._shield_regen
         if now < r["next_at"]:
             return
@@ -3410,16 +3694,19 @@ class GunStage:
         fr = (self.bundle.get("cues") or {}).get("shield_loop")
         if not fr:
             return
-        cue_ms = self.bundle.get("cue_ms") or {}
-        period = float(cue_ms["shield_loop"]) / 1000.0 if "shield_loop" in cue_ms else SHIELD_LOOP_S
+        period = self._shield_loop_period()
         if not period > 0:
             return
         if self._shield_loop_at and now - self._shield_loop_at < period:
             return
-        # F439 (engine.js `_shieldLoopTick`, brx1 bench 2026-10-02, UNPROVEN): no beat while the low-health line waits in
-        # its hold, so a beat never goes out in the same instant as the alert and plays after the death scream. The phone
-        # also waits out its pending PLAY writes and the scream; the stage has no audio model (see the mirror registry).
-        if self._pending_hurt_write:
+        # C3 (engine.js `_shieldLoopTick`, F478): the heartbeat shares the gun's one FIFO, so it never starts while the gun
+        # model still holds a clip or while a pool line waits in the announcer queue.
+        now_ms = self._now_ms()
+        if self._gun_audio.outstanding(now_ms) > 0 or self._ann.queue:
+            return
+        # F439 (brx1 bench 2026-10-02, UNPROVEN): no beat while the low-health line waits in its hold, while a play write
+        # waits or is in flight, while dead, or before the scream ends, so a beat never plays after the death scream.
+        if not self.alive or now_ms < self._scream_until_ms or self._pending_hurt_write or self._play_lock.locked():
             return
         self._shield_loop_at = now
         self._spawn_task(self.write([fr], "shield down heartbeat", gap_ms=0))
@@ -3481,6 +3768,8 @@ class GunStage:
                 # hardening.md §6) and is not this cure's job.
             elif cmd == "HIR":
                 self.tele["last_hir"] = raw
+                if len(t) > 2 and t[2] != "15":
+                    self._audio_hit(t[2], t[7] if len(t) > 7 else "")   # F478 (engine.js `_audioHit`): the gun's own hit sound joins its FIFO
                 if len(t) > 2 and t[2] == "15":
                     # A grenade/station/hill BEACON (F70/F72), not a shot:
                     # $HIR,<sensor>,15,<ownerId=0>,<ownerTeam>,<magnitude>,0,<sub>. It rides the same $HIR as a
@@ -3662,6 +3951,15 @@ class GunStage:
         if prev_owner == mine:
             return "hill_lost"
         return None
+
+    def _hill_item_ids(self) -> set:
+        """The clip ids of the hill CALLOUTS (not the possession tick): the stage's announcer items (engine `item` clips)."""
+        ids = set()
+        for k in ("hill_captured", "hill_lost", "hill_contested", "hill_moved"):
+            frame, _ = self._hill_cue(k)
+            if frame:
+                ids.add(_cue_id(frame))
+        return ids
 
     def _hill_say(self, kind: str, why: str) -> None:
         """Play one callout NOW. Priority rule: **the later callout wins outright -- it preempts, it never
@@ -4028,7 +4326,9 @@ class GunStage:
         if ammo is not None:   # engine.js: `am.onAmmo(t5, t6, t4, null, true)`, after the twin check and before the zero
             # bug 3a: on the `$LCD`'s OWN slot token, never `active_slot`, and it never moves the trigger
             self._on_ammo(ammo[0], ammo[1], ammo[2] if len(ammo) > 2 else 0, None, lcd=True)
-        if hp == 0 and self.alive and self.auto_react and self.spawned:
+        if hp > 0:
+            self._armed_this_life = True   # B5 (engine.js LCD case): the gun has confirmed a life on the wire
+        if hp == 0 and self.alive and self.auto_react and self.spawned and not self._death_pending():   # F480: B5 holds a stale zero
             self._on_pools(hp, armor, None, desync=desync, lcd=True)
             return
         self.hp, self.armor = hp, armor
@@ -4127,7 +4427,154 @@ class GunStage:
         self._log("self-hit: the lethal shot's own `$LCD,0` twin, ignored", "info")
         return True
 
+    def _death_pending(self, reexamine: bool = False) -> bool:
+        """F480, B5 (engine.js `_deathPending`, phantom death on the spawn race): a zero-HP frame just after a spawn or
+        revive write can be a STALE echo the gun queued before it took `$SPAWN`. Until the gun reports hp>0 on the wire
+        (`_armed_this_life`), or a fresh latch makes the zero a real hit (a spawn-camp kill), a zero inside
+        DEATH_LATCH_MS of the write is held. The stage has no reconcile, so engine.js's `rc.outOfBand` exit is not here."""
+        now = self.now()
+        latch = self._hir_word   # engine.js `latch`: the last `$HIR` with a readable team
+        # A FRESH latch is a real hit: always a death. F493 r4: not a latch from before this life's spawn (the killing hit
+        # of the last life is still inside DEATH_LATCH_MS after a quick operator respawn, and an unspawned gun cannot be hit).
+        if (latch is not None and now - latch["at"] <= DEATH_LATCH_MS / 1000
+                and not (self._spawn_at is not None and latch["at"] < self._spawn_at)):
+            return False
+        # F493 r3: this life's burst still waits in the play queue, so a 0 pool is the last life's: held, never booked.
+        # engine.js bumps `_lifeSeq` when it queues the burst; the stage's `_after_spawn` bumps `_life` once the write
+        # returns, so the life this burst starts is `_life + 1` here.
+        if self._life_burst_queued():
+            self._held_zero_life = self._life + 1
+            return True
+        # F493 r4: a zero held that way was the last life's pool, so the B5 re-examine never books it once the burst is
+        # out. A pool frame from the gun after the burst is new evidence and is judged by the rules below.
+        if self._held_zero_life == self._life:
+            if reexamine:
+                return True
+            self._held_zero_life = None
+        if self._armed_this_life:
+            return False
+        return self._spawn_at is not None and now - self._spawn_at < DEATH_LATCH_MS / 1000
+
+    def _audio_death(self) -> None:
+        """engine.js `_death`, its audio half (F439, F478): the gun screams on its own (`$PSET` t10), at once, cutting the
+        clip playing; a body clip written within DEATH_LATE_WRITE_MS reached the gun after the scream began and waits
+        behind it. The announcer's dead queue starts. The body stops for a body clip queued behind the scream are
+        `_body_stops`. Not ported: F149's one stop when no scream is known."""
+        now = self._now_ms()
+        self._audio_sync(now)
+        sid = (self._pset_sounds[10] if self._pset_sounds and len(self._pset_sounds) > 10 else "").strip()
+        table = _clip_ms_table()
+        scream_ms = (table.get(sid, 0) if table is not None else round(clip_s(sid) * 1000)) if sid else 0
+        if scream_ms > 0:
+            cues, pools = self.bundle.get("cues") or {}, self.bundle.get("cue_pools") or {}
+            body = {_cue_id(f) for k in BODY_CUES for f in [cues.get(k), *(pools.get(k) or [])] if f} - {None, ""}
+            self._gun_audio.interrupt(scream_ms, f"native death scream {sid}", now, sid,
+                                      lambda c: c["id"] in body and now - c["at"] <= DEATH_LATE_WRITE_MS)
+            self._scream_until_ms = now + scream_ms
+            self._spawn_task(self._body_stops(self._life, self._light_gen, body))
+        self._ann.death(now)
+
+    async def _body_stops(self, life: int, light_gen: int, body: set) -> None:
+        """engine.js `_death` `bodyStop` (F439, F478 r1): nothing plays after the scream but the lines meant to follow
+        it. A BODY clip (a grunt, the low-health line, a heartbeat, a shield cue) queued behind the scream gets one
+        `$PLAYX` each, from the scream's end plus DEATH_BODY_STOP_MARGIN_MS, PLAY_GAP_S apart, at most
+        MUST_HEAR_MAX_STOPS. A clip that is not a body clip (a `$SIR` row sound) is waited out once, not stopped; a
+        clip with under DEATH_BODY_STOP_MIN_LEFT_MS left gets no stop. A revive, a teardown or a new life ends it."""
+        def gone() -> bool:
+            return self._life != life or self._light_gen != light_gen or not self.spawned or self.alive
+        await self.sleep(max(0, self._scream_until_ms + DEATH_BODY_STOP_MARGIN_MS - self._now_ms()) / 1000)
+        waited = None
+        i = 0
+        while i < MUST_HEAR_MAX_STOPS and not gone():
+            now = self._now_ms()
+            self._audio_sync(now)
+            front = self._gun_audio.clips[0] if self._gun_audio.clips else None
+            if front is None or not front["start"] <= now:
+                return                                    # a quiet gun
+            # engine.js `bodyStop`: an announcer item (`front.item`, a `_hillSay`/`_sayMust` clip) ends the chain. The
+            # stage's only announcer clips are the hill callouts, so their ids stand for `item` here.
+            if front.get("id") in self._hill_item_ids():
+                return
+            if front["id"] not in body:
+                if front is waited:
+                    return                                # waited out once already: a clock that does not move cannot loop
+                waited = front
+                await self.sleep((front["end"] - now + DEATH_BODY_STOP_MARGIN_MS) / 1000)
+                continue
+            if front["end"] - now < DEATH_BODY_STOP_MIN_LEFT_MS:
+                self._log(f"death: no stop for {front['why']}: {front['end'] - now} ms left, a stop could land on the clip behind it", "info")
+                return
+            await self.write([PLAYX], f"death: stop {i + 1} for a body cue queued behind the scream ({front['why']})",
+                             gap_ms=0, _model=False)
+            g = self._gun_audio
+            if g.clips and g.clips[0] is front:
+                g.clips.pop(0)
+            tail = now
+            for c in g.clips:
+                c["start"] = tail
+                c["end"] = tail + c["ms"]
+                tail = c["end"]
+            i += 1
+            await self.sleep(PLAY_GAP_S)
+
+    def _death(self, desync: bool = False) -> None:
+        """engine.js `_death`: book this life's one death (F209: every caller checks `alive`). `_on_pools` calls it on a
+        zero outside the B5 settle window, and `poll()` on a held zero once the window is over (F480)."""
+        if not self.alive:
+            return
+        hs = self.bundle.get("headset") or {}
+        self.alive = False
+        scream_ms = float((_snd._catalog().get(self.scream_this_life) or {}).get("duration_s") or 0.0)
+        self._hill_scream_until = self.now() + max(0.0, scream_ms)
+        self._cancel_pending_play_writes()
+        self._audio_death()
+        self._arm_pending = None; self._trigger_pending = None   # F209 (engine.js `_death`): never arm a dead gun
+        if self._life_burst is not None:   # F493: an old burst holds nothing, and a queued one is cancelled (`_write_life`)
+            self._life_burst["cancelled"] = True; self._life_burst = None
+        self._pending_hurt_write = False   # HURT_DEBOUNCE_S (mirrors engine.js `_death`): a death inside the hold cancels the queued alert outright
+        # 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets
+        # louder, never quieter.
+        if (self._timed_life_at is not None and self.now() - self._timed_life_at <= self.SPAWN_KILL_WINDOW_S
+                and self._down_warn < self.DOWN_WARN_MAX):
+            self._down_warn += 1
+            self._log(f"killed {self.now() - self._timed_life_at:.1f}s after a timed respawn: down warning level {self._down_warn}", "info")
+        self._timed_life_at = None
+        self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0   # S29: the heartbeat stops with the life
+        self._shield_fill_at = 0.0                                   # engine.js X3: a dead gun holds no shield, so no fill is in flight
+        self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
+        self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
+        # S16 (engine.js `_death`): a death straight after our own poison tick, with no newer DAMAGING hit behind
+        # it, is the TICK's kill, credited to whoever last applied the poison. The stage keeps no MC facts
+        # layer to book a `death` fact against (that credit line, and its `dot: true` flag, is MC's own
+        # bookkeeping to make from the fact it receives) -- so this is a log line naming the applier, not a
+        # fabricated facts mechanism.
+        dk = self._dot_kill
+        dk = dk if dk and self.now() - dk["at"] <= DOT_KILL_S and (self._last_dmg_hit_at is None or self._last_dmg_hit_at < dk["at"]) else None
+        if dk:
+            self._log(f"☠ poison kill credited to #{dk['num']} (team {dk['team']})", "info")
+        self.team_credit_tid = None if dk else self._team_credit()
+        if self.team_credit_tid is not None:
+            self._log(f"☠ killed by team {self.team_credit_tid}, no player (A65: the damaging hit was lost, a no-pool word is fresh)", "info")
+        self._dot_kill = None; self._dot_echo = None
+        self._poison_clear("died")             # S16: a stack never survives a life (Tony, 2026-09-18)
+        self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
+        self._level_gen += 1                   # Node rules: cancel everything on death
+        self._gun_blank_on_death()             # F113: ...and the strip goes OFF, instead of freezing mid-animation
+        # F264: `desync` means the node learned this out of band, from its OWN `$QUERY,*`, rather than
+        # from a live hit sequence -- the cure/poll books it through this SAME path, never a second one.
+        self._log("☠ down -- the firmware's own out-flash takes over; nothing extra written to the headset"
+                  + (" (F264: desync -- learned from our own $QUERY, not a live hit)" if desync else ""), "info")
+        self._event_now("died")
+        if hs.get("death"):
+            self._headset(hs["death"], "headset death")
+        down = hs.get("down")
+        if down and down.get("rearm"):
+            self._spawn_task(self._down_rearm(getattr(self, "_life", 0), down))
+        self.carrying = None; self._active_role = None
+
     def _on_pools(self, hp: int, armor: int, shield: int | None = None, desync: bool = False, lcd: bool = False) -> None:
+        if hp > 0:
+            self._armed_this_life = True   # B5 (engine.js `_onHp`): the gun has confirmed a life on the wire, the settle window is over
         if shield is None:
             shield = self.shield          # not reported on this frame (an $LCD): keep the last known value
         if not (self.auto_react and self.spawned):
@@ -4189,63 +4636,15 @@ class GunStage:
             self._shield_loop_at = self.now()   # heartbeat starts one period after the break cue
             self._log(f"shield depleted ({self.max_shield} gone) -- health is all that is left", "info")
             self._event_now("shield_down")
-        # F493 r3 (engine.js `_deathPending`): while this life's burst still waits in the play queue the gun has not
-        # spawned, so its 0 pool (a divergence poll's answer) is held, never booked as a second death. A FRESH `$HIR` is a
-        # real hit and still kills, as engine.js's fresh latch. r4: only a hit newer than this life's revive; the killing
-        # hit of the last life is still inside DEATH_LATCH_MS after a quick operator respawn, and an unspawned gun cannot be hit.
-        lb = self._life_burst
-        fresh_hit = (self._last_hir_at is not None and self.now() - self._last_hir_at <= DEATH_LATCH_MS / 1000
-                     and not (lb is not None and self._last_hir_at < lb["at"]))
-        if hp == 0 and self.alive and self._life_burst_queued() and not fresh_hit:
-            self._log("F493: a 0 pool while the revive burst waits: the gun has not spawned yet, held", "info")
-        elif hp == 0 and self.alive:
-            self.alive = False
-            scream_ms = float((_snd._catalog().get(self.scream_this_life) or {}).get("duration_s") or 0.0)
-            self._hill_scream_until = self.now() + max(0.0, scream_ms)
-            self._cancel_pending_play_writes()
-            self._arm_pending = None; self._trigger_pending = None   # F209 (engine.js `_death`): never arm a dead gun
-            if self._life_burst is not None:   # F493: an old burst holds nothing, and a queued one is cancelled below
-                self._life_burst["cancelled"] = True; self._life_burst = None
-            self._pending_hurt_write = False   # HURT_DEBOUNCE_S (mirrors engine.js `_death`): a death inside the hold cancels the queued alert outright
-            # 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets
-            # louder, never quieter.
-            if (self._timed_life_at is not None and self.now() - self._timed_life_at <= self.SPAWN_KILL_WINDOW_S
-                    and self._down_warn < self.DOWN_WARN_MAX):
-                self._down_warn += 1
-                self._log(f"killed {self.now() - self._timed_life_at:.1f}s after a timed respawn: down warning level {self._down_warn}", "info")
-            self._timed_life_at = None
-            self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0   # S29: the heartbeat stops with the life
-            self._shield_fill_at = 0.0                                   # engine.js X3: a dead gun holds no shield, so no fill is in flight
-            self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
-            self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
-            # S16 (engine.js `_death`): a death straight after our own poison tick, with no newer DAMAGING hit behind
-            # it, is the TICK's kill, credited to whoever last applied the poison. The stage keeps no MC facts
-            # layer to book a `death` fact against (that credit line, and its `dot: true` flag, is MC's own
-            # bookkeeping to make from the fact it receives) -- so this is a log line naming the applier, not a
-            # fabricated facts mechanism.
-            dk = self._dot_kill
-            dk = dk if dk and self.now() - dk["at"] <= DOT_KILL_S and (self._last_dmg_hit_at is None or self._last_dmg_hit_at < dk["at"]) else None
-            if dk:
-                self._log(f"☠ poison kill credited to #{dk['num']} (team {dk['team']})", "info")
-            self.team_credit_tid = None if dk else self._team_credit()
-            if self.team_credit_tid is not None:
-                self._log(f"☠ killed by team {self.team_credit_tid}, no player (A65: the damaging hit was lost, a no-pool word is fresh)", "info")
-            self._dot_kill = None; self._dot_echo = None
-            self._poison_clear("died")             # S16: a stack never survives a life (Tony, 2026-09-18)
-            self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
-            self._level_gen += 1                   # Node rules: cancel everything on death
-            self._gun_blank_on_death()             # F113: ...and the strip goes OFF, instead of freezing mid-animation
-            # F264: `desync` means the node learned this out of band, from its OWN `$QUERY,*`, rather than
-            # from a live hit sequence -- the cure/poll books it through this SAME path, never a second one.
-            self._log("☠ down -- the firmware's own out-flash takes over; nothing extra written to the headset"
-                      + (" (F264: desync -- learned from our own $QUERY, not a live hit)" if desync else ""), "info")
-            self._event_now("died")
-            if hs.get("death"):
-                self._headset(hs["death"], "headset death")
-            down = hs.get("down")
-            if down and down.get("rearm"):
-                self._spawn_task(self._down_rearm(getattr(self, "_life", 0), down))
-            self.carrying = None; self._active_role = None
+        # F480, B5 and F493 r3 (engine.js `_hpDeathCheck` / `_deathPending`): a zero inside the settle window after a spawn
+        # or revive write is held as a stale echo, and so is one while this life's burst still waits in the play queue (the
+        # gun has not spawned and still holds the last life's 0 pool). `poll()` re-examines a B5 hold once the window is
+        # over. The pools above still took the gun's zero.
+        if hp == 0 and self.alive:
+            if not self._death_pending():
+                self._death(desync)
+            elif self._life_burst_queued():
+                self._log("F493: a 0 pool while the revive burst waits: the gun has not spawned yet, held", "info")
             return
 
         if dmg > 0 and self.alive:
@@ -4270,14 +4669,14 @@ class GunStage:
             # `_onHp`'s `!dotEcho` gate). The low-health alert just above is NOT gated: a DoT tick crossing the
             # threshold is still news, exactly as engine.js's `hurtNow` block is unguarded by `dotEcho`.
             # no word inside 1000 ms: no event, no pain and no stamp of the pain gate (engine.js `_hpHitTaken` returns first)
-            if hit_booked:
+            if hit_booked and hp > 0:   # engine.js `_hpHitTaken`: `alive && hp > 0` (a zero B5 holds books no hit and no grunt)
                 self._event_now("hit_taken")
-            if hit_booked and hurt_now:
+            if hit_booked and hp > 0 and hurt_now:
                 # F57 (engine.js `_onHp`): the hit that ARMS low_health plays the alert ONLY -- no grunt under it --
                 # and stamps the pain gate, so a hit inside PAIN_GAP_S of the warning is silent too.
                 self._last_pain_at = self.now()
                 self._log("pain: not played -- this hit armed the low-health alert (F57); the gap starts now", "info")
-            elif hit_booked:
+            elif hit_booked and hp > 0:
                 self._pain(dmg, self._pain_proto(), moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
             self._hp_headset_reassert(hurt_now, dot_echo)
         # F58(b): the pool-RISE events, exactly engine.js `_onHp`'s HUD-moments block. ONE moment slot: a
@@ -4325,9 +4724,13 @@ class GunStage:
                 # that is NOT our recharge (an IR pickup, a host grant) still says `shield_up`.
                 kind = ("healed" if pool == "health" else "armour_up" if pool == "armor"
                         else "shield_online" if full else None if self._shield_regen else "shield_up")
-                if kind:
-                    self._log(f"pool rise: {kind} ({pool} +{amount}) -- the phone fires this event here", "info")
-                    self._event_now(kind)
+                if kind == "shield_online":
+                    # Tony 2026-09-24 (engine.js `_hpGainMoment`): no voice line when the shield comes back online; its lights stay
+                    self._log(f"pool rise: shield_online ({pool} +{amount}) -- its lights only, no voice line", "info")
+                    self._event_now(kind, sound=False)
+                elif kind:
+                    self._log(f"pool rise: {kind} ({pool} +{amount}) -- the phone queues this pool line here", "info")
+                    self._announce_status(kind)   # F478 (engine.js `_announceStatus`): a pool voice line waits its turn
         # A16 §3.1/§5 (readout) / A11.7 legacy (health bands): a hit does not clear a held paint, only
         # a real pool change writes a new one -- mirrors engine.js `_onHp`'s `if (hp > 0) this._gunPoolPaint(...)`,
         # called on ANY pool change (gains included), not only damage.
@@ -4846,13 +5249,87 @@ class GunStage:
         if not p or not p.get("cue_pending") or not self.alive:
             return
         p["cue_pending"] = False
-        # engine.js `_poisonStrike` plays a tick only while the announcer is idle, so no tick sounds over this onset clip
-        # (F446: the first tick is silent under H12). The stage models no announcer, so it holds the tick for the clip.
-        # #6 polish r2: the hold is the PLAYED take's length (a `cue_pools` pick, or a `cue_ms` override), as the gun model
-        # in engine.js times it (`_clipLen`).
-        self._last_event_cue = None
+        # engine.js `_poisonStrike` plays a tick only on a quiet gun, so no tick sounds over this onset clip (F446: the first
+        # tick is silent under H12). F478: the clip is in the gun audio model, which `_poison_tick` reads, as on the phone.
         self._event_now("poisoned")
-        p["onset_until"] = self.now() + self._clip_len(self._last_event_cue)
+
+    # ---- F478: the gun audio model (engine.js `_audioWrite` / `_audioSync` / `_audioHit` / `_announceStatus`) ---------------
+    def _now_ms(self) -> int:
+        """The stage clock in whole milliseconds, the audio model's unit (engine.js `now()`)."""
+        return round(self.now() * 1000)
+
+    def _audio_sync(self, now_ms: int | None = None) -> None:
+        """engine.js `_audioSync`: drop the clips that have ended."""
+        self._gun_audio._prune(self._now_ms() if now_ms is None else now_ms)
+
+    def _audio_clip_ms(self, frame: str) -> int:
+        """engine.js `_clipLen`, in ms: the bundle's `cue_ms[kind]` for the kind whose cue is this exact frame, else the
+        phone's `CLIP_MS` row, else its 2.5 s default (`clipMs`)."""
+        cues, cue_ms = self.bundle.get("cues") or {}, self.bundle.get("cue_ms") or {}
+        for k, ms in cue_ms.items():
+            if cues.get(k) == frame:
+                return int(ms)
+        return round(_clip_ms_s(frame) * 1000)
+
+    def _audio_write(self, frames: list[str], why: str) -> None:
+        """engine.js `_audioWrite` with `notePlay`: record the sounds and stops this write puts on the gun, as it is
+        sent. One `$PLAYX` stops the clip playing, two or more empty the FIFO; each `$PLAY` slot is one clip. It also
+        keeps the `$SIR` row sounds (a hit plays its cell's sound) and the last `$PSET` (its t10 is the scream)."""
+        now = self._now_ms()
+        g = self._gun_audio
+        self._audio_sync(now)
+        stops = 0
+        for f in frames:
+            if f.startswith("$CLEAR"):
+                self._sir_sound = {}
+            elif f.startswith("$SIR,"):
+                t = f.split(",")
+                self._sir_sound[f"{t[1]}:{t[2] if len(t) > 2 else ''}"] = (t[3] if len(t) > 3 else "").strip()
+            elif f.startswith("$PSET,"):
+                self._pset_sounds = f.split(",")
+            elif f == PLAYX:
+                stops += 1
+        if stops >= 2:
+            g.clear()
+        elif stops == 1:
+            g._prune(now)
+            g.clips[:1] = []
+        for f in frames:
+            if f.startswith("$PLAY,"):
+                for one in play_slot_frames(f):   # F437: a two-slot frame is two clips
+                    g.add(self._audio_clip_ms(one), why, now, _cue_id(one))
+
+    def _audio_hit(self, proto: str, subtype: str) -> None:
+        """engine.js `_audioHit`: a hit the gun registered plays its `$SIR` row's sound, into the same FIFO. A row with no
+        sound, or a sound of unknown length, counts as 0 ms."""
+        sid = self._sir_sound.get(f"{proto}:{subtype}")
+        table = _clip_ms_table()
+        ms = (table.get(sid) if table is not None else round(clip_s(sid) * 1000)) if sid else None
+        if ms and ms > 0:
+            self._gun_audio.add(ms, f"hit sound {sid}", self._now_ms(), sid)
+
+    def _announce_status(self, kind: str) -> None:
+        """engine.js `_announceStatus`: a pool voice line (healed, armour up, shield up, shields charging) waits its turn
+        in the announcer queue (`StatusAnnouncer`) instead of going to the gun at once. The take is picked now, as on the
+        phone; a line muted for being late (or for a busy gun) still fires its lights."""
+        cue, tag = self._pick_cue(kind)
+        if not cue:
+            self._event_now(kind, pick=(None, ""))
+            return
+        cue_ms = self.bundle.get("cue_ms") or {}
+        audio = int(cue_ms[kind]) if isinstance(cue_ms.get(kind), (int, float)) else round(_clip_ms_s(cue) * 1000)
+
+        def play(muted: bool) -> None:
+            if muted:
+                self._log(f"pool line {kind}: the gun is busy or the line is late, shown without its line (announcer P1)", "info")
+            self._event_now(kind, pick=(None, "") if muted else (cue, tag))
+        if self._ann.push({"kind": "status", "key": "status", "audio_ms": audio, "play": play}, self._now_ms()) is None:
+            self._log(f"pool line {kind}: another pool line is already queued, this one is dropped (announcer)", "info")
+
+    def _shield_loop_period(self) -> float:
+        """engine.js `_shieldLoopPeriod`, in seconds: the bundle's `cue_ms.shield_loop`, else SHIELD_LOOP_S."""
+        cue_ms = self.bundle.get("cue_ms") or {}
+        return float(cue_ms["shield_loop"]) / 1000.0 if "shield_loop" in cue_ms else SHIELD_LOOP_S
 
     def _clip_len(self, frame: str | None) -> float:
         """engine.js `_clipLen`, in seconds: the bundle's `cue_ms[kind]` for the kind whose `cues[kind]` is this exact
@@ -4903,9 +5380,11 @@ class GunStage:
             self._dot_kill = {"at": now, "num": p["by"]["num"], "team": p["by"]["team"]}
         p["ticks"] += 1
         self._spawn_task(self.write([frame], f"poison tick {p['ticks']}: -{n} {pool}" + (" (lethal)" if lethal else "")))
-        # engine.js also waits for a quiet gun and an empty announcer queue (F393); the stage models neither, so it
-        # gates on the clips it does time: the hill's callout and the stack's own onset (`poisoned`, see `_poison_cue`).
-        if not lethal and now >= self._hill_busy_until and now >= p.get("onset_until", 0.0):
+        # engine.js waits for a quiet gun and an idle announcer (F393). F478: the stage reads its own gun audio model and
+        # pool-line queue for that (the `poisoned` onset is a clip in the model); its hill callouts keep their own window.
+        now_ms = self._now_ms()
+        if (not lethal and now >= self._hill_busy_until and self._gun_audio.outstanding(now_ms) <= 0 and not self._ann.queue
+                and not self._ann.audio_busy(now_ms)):   # F478 (engine.js `_poisonTick`): a quiet gun and an idle announcer
             self._event_now("poison_tick")
 
     def _poison_clear(self, why: str) -> None:
@@ -5308,19 +5787,28 @@ class GunStage:
         check here: this file bumps it on every readout animation, so a second hit in the hold used to
         drop the line, which engine.js (`_lightGen`, teardown only) never did.
         F375 (engine.js): the hold ends only after HURT_DEBOUNCE_S with no damaging `$HP` (each hit restarts
-        it), and a heal back to LOW_HEALTH_HP drops the line. engine.js also waits for its gun audio model to
-        go quiet; this file has no audio model, so that half is the phone's alone."""
-        due = since + HURT_DEBOUNCE_S          # from the crossing itself, not from when this task first runs
+        it), and a heal back to LOW_HEALTH_HP drops the line. F478: it also waits for the gun audio model to go
+        quiet, as engine.js does."""
+        # F478: whole milliseconds, as the gun audio model keeps them (a float clock against a rounded clip end would
+        # read a quiet gun as busy by a fraction of a millisecond and wait again).
+        debounce_ms, since_ms = round(HURT_DEBOUNCE_S * 1000), round(since * 1000)
+        due = since_ms + debounce_ms          # from the crossing itself, not from when this task first runs
         await self.sleep(HURT_DEBOUNCE_S)
         while self._pending_hurt_write and self._hurt_gen == hurt_gen:
-            want = self._hurt_quiet_at + HURT_DEBOUNCE_S
-            if want <= due:
+            # F478 (engine.js `_hurtLineTry`): the line never queues behind a clip the gun model still holds, where a
+            # scream can overtake it, so the hold also runs until the gun is quiet.
+            now = self._now_ms()
+            self._audio_sync(now)
+            busy = self._gun_audio.playing_until(now)
+            want = max(round(self._hurt_quiet_at * 1000) + debounce_ms, busy if busy > now else 0)
+            if not (want > due and want > now):   # `want > now`: a late wake-up does not wait again
                 break
-            if want - since > HURT_MAX_WAIT_S:          # engine.js HURT_MAX_WAIT_MS: said this late, it is noise
+            if want - since_ms > round(HURT_MAX_WAIT_S * 1000):   # engine.js HURT_MAX_WAIT_MS: said this late, it is noise
                 self._pending_hurt_write = False
+                self._log(f"low-health line dropped: no quiet gun within {round(HURT_MAX_WAIT_S * 1000)} ms (F375)", "info")
                 return
-            wait, due = want - due, want       # from the last due time, so a clock that does not move cannot loop
-            await self.sleep(wait)
+            wait, due = want - max(due, now), want   # engine.js: from the later of the last due time and now; a clock that does not move cannot loop
+            await self.sleep(wait / 1000)
         if not self._pending_hurt_write or self._hurt_gen != hurt_gen:
             return                                    # cancelled by a death that landed first
         self._pending_hurt_write = False

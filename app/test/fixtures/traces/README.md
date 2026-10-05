@@ -20,7 +20,7 @@ and shotgun), the roster and the start clock. The frames are `mcp/brx_mcp/mc/gol
 |---|---|
 | `name`, `why`, `source` | The file name, what behaviour the trace pins, and the unit tests it was ported from. |
 | `runners` | `["engine", "stage"]`, or `["engine"]` when the stage does not model the behaviour. |
-| `setup` | `config` (merged over the base config), `frames` (merged over the golden bundle), `frames_patch` (`head_append`, `after_last_ammo`, `drop`), `catalog` (sent in the assign), `gun` (the fake gun's rules, below), `delay` (`"timers"` for a clock-driven `delay`, else immediate), `tick_ms` (the clock step, default 250), `countdown_s`, and `fields` (state fields to record beyond the default set). |
+| `setup` | `config` (merged over the base config), `frames` (merged over the golden bundle), `frames_patch` (`head_append`, `after_last_ammo`, `drop`), `catalog` (sent in the assign), `gun` (the fake gun's rules, below), `delay` (`"timers"` for a clock-driven `delay`, else immediate), `tick_ms` (the clock step, default 250), `countdown_s`, `stage_sleep` (`"clock"`: the STAGE runner's `sleep` follows the trace clock after the preamble, as the engine's `delay: "timers"` does; else instant), and `fields` (state fields to record beyond the default set). |
 | `steps` | The inputs, in order (below). |
 | `stage_ignores` | What the stage runner does not compare, each with a reason (below). |
 | `expect` | Written by the recorder: per checkpoint, the writes since the previous checkpoint, the facts (`emit`) and reports (`report`) MC heard since then, and the recorded state. Times are ms since the start clock, and a hit's random `shot_group` epoch reads `epoch`. |

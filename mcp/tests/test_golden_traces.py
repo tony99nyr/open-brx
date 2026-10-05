@@ -29,11 +29,14 @@ Limits of what this compares (read them before trusting a green run):
     test_stage_cure.py `test_fake_dead_gun_life_probe_reading_is_switchable_and_a_real_revive_still_works`.
   - An `mc` `end` step presses the stage's GAME END (`game_end()`); every other `mc` step is skipped.
   - `phase`, `deaths` and `moment` are never compared (the stage has no match phase, death count or HUD moment slot).
-  - The stage runs on an instant `sleep`, so held writes (the low-health line, flash holds) land at other checkpoints.
-    Eleven hp traces compare no writes at one or more checkpoints (a `checkpoint:<label>:writes` entry): hp-armour-spill,
-    hp-b5-reexamine, hp-b5-rise, hp-b5-stale-echo, hp-dot-echo, hp-lethal, hp-low-health-shield, hp-shield-fill,
-    hp-shield-fill-late, hp-shield-fill-lost, hp-solicited. Twenty hp traces also drop every `$GLED` readout write
-    from both sides, so the stage's readout frames are NOT compared there.
+  - The stage runs on an instant `sleep`, so held writes (the low-health line, flash holds, a `$PLAY` waiting for the
+    gun) land at other checkpoints. Each one is a per-write `stage_ignores` entry; the holds themselves are pinned on a
+    clock-driven `sleep` in test_stage_hp_mirror.py. A trace with `setup.stage_sleep: "clock"` runs the stage's
+    `sleep` on the trace clock after the preamble instead (`_ClockSleep`), and its holds then land where the engine's do. Two hp traces compare no writes at one checkpoint (a
+    `checkpoint:<label>:writes` entry): hp-armour-spill and hp-solicited. Twenty hp traces also drop every `$GLED`
+    readout write from both sides, so the stage's readout frames are NOT compared there.
+  - A trace with no `countdown_s` is a LATE start on the engine (no `_preArmTable`), so the stage's SPAWN takes the late
+    path too (`spawn(pre_arm=False)`, F479).
 
 The engine recording also holds the facts and reports MC hears (`emit`/`report`). They are never compared here:
 GunStage has no MC link, so it emits neither (the engine test compares them).
@@ -223,23 +226,69 @@ class Unsupported(Exception):
     pass
 
 
+class _ClockSleep:
+    """The stage's `sleep` on the trace clock, for a trace that sets `setup.stage_sleep: "clock"`: a sleep resolves at
+    the first runner sub-step at or past its end (whole ms), as engine.js's `delay` does on the runner's timers. Off
+    (instant) while `on` is False: the preamble, and every other trace."""
+
+    def __init__(self, clock):
+        self.clock = clock
+        self.on = False
+        self.waiting: list = []
+
+    async def sleep(self, s: float) -> None:
+        if not self.on or s <= 0:
+            return
+        fut = asyncio.get_running_loop().create_future()
+        self.waiting.append((round((self.clock.t + s) * 1000), fut))
+        await fut
+
+    def fire(self) -> None:
+        now = round(self.clock.t * 1000)
+        for w in sorted([w for w in self.waiting if w[0] <= now], key=lambda w: w[0]):
+            self.waiting.remove(w)
+            if not w[1].done():
+                w[1].set_result(None)
+
+
+async def _yield(n: int = 60) -> None:
+    for _ in range(n):
+        await asyncio.sleep(0)
+
+
+async def _press(st, coro, sched) -> None:
+    """A stage button the runner presses. On the trace clock it runs as a task (its own holds wait for later sub-steps)."""
+    if sched.on:
+        st._spawn_task(coro)
+        await _yield()
+    else:
+        await coro
+
+
 async def run_stage(trace: dict) -> list[dict]:
     setup = trace.get("setup") or {}
     frames = build_frames(setup)
     gun = TraceGun(setup.get("gun"), head_maxima(frames))
     clock = StageClock(BASE["clock0_ms"] / 1000)
     mgr = FakeConnectionManager([_SilentTagger(gun, clock=clock)])
-    st = GunStage(mgr, None, compiler=_TraceCompiler(frames), sleep=_nosleep, now=clock,
+    sched = _ClockSleep(clock)   # `setup.stage_sleep: "clock"`: the stage's holds run on the trace clock (off in the preamble)
+    st = GunStage(mgr, None, compiler=_TraceCompiler(frames), sleep=sched.sleep, now=clock,
                   voice_verdict_sink=lambda _r: None, rng=_ZeroRng())   # type: ignore[arg-type]
     st.load_config(build_config(setup), source="golden trace")
     await st.connect(GUN)
     s = mgr.sessions["stage"]
 
+    async def stl(st):
+        if sched.on:
+            await _yield()   # a hold waits on the clock here: `settle` would wait for it for ever
+        else:
+            await settle(st)
+
     async def feed(f: str) -> None:
         gun.heard(f)
         s.record("rx", f)
         st.poll()
-        await settle(st)
+        await stl(st)
 
     async def flush() -> None:
         for _ in range(20):   # an answer can cause a write, whose answer is fed too (bounded, as in the engine runner)
@@ -251,11 +300,14 @@ async def run_stage(trace: dict) -> list[dict]:
 
     # the stage's own path to a live gun (the engine's is MC's start; see the module docstring)
     await st.arm()
-    await st.spawn()
-    await settle(st)
+    # F479: a trace with no countdown is a LATE start on the engine (go-live before PRE_ARM_TABLE_MS, so no `_preArmTable`);
+    # the stage's SPAWN takes the same late path, the live table riding in front of `$SPAWN`.
+    await st.spawn(pre_arm=bool(setup.get("countdown_s")))
+    await stl(st)
     await flush()
-    st.poll(); await settle(st)
+    st.poll(); await stl(st)
 
+    sched.on = setup.get("stage_sleep") == "clock"
     out: list[dict] = []
     mark = s.seq
     step_s = (setup.get("tick_ms") or 250) / 1000
@@ -275,8 +327,9 @@ async def run_stage(trace: dict) -> list[dict]:
             end = clock.t + step["advance_ms"] / 1000
             while clock.t < end - 1e-9:
                 clock.advance(min(step_s, end - clock.t))
+                sched.fire()
                 await flush()
-                st.poll(); await settle(st)
+                st.poll(); await stl(st)
                 await flush()
                 # engine.js `tick()`: an `auto` respawn revives the player once `respawn.delay_s` (at least
                 # MIN_RESPAWN_S) has passed. The stage has no such timer (its revive is the operator's button, a
@@ -286,7 +339,7 @@ async def run_stage(trace: dict) -> list[dict]:
                 elif st.spawned:
                     dead_at = clock.t if dead_at is None else dead_at
                     if auto_respawn and clock.t - dead_at >= respawn_s - 1e-9:
-                        await st.revive(); await settle(st); await flush(); st.poll(); await settle(st)
+                        await _press(st, st.revive(), sched); await stl(st); await flush(); st.poll(); await stl(st)
                         dead_at = None
         elif "stations" in step:
             if not step["stations"]:
@@ -297,17 +350,17 @@ async def run_stage(trace: dict) -> list[dict]:
                 team = e.get("team", 255)
                 st.station_advert(id=e["id"], team=None if team == 255 else team, flags=e.get("state", 0),
                                   value=e.get("value", 0), present=e.get("present", (e.get("median", -50)) >= -74))
-            await settle(st)
+            await stl(st)
         elif "mc" in step:
             # MC messages: the stage has no MC link (the preamble's are covered by ARM and SPAWN). The one a trace
             # checks the effect of is the match `end`, which the stage's own END button does.
             if step["mc"].get("kind") == "control" and (step["mc"].get("body") or {}).get("cmd") == "end":
-                await st.game_end()   # the whistle: the game_over cue, then the end frames (engine.js `rc.end`)
+                await _press(st, st.game_end(), sched)   # the whistle: the game_over cue, then the end frames (engine.js `rc.end`)
         elif "gun" in step:
             for k, v in step["gun"].items():
                 setattr(gun, k, v)
         elif "check" in step:
-            await settle(st)
+            await stl(st)
             writes = [e.raw for e in s.buffer if e.seq > mark and e.direction == "tx"]
             mark = s.seq
             if step.get("preamble") and out:
@@ -317,7 +370,7 @@ async def run_stage(trace: dict) -> list[dict]:
         else:
             raise Unsupported(f"step {i}: the stage runner has no {sorted(step)} step")
         if "check" not in step:
-            await settle(st)
+            await stl(st)
             await flush()   # a real gun answers within a BLE round trip, before the next step
     return out
 
