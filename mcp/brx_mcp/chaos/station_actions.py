@@ -8,9 +8,10 @@ import time
 from ..mc import envelope as E
 from ..mc import powerups as _pu
 from ..mc.mock_node import MockNode
+from ..mc.types import StationAssignment
 from .registry import InvariantError, action
 from .stack import until
-from .world import World
+from .world import ChaosNode, World
 
 # The least time between an item appearing and a phone's pickup of it (the station's advert must reach it).
 _ADVERT_MS = 100
@@ -193,7 +194,10 @@ async def station_restore(world: World, nid: str, dep: int) -> None:
         raise RuntimeError(f"MC lost {nid}'s departure before RESTORE")
     await _utility(world, nid)
     result = world.session.set_station(nid, dict(row["restore"]))
-    restored_id = int(result["assigned"]["id"])
+    assigned = result["assigned"]
+    if assigned is None:
+        raise RuntimeError(f"set_station left {nid} with no assignment on RESTORE")
+    restored_id = int(assigned["id"])
     row["restored_id"] = restored_id
     before = row["before"]
     after = world.session.station_registry.assignment(nid) or {}
@@ -271,11 +275,18 @@ def _expect(world: World, nid: str, num: int, by_station: bool, feed_before: set
                                       "display": _display_of(world, num), "step": world.step, "judged": False})
 
 
+def _item_kind(assignment: StationAssignment) -> str:
+    item = assignment.get("item")
+    if item is None:
+        raise RuntimeError(f"station {assignment['id']} has no item to pick up")
+    return str(item["kind"])
+
+
 async def _phone_pickup(world: World, node: int, nid: str) -> None:
     assignment = world.session.station_registry.assignment(nid)
-    assert assignment is not None and assignment.get("item")
+    assert assignment is not None
     station_id = int(assignment["id"])
-    item_kind = str(assignment["item"]["kind"])
+    item_kind = _item_kind(assignment)
     # A phone stamps `pickup.t` on its own synced clock, which can trail MC's by a few ms after a restart's
     # re-sync. A real pickup comes after the phone hears the station advertise the item, so it is never in
     # the same ms as the spawn or reset. Model that: wait until the player's own clock is past the item's
@@ -289,6 +300,7 @@ async def _phone_pickup(world: World, node: int, nid: str) -> None:
 
 async def _station_report(world: World, nid: str, player_num: int) -> None:
     node = world.station_nodes[nid]
+    assert isinstance(node, ChaosNode)   # `World` sets `stack.node_cls = ChaosNode`
     station_id = int(world.session.station_registry.required_assignment(nid)["id"])
     node.send_env(E.make_envelope("station_action", {
         "id": station_id, "action": "taken", "player_num": player_num, "age_ms": 0,
@@ -346,7 +358,7 @@ async def powerup_conflict(world: World, node: int, nid: str, player_num: int) -
     await _phone_pickup(world, node, nid)
     await _station_report(world, nid, player_num)
     world.nodes[node].emit({"type": "pickup", "station_id": int(world.session.station_registry.required_assignment(nid)["id"]),
-                            "item_kind": str(world.session.station_registry.required_assignment(nid)["item"]["kind"])})
+                            "item_kind": _item_kind(world.session.station_registry.required_assignment(nid))})
     await world.settle()
     _expect(world, nid, player_num, True, before)
 
@@ -357,16 +369,17 @@ async def powerup_skew_claim(world: World, node: int, nid: str, skew_ms: int) ->
     stamped on a synced clock `skew_ms` off MC's (negative = the phone trails). The take is real: it is after
     the respawn on MC's own clock, so it must be credited whatever the phone's small clock error."""
     assert world.stack is not None
+    stack = world.stack
     world.session.reset_station(nid)
-    respawn_t = world.stack.mc_now()
-    await until(lambda: world.stack.mc_now() >= respawn_t + _ADVERT_MS, 2.0)
+    respawn_t = stack.mc_now()
+    await until(lambda: stack.mc_now() >= respawn_t + _ADVERT_MS, 2.0)
     player = world.nodes[node]
     assignment = world.session.station_registry.required_assignment(nid)
     synced = player.offset_ms
     before = _feed_ids(world)
-    player.offset_ms = world.stack.mc_now() - time.time() * 1000 + skew_ms
+    player.offset_ms = stack.mc_now() - time.time() * 1000 + skew_ms
     try:
-        player.emit({"type": "pickup", "station_id": int(assignment["id"]), "item_kind": str(assignment["item"]["kind"])})
+        player.emit({"type": "pickup", "station_id": int(assignment["id"]), "item_kind": _item_kind(assignment)})
     finally:
         player.offset_ms = synced
     await world.settle()

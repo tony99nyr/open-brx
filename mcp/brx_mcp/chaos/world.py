@@ -17,7 +17,7 @@ import copy
 import pathlib
 import random
 import time
-from typing import Any
+from typing import Any, Callable
 
 from ..mc import envelope as E
 from ..mc.mock_node import MockNode
@@ -181,6 +181,8 @@ class World:
         self.nodes: list[ChaosNode] = []
         self.players: list[dict] = []            # the roster as added (player_id, player_num, team_id)
         self.stack: ChaosStack | None = None
+        # the real `Store.match_started`, parked by `archive_fail_start` and put back by `archive_late_retired`
+        self.archive_original_start: Callable[[str, dict, int], None] | None = None
         self.phase_log: list[tuple[int, str]] = []   # (MC generation, phase), each change once
         self.transitions: list[tuple[str, str, str]] = []   # (from, to, how) -- how: "run" | "resume"
         self.finishes: list[dict] = []           # one row per Session._finish call
@@ -262,6 +264,7 @@ class World:
         # connected together, then kept in index order (World.nodes[i] is player i's node)
         self.nodes = sorted(await asyncio.gather(*[self._connect(i) for i in range(self.n_nodes)]),
                             key=lambda n: n.index)
+        assert self.stack is not None
         if not await self.stack.wait_ready(8.0):
             raise RuntimeError(f"field never went ready: {self.session.readiness()['board'][:3]}")
         self.field_joined = True
@@ -274,6 +277,7 @@ class World:
                 raise RuntimeError("resumed LOBBY field did not ack its config")
             info = self.session.start(runway_s=1)
         else:
+            assert self.stack is not None
             info = await self.stack.push_and_start(runway_s=1)
         self.match_id = info["match_id"]
         self.match_starts.append({"match_id": self.match_id, "mode": self.session.config["mode"],

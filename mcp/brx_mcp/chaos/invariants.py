@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 import json
+from typing import NoReturn
 
 from ..mc.types import AWARDS, CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
 from .registry import InvariantError, invariant
@@ -32,7 +33,7 @@ PRE_MATCH = ("muster", "build", "kit", "lobby")
 UNSCORED = ("operator_result", "pickup")
 
 
-def _fail(name: str, msg: str) -> None:
+def _fail(name: str, msg: str) -> NoReturn:
     raise InvariantError(name, msg)
 
 

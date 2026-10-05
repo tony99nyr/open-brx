@@ -160,6 +160,7 @@ async def archive_late_retired(world: World, *, node: int) -> None:
     s = world.session
     assert s.store is not None and s.last_recap is not None and world.match_id is not None
     retired = world.match_id
+    assert world.archive_original_start is not None, "archive_fail_start did not run first"
     s.store.match_started = world.archive_original_start
     s.next_match()
     result = s.set_config({"mode": "ffa"})
