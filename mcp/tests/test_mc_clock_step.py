@@ -1364,6 +1364,23 @@ def test_f495_a_second_hello_before_the_check_resolves_keeps_the_first_gate_in_t
     assert arrival in times and live_own not in times, (times, arrival, live_own)
 
 
+def test_f495_a_phone_that_flaps_longer_than_the_carry_starts_afresh():
+    """F495 cap: a reconnect more than GATE_CARRY_MS after the unresolved gate's hello starts a new interval, so one late
+    verdict never rescores the sound time between flaps."""
+    from brx_mcp.mc.clockwatch import GATE_CARRY_MS
+    s, net, clock, ps, info, live_own, arrival, _b = _gate_run(-20_000, -20_000)
+    _sample(s, net, clock, -20_000)                    # unresolved
+    clock["t"] += GATE_CARRY_MS + 1_000
+    _reconnect(s, net, clock)
+    second_hello = clock["t"]
+    _sample(s, net, clock, -20_000, dt_ms=50)
+    _burst(net, clock, step_ms=-20_000)
+    for _ in range(4):
+        _sample(s, net, clock, -20_000)
+    w = s.clock_watch.windows.get(NODE) or []
+    assert len(w) == 1 and w[0]["since"] >= second_hello, (w, second_hello)
+
+
 def test_f476_a_step_just_after_a_sound_gate_is_not_read_as_a_step_during_it():
     s, net, clock, ps, info, live_own, _arr, _b = _gate_run(0, -400)
     kills = _kill_times(s)

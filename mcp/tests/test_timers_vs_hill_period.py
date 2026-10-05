@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "GATE_CARRY_MS": "F495 (2026-10-05): how long a reconnect keeps an earlier unresolved hello. It is compared against MC's\n"
+                     "clock on a phone hello; no IR frame or beacon reaches it",
     "TEAM_REPAINT_S": "F68: the periodic headset repaint. `_last_team_repaint_at` is stamped only by the repaint itself, by a\n"
                       "spawn or revive, and by every deliberate headset paint (`_headset`), never by an incoming frame, so a beacon cannot keep it from firing",
     "GATE_TIMEOUT_MS": "F474 (2026-10-05): how long after a hello MC waits for the connect burst before it samples clock drift anyway; it is read off MC's own clock on phone heartbeats, and no IR frame or beacon reaches it",
